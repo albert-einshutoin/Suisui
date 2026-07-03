@@ -97,6 +97,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
     case projectDelete = "project.delete"
     case taskCreate = "task.create"
     case taskBulkCreate = "task.bulk_create"
+    case taskList = "task.list"
     case taskGet = "task.get"
     case taskUpdate = "task.update"
     case taskComplete = "task.complete"
@@ -129,11 +130,23 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
     case gitBranch = "git.branch"
     case gitLogSummary = "git.log_summary"
     case gitDiffSummary = "git.diff_summary"
+    case developmentPreparePullRequestWorkflow = "development.pr_workflow.prepare"
+    case developmentCommitChanges = "development.pr_workflow.commit"
+    case developmentPushBranch = "development.pr_workflow.push"
+    case developmentCreatePullRequest = "development.pr_workflow.create_pull_request"
+    case developmentReviewPullRequestGate = "development.pr_workflow.review_gate"
+    case developmentMergePullRequest = "development.pr_workflow.merge"
+    case developmentRepositoryListFiles = "development.repository.list_files"
+    case developmentRepositoryReadFile = "development.repository.read_file"
+    case developmentRepositoryCreateFile = "development.repository.create_file"
+    case developmentRepositoryUpdateFile = "development.repository.update_file"
+    case developmentRunVerification = "development.verification.run"
 
     public var defaultRiskLevel: RiskLevel {
         switch self {
         case .projectList,
              .projectGet,
+             .taskList,
              .taskGet,
              .taskListDue,
              .taskListOverdue,
@@ -145,7 +158,9 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .gitStatus,
              .gitBranch,
              .gitLogSummary,
-             .gitDiffSummary:
+             .gitDiffSummary,
+             .developmentRepositoryListFiles,
+             .developmentRepositoryReadFile:
             .read
         case .mailDraftCreateText:
             .draft
@@ -173,7 +188,16 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .filesystemCreateArtifactsFromFrame,
              .frameCreate,
              .frameUpdate,
-             .frameDelete:
+             .frameDelete,
+             .developmentPreparePullRequestWorkflow,
+             .developmentCommitChanges,
+             .developmentPushBranch,
+             .developmentCreatePullRequest,
+             .developmentReviewPullRequestGate,
+             .developmentMergePullRequest,
+             .developmentRepositoryCreateFile,
+             .developmentRepositoryUpdateFile,
+             .developmentRunVerification:
             .write
         }
     }
@@ -182,7 +206,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
         switch self {
         case .projectCreate, .projectUpdate, .projectList, .projectGet, .projectComplete, .projectDelete:
             .project
-        case .taskCreate, .taskBulkCreate, .taskGet, .taskUpdate, .taskComplete, .taskDelete, .taskListDue, .taskListOverdue:
+        case .taskCreate, .taskBulkCreate, .taskList, .taskGet, .taskUpdate, .taskComplete, .taskDelete, .taskListDue, .taskListOverdue:
             .task
         case .notificationSchedule, .notificationScheduleRelative, .notificationScheduleOverdueRule, .notificationCancel, .notificationList:
             .notification
@@ -199,7 +223,21 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
             .knowledgeFrame
         case .mailDraftCreateText:
             .mailDraft
-        case .gitStatus, .gitBranch, .gitLogSummary, .gitDiffSummary:
+        case .gitStatus,
+             .gitBranch,
+             .gitLogSummary,
+             .gitDiffSummary,
+             .developmentPreparePullRequestWorkflow,
+             .developmentCommitChanges,
+             .developmentPushBranch,
+             .developmentCreatePullRequest,
+             .developmentReviewPullRequestGate,
+             .developmentMergePullRequest,
+             .developmentRepositoryListFiles,
+             .developmentRepositoryReadFile,
+             .developmentRepositoryCreateFile,
+             .developmentRepositoryUpdateFile,
+             .developmentRunVerification:
             .developer
         }
     }
@@ -223,7 +261,23 @@ public extension ActionTool {
     }
 
     static var developerModePlanningTools: [ActionTool] {
-        [.gitStatus, .gitBranch, .gitLogSummary, .gitDiffSummary]
+        [
+            .gitStatus,
+            .gitBranch,
+            .gitLogSummary,
+            .gitDiffSummary,
+            .developmentPreparePullRequestWorkflow,
+            .developmentCommitChanges,
+            .developmentPushBranch,
+            .developmentCreatePullRequest,
+            .developmentReviewPullRequestGate,
+            .developmentMergePullRequest,
+            .developmentRepositoryListFiles,
+            .developmentRepositoryReadFile,
+            .developmentRepositoryCreateFile,
+            .developmentRepositoryUpdateFile,
+            .developmentRunVerification
+        ]
     }
 }
 

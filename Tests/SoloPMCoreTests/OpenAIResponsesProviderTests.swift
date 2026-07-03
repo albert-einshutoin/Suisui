@@ -316,6 +316,38 @@ final class OpenAIResponsesProviderTests: XCTestCase {
         XCTAssertTrue(response.validationResult.isValid)
     }
 
+    func testProviderCarriesMeasuredUsageAndResponseModelIntoPlanningResponse() async throws {
+        let store = InMemorySecretStore(values: [.openAIAPIKey: "sk-test"])
+        let provider = OpenAIResponsesProvider(
+            secretStore: store,
+            httpClient: StubHTTPDataClient(
+                data: Data(
+                    """
+                    {
+                      "id": "resp_usage",
+                      "model": "gpt-5.5",
+                      "output_text": "{\\"id\\":\\"plan-usage\\",\\"userInput\\":\\"Create a task\\",\\"summary\\":\\"Create task\\",\\"riskLevel\\":\\"write\\",\\"requiresApproval\\":true,\\"actions\\":[{\\"id\\":\\"action-1\\",\\"tool\\":\\"task.create\\"}]}",
+                      "usage": {
+                        "input_tokens": 700,
+                        "output_tokens": 90,
+                        "total_tokens": 790
+                      }
+                    }
+                    """.utf8
+                ),
+                statusCode: 200
+            )
+        )
+
+        let response = try await provider.generatePlan(for: PlanningRequest(userInput: "Create a task"))
+
+        XCTAssertEqual(response.model, ExecutionReceiptModel(provider: "openai.responses", name: "gpt-5.5"))
+        XCTAssertEqual(response.usage.state, .measured)
+        XCTAssertEqual(response.usage.inputTokens, 700)
+        XCTAssertEqual(response.usage.outputTokens, 90)
+        XCTAssertNil(response.usage.estimatedCostCents)
+    }
+
     func testProviderReturnsBlockingValidationForActionPlanSchemaMismatch() async throws {
         let provider = OpenAIResponsesProvider(
             secretStore: InMemorySecretStore(values: [.openAIAPIKey: "sk-test"]),

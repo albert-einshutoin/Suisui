@@ -31,6 +31,8 @@ private struct SystemKeychainSecItemClient: KeychainSecItemClient {
 public final class KeychainSecretStore: SecretStore, @unchecked Sendable {
     private let service: String
     private let keychain: any KeychainSecItemClient
+    private let cacheLock = NSLock()
+    private var processCache: [SecretKey: String] = [:]
 
     public init(service: String = "dev.solopm.app") {
         self.service = service
@@ -58,6 +60,7 @@ public final class KeychainSecretStore: SecretStore, @unchecked Sendable {
 
         let updateStatus = keychain.update(query as CFDictionary, attributes as CFDictionary)
         if updateStatus == errSecSuccess {
+            removeCachedValue(for: key)
             return
         }
         guard updateStatus == errSecItemNotFound else {
@@ -71,9 +74,14 @@ public final class KeychainSecretStore: SecretStore, @unchecked Sendable {
         guard status == errSecSuccess else {
             throw SecretStoreError.unexpectedStatus(status)
         }
+        removeCachedValue(for: key)
     }
 
     public func read(_ key: SecretKey) throws -> String? {
+        if let cached = cachedValue(for: key) {
+            return cached
+        }
+
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -97,7 +105,11 @@ public final class KeychainSecretStore: SecretStore, @unchecked Sendable {
             return nil
         }
 
-        return String(data: data, encoding: .utf8)
+        let value = String(data: data, encoding: .utf8)
+        if let value {
+            cache(value, for: key)
+        }
+        return value
     }
 
     public func delete(_ key: SecretKey) throws {
@@ -111,6 +123,28 @@ public final class KeychainSecretStore: SecretStore, @unchecked Sendable {
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw SecretStoreError.unexpectedStatus(status)
         }
+        removeCachedValue(for: key)
+    }
+
+    private func cachedValue(for key: SecretKey) -> String? {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        return processCache[key]
+    }
+
+    private func cache(_ value: String, for key: SecretKey) {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        // Keychain ACL prompts can repeat on debug/ad-hoc builds when the code requirement changes.
+        // Cache only inside the current process so repeated provider actions do not prompt again,
+        // while Keychain remains the sole durable store and save/delete force a verified readback.
+        processCache[key] = value
+    }
+
+    private func removeCachedValue(for key: SecretKey) {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        processCache.removeValue(forKey: key)
     }
 }
 #endif

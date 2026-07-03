@@ -27,15 +27,49 @@ public protocol GitCommandRunner: Sendable {
 }
 
 public struct ProcessGitCommandRunner: GitCommandRunner {
+    private static let runtimeDevelopmentGitExecutableOverrideKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_GIT_EXECUTABLE"
+    private static let runtimeDevelopmentSmokeBookmarkFlagKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK"
+    private static let runtimeDevelopmentExpectedBranchKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BRANCH"
+    private static let runtimeDevelopmentExpectedHeadKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD"
+    private static let runtimeDevelopmentPushLogKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_PUSH_LOG"
+    private static let runtimeDevelopmentBlockedExternalWriteLogKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG"
+
     public init() {}
 
     public func runGit(arguments: [String], workingDirectory: URL) throws -> GitCommandOutput {
+        #if os(iOS) || targetEnvironment(macCatalyst)
+        // Mobile builds expose synced task workflows, not local developer tooling;
+        // keep git subprocess execution out of iOS/Catalyst binaries.
+        throw GitReadOnlyError.workspaceUnavailable("Git command execution is available only on macOS.")
+        #else
         let process = Process()
         let standardOutput = Pipe()
         let standardError = Pipe()
 
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["git"] + arguments
+        let environment = ProcessInfo.processInfo.environment
+        if let smokeOutput = Self.runtimeDevelopmentSmokePushOutput(
+            arguments: arguments,
+            workingDirectory: workingDirectory,
+            environment: environment
+        ) {
+            return smokeOutput
+        }
+
+        // Runtime publish smoke uses an explicit wrapper so tests can prove the
+        // external push boundary without relying on PATH behavior in app launches.
+        if environment[Self.runtimeDevelopmentSmokeBookmarkFlagKey] == "1",
+            let override = environment[Self.runtimeDevelopmentGitExecutableOverrideKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !override.isEmpty {
+            process.executableURL = URL(fileURLWithPath: override)
+            process.arguments = arguments
+            // The runtime smoke wrapper validates expected branch/head metadata
+            // from environment before any simulated push can run.
+            process.environment = environment
+        } else {
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.arguments = ["git"] + arguments
+        }
         process.currentDirectoryURL = workingDirectory
         process.standardOutput = standardOutput
         process.standardError = standardError
@@ -51,6 +85,72 @@ public struct ProcessGitCommandRunner: GitCommandRunner {
             standardError: String(data: errorData, encoding: .utf8) ?? "",
             exitCode: process.terminationStatus
         )
+        #endif
+    }
+
+    private static func runtimeDevelopmentSmokePushOutput(
+        arguments: [String],
+        workingDirectory: URL,
+        environment: [String: String]
+    ) -> GitCommandOutput? {
+        guard environment[Self.runtimeDevelopmentSmokeBookmarkFlagKey] == "1",
+              arguments.first == "push" else {
+            return nil
+        }
+
+        let expectedBranch = environment[Self.runtimeDevelopmentExpectedBranchKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let expectedHead = environment[Self.runtimeDevelopmentExpectedHeadKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let expectedRefSpec = "\(expectedHead):refs/heads/\(expectedBranch)"
+        let commandPreview = arguments.joined(separator: " ")
+
+        guard arguments == ["push", "-u", "origin", expectedRefSpec],
+              !expectedBranch.isEmpty,
+              !expectedHead.isEmpty else {
+            let blockedPath = environment[Self.runtimeDevelopmentBlockedExternalWriteLogKey]?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            appendRuntimeDevelopmentSmokeLog(
+                "blocked publish command: \(commandPreview)\n",
+                path: blockedPath
+            )
+            return GitCommandOutput(
+                standardOutput: "",
+                standardError: "blocked publish command: \(commandPreview)",
+                exitCode: 42
+            )
+        }
+
+        let pushLogPath = environment[Self.runtimeDevelopmentPushLogKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let log = """
+        cwd=\(workingDirectory.path)
+        args=\(commandPreview)
+        branch=\(expectedBranch)
+        head=\(expectedHead)
+        """
+        appendRuntimeDevelopmentSmokeLog(log + "\n", path: pushLogPath)
+        return GitCommandOutput(
+            standardOutput: "simulated branch push \(expectedRefSpec)\n",
+            standardError: "",
+            exitCode: 0
+        )
+    }
+
+    private static func appendRuntimeDevelopmentSmokeLog(_ text: String, path: String?) {
+        guard let path, !path.isEmpty else {
+            return
+        }
+        let url = URL(fileURLWithPath: path)
+        let data = Data(text.utf8)
+        if FileManager.default.fileExists(atPath: url.path),
+           let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            handle.write(data)
+        } else {
+            try? data.write(to: url, options: .atomic)
+        }
     }
 }
 

@@ -26,6 +26,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("throw AudioRecorderError.failed(error.localizedDescription)"))
     }
 
+    func testAVFoundationAudioRecorderRequestsFirstRunMicrophoneAccess() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Adapters/AVFoundationAudioRecorder.swift")
+        let notDeterminedRange = try XCTUnwrap(source.range(of: "case .notDetermined:"))
+        let unknownRange = try XCTUnwrap(source.range(of: "@unknown default:", range: notDeterminedRange.upperBound..<source.endIndex))
+        let notDeterminedBlock = source[notDeterminedRange.lowerBound..<unknownRange.lowerBound]
+
+        XCTAssertTrue(notDeterminedBlock.contains("state = .requestingPermission"))
+        XCTAssertTrue(notDeterminedBlock.contains("await requestMicrophoneAccess()"))
+        XCTAssertTrue(source.contains("AVCaptureDevice.requestAccess(for: .audio)"))
+    }
+
     func testProjectBoardSurfaceUsesKanbanLayout() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
@@ -86,6 +97,98 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("createTask("))
     }
 
+    func testProjectBoardRuntimeLoadsAssistantQueueReadModel() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(appSource.contains("let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)"))
+        XCTAssertTrue(appSource.contains("assistantQueueStore: assistantQueueStore"))
+        XCTAssertTrue(appSource.contains("assistantQueueExecutionCoordinator: makeAssistantQueueExecutionCoordinator("))
+        XCTAssertTrue(appSource.contains("let executionReceiptStore = try? makeExecutionReceiptStore()"))
+        XCTAssertTrue(appSource.contains("executionReceiptStore: executionReceiptStore"))
+        XCTAssertTrue(appSource.contains("managedAIUsageLedgerStore: SQLiteManagedAIUsageLedgerStore(connection: connection)"))
+        XCTAssertTrue(appSource.contains("managedAIBillingSettingsProvider: { loadRuntimeAppSettings().managedAIBilling }"))
+        XCTAssertTrue(appSource.contains("return AssistantQueueExecutionCoordinator("))
+        XCTAssertTrue(coreSource.contains("@Published public private(set) var assistantQueueSnapshot: AssistantQueueSnapshot"))
+        XCTAssertTrue(coreSource.contains("AssistantQueueReadModel.snapshot("))
+        XCTAssertTrue(coreSource.contains("executionReceiptStore?.list(limit: 100)"))
+    }
+
+    func testAssistantQueueWorkflowIsReachableFromProjectBoardSidebar() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(persistenceSource.contains("case assistantQueue"))
+        XCTAssertTrue(persistenceSource.contains("return \"assistant-queue\""))
+        XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(destination: .assistantQueue, count: viewModel.assistantQueueSnapshot.needsAttentionCount)"))
+        XCTAssertTrue(boardSource.contains("AssistantQueueWorkflowView(viewModel: viewModel)"))
+        XCTAssertTrue(workflowSource.contains("struct AssistantQueueWorkflowView"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-workflow\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-row-\\(row.id)\")"))
+        XCTAssertTrue(workflowSource.contains("viewModel.runAssistantQueueItem(id: row.id)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.approveAssistantQueueItem(id: row.id)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.deferAssistantQueueItem(id: row.id)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.editAssistantQueueItem("))
+        XCTAssertTrue(workflowSource.contains("viewModel.retryAssistantQueueItem(id: row.id)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.rejectAssistantQueueItem(id: row.id)"))
+        XCTAssertTrue(workflowSource.contains(".disabled(!row.canRun)"))
+        XCTAssertTrue(workflowSource.contains(".disabled(!row.canApprove)"))
+        XCTAssertTrue(workflowSource.contains(".disabled(!row.canDefer)"))
+        XCTAssertTrue(workflowSource.contains(".disabled(!row.canEdit)"))
+        XCTAssertTrue(workflowSource.contains(".disabled(!row.canRetry)"))
+        XCTAssertTrue(workflowSource.contains(".disabled(!row.canReject)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-run-\\(row.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-edit-\\(row.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-edit-reason-\\(row.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-edit-summary-\\(row.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-edit-save-\\(row.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-edit-cancel-\\(row.id)\")"))
+        XCTAssertTrue(workflowSource.contains("draftRedactedSummary = row.redactedSummary"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-retry-\\(row.id)\")"))
+        XCTAssertTrue(workflowSource.contains("AssistantQueueTriageControls("))
+        XCTAssertTrue(workflowSource.contains("AssistantQueueBatchToolbar("))
+        XCTAssertTrue(workflowSource.contains("viewModel.setAssistantQueueViewFilter"))
+        XCTAssertTrue(workflowSource.contains("viewModel.setAssistantQueueSort"))
+        XCTAssertTrue(workflowSource.contains("viewModel.setAssistantQueueSelection(id: row.id, selected: selected)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.deferSelectedAssistantQueueItems()"))
+        XCTAssertTrue(workflowSource.contains("viewModel.rejectSelectedAssistantQueueItems()"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-filter\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-sort\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-batch-toolbar\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-select-\\(row.id)\")"))
+        XCTAssertFalse(workflowSource.contains("approveSelectedAssistantQueueItems"))
+        XCTAssertFalse(workflowSource.contains("runSelectedAssistantQueueItems"))
+        XCTAssertTrue(workflowSource.contains("if let receipt = row.latestReceipt"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-receipt-\\(row.id)\")"))
+        XCTAssertTrue(workflowSource.contains("localizedDisplay(\"Receipt: %@\", localizedDisplay(receipt.statusLabel))"))
+        XCTAssertTrue(coreSource.contains("public func runAssistantQueueItem(id: String) -> Bool"))
+        XCTAssertTrue(coreSource.contains("public func approveAssistantQueueItem(id: String) -> Bool"))
+        XCTAssertTrue(coreSource.contains("public func deferAssistantQueueItem(id: String) -> Bool"))
+        XCTAssertTrue(coreSource.contains("public func editAssistantQueueItem("))
+        XCTAssertTrue(coreSource.contains("public func retryAssistantQueueItem(id: String) -> Bool"))
+        XCTAssertTrue(coreSource.contains("public func rejectAssistantQueueItem(id: String) -> Bool"))
+        XCTAssertTrue(coreSource.contains("public func setAssistantQueueViewFilter(_ filter: AssistantQueueViewFilter)"))
+        XCTAssertTrue(coreSource.contains("public func setAssistantQueueSort(_ sort: AssistantQueueSort)"))
+        XCTAssertTrue(coreSource.contains("public func setAssistantQueueSelection(id: String, selected: Bool) -> Bool"))
+        XCTAssertTrue(coreSource.contains("public func deferSelectedAssistantQueueItems() -> Bool"))
+        XCTAssertTrue(coreSource.contains("public func rejectSelectedAssistantQueueItems() -> Bool"))
+    }
+
+    func testAssistantQueueTriageLocalizationsDoNotDuplicateSharedKeys() throws {
+        let english = try readPackageFile("Sources/SoloPMApp/Resources/en.lproj/Localizable.strings")
+        let japanese = try readPackageFile("Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings")
+        for source in [english, japanese] {
+            XCTAssertEqual(source.components(separatedBy: "\"All\" =").count - 1, 1)
+            XCTAssertEqual(source.components(separatedBy: "\"Sort\" =").count - 1, 1)
+            XCTAssertEqual(source.components(separatedBy: "\"Needs attention\" =").count - 1, 1)
+            XCTAssertEqual(source.components(separatedBy: "\"Needs action first\" =").count - 1, 1)
+            XCTAssertEqual(source.components(separatedBy: "\"Risk high first\" =").count - 1, 1)
+            XCTAssertEqual(source.components(separatedBy: "\"Title A-Z\" =").count - 1, 1)
+        }
+    }
+
     func testProjectBoardExposesPortableTaskImportExportFileActions() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
@@ -114,6 +217,27 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(detailSource.contains("composingStatus = status"))
         XCTAssertGreaterThanOrEqual(detailSource.components(separatedBy: "onAddTask: { startComposingTask() }").count - 1, 3)
         XCTAssertFalse(detailSource.contains("onAddTask: { composingStatus = .backlog }"))
+    }
+
+    func testProjectsOverviewKeepsSidebarProjectSelectionAndDetailModesSeparate() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
+
+        XCTAssertTrue(persistenceSource.contains("case projects"))
+        XCTAssertTrue(persistenceSource.contains("case .projects:"))
+        XCTAssertTrue(persistenceSource.contains("return \"projects\""))
+        XCTAssertTrue(boardSource.contains("destination: .projects"))
+        XCTAssertTrue(boardSource.contains(".tag(ProjectBoardSidebarDestination.projects)"))
+        XCTAssertTrue(boardSource.contains("ProjectsPortfolioOverview("))
+        XCTAssertTrue(boardSource.contains(".tag(ProjectBoardSidebarDestination.project(project.id))"))
+        XCTAssertTrue(boardSource.contains("case .project(let projectID):"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardDetail("))
+        XCTAssertTrue(boardSource.contains("case .overview:"))
+        XCTAssertTrue(boardSource.contains("case .board:"))
+        XCTAssertTrue(boardSource.contains("case .list:"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-display-mode-\\(mode.rawValue)\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityLabel(LocalizedStringKey(mode.label))"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-task-list\")"))
     }
 
     func testAppearanceSelectionIsConfiguredOnlyFromSettings() throws {
@@ -205,6 +329,61 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(japaneseStrings.contains("\"Project Board\" = \"プロジェクトボード\";"))
     }
 
+    func testAppLocalizationsCoverStaticSwiftUILiterals() throws {
+        let englishKeys = try localizableKeys(in: "Sources/SoloPMApp/Resources/en.lproj/Localizable.strings")
+        let japaneseKeys = try localizableKeys(in: "Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings")
+
+        XCTAssertEqual(englishKeys, japaneseKeys)
+
+        var missingKeys: [String] = []
+        for key in try staticSwiftUILiteralKeys() where !englishKeys.contains(key) || !japaneseKeys.contains(key) {
+            missingKeys.append(key)
+        }
+
+        XCTAssertTrue(
+            missingKeys.isEmpty,
+            "Missing Localizable.strings keys: \(missingKeys.sorted().joined(separator: ", "))"
+        )
+        XCTAssertEqual(englishKeys.count, japaneseKeys.count)
+        XCTAssertTrue(japaneseKeys.contains("Settings"))
+        XCTAssertTrue(japaneseKeys.contains("Open Settings"))
+        XCTAssertTrue(japaneseKeys.contains("Classify Selected Item"))
+        XCTAssertTrue(japaneseKeys.contains("Track Artifact"))
+        XCTAssertTrue(japaneseKeys.contains("MCP paid execution boundary"))
+    }
+
+    func testDynamicAppStatusStringsUseLocalizationRouting() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let coreBoardSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let japaneseKeys = try localizableKeys(in: "Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings")
+
+        XCTAssertTrue(boardSource.contains("localizedTaskCount(project.taskCount)"))
+        XCTAssertTrue(boardSource.contains("localizedDisplay(\"%@ is blocked. Resolve it before adding more work.\", task.title)"))
+        XCTAssertTrue(workflowSource.contains("Text(LocalizedStringKey(plan.recommendationReason))"))
+        XCTAssertTrue(appSource.contains("localizedSettingsDisplay(statusLabel)"))
+        XCTAssertTrue(coreBoardSource.contains("String(localized: \"Kept \\\"%@\\\" as a task.\")"))
+        XCTAssertTrue(coreBoardSource.contains("String(localized: \"Review unblock plan\")"))
+        XCTAssertTrue(coreBoardSource.contains("String(localized: \"Review next action\")"))
+        XCTAssertTrue(coreBoardSource.contains("String(localized: \"Start with %@, then check milestone %@.\")"))
+        XCTAssertTrue(coreBoardSource.contains("String(localized: \"No open tasks or milestones need attention.\")"))
+
+        XCTAssertFalse(boardSource.contains("Text(project.isArchived ? \"Archived\" : \"\\(project.taskCount) tasks\")"))
+        XCTAssertFalse(boardSource.contains("return \"\\(task.title) is blocked. Resolve it before adding more work.\""))
+        XCTAssertFalse(workflowSource.contains("Text(plan.recommendationReason)"))
+        XCTAssertFalse(appSource.contains("Label(syncUnavailableLabel, systemImage: \"lock\")"))
+        XCTAssertFalse(coreBoardSource.contains("return \"Start with \\(task.title).\""))
+        XCTAssertFalse(coreBoardSource.contains("return \"No open tasks or milestones need attention.\""))
+
+        XCTAssertTrue(japaneseKeys.contains("%@ is blocked. Resolve it before adding more work."))
+        XCTAssertTrue(japaneseKeys.contains(#"Kept \"%@\" as a task."#))
+        XCTAssertTrue(japaneseKeys.contains("Plan: %@"))
+        XCTAssertTrue(japaneseKeys.contains("Smoke: %@"))
+        XCTAssertTrue(japaneseKeys.contains("Review unblock plan"))
+        XCTAssertTrue(japaneseKeys.contains("Start with %@, then check milestone %@."))
+    }
+
     func testThemePickerIsOwnedOnlyBySettingsAppearanceSectionAcrossAppSources() throws {
         let expectedOwner = "Sources/SoloPMApp/Views/SettingsAppearanceSection.swift"
         let markers = [
@@ -228,9 +407,9 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
-    func testProjectBoardSidebarAndToolbarDoNotHostThemeControls() throws {
+    func testProjectBoardHeaderHostsSettingsLinkWithoutThemeControls() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let sidebarStart = try XCTUnwrap(boardSource.range(of: "NavigationSplitView {"))
+        let sidebarStart = try XCTUnwrap(boardSource.range(of: "NavigationSplitView(columnVisibility: $columnVisibility) {"))
         let detailStart = try XCTUnwrap(boardSource.range(of: "} detail: {"))
         let sidebarSource = String(boardSource[sidebarStart.upperBound..<detailStart.lowerBound])
 
@@ -253,38 +432,560 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(sidebarSource.contains("appearancePreference"))
         XCTAssertFalse(sidebarSource.contains(".pickerStyle(.segmented)"))
 
-        let toolbarStart = try XCTUnwrap(boardSource.range(of: ".toolbar {"))
-        let inspectorStart = try XCTUnwrap(boardSource.range(of: ".inspector(isPresented: inspectorBinding)"))
-        let toolbarSource = String(boardSource[toolbarStart.lowerBound..<inspectorStart.lowerBound])
+        let headerStart = try XCTUnwrap(boardSource.range(of: "private var projectBoardHeaderBar: some View"))
+        let toggleStart = try XCTUnwrap(boardSource.range(of: "private func toggleSidebarVisibility()"))
+        let headerSource = String(boardSource[headerStart.lowerBound..<toggleStart.lowerBound])
 
-        XCTAssertFalse(toolbarSource.contains("SettingsLink"))
-        XCTAssertFalse(toolbarSource.contains("gearshape"))
-        XCTAssertFalse(toolbarSource.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
-        XCTAssertFalse(toolbarSource.contains("Open Settings"))
-        XCTAssertFalse(toolbarSource.contains("Theme"))
-        XCTAssertFalse(toolbarSource.contains("Appearance"))
-        XCTAssertFalse(toolbarSource.contains("SoloPMAppearancePreference"))
-        XCTAssertFalse(toolbarSource.contains("Picker(\"Theme\""))
-        XCTAssertFalse(toolbarSource.contains("Picker(\"Appearance\""))
-        XCTAssertFalse(toolbarSource.contains("Light"))
-        XCTAssertFalse(toolbarSource.contains("Dark"))
-        XCTAssertFalse(toolbarSource.contains("System"))
-        XCTAssertFalse(toolbarSource.contains("sun.max"))
-        XCTAssertFalse(toolbarSource.contains("moon"))
-        XCTAssertFalse(toolbarSource.contains("circle.lefthalf.filled"))
-        XCTAssertFalse(toolbarSource.contains("settings-theme-picker"))
-        XCTAssertFalse(toolbarSource.contains("appearancePreference"))
-        XCTAssertFalse(toolbarSource.contains(".pickerStyle(.segmented)"))
+        XCTAssertTrue(headerSource.contains("SettingsLink"))
+        XCTAssertTrue(headerSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
+        XCTAssertTrue(headerSource.contains(".help(\"Open Settings\")"))
+        XCTAssertTrue(headerSource.contains(".accessibilityIdentifier(\"project-board-settings-link\")"))
+        XCTAssertFalse(headerSource.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
+        XCTAssertFalse(headerSource.contains("Theme"))
+        XCTAssertFalse(headerSource.contains("Appearance"))
+        XCTAssertFalse(headerSource.contains("SoloPMAppearancePreference"))
+        XCTAssertFalse(headerSource.contains("Picker(\"Theme\""))
+        XCTAssertFalse(headerSource.contains("Picker(\"Appearance\""))
+        XCTAssertFalse(headerSource.contains("Light"))
+        XCTAssertFalse(headerSource.contains("Dark"))
+        XCTAssertFalse(headerSource.contains("System"))
+        XCTAssertFalse(headerSource.contains("sun.max"))
+        XCTAssertFalse(headerSource.contains("moon"))
+        XCTAssertFalse(headerSource.contains("circle.lefthalf.filled"))
+        XCTAssertFalse(headerSource.contains("settings-theme-picker"))
+        XCTAssertFalse(headerSource.contains("appearancePreference"))
+        XCTAssertFalse(headerSource.contains(".pickerStyle(.segmented)"))
     }
 
-    func testMenuBarPanelDoesNotHostSettingsOrThemeControls() throws {
+    func testProjectBoardHeaderKeepsActionsInSynchronousSwiftUILayout() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let headerStart = try XCTUnwrap(boardSource.range(of: "private var projectBoardHeaderBar: some View"))
+        let toggleStart = try XCTUnwrap(boardSource.range(of: "private func toggleSidebarVisibility()"))
+        let headerSource = String(boardSource[headerStart.lowerBound..<toggleStart.lowerBound])
+        let toolbarStart = try XCTUnwrap(boardSource.range(of: ".toolbar {"))
+        let toolbarRemovalStart = try XCTUnwrap(boardSource.range(of: ".toolbar(removing: .sidebarToggle)"))
+        let toolbarSource = String(boardSource[toolbarStart.lowerBound..<toolbarRemovalStart.lowerBound])
+
+        XCTAssertTrue(boardSource.contains("projectBoardHeaderBar"))
+        XCTAssertTrue(headerSource.contains("HStack(spacing: 8)"))
+        XCTAssertTrue(headerSource.contains("Spacer(minLength: 16)"))
+        XCTAssertTrue(headerSource.contains("Label(\"Integrations\", systemImage: \"arrow.left.arrow.right\")"))
+        XCTAssertTrue(headerSource.contains("Label(\"Review Task Automation\", systemImage: \"sparkles\")"))
+        XCTAssertTrue(headerSource.contains("Label(\"Voice Command\", systemImage: \"mic\")"))
+        XCTAssertTrue(headerSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
+        XCTAssertTrue(headerSource.contains("Label(\"Terminal\", systemImage: \"terminal\")"))
+        XCTAssertTrue(headerSource.contains(".accessibilityIdentifier(\"project-board-header-bar\")"))
+        XCTAssertTrue(headerSource.contains(".buttonStyle(.bordered)"))
+        XCTAssertTrue(headerSource.contains(".controlSize(.small)"))
+        XCTAssertTrue(headerSource.contains("minHeight: ProjectBoardLayoutMetrics.headerHeight"))
+        XCTAssertTrue(headerSource.contains("maxHeight: ProjectBoardLayoutMetrics.headerHeight"))
+        XCTAssertEqual(toolbarSource.components(separatedBy: "ToolbarItem(placement: .primaryAction)").count - 1, 0)
+        XCTAssertFalse(toolbarSource.contains("ToolbarItemGroup(placement:"))
+        XCTAssertFalse(toolbarSource.contains("project-board-integrations-menu"))
+        XCTAssertFalse(toolbarSource.contains("project-board-voice-command"))
+        XCTAssertFalse(toolbarSource.contains("project-board-settings-link"))
+        XCTAssertFalse(toolbarSource.contains("project-board-terminal-toggle"))
+        XCTAssertTrue(boardSource.contains("performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing:"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-integrations-menu\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-task-auto-execution-review\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-voice-command\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-settings-link\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-terminal-toggle\")"))
+        XCTAssertTrue(boardSource.contains("private extension NSToolbar"))
+        XCTAssertTrue(boardSource.contains("var projectBoardLayoutItems: [ProjectBoardToolbarLayoutPolicy.Item]"))
+        XCTAssertTrue(boardSource.contains("accessibilityIdentifier: view?.accessibilityIdentifier()"))
+        XCTAssertFalse(boardSource.contains("private struct ProjectBoardToolbarIcon: View"))
+        XCTAssertFalse(boardSource.contains("toolbar.displayMode = .iconOnly"))
+        XCTAssertFalse(boardSource.contains("toolbar.allowsUserCustomization = false"))
+    }
+
+    func testProjectBoardHeaderPreparesConfiguredTaskAutomationReview() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(boardSource.contains("let taskAutomationSettings: () -> TaskAutoExecutionSettings"))
+        XCTAssertTrue(boardSource.contains("let appSettings: () -> AppSettings"))
+        XCTAssertTrue(boardSource.contains("taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings"))
+        XCTAssertTrue(boardSource.contains("appSettings: @escaping () -> AppSettings"))
+        XCTAssertTrue(boardSource.contains("viewModel.prepareTaskAutomationReview(settings: taskAutomationSettings())"))
+        XCTAssertTrue(boardSource.contains("viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())"))
+        XCTAssertTrue(boardSource.contains(".help(\"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings.\")"))
+        XCTAssertTrue(appSource.contains("@StateObject private var settingsViewModel: AppSettingsViewModel"))
+        XCTAssertTrue(appSource.contains("_settingsViewModel = StateObject(wrappedValue: AppRuntimeFactory.makeAppSettingsViewModel())"))
+        XCTAssertTrue(appSource.contains("taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution }"))
+        XCTAssertTrue(appSource.contains("appSettings: { settingsViewModel.settings }"))
+    }
+
+    func testTaskInspectorApprovedExecutionReceiptIsAccessibleAndRedacted() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(boardSource.contains("private var latestApprovedExecutionReceipt: ApprovedAutomationExecutionReceipt?"))
+        XCTAssertTrue(boardSource.contains("viewModel.approvedAutomationExecutionReceipts.last { $0.taskID == task.id }"))
+        XCTAssertTrue(boardSource.contains("approvedExecutionReceiptView(receipt)"))
+        XCTAssertTrue(boardSource.contains("Text(\"Task: \\(receipt.redactedTaskTitle)\")"))
+        XCTAssertTrue(boardSource.contains("Text(\"Reviewed detail: \\(receipt.redactedTaskDetail)\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"approved-execution-receipt\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Approved execution receipt\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityValue(approvedExecutionReceiptAccessibilityValue(receipt))"))
+        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Shows the redacted task title and detail that were approved and executed.\")"))
+        XCTAssertTrue(boardSource.contains("\"Task \\(receipt.redactedTaskTitle)\""))
+        XCTAssertTrue(boardSource.contains("\"Reviewed detail \\(receipt.redactedTaskDetail)\""))
+    }
+
+    func testDoneWorkflowShowsRecentAIReceiptsWithoutRawReceiptFields() throws {
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let historySource = try readPackageFile("Sources/SoloPMCore/App/ExecutionReceiptHistory.swift")
+
+        XCTAssertTrue(workflowSource.contains("viewModel.executionReceiptHistorySnapshot"))
+        XCTAssertTrue(workflowSource.contains("viewModel.executionUsageMeterSnapshot"))
+        XCTAssertTrue(workflowSource.contains("AI Usage Meter"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"ai-usage-meter-summary\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"ai-usage-meter-scope\")"))
+        XCTAssertTrue(workflowSource.contains("appSettings.managedAIBilling"))
+        XCTAssertTrue(workflowSource.contains("usageThresholdRows(for: snapshot)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"ai-usage-threshold-row-\\(row.scope.rawValue)\")"))
+        XCTAssertTrue(workflowSource.contains("Latest Month"))
+        XCTAssertTrue(workflowSource.contains("row.summary.costLabel"))
+        XCTAssertTrue(workflowSource.contains("Recent AI Receipts"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"recent-ai-receipts\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"execution-receipt-search-field\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"execution-receipt-export-button\")"))
+        XCTAssertTrue(workflowSource.contains(".fileExporter("))
+        XCTAssertTrue(workflowSource.contains("isExportingExecutionReceipts"))
+        XCTAssertTrue(workflowSource.contains("ExecutionReceiptHistoryFileDocument"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"execution-receipt-row-\\(row.id)\")"))
+        XCTAssertTrue(workflowSource.contains("ExecutionReceiptHistoryRowView"))
+        XCTAssertTrue(workflowSource.contains("viewModel.prepareExecutionReceiptHistoryExport()"))
+        let receiptHistoryViewTail = try XCTUnwrap(
+            workflowSource.components(separatedBy: "struct ExecutionReceiptHistoryRowView").last
+        )
+        let receiptHistoryViewSource = try XCTUnwrap(
+            receiptHistoryViewTail.components(separatedBy: "private struct ScheduleDraftPanel").first
+        )
+        XCTAssertTrue(historySource.contains("displayDigest(for: receipt)"))
+        XCTAssertTrue(historySource.contains("Receipt Digest: %@"))
+        XCTAssertFalse(receiptHistoryViewSource.contains(".inputPreview"))
+        XCTAssertFalse(receiptHistoryViewSource.contains(".sourceLinks"))
+        XCTAssertFalse(receiptHistoryViewSource.contains(".actions"))
+        XCTAssertFalse(receiptHistoryViewSource.contains("receipt.id"))
+        XCTAssertFalse(receiptHistoryViewSource.contains("receipt.runID"))
+    }
+
+    func testInspectorsShowScopedAIReceiptsWithoutRawReceiptFields() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+
+        XCTAssertTrue(boardSource.contains("Section(\"Project AI Receipts\")"))
+        XCTAssertTrue(boardSource.contains("Section(\"Task AI Receipts\")"))
+        XCTAssertTrue(boardSource.contains("viewModel.executionReceiptHistorySnapshot(forProjectID: project.id)"))
+        XCTAssertTrue(boardSource.contains("viewModel.executionReceiptHistorySnapshot(forTaskID: task.id)"))
+        XCTAssertTrue(boardSource.contains("accessibilityIdentifier: \"project-execution-receipts\""))
+        XCTAssertTrue(boardSource.contains("accessibilityIdentifier: \"task-execution-receipts\""))
+        XCTAssertTrue(boardSource.contains("ExecutionReceiptHistoryInspectorSection"))
+        XCTAssertTrue(boardSource.contains("ExecutionReceiptHistoryRowView(row: row)"))
+        XCTAssertTrue(workflowSource.contains("struct ExecutionReceiptHistoryRowView: View"))
+
+        let inspectorReceiptSection = try sourceBlock(
+            in: boardSource,
+            from: "private struct ExecutionReceiptHistoryInspectorSection",
+            to: "private struct InspectorMetadataPill"
+        )
+        XCTAssertFalse(inspectorReceiptSection.contains(".inputPreview"))
+        XCTAssertFalse(inspectorReceiptSection.contains(".sourceLinks"))
+        XCTAssertFalse(inspectorReceiptSection.contains(".actions"))
+        XCTAssertFalse(inspectorReceiptSection.contains("receipt.id"))
+    }
+
+    func testTaskInspectorShowsDocumentSourceReviewForAutomationDrafts() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(boardSource.contains("viewModel.taskAutomationDocumentDeliverableReviews"))
+        XCTAssertTrue(boardSource.contains("documentDeliverableReviewView"))
+        XCTAssertTrue(boardSource.contains("Document deliverables"))
+        XCTAssertTrue(boardSource.contains("Source documents"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"task-auto-execution-document-deliverables\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"task-auto-execution-document-source-\\(source.id)\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Automation document source\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityValue(documentSourceAccessibilityValue(source))"))
+    }
+
+    func testProjectBoardLayoutMetricsGuardPrimaryDimensionsAndLongLabels() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(source.contains("private enum ProjectBoardLayoutMetrics"))
+        XCTAssertTrue(source.contains("static let headerHeight: CGFloat = 44"))
+        XCTAssertTrue(source.contains("static let terminalPanelMinHeight: CGFloat = 220"))
+        XCTAssertTrue(source.contains("static let terminalPanelIdealHeight: CGFloat = 280"))
+        XCTAssertTrue(source.contains("static let terminalPanelMaxHeight: CGFloat = 360"))
+        XCTAssertTrue(source.contains("static let portfolioCardMinHeight: CGFloat = 230"))
+        XCTAssertTrue(source.contains("static let overviewPanelMinHeight: CGFloat = 170"))
+        XCTAssertTrue(source.contains("static let displayModePickerWidth: CGFloat = 252"))
+        XCTAssertTrue(source.contains("static let boardColumnWidth: CGFloat = 244"))
+        XCTAssertTrue(source.contains("static let emptyColumnMinHeight: CGFloat = 82"))
+        XCTAssertTrue(source.contains("static let inlinePriorityPickerWidth: CGFloat = 112"))
+        XCTAssertTrue(source.contains("static let taskMetadataChipMinWidth: CGFloat = 64"))
+        XCTAssertTrue(source.contains("static let taskMetadataChipMinHeight: CGFloat = 24"))
+        XCTAssertTrue(source.contains("static let taskStatusRailWidth: CGFloat = 4"))
+        XCTAssertTrue(source.contains("static let taskStatusRailHeight: CGFloat = 44"))
+        XCTAssertTrue(source.contains("Project Board keeps these metrics local"))
+
+        XCTAssertTrue(source.contains("minHeight: ProjectBoardLayoutMetrics.headerHeight"))
+        XCTAssertTrue(source.contains("maxHeight: ProjectBoardLayoutMetrics.headerHeight"))
+        XCTAssertTrue(source.contains("minHeight: ProjectBoardLayoutMetrics.terminalPanelMinHeight"))
+        XCTAssertTrue(source.contains("idealHeight: ProjectBoardLayoutMetrics.terminalPanelIdealHeight"))
+        XCTAssertTrue(source.contains("maxHeight: ProjectBoardLayoutMetrics.terminalPanelMaxHeight"))
+        XCTAssertTrue(source.contains(".frame(minHeight: ProjectBoardLayoutMetrics.portfolioCardMinHeight, alignment: .topLeading)"))
+        XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, minHeight: ProjectBoardLayoutMetrics.overviewPanelMinHeight, alignment: .topLeading)"))
+        XCTAssertTrue(source.contains(".frame(width: ProjectBoardLayoutMetrics.displayModePickerWidth)"))
+        XCTAssertTrue(source.contains(".frame(width: ProjectBoardLayoutMetrics.boardColumnWidth, alignment: .topLeading)"))
+        XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, minHeight: ProjectBoardLayoutMetrics.emptyColumnMinHeight, alignment: .topLeading)"))
+        XCTAssertTrue(source.contains(".frame(width: ProjectBoardLayoutMetrics.inlinePriorityPickerWidth)"))
+        XCTAssertTrue(source.contains(".frame(width: ProjectBoardLayoutMetrics.taskStatusRailWidth)"))
+        XCTAssertTrue(source.contains(".frame(height: ProjectBoardLayoutMetrics.taskStatusRailHeight)"))
+        XCTAssertTrue(source.contains("minWidth: ProjectBoardLayoutMetrics.taskMetadataChipMinWidth"))
+        XCTAssertTrue(source.contains("minHeight: ProjectBoardLayoutMetrics.taskMetadataChipMinHeight"))
+        XCTAssertTrue(source.contains(".minimumScaleFactor(0.82)"))
+        XCTAssertTrue(source.contains(".help(task.title)"))
+        XCTAssertTrue(source.contains(".help(task.detail)"))
+    }
+
+    func testProjectBoardLongContentFixtureMapsToResponsiveGuards() throws {
+        let fixture = try readPackageFile("Tests/SoloPMCoreTests/Fixtures/ProjectBoard/long-content-layout.json")
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(fixture.contains("\"longJapaneseProjectTitle\""))
+        XCTAssertTrue(fixture.contains("長い日本語のプロジェクト名"))
+        XCTAssertTrue(fixture.contains("\"longEnglishTaskTitle\""))
+        XCTAssertTrue(fixture.contains("Coordinate multi-window Project Board release readiness"))
+        XCTAssertTrue(fixture.contains("\"emptyState\""))
+        XCTAssertTrue(fixture.contains("\"No tasks\""))
+        XCTAssertTrue(fixture.contains("\"errorState\""))
+        XCTAssertTrue(fixture.contains("\"Project Board Unavailable\""))
+
+        XCTAssertTrue(source.contains("Text(project.title)"))
+        XCTAssertTrue(source.contains(".lineLimit(1)"))
+        XCTAssertTrue(source.contains(".truncationMode(.tail)"))
+        XCTAssertTrue(source.contains(".help(project.title)"))
+        XCTAssertTrue(source.contains("Text(task.title)"))
+        XCTAssertTrue(source.contains(".help(task.title)"))
+        XCTAssertTrue(source.contains("Text(task.detail)"))
+        XCTAssertTrue(source.contains(".help(task.detail)"))
+        XCTAssertTrue(source.contains("ContentUnavailableView(\n                            \"Project Board Unavailable\""))
+        XCTAssertTrue(source.contains("ContentUnavailableView(\"No Projects\""))
+        XCTAssertTrue(source.contains("Text(\"No tasks\")"))
+        XCTAssertTrue(source.contains("ProjectBoardLayoutMetrics.emptyColumnMinHeight"))
+    }
+
+    func testProjectBoardStateRestorationFixtureCoversLaunchMatrix() throws {
+        let fixture = try readPackageFile("Tests/SoloPMCoreTests/Fixtures/ProjectBoard/state-restoration-matrix.json")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
+        let layoutSmoke = try readPackageFile("script/check_layout_stability_smoke.sh")
+        let crudSmoke = try readPackageFile("script/check_runtime_accessible_crud_smoke.sh")
+
+        XCTAssertTrue(fixture.contains("\"emptyDatabase\""))
+        XCTAssertTrue(fixture.contains("\"normalSeededDatabase\""))
+        XCTAssertTrue(fixture.contains("\"deletedSavedProject\""))
+        XCTAssertTrue(fixture.contains("\"manyProjectsAndTasks\""))
+        XCTAssertTrue(fixture.contains("\"savedSelection\": \"project:42\""))
+        XCTAssertTrue(fixture.contains("\"expectedDestination\": \"today\""))
+        XCTAssertTrue(fixture.contains("\"envOverride\": \"project:42\""))
+        XCTAssertTrue(fixture.contains("\"projectCount\": 24"))
+        XCTAssertTrue(fixture.contains("\"tasksPerProject\": 12"))
+        XCTAssertTrue(fixture.contains("SOLOPM_DATABASE_PATH"))
+        XCTAssertTrue(fixture.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION"))
+        XCTAssertTrue(fixture.contains("SOLOPM_LAYOUT_STABILITY_WINDOW_MIN_WIDTH"))
+        XCTAssertTrue(fixture.contains("SOLOPM_LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH"))
+        XCTAssertTrue(fixture.contains("SOLOPM_LAYOUT_STABILITY_WINDOW_WIDE_WIDTH"))
+
+        XCTAssertTrue(boardSource.contains("restoreSelectedDestinationIfNeeded()"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardSelectionPersistence.destination("))
+        XCTAssertTrue(boardSource.contains("persistSelectedDestination(destination)"))
+        XCTAssertTrue(boardSource.contains("applySelectedDestination(destination)"))
+        XCTAssertTrue(persistenceSource.contains("Saved app state can outlive a project row"))
+        XCTAssertTrue(persistenceSource.contains("availableProjects.contains(where: { $0.id == projectID }) else"))
+        XCTAssertTrue(layoutSmoke.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$layout_project_id\""))
+        XCTAssertTrue(crudSmoke.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
+        XCTAssertTrue(crudSmoke.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"projects\""))
+    }
+
+    func testProjectBoardToolbarDisplayModeOnlyAllowsIconAndTextOrIconOnly() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(boardSource.contains("projectBoardSupportedToolbarDisplayMode(for:"))
+        XCTAssertTrue(boardSource.contains("enforceProjectBoardSupportedToolbarDisplayMode("))
+        XCTAssertTrue(boardSource.contains("case .iconAndLabel:"))
+        XCTAssertTrue(boardSource.contains("case .iconOnly:"))
+        XCTAssertTrue(boardSource.contains("case .labelOnly, .default:"))
+        XCTAssertTrue(boardSource.contains("return .iconAndLabel"))
+        XCTAssertTrue(boardSource.contains("toolbar.displayMode = supportedDisplayMode"))
+        XCTAssertTrue(boardSource.contains("enforceProjectBoardSupportedToolbarDisplayMode(toolbar)"))
+        XCTAssertTrue(boardSource.contains("installToolbarDisplayModeMenuPruningIfNeeded()"))
+        XCTAssertTrue(boardSource.contains("NSMenu.didBeginTrackingNotification"))
+        XCTAssertTrue(boardSource.contains("pruneUnsupportedProjectBoardToolbarDisplayModeItems(from:"))
+        XCTAssertTrue(boardSource.contains("isProjectBoardToolbarDisplayModeMenu("))
+        XCTAssertTrue(boardSource.contains("\"Icon and Text\""))
+        XCTAssertTrue(boardSource.contains("\"Icon Only\""))
+        XCTAssertTrue(boardSource.contains("\"アイコンとテキスト\""))
+        XCTAssertTrue(boardSource.contains("\"アイコンのみ\""))
+        XCTAssertTrue(boardSource.contains("\"Text Only\""))
+        XCTAssertTrue(boardSource.contains("\"テキストのみ\""))
+        XCTAssertFalse(boardSource.contains("toolbar.displayMode = .labelOnly"))
+    }
+
+    func testProjectBoardHeaderIsSharedAndColumnsUseSynchronizedBounds() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let detailStart = try XCTUnwrap(boardSource.range(of: "} detail: {"))
+        let inspectorStart = try XCTUnwrap(boardSource.range(of: ".inspector(isPresented: inspectorBinding)"))
+        let toolbarStart = try XCTUnwrap(boardSource.range(of: ".toolbar {"))
+
+        XCTAssertGreaterThan(toolbarStart.lowerBound, inspectorStart.lowerBound)
+        XCTAssertEqual(boardSource.components(separatedBy: ".navigationTitle(\"SoloPM\")").count - 1, 1)
+        XCTAssertEqual(boardSource.components(separatedBy: ".projectBoardSynchronizedColumnBounds()").count - 1, 2)
+        XCTAssertFalse(boardSource.contains(".navigationSplitViewColumnWidth("))
+        XCTAssertFalse(boardSource.contains("ProjectBoardLayout.sidebarColumnWidth"))
+        XCTAssertEqual(boardSource.components(separatedBy: ".id(toolbarLayoutRefreshToken)").count - 1, 2)
+        XCTAssertTrue(boardSource.contains("@State private var toolbarLayoutRefreshToken = 0"))
+        XCTAssertTrue(boardSource.contains("private struct ProjectBoardSynchronizedColumnBounds: ViewModifier"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardToolbarLayoutPolicy.nativeSidebarRemovalIndexes("))
+        XCTAssertTrue(boardSource.contains("sidebar item and tracking separator"))
+        XCTAssertTrue(boardSource.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
+        XCTAssertTrue(boardSource.contains("refreshProjectBoardColumnsAfterToolbarDisplayModeChange()"))
+        XCTAssertTrue(boardSource.contains("toolbarLayoutRefreshToken += 1"))
+        XCTAssertTrue(boardSource.contains("toolbar.observe(\\.displayMode, options: [.new])"))
+        XCTAssertTrue(boardSource.contains("performSynchronousProjectBoardToolbarLayoutPass("))
+        XCTAssertTrue(boardSource.contains("reconcileToolbarDisplayModeChangeSynchronously()"))
+        XCTAssertTrue(boardSource.contains("MainActor.assumeIsolated"))
+        XCTAssertTrue(boardSource.contains("observedToolbarDisplayMode != toolbar.displayMode"))
+        XCTAssertTrue(boardSource.contains("NSAnimationContext.runAnimationGroup"))
+        XCTAssertTrue(boardSource.contains("context.duration = 0"))
+        XCTAssertTrue(boardSource.contains("context.allowsImplicitAnimation = false"))
+        XCTAssertTrue(boardSource.contains("window?.contentView?.needsLayout = true"))
+        XCTAssertTrue(boardSource.contains("window?.contentView?.needsDisplay = true"))
+        XCTAssertTrue(boardSource.contains("window?.contentView?.layoutSubtreeIfNeeded()"))
+        XCTAssertTrue(boardSource.contains("window?.displayIfNeeded()"))
+        XCTAssertTrue(boardSource.contains("withTransaction(transaction)"))
+        XCTAssertTrue(boardSource.contains("transaction.disablesAnimations = true"))
+
+        let detailColumnSource = String(boardSource[detailStart.lowerBound..<inspectorStart.lowerBound])
+        XCTAssertTrue(detailColumnSource.contains(".projectBoardSynchronizedColumnBounds()"))
+    }
+
+    func testProjectBoardHeaderLayoutBridgeAvoidsDelayedCorrectionDuringStateChanges() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let bridgeStart = try XCTUnwrap(boardSource.range(of: "private final class ProjectBoardToolbarLayoutBridgeView"))
+        let appKitEnd = try XCTUnwrap(boardSource.range(of: "#else", range: bridgeStart.upperBound..<boardSource.endIndex))
+        let bridgeSource = String(boardSource[bridgeStart.lowerBound..<appKitEnd.lowerBound])
+
+        XCTAssertTrue(bridgeSource.contains("performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: true)"))
+        XCTAssertTrue(bridgeSource.contains("performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: false)"))
+        XCTAssertTrue(bridgeSource.contains("override func layout()"))
+        XCTAssertTrue(bridgeSource.contains("isPerformingToolbarLayoutPass"))
+        XCTAssertTrue(bridgeSource.contains("scheduleInitialProjectBoardToolbarLayoutStabilizationIfNeeded()"))
+        XCTAssertTrue(bridgeSource.contains("didScheduleInitialToolbarLayoutStabilization"))
+        XCTAssertTrue(bridgeSource.contains("retrySynchronousProjectBoardToolbarLayoutPass(remainingAttempts:"))
+        XCTAssertFalse(bridgeSource.contains("scheduleToolbarTrailingAlignment()"))
+        XCTAssertFalse(bridgeSource.contains("scheduleToolbarLayoutRefreshIfDisplayModeChanged()"))
+    }
+
+    func testSynchronousUIMutationPolicyADRDefinesLayoutSensitiveBoundaries() throws {
+        let adr = try readPackageFile("docs/adr/0009-synchronous-ui-mutation-policy.md")
+
+        XCTAssertTrue(adr.contains("Status: Accepted"))
+        XCTAssertTrue(adr.contains("Sidebar toggle"))
+        XCTAssertTrue(adr.contains("toolbar display mode"))
+        XCTAssertTrue(adr.contains("split view visibility"))
+        XCTAssertTrue(adr.contains("theme switching"))
+        XCTAssertTrue(adr.contains("inspector open/close"))
+        XCTAssertTrue(adr.contains("project selection"))
+        XCTAssertTrue(adr.contains("DispatchQueue.main.asyncAfter"))
+        XCTAssertTrue(adr.contains("Timer"))
+        XCTAssertTrue(adr.contains("Transaction.disablesAnimations = true"))
+        XCTAssertTrue(adr.contains("layoutSubtreeIfNeeded"))
+        XCTAssertTrue(adr.contains("displayIfNeeded"))
+        XCTAssertTrue(adr.contains("layout-attachment-delay:"))
+        XCTAssertTrue(adr.contains("script/check_layout_stability_smoke.sh"))
+        XCTAssertTrue(adr.contains("script/check_project_board_header_layout_smoke.sh"))
+        XCTAssertTrue(adr.contains("AppExperienceSourceTests"))
+    }
+
+    func testViewLayoutDelaysRemainLimitedToInitialToolbarAttachmentPolicyException() throws {
+        let viewFiles = try allSwiftFiles(under: "Sources/SoloPMApp/Views")
+        var delayedCorrections: [String] = []
+        var timerCorrections: [String] = []
+
+        for fileURL in viewFiles {
+            let relativePath = relativePackagePath(for: fileURL)
+            let lines = try String(contentsOf: fileURL, encoding: .utf8)
+                .components(separatedBy: .newlines)
+
+            for (index, line) in lines.enumerated() {
+                let location = "\(relativePath):\(index + 1)"
+                if line.contains("DispatchQueue.main.asyncAfter") {
+                    delayedCorrections.append(location)
+                }
+                if line.contains("Timer.") || line.contains("Timer(") {
+                    timerCorrections.append(location)
+                }
+            }
+        }
+
+        XCTAssertTrue(timerCorrections.isEmpty, timerCorrections.joined(separator: "\n"))
+        XCTAssertEqual(delayedCorrections.count, 2, delayedCorrections.joined(separator: "\n"))
+        XCTAssertTrue(
+            delayedCorrections.allSatisfy { $0.hasPrefix("Sources/SoloPMApp/Views/ProjectBoardView.swift:") },
+            delayedCorrections.joined(separator: "\n")
+        )
+
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let bridgeStart = try XCTUnwrap(boardSource.range(of: "private final class ProjectBoardToolbarLayoutBridgeView"))
+        let appKitEnd = try XCTUnwrap(boardSource.range(of: "#else", range: bridgeStart.upperBound..<boardSource.endIndex))
+        let bridgeSource = String(boardSource[bridgeStart.lowerBound..<appKitEnd.lowerBound])
+
+        XCTAssertEqual(bridgeSource.components(separatedBy: "DispatchQueue.main.asyncAfter").count - 1, 2)
+        XCTAssertEqual(bridgeSource.components(separatedBy: "layout-attachment-delay:").count - 1, 2)
+        XCTAssertTrue(bridgeSource.contains("initial AppKit toolbar attachment gap"))
+        XCTAssertTrue(bridgeSource.contains("user-triggered display-mode/sidebar changes run synchronously"))
+    }
+
+    func testLayoutSensitiveStateMutationsUseSynchronousTransactionPolicy() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let toggleStart = try XCTUnwrap(boardSource.range(of: "private func toggleSidebarVisibility()"))
+        let toolbarBridgeStart = try XCTUnwrap(boardSource.range(of: "private func refreshProjectBoardColumnsAfterToolbarDisplayModeChange()"))
+        let toggleSource = String(boardSource[toggleStart.lowerBound..<toolbarBridgeStart.lowerBound])
+
+        XCTAssertTrue(toggleSource.contains("var transaction = Transaction()"))
+        XCTAssertTrue(toggleSource.contains("transaction.disablesAnimations = true"))
+        XCTAssertTrue(toggleSource.contains("withTransaction(transaction)"))
+        XCTAssertTrue(toggleSource.contains("columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly"))
+        XCTAssertFalse(toggleSource.contains("DispatchQueue.main.async"))
+        XCTAssertFalse(toggleSource.contains("withAnimation"))
+
+        let adr = try readPackageFile("docs/adr/0009-synchronous-ui-mutation-policy.md")
+        XCTAssertTrue(adr.contains("SwiftUI state mutationは最小scopeのtransaction"))
+        XCTAssertTrue(adr.contains("AppKit interopはProjectBoardToolbarLayoutBridgeView"))
+    }
+
+    func testProjectBoardReplacesDefaultSidebarToggleWithShortAdaptiveToolbarItem() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let toggleStart = try XCTUnwrap(boardSource.range(of: "private func toggleSidebarVisibility()"))
+        let toolbarBridgeStart = try XCTUnwrap(boardSource.range(of: "private func refreshProjectBoardColumnsAfterToolbarDisplayModeChange()"))
+        let toggleSource = String(boardSource[toggleStart.lowerBound..<toolbarBridgeStart.lowerBound])
+
+        XCTAssertTrue(boardSource.contains("@State private var columnVisibility: NavigationSplitViewVisibility = .all"))
+        XCTAssertTrue(boardSource.contains("NavigationSplitView(columnVisibility: $columnVisibility)"))
+        XCTAssertTrue(boardSource.contains("ToolbarItem(placement: .navigation)"))
+        XCTAssertFalse(boardSource.contains("ToolbarItem(placement: .primaryAction)"))
+        XCTAssertTrue(boardSource.contains("Label(\"Sidebar\", systemImage: \"sidebar.left\")"))
+        XCTAssertTrue(boardSource.contains(".toolbar(removing: .sidebarToggle)"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardToolbarLayoutBridge("))
+        XCTAssertTrue(boardSource.contains("columnVisibility: columnVisibility"))
+        XCTAssertTrue(boardSource.contains("onToolbarLayoutChanged: refreshProjectBoardColumnsAfterToolbarDisplayModeChange"))
+        XCTAssertTrue(boardSource.contains("let columnVisibility: NavigationSplitViewVisibility"))
+        XCTAssertTrue(boardSource.contains("let onToolbarLayoutChanged: () -> Void"))
+        XCTAssertTrue(boardSource.contains("#selector(NSSplitViewController.toggleSidebar(_:))"))
+        XCTAssertTrue(boardSource.contains("identifierRawValue: itemIdentifier.rawValue"))
+        XCTAssertTrue(boardSource.contains("retrySynchronousProjectBoardToolbarLayoutPass(remainingAttempts:"))
+        XCTAssertTrue(toggleSource.contains("var transaction = Transaction()"))
+        XCTAssertTrue(toggleSource.contains("transaction.disablesAnimations = true"))
+        XCTAssertTrue(toggleSource.contains("withTransaction(transaction)"))
+        XCTAssertTrue(toggleSource.contains("columnVisibility == .detailOnly ? .all : .detailOnly"))
+        XCTAssertFalse(toggleSource.contains("withAnimation"))
+        XCTAssertFalse(toggleSource.contains("animation:"))
+        XCTAssertFalse(boardSource.contains("toolbar.displayMode = .iconOnly"))
+        XCTAssertFalse(boardSource.contains("toolbar.allowsUserCustomization = false"))
+    }
+
+    func testProjectBoardHeaderLayoutRuntimeSmokeCoversSidebarToggleAndActionPositions() throws {
+        let script = try readPackageFile("script/check_project_board_header_layout_smoke.sh")
+
+        XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
+        XCTAssertTrue(script.contains("./script/prepare_voiceover_review_candidate.sh --database \"$HEADER_LAYOUT_DATABASE_PATH\" --no-launch --skip-build"))
+        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$header_layout_project_id\""))
+        XCTAssertTrue(script.contains("SOLOPM_HEADER_LAYOUT_DATABASE_PATH"))
+        XCTAssertTrue(script.contains("project-board-sidebar-toggle"))
+        XCTAssertTrue(script.contains("project-board-integrations-menu"))
+        XCTAssertTrue(script.contains("project-board-voice-command"))
+        XCTAssertTrue(script.contains("project-board-settings-link"))
+        XCTAssertTrue(script.contains("project-board-terminal-toggle"))
+        XCTAssertTrue(script.contains("project-display-mode-overview"))
+        XCTAssertTrue(script.contains("project-display-mode-board"))
+        XCTAssertTrue(script.contains("project-display-mode-list"))
+        XCTAssertTrue(script.contains("ensure_project_detail_visible"))
+        XCTAssertTrue(script.contains("wait_for_project_detail_visible"))
+        XCTAssertTrue(script.contains("assert_action_buttons_are_trailing"))
+        XCTAssertTrue(script.contains("click_sidebar_toggle"))
+        XCTAssertTrue(script.contains("set_toolbar_display_mode"))
+        XCTAssertTrue(script.contains("click_project_display_mode"))
+        XCTAssertTrue(script.contains("click_inspector_close"))
+        XCTAssertTrue(script.contains("click_task_card_open_details"))
+        XCTAssertTrue(script.contains("click_terminal_toggle"))
+        XCTAssertTrue(script.contains("click_terminal_close"))
+        XCTAssertTrue(script.contains("seed_header_layout_selection_project"))
+        XCTAssertTrue(script.contains("click_project_sidebar_row"))
+        XCTAssertTrue(script.contains("click_ax_identifier_center \"project-sidebar-row-$project_id\""))
+        XCTAssertTrue(script.contains("Header Layout Selection Project"))
+        XCTAssertTrue(script.contains("wait_for_ax_identifier_present \"task-inspector\""))
+        XCTAssertTrue(script.contains("wait_for_ax_identifier_absent \"project-inspector\""))
+        XCTAssertTrue(script.contains("wait_for_ax_identifier_present \"embedded-terminal-close\""))
+        XCTAssertTrue(script.contains("wait_for_ax_identifier_absent \"embedded-terminal-close\""))
+        XCTAssertTrue(script.contains("wait_for_ax_identifier_present \"task-status-move-in_progress-$header_layout_alternate_task_id\""))
+        XCTAssertTrue(script.contains("wait_for_ax_identifier_present \"task-status-move-in_progress-$header_layout_project_task_id\""))
+        XCTAssertTrue(script.contains("capture_window \"sidebar-visible\""))
+        XCTAssertTrue(script.contains("capture_window \"sidebar-hidden\""))
+        XCTAssertTrue(script.contains("capture_window \"sidebar-restored\""))
+        XCTAssertTrue(script.contains("capture_window \"toolbar-icon-only\""))
+        XCTAssertTrue(script.contains("capture_window \"toolbar-icon-and-label\""))
+        XCTAssertTrue(script.contains("capture_window \"display-mode-list\""))
+        XCTAssertTrue(script.contains("capture_window \"display-mode-overview\""))
+        XCTAssertTrue(script.contains("capture_window \"display-mode-board\""))
+        XCTAssertTrue(script.contains("capture_window \"inspector-closed\""))
+        XCTAssertTrue(script.contains("capture_window \"inspector-reopened\""))
+        XCTAssertTrue(script.contains("capture_window \"terminal-open\""))
+        XCTAssertTrue(script.contains("capture_window \"terminal-closed\""))
+        XCTAssertTrue(script.contains("capture_window \"project-selection-alternate\""))
+        XCTAssertTrue(script.contains("capture_window \"project-selection-original\""))
+        XCTAssertTrue(script.contains("assert_toolbar_layout_is_stable"))
+        XCTAssertTrue(script.contains("toolbar_items_deduplicated >\"$baseline_file\""))
+        XCTAssertTrue(script.contains("perform action \"AXPress\" of uiElement\n        return true"))
+        XCTAssertTrue(script.contains("sidebar-hidden-immediate"))
+        XCTAssertTrue(script.contains("sidebar-restored-immediate"))
+        XCTAssertTrue(script.contains("toolbar-icon-only-immediate"))
+        XCTAssertTrue(script.contains("toolbar-icon-and-label-immediate"))
+        XCTAssertTrue(script.contains("display-mode-list-immediate"))
+        XCTAssertTrue(script.contains("display-mode-overview-immediate"))
+        XCTAssertTrue(script.contains("display-mode-board-immediate"))
+        XCTAssertTrue(script.contains("inspector-closed-immediate"))
+        XCTAssertTrue(script.contains("inspector-reopened-immediate"))
+        XCTAssertTrue(script.contains("terminal-open-immediate"))
+        XCTAssertTrue(script.contains("terminal-closed-immediate"))
+        XCTAssertTrue(script.contains("project-selection-alternate-immediate"))
+        XCTAssertTrue(script.contains("project-selection-original-immediate"))
+        XCTAssertTrue(script.contains("Icon Only"))
+        XCTAssertTrue(script.contains("Icon and Text"))
+        XCTAssertTrue(script.contains("アイコンのみ"))
+        XCTAssertTrue(script.contains("アイコンとテキスト"))
+        XCTAssertTrue(script.contains("BLOCKER: header layout shifted after"))
+        XCTAssertTrue(script.contains("SOLOPM_HEADER_LAYOUT_SMOKE_TIMEOUT_SECONDS"))
+        XCTAssertTrue(script.contains("script/ui_evidence_window_metadata.swift"))
+        XCTAssertTrue(script.contains("BLOCKER: header action controls are not trailing"))
+        XCTAssertTrue(script.contains("BLOCKER: toolbar display mode menu item was not available"))
+        XCTAssertTrue(script.contains("BLOCKER: Project display mode control was not available"))
+        XCTAssertTrue(script.contains("BLOCKER: AX identifier stayed visible"))
+        XCTAssertTrue(script.contains("BLOCKER: AX identifier was not visible"))
+    }
+
+    func testMenuBarPanelHostsSettingsLinkWithoutThemeControls() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let panelStart = try XCTUnwrap(appSource.range(of: "private struct MenuBarPanel"))
         let panelEnd = try XCTUnwrap(appSource.range(of: "private struct SummaryRow"))
         let panelSource = String(appSource[panelStart.lowerBound..<panelEnd.lowerBound])
 
-        XCTAssertFalse(panelSource.contains("SettingsLink"))
-        XCTAssertFalse(panelSource.contains("gearshape"))
+        XCTAssertTrue(panelSource.contains("SettingsLink"))
+        XCTAssertTrue(panelSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
+        XCTAssertTrue(panelSource.contains(".help(\"Open Settings\")"))
+        XCTAssertTrue(panelSource.contains(".accessibilityIdentifier(\"menu-bar-settings-link\")"))
         XCTAssertFalse(panelSource.contains("Theme"))
         XCTAssertFalse(panelSource.contains("Appearance"))
         XCTAssertFalse(panelSource.contains("SoloPMAppearancePreference"))
@@ -311,6 +1012,44 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("Could not move task: invalid drag payload."))
     }
 
+    func testDoneWorkflowIsReachableFromSidebarAndExposesReviewActions() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(persistenceSource.contains("case done"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(destination: .done"))
+        XCTAssertTrue(boardSource.contains("DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-workflow\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-reopen-task-\\(task.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-completion-heatmap\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-heatmap-day-\\(bucket.dayKey)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-productivity-insight\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-best-weekday-summary\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-best-hour-summary\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-follow-up-task-\\(task.id)\")"))
+        XCTAssertTrue(workflowSource.contains("viewModel.enqueueDoneFollowUpDraft(for: task.id)"))
+        XCTAssertTrue(workflowSource.contains("private struct DoneTaskHistoryActions"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-history-row-actions-\\(task.id)\")"))
+        XCTAssertTrue(workflowSource.contains("analytics.completionHeatmapBuckets"))
+        XCTAssertTrue(workflowSource.contains("analytics.bestWeekdaySummary"))
+        XCTAssertTrue(workflowSource.contains("analytics.bestHourSummary"))
+        XCTAssertTrue(coreSource.contains("public func doneAnalytics("))
+        XCTAssertTrue(coreSource.contains("public struct DoneAnalyticsDayBucket"))
+        XCTAssertTrue(coreSource.contains("DoneAnalyticsBestWeekdaySummary"))
+        XCTAssertTrue(coreSource.contains("DoneAnalyticsBestHourSummary"))
+        XCTAssertTrue(coreSource.contains("public func reopenCompletedTask(id: Int64)"))
+        XCTAssertTrue(coreSource.contains("public func enqueueDoneFollowUpDraft(\n        for taskID: Int64"))
+        XCTAssertTrue(coreSource.contains("DoneFollowUpActionDraftBuilder"))
+
+        let doneRowStart = try XCTUnwrap(workflowSource.range(of: "private struct DoneTaskHistoryRow"))
+        let doneRowEnd = try XCTUnwrap(workflowSource.range(of: "struct ExecutionReceiptHistoryRowView"))
+        let doneRowSource = String(workflowSource[doneRowStart.lowerBound..<doneRowEnd.lowerBound])
+        XCTAssertTrue(doneRowSource.contains("DoneTaskHistoryActions(task: task, viewModel: viewModel)"))
+        XCTAssertFalse(doneRowSource.contains("Spacer()"))
+    }
+
     func testProjectBoardSupportsPersistentLightDarkAppearanceSelection() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
@@ -329,6 +1068,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("private var effectiveAppearancePreference: SoloPMAppearancePreference"))
         XCTAssertTrue(appSource.contains("SoloPMAppearancePreference.environmentOverride ?? appearancePreference"))
         XCTAssertTrue(appSource.contains(".preferredColorScheme(effectiveAppearancePreference.colorScheme)"))
+        XCTAssertTrue(appSource.contains("private static var effectiveAppearancePreference: SoloPMAppearancePreference"))
+        XCTAssertTrue(appSource.contains("SoloPMAppearancePreference.environmentOverride ?? persistedAppearancePreference"))
+        XCTAssertTrue(appSource.contains(".preferredColorScheme(Self.effectiveAppearancePreference.colorScheme)"))
         XCTAssertTrue(appSource.contains("SettingsView("))
         XCTAssertTrue(appSource.contains("appearancePreference: $appearancePreference, languagePreference: $languagePreference"))
         XCTAssertTrue(appSource.contains("@Binding private var appearancePreference: SoloPMAppearancePreference"))
@@ -397,7 +1139,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("StatusCountBadge"))
         XCTAssertTrue(source.contains("column.status.tint"))
         XCTAssertTrue(source.contains("task.status.tint"))
-        XCTAssertTrue(source.contains(".frame(width: 244"))
+        XCTAssertTrue(source.contains(".frame(width: ProjectBoardLayoutMetrics.boardColumnWidth"))
         XCTAssertTrue(source.contains(".background(.regularMaterial, in: RoundedRectangle"))
         XCTAssertTrue(source.contains(".shadow(color: Color.black.opacity(0.04)"))
     }
@@ -426,7 +1168,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".accessibilityValue(\"\\(task.status.title), \\(task.priority.label), \\(dueValue)\")"))
         XCTAssertTrue(source.contains("No due date"))
         XCTAssertTrue(source.contains(".minimumScaleFactor(0.82)"))
-        XCTAssertTrue(source.contains(".frame(minWidth: 64, maxWidth: .infinity, minHeight: 24, alignment: .leading)"))
+        XCTAssertTrue(source.contains("minWidth: ProjectBoardLayoutMetrics.taskMetadataChipMinWidth"))
+        XCTAssertTrue(source.contains("minHeight: ProjectBoardLayoutMetrics.taskMetadataChipMinHeight"))
         XCTAssertTrue(phase.contains("[x] `ui-samples/01.png`、`03.png`、`04.png` を基準に、左サイドバー、中央ボード/リスト、右インスペクタの情報密度を見直す。"))
         XCTAssertTrue(phase.contains("[x] Task card metadata strip はstatus / priority / dueを固定寸法chipに分離し、狭いKanban列ではadaptive gridへ逃がす。"))
         XCTAssertTrue(audit.contains("Task card metadata strip"))
@@ -441,7 +1184,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".keyboardShortcut(\"n\", modifiers: [.command, .shift])"))
         XCTAssertTrue(source.contains(".help(\"Add a project\")"))
         XCTAssertFalse(source.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
-        XCTAssertFalse(source.contains(".help(\"Open Settings\")"))
+        XCTAssertTrue(source.contains(".help(\"Open Settings\")"))
         XCTAssertTrue(appSource.contains("CommandGroup(replacing: .appSettings)"))
         XCTAssertTrue(appSource.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
     }
@@ -458,13 +1201,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("workingDirectory: terminalWorkingDirectory"))
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-terminal-toggle\")"))
         XCTAssertTrue(boardSource.contains(".keyboardShortcut(\"`\", modifiers: [.control])"))
+        let terminalButtonStart = try XCTUnwrap(boardSource.range(of: "Button {\n                isTerminalPanelPresented.toggle()"))
+        let terminalIdentifierEnd = try XCTUnwrap(boardSource[terminalButtonStart.lowerBound...].range(of: ".accessibilityIdentifier(\"project-board-terminal-toggle\")"))
+        let terminalButtonSource = boardSource[terminalButtonStart.lowerBound...terminalIdentifierEnd.upperBound]
+        XCTAssertFalse(terminalButtonSource.contains(".accessibilityElement(children: .ignore)"))
         XCTAssertTrue(terminalSource.contains("struct EmbeddedTerminalPanel"))
         XCTAssertTrue(terminalSource.contains("@State private var isExecutionApproved = false"))
         XCTAssertTrue(terminalSource.contains("if isExecutionApproved {"))
         XCTAssertTrue(terminalSource.contains("LocalShellTerminalRepresentable("))
         XCTAssertTrue(terminalSource.contains("Button { isExecutionApproved = true }"))
+        XCTAssertFalse(terminalSource.contains(".accessibilityIdentifier(\"embedded-terminal-panel\")"))
         XCTAssertTrue(terminalSource.contains(".accessibilityIdentifier(\"embedded-terminal-approve\")"))
         XCTAssertTrue(terminalSource.contains(".accessibilityIdentifier(\"embedded-terminal-view\")"))
+        XCTAssertTrue(terminalSource.contains(".accessibilityIdentifier(\"embedded-terminal-close\")"))
         XCTAssertTrue(terminalSource.contains("static func dismantleNSView"))
         XCTAssertTrue(terminalSource.contains("nsView.terminate()"))
         XCTAssertFalse(terminalSource.contains("setHostLogging"))
@@ -512,6 +1261,117 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(suggestionSource.components(separatedBy: ".keyboardShortcut(.return, modifiers: [.command])").count - 1, 2)
     }
 
+    func testPrimaryKeyboardShortcutsAreAttachedToConcreteCommandsAndFocusedActions() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
+
+        let settingsCommand = try sourceBlock(
+            in: appSource,
+            from: "CommandGroup(replacing: .appSettings)",
+            to: "Window(\"Voice Command\", id: \"voice-capture\")"
+        )
+        XCTAssertTrue(settingsCommand.contains("SettingsLink"))
+        XCTAssertTrue(settingsCommand.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
+
+        let addProjectButton = try sourceBlock(
+            in: boardSource,
+            from: "if let project = viewModel.createProject()",
+            to: ".accessibilityIdentifier(\"project-board-add-project\")"
+        )
+        XCTAssertTrue(addProjectButton.contains(".keyboardShortcut(\"n\", modifiers: [.command, .shift])"))
+
+        let addTaskButton = try sourceBlock(
+            in: boardSource,
+            from: "private var addTaskButton: some View",
+            to: ".accessibilityIdentifier(\"project-header-add-task\")"
+        )
+        XCTAssertTrue(addTaskButton.contains("Button(action: onAddTask)"))
+        XCTAssertTrue(addTaskButton.contains(".keyboardShortcut(\"n\", modifiers: [.command])"))
+
+        let inlineComposer = try sourceBlock(
+            in: boardSource,
+            from: "private struct InlineTaskComposer",
+            to: "private struct BoardTaskCard"
+        )
+        XCTAssertTrue(inlineComposer.contains(".accessibilityIdentifier(\"inline-task-create\")"))
+        XCTAssertTrue(inlineComposer.contains(".keyboardShortcut(.return, modifiers: [.command])"))
+        XCTAssertTrue(inlineComposer.contains(".accessibilityIdentifier(\"inline-task-cancel\")"))
+        XCTAssertTrue(inlineComposer.contains(".keyboardShortcut(.escape, modifiers: [])"))
+
+        let projectInspector = try sourceBlock(
+            in: boardSource,
+            from: "private struct ProjectInspectorView",
+            to: "private struct ProjectInspectorSuggestionSection"
+        )
+        XCTAssertTrue(projectInspector.contains(".accessibilityIdentifier(\"project-inspector-save\")"))
+        XCTAssertTrue(projectInspector.contains(".keyboardShortcut(\"s\", modifiers: [.command])"))
+        XCTAssertTrue(projectInspector.contains(".accessibilityIdentifier(\"project-inspector-delete\")"))
+        XCTAssertTrue(projectInspector.contains(".keyboardShortcut(.delete, modifiers: [.command])"))
+
+        let taskInspector = try sourceBlock(
+            in: boardSource,
+            from: "private struct TaskInspectorView",
+            to: "private struct TaskInspectorSuggestionSection"
+        )
+        XCTAssertTrue(taskInspector.contains(".accessibilityIdentifier(\"task-inspector-save\")"))
+        XCTAssertTrue(taskInspector.contains(".keyboardShortcut(\"s\", modifiers: [.command])"))
+        XCTAssertTrue(taskInspector.contains(".accessibilityIdentifier(\"task-inspector-delete\")"))
+        XCTAssertTrue(taskInspector.contains(".keyboardShortcut(.delete, modifiers: [.command])"))
+
+        let inboxActions = try sourceBlock(
+            in: workflowSource,
+            from: "private var actionButtons: some View",
+            to: "private struct InboxVoiceIntakeDetail"
+        )
+        XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-make-task\")"))
+        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
+        XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-make-project\")"))
+        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
+        XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-schedule-today\")"))
+        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
+        XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-review-later\")"))
+        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
+        XCTAssertTrue(phase.contains("- [x] Keyboard shortcutがmenu commandまたはfocused actionに接続されていることをsource testで固定する。"))
+    }
+
+    func testInspectorSaveControlsStayAdjacentToEditableFieldsBeforeLongSuggestionSections() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        let projectInspector = try sourceBlock(
+            in: boardSource,
+            from: "private struct ProjectInspectorView",
+            to: "private struct ProjectInspectorSuggestionSection"
+        )
+        let projectEdit = try XCTUnwrap(projectInspector.range(of: "Section(\"Edit\")"))
+        let projectSave = try XCTUnwrap(projectInspector.range(of: ".accessibilityIdentifier(\"project-inspector-save\")"))
+        let projectSuggestion = try XCTUnwrap(projectInspector.range(of: "Section(\"Suggestion\")"))
+        XCTAssertLessThan(projectEdit.lowerBound, projectSave.lowerBound)
+        XCTAssertLessThan(
+            projectSave.lowerBound,
+            projectSuggestion.lowerBound,
+            "Project save must stay before long suggestion content so compact-window AX and VoiceOver paths can save immediately after editing."
+        )
+
+        let taskInspector = try sourceBlock(
+            in: boardSource,
+            from: "private struct TaskInspectorView",
+            to: "private struct TaskInspectorSuggestionSection"
+        )
+        let taskFields = try XCTUnwrap(taskInspector.range(of: "Section(\"Fields\")"))
+        let taskSave = try XCTUnwrap(taskInspector.range(of: ".accessibilityIdentifier(\"task-inspector-save\")"))
+        let taskSuggestion = try XCTUnwrap(taskInspector.range(of: "Section(\"Suggestion\")"))
+        let taskAutomation = try XCTUnwrap(taskInspector.range(of: "Section(\"Automation\")"))
+        XCTAssertLessThan(taskFields.lowerBound, taskSave.lowerBound)
+        XCTAssertLessThan(
+            taskSave.lowerBound,
+            taskSuggestion.lowerBound,
+            "Task save must stay before suggestion and automation content so edit/save remains reachable without scrolling."
+        )
+        XCTAssertLessThan(taskSave.lowerBound, taskAutomation.lowerBound)
+    }
+
     func testInspectorsExposeVisibleCloseButtonsThatDismissTheSidebar() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
@@ -550,8 +1410,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(taskInspectorSource.contains("InspectorDestructiveConfirmation("))
         XCTAssertTrue(projectInspectorSource.contains("DispatchQueue.main.async"))
         XCTAssertTrue(taskInspectorSource.contains("DispatchQueue.main.async"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"\\(accessibilityIdentifier)-cancel\")"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Cancel \\(confirmTitle)\")"))
+        XCTAssertTrue(source.contains(".accessibilityHint(\"Cancels \\(confirmTitle) and returns to the inspector.\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"\\(accessibilityIdentifier)-confirm\")"))
-        XCTAssertTrue(source.contains(".accessibilityLabel(confirmTitle)"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Confirm \\(confirmTitle)\")"))
         XCTAssertTrue(source.contains(".accessibilityHint(\"Confirms \\(confirmTitle).\")"))
         XCTAssertFalse(projectInspectorSource.contains(".confirmationDialog("))
         XCTAssertFalse(taskInspectorSource.contains(".confirmationDialog("))
@@ -596,14 +1459,79 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("ProjectBoardSidebarDestination"))
         XCTAssertTrue(source.contains("ProjectBoardSidebarDestinationRow(destination: .inbox"))
         XCTAssertTrue(source.contains("ProjectBoardSidebarDestinationRow(destination: .today"))
+        XCTAssertTrue(source.contains("ProjectBoardSidebarDestinationRow(destination: .catchUp"))
         XCTAssertTrue(source.contains("InboxWorkflowView("))
         XCTAssertTrue(source.contains("TodayWorkflowView("))
+        XCTAssertTrue(source.contains("CatchUpWorkflowView("))
         XCTAssertTrue(workflowSource.contains("InboxActionPanel("))
         XCTAssertTrue(workflowSource.contains("viewModel.convertSelectedTaskToProject()"))
         XCTAssertTrue(workflowSource.contains("viewModel.scheduleSelectedTaskForToday()"))
         XCTAssertTrue(workflowSource.contains("viewModel.deferSelectedTaskForLater()"))
         XCTAssertTrue(coreSource.contains("public var inboxTasks"))
         XCTAssertTrue(coreSource.contains("public func todayTasks("))
+    }
+
+    func testPhase12SidebarDestinationRawValuesStayBackwardCompatible() throws {
+        let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
+
+        XCTAssertTrue(persistenceSource.contains("public enum ProjectBoardSidebarDestination"))
+        XCTAssertTrue(persistenceSource.contains("public enum ProjectBoardSelectionPersistence"))
+        XCTAssertTrue(persistenceSource.contains("static let defaultRawValue = \"today\""))
+        XCTAssertTrue(persistenceSource.contains("case .inbox:\n            return \"inbox\""))
+        XCTAssertTrue(persistenceSource.contains("case .today:\n            return \"today\""))
+        XCTAssertTrue(persistenceSource.contains("case .catchUp:\n            return \"catch-up\""))
+        XCTAssertTrue(persistenceSource.contains("case .projects:\n            return \"projects\""))
+        XCTAssertTrue(persistenceSource.contains("case .schedule:\n            return \"schedule\""))
+        XCTAssertTrue(persistenceSource.contains("case .done:\n            return \"done\""))
+        XCTAssertTrue(persistenceSource.contains("case .project(let projectID):\n            return \"project:\\(projectID)\""))
+        XCTAssertTrue(persistenceSource.contains("case \"inbox\":\n            return .inbox"))
+        XCTAssertTrue(persistenceSource.contains("case \"today\":\n            return .today"))
+        XCTAssertTrue(persistenceSource.contains("case \"catch-up\":\n            return .catchUp"))
+        XCTAssertTrue(persistenceSource.contains("case \"projects\":\n            return .projects"))
+        XCTAssertTrue(persistenceSource.contains("case \"schedule\":\n            return .schedule"))
+        XCTAssertTrue(persistenceSource.contains("case \"done\":\n            return .done"))
+        XCTAssertTrue(persistenceSource.contains("guard parts.count == 2 else {\n                return .today"))
+        XCTAssertTrue(persistenceSource.contains("availableProjects.contains(where: { $0.id == projectID }) else {\n                    return .today"))
+    }
+
+    func testPhase12SidebarShowsWorkflowDestinationsBeforeProjectRows() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        let inboxRow = try XCTUnwrap(boardSource.range(of: "ProjectBoardSidebarDestinationRow(destination: .inbox"))
+        let todayRow = try XCTUnwrap(boardSource.range(of: "ProjectBoardSidebarDestinationRow(destination: .today"))
+        let catchUpRow = try XCTUnwrap(boardSource.range(of: "ProjectBoardSidebarDestinationRow(destination: .catchUp"))
+        let scheduleRow = try XCTUnwrap(boardSource.range(of: "ProjectBoardSidebarDestinationRow(destination: .schedule"))
+        let doneRow = try XCTUnwrap(boardSource.range(of: "ProjectBoardSidebarDestinationRow(destination: .done"))
+        let projectsSection = try XCTUnwrap(boardSource.range(of: "Section(\"Projects\")"))
+
+        XCTAssertLessThan(inboxRow.lowerBound, projectsSection.lowerBound)
+        XCTAssertLessThan(todayRow.lowerBound, projectsSection.lowerBound)
+        XCTAssertLessThan(todayRow.lowerBound, catchUpRow.lowerBound)
+        XCTAssertLessThan(catchUpRow.lowerBound, scheduleRow.lowerBound)
+        XCTAssertLessThan(catchUpRow.lowerBound, projectsSection.lowerBound)
+        XCTAssertLessThan(scheduleRow.lowerBound, projectsSection.lowerBound)
+        XCTAssertLessThan(doneRow.lowerBound, projectsSection.lowerBound)
+        XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(\n                            destination: .projects"))
+        XCTAssertTrue(boardSource.contains(".tag(ProjectBoardSidebarDestination.projects)"))
+        XCTAssertTrue(boardSource.contains(".tag(ProjectBoardSidebarDestination.project(project.id))"))
+        XCTAssertTrue(boardSource.contains("Label(\"Add Project\", systemImage: \"folder.badge.plus\")"))
+        XCTAssertTrue(boardSource.contains("Label(\n                        \"Show Archived\""))
+    }
+
+    func testPhase12SidebarDoesNotStealInboxCommandNumberShortcuts() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+
+        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
+        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
+        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
+        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
+        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"5\", modifiers: [.command])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
+        XCTAssertFalse(workflowSource.contains(".keyboardShortcut(\"5\", modifiers: [.command])"))
     }
 
     func testInboxActionPanelSurfacesClassificationFeedbackAndUndo() throws {
@@ -617,6 +1545,107 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("Label(feedback.message, systemImage: feedback.systemImage)"))
         XCTAssertTrue(workflowSource.contains("viewModel.undoLastInboxClassification()"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-classification-feedback\")"))
+
+        let feedbackStart = try XCTUnwrap(workflowSource.range(of: "if let feedback = viewModel.inboxClassificationFeedback"))
+        let feedbackEnd = try XCTUnwrap(workflowSource[feedbackStart.lowerBound...].range(of: "LazyVGrid(columns: actionGridColumns"))
+        let feedbackBlock = String(workflowSource[feedbackStart.lowerBound..<feedbackEnd.lowerBound])
+        XCTAssertTrue(feedbackBlock.contains(".accessibilityElement(children: .contain)"))
+        XCTAssertFalse(feedbackBlock.contains(".accessibilityElement(children: .combine)"))
+    }
+
+    func testInboxWorkflowSurfacesVoiceCaptureMetadataWithoutReplacingVoiceCommand() throws {
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let voiceSource = try readPackageFile("Sources/SoloPMCore/Voice/InboxCapture.swift")
+
+        XCTAssertTrue(coreSource.contains("public var selectedInboxCaptureRecords"))
+        XCTAssertTrue(voiceSource.contains("func updateMemo(id: Int64, memo: String?) throws -> InboxCaptureRecord"))
+        XCTAssertTrue(coreSource.contains("public func updateSelectedInboxCaptureMemo(_ memo: String) -> InboxCaptureRecord?"))
+        XCTAssertTrue(coreSource.contains("public struct InboxTriageSummary"))
+        XCTAssertTrue(coreSource.contains("public func inboxTriageSummary(for task: ProjectBoardTask) -> InboxTriageSummary"))
+        XCTAssertTrue(coreSource.contains("public enum InboxTriageFilter"))
+        XCTAssertTrue(coreSource.contains("public var filteredInboxTasks"))
+        XCTAssertTrue(coreSource.contains("public func setInboxTriageFilter"))
+        XCTAssertTrue(workflowSource.contains("viewModel.filteredInboxTasks"))
+        XCTAssertTrue(workflowSource.contains("viewModel.inboxTriageSummary(for: task)"))
+        XCTAssertTrue(workflowSource.contains("InboxTriagePill(summary: triageSummary)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-row-triage-summary-\\(task.id)\")"))
+        XCTAssertTrue(workflowSource.contains("InboxHeaderControls("))
+        XCTAssertTrue(workflowSource.contains("Picker(\"Inbox Filter\""))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-triage-filter\")"))
+        XCTAssertTrue(workflowSource.contains("private var mainSurface: some View"))
+        XCTAssertTrue(workflowSource.contains("InboxTriageRail("))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-workflow\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-triage-rail\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityLabel(\"Inbox triage station\")"))
+        XCTAssertTrue(workflowSource.contains("without opening the task inspector"))
+        XCTAssertTrue(workflowSource.contains("onSelectTask: selectInboxTask"))
+        XCTAssertTrue(workflowSource.contains("@State private var voiceMemoDraft"))
+        XCTAssertTrue(workflowSource.contains("@State private var voiceMemoCaptureID"))
+        XCTAssertTrue(workflowSource.contains("memoDraft: $voiceMemoDraft"))
+        XCTAssertTrue(workflowSource.contains("memoCaptureID: $voiceMemoCaptureID"))
+        XCTAssertTrue(workflowSource.contains("@Binding var memoDraft: String"))
+        XCTAssertTrue(workflowSource.contains("@Binding var memoCaptureID: Int64?"))
+        XCTAssertTrue(workflowSource.contains("InboxVoiceIntakeDetail("))
+        XCTAssertTrue(workflowSource.contains("onSaveMemo: { memo in"))
+        XCTAssertTrue(workflowSource.contains("viewModel.updateSelectedInboxCaptureMemo(memo)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.selectedInboxCaptureRecords"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityLabel(panelAccessibilityLabel)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityValue(panelAccessibilityValue)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityHint(panelAccessibilityHint)"))
+        XCTAssertTrue(workflowSource.contains("Voice capture metadata available for \\(task.title)"))
+        XCTAssertTrue(workflowSource.contains("taskTitle: task?.title ?? \"Selected Inbox item\""))
+        XCTAssertTrue(workflowSource.contains("LazyVGrid(columns: actionGridColumns"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-grid\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-intake-detail\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-playback\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-waveform\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-transcript\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-interpretation\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-memo\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-memo-editor\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-memo-save\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-source-metadata\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-review-status\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityElement(children: .contain)"))
+        XCTAssertTrue(workflowSource.contains("Playback unavailable in this MVP, duration \\(capture.durationLabel), waveform preview only"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityLabel(title)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityValue(value)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityLabel(\"Voice intake detail for \\(taskTitle)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityValue(captureAccessibilityValue(capture))"))
+        XCTAssertTrue(workflowSource.contains("capture.durationLabel"))
+        XCTAssertTrue(workflowSource.contains("capture.transcript"))
+        XCTAssertTrue(workflowSource.contains("capture.classificationStatus.rawValue"))
+        XCTAssertTrue(workflowSource.contains("Transcript failed. Review the original voice memo before converting."))
+        XCTAssertTrue(workflowSource.contains("AI interpretation unavailable because transcription failed."))
+        XCTAssertTrue(workflowSource.contains("No AI interpretation yet."))
+        XCTAssertTrue(coreSource.contains("private var inboxCaptureRecordsByTaskID: [Int64: [InboxCaptureRecord]]"))
+        XCTAssertTrue(coreSource.contains("$0.transcriptionStatus == .succeeded"))
+        XCTAssertTrue(appSource.contains("inboxCaptureStore: SQLiteInboxCaptureStore(connection: connection)"))
+        XCTAssertTrue(appSource.contains("Window(\"Voice Command\", id: \"voice-capture\")"))
+    }
+
+    func testInboxSelectionKeepsTriageInWorkflowInsteadOfInspector() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+
+        XCTAssertTrue(boardSource.contains("InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectInboxTask)"))
+        XCTAssertTrue(boardSource.contains("selectedDestination != .today && selectedDestination != .inbox"))
+        XCTAssertTrue(boardSource.contains("private func selectInboxTask(_ task: ProjectBoardTask)"))
+        XCTAssertTrue(boardSource.contains("isInspectorPresented = false"))
+        XCTAssertTrue(boardSource.contains("isInspectorPresented = selectedDestination != .today && selectedDestination != .inbox"))
+        XCTAssertTrue(workflowSource.contains("var selectInboxTask: (ProjectBoardTask) -> Void = { _ in }"))
+        XCTAssertTrue(workflowSource.contains("onSelectTask: selectInboxTask"))
+        XCTAssertTrue(workflowSource.contains("memoDraft: $voiceMemoDraft"))
+        XCTAssertTrue(workflowSource.contains("memoCaptureID: $voiceMemoCaptureID"))
+        XCTAssertTrue(workflowSource.contains(".frame(minWidth: 300, idealWidth: 320, maxWidth: 360"))
+
+        let overrideStart = try XCTUnwrap(boardSource.range(of: "private func applySelectedTaskOverrideIfNeeded()"))
+        let overrideEnd = try XCTUnwrap(boardSource[overrideStart.lowerBound...].range(of: "private func selectTodayTask"))
+        let overrideBlock = String(boardSource[overrideStart.lowerBound..<overrideEnd.lowerBound])
+        XCTAssertTrue(overrideBlock.contains("isInspectorPresented = selectedDestination != .today && selectedDestination != .inbox"))
+        XCTAssertFalse(overrideBlock.contains("isInspectorPresented = true"))
     }
 
     func testInboxAndTodayWorkflowsExposeKeyboardAndVoiceOverAnchors() throws {
@@ -626,7 +1655,9 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(workflowSource.contains("viewModel.toggleTaskCompletion(id: task.id)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"workflow-task-completion-\\(task.id)\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityLabel(task.status == .done ? \"Reopen task \\(task.title)\" : \"Complete task \\(task.title)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityLabel(toggleCompletionAccessibilityLabel)"))
+        XCTAssertTrue(workflowSource.contains("localizedDisplay(\"Reopen task %@\", task.title)"))
+        XCTAssertTrue(workflowSource.contains("localizedDisplay(\"Complete task %@\", task.title)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityHint(\"Updates the task status in the local SoloPM database without opening the inspector.\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-quick-add-title\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-quick-add-button\")"))
@@ -651,6 +1682,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-count-badge-\\(label.lowercased())\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-time-block-list\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-time-block-row-\\(block.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"catch-up-missed-review-panel\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"catch-up-state-error\")"))
+        XCTAssertTrue(workflowSource.contains("CatchUpCountBadge(label: \"Due Today\", value: summary.dueTodayCount"))
+        XCTAssertTrue(workflowSource.contains("CatchUpCountBadge(label: \"Stale\", value: summary.staleCount"))
+        XCTAssertTrue(workflowSource.contains("label.lowercased().replacingOccurrences(of: \" \", with: \"-\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"catch-up-missed-count-badge-\\(identifierSuffix)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"catch-up-missed-review-row-\\(item.task.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"catch-up-missed-complete-\\(item.task.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"catch-up-missed-reschedule-\\(item.task.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"catch-up-missed-defer-\\(item.task.id)\")"))
 
         XCTAssertTrue(audit.contains("Inbox / Todayのrow完了toggle"))
         XCTAssertTrue(audit.contains("Inbox / Todayのrow、Quick Add、分類action、Today summary、time blockにsource-level accessibility identifiers / hints / keyboard anchorsを追加済み"))
@@ -672,6 +1713,100 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("viewModel.createProjectArtifact"))
         XCTAssertTrue(source.contains("Remove artifact link"))
         XCTAssertTrue(source.contains("viewModel.deleteProjectArtifact"))
+        XCTAssertTrue(source.contains("Section(\"Project Directory\")"))
+        XCTAssertTrue(source.contains("chooseProjectDirectory()"))
+        XCTAssertTrue(source.contains("viewModel.assignProjectWorkspacePath"))
+        XCTAssertTrue(source.contains("viewModel.clearProjectWorkspacePath"))
+        XCTAssertTrue(source.contains("viewModel.reportProjectWorkspaceSelectionFailure"))
+        XCTAssertFalse(source.contains("let bookmarkData = try? url.bookmarkData"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-workspace-current\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-workspace-choose\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-workspace-clear\")"))
+        XCTAssertTrue(source.contains("Section(\"Development Automation\")"))
+        XCTAssertTrue(source.contains("ProjectDevelopmentAutomationPanel("))
+        XCTAssertTrue(source.contains("onReviewDevelopmentAutomation: onReviewDevelopmentAutomation"))
+        XCTAssertTrue(source.contains("viewModel.developmentAutomationReadiness(for: project, task: viewModel.selectedTask)"))
+        XCTAssertTrue(source.contains("viewModel.prepareDevelopmentAutomationReview(for: project, task: viewModel.selectedTask)"))
+        XCTAssertTrue(source.contains("developmentAutomationReviewSession(plan)"))
+        XCTAssertTrue(source.contains("ActionReviewPanel(viewModel: sheet.viewModel)"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-status\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-branch-preview\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-review\")"))
+        XCTAssertTrue(source.contains("viewModel.enqueueDevelopmentAutomationReview(for: project, task: viewModel.selectedTask)"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-queue\")"))
+        XCTAssertTrue(source.contains("viewModel.enqueueDevelopmentVerificationReview(for: project, task: viewModel.selectedTask)"))
+        XCTAssertTrue(source.contains("Queue verification review"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-verification-queue\")"))
+        XCTAssertTrue(source.contains("Repository edit review"))
+        XCTAssertTrue(source.contains("viewModel.enqueueDevelopmentRepositoryEditReview("))
+        XCTAssertTrue(source.contains("developmentProgress.canQueueRepositoryEditReview"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-edit-operation\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-edit-path\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-edit-expected-sha\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-edit-contents\")"))
+        XCTAssertTrue(source.contains("viewModel.developmentRepositoryEditPreview("))
+        XCTAssertTrue(coreSource.contains("Reviewed Change Scope"))
+        XCTAssertTrue(coreSource.contains("Reviewed Replacement"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-edit-preview\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-edit-preview-row-\\(row.id)\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-edit-queue\")"))
+        XCTAssertTrue(source.contains("viewModel.enqueueDevelopmentCommitReview("))
+        XCTAssertTrue(source.contains("Queue commit review"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-commit-paths\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-commit-message\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-commit-queue\")"))
+        XCTAssertTrue(source.contains("viewModel.enqueueDevelopmentPushReview(for: project, task: viewModel.selectedTask)"))
+        XCTAssertTrue(source.contains("Queue branch push review"))
+        XCTAssertTrue(source.contains("execution rechecks the current branch, clean workspace, and GitHub origin before running"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-push-queue\")"))
+        XCTAssertTrue(source.contains("viewModel.developmentPullRequestCreationDraft(for: project, task: viewModel.selectedTask)"))
+        XCTAssertTrue(source.contains("viewModel.enqueueDevelopmentPullRequestCreationReview("))
+        XCTAssertTrue(source.contains("Queue pull request creation review"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-pr-base\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-pr-title\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-pr-body\")"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Pull request body\")"))
+        XCTAssertTrue(source.contains("developmentProgress.canQueuePullRequestCreationReview"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-pr-create-queue\")"))
+        XCTAssertTrue(source.contains("viewModel.developmentAutomationProgress(for: project, task: viewModel.selectedTask)"))
+        XCTAssertTrue(source.contains("Pull request progress"))
+        XCTAssertTrue(source.contains("developmentProgress.nextApproval"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-next-approval\")"))
+        XCTAssertTrue(source.contains("developmentProgress.approvalPreview"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-approval-preview\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-approval-preview-row-\\(row.id)\")"))
+        XCTAssertTrue(source.contains("developmentProgress.queueHandoff"))
+        XCTAssertTrue(source.contains("Assistant Queue handoff"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-queue-handoff\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-queue-handoff-capability-\\(index)\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-progress\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-progress-stage-\\(stage.id)\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-progress-pr-url\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-progress-base\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-progress-commit\")"))
+        XCTAssertTrue(source.contains("developmentProgress.canQueuePullRequestReviewGate"))
+        XCTAssertTrue(source.contains("developmentProgress.canQueuePullRequestMergeGate"))
+        XCTAssertTrue(source.contains("viewModel.enqueueDevelopmentPullRequestLifecycleReview("))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-pr-review-queue\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-pr-merge-queue\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-review-sheet\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-step-\\(index)\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-lifecycle-tool-\\(index)\")"))
+        XCTAssertTrue(source.contains("readiness.lifecycleToolNames"))
+        XCTAssertTrue(source.contains("readiness.approvalBoundaryLabel"))
+        XCTAssertTrue(coreSource.contains("development.pr_workflow.prepare"))
+        XCTAssertTrue(coreSource.contains("ActionTool.developmentMergePullRequest.rawValue"))
+        XCTAssertTrue(coreSource.contains("public var lifecycleToolNames: [String]"))
+        XCTAssertTrue(coreSource.contains("public var approvalBoundaryLabel: String"))
+        XCTAssertTrue(coreSource.contains("public struct ProjectDevelopmentAutomationProgress"))
+        XCTAssertTrue(coreSource.contains("public struct ProjectDevelopmentAutomationNextApproval"))
+        XCTAssertTrue(coreSource.contains("public func prepareDevelopmentVerificationReview("))
+        XCTAssertTrue(coreSource.contains("public func prepareDevelopmentCommitReview("))
+        XCTAssertTrue(coreSource.contains("public func developmentAutomationProgress("))
+        XCTAssertTrue(coreSource.contains("ExecutionReceiptSearchFilter("))
+        XCTAssertTrue(coreSource.contains(".developmentBaseBranch"))
+        XCTAssertFalse(source.contains("project-development-automation-delete"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-artifact-path\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-artifact-track\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-artifact-remove-\\(artifact.id)\")"))
@@ -679,10 +1814,40 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("ProjectLocalSuggestionPanel"))
         XCTAssertTrue(source.contains("project.artifacts"))
         XCTAssertTrue(coreSource.contains("public struct ProjectBoardArtifact"))
+        XCTAssertTrue(coreSource.contains("public var hasWorkspaceDirectory: Bool"))
+        XCTAssertTrue(coreSource.contains("public var hasWorkspaceBookmark: Bool"))
+        XCTAssertTrue(coreSource.contains("public var workspaceDisplayName: String?"))
+        XCTAssertTrue(coreSource.contains("public struct ProjectDevelopmentAutomationReadiness"))
+        XCTAssertTrue(coreSource.contains("public func developmentAutomationReadiness("))
+        XCTAssertTrue(coreSource.contains("public func prepareDevelopmentAutomationReview("))
+        XCTAssertTrue(coreSource.contains("ActionPlan("))
+        XCTAssertTrue(coreSource.contains(".developmentPreparePullRequestWorkflow"))
         XCTAssertTrue(coreSource.contains("public var artifacts: [ProjectBoardArtifact]"))
+        XCTAssertTrue(coreSource.contains("func setProjectWorkspacePath(id: Int64, path: String?, bookmarkData: Data?) throws -> ProjectBoardProject"))
+        XCTAssertFalse(coreSource.contains("ProjectBoardProject: Identifiable, Equatable, Sendable {\n    public var id: Int64\n    public var title: String\n    public var status: String\n    public var subtitle: String\n    public var workspacePath: String?"))
         XCTAssertTrue(coreSource.contains("func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact"))
         XCTAssertTrue(coreSource.contains("func deleteProjectArtifact(id: Int64) throws"))
         XCTAssertTrue(coreSource.contains("SQLiteArtifactStore(connection: connection)"))
+    }
+
+    func testProjectDetailSurfacesMilestonesTimelineAndAssistantWithoutDroppingExistingSections() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(source.contains("ProjectMilestoneSection(project: project, viewModel: viewModel)"))
+        XCTAssertTrue(source.contains("ProjectAssistantPanel(project: project, viewModel: viewModel)"))
+        XCTAssertTrue(source.contains("ProjectArtifactSection(project: project, viewModel: viewModel)"))
+        XCTAssertTrue(source.contains("ProjectLocalSuggestionPanel(project: project, viewModel: viewModel)"))
+        XCTAssertTrue(source.contains("project.milestones"))
+        XCTAssertTrue(source.contains("case .milestone"))
+        XCTAssertTrue(source.contains("viewModel.createProjectMilestone"))
+        XCTAssertTrue(source.contains("viewModel.answerProjectAssistantQuestion"))
+        XCTAssertTrue(source.contains("viewModel.prepareProjectAssistantSuggestedActionForReview"))
+        XCTAssertFalse(source.contains("moveTask(id: suggestedTask.id, to: .inProgress)"))
+
+        XCTAssertTrue(coreSource.contains("public struct ProjectBoardMilestone"))
+        XCTAssertTrue(coreSource.contains("public var milestones: [ProjectBoardMilestone]"))
+        XCTAssertTrue(coreSource.contains("ProjectAssistantReviewDraft"))
     }
 
     func testTaskInspectorGroupsEditingDeletionAndSuggestionApplication() throws {
@@ -715,7 +1880,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("viewModel.archiveSelectedProject()"))
         XCTAssertTrue(source.contains("viewModel.restoreSelectedProject()"))
         XCTAssertTrue(source.contains("viewModel.completeSelectedProject()"))
-        XCTAssertTrue(source.contains("viewModel.createTask(title: \"Define next action\""))
+        XCTAssertTrue(source.contains("viewModel.createTask(title: localizedDisplay(\"Define next action\")"))
         XCTAssertTrue(source.contains("viewModel.selectedTaskID = taskID"))
         XCTAssertTrue(source.contains("Section(\"Edit\")"))
         XCTAssertTrue(source.contains("Section(\"Suggestion\")"))
@@ -744,11 +1909,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".accessibilityLabel(\"Current status: \\(task.status.title)\")"))
         XCTAssertTrue(source.contains(".accessibilityHint(\"Changes \\(task.title) status.\")"))
         XCTAssertTrue(source.contains(".help(\"Show archived projects\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-board-show-archived\")"))
         XCTAssertTrue(source.contains(".accessibilityLabel(\"Show archived projects\")"))
         XCTAssertTrue(source.contains(".accessibilityValue(viewModel.showsArchivedProjects ? \"On\" : \"Off\")"))
         XCTAssertTrue(source.contains(".accessibilityHint(\"Shows archived projects in the sidebar without deleting local data.\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-board-add-project\")"))
         XCTAssertTrue(source.contains(".accessibilityLabel(\"Add Project\")"))
         XCTAssertTrue(source.contains(".accessibilityHint(\"Creates a new local project and selects it.\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-header-add-task\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(targetStatus.map { \"task-status-move-\\($0.rawValue)-\\(task.id)\" } ?? \"task-status-move-disabled-\\(task.id)\")"))
         XCTAssertTrue(source.contains(".help(\"Creates the task in the local SoloPM database\")"))
         XCTAssertTrue(source.contains(".help(\"Cancels task creation and returns focus to the board column\")"))
         XCTAssertTrue(source.contains(".help(\"Applies the local next-step suggestion to the selected task\")"))
@@ -778,6 +1947,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityLabel(destination.accessibilityLabel(count: count))"))
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-sidebar-row-\\(project.id)\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityLabel(project.accessibilitySidebarLabel)"))
+        XCTAssertTrue(boardSource.contains("let onSelect: () -> Void"))
+        XCTAssertTrue(boardSource.contains("onSelect: { selectedDestination = .project(project.id) }"))
+        XCTAssertTrue(boardSource.contains(".contentShape(Rectangle())"))
+        XCTAssertTrue(boardSource.contains(".onTapGesture(perform: onSelect)"))
+        XCTAssertTrue(boardSource.contains(".accessibilityAction(.default, onSelect)"))
 
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-detail\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Project board for \\(project.title)\")"))
@@ -829,42 +2003,55 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-overview-add-task\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-local-suggestion-open-task\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Opens the suggested task in the inspector.\")"))
-        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-local-suggestion-unblock-task\")"))
-        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Moves the suggested blocked task back to In Progress in the local database.\")"))
-        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Project timeline item \\(task.title)\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-local-suggestion-review-action\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Prepares the suggested blocked task action for review without writing task status.\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Project timeline item \\(item.title)\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Track artifact path\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Track artifact link\")"))
         XCTAssertTrue(audit.contains("Project OverviewのTask snapshot、Local Suggestions、Artifactsはaccessibility identifier / label / hint付きのCRUD入口になっている"))
         XCTAssertTrue(phase.contains("[x] Project OverviewのTask snapshot、Local Suggestions、Artifactsにaccessibility identifier / label / hintを付け、Overviewからも支援技術で主要CRUDへ入れる。"))
     }
 
-    func testVoiceOverEvidenceTemplateCapturesReleaseCandidateContextAndFailureNotes() throws {
+    func testVoiceOverEvidenceCapturesPassedReleaseCandidateContextAndFailureNotes() throws {
         let evidence = try readPackageFile("docs/release/evidence/accessibility-voiceover.md")
         let generator = try readPackageFile("script/create_voiceover_evidence.sh")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
 
-        XCTAssertTrue(evidence.contains("Status: pending"))
-        XCTAssertTrue(evidence.contains("Do not set `Status: passed` until every item below is verified"))
+        XCTAssertTrue(evidence.contains("Status: passed"))
+        XCTAssertTrue(evidence.contains("Generated by: script/create_voiceover_evidence.sh"))
         XCTAssertTrue(evidence.contains("## Release Candidate Context"))
-        XCTAssertTrue(evidence.contains("- macOS version:"))
-        XCTAssertTrue(evidence.contains("- App build:"))
+        XCTAssertTrue(evidence.contains("- macOS version: macOS "))
         XCTAssertTrue(evidence.contains("- App build: `0.1.0 (1)`"))
         XCTAssertTrue(evidence.contains("- Bundle identifier: `dev.solopm.app`"))
-        XCTAssertTrue(evidence.contains("- Checked by:"))
+        XCTAssertTrue(evidence.contains("- Source commit: `"))
+        XCTAssertTrue(evidence.contains("- Checked by: Codex local AX and VoiceOver review"))
         XCTAssertTrue(evidence.contains("- Check date:"))
-        XCTAssertTrue(evidence.contains("## Setup"))
-        XCTAssertTrue(evidence.contains("Seed the Project Board with at least one active project and one task with a due date."))
-        XCTAssertTrue(evidence.contains("## Required Focus Path"))
-        XCTAssertTrue(evidence.contains("[ ] Project navigation"))
-        XCTAssertTrue(evidence.contains("[ ] Inline Task Composer"))
-        XCTAssertTrue(evidence.contains("[ ] Task inspector"))
-        XCTAssertTrue(evidence.contains("inline inspector confirmation panel"))
+        XCTAssertTrue(evidence.contains("- Evidence source: `dist/SoloPM.app manual VoiceOver pass using isolated .tmp voiceover review database project:119`"))
+        XCTAssertFalse(evidence.contains("/Users/"))
+        XCTAssertFalse(evidence.contains("/Volumes/"))
+        XCTAssertFalse(evidence.contains("file://"))
+        XCTAssertTrue(evidence.contains("- Runtime AX smoke: OK: runtime AX smoke visible"))
+        XCTAssertTrue(evidence.contains("unlabeledButtons=0"))
+        XCTAssertTrue(evidence.contains("genericButtons=0"))
+        XCTAssertTrue(evidence.contains("crudSignals=8/8"))
+        XCTAssertTrue(evidence.contains("focusPathSignals=6/6"))
+        XCTAssertTrue(evidence.contains("## Verified Focus Path"))
+        XCTAssertTrue(evidence.contains("Project navigation: passed"))
+        XCTAssertTrue(evidence.contains("Project board detail: passed"))
+        XCTAssertTrue(evidence.contains("Open task: passed"))
+        XCTAssertTrue(evidence.contains("Inline Task Composer: passed"))
+        XCTAssertTrue(evidence.contains("Status controls: passed"))
+        XCTAssertTrue(evidence.contains("Task inspector: passed"))
+        XCTAssertTrue(evidence.contains("Delete Task confirmation: passed"))
+        XCTAssertTrue(evidence.contains("inline confirmation text Delete this task?"))
         XCTAssertFalse(evidence.contains("confirmation dialogs"))
         XCTAssertTrue(evidence.contains("## Failure Notes"))
-        XCTAssertTrue(evidence.contains("- Blocker observed:"))
+        XCTAssertTrue(evidence.contains("- Blocker observed: none during the manual VoiceOver pass."))
         XCTAssertTrue(evidence.contains("- Follow-up source/test link:"))
-        XCTAssertTrue(evidence.contains("## Completion Instructions"))
-        XCTAssertTrue(evidence.contains("Remove all `pending` and unchecked `[ ]` markers."))
+        XCTAssertFalse(evidence.contains("Status: pending"))
+        XCTAssertFalse(evidence.contains("[ ]"))
+        XCTAssertFalse(evidence.contains("Do not set `Status: passed`"))
+        XCTAssertFalse(evidence.contains("## Completion Instructions"))
         XCTAssertTrue(generator.contains("usage:"))
         XCTAssertTrue(generator.contains("VOICEOVER_STATUS=\"pending\""))
         XCTAssertTrue(generator.contains("--confirm-manual-voiceover-pass"))
@@ -886,16 +2073,384 @@ final class AppExperienceSourceTests: XCTestCase {
     func testTodayWorkflowShowsRecommendationDueCountsAndTimeBlocks() throws {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let dailyPlanningSource = try readPackageFile("Sources/SoloPMCore/App/DailyPlanningReview.swift")
+        let dailyPlanningDraftSource = try readPackageFile("Sources/SoloPMCore/App/DailyPlanningActionDraft.swift")
+        let missedReviewSource = try readPackageFile("Sources/SoloPMCore/App/MissedTaskReview.swift")
 
+        XCTAssertTrue(workflowSource.contains("TodayCommandPanel"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-command-capture-field\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-command-add\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-suggestion-chip-"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-start-focus\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-schedule-draft-button\")"))
         XCTAssertTrue(workflowSource.contains("TodayPlanSummary"))
         XCTAssertTrue(workflowSource.contains("TodayTimeBlockList"))
+        XCTAssertTrue(workflowSource.contains("TodayAssistantRail"))
+        XCTAssertTrue(workflowSource.contains("TodayDailyPlanningReviewPanel"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-review\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-focus-"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-draft-start\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-draft-defer\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-draft-move-today\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-draft-split\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-readout\")"))
+        XCTAssertTrue(workflowSource.contains("playDailyPlanningReadout()"))
+        XCTAssertTrue(workflowSource.contains("viewModel.enqueueDailyPlanningActionDraft(kind: .startRecommended)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.enqueueDailyPlanningActionDraft(kind: .deferRecommendedToTomorrow)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.enqueueDailyPlanningActionDraft(kind: .moveRecommendedDueDateToToday)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.enqueueDailyPlanningActionDraft(kind: .splitRecommendedTask)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-assistant-rail\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-rail-next-action\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-rail-task-detail\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-rail-focus\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-rail-schedule-block\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-rail-edit-task\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-rail-add-subtask\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-rail-reminder-draft\")"))
+        XCTAssertTrue(workflowSource.contains("viewModel.enqueueTodayReminderDraft(for: task.id)"))
         XCTAssertTrue(workflowSource.contains("plan.overdueCount"))
         XCTAssertTrue(workflowSource.contains("plan.dueTodayCount"))
+        XCTAssertTrue(workflowSource.contains("viewModel.missedTaskReview()"))
+        XCTAssertTrue(workflowSource.contains("CatchUpWorkflowView"))
+        XCTAssertTrue(workflowSource.contains("CatchUpMissedTaskReviewPanel"))
+        XCTAssertTrue(workflowSource.contains("summary.immediateQueue"))
+        XCTAssertTrue(workflowSource.contains("viewModel.completeMissedTask(id: item.task.id)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.rescheduleMissedTaskForToday(id: item.task.id)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.deferMissedTaskForLater(id: item.task.id)"))
         XCTAssertTrue(workflowSource.contains("plan.recommendationReason"))
         XCTAssertTrue(workflowSource.contains("ForEach(plan.timeBlocks)"))
         XCTAssertTrue(coreSource.contains("public struct TodayWorkflowPlan"))
         XCTAssertTrue(coreSource.contains("public struct TodayTimeBlock"))
+        XCTAssertTrue(dailyPlanningSource.contains("public struct DailyPlanningReview"))
+        XCTAssertTrue(dailyPlanningSource.contains("public enum DailyPlanningReviewBoundary"))
+        XCTAssertTrue(coreSource.contains("DailyPlanningReviewReadoutBuilder.makeRequest"))
+        XCTAssertTrue(dailyPlanningDraftSource.contains("public enum DailyPlanningActionDraftKind"))
+        XCTAssertTrue(dailyPlanningDraftSource.contains("case moveRecommendedDueDateToToday"))
+        XCTAssertTrue(dailyPlanningDraftSource.contains("case splitRecommendedTask"))
+        XCTAssertTrue(dailyPlanningDraftSource.contains("DailyPlanningActionDraftBuilder"))
+        XCTAssertTrue(dailyPlanningDraftSource.contains("tool: .taskUpdate"))
+        XCTAssertTrue(dailyPlanningDraftSource.contains("tool: .taskCreate"))
+        XCTAssertFalse(dailyPlanningDraftSource.contains("calendarCreate"))
+        XCTAssertTrue(coreSource.contains("public struct TodayAssistantRailContext"))
+        XCTAssertTrue(coreSource.contains("public enum TodayAssistantRailSource"))
+        XCTAssertTrue(missedReviewSource.contains("public struct MissedTaskReviewSummary"))
+        XCTAssertTrue(missedReviewSource.contains("public struct MissedTaskReviewItem"))
+        XCTAssertTrue(missedReviewSource.contains("public enum MissedTaskReviewReason"))
+        XCTAssertTrue(missedReviewSource.contains("public protocol MissedTaskReviewStateStore"))
+        XCTAssertTrue(coreSource.contains("public func missedTaskReview("))
+        XCTAssertTrue(coreSource.contains("public func completeMissedTask"))
+        XCTAssertTrue(coreSource.contains("public func rescheduleMissedTaskForToday"))
+        XCTAssertTrue(coreSource.contains("public func deferMissedTaskForLater"))
+        XCTAssertTrue(coreSource.contains("public struct TodayRecommendationChip"))
+        XCTAssertTrue(coreSource.contains("public struct TodayScheduleDraft"))
+        XCTAssertTrue(coreSource.contains("public func submitTodayCommand"))
+        XCTAssertTrue(coreSource.contains("public func todayRecommendationChips"))
+        XCTAssertTrue(coreSource.contains("public func todayAssistantRailContext"))
+        XCTAssertTrue(coreSource.contains("public func prepareDailyPlanningReview"))
+        XCTAssertTrue(coreSource.contains("public func enqueueDailyPlanningActionDraft"))
+        XCTAssertTrue(coreSource.contains("public func enqueueTodayReminderDraft"))
+        XCTAssertTrue(coreSource.contains("ActionPlanValidator().validate(draft.actionPlan)"))
+        XCTAssertTrue(coreSource.contains("public func startFocus"))
+        XCTAssertTrue(coreSource.contains("public func prepareTodayScheduleDraft"))
         XCTAssertTrue(coreSource.contains("public func todayPlan("))
+        let reviewPanelStart = try XCTUnwrap(workflowSource.range(of: "private struct TodayDailyPlanningReviewPanel"))
+        let commandPanelStart = try XCTUnwrap(workflowSource.range(of: "private struct TodayCommandPanel"))
+        let reviewPanelSource = String(workflowSource[reviewPanelStart.lowerBound..<commandPanelStart.lowerBound])
+        XCTAssertFalse(reviewPanelSource.contains("applyScheduleDraftToCalendar"))
+        XCTAssertFalse(reviewPanelSource.contains("startFocus("))
+        XCTAssertFalse(reviewPanelSource.contains("AVSpeechSynthesizer"))
+    }
+
+    func testVoiceDailyPlanningReviewBridgeUsesLocalProjectBoardReview() throws {
+        let voiceSource = try readPackageFile("Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(voiceSource.contains("public struct VoiceDailyPlanningReviewRequest"))
+        XCTAssertTrue(voiceSource.contains("requestedActionDraftKind: DailyPlanningActionDraftKind?"))
+        XCTAssertTrue(voiceSource.contains("DailyPlanningActionDraftKind.splitRecommendedTask"))
+        XCTAssertTrue(voiceSource.contains("@Published public private(set) var dailyPlanningReviewRequest"))
+        XCTAssertTrue(voiceSource.contains("routedCommand.intent != .dailyPlanningReview"))
+        XCTAssertTrue(voiceSource.contains("beginDailyPlanningReviewRequest"))
+        XCTAssertTrue(appSource.contains("viewModel.dailyPlanningReviewRequest"))
+        XCTAssertTrue(appSource.contains("Queue a move-to-today draft for approval"))
+        XCTAssertTrue(appSource.contains("Queue a split-task draft for approval"))
+        XCTAssertTrue(appSource.contains("guard let bridgeRequest = SoloPMVoiceDailyPlanningReviewBridge.storePendingRequest(request)"))
+        XCTAssertTrue(appSource.contains("name: .soloPMVoiceDailyPlanningReviewRequested"))
+        XCTAssertTrue(appSource.contains("userInfo: [SoloPMVoiceDailyPlanningReviewBridge.requestUserInfoKey: bridgeRequest]"))
+        XCTAssertFalse(appSource.contains("sourceTranscriptUserInfoKey"))
+        XCTAssertTrue(boardSource.contains(".onReceive(NotificationCenter.default.publisher(for: .soloPMVoiceDailyPlanningReviewRequested))"))
+        XCTAssertTrue(boardSource.contains("consumePendingVoiceDailyPlanningReviewRequestIfNeeded"))
+        XCTAssertTrue(boardSource.contains("SoloPMVoiceDailyPlanningReviewBridge.consumePendingRequest()"))
+        XCTAssertTrue(boardSource.contains("SoloPMVoiceDailyPlanningReviewBridge.hasRequestPayload(notification)"))
+        XCTAssertTrue(boardSource.contains("SoloPMVoiceDailyPlanningReviewBridge.consumeRequest(from: notification)"))
+        XCTAssertTrue(boardSource.contains("actionDraftKind: request.actionDraftKind"))
+        XCTAssertTrue(boardSource.contains("handleVoiceDailyPlanningReviewRequest"))
+        XCTAssertTrue(boardSource.contains("viewModel.prepareDailyPlanningReview(transcript:"))
+        XCTAssertTrue(boardSource.contains("viewModel.enqueueDailyPlanningActionDraft("))
+        XCTAssertTrue(boardSource.contains("kind: actionDraftKind"))
+        XCTAssertTrue(boardSource.contains("playDailyPlanningReadoutFromSettings()"))
+        XCTAssertTrue(boardSource.contains("viewModel.playDailyPlanningReviewReadout("))
+        XCTAssertTrue(boardSource.contains("AppTextToSpeechRuntimeFactory.makePreviewer("))
+        XCTAssertTrue(boardSource.contains("temporaryDirectoryPrefix: \"solopm-daily-planning-readout\""))
+        XCTAssertTrue(boardSource.contains("outputFilename: \"readout.wav\""))
+        XCTAssertTrue(boardSource.contains("selectedDestination = summary.newlyMissedCount > 0 ? .catchUp : .today"))
+        XCTAssertTrue(boardSource.contains("static let soloPMVoiceDailyPlanningReviewRequested"))
+        XCTAssertTrue(boardSource.contains("guard let request = SoloPMVoiceDailyPlanningReviewBridge.consumePendingRequest()"))
+        XCTAssertFalse(boardSource.contains("sourceTranscript(from: notification)"))
+        XCTAssertFalse(appSource.contains("calendarClient.create"))
+        XCTAssertFalse(appSource.contains("reminderClient.create"))
+        XCTAssertFalse(boardSource.contains("AVSpeechSynthesizer"))
+    }
+
+    func testVoiceInboxTriageBridgeUsesLocalProjectBoardInboxCommands() throws {
+        let voiceSource = try readPackageFile("Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(voiceSource.contains("public struct VoiceInboxTriageRequest"))
+        XCTAssertTrue(voiceSource.contains("@Published public private(set) var inboxTriageRequest"))
+        XCTAssertTrue(voiceSource.contains("InboxVoiceTriageCommandParser"))
+        XCTAssertTrue(appSource.contains("viewModel.inboxTriageRequest"))
+        XCTAssertTrue(appSource.contains("SoloPMVoiceInboxTriageBridge.storePendingRequest"))
+        XCTAssertTrue(appSource.contains("name: .soloPMVoiceInboxTriageRequested"))
+        XCTAssertTrue(boardSource.contains(".onReceive(NotificationCenter.default.publisher(for: .soloPMVoiceInboxTriageRequested))"))
+        XCTAssertTrue(boardSource.contains("consumePendingVoiceInboxTriageRequestIfNeeded"))
+        XCTAssertTrue(boardSource.contains("SoloPMVoiceInboxTriageBridge.consumePendingRequest()"))
+        XCTAssertTrue(boardSource.contains("consumedRequestIDs"))
+        XCTAssertTrue(boardSource.contains("handleVoiceInboxTriageRequest"))
+        XCTAssertTrue(boardSource.contains("viewModel.applyInboxVoiceTriageCommand(request.command)"))
+        let openStart = try XCTUnwrap(boardSource.range(of: "private func openInboxForVoiceTriage()"))
+        let overrideStart = try XCTUnwrap(boardSource.range(of: "private func applySelectedTaskOverrideIfNeeded()"))
+        let openSource = String(boardSource[openStart.lowerBound..<overrideStart.lowerBound])
+        XCTAssertFalse(openSource.contains("ensureSelectedInboxTaskIsVisible"))
+        XCTAssertFalse(appSource.contains("calendarClient.create"))
+        XCTAssertFalse(appSource.contains("reminderClient.create"))
+    }
+
+    func testVoiceAssistantQueueApprovalHandoffsExecutionToProjectBoardQueue() throws {
+        let voiceSource = try readPackageFile("Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let englishStrings = try readPackageFile("Sources/SoloPMApp/Resources/en.lproj/Localizable.strings")
+        let japaneseStrings = try readPackageFile("Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings")
+
+        XCTAssertTrue(voiceSource.contains("assistantQueueExecutionHandoffItemID"))
+        XCTAssertTrue(appSource.contains("executionHandoffItemID: viewModel.assistantQueueExecutionHandoffItemID"))
+        XCTAssertTrue(appSource.contains("onOpenQueue: { postAssistantQueueOpenRequest() }"))
+        XCTAssertTrue(appSource.contains("SoloPMAssistantQueueBridge.storePendingOpen(itemID: viewModel.assistantQueueExecutionHandoffItemID)"))
+        XCTAssertTrue(appSource.contains("userInfo: [SoloPMAssistantQueueBridge.requestUserInfoKey: bridgeRequest]"))
+        XCTAssertTrue(appSource.contains("name: .soloPMAssistantQueueRequested"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-assistant-queue-open-board\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityHint(localizedSettingsDisplay(\"Opens the Assistant Queue without running the item.\"))"))
+        XCTAssertTrue(boardSource.contains(".onReceive(NotificationCenter.default.publisher(for: .soloPMAssistantQueueRequested))"))
+        XCTAssertTrue(boardSource.contains("consumePendingAssistantQueueRequestIfNeeded"))
+        XCTAssertTrue(boardSource.contains("SoloPMAssistantQueueBridge.consumePendingOpen()"))
+        XCTAssertTrue(boardSource.contains("SoloPMAssistantQueueBridge.consumeRequest(from: notification)"))
+        XCTAssertTrue(boardSource.contains("selectedDestination = .assistantQueue"))
+        XCTAssertTrue(boardSource.contains("viewModel.focusAssistantQueueExecutionHandoff(id: request.itemID)"))
+        XCTAssertTrue(englishStrings.contains("\"Open Assistant Queue\""))
+        XCTAssertTrue(englishStrings.contains("\"Opens the Assistant Queue without running the item.\""))
+        XCTAssertTrue(englishStrings.contains("\"Assistant Queue item is no longer available.\""))
+        XCTAssertTrue(japaneseStrings.contains("\"Open Assistant Queue\""))
+        XCTAssertTrue(japaneseStrings.contains("\"Opens the Assistant Queue without running the item.\""))
+        XCTAssertTrue(japaneseStrings.contains("\"Assistant Queue item is no longer available.\""))
+        XCTAssertFalse(appSource.contains("ActionReviewPanel(viewModel: AppRuntimeFactory.makeReviewSessionViewModel(plan: plan))"))
+    }
+
+    func testTodayWorkflowUsesSampleInspiredBriefingAndFlowRail() throws {
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let todayWorkflowStart = try XCTUnwrap(workflowSource.range(of: "struct TodayWorkflowView"))
+        let todayWorkflowEnd = try XCTUnwrap(workflowSource.range(of: "struct CatchUpWorkflowView"))
+        let todayWorkflowSource = String(workflowSource[todayWorkflowStart.lowerBound..<todayWorkflowEnd.lowerBound])
+
+        XCTAssertTrue(workflowSource.contains("TodayBriefingPanel"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-briefing-panel\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-command-capture-field\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-suggestion-rail\")"))
+        XCTAssertTrue(workflowSource.contains("viewModel.startFocus(taskID: chip.taskID)"))
+        XCTAssertTrue(workflowSource.contains("TodayFlowStrip(plan: plan, viewModel: viewModel)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-flow-strip\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-flow-chip-\\(block.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-flow-optimize\")"))
+        XCTAssertTrue(workflowSource.contains("TodayAISuggestionCard(plan: plan, viewModel: viewModel)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-ai-suggestion-card\")"))
+        XCTAssertTrue(todayWorkflowSource.contains("let referenceDate = Date()"))
+        XCTAssertTrue(todayWorkflowSource.contains("let calendar = Calendar.current"))
+        XCTAssertTrue(todayWorkflowSource.contains("let snapshot = viewModel.todayWorkflowSnapshot(on: referenceDate, calendar: calendar)"))
+        XCTAssertTrue(todayWorkflowSource.contains("mainSurface(snapshot: snapshot)"))
+        XCTAssertTrue(todayWorkflowSource.contains("TodayAssistantRail(\n                    commandTitle: $commandTitle,\n                    context: snapshot.assistantContext"))
+        XCTAssertFalse(todayWorkflowSource.contains("viewModel.todayPlan()"))
+        XCTAssertFalse(todayWorkflowSource.contains("viewModel.todayAssistantRailContext()"))
+    }
+
+    func testTodayWorkflowProvidesCommonQuickActionChipsAndLocalRailActions() throws {
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-common-action-rail\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-common-chip-add-task\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-common-chip-plan-tomorrow\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-common-chip-prepare-meeting\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-common-chip-draft-reply\")"))
+        XCTAssertTrue(workflowSource.contains("commandTitle = String(localized: \"New task: \")"))
+        XCTAssertTrue(workflowSource.contains("commandTitle = String(localized: \"Plan tomorrow: \")"))
+        XCTAssertTrue(workflowSource.contains("commandTitle = String(localized: \"Prepare meeting: \")"))
+        XCTAssertTrue(workflowSource.contains("commandTitle = String(localized: \"Draft reply: \")"))
+        XCTAssertTrue(workflowSource.contains("recommendationChips: snapshot.recommendationChips"))
+        XCTAssertTrue(workflowSource.contains("let recommendationChips: [TodayRecommendationChip]"))
+        XCTAssertTrue(workflowSource.contains("ForEach(recommendationChips) { chip in"))
+        XCTAssertTrue(workflowSource.contains("TodayAssistantRail("))
+        XCTAssertTrue(workflowSource.contains("commandTitle: $commandTitle"))
+        XCTAssertTrue(workflowSource.contains("viewModel.prepareTodayScheduleDraft(prioritizing: task.id)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-rail-schedule-block\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-rail-schedule-draft-status\")"))
+        XCTAssertTrue(workflowSource.contains("!trimmedCommandTitle.hasSuffix(\":\")"))
+        XCTAssertTrue(workflowSource.contains("onSelectTask: selectTodayTask"))
+        XCTAssertTrue(workflowSource.contains("openInspector(task.id)"))
+        XCTAssertTrue(workflowSource.contains("commandTitle = String(format: String(localized: \"Subtask for %@: \"), task.title)"))
+        XCTAssertTrue(boardSource.contains("isInspectorPresented = false"))
+        XCTAssertTrue(boardSource.contains("selectTodayTask"))
+        XCTAssertTrue(boardSource.contains("openInspectorForTodayRailTask: openInspectorForTodayRailTask"))
+        XCTAssertTrue(boardSource.contains("openInspectorForTodayRailTask"))
+        XCTAssertTrue(boardSource.contains("isInspectorPresented = true"))
+    }
+
+    func testScheduleWorkflowIsReachableAndApprovalFirst() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(destination: .schedule"))
+        XCTAssertTrue(boardSource.contains("case .schedule:"))
+        XCTAssertTrue(boardSource.contains("ScheduleWorkflowView(viewModel: viewModel)"))
+        XCTAssertTrue(persistenceSource.contains("case schedule"))
+        XCTAssertTrue(workflowSource.contains("ScheduleWorkflowView"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workflow\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-generate-draft\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-apply-calendar\")"))
+        XCTAssertTrue(workflowSource.contains("ScheduleDraftApprovalControls("))
+        XCTAssertTrue(workflowSource.contains("viewModel.enqueueScheduleDraftCalendarApply(on: workloadReferenceDate)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.addUnscheduledTaskToScheduleDraft("))
+        XCTAssertTrue(workflowSource.contains("viewModel.unscheduledScheduleTasks()"))
+        XCTAssertTrue(workflowSource.contains("viewModel.enqueueScheduleReminderDraft("))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-unscheduled-add-draft-\\(task.id)\")"))
+        XCTAssertTrue(workflowSource.contains("ForEach(reminderProposalTasks(for: day), id: \\.id)"))
+        XCTAssertTrue(workflowSource.contains("private func reminderProposalTasks(for day: WeeklyScheduleDay) -> [ProjectBoardTask]"))
+        XCTAssertFalse(workflowSource.contains("private func reminderProposalTask(for day: WeeklyScheduleDay) -> ProjectBoardTask?"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-smart-reminder-draft-\\(task.id)\")"))
+        XCTAssertTrue(workflowSource.contains("Queue Reminder Draft"))
+        XCTAssertTrue(workflowSource.contains("Queue reminder draft for %@"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityLabel(String(format: String(localized: \"Add %@ to Draft\"), task.title))"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-queue-approval-note\")"))
+        let scheduleWorkflowStart = try XCTUnwrap(workflowSource.range(of: "struct ScheduleWorkflowView"))
+        let scheduleWorkflowEnd = try XCTUnwrap(workflowSource.range(of: "struct DoneWorkflowView"))
+        let scheduleWorkflowSource = String(workflowSource[scheduleWorkflowStart.lowerBound..<scheduleWorkflowEnd.lowerBound])
+        XCTAssertTrue(scheduleWorkflowSource.contains("viewModel.prepareScheduleDraft(on: workloadReferenceDate)"))
+        XCTAssertLessThan(
+            try XCTUnwrap(scheduleWorkflowSource.range(of: "ScheduleDraftApprovalControls(")).lowerBound,
+            try XCTUnwrap(scheduleWorkflowSource.range(of: "ScheduleMiniCalendarPanel(")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(scheduleWorkflowSource.range(of: "ScheduleDraftApprovalControls(")).lowerBound,
+            try XCTUnwrap(scheduleWorkflowSource.range(of: "ScheduleDraftPanel(viewModel: viewModel)")).lowerBound
+        )
+        XCTAssertFalse(scheduleWorkflowSource.contains("applyScheduleDraftToCalendar"))
+        XCTAssertTrue(coreSource.contains("public struct ScheduleDraft"))
+        XCTAssertTrue(coreSource.contains("public func unscheduledScheduleTasks"))
+        XCTAssertTrue(coreSource.contains("public func prepareScheduleDraft"))
+        XCTAssertTrue(coreSource.contains("public func addUnscheduledTaskToScheduleDraft"))
+        XCTAssertTrue(coreSource.contains("public func enqueueScheduleReminderDraft"))
+        XCTAssertTrue(coreSource.contains("public func enqueueScheduleDraftCalendarApply"))
+        XCTAssertTrue(coreSource.contains("public func applyScheduleDraftToCalendar"))
+        XCTAssertFalse(workflowSource.contains("SecureField(\"Approval token\""))
+        XCTAssertFalse(coreSource.contains("return .applied(eventCount: 0)"))
+    }
+
+    func testScheduleWorkflowShowsLocalDailyWorkloadDashboardWithoutCalendarWrites() throws {
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let workloadSource = try readPackageFile("Sources/SoloPMCore/App/DailyWorkloadDashboard.swift")
+        let weeklySource = try readPackageFile("Sources/SoloPMCore/App/WeeklyScheduleCockpit.swift")
+        let captureScript = try readPackageFile("script/capture_ui_evidence.sh")
+        let visualManifest = try readPackageFile("docs/quality/visual-baseline-manifest.json")
+
+        XCTAssertTrue(workloadSource.contains("public struct DailyWorkloadOverview"))
+        XCTAssertTrue(workloadSource.contains("public struct DailyWorkloadDay"))
+        XCTAssertTrue(workloadSource.contains("public struct DailyWorkloadProjectContribution"))
+        XCTAssertTrue(coreSource.contains("public func dailyWorkloadOverview("))
+        XCTAssertTrue(weeklySource.contains("public struct WeeklyScheduleCockpit"))
+        XCTAssertTrue(weeklySource.contains("public struct WeeklyScheduleBlock"))
+        XCTAssertTrue(weeklySource.contains("public var startHour: Int?"))
+        XCTAssertTrue(weeklySource.contains("startHour: calendar.component(.hour, from: start)"))
+        XCTAssertTrue(weeklySource.contains("public struct WeeklyScheduleFocusForecast"))
+        XCTAssertTrue(weeklySource.contains("completionHistoryCount"))
+        XCTAssertTrue(weeklySource.contains("completedDayKeys"))
+        XCTAssertTrue(coreSource.contains("public func weeklyScheduleCockpit("))
+        XCTAssertTrue(workloadSource.contains("inboxUntriagedCount"))
+        XCTAssertTrue(workloadSource.contains("private static func isInboxProject"))
+
+        XCTAssertTrue(workflowSource.contains("WeeklyScheduleCockpitPanel("))
+        XCTAssertTrue(workflowSource.contains("viewModel.weeklyScheduleCockpit("))
+        XCTAssertTrue(workflowSource.contains("ScheduleMiniCalendarPanel("))
+        XCTAssertTrue(workflowSource.contains("selectMiniCalendarDay"))
+        XCTAssertTrue(workflowSource.contains("selectDay: selectMiniCalendarDay"))
+        XCTAssertTrue(workflowSource.contains("let selectDay: (DailyWorkloadDay) -> Void"))
+        XCTAssertTrue(workflowSource.contains("selectDay(day)"))
+        XCTAssertTrue(workflowSource.contains("moveWorkloadToToday"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-mini-calendar\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-mini-calendar-previous-week\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-mini-calendar-next-week\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-mini-calendar-today\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-mini-calendar-day-\\(day.dateKey)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-mini-calendar-selected-day\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityAddTraits(day.dateKey == selectedDay?.dateKey ? .isSelected : [])"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-grid\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-time-axis-grid\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-time-axis-slot-\\(day.dateKey)-\\(hour)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-time-axis-all-day-slot-\\(day.dateKey)\")"))
+        XCTAssertTrue(workflowSource.contains("WeeklyScheduleTimeAxisGrid(cockpit: cockpit)"))
+        XCTAssertTrue(workflowSource.contains("WeeklyScheduleTimeAxisSlot("))
+        XCTAssertTrue(workflowSource.contains("block.startHour"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-day-column-\\(day.dateKey)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-block-\\(block.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-completion-history-\\(day.dateKey)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-focus-forecast\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-smart-reminders\")"))
+        XCTAssertTrue(workflowSource.contains("DailyWorkloadPanel("))
+        XCTAssertTrue(workflowSource.contains("viewModel.dailyWorkloadOverview("))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-dashboard\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-previous-week\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-next-week\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-day-cell-\\(day.dateKey)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-count-badge-\\(day.dateKey)-total\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-count-badge-\\(day.dateKey)-in-progress\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-count-badge-\\(day.dateKey)-blocked\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-count-badge-\\(day.dateKey)-missed\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-progress-\\(day.dateKey)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-attention-banner\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-day-detail\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-detail-task-\\(task.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-unscheduled-bucket\")"))
+        XCTAssertTrue(workflowSource.contains("External Calendar writes require review approval."))
+        XCTAssertTrue(captureScript.contains("--schedule-workload"))
+        XCTAssertTrue(captureScript.contains("schedule-workload-light.png"))
+        XCTAssertTrue(captureScript.contains("schedule-workload-dark.png"))
+        XCTAssertTrue(captureScript.contains("schedule-workload-dashboard=>schedule-workload-dashboard"))
+        XCTAssertTrue(captureScript.contains("schedule-workload-attention-banner=>schedule-workload-attention-banner"))
+        XCTAssertTrue(captureScript.contains("schedule-workload-day-detail=>schedule-workload-day-detail"))
+        XCTAssertTrue(captureScript.contains("docs/release/evidence/schedule-workload-screenshots.md"))
+        XCTAssertTrue(visualManifest.contains(#""id": "schedule-workload""#))
+        XCTAssertTrue(visualManifest.contains("schedule-workload-light.png"))
+        XCTAssertTrue(visualManifest.contains("schedule-workload-dark.png"))
+
+        let dashboardStart = try XCTUnwrap(workflowSource.range(of: "private struct DailyWorkloadPanel"))
+        let dashboardSource = String(workflowSource[dashboardStart.lowerBound...])
+        XCTAssertFalse(dashboardSource.contains("applyScheduleDraftToCalendar"))
+        let weeklyStart = try XCTUnwrap(workflowSource.range(of: "private struct WeeklyScheduleCockpitPanel"))
+        let weeklyWorkflowSource = String(workflowSource[weeklyStart.lowerBound...])
+        XCTAssertFalse(weeklyWorkflowSource.contains("applyScheduleDraftToCalendar"))
     }
 
     func testAppAndCLIShareDefaultDatabaseLocation() throws {
@@ -953,7 +2508,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
         XCTAssertTrue(appSource.contains("ScrollView"))
-        XCTAssertTrue(appSource.contains(".frame(minHeight: 180, idealHeight: 220)"))
+        XCTAssertTrue(appSource.contains(".frame(minHeight: 150, idealHeight: 180, maxHeight: 180)"))
         XCTAssertTrue(appSource.contains(".frame(maxWidth: .infinity, alignment: .leading)"))
         XCTAssertTrue(appSource.contains("ActionReviewHeader"))
         XCTAssertTrue(appSource.contains("ReviewActionTitleRow"))
@@ -969,7 +2524,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
         XCTAssertFalse(appSource.contains("registry = ToolRegistry()"))
-        XCTAssertTrue(appSource.contains("runtimeValidationMessage: reviewRuntimeValidationMessage"))
+        XCTAssertTrue(appSource.contains("runtimeValidationMessage: runtime.reviewRuntimeValidationMessage"))
         XCTAssertTrue(appSource.contains("Review execution tools are unavailable because audit logging or local data stores could not be opened."))
     }
 
@@ -1063,17 +2618,17 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
-    func testUnavailableMailDraftClientDoesNotExposeEmptyListSuccessPath() throws {
+    func testRuntimeMailDraftClientStoresLocalDraftsWithoutListOrSendSurface() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let clientSource = try readPackageFile("Sources/SoloPMCore/Tools/SystemToolClients.swift")
-        let unavailableClientStart = try XCTUnwrap(appSource.range(of: "private struct UnavailableMailDraftClient"))
-        let unavailableClientEnd = try XCTUnwrap(appSource.range(of: "private extension JSONValue", range: unavailableClientStart.upperBound..<appSource.endIndex))
-        let unavailableClientSource = String(appSource[unavailableClientStart.lowerBound..<unavailableClientEnd.lowerBound])
 
-        XCTAssertTrue(appSource.contains("mailDraftClient: UnavailableMailDraftClient()"))
-        XCTAssertFalse(unavailableClientSource.contains("func listDrafts() throws -> [MailDraftRecord]"))
-        XCTAssertFalse(unavailableClientSource.contains("[]"))
+        XCTAssertFalse(appSource.contains("mailDraftClient: UnavailableMailDraftClient()"))
+        XCTAssertTrue(appSource.contains("mailDraftClient: try makeMailDraftClient()"))
+        XCTAssertTrue(clientSource.contains("public final class LocalFileMailDraftClient"))
+        XCTAssertTrue(appSource.contains("appendingPathComponent(\"MailDrafts\", isDirectory: true)"))
         XCTAssertFalse(clientSource.contains("func listDrafts() throws -> [MailDraftRecord]"))
+        XCTAssertFalse(clientSource.contains("func send"))
+        XCTAssertFalse(try readPackageFile("Sources/SoloPMCore/Planning/ActionPlan.swift").contains("maildraft.send"))
     }
 
     func testRuntimeSourcesDoNotShipSecurityOrMCPInMemoryStores() throws {
@@ -1301,7 +2856,7 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
-    func testPublicAlphaAppDoesNotLinkExternalSaaSConnectorTarget() throws {
+    func testPublicAlphaAppLinksOnlyNarrowGoogleCalendarRuntimeTarget() throws {
         let packageSource = try readPackageFile("Package.swift")
         let appTarget = try XCTUnwrap(packageSource.range(of: ".executableTarget(\n            name: \"SoloPM\","))
         let cliTarget = try XCTUnwrap(packageSource.range(of: ".executableTarget(\n            name: \"SoloPMCLI\","))
@@ -1309,8 +2864,10 @@ final class AppExperienceSourceTests: XCTestCase {
         let appTargetBlock = String(packageSource[appTarget.lowerBound..<cliTarget.lowerBound])
         let cliTargetBlock = String(packageSource[cliTarget.lowerBound..<testsTarget.lowerBound])
 
+        XCTAssertTrue(packageSource.contains("name: \"SoloPMGoogleCalendarRuntime\""))
         XCTAssertTrue(packageSource.contains("name: \"SoloPMExternalConnectors\""))
         XCTAssertTrue(packageSource.contains("dependencies: [\"SoloPMCore\"]"))
+        XCTAssertTrue(appTargetBlock.contains("SoloPMGoogleCalendarRuntime"))
         XCTAssertFalse(appTargetBlock.contains("SoloPMExternalConnectors"))
         XCTAssertFalse(cliTargetBlock.contains("SoloPMExternalConnectors"))
     }
@@ -1377,7 +2934,84 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("KeychainSecretStore"))
         XCTAssertTrue(appSource.contains("OpenAIResponsesProvider(secretStore:"))
         XCTAssertTrue(appSource.contains("ToolRegistry.phase2MVP("))
-        XCTAssertTrue(appSource.contains("artifactStore: SQLiteArtifactStore(connection: connection)"))
+        XCTAssertTrue(appSource.contains("let artifactStore = SQLiteArtifactStore(connection: connection)"))
+        XCTAssertTrue(appSource.contains("artifactStore: artifactStore"))
+    }
+
+    func testRuntimeExecutionRegistryIncludesDeveloperWorkflowToolsForAssistantQueue() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let coordinatorFactoryStart = try XCTUnwrap(appSource.range(of: "private static func makeAssistantQueueExecutionCoordinator("))
+        let coordinatorFactoryEnd = try XCTUnwrap(appSource.range(of: "@MainActor\n    static func makeMenuBarSummaryController()", range: coordinatorFactoryStart.upperBound..<appSource.endIndex))
+        let coordinatorFactory = String(appSource[coordinatorFactoryStart.lowerBound..<coordinatorFactoryEnd.lowerBound])
+        let registryFactoryStart = try XCTUnwrap(appSource.range(of: "private static func makeRuntimeToolRegistry("))
+        let registryFactory = String(appSource[registryFactoryStart.lowerBound..<coordinatorFactoryEnd.lowerBound])
+
+        XCTAssertTrue(appSource.contains("private static func makeRuntimeToolRegistry("))
+        XCTAssertTrue(coordinatorFactory.contains("makeRuntimeToolRegistry(connection: connection, auditLogger: auditLogger)"))
+        XCTAssertTrue(registryFactory.contains("DevelopmentPullRequestCreationTool(\n                projectStore: projectStore,\n                bookmarkResolver: developmentBookmarkResolver"))
+        XCTAssertTrue(registryFactory.contains("DevelopmentPullRequestReviewGateTool(\n                projectStore: projectStore,\n                bookmarkResolver: developmentBookmarkResolver"))
+        XCTAssertTrue(registryFactory.contains("DevelopmentPullRequestMergeTool(\n                projectStore: projectStore,\n                bookmarkResolver: developmentBookmarkResolver"))
+        XCTAssertTrue(registryFactory.contains(".developmentReviewPullRequestGate"))
+        XCTAssertTrue(registryFactory.contains(".developmentMergePullRequest"))
+        XCTAssertFalse(registryFactory.contains("ToolRegistryFactory.developerMode("))
+        XCTAssertTrue(registryFactory.contains("let artifactStore = SQLiteArtifactStore(connection: connection)"))
+        XCTAssertTrue(appSource.contains("#if DEBUG\nprivate struct RuntimeDevelopmentPRSmokeBookmarkResolver"))
+        XCTAssertTrue(appSource.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK"))
+        XCTAssertFalse(appSource.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_FIXTURE_BOOKMARK"))
+        XCTAssertTrue(appSource.contains("solopm-runtime-development-pr-smoke:"))
+        XCTAssertTrue(appSource.contains("return try SecurityScopedProjectWorkspaceBookmarkResolver().resolve(bookmarkData: bookmarkData)"))
+        XCTAssertTrue(appSource.contains("return SecurityScopedProjectWorkspaceBookmarkResolver()"))
+        XCTAssertTrue(registryFactory.contains("let developmentBookmarkResolver = makeDevelopmentWorkspaceBookmarkResolver()"))
+        XCTAssertTrue(registryFactory.contains("bookmarkResolver: developmentBookmarkResolver"))
+        XCTAssertTrue(registryFactory.contains("DevelopmentPRWorkflowTool("))
+        XCTAssertTrue(registryFactory.contains("DevelopmentCommitWorkflowTool("))
+        XCTAssertTrue(registryFactory.contains("DevelopmentRepositoryFileTool("))
+        XCTAssertTrue(registryFactory.contains("name: .developmentRepositoryListFiles"))
+        XCTAssertTrue(registryFactory.contains("name: .developmentRepositoryReadFile"))
+        XCTAssertTrue(registryFactory.contains("name: .developmentRepositoryCreateFile"))
+        XCTAssertTrue(registryFactory.contains("name: .developmentRepositoryUpdateFile"))
+        XCTAssertTrue(registryFactory.contains("DevelopmentVerificationCommandTool("))
+        XCTAssertTrue(registryFactory.contains("DevelopmentPushWorkflowTool("))
+        XCTAssertTrue(registryFactory.contains("DevelopmentPullRequestCreationTool("))
+        XCTAssertTrue(registryFactory.contains("taskStore: taskStore"))
+        XCTAssertTrue(registryFactory.contains("requireBookmark: true"))
+        XCTAssertFalse(registryFactory.contains("for prohibitedTool in ["))
+        XCTAssertTrue(registryFactory.contains(".developmentCreatePullRequest"))
+        XCTAssertFalse(registryFactory.contains(".gitReadOnly"))
+
+        func auditedRegistrationBlock(containing needle: String) throws -> String {
+            let start = try XCTUnwrap(registryFactory.range(of: "try registry.register(AuditedTool(", range: registryFactory.startIndex..<registryFactory.endIndex))
+            let toolStart = try XCTUnwrap(registryFactory.range(of: needle, range: start.lowerBound..<registryFactory.endIndex))
+            let blockStart = try XCTUnwrap(
+                registryFactory.range(
+                    of: "try registry.register(AuditedTool(",
+                    options: .backwards,
+                    range: start.lowerBound..<toolStart.lowerBound
+                )
+            )
+            let blockEnd = try XCTUnwrap(registryFactory.range(of: "logger: auditLogger", range: toolStart.upperBound..<registryFactory.endIndex))
+            return String(registryFactory[blockStart.lowerBound..<blockEnd.upperBound])
+        }
+
+        for block in try [
+            auditedRegistrationBlock(containing: "DevelopmentPRWorkflowTool("),
+            auditedRegistrationBlock(containing: "name: .developmentRepositoryListFiles"),
+            auditedRegistrationBlock(containing: "name: .developmentRepositoryReadFile"),
+            auditedRegistrationBlock(containing: "name: .developmentRepositoryCreateFile"),
+            auditedRegistrationBlock(containing: "name: .developmentRepositoryUpdateFile"),
+            auditedRegistrationBlock(containing: "DevelopmentVerificationCommandTool("),
+            auditedRegistrationBlock(containing: "DevelopmentCommitWorkflowTool(")
+        ] {
+            XCTAssertTrue(block.contains("AuditedTool("))
+            XCTAssertTrue(block.contains("requireBookmark: true"))
+        }
+        let pushBlock = try auditedRegistrationBlock(containing: "DevelopmentPushWorkflowTool(")
+        XCTAssertTrue(pushBlock.contains("AuditedTool("))
+        XCTAssertTrue(pushBlock.contains("bookmarkResolver: developmentBookmarkResolver"))
+        XCTAssertTrue(pushBlock.contains("logger: auditLogger"))
+        let createPullRequestBlock = try auditedRegistrationBlock(containing: "DevelopmentPullRequestCreationTool(")
+        XCTAssertTrue(createPullRequestBlock.contains("AuditedTool("))
+        XCTAssertTrue(createPullRequestBlock.contains("logger: auditLogger"))
     }
 
     func testReviewRuntimeRequiresAuditLoggerBeforeWriteExecution() throws {
@@ -1388,8 +3022,35 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertFalse(reviewFactory.contains("try? makeAuditLogger()"))
         XCTAssertTrue(reviewFactory.contains("let auditLogger = try makeAuditLogger()"))
-        XCTAssertTrue(reviewFactory.contains("logger = auditLogger"))
+        XCTAssertTrue(reviewFactory.contains("let receiptStore = try makeExecutionReceiptStore()"))
+        XCTAssertTrue(reviewFactory.contains("let projectStore = SQLiteProjectStore(connection: connection)"))
+        XCTAssertTrue(reviewFactory.contains("let taskStore = SQLiteTaskStore(connection: connection)"))
+        XCTAssertTrue(reviewFactory.contains("let artifactStore = SQLiteArtifactStore(connection: connection)"))
+        XCTAssertTrue(reviewFactory.contains("DevelopmentPRWorkflowTool("))
+        XCTAssertTrue(reviewFactory.contains("DevelopmentCommitWorkflowTool("))
+        XCTAssertTrue(reviewFactory.contains("DevelopmentRepositoryFileTool("))
+        XCTAssertTrue(reviewFactory.contains("name: .developmentRepositoryListFiles"))
+        XCTAssertTrue(reviewFactory.contains("name: .developmentRepositoryReadFile"))
+        XCTAssertTrue(reviewFactory.contains("name: .developmentRepositoryCreateFile"))
+        XCTAssertTrue(reviewFactory.contains("name: .developmentRepositoryUpdateFile"))
+        XCTAssertTrue(reviewFactory.contains("DevelopmentVerificationCommandTool("))
+        XCTAssertTrue(reviewFactory.contains("taskStore: taskStore"))
+        XCTAssertTrue(reviewFactory.contains("requireBookmark: true"))
+        XCTAssertTrue(reviewFactory.contains("registry.register(AuditedTool("))
+        XCTAssertFalse(reviewFactory.contains("DevelopmentPushWorkflowTool("))
+        XCTAssertFalse(reviewFactory.contains("DevelopmentPullRequestCreationTool("))
+        XCTAssertFalse(reviewFactory.contains("ToolRegistryFactory.developerMode("))
+        XCTAssertTrue(reviewFactory.contains("return (auditLogger, receiptStore, registry, nil)"))
+        XCTAssertTrue(reviewFactory.contains("executionReceiptStore: runtime.receiptStore"))
         XCTAssertTrue(reviewFactory.contains("Review execution tools are unavailable because audit logging or local data stores could not be opened."))
+    }
+
+    func testReviewRuntimePersistsExecutionReceiptsUnderApplicationSupport() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(appSource.contains("private static func makeExecutionReceiptStore() throws -> any ExecutionReceiptStore"))
+        XCTAssertTrue(appSource.contains("FileExecutionReceiptStore("))
+        XCTAssertTrue(appSource.contains("appendingPathComponent(\"ExecutionReceipts\", isDirectory: true)"))
     }
 
     func testUnavailableReviewRegistryDoesNotSilentlyDropRegistrationFailures() throws {
@@ -1412,6 +3073,67 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceFactory.contains("auditLogger = try makeAuditLogger()"))
         XCTAssertTrue(voiceFactory.contains("runtimeValidationMessage: runtimeValidationMessage"))
         XCTAssertTrue(voiceFactory.contains("Voice planning is unavailable because audit logging or local data stores could not be opened."))
+    }
+
+    func testVoiceRuntimePersistsAssistantQueueToSQLite() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let voiceFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeVoiceCaptureViewModel()"))
+        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
+        let voiceFactory = String(appSource[voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
+
+        XCTAssertTrue(voiceFactory.contains("let connection = try migratedConnection()"))
+        XCTAssertTrue(voiceFactory.contains("assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)"))
+        XCTAssertTrue(voiceFactory.contains("assistantQueueStore: assistantQueueStore"))
+        XCTAssertTrue(voiceFactory.contains("let managedCostRateCardResolver = ManagedAICostRateCardResolver()"))
+        XCTAssertTrue(voiceFactory.contains("managedCostRateCardProvider: { managedCostRateCardResolver.rateCard(for: $0) }"))
+        XCTAssertFalse(voiceFactory.contains("assistantQueueStore: nil"))
+    }
+
+    func testVoiceRuntimeInjectsFailClosedDevelopmentProjectProvider() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let voiceFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeVoiceCaptureViewModel()"))
+        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
+        let voiceFactory = String(appSource[voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
+
+        XCTAssertTrue(voiceFactory.contains("let projectStore = SQLiteProjectStore(connection: connection)"))
+        XCTAssertTrue(voiceFactory.contains("developmentProjectProvider = {"))
+        XCTAssertTrue(voiceFactory.contains("approvedDevelopmentProject(from: projectStore)"))
+        XCTAssertTrue(voiceFactory.contains("developmentProjectProvider: developmentProjectProvider"))
+        XCTAssertTrue(appSource.contains("VoiceDevelopmentProjectSelection.uniqueApprovedActiveProject(from: projects)"))
+    }
+
+    func testVoiceCommandCanPersistRecordedTranscriptToInboxRuntimeStores() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let voiceFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeVoiceCaptureViewModel()"))
+        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
+        let voiceFactory = String(appSource[voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
+
+        XCTAssertTrue(appSource.contains("viewModel.saveDraftToInbox()"))
+        XCTAssertTrue(appSource.contains("Save to Inbox"))
+        XCTAssertTrue(appSource.contains(".disabled(!viewModel.canSaveDraftToInbox)"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-save-to-inbox\")"))
+        XCTAssertTrue(appSource.contains("VoiceInboxCaptureSavedPanel("))
+        XCTAssertTrue(voiceFactory.contains("let projectBoardStore = SQLiteProjectBoardStore(connection: connection)"))
+        XCTAssertTrue(voiceFactory.contains("let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)"))
+        XCTAssertTrue(voiceFactory.contains("inboxCaptureService = InboxVoiceCaptureService("))
+        XCTAssertTrue(voiceFactory.contains("inboxCaptureSaver: inboxCaptureService"))
+    }
+
+    func testVoiceAssistantQueuePanelRendersWithoutPlanningResponse() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let queuePanelStart = try XCTUnwrap(appSource.range(of: "if let item = viewModel.assistantQueueItem"))
+        let responsePanelStart = try XCTUnwrap(appSource.range(of: "if let response = viewModel.planningResponse", range: queuePanelStart.upperBound..<appSource.endIndex))
+        let queuePanelSource = String(appSource[queuePanelStart.lowerBound..<responsePanelStart.lowerBound])
+        let responsePanelEnd = appSource.index(
+            responsePanelStart.lowerBound,
+            offsetBy: 160,
+            limitedBy: appSource.endIndex
+        ) ?? appSource.endIndex
+        let responsePanelSource = String(appSource[responsePanelStart.lowerBound..<responsePanelEnd])
+
+        XCTAssertTrue(queuePanelSource.contains("AssistantQueuePanel("))
+        XCTAssertFalse(responsePanelSource.contains("AssistantQueuePanel("))
+        XCTAssertTrue(responsePanelSource.contains("ActionPlanPreview(response: response)"))
     }
 
     func testReviewActionButtonsDoNotDropViewModelErrors() throws {
@@ -1458,6 +3180,71 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains("SecureField(\"API Key\", text: .constant(\"\"))"))
     }
 
+    func testSettingsSurfaceExposesTaskAutomationSaveAnchors() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(appSource.contains("Section(\"Task Automation\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-toggle\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-frequency\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-max-tasks\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-daily-limit\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-lookahead\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-urgent-cooldown\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-boundary\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-save\")"))
+        XCTAssertTrue(appSource.contains("Section(\"Billing\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-managed-ai-billing-toggle\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-managed-ai-per-run-cap\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-managed-ai-daily-cap\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-managed-ai-monthly-cap\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-managed-ai-workspace-cap\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-save-button\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityHint(\"Persists non-secret settings to local UserDefaults.\")"))
+
+        let taskAutomationStart = try XCTUnwrap(appSource.range(of: "Section(\"Task Automation\")"))
+        let billingStart = try XCTUnwrap(appSource.range(of: "Section(\"Billing\")"))
+        let taskAutomationSource = String(appSource[taskAutomationStart.lowerBound..<billingStart.lowerBound])
+        XCTAssertLessThan(
+            try XCTUnwrap(taskAutomationSource.range(of: "taskAutomationSaveButton")).lowerBound,
+            try XCTUnwrap(taskAutomationSource.range(of: "settings-task-auto-execution-frequency")).lowerBound
+        )
+    }
+
+    func testVoiceCommandRuntimeEvidenceLaunchAndReviewAnchors() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(appSource.contains("SOLOPM_OPEN_VOICE_COMMAND_ON_LAUNCH"))
+        XCTAssertTrue(appSource.contains("openVoiceCommandWindowForEvidenceIfRequested()"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-root\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-input\")"))
+        XCTAssertTrue(appSource.contains("VoiceCommandInputPlaceholder()"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-input-placeholder\")"))
+        XCTAssertTrue(appSource.contains("VoiceCommandActionReadinessRow("))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-action-readiness\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-intent-preview\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-clarification-panel\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-clarification-answer\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-clarification-submit\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-clarification-cancel\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-assistant-queue-panel\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-assistant-queue-state\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-assistant-queue-risk\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-assistant-queue-capabilities\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-assistant-queue-approve\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-assistant-queue-defer\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-assistant-queue-reject\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-generate-plan\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-status\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-action-review-panel\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-action-review-approve\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-action-review-execute\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-action-review-cancel\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-execution-receipt\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-execution-receipt-status\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-execution-receipt-output\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-execution-receipt-cost\")"))
+    }
+
     func testSettingsSurfaceStartsWithStatusOverviewForCoreOperationalAreas() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
@@ -1476,6 +3263,62 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("externalMCPViewModel.connectionCheckResultLabel"))
         XCTAssertTrue(appSource.contains("syncViewModel.statusLabel"))
         XCTAssertTrue(appSource.contains("settingsViewModel.settings.notificationsEnabled"))
+    }
+
+    func testSettingsOverviewSurfacesIntegrationStatusTilesForPhase12() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(appSource.contains("integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot()"))
+        XCTAssertTrue(appSource.contains("title: \"STT\""))
+        XCTAssertTrue(appSource.contains("title: \"TTS\""))
+        XCTAssertTrue(appSource.contains("title: \"Calendar\""))
+        XCTAssertTrue(appSource.contains("title: \"Reminder\""))
+        XCTAssertTrue(appSource.contains("title: \"Data Location\""))
+        XCTAssertTrue(appSource.contains("settingsViewModel.settings.sttProvider.displayName"))
+        XCTAssertTrue(appSource.contains("Local whisper.cpp: %@"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.localSTTProviderReadinessRow.statusLabel"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.settings.ttsProvider.displayName"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.ttsProviderReadinessRow.statusLabel"))
+        XCTAssertTrue(appSource.contains("integrationPermissionSnapshot.status(for: .calendar)"))
+        XCTAssertTrue(appSource.contains("integrationPermissionSnapshot.status(for: .reminders)"))
+        XCTAssertTrue(appSource.contains("dataLocationOverviewStatusLabel"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-status-overview\")"))
+    }
+
+    func testSettingsExposesReadyGatedKokoroTTSProviderControls() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let aiTabStart = try XCTUnwrap(appSource.range(of: "private var aiSettingsTab: some View"))
+        let syncTabStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
+        let aiTabSource = String(appSource[aiTabStart.lowerBound..<syncTabStart.lowerBound])
+
+        XCTAssertTrue(aiTabSource.contains("Picker(\n                    \"Text to Speech\""))
+        XCTAssertTrue(aiTabSource.contains("settingsViewModel.selectableTTSProviders"))
+        XCTAssertTrue(aiTabSource.contains("SelectedTTSProviderStatusRow(row: settingsViewModel.ttsProviderReadinessRow)"))
+        XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-provider-picker\")"))
+        XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-kokoro-executable-path\")"))
+        XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-language-picker\")"))
+        XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-voice-id\")"))
+        XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-test-play\")"))
+        XCTAssertTrue(aiTabSource.contains("Task {\n                        await settingsViewModel.testTTSPlayback("))
+        XCTAssertTrue(aiTabSource.contains("AppRuntimeFactory.makeTextToSpeechPreviewer(settings: settingsViewModel.settings)"))
+        XCTAssertFalse(aiTabSource.contains("TTS playback adapter is not connected in this slice."))
+        XCTAssertFalse(aiTabSource.contains("TTSProvider.systemSpeech.unavailableReason"))
+        XCTAssertFalse(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-unavailable\")"))
+    }
+
+    func testSettingsExposesLocalSTTReadinessBeforeRuntimeSelection() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/AppSettings.swift")
+        let aiTabStart = try XCTUnwrap(appSource.range(of: "private var aiSettingsTab: some View"))
+        let syncTabStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
+        let aiTabSource = String(appSource[aiTabStart.lowerBound..<syncTabStart.lowerBound])
+
+        XCTAssertTrue(aiTabSource.contains("LocalSTTProviderStatusRow(row: settingsViewModel.localSTTProviderReadinessRow)"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-local-stt-readiness-row\")"))
+        XCTAssertTrue(appSource.contains("Text(localizedSettingsDisplay(row.statusLabel))"))
+        XCTAssertTrue(appSource.contains("private struct LocalSTTProviderStatusRow"))
+        XCTAssertTrue(appSource.contains("STT provider readiness"))
+        XCTAssertTrue(coreSource.contains("run the local voice runtime smoke"))
     }
 
     func testSettingsOverviewSurfacesProValueWithoutOpeningSyncOrMCPTabs() throws {
@@ -1509,7 +3352,9 @@ final class AppExperienceSourceTests: XCTestCase {
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
 
-        XCTAssertTrue(appSource.contains("TabView {"))
+        XCTAssertTrue(appSource.contains("TabView(selection: $selectedTab) {"))
+        XCTAssertTrue(appSource.contains("private enum SettingsTab: String"))
+        XCTAssertTrue(appSource.contains("@State private var selectedTab: SettingsTab"))
         XCTAssertTrue(appSource.contains("private var overviewSettingsTab: some View"))
         XCTAssertTrue(appSource.contains("private var appearanceSettingsTab: some View"))
         XCTAssertTrue(appSource.contains("private var aiSettingsTab: some View"))
@@ -1671,6 +3516,49 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains(".local/share/opencode/auth.json"))
     }
 
+    func testRuntimeSTTFactoryUsesWhisperCppProviderWithoutOpenAIFallback() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeSpeechToTextProvider"))
+        let factorySource = String(appSource[factoryStart.lowerBound..<appSource.endIndex])
+
+        XCTAssertTrue(factorySource.contains("case .localWhisperCpp:"))
+        XCTAssertTrue(factorySource.contains("WhisperCppLocalSTTConfiguration("))
+        XCTAssertTrue(factorySource.contains("normalizedSettings.whisperCppExecutablePath ?? \"\""))
+        XCTAssertTrue(factorySource.contains("WhisperCppLocalSTTProvider(configuration: configuration)"))
+        XCTAssertFalse(factorySource.contains(".openAITranscribe, .appleSpeechAnalyzer, .localWhisperKit, .localWhisperCpp"))
+    }
+
+    func testRuntimeTTSFactoryUsesKokoroProviderWithoutSystemSpeechFallback() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let runtimeFactoryStart = try XCTUnwrap(appSource.range(of: "enum AppTextToSpeechRuntimeFactory"))
+        let runtimeFactorySource = String(appSource[runtimeFactoryStart.lowerBound..<appSource.endIndex])
+
+        XCTAssertTrue(appSource.contains("static func makeTextToSpeechPreviewer(settings: AppSettings) -> any TextToSpeechPreviewing"))
+        XCTAssertTrue(appSource.contains("AppTextToSpeechRuntimeFactory.makePreviewer(settings: settings)"))
+        XCTAssertTrue(runtimeFactorySource.contains("case .systemSpeech, .localKokoro:"))
+        XCTAssertTrue(runtimeFactorySource.contains("KokoroLocalTTSConfiguration("))
+        XCTAssertTrue(runtimeFactorySource.contains("normalizedSettings.kokoroExecutablePath ?? \"\""))
+        XCTAssertTrue(runtimeFactorySource.contains("normalizedSettings.ttsLanguageCode"))
+        XCTAssertTrue(runtimeFactorySource.contains("normalizedSettings.ttsVoiceID"))
+        XCTAssertTrue(runtimeFactorySource.contains("KokoroLocalTTSProvider(configuration: configuration)"))
+        XCTAssertTrue(runtimeFactorySource.contains("TemporaryDirectoryTextToSpeechPreviewer("))
+        XCTAssertTrue(runtimeFactorySource.contains("TextToSpeechPreviewService("))
+        XCTAssertTrue(runtimeFactorySource.contains("AVFoundationSpeechAudioPlayer()"))
+        XCTAssertTrue(runtimeFactorySource.contains("temporaryDirectory: temporaryDirectory"))
+        XCTAssertFalse(runtimeFactorySource.contains("AVSpeechSynthesizer"))
+    }
+
+    func testAVFoundationSpeechAudioPlayerUsesAudioPlayerInsteadOfSystemSpeech() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Adapters/AVFoundationSpeechAudioPlayer.swift")
+
+        XCTAssertTrue(source.contains("AVAudioPlayer"))
+        XCTAssertTrue(source.contains("SpeechAudioPlaying"))
+        XCTAssertTrue(source.contains("TemporaryDirectoryTextToSpeechPreviewer"))
+        XCTAssertTrue(source.contains("try? FileManager.default.removeItem(at: temporaryDirectory)"))
+        XCTAssertTrue(source.contains("UserFacingErrorMessageSanitizer.message("))
+        XCTAssertFalse(source.contains("AVSpeechSynthesizer"))
+    }
+
     func testRuntimeLLMFactoryUsesGroqCompatibleProviderWithoutOpenAIFallback() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeLLMProvider"))
@@ -1684,10 +3572,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(factorySource.contains(".openaiResponses,\n             .groqOpenAICompatible"))
     }
 
-    func testSettingsSurfaceOnlyShowsReleaseReadySTTProviders() throws {
+    func testSettingsSurfaceUsesRuntimeReadySTTProviderPicker() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
-        XCTAssertTrue(appSource.contains("STTProvider.releaseReadyCases"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.selectableSTTProviders"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.setWhisperCppExecutablePath($0)"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.settings.whisperCppExecutablePath ?? \"\""))
+        XCTAssertFalse(appSource.contains("ForEach(STTProvider.releaseReadyCases"))
         XCTAssertFalse(appSource.contains("ForEach(STTProvider.allCases"))
         XCTAssertFalse(appSource.contains("AppleSpeechAnalyzerProvider()"))
         XCTAssertFalse(appSource.contains("WhisperKitProvider()"))
@@ -1702,14 +3593,111 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("@StateObject private var syncViewModel: SyncSettingsViewModel"))
         XCTAssertTrue(appSource.contains("Section(\"Sync\")"))
         XCTAssertTrue(appSource.contains("syncViewModel.startSync()"))
-        XCTAssertTrue(appSource.contains("KeychainEntitlementStore(secretStore: makeSecretStore())"))
+        XCTAssertTrue(appSource.contains("makeEntitlementStore(secretStore: secretStore)"))
         XCTAssertTrue(appSource.contains("if let syncUnavailableLabel = syncViewModel.syncUnavailableLabel"))
-        XCTAssertTrue(appSource.contains("Label(syncUnavailableLabel, systemImage: \"lock\")"))
+        XCTAssertTrue(appSource.contains("Label(localizedSettingsDisplay(syncUnavailableLabel), systemImage: \"lock\")"))
         XCTAssertTrue(syncSource.contains("public var syncUnavailableLabel: String?"))
         XCTAssertTrue(syncSource.contains("status.state == .idle"))
         XCTAssertTrue(syncSource.contains("throw SyncServiceError.syncBackendNotConfigured"))
+        XCTAssertTrue(entitlementSource.contains("case sync"))
         XCTAssertTrue(entitlementSource.contains("case externalSync"))
+        XCTAssertTrue(entitlementSource.contains("case cloudRelay"))
+        XCTAssertTrue(entitlementSource.contains("case hostedMCPEndpoint"))
+        XCTAssertTrue(entitlementSource.contains("case documentScopedAutomation"))
+        XCTAssertTrue(entitlementSource.contains("case harnessHistory"))
+        XCTAssertTrue(entitlementSource.contains("case externalConnectorWrite"))
         XCTAssertFalse(syncSource.contains("return SyncStartResult(startedAt: Date())"))
+    }
+
+    func testSettingsGoogleCalendarRowUsesRuntimeReadinessAndOAuthActions() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let syncStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
+        let providerStart = try XCTUnwrap(appSource.range(of: "@ViewBuilder\n    private var selectedProviderConfigurationFields"))
+        let syncSource = String(appSource[syncStart.lowerBound..<providerStart.lowerBound])
+
+        XCTAssertTrue(appSource.contains("let googleCalendarStatusProvider: () -> GoogleCalendarRuntimeSyncStatus"))
+        XCTAssertTrue(appSource.contains("let googleCalendarOAuthConnector: (any GoogleCalendarOAuthConnecting)?"))
+        XCTAssertTrue(appSource.contains("let googleCalendarOAuthDisconnecter: (any GoogleCalendarOAuthDisconnecting)?"))
+        XCTAssertTrue(appSource.contains("let googleCalendarListProvider: (any GoogleCalendarListProviding)?"))
+        XCTAssertTrue(appSource.contains("@State private var googleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus?"))
+        XCTAssertTrue(appSource.contains("@State private var googleCalendarSetupMessage: String?"))
+        XCTAssertTrue(appSource.contains("@State private var isGoogleCalendarOAuthAuthorizationInProgress = false"))
+        XCTAssertTrue(appSource.contains("@State private var isConfirmingGoogleCalendarOAuthDisconnect = false"))
+        XCTAssertTrue(appSource.contains("@State private var isLoadingGoogleCalendarList = false"))
+        XCTAssertTrue(appSource.contains("@State private var googleCalendarListOptions: [GoogleCalendarRuntimeCalendarListEntry] = []"))
+        XCTAssertTrue(appSource.contains("@State private var googleCalendarListLoadGeneration = 0"))
+        XCTAssertTrue(appSource.contains("_googleCalendarSyncStatus = State(initialValue: nil)"))
+        XCTAssertTrue(appSource.contains("private var googleCalendarSettingsReadinessRow: GoogleCalendarSettingsReadinessRow"))
+        XCTAssertTrue(appSource.contains("GoogleCalendarSettingsReadinessRow(status: googleCalendarSyncStatus)"))
+        XCTAssertTrue(syncSource.contains("status: googleCalendarSettingsReadinessRow.statusLabel"))
+        XCTAssertTrue(syncSource.contains("detail: googleCalendarSettingsReadinessRow.detailLabel"))
+        XCTAssertTrue(syncSource.contains("nextAction: googleCalendarSettingsReadinessRow.nextActionLabel"))
+        XCTAssertTrue(syncSource.contains("privacyBoundary: googleCalendarSettingsReadinessRow.privacyBoundaryLabel"))
+        XCTAssertTrue(syncSource.contains("statusActionLabel: googleCalendarSettingsReadinessRow.statusCheckActionLabel"))
+        XCTAssertTrue(syncSource.contains("onStatusAction: refreshGoogleCalendarSettingsStatus"))
+        XCTAssertTrue(appSource.contains("settings-google-calendar-readiness-check"))
+        XCTAssertTrue(appSource.contains("settings-google-calendar-readiness-status"))
+        XCTAssertTrue(appSource.contains("settings-google-calendar-readiness-detail"))
+        XCTAssertTrue(syncSource.contains("\"Google Calendar ID\""))
+        XCTAssertTrue(syncSource.contains("settingsViewModel.settings.googleCalendarID"))
+        XCTAssertTrue(syncSource.contains("settingsViewModel.setGoogleCalendarID($0)"))
+        XCTAssertTrue(syncSource.contains("GoogleCalendarSettingsSaveControls("))
+        XCTAssertTrue(syncSource.contains("settings-google-calendar-id-save-flow"))
+        XCTAssertTrue(syncSource.contains("settings-google-calendar-id"))
+        XCTAssertTrue(syncSource.contains("saveCalendarID: saveGoogleCalendarIDSetting"))
+        XCTAssertTrue(appSource.contains("private func saveGoogleCalendarIDSetting()"))
+        XCTAssertTrue(syncSource.contains("Picker(\"Available Calendar\""))
+        XCTAssertTrue(syncSource.contains("ForEach(calendarListOptions)"))
+        XCTAssertTrue(syncSource.contains("settings-google-calendar-picker"))
+        XCTAssertTrue(syncSource.contains("loadCalendarList: loadGoogleCalendarList"))
+        XCTAssertTrue(syncSource.contains("settings-google-calendar-list-load"))
+        XCTAssertTrue(syncSource.contains("isCalendarListLoadDisabled: isLoadingGoogleCalendarList || isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarListProvider == nil"))
+        XCTAssertTrue(appSource.contains("private func loadGoogleCalendarList()"))
+        XCTAssertTrue(appSource.contains("guard !isGoogleCalendarOAuthAuthorizationInProgress else"))
+        XCTAssertTrue(appSource.contains("private func invalidateGoogleCalendarListOptions()"))
+        XCTAssertTrue(appSource.contains("generation == googleCalendarListLoadGeneration"))
+        XCTAssertTrue(appSource.contains("invalidateGoogleCalendarListOptions()"))
+        XCTAssertTrue(appSource.contains("googleCalendarListProvider.listWritableCalendars()"))
+        XCTAssertTrue(appSource.contains("Google Calendar list loaded. Choose a calendar, then save."))
+        XCTAssertTrue(appSource.contains("Google Calendar list is not available in this build."))
+        XCTAssertTrue(appSource.contains("Reconnect Google Calendar with OAuth before loading calendars."))
+        XCTAssertTrue(appSource.contains("Wait for Google Calendar OAuth authorization to finish before loading calendars."))
+        XCTAssertTrue(appSource.contains("Connect with OAuth authorization"))
+        XCTAssertTrue(syncSource.contains("Button(localizedSettingsDisplay(googleCalendarOAuthActionLabel))"))
+        XCTAssertTrue(syncSource.contains("startGoogleCalendarOAuthAuthorization()"))
+        XCTAssertTrue(appSource.contains("isConfirmingGoogleCalendarOAuthDisconnect = true"))
+        XCTAssertTrue(appSource.contains("disconnectGoogleCalendarOAuthAuthorization()"))
+        XCTAssertTrue(appSource.contains("settings-google-calendar-oauth-disconnect-confirm"))
+        XCTAssertTrue(appSource.contains("This removes local Google Calendar OAuth tokens from Keychain. Tasks and saved calendar ID stay unchanged."))
+        XCTAssertTrue(syncSource.contains("settings-google-calendar-oauth-disconnect"))
+        XCTAssertTrue(syncSource.contains("role: .destructive"))
+        XCTAssertLessThan(
+            try XCTUnwrap(syncSource.range(of: "settings-google-calendar-id-save")).lowerBound,
+            try XCTUnwrap(syncSource.range(of: "settings-google-calendar-list-load")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(syncSource.range(of: "GoogleCalendarSettingsSaveControls(")).lowerBound,
+            try XCTUnwrap(syncSource.range(of: "ExternalConnectorScopeRow(\n                    name: \"Google Calendar\"")).lowerBound
+        )
+        XCTAssertTrue(appSource.contains("googleCalendarOAuthConnector.startAuthorization"))
+        XCTAssertTrue(appSource.contains("googleCalendarOAuthDisconnecter.disconnect()"))
+        XCTAssertTrue(appSource.contains("GoogleCalendarAppRuntimeFactory.disconnectOAuthCredential"))
+        XCTAssertTrue(appSource.contains("OAuth authorization opens in the system browser with PKCE. Tokens stay in Keychain before calendar writes are enabled."))
+        XCTAssertTrue(appSource.contains("Google Calendar OAuth disconnected. Tokens were removed from Keychain."))
+        XCTAssertTrue(syncSource.contains("settings-google-calendar-oauth-setup-message"))
+        XCTAssertTrue(appSource.contains("GoogleCalendarOAuthAuthenticationSessionController"))
+        XCTAssertTrue(appSource.contains("ASWebAuthenticationSession("))
+        XCTAssertTrue(appSource.contains("SOLOPM_GOOGLE_CALENDAR_OAUTH_CLIENT_ID"))
+        XCTAssertTrue(appSource.contains("SoloPMGoogleCalendarOAuthClientID"))
+        XCTAssertTrue(appSource.contains("GoogleCalendarAppRuntimeFactory.makeCalendarListClient"))
+        XCTAssertTrue(appSource.contains("oauthClientID: googleCalendarOAuthClientID()"))
+        XCTAssertTrue(appSource.contains("let runtimeSettings = loadRuntimeAppSettings()"))
+        XCTAssertTrue(appSource.contains("calendarID: runtimeSettings.googleCalendarID"))
+        XCTAssertTrue(appSource.contains("timeZoneIdentifier: runtimeSettings.timeZoneIdentifier"))
+        XCTAssertFalse(syncSource.contains("The connect flow is not available in this build yet."))
+        XCTAssertFalse(syncSource.contains("settingsViewModel.setTransientErrorMessage"))
+        XCTAssertFalse(syncSource.contains("Google Calendar API Key"))
+        XCTAssertFalse(syncSource.contains("geminiAPIKeyInput"))
     }
 
     func testSyncSettingsTabSurfacesPaidValueAndLocalBoundaryBeforeToggle() throws {
@@ -1748,6 +3736,74 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(syncSource.contains("name: \"GitHub Issues\""))
         XCTAssertTrue(syncSource.contains("Pro unlocks external sync; import/export JSON stays local."))
         XCTAssertFalse(appSource.contains("import SoloPMExternalConnectors"))
+    }
+
+    func testAppRuntimeWiresGoogleCalendarSyncWithoutFakeUnavailableStore() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let factoryStart = try XCTUnwrap(appSource.range(of: "let googleCalendarSync = makeSettingsBackedGoogleCalendarSyncController("))
+        let factoryEnd = try XCTUnwrap(appSource.range(of: "return ProjectBoardViewModel(", range: factoryStart.lowerBound..<appSource.endIndex))
+        let factorySource = String(appSource[factoryStart.lowerBound..<factoryEnd.lowerBound])
+        let settingsBackedStart = try XCTUnwrap(appSource.range(of: "private static func makeSettingsBackedGoogleCalendarSyncController("))
+        let settingsBackedEnd = try XCTUnwrap(appSource.range(of: "private static func makeGoogleCalendarSyncController(", range: settingsBackedStart.lowerBound..<appSource.endIndex))
+        let settingsBackedSource = String(appSource[settingsBackedStart.lowerBound..<settingsBackedEnd.lowerBound])
+        let helperStart = try XCTUnwrap(appSource.range(of: "private static func makeGoogleCalendarSyncController("))
+        let helperEnd = try XCTUnwrap(appSource.range(of: "private static func makeAuditLogger()", range: helperStart.lowerBound..<appSource.endIndex))
+        let helperSource = String(appSource[helperStart.lowerBound..<helperEnd.lowerBound])
+
+        XCTAssertTrue(appSource.contains("import SoloPMGoogleCalendarRuntime"))
+        XCTAssertTrue(appSource.contains("private static func makeEntitlementStore(secretStore: any SecretStore) -> KeychainEntitlementStore"))
+        XCTAssertTrue(appSource.contains("private static func makeLocalLicenseVerifier() -> any LocalLicenseVerifier"))
+        XCTAssertTrue(appSource.contains("SoloPMLocalLicensePublicKey"))
+        XCTAssertTrue(appSource.contains("SignedLocalLicenseVerifier(publicKeyBase64: publicKeyBase64)"))
+        XCTAssertTrue(appSource.contains("let entitlementStore = makeEntitlementStore(secretStore: secretStore)"))
+        XCTAssertTrue(factorySource.contains("makeSettingsBackedGoogleCalendarSyncController("))
+        XCTAssertTrue(settingsBackedSource.contains("SettingsBackedGoogleCalendarRuntimeSync("))
+        XCTAssertTrue(settingsBackedSource.contains("settingsStore: UserDefaultsAppSettingsStore()"))
+        XCTAssertTrue(settingsBackedSource.contains("GoogleCalendarAppRuntimeFactory.syncStatus("))
+        XCTAssertTrue(settingsBackedSource.contains("calendarID: settings.googleCalendarID"))
+        XCTAssertTrue(settingsBackedSource.contains("timeZoneIdentifier: settings.timeZoneIdentifier"))
+        XCTAssertTrue(settingsBackedSource.contains("oauthClientID: googleCalendarOAuthClientID()"))
+        XCTAssertTrue(settingsBackedSource.contains("syncFactory:"))
+        XCTAssertFalse(factorySource.contains("let runtimeSettings = loadRuntimeAppSettings()"))
+        XCTAssertTrue(helperSource.contains("GoogleCalendarAppRuntimeFactory.makeSyncController("))
+        XCTAssertTrue(helperSource.contains("idempotencyNamespaceStore:"))
+        XCTAssertTrue(helperSource.contains("calendarID: calendarID"))
+        XCTAssertTrue(helperSource.contains("oauthClientID: googleCalendarOAuthClientID()"))
+        XCTAssertFalse(helperSource.contains("calendarID: \"primary\""))
+        XCTAssertFalse(factorySource.contains("UnavailableGoogleCalendarRuntimeCredentialStatusStore()"))
+        XCTAssertFalse(factorySource.contains("taskSyncService: nil"))
+        XCTAssertFalse(helperSource.contains("UnavailableGoogleCalendarRuntimeCredentialStatusStore()"))
+        XCTAssertFalse(helperSource.contains("taskSyncService: nil"))
+    }
+
+    func testProjectBoardGoogleCalendarSyncMenuUsesRuntimeReadinessInsteadOfHardcodedDisabled() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let menuStart = try XCTUnwrap(boardSource.range(of: "Button {\n                    isGoogleCalendarSyncApprovalPresented = true"))
+        let menuEnd = try XCTUnwrap(boardSource.range(of: "} label: {\n                Label(\"Integrations\"", range: menuStart.lowerBound..<boardSource.endIndex))
+        let googleCalendarMenuSource = String(boardSource[menuStart.lowerBound..<menuEnd.lowerBound])
+
+        XCTAssertTrue(boardSource.contains("@State private var isGoogleCalendarSyncApprovalPresented = false"))
+        XCTAssertTrue(googleCalendarMenuSource.contains("isGoogleCalendarSyncApprovalPresented = true"))
+        XCTAssertTrue(googleCalendarMenuSource.contains(".disabled(!viewModel.canSyncGoogleCalendar)"))
+        XCTAssertTrue(googleCalendarMenuSource.contains(".help(viewModel.googleCalendarSyncHelp)"))
+        XCTAssertFalse(googleCalendarMenuSource.contains(".disabled(true)"))
+        XCTAssertFalse(boardSource.contains("syncDueTasksToGoogleCalendar(approvalToken: nil)"))
+        XCTAssertFalse(boardSource.contains("ProjectBoardIntegrationUnavailableError.googleCalendarOAuthNotConfigured"))
+    }
+
+    func testProjectBoardGoogleCalendarSyncRequiresDialogApprovalToken() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let dialogStart = try XCTUnwrap(boardSource.range(of: ".confirmationDialog(\n            \"Sync due tasks to Google Calendar?\""))
+        let dialogEnd = try XCTUnwrap(boardSource.range(of: "private var inspectorBinding", range: dialogStart.lowerBound..<boardSource.endIndex))
+        let dialogSource = String(boardSource[dialogStart.lowerBound..<dialogEnd.lowerBound])
+
+        XCTAssertTrue(dialogSource.contains("isPresented: $isGoogleCalendarSyncApprovalPresented"))
+        XCTAssertTrue(dialogSource.contains("Button(\"Approve Google Calendar Sync\")"))
+        XCTAssertTrue(dialogSource.contains("approveGoogleCalendarSync()"))
+        XCTAssertTrue(dialogSource.contains("Button(\"Cancel\", role: .cancel)"))
+        XCTAssertTrue(dialogSource.contains("project-board-google-calendar-sync-approval-confirm"))
+        XCTAssertTrue(dialogSource.contains("project-board-google-calendar-sync-approval-cancel"))
+        XCTAssertTrue(boardSource.contains("viewModel.syncDueTasksToGoogleCalendar(approvalToken: UUID().uuidString)"))
     }
 
     func testSettingsSurfaceShowsInlineMCPServerRowsWithCheckActions() throws {
@@ -1841,7 +3897,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let windowMetadataScript = try readPackageFile("script/ui_evidence_window_metadata.swift")
         let contentCheckScript = try readPackageFile("script/ui_evidence_content_check.swift")
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
         let evidence = try readPackageFile("docs/release/evidence/ui-screenshots.md")
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
@@ -1850,12 +3906,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("CFFIXED_USER_HOME"))
         XCTAssertTrue(script.contains("SOLOPM_UI_EVIDENCE_HOME"))
         XCTAssertTrue(script.contains("SOLOPM_UI_EVIDENCE_TMPDIR"))
+        XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH=$DATABASE_PATH"))
+        XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
+        XCTAssertTrue(script.contains("SOLOPM_FORCE_PROJECT_BOARD_FALLBACK=1"))
         XCTAssertTrue(script.contains("solopm.appearancePreference"))
         XCTAssertTrue(script.contains("ui_evidence_window_metadata.swift"))
         XCTAssertTrue(windowMetadataScript.contains("CGWindowListCopyWindowInfo"))
         XCTAssertTrue(script.contains("wait_for_window_capture_metadata"))
         XCTAssertTrue(script.contains("position_window_for_capture"))
-        XCTAssertTrue(script.contains(#"tell application \"$APP_NAME\" to activate"#))
+        XCTAssertTrue(script.contains("Avoid LaunchServices activation"))
+        XCTAssertTrue(script.contains("tell application \"System Events\""))
+        XCTAssertFalse(script.contains(#"tell application \"$APP_NAME\" to activate"#))
         XCTAssertTrue(script.contains("screencapture -x -l"))
         XCTAssertTrue(script.contains("screencapture -x -R"))
         XCTAssertTrue(script.contains("assert_screenshot_has_visible_content"))
@@ -1873,42 +3934,71 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("persist_project_board_selection"))
         XCTAssertTrue(script.contains("write_app_preference"))
         XCTAssertTrue(script.contains("HOME=\"$EVIDENCE_HOME\""))
+        XCTAssertTrue(script.contains("open_args+=(--env \"$env_arg\")"))
+        XCTAssertTrue(script.contains("/usr/bin/open \"${open_args[@]}\""))
         XCTAssertTrue(script.contains("/usr/bin/defaults write \"$BUNDLE_IDENTIFIER\""))
         XCTAssertTrue(script.contains("solopm.projectBoard.selectedDestination"))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$PROJECT_BOARD_SELECTION_OVERRIDE"))
+        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID=$PROJECT_BOARD_SELECTED_TASK_OVERRIDE"))
         XCTAssertTrue(script.contains("SOLOPM_APPEARANCE_PREFERENCE=$APPEARANCE_OVERRIDE"))
         XCTAssertTrue(script.contains("project:$project_id"))
+        XCTAssertTrue(script.contains("INBOX_VOICE_TASK_OVERRIDE=\"$inbox_voice_task_id\""))
         XCTAssertTrue(script.contains("project-board-light.png"))
         XCTAssertTrue(script.contains("project-board-dark.png"))
         XCTAssertTrue(script.contains("project-board-system.png"))
+        XCTAssertTrue(script.contains("capture_project_board_destination light \"$PROJECT_BOARD_SELECTION_OVERRIDE\" \"$LIGHT_SCREENSHOT\" \"Project Board\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination dark \"$PROJECT_BOARD_SELECTION_OVERRIDE\" \"$DARK_SCREENSHOT\" \"Project Board\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination system \"$PROJECT_BOARD_SELECTION_OVERRIDE\" \"$SYSTEM_SCREENSHOT\" \"Project Board\""))
         XCTAssertTrue(script.contains("settings-appearance-light.png"))
         XCTAssertTrue(script.contains("settings-appearance-dark.png"))
         XCTAssertTrue(script.contains("settings-overview-light.png"))
         XCTAssertTrue(script.contains("settings-overview-dark.png"))
         XCTAssertTrue(script.contains("settings-mcp-light.png"))
         XCTAssertTrue(script.contains("settings-mcp-dark.png"))
+        XCTAssertTrue(script.contains("SCHEDULE_COCKPIT=1"))
+        XCTAssertTrue(script.contains("write_schedule_cockpit_evidence_file"))
+        XCTAssertTrue(script.contains("script/capture_ui_evidence.sh --schedule-cockpit"))
+        XCTAssertTrue(script.contains("schedule-week-time-axis-grid=>Schedule time axis grid"))
+        XCTAssertTrue(script.contains("SCHEDULE_COCKPIT_TARGET_MARKERS=\"schedule-workflow=>Schedule|schedule-week-grid=>schedule-week-grid|schedule-week-time-axis-grid=>schedule-week-time-axis-grid\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination light schedule \"$SCHEDULE_LIGHT_SCREENSHOT\" \"Schedule cockpit\" \"$SCHEDULE_COCKPIT_TARGET_MARKERS\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination dark schedule \"$SCHEDULE_DARK_SCREENSHOT\" \"Schedule cockpit\" \"$SCHEDULE_COCKPIT_TARGET_MARKERS\""))
+        XCTAssertTrue(script.contains("if [[ \"$SCHEDULE_COCKPIT\" == \"1\" ]]"))
+        XCTAssertTrue(script.contains("/usr/bin/env \"${env_args[@]}\" \"$APP_BINARY\" >/dev/null 2>&1 &"))
+        XCTAssertTrue(script.contains("if [[ \"$SCHEDULE_COCKPIT\" != \"1\" ]]"))
         XCTAssertTrue(script.contains("open_settings_overview_tab"))
-        XCTAssertTrue(script.contains("click button \"Overview\" of toolbar 1"))
         XCTAssertTrue(script.contains("capture_settings_overview"))
         XCTAssertTrue(script.contains("open_settings_appearance_tab"))
-        XCTAssertTrue(script.contains("click button \"Appearance\" of toolbar 1"))
         XCTAssertTrue(script.contains("capture_settings_appearance"))
         XCTAssertTrue(script.contains("open_mcp_settings_tab"))
-        XCTAssertTrue(script.contains("click button \"MCP\" of toolbar 1"))
         XCTAssertTrue(script.contains("capture_mcp_settings_appearance"))
+        XCTAssertTrue(script.contains("SOLOPM_SETTINGS_EVIDENCE_TAB=$SETTINGS_TAB_OVERRIDE"))
         XCTAssertTrue(script.contains("docs/release/evidence/ui-screenshots"))
         XCTAssertTrue(script.contains("Screen Recording permission"))
         XCTAssertFalse(script.contains("OpenAI API Key"))
-        XCTAssertFalse(script.contains("sk-"))
+        XCTAssertFalse(script.contains("sk-proj-"))
+        XCTAssertFalse(script.contains("sk-live-"))
 
         XCTAssertTrue(boardSource.contains("@AppStorage(ProjectBoardSelectionPersistence.storageKey)"))
         XCTAssertTrue(boardSource.contains("restoreSelectedDestinationIfNeeded()"))
         XCTAssertTrue(boardSource.contains("persistSelectedDestination(_ destination: ProjectBoardSidebarDestination?)"))
-        XCTAssertTrue(workflowSource.contains("enum ProjectBoardSelectionPersistence"))
-        XCTAssertTrue(workflowSource.contains("static let storageKey = \"solopm.projectBoard.selectedDestination\""))
-        XCTAssertTrue(workflowSource.contains("static let environmentOverrideKey = \"SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION\""))
+        XCTAssertTrue(persistenceSource.contains("public enum ProjectBoardSelectionPersistence"))
+        XCTAssertTrue(persistenceSource.contains("static let storageKey = \"solopm.projectBoard.selectedDestination\""))
+        XCTAssertTrue(persistenceSource.contains("static let environmentOverrideKey = \"SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION\""))
+        XCTAssertTrue(persistenceSource.contains("public enum ProjectBoardTaskSelectionPersistence"))
+        XCTAssertTrue(persistenceSource.contains("static let environmentOverrideKey = \"SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID\""))
         XCTAssertTrue(boardSource.contains("ProjectBoardSelectionPersistence.environmentOverrideRawValue"))
-        XCTAssertTrue(workflowSource.contains("case \"project\""))
+        XCTAssertTrue(boardSource.contains("applySelectedTaskOverrideIfNeeded()"))
+        let destinationChangeStart = try XCTUnwrap(boardSource.range(of: ".onChange(of: selectedDestination)"))
+        let destinationChangeEnd = try XCTUnwrap(boardSource.range(
+            of: ".fileExporter",
+            range: destinationChangeStart.upperBound..<boardSource.endIndex
+        ))
+        let destinationChangeSource = String(boardSource[destinationChangeStart.lowerBound..<destinationChangeEnd.lowerBound])
+        let destinationApply = try XCTUnwrap(destinationChangeSource.range(of: "applySelectedDestination(destination)"))
+        let taskOverrideApply = try XCTUnwrap(destinationChangeSource.range(of: "applySelectedTaskOverrideIfNeeded()"))
+        XCTAssertLessThan(destinationApply.lowerBound, taskOverrideApply.lowerBound)
+        XCTAssertTrue(boardSource.contains("ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID"))
+        XCTAssertTrue(persistenceSource.contains("case \"project\""))
 
         XCTAssertTrue(evidence.contains("script/capture_ui_evidence.sh"))
         XCTAssertTrue(evidence.contains("- Source commit: `"))
@@ -1922,7 +4012,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(evidence.contains("settings-overview-dark.png"))
         XCTAssertTrue(evidence.contains("settings-mcp-light.png"))
         XCTAssertTrue(evidence.contains("settings-mcp-dark.png"))
-        XCTAssertTrue(evidence.contains("Manual review: passed for Project Board sidebar/cards/inspector, Settings Overview Pro Value row, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast"))
+        XCTAssertTrue(evidence.contains("Manual review: passed for Project Board sidebar/cards/inspector, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Done analytics, Settings integrations, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast"))
         XCTAssertTrue(audit.contains("Task card screenshot証跡は生成・目視確認済み"))
         XCTAssertTrue(audit.contains("Settings Overview Pro Value rowのスクリーンショット証跡は生成・目視確認済み"))
         XCTAssertTrue(audit.contains("MCP server別の接続状態証跡は生成・目視確認済み"))
@@ -1936,6 +4026,175 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] `release_readiness_report.sh` は `ui-screenshots.md` だけでなく Project Board Light/Dark/System、Settings Overview Light/Dark、Settings Appearance Light/Dark、MCP Settings Light/Dark PNG の存在、サイズ、寸法を検証し、欠落や小さすぎる画像をblockerにする。"))
         XCTAssertTrue(phase.contains("[x] Light/Dark/System切替後にカード、サイドバー、インスペクタのコントラストが破綻しないことをスクリーンショットで確認する。"))
         XCTAssertTrue(phase.contains("[x] `ui-samples/` を参考にした画面密度・インスペクタ・Settingsの改善がスクリーンショットで検証されている。"))
+    }
+
+    func testUIScreenshotCaptureVerifiesTargetDestinationBeforeScreenshot() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+        let axMarkerScript = try readPackageFile("script/ui_evidence_ax_marker_check.swift")
+        let visualBaselines = try readPackageFile("docs/quality/visual-baselines.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+
+        XCTAssertTrue(script.contains("assert_project_board_destination_ready"))
+        XCTAssertTrue(script.contains("wait_for_project_board_destination"))
+        XCTAssertTrue(script.contains("SOLOPM_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS"))
+        XCTAssertTrue(script.contains("ui_evidence_ax_marker_check.swift"))
+        XCTAssertTrue(script.contains("SOLOPM_UI_EVIDENCE_AX_MAX_NODES"))
+        XCTAssertTrue(script.contains("AX marker scans use a bounded Swift AX traversal"))
+        XCTAssertTrue(axMarkerScript.contains("AXUIElementCreateApplication"))
+        XCTAssertTrue(axMarkerScript.contains("AXUIElementSetMessagingTimeout"))
+        XCTAssertTrue(axMarkerScript.contains("SOLOPM_UI_EVIDENCE_AX_MAX_NODES"))
+        XCTAssertTrue(axMarkerScript.contains(#""AXIdentifier""#))
+        XCTAssertTrue(axMarkerScript.contains(#""AXVisibleChildren""#))
+        XCTAssertTrue(axMarkerScript.contains(#""AXContents""#))
+        XCTAssertTrue(axMarkerScript.contains("missing AX identifier marker"))
+        XCTAssertTrue(script.contains("project-board-detail=>Launch Readiness"))
+        XCTAssertTrue(script.contains("sidebar-destination-today=>Today"))
+        XCTAssertTrue(script.contains("today-assistant-rail=>Today"))
+        XCTAssertTrue(script.contains("schedule-workflow=>Schedule"))
+        XCTAssertTrue(script.contains("SCHEDULE_COCKPIT_TARGET_MARKERS"))
+        XCTAssertTrue(script.contains("done-workflow=>Done"))
+        XCTAssertTrue(script.contains("VOICE_COMMAND_TARGET_MARKERS"))
+        XCTAssertTrue(script.contains("voice-command-root=>Voice Command"))
+        XCTAssertTrue(script.contains("capture_project_board_destination light \"$PROJECT_BOARD_SELECTION_OVERRIDE\" \"$LIGHT_SCREENSHOT\" \"Project Board\" \"$PROJECT_BOARD_TARGET_MARKERS\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination light today \"$TODAY_LIGHT_SCREENSHOT\" \"Today\" \"$TODAY_TARGET_MARKERS\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination light schedule \"$SCHEDULE_LIGHT_SCREENSHOT\" \"Schedule cockpit\" \"$SCHEDULE_COCKPIT_TARGET_MARKERS\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination light schedule \"$SCHEDULE_LIGHT_SCREENSHOT\" \"Schedule cockpit\" \"$SCHEDULE_TARGET_MARKERS\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination light done \"$DONE_LIGHT_SCREENSHOT\" \"Done analytics\" \"$DONE_TARGET_MARKERS\""))
+        XCTAssertTrue(script.contains("--done-analytics"))
+        XCTAssertTrue(script.contains("DONE_ANALYTICS_TARGET_MARKERS"))
+        XCTAssertTrue(script.contains("\"$P0_WORKFLOWS\" == \"1\" || \"$SCHEDULE_COCKPIT\" == \"1\" || \"$DONE_ANALYTICS\" == \"1\""))
+        XCTAssertTrue(script.contains("write_done_analytics_evidence_file"))
+        XCTAssertTrue(script.contains("docs/release/evidence/done-analytics-screenshots.md"))
+        XCTAssertTrue(script.contains("inbox-action-panel=>Voice capture metadata available for Scheduled manual capture"))
+        XCTAssertTrue(script.contains("capture_project_board_destination light inbox \"$INBOX_VOICE_LIGHT_SCREENSHOT\" \"Inbox voice detail\" \"$INBOX_VOICE_TARGET_MARKERS\" \"$INBOX_VOICE_TASK_OVERRIDE\""))
+        XCTAssertTrue(script.contains("capture_voice_command_appearance light \"$VOICE_COMMAND_LIGHT_SCREENSHOT\""))
+        let captureDestinationStart = try XCTUnwrap(script.range(of: "capture_project_board_destination()"))
+        let captureDestinationEnd = try XCTUnwrap(script.range(
+            of: "capture_voice_command_appearance()",
+            range: captureDestinationStart.upperBound..<script.endIndex
+        ))
+        let captureDestinationSource = String(script[captureDestinationStart.lowerBound..<captureDestinationEnd.lowerBound])
+        let destinationPosition = try XCTUnwrap(captureDestinationSource.range(of: "position_window_for_capture"))
+        let destinationMarkerWait = try XCTUnwrap(captureDestinationSource.range(of: "wait_for_project_board_destination"))
+        XCTAssertLessThan(destinationPosition.lowerBound, destinationMarkerWait.lowerBound)
+        let windowMetadataStart = try XCTUnwrap(script.range(of: "wait_for_window_capture_metadata()"))
+        let targetMarkerStart = try XCTUnwrap(script.range(
+            of: "target_marker_present()",
+            range: windowMetadataStart.upperBound..<script.endIndex
+        ))
+        let windowMetadataSource = String(script[windowMetadataStart.lowerBound..<targetMarkerStart.lowerBound])
+        XCTAssertTrue(windowMetadataSource.contains("local deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))"))
+        XCTAssertTrue(windowMetadataSource.contains("[[ \"$SECONDS\" -ge \"$deadline\" ]]"))
+        XCTAssertFalse(windowMetadataSource.contains("for _ in {1..40}"))
+        XCTAssertTrue(visualBaselines.contains("Capture target validation"))
+        XCTAssertTrue(phase.contains("[x] `capture_ui_evidence.sh` は撮影前にAX identifierとseed固有テキストで対象画面を検証し、Today等の誤画面スクショをrelease evidenceとして保存しない。"))
+    }
+
+    func testUIScreenshotCaptureWaitsForPreviousSoloPMProcessBeforeRelaunching() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+
+        XCTAssertTrue(script.contains("PROJECT_BOARD_SELECTED_TASK_OVERRIDE=\"\""))
+        XCTAssertTrue(script.contains("wait_for_app_process_exit"))
+        XCTAssertTrue(script.contains("$APP_NAME did not terminate before next evidence capture."))
+        XCTAssertTrue(script.contains("wait_for_app_process_exit"))
+        XCTAssertTrue(script.contains("kill -0 \"$EVIDENCE_APP_PID\""))
+        XCTAssertTrue(script.contains("$APP_NAME did not launch as expected pid $EVIDENCE_APP_PID."))
+    }
+
+    func testPhase12UIScreenshotEvidenceCoversNewCockpitScreens() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+        let releaseReport = try readPackageFile("script/release_readiness_report.sh")
+        let evidence = try readPackageFile("docs/release/evidence/ui-screenshots.md")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+
+        let requiredScreenshots = [
+            "inbox-voice-light.png",
+            "inbox-voice-dark.png",
+            "projects-overview-light.png",
+            "projects-overview-dark.png",
+            "schedule-light.png",
+            "schedule-dark.png",
+            "done-light.png",
+            "done-dark.png",
+            "settings-integrations-light.png",
+            "settings-integrations-dark.png"
+        ]
+
+        for screenshot in requiredScreenshots {
+            XCTAssertTrue(script.contains(screenshot), "script missing \(screenshot)")
+            XCTAssertTrue(releaseReport.contains(screenshot), "release report missing \(screenshot)")
+            XCTAssertTrue(evidence.contains(screenshot), "evidence missing \(screenshot)")
+        }
+
+        XCTAssertTrue(script.contains("capture_project_board_destination light today \"$TODAY_LIGHT_SCREENSHOT\" \"Today\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination dark today \"$TODAY_DARK_SCREENSHOT\" \"Today\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination system today \"$TODAY_SYSTEM_SCREENSHOT\" \"Today\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination light schedule \"$SCHEDULE_LIGHT_SCREENSHOT\" \"Schedule cockpit\""))
+        XCTAssertFalse(script.contains("capture_project_board_destination light schedule \"$TODAY_LIGHT_SCREENSHOT\""))
+        XCTAssertTrue(script.contains("today=\"$(date +%Y-%m-%d)\""))
+        XCTAssertTrue(script.contains("'Review VoiceOver focus path', 'in_progress', 'Confirm project board to task card to inspector path before public alpha.', '$today'"))
+        XCTAssertTrue(script.contains("VALUES ('Inbox', 'active'"))
+        XCTAssertTrue(script.contains("title = 'Inbox' ORDER BY id DESC LIMIT 1"))
+        XCTAssertTrue(workflowSource.contains("ensureSelectedInboxTaskIsVisible"))
+
+        XCTAssertTrue(script.contains("capture_project_board_destination"))
+        XCTAssertTrue(script.contains("SOLOPM_OPEN_SETTINGS_ON_LAUNCH=1"))
+        XCTAssertTrue(script.contains("SETTINGS_TAB_OVERRIDE=\"Overview\""))
+        XCTAssertTrue(script.contains("SETTINGS_TAB_OVERRIDE=\"Appearance\""))
+        XCTAssertTrue(script.contains("SETTINGS_TAB_OVERRIDE=\"MCP\""))
+        XCTAssertTrue(appSource.contains("SOLOPM_OPEN_SETTINGS_ON_LAUNCH"))
+        XCTAssertTrue(appSource.contains("SOLOPM_SETTINGS_EVIDENCE_TAB"))
+        XCTAssertTrue(appSource.contains("settingsEvidenceWindow"))
+        XCTAssertTrue(appSource.contains("openSettingsWindowForEvidenceIfRequested"))
+        XCTAssertTrue(appSource.contains("SettingsView("))
+        XCTAssertTrue(script.contains("assert_phase12_seed_data"))
+        XCTAssertTrue(script.contains("Scheduled manual capture"))
+        XCTAssertTrue(script.contains("Done analytics sample"))
+        XCTAssertTrue(evidence.contains("Inbox voice detail"))
+        XCTAssertTrue(evidence.contains("Projects overview"))
+        XCTAssertTrue(evidence.contains("Schedule cockpit"))
+        XCTAssertTrue(evidence.contains("Done analytics"))
+        XCTAssertTrue(evidence.contains("Settings integrations"))
+    }
+
+    func testPhase12ClickPathAuditTracksNewWorkflowScreens() throws {
+        let audit = try readPackageFile("docs/ux/click-path-audit.md")
+
+        XCTAssertTrue(audit.contains("| Inbox voice detail | sidebar `Inbox` -> item row | 2 | Pass |"))
+        XCTAssertTrue(audit.contains("| Projects overview確認 | sidebar `Projects` | 1 | Pass |"))
+        XCTAssertTrue(audit.contains("| Schedule確認 | sidebar `Schedule` | 1 | Pass |"))
+        XCTAssertTrue(audit.contains("| Done確認 | sidebar `Done` | 1 | Pass |"))
+        XCTAssertTrue(audit.contains("| Settings integrations確認 | Settings -> Status Overview | 1 | Pass |"))
+        XCTAssertTrue(audit.contains("Phase 12 screenshot evidence"))
+        XCTAssertTrue(audit.contains("inbox-voice-light.png"))
+        XCTAssertTrue(audit.contains("projects-overview-light.png"))
+        XCTAssertTrue(audit.contains("schedule-light.png"))
+        XCTAssertTrue(audit.contains("done-light.png"))
+        XCTAssertTrue(audit.contains("settings-integrations-light.png"))
+    }
+
+    func testPhase12UICaptureScriptFailsWhenSeedDataIsMissing() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+
+        XCTAssertTrue(script.contains("assert_phase12_seed_data"))
+        XCTAssertTrue(script.contains("missing Phase 12 UI evidence seed"))
+        XCTAssertTrue(script.contains("SELECT COUNT(*) FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Scheduled manual capture'"))
+        XCTAssertTrue(script.contains("SELECT COUNT(*) FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Done analytics sample'"))
+        XCTAssertTrue(script.contains("SELECT COUNT(*) FROM projects WHERE source_command = 'ui-evidence' AND title = 'Completed Evidence Project'"))
+        XCTAssertTrue(script.contains("SELECT COUNT(*) FROM projects WHERE source_command = 'ui-evidence' AND title = 'Inbox'"))
+        XCTAssertTrue(script.contains("assert_phase12_seed_data \"$DATABASE_PATH\""))
+    }
+
+    func testPhase12UICaptureSeedUsesPersistedTaskStatusContract() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+
+        XCTAssertTrue(script.contains("assert_valid_seed_task_statuses"))
+        XCTAssertTrue(script.contains("unsupported Phase 12 UI evidence task status"))
+        XCTAssertTrue(script.contains("status NOT IN ('open', 'backlog', 'planned', 'in_progress', 'blocked', 'completed')"))
+        XCTAssertTrue(script.contains("'Done analytics sample', 'completed'"))
+        XCTAssertFalse(script.contains("'Done analytics sample', 'done'"))
+        XCTAssertTrue(script.contains("assert_valid_seed_task_statuses \"$DATABASE_PATH\""))
     }
 
     func testUIScreenshotCaptureFailureExplainsScreenRecordingAndWindowDiagnostics() throws {
@@ -2053,9 +4312,402 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] Investor reviewはUI screenshot証跡をpassed local evidenceとして扱い、VoiceOver、競合hands-on、署名/Notarization/Sparkle/Gatekeeperを残release blockerとして分離する。"))
     }
 
+    func testPhase12ExitAuditPinsLocalCockpitScopeAndRemainingManualGates() throws {
+        let audit = try readPackageFile("docs/ux/phase12-exit-audit.md")
+        let phase = try readPackageFile("tasks/Phase12-ProductCockpitUXParity.md")
+        let clickPath = try readPackageFile("docs/ux/click-path-audit.md")
+
+        XCTAssertTrue(audit.contains("Phase 12 Exit Audit"))
+        XCTAssertTrue(audit.contains("Status: passed for local/source/runtime-covered scope."))
+        XCTAssertTrue(audit.contains("Status: passed for implemented / deferred / non-goal classification."))
+        XCTAssertTrue(audit.contains("Status: passed for source/test-covered local scope."))
+        XCTAssertTrue(audit.contains("Status: passed for implemented cockpit surfaces."))
+        XCTAssertTrue(audit.contains("Status: passed for Phase 12 local cockpit scope."))
+
+        for sample in 1...7 {
+            XCTAssertTrue(audit.contains(String(format: "`ui-samples/%02d.png`", sample)))
+        }
+
+        for screen in ["Inbox", "Today", "Projects", "Project Detail", "Schedule", "Done", "Settings"] {
+            XCTAssertTrue(audit.contains("| \(screen) |"), "Missing Phase 12 screen role: \(screen)")
+            XCTAssertTrue(clickPath.contains(screen), "Click-path audit should cover \(screen)")
+        }
+
+        XCTAssertTrue(audit.contains("API keys and provider tokens stay behind Keychain-oriented settings flows"))
+        XCTAssertTrue(audit.contains("Calendar writes are not direct"))
+        XCTAssertTrue(audit.contains("MCP tools/call is gated by entitlement, tool policy, and explicit approval"))
+        XCTAssertTrue(audit.contains("Sync fails closed for Free/local-only and missing backend paths before upload"))
+        XCTAssertTrue(audit.contains("AI/LLM output is converted to Action Plan review/validation"))
+        XCTAssertTrue(audit.contains("Manual VoiceOver pass"))
+        XCTAssertTrue(audit.contains("Real 2-4 hour competitor hands-on evidence"))
+        XCTAssertTrue(audit.contains("Developer ID signing, notarization, Gatekeeper, stapling, Sparkle appcast signature"))
+
+        XCTAssertTrue(phase.contains("## Exit Gate"))
+        XCTAssertFalse(audit.contains("Status: passed for release-machine scope."))
+    }
+
+    func testPhase14UXAccessFlowAuditMapsHardToReachPathsToFollowUps() throws {
+        let clickPath = try readPackageFile("docs/ux/click-path-audit.md")
+
+        XCTAssertTrue(clickPath.contains("## Phase 14 access-flow map (2026-07-03)"))
+        XCTAssertTrue(clickPath.contains("| User goal | Access flow | Current reachability | Follow-up / PR |"))
+        XCTAssertTrue(clickPath.contains("app launch -> sidebar `Schedule` -> `Generate Draft` -> `Queue Calendar Apply` -> Assistant Queue approval"))
+        XCTAssertTrue(clickPath.contains("app launch -> sidebar `Done` -> completed task row -> `Follow Up` / `Reopen`"))
+        XCTAssertTrue(clickPath.contains("app launch -> `Settings...` / `Command+,` -> `Sync` -> Google Calendar save flow -> `Save Calendar` -> `Check Readiness`"))
+        XCTAssertTrue(clickPath.contains("app launch -> Voice Command -> record or type -> `Save to Inbox` / `Generate Plan` -> Inbox or Assistant Queue review"))
+        XCTAssertTrue(clickPath.contains("developer/release -> `./script/build_and_run.sh --verify` -> Project Board visible-window proof"))
+
+        for token in ["#208 / PR #218", "#209 / PR #217", "#210 / PR #215", "#211 / PR #216", "#212 / PR #214"] {
+            XCTAssertTrue(clickPath.contains(token), "Missing Phase 14 child issue/PR mapping: \(token)")
+        }
+
+        XCTAssertTrue(clickPath.contains("## Phase 14 hard-to-access or unproven paths"))
+        XCTAssertTrue(clickPath.contains("| Settings Google Calendar save/readiness |"))
+        XCTAssertTrue(clickPath.contains("| Schedule apply after draft generation |"))
+        XCTAssertTrue(clickPath.contains("| Done row recovery actions |"))
+        XCTAssertTrue(clickPath.contains("| Voice Command first-run path |"))
+        XCTAssertTrue(clickPath.contains("| Launch visible-window verifier |"))
+    }
+
+    func testRegressionRiskMapExistsAndCoversPrimaryScreens() throws {
+        let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
+        let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
+
+        XCTAssertTrue(riskMap.contains("Regression Risk Map"))
+        XCTAssertTrue(riskMap.contains("## Scope"))
+        XCTAssertTrue(riskMap.contains("## Verification Layers"))
+        XCTAssertTrue(riskMap.contains("## Coverage Status"))
+
+        for screen in ["Project Board", "Inbox", "Today", "Settings", "Voice Command", "Menu Bar"] {
+            XCTAssertTrue(
+                riskMap.contains("| \(screen) |"),
+                "Risk map should list \(screen) as a primary screen row"
+            )
+        }
+
+        XCTAssertTrue(
+            phase.contains("### Tests First"),
+            "P14-001 is the regression inventory task; risk map test must reference Phase 14"
+        )
+        XCTAssertTrue(
+            phase.contains("docs/quality/regression-risk-map.md"),
+            "Phase 14 P14-001 should pin docs/quality/regression-risk-map.md as the canonical artifact"
+        )
+    }
+
+    func testRegressionRiskMapDocumentsProjectBoardLayoutStability() throws {
+        let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
+
+        for region in ["header", "sidebar", "detail", "inspector"] {
+            XCTAssertTrue(
+                riskMap.contains(region),
+                "Risk map must cover Project Board layout stability for \(region)"
+            )
+        }
+
+        let invariants = [
+            "Header action group is detail-right aligned",
+            "Sidebar toggle mutates synchronously",
+            "Toolbar display mode preserves primary action position",
+            "Light / Dark / System switch does not collapse or overlap",
+            "Window resize preserves fixed dimension bounds",
+            "Layout correction avoids delayed animation"
+        ]
+        for invariant in invariants {
+            XCTAssertTrue(
+                riskMap.contains(invariant),
+                "Risk map must record layout stability invariant: \(invariant)"
+            )
+        }
+
+        XCTAssertTrue(
+            riskMap.contains("project-board-header-bar"),
+            "Risk map must reference the canonical AX identifier for header"
+        )
+        XCTAssertTrue(
+            riskMap.contains("project-board-sidebar"),
+            "Risk map must reference the canonical AX identifier for sidebar"
+        )
+        XCTAssertTrue(
+            riskMap.contains("project-board-detail"),
+            "Risk map must reference the canonical AX identifier for detail"
+        )
+        XCTAssertTrue(
+            riskMap.contains("project-inspector"),
+            "Risk map must reference the canonical AX identifier for inspector (project-inspector, not project-board-inspector)"
+        )
+        XCTAssertFalse(
+            riskMap.contains("project-board-inspector"),
+            "Risk map must not invent a project-board-inspector identifier that does not exist in ProjectBoardView.swift"
+        )
+    }
+
+    func testRegressionRiskMapAlignsRisksToAllFiveVerificationLayers() throws {
+        let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
+
+        for layer in ["unit", "source", "runtime", "visual", "manual"] {
+            XCTAssertTrue(
+                riskMap.contains(layer),
+                "Risk map must list verification layer: \(layer)"
+            )
+        }
+
+        XCTAssertTrue(
+            riskMap.contains("AppExperienceSourceTests"),
+            "Risk map must point to AppExperienceSourceTests as the source-level owner"
+        )
+        XCTAssertTrue(
+            riskMap.contains("ReleasePipelineTests"),
+            "Risk map must point to ReleasePipelineTests for release pipeline source checks"
+        )
+        XCTAssertTrue(
+            riskMap.contains("check_project_board_header_layout_smoke.sh"),
+            "Risk map must point to header layout smoke for runtime AX verification"
+        )
+        XCTAssertTrue(
+            riskMap.contains("check_runtime_accessible_crud_smoke.sh"),
+            "Risk map must point to runtime CRUD smoke for click-path verification"
+        )
+        XCTAssertTrue(
+            riskMap.contains("capture_ui_evidence.sh"),
+            "Risk map must point to visual evidence capture for screenshot verification"
+        )
+
+        let manualOnlyMarkers = ["VoiceOver", "Gatekeeper", "manual-only"]
+        for marker in manualOnlyMarkers {
+            XCTAssertTrue(
+                riskMap.contains(marker),
+                "Risk map must classify manual-only gates explicitly: \(marker)"
+            )
+        }
+
+        XCTAssertTrue(
+            riskMap.contains("P14-002") || riskMap.contains("P14-003") || riskMap.contains("P14-005"),
+            "Risk map must forward uncovered risks to follow-up P14 tasks"
+        )
+    }
+
+    func testRegressionRiskMapDataRowsDeclareVerificationLayerOwnerAndCoverage() throws {
+        let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
+        let tables = try parseMarkdownTables(in: riskMap)
+
+        XCTAssertFalse(tables.isEmpty, "Risk map must contain at least one markdown table")
+
+        let verificationLayerHeaders = ["Verification layer", "Layer", "Verification Layer"]
+        let ownerTestHeaders = ["Owner test / script", "代表コマンド / owner"]
+        let coverageHeaders = ["Coverage"]
+        let allowedLayerTokens: Set<String> = ["unit", "source", "runtime", "visual", "manual"]
+        let allowedCoverageValues: Set<String> = ["automated", "partial", "manual-only", "open", "automated+", "partial+"]
+
+        for (sectionTitle, header, rows) in tables {
+            let normalizedHeader = header.map { $0.trimmingCharacters(in: .whitespaces) }
+
+            guard let layerColumnIndex = normalizedHeader.firstIndex(where: { verificationLayerHeaders.contains($0) }),
+                  let ownerColumnIndex = normalizedHeader.firstIndex(where: { ownerTestHeaders.contains($0) }) else {
+                continue
+            }
+
+            XCTAssertFalse(
+                rows.isEmpty,
+                "Table under '\(sectionTitle)' must contain at least one data row"
+            )
+
+            for (rowIndex, row) in rows.enumerated() {
+                let rowLabel = "section='\(sectionTitle)' row=\(rowIndex + 1)"
+                XCTAssertGreaterThanOrEqual(
+                    row.count,
+                    max(layerColumnIndex, ownerColumnIndex) + 1,
+                    "\(rowLabel) must have a cell for Verification layer and Owner test"
+                )
+
+                let layerCell = row[layerColumnIndex]
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                XCTAssertFalse(
+                    layerCell.isEmpty,
+                    "\(rowLabel) Verification layer must not be empty"
+                )
+
+                let layerTokens = layerCell
+                    .lowercased()
+                    .components(separatedBy: CharacterSet(charactersIn: "+,/、& "))
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+                for token in layerTokens {
+                    XCTAssertTrue(
+                        allowedLayerTokens.contains(token),
+                        "\(rowLabel) Verification layer contains unknown token '\(token)': '\(layerCell)'"
+                    )
+                }
+
+                let ownerCell = row[ownerColumnIndex]
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                XCTAssertFalse(
+                    ownerCell.isEmpty,
+                    "\(rowLabel) Owner test / script must not be empty"
+                )
+                XCTAssertFalse(
+                    ownerCell.contains("TBD") || ownerCell.contains("TODO"),
+                    "\(rowLabel) Owner test / script must not be a placeholder: '\(ownerCell)'"
+                )
+            }
+
+            if let coverageColumnIndex = normalizedHeader.firstIndex(where: { coverageHeaders.contains($0) }) {
+                for (rowIndex, row) in rows.enumerated() {
+                    let rowLabel = "section='\(sectionTitle)' row=\(rowIndex + 1)"
+                    XCTAssertGreaterThanOrEqual(
+                        row.count,
+                        coverageColumnIndex + 1,
+                        "\(rowLabel) must have a Coverage cell"
+                    )
+                    let coverageCell = row[coverageColumnIndex]
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    XCTAssertFalse(
+                        coverageCell.isEmpty,
+                        "\(rowLabel) Coverage must not be empty"
+                    )
+                    XCTAssertTrue(
+                        allowedCoverageValues.contains(coverageCell),
+                        "\(rowLabel) Coverage '\(coverageCell)' is not one of the allowed values"
+                    )
+                }
+            }
+        }
+    }
+
+    func testRegressionRiskMapReferencesBuiltVisualRegressionSmokeScript() throws {
+        let root = packageRoot().appendingPathComponent("script")
+        let visualScriptURL = root.appendingPathComponent("check_visual_regression_smoke.sh")
+        let fileExists = FileManager.default.fileExists(atPath: visualScriptURL.path)
+
+        XCTAssertTrue(
+            fileExists,
+            "check_visual_regression_smoke.sh must exist before the visual verification layer can pin it"
+        )
+
+        let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
+        let visualRow = riskMap
+            .components(separatedBy: "\n")
+            .first(where: { $0.hasPrefix("| visual   |") || $0.hasPrefix("| visual |") })
+
+        XCTAssertNotNil(visualRow, "Risk map must keep a visual layer row")
+        XCTAssertTrue(
+            visualRow?.contains("check_visual_regression_smoke.sh") ?? false,
+            "Visual layer representative command must list check_visual_regression_smoke.sh once P14-004 is implemented"
+        )
+
+        XCTAssertFalse(
+            riskMap.contains("リポジトリには未存在"),
+            "Risk map must not keep the old unbuilt-script wording after P14-004"
+        )
+    }
+
+    func testRegressionRiskMapUsesExistingInspectorAccessibilityIdentifier() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
+
+        XCTAssertTrue(
+            boardSource.contains(".accessibilityIdentifier(\"project-inspector\")"),
+            "ProjectBoardView.swift must define project-inspector as the inspector identifier"
+        )
+        XCTAssertFalse(
+            boardSource.contains("project-board-inspector"),
+            "ProjectBoardView.swift must not invent project-board-inspector"
+        )
+        XCTAssertTrue(
+            riskMap.contains("project-inspector"),
+            "Risk map must point to the existing project-inspector identifier for the inspector region"
+        )
+        XCTAssertFalse(
+            riskMap.contains("project-board-inspector"),
+            "Risk map must not reference the non-existent project-board-inspector identifier"
+        )
+    }
+
+    private func parseMarkdownTables(in source: String) throws -> [(section: String, header: [String], rows: [[String]])] {
+        let lines = source.components(separatedBy: "\n")
+        var tables: [(String, [String], [[String]])] = []
+        var currentSection = "preamble"
+        var index = 0
+
+        while index < lines.count {
+            let line = lines[index]
+
+            if line.hasPrefix("#") {
+                currentSection = String(line.drop(while: { $0 == "#" }))
+                    .trimmingCharacters(in: .whitespaces)
+                index += 1
+                continue
+            }
+
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("|") && trimmed.hasSuffix("|") && trimmed.contains("|") {
+                var tableLines: [String] = [trimmed]
+                var cursor = index + 1
+                while cursor < lines.count {
+                    let next = lines[cursor].trimmingCharacters(in: .whitespaces)
+                    if next.hasPrefix("|") && next.hasSuffix("|") && next.contains("|") {
+                        tableLines.append(next)
+                        cursor += 1
+                    } else {
+                        break
+                    }
+                }
+
+                if tableLines.count >= 3 {
+                    let header = splitTableRow(tableLines[0])
+                    let separator = splitTableRow(tableLines[1])
+                    let isSeparator = separator.allSatisfy { cell in
+                        let trimmedCell = cell.trimmingCharacters(in: .whitespaces)
+                        if trimmedCell.isEmpty { return true }
+                        let core = trimmedCell.trimmingCharacters(in: CharacterSet(charactersIn: "-:"))
+                        return !core.isEmpty
+                    }
+                    if isSeparator {
+                        let dataRows = tableLines[2...]
+                            .map(splitTableRow)
+                            .filter { !$0.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty } }
+                        tables.append((currentSection, header, dataRows))
+                        index = cursor
+                        continue
+                    }
+                }
+            }
+
+            index += 1
+        }
+
+        return tables
+    }
+
+    private func splitTableRow(_ line: String) -> [String] {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("|"), trimmed.hasSuffix("|") else {
+            return []
+        }
+        let inner = String(trimmed.dropFirst().dropLast())
+        return inner
+            .components(separatedBy: "|")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func sourceBlock(in source: String, from startNeedle: String, to endNeedle: String) throws -> String {
+        let start = try XCTUnwrap(source.range(of: startNeedle))
+        let end = try XCTUnwrap(source.range(of: endNeedle, range: start.upperBound..<source.endIndex))
+        return String(source[start.lowerBound..<end.upperBound])
+    }
+
+    private func relativePackagePath(for url: URL) -> String {
+        let packageRootPath = packageRoot().standardizedFileURL.path
+        let filePath = url.standardizedFileURL.path
+        guard filePath.hasPrefix(packageRootPath + "/") else {
+            return filePath
+        }
+        return String(filePath.dropFirst(packageRootPath.count + 1))
     }
 
     private func allSwiftFiles(under relativePath: String) throws -> [URL] {
@@ -2075,6 +4727,78 @@ final class AppExperienceSourceTests: XCTestCase {
             let values = try url.resourceValues(forKeys: [.isRegularFileKey])
             return values.isRegularFile == true ? url : nil
         }
+    }
+
+    private func localizableKeys(in relativePath: String) throws -> Set<String> {
+        let source = try readPackageFile(relativePath)
+        let pattern = #""((?:[^"\\]|\\.)*)"\s*="#
+        let regex = try NSRegularExpression(pattern: pattern)
+        let range = NSRange(source.startIndex..<source.endIndex, in: source)
+
+        return Set(regex.matches(in: source, range: range).compactMap { match in
+            guard let keyRange = Range(match.range(at: 1), in: source) else {
+                return nil
+            }
+            return String(source[keyRange])
+        })
+    }
+
+    private func staticSwiftUILiteralKeys() throws -> Set<String> {
+        let patterns = [
+            #"\bText\("((?:[^"\\]|\\.)*)"\)"#,
+            #"\bLabel\("((?:[^"\\]|\\.)*)""#,
+            #"\bButton\("((?:[^"\\]|\\.)*)""#,
+            #"\bPicker\("((?:[^"\\]|\\.)*)""#,
+            #"\bToggle\("((?:[^"\\]|\\.)*)""#,
+            #"\bMenu\("((?:[^"\\]|\\.)*)""#,
+            #"\bSection\("((?:[^"\\]|\\.)*)""#,
+            #"\bGroupBox\("((?:[^"\\]|\\.)*)""#,
+            #"\.navigationTitle\("((?:[^"\\]|\\.)*)"\)"#,
+            #"\.help\("((?:[^"\\]|\\.)*)"\)"#,
+            #"\.accessibilityLabel\("((?:[^"\\]|\\.)*)"\)"#,
+            #"\.accessibilityHint\("((?:[^"\\]|\\.)*)"\)"#,
+            #"\bTextField\("((?:[^"\\]|\\.)*)""#,
+            #"\bSecureField\("((?:[^"\\]|\\.)*)""#
+        ]
+        let regexes = try patterns.map { pattern in
+            try NSRegularExpression(pattern: pattern)
+        }
+        var keys: Set<String> = []
+
+        for fileURL in try allSwiftFiles(under: "Sources/SoloPMApp") {
+            let source = try String(contentsOf: fileURL, encoding: .utf8)
+            let range = NSRange(source.startIndex..<source.endIndex, in: source)
+
+            for regex in regexes {
+                for match in regex.matches(in: source, range: range) {
+                    guard let keyRange = Range(match.range(at: 1), in: source) else {
+                        continue
+                    }
+                    let key = String(source[keyRange])
+                    guard isLocalizableStaticUILiteral(key) else {
+                        continue
+                    }
+                    keys.insert(key)
+                }
+            }
+        }
+
+        return keys
+    }
+
+    private func isLocalizableStaticUILiteral(_ key: String) -> Bool {
+        guard !key.isEmpty, !key.contains(#"\("#) else {
+            return false
+        }
+
+        let nonLocalizedPrefixes = [
+            "settings-",
+            "project-",
+            "inline-",
+            "embedded-",
+            "task-"
+        ]
+        return !nonLocalizedPrefixes.contains { key.hasPrefix($0) }
     }
 
     private func packageRoot() -> URL {

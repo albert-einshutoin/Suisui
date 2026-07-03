@@ -30,20 +30,63 @@ RUNTIME_AX_SMOKE_NOTE=""
 CAPTURE_RUNTIME_AX_SMOKE=0
 CONFIRM_MANUAL_PASS=0
 VALIDATE_ONLY=0
-SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
 PROJECT_NAVIGATION_NOTE=""
 PROJECT_BOARD_DETAIL_NOTE=""
 OPEN_TASK_NOTE=""
 INLINE_TASK_COMPOSER_NOTE=""
 STATUS_CONTROLS_NOTE=""
 TASK_INSPECTOR_NOTE=""
+INBOX_VOICE_TRIAGE_NOTE=""
+TODAY_RAIL_ACTIONS_NOTE=""
 SAVE_CHANGES_NOTE=""
+TASK_CONTENT_EXECUTION_NOTE=""
 DELETE_CONFIRMATION_NOTE=""
 NO_KEYBOARD_TRAP_NOTE=""
 NO_UNLABELED_CRUD_NOTE=""
 
+release_candidate_source_commit() {
+  local commit
+  # Passed manual evidence is tracked after the pass, so bind it to the
+  # release-candidate runtime/app metadata paths instead of the evidence commit.
+  commit="$(
+    git -C "$ROOT_DIR" log -1 --format=%h -- \
+      Sources/SoloPMApp \
+      Sources/SoloPMCore \
+      Sources/SoloPMCLI \
+      Sources/SoloPMExternalConnectors \
+      Package.swift \
+      packaging/app_metadata.env 2>/dev/null || true
+  )"
+  if [[ -n "$commit" ]]; then
+    printf "%s" "$commit"
+  else
+    git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
+  fi
+}
+
+SOURCE_COMMIT="$(release_candidate_source_commit)"
+
+sanitize_voiceover_evidence_source() {
+  local value="$1"
+  local project_id
+
+  project_id="$(sed -nE 's/.*project:([0-9][0-9]*).*/\1/p' <<<"$value" | head -n 1)"
+  if [[ -n "$project_id" && ( "$value" == *".tmp/voiceover-review"* || "$value" == *"SoloPM-voiceover-review.sqlite"* ) ]]; then
+    # Release evidence is tracked and often reviewed in public diffs. Keep the
+    # exact pinned DB path in ignored launch helpers, but abstract it here.
+    printf 'dist/%s.app manual VoiceOver pass using isolated .tmp voiceover review database project:%s' "$APP_NAME" "$project_id"
+    return
+  fi
+
+  value="${value//$ROOT_DIR/[REDACTED_REPO_ROOT]}"
+  printf '%s' "$value" | sed -E \
+    -e 's#file://[^[:space:]`)]+#[REDACTED_LOCAL_FILE_URL]#g' \
+    -e 's#/(Users|Volumes|private|tmp|var)/[^[:space:]`)]+#[REDACTED_LOCAL_PATH]#g' \
+    -e 's#~/[^[:space:]`)]+#[REDACTED_HOME_PATH]#g'
+}
+
 usage() {
-  printf '%s\n' "usage: $0 (--pending|--passed|--validate-only) [--output PATH] [--checked-by NAME] [--macos-version VERSION] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--accessibility-environment TEXT] [--runtime-ax-smoke-note TEXT|--capture-runtime-ax-smoke] [--project-navigation-note TEXT] [--project-board-detail-note TEXT] [--open-task-note TEXT] [--inline-task-composer-note TEXT] [--status-controls-note TEXT] [--task-inspector-note TEXT] [--save-changes-note TEXT] [--delete-confirmation-note TEXT] [--no-keyboard-trap-note TEXT] [--no-unlabeled-crud-note TEXT] [--confirm-manual-voiceover-pass]"
+  printf '%s\n' "usage: $0 (--pending|--passed|--validate-only) [--output PATH] [--checked-by NAME] [--macos-version VERSION] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--accessibility-environment TEXT] [--runtime-ax-smoke-note TEXT|--capture-runtime-ax-smoke] [--project-navigation-note TEXT] [--project-board-detail-note TEXT] [--open-task-note TEXT] [--inline-task-composer-note TEXT] [--status-controls-note TEXT] [--task-inspector-note TEXT] [--inbox-voice-triage-note TEXT] [--today-rail-actions-note TEXT] [--save-changes-note TEXT] [--task-content-execution-note TEXT] [--delete-confirmation-note TEXT] [--no-keyboard-trap-note TEXT] [--no-unlabeled-crud-note TEXT] [--confirm-manual-voiceover-pass]"
   printf '%s\n' ""
   printf '%s\n' "Use --pending to write a safe worksheet that release readiness will reject."
   printf '%s\n' "Without --output, --pending writes .tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md."
@@ -119,6 +162,99 @@ require_concrete_voiceover_note() {
   fi
 }
 
+voiceover_note_contains_any_marker() {
+  local value="$1"
+  shift
+  local marker
+  local normalized
+
+  normalized="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  for marker in "$@"; do
+    if grep -Eiq "$marker" <<<"$normalized"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+require_task_content_execution_note() {
+  local value="$1"
+
+  require_concrete_voiceover_note "--task-content-execution-note" "$value"
+
+  # This field is stricter than generic focus notes because release evidence
+  # must prove reviewed task content reached the receipt, not only that the Run
+  # approved plan control was reachable.
+  if ! voiceover_note_contains_any_marker "$value" "receipt"; then
+    echo "--task-content-execution-note must mention the redacted receipt, reviewed title, and reviewed detail" >&2
+    exit 2
+  fi
+  if ! voiceover_note_contains_any_marker "$value" "title"; then
+    echo "--task-content-execution-note must mention the redacted receipt, reviewed title, and reviewed detail" >&2
+    exit 2
+  fi
+  if ! voiceover_note_contains_any_marker "$value" "detail" "body"; then
+    echo "--task-content-execution-note must mention the redacted receipt, reviewed title, and reviewed detail" >&2
+    exit 2
+  fi
+}
+
+require_inbox_voice_triage_note() {
+  local value="$1"
+
+  require_concrete_voiceover_note "--inbox-voice-triage-note" "$value"
+  if ! voiceover_note_contains_any_marker "$value" "inbox"; then
+    echo "--inbox-voice-triage-note must mention the Inbox voice triage surface" >&2
+    exit 2
+  fi
+  if ! voiceover_note_contains_any_marker "$value" "transcript"; then
+    echo "--inbox-voice-triage-note must mention transcript, interpretation, metadata, memo, and every Inbox triage action" >&2
+    exit 2
+  fi
+  if ! voiceover_note_contains_any_marker "$value" "interpretation"; then
+    echo "--inbox-voice-triage-note must mention transcript, interpretation, metadata, memo, and every Inbox triage action" >&2
+    exit 2
+  fi
+  if ! voiceover_note_contains_any_marker "$value" "metadata"; then
+    echo "--inbox-voice-triage-note must mention transcript, interpretation, metadata, memo, and every Inbox triage action" >&2
+    exit 2
+  fi
+  if ! voiceover_note_contains_any_marker "$value" "memo"; then
+    echo "--inbox-voice-triage-note must mention transcript, interpretation, metadata, memo, and every Inbox triage action" >&2
+    exit 2
+  fi
+  for required_triage_action in "make[[:space:]-]*task" "schedule" "review[[:space:]-]*later" "project"; do
+    if ! voiceover_note_contains_any_marker "$value" "$required_triage_action"; then
+      echo "--inbox-voice-triage-note must mention transcript, interpretation, metadata, memo, and every Inbox triage action" >&2
+      exit 2
+    fi
+  done
+  if ! voiceover_note_contains_any_marker "$value" "triage"; then
+    echo "--inbox-voice-triage-note must mention transcript, interpretation, metadata, memo, and every Inbox triage action" >&2
+    exit 2
+  fi
+}
+
+require_today_rail_actions_note() {
+  local value="$1"
+
+  require_concrete_voiceover_note "--today-rail-actions-note" "$value"
+  if ! voiceover_note_contains_any_marker "$value" "today"; then
+    echo "--today-rail-actions-note must mention the Today rail surface" >&2
+    exit 2
+  fi
+  if ! voiceover_note_contains_any_marker "$value" "rail"; then
+    echo "--today-rail-actions-note must mention the Today rail surface" >&2
+    exit 2
+  fi
+  for required_today_action in "next[[:space:]-]*action" "task[[:space:]-]*detail" "focus" "schedule" "edit" "subtask" "reminder"; do
+    if ! voiceover_note_contains_any_marker "$value" "$required_today_action"; then
+      echo "--today-rail-actions-note must mention next action, task detail, focus, schedule, edit, subtask, and reminder controls" >&2
+      exit 2
+    fi
+  done
+}
+
 require_runtime_ax_smoke_note() {
   local value="$1"
 
@@ -127,7 +263,7 @@ require_runtime_ax_smoke_note() {
     echo "--runtime-ax-smoke-note must include the concrete runtime AX smoke output" >&2
     exit 2
   fi
-  for required_marker in "OK: runtime AX smoke visible" "buttons=" "textFields=" "staticTexts=" "unlabeledButtons=0" "genericButtons=0" "crudSignals=8/8" "focusPathSignals=6/6"; do
+  for required_marker in "OK: runtime AX smoke visible" "buttons=" "textFields=" "staticTexts=" "unlabeledButtons=0" "genericButtons=0" "crudSignals=8/8" "focusPathSignals=6/6" "destructiveCancelSignals=1/1"; do
     if ! grep -F "$required_marker" <<<"$value" >/dev/null; then
       echo "--runtime-ax-smoke-note must include $required_marker from ./script/check_accessibility_preflight.sh --runtime" >&2
       exit 2
@@ -317,8 +453,20 @@ while [[ "$#" -gt 0 ]]; do
       TASK_INSPECTOR_NOTE="${2:-}"
       shift 2
       ;;
+    --inbox-voice-triage-note)
+      INBOX_VOICE_TRIAGE_NOTE="${2:-}"
+      shift 2
+      ;;
+    --today-rail-actions-note)
+      TODAY_RAIL_ACTIONS_NOTE="${2:-}"
+      shift 2
+      ;;
     --save-changes-note)
       SAVE_CHANGES_NOTE="${2:-}"
+      shift 2
+      ;;
+    --task-content-execution-note)
+      TASK_CONTENT_EXECUTION_NOTE="${2:-}"
       shift 2
       ;;
     --delete-confirmation-note)
@@ -367,6 +515,8 @@ if [[ -z "${OUTPUT_FILE//[[:space:]]/}" ]]; then
   exit 2
 fi
 
+EVIDENCE_SOURCE="$(sanitize_voiceover_evidence_source "$EVIDENCE_SOURCE")"
+
 if [[ "$VOICEOVER_STATUS" == "passed" ]]; then
   if [[ "$CONFIRM_MANUAL_PASS" -ne 1 ]]; then
     echo "--confirm-manual-voiceover-pass is required with --passed" >&2
@@ -408,6 +558,7 @@ if [[ "$VOICEOVER_STATUS" == "passed" ]]; then
   require_concrete_voiceover_note "--status-controls-note" "$STATUS_CONTROLS_NOTE"
   require_concrete_voiceover_note "--task-inspector-note" "$TASK_INSPECTOR_NOTE"
   require_concrete_voiceover_note "--save-changes-note" "$SAVE_CHANGES_NOTE"
+  require_task_content_execution_note "$TASK_CONTENT_EXECUTION_NOTE"
   require_concrete_voiceover_note "--delete-confirmation-note" "$DELETE_CONFIRMATION_NOTE"
   require_concrete_voiceover_note "--no-keyboard-trap-note" "$NO_KEYBOARD_TRAP_NOTE"
   require_concrete_voiceover_note "--no-unlabeled-crud-note" "$NO_UNLABELED_CRUD_NOTE"
@@ -415,6 +566,8 @@ if [[ "$VOICEOVER_STATUS" == "passed" ]]; then
     capture_runtime_ax_smoke_note
   fi
   require_runtime_ax_smoke_note "$RUNTIME_AX_SMOKE_NOTE"
+  require_inbox_voice_triage_note "$INBOX_VOICE_TRIAGE_NOTE"
+  require_today_rail_actions_note "$TODAY_RAIL_ACTIONS_NOTE"
 fi
 
 if [[ "$VALIDATE_ONLY" -eq 1 ]]; then
@@ -479,10 +632,13 @@ write_pending_evidence() {
     printf '%s\n' '- [ ] Inline Task Composer: create a task from a board column with title, detail, priority, due, Command+Return, and Escape paths.'
     printf '%s\n' '- [ ] Status controls: move focus to previous/next status controls and confirm button labels include target status.'
     printf '%s\n' '- [ ] Task inspector: focus title, detail, status, priority, due, summary, save, suggestion, and danger actions.'
+    printf '%s\n' '- [ ] Inbox voice triage: confirm the selected voice intake detail announces transcript, interpretation, source metadata, memo, and triage actions.'
+    printf '%s\n' '- [ ] Today rail actions: confirm the Today rail announces next action, task detail, focus, schedule draft, edit, subtask draft, and reminder draft controls.'
     printf '%s\n' '- [ ] Save Changes: confirm keyboard activation reaches the local task save action.'
+    printf '%s\n' '- [ ] Task content execution: run the approved plan and confirm the redacted execution receipt includes reviewed title and detail.'
     printf '%s\n' '- [ ] Delete Task confirmation: confirm destructive action opens an inline inspector confirmation panel before local deletion.'
     printf '%s\n' '- [ ] No keyboard trap: confirm focus can leave sidebar, board, card controls, inspector fields, and inline confirmation panels.'
-    printf '%s\n' '- [ ] No unlabeled primary CRUD controls: confirm create, update, status move, complete/archive, and delete actions have labels or help.'
+    printf '%s\n' '- [ ] No unlabeled primary CRUD controls: confirm create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.'
     printf '\n'
     printf '%s\n' '## Failure Notes'
     printf '\n'
@@ -516,7 +672,10 @@ write_passed_evidence() {
     printf -- '- Inline Task Composer: passed - %s\n' "$INLINE_TASK_COMPOSER_NOTE"
     printf -- '- Status controls: passed - %s\n' "$STATUS_CONTROLS_NOTE"
     printf -- '- Task inspector: passed - %s\n' "$TASK_INSPECTOR_NOTE"
+    printf -- '- Inbox voice triage: passed - %s\n' "$INBOX_VOICE_TRIAGE_NOTE"
+    printf -- '- Today rail actions: passed - %s\n' "$TODAY_RAIL_ACTIONS_NOTE"
     printf -- '- Save Changes: passed - %s\n' "$SAVE_CHANGES_NOTE"
+    printf -- '- Task content execution: passed - %s\n' "$TASK_CONTENT_EXECUTION_NOTE"
     printf -- '- Delete Task confirmation: passed - %s\n' "$DELETE_CONFIRMATION_NOTE"
     printf -- '- No keyboard trap: passed - %s\n' "$NO_KEYBOARD_TRAP_NOTE"
     printf -- '- No unlabeled primary CRUD controls: passed - %s\n' "$NO_UNLABELED_CRUD_NOTE"

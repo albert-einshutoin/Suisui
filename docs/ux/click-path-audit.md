@@ -26,6 +26,32 @@
 | Settings | macOS app menuの `Settings...`、`Command+,`、macOS Settings scene | 先頭のStatus OverviewでAI Provider、MCP、Sync、Privacyを確認でき、続くSettings Overview Pro Value rowでSync/MCPの有料価値とFree/local-only/fail-closed境界が分かる。ThemeはSettings内のAppearance tabに集約する。 |
 | Inbox | sidebarの `Inbox` | 未処理taskを実データから表示し、Task化、Project化、今日へ予定、後で確認を選択中itemへ1クリックで適用できる。 |
 | Today | sidebarの `Today` | due/overdueの未完了taskを実データから表示し、overdue/today件数、local focus suggestion、30分単位のtime block、task inspectorへつながる。 |
+| Project Detail | sidebarの個別project row | 1Projectの実行管理としてOverview / Board / List、Task、Artifact、Timeline、Milestone、Local Suggestionsを扱う。 |
+
+## Phase 14 access-flow map (2026-07-03)
+
+Phase 14 product review maps each major user goal as `app launch -> entry point -> screen/state -> action -> result/approval`. This separates user-visible reachability, runtime/AX reachability, and manual-only release evidence.
+
+| User goal | Access flow | Current reachability | Follow-up / PR |
+| --- | --- | --- | --- |
+| Project Board work | app launch -> Project Board -> sidebar `Projects` / project row -> Overview / Board / List -> inspector/details | Reachable. Current screenshots show the board, cards, inspector, and project overview as coherent first-run work surfaces. | Existing Phase 12 evidence |
+| Inbox triage | app launch -> sidebar `Inbox` -> capture or select item -> `Make Task` / `Make Project` / `Schedule Today` / `Review Later` -> optional Undo | Reachable. Runtime Inbox triage smoke covers mutation and undo path. | Existing runtime smoke |
+| Today planning | app launch -> sidebar `Today` -> Daily Planning Review / command area / review rail -> Focus / Schedule Block / Reminder Draft | Reachable. Runtime Today completion smoke covers Today rail, local schedule draft, reminder draft, and visible completion. | Existing runtime smoke |
+| Schedule Calendar apply | app launch -> sidebar `Schedule` -> `Generate Draft` -> `Queue Calendar Apply` -> Assistant Queue approval | Reachable but previously hard to follow because draft generation and Calendar apply were separated vertically. | #209 / PR #217 |
+| Done recovery/follow-up | app launch -> sidebar `Done` -> completed task row -> `Follow Up` / `Reopen` | Reachable but row/action relationship was weak on wide windows. | #210 / PR #215 |
+| Settings Google Calendar destination | app launch -> `Settings...` / `Command+,` -> `Sync` -> Google Calendar save flow -> `Save Calendar` -> `Check Readiness` | Source identifiers existed, but runtime AX proof was unstable until the save-flow group and settings smoke were hardened. | #208 / PR #218 |
+| Voice Command planning or capture | app launch -> Voice Command -> record or type -> `Save to Inbox` / `Generate Plan` -> Inbox or Assistant Queue review | Reachable, but the empty initial state did not explain record/type -> inbox/plan -> approval. | #211 / PR #216 |
+| Launch readiness proof | developer/release -> `./script/build_and_run.sh --verify` -> Project Board visible-window proof | Required for release evidence, but default timeout could false-block cold SwiftUI launch. | #212 / PR #214 |
+
+## Phase 14 hard-to-access or unproven paths
+
+| Path | Access issue found | Verification layer | Status |
+| --- | --- | --- | --- |
+| Settings Google Calendar save/readiness | Runtime Settings save path could hang or miss `settings-google-calendar-id-save`; duplicate generic Save Settings identifiers made AX targeting brittle. | source + runtime + security | Fixed in #208 / PR #218; `./script/check_runtime_settings_save_smoke.sh` proves isolated UserDefaults persistence without token or path leakage. |
+| Schedule apply after draft generation | `Queue Calendar Apply` was below the cockpit flow, so users could generate a draft and lose the next approval step. | source + runtime schedule smoke + visual | Fixed in #209 / PR #217; apply approval stays next to the draft flow and still routes Calendar writes through Assistant Queue. |
+| Done row recovery actions | `Follow Up` and `Reopen` were functionally present but visually detached from the completed task row on wide layouts. | source + visual | Fixed in #210 / PR #215; actions are attached to each completed row. |
+| Voice Command first-run path | Empty state did not teach that users can record or type, then either save to Inbox or generate an approval-reviewed plan. | source + localization + visual; runtime voice smoke remains a follow-up for AX text submission | Improved in #211 / PR #216; initial state now explains examples, readiness, Inbox save, and plan generation. |
+| Launch visible-window verifier | `build_and_run.sh --verify` could report a false blocker before the Project Board window appeared on a cold SwiftUI launch. | source + runtime verifier + security | Fixed in #212 / PR #214; default verify timeout now covers cold launch recovery. |
 
 ## クリック数
 
@@ -40,9 +66,13 @@
 | Project artifact追加 | Project overview -> `Expected artifact path` -> `Track Artifact` | 2 | Pass | 絶対パスだけをexpected artifactとしてlocal SQLiteへ保存し、相対パスはworkspace未確定として保存しない。 |
 | Project artifact削除 | Project overview -> Artifact row `Remove artifact link` | 1 | Pass | 実ファイルは削除せず、local SQLiteのartifact linkだけを削除する。存在しないlinkはmock successにしない。 |
 | Inbox確認 | sidebar `Inbox` | 1 | Pass | Capture先が見える。選択中itemは右inspectorで編集できる。 |
+| Inbox voice detail | sidebar `Inbox` -> item row | 2 | Pass | Seeded voice memo metadata、transcript、interpretation summaryをInbox内で確認できる。 |
 | Inbox / Todayのrow完了toggle | workflow rowのcheckbox button | 1 | Pass | Inspectorを開かず、local SQLiteのTask statusをDone/Plannedへ実mutationする。 |
 | Inbox item分類 | item選択 -> `Make Task` / `Make Project` / `Schedule Today` / `Review Later` | 2 | Pass | 分類action自体は1クリック。選択済みなら即実行され、store mutationを通る。 |
 | Today確認 | sidebar `Today` | 1 | Pass | 今日以前の未完了task、期限内訳、local focus suggestion、time blockがproject横断で見える。 |
+| Projects overview確認 | sidebar `Projects` | 1 | Pass | Project portfolio overviewで進捗、リスク、期限、次アクションを横断確認できる。 |
+| Schedule確認 | sidebar `Schedule` | 1 | Pass | Unscheduled tasks、draft blocks、approval tokenをCalendar write前に確認できる。 |
+| Done確認 | sidebar `Done` | 1 | Pass | completed_at履歴、完了Project、最近の完了taskを確認できる。 |
 | 選択中ProjectにTask作成 | headerの `Add Task` -> 入力 -> `Add` | 2 | Pass | 目標達成。columnの `+` と空columnの追加導線も2クリック。 |
 | 別ProjectにTask作成 | sidebar project -> `Add Task` -> 入力 -> `Add` | 3 | Pass | 目的地変更があるため3操作だが、`Add Task` はOverview/HeaderからでもBoardへ切り替えてinline composerを即表示するため、押下後に入力欄を探す必要はない。Inbox capture用途はmenu bar Quick Addを使う。 |
 | Taskを隣のstatusへ移動 | cardのchevron left/right | 1 | Pass | 目標達成。ドラッグしないユーザーにも分かりやすい。 |
@@ -56,6 +86,7 @@
 | Project完了 | Project inspector -> `Complete Project` | 2 | Pass | headerから削除し、選択中Projectの操作をinspectorに集約した。 |
 | Project archive/delete | Project inspector -> action -> confirm | 3 | Pass | 破壊的操作なので確認があるのは妥当。 |
 | Settingsを開く | macOS app menu `Settings...` または `Command+,` | 1 | Pass | Project BoardとMenuBarPanelの右上には置かず、作業画面内のTheme/Settings重複導線をなくす。 |
+| Settings integrations確認 | Settings -> Status Overview | 1 | Pass | AI/STT/TTS/Calendar/Reminder/MCP/Sync/Privacy/Data Locationの状態をOverviewで確認できる。 |
 | Theme変更 | Settings -> Appearance -> `Theme` segment | 2 | Pass | ThemeはSettingsのAppearance tabに集約済み。Project Boardのサイドバー下/右上にはTheme controlを置かない。 |
 | AI Provider状態確認 | Settings -> Status OverviewまたはAI tabのProvider Readiness summaryを見る | 1 | Pass | 現在のproviderと認証/承認状態は先頭で分かり、AI tabでは全providerの設定状態をprovider切替なしで確認できる。 |
 | AI Provider変更 | Settings -> provider picker -> provider | 2 | Pass | Provider選択時に自動保存されるため、保存ボタンを探す必要がない。AI Provider readiness rowで選択中providerの状態、smoke readiness、次の操作がすぐ分かる。 |
@@ -84,6 +115,7 @@
 | Settings Overview Pro Value rowのスクリーンショット証跡は生成・目視確認済み | Settings OverviewはStatus Overview直下にPro Value rowを置き、Sync/MCPタブへ移動しなくても有料価値とFree/local-only/fail-closed境界を確認できる。`settings-overview-light.png` / `settings-overview-dark.png` でLight/Darkの表示崩れを確認する。 | Done | 以後のSettings Overview変更では `script/capture_ui_evidence.sh` を再実行し、Settings Overview PNGを目視確認する。 |
 | Provider詳細設定は選択中providerだけを表示するcompact panelへ分離済み | Provider pickerの下に選択中providerに必要なfieldだけを出すため、他providerのAPI key、model、local executableは同時表示されない。AI Provider readiness summaryでは全providerのConfigured / Not configured / Local / Setup required / Approval requiredを短く見られる。 | Done | 未選択providerの状態確認にprovider切替は不要。 |
 | MCP server別の接続状態証跡は生成・目視確認済み | 複数server rowのinline statusとrow単位Checkは実装済み。`settings-mcp-light.png` / `settings-mcp-dark.png` で複数server、Free MCP execution gate、row単位Check導線を確認済み。 | Done | 以後のSettings変更では `script/capture_ui_evidence.sh` を再実行し、Settings Appearance / MCP PNGを目視確認する。 |
+| Phase 12 screenshot evidence | Inbox voice detail、Projects overview、Schedule cockpit、Done analytics、Settings integrationsを `inbox-voice-light.png`、`projects-overview-light.png`、`schedule-light.png`、`done-light.png`、`settings-integrations-light.png` と各Dark PNGで固定した。 | Done | Release evidence gateはこれらのPNGが欠けるとgreenにならない。 |
 | accessibility検証が未完了 | Task card、column add、status move、destructive confirmationのlabel/helpはsource testで固定し、Task cardのOpen Detailsとstatus move controlsも別フォーカス対象に分離した。Sidebar -> board detail -> task card -> Inline Task Composer -> inspectorのsource-level VoiceOver focus anchors are fixed。Inline Task Composerはrelease VoiceOver証跡の必須focus pathにも含めた。Task / Project inspectorのfield、提案適用、保存、complete、restore、archive、deleteはaccessibility identifier / hintを持ち、キーボードだけで実行できる。Inbox / Todayのrow、Quick Add、分類action、Today summary、time blockにsource-level accessibility identifiers / hints / keyboard anchorsを追加済み。Project OverviewのTask snapshot、Local Suggestions、Artifactsはaccessibility identifier / label / hint付きのCRUD入口になっている。Light/Dark/System screenshot evidenceは生成・目視確認済み。実機VoiceOver focus order確認は残る。 | P1 | VoiceOverでProject board -> card -> Inline Task Composer -> inspectorの順序を確認し、崩れを修正する。 |
 
 ## 改善紐づけ

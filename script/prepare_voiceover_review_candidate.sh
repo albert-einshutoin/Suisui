@@ -19,7 +19,28 @@ DEFAULT_DATABASE_PATH="$ROOT_DIR/.tmp/voiceover-review/SoloPM-voiceover-review.s
 VOICEOVER_REVIEW_ARTIFACT_PATH="$ROOT_DIR/docs/release/evidence/accessibility-voiceover.md"
 TIMEOUT_SECONDS="${SOLOPM_VOICEOVER_REVIEW_TIMEOUT_SECONDS:-30}"
 SQLITE3="${SQLITE3:-sqlite3}"
-SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
+
+release_candidate_source_commit() {
+  local commit
+  # The VoiceOver pass targets the built release candidate. Evidence/helper
+  # files may be committed later, so use product source paths instead of HEAD.
+  commit="$(
+    git -C "$ROOT_DIR" log -1 --format=%h -- \
+      Sources/SoloPMApp \
+      Sources/SoloPMCore \
+      Sources/SoloPMCLI \
+      Sources/SoloPMExternalConnectors \
+      Package.swift \
+      packaging/app_metadata.env 2>/dev/null || true
+  )"
+  if [[ -n "$commit" ]]; then
+    printf "%s" "$commit"
+  else
+    git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
+  fi
+}
+
+SOURCE_COMMIT="$(release_candidate_source_commit)"
 
 database_path="$DEFAULT_DATABASE_PATH"
 launch_app=1
@@ -88,25 +109,44 @@ query_single_value() {
   "$SQLITE3" -batch -noheader "$database_path" "$sql" | tail -n 1
 }
 
+voiceover_evidence_source_for_candidate() {
+  local candidate_database_path="$1"
+  local candidate_project_id="$2"
+  local database_descriptor="isolated VoiceOver review database"
+
+  case "$candidate_database_path" in
+    "$ROOT_DIR/.tmp/voiceover-review/"*)
+      database_descriptor="isolated .tmp voiceover review database"
+      ;;
+  esac
+
+  # Tracked evidence is public repo state, so keep exact local paths in ignored
+  # helper files and describe the candidate source at the review-context level.
+  printf 'dist/%s.app manual VoiceOver pass using %s project:%s' "$APP_NAME" "$database_descriptor" "$candidate_project_id"
+}
+
 write_voiceover_evidence_invocation() {
   local mode="$1"
   local evidence_source="$2"
 
   printf './script/create_voiceover_evidence.sh %s \\\n' "$mode"
-  printf '%s\n' '  --checked-by "<reviewer name>" \'
-  printf '%s\n' '  --accessibility-environment "<macOS version, hardware, VoiceOver input method, clean user/install context>" \'
+  printf '%s\n' '  --checked-by "$WORKSHEET_REVIEWER" \'
+  printf '%s\n' '  --accessibility-environment "$WORKSHEET_ACCESSIBILITY_ENVIRONMENT" \'
   printf '  --evidence-source %q \\\n' "$evidence_source"
   printf '%s\n' '  --capture-runtime-ax-smoke \'
-  printf '%s\n' '  --project-navigation-note "<VoiceOver observation for sidebar Inbox, Today, Projects, and selected review project navigation>" \'
-  printf '%s\n' '  --project-board-detail-note "<VoiceOver observation for the seeded review project board context>" \'
-  printf '%s\n' '  --open-task-note "<VoiceOver observation for focusing a seeded task card and opening details>" \'
-  printf '%s\n' '  --inline-task-composer-note "<VoiceOver observation for title/detail/priority/due create flow, Command+Return, and Escape>" \'
-  printf '%s\n' '  --status-controls-note "<VoiceOver observation for previous/next status controls and target status labels>" \'
-  printf '%s\n' '  --task-inspector-note "<VoiceOver observation for inspector fields, summary, suggestion, save, and danger actions>" \'
-  printf '%s\n' '  --save-changes-note "<VoiceOver observation proving keyboard activation saves local task changes>" \'
-  printf '%s\n' '  --delete-confirmation-note "<VoiceOver observation proving Delete Task opens an inline inspector confirmation panel before deletion>" \'
-  printf '%s\n' '  --no-keyboard-trap-note "<VoiceOver observation proving focus leaves sidebar, board, inspector, and inline confirmation panels>" \'
-  printf '%s\n' '  --no-unlabeled-crud-note "<VoiceOver observation proving primary CRUD controls have labels or help>" \'
+  printf '%s\n' '  --project-navigation-note "$WORKSHEET_PROJECT_NAVIGATION_NOTE" \'
+  printf '%s\n' '  --project-board-detail-note "$WORKSHEET_PROJECT_BOARD_DETAIL_NOTE" \'
+  printf '%s\n' '  --open-task-note "$WORKSHEET_OPEN_TASK_NOTE" \'
+  printf '%s\n' '  --inline-task-composer-note "$WORKSHEET_INLINE_TASK_COMPOSER_NOTE" \'
+  printf '%s\n' '  --status-controls-note "$WORKSHEET_STATUS_CONTROLS_NOTE" \'
+  printf '%s\n' '  --task-inspector-note "$WORKSHEET_TASK_INSPECTOR_NOTE" \'
+  printf '%s\n' '  --inbox-voice-triage-note "$WORKSHEET_INBOX_VOICE_TRIAGE_NOTE" \'
+  printf '%s\n' '  --today-rail-actions-note "$WORKSHEET_TODAY_RAIL_ACTIONS_NOTE" \'
+  printf '%s\n' '  --save-changes-note "$WORKSHEET_SAVE_CHANGES_NOTE" \'
+  printf '%s\n' '  --task-content-execution-note "$WORKSHEET_TASK_CONTENT_EXECUTION_NOTE" \'
+  printf '%s\n' '  --delete-confirmation-note "$WORKSHEET_DELETE_CONFIRMATION_NOTE" \'
+  printf '%s\n' '  --no-keyboard-trap-note "$WORKSHEET_NO_KEYBOARD_TRAP_NOTE" \'
+  printf '%s\n' '  --no-unlabeled-crud-note "$WORKSHEET_NO_UNLABELED_CRUD_NOTE" \'
   printf '%s\n' '  --confirm-manual-voiceover-pass'
 }
 
@@ -135,10 +175,28 @@ write_voiceover_review_worksheet() {
     printf '%s\n' '- [ ] Inline Task Composer: title, detail, priority, due, create, cancel, Command+Return, and Escape are reachable.'
     printf '%s\n' '- [ ] Status controls: previous/next status controls announce target status labels.'
     printf '%s\n' '- [ ] Task inspector: fields, summary, suggestion, save, and danger actions are reachable.'
+    printf '%s\n' '- [ ] Inbox voice triage: selected voice intake detail announces transcript, interpretation, source metadata, memo, and triage actions.'
+    printf '%s\n' '- [ ] Today rail actions: Open Today, select `Review Today rail next action with VoiceOver`, then confirm next action, task detail, focus, schedule draft, edit, subtask draft, and reminder draft controls are announced.'
     printf '%s\n' '- [ ] Save Changes: keyboard activation saves local task edits.'
+    printf '%s\n' '- [ ] Task content execution: approved execution records the reviewed task title and detail in the redacted receipt.'
     printf '%s\n' '- [ ] Delete Task confirmation: destructive action opens an inline inspector confirmation panel before deletion.'
     printf '%s\n' '- [ ] No keyboard trap: focus leaves sidebar, board, inspector, and inline confirmation panels.'
-    printf '%s\n' '- [ ] No unlabeled primary CRUD controls: primary CRUD controls have labels or help.'
+    printf '%s\n' '- [ ] No unlabeled primary CRUD controls: create, update, status move, local suggestion apply, automation review, approved execution, and delete controls have labels or help.'
+    printf '\n'
+    printf '%s\n' '## Runtime Smoke To Manual Worksheet Mapping'
+    printf '\n'
+    printf '%s\n' '| Runtime AX smoke marker | Manual worksheet field | Manual pass responsibility |'
+    printf '%s\n' '| --- | --- | --- |'
+    printf '%s\n' '| `unlabeledButtons=0` | No unlabeled primary CRUD controls | Confirm focused primary buttons are not announced as empty. |'
+    printf '%s\n' '| `genericButtons=0` | No unlabeled primary CRUD controls | Confirm primary actions are not announced as generic unlabeled buttons. |'
+    printf '%s\n' '| `crudSignals=8/8` | Save Changes, Delete Task confirmation, No unlabeled primary CRUD controls | Confirm Add Task, Open task, status movement, local suggestion apply, task Save, automation review, approved execution, and Delete Task entry points are understandable. |'
+    printf '%s\n' '| `approved-execution-receipt` | Task content execution | Confirm VoiceOver announces the redacted receipt with reviewed task title and detail after approved execution. |'
+    printf '%s\n' '| `buttonA11ySignals=8/8` | No unlabeled primary CRUD controls | Confirm primary task lifecycle buttons retain useful label or help text. |'
+    printf '%s\n' '| `screenSignals=4/4` | Project navigation | Confirm Inbox, Today, Settings, and Voice Command entry points are announced and navigable. |'
+    printf '%s\n' '| `focusPathSignals=6/6` | Project navigation, Project board detail, Open task, Inline Task Composer, Status controls, Task inspector | Confirm the announced order and keyboard traversal match the automated anchors. |'
+    printf '%s\n' '| `destructiveCancelSignals=1/1` | Delete Task confirmation, No keyboard trap | Confirm Cancel Delete Task is announced and returns focus from the destructive confirmation without mutating the task. |'
+    printf '%s\n' '| `today-rail-schedule-block` / `today-rail-reminder-draft` | Today rail actions | Confirm the Today rail announces local focus, schedule draft, edit, subtask draft, and approval-gated reminder draft controls. |'
+    printf '%s\n' '| `inbox-voice-detail` / `inbox-action-grid` | Inbox voice triage | Confirm the Inbox voice detail announces transcript, interpretation, metadata, memo, and triage actions without opening unrelated inspector controls. |'
     printf '\n'
     printf '%s\n' '## VoiceOver Observations To Fill'
     printf '\n'
@@ -151,7 +209,10 @@ write_voiceover_review_worksheet() {
     printf '%s\n' '- Inline Task Composer:'
     printf '%s\n' '- Status controls:'
     printf '%s\n' '- Task inspector:'
+    printf '%s\n' '- Inbox voice triage:'
+    printf '%s\n' '- Today rail actions:'
     printf '%s\n' '- Save Changes:'
+    printf '%s\n' '- Task content execution:'
     printf '%s\n' '- Delete Task confirmation:'
     printf '%s\n' '- No keyboard trap:'
     printf '%s\n' '- No unlabeled primary CRUD controls:'
@@ -170,7 +231,7 @@ write_voiceover_evidence_command() {
   local candidate_project_id="$3"
   local evidence_source
 
-  evidence_source="dist/$APP_NAME.app manual VoiceOver pass using $candidate_database_path project:$candidate_project_id"
+  evidence_source="$(voiceover_evidence_source_for_candidate "$candidate_database_path" "$candidate_project_id")"
 
   {
     printf '%s\n' '#!/usr/bin/env bash'
@@ -179,11 +240,37 @@ write_voiceover_evidence_command() {
     printf '%s\n' '# Generated by script/prepare_voiceover_review_candidate.sh.'
     printf '# Candidate database: %q\n' "$candidate_database_path"
     printf '# Candidate selected destination: %q\n' "project:$candidate_project_id"
-    printf '%s\n' '# Replace every placeholder below with concrete observations from the manual VoiceOver pass before running.'
-    printf '%s\n' '# This command must fail if placeholders are not replaced.'
+    printf '%s\n' '# Fill the worksheet with concrete observations from the manual VoiceOver pass before running.'
+    printf '%s\n' '# This command must fail if the worksheet still contains placeholders.'
     printf '\n'
     printf 'REPO_ROOT=%q\n' "$ROOT_DIR"
     printf '%s\n' 'cd "$REPO_ROOT"'
+    printf '\n'
+    printf '%s\n' 'usage() {'
+    printf '%s\n' '  printf "%s\n" "usage: $0 [--validate-only]"'
+    printf '%s\n' '  printf "%s\n" ""'
+    printf '%s\n' '  printf "%s\n" "Runs the generated VoiceOver evidence validation for the pinned candidate."'
+    printf '%s\n' '  printf "%s\n" "Use --validate-only to stop before writing docs/release/evidence/accessibility-voiceover.md."'
+    printf '%s\n' '}'
+    printf '\n'
+    printf '%s\n' 'validate_only=0'
+    printf '%s\n' 'while [[ "$#" -gt 0 ]]; do'
+    printf '%s\n' '  case "$1" in'
+    printf '%s\n' '    --validate-only)'
+    printf '%s\n' '      validate_only=1'
+    printf '%s\n' '      shift'
+    printf '%s\n' '      ;;'
+    printf '%s\n' '    -h|--help)'
+    printf '%s\n' '      usage'
+    printf '%s\n' '      exit 0'
+    printf '%s\n' '      ;;'
+    printf '%s\n' '    *)'
+    printf '%s\n' '      printf "unknown argument: %s\n" "$1" >&2'
+    printf '%s\n' '      usage >&2'
+    printf '%s\n' '      exit 2'
+    printf '%s\n' '      ;;'
+    printf '%s\n' '  esac'
+    printf '%s\n' 'done'
     printf '\n'
     printf '%s\n' 'TRACKED_SOURCE_STATUS="$(git status --porcelain --untracked-files=no)"'
     printf '%s\n' 'if [[ -n "$TRACKED_SOURCE_STATUS" ]]; then'
@@ -192,7 +279,12 @@ write_voiceover_evidence_command() {
     printf '%s\n' 'fi'
     printf '\n'
     printf 'EXPECTED_SOURCE_COMMIT=%q\n' "$SOURCE_COMMIT"
-    printf '%s\n' 'CURRENT_SOURCE_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || printf unknown)"'
+    printf '%s\n' 'release_candidate_source_commit() {'
+    printf '%s\n' '  local commit'
+    printf '%s\n' '  commit="$(git log -1 --format=%h -- Sources/SoloPMApp Sources/SoloPMCore Sources/SoloPMCLI Sources/SoloPMExternalConnectors Package.swift packaging/app_metadata.env 2>/dev/null || true)"'
+    printf '%s\n' '  if [[ -n "$commit" ]]; then printf "%s" "$commit"; else git rev-parse --short HEAD 2>/dev/null || printf unknown; fi'
+    printf '%s\n' '}'
+    printf '%s\n' 'CURRENT_SOURCE_COMMIT="$(release_candidate_source_commit)"'
     printf '%s\n' 'if [[ "$CURRENT_SOURCE_COMMIT" != "$EXPECTED_SOURCE_COMMIT" ]]; then'
     printf '%s\n' '  printf "BLOCKER: VoiceOver evidence command was generated for source commit %s but current source commit is %s. Rerun ./script/prepare_voiceover_review_candidate.sh for this release candidate.\n" "$EXPECTED_SOURCE_COMMIT" "$CURRENT_SOURCE_COMMIT" >&2'
     printf '%s\n' '  exit 2'
@@ -231,7 +323,7 @@ write_voiceover_evidence_command() {
     printf '%s\n' '  exit 2'
     printf '%s\n' 'fi'
     printf '%s\n' 'SEEDED_TASK_COUNT="$("$SQLITE3" -batch -noheader "$EXPECTED_DATABASE_PATH" "SELECT count(*) FROM tasks WHERE project_id=$EXPECTED_PROJECT_ID AND source_command='"'"'voiceover-review-seed'"'"';" | tail -n 1 || true)"'
-    printf '%s\n' 'if [[ "$SEEDED_TASK_COUNT" != "5" ]]; then'
+    printf '%s\n' 'if [[ "$SEEDED_TASK_COUNT" != "7" ]]; then'
     printf '%s\n' '  printf "BLOCKER: VoiceOver evidence command database is missing the seeded review tasks for project %s: got %s\n" "$EXPECTED_PROJECT_ID" "${SEEDED_TASK_COUNT:-<empty>}" >&2'
     printf '%s\n' '  exit 2'
     printf '%s\n' 'fi'
@@ -308,7 +400,15 @@ write_voiceover_evidence_command() {
     printf '%s\n' '    grep -Eiq "(^|[[:space:]])(todo|tbd|placeholder|sample|example)([[:space:]]|$)|replace" <<<"$normalized"'
     printf '%s\n' '  }'
     printf '%s\n' ''
-    printf '%s\n' '  for required_label in "Reviewer" "Accessibility environment" "Runtime AX smoke" "Project navigation" "Project board detail" "Open task" "Inline Task Composer" "Status controls" "Task inspector" "Save Changes" "Delete Task confirmation" "No keyboard trap" "No unlabeled primary CRUD controls"; do'
+    printf '%s\n' '  voiceover_worksheet_value_covers_task_content_execution() {'
+    printf '%s\n' '    local normalized'
+    printf '%s\n' '    normalized="$(printf "%s" "$1" | tr "[:upper:]" "[:lower:]")"'
+    printf '%s\n' '    grep -Eiq "receipt" <<<"$normalized" && \'
+    printf '%s\n' '      grep -Eiq "title" <<<"$normalized" && \'
+    printf '%s\n' '      grep -Eiq "detail|body" <<<"$normalized"'
+    printf '%s\n' '  }'
+    printf '%s\n' ''
+    printf '%s\n' '  for required_label in "Reviewer" "Accessibility environment" "Runtime AX smoke" "Project navigation" "Project board detail" "Open task" "Inline Task Composer" "Status controls" "Task inspector" "Inbox voice triage" "Today rail actions" "Save Changes" "Task content execution" "Delete Task confirmation" "No keyboard trap" "No unlabeled primary CRUD controls"; do'
     printf '%s\n' '    required_value="$(sed -n -E "s/^- ${required_label}:[[:space:]]*(.*)$/\1/p" "$VOICEOVER_WORKSHEET_FILE" | head -n 1)"'
     printf '%s\n' '    if [[ -z "${required_value//[[:space:]]/}" ]]; then'
     printf '%s\n' '      printf "BLOCKER: VoiceOver worksheet is missing, stale, or incomplete: fill %s.\n" "$required_label" >&2'
@@ -318,18 +418,64 @@ write_voiceover_evidence_command() {
     printf '%s\n' '      printf "BLOCKER: VoiceOver worksheet is missing, stale, or incomplete: fill %s with concrete VoiceOver observation.\n" "$required_label" >&2'
     printf '%s\n' '      exit 2'
     printf '%s\n' '    fi'
+    printf '%s\n' '    if [[ "$required_label" == "Task content execution" ]] && ! voiceover_worksheet_value_covers_task_content_execution "$required_value"; then'
+    printf '%s\n' '      printf "BLOCKER: VoiceOver worksheet is missing, stale, or incomplete: Task content execution must mention the redacted receipt, reviewed title, and reviewed detail.\n" >&2'
+    printf '%s\n' '      exit 2'
+    printf '%s\n' '    fi'
     printf '%s\n' '  done'
     printf '%s\n' '}'
     printf '\n'
     printf '%s\n' 'verify_voiceover_worksheet_for_evidence'
     printf '\n'
+    printf '%s\n' 'voiceover_worksheet_value() {'
+    printf '%s\n' '  local label="$1"'
+    printf '%s\n' '  sed -n -E "s/^- ${label}:[[:space:]]*(.*)$/\1/p" "$VOICEOVER_WORKSHEET_FILE" | head -n 1'
+    printf '%s\n' '}'
+    printf '\n'
+    printf '%s\n' '# The worksheet is the single source of manually observed VoiceOver facts.'
+    printf '%s\n' '# Reading it here prevents validate-only and passed evidence arguments from drifting.'
+    printf '%s\n' 'WORKSHEET_REVIEWER="$(voiceover_worksheet_value "Reviewer")"'
+    printf '%s\n' 'WORKSHEET_ACCESSIBILITY_ENVIRONMENT="$(voiceover_worksheet_value "Accessibility environment")"'
+    printf '%s\n' 'WORKSHEET_PROJECT_NAVIGATION_NOTE="$(voiceover_worksheet_value "Project navigation")"'
+    printf '%s\n' 'WORKSHEET_PROJECT_BOARD_DETAIL_NOTE="$(voiceover_worksheet_value "Project board detail")"'
+    printf '%s\n' 'WORKSHEET_OPEN_TASK_NOTE="$(voiceover_worksheet_value "Open task")"'
+    printf '%s\n' 'WORKSHEET_INLINE_TASK_COMPOSER_NOTE="$(voiceover_worksheet_value "Inline Task Composer")"'
+    printf '%s\n' 'WORKSHEET_STATUS_CONTROLS_NOTE="$(voiceover_worksheet_value "Status controls")"'
+    printf '%s\n' 'WORKSHEET_TASK_INSPECTOR_NOTE="$(voiceover_worksheet_value "Task inspector")"'
+    printf '%s\n' 'WORKSHEET_INBOX_VOICE_TRIAGE_NOTE="$(voiceover_worksheet_value "Inbox voice triage")"'
+    printf '%s\n' 'WORKSHEET_TODAY_RAIL_ACTIONS_NOTE="$(voiceover_worksheet_value "Today rail actions")"'
+    printf '%s\n' 'WORKSHEET_SAVE_CHANGES_NOTE="$(voiceover_worksheet_value "Save Changes")"'
+    printf '%s\n' 'WORKSHEET_TASK_CONTENT_EXECUTION_NOTE="$(voiceover_worksheet_value "Task content execution")"'
+    printf '%s\n' 'WORKSHEET_DELETE_CONFIRMATION_NOTE="$(voiceover_worksheet_value "Delete Task confirmation")"'
+    printf '%s\n' 'WORKSHEET_NO_KEYBOARD_TRAP_NOTE="$(voiceover_worksheet_value "No keyboard trap")"'
+    printf '%s\n' 'WORKSHEET_NO_UNLABELED_CRUD_NOTE="$(voiceover_worksheet_value "No unlabeled primary CRUD controls")"'
+    printf '\n'
     printf '%s\n' 'terminate_voiceover_candidate() {'
-    printf '%s\n' '  /usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true'
     printf '%s\n' '  pkill -x "$APP_NAME" >/dev/null 2>&1 || true'
     printf '%s\n' '  if [[ -n "${CANDIDATE_APP_PID:-}" ]]; then'
     printf '%s\n' '    wait "$CANDIDATE_APP_PID" >/dev/null 2>&1 || true'
     printf '%s\n' '    CANDIDATE_APP_PID=""'
     printf '%s\n' '  fi'
+    printf '%s\n' '}'
+    printf '\n'
+    printf '%s\n' 'activate_voiceover_candidate() {'
+    printf '%s\n' '  /usr/bin/osascript - "$APP_NAME" <<'"'"'APPLESCRIPT'"'"' >/dev/null 2>&1 || true'
+    printf '%s\n' 'on run argv'
+    printf '%s\n' '  set appName to item 1 of argv'
+    printf '%s\n' '  tell application "System Events"'
+    printf '%s\n' '    if not (exists process appName) then return "missing"'
+    printf '%s\n' '    tell process appName'
+    printf '%s\n' '      set frontmost to true'
+    printf '%s\n' '      if (count of windows) > 0 then'
+    printf '%s\n' '        try'
+    printf '%s\n' '          perform action "AXRaise" of window 1'
+    printf '%s\n' '        end try'
+    printf '%s\n' '      end if'
+    printf '%s\n' '    end tell'
+    printf '%s\n' '  end tell'
+    printf '%s\n' '  return "activated"'
+    printf '%s\n' 'end run'
+    printf '%s\n' 'APPLESCRIPT'
     printf '%s\n' '}'
     printf '\n'
     printf '%s\n' 'wait_for_voiceover_candidate_process() {'
@@ -344,14 +490,49 @@ write_voiceover_evidence_command() {
     printf '%s\n' '  done'
     printf '%s\n' '}'
     printf '\n'
+    printf '%s\n' 'wait_for_voiceover_candidate_windows() {'
+    printf '%s\n' '  local timeout_seconds="${SOLOPM_VOICEOVER_REVIEW_TIMEOUT_SECONDS:-30}"'
+    printf '%s\n' '  local deadline=$((SECONDS + timeout_seconds))'
+    printf '%s\n' '  local window_count=""'
+    printf '%s\n' '  local osascript_status=1'
+    printf '%s\n' '  while true; do'
+    printf '%s\n' '    set +e'
+    printf '%s\n' '    window_count="$(/usr/bin/osascript - "$APP_NAME" <<'"'"'APPLESCRIPT'"'"' 2>/dev/null'
+    printf '%s\n' 'on run argv'
+    printf '%s\n' '  set appName to item 1 of argv'
+    printf '%s\n' '  tell application "System Events"'
+    printf '%s\n' '    if not (exists process appName) then return "0"'
+    printf '%s\n' '    tell process appName'
+    printf '%s\n' '      return (count of windows) as text'
+    printf '%s\n' '    end tell'
+    printf '%s\n' '  end tell'
+    printf '%s\n' 'end run'
+    printf '%s\n' 'APPLESCRIPT'
+    printf '%s\n' ')"'
+    printf '%s\n' '    osascript_status=$?'
+    printf '%s\n' '    set -e'
+    printf '%s\n' '    if [[ "$osascript_status" -eq 0 && "${window_count:-0}" =~ ^[0-9]+$ && "$window_count" -ge 1 ]]; then'
+    printf '%s\n' '      return 0'
+    printf '%s\n' '    fi'
+    printf '%s\n' '    activate_voiceover_candidate'
+    printf '%s\n' '    if [[ "$SECONDS" -ge "$deadline" ]]; then'
+    printf '%s\n' '      printf "BLOCKER: %s did not expose a visible AX window for VoiceOver evidence within %ss\n" "$APP_NAME" "$timeout_seconds" >&2'
+    printf '%s\n' '      exit 2'
+    printf '%s\n' '    fi'
+    printf '%s\n' '    sleep 1'
+    printf '%s\n' '  done'
+    printf '%s\n' '}'
+    printf '\n'
     printf '%s\n' 'launch_voiceover_candidate_for_evidence() {'
     printf '%s\n' '  terminate_voiceover_candidate'
-    printf '%s\n' '  SOLOPM_DATABASE_PATH="$EXPECTED_DATABASE_PATH" \'
-    printf '%s\n' '    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="$EXPECTED_SELECTED_DESTINATION" \'
-    printf '%s\n' '    "$APP_BINARY" &'
-    printf '%s\n' '  CANDIDATE_APP_PID=$!'
-    printf '%s\n' '  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 || true'
+    printf '%s\n' '  /usr/bin/open -n -F "$REPO_ROOT/dist/$APP_NAME.app" \'
+    printf '%s\n' '    --env SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \'
+    printf '%s\n' '    --env SOLOPM_LAUNCH_RECOVERY_MODE=1 \'
+    printf '%s\n' '    --env "SOLOPM_DATABASE_PATH=$EXPECTED_DATABASE_PATH" \'
+    printf '%s\n' '    --env "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$EXPECTED_SELECTED_DESTINATION"'
     printf '%s\n' '  wait_for_voiceover_candidate_process'
+    printf '%s\n' '  activate_voiceover_candidate'
+    printf '%s\n' '  wait_for_voiceover_candidate_windows'
     printf '%s\n' '}'
     printf '\n'
     printf '%s\n' 'trap terminate_voiceover_candidate EXIT INT TERM'
@@ -360,6 +541,11 @@ write_voiceover_evidence_command() {
     printf '\n'
     printf '%s\n' '# Validate the filled VoiceOver evidence command before writing tracked evidence.'
     write_voiceover_evidence_invocation "--validate-only" "$evidence_source"
+    printf '\n'
+    printf '%s\n' 'if [[ "$validate_only" == "1" ]]; then'
+    printf '%s\n' '  printf "OK: VoiceOver evidence command validated without writing tracked evidence\n"'
+    printf '%s\n' '  exit 0'
+    printf '%s\n' 'fi'
     printf '\n'
     printf '%s\n' '# If validation passes and the manual VoiceOver pass is complete, write tracked evidence.'
     write_voiceover_evidence_invocation "--passed" "$evidence_source"
@@ -391,7 +577,6 @@ wait_for_no_app_process() {
 }
 
 terminate_app() {
-  /usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
   if [[ -n "${app_pid:-}" ]]; then
     wait "$app_pid" >/dev/null 2>&1 || true
@@ -400,7 +585,60 @@ terminate_app() {
 }
 
 activate_app() {
-  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 || true
+  # Avoid LaunchServices activation here; it can start a second instance without
+  # the isolated VoiceOver review database environment.
+  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 || true
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    if not (exists process appName) then return "missing"
+    tell process appName
+      set frontmost to true
+      if (count of windows) > 0 then
+        try
+          perform action "AXRaise" of window 1
+        end try
+      end if
+    end tell
+  end tell
+  return "activated"
+end run
+APPLESCRIPT
+}
+
+wait_for_visible_windows() {
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local window_count=""
+  local osascript_status=1
+
+  while true; do
+    set +e
+    window_count="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>/dev/null
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    if not (exists process appName) then return "0"
+    tell process appName
+      return (count of windows) as text
+    end tell
+  end tell
+end run
+APPLESCRIPT
+)"
+    osascript_status=$?
+    set -e
+
+    if [[ "$osascript_status" -eq 0 && "${window_count:-0}" =~ ^[0-9]+$ && "$window_count" -ge 1 ]]; then
+      return 0
+    fi
+
+    activate_app
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: $APP_NAME did not expose a visible AX window within ${TIMEOUT_SECONDS}s" >&2
+      return 1
+    fi
+    sleep 1
+  done
 }
 
 wait_for_database_table() {
@@ -416,6 +654,25 @@ wait_for_database_table() {
     fi
     sleep 1
   done
+}
+
+open_candidate_app() {
+  local selected_destination="${1:-}"
+  local open_args=(
+    -n
+    -F
+    "$APP_BUNDLE"
+    --env
+    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1
+    --env
+    SOLOPM_LAUNCH_RECOVERY_MODE=1
+    --env
+    "SOLOPM_DATABASE_PATH=$database_path"
+  )
+  if [[ -n "$selected_destination" ]]; then
+    open_args+=(--env "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$selected_destination")
+  fi
+  /usr/bin/open "${open_args[@]}"
 }
 
 seed_voiceover_review_data() {
@@ -466,6 +723,23 @@ VALUES (
   'backlog',
   'Use VoiceOver to move through Inbox, Today, Projects, and back to the selected project.',
   strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+1 day'),
+  'high',
+  'voiceover-review-seed',
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+);
+
+-- Today rail VoiceOver coverage needs a concrete due-today task because the
+-- empty Today state does not expose task-specific focus/schedule/edit/reminder
+-- actions. The due_at is pinned to the seed instant so the user's local Today
+-- boundary includes the task without relying on calendar-day string math.
+INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command, created_at, updated_at)
+VALUES (
+  $seeded_project_id,
+  'Review Today rail next action with VoiceOver',
+  'planned',
+  'Open Today and confirm the seeded task drives the assistant rail next action, task detail, focus, schedule draft, edit, subtask draft, and reminder draft controls.',
+  strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
   'high',
   'voiceover-review-seed',
   CURRENT_TIMESTAMP,
@@ -524,6 +798,23 @@ VALUES (
   CURRENT_TIMESTAMP
 );
 
+-- The manual VoiceOver pass needs one concrete task whose title/detail can be
+-- run through approved execution and then heard back from approved-execution-receipt.
+-- Keeping it separate from the column-spread tasks prevents status-board
+-- coverage from accidentally replacing task-content execution coverage.
+INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command, created_at, updated_at)
+VALUES (
+  $seeded_project_id,
+  'Run approved execution receipt review',
+  'planned',
+  'Confirm the approved execution receipt announces the reviewed task title and detail after the plan runs.',
+  strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+6 days'),
+  'high',
+  'voiceover-review-seed',
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+);
+
 INSERT INTO artifacts (project_id, task_id, workspace_path, expected_path, created_state, created_at, updated_at)
 VALUES (
   $seeded_project_id,
@@ -564,10 +855,12 @@ if [[ ! -x "$APP_BINARY" ]]; then
 fi
 
 terminate_app
-SOLOPM_DATABASE_PATH="$database_path" "$APP_BINARY" &
-app_pid=$!
-activate_app
+open_candidate_app
 wait_for_app_process
+# The first candidate launch only lets the app run database migrations against
+# the isolated review store. Some macOS menu-bar launches do not materialize a
+# Project Board window until a selected destination is provided, so the manual
+# evidence launch below remains the window/AX proof point.
 wait_for_database_table "projects"
 terminate_app
 wait_for_no_app_process
@@ -580,17 +873,21 @@ if [[ -z "${seed_project_id//[[:space:]]/}" ]]; then
   exit 1
 fi
 
-verify_seed "5" "seed task count" "SELECT count(*) FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
+verify_seed "7" "seed task count" "SELECT count(*) FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
 verify_seed "1" "seed artifact count" "SELECT count(*) FROM artifacts WHERE project_id=$seed_project_id AND expected_path='$(sql_escape "$VOICEOVER_REVIEW_ARTIFACT_PATH")';"
 verify_seed "1" "seed task spread" "SELECT CASE WHEN count(DISTINCT status) = 5 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
-verify_seed "1" "VoiceOver release project selection" "SELECT CASE WHEN count(*) = 5 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
+verify_seed "1" "Today rail seed task" "SELECT count(*) FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed' AND title='Review Today rail next action with VoiceOver' AND due_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+1 minute');"
+verify_seed "1" "approved execution receipt seed task" "SELECT count(*) FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed' AND title='Run approved execution receipt review' AND detail='Confirm the approved execution receipt announces the reviewed task title and detail after the plan runs.';"
+verify_seed "1" "VoiceOver release project selection" "SELECT CASE WHEN count(*) = 7 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
 
 launch_env_file="$ROOT_DIR/.tmp/voiceover-review/launch.env"
 evidence_command_file="$ROOT_DIR/.tmp/voiceover-review/create-evidence-command.sh"
 worksheet_file="$ROOT_DIR/.tmp/voiceover-review/voiceover-worksheet.md"
 pending_evidence_file="$ROOT_DIR/.tmp/voiceover-review/accessibility-voiceover-pending-$SOURCE_COMMIT.md"
-pending_evidence_source="dist/$APP_NAME.app manual VoiceOver pass using $database_path project:$seed_project_id"
+pending_evidence_source="$(voiceover_evidence_source_for_candidate "$database_path" "$seed_project_id")"
 {
+  printf 'SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1\n'
+  printf 'SOLOPM_LAUNCH_RECOVERY_MODE=1\n'
   printf 'SOLOPM_DATABASE_PATH=%q\n' "$database_path"
   printf 'SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=%q\n' "project:$seed_project_id"
   printf 'SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT=%q\n' "$SOURCE_COMMIT"
@@ -610,14 +907,12 @@ printf 'Worksheet: %s\n' "$worksheet_file"
 printf 'Evidence command: %s\n' "$evidence_command_file"
 
 if [[ "$launch_app" -eq 1 ]]; then
-  SOLOPM_DATABASE_PATH="$database_path" \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
-    "$APP_BINARY" &
-  app_pid=$!
-  activate_app
+  open_candidate_app "project:$seed_project_id"
   wait_for_app_process
+  activate_app
+  wait_for_visible_windows
   printf 'App launched for manual VoiceOver review with SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:%s"\n' "$seed_project_id"
 else
   printf 'Launch skipped. To open the same candidate manually, run:\n'
-  printf 'SOLOPM_DATABASE_PATH=%q SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=%q %q\n' "$database_path" "project:$seed_project_id" "$APP_BINARY"
+  printf '/usr/bin/open -n -F %q --env SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 --env SOLOPM_LAUNCH_RECOVERY_MODE=1 --env %q --env %q\n' "$APP_BUNDLE" "SOLOPM_DATABASE_PATH=$database_path" "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=project:$seed_project_id"
 fi

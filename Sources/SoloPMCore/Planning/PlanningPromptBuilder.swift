@@ -25,6 +25,7 @@ public struct PlanningPromptBuilder: Sendable {
             ? "No Knowledge Frame candidates."
             : request.knowledgeFrameCandidates.map(formatFrame).joined(separator: "\n\n")
 
+        let scopedSchema = scopedActionPlanSchema(availableTools: request.availableTools)
         let system = """
         You are SoloPM's planning engine.
         Convert the user's input into a strict ActionPlan JSON object.
@@ -37,7 +38,7 @@ public struct PlanningPromptBuilder: Sendable {
         Return JSON only.
 
         ActionPlan JSON Schema:
-        \(actionPlanSchema)
+        \(scopedSchema)
         """
 
         let user = """
@@ -55,6 +56,30 @@ public struct PlanningPromptBuilder: Sendable {
         """
 
         return PlanningPrompt(system: system, user: user)
+    }
+
+    private func scopedActionPlanSchema(availableTools: [ActionTool]) -> String {
+        guard let schemaData = actionPlanSchema.data(using: .utf8),
+              var schemaObject = try? JSONSerialization.jsonObject(with: schemaData) as? [String: Any],
+              var definitions = schemaObject["$defs"] as? [String: Any],
+              var toolDefinition = definitions["tool"] as? [String: Any],
+              toolDefinition["enum"] != nil else {
+            return actionPlanSchema
+        }
+
+        // The packaged schema documents every tool, but the prompt must describe
+        // only the tools allowed for this request so developer mode tools do not
+        // leak into ordinary personal planning.
+        toolDefinition["enum"] = availableTools.map(\.rawValue).sorted()
+        definitions["tool"] = toolDefinition
+        schemaObject["$defs"] = definitions
+
+        guard JSONSerialization.isValidJSONObject(schemaObject),
+              let scopedData = try? JSONSerialization.data(withJSONObject: schemaObject, options: [.prettyPrinted, .sortedKeys]),
+              let scopedSchema = String(data: scopedData, encoding: .utf8) else {
+            return actionPlanSchema
+        }
+        return scopedSchema
     }
 
     private func formatFrame(_ frame: KnowledgeFrameCandidate) -> String {

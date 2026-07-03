@@ -243,6 +243,7 @@ public enum CoreMigrations {
                         priority TEXT,
                         deadline TEXT,
                         workspace_path TEXT,
+                        workspace_bookmark TEXT,
                         tags_json TEXT NOT NULL DEFAULT '[]',
                         source_command TEXT,
                         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -256,6 +257,7 @@ public enum CoreMigrations {
                         status TEXT NOT NULL,
                         detail TEXT,
                         due_at TEXT,
+                        completed_at TEXT,
                         priority TEXT,
                         source_command TEXT,
                         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -477,6 +479,260 @@ public enum CoreMigrations {
 
                     CREATE INDEX IF NOT EXISTS idx_external_task_links_project
                     ON external_task_links(provider_id, project_id);
+                    """
+                )
+            },
+            DatabaseMigration(id: "0010_create_inbox_capture_records") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS inbox_capture_records (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        task_id INTEGER NOT NULL,
+                        source_kind TEXT NOT NULL CHECK(source_kind IN ('voice_memo')),
+                        audio_file_path TEXT NOT NULL,
+                        duration_seconds REAL NOT NULL CHECK(duration_seconds >= 0),
+                        transcript TEXT,
+                        interpretation_summary TEXT,
+                        memo TEXT,
+                        classification_status TEXT NOT NULL CHECK(classification_status IN ('unclassified', 'classified', 'dismissed')),
+                        transcription_status TEXT NOT NULL CHECK(transcription_status IN ('pending', 'succeeded', 'failed')),
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_inbox_capture_records_task
+                    ON inbox_capture_records(task_id);
+
+                    CREATE INDEX IF NOT EXISTS idx_inbox_capture_records_created_at
+                    ON inbox_capture_records(created_at);
+                    """
+                )
+            },
+            DatabaseMigration(id: "0011_create_project_milestones") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS project_milestones (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        project_id INTEGER NOT NULL,
+                        title TEXT NOT NULL,
+                        due_at TEXT,
+                        is_completed INTEGER NOT NULL DEFAULT 0 CHECK(is_completed IN (0, 1)),
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_project_milestones_project
+                    ON project_milestones(project_id);
+
+                    CREATE INDEX IF NOT EXISTS idx_project_milestones_due_at
+                    ON project_milestones(due_at);
+                    """
+                )
+            },
+            DatabaseMigration(id: "0012_add_task_completed_at") { connection in
+                let columns = try connection.queryRows("PRAGMA table_info(tasks);").compactMap { $0["name"] }
+                guard !columns.contains("completed_at") else {
+                    return
+                }
+                try connection.execute("ALTER TABLE tasks ADD COLUMN completed_at TEXT;")
+                try connection.execute(
+                    """
+                    UPDATE tasks
+                    SET completed_at = strftime('%Y-%m-%dT%H:%M:%SZ', COALESCE(updated_at, 'now'))
+                    WHERE status = 'completed'
+                      AND completed_at IS NULL;
+                    """
+                )
+            },
+            DatabaseMigration(id: "0013_create_missed_task_review_state") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS missed_task_review_state (
+                        task_id INTEGER PRIMARY KEY NOT NULL,
+                        last_reviewed_at TEXT,
+                        last_reviewed_day TEXT,
+                        last_notified_day TEXT,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_missed_task_review_state_reviewed_day
+                    ON missed_task_review_state(last_reviewed_day);
+
+                    CREATE INDEX IF NOT EXISTS idx_missed_task_review_state_notified_day
+                    ON missed_task_review_state(last_notified_day);
+                    """
+                )
+            },
+            DatabaseMigration(id: "0014_add_project_workspace_bookmark") { connection in
+                let columns = try connection.queryRows("PRAGMA table_info(projects);").compactMap { $0["name"] }
+                guard !columns.contains("workspace_bookmark") else {
+                    return
+                }
+                try connection.execute("ALTER TABLE projects ADD COLUMN workspace_bookmark TEXT;")
+            },
+            DatabaseMigration(id: "0015_create_assistant_queue_items") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS assistant_queue_items (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        schema_version INTEGER NOT NULL DEFAULT 1,
+                        payload_kind TEXT NOT NULL,
+                        payload_json TEXT NOT NULL,
+                        state TEXT NOT NULL,
+                        risk_level TEXT NOT NULL,
+                        source_transcript TEXT,
+                        interpretation_summary TEXT,
+                        review_reason TEXT NOT NULL,
+                        redacted_summary TEXT NOT NULL,
+                        required_capabilities_json TEXT NOT NULL DEFAULT '[]',
+                        approval_json TEXT,
+                        blocking_reason TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_assistant_queue_items_state_updated_at
+                    ON assistant_queue_items(state, updated_at);
+
+                    CREATE INDEX IF NOT EXISTS idx_assistant_queue_items_payload_kind
+                    ON assistant_queue_items(payload_kind);
+                    """
+                )
+            },
+            DatabaseMigration(id: "0016_add_assistant_queue_cost_preview") { connection in
+                let columns = try connection.queryRows("PRAGMA table_info(assistant_queue_items);").compactMap { $0["name"] }
+                if !columns.contains("cost_preview_json") {
+                    try connection.execute("ALTER TABLE assistant_queue_items ADD COLUMN cost_preview_json TEXT;")
+                }
+
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.sortedKeys]
+                let previewJSON = String(
+                    decoding: try encoder.encode(AssistantQueueCostPreview.localOnly(
+                        note: "Legacy local execution preview added during migration. No SoloPM managed charge before run."
+                    )),
+                    as: UTF8.self
+                )
+                let escapedPreviewJSON = previewJSON.replacingOccurrences(of: "'", with: "''")
+                try connection.execute(
+                    """
+                    UPDATE assistant_queue_items
+                    SET cost_preview_json = '\(escapedPreviewJSON)'
+                    WHERE cost_preview_json IS NULL;
+                    """
+                )
+
+                try connection.execute(
+                    """
+                    UPDATE assistant_queue_items
+                    SET state = 'waitingReview',
+                        approval_json = NULL,
+                        review_reason = 'Cost preview was added during migration. Review this item again before running.',
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE state IN ('approved', 'running');
+                    """
+                )
+            },
+            DatabaseMigration(id: "0017_scope_artifact_uniqueness_to_owner") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE artifacts_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        project_id INTEGER,
+                        task_id INTEGER,
+                        workspace_path TEXT NOT NULL,
+                        expected_path TEXT NOT NULL,
+                        created_state TEXT NOT NULL CHECK(created_state IN ('expected', 'created', 'missing')),
+                        last_modified_at TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    INSERT INTO artifacts_new (
+                        id,
+                        project_id,
+                        task_id,
+                        workspace_path,
+                        expected_path,
+                        created_state,
+                        last_modified_at,
+                        created_at,
+                        updated_at
+                    )
+                    SELECT
+                        id,
+                        project_id,
+                        task_id,
+                        workspace_path,
+                        expected_path,
+                        created_state,
+                        last_modified_at,
+                        created_at,
+                        updated_at
+                    FROM artifacts;
+
+                    DELETE FROM artifacts_new
+                    WHERE id IN (
+                        SELECT id
+                        FROM (
+                            SELECT
+                                id,
+                                ROW_NUMBER() OVER (
+                                    PARTITION BY IFNULL(project_id, -1), IFNULL(task_id, -1), expected_path
+                                    ORDER BY
+                                        CASE created_state
+                                            WHEN 'created' THEN 0
+                                            WHEN 'expected' THEN 1
+                                            ELSE 2
+                                        END,
+                                        CASE WHEN last_modified_at IS NULL THEN 1 ELSE 0 END,
+                                        last_modified_at DESC,
+                                        id ASC
+                                ) AS duplicate_rank
+                            FROM artifacts_new
+                        )
+                        WHERE duplicate_rank > 1
+                    );
+
+                    DROP TABLE artifacts;
+                    ALTER TABLE artifacts_new RENAME TO artifacts;
+
+                    CREATE INDEX IF NOT EXISTS idx_artifacts_workspace_path
+                    ON artifacts(workspace_path);
+
+                    CREATE INDEX IF NOT EXISTS idx_artifacts_last_modified_at
+                    ON artifacts(last_modified_at);
+
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_artifacts_owner_expected_path
+                    ON artifacts(IFNULL(project_id, -1), IFNULL(task_id, -1), expected_path);
+                    """
+                )
+            },
+            DatabaseMigration(id: "0018_create_managed_ai_usage_ledger") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS managed_ai_usage_ledger (
+                        source_receipt_digest TEXT PRIMARY KEY NOT NULL,
+                        assistant_queue_item_digest TEXT,
+                        billing_mode TEXT NOT NULL CHECK(billing_mode IN ('solopm_managed')),
+                        provider TEXT NOT NULL,
+                        model_name TEXT NOT NULL,
+                        usage_state TEXT NOT NULL CHECK(usage_state IN ('measured', 'estimated', 'unknown', 'unavailable')),
+                        input_tokens INTEGER CHECK(input_tokens IS NULL OR input_tokens >= 0),
+                        output_tokens INTEGER CHECK(output_tokens IS NULL OR output_tokens >= 0),
+                        cost_cents REAL NOT NULL CHECK(cost_cents >= 0),
+                        currency_code TEXT NOT NULL,
+                        occurred_at TEXT NOT NULL,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_managed_ai_usage_ledger_occurred_at
+                    ON managed_ai_usage_ledger(occurred_at);
+
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_managed_ai_usage_ledger_queue_digest
+                    ON managed_ai_usage_ledger(assistant_queue_item_digest);
                     """
                 )
             }

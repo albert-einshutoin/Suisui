@@ -1,8 +1,10 @@
 # SoloPM Tech Stack
 
-Last updated: 2026-06-17  
+Last updated: 2026-06-30
 Verified against public docs: 2026-06-17  
 Target: macOS native app / local-first / BYOK / voice-first personal PM
+
+Long-term product direction: iOS / Web / macOS からアクセスできる会話ベースのタスク管理&自動化ツール。詳細は `docs/product/multiplatform-automation.md` を正とし、本書のMVP設計は macOS alpha の実装境界を扱う。
 
 ---
 
@@ -14,7 +16,7 @@ Target: macOS native app / local-first / BYOK / voice-first personal PM
 |---|---|---|
 | Swift / Xcode | Swift 6 | **Xcode 26.5 stable + Swift 6 language mode / Swift compiler 6.3** を基準にする。Swift standalone toolchain は 6.3.2 が最新安定。Xcode 27 beta / Swift 6.4 は検証 branch 扱い |
 | STT | whisper.cpp first | **SpeechAnalyzer / WhisperKit / whisper.cpp の3段構え**に変更。macOS 26+ では SpeechAnalyzer、Swift-native OSS では WhisperKit、低レイヤー/広互換では whisper.cpp |
-| TTS | macOS 標準 TTS | そのまま採用。MVPでは AVSpeechSynthesizer が最軽量・低コスト |
+| TTS | macOS 標準 TTS | **Local Kokoro + AVAudioPlayer preview** に更新。Product TTS は VoiceOver / AVSpeechSynthesizer に依存しない |
 | LLM API | OpenAI-compatible adapter | **OpenAI Responses API adapter first** に更新。OpenAI-compatible Chat Completions は OpenRouter / Ollama fallback として維持 |
 | MCP | 2025-03-26 transport前提 | **MCP spec 2025-11-25** を基準にする。stdio / Streamable HTTP は維持。外部MCPは後続 |
 | Knowledge | SQLite + FTS5 | そのまま採用。sqlite-vec はまだ later/experimental 扱い |
@@ -74,7 +76,7 @@ MVP の基本方針は以下。
 | Mac アプリ本体 | Xcode 26.5 stable + Swift 6 language mode + SwiftUI |
 | AI 推論 | ユーザー BYOK。OpenAI Responses API adapter を先に実装し、OpenAI-compatible fallback を持つ |
 | STT | SpeechAnalyzer / WhisperKit / whisper.cpp の3段構え |
-| TTS | MVP は macOS 標準 TTS を使う |
+| TTS | MVP は Local Kokoro をready-gatedで使い、Settings Test PlayだけAVAudioPlayerで再生する |
 | MCP | MVP は Swift 内蔵 Tool Registry。外部 MCP は MCP spec 2025-11-25 / stdio から後続対応 |
 | DB | SQLite + FTS5 |
 | Knowledge | 本格 RAG ではなく Knowledge Frame + FTS5 |
@@ -102,7 +104,7 @@ SoloPM は Mac 用アプリなので、macOS が既に持つ機能を最大限�
 | カレンダー | EventKit | Google API なしでも予定作成可能 |
 | リマインダー | EventKit | タスク DB を一から作り込まずに Apple Reminders 連携可能 |
 | API Key | Keychain | 自前の秘密情報管理サーバー不要 |
-| TTS | AVSpeechSynthesizer | TTS API コスト不要 |
+| TTS playback | AVAudioPlayer | ローカル生成WAVのpreview再生。Product TTS runtimeはOSS Kokoro境界で扱う |
 | ファイル監視 | FSEvents | 常時ポーリング不要 |
 | 起動時常駐 | SMAppService | 外部 daemon 管理不要 |
 | メニューバー常駐 | MenuBarExtra | Electron/Tauri を避けられる |
@@ -329,9 +331,11 @@ STTProvider
 
 ## 6. TTS
 
-## 6.1 採用: macOS 標準 TTS
+## 6.1 採用: Local Kokoro + AVAudioPlayer preview
 
-MVP の TTS は `AVSpeechSynthesizer` を使う。
+MVP の product TTS は `Local Kokoro` を ready-gated provider として扱う。モデルは git / app bundle に同梱せず、Settings から明示インストールし、checksum 済みcacheだけを使う。
+
+再生は assistant の product speech として扱い、VoiceOver や `AVSpeechSynthesizer` には依存しない。Settings の `Test Play` は固定の短い日英サンプルだけを合成し、生成された WAV を `AVAudioPlayer` で再生する。
 
 用途は以下に限定する。
 
@@ -341,23 +345,23 @@ MVP の TTS は `AVSpeechSynthesizer` を使う。
 - 「予定をカレンダーに追加しました」
 ```
 
-長文会話や自然な感情表現は MVP では不要。
+長文会話、会議資料の読み上げ、streaming/interrupt、自然な感情表現は MVP では不要。
 
 ### コストメリット
 
-macOS 標準 TTS を使うことで、TTS API コスト、モデル同梱、推論処理、音声モデル管理を避けられる。
+Local Kokoro を使うことで、TTS API コストを持たず、Personal MVP の短い確認読み上げをローカルで閉じられる。モデル同梱は避け、cache + checksum + user-configured runtime path でOSS配布サイズとlicense境界を管理する。
 
-## 6.2 Later: Kokoro / OpenAI TTS
+## 6.2 Later: runtime packaging / cloud TTS option
 
 高品質読み上げが必要になったら、次を検討する。
 
 | 候補 | 判断 |
 |---|---|
-| Kokoro | 軽量 open-weight TTS。後続で検証 |
+| Kokoro packaged runtime | notarization / dylib / Python or ONNX packaging を別sliceで検証 |
 | OpenAI gpt-4o-mini-tts | BYOK オプションとして追加可能 |
 | ElevenLabs 等 | MVP では不要 |
 
-MVP では TTS に時間を使わない。
+Business MVP の会議資料読み上げや長文TTSは、Personal MVP の短い確認読み上げとは別issueで扱う。
 
 ---
 
@@ -877,30 +881,35 @@ Sparkle
 
 ## 13.3 課金
 
-Obsidian 型を前提にする。
+Obsidian 型を前提にする。詳細な価格案、PC未起動時のタスク作成訴求、Sync / Cloud Relay / Harness の境界は `docs/product/pricing.md` を正とする。
 
 ```text
 Free:
 - ローカル基本機能
 - BYOK
 - Apple Calendar / Reminders / Notifications
+- SoloPM 中継型のローカル tool 実行
+- External MCP registration / diagnostics
 
 Founder:
 - 開発支援
 - Early access
 - Beta MCP packs
 
-Personal Plus later:
-- 高度な通知ルール
-- カスタム MCP
-- Developer Mode
-- GitHub 連携
-- CLI
-
 Sync later:
 - 複数デバイス同期
 - E2E encryption
 - version history
+
+Pro later:
+- Sync
+- Cloud Relay
+- Hosted MCP endpoint
+- PC未起動時のタスク作成
+- iOS / Web / macOS access
+- docs-scoped automation
+- SoloPM Harness
+- advanced MCP execution
 ```
 
 ---
@@ -918,7 +927,7 @@ Sync later:
 | Vector search | sqlite-vec | Later | 小型 vector search。MVP では不要 |
 | Embedding | fastembed-rs | Later | Rust core を入れる時に検討 |
 | Apple Silicon ML | MLX Swift | Later | 実験・高機能版向け |
-| TTS | Kokoro | Later | ローカル高品質 TTS 候補 |
+| TTS | Kokoro | Yes | ready-gated local TTS provider。モデルはcache + checksum、Settings Test Playは短文previewのみ |
 | MCP | Swift MCP SDK | Later | 外部 MCP 対応を本格化する時。spec 2025-11-25基準 |
 | On-device LLM | Foundation Models | Later | macOS 26+ / Apple Intelligence availability依存 |
 
@@ -931,7 +940,7 @@ Sync later:
 | 領域 | 技術 | SoloPM 側コスト |
 |---|---|---:|
 | STT | SpeechAnalyzer / WhisperKit / whisper.cpp | 0 |
-| TTS | macOS TTS | 0 |
+| TTS | Local Kokoro + AVAudioPlayer preview | 0 service cost |
 | LLM | BYOK / Foundation Models later | 0〜ユーザー負担 |
 | 通知 | UserNotifications | 0 |
 | Calendar / Reminders | EventKit | 0 |
@@ -1084,8 +1093,9 @@ STT:
   OpenAI Speech to Text optional
 
 TTS:
-  AVSpeechSynthesizer
-  OpenAI TTS / Kokoro later
+  Local Kokoro ready-gated provider
+  AVAudioPlayer for generated WAV preview
+  OpenAI TTS optional later
 
 LLM:
   OpenAI Responses API adapter first

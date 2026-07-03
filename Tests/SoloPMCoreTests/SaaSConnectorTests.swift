@@ -191,6 +191,156 @@ final class SaaSConnectorTests: XCTestCase {
         XCTAssertFalse(request.url?.absoluteString.contains("calendar-access-token") ?? true)
     }
 
+    func testGoogleCalendarHTTPClientSendsStableEventIDAndPrivateSoloPMIdentity() throws {
+        let httpClient = RecordingSynchronousHTTPDataClient(
+            responseBody: #"{"id":"solopmp42t1"}"#.data(using: .utf8)!,
+            statusCode: 200
+        )
+        let client = GoogleCalendarHTTPClient(
+            tokenProvider: StaticBearerTokenProvider(token: "calendar-access-token"),
+            httpClient: httpClient,
+            configuration: GoogleCalendarHTTPConfiguration(baseURL: URL(string: "https://www.googleapis.com/calendar/v3")!)
+        )
+
+        _ = try client.createEvent(
+            CalendarEventDraft(
+                title: "Due task",
+                startAt: "2026-07-04",
+                endAt: "2026-07-05",
+                isAllDay: true,
+                notes: "SoloPM",
+                idempotencyKey: "solopm\(String(repeating: "a", count: 64))"
+            ),
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo"
+        )
+
+        let request = try XCTUnwrap(httpClient.requests.first)
+        let body = try XCTUnwrap(request.httpBody.flatMap { try JSONSerialization.jsonObject(with: $0) as? [String: Any] })
+        let extendedProperties = try XCTUnwrap(body["extendedProperties"] as? [String: Any])
+        let privateProperties = try XCTUnwrap(extendedProperties["private"] as? [String: Any])
+
+        XCTAssertEqual(body["id"] as? String, "solopm\(String(repeating: "a", count: 64))")
+        XCTAssertEqual(privateProperties["soloPMIdempotencyKey"] as? String, "solopm\(String(repeating: "a", count: 64))")
+    }
+
+    func testGoogleCalendarHTTPClientTreatsDuplicateStableEventIDAsIdempotentSuccess() throws {
+        let httpClient = RecordingSynchronousHTTPDataClient(
+            responseBody: #"{"error":{"code":409}}"#.data(using: .utf8)!,
+            statusCode: 409
+        )
+        let client = GoogleCalendarHTTPClient(
+            tokenProvider: StaticBearerTokenProvider(token: "calendar-access-token"),
+            httpClient: httpClient,
+            configuration: GoogleCalendarHTTPConfiguration(baseURL: URL(string: "https://www.googleapis.com/calendar/v3")!)
+        )
+
+        let record = try client.createEvent(
+            CalendarEventDraft(
+                title: "Due task",
+                startAt: "2026-07-04",
+                endAt: "2026-07-05",
+                isAllDay: true,
+                idempotencyKey: "solopm\(String(repeating: "b", count: 64))"
+            ),
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo"
+        )
+
+        XCTAssertEqual(record.event.id, "solopm\(String(repeating: "b", count: 64))")
+        XCTAssertEqual(record.event.draft.title, "Due task")
+    }
+
+    func testGoogleCalendarHTTPClientDropsUnsafeIdempotencyKeys() throws {
+        let httpClient = RecordingSynchronousHTTPDataClient(
+            responseBody: #"{"id":"event-123"}"#.data(using: .utf8)!,
+            statusCode: 200
+        )
+        let client = GoogleCalendarHTTPClient(
+            tokenProvider: StaticBearerTokenProvider(token: "calendar-access-token"),
+            httpClient: httpClient,
+            configuration: GoogleCalendarHTTPConfiguration(baseURL: URL(string: "https://www.googleapis.com/calendar/v3")!)
+        )
+
+        _ = try client.createEvent(
+            CalendarEventDraft(
+                title: "Due task",
+                startAt: "2026-07-04",
+                endAt: "2026-07-05",
+                isAllDay: true,
+                idempotencyKey: "solopmp42t1"
+            ),
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo"
+        )
+
+        let request = try XCTUnwrap(httpClient.requests.first)
+        let body = try XCTUnwrap(request.httpBody.flatMap { try JSONSerialization.jsonObject(with: $0) as? [String: Any] })
+
+        XCTAssertNil(body["id"])
+        XCTAssertNil(body["extendedProperties"])
+    }
+
+    func testGoogleCalendarCredentialStatusStoreMapsOAuthCredentialMetadataThroughKeychainBoundary() throws {
+        let secretStore = InMemorySecretStore()
+        let metadataStore = InMemoryOAuthCredentialMetadataStore()
+        let credentialStore = KeychainOAuthCredentialStore(secretStore: secretStore, metadataStore: metadataStore)
+        let statusStore = GoogleCalendarOAuthCredentialStatusStore(credentialStore: credentialStore)
+
+        XCTAssertNil(try statusStore.loadGoogleCalendarCredentialStatus())
+
+        try credentialStore.saveTokens(
+            connectorID: .googleCalendar,
+            accessToken: "calendar-access-token",
+            refreshToken: "calendar-refresh-token",
+            scopes: [.googleCalendarEvents, .offlineAccess],
+            expiresAt: Date(timeIntervalSince1970: 4_000)
+        )
+
+        let status = try XCTUnwrap(try statusStore.loadGoogleCalendarCredentialStatus())
+        XCTAssertEqual(status.grantedScopes, [
+            OAuthScope.googleCalendarEvents.rawValue,
+            OAuthScope.offlineAccess.rawValue
+        ])
+        XCTAssertEqual(status.expiresAt, Date(timeIntervalSince1970: 4_000))
+        XCTAssertTrue(status.hasRefreshToken)
+
+        try secretStore.delete(SecretKey("oauth.google_calendar.access_token"))
+        XCTAssertNil(try statusStore.loadGoogleCalendarCredentialStatus())
+    }
+
+    func testGoogleCalendarConnectorEventSinkBridgesApprovedConnectorWrites() throws {
+        let client = InMemoryGoogleCalendarClient(validCalendarIDs: ["primary"])
+        let sink = GoogleCalendarConnectorEventSink(connector: GoogleCalendarConnector(client: client))
+        let draft = CalendarEventDraft(
+            title: "Planning",
+            startAt: "2026-07-07",
+            endAt: "2026-07-08",
+            isAllDay: true,
+            notes: "SoloPM",
+            idempotencyKey: "solopm\(String(repeating: "c", count: 64))"
+        )
+
+        XCTAssertThrowsError(
+            try sink.createEvent(draft, calendarID: "primary", timeZoneIdentifier: "Asia/Tokyo", context: ToolExecutionContext(source: .developerTool))
+        ) { error in
+            XCTAssertEqual(error as? SaaSConnectorError, .approvalRequired(.googleCalendar))
+        }
+
+        let record = try sink.createEvent(
+            draft,
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo",
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(record.providerID, ExternalTaskSource.googleCalendar.rawValue)
+        XCTAssertEqual(record.externalID, "google-calendar-event-1")
+        XCTAssertEqual(record.calendarID, "primary")
+        XCTAssertEqual(record.timeZoneIdentifier, "Asia/Tokyo")
+        XCTAssertEqual(record.title, "Planning")
+    }
+
     func testGmailDraftConnectorNeverExposesSendAndRequiresApproval() throws {
         let connector = GmailDraftConnector(client: InMemoryGmailDraftClient())
 
@@ -471,5 +621,13 @@ private final class RecordingSynchronousHTTPDataClient: SynchronousHTTPDataClien
             headerFields: nil
         )!
         return (responseBody, response)
+    }
+}
+
+private struct StaticBearerTokenProvider: BearerTokenProvider {
+    var token: String
+
+    func bearerToken() throws -> String {
+        token
     }
 }

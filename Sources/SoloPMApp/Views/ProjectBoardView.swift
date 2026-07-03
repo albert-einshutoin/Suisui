@@ -2,38 +2,132 @@ import SoloPMCore
 import Dispatch
 import SwiftUI
 import UniformTypeIdentifiers
+#if canImport(AppKit)
+import AppKit
+#endif
+
+private enum ProjectBoardLayoutMetrics {
+    // Project Board keeps these metrics local because the split-view header,
+    // Kanban columns, inspector, and inline composer are tuned as one surface.
+    // Keeping the numbers named makes UI review catch accidental magic values
+    // without forcing a premature app-wide design system abstraction.
+    static let headerHeight: CGFloat = 44
+    static let terminalPanelMinHeight: CGFloat = 220
+    static let terminalPanelIdealHeight: CGFloat = 280
+    static let terminalPanelMaxHeight: CGFloat = 360
+    static let portfolioCardMinHeight: CGFloat = 230
+    static let overviewPanelMinHeight: CGFloat = 170
+    static let displayModePickerWidth: CGFloat = 252
+    static let boardColumnWidth: CGFloat = 244
+    static let emptyColumnMinHeight: CGFloat = 82
+    static let inlinePriorityPickerWidth: CGFloat = 112
+    static let taskMetadataChipMinWidth: CGFloat = 64
+    static let taskMetadataChipMinHeight: CGFloat = 24
+    static let taskStatusRailWidth: CGFloat = 4
+    static let taskStatusRailHeight: CGFloat = 44
+}
+
+private struct DevelopmentAutomationReviewSheet: Identifiable {
+    let id: String
+    let viewModel: ReviewSessionViewModel
+}
 
 struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
     @StateObject private var viewModel: ProjectBoardViewModel
+    private let taskAutomationSettings: () -> TaskAutoExecutionSettings
+    private let appSettings: () -> AppSettings
+    private let developmentAutomationReviewSession: (ActionPlan) -> ReviewSessionViewModel
     @AppStorage(ProjectBoardSelectionPersistence.storageKey) private var persistedSelectedDestinationRawValue = ProjectBoardSelectionPersistence.defaultRawValue
     @State private var displayMode: ProjectBoardDisplayMode = .board
     @State private var selectedDestination: ProjectBoardSidebarDestination? = .today
     @State private var isInspectorPresented = true
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var toolbarLayoutRefreshToken = 0
     @State private var isTerminalPanelPresented = false
     @State private var isExportingTaskInterop = false
     @State private var isImportingTaskInterop = false
+    @State private var isGoogleCalendarSyncApprovalPresented = false
+    @State private var developmentAutomationReviewSheet: DevelopmentAutomationReviewSheet?
     @State private var taskInteropExportDocument = TaskInteropFileDocument(data: Data())
 
-    init(viewModel: ProjectBoardViewModel) {
+    init(
+        viewModel: ProjectBoardViewModel,
+        taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings = { .default },
+        appSettings: @escaping () -> AppSettings = { .default },
+        developmentAutomationReviewSession: @escaping (ActionPlan) -> ReviewSessionViewModel
+    ) {
         _viewModel = StateObject(wrappedValue: viewModel)
+        self.taskAutomationSettings = taskAutomationSettings
+        self.appSettings = appSettings
+        self.developmentAutomationReviewSession = developmentAutomationReviewSession
     }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             VStack(spacing: 0) {
                 List(selection: $selectedDestination) {
                     Section {
                         ProjectBoardSidebarDestinationRow(destination: .inbox, count: viewModel.inboxTasks.count)
                             .tag(ProjectBoardSidebarDestination.inbox)
+                        ProjectBoardSidebarDestinationRow(destination: .assistantQueue, count: viewModel.assistantQueueSnapshot.needsAttentionCount)
+                            .tag(ProjectBoardSidebarDestination.assistantQueue)
                         ProjectBoardSidebarDestinationRow(destination: .today, count: viewModel.todayTasks().count)
                             .tag(ProjectBoardSidebarDestination.today)
+                        ProjectBoardSidebarDestinationRow(destination: .catchUp, count: viewModel.missedTaskReview().newlyMissedCount)
+                            .tag(ProjectBoardSidebarDestination.catchUp)
+                        ProjectBoardSidebarDestinationRow(destination: .schedule, count: viewModel.unscheduledScheduleTasks().count)
+                            .tag(ProjectBoardSidebarDestination.schedule)
+                        ProjectBoardSidebarDestinationRow(destination: .done, count: viewModel.doneAnalytics().completedTaskCount)
+                            .tag(ProjectBoardSidebarDestination.done)
                     }
 
                     Section("Projects") {
-                        ForEach(viewModel.snapshot.projects.filter { $0.id != viewModel.inboxProject?.id }) { project in
-                            ProjectSidebarRow(project: project)
+                        ProjectBoardSidebarDestinationRow(
+                            destination: .projects,
+                            count: viewModel.projectPortfolioSummaries().count
+                        )
+                        .tag(ProjectBoardSidebarDestination.projects)
+
+                        ForEach(activeSidebarProjects) { project in
+                            ProjectSidebarRow(
+                                project: project,
+                                onSelect: { selectedDestination = .project(project.id) },
+                                onMoveDroppedTasks: { rawIDs in
+                                    viewModel.moveDroppedTasks(ids: rawIDs, toProjectID: project.id)
+                                }
+                            )
+                            .tag(ProjectBoardSidebarDestination.project(project.id))
+                        }
+                    }
+
+                    if !completedSidebarProjects.isEmpty {
+                        Section("Completed") {
+                            ForEach(completedSidebarProjects) { project in
+                                ProjectSidebarRow(
+                                    project: project,
+                                    onSelect: { selectedDestination = .project(project.id) },
+                                    onMoveDroppedTasks: { rawIDs in
+                                        viewModel.moveDroppedTasks(ids: rawIDs, toProjectID: project.id)
+                                    }
+                                )
                                 .tag(ProjectBoardSidebarDestination.project(project.id))
+                            }
+                        }
+                    }
+
+                    if viewModel.showsArchivedProjects {
+                        Section("Archived") {
+                            ForEach(archivedSidebarProjects) { project in
+                                ProjectSidebarRow(
+                                    project: project,
+                                    onSelect: { selectedDestination = .project(project.id) },
+                                    onMoveDroppedTasks: { rawIDs in
+                                        viewModel.moveDroppedTasks(ids: rawIDs, toProjectID: project.id)
+                                    }
+                                )
+                                .tag(ProjectBoardSidebarDestination.project(project.id))
+                            }
                         }
                     }
                 }
@@ -54,6 +148,7 @@ struct ProjectBoardView: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Show archived projects")
+                .accessibilityIdentifier("project-board-show-archived")
                 .accessibilityLabel("Show archived projects")
                 .accessibilityValue(viewModel.showsArchivedProjects ? "On" : "Off")
                 .accessibilityHint("Shows archived projects in the sidebar without deleting local data.")
@@ -70,14 +165,19 @@ struct ProjectBoardView: View {
                 .buttonStyle(.borderless)
                 .keyboardShortcut("n", modifiers: [.command, .shift])
                 .help("Add a project")
+                .accessibilityIdentifier("project-board-add-project")
                 .accessibilityLabel("Add Project")
                 .accessibilityHint("Creates a new local project and selects it.")
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
             }
-            .navigationTitle("SoloPM")
+            .id(toolbarLayoutRefreshToken)
+            .projectBoardSynchronizedColumnBounds()
         } detail: {
             VStack(spacing: 0) {
+                projectBoardHeaderBar
+                Divider()
+
                 Group {
                     if let errorMessage = viewModel.errorMessage {
                         ContentUnavailableView(
@@ -88,9 +188,28 @@ struct ProjectBoardView: View {
                     } else {
                         switch selectedDestination ?? .today {
                         case .inbox:
-                            InboxWorkflowView(viewModel: viewModel)
+                            InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectInboxTask)
+                        case .assistantQueue:
+                            AssistantQueueWorkflowView(viewModel: viewModel)
                         case .today:
-                            TodayWorkflowView(viewModel: viewModel)
+                            TodayWorkflowView(
+                                viewModel: viewModel,
+                                selectTodayTask: selectTodayTask,
+                                openInspectorForTodayRailTask: openInspectorForTodayRailTask,
+                                playDailyPlanningReadout: playDailyPlanningReadoutFromSettings
+                            )
+                        case .catchUp:
+                            CatchUpWorkflowView(viewModel: viewModel)
+                        case .schedule:
+                            ScheduleWorkflowView(viewModel: viewModel)
+                        case .done:
+                            DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())
+                        case .projects:
+                            ProjectsPortfolioOverview(viewModel: viewModel) { projectID in
+                                if viewModel.openProjectFromPortfolioCard(projectID: projectID) {
+                                    selectedDestination = .project(projectID)
+                                }
+                            }
                         case .project(let projectID):
                             if let project = viewModel.snapshot.projects.first(where: { $0.id == projectID }) {
                                 ProjectBoardDetail(
@@ -114,56 +233,15 @@ struct ProjectBoardView: View {
                         workingDirectory: terminalWorkingDirectory,
                         isPresented: $isTerminalPanelPresented
                     )
-                    .frame(minHeight: 220, idealHeight: 280, maxHeight: 360)
+                    .frame(
+                        minHeight: ProjectBoardLayoutMetrics.terminalPanelMinHeight,
+                        idealHeight: ProjectBoardLayoutMetrics.terminalPanelIdealHeight,
+                        maxHeight: ProjectBoardLayoutMetrics.terminalPanelMaxHeight
+                    )
                 }
             }
-            .toolbar {
-                ToolbarItemGroup {
-                    Menu {
-                        Button {
-                            beginTaskInteropExport()
-                        } label: {
-                            Label("Export Tasks", systemImage: "square.and.arrow.up")
-                        }
-                        .accessibilityIdentifier("project-board-export-tasks")
-
-                        Button {
-                            isImportingTaskInterop = true
-                        } label: {
-                            Label("Import Tasks", systemImage: "square.and.arrow.down")
-                        }
-                        .accessibilityIdentifier("project-board-import-tasks")
-
-                        Divider()
-
-                        Button {
-                            viewModel.recordTaskInteropFileFailure(ProjectBoardIntegrationUnavailableError.googleCalendarOAuthNotConfigured)
-                        } label: {
-                            Label("Google Calendar Sync", systemImage: "calendar.badge.plus")
-                        }
-                        .disabled(true)
-                        .help("Google Calendar sync requires Pro and OAuth authorization.")
-                    } label: {
-                        Label("Integrations", systemImage: "arrow.left.arrow.right")
-                    }
-                    .help("Import, export, and sync task data")
-
-                    Button {
-                        openWindow(id: "voice-capture")
-                    } label: {
-                        Label("Voice Command", systemImage: "mic")
-                    }
-
-                    Button {
-                        isTerminalPanelPresented.toggle()
-                    } label: {
-                        Label("Terminal", systemImage: "terminal")
-                    }
-                    .keyboardShortcut("`", modifiers: [.control])
-                    .help("Terminal")
-                    .accessibilityIdentifier("project-board-terminal-toggle")
-                }
-            }
+            .id(toolbarLayoutRefreshToken)
+            .projectBoardSynchronizedColumnBounds()
             .inspector(isPresented: inspectorBinding) {
                 Group {
                     if let task = viewModel.selectedTask {
@@ -176,6 +254,7 @@ struct ProjectBoardView: View {
                         ProjectInspectorView(
                             project: project,
                             viewModel: viewModel,
+                            onReviewDevelopmentAutomation: presentDevelopmentAutomationReview,
                             onClose: { inspectorBinding.wrappedValue = false }
                         )
                     } else {
@@ -186,20 +265,57 @@ struct ProjectBoardView: View {
             }
         }
         .navigationTitle("SoloPM")
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    toggleSidebarVisibility()
+                } label: {
+                    Label("Sidebar", systemImage: "sidebar.left")
+                }
+                .help(sidebarToggleHelp)
+                .accessibilityIdentifier("project-board-sidebar-toggle")
+                .accessibilityLabel(sidebarToggleHelp)
+            }
+        }
+        .toolbar(removing: .sidebarToggle)
+        .background(
+            ProjectBoardToolbarLayoutBridge(
+                columnVisibility: columnVisibility,
+                onToolbarLayoutChanged: refreshProjectBoardColumnsAfterToolbarDisplayModeChange
+            )
+        )
         .task {
             viewModel.load()
+            viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
             restoreSelectedDestinationIfNeeded()
+            consumePendingVoiceDailyPlanningReviewRequestIfNeeded()
+            consumePendingVoiceInboxTriageRequestIfNeeded()
+            consumePendingAssistantQueueRequestIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
             viewModel.load()
+            viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
             restoreSelectedDestinationIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .soloPMVoiceDailyPlanningReviewRequested)) { notification in
+            handleVoiceDailyPlanningReviewRequest(notification)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .soloPMVoiceInboxTriageRequested)) { notification in
+            handleVoiceInboxTriageRequest(notification)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .soloPMAssistantQueueRequested)) { notification in
+            handleAssistantQueueOpenRequest(notification)
         }
         .onChange(of: selectedDestination) { _, destination in
             persistSelectedDestination(destination)
             applySelectedDestination(destination)
+            // Destination changes intentionally clear normal user selection; the
+            // env-only override is reapplied so deterministic release evidence
+            // can open Inbox with a seeded capture selected.
+            applySelectedTaskOverrideIfNeeded()
         }
         .onChange(of: viewModel.selectedTaskID) { _, selectedTaskID in
-            if selectedTaskID != nil {
+            if selectedTaskID != nil && selectedDestination != .today && selectedDestination != .inbox {
                 isInspectorPresented = true
             }
         }
@@ -223,6 +339,32 @@ struct ProjectBoardView: View {
         ) { result in
             handleTaskInteropImport(result)
         }
+        .confirmationDialog(
+            "Sync due tasks to Google Calendar?",
+            isPresented: $isGoogleCalendarSyncApprovalPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Approve Google Calendar Sync") {
+                approveGoogleCalendarSync()
+            }
+            .accessibilityIdentifier("project-board-google-calendar-sync-approval-confirm")
+
+            Button("Cancel", role: .cancel) {
+                isGoogleCalendarSyncApprovalPresented = false
+            }
+            .accessibilityIdentifier("project-board-google-calendar-sync-approval-cancel")
+        } message: {
+            Text("SoloPM will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped.")
+        }
+        .sheet(item: $developmentAutomationReviewSheet) { sheet in
+            ActionReviewPanel(viewModel: sheet.viewModel) {
+                viewModel.clearDevelopmentAutomationReviewPlan()
+                developmentAutomationReviewSheet = nil
+            }
+            .padding(16)
+            .frame(minWidth: 520, minHeight: 360)
+            .accessibilityIdentifier("project-development-automation-review-sheet")
+        }
     }
 
     private var inspectorBinding: Binding<Bool> {
@@ -237,11 +379,145 @@ struct ProjectBoardView: View {
         )
     }
 
+    private var sidebarToggleHelp: String {
+        columnVisibility == .detailOnly ? "Show Sidebar" : "Hide Sidebar"
+    }
+
+    private func presentDevelopmentAutomationReview(_ plan: ActionPlan) {
+        developmentAutomationReviewSheet = DevelopmentAutomationReviewSheet(
+            id: plan.id,
+            viewModel: developmentAutomationReviewSession(plan)
+        )
+    }
+
+    private var projectBoardHeaderBar: some View {
+        HStack(spacing: 8) {
+            Spacer(minLength: 16)
+
+            Menu {
+                Button {
+                    beginTaskInteropExport()
+                } label: {
+                    Label("Export Tasks", systemImage: "square.and.arrow.up")
+                }
+                .accessibilityIdentifier("project-board-export-tasks")
+
+                Button {
+                    isImportingTaskInterop = true
+                } label: {
+                    Label("Import Tasks", systemImage: "square.and.arrow.down")
+                }
+                .accessibilityIdentifier("project-board-import-tasks")
+
+                Divider()
+
+                Button {
+                    isGoogleCalendarSyncApprovalPresented = true
+                } label: {
+                    Label("Google Calendar Sync", systemImage: "calendar.badge.plus")
+                }
+                .disabled(!viewModel.canSyncGoogleCalendar)
+                .help(viewModel.googleCalendarSyncHelp)
+                .accessibilityIdentifier("project-board-google-calendar-sync")
+            } label: {
+                Label("Integrations", systemImage: "arrow.left.arrow.right")
+                    .labelStyle(.titleAndIcon)
+            }
+            .help("Import, export, and sync task data")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Integrations")
+            .accessibilityIdentifier("project-board-integrations-menu")
+
+            Button {
+                viewModel.prepareTaskAutomationReview(settings: taskAutomationSettings())
+            } label: {
+                Label("Review Task Automation", systemImage: "sparkles")
+                    .labelStyle(.titleAndIcon)
+            }
+            .help("Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Review Task Automation")
+            .accessibilityIdentifier("project-board-task-auto-execution-review")
+            .accessibilityHint("Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings.")
+
+            Button {
+                openWindow(id: "voice-capture")
+            } label: {
+                Label("Voice Command", systemImage: "mic")
+                    .labelStyle(.titleAndIcon)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Voice Command")
+            .accessibilityIdentifier("project-board-voice-command")
+
+            SettingsLink {
+                Label("Settings", systemImage: "gearshape")
+                    .labelStyle(.titleAndIcon)
+            }
+            .help("Open Settings")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Settings")
+            .accessibilityIdentifier("project-board-settings-link")
+
+            Button {
+                isTerminalPanelPresented.toggle()
+            } label: {
+                Label("Terminal", systemImage: "terminal")
+                    .labelStyle(.titleAndIcon)
+            }
+            .keyboardShortcut("`", modifiers: [.control])
+            .help("Terminal")
+            .accessibilityLabel("Terminal")
+            .accessibilityIdentifier("project-board-terminal-toggle")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .padding(.horizontal, 12)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: ProjectBoardLayoutMetrics.headerHeight,
+            maxHeight: ProjectBoardLayoutMetrics.headerHeight,
+            alignment: .trailing
+        )
+        .background(.bar)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project-board-header-bar")
+    }
+
+    private func toggleSidebarVisibility() {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+            refreshProjectBoardColumnsAfterToolbarDisplayModeChange()
+        }
+    }
+
+    private func refreshProjectBoardColumnsAfterToolbarDisplayModeChange() {
+        toolbarLayoutRefreshToken += 1
+    }
+
     private var selectedProjectForInspector: ProjectBoardProject? {
         guard case .project(let projectID) = selectedDestination else {
             return nil
         }
         return viewModel.snapshot.projects.first { $0.id == projectID }
+    }
+
+    private var sidebarProjects: [ProjectBoardProject] {
+        viewModel.snapshot.projects.filter { $0.id != viewModel.inboxProject?.id }
+    }
+
+    private var activeSidebarProjects: [ProjectBoardProject] {
+        sidebarProjects.filter { !$0.isCompleted && !$0.isArchived }
+    }
+
+    private var completedSidebarProjects: [ProjectBoardProject] {
+        sidebarProjects.filter { $0.isCompleted && !$0.isArchived }
+    }
+
+    private var archivedSidebarProjects: [ProjectBoardProject] {
+        sidebarProjects.filter(\.isArchived)
     }
 
     private var terminalWorkingDirectory: URL {
@@ -258,6 +534,7 @@ struct ProjectBoardView: View {
         selectedDestination = destination
         persistSelectedDestination(destination)
         applySelectedDestination(destination)
+        applySelectedTaskOverrideIfNeeded()
     }
 
     private func persistSelectedDestination(_ destination: ProjectBoardSidebarDestination?) {
@@ -276,10 +553,183 @@ struct ProjectBoardView: View {
             viewModel.selectedProjectID = projectID
             viewModel.selectedTaskID = nil
             isInspectorPresented = true
-        case .inbox, .today, .none:
+        case .inbox, .assistantQueue, .today, .catchUp, .schedule, .done, .projects, .none:
             viewModel.selectedTaskID = nil
             isInspectorPresented = false
         }
+    }
+
+    private func consumePendingVoiceDailyPlanningReviewRequestIfNeeded() {
+        guard let request = SoloPMVoiceDailyPlanningReviewBridge.consumePendingRequest() else {
+            return
+        }
+        handleVoiceDailyPlanningReviewRequest(
+            sourceTranscript: normalizedVoiceDailyPlanningReviewTranscript(request.sourceTranscript),
+            actionDraftKind: request.actionDraftKind
+        )
+    }
+
+    private func consumePendingVoiceInboxTriageRequestIfNeeded() {
+        guard let request = SoloPMVoiceInboxTriageBridge.consumePendingRequest() else {
+            return
+        }
+        handleVoiceInboxTriageRequest(request: request)
+    }
+
+    private func consumePendingAssistantQueueRequestIfNeeded() {
+        guard let request = SoloPMAssistantQueueBridge.consumePendingOpen() else {
+            return
+        }
+        handleAssistantQueueOpenRequest(request: request)
+    }
+
+    private func handleVoiceDailyPlanningReviewRequest(_ notification: Notification) {
+        let request: SoloPMVoiceDailyPlanningReviewBridge.Request?
+        if SoloPMVoiceDailyPlanningReviewBridge.hasRequestPayload(notification) {
+            request = SoloPMVoiceDailyPlanningReviewBridge.consumeRequest(from: notification)
+        } else {
+            request = SoloPMVoiceDailyPlanningReviewBridge.consumePendingRequest()
+        }
+
+        guard let request else {
+            return
+        }
+        handleVoiceDailyPlanningReviewRequest(
+            sourceTranscript: normalizedVoiceDailyPlanningReviewTranscript(request.sourceTranscript),
+            actionDraftKind: request.actionDraftKind
+        )
+    }
+
+    private func normalizedVoiceDailyPlanningReviewTranscript(_ transcript: String) -> String {
+        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? String(localized: "Today daily planning review") : trimmed
+    }
+
+    private func handleVoiceDailyPlanningReviewRequest(
+        sourceTranscript: String,
+        actionDraftKind: DailyPlanningActionDraftKind? = nil
+    ) {
+        viewModel.load()
+        _ = viewModel.prepareDailyPlanningReview(transcript: sourceTranscript)
+        let summary = viewModel.missedTaskReview()
+        if let actionDraftKind {
+            // Voice-triggered planning actions still become Assistant Queue
+            // drafts so Today review can suggest writes without mutating tasks
+            // before explicit user approval.
+            let queued = viewModel.enqueueDailyPlanningActionDraft(
+                kind: actionDraftKind,
+                transcript: sourceTranscript
+            )
+            selectedDestination = queued ? .assistantQueue : (summary.newlyMissedCount > 0 ? .catchUp : .today)
+        } else {
+            selectedDestination = summary.newlyMissedCount > 0 ? .catchUp : .today
+        }
+        persistSelectedDestination(selectedDestination)
+        applySelectedDestination(selectedDestination)
+        playDailyPlanningReadoutFromSettings()
+    }
+
+    private func playDailyPlanningReadoutFromSettings() {
+        Task {
+            let settings = appSettings().normalizedForRuntime
+            _ = await viewModel.playDailyPlanningReviewReadout(
+                using: AppTextToSpeechRuntimeFactory.makePreviewer(
+                    settings: settings,
+                    temporaryDirectoryPrefix: "solopm-daily-planning-readout",
+                    outputFilename: "readout.wav"
+                ),
+                languageCode: settings.ttsLanguageCode,
+                voiceID: settings.ttsVoiceID
+            )
+        }
+    }
+
+    private func handleVoiceInboxTriageRequest(_ notification: Notification) {
+        let request: SoloPMVoiceInboxTriageBridge.Request?
+        if SoloPMVoiceInboxTriageBridge.hasRequestPayload(notification) {
+            request = SoloPMVoiceInboxTriageBridge.consumeRequest(from: notification)
+        } else {
+            request = SoloPMVoiceInboxTriageBridge.consumePendingRequest()
+        }
+
+        guard let request else {
+            return
+        }
+        handleVoiceInboxTriageRequest(request: request)
+    }
+
+    private func handleVoiceInboxTriageRequest(request: SoloPMVoiceInboxTriageBridge.Request) {
+        viewModel.load()
+        openInboxForVoiceTriage()
+        _ = viewModel.applyInboxVoiceTriageCommand(request.command)
+    }
+
+    private func openInboxForVoiceTriage() {
+        if selectedDestination != .inbox {
+            selectedDestination = .inbox
+            persistSelectedDestination(selectedDestination)
+            applySelectedDestination(selectedDestination)
+        }
+        isInspectorPresented = false
+    }
+
+    private func handleAssistantQueueOpenRequest(_ notification: Notification) {
+        let request: SoloPMAssistantQueueBridge.Request?
+        if SoloPMAssistantQueueBridge.hasRequestPayload(notification) {
+            request = SoloPMAssistantQueueBridge.consumeRequest(from: notification)
+        } else {
+            request = SoloPMAssistantQueueBridge.consumePendingOpen()
+        }
+
+        guard let request else {
+            return
+        }
+        handleAssistantQueueOpenRequest(request: request)
+    }
+
+    private func handleAssistantQueueOpenRequest(request: SoloPMAssistantQueueBridge.Request) {
+        viewModel.load()
+        selectedDestination = .assistantQueue
+        persistSelectedDestination(selectedDestination)
+        applySelectedDestination(selectedDestination)
+        _ = viewModel.focusAssistantQueueExecutionHandoff(id: request.itemID)
+    }
+
+    private func applySelectedTaskOverrideIfNeeded() {
+        guard let taskID = ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID,
+              let task = viewModel.snapshot.projects.flatMap(\.tasks).first(where: { $0.id == taskID }) else {
+            return
+        }
+        // The override is env-only because release evidence needs deterministic
+        // first selection without changing the user's persisted Project Board state.
+        viewModel.selectedProjectID = task.projectID
+        viewModel.selectedTaskID = task.id
+        // Inbox and Today own their review details in persistent workflow rails;
+        // opening the broader inspector here would hide the seeded evidence state.
+        isInspectorPresented = selectedDestination != .today && selectedDestination != .inbox
+    }
+
+    private func selectTodayTask(_ task: ProjectBoardTask) {
+        // Today row selection feeds the persistent assistant rail first. The
+        // inspector still opens explicitly from the rail Edit action.
+        viewModel.selectedTaskID = task.id
+        isInspectorPresented = false
+    }
+
+    private func selectInboxTask(_ task: ProjectBoardTask) {
+        // Inbox triage keeps consecutive voice captures in the workflow rail so
+        // users can classify them without the broader edit inspector taking focus.
+        viewModel.selectedTaskID = task.id
+        isInspectorPresented = false
+    }
+
+    private func openInspectorForTodayRailTask(_ taskID: Int64) {
+        viewModel.selectedTaskID = taskID
+        guard viewModel.selectedTask != nil else {
+            return
+        }
+
+        isInspectorPresented = true
     }
 
     private var taskInteropDefaultExportFilename: String {
@@ -292,6 +742,11 @@ struct ProjectBoardView: View {
         }
         taskInteropExportDocument = TaskInteropFileDocument(data: data)
         isExportingTaskInterop = true
+    }
+
+    private func approveGoogleCalendarSync() {
+        isGoogleCalendarSyncApprovalPresented = false
+        _ = viewModel.syncDueTasksToGoogleCalendar(approvalToken: UUID().uuidString)
     }
 
     private func handleTaskInteropImport(_ result: Result<[URL], Error>) {
@@ -323,12 +778,462 @@ struct ProjectBoardView: View {
     }()
 }
 
-extension Notification.Name {
-    static let soloPMProjectBoardDidChange = Notification.Name("dev.solopm.projectBoardDidChange")
+private struct ProjectBoardSynchronizedColumnBounds: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
 }
 
-private enum ProjectBoardIntegrationUnavailableError: Error {
-    case googleCalendarOAuthNotConfigured
+private extension View {
+    func projectBoardSynchronizedColumnBounds() -> some View {
+        modifier(ProjectBoardSynchronizedColumnBounds())
+    }
+}
+
+#if canImport(AppKit)
+private struct ProjectBoardToolbarLayoutBridge: NSViewRepresentable {
+    let columnVisibility: NavigationSplitViewVisibility
+    let onToolbarLayoutChanged: () -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = ProjectBoardToolbarLayoutBridgeView(frame: .zero)
+        view.onToolbarLayoutChanged = onToolbarLayoutChanged
+        view.performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: true)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        _ = columnVisibility
+        guard let view = nsView as? ProjectBoardToolbarLayoutBridgeView else {
+            return
+        }
+
+        view.onToolbarLayoutChanged = onToolbarLayoutChanged
+        view.installToolbarDisplayModeObservationIfNeeded()
+        view.installToolbarDisplayModeMenuPruningIfNeeded()
+        view.performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: true)
+    }
+}
+
+private final class ProjectBoardToolbarLayoutBridgeView: NSView {
+    var onToolbarLayoutChanged: (() -> Void)?
+    private weak var observedToolbar: NSToolbar?
+    private var toolbarDisplayModeObservation: NSKeyValueObservation?
+    private var isToolbarDisplayModeMenuPruningInstalled = false
+    private var observedToolbarDisplayMode: NSToolbar.DisplayMode?
+    private var isPerformingToolbarLayoutPass = false
+    private var didScheduleInitialToolbarLayoutStabilization = false
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        installToolbarDisplayModeObservationIfNeeded()
+        installToolbarDisplayModeMenuPruningIfNeeded()
+        performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: true)
+        scheduleInitialProjectBoardToolbarLayoutStabilizationIfNeeded()
+    }
+
+    override func layout() {
+        super.layout()
+        performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: false)
+    }
+
+    private func removeNativeSidebarToggle(in toolbar: NSToolbar) {
+        let removalIndexes = ProjectBoardToolbarLayoutPolicy.nativeSidebarRemovalIndexes(
+            in: toolbar.projectBoardLayoutItems
+        )
+
+        // Keep toolbar display modes user-adaptive; only remove the native
+        // sidebar item and tracking separator that visually drift in this
+        // SwiftUI-hosted split view.
+        for index in removalIndexes.reversed() {
+            toolbar.removeItem(at: index)
+        }
+    }
+
+    func installToolbarDisplayModeObservationIfNeeded() {
+        guard let toolbar = window?.toolbar,
+              observedToolbar !== toolbar else {
+            return
+        }
+
+        _ = enforceProjectBoardSupportedToolbarDisplayMode(toolbar)
+        toolbarDisplayModeObservation?.invalidate()
+        observedToolbar = toolbar
+        observedToolbarDisplayMode = toolbar.displayMode
+        toolbarDisplayModeObservation = toolbar.observe(\.displayMode, options: [.new]) { [weak self] _, _ in
+            guard let self else {
+                return
+            }
+
+            if Thread.isMainThread {
+                MainActor.assumeIsolated {
+                    self.reconcileToolbarDisplayModeChangeSynchronously()
+                }
+            } else {
+                DispatchQueue.main.async {
+                    self.reconcileToolbarDisplayModeChangeSynchronously()
+                }
+            }
+        }
+    }
+
+    private func scheduleInitialProjectBoardToolbarLayoutStabilizationIfNeeded() {
+        guard didScheduleInitialToolbarLayoutStabilization == false else {
+            return
+        }
+
+        didScheduleInitialToolbarLayoutStabilization = true
+        for delay in [0.05, 0.25, 0.75] {
+            // layout-attachment-delay: initial AppKit toolbar attachment gap.
+            // SwiftUI can attach the bridge before NSToolbar items exist; this
+            // bounded startup sampling is the only delayed correction allowed
+            // by ADR 0009, and user-triggered display-mode/sidebar changes run synchronously.
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: false)
+            }
+        }
+    }
+
+    private func reconcileToolbarDisplayModeChangeSynchronously() {
+        guard let toolbar = observedToolbar ?? window?.toolbar,
+              observedToolbarDisplayMode != toolbar.displayMode else {
+            return
+        }
+
+        _ = enforceProjectBoardSupportedToolbarDisplayMode(toolbar)
+        observedToolbarDisplayMode = toolbar.displayMode
+        performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: false)
+    }
+
+    @discardableResult
+    private func enforceProjectBoardSupportedToolbarDisplayMode(_ toolbar: NSToolbar) -> Bool {
+        let supportedDisplayMode = projectBoardSupportedToolbarDisplayMode(for: toolbar.displayMode)
+        guard toolbar.displayMode != supportedDisplayMode else {
+            return false
+        }
+
+        toolbar.displayMode = supportedDisplayMode
+        return true
+    }
+
+    private func projectBoardSupportedToolbarDisplayMode(for displayMode: NSToolbar.DisplayMode) -> NSToolbar.DisplayMode {
+        switch displayMode {
+        case .iconAndLabel:
+            return .iconAndLabel
+        case .iconOnly:
+            return .iconOnly
+        case .labelOnly, .default:
+            // Text-only toolbar buttons collapse the icon anchors that the
+            // Project Board header uses for stable scan order. Prefer the
+            // full label mode when AppKit asks for an unsupported display mode.
+            return .iconAndLabel
+        @unknown default:
+            return .iconAndLabel
+        }
+    }
+
+    func installToolbarDisplayModeMenuPruningIfNeeded() {
+        guard isToolbarDisplayModeMenuPruningInstalled == false else {
+            return
+        }
+
+        isToolbarDisplayModeMenuPruningInstalled = true
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(projectBoardToolbarMenuDidBeginTracking(_:)),
+            name: NSMenu.didBeginTrackingNotification,
+            object: nil
+        )
+    }
+
+    @objc private func projectBoardToolbarMenuDidBeginTracking(_ notification: Notification) {
+        guard let menu = notification.object as? NSMenu,
+              window != nil else {
+            return
+        }
+
+        pruneUnsupportedProjectBoardToolbarDisplayModeItems(from: menu)
+    }
+
+    private func pruneUnsupportedProjectBoardToolbarDisplayModeItems(from menu: NSMenu) {
+        for item in menu.items {
+            if let submenu = item.submenu {
+                pruneUnsupportedProjectBoardToolbarDisplayModeItems(from: submenu)
+            }
+        }
+
+        guard isProjectBoardToolbarDisplayModeMenu(menu) else {
+            return
+        }
+
+        let unsupportedTitles = Set(["Text Only", "テキストのみ"])
+        for item in menu.items.reversed() where unsupportedTitles.contains(item.title) {
+            // AppKit builds toolbar display-mode menus lazily and does not
+            // expose a public allowed-display-modes API. Remove only the
+            // unsupported text-only item so users keep the two stable modes.
+            menu.removeItem(item)
+        }
+    }
+
+    private func isProjectBoardToolbarDisplayModeMenu(_ menu: NSMenu) -> Bool {
+        let itemTitles = Set(menu.items.map(\.title))
+        let hasIconAndTextMode = itemTitles.contains("Icon and Text") || itemTitles.contains("アイコンとテキスト")
+        let hasIconOnlyMode = itemTitles.contains("Icon Only") || itemTitles.contains("アイコンのみ")
+        return hasIconAndTextMode && hasIconOnlyMode
+    }
+
+    func performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: Bool) {
+        guard isPerformingToolbarLayoutPass == false else {
+            return
+        }
+
+        guard let toolbar = window?.toolbar else {
+            if allowRetryIfToolbarMissing {
+                retrySynchronousProjectBoardToolbarLayoutPass(remainingAttempts: 6)
+            }
+            return
+        }
+
+        isPerformingToolbarLayoutPass = true
+        defer { isPerformingToolbarLayoutPass = false }
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            context.allowsImplicitAnimation = false
+
+            window?.titleVisibility = .hidden
+            toolbar.centeredItemIdentifier = nil
+            _ = enforceProjectBoardSupportedToolbarDisplayMode(toolbar)
+            removeNativeSidebarToggle(in: toolbar)
+            flushProjectBoardWindowLayout()
+        }
+
+        // NSToolbar display-mode changes come from AppKit context menus, outside
+        // SwiftUI state. Mark the host dirty and bump SwiftUI state so the
+        // sidebar and detail columns recalculate their bounds together.
+        onToolbarLayoutChanged?()
+    }
+
+    private func flushProjectBoardWindowLayout() {
+        window?.contentView?.needsLayout = true
+        window?.contentView?.layoutSubtreeIfNeeded()
+        window?.contentView?.needsDisplay = true
+        window?.displayIfNeeded()
+    }
+
+    private func retrySynchronousProjectBoardToolbarLayoutPass(remainingAttempts: Int) {
+        guard remainingAttempts > 0 else {
+            return
+        }
+
+        // SwiftUI may attach the NSToolbar after the representable enters the
+        // window, and its toolbar items can arrive shortly after the toolbar
+        // itself. Retry only for that initial attachment gap; user-triggered
+        // display-mode/sidebar changes run synchronously once the toolbar exists.
+        // layout-attachment-delay: initial AppKit toolbar attachment gap.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self else {
+                return
+            }
+
+            self.performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: false)
+            if self.window?.toolbar == nil {
+                self.retrySynchronousProjectBoardToolbarLayoutPass(remainingAttempts: remainingAttempts - 1)
+            }
+        }
+    }
+
+}
+
+private extension NSToolbar {
+    var projectBoardLayoutItems: [ProjectBoardToolbarLayoutPolicy.Item] {
+        items.map(\.projectBoardLayoutItem)
+    }
+}
+
+private extension NSToolbarItem {
+    var projectBoardLayoutItem: ProjectBoardToolbarLayoutPolicy.Item {
+        ProjectBoardToolbarLayoutPolicy.Item(
+            identifierRawValue: itemIdentifier.rawValue,
+            label: label,
+            paletteLabel: paletteLabel,
+            toolTip: toolTip,
+            accessibilityIdentifier: view?.accessibilityIdentifier(),
+            isNativeToggleAction: action == #selector(NSSplitViewController.toggleSidebar(_:))
+        )
+    }
+}
+#else
+private struct ProjectBoardToolbarLayoutBridge: View {
+    let columnVisibility: NavigationSplitViewVisibility
+    let onToolbarLayoutChanged: () -> Void
+
+    var body: some View {
+        EmptyView()
+    }
+}
+#endif
+
+extension Notification.Name {
+    static let soloPMProjectBoardDidChange = Notification.Name("dev.solopm.projectBoardDidChange")
+    static let soloPMVoiceDailyPlanningReviewRequested = Notification.Name("dev.solopm.voiceDailyPlanningReviewRequested")
+    static let soloPMVoiceInboxTriageRequested = Notification.Name("dev.solopm.voiceInboxTriageRequested")
+    static let soloPMAssistantQueueRequested = Notification.Name("dev.solopm.assistantQueueRequested")
+}
+
+@MainActor
+enum SoloPMAssistantQueueBridge {
+    struct Request: Equatable {
+        var itemID: String
+    }
+
+    static let requestUserInfoKey = "request"
+    private static var pendingRequest: Request?
+
+    static func storePendingOpen(itemID: String?) -> Request? {
+        guard let itemID = itemID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !itemID.isEmpty else {
+            return nil
+        }
+        let request = Request(itemID: itemID)
+        pendingRequest = request
+        return request
+    }
+
+    static func consumePendingOpen() -> Request? {
+        guard let request = pendingRequest else {
+            return nil
+        }
+        pendingRequest = nil
+        return request
+    }
+
+    static func consumeRequest(from notification: Notification) -> Request? {
+        guard let request = notification.userInfo?[requestUserInfoKey] as? Request else {
+            return nil
+        }
+        if pendingRequest == request {
+            pendingRequest = nil
+        }
+        return request
+    }
+
+    static func hasRequestPayload(_ notification: Notification) -> Bool {
+        notification.userInfo?[requestUserInfoKey] is Request
+    }
+}
+
+@MainActor
+enum SoloPMVoiceDailyPlanningReviewBridge {
+    struct Request: Equatable {
+        var id: UUID
+        var sourceTranscript: String
+        var actionDraftKind: DailyPlanningActionDraftKind?
+    }
+
+    static let requestUserInfoKey = "request"
+    private static var pendingRequest: Request?
+    private static var consumedRequestIDs: Set<UUID> = []
+
+    static func storePendingRequest(_ request: VoiceDailyPlanningReviewRequest) -> Request? {
+        guard !consumedRequestIDs.contains(request.id) else {
+            return nil
+        }
+        let bridgeRequest = Request(
+            id: request.id,
+            sourceTranscript: normalized(request.sourceTranscript),
+            actionDraftKind: request.requestedActionDraftKind
+        )
+        pendingRequest = bridgeRequest
+        return bridgeRequest
+    }
+
+    static func consumePendingRequest() -> Request? {
+        guard let request = pendingRequest else {
+            return nil
+        }
+        return consume(request)
+    }
+
+    static func consumeRequest(from notification: Notification) -> Request? {
+        guard let request = notification.userInfo?[requestUserInfoKey] as? Request else {
+            return nil
+        }
+        return consume(request)
+    }
+
+    static func hasRequestPayload(_ notification: Notification) -> Bool {
+        notification.userInfo?[requestUserInfoKey] is Request
+    }
+
+    private static func consume(_ request: Request) -> Request? {
+        if pendingRequest?.id == request.id {
+            pendingRequest = nil
+        }
+        guard !consumedRequestIDs.contains(request.id) else {
+            return nil
+        }
+        consumedRequestIDs.insert(request.id)
+        return request
+    }
+
+    private static func normalized(_ sourceTranscript: String) -> String {
+        sourceTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+@MainActor
+enum SoloPMVoiceInboxTriageBridge {
+    struct Request: Equatable {
+        var id: UUID
+        var command: InboxVoiceTriageCommand
+    }
+
+    static let requestUserInfoKey = "request"
+    private static var pendingRequest: Request?
+    private static var consumedRequestIDs: Set<UUID> = []
+
+    static func storePendingRequest(_ request: VoiceInboxTriageRequest) -> Request? {
+        guard !consumedRequestIDs.contains(request.id) else {
+            return nil
+        }
+        let bridgeRequest = Request(id: request.id, command: request.command)
+        pendingRequest = bridgeRequest
+        return bridgeRequest
+    }
+
+    static func consumePendingRequest() -> Request? {
+        guard let request = pendingRequest else {
+            return nil
+        }
+        return consume(request)
+    }
+
+    static func consumeRequest(from notification: Notification) -> Request? {
+        guard let request = notification.userInfo?[requestUserInfoKey] as? Request else {
+            return nil
+        }
+        return consume(request)
+    }
+
+    static func hasRequestPayload(_ notification: Notification) -> Bool {
+        notification.userInfo?[requestUserInfoKey] is Request
+    }
+
+    private static func consume(_ request: Request) -> Request? {
+        // A voice request can be posted by both onChange and the visible panel.
+        // The request id is the boundary that prevents the same command from
+        // advancing selection and mutating two Inbox items.
+        guard !consumedRequestIDs.contains(request.id) else {
+            return nil
+        }
+        if pendingRequest?.id == request.id {
+            pendingRequest = nil
+        }
+        consumedRequestIDs.insert(request.id)
+        return request
+    }
 }
 
 private struct TaskInteropFileDocument: FileDocument {
@@ -382,6 +1287,9 @@ private enum ProjectBoardDisplayMode: String, CaseIterable, Identifiable {
 
 private struct ProjectSidebarRow: View {
     let project: ProjectBoardProject
+    let onSelect: () -> Void
+    let onMoveDroppedTasks: ([String]) -> Bool
+    @State private var isDropTargeted = false
 
     var body: some View {
         Label {
@@ -390,7 +1298,7 @@ private struct ProjectSidebarRow: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .help(project.title)
-                Text(project.isArchived ? "Archived" : "\(project.taskCount) tasks")
+                Text(project.isArchived ? localizedDisplay("Archived") : localizedTaskCount(project.taskCount))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -400,7 +1308,23 @@ private struct ProjectSidebarRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(project.accessibilitySidebarLabel)
+        .accessibilityHint("Selects this project. Drop task cards here to move them into this project.")
         .accessibilityIdentifier("project-sidebar-row-\(project.id)")
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
+        .accessibilityAction(.default, onSelect)
+        .padding(.vertical, 2)
+        .padding(.horizontal, 4)
+        .background(isDropTargeted ? project.sidebarDropTint.opacity(0.14) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+        .overlay {
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(isDropTargeted ? project.sidebarDropTint.opacity(0.6) : Color.clear, lineWidth: 1)
+        }
+        .dropDestination(for: String.self) { rawIDs, _ in
+            onMoveDroppedTasks(rawIDs)
+        } isTargeted: { targeted in
+            isDropTargeted = targeted
+        }
     }
 
     private var systemImage: String {
@@ -420,9 +1344,319 @@ private struct ProjectSidebarRow: View {
 
 private extension ProjectBoardProject {
     var accessibilitySidebarLabel: String {
-        let state = isArchived ? "Archived" : isCompleted ? "Completed" : "Active"
-        let taskLabel = taskCount == 1 ? "1 task" : "\(taskCount) tasks"
+        let state = localizedDisplay(isArchived ? "Archived" : isCompleted ? "Completed" : "Active")
+        let taskLabel = localizedTaskCount(taskCount)
         return "\(title), \(state), \(taskLabel)"
+    }
+
+    var sidebarDropTint: Color {
+        if isArchived {
+            return .secondary
+        }
+        return isCompleted ? .green : .blue
+    }
+}
+
+private enum ProjectPortfolioFilter: String, CaseIterable, Identifiable {
+    case all
+    case active
+    case overdue
+    case completed
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all:
+            "All"
+        case .active:
+            "Active"
+        case .overdue:
+            "Overdue"
+        case .completed:
+            "Completed"
+        }
+    }
+}
+
+private enum ProjectPortfolioSort: String, CaseIterable, Identifiable {
+    case risk
+    case progress
+    case due
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .risk:
+            "Risk"
+        case .progress:
+            "Progress"
+        case .due:
+            "Next Due"
+        }
+    }
+}
+
+private struct ProjectsPortfolioOverview: View {
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    let onOpenProject: (Int64) -> Void
+    @State private var filter: ProjectPortfolioFilter = .all
+    @State private var sort: ProjectPortfolioSort = .risk
+
+    private var summaries: [ProjectPortfolioSummary] {
+        sorted(filtered(viewModel.projectPortfolioSummaries()))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 12) {
+                    ProjectPortfolioHeader(
+                        title: "Projects",
+                        subtitle: String(format: String(localized: "%d projects compared"), summaries.count),
+                        systemImage: "folder.circle"
+                    )
+                    Spacer(minLength: 12)
+                    controls
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    ProjectPortfolioHeader(
+                        title: "Projects",
+                        subtitle: String(format: String(localized: "%d projects compared"), summaries.count),
+                        systemImage: "folder.circle"
+                    )
+                    controls
+                }
+            }
+
+            if summaries.isEmpty {
+                ContentUnavailableView(
+                    "No Projects",
+                    systemImage: "folder",
+                    description: Text("Create a project to compare progress, risk, and next due work.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 260, maximum: 360), spacing: 12)],
+                        alignment: .leading,
+                        spacing: 12
+                    ) {
+                        ForEach(summaries) { summary in
+                            ProjectPortfolioCard(summary: summary) {
+                                onOpenProject(summary.projectID)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("projects-portfolio-overview")
+        .accessibilityLabel("Projects portfolio overview")
+        .accessibilityHint("Compares local project progress, risk, due dates, and next actions.")
+    }
+
+    private var controls: some View {
+        HStack(spacing: 8) {
+            Picker("Project Filter", selection: $filter) {
+                ForEach(ProjectPortfolioFilter.allCases) { filter in
+                    Text(LocalizedStringKey(filter.title)).tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 420)
+            .accessibilityIdentifier("projects-portfolio-filter")
+
+            Menu {
+                Picker("Sort Projects", selection: $sort) {
+                    ForEach(ProjectPortfolioSort.allCases) { sort in
+                        Text(LocalizedStringKey(sort.title)).tag(sort)
+                    }
+                }
+            } label: {
+                Label("Sort", systemImage: "arrow.up.arrow.down")
+            }
+            .help("Sort projects")
+            .accessibilityIdentifier("projects-portfolio-sort")
+        }
+    }
+
+    private func filtered(_ summaries: [ProjectPortfolioSummary]) -> [ProjectPortfolioSummary] {
+        summaries.filter { summary in
+            switch filter {
+            case .all:
+                return true
+            case .active:
+                return summary.health != .completed
+            case .overdue:
+                return summary.overdueTaskCount > 0
+            case .completed:
+                return summary.health == .completed
+            }
+        }
+    }
+
+    private func sorted(_ summaries: [ProjectPortfolioSummary]) -> [ProjectPortfolioSummary] {
+        switch sort {
+        case .risk:
+            return summaries
+        case .progress:
+            return summaries.sorted {
+                if $0.progress == $1.progress {
+                    return $0.projectID > $1.projectID
+                }
+                return $0.progress < $1.progress
+            }
+        case .due:
+            return summaries.sorted {
+                ($0.nextDueAt ?? "9999-12-31") < ($1.nextDueAt ?? "9999-12-31")
+            }
+        }
+    }
+}
+
+private struct ProjectPortfolioHeader: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+
+    var body: some View {
+        Label {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(LocalizedStringKey(title))
+                    .font(.title2.weight(.semibold))
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(.blue)
+                .font(.title2)
+        }
+    }
+}
+
+private struct ProjectPortfolioCard: View {
+    let summary: ProjectPortfolioSummary
+    let onOpen: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(summary.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(summary.title)
+                    Label(localizedHealthTitle, systemImage: summary.health.systemImage)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(summary.health.tint)
+                }
+                Spacer(minLength: 8)
+                Text(percentLabel)
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+            }
+
+            ProgressView(value: summary.progress)
+                .tint(summary.health.tint)
+                .accessibilityLabel("Project progress")
+                .accessibilityValue(percentLabel)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], alignment: .leading, spacing: 6) {
+                metric("Open", value: summary.openTaskCount, systemImage: "tray")
+                metric("Done", value: summary.doneTaskCount, systemImage: "checkmark.circle")
+                metric("Blocked", value: summary.blockedTaskCount, systemImage: "exclamationmark.octagon")
+                metric("Overdue", value: summary.overdueTaskCount, systemImage: "clock.badge.exclamationmark")
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Label(summary.nextDueAt ?? String(localized: "No due date"), systemImage: "calendar")
+                Label(localizedRiskReason, systemImage: "heart.text.square")
+                Label(summary.nextActionTitle, systemImage: "arrow.right.circle")
+                Label(localizedHealthRuleDescription, systemImage: "checklist")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+
+            Button(action: onOpen) {
+                Label("Open Project", systemImage: "arrow.right")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Open project detail")
+            .accessibilityIdentifier("projects-portfolio-open-\(summary.projectID)")
+            .accessibilityHint("Opens the selected project detail without changing task status.")
+        }
+        .padding(12)
+        .frame(minHeight: ProjectBoardLayoutMetrics.portfolioCardMinHeight, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(summary.health.tint.opacity(0.32), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("projects-portfolio-card-\(summary.projectID)")
+        .accessibilityLabel(String(format: String(localized: "Project %@"), summary.title))
+        .accessibilityValue("\(localizedHealthTitle), \(percentLabel), \(localizedRiskReason)")
+    }
+
+    private var percentLabel: String {
+        "\(Int((summary.progress * 100).rounded()))%"
+    }
+
+    private var localizedHealthTitle: String {
+        String(localized: String.LocalizationValue(summary.health.title))
+    }
+
+    private var localizedHealthRuleDescription: String {
+        String(localized: String.LocalizationValue(summary.localHealthRuleDescription))
+    }
+
+    private var localizedRiskReason: String {
+        var reasons: [String] = []
+        if summary.blockedTaskCount > 0 {
+            reasons.append(String(format: String(localized: "%d blocked"), summary.blockedTaskCount))
+        }
+        if summary.overdueTaskCount > 0 {
+            reasons.append(String(format: String(localized: "%d overdue"), summary.overdueTaskCount))
+        }
+        if !reasons.isEmpty {
+            return reasons.joined(separator: ", ")
+        }
+        switch summary.health {
+        case .completed:
+            return String(localized: "All tracked tasks are done.")
+        case .attention:
+            return String(localized: "Progress is below 25% with open work.")
+        case .onTrack:
+            return String(localized: "No blocked or overdue open tasks.")
+        case .atRisk:
+            return String(localized: "Local risk rule detected schedule pressure.")
+        }
+    }
+
+    private func metric(_ title: String, value: Int, systemImage: String) -> some View {
+        Label {
+            Text("\(value) \(String(localized: String.LocalizationValue(title)))")
+                .monospacedDigit()
+        } icon: {
+            Image(systemName: systemImage)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
 }
 
@@ -539,8 +1773,10 @@ private struct ProjectDetailOverview: View {
 
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
                     ProjectTaskSnapshotSection(project: project, viewModel: viewModel, onAddTask: onAddTask)
+                    ProjectMilestoneSection(project: project, viewModel: viewModel)
                     ProjectArtifactSection(project: project, viewModel: viewModel)
                     ProjectTimelineSection(project: project)
+                    ProjectAssistantPanel(project: project, viewModel: viewModel)
                     ProjectLocalSuggestionPanel(project: project, viewModel: viewModel)
                 }
             }
@@ -604,6 +1840,7 @@ private struct ProjectProgressOverview: View {
         ProjectMetricBadge(label: "Open", value: openCount, tint: .blue)
         ProjectMetricBadge(label: "Done", value: completedCount, tint: .green)
         ProjectMetricBadge(label: "Blocked", value: blockedCount, tint: .orange)
+        ProjectMetricBadge(label: "Milestones", value: project.milestones.count, tint: .teal)
         ProjectMetricBadge(label: "Artifacts", value: project.artifacts.count, tint: .purple)
     }
 }
@@ -618,7 +1855,7 @@ private struct ProjectMetricBadge: View {
             Text("\(value)")
                 .font(.headline.monospacedDigit())
                 .foregroundStyle(tint)
-            Text(label)
+            Text(LocalizedStringKey(label))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -671,13 +1908,17 @@ private struct ProjectTaskSnapshotSection: View {
                                     .font(.caption.weight(.medium))
                                     .lineLimit(1)
                                     .truncationMode(.tail)
-                                Text(task.dueLabel ?? task.status.title)
+                                Text(task.dueLabel ?? localizedDisplay(task.status.title))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
                             Spacer(minLength: 8)
-                            Label(task.priority.label, systemImage: "flag")
+                            Label {
+                                Text(LocalizedStringKey(task.priority.label))
+                            } icon: {
+                                Image(systemName: "flag")
+                            }
                                 .labelStyle(.iconOnly)
                                 .foregroundStyle(task.priority.color)
                         }
@@ -699,6 +1940,110 @@ private struct ProjectTaskSnapshotSection: View {
             .accessibilityLabel("Add task to \(project.title)")
             .accessibilityHint("Opens the inline composer for a new local task.")
         }
+    }
+}
+
+private struct ProjectMilestoneSection: View {
+    let project: ProjectBoardProject
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    @State private var milestoneTitle = ""
+    @State private var milestoneDueAt = ""
+
+    var body: some View {
+        ProjectOverviewPanel(title: "Milestones", systemImage: "flag.checkered") {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    milestoneTitleField
+                    milestoneDueField
+                    addButton
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    milestoneTitleField
+                    milestoneDueField
+                    addButton
+                }
+            }
+
+            if project.milestones.isEmpty {
+                Text("No milestones yet")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(project.milestones.prefix(4)) { milestone in
+                    HStack(spacing: 8) {
+                        Image(systemName: milestone.isCompleted ? "checkmark.circle.fill" : "flag")
+                            .foregroundStyle(milestone.isCompleted ? .green : .teal)
+                            .frame(width: 16)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(milestone.title)
+                                .font(.caption.weight(.medium))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Text(milestone.dueAt ?? String(localized: "No due date"))
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 8)
+                        Button {
+                            _ = viewModel.completeProjectMilestone(id: milestone.id, projectID: project.id)
+                        } label: {
+                            Label("Complete milestone", systemImage: "checkmark.circle")
+                        }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                        .disabled(project.isArchived || milestone.isCompleted)
+                        .help("Complete milestone")
+                        .accessibilityIdentifier("project-milestone-complete-\(milestone.id)")
+                        .accessibilityLabel("Complete milestone \(milestone.title)")
+                        .accessibilityHint("Marks this local project milestone as complete.")
+                    }
+                }
+            }
+        }
+    }
+
+    private func addMilestone() {
+        guard viewModel.createProjectMilestone(
+            title: milestoneTitle,
+            dueAt: milestoneDueAt,
+            projectID: project.id
+        ) != nil else {
+            return
+        }
+        milestoneTitle = ""
+        milestoneDueAt = ""
+    }
+
+    private var milestoneTitleField: some View {
+        TextField("Milestone title", text: $milestoneTitle)
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .onSubmit(addMilestone)
+            .accessibilityIdentifier("project-milestone-title")
+            .accessibilityLabel("Milestone title")
+            .accessibilityHint("Enter a local milestone title for this project.")
+    }
+
+    private var milestoneDueField: some View {
+        TextField("Due date", text: $milestoneDueAt)
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .onSubmit(addMilestone)
+            .accessibilityIdentifier("project-milestone-due")
+            .accessibilityLabel("Milestone due date")
+            .accessibilityHint("Optional local milestone due date.")
+    }
+
+    private var addButton: some View {
+        Button(action: addMilestone) {
+            Label("Add Milestone", systemImage: "plus")
+        }
+        .controlSize(.small)
+        .disabled(project.isArchived || milestoneTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .accessibilityIdentifier("project-milestone-add")
+        .accessibilityHint("Adds a local milestone without creating a task.")
     }
 }
 
@@ -737,7 +2082,7 @@ private struct ProjectArtifactSection: View {
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                                 .help(artifact.expectedPath)
-                            Text(artifact.createdState.label)
+                            Text(LocalizedStringKey(artifact.createdState.label))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -798,41 +2143,185 @@ private struct ProjectArtifactSection: View {
 private struct ProjectTimelineSection: View {
     let project: ProjectBoardProject
 
-    private var dueTasks: [ProjectBoardTask] {
-        project.tasks
-            .filter { $0.dueAt != nil }
-            .sorted { ($0.dueAt ?? "") < ($1.dueAt ?? "") }
+    private var timelineItems: [ProjectTimelineItem] {
+        let taskItems = project.tasks
+            .compactMap { task -> ProjectTimelineItem? in
+                guard let dueAt = task.dueAt else {
+                    return nil
+                }
+                return .task(task, dueAt: dueAt)
+            }
+        let milestoneItems = project.milestones
+            .compactMap { milestone -> ProjectTimelineItem? in
+                guard let dueAt = milestone.dueAt else {
+                    return nil
+                }
+                return .milestone(milestone, dueAt: dueAt)
+            }
+        return (taskItems + milestoneItems).sorted { lhs, rhs in
+            if lhs.dueAt == rhs.dueAt {
+                return lhs.id < rhs.id
+            }
+            return lhs.dueAt < rhs.dueAt
+        }
     }
 
     var body: some View {
         ProjectOverviewPanel(title: "Timeline", systemImage: "calendar") {
-            if dueTasks.isEmpty {
+            if timelineItems.isEmpty {
                 Text("No due dates yet")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(dueTasks.prefix(5)) { task in
+                ForEach(timelineItems.prefix(5)) { item in
                     HStack(spacing: 8) {
                         Circle()
-                            .fill(task.status.tint)
+                            .fill(item.tint)
                             .frame(width: 7, height: 7)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(task.title)
+                            Text(item.title)
                                 .font(.caption.weight(.medium))
                                 .lineLimit(1)
                                 .truncationMode(.tail)
-                            Text(task.dueLabel ?? "")
+                            Text(item.dueAt)
                                 .font(.caption2.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    .help(task.title)
+                    .help(item.title)
                     .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Project timeline item \(task.title)")
-                    .accessibilityValue(task.dueLabel ?? "No due date")
+                    .accessibilityLabel("Project timeline item \(item.title)")
+                    .accessibilityValue(item.dueAt)
                 }
             }
         }
+    }
+}
+
+private enum ProjectTimelineItem: Identifiable {
+    case task(ProjectBoardTask, dueAt: String)
+    case milestone(ProjectBoardMilestone, dueAt: String)
+
+    var id: String {
+        switch self {
+        case .task(let task, _):
+            "task-\(task.id)"
+        case .milestone(let milestone, _):
+            "milestone-\(milestone.id)"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .task(let task, _):
+            task.title
+        case .milestone(let milestone, _):
+            milestone.title
+        }
+    }
+
+    var dueAt: String {
+        switch self {
+        case .task(_, let dueAt), .milestone(_, let dueAt):
+            dueAt
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .task(let task, _):
+            task.status.tint
+        case .milestone(let milestone, _):
+            milestone.isCompleted ? .green : .teal
+        }
+    }
+}
+
+private struct ProjectAssistantPanel: View {
+    let project: ProjectBoardProject
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    @State private var question = ""
+
+    var body: some View {
+        ProjectOverviewPanel(title: "Assistant", systemImage: "bubble.left.and.text.bubble.right") {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    questionField
+                    askButton
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    questionField
+                    askButton
+                }
+            }
+
+            if let answer = viewModel.projectAssistantAnswer, answer.projectID == project.id {
+                Text(answer.message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("project-assistant-answer")
+
+                HStack(spacing: 8) {
+                    Label(answer.suggestedActionTitle, systemImage: "checklist")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    Spacer(minLength: 8)
+
+                    Button {
+                        _ = viewModel.prepareProjectAssistantSuggestedActionForReview(projectID: project.id)
+                    } label: {
+                        Label("Review Action", systemImage: "doc.text.magnifyingglass")
+                    }
+                    .controlSize(.small)
+                    .help("Prepare suggested action for review")
+                    .accessibilityIdentifier("project-assistant-review-action")
+                    .accessibilityHint("Prepares the local assistant suggestion for review without writing task status.")
+                }
+            } else {
+                Text("Ask for a local next step without contacting an external LLM.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let draft = viewModel.projectAssistantReviewDraft, draft.projectID == project.id {
+                Label(draft.suggestedActionTitle, systemImage: "doc.badge.clock")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("project-assistant-review-draft")
+            }
+        }
+    }
+
+    private func ask() {
+        let trimmed = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+        _ = viewModel.answerProjectAssistantQuestion(trimmed, projectID: project.id)
+    }
+
+    private var questionField: some View {
+        TextField("Ask about this project", text: $question)
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .onSubmit(ask)
+            .accessibilityIdentifier("project-assistant-question")
+            .accessibilityLabel("Project assistant question")
+            .accessibilityHint("Asks the local project assistant for a next step without external LLM execution.")
+    }
+
+    private var askButton: some View {
+        Button(action: ask) {
+            Label("Ask", systemImage: "paperplane")
+        }
+        .controlSize(.small)
+        .disabled(question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .accessibilityIdentifier("project-assistant-ask")
+        .accessibilityHint("Generates a local assistant answer for this project.")
     }
 }
 
@@ -867,14 +2356,15 @@ private struct ProjectLocalSuggestionPanel: View {
 
                     if suggestedTask.status == .blocked {
                         Button {
-                            viewModel.moveTask(id: suggestedTask.id, to: .inProgress)
+                            _ = viewModel.answerProjectAssistantQuestion("Review blocked task", projectID: project.id)
+                            _ = viewModel.prepareProjectAssistantSuggestedActionForReview(projectID: project.id)
                         } label: {
-                            Label("Unblock", systemImage: "arrow.triangle.2.circlepath")
+                            Label("Review Action", systemImage: "doc.text.magnifyingglass")
                         }
                         .controlSize(.small)
-                        .help("Move the suggested blocked task to In Progress")
-                        .accessibilityIdentifier("project-local-suggestion-unblock-task")
-                        .accessibilityHint("Moves the suggested blocked task back to In Progress in the local database.")
+                        .help("Prepare suggested action for review")
+                        .accessibilityIdentifier("project-local-suggestion-review-action")
+                        .accessibilityHint("Prepares the suggested blocked task action for review without writing task status.")
                     }
                 }
             } else {
@@ -887,15 +2377,15 @@ private struct ProjectLocalSuggestionPanel: View {
 
     private func suggestionText(for task: ProjectBoardTask) -> String {
         if task.status == .blocked {
-            return "\(task.title) is blocked. Resolve it before adding more work."
+            return localizedDisplay("%@ is blocked. Resolve it before adding more work.", task.title)
         }
         if task.priority == .high {
-            return "\(task.title) is high priority. Make it the next focused task."
+            return localizedDisplay("%@ is high priority. Make it the next focused task.", task.title)
         }
         if let dueAt = task.dueAt {
-            return "\(task.title) is the next due task at \(dueAt)."
+            return localizedDisplay("%@ is the next due task at %@.", task.title, dueAt)
         }
-        return "Continue with \(task.title)."
+        return localizedDisplay("Continue with %@.", task.title)
     }
 }
 
@@ -906,12 +2396,16 @@ private struct ProjectOverviewPanel<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(title, systemImage: systemImage)
+            Label {
+                Text(LocalizedStringKey(title))
+            } icon: {
+                Image(systemName: systemImage)
+            }
                 .font(.headline)
             content()
         }
         .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 170, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: ProjectBoardLayoutMetrics.overviewPanelMinHeight, alignment: .topLeading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 }
@@ -979,12 +2473,18 @@ private struct ProjectHeaderActions: View {
     private var viewPicker: some View {
         Picker("View", selection: $displayMode) {
             ForEach(ProjectBoardDisplayMode.allCases) { mode in
-                Label(mode.label, systemImage: mode.systemImage)
-                    .tag(mode)
+                Label {
+                    Text(LocalizedStringKey(mode.label))
+                } icon: {
+                    Image(systemName: mode.systemImage)
+                }
+                .tag(mode)
+                .accessibilityIdentifier("project-display-mode-\(mode.rawValue)")
+                .accessibilityLabel(LocalizedStringKey(mode.label))
             }
         }
         .pickerStyle(.segmented)
-        .frame(width: 252)
+        .frame(width: ProjectBoardLayoutMetrics.displayModePickerWidth)
     }
 
     private var addTaskButton: some View {
@@ -995,6 +2495,7 @@ private struct ProjectHeaderActions: View {
         .keyboardShortcut("n", modifiers: [.command])
         .disabled(project.isArchived)
         .help("Add task to \(project.title)")
+        .accessibilityIdentifier("project-header-add-task")
         .accessibilityLabel("Add task to \(project.title)")
         .accessibilityHint("Opens the inline composer for a new local task.")
     }
@@ -1064,7 +2565,11 @@ private struct BoardColumnView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Label(column.title, systemImage: column.status.systemImage)
+                Label {
+                    Text(LocalizedStringKey(column.title))
+                } icon: {
+                    Image(systemName: column.status.systemImage)
+                }
                     .font(.headline)
                     .foregroundStyle(column.status.tint)
                 Spacer()
@@ -1106,7 +2611,7 @@ private struct BoardColumnView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, minHeight: ProjectBoardLayoutMetrics.emptyColumnMinHeight, alignment: .topLeading)
                     .padding(10)
                     .background(column.status.tint.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
                     .overlay {
@@ -1123,7 +2628,7 @@ private struct BoardColumnView: View {
                 }
             }
         }
-        .frame(width: 244, alignment: .topLeading)
+        .frame(width: ProjectBoardLayoutMetrics.boardColumnWidth, alignment: .topLeading)
         .padding(10)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
@@ -1170,7 +2675,11 @@ private struct BoardColumnView: View {
                 Button {
                     onMoveTask(task.id, status)
                 } label: {
-                    Label(status.title, systemImage: status.systemImage)
+                    Label {
+                        Text(LocalizedStringKey(status.title))
+                    } icon: {
+                        Image(systemName: status.systemImage)
+                    }
                 }
             }
         } label: {
@@ -1224,11 +2733,11 @@ private struct InlineTaskComposer: View {
             HStack {
                 Picker("Priority", selection: $priority) {
                     ForEach(ProjectTaskPriority.allCases) { priority in
-                        Text(priority.label).tag(priority)
+                        Text(LocalizedStringKey(priority.label)).tag(priority)
                     }
                 }
                 .labelsHidden()
-                .frame(width: 112)
+                .frame(width: ProjectBoardLayoutMetrics.inlinePriorityPickerWidth)
                 .accessibilityIdentifier("inline-task-priority")
                 .accessibilityHint("Sets the initial task priority.")
 
@@ -1393,8 +2902,8 @@ private struct TaskStatusAccentRail: View {
     var body: some View {
         Capsule()
             .fill(tint.opacity(0.92))
-            .frame(width: 4)
-            .frame(height: 44)
+            .frame(width: ProjectBoardLayoutMetrics.taskStatusRailWidth)
+            .frame(height: ProjectBoardLayoutMetrics.taskStatusRailHeight)
             .accessibilityHidden(true)
     }
 }
@@ -1415,9 +2924,17 @@ private struct BoardTaskDragPreview: View {
             }
 
             HStack(spacing: 8) {
-                Label(task.status.title, systemImage: "arrow.right.arrow.left")
+                Label {
+                    Text(LocalizedStringKey(task.status.title))
+                } icon: {
+                    Image(systemName: "arrow.right.arrow.left")
+                }
                     .foregroundStyle(task.status.tint)
-                Label(task.priority.label, systemImage: "flag")
+                Label {
+                    Text(LocalizedStringKey(task.priority.label))
+                } icon: {
+                    Image(systemName: "flag")
+                }
                     .foregroundStyle(task.priority.color)
             }
             .font(.caption)
@@ -1446,7 +2963,7 @@ private struct TaskStatusMoveControls: View {
                 targetStatus: task.status.previousStatus
             )
 
-            Text(task.status.title)
+            Text(LocalizedStringKey(task.status.title))
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -1455,7 +2972,7 @@ private struct TaskStatusMoveControls: View {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(.quaternary, in: Capsule())
-                .help(task.status.title)
+                .help(LocalizedStringKey(task.status.title))
                 .accessibilityLabel("Current status: \(task.status.title)")
 
             statusMoveButton(
@@ -1483,6 +3000,7 @@ private struct TaskStatusMoveControls: View {
         .controlSize(.small)
         .disabled(targetStatus == nil)
         .help(targetStatus.map { "\(title): \($0.title)" } ?? title)
+        .accessibilityIdentifier(targetStatus.map { "task-status-move-\($0.rawValue)-\(task.id)" } ?? "task-status-move-disabled-\(task.id)")
         .accessibilityLabel(targetStatus.map { "\(title) to \($0.title)" } ?? title)
         .accessibilityHint("Changes \(task.title) status.")
     }
@@ -1556,7 +3074,12 @@ private struct TaskMetadataChip: View {
         .foregroundStyle(tint)
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
-        .frame(minWidth: 64, maxWidth: .infinity, minHeight: 24, alignment: .leading)
+        .frame(
+            minWidth: ProjectBoardLayoutMetrics.taskMetadataChipMinWidth,
+            maxWidth: .infinity,
+            minHeight: ProjectBoardLayoutMetrics.taskMetadataChipMinHeight,
+            alignment: .leading
+        )
         .background(tint.opacity(0.10), in: Capsule())
         .help(value)
     }
@@ -1586,11 +3109,19 @@ private struct ProjectTaskList: View {
             }
 
             TableColumn("Status") { task in
-                Label(task.status.title, systemImage: task.status.systemImage)
+                Label {
+                    Text(LocalizedStringKey(task.status.title))
+                } icon: {
+                    Image(systemName: task.status.systemImage)
+                }
             }
 
             TableColumn("Priority") { task in
-                Label(task.priority.label, systemImage: "flag")
+                Label {
+                    Text(LocalizedStringKey(task.priority.label))
+                } icon: {
+                    Image(systemName: "flag")
+                }
                     .foregroundStyle(task.priority.color)
             }
 
@@ -1599,6 +3130,9 @@ private struct ProjectTaskList: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .accessibilityIdentifier("project-task-list")
+        .accessibilityLabel("Project task list")
+        .accessibilityHint("Lists the selected project's current tasks before creating, editing, executing, or deleting task content.")
     }
 }
 
@@ -1651,15 +3185,22 @@ private struct InspectorCloseButton: View {
 private struct ProjectInspectorView: View {
     let project: ProjectBoardProject
     @ObservedObject var viewModel: ProjectBoardViewModel
+    let onReviewDevelopmentAutomation: (ActionPlan) -> Void
     let onClose: () -> Void
 
     @State private var title: String
     @State private var isConfirmingArchive = false
     @State private var isConfirmingDelete = false
 
-    init(project: ProjectBoardProject, viewModel: ProjectBoardViewModel, onClose: @escaping () -> Void) {
+    init(
+        project: ProjectBoardProject,
+        viewModel: ProjectBoardViewModel,
+        onReviewDevelopmentAutomation: @escaping (ActionPlan) -> Void,
+        onClose: @escaping () -> Void
+    ) {
         self.project = project
         self.viewModel = viewModel
+        self.onReviewDevelopmentAutomation = onReviewDevelopmentAutomation
         self.onClose = onClose
         _title = State(initialValue: project.title)
     }
@@ -1681,6 +3222,15 @@ private struct ProjectInspectorView: View {
                 ProjectInspectorMetadataSummary(project: project)
             }
 
+            Section("Project AI Receipts") {
+                ExecutionReceiptHistoryInspectorSection(
+                    snapshot: viewModel.executionReceiptHistorySnapshot(forProjectID: project.id),
+                    emptyTitle: "No project AI receipts yet",
+                    emptyDescription: "Receipts appear here after approved AI work references this project.",
+                    accessibilityIdentifier: "project-execution-receipts"
+                )
+            }
+
             Section("Edit") {
                 TextField("Title", text: $title)
                     .accessibilityIdentifier("project-inspector-title")
@@ -1689,8 +3239,29 @@ private struct ProjectInspectorView: View {
                 LabeledContent("Artifacts", value: "\(project.artifacts.count)")
             }
 
-            Section("Suggestion") {
-                ProjectInspectorSuggestionSection(project: project, viewModel: viewModel)
+            Section("Project Directory") {
+                LabeledContent("Current", value: project.workspaceDisplayName ?? "Not set")
+                    .accessibilityIdentifier("project-workspace-current")
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        chooseProjectDirectoryButton
+                        clearProjectDirectoryButton
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        chooseProjectDirectoryButton
+                        clearProjectDirectoryButton
+                    }
+                }
+            }
+
+            Section("Development Automation") {
+                ProjectDevelopmentAutomationPanel(
+                    project: project,
+                    viewModel: viewModel,
+                    onReviewDevelopmentAutomation: onReviewDevelopmentAutomation
+                )
             }
 
             Section("Save") {
@@ -1705,6 +3276,10 @@ private struct ProjectInspectorView: View {
                 .help("Saves edits to the selected project in the local SoloPM database")
                 .accessibilityIdentifier("project-inspector-save")
                 .accessibilityHint("Saves edits to the selected project in the local SoloPM database.")
+            }
+
+            Section("Suggestion") {
+                ProjectInspectorSuggestionSection(project: project, viewModel: viewModel)
             }
 
             Section("Actions") {
@@ -1795,6 +3370,63 @@ private struct ProjectInspectorView: View {
         title = project.title
     }
 
+    private var chooseProjectDirectoryButton: some View {
+        Button {
+            chooseProjectDirectory()
+        } label: {
+            Label("Choose Directory", systemImage: "folder.badge.plus")
+        }
+        .disabled(project.isArchived)
+        .help("Choose the local folder SoloPM can use for this project")
+        .accessibilityIdentifier("project-workspace-choose")
+        .accessibilityHint("Opens a folder picker and stores the selected project directory locally.")
+    }
+
+    private var clearProjectDirectoryButton: some View {
+        Button {
+            _ = viewModel.clearProjectWorkspacePath(projectID: project.id)
+        } label: {
+            Label("Clear Directory", systemImage: "xmark.circle")
+        }
+        .disabled(project.isArchived || !project.hasWorkspaceDirectory)
+        .help("Clear this project's local directory permission")
+        .accessibilityIdentifier("project-workspace-clear")
+        .accessibilityHint("Removes the stored project directory from SoloPM without deleting files.")
+    }
+
+    private func chooseProjectDirectory() {
+        #if canImport(AppKit)
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.prompt = String(localized: "Choose")
+        panel.message = String(localized: "Choose the local folder SoloPM can use for this project")
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else {
+                return
+            }
+            let bookmarkData: Data
+            do {
+                bookmarkData = try url.bookmarkData(
+                    options: [.withSecurityScope],
+                    includingResourceValuesForKeys: nil,
+                    relativeTo: nil
+                )
+            } catch {
+                DispatchQueue.main.async {
+                    viewModel.reportProjectWorkspaceSelectionFailure()
+                }
+                return
+            }
+            DispatchQueue.main.async {
+                _ = viewModel.assignProjectWorkspacePath(url.path, bookmarkData: bookmarkData, projectID: project.id)
+            }
+        }
+        #endif
+    }
+
     private func archiveSelectedProjectAfterConfirmationDismissal() {
         isConfirmingArchive = false
         DispatchQueue.main.async {
@@ -1806,6 +3438,667 @@ private struct ProjectInspectorView: View {
         isConfirmingDelete = false
         DispatchQueue.main.async {
             viewModel.deleteSelectedProject()
+        }
+    }
+}
+
+private struct ProjectDevelopmentAutomationPanel: View {
+    let project: ProjectBoardProject
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    let onReviewDevelopmentAutomation: (ActionPlan) -> Void
+
+    @State private var pullRequestDraftKey: String?
+    @State private var pullRequestBaseBranch = ""
+    @State private var pullRequestTitle = ""
+    @State private var pullRequestBody = ""
+    @State private var commitDraftKey: String?
+    @State private var commitRelativePaths = ""
+    @State private var commitMessage = ""
+    @State private var repositoryEditOperation: ProjectDevelopmentRepositoryEditOperation = .create
+    @State private var repositoryEditRelativePath = ""
+    @State private var repositoryEditExpectedSHA256 = ""
+    @State private var repositoryEditContents = ""
+
+    private var readiness: ProjectDevelopmentAutomationReadiness {
+        viewModel.developmentAutomationReadiness(for: project, task: viewModel.selectedTask)
+    }
+
+    private var developmentProgress: ProjectDevelopmentAutomationProgress {
+        viewModel.developmentAutomationProgress(for: project, task: viewModel.selectedTask)
+    }
+
+    private var pullRequestDraft: ProjectDevelopmentPullRequestCreationDraft? {
+        viewModel.developmentPullRequestCreationDraft(for: project, task: viewModel.selectedTask)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(
+                LocalizedStringKey(readiness.statusLabel),
+                systemImage: readiness.isReady ? "checkmark.seal" : "exclamationmark.triangle"
+            )
+                .font(.headline)
+                .foregroundStyle(readiness.isReady ? .green : .orange)
+                .accessibilityIdentifier("project-development-automation-status")
+
+            if let blockingReason = readiness.blockingReason {
+                Text(LocalizedStringKey(blockingReason))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let branchNamePreview = readiness.branchNamePreview {
+                LabeledContent("Branch Preview", value: branchNamePreview)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("project-development-automation-branch-preview")
+            }
+
+            LabeledContent("Prepare Tool", value: readiness.toolName)
+                .font(.caption)
+                .textSelection(.enabled)
+
+            Button {
+                guard let plan = viewModel.prepareDevelopmentAutomationReview(for: project, task: viewModel.selectedTask) else {
+                    return
+                }
+                onReviewDevelopmentAutomation(plan)
+            } label: {
+                Label("Review branch automation", systemImage: "doc.text.magnifyingglass")
+            }
+            .disabled(!readiness.isReady)
+            .help("Opens an approval-gated review for preparing a local development branch.")
+            .accessibilityIdentifier("project-development-automation-review")
+            .accessibilityHint("Opens an approval-gated review for preparing a local development branch.")
+
+            Button {
+                _ = viewModel.enqueueDevelopmentAutomationReview(for: project, task: viewModel.selectedTask)
+            } label: {
+                Label("Queue branch automation", systemImage: "tray.and.arrow.down")
+            }
+            .disabled(!readiness.isReady)
+            .help("Adds the development branch preparation plan to Assistant Queue without creating a branch.")
+            .accessibilityIdentifier("project-development-automation-queue")
+            .accessibilityHint("Adds the development branch preparation plan to Assistant Queue for review and approval.")
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Repository edit review")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker("Repository edit operation", selection: $repositoryEditOperation) {
+                    ForEach(ProjectDevelopmentRepositoryEditOperation.allCases) { operation in
+                        Text(LocalizedStringKey(operation.title)).tag(operation)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("project-development-automation-edit-operation")
+
+                TextField("Repository file path", text: $repositoryEditRelativePath)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("project-development-automation-edit-path")
+
+                TextField("Expected SHA for updates", text: $repositoryEditExpectedSHA256)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("project-development-automation-edit-expected-sha")
+
+                TextEditor(text: $repositoryEditContents)
+                    .font(.caption)
+                    .frame(minHeight: 96)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(.quaternary)
+                    )
+                    .accessibilityLabel("Repository file contents")
+                    .accessibilityIdentifier("project-development-automation-edit-contents")
+
+                if let repositoryEditPreview {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label(LocalizedStringKey(repositoryEditPreview.title), systemImage: "doc.text.magnifyingglass")
+                            .font(.caption)
+                            .foregroundStyle(Color.accentColor)
+
+                        ForEach(repositoryEditPreview.rows) { row in
+                            LabeledContent(LocalizedStringKey(row.label), value: row.value)
+                                .font(.caption2)
+                                .textSelection(.enabled)
+                                .accessibilityIdentifier("project-development-automation-edit-preview-row-\(row.id)")
+                        }
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("project-development-automation-edit-preview")
+                    .accessibilityHint("Shows the reviewed repository operation, path, branch, replacement summary, and content digest before queueing approval.")
+                }
+
+                Button {
+                    _ = viewModel.enqueueDevelopmentRepositoryEditReview(
+                        for: project,
+                        task: viewModel.selectedTask,
+                        operation: repositoryEditOperation,
+                        relativePath: repositoryEditRelativePath,
+                        contents: repositoryEditContents,
+                        expectedSHA256: repositoryEditExpectedSHA256
+                    )
+                } label: {
+                    Label("Queue repository edit review", systemImage: "doc.badge.gearshape")
+                }
+                .disabled(!canQueueRepositoryEditReview)
+                .help("Queues a scoped create or update file review after branch preparation evidence exists.")
+                .accessibilityIdentifier("project-development-automation-edit-queue")
+                .accessibilityHint("Adds the reviewed repository edit to Assistant Queue before verification.")
+            }
+
+            Button {
+                _ = viewModel.enqueueDevelopmentVerificationReview(for: project, task: viewModel.selectedTask)
+            } label: {
+                Label("Queue verification review", systemImage: "checkmark.shield")
+            }
+            .disabled(!developmentProgress.canQueueVerificationReview)
+            .help("Queues an approved local verification command after branch preparation evidence exists.")
+            .accessibilityIdentifier("project-development-automation-verification-queue")
+            .accessibilityHint("Adds a local verification command to Assistant Queue before commit or push.")
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Commit review")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                TextField("Commit file paths", text: $commitRelativePaths)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("project-development-automation-commit-paths")
+
+                TextField("Commit message", text: $commitMessage)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("project-development-automation-commit-message")
+
+                Button {
+                    _ = viewModel.enqueueDevelopmentCommitReview(
+                        for: project,
+                        task: viewModel.selectedTask,
+                        relativePathsText: commitRelativePaths,
+                        commitMessage: commitMessage
+                    )
+                } label: {
+                    Label("Queue commit review", systemImage: "tray.and.arrow.down")
+                }
+                .disabled(!canQueueCommitReview)
+                .help("Queues a local commit review after verification evidence exists.")
+                .accessibilityIdentifier("project-development-automation-commit-queue")
+                .accessibilityHint("Adds the reviewed file list and commit message to Assistant Queue before push.")
+            }
+            .onAppear {
+                syncCommitDraftIfNeeded()
+            }
+            .onChange(of: viewModel.selectedTask?.id) { _, _ in
+                syncCommitDraftIfNeeded()
+            }
+            .onChange(of: readiness.branchNamePreview) { _, _ in
+                syncCommitDraftIfNeeded()
+            }
+
+            Button {
+                _ = viewModel.enqueueDevelopmentPushReview(for: project, task: viewModel.selectedTask)
+            } label: {
+                Label("Queue branch push review", systemImage: "arrow.up.circle")
+            }
+            .disabled(!developmentProgress.canQueueBranchPushReview)
+            .help("Queues a branch push approval; execution rechecks the current branch, clean workspace, and GitHub origin before running.")
+            .accessibilityIdentifier("project-development-automation-push-queue")
+            .accessibilityHint("Adds only the branch push review to Assistant Queue; pull request creation still needs a separate approval.")
+
+            Button {
+                _ = viewModel.enqueueDevelopmentPullRequestCreationReview(
+                    for: project,
+                    task: viewModel.selectedTask
+                )
+            } label: {
+                Label("Queue pull request creation review", systemImage: "arrow.up.right.square")
+            }
+            .disabled(!canQueuePullRequestCreationReview)
+            .help("Queues GitHub pull request creation with the reviewed draft base branch, title, and body.")
+            .accessibilityIdentifier("project-development-automation-pr-create-queue")
+            .accessibilityHint("Adds only the pull request creation review to Assistant Queue; review and merge still need separate approval.")
+
+            if let pullRequestDraft {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Pull request creation")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    TextField("Base branch", text: $pullRequestBaseBranch)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("project-development-automation-pr-base")
+
+                    TextField("Pull request title", text: $pullRequestTitle)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("project-development-automation-pr-title")
+
+                    TextEditor(text: $pullRequestBody)
+                        .font(.caption)
+                        .frame(minHeight: 96)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(.quaternary)
+                        )
+                        .accessibilityLabel("Pull request body")
+                        .accessibilityIdentifier("project-development-automation-pr-body")
+
+                    Button {
+                        _ = viewModel.enqueueDevelopmentPullRequestCreationReview(
+                            for: project,
+                            task: viewModel.selectedTask,
+                            baseBranch: pullRequestBaseBranch,
+                            title: pullRequestTitle,
+                            body: pullRequestBody
+                        )
+                    } label: {
+                        Label("Queue pull request creation review", systemImage: "arrow.up.right.square")
+                    }
+                    .disabled(!canQueuePullRequestCreationReview)
+                    .help("Queues GitHub pull request creation for approval after reviewing the base branch, title, and body.")
+                    .accessibilityIdentifier("project-development-automation-pr-create-detailed-queue")
+                    .accessibilityHint("Adds only the pull request creation review to Assistant Queue; review and merge still need separate approval.")
+                }
+                .onAppear {
+                    syncPullRequestDraftIfNeeded(pullRequestDraft)
+                }
+                .onChange(of: pullRequestDraft) { _, newValue in
+                    syncPullRequestDraftIfNeeded(newValue)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Pull request progress")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if let nextApproval = developmentProgress.nextApproval {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label(LocalizedStringKey(nextApproval.title), systemImage: "arrow.right.circle")
+                            .font(.caption)
+                            .foregroundStyle(Color.accentColor)
+                        Text(LocalizedStringKey(nextApproval.detail))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("project-development-automation-next-approval")
+                    .accessibilityHint("Shows the next receipt-backed approval to prevent pull requests from being left unreviewed.")
+                }
+
+                if let approvalPreview = developmentProgress.approvalPreview {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label(LocalizedStringKey(approvalPreview.title), systemImage: "doc.text.magnifyingglass")
+                            .font(.caption)
+                            .foregroundStyle(Color.accentColor)
+
+                        ForEach(approvalPreview.rows) { row in
+                            LabeledContent(LocalizedStringKey(row.label), value: row.value)
+                                .font(.caption2)
+                                .textSelection(.enabled)
+                                .accessibilityIdentifier("project-development-automation-approval-preview-row-\(row.id)")
+                        }
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("project-development-automation-approval-preview")
+                    .accessibilityHint("Shows the receipt-backed branch, commit, and pull request evidence for the next development approval.")
+                }
+
+                if let queueHandoff = developmentProgress.queueHandoff {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Assistant Queue handoff", systemImage: "tray.full")
+                            .font(.caption)
+                            .foregroundStyle(Color.accentColor)
+
+                        Text(verbatim: "\(queueHandoff.stateLabel) - \(queueHandoff.title)")
+                            .font(.caption2)
+                            .foregroundStyle(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text(verbatim: queueHandoff.reviewReason)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if let latestReceiptStatusLabel = queueHandoff.latestReceiptStatusLabel {
+                            Text(verbatim: "\(String(localized: "Latest receipt")): \(latestReceiptStatusLabel)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        Text(queueHandoffStatusText(for: queueHandoff))
+                            .font(.caption2)
+                            .foregroundStyle(queueHandoff.canRun ? .green : .secondary)
+
+                        ForEach(Array(queueHandoff.capabilityLabels.enumerated()), id: \.offset) { index, capability in
+                            Text(verbatim: capability)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("project-development-automation-queue-handoff-capability-\(index)")
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("project-development-automation-queue-handoff")
+                    .accessibilityHint("Shows the matching Assistant Queue item for the current development automation approval.")
+                }
+
+                ForEach(developmentProgress.stages) { stage in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: progressStageIcon(for: stage.status))
+                            .foregroundStyle(progressStageColor(for: stage.status))
+                            .frame(width: 16)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text(LocalizedStringKey(stage.title))
+                                    .font(.caption)
+                                Text(LocalizedStringKey(stage.status.label))
+                                    .font(.caption2)
+                                    .foregroundStyle(progressStageColor(for: stage.status))
+                            }
+                            if let detail = stage.detail {
+                                Text(verbatim: detail)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("project-development-automation-progress-stage-\(stage.id)")
+                }
+
+                if let pullRequestURL = developmentProgress.pullRequestURL {
+                    LabeledContent("Pull Request", value: pullRequestURL)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("project-development-automation-progress-pr-url")
+                }
+                if let baseBranch = developmentProgress.baseBranch {
+                    LabeledContent("Base Branch", value: baseBranch)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("project-development-automation-progress-base")
+                }
+                if let latestCommitOID = developmentProgress.latestCommitOID {
+                    LabeledContent("Latest Commit", value: latestCommitOID)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("project-development-automation-progress-commit")
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Button {
+                        _ = viewModel.enqueueDevelopmentPullRequestLifecycleReview(
+                            for: project,
+                            task: viewModel.selectedTask,
+                            operation: .reviewGate
+                        )
+                    } label: {
+                        Label("Queue pull request review gate", systemImage: "checkmark.shield")
+                    }
+                    .disabled(!developmentProgress.canQueuePullRequestReviewGate)
+                    .help("Uses the pull request creation receipt to queue review, CI, unresolved thread, and mergeability checks.")
+                    .accessibilityIdentifier("project-development-automation-pr-review-queue")
+                    .accessibilityHint("Adds only the receipt-backed pull request review gate to Assistant Queue; merge still needs separate approval.")
+
+                    Button {
+                        _ = viewModel.enqueueDevelopmentPullRequestLifecycleReview(
+                            for: project,
+                            task: viewModel.selectedTask,
+                            operation: .merge
+                        )
+                    } label: {
+                        Label("Queue pull request merge gate", systemImage: "arrow.triangle.merge")
+                    }
+                    .disabled(!developmentProgress.canQueuePullRequestMergeGate)
+                    .help("Uses the review gate receipt to queue merge approval; execution rechecks the approved pull request before merging.")
+                    .accessibilityIdentifier("project-development-automation-pr-merge-queue")
+                    .accessibilityHint("Adds the receipt-backed merge gate to Assistant Queue after review evidence exists.")
+                }
+
+                if let blockingReason = developmentProgress.blockingReason {
+                    Text(LocalizedStringKey(blockingReason))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("project-development-automation-progress-message")
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("project-development-automation-progress")
+
+            if hasMatchingReviewPlan {
+                Text(LocalizedStringKey("Review plan is ready. Approve and execute it before any local branch is created."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("project-development-automation-review-ready")
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Scoped file operations")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 6) {
+                    ForEach(readiness.allowedFileOperations, id: \.self) { operation in
+                        Text(operation)
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+
+                Text(LocalizedStringKey(readiness.approvalBoundaryLabel))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("project-development-automation-approval-boundary")
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("PR lifecycle tools")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ForEach(Array(readiness.lifecycleToolNames.enumerated()), id: \.offset) { index, toolName in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Label(LocalizedStringKey(lifecycleToolDisplayName(for: toolName)), systemImage: lifecycleToolIcon(for: toolName))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text(toolName)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("project-development-automation-lifecycle-tool-\(index)")
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(readiness.reviewSteps.enumerated()), id: \.offset) { index, step in
+                    Label(LocalizedStringKey(step), systemImage: "checklist")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("project-development-automation-step-\(index)")
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project-development-automation")
+    }
+
+    private var hasMatchingReviewPlan: Bool {
+        guard let action = viewModel.developmentAutomationReviewPlan?.actions.first(where: { $0.tool == .developmentPreparePullRequestWorkflow }) else {
+            return false
+        }
+        return action.arguments["projectId"] == .number(Double(project.id))
+            && action.arguments["taskId"] == readiness.taskID.map { .number(Double($0)) }
+            && action.arguments["branchName"] == readiness.branchNamePreview.map(JSONValue.string)
+    }
+
+    private var canQueuePullRequestCreationReview: Bool {
+        developmentProgress.canQueuePullRequestCreationReview
+            && !pullRequestBaseBranch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !pullRequestTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !pullRequestBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canQueueCommitReview: Bool {
+        developmentProgress.canQueueCommitReview
+            && !commitRelativePaths.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canQueueRepositoryEditReview: Bool {
+        let hasRequiredUpdateDigest = repositoryEditOperation == .create
+            || !repositoryEditExpectedSHA256.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return developmentProgress.canQueueRepositoryEditReview
+            && !repositoryEditRelativePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !repositoryEditContents.isEmpty
+            && hasRequiredUpdateDigest
+    }
+
+    private var repositoryEditPreview: ProjectDevelopmentAutomationApprovalPreview? {
+        viewModel.developmentRepositoryEditPreview(
+            for: project,
+            task: viewModel.selectedTask,
+            operation: repositoryEditOperation,
+            relativePath: repositoryEditRelativePath,
+            contents: repositoryEditContents,
+            expectedSHA256: repositoryEditExpectedSHA256
+        )
+    }
+
+    private func syncPullRequestDraftIfNeeded(_ draft: ProjectDevelopmentPullRequestCreationDraft) {
+        let key = "\(draft.projectID):\(draft.taskID):\(draft.branchName)"
+        guard pullRequestDraftKey != key else {
+            return
+        }
+        pullRequestDraftKey = key
+        pullRequestBaseBranch = draft.baseBranch
+        pullRequestTitle = draft.title
+        pullRequestBody = draft.body
+    }
+
+    private func syncCommitDraftIfNeeded() {
+        guard let task = viewModel.selectedTask,
+              let branchName = readiness.branchNamePreview else {
+            return
+        }
+        let key = "\(project.id):\(task.id):\(branchName)"
+        guard commitDraftKey != key else {
+            return
+        }
+        commitDraftKey = key
+        commitRelativePaths = ""
+        commitMessage = "Update task \(task.id)"
+    }
+
+    private func progressStageIcon(for status: ProjectDevelopmentAutomationProgressStageStatus) -> String {
+        switch status {
+        case .waiting:
+            return "circle"
+        case .ready:
+            return "arrow.right.circle"
+        case .succeeded:
+            return "checkmark.circle"
+        case .failed:
+            return "xmark.octagon"
+        }
+    }
+
+    private func progressStageColor(for status: ProjectDevelopmentAutomationProgressStageStatus) -> Color {
+        switch status {
+        case .waiting:
+            return .secondary
+        case .ready:
+            return .accentColor
+        case .succeeded:
+            return .green
+        case .failed:
+            return .red
+        }
+    }
+
+    private func queueHandoffStatusText(
+        for handoff: ProjectDevelopmentAutomationQueueHandoff
+    ) -> LocalizedStringKey {
+        switch handoff.state {
+        case .approved:
+            return handoff.canRun ? "Ready to run from Assistant Queue" : "Approved in Assistant Queue"
+        case .running:
+            return "Running in Assistant Queue"
+        case .blocked:
+            return "Blocked in Assistant Queue"
+        case .failed:
+            return "Failed in Assistant Queue"
+        case .deferred:
+            return "Deferred in Assistant Queue"
+        case .done:
+            return "Completed in Assistant Queue"
+        case .rejected:
+            return "Rejected in Assistant Queue"
+        case .captured, .interpreted, .drafted, .waitingReview:
+            return "Waiting for review approval"
+        }
+    }
+
+    private func lifecycleToolIcon(for toolName: String) -> String {
+        if toolName.contains("repository") {
+            return "doc.text"
+        }
+        if toolName.contains("verification") {
+            return "checkmark.shield"
+        }
+        if toolName.contains("commit") {
+            return "tray.and.arrow.down"
+        }
+        if toolName.contains("push") || toolName.contains("pull_request") {
+            return "arrow.up.right.circle"
+        }
+        if toolName.contains("merge") {
+            return "arrow.triangle.merge"
+        }
+        return "point.topleft.down.curvedto.point.bottomright.up"
+    }
+
+    private func lifecycleToolDisplayName(for toolName: String) -> String {
+        switch toolName {
+        case ActionTool.developmentPreparePullRequestWorkflow.rawValue:
+            return "Prepare branch"
+        case ActionTool.developmentRepositoryListFiles.rawValue:
+            return "List project files"
+        case ActionTool.developmentRepositoryReadFile.rawValue:
+            return "Read project file"
+        case ActionTool.developmentRepositoryCreateFile.rawValue:
+            return "Create project file"
+        case ActionTool.developmentRepositoryUpdateFile.rawValue:
+            return "Update project file"
+        case ActionTool.developmentRunVerification.rawValue:
+            return "Run verification"
+        case ActionTool.developmentCommitChanges.rawValue:
+            return "Commit changes"
+        case ActionTool.developmentPushBranch.rawValue:
+            return "Push branch"
+        case ActionTool.developmentCreatePullRequest.rawValue:
+            return "Create pull request"
+        case ActionTool.developmentReviewPullRequestGate.rawValue:
+            return "Review pull request"
+        case ActionTool.developmentMergePullRequest.rawValue:
+            return "Merge pull request"
+        default:
+            return "Development tool"
         }
     }
 }
@@ -1945,15 +4238,15 @@ private struct ProjectInspectorSuggestionSection: View {
     private var suggestionText: String {
         switch suggestionAction {
         case .restoreProject:
-            return "Restore this project before editing tasks or including it in active summaries."
+            return localizedDisplay("Restore this project before editing tasks or including it in active summaries.")
         case .createFirstTask:
-            return "Create a first concrete task so the project has a next action."
+            return localizedDisplay("Create a first concrete task so the project has a next action.")
         case .completeProject:
-            return "All tasks are done. Complete the project to keep active views focused."
+            return localizedDisplay("All tasks are done. Complete the project to keep active views focused.")
         case .openTask:
-            return "Open the highest-signal task and decide its next move in the inspector."
+            return localizedDisplay("Open the highest-signal task and decide its next move in the inspector.")
         case .none:
-            return "No project-level suggestion is needed right now."
+            return localizedDisplay("No project-level suggestion is needed right now.")
         }
     }
 
@@ -1962,7 +4255,7 @@ private struct ProjectInspectorSuggestionSection: View {
         case .restoreProject:
             viewModel.restoreSelectedProject()
         case .createFirstTask:
-            _ = viewModel.createTask(title: "Define next action", projectID: project.id, status: .backlog)
+            _ = viewModel.createTask(title: localizedDisplay("Define next action"), projectID: project.id, status: .backlog)
         case .completeProject:
             viewModel.completeSelectedProject()
         case .openTask(let taskID):
@@ -2032,7 +4325,11 @@ private struct TaskInspectorView: View {
             Section("Fields") {
                 Picker("Status", selection: $status) {
                     ForEach(ProjectTaskStatus.allCases) { status in
-                        Label(status.title, systemImage: status.systemImage)
+                        Label {
+                            Text(LocalizedStringKey(status.title))
+                        } icon: {
+                            Image(systemName: status.systemImage)
+                        }
                             .tag(status)
                     }
                 }
@@ -2040,7 +4337,7 @@ private struct TaskInspectorView: View {
 
                 Picker("Priority", selection: $priority) {
                     ForEach(ProjectTaskPriority.allCases) { priority in
-                        Text(priority.label)
+                        Text(LocalizedStringKey(priority.label))
                             .tag(priority)
                     }
                 }
@@ -2048,10 +4345,6 @@ private struct TaskInspectorView: View {
 
                 TextField("Due", text: $dueAt)
                     .accessibilityIdentifier("task-inspector-due")
-            }
-
-            Section("Suggestion") {
-                TaskInspectorSuggestionSection(task: task, viewModel: viewModel)
             }
 
             Section("Save") {
@@ -2074,6 +4367,23 @@ private struct TaskInspectorView: View {
                 .accessibilityHint("Saves edits to the selected task in the local SoloPM database.")
             }
 
+            Section("Suggestion") {
+                TaskInspectorSuggestionSection(task: task, viewModel: viewModel)
+            }
+
+            Section("Automation") {
+                TaskInspectorAutomationSection(task: task, viewModel: viewModel)
+            }
+
+            Section("Task AI Receipts") {
+                ExecutionReceiptHistoryInspectorSection(
+                    snapshot: viewModel.executionReceiptHistorySnapshot(forTaskID: task.id),
+                    emptyTitle: "No task AI receipts yet",
+                    emptyDescription: "Receipts appear here after approved AI work references this task.",
+                    accessibilityIdentifier: "task-execution-receipts"
+                )
+            }
+
             Section("Danger Zone") {
                 if isConfirmingDelete {
                     InspectorDestructiveConfirmation(
@@ -2081,6 +4391,9 @@ private struct TaskInspectorView: View {
                         message: "This removes the task from the local SoloPM database.",
                         confirmTitle: "Delete Task",
                         confirmSystemImage: "trash",
+                        // The runtime AX preflight tracks this generated cancel
+                        // identifier after opening the destructive confirmation:
+                        // task-inspector-delete-confirmation-cancel.
                         accessibilityIdentifier: "task-inspector-delete-confirmation",
                         confirmAction: deleteSelectedTaskAfterConfirmationDismissal,
                         cancelAction: { isConfirmingDelete = false }
@@ -2148,11 +4461,14 @@ private struct InspectorDestructiveConfirmation: View {
 
             HStack(spacing: 8) {
                 Button("Cancel", role: .cancel, action: cancelAction)
+                    .accessibilityIdentifier("\(accessibilityIdentifier)-cancel")
+                    .accessibilityLabel("Cancel \(confirmTitle)")
+                    .accessibilityHint("Cancels \(confirmTitle) and returns to the inspector.")
                 Button(role: .destructive, action: confirmAction) {
                     Label(confirmTitle, systemImage: confirmSystemImage)
                 }
                 .accessibilityIdentifier("\(accessibilityIdentifier)-confirm")
-                .accessibilityLabel(confirmTitle)
+                .accessibilityLabel("Confirm \(confirmTitle)")
                 .accessibilityHint("Confirms \(confirmTitle).")
             }
         }
@@ -2216,6 +4532,37 @@ private struct TaskInspectorMetadataSummary: View {
     }
 }
 
+private struct ExecutionReceiptHistoryInspectorSection: View {
+    let snapshot: ExecutionReceiptHistorySnapshot
+    let emptyTitle: LocalizedStringKey
+    let emptyDescription: LocalizedStringKey
+    let accessibilityIdentifier: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let unavailableMessage = snapshot.unavailableMessage {
+                ContentUnavailableView(
+                    "Execution receipts are unavailable",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(unavailableMessage)
+                )
+            } else if snapshot.rows.isEmpty {
+                ContentUnavailableView(
+                    emptyTitle,
+                    systemImage: "doc.text.magnifyingglass",
+                    description: Text(emptyDescription)
+                )
+            } else {
+                ForEach(snapshot.rows) { row in
+                    ExecutionReceiptHistoryRowView(row: row)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(accessibilityIdentifier)
+    }
+}
+
 private struct InspectorMetadataPill: View {
     let label: String
     let value: String
@@ -2229,12 +4576,12 @@ private struct InspectorMetadataPill: View {
                 .frame(width: 14)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(label)
+                Text(LocalizedStringKey(label))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
-                Text(value)
+                Text(LocalizedStringKey(value))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -2292,15 +4639,193 @@ private struct TaskInspectorSuggestionSection: View {
 
     private var suggestionText: String {
         if task.status == .done {
-            return "This task is already complete."
+            return localizedDisplay("This task is already complete.")
         }
         if task.status == .blocked {
-            return "If the blocker is resolved, move this task back into active work."
+            return localizedDisplay("If the blocker is resolved, move this task back into active work.")
         }
         if task.priority == .high {
-            return "High-priority task: move it forward when the next step is clear."
+            return localizedDisplay("High-priority task: move it forward when the next step is clear.")
         }
-        return "Move this task to the next status when you are ready."
+        return localizedDisplay("Move this task to the next status when you are ready.")
+    }
+}
+
+private struct TaskInspectorAutomationSection: View {
+    let task: ProjectBoardTask
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    private var hasReviewDraft: Bool {
+        viewModel.taskAutomationReviewDecision?.selectedTasks.contains(where: { $0.id == task.id }) == true
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Review-only task automation", systemImage: "sparkles")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                viewModel.prepareAutomationReviewForSelectedTask()
+            } label: {
+                Label("Review automation plan", systemImage: "doc.text.magnifyingglass")
+            }
+            .help("Prepares review-only local automation for the selected task")
+            .accessibilityIdentifier("task-auto-execution-review")
+            .accessibilityHint("Prepares review-only local automation for the selected task.")
+
+            Button {
+                viewModel.runApprovedAutomationForSelectedTask()
+            } label: {
+                Label("Run approved plan", systemImage: "play.circle")
+            }
+            .disabled(!hasReviewDraft)
+            .help("Runs the reviewed local task step after explicit user approval")
+            .accessibilityIdentifier("task-auto-execution-run-plan")
+            .accessibilityHint("Runs the reviewed local task step after explicit user approval.")
+
+            if hasReviewDraft {
+                Text(localizedDisplay("Review draft is ready. Running it only starts local task execution."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if hasReviewDraft && !documentDeliverableReviews.isEmpty {
+                documentDeliverableReviewView(documentDeliverableReviews)
+            }
+
+            if let receipt = latestApprovedExecutionReceipt {
+                approvedExecutionReceiptView(receipt)
+            }
+        }
+    }
+
+    private var documentDeliverableReviews: [TaskAutomationDocumentDeliverableReview] {
+        viewModel.taskAutomationDocumentDeliverableReviews
+    }
+
+    private var latestApprovedExecutionReceipt: ApprovedAutomationExecutionReceipt? {
+        // Show the persisted redacted receipt, not current task text, so the audit trail
+        // stays tied to what the user approved.
+        viewModel.approvedAutomationExecutionReceipts.last { $0.taskID == task.id }
+    }
+
+    private func documentDeliverableReviewView(_ reviews: [TaskAutomationDocumentDeliverableReview]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Document deliverables", systemImage: "doc.text.magnifyingglass")
+                .font(.caption.weight(.semibold))
+
+            ForEach(reviews) { deliverable in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(deliverable.title)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(2)
+
+                    HStack(spacing: 6) {
+                        Text(localizedDisplay(deliverable.riskLevel.rawValue.capitalized))
+                        Text(deliverable.suggestedPath)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                    Text(deliverable.rationale)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+
+                    if !deliverable.sourceDocuments.isEmpty {
+                        Text("Source documents")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        ForEach(deliverable.sourceDocuments) { source in
+                            documentSourceRow(source)
+                        }
+                    }
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("task-auto-execution-document-deliverables")
+        .accessibilityLabel("Document deliverables")
+        .accessibilityHint("Shows the draft-only document outputs and redacted source documents for the reviewed automation plan.")
+    }
+
+    private func documentSourceRow(_ source: TaskAutomationDocumentSourceReview) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(source.title)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(2)
+            Text(source.redactedSummary)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+            Text(source.inclusionReason)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .padding(.leading, 8)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("task-auto-execution-document-source-\(source.id)")
+        .accessibilityLabel("Automation document source")
+        .accessibilityValue(documentSourceAccessibilityValue(source))
+        .accessibilityHint("Shows the redacted document source preview used for the reviewed automation draft.")
+    }
+
+    private func documentSourceAccessibilityValue(_ source: TaskAutomationDocumentSourceReview) -> String {
+        [
+            "Title \(source.title)",
+            "Summary \(source.redactedSummary)",
+            "Reason \(source.inclusionReason)"
+        ].joined(separator: ", ")
+    }
+
+    private func approvedExecutionReceiptView(_ receipt: ApprovedAutomationExecutionReceipt) -> some View {
+        let statusText = [
+            "Status: \(localizedDisplay(receipt.statusBefore.title))",
+            "to \(localizedDisplay(receipt.statusAfter.title))"
+        ].joined(separator: " ")
+
+        return VStack(alignment: .leading, spacing: 6) {
+            Label("Approved execution receipt", systemImage: "checkmark.seal")
+                .font(.caption.weight(.semibold))
+
+            Text("Task: \(receipt.redactedTaskTitle)")
+                .lineLimit(2)
+            Text("Reviewed detail: \(receipt.redactedTaskDetail)")
+                .lineLimit(3)
+            Text(statusText)
+            Text("Reason: \(receipt.reviewReason)")
+                .lineLimit(2)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("approved-execution-receipt")
+        .accessibilityLabel("Approved execution receipt")
+        .accessibilityValue(approvedExecutionReceiptAccessibilityValue(receipt))
+        .accessibilityHint("Shows the redacted task title and detail that were approved and executed.")
+    }
+
+    private func approvedExecutionReceiptAccessibilityValue(_ receipt: ApprovedAutomationExecutionReceipt) -> String {
+        [
+            "Task \(receipt.redactedTaskTitle)",
+            "Reviewed detail \(receipt.redactedTaskDetail)",
+            "Status \(localizedDisplay(receipt.statusBefore.title)) to \(localizedDisplay(receipt.statusAfter.title))",
+            "Reason \(receipt.reviewReason)"
+        ].joined(separator: ", ")
     }
 }
 
@@ -2364,6 +4889,34 @@ extension ProjectTaskStatus {
             return nil
         }
         return Self.allCases[nextIndex]
+    }
+}
+
+private extension ProjectPortfolioHealth {
+    var tint: Color {
+        switch self {
+        case .onTrack:
+            .green
+        case .attention:
+            .orange
+        case .atRisk:
+            .red
+        case .completed:
+            .blue
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .onTrack:
+            "checkmark.seal"
+        case .attention:
+            "exclamationmark.circle"
+        case .atRisk:
+            "exclamationmark.triangle"
+        case .completed:
+            "checkmark.circle"
+        }
     }
 }
 

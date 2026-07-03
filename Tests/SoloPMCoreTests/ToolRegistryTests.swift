@@ -69,6 +69,35 @@ final class ToolRegistryTests: XCTestCase {
         XCTAssertEqual(registry.schemaList.first?.permissionLevel, .read)
     }
 
+    func testRegistryCanRegisterToolsFromAnotherRegistry() throws {
+        let target = try ToolRegistry(tools: [
+            makeTool(name: .taskCreate, permissionLevel: .writeWithApproval)
+        ])
+        let source = try ToolRegistry(tools: [
+            makeTool(name: .developmentReviewPullRequestGate, permissionLevel: .writeWithApproval),
+            makeTool(name: .developmentMergePullRequest, permissionLevel: .writeWithApproval)
+        ])
+
+        try target.registerTools(from: source)
+
+        XCTAssertTrue(target.contains(.taskCreate))
+        XCTAssertTrue(target.contains(.developmentReviewPullRequestGate))
+        XCTAssertTrue(target.contains(.developmentMergePullRequest))
+    }
+
+    func testRegistryRegisterToolsFromAnotherRegistryRejectsDuplicates() throws {
+        let target = try ToolRegistry(tools: [
+            makeTool(name: .taskCreate, permissionLevel: .writeWithApproval)
+        ])
+        let source = try ToolRegistry(tools: [
+            makeTool(name: .taskCreate, permissionLevel: .writeWithApproval)
+        ])
+
+        XCTAssertThrowsError(try target.registerTools(from: source)) { error in
+            XCTAssertEqual(error as? ToolExecutionError, .duplicateTool(.taskCreate))
+        }
+    }
+
     func testWriteToolRequiresApprovalToken() throws {
         let tool = makeTool(name: .taskCreate, permissionLevel: .writeWithApproval)
 

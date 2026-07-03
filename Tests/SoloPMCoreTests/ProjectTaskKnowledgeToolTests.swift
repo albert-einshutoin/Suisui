@@ -84,7 +84,6 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
                 "id": .number(Double(project.id)),
                 "priority": .string("high"),
                 "deadline": .string("2026-06-30"),
-                "workspacePath": .string("/tmp/solopm-launch"),
                 "tags": .array([.string("release"), .string("alpha")])
             ],
             context: approvedContext()
@@ -93,7 +92,7 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         let updated = try stores.projects.get(id: project.id)
         XCTAssertEqual(updated.priority, "high")
         XCTAssertEqual(updated.deadline, "2026-06-30")
-        XCTAssertEqual(updated.workspacePath, "/tmp/solopm-launch")
+        XCTAssertNil(updated.workspacePath)
         XCTAssertEqual(updated.tags, ["release", "alpha"])
     }
 
@@ -103,7 +102,6 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
             title: "Launch Readiness",
             priority: "high",
             deadline: "2026-06-30",
-            workspacePath: "/tmp/solopm-launch",
             tags: ["release", "alpha"]
         )
         let tool = ProjectTool(name: .projectUpdate, store: stores.projects)
@@ -113,7 +111,6 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
                 "id": .number(Double(project.id)),
                 "priority": .null,
                 "deadline": .null,
-                "workspacePath": .null,
                 "tags": .null
             ],
             context: approvedContext()
@@ -132,7 +129,7 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
 
         XCTAssertEqual(update.inputSchema.properties["priority"], "string|null")
         XCTAssertEqual(update.inputSchema.properties["deadline"], "string|null")
-        XCTAssertEqual(update.inputSchema.properties["workspacePath"], "string|null")
+        XCTAssertNil(update.inputSchema.properties["workspacePath"])
         XCTAssertEqual(update.inputSchema.properties["tags"], "array|null")
 
         let issues = update.inputSchema.validate(
@@ -140,7 +137,6 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
                 "id": .number(1),
                 "priority": .null,
                 "deadline": .null,
-                "workspacePath": .null,
                 "tags": .null
             ],
             tool: .projectUpdate
@@ -174,7 +170,8 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(project["status"], .string("active"))
         XCTAssertEqual(project["priority"], .string("medium"))
         XCTAssertEqual(project["deadline"], .string("2026-06-30"))
-        XCTAssertEqual(project["workspacePath"], .string("/tmp/inbox"))
+        XCTAssertNil(project["workspacePath"])
+        XCTAssertEqual(project["workspaceDirectoryStatus"], .string("selected"))
         XCTAssertEqual(project["tags"], .array([.string("local"), .string("triage")]))
         XCTAssertNil(project["sourceCommand"])
     }
@@ -195,6 +192,38 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
 
         XCTAssertEqual(result.summary, "Created 2 tasks")
         XCTAssertEqual(try stores.tasks.listAll().map(\.title), ["Draft", "Review"])
+    }
+
+    func testTaskListToolReturnsPersistentOpenTaskRecordsWithoutApproval() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "Launch Readiness")
+        let first = try stores.tasks.create(
+            title: "Draft release notes",
+            projectID: project.id,
+            dueAt: "2026-06-22T09:00:00Z",
+            priority: "high",
+            sourceCommand: "token=task-secret",
+            status: "planned",
+            detail: "Write user-facing changes."
+        )
+        let completed = try stores.tasks.create(title: "Already done", status: "completed")
+        let tool = TaskTool(name: .taskList, store: stores.tasks)
+
+        let result = try tool.execute(arguments: [:], context: ToolExecutionContext(source: .developerTool))
+
+        XCTAssertEqual(result.output["count"], JSONValue.number(1))
+        let tasks = try XCTUnwrap(result.output["tasks"]?.arrayValue)
+        XCTAssertEqual(tasks.count, 1)
+        let task = try XCTUnwrap(tasks.first?.objectValue)
+        XCTAssertEqual(task["id"], JSONValue.number(Double(first.id)))
+        XCTAssertEqual(task["title"], JSONValue.string("Draft release notes"))
+        XCTAssertEqual(task["status"], JSONValue.string("planned"))
+        XCTAssertEqual(task["projectId"], JSONValue.number(Double(project.id)))
+        XCTAssertEqual(task["dueAt"], JSONValue.string("2026-06-22T09:00:00Z"))
+        XCTAssertEqual(task["priority"], JSONValue.string("high"))
+        XCTAssertEqual(task["detail"], JSONValue.string("Write user-facing changes."))
+        XCTAssertNil(task["sourceCommand"])
+        XCTAssertFalse(tasks.contains { $0.objectValue?["id"] == JSONValue.number(Double(completed.id)) })
     }
 
     func testProjectCompleteToolCompletesOpenProjectTasks() throws {

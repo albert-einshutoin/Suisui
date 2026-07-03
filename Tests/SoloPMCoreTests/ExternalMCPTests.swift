@@ -2024,6 +2024,113 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(logger.recordedEvents.last?.metadata["result"], "succeeded")
     }
 
+    func testReadExecutionCreatesGlobalReceiptWithRedactedArgumentsAndResultSummary() async throws {
+        let logger = InMemoryAuditLogger()
+        let receiptStore = VolatileExecutionReceiptStore()
+        let transport = ExternalMCPTestKit.makeFakeServerTransport()
+        let executor = makeExecutor(
+            transport: transport,
+            policies: ["read_status": .read],
+            auditLogger: RedactingAuditLogger(base: logger),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-mcp-success" },
+            now: { Date(timeIntervalSince1970: 100) }
+        )
+
+        let result = try await executor.call(
+            toolName: "read_status",
+            arguments: [
+                "project": .string("/Users/alice/private-project.md"),
+                "api_key": .string("redacted-test-secret")
+            ],
+            context: approvedMCPContext()
+        )
+
+        XCTAssertEqual(result.content.first?.text, "status: ok")
+        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertTrue(receipt.id.hasPrefix("receipt:run-mcp-success:external-mcp:"))
+        XCTAssertFalse(receipt.id.contains("fake:read_status"))
+        XCTAssertEqual(receipt.status, .succeeded)
+        XCTAssertEqual(receipt.primaryToolName, "external_mcp.read_status")
+        XCTAssertEqual(receipt.approvalID, "approved")
+        XCTAssertEqual(receipt.visibleSurfaces, [.auditLog])
+        XCTAssertEqual(receipt.references.map(\.kind), [.externalMCP])
+        XCTAssertEqual(receipt.references.first?.id.count, 64)
+        XCTAssertEqual(receipt.references.first?.label, "Fake MCP / read_status")
+        XCTAssertTrue(receipt.inputPreview.contains("[REDACTED_SECRET]"))
+        XCTAssertTrue(receipt.inputPreview.contains("[REDACTED_LOCAL_PATH]"))
+        XCTAssertTrue(receipt.outputSummary.contains("succeeded"))
+        XCTAssertTrue(receipt.outputSummary.contains("1 content item"))
+        XCTAssertFalse(receipt.inputPreview.contains("redacted-test-secret"))
+        XCTAssertFalse(receipt.inputPreview.contains("private-project.md"))
+        XCTAssertFalse(receipt.outputSummary.contains("status: ok"))
+        XCTAssertEqual(logger.recordedEvents.map(\.status), [.started, .succeeded])
+    }
+
+    func testReceiptSaveFailureDoesNotTurnSuccessfulExternalMCPCallIntoFailure() async throws {
+        let logger = InMemoryAuditLogger()
+        let transport = ExternalMCPTestKit.makeFakeServerTransport()
+        let executor = makeExecutor(
+            transport: transport,
+            policies: ["read_status": .read],
+            auditLogger: logger,
+            executionReceiptStore: ExternalMCPFailingExecutionReceiptStore(),
+            runIDProvider: { "run-mcp-save-failure" },
+            now: { Date(timeIntervalSince1970: 100) }
+        )
+
+        let result = try await executor.call(
+            toolName: "read_status",
+            arguments: [:],
+            context: approvedMCPContext()
+        )
+
+        XCTAssertEqual(result.content.first?.text, "status: ok")
+        XCTAssertEqual(
+            logger.recordedEvents.filter { $0.category == "external_mcp" }.map(\.status),
+            [.started, .succeeded]
+        )
+        let receiptFailureEvent = try XCTUnwrap(logger.recordedEvents.last { $0.action == "external_mcp.receipt.save_failed" })
+        XCTAssertEqual(receiptFailureEvent.status, .failed)
+        XCTAssertEqual(receiptFailureEvent.metadata["tool_name"], "read_status")
+        XCTAssertFalse(receiptFailureEvent.metadata.values.joined(separator: " ").contains("private"))
+    }
+
+    func testReceiptSaveFailureAuditRedactsLocalFilePathFromNSError() async throws {
+        let logger = InMemoryAuditLogger()
+        let transport = ExternalMCPTestKit.makeFakeServerTransport()
+        let privatePath = "/Users/alice/customer-work/private-receipts/store.json"
+        let saveError = NSError(
+            domain: NSCocoaErrorDomain,
+            code: CocoaError.fileWriteNoPermission.rawValue,
+            userInfo: [
+                NSFilePathErrorKey: privatePath,
+                NSLocalizedDescriptionKey: "No permission to write \(privatePath)"
+            ]
+        )
+        let executor = makeExecutor(
+            transport: transport,
+            policies: ["read_status": .read],
+            auditLogger: logger,
+            executionReceiptStore: ExternalMCPFailingExecutionReceiptStore(error: saveError),
+            runIDProvider: { "run-mcp-save-path-failure" },
+            now: { Date(timeIntervalSince1970: 100) }
+        )
+
+        _ = try await executor.call(
+            toolName: "read_status",
+            arguments: [:],
+            context: approvedMCPContext()
+        )
+
+        let receiptFailureEvent = try XCTUnwrap(logger.recordedEvents.last { $0.action == "external_mcp.receipt.save_failed" })
+        let metadata = receiptFailureEvent.metadata.values.joined(separator: " ")
+        XCTAssertTrue(metadata.contains("[REDACTED_LOCAL_PATH]"))
+        XCTAssertFalse(metadata.contains(privatePath))
+        XCTAssertFalse(metadata.contains("/Users/alice"))
+        XCTAssertFalse(metadata.contains("customer-work"))
+    }
+
     func testExternalMCPExecutionAcceptsStructuredContentMatchingOutputSchema() async throws {
         let logger = InMemoryAuditLogger()
         let transport = RecordingMCPTransport { request in
@@ -2230,6 +2337,47 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(logger.recordedEvents.last?.metadata["result"], "tool_error")
     }
 
+    func testExternalMCPToolErrorCreatesFailedReceiptWithoutRawErrorBody() async throws {
+        let receiptStore = VolatileExecutionReceiptStore()
+        let transport = RecordingMCPTransport { request in
+            if request.method == "tools/call" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "content": .array([
+                            MCPContentItem(
+                                type: "text",
+                                text: "Invalid input secret=tool-error-secret /Users/alice/mcp-error.md"
+                            ).jsonValue
+                        ]),
+                        "isError": .bool(true)
+                    ])
+                )
+            }
+            return Self.validInitializeResponse(for: request)
+        }
+        let executor = makeExecutor(
+            transport: transport,
+            policies: ["read_status": .read],
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-mcp-tool-error" },
+            now: { Date(timeIntervalSince1970: 200) }
+        )
+
+        let result = try await executor.call(
+            toolName: "read_status",
+            arguments: [:],
+            context: approvedMCPContext()
+        )
+
+        XCTAssertTrue(result.isError)
+        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receipt.status, .failed)
+        XCTAssertTrue(receipt.outputSummary.contains("returned a tool error"))
+        XCTAssertFalse(receipt.outputSummary.contains("tool-error-secret"))
+        XCTAssertFalse(receipt.outputSummary.contains("mcp-error.md"))
+    }
+
     func testReadExecutionAuditsSensitiveArgumentKeyEvenWhenValueHasSpaces() async throws {
         let logger = InMemoryAuditLogger()
         let transport = ExternalMCPTestKit.makeFakeServerTransport()
@@ -2306,6 +2454,113 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(processController.killRequests, [.init(serverID: "fake", reason: .timeout)])
         XCTAssertEqual(logger.recordedEvents.map(\.status), [.started, .failed])
         XCTAssertTrue(logger.recordedEvents.last?.metadata["error"]?.contains("timeout") ?? false)
+    }
+
+    func testTimeoutExecutionCreatesFailedGlobalReceiptBeforeRethrowing() async throws {
+        let receiptStore = VolatileExecutionReceiptStore()
+        let transport = RecordingMCPTransport { request in
+            if request.method == "tools/call" {
+                throw MCPClientError.timeout(serverID: "fake", method: "tools/call")
+            }
+            return Self.validInitializeResponse(for: request)
+        }
+        let processController = RecordingMCPProcessController()
+        let executor = makeExecutor(
+            client: MCPClient(serverID: "fake", transport: transport, timeout: 0.01),
+            policies: ["read_status": .read],
+            processController: processController,
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-mcp-timeout" },
+            now: { Date(timeIntervalSince1970: 300) }
+        )
+
+        do {
+            _ = try await executor.call(
+                toolName: "read_status",
+                arguments: ["secret": .string("timeout-secret")],
+                context: approvedMCPContext()
+            )
+            XCTFail("timeout should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(error, .timeout(serverID: "fake", method: "tools/call"))
+        }
+
+        XCTAssertEqual(processController.killRequests, [.init(serverID: "fake", reason: .timeout)])
+        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receipt.status, .failed)
+        XCTAssertEqual(receipt.primaryToolName, "external_mcp.read_status")
+        XCTAssertTrue(receipt.outputSummary.contains("failed"))
+        XCTAssertTrue(receipt.actions.first?.errorSummary?.contains("timeout") ?? false)
+        XCTAssertFalse(receipt.inputPreview.contains("timeout-secret"))
+    }
+
+    func testReceiptSaveFailureDoesNotMaskOriginalExternalMCPFailure() async throws {
+        let logger = InMemoryAuditLogger()
+        let transport = RecordingMCPTransport { request in
+            if request.method == "tools/call" {
+                throw MCPClientError.timeout(serverID: "fake", method: "tools/call")
+            }
+            return Self.validInitializeResponse(for: request)
+        }
+        let executor = makeExecutor(
+            client: MCPClient(serverID: "fake", transport: transport, timeout: 0.01),
+            policies: ["read_status": .read],
+            auditLogger: logger,
+            executionReceiptStore: ExternalMCPFailingExecutionReceiptStore(),
+            runIDProvider: { "run-mcp-failed-save-failure" },
+            now: { Date(timeIntervalSince1970: 300) }
+        )
+
+        do {
+            _ = try await executor.call(
+                toolName: "read_status",
+                arguments: [:],
+                context: approvedMCPContext()
+            )
+            XCTFail("timeout should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(error, .timeout(serverID: "fake", method: "tools/call"))
+        }
+
+        XCTAssertEqual(
+            logger.recordedEvents.filter { $0.category == "external_mcp" }.map(\.status),
+            [.started, .failed]
+        )
+        XCTAssertNotNil(logger.recordedEvents.last { $0.action == "external_mcp.receipt.save_failed" })
+    }
+
+    func testCanceledExternalMCPExecutionCreatesCanceledReceipt() async throws {
+        let receiptStore = VolatileExecutionReceiptStore()
+        let transport = RecordingMCPTransport { request in
+            if request.method == "tools/call" {
+                throw CancellationError()
+            }
+            return Self.validInitializeResponse(for: request)
+        }
+        let executor = makeExecutor(
+            transport: transport,
+            policies: ["read_status": .read],
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-mcp-canceled" },
+            now: { Date(timeIntervalSince1970: 400) }
+        )
+
+        do {
+            _ = try await executor.call(
+                toolName: "read_status",
+                arguments: [:],
+                context: approvedMCPContext()
+            )
+            XCTFail("cancellation should fail")
+        } catch is CancellationError {
+            // Expected: cancellation is reported to the caller and separately
+            // persisted as a canceled execution receipt for auditability.
+        }
+
+        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receipt.status, .canceled)
+        XCTAssertTrue(receipt.outputSummary.contains("was canceled"))
+        XCTAssertEqual(receipt.actions.first?.status, .canceled)
     }
 
     func testProcessLifecycleManagerHandlesStartHealthCrashAndShutdown() async throws {
@@ -2955,6 +3210,9 @@ final class ExternalMCPTests: XCTestCase {
         auditLogger: any AuditLogger = InMemoryAuditLogger(),
         processController: any MCPProcessController = RecordingMCPProcessController(),
         entitlementStore: any EntitlementStore = StaticMCPEntitlementStore(plan: .pro),
+        executionReceiptStore: (any ExecutionReceiptStore)? = nil,
+        runIDProvider: @escaping @Sendable () -> String = { "run-mcp-test" },
+        now: @escaping @Sendable () -> Date = Date.init,
         tools: [MCPToolDefinition] = ExternalMCPTestKit.fakeToolDefinitions()
     ) -> ExternalMCPToolExecutor {
         makeExecutor(
@@ -2963,6 +3221,9 @@ final class ExternalMCPTests: XCTestCase {
             auditLogger: auditLogger,
             processController: processController,
             entitlementStore: entitlementStore,
+            executionReceiptStore: executionReceiptStore,
+            runIDProvider: runIDProvider,
+            now: now,
             tools: tools
         )
     }
@@ -2973,6 +3234,9 @@ final class ExternalMCPTests: XCTestCase {
         auditLogger: any AuditLogger = InMemoryAuditLogger(),
         processController: any MCPProcessController = RecordingMCPProcessController(),
         entitlementStore: any EntitlementStore = StaticMCPEntitlementStore(plan: .pro),
+        executionReceiptStore: (any ExecutionReceiptStore)? = nil,
+        runIDProvider: @escaping @Sendable () -> String = { "run-mcp-test" },
+        now: @escaping @Sendable () -> Date = Date.init,
         tools: [MCPToolDefinition] = ExternalMCPTestKit.fakeToolDefinitions()
     ) -> ExternalMCPToolExecutor {
         let server = MCPRegisteredServerDescriptor(id: "fake", displayName: "Fake MCP")
@@ -2987,7 +3251,10 @@ final class ExternalMCPTests: XCTestCase {
             client: client,
             auditLogger: auditLogger,
             processController: processController,
-            entitlementChecker: EntitlementChecker(store: entitlementStore)
+            entitlementChecker: EntitlementChecker(store: entitlementStore),
+            executionReceiptStore: executionReceiptStore,
+            runIDProvider: runIDProvider,
+            now: now
         )
     }
 
@@ -3251,6 +3518,39 @@ private final class ToggleFailingMCPServerRegistrationStore: MCPServerRegistrati
             throw MCPRegistrationStoreError.encodingFailed
         }
         self.registrations = registrations
+    }
+}
+
+private final class ExternalMCPFailingExecutionReceiptStore: ExecutionReceiptStore, @unchecked Sendable {
+    enum Failure: Error, Equatable {
+        case saveFailed
+    }
+
+    private let error: any Error
+
+    init(error: any Error = Failure.saveFailed) {
+        self.error = error
+    }
+
+    func save(_ receipt: ExecutionReceipt) throws {
+        throw error
+    }
+
+    func list(limit: Int) throws -> [ExecutionReceipt] {
+        []
+    }
+
+    func list(matching filter: ExecutionReceiptSearchFilter, limit: Int) throws -> [ExecutionReceipt] {
+        []
+    }
+
+    func list(
+        referenceKind: ExecutionReceiptReferenceKind,
+        referenceID: String,
+        visibleSurface: ExecutionReceiptSurface,
+        limit: Int
+    ) throws -> [ExecutionReceipt] {
+        []
     }
 }
 

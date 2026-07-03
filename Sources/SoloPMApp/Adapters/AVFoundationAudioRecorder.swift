@@ -13,7 +13,7 @@ final class AVFoundationAudioRecorder: AudioRecorder {
         self.temporaryDirectory = temporaryDirectory
     }
 
-    func start(at date: Date = Date()) throws {
+    func start(at date: Date = Date()) async throws {
         guard state.canStartRecording else {
             throw AudioRecorderError.alreadyRecording
         }
@@ -27,7 +27,12 @@ final class AVFoundationAudioRecorder: AudioRecorder {
             throw AudioRecorderError.microphonePermissionDenied
         case .notDetermined:
             state = .requestingPermission
-            throw AudioRecorderError.microphonePermissionDenied
+            let isGranted = await requestMicrophoneAccess()
+            guard isGranted else {
+                state = .failed("Microphone permission denied.")
+                throw AudioRecorderError.microphonePermissionDenied
+            }
+            state = .idle
         @unknown default:
             state = .failed("Unknown microphone permission status.")
             throw AudioRecorderError.failed("Unknown microphone permission status.")
@@ -109,6 +114,16 @@ final class AVFoundationAudioRecorder: AudioRecorder {
     private func temporaryRecordingURL(startedAt date: Date) -> URL {
         let timestamp = Int(date.timeIntervalSince1970)
         return temporaryDirectory.appendingPathComponent("solopm-recording-\(timestamp).m4a")
+    }
+
+    private func requestMicrophoneAccess() async -> Bool {
+        await withCheckedContinuation { continuation in
+            // AVCaptureDevice is the API that registers SoloPM with macOS TCC; without this
+            // first-run users never receive the system microphone permission prompt.
+            AVCaptureDevice.requestAccess(for: .audio) { isGranted in
+                continuation.resume(returning: isGranted)
+            }
+        }
     }
 
     private func replaceItem(at destination: URL, with source: URL) throws {

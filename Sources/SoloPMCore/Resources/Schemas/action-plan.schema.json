@@ -33,6 +33,7 @@
         "project.delete",
         "task.create",
         "task.bulk_create",
+        "task.list",
         "task.get",
         "task.update",
         "task.complete",
@@ -64,7 +65,18 @@
         "git.status",
         "git.branch",
         "git.log_summary",
-        "git.diff_summary"
+        "git.diff_summary",
+        "development.pr_workflow.prepare",
+        "development.pr_workflow.commit",
+        "development.pr_workflow.push",
+        "development.pr_workflow.create_pull_request",
+        "development.pr_workflow.review_gate",
+        "development.pr_workflow.merge",
+        "development.repository.list_files",
+        "development.repository.read_file",
+        "development.repository.create_file",
+        "development.repository.update_file",
+        "development.verification.run"
       ]
     },
     "action": {

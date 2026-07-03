@@ -50,7 +50,11 @@ COPYRIGHT="${COPYRIGHT:?COPYRIGHT is required}"
 BUILD_CONFIGURATION="${SOLOPM_BUILD_CONFIGURATION:-debug}"
 SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
 SPARKLE_PUBLIC_ED_KEY="${SOLOPM_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
-VERIFY_TIMEOUT_SECONDS="${SOLOPM_VERIFY_TIMEOUT_SECONDS:-12}"
+LOCAL_LICENSE_PUBLIC_KEY_BASE64="${SOLOPM_LOCAL_LICENSE_PUBLIC_KEY_BASE64:-${SOLOPM_LOCAL_LICENSE_PUBLIC_KEY:-}}"
+# SwiftUI cold launch plus fallback-window recovery can exceed 12s on release
+# evidence machines; keep the default aligned with runtime smoke waits while
+# preserving SOLOPM_VERIFY_TIMEOUT_SECONDS for faster local overrides.
+VERIFY_TIMEOUT_SECONDS="${SOLOPM_VERIFY_TIMEOUT_SECONDS:-30}"
 PROJECT_BOARD_WINDOW_NAME="${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}"
 BUILD_AND_RUN_LOCK_DIR="$BUILD_AND_RUN_TMP_ROOT/build_and_run.lock"
 BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS="${SOLOPM_BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS:-120}"
@@ -106,6 +110,16 @@ copy_app_localizations() {
   while IFS= read -r -d '' localization_dir; do
     /usr/bin/ditto "$localization_dir" "$APP_RESOURCES/$(basename "$localization_dir")"
   done < <(find "$APP_LOCALIZATION_SOURCE" -maxdepth 1 -type d -name "*.lproj" -print0)
+}
+
+xml_escape() {
+  local value="$1"
+  value="${value//&/&amp;}"
+  value="${value//</&lt;}"
+  value="${value//>/&gt;}"
+  value="${value//\"/&quot;}"
+  value="${value//\'/&apos;}"
+  printf '%s' "$value"
 }
 
 acquire_build_and_run_lock() {
@@ -208,6 +222,8 @@ done < <(find "$BUILD_DIR" -maxdepth 1 -type f -name "*.dylib" -print0)
   printf '%s\n' '  <false/>'
   printf '%s\n' '  <key>NSMicrophoneUsageDescription</key>'
   printf '%s\n' '  <string>SoloPM uses the microphone when you explicitly start voice capture.</string>'
+  printf '%s\n' '  <key>SoloPMLocalLicensePublicKey</key>'
+  printf '  <string>%s</string>\n' "$(xml_escape "$LOCAL_LICENSE_PUBLIC_KEY_BASE64")"
   printf '%s\n' '  <key>NSHumanReadableCopyright</key>'
   printf '  <string>%s</string>\n' "$COPYRIGHT"
   printf '%s\n' '</dict>'
@@ -223,9 +239,28 @@ if [[ "$BUILD_CONFIGURATION" == "debug" ]]; then
   codesign --force --deep --sign - "$APP_BUNDLE" >/dev/null
 fi
 
+activate_app() {
+  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 &
+  local osascript_pid=$!
+  for _ in {1..20}; do
+    if ! kill -0 "$osascript_pid" >/dev/null 2>&1; then
+      wait "$osascript_pid" >/dev/null 2>&1 || true
+      return 0
+    fi
+    sleep 0.1
+  done
+  kill "$osascript_pid" >/dev/null 2>&1 || true
+  wait "$osascript_pid" >/dev/null 2>&1 || true
+}
+
 open_app() {
-  /usr/bin/open -n -F "$APP_BUNDLE"
-  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 || true
+  local open_args=(-n -F "$APP_BUNDLE")
+  if [[ "$MODE" == "--verify" || "$MODE" == "verify" ]]; then
+    open_args+=(--env SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1)
+    open_args+=(--env SOLOPM_LAUNCH_RECOVERY_MODE=1)
+  fi
+  /usr/bin/open "${open_args[@]}"
+  activate_app
 }
 
 wait_for_app_process() {

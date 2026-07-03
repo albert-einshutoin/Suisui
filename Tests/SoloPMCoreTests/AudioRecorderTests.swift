@@ -1,6 +1,7 @@
 import XCTest
 @testable import SoloPMCore
 
+@MainActor
 final class AudioRecorderTests: XCTestCase {
     func testUserFacingErrorMessageSanitizerRedactsRecorderErrors() {
         let secret = "sk-" + "audioRecorderSecret123"
@@ -20,12 +21,12 @@ final class AudioRecorderTests: XCTestCase {
         XCTAssertTrue(message.contains("[REDACTED_SECRET]"))
     }
 
-    func testFakeRecorderTransitionsFromIdleToCompleted() throws {
+    func testFakeRecorderTransitionsFromIdleToCompleted() async throws {
         var recorder = FakeAudioRecorder()
         let startedAt = Date(timeIntervalSince1970: 100)
         let stoppedAt = Date(timeIntervalSince1970: 103)
 
-        try recorder.start(at: startedAt)
+        try await recorder.start(at: startedAt)
         XCTAssertEqual(recorder.state, .recording(startedAt: startedAt))
 
         let audio = try recorder.stop(outputURL: URL(filePath: "/tmp/output.m4a"), at: stoppedAt)
@@ -34,10 +35,22 @@ final class AudioRecorderTests: XCTestCase {
         XCTAssertEqual(recorder.state, .completed(audio))
     }
 
-    func testFakeRecorderRejectsStartWhenPermissionDenied() {
+    func testFakeRecorderRequestsPermissionBeforeRecordingWhenDecisionGrantsAccess() async throws {
+        var recorder = FakeAudioRecorder(permissionGranted: false, permissionGrantDecisions: [true])
+        let startedAt = Date(timeIntervalSince1970: 100)
+
+        try await recorder.start(at: startedAt)
+
+        XCTAssertEqual(recorder.state, .recording(startedAt: startedAt))
+    }
+
+    func testFakeRecorderRejectsStartWhenPermissionDenied() async {
         var recorder = FakeAudioRecorder(permissionGranted: false)
 
-        XCTAssertThrowsError(try recorder.start(at: Date())) { error in
+        do {
+            try await recorder.start(at: Date())
+            XCTFail("Expected microphone permission denial.")
+        } catch {
             XCTAssertEqual(error as? AudioRecorderError, .microphonePermissionDenied)
         }
     }

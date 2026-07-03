@@ -7,8 +7,31 @@ public struct ProjectRecord: Equatable, Sendable {
     public var priority: String?
     public var deadline: String?
     public var workspacePath: String?
+    public var workspaceBookmarkData: Data?
     public var tags: [String]
     public var sourceCommand: String?
+
+    public init(
+        id: Int64,
+        title: String,
+        status: String,
+        priority: String? = nil,
+        deadline: String? = nil,
+        workspacePath: String? = nil,
+        workspaceBookmarkData: Data? = nil,
+        tags: [String] = [],
+        sourceCommand: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.status = status
+        self.priority = priority
+        self.deadline = deadline
+        self.workspacePath = workspacePath
+        self.workspaceBookmarkData = workspaceBookmarkData
+        self.tags = tags
+        self.sourceCommand = sourceCommand
+    }
 }
 
 public struct ProjectDeletionResult: Equatable, Sendable {
@@ -64,9 +87,11 @@ public struct TaskRecord: Equatable, Sendable {
     public var title: String
     public var status: String
     public var dueAt: String?
+    public var completedAt: String?
     public var priority: String?
     public var sourceCommand: String?
     public var detail: String?
+    public var updatedAt: String?
 
     public init(
         id: Int64,
@@ -74,18 +99,22 @@ public struct TaskRecord: Equatable, Sendable {
         title: String,
         status: String,
         dueAt: String?,
+        completedAt: String? = nil,
         priority: String?,
         sourceCommand: String?,
-        detail: String? = nil
+        detail: String? = nil,
+        updatedAt: String? = nil
     ) {
         self.id = id
         self.projectID = projectID
         self.title = title
         self.status = status
         self.dueAt = dueAt
+        self.completedAt = completedAt
         self.priority = priority
         self.sourceCommand = sourceCommand
         self.detail = detail
+        self.updatedAt = updatedAt
     }
 }
 
@@ -283,6 +312,7 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         priority: String? = nil,
         deadline: String? = nil,
         workspacePath: String? = nil,
+        workspaceBookmarkData: Data? = nil,
         tags: [String] = [],
         sourceCommand: String? = nil
     ) throws -> ProjectRecord {
@@ -293,13 +323,14 @@ public final class SQLiteProjectStore: @unchecked Sendable {
 
         try connection.execute(
             """
-            INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command)
+            INSERT INTO projects (title, status, priority, deadline, workspace_path, workspace_bookmark, tags_json, source_command)
             VALUES (
               '\(SQL.escape(normalizedTitle))',
               'active',
               \(SQL.optional(priority)),
               \(SQL.optional(deadline)),
               \(SQL.optional(workspacePath)),
+              \(SQL.optional(workspaceBookmarkData?.base64EncodedString())),
               '\(SQL.escape(tagsJSON))',
               \(SQL.optional(sourceCommand))
             );
@@ -352,6 +383,7 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         priority: NullableFieldUpdate<String> = .unchanged,
         deadline: NullableFieldUpdate<String> = .unchanged,
         workspacePath: NullableFieldUpdate<String> = .unchanged,
+        workspaceBookmarkData: NullableFieldUpdate<Data> = .unchanged,
         tags: NullableFieldUpdate<[String]> = .unchanged
     ) throws -> ProjectRecord {
         lock.lock()
@@ -392,6 +424,14 @@ public final class SQLiteProjectStore: @unchecked Sendable {
             assignments.append("workspace_path = '\(SQL.escape(normalizedWorkspacePath))'")
         case .clear:
             assignments.append("workspace_path = NULL")
+        }
+        switch workspaceBookmarkData {
+        case .unchanged:
+            break
+        case .set(let workspaceBookmarkData):
+            assignments.append("workspace_bookmark = '\(SQL.escape(workspaceBookmarkData.base64EncodedString()))'")
+        case .clear:
+            assignments.append("workspace_bookmark = NULL")
         }
         switch tags {
         case .unchanged:
@@ -638,13 +678,14 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         let normalizedStatus = try StoreFieldValidation.taskStatus(draft.status, tool: tool)
         try connection.execute(
             """
-            INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command)
+            INSERT INTO tasks (project_id, title, status, detail, due_at, completed_at, priority, source_command)
             VALUES (
               \(draft.projectID.map(String.init) ?? "NULL"),
               '\(SQL.escape(normalizedTitle))',
               '\(SQL.escape(normalizedStatus))',
               \(SQL.optional(draft.detail)),
               \(SQL.optional(draft.dueAt)),
+              \(normalizedStatus == "completed" ? "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')" : "NULL"),
               \(SQL.optional(draft.priority)),
               \(SQL.optional(draft.sourceCommand))
             );
@@ -694,6 +735,10 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         if let status {
             let normalizedStatus = try StoreFieldValidation.taskStatus(status, tool: .taskUpdate)
             assignments.append("status = '\(SQL.escape(normalizedStatus))'")
+            if normalizedStatus == "completed" {
+                // Completion history is intentionally write-once so reopened tasks still appear in Done analytics.
+                assignments.append("completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))")
+            }
         }
         switch detail {
         case .unchanged:
@@ -802,6 +847,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             """
             UPDATE tasks
             SET status = 'completed',
+                completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 updated_at = CURRENT_TIMESTAMP
             WHERE project_id = \(projectID)
               AND status != 'completed';
@@ -1176,6 +1222,7 @@ private extension ProjectRecord {
             priority: SQL.nilIfEmpty(row["priority"]),
             deadline: SQL.nilIfEmpty(row["deadline"]),
             workspacePath: SQL.nilIfEmpty(row["workspace_path"]),
+            workspaceBookmarkData: ProjectRecord.decodeBookmarkData(row["workspace_bookmark"]),
             tags: try SQL.parseStringArray(
                 try SQL.requiredString(row["tags_json"], column: "projects.tags_json"),
                 column: "projects.tags_json"
@@ -1196,9 +1243,17 @@ private extension ProjectRecord {
             priority: SQL.nilIfEmpty(row["priority"]),
             deadline: SQL.nilIfEmpty(row["deadline"]),
             workspacePath: SQL.nilIfEmpty(row["workspace_path"]),
+            workspaceBookmarkData: ProjectRecord.decodeBookmarkData(row["workspace_bookmark"]),
             tags: [],
             sourceCommand: SQL.nilIfEmpty(row["source_command"])
         )
+    }
+
+    private static func decodeBookmarkData(_ value: String?) -> Data? {
+        guard let value = SQL.nilIfEmpty(value) else {
+            return nil
+        }
+        return Data(base64Encoded: value)
     }
 }
 
@@ -1214,9 +1269,11 @@ private extension TaskRecord {
             title: try SQL.requiredString(row["title"], column: "tasks.title"),
             status: status,
             dueAt: SQL.nilIfEmpty(row["due_at"]),
+            completedAt: SQL.nilIfEmpty(row["completed_at"]),
             priority: SQL.nilIfEmpty(row["priority"]),
             sourceCommand: SQL.nilIfEmpty(row["source_command"]),
-            detail: SQL.nilIfEmpty(row["detail"])
+            detail: SQL.nilIfEmpty(row["detail"]),
+            updatedAt: SQL.nilIfEmpty(row["updated_at"])
         )
     }
 }

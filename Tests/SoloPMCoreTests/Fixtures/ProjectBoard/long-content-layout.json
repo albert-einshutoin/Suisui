@@ -1,0 +1,22 @@
+{
+  "purpose": "Project Board layout fixture for long localized labels, empty states, and error states.",
+  "longJapaneseProjectTitle": "長い日本語のプロジェクト名：リリース前の品質確認、アクセシビリティ、MCP境界、画面サイズ変更、証跡作成を一つのボードで追跡する",
+  "longJapaneseProjectSubtitle": "非常に長い説明文でもヘッダー、カード、インスペクタ、サイドバーのテキストが重ならず、省略表示またはhelpで全文確認できることを確認する。",
+  "longEnglishTaskTitle": "Coordinate multi-window Project Board release readiness, destructive confirmation evidence, and localized accessibility review before public alpha",
+  "longEnglishTaskDetail": "This detail intentionally exceeds compact card space so the task card must truncate, keep metadata chips readable, and expose the full value through help text.",
+  "emptyState": {
+    "projectList": "No Projects",
+    "boardColumn": "No tasks"
+  },
+  "errorState": {
+    "board": "Project Board Unavailable",
+    "missingSelection": "Project Not Found"
+  },
+  "expectedGuards": [
+    "lineLimit",
+    "truncationMode",
+    "minimumScaleFactor",
+    "help",
+    "ProjectBoardLayoutMetrics.emptyColumnMinHeight"
+  ]
+}

@@ -14,7 +14,6 @@ ENVIRONMENT=""
 HANDS_ON_DURATION=""
 CONFIRM_MANUAL_HANDS_ON=0
 VALIDATE_ONLY=0
-SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
 OUTPUT_FILE_WAS_SET=0
 BENCHMARK_FILE_WAS_SET=0
 NOTION_NOTE=""
@@ -24,6 +23,29 @@ MOTION_NOTE=""
 SHIP_DELTA=""
 DEFER_DELTA=""
 REJECT_DELTA=""
+
+release_candidate_source_commit() {
+  local commit
+  # Competitor findings are committed after the review pass, so tie the
+  # evidence to the release-candidate product source instead of the evidence
+  # commit itself.
+  commit="$(
+    git -C "$ROOT_DIR" log -1 --format=%h -- \
+      Sources/SoloPMApp \
+      Sources/SoloPMCore \
+      Sources/SoloPMCLI \
+      Sources/SoloPMExternalConnectors \
+      Package.swift \
+      packaging/app_metadata.env 2>/dev/null || true
+  )"
+  if [[ -n "$commit" ]]; then
+    printf "%s" "$commit"
+  else
+    git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
+  fi
+}
+
+SOURCE_COMMIT="$(release_candidate_source_commit)"
 
 usage() {
   printf '%s\n' "usage: $0 (--pending|--passed|--validate-only) [--output PATH] [--benchmark-output PATH] [--command-output PATH] [--worksheet-output PATH] [--checked-by NAME] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--environment TEXT] [--hands-on-duration TEXT] [--notion-note TEXT] [--todoist-note TEXT] [--linear-note TEXT] [--motion-note TEXT] [--ship TEXT] [--defer TEXT] [--reject TEXT] [--confirm-manual-hands-on]"
@@ -452,6 +474,13 @@ write_pending_evidence() {
     printf '%s\n' '- Defer:'
     printf '%s\n' '- Reject:'
     printf '\n'
+    printf '%s\n' '## Failure Notes'
+    printf '\n'
+    printf '%s\n' '- Blocker observed:'
+    printf '%s\n' '- Affected path:'
+    printf '%s\n' '- Follow-up source/test link:'
+    printf '%s\n' '- Fix owner:'
+    printf '\n'
     printf '%s\n' '## Completion Instructions'
     printf '\n'
     printf '%s\n' '1. Run this script with `--passed --checked-by NAME --confirm-manual-hands-on` only after the hands-on pass.'
@@ -605,7 +634,12 @@ write_competitor_evidence_command() {
     printf '%s\n' 'fi'
     printf '\n'
     printf 'EXPECTED_SOURCE_COMMIT=%q\n' "$SOURCE_COMMIT"
-    printf '%s\n' 'CURRENT_SOURCE_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || printf unknown)"'
+    printf '%s\n' 'release_candidate_source_commit() {'
+    printf '%s\n' '  local commit'
+    printf '%s\n' '  commit="$(git log -1 --format=%h -- Sources/SoloPMApp Sources/SoloPMCore Sources/SoloPMCLI Sources/SoloPMExternalConnectors Package.swift packaging/app_metadata.env 2>/dev/null || true)"'
+    printf '%s\n' '  if [[ -n "$commit" ]]; then printf "%s" "$commit"; else git rev-parse --short HEAD 2>/dev/null || printf unknown; fi'
+    printf '%s\n' '}'
+    printf '%s\n' 'CURRENT_SOURCE_COMMIT="$(release_candidate_source_commit)"'
     printf '%s\n' 'if [[ "$CURRENT_SOURCE_COMMIT" != "$EXPECTED_SOURCE_COMMIT" ]]; then'
     printf '%s\n' '  printf "BLOCKER: competitor hands-on evidence command was generated for source commit %s but current source commit is %s. Rerun ./script/create_competitor_hands_on_evidence.sh --pending for this release candidate.\n" "$EXPECTED_SOURCE_COMMIT" "$CURRENT_SOURCE_COMMIT" >&2'
     printf '%s\n' '  exit 2'
@@ -770,6 +804,13 @@ write_passed_evidence() {
     printf -- '- Ship: %s\n' "$SHIP_DELTA"
     printf -- '- Defer: %s\n' "$DEFER_DELTA"
     printf -- '- Reject: %s\n' "$REJECT_DELTA"
+    printf '\n'
+    printf '%s\n' '## Failure Notes'
+    printf '\n'
+    printf '%s\n' '- Blocker observed: none during the competitor hands-on pass.'
+    printf '%s\n' '- Affected path: none.'
+    printf '%s\n' '- Follow-up source/test link: `docs/product/competitor-benchmark.md` hands-on benchmark closure.'
+    printf '%s\n' '- Fix owner: none.'
   } >"$OUTPUT_FILE"
 }
 

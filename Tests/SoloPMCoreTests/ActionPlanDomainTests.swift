@@ -11,6 +11,17 @@ final class ActionPlanDomainTests: XCTestCase {
         XCTAssertEqual(ActionTool.frameDelete.actionType, .knowledgeFrame)
         XCTAssertEqual(ActionTool.mailDraftCreateText.actionType, .mailDraft)
         XCTAssertEqual(ActionTool.gitStatus.actionType, .developer)
+        XCTAssertEqual(ActionTool.developmentPreparePullRequestWorkflow.actionType, .developer)
+        XCTAssertEqual(ActionTool.developmentCommitChanges.actionType, .developer)
+        XCTAssertEqual(ActionTool.developmentPushBranch.actionType, .developer)
+        XCTAssertEqual(ActionTool.developmentCreatePullRequest.actionType, .developer)
+        XCTAssertEqual(ActionTool.developmentReviewPullRequestGate.actionType, .developer)
+        XCTAssertEqual(ActionTool.developmentMergePullRequest.actionType, .developer)
+        XCTAssertEqual(ActionTool.developmentRepositoryListFiles.actionType, .developer)
+        XCTAssertEqual(ActionTool.developmentRepositoryReadFile.actionType, .developer)
+        XCTAssertEqual(ActionTool.developmentRepositoryCreateFile.actionType, .developer)
+        XCTAssertEqual(ActionTool.developmentRepositoryUpdateFile.actionType, .developer)
+        XCTAssertEqual(ActionTool.developmentRunVerification.actionType, .developer)
     }
 
     func testLocalReadAndDeleteToolsUseExpectedRiskLevels() {
@@ -18,6 +29,17 @@ final class ActionPlanDomainTests: XCTestCase {
         XCTAssertEqual(ActionTool.projectDelete.defaultRiskLevel, .write)
         XCTAssertEqual(ActionTool.taskDelete.defaultRiskLevel, .write)
         XCTAssertEqual(ActionTool.frameDelete.defaultRiskLevel, .write)
+        XCTAssertEqual(ActionTool.developmentPreparePullRequestWorkflow.defaultRiskLevel, .write)
+        XCTAssertEqual(ActionTool.developmentCommitChanges.defaultRiskLevel, .write)
+        XCTAssertEqual(ActionTool.developmentPushBranch.defaultRiskLevel, .write)
+        XCTAssertEqual(ActionTool.developmentCreatePullRequest.defaultRiskLevel, .write)
+        XCTAssertEqual(ActionTool.developmentReviewPullRequestGate.defaultRiskLevel, .write)
+        XCTAssertEqual(ActionTool.developmentMergePullRequest.defaultRiskLevel, .write)
+        XCTAssertEqual(ActionTool.developmentRepositoryListFiles.defaultRiskLevel, .read)
+        XCTAssertEqual(ActionTool.developmentRepositoryReadFile.defaultRiskLevel, .read)
+        XCTAssertEqual(ActionTool.developmentRepositoryCreateFile.defaultRiskLevel, .write)
+        XCTAssertEqual(ActionTool.developmentRepositoryUpdateFile.defaultRiskLevel, .write)
+        XCTAssertEqual(ActionTool.developmentRunVerification.defaultRiskLevel, .write)
     }
 
     func testApprovalRequirementUsesHighestActionRisk() {

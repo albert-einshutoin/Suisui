@@ -5,6 +5,7 @@ import XCTest
 final class ReviewSessionViewModelTests: XCTestCase {
     func testApproveEditAndExecuteSession() throws {
         let logger = InMemoryAuditLogger()
+        let receiptStore = VolatileExecutionReceiptStore()
         let registry = try ToolRegistry(tools: [
             StaticTool(name: .taskCreate, description: "create", inputSchema: ToolInputSchema(required: ["title"]), permissionLevel: .writeWithApproval) { _, context in
                 XCTAssertNotNil(context.approvalToken)
@@ -16,7 +17,8 @@ final class ReviewSessionViewModelTests: XCTestCase {
                 PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
             ]),
             executor: ActionExecutor(registry: registry, auditLogger: logger),
-            auditLogger: logger
+            auditLogger: logger,
+            executionReceiptStore: receiptStore
         )
 
         viewModel.updateStringArgument(actionID: "task", key: "title", value: "Review")
@@ -27,6 +29,141 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.session.executionStatus, .completed)
         XCTAssertEqual(viewModel.session.items.first?.result?.rollbackMetadata["taskId"], .number(1))
         XCTAssertTrue(logger.recordedEvents.contains { $0.action == "session.approve" })
+        XCTAssertEqual(viewModel.lastExecutionReceipt?.status, .succeeded)
+        XCTAssertEqual(viewModel.lastExecutionReceipt?.actions.first?.status, .succeeded)
+        XCTAssertEqual(viewModel.lastExecutionReceipt?.approvalID, viewModel.session.approvalToken?.id)
+        XCTAssertEqual(viewModel.executionReceipts.map(\.id), receiptStore.receipts.map(\.id))
+        let receipt = try XCTUnwrap(viewModel.lastExecutionReceipt)
+        let receiptAudit = try XCTUnwrap(logger.recordedEvents.last { $0.category == "receipt" && $0.action == "execution.receipt.create" })
+        XCTAssertEqual(receiptAudit.metadata["receipt_id"], receipt.id)
+        XCTAssertEqual(receiptAudit.metadata["run_id"], receipt.runID)
+        XCTAssertEqual(receiptAudit.metadata["receipt_status"], ExecutionReceiptStatus.succeeded.rawValue)
+        XCTAssertEqual(receiptAudit.metadata["session_id"], viewModel.session.id)
+    }
+
+    func testNotificationExecutionReceiptIncludesScheduledNotificationReference() throws {
+        let receiptStore = VolatileExecutionReceiptStore()
+        let registry = try ToolRegistry(tools: [
+            NotificationTool(name: .notificationSchedule, client: InMemoryNotificationClient())
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(
+                    id: "notify",
+                    tool: .notificationSchedule,
+                    arguments: [
+                        "id": .string("notification-standup"),
+                        "title": .string("Standup"),
+                        "scheduledAt": .string("2026-07-01T09:00:00Z")
+                    ],
+                    riskLevel: .write
+                )
+            ]),
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore
+        )
+
+        try viewModel.approve()
+        try viewModel.execute()
+
+        let receipt = try XCTUnwrap(viewModel.lastExecutionReceipt)
+        XCTAssertEqual(receiptStore.receipts, [receipt])
+        XCTAssertEqual(receipt.actions.first?.toolName, ActionTool.notificationSchedule.rawValue)
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .notification, id: "notification-standup")))
+    }
+
+    func testReminderExecutionReceiptIncludesCreatedReminderReference() throws {
+        let receiptStore = VolatileExecutionReceiptStore()
+        let registry = try ToolRegistry(tools: [
+            ReminderTool(name: .remindersCreate, client: InMemoryReminderClient())
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(
+                    id: "reminder",
+                    tool: .remindersCreate,
+                    arguments: [
+                        "title": .string("Send launch notes"),
+                        "dueAt": .string("2026-07-01T09:00:00Z")
+                    ],
+                    riskLevel: .write
+                )
+            ]),
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore
+        )
+
+        try viewModel.approve()
+        try viewModel.execute()
+
+        let receipt = try XCTUnwrap(viewModel.lastExecutionReceipt)
+        XCTAssertEqual(receiptStore.receipts, [receipt])
+        XCTAssertEqual(receipt.actions.first?.toolName, ActionTool.remindersCreate.rawValue)
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .reminder, id: "reminder-1")))
+    }
+
+    func testDevelopmentPRWorkflowExecutionReceiptIncludesBranchEvidenceAndScopedVisibility() throws {
+        let branchName = "feature/solopm-7-42-fix-calendar-sync"
+        let receiptStore = VolatileExecutionReceiptStore()
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .developmentPreparePullRequestWorkflow,
+                description: "prepare PR",
+                inputSchema: ToolInputSchema(
+                    required: ["projectId"],
+                    properties: [
+                        "projectId": "integer",
+                        "taskId": "integer",
+                        "branchName": "string"
+                    ],
+                    nonBlank: ["branchName"]
+                ),
+                permissionLevel: .writeWithApproval
+            ) { _, context in
+                XCTAssertNotNil(context.approvalToken)
+                return ToolResult(
+                    tool: .developmentPreparePullRequestWorkflow,
+                    status: .succeeded,
+                    summary: "Prepared local development branch \(branchName). Push and PR creation require a separate approval gate.",
+                    output: [
+                        "projectId": .number(7),
+                        "taskId": .number(42),
+                        "branchName": .string(branchName),
+                        "status": .string("## \(branchName)\n"),
+                        "diffStat": .string("README.md | 1 +"),
+                        "requiresPushApproval": .bool(true),
+                        "requiresPullRequestApproval": .bool(true)
+                    ]
+                )
+            }
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(
+                    id: "development-pr",
+                    tool: .developmentPreparePullRequestWorkflow,
+                    arguments: [
+                        "projectId": .number(7),
+                        "taskId": .number(42),
+                        "branchName": .string(branchName)
+                    ],
+                    riskLevel: .write
+                )
+            ]),
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore
+        )
+
+        try viewModel.approve()
+        try viewModel.execute()
+
+        let receipt = try XCTUnwrap(viewModel.lastExecutionReceipt)
+        XCTAssertEqual(receiptStore.receipts, [receipt])
+        XCTAssertEqual(receipt.actions.first?.toolName, ActionTool.developmentPreparePullRequestWorkflow.rawValue)
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .task, id: "42")))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: "7")))
+        XCTAssertEqual(receipt.visibleSurfaces, [.taskDetail, .projectDetail, .auditLog])
     }
 
     func testApproveOrReportErrorSurfacesDisabledApprovalFailure() throws {
@@ -87,15 +224,43 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.session.executionStatus, .completed)
     }
 
+    func testFailedToolExecutionCreatesRedactedExecutionReceipt() throws {
+        let receiptStore = VolatileExecutionReceiptStore()
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .taskCreate, description: "create", inputSchema: ToolInputSchema(required: ["title"]), permissionLevel: .writeWithApproval) { _, _ in
+                throw ToolExecutionError.executionFailed(.taskCreate, "provider failed \("token" + "=" + "tool-secret")")
+            }
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+            ]),
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore
+        )
+
+        try viewModel.approve()
+        try viewModel.execute()
+
+        let receipt = try XCTUnwrap(viewModel.lastExecutionReceipt)
+        XCTAssertEqual(receipt.status, .failed)
+        XCTAssertEqual(receipt.actions.first?.status, .failed)
+        XCTAssertTrue(receipt.actions.first?.errorSummary?.contains("[REDACTED_SECRET]") ?? false)
+        XCTAssertFalse(receipt.actions.first?.errorSummary?.contains("tool-secret") ?? true)
+        XCTAssertEqual(receiptStore.receipts, [receipt])
+    }
+
     func testCancelSessionRecordsAuditEventAndDisablesExecution() throws {
         let logger = InMemoryAuditLogger()
+        let receiptStore = VolatileExecutionReceiptStore()
         let registry = ToolRegistry()
         let viewModel = ReviewSessionViewModel(
             plan: ActionPlan.reviewViewModelFixture(actions: [
                 PlanAction(id: "read", tool: .projectList)
             ]),
             executor: ActionExecutor(registry: registry),
-            auditLogger: logger
+            auditLogger: logger,
+            executionReceiptStore: receiptStore
         )
 
         viewModel.cancel()
@@ -103,6 +268,8 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.session.executionStatus, .canceled)
         XCTAssertFalse(viewModel.canExecute)
         XCTAssertTrue(logger.recordedEvents.contains { $0.action == "session.cancel" })
+        XCTAssertEqual(viewModel.lastExecutionReceipt?.status, .canceled)
+        XCTAssertEqual(receiptStore.receipts, viewModel.executionReceipts)
     }
 
     func testInvalidEditDisablesExecutionAndReportsValidationIssue() throws {
@@ -328,7 +495,7 @@ final class ReviewSessionViewModelTests: XCTestCase {
             ))
         )
 
-        voiceViewModel.updateDraftText("QZT article publish checklist")
+        voiceViewModel.updateDraftText("Create a task for QZT article publish checklist")
         await voiceViewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         let generatedPlan = try XCTUnwrap(voiceViewModel.planningResponse?.actionPlan)

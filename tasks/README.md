@@ -20,17 +20,25 @@ Phase ファイルは Epic / Issue seed として扱います。実装に入る�
 | [Phase 9: Knowledge Advanced](./Phase9-KnowledgeAdvanced.md) | Knowledge 高度化 | sqlite-vec、local embeddings、project memory、WeKnora connector |
 | [Phase 10: Release Readiness Runtime](./Phase10-ReleaseReadinessRuntime.md) | モックを外し実働 MVP にする | 永続 DB、Keychain、CRUD、実行導線、投資家視点セルフレビュー |
 | [Phase 11: Provider Sync UX Productization](./Phase11-ProviderSyncUXProductization.md) | Provider/同期/UXを製品化する | MCP仕様準拠、主要LLM provider、有料同期ゲート、競合/UX監査 |
+| [Phase 12: Product Cockpit UX Parity](./Phase12-ProductCockpitUXParity.md) | ui-samplesとの差分を日次運用cockpitへ落とす | Inbox音声triage、Schedule、Projects俯瞰、Done分析、Settings連携 |
+| [Phase 13: Multiplatform Automation](./Phase13-MultiplatformAutomation.md) | iOS / Web / macOS で使える会話ベースのタスク管理&自動化へ拡張する | Cloud Sync、Cloud Relay、Hosted MCP、docs-scoped automation、Harness |
+| [Phase 14: Quality Regression Hardening](./Phase14-QualityRegressionHardening.md) | レイアウト崩れ、クリックパス、アクセシビリティ、永続化、セキュリティのテスト漏れを体系的に潰す | Layout stability smoke、visual regression、runtime AX、quality status report |
+| [Phase 15: Product-Out Release Candidate](./Phase15-ProductOutReleaseCandidate.md) | 実装済み機能をrelease candidateとして閉じ、手動/実機/外部依存の残blockerを製品判断に落とす | Current manual evidence、Gemini live smoke、Keychain prompt hardening、signed/notarized artifact、release readiness green |
+| [Phase 16: Public Alpha Launch Operations](./Phase16-PublicAlphaLaunchOperations.md) | 初回ユーザーが迷わず使い始め、問題報告できるPublic Alpha導線を作る | first-run onboarding、permission education、public alpha checklist、feedback intake、support runbook |
+| [Phase 17: Post-Launch Learning Loop](./Phase17-PostLaunchLearningLoop.md) | Product-out後の利用実態、障害、要望を次の開発へ戻す運用を固める | crash/error triage、usage feedback、roadmap、OSS contribution、release cadence |
+
+Issue起票時は [Product-Out Issue Seeds](./ProductOut-IssueSeeds.md) を入口にし、Phase15-17の `P15-xxx` / `P16-xxx` / `P17-xxx` を1 Issue単位へ展開する。
 
 ## 開発原則
 
-### Gitflow
+### GitHub Flow
 
 - `main` は常にリリース可能な状態に保つ。
-- `develop` は次リリースの統合ブランチにする。
-- 作業ブランチは `feature/phaseN-short-name`、修正は `fix/phaseN-short-name`、ドキュメントは `docs/phaseN-short-name` とする。
+- 作業は現在の target branch から短命ブランチを切る。通常は `main`、release candidate や大きな統合PRの途中ではその active target branch を使う。
+- 作業ブランチは `feature/short-name`、修正は `fix/short-name`、ドキュメントは `docs/short-name` とする。
 - 原則として 1 タスク 1 PR。複数タスクをまとめる場合は、同じ責務境界かつレビューが容易な範囲に限る。
-- Phase 完了時は `release/vX.Y.Z-alpha.N` を切り、動作確認後に `main` へ merge して tag を打つ。
 - `main` への直接 push は禁止。PR にはテスト結果、手動確認結果、残リスクを書く。
+- release branch が必要な場合は、配布直前の安定化に限って短命で使い、完了後は `main` へ戻す。
 
 ### TDD
 

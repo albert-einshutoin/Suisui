@@ -5,6 +5,11 @@ public enum SyncDataClass: String, Codable, CaseIterable, Equatable, Sendable {
     case projects
     case tasks
     case settings
+    case conversations
+    case documents
+    case actionPlans
+    case automationRequests
+    case harnessRuns
 
     public var displayName: String {
         switch self {
@@ -14,6 +19,16 @@ public enum SyncDataClass: String, Codable, CaseIterable, Equatable, Sendable {
             "Tasks"
         case .settings:
             "Settings"
+        case .conversations:
+            "Conversations"
+        case .documents:
+            "Documents"
+        case .actionPlans:
+            "Action Plans"
+        case .automationRequests:
+            "Automation Requests"
+        case .harnessRuns:
+            "Harness Runs"
         }
     }
 }
@@ -309,8 +324,8 @@ public final class SyncSettingsViewModel: ObservableObject {
         }
 
         switch serviceError {
-        case .upgradeRequired:
-            return "Upgrade to Pro to sync SoloPM data."
+        case let .upgradeRequired(requiredPlan):
+            return "Upgrade to \(requiredPlan.displayName) to sync SoloPM data."
         case .syncBackendNotConfigured:
             return "Sync backend is not configured."
         case .networkUnavailable:

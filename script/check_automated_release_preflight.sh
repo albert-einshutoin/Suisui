@@ -8,10 +8,15 @@ XCODE_WORKSPACE_RELATIVE=".swiftpm/xcode/package.xcworkspace"
 XCODE_SCHEME="${SOLOPM_XCODE_SCHEME:-SoloPM}"
 XCODE_DESTINATION="${SOLOPM_XCODE_DESTINATION:-platform=macOS}"
 XCODE_CONFIGURATION="${SOLOPM_XCODE_CONFIGURATION:-Debug}"
+XCODE_PREFLIGHT_TIMEOUT_SECONDS="${SOLOPM_XCODE_PREFLIGHT_TIMEOUT_SECONDS:-600}"
 AUTOMATED_PREFLIGHT_EVIDENCE_FILE="${SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE:-}"
 REFRESH_MANUAL_HELPERS="${SOLOPM_REFRESH_MANUAL_HELPERS:-1}"
 APP_NAME="SoloPM"
 RUNTIME_AX_SMOKE_OUTPUT=""
+VOICEOVER_CANDIDATE_SOURCE_COMMIT=""
+VOICEOVER_CANDIDATE_PROJECT_ID=""
+VOICEOVER_CANDIDATE_DATABASE=""
+VOICEOVER_CANDIDATE_SELECTED_DESTINATION=""
 
 if [[ -f "$METADATA_FILE" ]]; then
   # shellcheck source=/dev/null
@@ -19,11 +24,29 @@ if [[ -f "$METADATA_FILE" ]]; then
 fi
 
 APP_NAME="${APP_NAME:-SoloPM}"
+cd "$ROOT_DIR"
+
+default_automated_preflight_evidence_file() {
+  local commit
+  commit="$(git rev-parse --short HEAD 2>/dev/null || true)"
+
+  if [[ -z "${commit//[[:space:]]/}" ]]; then
+    printf ".tmp/automated-release-preflight.md"
+  else
+    printf ".tmp/automated-release-preflight-${commit}.md"
+  fi
+}
+
+if [[ -z "$AUTOMATED_PREFLIGHT_EVIDENCE_FILE" ]]; then
+  # Release readiness auto-discovers this exact path, so the standard sweep
+  # writes reusable proof instead of forcing operators to run the heavy gates
+  # a second time just to produce evidence.
+  AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$(default_automated_preflight_evidence_file)"
+fi
+
 mkdir -p "$TMP_ROOT"
 TMP_DIR="$(mktemp -d "$TMP_ROOT/solopm-automated-release-preflight.XXXXXX")"
 MCP_EVIDENCE_FILE="$TMP_DIR/mcp-inspector.md"
-
-cd "$ROOT_DIR"
 
 section() {
   printf "\n== %s ==\n" "$1"
@@ -94,12 +117,17 @@ Xcode workspace: $XCODE_WORKSPACE_RELATIVE
 Xcode scheme: $XCODE_SCHEME
 Xcode configuration: $XCODE_CONFIGURATION
 Xcode destination: $XCODE_DESTINATION
+VoiceOver candidate source commit: $VOICEOVER_CANDIDATE_SOURCE_COMMIT
+VoiceOver candidate project ID: $VOICEOVER_CANDIDATE_PROJECT_ID
+VoiceOver candidate database: $VOICEOVER_CANDIDATE_DATABASE
+VoiceOver candidate selected destination: $VOICEOVER_CANDIDATE_SELECTED_DESTINATION
 
 ## Passed Gates
 
 - Release CI: passed
 - Local CRUD smoke: passed
 - Runtime accessible CRUD smoke: passed
+- Layout stability smoke: passed
 - Xcode build preflight: passed
 - Launch preflight: passed
 - Runtime accessibility preflight: passed
@@ -118,6 +146,32 @@ Runtime AX smoke: $RUNTIME_AX_SMOKE_OUTPUT
 EOF
 
   printf "Automated release preflight evidence written to %s\n" "$evidence_file"
+}
+
+capture_voiceover_candidate_context() {
+  local launch_env_file="$ROOT_DIR/.tmp/voiceover-review/launch.env"
+
+  if [[ ! -f "$launch_env_file" ]]; then
+    echo "BLOCKER: VoiceOver candidate launch env was not generated: $launch_env_file" >&2
+    exit 2
+  fi
+
+  # Source the generated launch env instead of re-deriving values so the evidence
+  # records the exact seeded candidate used by the runtime AX smoke gate.
+  # shellcheck source=/dev/null
+  source "$launch_env_file"
+  VOICEOVER_CANDIDATE_SOURCE_COMMIT="${SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT:-}"
+  VOICEOVER_CANDIDATE_PROJECT_ID="${SOLOPM_VOICEOVER_REVIEW_PROJECT_ID:-}"
+  VOICEOVER_CANDIDATE_DATABASE="${SOLOPM_DATABASE_PATH:-}"
+  VOICEOVER_CANDIDATE_SELECTED_DESTINATION="${SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION:-}"
+
+  if [[ -z "${VOICEOVER_CANDIDATE_SOURCE_COMMIT//[[:space:]]/}" ||
+    -z "${VOICEOVER_CANDIDATE_PROJECT_ID//[[:space:]]/}" ||
+    -z "${VOICEOVER_CANDIDATE_DATABASE//[[:space:]]/}" ||
+    -z "${VOICEOVER_CANDIDATE_SELECTED_DESTINATION//[[:space:]]/}" ]]; then
+    echo "BLOCKER: VoiceOver candidate launch env is missing source/project/database/destination context" >&2
+    exit 2
+  fi
 }
 
 terminate_app() {
@@ -142,6 +196,51 @@ terminate_app() {
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 }
 
+run_xcodebuild_with_timeout() {
+  local timeout_marker="$TMP_DIR/xcodebuild-timeout"
+  rm -f "$timeout_marker"
+
+  # Xcode/SwiftBuild can hang before returning an actionable failure; fail closed
+  # so release automation never records stale local proof as reusable evidence.
+  xcodebuild \
+    -workspace "$ROOT_DIR/$XCODE_WORKSPACE_RELATIVE" \
+    -scheme "$XCODE_SCHEME" \
+    -configuration "$XCODE_CONFIGURATION" \
+    -destination "$XCODE_DESTINATION" \
+    build &
+  local xcode_pid=$!
+
+  (
+    sleep "$XCODE_PREFLIGHT_TIMEOUT_SECONDS"
+    if kill -0 "$xcode_pid" >/dev/null 2>&1; then
+      : >"$timeout_marker"
+      echo "BLOCKER: Xcode build preflight timed out after ${XCODE_PREFLIGHT_TIMEOUT_SECONDS}s" >&2
+      printf 'NEXT: reproduce with xcodebuild -workspace %q -scheme %q -configuration %q -destination %q build\n' \
+        "$ROOT_DIR/$XCODE_WORKSPACE_RELATIVE" "$XCODE_SCHEME" "$XCODE_CONFIGURATION" "$XCODE_DESTINATION" >&2
+      printf 'NEXT: this is separate from the SwiftPM native build; do not reuse automated preflight evidence until the Xcode build gate passes.\n' >&2
+      kill "$xcode_pid" >/dev/null 2>&1 || true
+      sleep 2
+      kill -KILL "$xcode_pid" >/dev/null 2>&1 || true
+    fi
+  ) &
+  local watchdog_pid=$!
+
+  set +e
+  wait "$xcode_pid"
+  local xcode_status=$?
+  set -e
+
+  kill "$watchdog_pid" >/dev/null 2>&1 || true
+  wait "$watchdog_pid" >/dev/null 2>&1 || true
+
+  if [[ -f "$timeout_marker" ]]; then
+    rm -f "$timeout_marker"
+    return 2
+  fi
+
+  return "$xcode_status"
+}
+
 cleanup() {
   terminate_app
   rm -rf "$TMP_DIR"
@@ -150,14 +249,22 @@ trap cleanup EXIT
 
 require_clean_source_tree_for_evidence
 
+if ! [[ "$XCODE_PREFLIGHT_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || [[ "$XCODE_PREFLIGHT_TIMEOUT_SECONDS" -le 0 ]]; then
+  echo "BLOCKER: SOLOPM_XCODE_PREFLIGHT_TIMEOUT_SECONDS must be a positive integer" >&2
+  exit 2
+fi
+
 section "Release CI"
-./scripts/ci.sh
+SOLOPM_CI_RELEASE_GATES=1 ./scripts/ci.sh
 
 section "Local CRUD smoke"
 ./script/check_local_crud_smoke.sh
 
 section "Runtime accessible CRUD smoke"
 ./script/check_runtime_accessible_crud_smoke.sh
+
+section "Layout stability smoke"
+./script/check_layout_stability_smoke.sh
 
 section "Xcode build preflight"
 if ! command -v xcodebuild >/dev/null 2>&1; then
@@ -168,22 +275,20 @@ if [[ ! -d "$ROOT_DIR/$XCODE_WORKSPACE_RELATIVE" ]]; then
   echo "BLOCKER: missing SwiftPM Xcode workspace: $XCODE_WORKSPACE_RELATIVE" >&2
   exit 2
 fi
-xcodebuild \
-  -workspace "$ROOT_DIR/$XCODE_WORKSPACE_RELATIVE" \
-  -scheme "$XCODE_SCHEME" \
-  -configuration "$XCODE_CONFIGURATION" \
-  -destination "$XCODE_DESTINATION" \
-  build
+run_xcodebuild_with_timeout
 
 section "Launch preflight"
 ./script/build_and_run.sh --verify
 
 section "Runtime accessibility candidate"
-./script/prepare_voiceover_review_candidate.sh --skip-build
+./script/prepare_voiceover_review_candidate.sh --skip-build --no-launch
+capture_voiceover_candidate_context
 
 section "Runtime accessibility preflight"
 set +e
-runtime_accessibility_output="$(./script/check_accessibility_preflight.sh --runtime --skip-launch 2>&1)"
+# macOS can expose the visible Project Board before the accessibility tree settles.
+# Keep this gate deterministic by giving the seeded AX smoke a longer bounded wait.
+runtime_accessibility_output="$(./script/check_accessibility_preflight.sh --runtime --launch-env .tmp/voiceover-review/launch.env --timeout 30 2>&1)"
 runtime_accessibility_status=$?
 set -e
 if [[ -n "$runtime_accessibility_output" ]]; then

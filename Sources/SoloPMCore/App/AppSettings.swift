@@ -4,84 +4,132 @@ import Foundation
 public struct AppSettings: Codable, Equatable, Sendable {
     public var aiProvider: AIProvider
     public var sttProvider: STTProvider
+    public var ttsProvider: TTSProvider
     public var notificationsEnabled: Bool
     public var defaultWorkspacePath: String?
     public var timeZoneIdentifier: String
+    public var googleCalendarID: String
     public var geminiModelID: String?
     public var groqBaseURLString: String?
+    public var whisperCppExecutablePath: String?
+    public var kokoroExecutablePath: String?
+    public var ttsLanguageCode: String
+    public var ttsVoiceID: String
     public var openCodeExecutablePath: String?
     public var openCodeWorkspacePath: String?
     public var openCodeModelID: String?
     public var isOpenCodeLocalExecutionApproved: Bool
+    public var taskAutoExecution: TaskAutoExecutionSettings
+    public var managedAIBilling: ManagedAIBillingSettings
 
     private enum CodingKeys: String, CodingKey {
         case aiProvider
         case sttProvider
+        case ttsProvider
         case notificationsEnabled
         case defaultWorkspacePath
         case timeZoneIdentifier
+        case googleCalendarID
         case geminiModelID
         case groqBaseURLString
+        case whisperCppExecutablePath
+        case kokoroExecutablePath
+        case ttsLanguageCode
+        case ttsVoiceID
         case openCodeExecutablePath
         case openCodeWorkspacePath
         case openCodeModelID
         case isOpenCodeLocalExecutionApproved
+        case taskAutoExecution
+        case managedAIBilling
     }
 
     public init(
         aiProvider: AIProvider = .openaiResponses,
         sttProvider: STTProvider = .openAITranscribe,
+        ttsProvider: TTSProvider = .localKokoro,
         notificationsEnabled: Bool = false,
         defaultWorkspacePath: String? = nil,
         timeZoneIdentifier: String = TimeZone.current.identifier,
+        googleCalendarID: String = "primary",
         geminiModelID: String? = nil,
         groqBaseURLString: String? = nil,
+        whisperCppExecutablePath: String? = nil,
+        kokoroExecutablePath: String? = nil,
+        ttsLanguageCode: String = "en",
+        ttsVoiceID: String = "af_heart",
         openCodeExecutablePath: String? = nil,
         openCodeWorkspacePath: String? = nil,
         openCodeModelID: String? = nil,
-        isOpenCodeLocalExecutionApproved: Bool = false
+        isOpenCodeLocalExecutionApproved: Bool = false,
+        taskAutoExecution: TaskAutoExecutionSettings = .default,
+        managedAIBilling: ManagedAIBillingSettings = .default
     ) {
         self.aiProvider = aiProvider
         self.sttProvider = sttProvider
+        self.ttsProvider = ttsProvider
         self.notificationsEnabled = notificationsEnabled
         self.defaultWorkspacePath = defaultWorkspacePath
         self.timeZoneIdentifier = timeZoneIdentifier
+        self.googleCalendarID = googleCalendarID
         self.geminiModelID = geminiModelID
         self.groqBaseURLString = groqBaseURLString
+        self.whisperCppExecutablePath = whisperCppExecutablePath
+        self.kokoroExecutablePath = kokoroExecutablePath
+        self.ttsLanguageCode = ttsLanguageCode
+        self.ttsVoiceID = ttsVoiceID
         self.openCodeExecutablePath = openCodeExecutablePath
         self.openCodeWorkspacePath = openCodeWorkspacePath
         self.openCodeModelID = openCodeModelID
         self.isOpenCodeLocalExecutionApproved = isOpenCodeLocalExecutionApproved
+        self.taskAutoExecution = taskAutoExecution
+        self.managedAIBilling = managedAIBilling
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.aiProvider = try container.decode(AIProvider.self, forKey: .aiProvider)
         self.sttProvider = try container.decode(STTProvider.self, forKey: .sttProvider)
+        self.ttsProvider = try container.decodeIfPresent(TTSProvider.self, forKey: .ttsProvider) ?? .localKokoro
         self.notificationsEnabled = try container.decode(Bool.self, forKey: .notificationsEnabled)
         self.defaultWorkspacePath = try container.decodeIfPresent(String.self, forKey: .defaultWorkspacePath)
         self.timeZoneIdentifier = try container.decode(String.self, forKey: .timeZoneIdentifier)
+        self.googleCalendarID = try container.decodeIfPresent(String.self, forKey: .googleCalendarID) ?? "primary"
         self.geminiModelID = try container.decodeIfPresent(String.self, forKey: .geminiModelID)
         self.groqBaseURLString = try container.decodeIfPresent(String.self, forKey: .groqBaseURLString)
+        self.whisperCppExecutablePath = try container.decodeIfPresent(String.self, forKey: .whisperCppExecutablePath)
+        self.kokoroExecutablePath = try container.decodeIfPresent(String.self, forKey: .kokoroExecutablePath)
+        self.ttsLanguageCode = try container.decodeIfPresent(String.self, forKey: .ttsLanguageCode) ?? "en"
+        self.ttsVoiceID = try container.decodeIfPresent(String.self, forKey: .ttsVoiceID) ?? "af_heart"
         self.openCodeExecutablePath = try container.decodeIfPresent(String.self, forKey: .openCodeExecutablePath)
         self.openCodeWorkspacePath = try container.decodeIfPresent(String.self, forKey: .openCodeWorkspacePath)
         self.openCodeModelID = try container.decodeIfPresent(String.self, forKey: .openCodeModelID)
         self.isOpenCodeLocalExecutionApproved = try container.decodeIfPresent(Bool.self, forKey: .isOpenCodeLocalExecutionApproved) ?? false
+        self.taskAutoExecution = try container.decodeIfPresent(TaskAutoExecutionSettings.self, forKey: .taskAutoExecution) ?? .default
+        self.managedAIBilling = try container.decodeIfPresent(ManagedAIBillingSettings.self, forKey: .managedAIBilling) ?? .default
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(aiProvider, forKey: .aiProvider)
         try container.encode(sttProvider, forKey: .sttProvider)
+        try container.encode(ttsProvider, forKey: .ttsProvider)
         try container.encode(notificationsEnabled, forKey: .notificationsEnabled)
         try container.encodeIfPresent(defaultWorkspacePath, forKey: .defaultWorkspacePath)
         try container.encode(timeZoneIdentifier, forKey: .timeZoneIdentifier)
+        try container.encode(googleCalendarID, forKey: .googleCalendarID)
         try container.encodeIfPresent(geminiModelID, forKey: .geminiModelID)
         try container.encodeIfPresent(groqBaseURLString, forKey: .groqBaseURLString)
+        try container.encodeIfPresent(whisperCppExecutablePath, forKey: .whisperCppExecutablePath)
+        try container.encodeIfPresent(kokoroExecutablePath, forKey: .kokoroExecutablePath)
+        try container.encode(ttsLanguageCode, forKey: .ttsLanguageCode)
+        try container.encode(ttsVoiceID, forKey: .ttsVoiceID)
         try container.encodeIfPresent(openCodeExecutablePath, forKey: .openCodeExecutablePath)
         try container.encodeIfPresent(openCodeWorkspacePath, forKey: .openCodeWorkspacePath)
         try container.encodeIfPresent(openCodeModelID, forKey: .openCodeModelID)
         try container.encode(isOpenCodeLocalExecutionApproved, forKey: .isOpenCodeLocalExecutionApproved)
+        try container.encode(taskAutoExecution, forKey: .taskAutoExecution)
+        try container.encode(managedAIBilling, forKey: .managedAIBilling)
     }
 
     public static let `default` = AppSettings()
@@ -91,12 +139,27 @@ public struct AppSettings: Codable, Equatable, Sendable {
         if !copy.sttProvider.isReleaseReady {
             copy.sttProvider = .openAITranscribe
         }
+        if !copy.ttsProvider.isReleaseReady {
+            copy.ttsProvider = .localKokoro
+        }
         if let geminiModelID = copy.geminiModelID?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.geminiModelID = geminiModelID.isEmpty ? nil : geminiModelID
         }
         if let groqBaseURLString = copy.groqBaseURLString?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.groqBaseURLString = groqBaseURLString.isEmpty ? nil : groqBaseURLString
         }
+        // Google Calendar treats "primary" as the backward-compatible default,
+        // while a user-entered blank must stay blank so runtime readiness can flag
+        // the external write target instead of silently writing to the wrong calendar.
+        copy.googleCalendarID = copy.googleCalendarID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let whisperCppExecutablePath = copy.whisperCppExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            copy.whisperCppExecutablePath = whisperCppExecutablePath.isEmpty ? nil : whisperCppExecutablePath
+        }
+        if let kokoroExecutablePath = copy.kokoroExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            copy.kokoroExecutablePath = kokoroExecutablePath.isEmpty ? nil : kokoroExecutablePath
+        }
+        copy.ttsLanguageCode = Self.normalizedTTSLanguageCode(copy.ttsLanguageCode)
+        copy.ttsVoiceID = Self.normalizedTTSVoiceID(copy.ttsVoiceID, languageCode: copy.ttsLanguageCode)
         if let openCodeExecutablePath = copy.openCodeExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.openCodeExecutablePath = openCodeExecutablePath.isEmpty ? nil : openCodeExecutablePath
         }
@@ -106,6 +169,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         if let openCodeModelID = copy.openCodeModelID?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.openCodeModelID = openCodeModelID.isEmpty ? nil : openCodeModelID
         }
+        copy.taskAutoExecution = copy.taskAutoExecution.normalized
+        copy.managedAIBilling = copy.managedAIBilling.normalized
         return copy
     }
 
@@ -131,14 +196,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
             )
         }
 
-        if let defaultWorkspacePath, defaultWorkspacePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            issues.append(
-                ValidationIssue(
-                    field: "defaultWorkspacePath",
-                    message: "Default workspace path cannot be blank.",
-                    severity: .error
-                )
-            )
+        if let defaultWorkspacePath {
+            appendDefaultWorkspacePathIssue(defaultWorkspacePath, to: &issues)
         }
 
         if !LLMProviderCatalog.isAvailableInCurrentBuild(aiProvider) {
@@ -198,8 +257,32 @@ public struct AppSettings: Codable, Equatable, Sendable {
         } else {
             appendOptionalOpenCodeLocalIssues(to: &issues)
         }
+        appendWhisperCppExecutablePathIssue(to: &issues, isRequired: sttProvider == .localWhisperCpp)
+        appendKokoroExecutablePathIssue(to: &issues)
+        appendTTSSelectionIssues(to: &issues)
+        issues.append(contentsOf: taskAutoExecution.validationIssues())
+        issues.append(contentsOf: managedAIBilling.validationIssues())
 
         return issues
+    }
+
+    public static func normalizedTTSLanguageCode(_ languageCode: String) -> String {
+        let normalized = languageCode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return ["ja", "en"].contains(normalized) ? normalized : "en"
+    }
+
+    public static func defaultTTSVoiceID(for languageCode: String) -> String {
+        normalizedTTSLanguageCode(languageCode) == "ja" ? "jf_alpha" : "af_heart"
+    }
+
+    public static func normalizedTTSVoiceID(_ voiceID: String, languageCode: String) -> String {
+        let normalized = voiceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty,
+              normalized.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
+            return defaultTTSVoiceID(for: languageCode)
+        }
+        let expectedPrefix = normalizedTTSLanguageCode(languageCode) == "ja" ? "j" : "a"
+        return normalized.hasPrefix(expectedPrefix) ? normalized : defaultTTSVoiceID(for: languageCode)
     }
 
     private func appendOpenCodeLocalIssues(to issues: inout [ValidationIssue]) {
@@ -211,6 +294,50 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 ValidationIssue(
                     field: "isOpenCodeLocalExecutionApproved",
                     message: "OpenCode local execution requires explicit approval.",
+                    severity: .error
+                )
+            )
+        }
+    }
+
+    private func appendDefaultWorkspacePathIssue(_ path: String, to issues: inout [ValidationIssue]) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            issues.append(
+                ValidationIssue(
+                    field: "defaultWorkspacePath",
+                    message: "Default workspace path cannot be blank.",
+                    severity: .error
+                )
+            )
+            return
+        }
+
+        let expandedPath = NSString(string: trimmed).expandingTildeInPath
+        guard NSString(string: expandedPath).isAbsolutePath else {
+            issues.append(
+                ValidationIssue(
+                    field: "defaultWorkspacePath",
+                    message: "Default workspace path must be an absolute directory path.",
+                    severity: .error
+                )
+            )
+            return
+        }
+
+        let url = URL(fileURLWithPath: expandedPath)
+        let fileName = url.lastPathComponent.lowercased()
+        let pathExtension = url.pathExtension.lowercased()
+        let sensitiveNameSignals = ["credential", "credentials", "secret", "token", "api-key", "apikey", "auth"]
+        let sensitiveFileNames = [".env", "credentials.json", "token.json", "auth.json"]
+        // The data location is a workspace directory. Rejecting credential-like files prevents users from
+        // accidentally pointing SoloPM at secrets that should stay in Keychain or provider-specific stores.
+        if sensitiveFileNames.contains(fileName)
+            || (!pathExtension.isEmpty && sensitiveNameSignals.contains { fileName.contains($0) }) {
+            issues.append(
+                ValidationIssue(
+                    field: "defaultWorkspacePath",
+                    message: "Default workspace path must not point to a credential or token file.",
                     severity: .error
                 )
             )
@@ -288,6 +415,113 @@ public struct AppSettings: Codable, Equatable, Sendable {
             )
         }
     }
+
+    private func appendWhisperCppExecutablePathIssue(to issues: inout [ValidationIssue], isRequired: Bool) {
+        let trimmed = whisperCppExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else {
+            if isRequired {
+                issues.append(
+                    ValidationIssue(
+                        field: "whisperCppExecutablePath",
+                        message: "whisper.cpp executable path is required.",
+                        severity: .error
+                    )
+                )
+            }
+            return
+        }
+
+        let expandedPath = NSString(string: trimmed).expandingTildeInPath
+        guard NSString(string: expandedPath).isAbsolutePath else {
+            issues.append(
+                ValidationIssue(
+                    field: "whisperCppExecutablePath",
+                    message: "whisper.cpp executable path must be absolute.",
+                    severity: .error
+                )
+            )
+            return
+        }
+
+        let url = URL(fileURLWithPath: expandedPath)
+        let fileName = url.lastPathComponent.lowercased()
+        let sensitiveSignals = ["credential", "credentials", "secret", "token", "api-key", "apikey", "auth"]
+        let sensitiveFileNames = [".env", "credentials.json", "token.json", "auth.json"]
+        if sensitiveFileNames.contains(fileName)
+            || sensitiveSignals.contains(where: { fileName.contains($0) }) {
+            issues.append(
+                ValidationIssue(
+                    field: "whisperCppExecutablePath",
+                    message: "whisper.cpp executable path must not point to a credential or token file.",
+                    severity: .error
+                )
+            )
+        }
+    }
+
+    private func appendKokoroExecutablePathIssue(to issues: inout [ValidationIssue]) {
+        let trimmed = kokoroExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else {
+            return
+        }
+
+        let expandedPath = NSString(string: trimmed).expandingTildeInPath
+        guard NSString(string: expandedPath).isAbsolutePath else {
+            issues.append(
+                ValidationIssue(
+                    field: "kokoroExecutablePath",
+                    message: "Kokoro executable path must be absolute.",
+                    severity: .error
+                )
+            )
+            return
+        }
+
+        let url = URL(fileURLWithPath: expandedPath)
+        let fileName = url.lastPathComponent.lowercased()
+        let sensitiveSignals = ["credential", "credentials", "secret", "token", "api-key", "apikey", "auth"]
+        let sensitiveFileNames = [".env", "credentials.json", "token.json", "auth.json"]
+        if sensitiveFileNames.contains(fileName)
+            || sensitiveSignals.contains(where: { fileName.contains($0) }) {
+            issues.append(
+                ValidationIssue(
+                    field: "kokoroExecutablePath",
+                    message: "Kokoro executable path must not point to a credential or token file.",
+                    severity: .error
+                )
+            )
+        }
+    }
+
+    private func appendTTSSelectionIssues(to issues: inout [ValidationIssue]) {
+        if !ttsProvider.isReleaseReady {
+            issues.append(
+                ValidationIssue(
+                    field: "ttsProvider",
+                    message: "\(ttsProvider.displayName) is not available in this build.",
+                    severity: .error
+                )
+            )
+        }
+        if ttsLanguageCode != Self.normalizedTTSLanguageCode(ttsLanguageCode) {
+            issues.append(
+                ValidationIssue(
+                    field: "ttsLanguageCode",
+                    message: "TTS language must be ja or en.",
+                    severity: .error
+                )
+            )
+        }
+        if ttsVoiceID != Self.normalizedTTSVoiceID(ttsVoiceID, languageCode: ttsLanguageCode) {
+            issues.append(
+                ValidationIssue(
+                    field: "ttsVoiceID",
+                    message: "TTS voice must match the selected language.",
+                    severity: .error
+                )
+            )
+        }
+    }
 }
 
 private extension URL {
@@ -302,7 +536,7 @@ public enum STTProvider: String, CaseIterable, Codable, Equatable, Sendable {
     case localWhisperCpp
     case openAITranscribe
 
-    public static let releaseReadyCases: [STTProvider] = [.openAITranscribe]
+    public static let releaseReadyCases: [STTProvider] = [.openAITranscribe, .localWhisperCpp]
 
     public var isReleaseReady: Bool {
         Self.releaseReadyCases.contains(self)
@@ -318,6 +552,35 @@ public enum STTProvider: String, CaseIterable, Codable, Equatable, Sendable {
             "whisper.cpp"
         case .openAITranscribe:
             "OpenAI Transcribe"
+        }
+    }
+}
+
+public enum TTSProvider: String, CaseIterable, Codable, Equatable, Sendable {
+    case systemSpeech
+    case localKokoro
+
+    public static let releaseReadyCases: [TTSProvider] = [.localKokoro]
+
+    public var isReleaseReady: Bool {
+        Self.releaseReadyCases.contains(self)
+    }
+
+    public var displayName: String {
+        switch self {
+        case .systemSpeech:
+            "System Speech"
+        case .localKokoro:
+            "Local Kokoro"
+        }
+    }
+
+    public var unavailableReason: String {
+        switch self {
+        case .systemSpeech:
+            "System Speech is kept only for legacy settings and is not product TTS."
+        case .localKokoro:
+            "Install the Kokoro model and configure the executable in Settings."
         }
     }
 }
@@ -350,12 +613,26 @@ public protocol AppSettingsStore: Sendable {
 }
 
 public final class UserDefaultsAppSettingsStore: AppSettingsStore, @unchecked Sendable {
+    public static let suiteNameEnvironmentKey = "SOLOPM_APP_SETTINGS_SUITE_NAME"
+
+    public static func defaultUserDefaults(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> UserDefaults {
+        // Runtime smoke tests need a disposable suite so settings assertions never
+        // read or mutate the user's real SoloPM preferences.
+        let suiteName = environment[suiteNameEnvironmentKey]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let suiteName, !suiteName.isEmpty, let defaults = UserDefaults(suiteName: suiteName) {
+            return defaults
+        }
+        return .standard
+    }
+
     private let defaults: UserDefaults
     private let key: String
     private let lock = NSLock()
 
-    public init(defaults: UserDefaults = .standard, key: String = "app.settings") {
-        self.defaults = defaults
+    public init(defaults: UserDefaults? = nil, key: String = "app.settings") {
+        self.defaults = defaults ?? Self.defaultUserDefaults()
         self.key = key
     }
 
@@ -411,6 +688,60 @@ public struct AIProviderReadinessRow: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct TTSProviderReadinessRow: Identifiable, Equatable, Sendable {
+    public var provider: TTSProvider
+    public var statusLabel: String
+    public var detailLabel: String
+    public var nextActionLabel: String
+    public var isReady: Bool
+    public var isSelected: Bool
+
+    public var id: TTSProvider { provider }
+
+    public init(
+        provider: TTSProvider,
+        statusLabel: String,
+        detailLabel: String,
+        nextActionLabel: String,
+        isReady: Bool,
+        isSelected: Bool
+    ) {
+        self.provider = provider
+        self.statusLabel = statusLabel
+        self.detailLabel = detailLabel
+        self.nextActionLabel = nextActionLabel
+        self.isReady = isReady
+        self.isSelected = isSelected
+    }
+}
+
+public struct STTProviderReadinessRow: Identifiable, Equatable, Sendable {
+    public var provider: STTProvider
+    public var statusLabel: String
+    public var detailLabel: String
+    public var nextActionLabel: String
+    public var isReady: Bool
+    public var isSelected: Bool
+
+    public var id: STTProvider { provider }
+
+    public init(
+        provider: STTProvider,
+        statusLabel: String,
+        detailLabel: String,
+        nextActionLabel: String,
+        isReady: Bool,
+        isSelected: Bool
+    ) {
+        self.provider = provider
+        self.statusLabel = statusLabel
+        self.detailLabel = detailLabel
+        self.nextActionLabel = nextActionLabel
+        self.isReady = isReady
+        self.isSelected = isSelected
+    }
+}
+
 @MainActor
 public final class AppSettingsViewModel: ObservableObject {
     @Published public private(set) var settings: AppSettings
@@ -432,17 +763,32 @@ public final class AppSettingsViewModel: ObservableObject {
     @Published public private(set) var keychainSecretStatusLabel: String
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var successMessage: String?
+    @Published private var voiceModelStatusOverrides: [VoiceModelID: VoiceModelInstallStatus]
 
     private let settingsStore: any AppSettingsStore
     private let secretStore: any SecretStore
+    private let voiceModelCatalog: VoiceModelCatalog
+    private let voiceModelManager: any VoiceModelManaging
     private var rejectedAIProvider: AIProvider?
     private static let settingsSaveFailureMessage = "App settings could not be saved."
     private static let apiKeySaveFailureMessage = "API key could not be saved to Keychain."
     private static let apiKeyDeleteFailureMessage = "API key could not be removed from Keychain."
 
-    public init(settingsStore: any AppSettingsStore, secretStore: any SecretStore) {
+    public init(
+        settingsStore: any AppSettingsStore,
+        secretStore: any SecretStore,
+        voiceModelCatalog: VoiceModelCatalog = .phase1Default,
+        voiceModelManager: any VoiceModelManaging = VoiceModelManager()
+    ) {
+        let initialVoiceModelStatuses = Dictionary(
+            uniqueKeysWithValues: voiceModelCatalog.models.map { model in
+                (model.id, voiceModelManager.status(for: model))
+            }
+        )
         self.settingsStore = settingsStore
         self.secretStore = secretStore
+        self.voiceModelCatalog = voiceModelCatalog
+        self.voiceModelManager = voiceModelManager
         let loadedSettings: AppSettings
         let initialErrorMessage: String?
         do {
@@ -452,7 +798,11 @@ public final class AppSettingsViewModel: ObservableObject {
             loadedSettings = .default
             initialErrorMessage = "App settings could not be loaded. Defaults are shown until settings are saved again."
         }
-        self.settings = loadedSettings.normalizedForRuntime
+        self.settings = Self.normalizedSettings(
+            loadedSettings,
+            voiceModelStatuses: initialVoiceModelStatuses,
+            voiceModelCatalog: voiceModelCatalog
+        )
         self.openAIAPIKeyInput = ""
         self.openAIAPIKeyStatusLabel = "Not configured"
         self.openAIProviderSmokeStatusLabel = "notConfigured"
@@ -471,6 +821,7 @@ public final class AppSettingsViewModel: ObservableObject {
         self.keychainSecretStatusLabel = "Enter a secret key"
         self.errorMessage = initialErrorMessage
         self.successMessage = nil
+        self.voiceModelStatusOverrides = initialVoiceModelStatuses
         self.rejectedAIProvider = nil
         refreshOpenAIAPIKeyStatus()
         refreshAnthropicAPIKeyStatus()
@@ -483,8 +834,89 @@ public final class AppSettingsViewModel: ObservableObject {
         LLMProviderCatalog.settingsSelectableIDs
     }
 
+    public var selectableSTTProviders: [STTProvider] {
+        STTProvider.releaseReadyCases.filter { provider in
+            provider != .localWhisperCpp || isLocalWhisperCppReady
+        }
+    }
+
+    public var selectableTTSProviders: [TTSProvider] {
+        TTSProvider.releaseReadyCases
+    }
+
     public var providerReadinessRows: [AIProviderReadinessRow] {
         selectableAIProviders.map { providerReadinessRow(for: $0) }
+    }
+
+    public var ttsProviderReadinessRow: TTSProviderReadinessRow {
+        makeTTSProviderReadinessRow(for: settings.ttsProvider)
+    }
+
+    public var localSTTProviderReadinessRow: STTProviderReadinessRow {
+        makeLocalSTTProviderReadinessRow()
+    }
+
+    public var voiceModelReadinessRows: [VoiceModelReadinessRow] {
+        voiceModelCatalog.models.map { model in
+            VoiceModelReadinessRow(
+                model: model,
+                status: voiceModelStatusOverrides[model.id] ?? voiceModelManager.status(for: model)
+            )
+        }
+    }
+
+    public func installVoiceModel(_ modelID: VoiceModelID) async {
+        guard let model = voiceModelCatalog.model(for: modelID) else {
+            errorMessage = "Voice model is not registered."
+            successMessage = nil
+            return
+        }
+
+        voiceModelStatusOverrides[modelID] = .downloading
+        clearMessages()
+        do {
+            _ = try await voiceModelManager.install(model)
+            voiceModelStatusOverrides[modelID] = .installed
+            normalizeSTTProviderSelection()
+            successMessage = "Voice model is installed."
+            errorMessage = nil
+        } catch let error as VoiceModelManagerError {
+            let message = error.userMessage
+            voiceModelStatusOverrides[modelID] = .failed(message)
+            errorMessage = message
+            successMessage = nil
+        } catch {
+            let message = UserFacingErrorMessageSanitizer.message(from: error)
+            voiceModelStatusOverrides[modelID] = .failed(message)
+            errorMessage = message
+            successMessage = nil
+        }
+    }
+
+    public func removeVoiceModelFromCache(_ modelID: VoiceModelID) {
+        guard let model = voiceModelCatalog.model(for: modelID) else {
+            errorMessage = "Voice model is not registered."
+            successMessage = nil
+            return
+        }
+
+        do {
+            try voiceModelManager.removeFromCache(model)
+            voiceModelStatusOverrides[modelID] = .notInstalled
+            normalizeSTTProviderSelection()
+            successMessage = "Voice model cache entry was removed."
+            errorMessage = nil
+        } catch let error as VoiceModelManagerError {
+            let message = error.userMessage
+            voiceModelStatusOverrides[modelID] = .failed(message)
+            errorMessage = message
+            successMessage = nil
+        } catch {
+            let message = UserFacingErrorMessageSanitizer.message(from: error)
+            voiceModelStatusOverrides[modelID] = .failed(message)
+            errorMessage = message
+            successMessage = nil
+        }
     }
 
     public func providerReadinessRow(for provider: AIProvider) -> AIProviderReadinessRow {
@@ -495,6 +927,134 @@ public final class AppSettingsViewModel: ObservableObject {
             nextActionLabel: providerReadinessNextActionLabel(for: provider),
             isSelected: settings.aiProvider == provider
         )
+    }
+
+    private func makeTTSProviderReadinessRow(for provider: TTSProvider) -> TTSProviderReadinessRow {
+        guard provider == .localKokoro else {
+            return TTSProviderReadinessRow(
+                provider: provider,
+                statusLabel: "Unsupported",
+                detailLabel: provider.unavailableReason,
+                nextActionLabel: "Select Local Kokoro",
+                isReady: false,
+                isSelected: settings.ttsProvider == provider
+            )
+        }
+
+        guard let model = voiceModelCatalog.model(for: .kokoro82M) else {
+            return TTSProviderReadinessRow(
+                provider: provider,
+                statusLabel: "Model unavailable",
+                detailLabel: "Kokoro model metadata is not registered.",
+                nextActionLabel: "Update voice model catalog",
+                isReady: false,
+                isSelected: settings.ttsProvider == provider
+            )
+        }
+
+        let status = voiceModelStatusOverrides[model.id] ?? voiceModelManager.status(for: model)
+        guard status == .installed else {
+            return TTSProviderReadinessRow(
+                provider: provider,
+                statusLabel: "Model not installed",
+                detailLabel: "\(model.displayName) - \(model.licenseName) - \(model.sourceURL.host ?? "unknown source")",
+                nextActionLabel: "Download Kokoro model",
+                isReady: false,
+                isSelected: settings.ttsProvider == provider
+            )
+        }
+
+        guard Self.isKokoroExecutableReady(settings.kokoroExecutablePath) else {
+            return TTSProviderReadinessRow(
+                provider: provider,
+                statusLabel: "Runtime pending",
+                detailLabel: "Kokoro executable path is required for offline speech.",
+                nextActionLabel: "Configure Kokoro executable",
+                isReady: false,
+                isSelected: settings.ttsProvider == provider
+            )
+        }
+
+        return TTSProviderReadinessRow(
+            provider: provider,
+            statusLabel: "Ready",
+            detailLabel: "\(settings.ttsLanguageCode.uppercased()) / \(settings.ttsVoiceID) short prompts",
+            nextActionLabel: "Test play",
+            isReady: true,
+            isSelected: settings.ttsProvider == provider
+        )
+    }
+
+    private func makeLocalSTTProviderReadinessRow() -> STTProviderReadinessRow {
+        let provider = STTProvider.localWhisperCpp
+        guard let model = voiceModelCatalog.model(for: .whisperCppTinyMultilingual) else {
+            return STTProviderReadinessRow(
+                provider: provider,
+                statusLabel: "Model unavailable",
+                detailLabel: "whisper.cpp model metadata is not registered.",
+                nextActionLabel: "Update voice model catalog",
+                isReady: false,
+                isSelected: settings.sttProvider == provider
+            )
+        }
+
+        let status = voiceModelStatusOverrides[model.id] ?? voiceModelManager.status(for: model)
+        guard status == .installed else {
+            return STTProviderReadinessRow(
+                provider: provider,
+                statusLabel: localSTTModelStatusLabel(for: status),
+                detailLabel: "\(model.displayName) - \(model.licenseName) - \(model.sourceURL.host ?? "unknown source")",
+                nextActionLabel: localSTTModelNextActionLabel(for: status),
+                isReady: false,
+                isSelected: settings.sttProvider == provider
+            )
+        }
+
+        guard Self.isWhisperCppExecutableReady(settings.whisperCppExecutablePath) else {
+            return STTProviderReadinessRow(
+                provider: provider,
+                statusLabel: "Runtime pending",
+                detailLabel: "whisper.cpp executable path is required for offline speech to text.",
+                nextActionLabel: "Configure whisper.cpp executable",
+                isReady: false,
+                isSelected: settings.sttProvider == provider
+            )
+        }
+
+        return STTProviderReadinessRow(
+            provider: provider,
+            statusLabel: "Smoke pending",
+            detailLabel: "Model and executable are ready; run the local voice runtime smoke before release closeout.",
+            nextActionLabel: "Run local voice smoke",
+            // Selection is allowed at this stage, but release readiness still
+            // needs an explicit runtime smoke result tied to the current build.
+            isReady: false,
+            isSelected: settings.sttProvider == provider
+        )
+    }
+
+    private func localSTTModelStatusLabel(for status: VoiceModelInstallStatus) -> String {
+        switch status {
+        case .downloading:
+            "Downloading"
+        case .failed:
+            "Download failed"
+        case .corrupted:
+            "Needs reinstall"
+        case .notInstalled, .installed:
+            "Model not installed"
+        }
+    }
+
+    private func localSTTModelNextActionLabel(for status: VoiceModelInstallStatus) -> String {
+        switch status {
+        case .downloading:
+            "Wait for download"
+        case .failed, .corrupted:
+            "Retry whisper.cpp model"
+        case .notInstalled, .installed:
+            "Download whisper.cpp model"
+        }
     }
 
     public func setNotificationsEnabled(_ isEnabled: Bool) {
@@ -523,7 +1083,28 @@ public final class AppSettingsViewModel: ObservableObject {
     }
 
     public func setSTTProvider(_ provider: STTProvider) {
-        settings.sttProvider = provider.isReleaseReady ? provider : .openAITranscribe
+        guard provider.isReleaseReady else {
+            settings.sttProvider = .openAITranscribe
+            clearMessages()
+            return
+        }
+        guard provider != .localWhisperCpp || isLocalWhisperCppReady else {
+            settings.sttProvider = .openAITranscribe
+            errorMessage = "Install the whisper.cpp model and configure the executable before selecting offline speech to text."
+            successMessage = nil
+            return
+        }
+        settings.sttProvider = provider
+        clearMessages()
+    }
+
+    public func setTTSProvider(_ provider: TTSProvider) {
+        guard provider.isReleaseReady else {
+            settings.ttsProvider = .localKokoro
+            clearMessages()
+            return
+        }
+        settings.ttsProvider = provider
         clearMessages()
     }
 
@@ -531,6 +1112,51 @@ public final class AppSettingsViewModel: ObservableObject {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.defaultWorkspacePath = trimmed.isEmpty ? nil : trimmed
         clearMessages()
+    }
+
+    public func setGoogleCalendarID(_ calendarID: String) {
+        settings.googleCalendarID = calendarID.trimmingCharacters(in: .whitespacesAndNewlines)
+        clearMessages()
+    }
+
+    public func setTransientErrorMessage(_ message: String) {
+        rejectedAIProvider = nil
+        errorMessage = message
+        successMessage = nil
+    }
+
+    public func testTTSPlayback(using previewer: any TextToSpeechPreviewing) async {
+        let readinessRow = ttsProviderReadinessRow
+        guard readinessRow.isReady else {
+            rejectedAIProvider = nil
+            errorMessage = "\(readinessRow.nextActionLabel) before test play."
+            successMessage = nil
+            return
+        }
+
+        let issues = settings.validate().filter { $0.severity == .error }
+        guard issues.isEmpty else {
+            rejectedAIProvider = nil
+            errorMessage = issues.map(\.message).joined(separator: " ")
+            successMessage = nil
+            return
+        }
+
+        let request = TextToSpeechRequest(
+            text: Self.ttsPreviewText(for: settings.ttsLanguageCode),
+            languageCode: settings.ttsLanguageCode,
+            voiceID: settings.ttsVoiceID
+        )
+
+        clearMessages()
+        do {
+            try await previewer.playPreview(request)
+            errorMessage = nil
+            successMessage = "TTS test play completed."
+        } catch {
+            errorMessage = "TTS test play failed. \(Self.sanitizedTTSPreviewFailureMessage(from: error))"
+            successMessage = nil
+        }
     }
 
     public func setGeminiModelID(_ modelID: String) {
@@ -542,6 +1168,31 @@ public final class AppSettingsViewModel: ObservableObject {
     public func setGroqBaseURLString(_ baseURLString: String) {
         let trimmed = baseURLString.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.groqBaseURLString = trimmed.isEmpty ? nil : trimmed
+        clearMessages()
+    }
+
+    public func setWhisperCppExecutablePath(_ path: String) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.whisperCppExecutablePath = trimmed.isEmpty ? nil : trimmed
+        normalizeSTTProviderSelection()
+        clearMessages()
+    }
+
+    public func setKokoroExecutablePath(_ path: String) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.kokoroExecutablePath = trimmed.isEmpty ? nil : trimmed
+        clearMessages()
+    }
+
+    public func setTTSLanguageCode(_ languageCode: String) {
+        let normalized = AppSettings.normalizedTTSLanguageCode(languageCode)
+        settings.ttsLanguageCode = normalized
+        settings.ttsVoiceID = AppSettings.normalizedTTSVoiceID(settings.ttsVoiceID, languageCode: normalized)
+        clearMessages()
+    }
+
+    public func setTTSVoiceID(_ voiceID: String) {
+        settings.ttsVoiceID = AppSettings.normalizedTTSVoiceID(voiceID, languageCode: settings.ttsLanguageCode)
         clearMessages()
     }
 
@@ -565,6 +1216,66 @@ public final class AppSettingsViewModel: ObservableObject {
 
     public func setOpenCodeLocalExecutionApproved(_ isApproved: Bool) {
         settings.isOpenCodeLocalExecutionApproved = isApproved
+        clearMessages()
+    }
+
+    public func setTaskAutoExecutionEnabled(_ isEnabled: Bool) {
+        settings.taskAutoExecution.isEnabled = isEnabled
+        clearMessages()
+    }
+
+    public func setTaskAutoExecutionMode(_ mode: TaskAutoExecutionMode) {
+        settings.taskAutoExecution.mode = mode
+        clearMessages()
+    }
+
+    public func setTaskAutoExecutionCadence(_ cadence: TaskAutoExecutionCadence) {
+        settings.taskAutoExecution.cadence = cadence
+        clearMessages()
+    }
+
+    public func setTaskAutoExecutionMaxTasksPerRun(_ value: Int) {
+        settings.taskAutoExecution.maxTasksPerRun = value
+        clearMessages()
+    }
+
+    public func setTaskAutoExecutionDailyLLMCallLimit(_ value: Int) {
+        settings.taskAutoExecution.dailyLLMCallLimit = value
+        clearMessages()
+    }
+
+    public func setTaskAutoExecutionLookaheadHours(_ value: Int) {
+        settings.taskAutoExecution.lookaheadHours = value
+        clearMessages()
+    }
+
+    public func setTaskAutoExecutionUrgentReviewCooldownMinutes(_ value: Int) {
+        settings.taskAutoExecution.urgentReviewCooldownMinutes = value
+        clearMessages()
+    }
+
+    public func setManagedAIBillingEnabled(_ isEnabled: Bool) {
+        settings.managedAIBilling.isEnabled = isEnabled
+        clearMessages()
+    }
+
+    public func setManagedAIPerRunCapCents(_ value: Int?) {
+        settings.managedAIBilling.perRunCapCents = value
+        clearMessages()
+    }
+
+    public func setManagedAIDailyCapCents(_ value: Int?) {
+        settings.managedAIBilling.dailyCapCents = value
+        clearMessages()
+    }
+
+    public func setManagedAIMonthlyCapCents(_ value: Int?) {
+        settings.managedAIBilling.monthlyCapCents = value
+        clearMessages()
+    }
+
+    public func setManagedAIWorkspaceCapCents(_ value: Int?) {
+        settings.managedAIBilling.workspaceCapCents = value
         clearMessages()
     }
 
@@ -965,10 +1676,112 @@ public final class AppSettingsViewModel: ObservableObject {
         }
     }
 
+    private static func normalizedSettings(
+        _ settings: AppSettings,
+        voiceModelStatuses: [VoiceModelID: VoiceModelInstallStatus],
+        voiceModelCatalog: VoiceModelCatalog
+    ) -> AppSettings {
+        var normalized = settings.normalizedForRuntime
+        if normalized.sttProvider == .localWhisperCpp,
+           !isLocalWhisperCppReady(
+                settings: normalized,
+                voiceModelStatuses: voiceModelStatuses,
+                voiceModelCatalog: voiceModelCatalog
+           ) {
+            normalized.sttProvider = .openAITranscribe
+        }
+        return normalized
+    }
+
+    private var isLocalWhisperCppReady: Bool {
+        Self.isLocalWhisperCppReady(
+            settings: settings,
+            voiceModelStatuses: voiceModelStatusOverrides,
+            voiceModelCatalog: voiceModelCatalog
+        )
+    }
+
+    private static func isLocalWhisperCppReady(
+        settings: AppSettings,
+        voiceModelStatuses: [VoiceModelID: VoiceModelInstallStatus],
+        voiceModelCatalog: VoiceModelCatalog
+    ) -> Bool {
+        guard isWhisperCppExecutableReady(settings.whisperCppExecutablePath),
+              let model = voiceModelCatalog.model(for: .whisperCppTinyMultilingual),
+              voiceModelStatuses[model.id] == .installed else {
+            return false
+        }
+        return true
+    }
+
+    private static func isWhisperCppExecutableReady(_ path: String?) -> Bool {
+        let trimmed = path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else {
+            return false
+        }
+
+        let expandedPath = NSString(string: trimmed).expandingTildeInPath
+        guard NSString(string: expandedPath).isAbsolutePath else {
+            return false
+        }
+
+        var isDirectory = ObjCBool(false)
+        guard FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDirectory), !isDirectory.boolValue else {
+            return false
+        }
+        return FileManager.default.isExecutableFile(atPath: expandedPath)
+    }
+
+    private static func isKokoroExecutableReady(_ path: String?) -> Bool {
+        let trimmed = path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else {
+            return false
+        }
+
+        let expandedPath = NSString(string: trimmed).expandingTildeInPath
+        guard NSString(string: expandedPath).isAbsolutePath else {
+            return false
+        }
+
+        var isDirectory = ObjCBool(false)
+        guard FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDirectory), !isDirectory.boolValue else {
+            return false
+        }
+        return FileManager.default.isExecutableFile(atPath: expandedPath)
+    }
+
+    private func normalizeSTTProviderSelection() {
+        if settings.sttProvider == .localWhisperCpp, !isLocalWhisperCppReady {
+            settings.sttProvider = .openAITranscribe
+        }
+    }
+
     private func clearMessages() {
         rejectedAIProvider = nil
         errorMessage = nil
         successMessage = nil
+    }
+
+    private static func ttsPreviewText(for languageCode: String) -> String {
+        AppSettings.normalizedTTSLanguageCode(languageCode) == "ja"
+            ? "SoloPMのローカル音声テストです。"
+            : "SoloPM local voice test is ready."
+    }
+
+    private static func sanitizedTTSPreviewFailureMessage(from error: Error) -> String {
+        let rawMessage: String
+        if let error = error as? TTSProviderError {
+            rawMessage = error.userMessage
+        } else if let error = error as? SpeechAudioPlaybackError {
+            rawMessage = error.userMessage
+        } else {
+            rawMessage = UserFacingErrorMessageSanitizer.message(from: error)
+        }
+        let redactedSecrets = UserFacingErrorMessageSanitizer.message(
+            from: rawMessage,
+            fallback: "Playback failed."
+        )
+        return LocalPathRedactor.redact(redactedSecrets)
     }
 
     private func unavailableMessage(for provider: AIProvider) -> String {

@@ -45,6 +45,22 @@ final class PlanningAuditRecorderTests: XCTestCase {
         )
         XCTAssertFalse(logger.recordedEvents.first?.metadata["error"]?.contains(secret) ?? true)
     }
+
+    func testPlanningAuditRecorderUsesUserFacingLLMProviderFailure() throws {
+        let logger = InMemoryAuditLogger()
+        let recorder = PlanningAuditRecorder(logger: logger)
+
+        try recorder.recordFailed(
+            input: "Create a task",
+            providerID: "openai.responses",
+            error: LLMProviderError.authenticationFailed
+        )
+
+        XCTAssertEqual(
+            logger.recordedEvents.first?.metadata["error"],
+            "The AI provider rejected the configured API key."
+        )
+    }
 }
 
 private struct PlanningAuditSecretError: Error, CustomStringConvertible {

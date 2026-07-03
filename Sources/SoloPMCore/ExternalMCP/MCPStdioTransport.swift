@@ -1,6 +1,59 @@
 import Darwin
 import Foundation
 
+#if os(iOS) || targetEnvironment(macCatalyst)
+public final class MCPStdioTransport: MCPClientTransport, MCPServerProcess, MCPProcessController, @unchecked Sendable {
+    private let registration: MCPServerRegistration
+
+    public init(
+        registration: MCPServerRegistration,
+        resolvedEnvironment: [String: String] = [:],
+        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
+    ) {
+        self.registration = registration
+    }
+
+    public var redactedStderr: String {
+        ""
+    }
+
+    public func start() async throws {
+        // Stdio MCP launches local processes, which mobile platforms cannot do;
+        // iOS uses Hosted MCP / Cloud Relay pending actions instead.
+        throw MCPClientError.transportFailed(
+            serverID: registration.id,
+            method: "initialize",
+            message: "MCP stdio transport is available only on macOS."
+        )
+    }
+
+    public func healthCheck() async -> Bool {
+        false
+    }
+
+    public func shutdown() async {}
+
+    public func kill() async {}
+
+    public func kill(serverID: String, reason: MCPProcessKillReason) async {}
+
+    public func send(_ request: MCPJSONRPCRequest, timeout: TimeInterval) async throws -> MCPJSONRPCResponse {
+        throw MCPClientError.transportFailed(
+            serverID: registration.id,
+            method: request.method,
+            message: "MCP stdio transport is available only on macOS."
+        )
+    }
+
+    public func notify(_ notification: MCPJSONRPCNotification) async throws {
+        throw MCPClientError.transportFailed(
+            serverID: registration.id,
+            method: notification.method,
+            message: "MCP stdio transport is available only on macOS."
+        )
+    }
+}
+#else
 public final class MCPStdioTransport: MCPClientTransport, MCPServerProcess, MCPProcessController, @unchecked Sendable {
     private let registration: MCPServerRegistration
     private let resolvedEnvironment: [String: String]
@@ -289,3 +342,4 @@ private extension timeval {
         self.init(tv_sec: wholeSeconds, tv_usec: Int32((seconds - Double(wholeSeconds)) * 1_000_000))
     }
 }
+#endif

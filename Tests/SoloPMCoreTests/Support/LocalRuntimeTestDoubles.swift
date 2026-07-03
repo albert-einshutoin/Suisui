@@ -5,6 +5,7 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
     private var snapshot: ProjectBoardSnapshot
     private var nextTaskID: Int64
     private var nextArtifactID: Int64
+    private var nextMilestoneID: Int64
 
     init(snapshot: ProjectBoardSnapshot = ProjectBoardSnapshot(projects: [
         ProjectBoardProject(
@@ -18,6 +19,7 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         self.snapshot = snapshot
         self.nextTaskID = snapshot.projects.flatMap(\.tasks).map(\.id).max().map { $0 + 1 } ?? 1
         self.nextArtifactID = snapshot.projects.flatMap(\.artifacts).map(\.id).max().map { $0 + 1 } ?? 1
+        self.nextMilestoneID = snapshot.projects.flatMap(\.milestones).map(\.id).max().map { $0 + 1 } ?? 1
     }
 
     func loadSnapshot() throws -> ProjectBoardSnapshot {
@@ -80,7 +82,8 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
                 detail: task.detail,
                 status: .done,
                 priority: task.priority,
-                dueAt: task.dueAt
+                dueAt: task.dueAt,
+                completedAt: task.completedAt ?? Self.nowCompletedAt()
             )
         }
         completedTasks.sort { $0.id > $1.id }
@@ -144,7 +147,8 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
             detail: draft.detail.trimmingCharacters(in: .whitespacesAndNewlines),
             status: draft.status,
             priority: draft.priority,
-            dueAt: draft.dueAt
+            dueAt: draft.dueAt,
+            completedAt: draft.status == .done ? Self.nowCompletedAt() : nil
         )
         nextTaskID += 1
         upsert(task)
@@ -166,7 +170,8 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
             detail: draft.detail.trimmingCharacters(in: .whitespacesAndNewlines),
             status: draft.status,
             priority: draft.priority,
-            dueAt: draft.dueAt
+            dueAt: draft.dueAt,
+            completedAt: existingCompletedAt(id: id, status: draft.status)
         )
         upsert(task)
         return task
@@ -182,7 +187,8 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
             detail: task.detail,
             status: status,
             priority: task.priority,
-            dueAt: task.dueAt
+            dueAt: task.dueAt,
+            completedAt: status == .done ? task.completedAt ?? Self.nowCompletedAt() : task.completedAt
         )
         upsert(movedTask)
         return movedTask
@@ -192,6 +198,31 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         let originalSnapshot = snapshot
         do {
             return try ids.map { try moveTask(id: $0, to: status) }
+        } catch {
+            snapshot = originalSnapshot
+            throw error
+        }
+    }
+
+    func moveTasks(ids: [Int64], toProjectID projectID: Int64) throws -> [ProjectBoardTask] {
+        let originalSnapshot = snapshot
+        do {
+            return try ids.map { id in
+                let task = try findTask(id: id)
+                try prepareProjectForTaskMutation(projectID: projectID, taskStatus: task.status)
+                let movedTask = ProjectBoardTask(
+                    id: task.id,
+                    projectID: projectID,
+                    title: task.title,
+                    detail: task.detail,
+                    status: task.status,
+                    priority: task.priority,
+                    dueAt: task.dueAt,
+                    completedAt: task.completedAt
+                )
+                upsert(movedTask)
+                return movedTask
+            }
         } catch {
             snapshot = originalSnapshot
             throw error
@@ -251,6 +282,63 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         throw ArtifactStoreError.notFound(id)
     }
 
+    @discardableResult
+    func createProjectMilestone(projectID: Int64, title: String, dueAt: String?) throws -> ProjectBoardMilestone {
+        guard let projectIndex = snapshot.projects.firstIndex(where: { $0.id == projectID }) else {
+            throw DatabaseError.stepFailed("Project \(projectID) was not found.")
+        }
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedTitle.isEmpty else {
+            throw ProjectBoardStoreError.emptyTitle
+        }
+
+        let milestone = ProjectBoardMilestone(
+            id: nextMilestoneID,
+            projectID: projectID,
+            title: normalizedTitle,
+            dueAt: dueAt?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank,
+            isCompleted: false
+        )
+        nextMilestoneID += 1
+        snapshot.projects[projectIndex].milestones.append(milestone)
+        snapshot.projects[projectIndex].milestones.sort { ($0.dueAt ?? "9999") < ($1.dueAt ?? "9999") }
+        return milestone
+    }
+
+    @discardableResult
+    func updateProjectMilestone(id: Int64, title: String, dueAt: String?, isCompleted: Bool) throws -> ProjectBoardMilestone {
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedTitle.isEmpty else {
+            throw ProjectBoardStoreError.emptyTitle
+        }
+        for projectIndex in snapshot.projects.indices {
+            guard let milestoneIndex = snapshot.projects[projectIndex].milestones.firstIndex(where: { $0.id == id }) else {
+                continue
+            }
+            let updated = ProjectBoardMilestone(
+                id: id,
+                projectID: snapshot.projects[projectIndex].id,
+                title: normalizedTitle,
+                dueAt: dueAt?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank,
+                isCompleted: isCompleted
+            )
+            snapshot.projects[projectIndex].milestones[milestoneIndex] = updated
+            return updated
+        }
+        throw ProjectMilestoneStoreError.notFound(id)
+    }
+
+    func deleteProjectMilestone(id: Int64) throws {
+        for projectIndex in snapshot.projects.indices {
+            let originalCount = snapshot.projects[projectIndex].milestones.count
+            snapshot.projects[projectIndex].milestones.removeAll { $0.id == id }
+            if snapshot.projects[projectIndex].milestones.count != originalCount {
+                return
+            }
+        }
+        throw ProjectMilestoneStoreError.notFound(id)
+    }
+
     private func upsert(_ task: ProjectBoardTask) {
         guard let projectIndex = snapshot.projects.firstIndex(where: { $0.id == task.projectID }) else {
             return
@@ -281,6 +369,13 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         throw DatabaseError.stepFailed("Task \(id) was not found.")
     }
 
+    private func existingCompletedAt(id: Int64, status: ProjectTaskStatus) -> String? {
+        guard let task = try? findTask(id: id) else {
+            return status == .done ? Self.nowCompletedAt() : nil
+        }
+        return status == .done ? task.completedAt ?? Self.nowCompletedAt() : task.completedAt
+    }
+
     private func prepareProjectForTaskMutation(projectID: Int64, taskStatus: ProjectTaskStatus) throws {
         guard let projectIndex = snapshot.projects.firstIndex(where: { $0.id == projectID }) else {
             throw DatabaseError.stepFailed("Project \(projectID) was not found.")
@@ -299,6 +394,16 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         let tasks = snapshot.projects[projectIndex].tasks
         let openCount = tasks.filter { $0.status != .done }.count
         snapshot.projects[projectIndex].subtitle = "\(openCount) open / \(tasks.count) total"
+    }
+
+    private static func nowCompletedAt() -> String {
+        ISO8601DateFormatter().string(from: Date())
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        isEmpty ? nil : self
     }
 }
 

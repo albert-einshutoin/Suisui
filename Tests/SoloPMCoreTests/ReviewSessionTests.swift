@@ -35,6 +35,19 @@ final class ReviewSessionTests: XCTestCase {
         XCTAssertFalse(session.canExecute)
     }
 
+    func testEditingApprovedWriteActionInvalidatesApprovalBeforeExecution() throws {
+        let plan = ActionPlan.reviewFixture(actions: [
+            PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+        ])
+        var session = ReviewSession(plan: plan)
+        try session.approve(token: ApprovalToken(id: "approval-1", sessionID: session.id))
+
+        session.updateStringArgument(id: "task", key: "title", value: "Edited")
+
+        XCTAssertEqual(session.approvalState, .pending)
+        XCTAssertFalse(session.canExecute)
+    }
+
     func testReviewActionArgumentSummaryTruncatesLongValuesAndExtraFields() throws {
         let plan = ActionPlan.reviewFixture(actions: [
             PlanAction(
@@ -144,6 +157,34 @@ final class ActionExecutorTests: XCTestCase {
         XCTAssertEqual(executed.executionStatus, .failed)
         XCTAssertEqual(executed.items.map(\.executionStatus), [.succeeded, .failed, .skipped])
         XCTAssertEqual(executed.items[1].failureRecovery, .retryable)
+    }
+
+    func testExecutorTreatsFailedToolResultAsActionFailure() throws {
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .projectList, description: "verification", inputSchema: ToolInputSchema(), permissionLevel: .read) { _, _ in
+                ToolResult(
+                    tool: .projectList,
+                    status: .failed,
+                    summary: "Verification failed",
+                    output: ["passed": .bool(false)]
+                )
+            },
+            StaticTool(name: .taskListDue, description: "after", inputSchema: ToolInputSchema(), permissionLevel: .read) { _, _ in
+                ToolResult(tool: .taskListDue, status: .succeeded, summary: "should not run")
+            }
+        ])
+        let session = ReviewSession(plan: .reviewFixture(actions: [
+            PlanAction(id: "verification", tool: .projectList),
+            PlanAction(id: "after", tool: .taskListDue)
+        ]))
+
+        let executed = try ActionExecutor(registry: registry).execute(session)
+
+        XCTAssertEqual(executed.executionStatus, .failed)
+        XCTAssertEqual(executed.items.map(\.executionStatus), [.failed, .skipped])
+        XCTAssertEqual(executed.items.first?.result?.status, .failed)
+        XCTAssertEqual(executed.items.first?.errorMessage, "Verification failed")
+        XCTAssertEqual(executed.items.first?.failureRecovery, .retryable)
     }
 
     func testExecutorClassifiesValidationFailureAsNotRetryable() throws {

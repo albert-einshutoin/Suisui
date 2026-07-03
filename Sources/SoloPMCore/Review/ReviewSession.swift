@@ -258,13 +258,8 @@ public struct ReviewSession: Equatable, Sendable {
     }
 
     private mutating func refreshApprovalState() {
-        let next = Self.initialApprovalState(for: enabledItems.map(\.editedAction))
-        switch (approvalState, next) {
-        case (.approved, .pending):
-            return
-        default:
-            approvalState = next
-        }
+        // Editing changes the reviewed payload, so write approvals must be reissued before execution.
+        approvalState = Self.initialApprovalState(for: enabledItems.map(\.editedAction))
     }
 
     private static func initialApprovalState(for actions: [PlanAction]) -> ApprovalState {

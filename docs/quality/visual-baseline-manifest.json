@@ -1,0 +1,207 @@
+{
+  "schemaVersion": 1,
+  "artifactRoot": "docs/release/evidence/ui-screenshots",
+  "baselineRoot": "docs/quality/visual-baselines",
+  "semanticTolerances": {
+    "comparisonMode": "semantic",
+    "allowPixelPerfectOnly": false,
+    "minimumBytes": 50000,
+    "minimumWidth": 640,
+    "minimumHeight": 420,
+    "minimumLuminanceRange": 12,
+    "minimumColorBuckets": 8,
+    "blackScreenMaximumLuminance": 8,
+    "requiresAXFrameAudit": true
+  },
+  "screens": [
+    {
+      "id": "project-board",
+      "title": "Project Board",
+      "themes": ["light", "dark", "system"],
+      "viewport": {
+        "width": 1560,
+        "height": 860
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "project-board-light.png",
+        "dark": "project-board-dark.png",
+        "system": "project-board-system.png"
+      }
+    },
+    {
+      "id": "inbox",
+      "title": "Inbox",
+      "themes": ["light", "dark", "system"],
+      "viewport": {
+        "width": 1560,
+        "height": 860
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "inbox-light.png",
+        "dark": "inbox-dark.png",
+        "system": "inbox-system.png"
+      }
+    },
+    {
+      "id": "today",
+      "title": "Today",
+      "themes": ["light", "dark", "system"],
+      "viewport": {
+        "width": 1560,
+        "height": 860
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "today-light.png",
+        "dark": "today-dark.png",
+        "system": "today-system.png"
+      }
+    },
+    {
+      "id": "inbox-voice",
+      "title": "Inbox Voice",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1560,
+        "height": 860
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "inbox-voice-light.png",
+        "dark": "inbox-voice-dark.png"
+      }
+    },
+    {
+      "id": "projects-overview",
+      "title": "Projects Overview",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1560,
+        "height": 860
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "projects-overview-light.png",
+        "dark": "projects-overview-dark.png"
+      }
+    },
+    {
+      "id": "schedule",
+      "title": "Schedule",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1560,
+        "height": 860
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "schedule-light.png",
+        "dark": "schedule-dark.png"
+      }
+    },
+    {
+      "id": "schedule-workload",
+      "title": "Schedule Workload",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1560,
+        "height": 860
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "schedule-workload-light.png",
+        "dark": "schedule-workload-dark.png"
+      }
+    },
+    {
+      "id": "done",
+      "title": "Done",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1560,
+        "height": 860
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "done-light.png",
+        "dark": "done-dark.png"
+      }
+    },
+    {
+      "id": "settings-overview",
+      "title": "Settings Overview",
+      "themes": ["light", "dark", "system"],
+      "viewport": {
+        "width": 1200,
+        "height": 720
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "settings-overview-light.png",
+        "dark": "settings-overview-dark.png",
+        "system": "settings-overview-system.png"
+      }
+    },
+    {
+      "id": "settings-integrations",
+      "title": "Settings Integrations",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1200,
+        "height": 720
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "settings-integrations-light.png",
+        "dark": "settings-integrations-dark.png"
+      }
+    },
+    {
+      "id": "settings-appearance",
+      "title": "Settings Appearance",
+      "themes": ["light", "dark", "system"],
+      "viewport": {
+        "width": 1200,
+        "height": 720
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "settings-appearance-light.png",
+        "dark": "settings-appearance-dark.png",
+        "system": "settings-appearance-system.png"
+      }
+    },
+    {
+      "id": "mcp-settings",
+      "title": "MCP Settings",
+      "themes": ["light", "dark", "system"],
+      "viewport": {
+        "width": 1200,
+        "height": 720
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "settings-mcp-light.png",
+        "dark": "settings-mcp-dark.png",
+        "system": "settings-mcp-system.png"
+      }
+    },
+    {
+      "id": "voice-command",
+      "title": "Voice Command",
+      "themes": ["light", "dark", "system"],
+      "viewport": {
+        "width": 1560,
+        "height": 860
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "voice-command-light.png",
+        "dark": "voice-command-dark.png",
+        "system": "voice-command-system.png"
+      }
+    }
+  ]
+}

@@ -52,6 +52,25 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertFalse(evidence.contains("TBD"))
     }
 
+    func testTrackedInspectorEvidenceSourceCommitMatchesCurrentMCPSourceCommit() throws {
+        let evidence = try readPackageFile("docs/release/evidence/mcp-inspector.md")
+        let currentMCPSourceCommit = try gitOutput(
+            "log",
+            "-1",
+            "--format=%h",
+            "--",
+            "Sources/SoloPMCore/ExternalMCP",
+            "Sources/SoloPMApp/SoloPMApp.swift",
+            "fixtures/mcp",
+            "Package.swift"
+        )
+
+        XCTAssertTrue(
+            evidence.contains("- Source commit: `\(currentMCPSourceCommit)`"),
+            "Run ./script/verify_mcp_compliance.sh after MCP runtime, settings, fixture, or package changes."
+        )
+    }
+
     func testComplianceReviewAndEvidenceRecordStableSpecAndDraftBoundary() throws {
         let complianceReview = try readPackageFile("docs/mcp-compliance.md")
         let evidence = try readPackageFile("docs/release/evidence/mcp-inspector.md")
@@ -65,7 +84,7 @@ final class MCPInspectorEvidenceTests: XCTestCase {
             XCTAssertTrue(content.contains("Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release."))
             XCTAssertTrue(content.contains("Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"))
             XCTAssertTrue(content.contains("Official versioning assertion: current protocol version is `2025-11-25`"))
-            XCTAssertTrue(content.contains("Official latest checked: 2026-06-20"))
+            XCTAssertTrue(content.contains("Official latest checked: 2026-06-24"))
             XCTAssertTrue(content.contains("Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"))
             XCTAssertTrue(content.contains("Draft watchlist: `2026-07-28`"))
             XCTAssertTrue(content.contains("Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog"))
@@ -86,7 +105,7 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertTrue(script.contains("Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release."))
         XCTAssertTrue(script.contains("Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"))
         XCTAssertTrue(script.contains("Official versioning assertion: current protocol version is \\`2025-11-25\\`"))
-        XCTAssertTrue(script.contains("Official latest checked: 2026-06-20"))
+        XCTAssertTrue(script.contains("Official latest checked: 2026-06-24"))
         XCTAssertTrue(script.contains("Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"))
         XCTAssertTrue(script.contains("Draft watchlist:"))
         XCTAssertTrue(script.contains("2026-07-28"))
@@ -139,9 +158,9 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         let complianceReview = try readPackageFile("docs/mcp-compliance.md")
         let releaseReport = try readPackageFile("script/release_readiness_report.sh")
 
-        XCTAssertTrue(complianceReview.contains("Last reviewed: 2026-06-20"))
-        XCTAssertTrue(complianceReview.contains("Official latest checked: 2026-06-20"))
-        XCTAssertTrue(releaseReport.contains("Last reviewed: 2026-06-20"))
+        XCTAssertTrue(complianceReview.contains("Last reviewed: 2026-06-24"))
+        XCTAssertTrue(complianceReview.contains("Official latest checked: 2026-06-24"))
+        XCTAssertTrue(releaseReport.contains("Last reviewed: 2026-06-24"))
     }
 
     func testInspectorVerificationScriptRunsWithFakeInspectorWithoutNetwork() throws {
@@ -223,6 +242,27 @@ final class MCPInspectorEvidenceTests: XCTestCase {
 
         let data = output.fileHandleForReading.readDataToEndOfFile()
         return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+    }
+
+    private func gitOutput(_ arguments: String...) throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["git"] + arguments
+        process.currentDirectoryURL = packageRoot()
+
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+
+        try process.run()
+        process.waitUntilExit()
+
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        let text = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        XCTAssertEqual(process.terminationStatus, 0, text)
+        return text
     }
 
     private func packageRoot() -> URL {

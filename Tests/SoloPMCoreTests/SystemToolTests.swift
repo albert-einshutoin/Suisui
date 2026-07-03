@@ -146,7 +146,7 @@ final class SystemToolTests: XCTestCase {
         let linkStore = SQLiteCalendarLinkStore(connection: connection)
         let tool = CalendarTool(name: .calendarCreateEvent, client: InMemoryCalendarClient(), linkStore: linkStore)
 
-        _ = try tool.execute(
+        let result = try tool.execute(
             arguments: [
                 "title": .string("Deep work"),
                 "startAt": .string("2026-06-18T09:00:00Z"),
@@ -161,6 +161,9 @@ final class SystemToolTests: XCTestCase {
         XCTAssertEqual(link.eventID, "calendar-event-1")
         XCTAssertEqual(link.projectID, 10)
         XCTAssertEqual(link.taskID, 20)
+        XCTAssertEqual(result.output["calendarEventId"], .string("calendar-event-1"))
+        XCTAssertEqual(result.output["projectId"], .number(10))
+        XCTAssertEqual(result.output["taskId"], .number(20))
     }
 
     func testCalendarLinkStoreRejectsCorruptedTaskIDInsteadOfDroppingLink() throws {
@@ -297,6 +300,39 @@ final class SystemToolTests: XCTestCase {
         )
     }
 
+    func testFileSystemToolRejectsSymlinkEscapeBeforeWriting() throws {
+        let root = temporaryDirectory()
+        let outsideRoot = temporaryDirectory()
+        let symlinkURL = root.appendingPathComponent("linked-outside")
+        try FileManager.default.createSymbolicLink(at: symlinkURL, withDestinationURL: outsideRoot)
+        let tool = FileSystemTool(
+            name: .filesystemCreateMarkdownFile,
+            client: LocalFileAccessClient(workspaceRoot: root)
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "relativePath": .string("linked-outside/escape.md"),
+                    "contents": .string("# Escape")
+                ],
+                context: approvedContext()
+            )
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outsideRoot.appendingPathComponent("escape.md").path))
+    }
+
+    func testFilesystemToolsDoNotExposeDeleteCapability() throws {
+        XCTAssertTrue(ActionTool.allCases.filter { tool in
+            tool.rawValue.hasPrefix("filesystem.") && tool.rawValue.localizedCaseInsensitiveContains("delete")
+        }.isEmpty)
+
+        let registry = try ToolRegistryTestFactory.inMemoryPhase2MVP(workspaceRoot: temporaryDirectory())
+        XCTAssertTrue(registry.registeredTools.filter { tool in
+            tool.rawValue.hasPrefix("filesystem.") && tool.rawValue.localizedCaseInsensitiveContains("delete")
+        }.isEmpty)
+    }
+
     func testFileSystemToolPersistsCreatedArtifactLinkWhenProjectIDIsProvided() throws {
         let root = temporaryDirectory()
         let connection = try currentMigratedConnection()
@@ -390,6 +426,70 @@ final class SystemToolTests: XCTestCase {
         XCTAssertFalse(ActionTool.allCases.contains { $0.rawValue == "maildraft.send" })
     }
 
+    func testLocalFileMailDraftClientPersistsDraftWithoutSendSurface() throws {
+        let directory = temporaryDirectory().appendingPathComponent("MailDrafts", isDirectory: true)
+        let client = LocalFileMailDraftClient(draftsDirectoryURL: directory)
+
+        let record = try client.createTextDraft(
+            to: " team@example.com ",
+            subject: " Status / release ",
+            body: "  Draft only\nNo send.\n"
+        )
+
+        XCTAssertTrue(record.id.hasPrefix("mail-draft-"))
+        XCTAssertEqual(record.to, "team@example.com")
+        XCTAssertEqual(record.subject, "Status / release")
+        XCTAssertEqual(record.body, "  Draft only\nNo send.\n")
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        XCTAssertEqual(files.count, 1)
+        XCTAssertEqual(files.first?.pathExtension, "json")
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: directory.path)[.posixPermissions] as? Int, 0o700)
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: try XCTUnwrap(files.first).path)[.posixPermissions] as? Int, 0o600)
+        XCTAssertEqual(try directory.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+        XCTAssertEqual(try XCTUnwrap(files.first).resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+
+        let data = try Data(contentsOf: try XCTUnwrap(files.first))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["id"] as? String, record.id)
+        XCTAssertEqual(object["to"] as? String, "team@example.com")
+        XCTAssertEqual(object["subject"] as? String, "Status / release")
+        XCTAssertEqual(object["body"] as? String, "  Draft only\nNo send.\n")
+        XCTAssertNil(object["sentAt"])
+        XCTAssertFalse(ActionTool.allCases.contains { $0.rawValue == "maildraft.send" })
+    }
+
+    func testLocalFileMailDraftClientRejectsUnsafeRecipientAndPrunesExpiredDrafts() throws {
+        let directory = temporaryDirectory().appendingPathComponent("MailDrafts", isDirectory: true)
+        let staleURL = directory.appendingPathComponent("stale.json")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: staleURL)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 100)],
+            ofItemAtPath: staleURL.path
+        )
+        let client = LocalFileMailDraftClient(
+            draftsDirectoryURL: directory,
+            retentionInterval: 60,
+            now: { Date(timeIntervalSince1970: 200) }
+        )
+
+        XCTAssertThrowsError(
+            try client.createTextDraft(
+                to: "team@example.com\nbcc: customer@example.com",
+                subject: "Status",
+                body: "Draft only"
+            )
+        ) { error in
+            XCTAssertEqual(error as? ToolClientError, .invalidRequest("Mail draft recipient must be a single address or contact name."))
+        }
+
+        _ = try client.createTextDraft(to: nil, subject: "Status", body: "Draft only")
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staleURL.path))
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        XCTAssertEqual(files.count, 1)
+    }
+
     func testAuditedToolLogsApprovalMissingAndRedactsArguments() throws {
         let logger = InMemoryAuditLogger()
         let base = StaticTool(
@@ -476,6 +576,35 @@ final class SystemToolTests: XCTestCase {
         XCTAssertFalse(arguments.contains("beta gamma"))
         XCTAssertTrue(arguments.contains("apiKey=[REDACTED_SECRET]"))
         XCTAssertTrue(arguments.contains("title=string(\"Secret task\")"))
+    }
+
+    func testAuditedToolRedactsFreeformContentArguments() throws {
+        let logger = InMemoryAuditLogger()
+        let base = StaticTool(
+            name: .taskCreate,
+            description: "Create task",
+            inputSchema: ToolInputSchema(required: ["title"]),
+            permissionLevel: .writeWithApproval
+        ) { _, _ in
+            ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created")
+        }
+        let audited = AuditedTool(base: base, logger: logger)
+        let sourceBody = "public struct InternalPlan { let value = 1 }"
+
+        XCTAssertThrowsError(
+            try audited.execute(
+                arguments: [
+                    "title": .string("Create repo file"),
+                    "contents": .string(sourceBody)
+                ],
+                context: ToolExecutionContext(source: .developerTool)
+            )
+        )
+
+        let arguments = try XCTUnwrap(logger.recordedEvents.last?.metadata["arguments"])
+        XCTAssertFalse(arguments.contains(sourceBody))
+        XCTAssertTrue(arguments.contains("contents=[REDACTED_SECRET]"))
+        XCTAssertTrue(arguments.contains("title=string(\"Create repo file\")"))
     }
 
     func testPhase2MVPRegistryContainsSystemTools() throws {

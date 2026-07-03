@@ -78,16 +78,26 @@ public struct ActionExecutor: Sendable {
                     arguments: action.arguments,
                     context: ToolExecutionContext(approvalToken: working.approvalToken, now: now, source: .reviewUI)
                 )
-                working.markAction(id: item.id, status: .succeeded, result: result)
+                let actionStatus = Self.actionExecutionStatus(for: result.status)
+                if result.status == .failed {
+                    hasFailure = true
+                }
+                working.markAction(
+                    id: item.id,
+                    status: actionStatus,
+                    result: result,
+                    errorMessage: result.status == .failed ? redacted(result.summary) : nil,
+                    failureRecovery: result.status == .failed ? .retryable : nil
+                )
                 recordToolEventOrMarkAuditFailure(
                     tool: action.tool,
-                    status: .succeeded,
+                    status: Self.auditStatus(for: result.status),
                     actionID: item.id,
                     result: result,
                     session: &working
                 )
 
-                if action.tool == .projectCreate, let projectID = result.output["projectId"] {
+                if result.status == .succeeded, action.tool == .projectCreate, let projectID = result.output["projectId"] {
                     latestProjectID = projectID
                 }
             } catch {
@@ -183,6 +193,28 @@ public struct ActionExecutor: Sendable {
 
         let message = String(describing: error)
         return message.localizedCaseInsensitiveContains("permission") ? .notRetryable : .retryable
+    }
+
+    private static func actionExecutionStatus(for status: ToolExecutionStatus) -> ReviewActionExecutionStatus {
+        switch status {
+        case .succeeded:
+            return .succeeded
+        case .failed:
+            return .failed
+        case .skipped:
+            return .skipped
+        }
+    }
+
+    private static func auditStatus(for status: ToolExecutionStatus) -> AuditStatus {
+        switch status {
+        case .succeeded:
+            return .succeeded
+        case .failed:
+            return .failed
+        case .skipped:
+            return .skipped
+        }
     }
 
     private func recordReviewEvent(action: String, status: AuditStatus, session: ReviewSession) throws {

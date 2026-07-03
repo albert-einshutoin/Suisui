@@ -6,12 +6,21 @@ let package = Package(
     name: "SoloPM",
     defaultLocalization: "en",
     platforms: [
-        .macOS(.v14)
+        .macOS(.v14),
+        .iOS(.v17)
     ],
     products: [
         .library(
             name: "SoloPMCore",
             targets: ["SoloPMCore"]
+        ),
+        .library(
+            name: "SoloPMiOS",
+            targets: ["SoloPMiOS"]
+        ),
+        .library(
+            name: "SoloPMWeb",
+            targets: ["SoloPMWeb"]
         ),
         .executable(
             name: "SoloPM",
@@ -40,10 +49,25 @@ let package = Package(
             name: "SoloPMExternalConnectors",
             dependencies: ["SoloPMCore"]
         ),
+        .target(
+            name: "SoloPMGoogleCalendarRuntime",
+            dependencies: ["SoloPMCore"]
+        ),
+        .target(
+            name: "SoloPMiOS",
+            dependencies: ["SoloPMCore"],
+            path: "Sources/SoloPMiOS"
+        ),
+        .target(
+            name: "SoloPMWeb",
+            dependencies: ["SoloPMCore"],
+            path: "Sources/SoloPMWeb"
+        ),
         .executableTarget(
             name: "SoloPM",
             dependencies: [
                 "SoloPMCore",
+                "SoloPMGoogleCalendarRuntime",
                 .product(name: "Sparkle", package: "Sparkle"),
                 .product(name: "SwiftTerm", package: "SwiftTerm")
             ],
@@ -58,7 +82,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SoloPMCoreTests",
-            dependencies: ["SoloPMCore", "SoloPMExternalConnectors"],
+            dependencies: ["SoloPMCore", "SoloPMExternalConnectors", "SoloPMGoogleCalendarRuntime", "SoloPMWeb"],
             resources: [
                 .process("Fixtures")
             ]

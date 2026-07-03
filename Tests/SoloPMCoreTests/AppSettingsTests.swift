@@ -1,3 +1,4 @@
+import Darwin
 import XCTest
 @testable import SoloPMCore
 
@@ -27,9 +28,10 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.validate().first?.field, "defaultWorkspacePath")
     }
 
-    func testReleaseReadySTTProvidersOnlyExposeImplementedRuntimeProvider() {
-        XCTAssertEqual(STTProvider.releaseReadyCases, [.openAITranscribe])
+    func testReleaseReadySTTProvidersExposeImplementedRuntimeProviders() {
+        XCTAssertEqual(STTProvider.releaseReadyCases, [.openAITranscribe, .localWhisperCpp])
         XCTAssertTrue(STTProvider.openAITranscribe.isReleaseReady)
+        XCTAssertTrue(STTProvider.localWhisperCpp.isReleaseReady)
         XCTAssertFalse(STTProvider.localWhisperKit.isReleaseReady)
     }
 
@@ -43,12 +45,203 @@ final class AppSettingsTests: XCTestCase {
             sttProvider: .openAITranscribe,
             notificationsEnabled: true,
             defaultWorkspacePath: "/tmp/SoloPM",
-            timeZoneIdentifier: "Asia/Tokyo"
+            timeZoneIdentifier: "Asia/Tokyo",
+            googleCalendarID: "team@example.com"
         )
 
         try store.save(settings)
 
         XCTAssertEqual(try store.load(), settings)
+    }
+
+    func testManagedAIBillingSettingsPersistAndExposePerRunPreviewCap() throws {
+        let suiteName = "SoloPM.AppSettingsBillingCaps.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let settings = AppSettings(
+            managedAIBilling: ManagedAIBillingSettings(
+                isEnabled: true,
+                perRunCapCents: 50,
+                dailyCapCents: 150,
+                monthlyCapCents: 900,
+                workspaceCapCents: 75
+            )
+        )
+
+        try store.save(settings)
+
+        let loaded = try store.load()
+        XCTAssertEqual(loaded.managedAIBilling, settings.managedAIBilling)
+        XCTAssertEqual(loaded.normalizedForRuntime.managedAIBilling.hardCapCentsForPreview, 50)
+    }
+
+    func testManagedAIBillingSettingsRejectInvalidCaps() {
+        let settings = AppSettings(
+            managedAIBilling: ManagedAIBillingSettings(
+                isEnabled: true,
+                perRunCapCents: -1,
+                dailyCapCents: 0,
+                monthlyCapCents: -10,
+                workspaceCapCents: 25
+            )
+        )
+
+        XCTAssertEqual(
+            settings.validate().filter { $0.field.hasPrefix("managedAIBilling") },
+            [
+                ValidationIssue(
+                    field: "managedAIBilling.perRunCapCents",
+                    message: "Managed AI per-run cap must be greater than 0 cents.",
+                    severity: .error
+                ),
+                ValidationIssue(
+                    field: "managedAIBilling.dailyCapCents",
+                    message: "Managed AI daily cap must be greater than 0 cents.",
+                    severity: .error
+                ),
+                ValidationIssue(
+                    field: "managedAIBilling.monthlyCapCents",
+                    message: "Managed AI monthly cap must be greater than 0 cents.",
+                    severity: .error
+                )
+            ]
+        )
+    }
+
+    func testManagedAICostRateCardResolverReadsConfiguredEnvironment() {
+        let environment = [
+            ManagedAICostRateCardConfiguration.providerIDEnvironmentKey: " solopm.managed ",
+            ManagedAICostRateCardConfiguration.modelNameEnvironmentKey: " managed-small ",
+            ManagedAICostRateCardConfiguration.currencyCodeEnvironmentKey: " usd ",
+            ManagedAICostRateCardConfiguration.inputTokenCentsPerMillionEnvironmentKey: "10000",
+            ManagedAICostRateCardConfiguration.outputTokenCentsPerMillionEnvironmentKey: "20000"
+        ]
+        let resolver = ManagedAICostRateCardResolver(environment: environment)
+        let response = PlanningResponse(
+            providerID: "solopm.managed",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: []),
+            model: ExecutionReceiptModel(provider: "solopm.managed", name: "managed-small")
+        )
+
+        let rateCard = resolver.rateCard(for: response)
+
+        XCTAssertEqual(rateCard?.provider, "solopm.managed")
+        XCTAssertEqual(rateCard?.modelName, "managed-small")
+        XCTAssertEqual(rateCard?.currencyCode, "USD")
+        XCTAssertEqual(rateCard?.inputTokenCentsPerMillion, 10_000)
+        XCTAssertEqual(rateCard?.outputTokenCentsPerMillion, 20_000)
+    }
+
+    func testManagedAICostRateCardResolverIgnoresMissingOrInvalidRates() {
+        let invalidResolver = ManagedAICostRateCardResolver(environment: [
+            ManagedAICostRateCardConfiguration.providerIDEnvironmentKey: "solopm.managed",
+            ManagedAICostRateCardConfiguration.modelNameEnvironmentKey: "managed-small",
+            ManagedAICostRateCardConfiguration.inputTokenCentsPerMillionEnvironmentKey: "0",
+            ManagedAICostRateCardConfiguration.outputTokenCentsPerMillionEnvironmentKey: "invalid"
+        ])
+        let response = PlanningResponse(
+            providerID: "solopm.managed",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        )
+
+        XCTAssertNil(invalidResolver.rateCard(for: response))
+        XCTAssertNil(ManagedAICostRateCardResolver(environment: [:]).rateCard(for: response))
+    }
+
+    func testManagedAICostRateCardResolverRequiresMatchingModelName() {
+        let resolver = ManagedAICostRateCardResolver(configuration: ManagedAICostRateCardConfiguration(
+            providerID: "solopm.managed",
+            modelName: "managed-small",
+            inputTokenCentsPerMillion: 10_000,
+            outputTokenCentsPerMillion: 20_000
+        ))
+        let response = PlanningResponse(
+            providerID: "solopm.managed",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: []),
+            model: ExecutionReceiptModel(provider: "solopm.managed", name: "managed-large")
+        )
+
+        XCTAssertNil(resolver.rateCard(for: response))
+    }
+
+    @MainActor
+    func testAppSettingsViewModelSavesManagedAIBillingCaps() throws {
+        let suiteName = "SoloPM.AppSettingsBillingCapViewModel.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        viewModel.setManagedAIBillingEnabled(true)
+        viewModel.setManagedAIPerRunCapCents(125)
+        viewModel.setManagedAIDailyCapCents(200)
+        viewModel.setManagedAIMonthlyCapCents(1_000)
+        viewModel.setManagedAIWorkspaceCapCents(nil)
+        viewModel.saveSettings()
+
+        XCTAssertEqual(viewModel.successMessage, "Settings saved.")
+        let saved = try store.load().managedAIBilling
+        XCTAssertTrue(saved.isEnabled)
+        XCTAssertEqual(saved.perRunCapCents, 125)
+        XCTAssertEqual(saved.dailyCapCents, 200)
+        XCTAssertEqual(saved.monthlyCapCents, 1_000)
+        XCTAssertNil(saved.workspaceCapCents)
+    }
+
+    func testGoogleCalendarIDDefaultsAndNormalizesForRuntime() throws {
+        let legacyData = Data("""
+        {
+          "aiProvider": "openAIResponses",
+          "sttProvider": "openAITranscribe",
+          "notificationsEnabled": false,
+          "defaultWorkspacePath": null,
+          "timeZoneIdentifier": "UTC"
+        }
+        """.utf8)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: legacyData)
+        let trimmed = AppSettings(googleCalendarID: " team@example.com ").normalizedForRuntime
+        let blank = AppSettings(googleCalendarID: " \n ").normalizedForRuntime
+
+        XCTAssertEqual(AppSettings.default.googleCalendarID, "primary")
+        XCTAssertEqual(decoded.googleCalendarID, "primary")
+        XCTAssertEqual(trimmed.googleCalendarID, "team@example.com")
+        XCTAssertEqual(blank.googleCalendarID, "")
+    }
+
+    func testUserDefaultsAppSettingsStoreCanUseRuntimeSuiteOverride() throws {
+        let suiteName = "SoloPM.AppSettingsRuntimeSuite.\(UUID().uuidString)"
+        let defaults = UserDefaultsAppSettingsStore.defaultUserDefaults(environment: [
+            UserDefaultsAppSettingsStore.suiteNameEnvironmentKey: suiteName
+        ])
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let settings = AppSettings(notificationsEnabled: true)
+
+        try store.save(settings)
+
+        XCTAssertEqual(try store.load().notificationsEnabled, true)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelSavesGoogleCalendarIDSetting() throws {
+        let suiteName = "SoloPM.AppSettingsGoogleCalendarID.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        viewModel.setGoogleCalendarID(" team-calendar@example.com ")
+        viewModel.saveSettings()
+
+        XCTAssertEqual(viewModel.successMessage, "Settings saved.")
+        XCTAssertEqual(try store.load().googleCalendarID, "team-calendar@example.com")
     }
 
     @MainActor
@@ -541,6 +734,7 @@ final class AppSettingsTests: XCTestCase {
         viewModel.setOpenCodeWorkspacePath(" /tmp ")
         viewModel.setOpenCodeModelID(" opencode-go/kimi-k2.7-code ")
         viewModel.setOpenCodeLocalExecutionApproved(true)
+        viewModel.setWhisperCppExecutablePath(" /opt/homebrew/bin/whisper-cli ")
         viewModel.saveSettings()
 
         let loaded = try store.load()
@@ -553,6 +747,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(loaded.openCodeWorkspacePath, "/tmp")
         XCTAssertEqual(loaded.openCodeModelID, "opencode-go/kimi-k2.7-code")
         XCTAssertTrue(loaded.isOpenCodeLocalExecutionApproved)
+        XCTAssertEqual(loaded.whisperCppExecutablePath, "/opt/homebrew/bin/whisper-cli")
     }
 
     @MainActor
@@ -662,6 +857,20 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(whitespaceModel.validate().first?.message, "OpenCode model id cannot contain whitespace.")
     }
 
+    func testAppSettingsValidatesWhisperCppExecutablePathOnlyWhenSelected() {
+        let inactive = AppSettings(sttProvider: .openAITranscribe, whisperCppExecutablePath: nil)
+        let missingConfig = AppSettings(sttProvider: .localWhisperCpp, whisperCppExecutablePath: nil)
+        let relativeExecutable = AppSettings(sttProvider: .localWhisperCpp, whisperCppExecutablePath: "whisper-cli")
+        let credentialPath = AppSettings(sttProvider: .localWhisperCpp, whisperCppExecutablePath: "/tmp/token.json")
+        let valid = AppSettings(sttProvider: .localWhisperCpp, whisperCppExecutablePath: "/opt/homebrew/bin/whisper-cli")
+
+        XCTAssertTrue(inactive.validate().isEmpty)
+        XCTAssertEqual(missingConfig.validate().first?.field, "whisperCppExecutablePath")
+        XCTAssertEqual(relativeExecutable.validate().first?.message, "whisper.cpp executable path must be absolute.")
+        XCTAssertEqual(credentialPath.validate().first?.message, "whisper.cpp executable path must not point to a credential or token file.")
+        XCTAssertFalse(valid.validate().contains { $0.field == "whisperCppExecutablePath" })
+    }
+
     func testRuntimeNormalizationPreservesUnavailableProviderForFailClosedRuntime() {
         let settings = AppSettings(aiProvider: .geminiOpenAICompatible)
 
@@ -687,6 +896,93 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertEqual(loaded.aiProvider, .groqOpenAICompatible)
         XCTAssertEqual(loaded.sttProvider, .openAITranscribe)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelSelectsWhisperCppOnlyWhenExecutableAndModelAreReady() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelWhisperCppReady.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let executableURL = try writeExecutable(named: "whisper-cli")
+        let viewModel = AppSettingsViewModel(
+            settingsStore: store,
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [.whisperCppTinyMultilingual: .installed])
+        )
+
+        viewModel.setWhisperCppExecutablePath(executableURL.path)
+
+        XCTAssertEqual(viewModel.selectableSTTProviders, [.openAITranscribe, .localWhisperCpp])
+
+        viewModel.setSTTProvider(.localWhisperCpp)
+        viewModel.saveSettings()
+
+        XCTAssertEqual(viewModel.settings.sttProvider, .localWhisperCpp)
+        XCTAssertEqual(try store.load().sttProvider, .localWhisperCpp)
+        XCTAssertEqual(try store.load().whisperCppExecutablePath, executableURL.path)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelRejectsWhisperCppSelectionUntilModelAndExecutableAreReady() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelWhisperCppUnavailable.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let executableURL = try writeExecutable(named: "whisper-cli")
+        let viewModel = AppSettingsViewModel(
+            settingsStore: store,
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [.whisperCppTinyMultilingual: .notInstalled])
+        )
+
+        viewModel.setWhisperCppExecutablePath(executableURL.path)
+        viewModel.setSTTProvider(.localWhisperCpp)
+
+        XCTAssertEqual(viewModel.selectableSTTProviders, [.openAITranscribe])
+        XCTAssertEqual(viewModel.settings.sttProvider, .openAITranscribe)
+        XCTAssertEqual(viewModel.errorMessage, "Install the whisper.cpp model and configure the executable before selecting offline speech to text.")
+    }
+
+    @MainActor
+    func testAppSettingsViewModelReportsWhisperCppSTTReadinessStages() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelWhisperCppReadiness.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let executableURL = try writeExecutable(named: "whisper-cli")
+        let missingModelViewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [
+                .whisperCppTinyMultilingual: .notInstalled
+            ])
+        )
+
+        XCTAssertEqual(missingModelViewModel.localSTTProviderReadinessRow.statusLabel, "Model not installed")
+        XCTAssertEqual(missingModelViewModel.localSTTProviderReadinessRow.nextActionLabel, "Download whisper.cpp model")
+        XCTAssertFalse(missingModelViewModel.localSTTProviderReadinessRow.isReady)
+
+        let runtimePendingViewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [
+                .whisperCppTinyMultilingual: .installed
+            ])
+        )
+
+        XCTAssertEqual(runtimePendingViewModel.localSTTProviderReadinessRow.statusLabel, "Runtime pending")
+        XCTAssertEqual(runtimePendingViewModel.localSTTProviderReadinessRow.nextActionLabel, "Configure whisper.cpp executable")
+        XCTAssertFalse(runtimePendingViewModel.localSTTProviderReadinessRow.isReady)
+
+        runtimePendingViewModel.setWhisperCppExecutablePath(executableURL.path)
+
+        XCTAssertEqual(runtimePendingViewModel.localSTTProviderReadinessRow.statusLabel, "Smoke pending")
+        XCTAssertEqual(
+            runtimePendingViewModel.localSTTProviderReadinessRow.detailLabel,
+            "Model and executable are ready; run the local voice runtime smoke before release closeout."
+        )
+        XCTAssertEqual(runtimePendingViewModel.localSTTProviderReadinessRow.nextActionLabel, "Run local voice smoke")
+        XCTAssertFalse(runtimePendingViewModel.localSTTProviderReadinessRow.isReady)
     }
 
     @MainActor
@@ -827,6 +1123,173 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertNil(openRouterSettings.openCodeExecutablePath)
         XCTAssertNil(openRouterSettings.openCodeWorkspacePath)
         XCTAssertNil(openRouterSettings.openCodeModelID)
+        XCTAssertEqual(openRouterSettings.googleCalendarID, "primary")
+    }
+
+    func testDefaultWorkspacePathMustBeAnAbsoluteDirectoryLocation() {
+        let relativeSettings = AppSettings(defaultWorkspacePath: "relative/project")
+        let fileSettings = AppSettings(defaultWorkspacePath: "/tmp/soloPM-token.json")
+        let absoluteSettings = AppSettings(defaultWorkspacePath: "/tmp/SoloPM")
+
+        XCTAssertEqual(
+            relativeSettings.validate().first { $0.field == "defaultWorkspacePath" }?.message,
+            "Default workspace path must be an absolute directory path."
+        )
+        XCTAssertEqual(
+            fileSettings.validate().first { $0.field == "defaultWorkspacePath" }?.message,
+            "Default workspace path must not point to a credential or token file."
+        )
+        XCTAssertFalse(absoluteSettings.validate().contains { $0.field == "defaultWorkspacePath" })
+    }
+
+    func testTTSProvidersExposeLocalKokoroWhileKeepingSystemSpeechUnsupported() {
+        XCTAssertEqual(TTSProvider.releaseReadyCases, [.localKokoro])
+        XCTAssertFalse(TTSProvider.systemSpeech.isReleaseReady)
+        XCTAssertTrue(TTSProvider.localKokoro.isReleaseReady)
+        XCTAssertEqual(TTSProvider.systemSpeech.displayName, "System Speech")
+        XCTAssertEqual(TTSProvider.localKokoro.displayName, "Local Kokoro")
+        XCTAssertEqual(TTSProvider.systemSpeech.unavailableReason, "System Speech is kept only for legacy settings and is not product TTS.")
+        XCTAssertEqual(TTSProvider.localKokoro.unavailableReason, "Install the Kokoro model and configure the executable in Settings.")
+    }
+
+    @MainActor
+    func testAppSettingsViewModelReportsKokoroTTSReadinessWithoutRequiringModelToSaveSettings() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelTTSReadiness.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let executableURL = try writeExecutable(named: "kokoro-tts")
+        let viewModel = AppSettingsViewModel(
+            settingsStore: store,
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [
+                .kokoro82M: .notInstalled
+            ])
+        )
+
+        XCTAssertEqual(viewModel.settings.ttsProvider, .localKokoro)
+        XCTAssertEqual(viewModel.selectableTTSProviders, [.localKokoro])
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.statusLabel, "Model not installed")
+
+        viewModel.setKokoroExecutablePath(executableURL.path)
+        viewModel.saveSettings()
+
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(viewModel.successMessage, "Settings saved.")
+    }
+
+    @MainActor
+    func testAppSettingsViewModelMarksKokoroTTSReadyWithInstalledModelAndExecutable() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelTTSReady.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let executableURL = try writeExecutable(named: "kokoro-tts")
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [
+                .kokoro82M: .installed
+            ])
+        )
+
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.statusLabel, "Runtime pending")
+
+        viewModel.setKokoroExecutablePath(executableURL.path)
+        viewModel.setTTSLanguageCode("ja")
+        viewModel.setTTSVoiceID("jf_alpha")
+
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.statusLabel, "Ready")
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.nextActionLabel, "Test play")
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.detailLabel, "JA / jf_alpha short prompts")
+    }
+
+    @MainActor
+    func testAppSettingsViewModelRunsReadyKokoroTTSPreview() async throws {
+        let suiteName = "SoloPM.AppSettingsViewModelTTSPreview.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let executableURL = try writeExecutable(named: "kokoro-tts")
+        let previewer = RecordingTTSPreviewClient()
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [
+                .kokoro82M: .installed
+            ])
+        )
+        viewModel.setKokoroExecutablePath(executableURL.path)
+        viewModel.setTTSLanguageCode("ja")
+        viewModel.setTTSVoiceID("jf_alpha")
+
+        await viewModel.testTTSPlayback(using: previewer)
+
+        XCTAssertEqual(
+            previewer.requests,
+            [
+                TextToSpeechRequest(
+                    text: "SoloPMのローカル音声テストです。",
+                    languageCode: "ja",
+                    voiceID: "jf_alpha"
+                )
+            ]
+        )
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(viewModel.successMessage, "TTS test play completed.")
+    }
+
+    @MainActor
+    func testAppSettingsViewModelBlocksTTSPreviewUntilReady() async throws {
+        let suiteName = "SoloPM.AppSettingsViewModelTTSPreviewBlocked.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let previewer = RecordingTTSPreviewClient()
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [
+                .kokoro82M: .notInstalled
+            ])
+        )
+
+        await viewModel.testTTSPlayback(using: previewer)
+
+        XCTAssertTrue(previewer.requests.isEmpty)
+        XCTAssertEqual(viewModel.errorMessage, "Download Kokoro model before test play.")
+        XCTAssertNil(viewModel.successMessage)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelRedactsTTSPreviewFailureDetails() async throws {
+        let suiteName = "SoloPM.AppSettingsViewModelTTSPreviewFailure.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let executableURL = try writeExecutable(named: "kokoro-tts")
+        let secret = "sk-localPreviewSecret123"
+        let localPath = "/Users/example/Library/Application Support/SoloPM/Voice/speech.wav"
+        let previewer = RecordingTTSPreviewClient(
+            error: SpeechAudioPlaybackError.playbackFailed("Playback failed at \(localPath) token=\(secret)")
+        )
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [
+                .kokoro82M: .installed
+            ])
+        )
+        viewModel.setKokoroExecutablePath(executableURL.path)
+
+        await viewModel.testTTSPlayback(using: previewer)
+
+        XCTAssertEqual(previewer.requests.count, 1)
+        let message = try XCTUnwrap(viewModel.errorMessage)
+        XCTAssertTrue(message.contains("TTS test play failed."))
+        XCTAssertTrue(message.contains("[REDACTED_PATH]"))
+        XCTAssertTrue(message.contains("[REDACTED_SECRET]"))
+        XCTAssertFalse(message.contains(localPath))
+        XCTAssertFalse(message.contains("Application Support"))
+        XCTAssertFalse(message.contains("speech.wav"))
+        XCTAssertFalse(message.contains(secret))
+        XCTAssertNil(viewModel.successMessage)
     }
 
     @MainActor
@@ -849,6 +1312,50 @@ final class AppSettingsTests: XCTestCase {
     private func makeUserDefaults(_ label: String) throws -> UserDefaults {
         let suiteName = "SoloPM.AppSettingsTests.\(label).\(UUID().uuidString)"
         return try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    }
+
+    private func writeExecutable(named name: String) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("solopm-settings-executable-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent(name)
+        try Data("#!/bin/sh\n".utf8).write(to: url)
+        chmod(url.path, 0o755)
+        return url
+    }
+}
+
+private struct StaticAppSettingsVoiceModelManager: VoiceModelManaging {
+    var statuses: [VoiceModelID: VoiceModelInstallStatus]
+
+    func status(for model: VoiceModelDescriptor) -> VoiceModelInstallStatus {
+        statuses[model.id] ?? .notInstalled
+    }
+
+    func install(_ model: VoiceModelDescriptor) async throws -> VoiceModelInstall {
+        VoiceModelInstall(
+            modelID: model.id,
+            status: status(for: model),
+            localURL: URL(filePath: "/tmp/\(model.cacheFileName)")
+        )
+    }
+
+    func removeFromCache(_ model: VoiceModelDescriptor) throws {}
+}
+
+private final class RecordingTTSPreviewClient: TextToSpeechPreviewing, @unchecked Sendable {
+    private let error: Error?
+    private(set) var requests: [TextToSpeechRequest] = []
+
+    init(error: Error? = nil) {
+        self.error = error
+    }
+
+    func playPreview(_ request: TextToSpeechRequest) async throws {
+        requests.append(request)
+        if let error {
+            throw error
+        }
     }
 }
 

@@ -2,7 +2,29 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
+
+release_candidate_source_commit() {
+  local commit
+  # Manual helpers are regenerated around evidence files, but the stale check
+  # should follow the release-candidate app/runtime source, not helper commits.
+  commit="$(
+    git -C "$ROOT_DIR" log -1 --format=%h -- \
+      Sources/SoloPMApp \
+      Sources/SoloPMCore \
+      Sources/SoloPMCLI \
+      Sources/SoloPMExternalConnectors \
+      Package.swift \
+      packaging/app_metadata.env 2>/dev/null || true
+  )"
+  if [[ -n "$commit" ]]; then
+    printf "%s" "$commit"
+  else
+    git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
+  fi
+}
+
+SOURCE_COMMIT="$(release_candidate_source_commit)"
+RELEASE_EVIDENCE_SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
 
 VOICEOVER_SCRIPT="$ROOT_DIR/script/prepare_voiceover_review_candidate.sh"
 COMPETITOR_SCRIPT="$ROOT_DIR/script/create_competitor_hands_on_evidence.sh"
@@ -21,10 +43,10 @@ PRUNE_STALE=0
 usage() {
   printf '%s\n' "usage: $0 [--prune-stale]"
   printf '%s\n' ""
-  printf '%s\n' "Regenerates current-source-commit manual review helpers without writing passed evidence."
+  printf '%s\n' "Regenerates release-candidate manual review helpers without writing passed evidence."
   printf '%s\n' "This does not mark VoiceOver, competitor hands-on, signing, notarization, Sparkle, Gatekeeper, or release evidence as passed."
   printf '%s\n' ""
-  printf '%s\n' "--prune-stale removes ignored pending preview files for older source commits and legacy default preview files after the current helpers are regenerated."
+  printf '%s\n' "--prune-stale removes ignored pending preview files for older source commits and legacy default preview files after the release-candidate helpers are regenerated."
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -109,7 +131,12 @@ done
 cd "$ROOT_DIR"
 require_clean_tracked_source_tree_for_manual_helpers
 
-printf 'Preparing manual release helpers for current source commit: %s\n' "$SOURCE_COMMIT"
+# VoiceOver and competitor evidence review the shipped product surface, while
+# release-machine evidence must stay pinned to the exact HEAD that creates the
+# package/release scripts and final evidence. Printing both avoids operators
+# copying the wrong commit into a manual worksheet after script-only changes.
+printf 'Preparing manual review helpers for release-candidate product source commit: %s\n' "$SOURCE_COMMIT"
+printf 'Preparing release-machine helper for release evidence source commit: %s\n' "$RELEASE_EVIDENCE_SOURCE_COMMIT"
 printf '%s\n' 'This does not write passed manual evidence.'
 
 "$VOICEOVER_SCRIPT" --no-launch --skip-build
@@ -120,7 +147,9 @@ printf '%s\n' 'This does not write passed manual evidence.'
 "$RELEASE_MACHINE_SCRIPT"
 
 printf '\n'
-printf 'Manual release helpers prepared for current source commit: %s\n' "$SOURCE_COMMIT"
+printf 'Manual release helpers prepared.\n'
+printf -- '- Release-candidate product source commit: `%s`\n' "$SOURCE_COMMIT"
+printf -- '- Release evidence source commit: `%s`\n' "$RELEASE_EVIDENCE_SOURCE_COMMIT"
 printf -- '- VoiceOver pending preview: `%s`\n' "$VOICEOVER_PENDING_RELATIVE"
 printf -- '- VoiceOver worksheet: `%s`\n' "$VOICEOVER_WORKSHEET_RELATIVE"
 printf -- '- VoiceOver evidence command: `%s`\n' "$VOICEOVER_COMMAND_RELATIVE"

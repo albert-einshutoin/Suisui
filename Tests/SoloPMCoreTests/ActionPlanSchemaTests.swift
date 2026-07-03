@@ -35,6 +35,16 @@ final class ActionPlanSchemaTests: XCTestCase {
         XCTAssertEqual(Set(schemaTools), Set(ActionTool.allCases.map(\.rawValue)))
     }
 
+    func testSchemaDoesNotExposeFilesystemDeleteTool() throws {
+        let definitions = try XCTUnwrap(schemaObject()["$defs"] as? [String: Any])
+        let tool = try XCTUnwrap(definitions["tool"] as? [String: Any])
+        let schemaTools = try XCTUnwrap(tool["enum"] as? [String])
+
+        XCTAssertTrue(schemaTools.filter { value in
+            value.hasPrefix("filesystem.") && value.localizedCaseInsensitiveContains("delete")
+        }.isEmpty)
+    }
+
     func testSchemaRiskEnumMatchesRiskLevelCases() throws {
         let definitions = try XCTUnwrap(schemaObject()["$defs"] as? [String: Any])
         let riskLevel = try XCTUnwrap(definitions["riskLevel"] as? [String: Any])

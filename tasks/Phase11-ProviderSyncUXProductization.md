@@ -216,27 +216,34 @@
   - [x] `script/check_accessibility_preflight.sh` はProject OverviewのTask snapshot、Local Suggestions、Artifactsの支援技術CRUD入口もsource anchorとして監視する。
   - [x] `script/check_accessibility_preflight.sh` は主要CRUDのkeyboard shortcutsをsource anchorとして監視する。
   - [x] `script/check_accessibility_preflight.sh --runtime` は見えているrelease候補windowのunlabeled AX buttonsとhelp/child textなしgeneric `button` labelをblockerにする。
-  - [x] `script/check_accessibility_preflight.sh --runtime` はProject Board上のShow Archived、Add Project、Add Task、Save、Complete、Archive、Deleteのbutton help signalsを `crudSignals=8/8` としてblocker化する。
-  - [x] `script/check_accessibility_preflight.sh --runtime` はProject navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector のfocus path signalsを `focusPathSignals=6/6` としてblocker化する。
+  - [x] `script/check_accessibility_preflight.sh --runtime` はProject Board上のAdd Task、タスク詳細オープン、ステータス移動、ローカル提案適用、自動化レビュー、承認済み実行、Save、DeleteのAX identifier/help signalsを `crudSignals=8/8` としてblocker化する。
+  - [x] `script/check_accessibility_preflight.sh --runtime` はProject navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector のAX identifier/help signalsを `focusPathSignals=6/6` としてblocker化する。
+  - [x] `script/check_accessibility_preflight.sh --runtime` はDelete Task確認を開き、Cancel Delete TaskのAX identifier/help signalを `destructiveCancelSignals=1/1` としてblocker化する。
   - [x] `script/check_runtime_accessible_crud_smoke.sh` は隔離 `SOLOPM_DATABASE_PATH` と `SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION` を使い、実アプリのAccessibility操作でProjectの作成、リネーム保存、完了、削除、Task作成、Task更新、Task status移動、Task直接削除、Project削除時のTask cascade削除がSQLiteに反映されることを検証する。
-  - [x] VoiceOver passed evidence は同じrelease候補で実行したruntime AX smoke OK行、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8`、`focusPathSignals=6/6` を含まない場合release readyにしない。
+  - [x] VoiceOver passed evidence は同じrelease候補で実行したruntime AX smoke OK行、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8`、`focusPathSignals=6/6`、`destructiveCancelSignals=1/1` を含まない場合release readyにしない。
   - [x] `script/create_voiceover_evidence.sh --capture-runtime-ax-smoke` は手動VoiceOver証跡の作成時に同じrelease候補のruntime AX smoke OK行を自動取得し、古いコピー済みcountsでrelease readyを偽らない。
   - [x] `script/prepare_voiceover_review_candidate.sh` は隔離DBにVoiceOver確認用Project/各StatusのTask/Artifactをseedし、`SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION` 付きで同じrelease候補を開ける。
   - [x] `script/prepare_voiceover_review_candidate.sh` は `.tmp/voiceover-review/create-evidence-command.sh` を生成し、同じ候補DB/Project IDを使った手動VoiceOver証跡コマンドをoperatorがplaceholder置換して実行できる。
-  - [x] `script/prepare_voiceover_review_candidate.sh` pins `.tmp/voiceover-review/create-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for, and the generated command exits before writing evidence if the release candidate tree is dirty or the commit has changed.
+  - [x] `script/prepare_voiceover_review_candidate.sh` pins `.tmp/voiceover-review/create-evidence-command.sh` to a clean tracked source tree and the release-candidate source commit it was generated for, and the generated command exits before writing evidence if the release candidate tree is dirty or the commit has changed.
   - [x] `script/prepare_voiceover_review_candidate.sh` writes `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` with the current release-candidate `Source commit` without modifying tracked evidence.
   - [x] Direct `script/create_voiceover_evidence.sh --pending` defaults to `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` and does not modify tracked VoiceOver release evidence unless `--output` explicitly points there.
   - [x] `script/prepare_voiceover_review_candidate.sh` writes `.tmp/voiceover-review/launch.env` with `SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT` and `SOLOPM_VOICEOVER_REVIEW_PROJECT_ID` so manual reviewers do not launch stale VoiceOver candidates.
   - [x] Generated VoiceOver evidence command reloads `.tmp/voiceover-review/launch.env`, verifies the seeded candidate database/project id, and launches the same candidate before runtime AX smoke capture.
   - [x] Generated VoiceOver evidence command verifies `.tmp/voiceover-review/voiceover-worksheet.md` is current, marked completed, filled, and free of pending/unchecked markers before validate-only or passed evidence.
+  - [x] Generated VoiceOver evidence command reads the completed worksheet values directly into `script/create_voiceover_evidence.sh`, so the reviewer does not duplicate focus notes in command-line placeholders.
   - [x] Generated VoiceOver evidence command rejects boilerplate worksheet values such as `TBD`, `Verified`, `OK`, or `No issues`; each required worksheet field must contain concrete VoiceOver observations.
+  - [x] VoiceOver evidence generator and generated worksheet command require a Task content execution observation proving approved execution records the reviewed task title and detail in the redacted receipt, and reject notes that only prove the Run approved plan control was reachable.
+  - [x] VoiceOver review candidate seeds a dedicated approved execution receipt task so manual reviewers can prove the reviewed title/detail is announced from `approved-execution-receipt`.
+  - [x] `release_readiness_report.sh` also rejects passed VoiceOver evidence when the Task content execution note does not prove the redacted receipt includes the reviewed title and detail.
   - [x] `release_readiness_report.sh` rejects `Status: passed` VoiceOver evidence that does not include `Generated by: script/create_voiceover_evidence.sh`.
   - [x] `script/create_voiceover_evidence.sh --validate-only` validates the filled manual command without writing tracked evidence.
+  - [x] Generated `.tmp/voiceover-review/create-evidence-command.sh --validate-only` exits after validation without writing tracked VoiceOver evidence.
   - [ ] 実機VoiceOverでProject board -> card -> Inline Task Composer -> inspectorのfocus orderを確認する。
 - [x] `script/capture_ui_evidence.sh` は一時HOME、seed済みProject board、Light/Dark/System切替、window captureを使う。
   - [x] `capture_ui_evidence.sh` はcapture前にappを前面化し、黒画面/低情報量PNGをrelease evidenceとして残さず失敗させる。
   - [x] `capture_ui_evidence.sh` はScreen Recording権限やwindow capture失敗時に、選択window情報と再実行手順を出す。
   - [x] `capture_ui_evidence.sh --doctor` はrelease evidenceを書かずにScreen Recordingの可視ピクセル取得を事前診断する。
+  - [x] `capture_ui_evidence.sh` は撮影前にAX identifierとseed固有テキストで対象画面を検証し、Today等の誤画面スクショをrelease evidenceとして保存しない。
 - [x] `release_readiness_report.sh` は `ui-screenshots.md` だけでなく Project Board Light/Dark/System、Settings Overview Light/Dark、Settings Appearance Light/Dark、MCP Settings Light/Dark PNG の存在、サイズ、寸法を検証し、欠落や小さすぎる画像をblockerにする。
 - [x] Light/Dark/System切替後にカード、サイドバー、インスペクタのコントラストが破綻しないことをスクリーンショットで確認する。
 - [ ] 完了条件: マウス、キーボード、支援技術のどれでも主要CRUDが完結する。
@@ -250,7 +257,7 @@
 - [x] `script/create_competitor_hands_on_evidence.sh --passed` は手動確認済みの具体メモから `docs/product/competitor-benchmark.md` の `## Hands-On Findings` も同時生成する。
 - [x] 競合hands-on証跡はmacOS/browser/app version、account tier、paid trial有無を含む環境contextがない場合release readyにしない。
 - [x] `script/create_competitor_hands_on_evidence.sh --pending` は `.tmp/competitor-hands-on/create-evidence-command.sh` を生成し、operatorがplaceholderを具体観測へ置換して同じoutput/benchmark pathでpassed証跡を作れる。
-- [x] `script/create_competitor_hands_on_evidence.sh --pending` pins `.tmp/competitor-hands-on/create-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for, and the generated command exits before writing evidence if the release candidate tree is dirty or the commit has changed.
+- [x] `script/create_competitor_hands_on_evidence.sh --pending` pins `.tmp/competitor-hands-on/create-evidence-command.sh` to a clean tracked source tree and the release-candidate source commit it was generated for, and the generated command exits before writing evidence if the release candidate tree is dirty or the commit has changed.
 - [x] `script/create_competitor_hands_on_evidence.sh --pending` は `.tmp/competitor-hands-on/hands-on-worksheet.md` も生成し、2-4時間の手動レビュー中にcontext、クリックパス、測定、Ship/Defer/Rejectを取り漏らさない。
 - [x] `script/create_competitor_hands_on_evidence.sh --pending` はデフォルトで `.tmp/competitor-hands-on/competitor-hands-on-pending-<commit>.md` と `.tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md` を生成し、tracked evidence / benchmarkをpending worksheetで汚さずfinal benchmark更新漏れを防ぐ。
 - [x] `script/create_competitor_hands_on_evidence.sh --validate-only` validates the filled manual command without writing tracked evidence or benchmark findings.
@@ -274,6 +281,7 @@
 - [x] Pro機能はFree体験を壊さず、しかしProの価値がSettings/Sync/MCP画面で理解できるようにする。
 - [x] OSSとして、BYOK provider追加、MCP compliance fixtures、local-first data modelを外部contributorが触れる形にする。
 - [x] Investor reviewはUI screenshot証跡をpassed local evidenceとして扱い、VoiceOver、競合hands-on、署名/Notarization/Sparkle/Gatekeeperを残release blockerとして分離する。
+- [x] action summary は release-machine blocker が残る場合、秘密値を出さずに Developer ID identity、local env、signing/notary/Sparkle verifier、final preflight を確認する `Release Machine Local Doctor` を表示する。
 - [x] 完了条件: 実装完了だけでなく、投資判断の観点で「なぜ伸びるか / なぜ課金されるか」を説明できる。
 
 ## Exit Gate

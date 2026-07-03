@@ -1,6 +1,6 @@
 import Foundation
 
-public enum AppPermission: String, CaseIterable, Equatable, Hashable, Sendable {
+public enum AppPermission: String, CaseIterable, Codable, Equatable, Hashable, Sendable {
     case calendar
     case reminders
     case notifications
@@ -54,5 +54,18 @@ public enum PermissionDisplayPolicy {
 
     public static func isActionDisabled(for status: PermissionStatus) -> Bool {
         status == .denied || status == .restricted
+    }
+
+    public static func integrationStatusLabel(for status: PermissionStatus) -> String {
+        switch status {
+        case .notDetermined:
+            "Not configured"
+        case .granted:
+            "Connected"
+        case .denied:
+            "Permission denied"
+        case .restricted:
+            "Restricted"
+        }
     }
 }

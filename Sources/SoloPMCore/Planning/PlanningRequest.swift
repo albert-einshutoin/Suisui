@@ -46,21 +46,37 @@ public struct PlanningPrompt: Equatable, Sendable {
     }
 }
 
+public struct PlanningResponseMetadata: Equatable, Sendable {
+    public var model: ExecutionReceiptModel?
+    public var usage: ExecutionReceiptUsage
+
+    public init(model: ExecutionReceiptModel? = nil, usage: ExecutionReceiptUsage = .unknown) {
+        self.model = model
+        self.usage = usage
+    }
+}
+
 public struct PlanningResponse: Equatable, Sendable {
     public var providerID: String
     public var rawContent: String
     public var actionPlan: ActionPlan?
     public var validationResult: ActionPlanValidationResult
+    public var model: ExecutionReceiptModel?
+    public var usage: ExecutionReceiptUsage
 
     public init(
         providerID: String,
         rawContent: String,
         actionPlan: ActionPlan?,
-        validationResult: ActionPlanValidationResult
+        validationResult: ActionPlanValidationResult,
+        model: ExecutionReceiptModel? = nil,
+        usage: ExecutionReceiptUsage = .unknown
     ) {
         self.providerID = providerID
         self.rawContent = rawContent
         self.actionPlan = actionPlan
         self.validationResult = validationResult
+        self.model = model
+        self.usage = usage
     }
 }

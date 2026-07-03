@@ -47,7 +47,7 @@ public struct PlanningAuditRecorder: Sendable {
                 metadata: [
                     "provider": providerID,
                     "input_summary": summarize(input),
-                    "error": UserFacingErrorMessageSanitizer.message(from: error)
+                    "error": failureMessage(for: error)
                 ]
             )
         )
@@ -60,5 +60,12 @@ public struct PlanningAuditRecorder: Sendable {
         }
 
         return "\(trimmed.prefix(157))..."
+    }
+
+    private func failureMessage(for error: Error) -> String {
+        if let llmError = error as? LLMProviderError {
+            return UserFacingErrorMessageSanitizer.message(from: llmError.userMessage)
+        }
+        return UserFacingErrorMessageSanitizer.message(from: error)
     }
 }

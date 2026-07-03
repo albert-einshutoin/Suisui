@@ -4,6 +4,9 @@ public enum DeveloperModeCapability: String, CaseIterable, Equatable, Hashable, 
     case gitReadOnly
     case githubIssues
     case codebaseMemory
+    case developmentPRWorkflow
+    case developmentRepositoryFiles
+    case developmentVerificationCommands
 }
 
 public struct DeveloperModePermissionDisclosure: Equatable, Sendable {
@@ -48,6 +51,8 @@ public struct DeveloperModeSettings: Equatable, Sendable {
 
 public enum DeveloperModeError: Error, Equatable, Sendable {
     case workspaceRequired
+    case projectStoresRequired
+    case artifactStoreRequired
 }
 
 public extension DeveloperModeCapability {
@@ -71,6 +76,24 @@ public extension DeveloperModeCapability {
                 title: "codebase-memory optional context",
                 summary: "Previews selected local context before sending it to an approved external connector."
             )
+        case .developmentPRWorkflow:
+            return DeveloperModePermissionDisclosure(
+                capability: self,
+                title: "Development PR workflow",
+                summary: "Creates local branches and local commits only inside an approved project directory, then gates push, PR creation, review/CI status checks, and merge behind separate approval steps."
+            )
+        case .developmentRepositoryFiles:
+            return DeveloperModePermissionDisclosure(
+                capability: self,
+                title: "Development repository files",
+                summary: "Lists, reads, creates, and updates supported text files only inside the approved project directory; create and update require explicit approval."
+            )
+        case .developmentVerificationCommands:
+            return DeveloperModePermissionDisclosure(
+                capability: self,
+                title: "Development verification commands",
+                summary: "Runs approved local test, lint, and security commands only inside the approved project directory after explicit approval."
+            )
         }
     }
 }
@@ -78,7 +101,13 @@ public extension DeveloperModeCapability {
 public extension ToolRegistryFactory {
     static func developerMode(
         settings: DeveloperModeSettings,
-        gitRunner: any GitCommandRunner = ProcessGitCommandRunner()
+        gitRunner: any GitCommandRunner = ProcessGitCommandRunner(),
+        githubRunner: any GitHubCLICommandRunner = ProcessGitHubCLICommandRunner(),
+        developmentCommandRunner: any DevelopmentCommandRunner = ProcessDevelopmentCommandRunner(),
+        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver(),
+        projectStore: SQLiteProjectStore? = nil,
+        taskStore: SQLiteTaskStore? = nil,
+        artifactStore: SQLiteArtifactStore? = nil
     ) throws -> ToolRegistry {
         guard settings.isEnabled else {
             return ToolRegistry()
@@ -98,6 +127,103 @@ public extension ToolRegistryFactory {
                 GitReadOnlyTool(name: .gitLogSummary, client: gitClient),
                 GitReadOnlyTool(name: .gitDiffSummary, client: gitClient)
             ])
+        }
+
+        if settings.enabledCapabilities.contains(.developmentPRWorkflow) {
+            guard let projectStore, let taskStore else {
+                throw DeveloperModeError.projectStoresRequired
+            }
+            tools.append(DevelopmentPRWorkflowTool(
+                projectStore: projectStore,
+                taskStore: taskStore,
+                gitRunner: gitRunner,
+                bookmarkResolver: bookmarkResolver,
+                requireBookmark: true
+            ))
+            tools.append(DevelopmentCommitWorkflowTool(
+                projectStore: projectStore,
+                gitRunner: gitRunner,
+                bookmarkResolver: bookmarkResolver,
+                requireBookmark: true
+            ))
+            tools.append(DevelopmentPushWorkflowTool(
+                projectStore: projectStore,
+                gitRunner: gitRunner,
+                bookmarkResolver: bookmarkResolver
+            ))
+            tools.append(DevelopmentPullRequestCreationTool(
+                projectStore: projectStore,
+                gitRunner: gitRunner,
+                githubRunner: githubRunner,
+                bookmarkResolver: bookmarkResolver
+            ))
+            tools.append(DevelopmentPullRequestReviewGateTool(
+                projectStore: projectStore,
+                gitRunner: gitRunner,
+                githubRunner: githubRunner,
+                bookmarkResolver: bookmarkResolver
+            ))
+            tools.append(DevelopmentPullRequestMergeTool(
+                projectStore: projectStore,
+                gitRunner: gitRunner,
+                githubRunner: githubRunner,
+                bookmarkResolver: bookmarkResolver
+            ))
+        }
+
+        if settings.enabledCapabilities.contains(.developmentRepositoryFiles) {
+            guard let projectStore else {
+                throw DeveloperModeError.projectStoresRequired
+            }
+            guard let artifactStore else {
+                throw DeveloperModeError.artifactStoreRequired
+            }
+            tools.append(contentsOf: [
+                DevelopmentRepositoryFileTool(
+                    name: .developmentRepositoryListFiles,
+                    projectStore: projectStore,
+                    artifactStore: artifactStore,
+                    bookmarkResolver: bookmarkResolver,
+                    requireBookmark: true,
+                    gitRunner: gitRunner
+                ),
+                DevelopmentRepositoryFileTool(
+                    name: .developmentRepositoryReadFile,
+                    projectStore: projectStore,
+                    artifactStore: artifactStore,
+                    bookmarkResolver: bookmarkResolver,
+                    requireBookmark: true,
+                    gitRunner: gitRunner
+                ),
+                DevelopmentRepositoryFileTool(
+                    name: .developmentRepositoryCreateFile,
+                    projectStore: projectStore,
+                    artifactStore: artifactStore,
+                    bookmarkResolver: bookmarkResolver,
+                    requireBookmark: true,
+                    gitRunner: gitRunner
+                ),
+                DevelopmentRepositoryFileTool(
+                    name: .developmentRepositoryUpdateFile,
+                    projectStore: projectStore,
+                    artifactStore: artifactStore,
+                    bookmarkResolver: bookmarkResolver,
+                    requireBookmark: true,
+                    gitRunner: gitRunner
+                )
+            ])
+        }
+
+        if settings.enabledCapabilities.contains(.developmentVerificationCommands) {
+            guard let projectStore else {
+                throw DeveloperModeError.projectStoresRequired
+            }
+            tools.append(DevelopmentVerificationCommandTool(
+                projectStore: projectStore,
+                commandRunner: developmentCommandRunner,
+                bookmarkResolver: bookmarkResolver,
+                requireBookmark: true
+            ))
         }
 
         return try ToolRegistry(tools: tools)

@@ -30,6 +30,10 @@ public struct ExternalMCPToolExecutor: Sendable {
     private let processController: any MCPProcessController
     private let entitlementChecker: EntitlementChecker
     private let redactor: DeveloperSecretRedactor
+    private let receiptAuditRedactor: ExecutionReceiptRedactor
+    private let executionReceiptStore: (any ExecutionReceiptStore)?
+    private let runIDProvider: @Sendable () -> String
+    private let now: @Sendable () -> Date
 
     public init(
         server: MCPRegisteredServerDescriptor,
@@ -38,7 +42,10 @@ public struct ExternalMCPToolExecutor: Sendable {
         auditLogger: any AuditLogger,
         processController: any MCPProcessController,
         entitlementChecker: EntitlementChecker,
-        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
+        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
+        executionReceiptStore: (any ExecutionReceiptStore)? = nil,
+        runIDProvider: @escaping @Sendable () -> String = { "external-mcp:\(UUID().uuidString)" },
+        now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.server = server
         self.registry = registry
@@ -47,6 +54,10 @@ public struct ExternalMCPToolExecutor: Sendable {
         self.processController = processController
         self.entitlementChecker = entitlementChecker
         self.redactor = redactor
+        self.receiptAuditRedactor = ExecutionReceiptRedactor(secretRedactor: redactor)
+        self.executionReceiptStore = executionReceiptStore
+        self.runIDProvider = runIDProvider
+        self.now = now
     }
 
     public func preview(toolName: String, arguments: [String: JSONValue]) throws -> ExternalMCPExecutionPreview {
@@ -70,7 +81,7 @@ public struct ExternalMCPToolExecutor: Sendable {
         try entitlementChecker.require(.advancedMCPExecution)
         try registry.assertExecutable(toolName: toolName, context: context)
 
-        let startedAt = Date()
+        let startedAt = now()
         try auditLogger.record(AuditEvent(
             category: "external_mcp",
             action: "\(server.id).\(toolName)",
@@ -88,6 +99,7 @@ public struct ExternalMCPToolExecutor: Sendable {
             _ = try await client.initialize()
             let result = try await client.callTool(name: toolName, arguments: arguments)
             try validateStructuredOutputIfNeeded(result, descriptor: descriptor)
+            let finishedAt = now()
             var metadata = auditMetadata(
                 toolName: toolName,
                 arguments: arguments,
@@ -96,14 +108,25 @@ public struct ExternalMCPToolExecutor: Sendable {
                 startedAt: startedAt
             )
             metadata["result"] = result.isError ? "tool_error" : "succeeded"
-            metadata["duration_ms"] = "\(Int(Date().timeIntervalSince(startedAt) * 1_000))"
+            metadata["duration_ms"] = "\(Int(finishedAt.timeIntervalSince(startedAt) * 1_000))"
             try auditLogger.record(AuditEvent(category: "external_mcp", action: "\(server.id).\(toolName)", status: .succeeded, metadata: metadata))
+            recordExecutionReceipt(
+                toolName: toolName,
+                arguments: arguments,
+                context: context,
+                descriptor: descriptor,
+                result: result,
+                error: nil,
+                startedAt: startedAt,
+                finishedAt: finishedAt
+            )
             return result
         } catch {
             if case MCPClientError.timeout(let serverID, _) = error {
                 await processController.kill(serverID: serverID, reason: .timeout)
             }
 
+            let finishedAt = now()
             var metadata = auditMetadata(
                 toolName: toolName,
                 arguments: arguments,
@@ -111,9 +134,19 @@ public struct ExternalMCPToolExecutor: Sendable {
                 descriptor: descriptor,
                 startedAt: startedAt
             )
-            metadata["duration_ms"] = "\(Int(Date().timeIntervalSince(startedAt) * 1_000))"
+            metadata["duration_ms"] = "\(Int(finishedAt.timeIntervalSince(startedAt) * 1_000))"
             metadata["error"] = redactor.redact(String(describing: error)).text
             try auditLogger.record(AuditEvent(category: "external_mcp", action: "\(server.id).\(toolName)", status: .failed, metadata: metadata))
+            recordExecutionReceipt(
+                toolName: toolName,
+                arguments: arguments,
+                context: context,
+                descriptor: descriptor,
+                result: nil,
+                error: error,
+                startedAt: startedAt,
+                finishedAt: finishedAt
+            )
             throw error
         }
     }
@@ -218,6 +251,57 @@ public struct ExternalMCPToolExecutor: Sendable {
         return redactor.redact(summary).text
     }
 
+    private func recordExecutionReceipt(
+        toolName: String,
+        arguments: [String: JSONValue],
+        context: ToolExecutionContext,
+        descriptor: ExternalMCPToolDescriptor,
+        result: MCPToolCallResult?,
+        error: Error?,
+        startedAt: Date,
+        finishedAt: Date
+    ) {
+        guard let executionReceiptStore else {
+            return
+        }
+        let receipt = ExecutionReceiptFactory.makeExternalMCPReceipt(
+            serverID: server.id,
+            serverName: server.displayName,
+            toolName: toolName,
+            permissionLevel: descriptor.permissionLevel,
+            redactedArgumentSummary: redactedArgumentSummary(arguments),
+            approvalID: context.approvalToken?.id,
+            source: context.source,
+            result: result,
+            error: error,
+            runID: runIDProvider(),
+            startedAt: startedAt,
+            finishedAt: finishedAt
+        )
+        do {
+            try executionReceiptStore.save(receipt)
+        } catch {
+            recordReceiptSaveFailure(receipt: receipt, toolName: toolName, error: error)
+        }
+    }
+
+    private func recordReceiptSaveFailure(receipt: ExecutionReceipt, toolName: String, error: Error) {
+        // Receipt persistence must not change the already-completed external MCP
+        // outcome; otherwise retrying after a local save error can duplicate side effects.
+        try? auditLogger.record(AuditEvent(
+            category: "receipt",
+            action: "external_mcp.receipt.save_failed",
+            status: .failed,
+            metadata: [
+                "receipt_id": receipt.id,
+                "run_id": receipt.runID,
+                "receipt_status": receipt.status.rawValue,
+                "tool_name": toolName,
+                "error": receiptAuditRedactor.redact(String(describing: error))
+            ]
+        ))
+    }
+
     private func argumentValueSummary(key: String, value: JSONValue) -> String {
         Self.isSensitiveArgumentKey(key) ? "[REDACTED_SECRET]" : String(describing: value)
     }
@@ -265,23 +349,6 @@ private extension JSONValue {
             return false
         default:
             return true
-        }
-    }
-}
-
-private extension ExternalMCPToolPermission {
-    var rawValueForAudit: String {
-        switch self {
-        case .read:
-            return "read"
-        case .draft:
-            return "draft"
-        case .writeWithApproval:
-            return "writeWithApproval"
-        case .dangerous:
-            return "dangerous"
-        case .disabled:
-            return "disabled"
         }
     }
 }

@@ -1,10 +1,54 @@
 import SoloPMCore
+import SoloPMGoogleCalendarRuntime
 import SwiftUI
+import UniformTypeIdentifiers
+#if canImport(AuthenticationServices)
+import AuthenticationServices
+#endif
 #if canImport(AppKit)
 import AppKit
 #endif
 #if canImport(Sparkle)
 import Sparkle
+#endif
+
+#if DEBUG
+private struct RuntimeDevelopmentPRSmokeBookmarkResolver: ProjectWorkspaceBookmarkResolving {
+    static let flagName = "SOLOPM_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK"
+    static let markerPrefix = "solopm-runtime-development-pr-smoke:"
+
+    static var isEnabled: Bool {
+        ProcessInfo.processInfo.environment[flagName] == "1"
+    }
+
+    func resolve(bookmarkData: Data) throws -> ProjectWorkspaceBookmarkResolution {
+        if Self.isEnabled,
+           let marker = String(data: bookmarkData, encoding: .utf8),
+           marker.hasPrefix(Self.markerPrefix) {
+            let path = String(marker.dropFirst(Self.markerPrefix.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard path.hasPrefix("/") else {
+                throw DevelopmentPRWorkflowError.projectWorkspaceMustBeAbsolute
+            }
+
+            // Runtime UI smoke is launched from a shell-owned workspace, which cannot mint a
+            // user-approved app-owned security scoped bookmark. This DEBUG-only
+            // marker resolver preserves the production invariant that a bookmark field must
+            // exist, while keeping release builds on the real security-scoped resolver.
+            return ProjectWorkspaceBookmarkResolution(
+                url: URL(fileURLWithPath: path, isDirectory: true).resolvingSymlinksInPath().standardizedFileURL,
+                isStale: false,
+                didStartAccessing: true,
+                stopAccessing: {}
+            )
+        }
+
+        // When the smoke drives the real NSOpenPanel path, the app stores a real
+        // bookmark. Falling through keeps that production path under the same
+        // execution resolver instead of accepting only the encoded smoke prefix.
+        return try SecurityScopedProjectWorkspaceBookmarkResolver().resolve(bookmarkData: bookmarkData)
+    }
+}
 #endif
 
 @main
@@ -14,6 +58,7 @@ struct SoloPM: App {
 #endif
     @StateObject private var menuBarController: MenuBarSummaryController
     @StateObject private var menuBarQuickCaptureViewModel: ProjectBoardViewModel
+    @StateObject private var settingsViewModel: AppSettingsViewModel
     @AppStorage(SoloPMAppearancePreference.storageKey) private var appearancePreference: SoloPMAppearancePreference = .system
     @AppStorage(AppLanguagePreference.storageKey) private var languagePreference: AppLanguagePreference = .system
 
@@ -21,13 +66,34 @@ struct SoloPM: App {
     init() {
         _menuBarController = StateObject(wrappedValue: AppRuntimeFactory.makeMenuBarSummaryController())
         _menuBarQuickCaptureViewModel = StateObject(wrappedValue: AppRuntimeFactory.makeProjectBoardViewModel())
+        _settingsViewModel = StateObject(wrappedValue: AppRuntimeFactory.makeAppSettingsViewModel())
+#if canImport(AppKit)
+        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        // Creating a SwiftUI-hosted NSWindow here can enter AppKit layout before
+        // the app run loop starts; the delegate owns fallback window creation.
+#endif
     }
 
     var body: some Scene {
         WindowGroup("SoloPM", id: "project-board") {
-            ProjectBoardView(viewModel: AppRuntimeFactory.makeProjectBoardViewModel())
-                .preferredColorScheme(effectiveAppearancePreference.colorScheme)
-                .environment(\.locale, effectiveLanguagePreference.locale)
+            Group {
+                if SoloPMLaunchRecoveryEnvironment.isEnabled {
+                    ProjectBoardLaunchRecoveryView(
+                        viewModel: AppRuntimeFactory.makeProjectBoardViewModel(),
+                        appSettings: { settingsViewModel.settings }
+                    )
+                } else {
+                    ProjectBoardView(
+                        viewModel: AppRuntimeFactory.makeProjectBoardViewModel(),
+                        taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution },
+                        appSettings: { settingsViewModel.settings },
+                        developmentAutomationReviewSession: AppRuntimeFactory.makeReviewSessionViewModel
+                    )
+                }
+            }
+            .preferredColorScheme(effectiveAppearancePreference.colorScheme)
+            .environment(\.locale, effectiveLanguagePreference.locale)
         }
         .defaultSize(width: 1180, height: 760)
         .commands {
@@ -55,11 +121,16 @@ struct SoloPM: App {
 
         Settings {
             SettingsView(
-                settingsViewModel: AppRuntimeFactory.makeAppSettingsViewModel(),
+                settingsViewModel: settingsViewModel,
                 launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
                 watcherDiagnosticsSnapshot: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot(),
+                integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
                 externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel(),
                 syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel(),
+                googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
+                googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
+                googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
+                googleCalendarListProvider: AppRuntimeFactory.makeGoogleCalendarListProvider(),
                 appearancePreference: $appearancePreference,
                 languagePreference: $languagePreference
             )
@@ -77,18 +148,708 @@ struct SoloPM: App {
     }
 }
 
+private enum SoloPMLaunchRecoveryEnvironment {
+    private static let flagName = "SOLOPM_LAUNCH_RECOVERY_MODE"
+
+    static var isEnabled: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        // Isolated databases and keychain-free runs are also used by visual
+        // evidence and CRUD smokes, so recovery is explicit. Only launch
+        // verification paths opt in when they need the lightweight workflow
+        // surface to avoid early AppKit toolbar layout before AX is ready.
+        return environment[flagName] == "1"
+    }
+}
+
+private enum SoloPMWindowlessFallbackEnvironment {
+    private static let forceFallbackFlagName = "SOLOPM_FORCE_PROJECT_BOARD_FALLBACK"
+
+    static var shouldForceProjectBoardFallback: Bool {
+        ProcessInfo.processInfo.environment[forceFallbackFlagName] == "1"
+    }
+
+    static var shouldCreateDirectFallbackWindow: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        // Direct binary launches with an isolated SQLite path do not always
+        // get a SwiftUI WindowGroup quickly enough for AX/screenshot gates.
+        // They still need the full board unless launch recovery explicitly opts in.
+        return SoloPMLaunchRecoveryEnvironment.isEnabled
+            || environment["SOLOPM_DATABASE_PATH"] != nil
+            || shouldForceProjectBoardFallback
+    }
+}
+
+private struct ProjectBoardFallbackRootView: View {
+    @StateObject private var viewModel: ProjectBoardViewModel
+    private let taskAutomationSettings: () -> TaskAutoExecutionSettings
+    private let appSettings: () -> AppSettings
+
+    init(
+        viewModel: ProjectBoardViewModel,
+        taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings = { .default },
+        appSettings: @escaping () -> AppSettings = { .default }
+    ) {
+        _viewModel = StateObject(wrappedValue: viewModel)
+        self.taskAutomationSettings = taskAutomationSettings
+        self.appSettings = appSettings
+    }
+
+    var body: some View {
+        Group {
+            if SoloPMLaunchRecoveryEnvironment.isEnabled {
+                ProjectBoardLaunchRecoveryView(
+                    viewModel: viewModel,
+                    appSettings: appSettings
+                )
+            } else {
+                ProjectBoardView(
+                    viewModel: viewModel,
+                    taskAutomationSettings: taskAutomationSettings,
+                    appSettings: appSettings,
+                    developmentAutomationReviewSession: AppRuntimeFactory.makeReviewSessionViewModel
+                )
+            }
+        }
+    }
+}
+
+private struct ProjectBoardLaunchRecoveryView: View {
+    @StateObject private var viewModel: ProjectBoardViewModel
+    private let appSettings: () -> AppSettings
+    @State private var isInspectorPresented = false
+
+    init(
+        viewModel: ProjectBoardViewModel,
+        appSettings: @escaping () -> AppSettings = { .default }
+    ) {
+        _viewModel = StateObject(wrappedValue: viewModel)
+        self.appSettings = appSettings
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            workflowBody
+            recoveryInspector
+        }
+            .frame(minWidth: 960, idealWidth: 1_180, minHeight: 620, idealHeight: 760)
+            .task {
+                loadRuntimeState()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
+                loadRuntimeState()
+            }
+    }
+
+    @ViewBuilder
+    private var workflowBody: some View {
+        switch resolvedSelectedDestination {
+        case .inbox:
+            InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectWorkflowTask)
+        case .schedule:
+            ScheduleWorkflowView(viewModel: viewModel)
+        case .today:
+            TodayWorkflowView(
+                viewModel: viewModel,
+                selectTodayTask: selectWorkflowTask,
+                openInspectorForTodayRailTask: openInspectorForWorkflowTask
+            )
+        case .done:
+            DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())
+        case .assistantQueue:
+            AssistantQueueWorkflowView(viewModel: viewModel)
+        case .project(let projectID):
+            ProjectDevelopmentAutomationRecoveryView(
+                projectID: projectID,
+                viewModel: viewModel
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var recoveryInspector: some View {
+        if isInspectorPresented, let task = viewModel.selectedTask {
+            ProjectBoardLaunchRecoveryTaskInspector(
+                task: task,
+                viewModel: viewModel,
+                onClose: { isInspectorPresented = false }
+            )
+            .frame(minWidth: 300, idealWidth: 320, maxWidth: 360, maxHeight: .infinity)
+            .padding(.vertical, 18)
+            .padding(.trailing, 18)
+        }
+    }
+
+    private var selectedDestination: ProjectBoardLaunchRecoveryDestination {
+        let rawValue = ProcessInfo.processInfo.environment["SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION"]
+        return ProjectBoardLaunchRecoveryDestination(rawValue: rawValue ?? "") ?? .today
+    }
+
+    private var resolvedSelectedDestination: ProjectBoardLaunchRecoveryDestination {
+        selectedDestination.resolved(availableProjects: viewModel.snapshot.projects)
+    }
+
+    private func loadRuntimeState() {
+        viewModel.load()
+        applySelectedTaskOverrideIfNeeded()
+        _ = viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
+    }
+
+    private func selectWorkflowTask(_ task: ProjectBoardTask) {
+        viewModel.selectedTaskID = task.id
+        isInspectorPresented = false
+    }
+
+    private func openInspectorForWorkflowTask(_ taskID: Int64) {
+        viewModel.selectedTaskID = taskID
+        guard viewModel.selectedTask != nil else {
+            return
+        }
+
+        isInspectorPresented = true
+    }
+
+    private func applySelectedTaskOverrideIfNeeded() {
+        guard let taskID = ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID,
+              viewModel.snapshot.projects.flatMap(\.tasks).contains(where: { $0.id == taskID }) else {
+            return
+        }
+        // Recovery launches must not mutate persisted Project Board selection;
+        // the env override only restores deterministic rail context for smoke evidence.
+        viewModel.selectedTaskID = taskID
+    }
+}
+
+private struct ProjectBoardLaunchRecoveryTaskInspector: View {
+    let task: ProjectBoardTask
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    let onClose: () -> Void
+
+    @State private var title: String
+    @State private var detail: String
+    @State private var status: ProjectTaskStatus
+    @State private var priority: ProjectTaskPriority
+    @State private var dueAt: String
+
+    init(task: ProjectBoardTask, viewModel: ProjectBoardViewModel, onClose: @escaping () -> Void) {
+        self.task = task
+        self.viewModel = viewModel
+        self.onClose = onClose
+        _title = State(initialValue: task.title)
+        _detail = State(initialValue: task.detail)
+        _status = State(initialValue: task.status)
+        _priority = State(initialValue: task.priority)
+        _dueAt = State(initialValue: task.dueAt ?? "")
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                HStack(spacing: 12) {
+                    Label("Task Details", systemImage: "checklist")
+                        .font(.headline)
+                    Spacer(minLength: 12)
+                    Button {
+                        onClose()
+                    } label: {
+                        Label("Close Task Details", systemImage: "xmark.circle")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Close Task Details")
+                    .accessibilityIdentifier("task-inspector-close")
+                    .accessibilityHint("Close Task Details")
+                }
+            }
+
+            Section("Edit") {
+                TextField("Title", text: $title)
+                    .accessibilityIdentifier("task-inspector-title")
+                TextField("Detail", text: $detail, axis: .vertical)
+                    .lineLimit(4...8)
+                    .accessibilityIdentifier("task-inspector-detail")
+            }
+
+            Section("Fields") {
+                Picker("Status", selection: $status) {
+                    ForEach(ProjectTaskStatus.allCases) { status in
+                        Text(LocalizedStringKey(status.title))
+                            .tag(status)
+                    }
+                }
+                .accessibilityIdentifier("task-inspector-status")
+
+                Picker("Priority", selection: $priority) {
+                    ForEach(ProjectTaskPriority.allCases) { priority in
+                        Text(LocalizedStringKey(priority.label))
+                            .tag(priority)
+                    }
+                }
+                .accessibilityIdentifier("task-inspector-priority")
+
+                TextField("Due", text: $dueAt)
+                    .accessibilityIdentifier("task-inspector-due")
+            }
+
+            Section("Save") {
+                Button {
+                    let trimmedDueAt = dueAt.trimmingCharacters(in: .whitespacesAndNewlines)
+                    viewModel.updateSelectedTask(
+                        title: title,
+                        detail: detail,
+                        status: status,
+                        priority: priority,
+                        dueAt: trimmedDueAt.isEmpty ? nil : trimmedDueAt
+                    )
+                } label: {
+                    Label("Save Changes", systemImage: "checkmark.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .help("Saves edits to the selected task in the local SoloPM database")
+                .accessibilityIdentifier("task-inspector-save")
+                .accessibilityHint("Saves edits to the selected task in the local SoloPM database.")
+            }
+        }
+        .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("task-inspector")
+        .accessibilityLabel("Task inspector for \(task.title)")
+        .accessibilityHint("Edit and save the selected task.")
+        .onAppear {
+            refreshFields(from: task)
+        }
+        .onChange(of: task) { _, newTask in
+            refreshFields(from: newTask)
+        }
+    }
+
+    private func refreshFields(from task: ProjectBoardTask) {
+        title = task.title
+        detail = task.detail
+        status = task.status
+        priority = task.priority
+        dueAt = task.dueAt ?? ""
+    }
+}
+
+private enum ProjectBoardLaunchRecoveryDestination: Equatable {
+    case inbox
+    case schedule
+    case today
+    case done
+    case assistantQueue
+    case project(Int64)
+
+    init?(rawValue: String) {
+        let rawValue = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if rawValue.hasPrefix("project:") {
+            let rawProjectID = rawValue.dropFirst("project:".count)
+            guard let projectID = Int64(rawProjectID), projectID > 0 else {
+                return nil
+            }
+            self = .project(projectID)
+            return
+        }
+
+        switch rawValue {
+        case "inbox":
+            self = .inbox
+        case "schedule":
+            self = .schedule
+        case "today", "":
+            self = .today
+        case "done":
+            self = .done
+        case "assistant-queue":
+            self = .assistantQueue
+        default:
+            return nil
+        }
+    }
+
+    func resolved(availableProjects: [ProjectBoardProject]) -> ProjectBoardLaunchRecoveryDestination {
+        switch self {
+        case .project(let projectID):
+            return availableProjects.contains(where: { $0.id == projectID }) ? self : .today
+        case .inbox, .schedule, .today, .done, .assistantQueue:
+            return self
+        }
+    }
+
+}
+
+private struct ProjectDevelopmentAutomationRecoveryView: View {
+    let projectID: Int64
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    @State private var didLoad = false
+    @State private var repositoryEditRelativePath = ""
+    @State private var repositoryEditContents = ""
+    @State private var commitRelativePaths = ""
+    @State private var commitMessage = ""
+
+    private var project: ProjectBoardProject? {
+        viewModel.snapshot.projects.first { $0.id == projectID }
+    }
+
+    private var task: ProjectBoardTask? {
+        viewModel.selectedTask
+    }
+
+    private var readiness: ProjectDevelopmentAutomationReadiness? {
+        guard let project else {
+            return nil
+        }
+        return viewModel.developmentAutomationReadiness(for: project, task: task)
+    }
+
+    private var progress: ProjectDevelopmentAutomationProgress? {
+        guard let project else {
+            return nil
+        }
+        return viewModel.developmentAutomationProgress(for: project, task: task)
+    }
+
+    private var canQueueRepositoryEditReview: Bool {
+        progress?.canQueueRepositoryEditReview == true
+            && !repositoryEditRelativePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !repositoryEditContents.isEmpty
+    }
+
+    private var canQueueCommitReview: Bool {
+        progress?.canQueueCommitReview == true
+            && !commitRelativePaths.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var repositoryEditPreview: ProjectDevelopmentAutomationApprovalPreview? {
+        guard let project else {
+            return nil
+        }
+        return viewModel.developmentRepositoryEditPreview(
+            for: project,
+            task: task,
+            operation: .create,
+            relativePath: repositoryEditRelativePath,
+            contents: repositoryEditContents,
+            expectedSHA256: nil
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let project, let readiness {
+                Label(
+                    LocalizedStringKey(readiness.statusLabel),
+                    systemImage: readiness.isReady ? "checkmark.seal" : "exclamationmark.triangle"
+                )
+                .font(.headline)
+                .foregroundStyle(readiness.isReady ? .green : .orange)
+                .accessibilityIdentifier("project-development-automation-status")
+
+                Text(project.title)
+                    .font(.title3)
+                    .textSelection(.enabled)
+
+                if let task {
+                    Text(task.title)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+
+                if let blockingReason = readiness.blockingReason {
+                    Text(LocalizedStringKey(blockingReason))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let branchNamePreview = readiness.branchNamePreview {
+                    LabeledContent("Branch Preview", value: branchNamePreview)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("project-development-automation-branch-preview")
+                }
+
+                Button {
+                    _ = viewModel.enqueueDevelopmentAutomationReview(for: project, task: task)
+                } label: {
+                    Label("Queue branch automation", systemImage: "tray.and.arrow.down")
+                }
+                .disabled(!readiness.isReady)
+                .help("Adds the development branch preparation plan to Assistant Queue without creating a branch.")
+                .accessibilityIdentifier("project-development-automation-queue")
+                .accessibilityHint("Adds the development branch preparation plan to Assistant Queue for review and approval.")
+
+                // The recovery surface mirrors the next approval step so runtime
+                // smoke can prove repository edits stay review-gated without
+                // loading the full board's heavier AX tree.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Repository edit review")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    TextField("Repository file path", text: $repositoryEditRelativePath)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("project-development-automation-edit-path")
+
+                    TextEditor(text: $repositoryEditContents)
+                        .font(.caption)
+                        .frame(minHeight: 90)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(.quaternary)
+                        )
+                        .accessibilityLabel("Repository file contents")
+                        .accessibilityIdentifier("project-development-automation-edit-contents")
+
+                    if let repositoryEditPreview {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label(LocalizedStringKey(repositoryEditPreview.title), systemImage: "doc.text.magnifyingglass")
+                                .font(.caption)
+                                .foregroundStyle(Color.accentColor)
+
+                            ForEach(repositoryEditPreview.rows) { row in
+                                LabeledContent(LocalizedStringKey(row.label), value: row.value)
+                                    .font(.caption2)
+                                    .textSelection(.enabled)
+                                    .accessibilityIdentifier("project-development-automation-edit-preview-row-\(row.id)")
+                            }
+                        }
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("project-development-automation-edit-preview")
+                        .accessibilityHint("Shows the reviewed repository operation, path, branch, replacement summary, and content digest before queueing approval.")
+                    }
+
+                    Button {
+                        _ = viewModel.enqueueDevelopmentRepositoryEditReview(
+                            for: project,
+                            task: task,
+                            operation: .create,
+                            relativePath: repositoryEditRelativePath,
+                            contents: repositoryEditContents,
+                            expectedSHA256: nil
+                        )
+                    } label: {
+                        Label("Queue repository edit review", systemImage: "doc.badge.gearshape")
+                    }
+                    .disabled(!canQueueRepositoryEditReview)
+                    .help("Queues a scoped create file review after branch preparation evidence exists.")
+                    .accessibilityIdentifier("project-development-automation-edit-queue")
+                    .accessibilityHint("Adds the reviewed repository edit to Assistant Queue before verification.")
+                }
+
+                Button {
+                    _ = viewModel.enqueueDevelopmentVerificationReview(for: project, task: task)
+                } label: {
+                    Label("Queue verification review", systemImage: "checkmark.shield")
+                }
+                .disabled(progress?.canQueueVerificationReview != true)
+                .help("Queues an approved local verification command after branch preparation evidence exists.")
+                .accessibilityIdentifier("project-development-automation-verification-queue")
+                .accessibilityHint("Adds a local verification command to Assistant Queue before commit or push.")
+
+                // This mirrors the normal Project detail commit gate without
+                // loading the full board tree, keeping runtime AX proof fast and
+                // focused on the reviewed approval boundary.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Commit review")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    TextField("Commit file paths", text: $commitRelativePaths)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("project-development-automation-commit-paths")
+
+                    TextField("Commit message", text: $commitMessage)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("project-development-automation-commit-message")
+
+                    Button {
+                        _ = viewModel.enqueueDevelopmentCommitReview(
+                            for: project,
+                            task: task,
+                            relativePathsText: commitRelativePaths,
+                            commitMessage: commitMessage
+                        )
+                    } label: {
+                        Label("Queue commit review", systemImage: "tray.and.arrow.down")
+                    }
+                    .disabled(!canQueueCommitReview)
+                    .help("Queues a local commit review after verification evidence exists.")
+                    .accessibilityIdentifier("project-development-automation-commit-queue")
+                    .accessibilityHint("Adds the reviewed file list and commit message to Assistant Queue before push.")
+                }
+
+                Button {
+                    _ = viewModel.enqueueDevelopmentPushReview(for: project, task: task)
+                } label: {
+                    Label("Queue branch push review", systemImage: "arrow.up.circle")
+                }
+                .disabled(progress?.canQueueBranchPushReview != true)
+                .help("Queues only the reviewed branch push; pull request creation requires a separate approval.")
+                .accessibilityIdentifier("project-development-automation-push-queue")
+                .accessibilityHint("Adds the reviewed branch push to Assistant Queue before pull request creation.")
+
+                Button {
+                    _ = viewModel.enqueueDevelopmentPullRequestCreationReview(for: project, task: task)
+                } label: {
+                    Label("Queue pull request creation review", systemImage: "arrow.up.right.square")
+                }
+                .disabled(progress?.canQueuePullRequestCreationReview != true)
+                .help("Queues GitHub pull request creation with the reviewed default base branch, title, and body.")
+                .accessibilityIdentifier("project-development-automation-pr-create-queue")
+                .accessibilityHint("Adds the pull request creation review to Assistant Queue; review and merge still need separate approval.")
+
+                Button {
+                    _ = viewModel.enqueueDevelopmentPullRequestLifecycleReview(
+                        for: project,
+                        task: task,
+                        operation: .reviewGate
+                    )
+                } label: {
+                    Label("Queue pull request review gate", systemImage: "checkmark.shield")
+                }
+                .disabled(progress?.canQueuePullRequestReviewGate != true)
+                .help("Uses the pull request creation receipt to queue review, CI, unresolved thread, and mergeability checks.")
+                .accessibilityIdentifier("project-development-automation-pr-review-queue")
+                .accessibilityHint("Adds only the receipt-backed pull request review gate to Assistant Queue; merge still needs separate approval.")
+
+                Button {
+                    _ = viewModel.enqueueDevelopmentPullRequestLifecycleReview(
+                        for: project,
+                        task: task,
+                        operation: .merge
+                    )
+                } label: {
+                    Label("Queue pull request merge gate", systemImage: "arrow.triangle.merge")
+                }
+                .disabled(progress?.canQueuePullRequestMergeGate != true)
+                .help("Uses the review gate receipt to queue merge approval; execution rechecks the approved pull request before merging.")
+                .accessibilityIdentifier("project-development-automation-pr-merge-queue")
+                .accessibilityHint("Adds the receipt-backed merge gate to Assistant Queue after review evidence exists.")
+
+                if let queueHandoff = progress?.queueHandoff {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Assistant Queue handoff", systemImage: "tray.full")
+                            .font(.caption)
+                            .foregroundStyle(Color.accentColor)
+                        Text(verbatim: "\(queueHandoff.stateLabel) - \(queueHandoff.title)")
+                            .font(.caption2)
+                        Text(verbatim: queueHandoff.reviewReason)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("project-development-automation-queue-handoff")
+                    .accessibilityHint("Shows the matching Assistant Queue item for the current development automation approval.")
+                }
+            } else {
+                if didLoad {
+                    EmptyView()
+                } else {
+                    ProgressView("Loading Project")
+                }
+            }
+        }
+        // Runtime smoke uses this narrow surface to avoid loading the full board's
+        // heavy AX tree; execution remains deferred to the normal Assistant Queue.
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project-development-automation")
+        .task {
+            viewModel.load()
+            didLoad = true
+            viewModel.selectedProjectID = projectID
+            if let taskID = ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID {
+                viewModel.selectedTaskID = taskID
+            }
+        }
+    }
+
+}
+
 #if canImport(AppKit)
+@MainActor
+private final class SoloPMProjectBoardWindowFallback {
+    static let shared = SoloPMProjectBoardWindowFallback()
+
+    private var window: NSWindow?
+
+    var windowForDelegateRetention: NSWindow? {
+        window
+    }
+
+    func showIfNeeded() {
+        guard SoloPMWindowlessFallbackEnvironment.shouldForceProjectBoardFallback || visibleProjectBoardWindows.isEmpty else {
+            return
+        }
+
+        // Debug app bundles can reach launch verification before SwiftUI's WindowGroup creates a window; keep a direct fallback so launch smoke tests prove a real board is visible.
+        let hostingController = NSHostingController(
+            rootView: ProjectBoardFallbackRootView(
+                viewModel: AppRuntimeFactory.makeProjectBoardViewModel(),
+                taskAutomationSettings: AppRuntimeFactory.loadTaskAutoExecutionSettings,
+                appSettings: AppRuntimeFactory.loadRuntimeAppSettings
+            )
+            .preferredColorScheme(Self.effectiveAppearancePreference.colorScheme)
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1_180, height: 760),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "SoloPM"
+        window.contentViewController = hostingController
+        window.isReleasedWhenClosed = false
+        window.setFrame(NSRect(x: 120, y: 160, width: 1_180, height: 760), display: true)
+        self.window = window
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    private var visibleProjectBoardWindows: [NSWindow] {
+        NSApplication.shared.windows.filter { window in
+            // AppKit restoration can mark a window visible before it is actually
+            // on-screen; occlusion keeps screenshot/AX gates from trusting that state.
+            window.isVisible
+                && window.occlusionState.contains(.visible)
+                && !window.isMiniaturized
+                && window.title == "SoloPM"
+        }
+    }
+
+    private static var effectiveAppearancePreference: SoloPMAppearancePreference {
+        SoloPMAppearancePreference.environmentOverride ?? persistedAppearancePreference
+    }
+
+    private static var persistedAppearancePreference: SoloPMAppearancePreference {
+        guard let rawValue = UserDefaults.standard.string(forKey: SoloPMAppearancePreference.storageKey),
+              let preference = SoloPMAppearancePreference(rawValue: rawValue) else {
+            return .system
+        }
+        return preference
+    }
+}
+
 @MainActor
 private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
 #if canImport(Sparkle)
     private var updaterController: SPUStandardUpdaterController?
 #endif
     private var projectBoardWindowRestoreAttempts = 0
+    private var fallbackProjectBoardWindow: NSWindow?
+    private var settingsEvidenceWindow: NSWindow?
+    private var voiceCommandEvidenceWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.activate(ignoringOtherApps: true)
         ensureProjectBoardWindowIsVisible()
+        openSettingsWindowForEvidenceIfRequested()
+        openVoiceCommandWindowForEvidenceIfRequested()
 
 #if canImport(Sparkle)
         guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String != nil,
@@ -124,11 +885,17 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
 
+            if SoloPMWindowlessFallbackEnvironment.shouldCreateDirectFallbackWindow {
+                self.createFallbackProjectBoardWindow()
+                return
+            }
+
             let didRequestWindow = self.performNewProjectBoardWindowMenuItem()
                 || NSApp.sendAction(#selector(NSWindow.newWindowForTab(_:)), to: nil, from: nil)
 
             self.projectBoardWindowRestoreAttempts += 1
             guard self.projectBoardWindowRestoreAttempts < 12 else {
+                self.createFallbackProjectBoardWindow()
                 return
             }
 
@@ -146,9 +913,99 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    private func createFallbackProjectBoardWindow() {
+        guard SoloPMWindowlessFallbackEnvironment.shouldForceProjectBoardFallback || visibleProjectBoardWindows.isEmpty else {
+            return
+        }
+
+        SoloPMProjectBoardWindowFallback.shared.showIfNeeded()
+        fallbackProjectBoardWindow = SoloPMProjectBoardWindowFallback.shared.windowForDelegateRetention
+    }
+
+    private func openSettingsWindowForEvidenceIfRequested() {
+        guard ProcessInfo.processInfo.environment["SOLOPM_OPEN_SETTINGS_ON_LAUNCH"] == "1" else {
+            return
+        }
+        let selectedTab = SettingsTab(
+            rawValue: ProcessInfo.processInfo.environment["SOLOPM_SETTINGS_EVIDENCE_TAB"] ?? ""
+        ) ?? .overview
+
+        // The release evidence harness opens Settings directly so captures do not depend on keyboard focus, AppleScript toolbar access, or localized menu state.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            let hostingController = NSHostingController(
+                rootView: SettingsView(
+                    settingsViewModel: AppRuntimeFactory.makeAppSettingsViewModel(),
+                    launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
+                    watcherDiagnosticsSnapshot: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot(),
+                    integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
+                    externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel(),
+                    syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel(),
+                    googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
+                    googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
+                    googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
+                    googleCalendarListProvider: AppRuntimeFactory.makeGoogleCalendarListProvider(),
+                    appearancePreference: .constant(SoloPMAppearancePreference.environmentOverride ?? .system),
+                    languagePreference: .constant(AppLanguagePreference.environmentOverride ?? .system),
+                    initialTab: selectedTab
+                )
+                .preferredColorScheme(SoloPMAppearancePreference.environmentOverride?.colorScheme)
+                .environment(\.locale, (AppLanguagePreference.environmentOverride ?? .system).locale)
+            )
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 680, height: 620),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = selectedTab.rawValue
+            window.contentViewController = hostingController
+            window.isReleasedWhenClosed = false
+            window.setFrame(NSRect(x: 120, y: 160, width: 680, height: 620), display: true)
+            self.settingsEvidenceWindow = window
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        }
+    }
+
+    private func openVoiceCommandWindowForEvidenceIfRequested() {
+        guard ProcessInfo.processInfo.environment["SOLOPM_OPEN_VOICE_COMMAND_ON_LAUNCH"] == "1" else {
+            return
+        }
+
+        // Runtime evidence opens Voice Command directly so AX tests do not rely
+        // on menu focus, menu bar state, or localized window-opening commands.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            let hostingController = NSHostingController(
+                rootView: VoiceCaptureView(viewModel: AppRuntimeFactory.makeVoiceCaptureViewModel())
+                    .preferredColorScheme(SoloPMAppearancePreference.environmentOverride?.colorScheme)
+                    .environment(\.locale, (AppLanguagePreference.environmentOverride ?? .system).locale)
+            )
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 760, height: 640),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "Voice Command"
+            window.contentViewController = hostingController
+            window.isReleasedWhenClosed = false
+            window.setFrame(NSRect(x: 160, y: 140, width: 760, height: 640), display: true)
+            self.voiceCommandEvidenceWindow = window
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        }
+    }
+
     private var visibleProjectBoardWindows: [NSWindow] {
-        NSApp.windows.filter { window in
-            window.isVisible && !window.isMiniaturized && window.title == "SoloPM"
+        NSApplication.shared.windows.filter { window in
+            // AppKit restoration can mark a window visible before it is actually
+            // on-screen; occlusion keeps screenshot/AX gates from trusting that state.
+            window.isVisible
+                && window.occlusionState.contains(.visible)
+                && !window.isMiniaturized
+                && window.title == "SoloPM"
         }
     }
 }
@@ -183,6 +1040,12 @@ private struct MenuBarPanel: View {
                 Label("Voice Command", systemImage: "mic")
             }
             .keyboardShortcut(.space, modifiers: [.option])
+
+            SettingsLink {
+                Label("Settings", systemImage: "gearshape")
+            }
+            .help("Open Settings")
+            .accessibilityIdentifier("menu-bar-settings-link")
 
             Divider()
 
@@ -280,89 +1143,217 @@ private struct MenuBarPanel: View {
 }
 
 private struct VoiceCaptureView: View {
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var viewModel: VoiceCaptureViewModel
+    @State private var clarificationAnswer = ""
 
     init(viewModel: VoiceCaptureViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
     }
 
+    private var isVoiceCommandInputEmpty: Bool {
+        viewModel.draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var actionReadinessMessage: String {
+        switch viewModel.phase {
+        case .recording:
+            String(localized: "Stop recording to transcribe before Inbox capture or planning.")
+        case .transcribing:
+            String(localized: "Transcription is running; Save to Inbox unlocks after the recording is transcribed.")
+        case .generatingPlan:
+            String(localized: "Plan generation is running; review appears below before execution.")
+        case .needsClarification:
+            String(localized: "Answer the clarification question before saving or generating a plan.")
+        case .failed:
+            String(localized: "Resolve the current voice warning before saving or generating a plan.")
+        case .idle, .reviewReady:
+            if isVoiceCommandInputEmpty {
+                String(localized: "Type a command to generate a plan, or record audio to save a transcript to Inbox.")
+            } else if viewModel.canSaveDraftToInbox && viewModel.canGeneratePlan {
+                String(localized: "Save the transcript to Inbox, or generate an approval-gated plan.")
+            } else if viewModel.canGeneratePlan {
+                String(localized: "Typed commands can generate approval-gated plans. Record audio first to save a voice capture to Inbox.")
+            } else {
+                String(localized: "Review the command before choosing Inbox capture or an approval-gated plan.")
+            }
+        }
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Label("Voice Command", systemImage: "mic")
-                        .font(.headline)
-                    Spacer()
-                    Button {
-                        viewModel.clear()
-                    } label: {
-                        Label("Clear", systemImage: "xmark.circle")
-                    }
-                    .disabled(viewModel.draft.text.isEmpty && viewModel.planningResponse == nil)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Voice Command", systemImage: "mic")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    viewModel.clear()
+                    clarificationAnswer = ""
+                } label: {
+                    Label("Clear", systemImage: "xmark.circle")
                 }
+                .disabled(viewModel.draft.text.isEmpty && viewModel.planningResponse == nil)
+                .accessibilityIdentifier("voice-command-clear")
+            }
 
-                StatusRow(phase: viewModel.phase)
-                if let message = viewModel.auditErrorMessage {
-                    Label(message, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+            StatusRow(phase: viewModel.phase)
+            if let message = viewModel.auditErrorMessage {
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
+            TextField(
+                "",
+                text: Binding(
+                    get: { viewModel.draft.text },
+                    set: { viewModel.updateDraftText($0) }
+                ),
+                axis: .vertical
+            )
+            .textFieldStyle(.plain)
+            .font(.body)
+            .lineLimit(5...8)
+            .padding(8)
+            .frame(minHeight: 150, idealHeight: 180, maxHeight: 180)
+            .overlay(alignment: .topLeading) {
+                if isVoiceCommandInputEmpty {
+                    VoiceCommandInputPlaceholder()
+                        .padding(.top, 8)
+                        .padding(.horizontal, 8)
+                        .allowsHitTesting(false)
                 }
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(.quaternary)
+            }
+            .accessibilityIdentifier("voice-command-input")
 
-                TextEditor(
-                    text: Binding(
-                        get: { viewModel.draft.text },
-                        set: { viewModel.updateDraftText($0) }
-                    )
-                )
-                .font(.body)
-                .frame(minHeight: 180, idealHeight: 220)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(.quaternary)
-                }
+            VoiceCommandActionReadinessRow(message: actionReadinessMessage)
 
-                HStack {
-                    Button {
-                        if viewModel.isRecording {
-                            Task {
-                                await viewModel.stopRecording(
-                                    outputURL: recordingOutputURL()
-                                )
-                            }
-                        } else {
-                            viewModel.startRecording()
-                        }
-                    } label: {
-                        Label(viewModel.isRecording ? "Stop" : "Record", systemImage: viewModel.isRecording ? "stop.circle" : "record.circle")
-                    }
-                    .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .transcribing)
-
-                    Spacer()
-
-                    Button {
+            HStack {
+                Button {
+                    if viewModel.isRecording {
                         Task {
-                            await viewModel.generatePlan()
+                            await viewModel.stopRecording(
+                                outputURL: recordingOutputURL()
+                            )
                         }
-                    } label: {
-                        Label("Generate Plan", systemImage: "wand.and.stars")
+                    } else {
+                        Task {
+                            await viewModel.startRecording()
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!viewModel.canGeneratePlan)
+                } label: {
+                    Label(viewModel.isRecording ? "Stop" : "Record", systemImage: viewModel.isRecording ? "stop.circle" : "record.circle")
+                }
+                .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .transcribing)
+                .accessibilityIdentifier("voice-command-record")
+
+                Button {
+                    viewModel.saveDraftToInbox()
+                    if viewModel.inboxCaptureResult != nil {
+                        NotificationCenter.default.post(name: .soloPMProjectBoardDidChange, object: nil)
+                    }
+                } label: {
+                    Label("Save to Inbox", systemImage: "tray.and.arrow.down")
+                }
+                .disabled(!viewModel.canSaveDraftToInbox)
+                .accessibilityIdentifier("voice-command-save-to-inbox")
+
+                Spacer()
+
+                Button {
+                    Task {
+                        await viewModel.generatePlan()
+                    }
+                } label: {
+                    Label("Generate Plan", systemImage: "wand.and.stars")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .recording || viewModel.phase == .transcribing)
+                .accessibilityIdentifier("voice-command-generate-plan")
+                .accessibilityHint(localizedSettingsDisplay(actionReadinessMessage))
+            }
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                if let routingResult = viewModel.routingResult {
+                    VoiceIntentPreview(result: routingResult)
+                }
+
+                if let question = viewModel.clarificationQuestion {
+                    ClarificationPanel(
+                        question: question,
+                        turns: viewModel.clarificationSession?.turns ?? [],
+                        answerText: $clarificationAnswer,
+                        onSubmit: { answer in
+                            Task {
+                                await viewModel.submitClarificationAnswer(answer)
+                                clarificationAnswer = ""
+                            }
+                        },
+                        onCancel: {
+                            viewModel.cancelClarification()
+                            clarificationAnswer = ""
+                        }
+                    )
+                }
+
+                if let request = viewModel.dailyPlanningReviewRequest {
+                    VoiceDailyPlanningReviewRequestPanel(request: request) {
+                        postDailyPlanningReviewRequest(request)
+                    }
+                }
+
+                if let request = viewModel.inboxTriageRequest {
+                    VoiceInboxTriageRequestPanel(request: request) {
+                        postInboxTriageRequest(request)
+                    }
+                }
+
+                if let result = viewModel.inboxCaptureResult {
+                    VoiceInboxCaptureSavedPanel(result: result) {
+                        openWindow(id: "project-board")
+                    }
+                }
+
+                if let item = viewModel.assistantQueueItem {
+                    Divider()
+                    AssistantQueuePanel(
+                        item: item,
+                        executionHandoffItemID: viewModel.assistantQueueExecutionHandoffItemID,
+                        onApprove: { viewModel.approveAssistantQueueItem() },
+                        onDefer: { viewModel.deferAssistantQueueItem() },
+                        onReject: { viewModel.rejectAssistantQueueItem() },
+                        onOpenQueue: { postAssistantQueueOpenRequest() }
+                    )
                 }
 
                 if let response = viewModel.planningResponse {
                     Divider()
-                    if let plan = response.actionPlan, response.validationResult.isValid {
-                        ActionReviewPanel(viewModel: AppRuntimeFactory.makeReviewSessionViewModel(plan: plan)) {
-                            NotificationCenter.default.post(name: .soloPMProjectBoardDidChange, object: nil)
-                        }
-                    } else {
-                        ActionPlanPreview(response: response)
-                    }
+                    ActionPlanPreview(response: response)
                 }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityIdentifier("voice-command-root")
+        .onChange(of: viewModel.dailyPlanningReviewRequest) { _, request in
+            guard let request else {
+                return
+            }
+            postDailyPlanningReviewRequest(request)
+        }
+        .onChange(of: viewModel.inboxTriageRequest) { _, request in
+            guard let request else {
+                return
+            }
+            postInboxTriageRequest(request)
         }
     }
 
@@ -370,15 +1361,466 @@ private struct VoiceCaptureView: View {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("solopm-recording-\(UUID().uuidString).m4a")
     }
+
+    private func postDailyPlanningReviewRequest(_ request: VoiceDailyPlanningReviewRequest) {
+        openWindow(id: "project-board")
+        guard let bridgeRequest = SoloPMVoiceDailyPlanningReviewBridge.storePendingRequest(request) else {
+            return
+        }
+        NotificationCenter.default.post(
+            name: .soloPMVoiceDailyPlanningReviewRequested,
+            object: nil,
+            userInfo: [SoloPMVoiceDailyPlanningReviewBridge.requestUserInfoKey: bridgeRequest]
+        )
+    }
+
+    private func postInboxTriageRequest(_ request: VoiceInboxTriageRequest) {
+        openWindow(id: "project-board")
+        guard let bridgeRequest = SoloPMVoiceInboxTriageBridge.storePendingRequest(request) else {
+            return
+        }
+        NotificationCenter.default.post(
+            name: .soloPMVoiceInboxTriageRequested,
+            object: nil,
+            userInfo: [SoloPMVoiceInboxTriageBridge.requestUserInfoKey: bridgeRequest]
+        )
+    }
+
+    private func postAssistantQueueOpenRequest() {
+        guard let bridgeRequest = SoloPMAssistantQueueBridge.storePendingOpen(itemID: viewModel.assistantQueueExecutionHandoffItemID) else {
+            return
+        }
+        openWindow(id: "project-board")
+        NotificationCenter.default.post(
+            name: .soloPMAssistantQueueRequested,
+            object: nil,
+            userInfo: [SoloPMAssistantQueueBridge.requestUserInfoKey: bridgeRequest]
+        )
+    }
+}
+
+private struct VoiceCommandInputPlaceholder: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Try one of these commands")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            placeholderExample("Capture follow-up for launch review", systemImage: "tray")
+            placeholderExample("Plan tomorrow: review release risks", systemImage: "checklist")
+            Text("Inbox captures stay local. Plans wait in Assistant Queue before execution.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(8)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("voice-command-input-placeholder")
+    }
+
+    private func placeholderExample(_ text: LocalizedStringKey, systemImage: String) -> some View {
+        Label(text, systemImage: systemImage)
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+    }
+}
+
+private struct VoiceCommandActionReadinessRow: View {
+    let message: String
+
+    var body: some View {
+        Label(localizedSettingsDisplay(message), systemImage: "info.circle")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("voice-command-action-readiness")
+    }
+}
+
+private struct VoiceInboxCaptureSavedPanel: View {
+    let result: InboxVoiceCaptureResult
+    let onOpen: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(localizedSettingsDisplay("Saved to Inbox"), systemImage: "tray.full")
+                .font(.subheadline)
+
+            Label(result.task.title, systemImage: "checkmark.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let summary = result.capture.interpretationSummary {
+                Label(summary, systemImage: "sparkles")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button {
+                onOpen()
+            } label: {
+                Label(localizedSettingsDisplay("Open Inbox"), systemImage: "arrow.forward.circle")
+            }
+            .accessibilityIdentifier("voice-inbox-capture-open-board")
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        .accessibilityIdentifier("voice-inbox-capture-saved")
+    }
+}
+
+private struct VoiceDailyPlanningReviewRequestPanel: View {
+    let request: VoiceDailyPlanningReviewRequest
+    let onOpen: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(localizedSettingsDisplay("Daily Planning Review"), systemImage: "sun.max")
+                .font(.subheadline)
+
+            Text(localizedSettingsDisplay("Opening a local Today review. No provider, Calendar, Reminder, connector, or file write is run."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let requestedActionDraftKind = request.requestedActionDraftKind {
+                Label(localizedSettingsDisplay(actionDraftLabel(for: requestedActionDraftKind)), systemImage: "checklist")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !request.sourceTranscript.isEmpty {
+                Label(request.sourceTranscript, systemImage: "quote.bubble")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button {
+                onOpen()
+            } label: {
+                Label(localizedSettingsDisplay("Open Today Review"), systemImage: "arrow.forward.circle")
+            }
+            .accessibilityIdentifier("voice-daily-planning-open-board")
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        .accessibilityIdentifier("voice-daily-planning-request")
+    }
+
+    private func actionDraftLabel(for kind: DailyPlanningActionDraftKind) -> String {
+        switch kind {
+        case .startRecommended:
+            "Queue a start-task draft for approval"
+        case .deferRecommendedToTomorrow:
+            "Queue a defer-to-tomorrow draft for approval"
+        case .moveRecommendedDueDateToToday:
+            "Queue a move-to-today draft for approval"
+        case .splitRecommendedTask:
+            "Queue a split-task draft for approval"
+        }
+    }
+}
+
+private struct VoiceInboxTriageRequestPanel: View {
+    let request: VoiceInboxTriageRequest
+    let onOpen: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(localizedSettingsDisplay("Inbox Voice Triage"), systemImage: "tray.and.arrow.down")
+                .font(.subheadline)
+
+            Text(localizedSettingsDisplay("Applying a local Inbox command. No provider, Calendar, Reminder, connector, or file write is run."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Label(localizedSettingsDisplay(request.command.action.accessibilityLabel), systemImage: "waveform")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !request.sourceTranscript.isEmpty {
+                Label(request.sourceTranscript, systemImage: "quote.bubble")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button {
+                onOpen()
+            } label: {
+                Label(localizedSettingsDisplay("Open Inbox"), systemImage: "arrow.forward.circle")
+            }
+            .accessibilityIdentifier("voice-inbox-triage-open-board")
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        .accessibilityIdentifier("voice-inbox-triage-request")
+    }
+}
+
+private struct AssistantQueuePanel: View {
+    let item: AssistantQueueItem
+    let executionHandoffItemID: String?
+    let onApprove: () -> Void
+    let onDefer: () -> Void
+    let onReject: () -> Void
+    let onOpenQueue: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    Label(localizedSettingsDisplay("Assistant Queue"), systemImage: "tray.full")
+                        .font(.subheadline)
+                    queueStateLabel
+                    Spacer(minLength: 8)
+                    riskLabel
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(localizedSettingsDisplay("Assistant Queue"), systemImage: "tray.full")
+                        .font(.subheadline)
+                    HStack(spacing: 8) {
+                        queueStateLabel
+                        riskLabel
+                    }
+                }
+            }
+
+            Text(localizedSettingsDisplay(item.redactedSummary))
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(localizedSettingsDisplay(item.reviewReason))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let source = item.sourceTranscript, !source.isEmpty {
+                Label(source, systemImage: "quote.bubble")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !item.requiredCapabilities.isEmpty {
+                Text(item.requiredCapabilities.map(capabilityLabel).joined(separator: ", "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("voice-assistant-queue-capabilities")
+            }
+
+            if let blockingReason = item.blockingReason {
+                Label(localizedSettingsDisplay(blockingReason), systemImage: "exclamationmark.octagon")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    onApprove()
+                } label: {
+                    Label(localizedSettingsDisplay("Approve"), systemImage: "checkmark.seal")
+                }
+                .disabled(item.state != .waitingReview)
+                .accessibilityIdentifier("voice-assistant-queue-approve")
+
+                Button {
+                    onDefer()
+                } label: {
+                    Label(localizedSettingsDisplay("Defer"), systemImage: "clock")
+                }
+                .disabled(item.state == .blocked || item.state == .done || item.state == .rejected)
+                .accessibilityIdentifier("voice-assistant-queue-defer")
+
+                Button {
+                    onReject()
+                } label: {
+                    Label(localizedSettingsDisplay("Reject"), systemImage: "xmark.circle")
+                }
+                .disabled(item.state == .done || item.state == .rejected)
+                .accessibilityIdentifier("voice-assistant-queue-reject")
+            }
+
+            if canOpenQueueForExecution {
+                Button {
+                    onOpenQueue()
+                } label: {
+                    Label(localizedSettingsDisplay("Open Assistant Queue"), systemImage: "arrow.forward.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("voice-assistant-queue-open-board")
+                .accessibilityHint(localizedSettingsDisplay("Opens the Assistant Queue without running the item."))
+            }
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .accessibilityIdentifier("voice-assistant-queue-panel")
+    }
+
+    private var queueStateLabel: some View {
+        Text(localizedSettingsDisplay(stateLabel))
+            .font(.caption)
+            .foregroundStyle(stateColor)
+            .lineLimit(1)
+            .accessibilityIdentifier("voice-assistant-queue-state")
+    }
+
+    private var riskLabel: some View {
+        Text(String(format: localizedSettingsDisplay("Risk: %@"), item.riskLevel.rawValue))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .accessibilityIdentifier("voice-assistant-queue-risk")
+    }
+
+    private var canOpenQueueForExecution: Bool {
+        executionHandoffItemID == item.id
+    }
+
+    private var stateLabel: String {
+        switch item.state {
+        case .captured:
+            "Captured"
+        case .interpreted:
+            "Interpreted"
+        case .drafted:
+            "Drafted"
+        case .waitingReview:
+            "Waiting review"
+        case .approved:
+            "Approved"
+        case .running:
+            "Running"
+        case .blocked:
+            "Blocked"
+        case .done:
+            "Done"
+        case .failed:
+            "Failed"
+        case .rejected:
+            "Rejected"
+        case .deferred:
+            "Deferred"
+        }
+    }
+
+    private var stateColor: Color {
+        switch item.state {
+        case .blocked, .failed, .rejected:
+            .red
+        case .approved, .done:
+            .green
+        case .deferred:
+            .orange
+        case .captured, .interpreted, .drafted, .waitingReview, .running:
+            .secondary
+        }
+    }
+
+    private func capabilityLabel(_ capability: AssistantQueueRequiredCapability) -> String {
+        switch capability {
+        case .tool(let tool):
+            return tool.rawValue
+        case .appPermission(let permission):
+            return permission.rawValue
+        case .connectedMacRequired:
+            return localizedSettingsDisplay("Connected Mac required")
+        case .providerExecutionApproval:
+            return localizedSettingsDisplay("Execution approval")
+        case .externalMCP(let serverID, let toolName):
+            return "\(serverID):\(toolName)"
+        case .externalConnector(let serviceID, let action):
+            return "\(serviceID):\(action)"
+        }
+    }
+}
+
+private struct ClarificationPanel: View {
+    let question: ClarificationQuestion
+    let turns: [ClarificationTurn]
+    @Binding var answerText: String
+    let onSubmit: (String) -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(localizedSettingsDisplay("Clarification"), systemImage: "questionmark.bubble")
+                .font(.subheadline)
+
+            Text(localizedSettingsDisplay(question.prompt))
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !turns.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(turns.enumerated()), id: \.offset) { _, turn in
+                        Text(String(format: localizedSettingsDisplay("Answered: %@"), turn.response))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
+                TextField(localizedSettingsDisplay("Clarification answer"), text: $answerText)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("voice-command-clarification-answer")
+
+                Button {
+                    let trimmed = answerText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else {
+                        return
+                    }
+                    onSubmit(trimmed)
+                } label: {
+                    Label(localizedSettingsDisplay("Answer"), systemImage: "arrow.turn.down.left")
+                }
+                .disabled(answerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("voice-command-clarification-submit")
+
+                Button {
+                    onCancel()
+                } label: {
+                    Label(localizedSettingsDisplay("Cancel"), systemImage: "xmark.circle")
+                }
+                .accessibilityIdentifier("voice-command-clarification-cancel")
+            }
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .accessibilityIdentifier("voice-command-clarification-panel")
+    }
 }
 
 private struct StatusRow: View {
     let phase: VoiceCapturePhase
 
     var body: some View {
-        Label(label, systemImage: systemImage)
+        Label(localizedSettingsDisplay(label), systemImage: systemImage)
             .font(.caption)
             .foregroundStyle(isError ? .red : .secondary)
+            .accessibilityIdentifier("voice-command-status")
     }
 
     private var label: String {
@@ -389,6 +1831,8 @@ private struct StatusRow: View {
             "Recording"
         case .transcribing:
             "Transcribing"
+        case .needsClarification:
+            "Clarification needed"
         case .generatingPlan:
             "Generating"
         case .reviewReady:
@@ -406,6 +1850,8 @@ private struct StatusRow: View {
             "record.circle"
         case .transcribing, .generatingPlan:
             "hourglass"
+        case .needsClarification:
+            "questionmark.circle"
         case .failed:
             "exclamationmark.triangle"
         }
@@ -419,7 +1865,94 @@ private struct StatusRow: View {
     }
 }
 
-private struct ActionReviewPanel: View {
+private struct VoiceIntentPreview: View {
+    let result: VoiceCommandRoutingResult
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    intentLabel
+                    confidenceLabel
+                    Spacer(minLength: 8)
+                    reviewLabel
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    intentLabel
+                    HStack(spacing: 8) {
+                        confidenceLabel
+                        reviewLabel
+                    }
+                }
+            }
+
+            Text(localizedSettingsDisplay(result.interpretationSummary))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let reason = result.clarificationReason {
+                Label(localizedSettingsDisplay(reason), systemImage: "questionmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .accessibilityIdentifier("voice-command-intent-preview")
+    }
+
+    private var intentLabel: some View {
+        Label(localizedSettingsDisplay(result.intent.displayName), systemImage: iconName)
+            .font(.subheadline)
+            .lineLimit(1)
+            .help(localizedSettingsDisplay(result.intent.displayName))
+    }
+
+    private var confidenceLabel: some View {
+        Text("\(Int((result.confidence * 100).rounded()))%")
+            .font(.caption)
+            .foregroundStyle(result.needsClarification ? .orange : .secondary)
+            .lineLimit(1)
+            .accessibilityLabel(localizedSettingsDisplay("Voice command confidence"))
+    }
+
+    private var reviewLabel: some View {
+        Text(localizedSettingsDisplay("Review-only"))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
+
+    private var iconName: String {
+        switch result.intent {
+        case .taskCreate, .taskTriage:
+            "checkmark.circle"
+        case .dailyPlanningReview:
+            "sun.max"
+        case .schedulePlan:
+            "calendar"
+        case .documentBrief:
+            "doc.text"
+        case .developmentPRWorkflow:
+            "terminal"
+        case .notificationDraft:
+            "bell"
+        case .connectorSendGate:
+            "paperplane"
+        case .statusAsk:
+            "chart.bar"
+        case .clarify:
+            "questionmark.circle"
+        }
+    }
+}
+
+struct ActionReviewPanel: View {
     @StateObject private var viewModel: ReviewSessionViewModel
     private let onExecutionFinished: () -> Void
 
@@ -456,6 +1989,14 @@ private struct ActionReviewPanel: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
+            if let message = viewModel.executionReceiptErrorMessage {
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            if let receipt = viewModel.lastExecutionReceipt {
+                ExecutionReceiptSummaryView(receipt: receipt)
+            }
 
             ViewThatFits(in: .horizontal) {
                 HStack {
@@ -466,6 +2007,7 @@ private struct ActionReviewPanel: View {
                 }
             }
         }
+        .accessibilityIdentifier("voice-action-review-panel")
     }
 
     @ViewBuilder
@@ -476,6 +2018,7 @@ private struct ActionReviewPanel: View {
             Label("Approve", systemImage: "checkmark.seal")
         }
         .disabled(!viewModel.canApprove)
+        .accessibilityIdentifier("voice-action-review-approve")
 
         Button {
             if viewModel.executeOrReportError(), viewModel.session.executionStatus == .completed {
@@ -486,6 +2029,7 @@ private struct ActionReviewPanel: View {
         }
         .buttonStyle(.borderedProminent)
         .disabled(!viewModel.canExecute)
+        .accessibilityIdentifier("voice-action-review-execute")
 
         Button {
             viewModel.cancel()
@@ -493,6 +2037,7 @@ private struct ActionReviewPanel: View {
             Label("Cancel", systemImage: "xmark.circle")
         }
         .disabled(viewModel.session.executionStatus == .completed || viewModel.session.executionStatus == .canceled)
+        .accessibilityIdentifier("voice-action-review-cancel")
     }
 
     private var approvalLabel: String {
@@ -506,6 +2051,120 @@ private struct ActionReviewPanel: View {
         case .blocked(let reason):
             reason
         }
+    }
+}
+
+private struct ExecutionReceiptSummaryView: View {
+    let receipt: ExecutionReceipt
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    Label(localizedSettingsDisplay("Execution receipt"), systemImage: "doc.text.magnifyingglass")
+                        .font(.caption)
+                    statusLabel
+                    Spacer(minLength: 8)
+                    usageLabel
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(localizedSettingsDisplay("Execution receipt"), systemImage: "doc.text.magnifyingglass")
+                        .font(.caption)
+                    HStack(spacing: 8) {
+                        statusLabel
+                        usageLabel
+                    }
+                }
+            }
+
+            Text(receipt.outputSummary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("voice-execution-receipt-output")
+
+            if !receipt.actions.isEmpty {
+                Text(String(format: localizedSettingsDisplay("%d actions recorded"), receipt.actions.count))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(8)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .accessibilityIdentifier("voice-execution-receipt")
+        .accessibilityLabel(localizedSettingsDisplay("Execution receipt"))
+        .accessibilityValue(accessibilityValue)
+    }
+
+    private var statusLabel: some View {
+        Text(localizedSettingsDisplay(statusText))
+            .font(.caption2)
+            .foregroundStyle(statusColor)
+            .lineLimit(1)
+            .accessibilityIdentifier("voice-execution-receipt-status")
+    }
+
+    private var usageLabel: some View {
+        Text(localizedSettingsDisplay(usageText))
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .accessibilityIdentifier("voice-execution-receipt-cost")
+    }
+
+    private var statusText: String {
+        switch receipt.status {
+        case .notStarted:
+            "Not started"
+        case .running:
+            "Running"
+        case .succeeded:
+            "Succeeded"
+        case .failed:
+            "Failed"
+        case .skipped:
+            "Skipped"
+        case .canceled:
+            "Canceled"
+        }
+    }
+
+    private var statusColor: Color {
+        switch receipt.status {
+        case .succeeded:
+            .green
+        case .failed:
+            .red
+        case .canceled, .skipped:
+            .orange
+        case .notStarted, .running:
+            .secondary
+        }
+    }
+
+    private var usageText: String {
+        switch receipt.usage.state {
+        case .measured:
+            if let totalTokens = receipt.usage.totalTokens {
+                return String(format: localizedSettingsDisplay("%d tokens"), totalTokens)
+            }
+            return "Measured cost"
+        case .estimated:
+            if let totalTokens = receipt.usage.totalTokens {
+                return String(format: localizedSettingsDisplay("%d tokens estimated"), totalTokens)
+            }
+            return "Estimated cost"
+        case .unknown:
+            return "Cost unknown"
+        case .unavailable:
+            return "Cost unavailable"
+        }
+    }
+
+    private var accessibilityValue: String {
+        "\(localizedSettingsDisplay(statusText)). \(receipt.outputSummary)"
     }
 }
 
@@ -536,12 +2195,12 @@ private struct ActionReviewHeader: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
                 .help(summary)
-            Text(approvalLabel)
+            Text(localizedSettingsDisplay(approvalLabel))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-                .help(approvalLabel)
+                .help(localizedSettingsDisplay(approvalLabel))
         }
     }
 
@@ -610,7 +2269,7 @@ private struct ReviewActionRow: View {
                     .lineLimit(2)
             }
             if let failureRecovery = item.failureRecovery {
-                Label(failureRecoveryLabel(failureRecovery), systemImage: failureRecovery == .retryable ? "arrow.clockwise" : "lock")
+                Label(localizedSettingsDisplay(failureRecoveryLabel(failureRecovery)), systemImage: failureRecovery == .retryable ? "arrow.clockwise" : "lock")
                     .font(.caption)
                     .foregroundStyle(failureRecoveryColor(failureRecovery))
             }
@@ -714,7 +2373,7 @@ private struct ReviewActionTitleRow: View {
     }
 
     private var statusBadge: some View {
-        Text(statusLabel)
+        Text(localizedSettingsDisplay(statusLabel))
             .font(.caption)
             .foregroundStyle(statusColor)
             .lineLimit(1)
@@ -833,8 +2492,35 @@ private struct SummaryRow: View {
     }
 }
 
+private enum SettingsTab: String {
+    case overview = "Overview"
+    case appearance = "Appearance"
+    case ai = "AI"
+    case mcp = "MCP"
+    case sync = "Sync"
+    case privacy = "Privacy"
+}
+
+private extension VoiceModelID {
+    var voiceModelSystemImage: String {
+        switch self {
+        case .whisperCppTinyMultilingual:
+            "waveform"
+        case .kokoro82M:
+            "speaker.wave.2"
+        case .custom:
+            "shippingbox"
+        }
+    }
+}
+
 private struct SettingsView: View {
     let watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot
+    let integrationPermissionSnapshot: PermissionSnapshot
+    let googleCalendarStatusProvider: () -> GoogleCalendarRuntimeSyncStatus
+    let googleCalendarOAuthConnector: (any GoogleCalendarOAuthConnecting)?
+    let googleCalendarOAuthDisconnecter: (any GoogleCalendarOAuthDisconnecting)?
+    let googleCalendarListProvider: (any GoogleCalendarListProviding)?
     @StateObject private var settingsViewModel: AppSettingsViewModel
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
     @StateObject private var externalMCPViewModel: ExternalMCPSettingsViewModel
@@ -842,44 +2528,73 @@ private struct SettingsView: View {
     @Binding private var appearancePreference: SoloPMAppearancePreference
     @Binding private var languagePreference: AppLanguagePreference
     @State private var isConfirmingMCPRegistrationDeletion = false
+    @State private var isConfirmingGoogleCalendarOAuthDisconnect = false
+    @State private var isChoosingDataLocation = false
+    @State private var selectedTab: SettingsTab
+    @State private var googleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus?
+    @State private var googleCalendarSetupMessage: String?
+    @State private var isGoogleCalendarOAuthAuthorizationInProgress = false
+    @State private var isLoadingGoogleCalendarList = false
+    @State private var googleCalendarListOptions: [GoogleCalendarRuntimeCalendarListEntry] = []
+    @State private var googleCalendarListLoadGeneration = 0
 
     init(
         settingsViewModel: AppSettingsViewModel,
         launchAtLoginViewModel: LaunchAtLoginSettingsViewModel,
         watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot,
+        integrationPermissionSnapshot: PermissionSnapshot,
         externalMCPViewModel: ExternalMCPSettingsViewModel,
         syncViewModel: SyncSettingsViewModel,
+        googleCalendarStatusProvider: @escaping () -> GoogleCalendarRuntimeSyncStatus,
+        googleCalendarOAuthConnector: (any GoogleCalendarOAuthConnecting)?,
+        googleCalendarOAuthDisconnecter: (any GoogleCalendarOAuthDisconnecting)?,
+        googleCalendarListProvider: (any GoogleCalendarListProviding)?,
         appearancePreference: Binding<SoloPMAppearancePreference>,
-        languagePreference: Binding<AppLanguagePreference>
+        languagePreference: Binding<AppLanguagePreference>,
+        initialTab: SettingsTab = .overview
     ) {
         self.watcherDiagnosticsSnapshot = watcherDiagnosticsSnapshot
+        self.integrationPermissionSnapshot = integrationPermissionSnapshot
+        self.googleCalendarStatusProvider = googleCalendarStatusProvider
+        self.googleCalendarOAuthConnector = googleCalendarOAuthConnector
+        self.googleCalendarOAuthDisconnecter = googleCalendarOAuthDisconnecter
+        self.googleCalendarListProvider = googleCalendarListProvider
         _settingsViewModel = StateObject(wrappedValue: settingsViewModel)
         _launchAtLoginViewModel = StateObject(wrappedValue: launchAtLoginViewModel)
         _externalMCPViewModel = StateObject(wrappedValue: externalMCPViewModel)
         _syncViewModel = StateObject(wrappedValue: syncViewModel)
         _appearancePreference = appearancePreference
         _languagePreference = languagePreference
+        _selectedTab = State(initialValue: initialTab)
+        _googleCalendarSyncStatus = State(initialValue: nil)
+        _googleCalendarSetupMessage = State(initialValue: nil)
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             overviewSettingsTab
                 .tabItem { Label("Overview", systemImage: "gauge.with.dots.needle.bottom.50percent") }
+                .tag(SettingsTab.overview)
 
             appearanceSettingsTab
                 .tabItem { Label("Appearance", systemImage: "circle.lefthalf.filled") }
+                .tag(SettingsTab.appearance)
 
             aiSettingsTab
                 .tabItem { Label("AI", systemImage: "brain.head.profile") }
+                .tag(SettingsTab.ai)
 
             mcpSettingsTab
                 .tabItem { Label("MCP", systemImage: "externaldrive.connected.to.line.below") }
+                .tag(SettingsTab.mcp)
 
             syncSettingsTab
                 .tabItem { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }
+                .tag(SettingsTab.sync)
 
             privacySettingsTab
                 .tabItem { Label("Privacy", systemImage: "lock.shield") }
+                .tag(SettingsTab.privacy)
         }
         .frame(width: 680, height: 620)
         .scenePadding()
@@ -897,6 +2612,18 @@ private struct SettingsView: View {
         } message: {
             Text("This removes the saved registration from SoloPM.")
         }
+        .confirmationDialog(
+            "Disconnect Google Calendar",
+            isPresented: $isConfirmingGoogleCalendarOAuthDisconnect
+        ) {
+            Button("Disconnect", role: .destructive) {
+                disconnectGoogleCalendarOAuthAuthorization()
+            }
+            .accessibilityIdentifier("settings-google-calendar-oauth-disconnect-confirm")
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes local Google Calendar OAuth tokens from Keychain. Tasks and saved calendar ID stay unchanged.")
+        }
     }
 
     private var overviewSettingsTab: some View {
@@ -906,15 +2633,30 @@ private struct SettingsView: View {
                     aiProviderLabel: settingsViewModel.settings.aiProvider.displayName,
                     aiStatusLabel: activeAIProviderStatusLabel,
                     aiTone: activeAIProviderTone,
+                    sttStatusLabel: settingsViewModel.settings.sttProvider.displayName,
+                    sttDetailLabel: sttOverviewDetailLabel,
+                    sttTone: sttOverviewTone,
+                    ttsStatusLabel: settingsViewModel.settings.ttsProvider.displayName,
+                    ttsDetailLabel: ttsOverviewDetailLabel,
+                    ttsTone: ttsOverviewTone,
+                    calendarStatusLabel: calendarOverviewStatusLabel,
+                    calendarDetailLabel: calendarOverviewDetailLabel,
+                    calendarTone: integrationTone(for: integrationPermissionSnapshot.status(for: .calendar)),
+                    reminderStatusLabel: reminderOverviewStatusLabel,
+                    reminderDetailLabel: reminderOverviewDetailLabel,
+                    reminderTone: integrationTone(for: integrationPermissionSnapshot.status(for: .reminders)),
                     mcpStatusLabel: externalMCPViewModel.connectionCheckResultLabel,
                     mcpDetailLabel: externalMCPViewModel.display.statusLabel,
                     mcpTone: mcpOverviewTone,
                     syncStatusLabel: syncViewModel.statusLabel,
-                    syncDetailLabel: "Plan: \(syncViewModel.planLabel)",
+                    syncDetailLabel: localizedDisplay("Plan: %@", syncViewModel.planLabel),
                     syncTone: syncOverviewTone,
                     privacyStatusLabel: privacyOverviewStatusLabel,
-                    privacyDetailLabel: "Login Item: \(launchAtLoginViewModel.statusLabel)",
-                    privacyTone: privacyOverviewTone
+                    privacyDetailLabel: localizedDisplay("Login Item: %@", localizedSettingsDisplay(launchAtLoginViewModel.statusLabel)),
+                    privacyTone: privacyOverviewTone,
+                    dataLocationStatusLabel: dataLocationOverviewStatusLabel,
+                    dataLocationDetailLabel: dataLocationOverviewDetailLabel,
+                    dataLocationTone: dataLocationOverviewTone
                 )
             }
 
@@ -968,6 +2710,157 @@ private struct SettingsView: View {
                 selectedProviderConfigurationFields
             }
 
+            Section("Task Automation") {
+                Toggle(
+                    isOn: Binding(
+                        get: { settingsViewModel.settings.taskAutoExecution.isEnabled },
+                        set: { settingsViewModel.setTaskAutoExecutionEnabled($0) }
+                    )
+                ) {
+                    Label("Review task automation", systemImage: "sparkles")
+                }
+                .accessibilityIdentifier("settings-task-auto-execution-toggle")
+                .accessibilityHint("Enables review-only LLM planning for due and high-priority tasks.")
+
+                taskAutomationSaveButton
+
+                Picker(
+                    "Frequency",
+                    selection: Binding(
+                        get: { settingsViewModel.settings.taskAutoExecution.cadence },
+                        set: { settingsViewModel.setTaskAutoExecutionCadence($0) }
+                    )
+                ) {
+                    ForEach(TaskAutoExecutionCadence.allCases, id: \.self) { cadence in
+                        Text(cadence.label)
+                            .tag(cadence)
+                    }
+                }
+                .accessibilityIdentifier("settings-task-auto-execution-frequency")
+                .accessibilityHint("Manual frequency only prepares reviews after a user action; scheduled reviews require hourly, daily, or weekly frequency.")
+
+                Stepper(
+                    value: Binding(
+                        get: { settingsViewModel.settings.taskAutoExecution.maxTasksPerRun },
+                        set: { settingsViewModel.setTaskAutoExecutionMaxTasksPerRun($0) }
+                    ),
+                    in: 1...10
+                ) {
+                    LabeledContent("Tasks per run", value: "\(settingsViewModel.settings.taskAutoExecution.maxTasksPerRun)")
+                }
+                .accessibilityIdentifier("settings-task-auto-execution-max-tasks")
+
+                Stepper(
+                    value: Binding(
+                        get: { settingsViewModel.settings.taskAutoExecution.dailyLLMCallLimit },
+                        set: { settingsViewModel.setTaskAutoExecutionDailyLLMCallLimit($0) }
+                    ),
+                    in: 1...48
+                ) {
+                    LabeledContent("Daily LLM limit", value: "\(settingsViewModel.settings.taskAutoExecution.dailyLLMCallLimit)")
+                }
+                .accessibilityIdentifier("settings-task-auto-execution-daily-limit")
+
+                Stepper(
+                    value: Binding(
+                        get: { settingsViewModel.settings.taskAutoExecution.lookaheadHours },
+                        set: { settingsViewModel.setTaskAutoExecutionLookaheadHours($0) }
+                    ),
+                    in: 1...(24 * 30),
+                    step: 1
+                ) {
+                    LabeledContent("Due lookahead", value: "\(settingsViewModel.settings.taskAutoExecution.lookaheadHours)h")
+                }
+                .accessibilityIdentifier("settings-task-auto-execution-lookahead")
+
+                Stepper(
+                    value: Binding(
+                        get: { settingsViewModel.settings.taskAutoExecution.urgentReviewCooldownMinutes },
+                        set: { settingsViewModel.setTaskAutoExecutionUrgentReviewCooldownMinutes($0) }
+                    ),
+                    in: 5...(24 * 60),
+                    step: 5
+                ) {
+                    LabeledContent("Urgent review cooldown", value: "\(settingsViewModel.settings.taskAutoExecution.urgentReviewCooldownMinutes)m")
+                }
+                .accessibilityIdentifier("settings-task-auto-execution-urgent-cooldown")
+                .accessibilityHint("Controls how soon overdue or due-today tasks may trigger another review before the regular frequency elapses.")
+
+                Label("Plans stay review-before-execution; deletion and completion are never run directly by automation.", systemImage: "checkmark.shield")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("settings-task-auto-execution-boundary")
+            }
+
+            Section("Billing") {
+                Toggle(
+                    isOn: Binding(
+                        get: { settingsViewModel.settings.managedAIBilling.isEnabled },
+                        set: { settingsViewModel.setManagedAIBillingEnabled($0) }
+                    )
+                ) {
+                    Label("Managed AI billing", systemImage: "creditcard")
+                }
+                .accessibilityIdentifier("settings-managed-ai-billing-toggle")
+                .accessibilityHint("Enables local cost cap controls for SoloPM-managed AI work.")
+
+                Stepper(
+                    value: Binding(
+                        get: { settingsViewModel.settings.managedAIBilling.perRunCapCents ?? 0 },
+                        set: { settingsViewModel.setManagedAIPerRunCapCents($0 == 0 ? nil : $0) }
+                    ),
+                    in: 0...100_000,
+                    step: 25
+                ) {
+                    LabeledContent("Per-run cap", value: billingCapValueLabel(settingsViewModel.settings.managedAIBilling.perRunCapCents))
+                }
+                .accessibilityIdentifier("settings-managed-ai-per-run-cap")
+                .accessibilityHint("Sets the per-run cap used by managed AI cost previews.")
+
+                Stepper(
+                    value: Binding(
+                        get: { settingsViewModel.settings.managedAIBilling.dailyCapCents ?? 0 },
+                        set: { settingsViewModel.setManagedAIDailyCapCents($0 == 0 ? nil : $0) }
+                    ),
+                    in: 0...1_000_000,
+                    step: 50
+                ) {
+                    LabeledContent("Daily threshold", value: billingCapValueLabel(settingsViewModel.settings.managedAIBilling.dailyCapCents))
+                }
+                .accessibilityIdentifier("settings-managed-ai-daily-cap")
+
+                Stepper(
+                    value: Binding(
+                        get: { settingsViewModel.settings.managedAIBilling.monthlyCapCents ?? 0 },
+                        set: { settingsViewModel.setManagedAIMonthlyCapCents($0 == 0 ? nil : $0) }
+                    ),
+                    in: 0...10_000_000,
+                    step: 100
+                ) {
+                    LabeledContent("Monthly threshold", value: billingCapValueLabel(settingsViewModel.settings.managedAIBilling.monthlyCapCents))
+                }
+                .accessibilityIdentifier("settings-managed-ai-monthly-cap")
+
+                Stepper(
+                    value: Binding(
+                        get: { settingsViewModel.settings.managedAIBilling.workspaceCapCents ?? 0 },
+                        set: { settingsViewModel.setManagedAIWorkspaceCapCents($0 == 0 ? nil : $0) }
+                    ),
+                    in: 0...100_000_000,
+                    step: 100
+                ) {
+                    LabeledContent("Workspace threshold", value: billingCapValueLabel(settingsViewModel.settings.managedAIBilling.workspaceCapCents))
+                }
+                .accessibilityIdentifier("settings-managed-ai-workspace-cap")
+
+                Label("Per-run cap blocks managed previews; daily, monthly, and workspace caps are enforced from the managed usage ledger before execution.", systemImage: "lock.doc")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("settings-managed-ai-billing-boundary")
+
+                settingsSaveButton
+            }
+
             Section("Voice") {
                 Picker(
                     "Speech to Text",
@@ -976,14 +2869,115 @@ private struct SettingsView: View {
                         set: { settingsViewModel.setSTTProvider($0) }
                     )
                 ) {
-                    ForEach(STTProvider.releaseReadyCases, id: \.self) { provider in
+                    ForEach(settingsViewModel.selectableSTTProviders, id: \.self) { provider in
                         Text(provider.displayName)
                             .tag(provider)
                     }
                 }
+                TextField(
+                    "whisper.cpp executable",
+                    text: Binding(
+                        get: { settingsViewModel.settings.whisperCppExecutablePath ?? "" },
+                        set: { settingsViewModel.setWhisperCppExecutablePath($0) }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("settings-whisper-cpp-executable-path")
+                .accessibilityHint("Sets the absolute path to whisper-cli for offline speech to text.")
+
+                LocalSTTProviderStatusRow(row: settingsViewModel.localSTTProviderReadinessRow)
+
                 LabeledContent("Shortcut", value: "Option + Space")
+                Picker(
+                    "Text to Speech",
+                    selection: Binding(
+                        get: { settingsViewModel.settings.ttsProvider },
+                        set: { settingsViewModel.setTTSProvider($0) }
+                    )
+                ) {
+                    ForEach(settingsViewModel.selectableTTSProviders, id: \.self) { provider in
+                        Text(provider.displayName)
+                            .tag(provider)
+                    }
+                }
+                .accessibilityIdentifier("settings-tts-provider-picker")
+
+                SelectedTTSProviderStatusRow(row: settingsViewModel.ttsProviderReadinessRow)
+
+                TextField(
+                    "Kokoro executable",
+                    text: Binding(
+                        get: { settingsViewModel.settings.kokoroExecutablePath ?? "" },
+                        set: { settingsViewModel.setKokoroExecutablePath($0) }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("settings-kokoro-executable-path")
+                .accessibilityHint("Sets the absolute path to the local Kokoro TTS executable.")
+
+                Picker(
+                    "TTS Language",
+                    selection: Binding(
+                        get: { settingsViewModel.settings.ttsLanguageCode },
+                        set: { settingsViewModel.setTTSLanguageCode($0) }
+                    )
+                ) {
+                    Text("English").tag("en")
+                    Text("Japanese").tag("ja")
+                }
+                .accessibilityIdentifier("settings-tts-language-picker")
+
+                TextField(
+                    "TTS voice",
+                    text: Binding(
+                        get: { settingsViewModel.settings.ttsVoiceID },
+                        set: { settingsViewModel.setTTSVoiceID($0) }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("settings-tts-voice-id")
+
+                Button("Test Play") {
+                    Task {
+                        await settingsViewModel.testTTSPlayback(
+                            using: AppRuntimeFactory.makeTextToSpeechPreviewer(settings: settingsViewModel.settings)
+                        )
+                    }
+                }
+                .disabled(!settingsViewModel.ttsProviderReadinessRow.isReady)
+                .accessibilityIdentifier("settings-tts-test-play")
+                .accessibilityHint("Tests the selected local TTS provider when the model and runtime are ready.")
             }
 
+            Section("Voice Models") {
+                ForEach(settingsViewModel.voiceModelReadinessRows) { row in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Label(row.displayName, systemImage: row.modelID.voiceModelSystemImage)
+                                .font(.headline)
+                            Spacer()
+                            Text(localizedSettingsDisplay(row.statusLabel))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Text(row.languageSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Text("\(row.sizeLabel) - \(row.detailLabel)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+
+                        Button(localizedSettingsDisplay(row.actionLabel)) {
+                            handleVoiceModelAction(row)
+                        }
+                        .disabled(row.action == .wait)
+                        .accessibilityIdentifier("settings-voice-model-\(row.modelID.rawValue)")
+                        .accessibilityHint("Manages the cached local voice model file.")
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
     }
@@ -992,9 +2986,9 @@ private struct SettingsView: View {
         Form {
             Section("Sync") {
                 LabeledContent("Plan", value: syncViewModel.planLabel)
-                LabeledContent("Status", value: syncViewModel.statusLabel)
-                LabeledContent("Last Attempt", value: syncViewModel.lastAttemptLabel)
-                LabeledContent("Data Included", value: syncViewModel.dataIncludedLabel)
+                LocalizedValueLabeledContent("Status", value: syncViewModel.statusLabel)
+                LocalizedValueLabeledContent("Last Attempt", value: syncViewModel.lastAttemptLabel)
+                LocalizedValueLabeledContent("Data Included", value: syncViewModel.dataIncludedLabel)
                 SyncValueStatusRow(
                     planLabel: syncViewModel.planLabel,
                     statusLabel: syncViewModel.statusLabel,
@@ -1018,7 +3012,7 @@ private struct SettingsView: View {
                 }
                 .disabled(!syncViewModel.canEnableSync)
                 if let syncUnavailableLabel = syncViewModel.syncUnavailableLabel {
-                    Label(syncUnavailableLabel, systemImage: "lock")
+                    Label(localizedSettingsDisplay(syncUnavailableLabel), systemImage: "lock")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -1033,13 +3027,52 @@ private struct SettingsView: View {
                 Text("Pro unlocks external sync; import/export JSON stays local.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                GoogleCalendarSettingsSaveControls(
+                    calendarID: Binding(
+                        get: { settingsViewModel.settings.googleCalendarID },
+                        set: { settingsViewModel.setGoogleCalendarID($0) }
+                    ),
+                    currentCalendarID: settingsViewModel.settings.googleCalendarID,
+                    calendarListOptions: googleCalendarListOptions,
+                    shouldShowCurrentManualOption: shouldShowCurrentGoogleCalendarManualOption,
+                    manualCalendarLabel: googleCalendarManualCalendarLabel,
+                    calendarPickerLabel: { googleCalendarPickerLabel(for: $0) },
+                    isLoadingCalendarList: isLoadingGoogleCalendarList,
+                    isCalendarListLoadDisabled: isLoadingGoogleCalendarList || isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarListProvider == nil,
+                    saveCalendarID: saveGoogleCalendarIDSetting,
+                    loadCalendarList: loadGoogleCalendarList
+                )
                 ExternalConnectorScopeRow(
                     name: "Google Calendar",
-                    status: "OAuth required",
-                    detail: "Due tasks can be pushed as calendar events after Pro and Google authorization.",
+                    status: googleCalendarSettingsReadinessRow.statusLabel,
+                    detail: googleCalendarSettingsReadinessRow.detailLabel,
+                    nextAction: googleCalendarSettingsReadinessRow.nextActionLabel,
+                    privacyBoundary: googleCalendarSettingsReadinessRow.privacyBoundaryLabel,
                     systemImage: "calendar.badge.plus",
-                    tone: .warning
+                    tone: googleCalendarSettingsTone,
+                    statusActionLabel: googleCalendarSettingsReadinessRow.statusCheckActionLabel,
+                    onStatusAction: refreshGoogleCalendarSettingsStatus
                 )
+                Button(localizedSettingsDisplay(googleCalendarOAuthActionLabel)) {
+                    startGoogleCalendarOAuthAuthorization()
+                }
+                .disabled(isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarOAuthConnector == nil)
+                .accessibilityIdentifier("settings-google-calendar-oauth-setup")
+                .accessibilityHint("Opens Google Calendar OAuth authorization with PKCE. Tokens stay in Keychain.")
+                Button(role: .destructive) {
+                    isConfirmingGoogleCalendarOAuthDisconnect = true
+                } label: {
+                    Label("Disconnect Google Calendar", systemImage: "xmark.circle")
+                }
+                .disabled(isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarOAuthDisconnecter == nil)
+                .accessibilityIdentifier("settings-google-calendar-oauth-disconnect")
+                .accessibilityHint("Deletes local Google Calendar OAuth metadata and Keychain tokens without changing tasks.")
+                if let googleCalendarSetupMessage {
+                    Label(localizedSettingsDisplay(googleCalendarSetupMessage), systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("settings-google-calendar-oauth-setup-message")
+                }
                 ExternalConnectorScopeRow(
                     name: "Todoist",
                     status: "Connector planned",
@@ -1072,6 +3105,74 @@ private struct SettingsView: View {
 
         }
         .formStyle(.grouped)
+    }
+
+    private struct GoogleCalendarSettingsSaveControls: View {
+        let calendarID: Binding<String>
+        let currentCalendarID: String
+        let calendarListOptions: [GoogleCalendarRuntimeCalendarListEntry]
+        let shouldShowCurrentManualOption: Bool
+        let manualCalendarLabel: String
+        let calendarPickerLabel: (GoogleCalendarRuntimeCalendarListEntry) -> String
+        let isLoadingCalendarList: Bool
+        let isCalendarListLoadDisabled: Bool
+        let saveCalendarID: () -> Void
+        let loadCalendarList: () -> Void
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("Google Calendar ID", text: calendarID)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("settings-google-calendar-id")
+                    .accessibilityHint("Sets the Google Calendar id used for approved due-task sync.")
+                    .onSubmit(saveCalendarID)
+
+                if !calendarListOptions.isEmpty {
+                    Picker("Available Calendar", selection: calendarID) {
+                        if shouldShowCurrentManualOption {
+                            Text(manualCalendarLabel)
+                                .tag(currentCalendarID)
+                        }
+                        ForEach(calendarListOptions) { option in
+                            Text(calendarPickerLabel(option))
+                                .tag(option.id)
+                        }
+                    }
+                    .accessibilityIdentifier("settings-google-calendar-picker")
+                    .accessibilityHint("Chooses a writable Google Calendar returned by the connected account.")
+                }
+
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Button {
+                        saveCalendarID()
+                    } label: {
+                        Label("Save Calendar", systemImage: "square.and.arrow.down")
+                    }
+                    .accessibilityIdentifier("settings-google-calendar-id-save")
+                    .accessibilityHint("Persists the selected Google Calendar id before checking sync readiness.")
+
+                    Button {
+                        loadCalendarList()
+                    } label: {
+                        Label(
+                            isLoadingCalendarList ? "Loading Calendars" : "Load Calendars",
+                            systemImage: "calendar.badge.checkmark"
+                        )
+                    }
+                    .disabled(isCalendarListLoadDisabled)
+                    .accessibilityIdentifier("settings-google-calendar-list-load")
+                    .accessibilityHint("Loads writable Google Calendars for the connected OAuth account.")
+
+                    Text("Save Calendar before checking readiness; load calendars after OAuth is connected.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("settings-google-calendar-id-save-note")
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("settings-google-calendar-id-save-flow")
+        }
     }
 
     @ViewBuilder
@@ -1115,8 +3216,8 @@ private struct SettingsView: View {
 
     @ViewBuilder
     private var openAIProviderSettingsFields: some View {
-        LabeledContent("OpenAI API Key", value: settingsViewModel.openAIAPIKeyStatusLabel)
-        LabeledContent("OpenAI Provider Smoke", value: settingsViewModel.openAIProviderSmokeStatusLabel)
+        LocalizedValueLabeledContent("OpenAI API Key", value: settingsViewModel.openAIAPIKeyStatusLabel)
+        LocalizedValueLabeledContent("OpenAI Provider Smoke", value: settingsViewModel.openAIProviderSmokeStatusLabel)
         SecureField(
             "OpenAI API Key",
             text: Binding(
@@ -1142,7 +3243,7 @@ private struct SettingsView: View {
 
     @ViewBuilder
     private var claudeProviderSettingsFields: some View {
-        LabeledContent("Anthropic API Key", value: settingsViewModel.anthropicAPIKeyStatusLabel)
+        LocalizedValueLabeledContent("Anthropic API Key", value: settingsViewModel.anthropicAPIKeyStatusLabel)
         SecureField(
             "Anthropic API Key",
             text: Binding(
@@ -1168,8 +3269,8 @@ private struct SettingsView: View {
 
     @ViewBuilder
     private var geminiProviderSettingsFields: some View {
-        LabeledContent("Gemini API Key", value: settingsViewModel.geminiAPIKeyStatusLabel)
-        LabeledContent("Gemini Provider Smoke", value: settingsViewModel.geminiProviderSmokeStatusLabel)
+        LocalizedValueLabeledContent("Gemini API Key", value: settingsViewModel.geminiAPIKeyStatusLabel)
+        LocalizedValueLabeledContent("Gemini Provider Smoke", value: settingsViewModel.geminiProviderSmokeStatusLabel)
         TextField(
             "Gemini Model ID",
             text: Binding(
@@ -1205,8 +3306,8 @@ private struct SettingsView: View {
 
     @ViewBuilder
     private var groqProviderSettingsFields: some View {
-        LabeledContent("Groq API Key", value: settingsViewModel.groqAPIKeyStatusLabel)
-        LabeledContent("Groq Provider Smoke", value: settingsViewModel.groqProviderSmokeStatusLabel)
+        LocalizedValueLabeledContent("Groq API Key", value: settingsViewModel.groqAPIKeyStatusLabel)
+        LocalizedValueLabeledContent("Groq Provider Smoke", value: settingsViewModel.groqProviderSmokeStatusLabel)
         TextField(
             "Groq Base URL",
             text: Binding(
@@ -1279,7 +3380,7 @@ private struct SettingsView: View {
 
     @ViewBuilder
     private var openRouterProviderSettingsFields: some View {
-        LabeledContent("OpenRouter API Key", value: settingsViewModel.openRouterAPIKeyStatusLabel)
+        LocalizedValueLabeledContent("OpenRouter API Key", value: settingsViewModel.openRouterAPIKeyStatusLabel)
         SecureField(
             "OpenRouter API Key",
             text: Binding(
@@ -1305,8 +3406,8 @@ private struct SettingsView: View {
 
     @ViewBuilder
     private var ollamaProviderSettingsFields: some View {
-        LabeledContent("Provider Status", value: "Local")
-        LabeledContent("API Key", value: "Not required")
+        LocalizedValueLabeledContent("Provider Status", value: "Local")
+        LocalizedValueLabeledContent("API Key", value: "Not required")
     }
 
     private var privacySettingsTab: some View {
@@ -1328,7 +3429,7 @@ private struct SettingsView: View {
                     Label("Launch at Login", systemImage: "power")
                 }
                 .disabled(!launchAtLoginViewModel.canToggle)
-                LabeledContent("Login Item", value: launchAtLoginViewModel.statusLabel)
+                LocalizedValueLabeledContent("Login Item", value: launchAtLoginViewModel.statusLabel)
                 if let statusDetail = launchAtLoginViewModel.statusDetail {
                     Label(statusDetail, systemImage: "info.circle")
                         .font(.caption)
@@ -1346,11 +3447,13 @@ private struct SettingsView: View {
                         set: { settingsViewModel.setDefaultWorkspacePath($0) }
                     )
                 )
+                LabeledContent("Data Location", value: dataLocationOverviewStatusLabel)
                 Button {
-                    settingsViewModel.saveSettings()
+                    isChoosingDataLocation = true
                 } label: {
-                    Label("Save Settings", systemImage: "square.and.arrow.down")
+                    Label("Choose Data Location", systemImage: "folder")
                 }
+                settingsSaveButton
                 if let errorMessage = settingsViewModel.errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.triangle")
                         .font(.caption)
@@ -1366,7 +3469,7 @@ private struct SettingsView: View {
             Section("Watcher") {
                 LabeledContent("Last Check", value: diagnosticDateLabel(watcherDiagnosticsSnapshot.lastCheckAt))
                 LabeledContent("Next Check", value: diagnosticDateLabel(watcherDiagnosticsSnapshot.nextCheckAt))
-                LabeledContent("Notifications", value: permissionLabel(watcherDiagnosticsSnapshot.notificationPermissionStatus))
+                LocalizedValueLabeledContent("Notifications", value: permissionLabel(watcherDiagnosticsSnapshot.notificationPermissionStatus))
                 if let errorMessage = watcherDiagnosticsSnapshot.errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.triangle")
                         .font(.caption)
@@ -1376,6 +3479,21 @@ private struct SettingsView: View {
 
         }
         .formStyle(.grouped)
+        .fileImporter(
+            isPresented: $isChoosingDataLocation,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    settingsViewModel.setDefaultWorkspacePath(url.path)
+                }
+            case .failure(let error):
+                settingsViewModel.setDefaultWorkspacePath(settingsViewModel.settings.defaultWorkspacePath ?? "")
+                settingsViewModel.setTransientErrorMessage(error.localizedDescription)
+            }
+        }
     }
 
     private var mcpSettingsTab: some View {
@@ -1449,7 +3567,7 @@ private struct SettingsView: View {
                 .help("Use NAME=keychain:secret_key per line. Raw secret values are rejected.")
 
                 Group {
-                    LabeledContent("MCP Keychain Secret", value: settingsViewModel.keychainSecretStatusLabel)
+                    LocalizedValueLabeledContent("MCP Keychain Secret", value: settingsViewModel.keychainSecretStatusLabel)
                     TextField("Secret Key", text: Binding(
                         get: { settingsViewModel.keychainSecretKeyInput },
                         set: { settingsViewModel.updateKeychainSecretKeyInput($0) }
@@ -1480,11 +3598,11 @@ private struct SettingsView: View {
                 }
 
                 LabeledContent("Transport", value: externalMCPViewModel.display.transportLabel)
-                LabeledContent("Status", value: externalMCPViewModel.display.statusLabel)
+                LocalizedValueLabeledContent("Status", value: externalMCPViewModel.display.statusLabel)
                 LabeledContent("Protocol Version", value: externalMCPViewModel.protocolVersionLabel)
-                LabeledContent("Check Result", value: externalMCPViewModel.connectionCheckResultLabel)
-                LabeledContent("Resources", value: "Not supported in this release")
-                LabeledContent("Prompts", value: "Not supported in this release")
+                LocalizedValueLabeledContent("Check Result", value: externalMCPViewModel.connectionCheckResultLabel)
+                LocalizedValueLabeledContent("Resources", value: "Not supported in this release")
+                LocalizedValueLabeledContent("Prompts", value: "Not supported in this release")
                 ForEach(externalMCPViewModel.display.environmentRows, id: \.name) { row in
                     LabeledContent(row.name, value: row.sourceLabel)
                 }
@@ -1560,7 +3678,7 @@ private struct SettingsView: View {
                         HStack {
                             Label(row.toolName, systemImage: row.status == .failed ? "xmark.octagon" : "checkmark.circle")
                             Spacer()
-                            Text(row.statusLabel)
+                            Text(localizedSettingsDisplay(row.statusLabel))
                                 .font(.caption)
                                 .foregroundStyle(row.status == .failed ? .red : .secondary)
                         }
@@ -1573,6 +3691,46 @@ private struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var settingsSaveButton: some View {
+        Button {
+            settingsViewModel.saveSettings()
+        } label: {
+            Label("Save Settings", systemImage: "square.and.arrow.down")
+        }
+        .accessibilityIdentifier("settings-save-button")
+        .accessibilityHint("Persists non-secret settings to local UserDefaults.")
+    }
+
+    private var taskAutomationSaveButton: some View {
+        Button {
+            settingsViewModel.saveSettings()
+        } label: {
+            Label("Save Automation", systemImage: "square.and.arrow.down")
+        }
+        .accessibilityIdentifier("settings-task-auto-execution-save")
+        .accessibilityHint("Persists task automation settings to local UserDefaults.")
+    }
+
+    private func billingCapValueLabel(_ cents: Int?) -> String {
+        guard let cents, cents > 0 else {
+            return localizedSettingsDisplay("Not set")
+        }
+        return String(format: localizedSettingsDisplay("USD %.2f"), Double(cents) / 100)
+    }
+
+    private func handleVoiceModelAction(_ row: VoiceModelReadinessRow) {
+        switch row.action {
+        case .download, .retry:
+            Task {
+                await settingsViewModel.installVoiceModel(row.modelID)
+            }
+        case .removeFromCache:
+            settingsViewModel.removeVoiceModelFromCache(row.modelID)
+        case .wait:
+            break
+        }
     }
 
     private var activeAIProviderReadinessRow: AIProviderReadinessRow {
@@ -1593,6 +3751,256 @@ private struct SettingsView: View {
 
     private var activeAIProviderTone: SettingsStatusTone {
         tone(for: activeAIProviderReadinessRow)
+    }
+
+    private var sttOverviewDetailLabel: String {
+        localizedDisplay(
+            "Local whisper.cpp: %@",
+            localizedSettingsDisplay(settingsViewModel.localSTTProviderReadinessRow.statusLabel)
+        )
+    }
+
+    private var sttOverviewTone: SettingsStatusTone {
+        settingsViewModel.localSTTProviderReadinessRow.isReady ? .ready : .warning
+    }
+
+    private var ttsOverviewDetailLabel: String {
+        settingsViewModel.ttsProviderReadinessRow.statusLabel
+    }
+
+    private var ttsOverviewTone: SettingsStatusTone {
+        settingsViewModel.ttsProviderReadinessRow.isReady ? .ready : .warning
+    }
+
+    private var googleCalendarSettingsReadinessRow: GoogleCalendarSettingsReadinessRow {
+        GoogleCalendarSettingsReadinessRow(status: googleCalendarSyncStatus)
+    }
+
+    private var googleCalendarSettingsTone: SettingsStatusTone {
+        guard let googleCalendarSyncStatus else {
+            return .neutral
+        }
+        switch googleCalendarSyncStatus.state {
+        case .ready:
+            return .ready
+        case .failed, .invalidCalendarID:
+            return .danger
+        default:
+            return .warning
+        }
+    }
+
+    private var googleCalendarOAuthActionLabel: String {
+        switch googleCalendarSyncStatus?.state {
+        case .missingRequiredScope, .tokenExpiredWithoutRefresh:
+            return "Reconnect with OAuth authorization"
+        default:
+            return "Connect with OAuth authorization"
+        }
+    }
+
+    private func refreshGoogleCalendarSettingsStatus() {
+        googleCalendarSetupMessage = nil
+        googleCalendarSyncStatus = googleCalendarStatusProvider()
+    }
+
+    private func saveGoogleCalendarIDSetting() {
+        settingsViewModel.saveSettings()
+        guard settingsViewModel.errorMessage == nil else {
+            return
+        }
+        refreshGoogleCalendarSettingsStatus()
+    }
+
+    private func loadGoogleCalendarList() {
+        guard !isGoogleCalendarOAuthAuthorizationInProgress else {
+            googleCalendarSetupMessage = "Wait for Google Calendar OAuth authorization to finish before loading calendars."
+            return
+        }
+        guard let googleCalendarListProvider else {
+            googleCalendarSetupMessage = "Google Calendar list is not available in this build."
+            return
+        }
+
+        googleCalendarListLoadGeneration += 1
+        let generation = googleCalendarListLoadGeneration
+        isLoadingGoogleCalendarList = true
+        googleCalendarSetupMessage = "Loading Google Calendars."
+        Task {
+            do {
+                let options = try await Task.detached(priority: .userInitiated) {
+                    try googleCalendarListProvider.listWritableCalendars()
+                }.value
+                guard generation == googleCalendarListLoadGeneration else {
+                    return
+                }
+                googleCalendarListOptions = options
+                if options.isEmpty {
+                    googleCalendarSetupMessage = "No writable Google Calendars were returned."
+                } else {
+                    googleCalendarSetupMessage = "Google Calendar list loaded. Choose a calendar, then save."
+                }
+            } catch {
+                guard generation == googleCalendarListLoadGeneration else {
+                    return
+                }
+                googleCalendarSetupMessage = googleCalendarListFailureMessage(from: error)
+            }
+            isLoadingGoogleCalendarList = false
+        }
+    }
+
+    private func invalidateGoogleCalendarListOptions() {
+        googleCalendarListLoadGeneration += 1
+        googleCalendarListOptions = []
+        isLoadingGoogleCalendarList = false
+    }
+
+    private var shouldShowCurrentGoogleCalendarManualOption: Bool {
+        let currentID = settingsViewModel.settings.googleCalendarID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard currentID.isEmpty == false else {
+            return false
+        }
+        return !googleCalendarListOptions.contains { $0.id == currentID }
+    }
+
+    private var googleCalendarManualCalendarLabel: String {
+        String(format: localizedSettingsDisplay("Current manual ID: %@"), settingsViewModel.settings.googleCalendarID)
+    }
+
+    private func googleCalendarPickerLabel(for option: GoogleCalendarRuntimeCalendarListEntry) -> String {
+        if option.isPrimary {
+            return String(format: localizedSettingsDisplay("%@ (Primary calendar)"), option.summary)
+        }
+        return option.summary
+    }
+
+    private func startGoogleCalendarOAuthAuthorization() {
+        guard let googleCalendarOAuthConnector else {
+            googleCalendarSetupMessage = "Google Calendar OAuth authorization is not available in this build."
+            return
+        }
+
+        invalidateGoogleCalendarListOptions()
+        isGoogleCalendarOAuthAuthorizationInProgress = true
+        googleCalendarSetupMessage = "OAuth authorization opens in the system browser with PKCE. Tokens stay in Keychain before calendar writes are enabled."
+        googleCalendarOAuthConnector.startAuthorization { result in
+            isGoogleCalendarOAuthAuthorizationInProgress = false
+            switch result {
+            case .success:
+                googleCalendarSetupMessage = "Google Calendar OAuth authorization completed. Check Status to refresh readiness."
+                googleCalendarSyncStatus = googleCalendarStatusProvider()
+            case .failure(let error):
+                googleCalendarSetupMessage = googleCalendarOAuthFailureMessage(from: error)
+            }
+        }
+    }
+
+    private func disconnectGoogleCalendarOAuthAuthorization() {
+        guard let googleCalendarOAuthDisconnecter else {
+            googleCalendarSetupMessage = "Google Calendar OAuth disconnect is not available in this build."
+            return
+        }
+
+        do {
+            invalidateGoogleCalendarListOptions()
+            try googleCalendarOAuthDisconnecter.disconnect()
+            googleCalendarSetupMessage = "Google Calendar OAuth disconnected. Tokens were removed from Keychain."
+            googleCalendarSyncStatus = googleCalendarStatusProvider()
+        } catch {
+            googleCalendarSetupMessage = UserFacingErrorMessageSanitizer.message(
+                from: error,
+                fallback: "Google Calendar OAuth disconnect failed."
+            )
+        }
+    }
+
+    private func googleCalendarListFailureMessage(from error: Error) -> String {
+        if let runtimeError = error as? GoogleCalendarRuntimeError {
+            switch runtimeError {
+            case .disconnected:
+                return "Connect Google Calendar with OAuth before loading calendars."
+            case .missingRequiredScope(let scope):
+                if scope == GoogleCalendarRuntimeOAuthScope.calendarListReadOnly {
+                    return "Reconnect Google Calendar with OAuth before loading calendars."
+                }
+                return "Google Calendar OAuth is missing the required \(scope) scope."
+            default:
+                break
+            }
+        }
+        return UserFacingErrorMessageSanitizer.message(
+            from: error,
+            fallback: "Google Calendar list could not be loaded."
+        )
+    }
+
+    private func googleCalendarOAuthFailureMessage(from error: Error) -> String {
+        if let authorizationError = error as? GoogleCalendarOAuthAuthorizationError {
+            switch authorizationError {
+            case .missingClientID:
+                return "Google Calendar OAuth client ID is not configured. Set SOLOPM_GOOGLE_CALENDAR_OAUTH_CLIENT_ID or SoloPMGoogleCalendarOAuthClientID before connecting."
+            case .callbackError:
+                return "Google Calendar OAuth authorization failed."
+            default:
+                break
+            }
+        }
+        if let localizedError = error as? LocalizedError,
+           let description = localizedError.errorDescription,
+           description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            return description
+        }
+        return UserFacingErrorMessageSanitizer.message(
+            from: error,
+            fallback: "Google Calendar OAuth authorization failed."
+        )
+    }
+
+    private var calendarOverviewStatusLabel: String {
+        PermissionDisplayPolicy.integrationStatusLabel(for: integrationPermissionSnapshot.status(for: .calendar))
+    }
+
+    private var calendarOverviewDetailLabel: String {
+        integrationOverviewDetailLabel(
+            for: integrationPermissionSnapshot.status(for: .calendar),
+            serviceName: "Calendar"
+        )
+    }
+
+    private var reminderOverviewStatusLabel: String {
+        PermissionDisplayPolicy.integrationStatusLabel(for: integrationPermissionSnapshot.status(for: .reminders))
+    }
+
+    private var reminderOverviewDetailLabel: String {
+        integrationOverviewDetailLabel(
+            for: integrationPermissionSnapshot.status(for: .reminders),
+            serviceName: "Reminder"
+        )
+    }
+
+    private var dataLocationOverviewStatusLabel: String {
+        if settingsViewModel.settings.validate().contains(where: { $0.field == "defaultWorkspacePath" }) {
+            return "Needs attention"
+        }
+        return settingsViewModel.settings.defaultWorkspacePath == nil ? "Default app container" : "Custom folder"
+    }
+
+    private var dataLocationOverviewDetailLabel: String {
+        if settingsViewModel.settings.validate().contains(where: { $0.field == "defaultWorkspacePath" }) {
+            return "Choose an absolute folder path."
+        }
+        guard let path = settingsViewModel.settings.defaultWorkspacePath else {
+            return "No custom workspace path configured."
+        }
+        return localizedDisplay("Folder: %@", URL(fileURLWithPath: path).lastPathComponent)
+    }
+
+    private var dataLocationOverviewTone: SettingsStatusTone {
+        if settingsViewModel.settings.validate().contains(where: { $0.field == "defaultWorkspacePath" }) {
+            return .danger
+        }
+        return settingsViewModel.settings.defaultWorkspacePath == nil ? .neutral : .ready
     }
 
     private func tone(for row: AIProviderReadinessRow) -> SettingsStatusTone {
@@ -1616,6 +4024,30 @@ private struct SettingsView: View {
         return externalMCPViewModel.display.isEnabled ? .warning : .neutral
     }
 
+    private func integrationOverviewDetailLabel(for status: PermissionStatus, serviceName: String) -> String {
+        switch status {
+        case .notDetermined:
+            return localizedDisplay("%@ permission has not been requested.", serviceName)
+        case .granted:
+            return localizedDisplay("%@ permission is available; writes still require approval.", serviceName)
+        case .denied:
+            return localizedDisplay("%@ permission is denied in System Settings.", serviceName)
+        case .restricted:
+            return localizedDisplay("%@ permission is restricted on this Mac.", serviceName)
+        }
+    }
+
+    private func integrationTone(for status: PermissionStatus) -> SettingsStatusTone {
+        switch status {
+        case .notDetermined:
+            return .warning
+        case .granted:
+            return .ready
+        case .denied, .restricted:
+            return .danger
+        }
+    }
+
     private var mcpExecutionStatusLabel: String {
         syncViewModel.status.plan.allows(.advancedMCPExecution) ? "Execution unlocked" : "Execution gated"
     }
@@ -1623,9 +4055,9 @@ private struct SettingsView: View {
     private var mcpExecutionValueLabel: String {
         let requiredPlan = FeatureGate.advancedMCPExecution.requiredPlan.displayName
         if syncViewModel.status.plan.allows(.advancedMCPExecution) {
-            return "Advanced MCP tools can execute on \(syncViewModel.planLabel)."
+            return localizedDisplay("Advanced MCP tools can execute on %@.", syncViewModel.planLabel)
         }
-        return "\(requiredPlan) is required before external MCP tools can execute."
+        return localizedDisplay("%@ is required before external MCP tools can execute.", requiredPlan)
     }
 
     private var mcpExecutionSafetyBoundaryLabel: String {
@@ -1803,7 +4235,7 @@ private struct MCPServerStatusBadge: View {
     let label: String
 
     var body: some View {
-        Label(label, systemImage: label == "Enabled" ? "checkmark.circle" : "pause.circle")
+        Label(localizedSettingsDisplay(label), systemImage: label == "Enabled" ? "checkmark.circle" : "pause.circle")
             .foregroundStyle(label == "Enabled" ? .green : .secondary)
             .lineLimit(1)
     }
@@ -1813,7 +4245,7 @@ private struct MCPServerConnectionBadge: View {
     let label: String
 
     var body: some View {
-        Label(label, systemImage: systemImage)
+        Label(localizedSettingsDisplay(label), systemImage: systemImage)
             .foregroundStyle(foregroundStyle)
             .lineLimit(1)
     }
@@ -1863,18 +4295,18 @@ private struct SelectedAIProviderStatusRow: View {
                     .truncationMode(.tail)
                     .help(providerName)
 
-                Text(statusLabel)
+                Text(localizedSettingsDisplay(statusLabel))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(tone.color)
                     .lineLimit(1)
 
-                Text(detailLabel)
+                Text(localizedSettingsDisplay(detailLabel))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Label(nextActionLabel, systemImage: "arrow.right.circle")
+                Label(localizedSettingsDisplay(nextActionLabel), systemImage: "arrow.right.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -1887,7 +4319,102 @@ private struct SelectedAIProviderStatusRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("ai-provider-readiness-row")
         .accessibilityLabel("AI provider readiness")
-        .accessibilityValue("\(providerName), \(statusLabel), \(nextActionLabel)")
+        .accessibilityValue("\(providerName), \(localizedSettingsDisplay(statusLabel)), \(localizedSettingsDisplay(nextActionLabel))")
+    }
+}
+
+private struct SelectedTTSProviderStatusRow: View {
+    let row: TTSProviderReadinessRow
+
+    private var tone: SettingsStatusTone {
+        row.isReady ? .ready : .warning
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: tone.systemImage)
+                .foregroundStyle(tone.color)
+                .frame(width: 20)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(row.provider.displayName)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+
+                Text(localizedSettingsDisplay(row.statusLabel))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(tone.color)
+                    .lineLimit(1)
+
+                Text(localizedSettingsDisplay(row.detailLabel))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Label(localizedSettingsDisplay(row.nextActionLabel), systemImage: row.isReady ? "play.circle" : "arrow.right.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("tts-provider-readiness-row")
+        .accessibilityLabel("TTS provider readiness")
+        .accessibilityValue("\(row.provider.displayName), \(localizedSettingsDisplay(row.statusLabel)), \(localizedSettingsDisplay(row.nextActionLabel))")
+    }
+}
+
+private struct LocalSTTProviderStatusRow: View {
+    let row: STTProviderReadinessRow
+
+    private var tone: SettingsStatusTone {
+        row.isReady ? .ready : .warning
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: tone.systemImage)
+                .foregroundStyle(tone.color)
+                .frame(width: 20)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(row.provider.displayName)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+
+                Text(localizedSettingsDisplay(row.statusLabel))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(tone.color)
+                    .lineLimit(1)
+
+                Text(localizedSettingsDisplay(row.detailLabel))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Label(localizedSettingsDisplay(row.nextActionLabel), systemImage: row.isReady ? "waveform" : "arrow.right.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("settings-local-stt-readiness-row")
+        .accessibilityLabel("STT provider readiness")
+        .accessibilityHint("Shows whether the local STT model, executable, and local voice runtime smoke are ready.")
+        .accessibilityValue("\(row.provider.displayName), \(localizedSettingsDisplay(row.statusLabel)), \(localizedSettingsDisplay(row.nextActionLabel))")
     }
 }
 
@@ -1948,12 +4475,12 @@ private struct AIProviderReadinessSummaryItem: View {
                     .truncationMode(.tail)
                     .help(row.provider.displayName)
 
-                Text(row.statusLabel)
+                Text(localizedSettingsDisplay(row.statusLabel))
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(tone.color)
                     .lineLimit(1)
 
-                Text(row.nextActionLabel)
+                Text(localizedSettingsDisplay(row.nextActionLabel))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -1964,7 +4491,7 @@ private struct AIProviderReadinessSummaryItem: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("ai-provider-readiness-summary-\(row.provider.rawValue)")
         .accessibilityLabel(row.provider.displayName)
-        .accessibilityValue("\(row.statusLabel), \(row.nextActionLabel)")
+        .accessibilityValue("\(localizedSettingsDisplay(row.statusLabel)), \(localizedSettingsDisplay(row.nextActionLabel))")
     }
 }
 
@@ -1983,24 +4510,24 @@ private struct SyncValueStatusRow: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("\(planLabel) Sync")
+                Text(localizedDisplay("%@ Sync", planLabel))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                Text(statusLabel)
+                Text(localizedSettingsDisplay(statusLabel))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(tone.color)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                Text(valueLabel)
+                Text(localizedSettingsDisplay(valueLabel))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Label(boundaryLabel, systemImage: "lock.shield")
+                Label(localizedSettingsDisplay(boundaryLabel), systemImage: "lock.shield")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -2013,7 +4540,7 @@ private struct SyncValueStatusRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("sync-paid-value-row")
         .accessibilityLabel("Sync paid value and safety boundary")
-        .accessibilityValue("\(planLabel), \(statusLabel), \(boundaryLabel)")
+        .accessibilityValue("\(planLabel), \(localizedSettingsDisplay(statusLabel)), \(localizedSettingsDisplay(boundaryLabel))")
     }
 }
 
@@ -2021,8 +4548,34 @@ private struct ExternalConnectorScopeRow: View {
     let name: String
     let status: String
     let detail: String
+    let nextAction: String?
+    let privacyBoundary: String?
     let systemImage: String
     let tone: SettingsStatusTone
+    let statusActionLabel: String?
+    let onStatusAction: (() -> Void)?
+
+    init(
+        name: String,
+        status: String,
+        detail: String,
+        nextAction: String? = nil,
+        privacyBoundary: String? = nil,
+        systemImage: String,
+        tone: SettingsStatusTone,
+        statusActionLabel: String? = nil,
+        onStatusAction: (() -> Void)? = nil
+    ) {
+        self.name = name
+        self.status = status
+        self.detail = detail
+        self.nextAction = nextAction
+        self.privacyBoundary = privacyBoundary
+        self.systemImage = systemImage
+        self.tone = tone
+        self.statusActionLabel = statusActionLabel
+        self.onStatusAction = onStatusAction
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -2039,25 +4592,57 @@ private struct ExternalConnectorScopeRow: View {
                         .truncationMode(.tail)
                         .help(name)
 
-                    Text(status)
+                    Text(localizedSettingsDisplay(status))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(tone.color)
                         .lineLimit(1)
+                        .accessibilityIdentifier(name == "Google Calendar" ? "settings-google-calendar-readiness-status" : "settings-external-connector-status")
                 }
 
-                Text(detail)
+                Text(localizedSettingsDisplay(detail))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(name == "Google Calendar" ? "settings-google-calendar-readiness-detail" : "settings-external-connector-detail")
+
+                if let nextAction {
+                    Label(localizedSettingsDisplay(nextAction), systemImage: "arrow.right.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let privacyBoundary {
+                    Label(localizedSettingsDisplay(privacyBoundary), systemImage: "key.horizontal")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if let statusActionLabel, let onStatusAction {
+                Button(statusActionLabel) {
+                    onStatusAction()
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier(name == "Google Calendar" ? "settings-google-calendar-readiness-check" : "settings-external-connector-readiness-check")
             }
 
             Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: statusActionLabel == nil ? .combine : .contain)
+        .accessibilityIdentifier(name == "Google Calendar" ? "settings-google-calendar-readiness-row" : "settings-external-connector-row")
         .accessibilityLabel("\(name) external connector")
-        .accessibilityValue("\(status), \(detail)")
+        .accessibilityValue([
+            localizedSettingsDisplay(status),
+            localizedSettingsDisplay(detail),
+            nextAction.map(localizedSettingsDisplay),
+            privacyBoundary.map(localizedSettingsDisplay)
+        ].compactMap { $0 }.joined(separator: ", "))
     }
 }
 
@@ -2076,23 +4661,23 @@ private struct MCPPaidExecutionBoundaryRow: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("\(planLabel) MCP Execution")
+                Text(localizedDisplay("%@ MCP Execution", planLabel))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                Text(statusLabel)
+                Text(localizedSettingsDisplay(statusLabel))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(tone.color)
                     .lineLimit(1)
 
-                Text(valueLabel)
+                Text(localizedSettingsDisplay(valueLabel))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Label(boundaryLabel, systemImage: "checkmark.seal")
+                Label(localizedSettingsDisplay(boundaryLabel), systemImage: "checkmark.seal")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -2105,7 +4690,7 @@ private struct MCPPaidExecutionBoundaryRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("mcp-paid-execution-boundary-row")
         .accessibilityLabel("MCP paid execution boundary")
-        .accessibilityValue("\(planLabel), \(statusLabel), \(boundaryLabel)")
+        .accessibilityValue("\(planLabel), \(localizedSettingsDisplay(statusLabel)), \(localizedSettingsDisplay(boundaryLabel))")
     }
 }
 
@@ -2199,18 +4784,18 @@ private struct ProValueOverviewItem: View {
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
 
-                Text(statusLabel)
+                Text(localizedSettingsDisplay(statusLabel))
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(tone.color)
                     .lineLimit(1)
 
-                Text(valueLabel)
+                Text(localizedSettingsDisplay(valueLabel))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Label(boundaryLabel, systemImage: "lock.shield")
+                Label(localizedSettingsDisplay(boundaryLabel), systemImage: "lock.shield")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -2222,7 +4807,25 @@ private struct ProValueOverviewItem: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
-        .accessibilityValue("\(statusLabel), \(boundaryLabel)")
+        .accessibilityValue("\(localizedSettingsDisplay(statusLabel)), \(localizedSettingsDisplay(boundaryLabel))")
+    }
+}
+
+private struct LocalizedValueLabeledContent: View {
+    let title: LocalizedStringKey
+    let value: String
+
+    init(_ title: LocalizedStringKey, value: String) {
+        self.title = title
+        self.value = value
+    }
+
+    var body: some View {
+        LabeledContent {
+            Text(localizedSettingsDisplay(value))
+        } label: {
+            Text(title)
+        }
     }
 }
 
@@ -2263,6 +4866,18 @@ private struct SettingsStatusOverview: View {
     let aiProviderLabel: String
     let aiStatusLabel: String
     let aiTone: SettingsStatusTone
+    let sttStatusLabel: String
+    let sttDetailLabel: String
+    let sttTone: SettingsStatusTone
+    let ttsStatusLabel: String
+    let ttsDetailLabel: String
+    let ttsTone: SettingsStatusTone
+    let calendarStatusLabel: String
+    let calendarDetailLabel: String
+    let calendarTone: SettingsStatusTone
+    let reminderStatusLabel: String
+    let reminderDetailLabel: String
+    let reminderTone: SettingsStatusTone
     let mcpStatusLabel: String
     let mcpDetailLabel: String
     let mcpTone: SettingsStatusTone
@@ -2272,6 +4887,9 @@ private struct SettingsStatusOverview: View {
     let privacyStatusLabel: String
     let privacyDetailLabel: String
     let privacyTone: SettingsStatusTone
+    let dataLocationStatusLabel: String
+    let dataLocationDetailLabel: String
+    let dataLocationTone: SettingsStatusTone
 
     private let columns = [
         GridItem(.flexible(), spacing: 10),
@@ -2286,6 +4904,34 @@ private struct SettingsStatusOverview: View {
                 detail: aiStatusLabel,
                 tone: aiTone,
                 systemImage: "sparkles"
+            )
+            SettingsStatusTile(
+                title: "STT",
+                value: sttStatusLabel,
+                detail: sttDetailLabel,
+                tone: sttTone,
+                systemImage: "waveform"
+            )
+            SettingsStatusTile(
+                title: "TTS",
+                value: ttsStatusLabel,
+                detail: ttsDetailLabel,
+                tone: ttsTone,
+                systemImage: "speaker.slash"
+            )
+            SettingsStatusTile(
+                title: "Calendar",
+                value: calendarStatusLabel,
+                detail: calendarDetailLabel,
+                tone: calendarTone,
+                systemImage: "calendar"
+            )
+            SettingsStatusTile(
+                title: "Reminder",
+                value: reminderStatusLabel,
+                detail: reminderDetailLabel,
+                tone: reminderTone,
+                systemImage: "checklist"
             )
             SettingsStatusTile(
                 title: "MCP",
@@ -2308,8 +4954,16 @@ private struct SettingsStatusOverview: View {
                 tone: privacyTone,
                 systemImage: "lock.shield"
             )
+            SettingsStatusTile(
+                title: "Data Location",
+                value: dataLocationStatusLabel,
+                detail: dataLocationDetailLabel,
+                tone: dataLocationTone,
+                systemImage: "folder"
+            )
         }
         .padding(.vertical, 2)
+        .accessibilityIdentifier("settings-status-overview")
     }
 }
 
@@ -2329,7 +4983,7 @@ private struct SettingsStatusTile: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(title)
+                    Text(localizedSettingsDisplay(title))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -2340,18 +4994,18 @@ private struct SettingsStatusTile: View {
                         .accessibilityHidden(true)
                 }
 
-                Text(value)
+                Text(localizedSettingsDisplay(value))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .help(value)
+                    .help(localizedSettingsDisplay(value))
 
-                Text(detail)
+                Text(localizedSettingsDisplay(detail))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .help(detail)
+                    .help(localizedSettingsDisplay(detail))
             }
 
             Spacer(minLength: 0)
@@ -2367,18 +5021,223 @@ private struct SettingsStatusTile: View {
 }
 
 private enum AppRuntimeFactory {
+    private static let googleCalendarOAuthRedirectURI = URL(string: "solopm://oauth/google-calendar")!
+
+    private static let sharedSecretStore: any SecretStore = {
+        if ProcessInfo.processInfo.environment["SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE"] == "1" {
+            return LaunchVerificationSecretStore()
+        }
+        return KeychainSecretStore()
+    }()
+
     @MainActor
     static func makeProjectBoardViewModel() -> ProjectBoardViewModel {
         do {
             let connection = try migratedConnection()
+            let projectBoardStore = SQLiteProjectBoardStore(connection: connection)
+            let externalTaskLinkStore = SQLiteExternalTaskLinkStore(connection: connection)
+            let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+            let executionReceiptStore = try? makeExecutionReceiptStore()
+            let secretStore = makeSecretStore()
+            let entitlementStore = makeEntitlementStore(secretStore: secretStore)
+            let googleCalendarSync = makeSettingsBackedGoogleCalendarSyncController(
+                connection: connection,
+                entitlementStore: entitlementStore,
+                store: projectBoardStore,
+                linkStore: externalTaskLinkStore,
+                secretStore: secretStore
+            )
             return ProjectBoardViewModel(
-                store: SQLiteProjectBoardStore(connection: connection),
-                externalTaskLinkStore: SQLiteExternalTaskLinkStore(connection: connection),
+                store: projectBoardStore,
+                inboxCaptureStore: SQLiteInboxCaptureStore(connection: connection),
+                assistantQueueStore: assistantQueueStore,
+                assistantQueueExecutionCoordinator: makeAssistantQueueExecutionCoordinator(
+                    connection: connection,
+                    assistantQueueStore: assistantQueueStore,
+                    executionReceiptStore: executionReceiptStore
+                ),
+                executionReceiptStore: executionReceiptStore,
+                missedTaskReviewStateStore: SQLiteMissedTaskReviewStateStore(connection: connection),
+                missedTaskFollowUpNotificationClient: UserNotificationsNotificationClient(),
+                externalTaskLinkStore: externalTaskLinkStore,
+                googleCalendarSync: googleCalendarSync,
                 onChange: postProjectBoardDidChange
             )
         } catch {
             return ProjectBoardViewModel(store: UnavailableProjectBoardStore(error: error))
         }
+    }
+
+    private static func makeAssistantQueueExecutionCoordinator(
+        connection: SQLiteConnection,
+        assistantQueueStore: any AssistantQueueStore,
+        executionReceiptStore: (any ExecutionReceiptStore)?
+    ) -> AssistantQueueExecutionCoordinator? {
+        guard let executionReceiptStore else {
+            return nil
+        }
+        do {
+            let auditLogger = try makeAuditLogger()
+            let registry = try makeRuntimeToolRegistry(connection: connection, auditLogger: auditLogger)
+            return AssistantQueueExecutionCoordinator(
+                queueStore: assistantQueueStore,
+                executor: ActionExecutor(registry: registry, auditLogger: auditLogger),
+                executionReceiptStore: executionReceiptStore,
+                managedAIUsageLedgerStore: SQLiteManagedAIUsageLedgerStore(connection: connection),
+                managedAIBillingSettingsProvider: { loadRuntimeAppSettings().managedAIBilling }
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    private static func makeRuntimeToolRegistry(
+        connection: SQLiteConnection,
+        auditLogger: any AuditLogger
+    ) throws -> ToolRegistry {
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let artifactStore = SQLiteArtifactStore(connection: connection)
+        let registry = try ToolRegistry.phase2MVP(
+            projectStore: projectStore,
+            taskStore: taskStore,
+            knowledgeStore: SQLiteKnowledgeFrameStore(connection: connection),
+            notificationClient: UserNotificationsNotificationClient(),
+            calendarClient: EventKitCalendarClient(),
+            reminderClient: EventKitReminderClient(),
+            fileAccessClient: LocalFileAccessClient(workspaceRoot: try workspaceRootURL()),
+            mailDraftClient: try makeMailDraftClient(),
+            notificationRequestStore: SQLiteNotificationRequestStore(connection: connection),
+            calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
+            reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
+            artifactStore: artifactStore,
+            auditLogger: auditLogger
+        )
+        // Queue execution bridges project-panel approvals to local GitHub Flow
+        // tools only after each external write has its own reviewed ActionPlan.
+        // Remote/cloud requests still enter as blocked review items instead of
+        // reaching this local project-directory registry directly.
+        let developmentBookmarkResolver = makeDevelopmentWorkspaceBookmarkResolver()
+        try registry.register(AuditedTool(
+            base: DevelopmentPRWorkflowTool(
+                projectStore: projectStore,
+                taskStore: taskStore,
+                bookmarkResolver: developmentBookmarkResolver,
+                requireBookmark: true
+            ),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
+            base: DevelopmentRepositoryFileTool(
+                name: .developmentRepositoryListFiles,
+                projectStore: projectStore,
+                artifactStore: artifactStore,
+                bookmarkResolver: developmentBookmarkResolver,
+                requireBookmark: true
+            ),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
+            base: DevelopmentRepositoryFileTool(
+                name: .developmentRepositoryReadFile,
+                projectStore: projectStore,
+                artifactStore: artifactStore,
+                bookmarkResolver: developmentBookmarkResolver,
+                requireBookmark: true
+            ),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
+            base: DevelopmentRepositoryFileTool(
+                name: .developmentRepositoryCreateFile,
+                projectStore: projectStore,
+                artifactStore: artifactStore,
+                bookmarkResolver: developmentBookmarkResolver,
+                requireBookmark: true
+            ),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
+            base: DevelopmentRepositoryFileTool(
+                name: .developmentRepositoryUpdateFile,
+                projectStore: projectStore,
+                artifactStore: artifactStore,
+                bookmarkResolver: developmentBookmarkResolver,
+                requireBookmark: true
+            ),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
+            base: DevelopmentVerificationCommandTool(
+                projectStore: projectStore,
+                bookmarkResolver: developmentBookmarkResolver,
+                requireBookmark: true
+            ),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
+            base: DevelopmentCommitWorkflowTool(
+                projectStore: projectStore,
+                bookmarkResolver: developmentBookmarkResolver,
+                requireBookmark: true
+            ),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
+            base: DevelopmentPushWorkflowTool(
+                projectStore: projectStore,
+                bookmarkResolver: developmentBookmarkResolver
+            ),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
+            base: DevelopmentPullRequestCreationTool(
+                projectStore: projectStore,
+                bookmarkResolver: developmentBookmarkResolver
+            ),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
+            base: DevelopmentPullRequestReviewGateTool(
+                projectStore: projectStore,
+                bookmarkResolver: developmentBookmarkResolver
+            ),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
+            base: DevelopmentPullRequestMergeTool(
+                projectStore: projectStore,
+                bookmarkResolver: developmentBookmarkResolver
+            ),
+            logger: auditLogger
+        ))
+        for requiredTool in [
+            ActionTool.developmentPreparePullRequestWorkflow,
+            .developmentRepositoryListFiles,
+            .developmentRepositoryReadFile,
+            .developmentRepositoryCreateFile,
+            .developmentRepositoryUpdateFile,
+            .developmentRunVerification,
+            .developmentCommitChanges,
+            .developmentPushBranch,
+            .developmentCreatePullRequest,
+            .developmentReviewPullRequestGate,
+            .developmentMergePullRequest
+        ] {
+            guard registry.contains(requiredTool) else {
+                throw ToolExecutionError.unknownTool(requiredTool)
+            }
+        }
+        return registry
+    }
+
+    private static func makeDevelopmentWorkspaceBookmarkResolver() -> any ProjectWorkspaceBookmarkResolving {
+#if DEBUG
+        if RuntimeDevelopmentPRSmokeBookmarkResolver.isEnabled {
+            return RuntimeDevelopmentPRSmokeBookmarkResolver()
+        }
+#endif
+        return SecurityScopedProjectWorkspaceBookmarkResolver()
     }
 
     @MainActor
@@ -2403,6 +5262,20 @@ private enum AppRuntimeFactory {
         )
     }
 
+    static func loadTaskAutoExecutionSettings() -> TaskAutoExecutionSettings {
+        // Fallback AppKit windows are created outside the SwiftUI App state,
+        // so they read only the persisted non-secret automation settings here.
+        // Provider secrets stay in Keychain and are never materialized for this UI decision.
+        (try? UserDefaultsAppSettingsStore().load().normalizedForRuntime.taskAutoExecution) ?? .default
+    }
+
+    static func loadRuntimeAppSettings() -> AppSettings {
+        // Fallback AppKit windows are created outside the SwiftUI App state, so
+        // they reload persisted non-secret settings for notification and time
+        // zone decisions without touching Keychain-backed provider secrets.
+        (try? UserDefaultsAppSettingsStore().load().normalizedForRuntime) ?? .default
+    }
+
     @MainActor
     static func makeLaunchAtLoginSettingsViewModel() -> LaunchAtLoginSettingsViewModel {
         LaunchAtLoginSettingsViewModel(client: SMAppServiceLaunchAtLoginClient())
@@ -2410,13 +5283,80 @@ private enum AppRuntimeFactory {
 
     @MainActor
     static func makeSyncSettingsViewModel() -> SyncSettingsViewModel {
-        SyncSettingsViewModel(
+        let secretStore = makeSecretStore()
+        return SyncSettingsViewModel(
             service: SyncService(
-                entitlementStore: KeychainEntitlementStore(secretStore: makeSecretStore()),
+                entitlementStore: makeEntitlementStore(secretStore: secretStore),
                 configuration: .notConfigured,
                 networkClient: UnavailableSyncNetworkClient()
             )
         )
+    }
+
+    static func makeGoogleCalendarRuntimeSyncStatus() -> GoogleCalendarRuntimeSyncStatus {
+        do {
+            let connection = try migratedConnection()
+            let secretStore = makeSecretStore()
+            let runtimeSettings = loadRuntimeAppSettings()
+            return try GoogleCalendarAppRuntimeFactory.syncStatus(
+                entitlementStore: makeEntitlementStore(secretStore: secretStore),
+                secretStore: secretStore,
+                connection: connection,
+                calendarID: runtimeSettings.googleCalendarID,
+                timeZoneIdentifier: runtimeSettings.timeZoneIdentifier,
+                oauthClientID: googleCalendarOAuthClientID()
+            )
+        } catch {
+            return GoogleCalendarRuntimeSyncStatus(
+                plan: .free,
+                state: .failed(message: UserFacingErrorMessageSanitizer.message(
+                    from: error,
+                    fallback: "Google Calendar sync status is unavailable."
+                ))
+            )
+        }
+    }
+
+    @MainActor
+    static func makeGoogleCalendarOAuthConnector() -> (any GoogleCalendarOAuthConnecting)? {
+#if canImport(AuthenticationServices) && canImport(AppKit)
+        GoogleCalendarOAuthAuthenticationSessionController(
+            callbackURLScheme: googleCalendarOAuthRedirectURI.scheme,
+            serviceFactory: {
+                try makeGoogleCalendarOAuthAuthorizationService()
+            }
+        )
+#else
+        nil
+#endif
+    }
+
+    @MainActor
+    static func makeGoogleCalendarOAuthDisconnecter() -> (any GoogleCalendarOAuthDisconnecting)? {
+        GoogleCalendarOAuthCredentialDisconnectController {
+            try GoogleCalendarAppRuntimeFactory.disconnectOAuthCredential(
+                secretStore: makeSecretStore(),
+                connection: migratedConnection()
+            )
+        }
+    }
+
+    static func makeGoogleCalendarListProvider() -> (any GoogleCalendarListProviding)? {
+        do {
+            let secretStore = makeSecretStore()
+            let client = try GoogleCalendarAppRuntimeFactory.makeCalendarListClient(
+                secretStore: secretStore,
+                connection: migratedConnection(),
+                oauthClientID: googleCalendarOAuthClientID()
+            )
+            return GoogleCalendarRuntimeCalendarListProvider(client: client)
+        } catch {
+            return nil
+        }
+    }
+
+    static func makeIntegrationPermissionSnapshot() -> PermissionSnapshot {
+        EventKitPermissionSnapshotReader.snapshot(base: UserNotificationsPermissionSnapshotReader.snapshot())
     }
 
     static func makeWatcherDiagnosticsSnapshot() -> WatcherDiagnosticsSnapshot {
@@ -2463,26 +5403,60 @@ private enum AppRuntimeFactory {
     static func makeVoiceCaptureViewModel() -> VoiceCaptureViewModel {
         let secretStore = makeSecretStore()
         let settingsResult = loadRuntimeSettings()
-        let auditLogger: (any AuditLogger)?
-        let runtimeValidationMessage: String?
-        let initialFailureMessage: String?
+        let audioRecorder = AVFoundationAudioRecorder()
+        let sttProvider = makeSpeechToTextProvider(settings: settingsResult.settings, secretStore: secretStore)
+        let llmProvider = makeLLMProvider(settings: settingsResult.settings, secretStore: secretStore)
+        let managedCostRateCardResolver = ManagedAICostRateCardResolver()
+        var auditLogger: (any AuditLogger)?
+        var assistantQueueStore: (any AssistantQueueStore)?
+        var inboxCaptureService: InboxVoiceCaptureService?
+        var developmentProjectProvider: () -> ProjectRecord? = { nil }
+        var runtimeValidationMessage: String?
+        var initialFailureMessage: String?
         do {
             auditLogger = try makeAuditLogger()
+            let connection = try migratedConnection()
+            assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+            let projectStore = SQLiteProjectStore(connection: connection)
+            let projectBoardStore = SQLiteProjectBoardStore(connection: connection)
+            let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)
+            inboxCaptureService = InboxVoiceCaptureService(
+                audioRecorder: audioRecorder,
+                sttProvider: sttProvider,
+                projectBoardStore: projectBoardStore,
+                inboxCaptureStore: inboxCaptureStore
+            )
+            developmentProjectProvider = {
+                approvedDevelopmentProject(from: projectStore)
+            }
             runtimeValidationMessage = nil
             initialFailureMessage = settingsResult.errorMessage
         } catch {
             auditLogger = nil
+            assistantQueueStore = nil
             runtimeValidationMessage = "Voice planning is unavailable because audit logging or local data stores could not be opened."
             initialFailureMessage = runtimeValidationMessage
         }
         return VoiceCaptureViewModel(
             phase: initialFailureMessage.map(VoiceCapturePhase.failed) ?? .idle,
-            audioRecorder: AVFoundationAudioRecorder(),
-            sttProvider: makeSpeechToTextProvider(settings: settingsResult.settings, secretStore: secretStore),
-            llmProvider: makeLLMProvider(settings: settingsResult.settings, secretStore: secretStore),
+            audioRecorder: audioRecorder,
+            sttProvider: sttProvider,
+            llmProvider: llmProvider,
             auditRecorder: auditLogger.map { PlanningAuditRecorder(logger: $0) },
-            runtimeValidationMessage: runtimeValidationMessage
+            runtimeValidationMessage: runtimeValidationMessage,
+            assistantQueueStore: assistantQueueStore,
+            inboxCaptureSaver: inboxCaptureService,
+            developmentProjectProvider: developmentProjectProvider,
+            appSettingsProvider: { loadRuntimeSettings().settings },
+            managedCostRateCardProvider: { managedCostRateCardResolver.rateCard(for: $0) }
         )
+    }
+
+    private static func approvedDevelopmentProject(from projectStore: SQLiteProjectStore) -> ProjectRecord? {
+        guard let projects = try? projectStore.list() else {
+            return nil
+        }
+        return VoiceDevelopmentProjectSelection.uniqueApprovedActiveProject(from: projects)
     }
 
     private static func loadRuntimeSettings() -> RuntimeSettingsLoadResult {
@@ -2556,50 +5530,128 @@ private enum AppRuntimeFactory {
         settings: AppSettings,
         secretStore: any SecretStore
     ) -> any SpeechToTextProvider {
-        switch settings.normalizedForRuntime.sttProvider {
-        case .openAITranscribe, .appleSpeechAnalyzer, .localWhisperKit, .localWhisperCpp:
-            OpenAITranscribeProvider(secretStore: secretStore)
+        let normalizedSettings = settings.normalizedForRuntime
+        switch normalizedSettings.sttProvider {
+        case .openAITranscribe, .appleSpeechAnalyzer, .localWhisperKit:
+            return OpenAITranscribeProvider(secretStore: secretStore)
+        case .localWhisperCpp:
+            let configuration = WhisperCppLocalSTTConfiguration(
+                executablePath: normalizedSettings.whisperCppExecutablePath ?? ""
+            )
+            return WhisperCppLocalSTTProvider(configuration: configuration)
         }
+    }
+
+    static func makeTextToSpeechPreviewer(settings: AppSettings) -> any TextToSpeechPreviewing {
+        AppTextToSpeechRuntimeFactory.makePreviewer(settings: settings)
     }
 
     @MainActor
     static func makeReviewSessionViewModel(plan: ActionPlan) -> ReviewSessionViewModel {
-        let logger: (any AuditLogger)?
-        let registry: ToolRegistry
-        let reviewRuntimeValidationMessage: String?
-        do {
-            let auditLogger = try makeAuditLogger()
-            let connection = try migratedConnection()
-            registry = try ToolRegistry.phase2MVP(
-                projectStore: SQLiteProjectStore(connection: connection),
-                taskStore: SQLiteTaskStore(connection: connection),
-                knowledgeStore: SQLiteKnowledgeFrameStore(connection: connection),
-                notificationClient: UserNotificationsNotificationClient(),
-                calendarClient: EventKitCalendarClient(),
-                reminderClient: EventKitReminderClient(),
-                fileAccessClient: LocalFileAccessClient(workspaceRoot: try workspaceRootURL()),
-                mailDraftClient: UnavailableMailDraftClient(),
-                notificationRequestStore: SQLiteNotificationRequestStore(connection: connection),
-                calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
-                reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
-                artifactStore: SQLiteArtifactStore(connection: connection),
-                auditLogger: auditLogger
-            )
-            logger = auditLogger
-            reviewRuntimeValidationMessage = nil
-        } catch {
-            logger = nil
-            let baseMessage = "Review execution tools are unavailable because audit logging or local data stores could not be opened."
-            let unavailableRegistry = unavailableReviewRegistry(for: plan, message: baseMessage)
-            reviewRuntimeValidationMessage = unavailableRegistry.message
-            registry = unavailableRegistry.registry
-        }
+        let runtime: (
+            logger: (any AuditLogger)?,
+            receiptStore: (any ExecutionReceiptStore)?,
+            registry: ToolRegistry,
+            reviewRuntimeValidationMessage: String?
+        ) = {
+            do {
+                let auditLogger = try makeAuditLogger()
+                let connection = try migratedConnection()
+                let projectStore = SQLiteProjectStore(connection: connection)
+                let taskStore = SQLiteTaskStore(connection: connection)
+                let artifactStore = SQLiteArtifactStore(connection: connection)
+                let registry = try ToolRegistry.phase2MVP(
+                    projectStore: projectStore,
+                    taskStore: taskStore,
+                    knowledgeStore: SQLiteKnowledgeFrameStore(connection: connection),
+                    notificationClient: UserNotificationsNotificationClient(),
+                    calendarClient: EventKitCalendarClient(),
+                    reminderClient: EventKitReminderClient(),
+                    fileAccessClient: LocalFileAccessClient(workspaceRoot: try workspaceRootURL()),
+                    mailDraftClient: try makeMailDraftClient(),
+                    notificationRequestStore: SQLiteNotificationRequestStore(connection: connection),
+                    calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
+                    reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
+                    artifactStore: artifactStore,
+                    auditLogger: auditLogger
+                )
+                try registry.register(AuditedTool(
+                    base: DevelopmentPRWorkflowTool(
+                        projectStore: projectStore,
+                        taskStore: taskStore,
+                        requireBookmark: true
+                    ),
+                    logger: auditLogger
+                ))
+                // Register only local, approval-gated development tools here. The broader
+                // developer-mode factory also exposes push and GitHub PR creation, which
+                // must stay outside the app ReviewSession runtime until those gates have
+                // separate product review and merge readiness checks.
+                try registry.register(AuditedTool(
+                    base: DevelopmentRepositoryFileTool(
+                        name: .developmentRepositoryListFiles,
+                        projectStore: projectStore,
+                        artifactStore: artifactStore,
+                        requireBookmark: true
+                    ),
+                    logger: auditLogger
+                ))
+                try registry.register(AuditedTool(
+                    base: DevelopmentRepositoryFileTool(
+                        name: .developmentRepositoryReadFile,
+                        projectStore: projectStore,
+                        artifactStore: artifactStore,
+                        requireBookmark: true
+                    ),
+                    logger: auditLogger
+                ))
+                try registry.register(AuditedTool(
+                    base: DevelopmentRepositoryFileTool(
+                        name: .developmentRepositoryCreateFile,
+                        projectStore: projectStore,
+                        artifactStore: artifactStore,
+                        requireBookmark: true
+                    ),
+                    logger: auditLogger
+                ))
+                try registry.register(AuditedTool(
+                    base: DevelopmentRepositoryFileTool(
+                        name: .developmentRepositoryUpdateFile,
+                        projectStore: projectStore,
+                        artifactStore: artifactStore,
+                        requireBookmark: true
+                    ),
+                    logger: auditLogger
+                ))
+                try registry.register(AuditedTool(
+                    base: DevelopmentVerificationCommandTool(
+                        projectStore: projectStore,
+                        requireBookmark: true
+                    ),
+                    logger: auditLogger
+                ))
+                try registry.register(AuditedTool(
+                    base: DevelopmentCommitWorkflowTool(
+                        projectStore: projectStore,
+                        requireBookmark: true
+                    ),
+                    logger: auditLogger
+                ))
+                let receiptStore = try makeExecutionReceiptStore()
+                return (auditLogger, receiptStore, registry, nil)
+            } catch {
+                let baseMessage = "Review execution tools are unavailable because audit logging or local data stores could not be opened."
+                let unavailableRegistry = unavailableReviewRegistry(for: plan, message: baseMessage)
+                return (nil, nil, unavailableRegistry.registry, unavailableRegistry.message)
+            }
+        }()
 
         return ReviewSessionViewModel(
             plan: plan,
-            executor: ActionExecutor(registry: registry, auditLogger: logger),
-            auditLogger: logger,
-            runtimeValidationMessage: reviewRuntimeValidationMessage
+            executor: ActionExecutor(registry: runtime.registry, auditLogger: runtime.logger),
+            auditLogger: runtime.logger,
+            executionReceiptStore: runtime.receiptStore,
+            runtimeValidationMessage: runtime.reviewRuntimeValidationMessage
         )
     }
 
@@ -2610,11 +5662,127 @@ private enum AppRuntimeFactory {
     }
 
     private static func makeSecretStore() -> any SecretStore {
-        KeychainSecretStore()
+        // Runtime surfaces can be recreated as windows open and close. Sharing the store keeps
+        // successful Keychain reads in one process-local cache instead of prompting per surface.
+        return sharedSecretStore
+    }
+
+    private static func makeSettingsBackedGoogleCalendarSyncController(
+        connection: SQLiteConnection,
+        entitlementStore: any EntitlementStore,
+        store: any ProjectBoardStore,
+        linkStore: any ExternalTaskLinkStore,
+        secretStore: any SecretStore
+    ) -> any GoogleCalendarRuntimeSyncing {
+        SettingsBackedGoogleCalendarRuntimeSync(
+            settingsStore: UserDefaultsAppSettingsStore(),
+            statusFactory: { settings, now in
+                try GoogleCalendarAppRuntimeFactory.syncStatus(
+                    entitlementStore: entitlementStore,
+                    secretStore: secretStore,
+                    connection: connection,
+                    calendarID: settings.googleCalendarID,
+                    timeZoneIdentifier: settings.timeZoneIdentifier,
+                    now: now,
+                    oauthClientID: googleCalendarOAuthClientID()
+                )
+            },
+            syncFactory: { settings in
+                try makeGoogleCalendarSyncController(
+                    connection: connection,
+                    entitlementStore: entitlementStore,
+                    store: store,
+                    linkStore: linkStore,
+                    secretStore: secretStore,
+                    calendarID: settings.googleCalendarID,
+                    timeZoneIdentifier: settings.timeZoneIdentifier
+                )
+            }
+        )
+    }
+
+    private static func makeGoogleCalendarSyncController(
+        connection: SQLiteConnection,
+        entitlementStore: any EntitlementStore,
+        store: any ProjectBoardStore,
+        linkStore: any ExternalTaskLinkStore,
+        secretStore: any SecretStore,
+        calendarID: String,
+        timeZoneIdentifier: String
+    ) throws -> GoogleCalendarRuntimeSyncController {
+        try GoogleCalendarAppRuntimeFactory.makeSyncController(
+            entitlementStore: entitlementStore,
+            store: store,
+            linkStore: linkStore,
+            secretStore: secretStore,
+            connection: connection,
+            idempotencyNamespaceStore: SQLiteGoogleCalendarIdempotencyNamespaceStore(connection: connection),
+            calendarID: calendarID,
+            timeZoneIdentifier: timeZoneIdentifier,
+            oauthClientID: googleCalendarOAuthClientID()
+        )
+    }
+
+    private static func makeGoogleCalendarOAuthAuthorizationService() throws -> GoogleCalendarOAuthAuthorizationService {
+        let connection = try migratedConnection()
+        let secretStore = makeSecretStore()
+        let credentialStore = GoogleCalendarOAuthCredentialStore(
+            secretStore: secretStore,
+            metadataStore: SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        )
+        return GoogleCalendarOAuthAuthorizationService(
+            configuration: GoogleCalendarOAuthAuthorizationConfiguration(
+                clientID: googleCalendarOAuthClientID() ?? "",
+                redirectURI: googleCalendarOAuthRedirectURI.absoluteString
+            ),
+            httpClient: URLSessionSynchronousHTTPDataClient(),
+            credentialStore: credentialStore
+        )
+    }
+
+    private static func makeEntitlementStore(secretStore: any SecretStore) -> KeychainEntitlementStore {
+        KeychainEntitlementStore(
+            secretStore: secretStore,
+            verifier: makeLocalLicenseVerifier()
+        )
+    }
+
+    private static func makeLocalLicenseVerifier() -> any LocalLicenseVerifier {
+        guard let publicKeyBase64 = Bundle.main.object(forInfoDictionaryKey: "SoloPMLocalLicensePublicKey") as? String,
+              !publicKeyBase64.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return NoBundledLocalLicenseVerifier()
+        }
+        return SignedLocalLicenseVerifier(publicKeyBase64: publicKeyBase64)
+    }
+
+    private static func googleCalendarOAuthClientID() -> String? {
+        for key in ["SOLOPM_GOOGLE_CALENDAR_OAUTH_CLIENT_ID", "GOOGLE_CALENDAR_OAUTH_CLIENT_ID"] {
+            if let value = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+               value.isEmpty == false {
+                return value
+            }
+        }
+        if let value = Bundle.main.object(forInfoDictionaryKey: "SoloPMGoogleCalendarOAuthClientID") as? String {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        return nil
     }
 
     private static func makeAuditLogger() throws -> any AuditLogger {
         RedactingAuditLogger(base: try SQLiteAuditLogger(path: applicationDatabaseURL().path))
+    }
+
+    private static func makeExecutionReceiptStore() throws -> any ExecutionReceiptStore {
+        try FileExecutionReceiptStore(
+            directoryURL: applicationSupportDirectoryURL().appendingPathComponent("ExecutionReceipts", isDirectory: true)
+        )
+    }
+
+    private static func makeMailDraftClient() throws -> any MailDraftClient {
+        LocalFileMailDraftClient(
+            draftsDirectoryURL: try applicationSupportDirectoryURL().appendingPathComponent("MailDrafts", isDirectory: true)
+        )
     }
 
     private static func externalMCPAuditLoadResult() -> ExternalMCPAuditLoadResult {
@@ -2668,6 +5836,173 @@ private enum AppRuntimeFactory {
         try SoloPMAppDatabaseLocation.applicationSupportDirectoryURL(createDirectory: true)
     }
 }
+
+enum AppTextToSpeechRuntimeFactory {
+    static func makeProvider(settings: AppSettings, outputURL: URL? = nil) -> any TextToSpeechProvider {
+        let normalizedSettings = settings.normalizedForRuntime
+        switch normalizedSettings.ttsProvider {
+        case .systemSpeech, .localKokoro:
+            let configuration = KokoroLocalTTSConfiguration(
+                executablePath: normalizedSettings.kokoroExecutablePath ?? "",
+                languageCode: normalizedSettings.ttsLanguageCode,
+                voiceID: normalizedSettings.ttsVoiceID,
+                outputURL: outputURL
+            )
+            return KokoroLocalTTSProvider(configuration: configuration)
+        }
+    }
+
+    static func makePreviewer(
+        settings: AppSettings,
+        temporaryDirectoryPrefix: String = "solopm-tts-preview",
+        outputFilename: String = "preview.wav"
+    ) -> any TextToSpeechPreviewing {
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(temporaryDirectoryPrefix)-\(UUID().uuidString)", isDirectory: true)
+        let outputURL = temporaryDirectory.appendingPathComponent(outputFilename, isDirectory: false)
+        return TemporaryDirectoryTextToSpeechPreviewer(
+            previewer: TextToSpeechPreviewService(
+                provider: makeProvider(settings: settings, outputURL: outputURL),
+                audioPlayer: AVFoundationSpeechAudioPlayer()
+            ),
+            temporaryDirectory: temporaryDirectory
+        )
+    }
+}
+
+@MainActor
+private protocol GoogleCalendarOAuthConnecting: AnyObject {
+    func startAuthorization(
+        completion: @escaping @MainActor (Result<GoogleCalendarOAuthCredentialMetadata, Error>) -> Void
+    )
+}
+
+@MainActor
+private protocol GoogleCalendarOAuthDisconnecting: AnyObject {
+    func disconnect() throws
+}
+
+private protocol GoogleCalendarListProviding: Sendable {
+    func listWritableCalendars() throws -> [GoogleCalendarRuntimeCalendarListEntry]
+}
+
+@MainActor
+private final class GoogleCalendarOAuthCredentialDisconnectController: GoogleCalendarOAuthDisconnecting {
+    private let disconnectAction: () throws -> Void
+
+    init(disconnectAction: @escaping () throws -> Void) {
+        self.disconnectAction = disconnectAction
+    }
+
+    func disconnect() throws {
+        try disconnectAction()
+    }
+}
+
+private struct GoogleCalendarRuntimeCalendarListProvider: GoogleCalendarListProviding {
+    let client: any GoogleCalendarRuntimeCalendarListClient
+
+    func listWritableCalendars() throws -> [GoogleCalendarRuntimeCalendarListEntry] {
+        try client.listWritableCalendars()
+    }
+}
+
+private enum GoogleCalendarOAuthConnectionError: LocalizedError, Equatable {
+    case authorizationCancelled
+    case callbackURLMissing
+    case sessionDidNotStart
+
+    var errorDescription: String? {
+        switch self {
+        case .authorizationCancelled:
+            return "Google Calendar OAuth authorization was cancelled."
+        case .callbackURLMissing:
+            return "Google Calendar OAuth authorization did not return a callback URL."
+        case .sessionDidNotStart:
+            return "Google Calendar OAuth authorization could not start."
+        }
+    }
+}
+
+#if canImport(AuthenticationServices) && canImport(AppKit)
+@MainActor
+private final class GoogleCalendarOAuthAuthenticationSessionController: NSObject, GoogleCalendarOAuthConnecting, ASWebAuthenticationPresentationContextProviding {
+    private let callbackURLScheme: String?
+    private let serviceFactory: () throws -> GoogleCalendarOAuthAuthorizationService
+    private var activeSession: ASWebAuthenticationSession?
+
+    init(
+        callbackURLScheme: String?,
+        serviceFactory: @escaping () throws -> GoogleCalendarOAuthAuthorizationService
+    ) {
+        self.callbackURLScheme = callbackURLScheme
+        self.serviceFactory = serviceFactory
+    }
+
+    func startAuthorization(
+        completion: @escaping @MainActor (Result<GoogleCalendarOAuthCredentialMetadata, Error>) -> Void
+    ) {
+        do {
+            let service = try serviceFactory()
+            let request = try service.makeAuthorizationRequest()
+            let session = ASWebAuthenticationSession(
+                url: request.authorizationURL,
+                callbackURLScheme: callbackURLScheme
+            ) { [weak self] callbackURL, error in
+                if let error {
+                    Task { @MainActor in
+                        self?.activeSession = nil
+                        if Self.isCancellation(error) {
+                            completion(.failure(GoogleCalendarOAuthConnectionError.authorizationCancelled))
+                        } else {
+                            completion(.failure(error))
+                        }
+                    }
+                    return
+                }
+                guard let callbackURL else {
+                    Task { @MainActor in
+                        self?.activeSession = nil
+                        completion(.failure(GoogleCalendarOAuthConnectionError.callbackURLMissing))
+                    }
+                    return
+                }
+
+                // The runtime token exchange writes secrets through SecretStore immediately after
+                // Google returns the callback, so Settings never receives raw token material.
+                let result = Result {
+                    try service.completeAuthorization(callbackURL: callbackURL, pendingRequest: request)
+                }
+                Task { @MainActor in
+                    self?.activeSession = nil
+                    completion(result)
+                }
+            }
+            session.presentationContextProvider = self
+            session.prefersEphemeralWebBrowserSession = false
+            activeSession = session
+            guard session.start() else {
+                activeSession = nil
+                completion(.failure(GoogleCalendarOAuthConnectionError.sessionDidNotStart))
+                return
+            }
+        } catch {
+            activeSession = nil
+            completion(.failure(error))
+        }
+    }
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first ?? NSWindow()
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == ASWebAuthenticationSessionError.errorDomain
+            && nsError.code == ASWebAuthenticationSessionError.canceledLogin.rawValue
+    }
+}
+#endif
 
 private struct RuntimeSettingsLoadResult {
     let settings: AppSettings
@@ -2745,6 +6080,10 @@ private struct UnavailableProjectBoardStore: ProjectBoardStore {
         throw error
     }
 
+    func moveTasks(ids: [Int64], toProjectID projectID: Int64) throws -> [ProjectBoardTask] {
+        throw error
+    }
+
     func deleteTask(id: Int64) throws {
         throw error
     }
@@ -2755,6 +6094,32 @@ private struct UnavailableProjectBoardStore: ProjectBoardStore {
 
     func deleteProjectArtifact(id: Int64) throws {
         throw error
+    }
+
+    func createProjectMilestone(projectID: Int64, title: String, dueAt: String?) throws -> ProjectBoardMilestone {
+        throw error
+    }
+
+    func updateProjectMilestone(id: Int64, title: String, dueAt: String?, isCompleted: Bool) throws -> ProjectBoardMilestone {
+        throw error
+    }
+
+    func deleteProjectMilestone(id: Int64) throws {
+        throw error
+    }
+}
+
+private struct LaunchVerificationSecretStore: SecretStore {
+    func save(_ value: String, for key: SecretKey) throws {
+        throw SecretStoreError.unexpectedStatus(-25308)
+    }
+
+    func read(_ key: SecretKey) throws -> String? {
+        return nil
+    }
+
+    func delete(_ key: SecretKey) throws {
+        throw SecretStoreError.unexpectedStatus(-25308)
     }
 }
 
@@ -2787,12 +6152,6 @@ private struct UnavailableReviewTool: Tool {
 
     func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
         throw ToolExecutionError.executionFailed(name, message)
-    }
-}
-
-private struct UnavailableMailDraftClient: MailDraftClient {
-    func createTextDraft(to: String?, subject: String, body: String) throws -> MailDraftRecord {
-        throw ToolClientError.invalidRequest("Mail draft integration is not enabled in this release.")
     }
 }
 
