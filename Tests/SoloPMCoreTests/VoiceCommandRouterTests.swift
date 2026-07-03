@@ -143,6 +143,7 @@ final class VoiceCommandRouterTests: XCTestCase {
     func testDailyPlanningOverdueSignalsDoNotStealExplicitCountStatusQuestion() {
         for transcript in [
             "今日の遅れてるタスクは何件で進捗はどう?",
+            "遅れてるタスクは何件?",
             "How many overdue tasks today?",
             "Show overdue progress today"
         ] {
@@ -155,10 +156,13 @@ final class VoiceCommandRouterTests: XCTestCase {
 
     func testDailyPlanningOverdueSignalsDoNotStealExplicitScheduleOrCreateCommands() {
         let schedule = router.route(transcript: "Schedule overdue work for tomorrow")
+        let japaneseSchedule = router.route(transcript: "今日の予定をできる順に並べて")
         let taskCreate = router.route(transcript: "Create an overdue task for today")
 
         XCTAssertEqual(schedule.intent, .schedulePlan)
         XCTAssertGreaterThanOrEqual(schedule.confidence, 0.7)
+        XCTAssertEqual(japaneseSchedule.intent, .schedulePlan)
+        XCTAssertGreaterThanOrEqual(japaneseSchedule.confidence, 0.7)
         XCTAssertEqual(taskCreate.intent, .taskCreate)
         XCTAssertGreaterThanOrEqual(taskCreate.confidence, 0.7)
     }
