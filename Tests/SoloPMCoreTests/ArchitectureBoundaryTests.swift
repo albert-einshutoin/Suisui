@@ -343,6 +343,63 @@ final class ArchitectureBoundaryTests: XCTestCase {
         XCTAssertFalse(calendarHTTPContractSource.contains("ASWebAuthenticationSession"))
     }
 
+    func testSwiftPMTargetSplitEvaluationDefersPackageGraphChurnUntilMeasuredGatesPass() throws {
+        let evaluation = try readPackageFile("docs/architecture/swiftpm-target-split-evaluation.md")
+        let packageSource = try readPackageFile("Package.swift")
+        let boundaryTestSource = try readPackageFile("Tests/SoloPMCoreTests/ArchitectureBoundaryTests.swift")
+
+        for marker in [
+            "# SwiftPM Target Split Evaluation",
+            "Decision: defer new SwiftPM targets.",
+            "No target split happens only for style.",
+            "## Current Package Graph",
+            "## Measurements",
+            "Source file count by target",
+            "Core folder concentration",
+            "Import distribution",
+            "Local verification cost",
+            "## Candidate Target Assessment",
+            "Work Management",
+            "Automation Core",
+            "Integration Core",
+            "App Shell",
+            "## Measurement Commands",
+            "## Gates Before Any Target Split",
+            "import-boundary tests before the package graph change",
+            "Release evidence contracts remain current",
+            "Runtime smoke remains green",
+            "Accessibility identifiers and VoiceOver/manual gates remain stable",
+            "Optional connector targets do not become app dependencies",
+            "Candidate import-closure tests prove the extracted domain",
+            "## Revisit Triggers"
+        ] {
+            XCTAssertTrue(evaluation.contains(marker), "target split evaluation must include \(marker)")
+        }
+
+        for existingTarget in [
+            #"name: "SoloPMCore""#,
+            #"name: "SoloPMExternalConnectors""#,
+            #"name: "SoloPMGoogleCalendarRuntime""#,
+            #"name: "SoloPM""#,
+            #"name: "SoloPMCLI""#
+        ] {
+            XCTAssertTrue(packageSource.contains(existingTarget), "Package.swift must keep existing target \(existingTarget)")
+        }
+
+        for deferredTarget in [
+            "SoloPMWorkManagement",
+            "SoloPMAutomationCore",
+            "SoloPMIntegrationCore",
+            "SoloPMAppShell"
+        ] {
+            XCTAssertFalse(packageSource.contains(deferredTarget), "Package.swift must not add style-only target \(deferredTarget)")
+        }
+
+        XCTAssertTrue(boundaryTestSource.contains("testCoreAndRuntimeTargetsDoNotImportUIOrPlatformFrameworks"))
+        XCTAssertTrue(boundaryTestSource.contains("testRuntimeAdaptersStayOutOfSwiftUIFeatureViewFiles"))
+        XCTAssertTrue(boundaryTestSource.contains("testSwiftUIFeatureViewsDoNotOwnSQLiteStoresOutsideCompositionRoot"))
+    }
+
     private let forbiddenPersistenceOwnershipPatterns = [
         #"SQLite[A-Za-z0-9_]*Store\s*\("#,
         #"SQLiteConnection\s*\("#,
