@@ -341,6 +341,7 @@ mcp_evidence_source_commit() {
     git -C "$ROOT_DIR" log -1 --format=%h -- \
       Sources/SoloPMCore/ExternalMCP \
       Sources/SoloPMApp/SoloPMApp.swift \
+      Sources/SoloPMApp/Composition \
       Sources/SoloPMApp/Views/SettingsView.swift \
       fixtures/mcp \
       Package.swift 2>/dev/null || true

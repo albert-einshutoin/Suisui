@@ -182,7 +182,7 @@ Confirm `docs/release/evidence/mcp-inspector.md` includes:
 - `tools/list` and `tools/call`
 - malformed-json / mismatched-id / invalid-schema / timeout failure taxonomy
 
-If `Sources/SoloPMCore/ExternalMCP`, `Sources/SoloPMApp/SoloPMApp.swift`, `fixtures/mcp`, or `Package.swift` changes after this evidence is generated, rerun `./script/verify_mcp_compliance.sh`; `release_readiness_report.sh` rejects MCP Inspector evidence whose `Source commit` no longer matches the current MCP runtime/fixture source commit.
+If `Sources/SoloPMCore/ExternalMCP`, `Sources/SoloPMApp/SoloPMApp.swift`, `Sources/SoloPMApp/Composition`, `fixtures/mcp`, or `Package.swift` changes after this evidence is generated, rerun `./script/verify_mcp_compliance.sh`; `release_readiness_report.sh` rejects MCP Inspector evidence whose `Source commit` no longer matches the current MCP runtime/fixture source commit.
 
 SoloPM must not be described as a full MCP host for this release.
 

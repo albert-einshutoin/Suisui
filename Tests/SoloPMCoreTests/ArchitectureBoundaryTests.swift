@@ -151,9 +151,69 @@ final class ArchitectureBoundaryTests: XCTestCase {
             "VoiceCaptureView(viewModel: AppRuntimeFactory.makeVoiceCaptureViewModel())",
             "MenuBarPanel(controller: menuBarController, quickCaptureViewModel: menuBarQuickCaptureViewModel)",
             "SettingsView(",
-            "private enum AppRuntimeFactory"
+            "AppRuntimeFactory.makeProjectBoardViewModel()"
         ] {
             XCTAssertTrue(appSource.contains(compositionMarker), "SoloPMApp.swift must keep runtime composition marker \(compositionMarker)")
+        }
+        XCTAssertFalse(appSource.contains("private enum AppRuntimeFactory"))
+        XCTAssertFalse(appSource.contains("SQLiteConnection("))
+        XCTAssertFalse(appSource.contains("GoogleCalendarAppRuntimeFactory."))
+        XCTAssertFalse(appSource.contains("ASWebAuthenticationSession("))
+        XCTAssertFalse(appSource.contains("ToolRegistry.phase2MVP"))
+        XCTAssertFalse(appSource.contains("KeychainSecretStore("))
+    }
+
+    func testRuntimeCompositionFactoriesAreSplitFromSoloPMAppShell() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let expectedCompositionFiles: [String: [String]] = [
+            "Sources/SoloPMApp/Composition/AppRuntimeFactory.swift": [
+                "enum AppRuntimeFactory",
+                "static func migratedConnection() throws -> SQLiteConnection",
+                "static func makeSecretStore() -> any SecretStore"
+            ],
+            "Sources/SoloPMApp/Composition/ProjectBoardRuntimeFactory.swift": [
+                "static func makeProjectBoardViewModel() -> ProjectBoardViewModel",
+                "makeSettingsBackedGoogleCalendarSyncController"
+            ],
+            "Sources/SoloPMApp/Composition/RuntimeToolCompositionFactory.swift": [
+                "static func makeRuntimeToolRegistry(",
+                "static func makeReviewSessionViewModel(plan: ActionPlan) -> ReviewSessionViewModel"
+            ],
+            "Sources/SoloPMApp/Composition/SettingsRuntimeFactory.swift": [
+                "static func makeAppSettingsViewModel() -> AppSettingsViewModel",
+                "static func makeExternalMCPSettingsViewModel() -> ExternalMCPSettingsViewModel",
+                "static func makeIntegrationPermissionSnapshot() -> PermissionSnapshot"
+            ],
+            "Sources/SoloPMApp/Composition/GoogleCalendarRuntimeCompositionFactory.swift": [
+                "static func makeGoogleCalendarRuntimeSyncStatus() -> GoogleCalendarRuntimeSyncStatus",
+                "static func makeGoogleCalendarOAuthConnector() -> (any GoogleCalendarOAuthConnecting)?",
+                "GoogleCalendarOAuthAuthenticationSessionController"
+            ],
+            "Sources/SoloPMApp/Composition/VoiceRuntimeFactory.swift": [
+                "static func makeVoiceCaptureViewModel() -> VoiceCaptureViewModel",
+                "static func makeLLMProvider(settings: AppSettings, secretStore: any SecretStore) -> any LLMProvider",
+                "enum AppTextToSpeechRuntimeFactory"
+            ],
+            "Sources/SoloPMApp/Composition/MenuBarRuntimeFactory.swift": [
+                "static func makeMenuBarSummaryController() -> MenuBarSummaryController"
+            ]
+        ]
+
+        for (file, markers) in expectedCompositionFiles {
+            let source = try readPackageFile(file)
+            for marker in markers {
+                XCTAssertTrue(source.contains(marker), "\(file) must own runtime composition marker \(marker)")
+            }
+        }
+
+        for forbiddenMarker in [
+            "GoogleCalendarOAuthAuthenticationSessionController",
+            "makeRuntimeToolRegistry(",
+            "makeLLMProvider(settings:",
+            "makeProjectBoardViewModel() -> ProjectBoardViewModel",
+            "static func makeExternalMCPSettingsViewModel()"
+        ] {
+            XCTAssertFalse(appSource.contains(forbiddenMarker), "SoloPMApp.swift must delegate \(forbiddenMarker) to composition files")
         }
     }
 
