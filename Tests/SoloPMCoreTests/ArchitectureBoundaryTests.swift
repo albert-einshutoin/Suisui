@@ -157,6 +157,49 @@ final class ArchitectureBoundaryTests: XCTestCase {
         }
     }
 
+    func testAutomationApprovalBoundaryKeepsQueueTranslationSeparateFromExecution() throws {
+        let factorySource = try readPackageFile("Sources/SoloPMCore/App/AssistantQueueAutomationPlanFactory.swift")
+        let coordinatorSource = try readPackageFile("Sources/SoloPMCore/App/AssistantQueueExecutionCoordinator.swift")
+        let shellSource = try readPackageFile("Sources/SoloPMCore/App/AssistantQueueExecution.swift")
+
+        XCTAssertTrue(factorySource.contains("enum AssistantQueueExecutableActionPlanFactory"))
+        XCTAssertTrue(factorySource.contains("static func actionPlan(for payload: AssistantQueuePayload) -> ActionPlan?"))
+        XCTAssertTrue(factorySource.contains("SyncAutomationRequestPayload"))
+        XCTAssertTrue(factorySource.contains("requiresApproval: true"))
+        for forbiddenExecutionMarker in [
+            "ActionExecutor(",
+            "ExecutionReceiptStore",
+            "queueStore.transition",
+            "ManagedAIUsageLedgerStore",
+            "ExecutionReceiptFactory.makeAssistantQueueReceipt"
+        ] {
+            XCTAssertFalse(
+                factorySource.contains(forbiddenExecutionMarker),
+                "Automation request translation must stay review-only and must not execute or persist: \(forbiddenExecutionMarker)"
+            )
+        }
+
+        for executionMarker in [
+            "public struct AssistantQueueExecutionCoordinator",
+            "AssistantQueueStateMachine.startRunning",
+            "ReviewSession(plan: plan",
+            "executor.execute(session",
+            "ExecutionReceiptFactory.makeAssistantQueueReceipt",
+            "ManagedAIUsageLedgerStore"
+        ] {
+            XCTAssertTrue(coordinatorSource.contains(executionMarker), "Execution coordinator must own \(executionMarker)")
+        }
+        XCTAssertFalse(
+            coordinatorSource.contains("private static func arguments(for mutation"),
+            "Execution coordinator must not own automation payload-to-action-plan translation."
+        )
+
+        XCTAssertTrue(shellSource.contains("public enum AssistantQueueExecutionError"))
+        XCTAssertTrue(shellSource.contains("public struct AssistantQueueExecutionResult"))
+        XCTAssertFalse(shellSource.contains("SyncAutomationRequestPayload"))
+        XCTAssertFalse(shellSource.contains("public struct AssistantQueueExecutionCoordinator"))
+    }
+
     private let forbiddenPersistenceOwnershipPatterns = [
         #"SQLite[A-Za-z0-9_]*Store\s*\("#,
         #"SQLiteConnection\s*\("#,
@@ -168,6 +211,7 @@ final class ArchitectureBoundaryTests: XCTestCase {
 
     private let forbiddenRuntimeAdapterPatterns = [
         #"ActionExecutor\s*\("#,
+        #"AssistantQueueExecutionCoordinator\s*\("#,
         #"ASWebAuthenticationSession\s*\("#,
         #"EventKit"#,
         #"EKEventStore"#,
@@ -175,6 +219,7 @@ final class ArchitectureBoundaryTests: XCTestCase {
         #"GoogleCalendarOAuthAuthorizationService\s*\("#,
         #"GoogleCalendarOAuthCredentialStore\s*\("#,
         #"KeychainSecretStore\s*\("#,
+        #"ToolRegistry\s*\("#,
         #"ToolRegistry\."#,
         #"URLSession\b"#,
         #"URLSession[A-Za-z0-9_]*HTTPDataClient\s*\("#,
