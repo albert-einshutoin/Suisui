@@ -677,6 +677,16 @@ private struct ProjectDevelopmentAutomationRecoveryView: View {
                     .accessibilityHint("Adds the reviewed file list and commit message to Assistant Queue before push.")
                 }
 
+                Button {
+                    _ = viewModel.enqueueDevelopmentPushReview(for: project, task: task)
+                } label: {
+                    Label("Queue branch push review", systemImage: "arrow.up.circle")
+                }
+                .disabled(progress?.canQueueBranchPushReview != true)
+                .help("Queues only the reviewed branch push; pull request creation requires a separate approval.")
+                .accessibilityIdentifier("project-development-automation-push-queue")
+                .accessibilityHint("Adds the reviewed branch push to Assistant Queue before pull request creation.")
+
                 if let queueHandoff = progress?.queueHandoff {
                     VStack(alignment: .leading, spacing: 4) {
                         Label("Assistant Queue handoff", systemImage: "tray.full")
@@ -4996,7 +5006,10 @@ private enum AppRuntimeFactory {
             logger: auditLogger
         ))
         try registry.register(AuditedTool(
-            base: DevelopmentPushWorkflowTool(projectStore: projectStore),
+            base: DevelopmentPushWorkflowTool(
+                projectStore: projectStore,
+                bookmarkResolver: developmentBookmarkResolver
+            ),
             logger: auditLogger
         ))
         try registry.register(AuditedTool(

@@ -1297,6 +1297,8 @@
 "Queues a local commit review after verification evidence exists." = "検証証跡がある後にローカルコミットレビューをキューへ追加します。";
 "Adds the reviewed file list and commit message to Assistant Queue before push." = "pushの前にレビュー済みファイル一覧とコミットメッセージをAssistant Queueへ追加します。";
 "Queue branch push review" = "ブランチpushレビューをキューへ追加";
+"Queues only the reviewed branch push; pull request creation requires a separate approval." = "レビュー済みブランチpushだけをキューへ追加します。Pull Request作成には別の承認が必要です。";
+"Adds the reviewed branch push to Assistant Queue before pull request creation." = "Pull Request作成前にレビュー済みブランチpushをAssistant Queueへ追加します。";
 "Queues a branch push approval; execution rechecks the current branch, clean workspace, and GitHub origin before running." = "ブランチpush承認をキューへ追加します。実行時に現在のブランチ、クリーンな作業ツリー、GitHub origin を再確認します。";
 "Adds only the branch push review to Assistant Queue; pull request creation still needs a separate approval." = "ブランチpushレビューだけをAssistant Queueへ追加します。Pull Request作成には別の承認が必要です。";
 "Review plan is ready. Approve and execute it before any local branch is created." = "レビュープランの準備ができました。ローカルブランチを作成する前に承認して実行してください。";

@@ -1297,6 +1297,8 @@
 "Queues a local commit review after verification evidence exists." = "Queues a local commit review after verification evidence exists.";
 "Adds the reviewed file list and commit message to Assistant Queue before push." = "Adds the reviewed file list and commit message to Assistant Queue before push.";
 "Queue branch push review" = "Queue branch push review";
+"Queues only the reviewed branch push; pull request creation requires a separate approval." = "Queues only the reviewed branch push; pull request creation requires a separate approval.";
+"Adds the reviewed branch push to Assistant Queue before pull request creation." = "Adds the reviewed branch push to Assistant Queue before pull request creation.";
 "Queues a branch push approval; execution rechecks the current branch, clean workspace, and GitHub origin before running." = "Queues a branch push approval; execution rechecks the current branch, clean workspace, and GitHub origin before running.";
 "Adds only the branch push review to Assistant Queue; pull request creation still needs a separate approval." = "Adds only the branch push review to Assistant Queue; pull request creation still needs a separate approval.";
 "Review plan is ready. Approve and execute it before any local branch is created." = "Review plan is ready. Approve and execute it before any local branch is created.";

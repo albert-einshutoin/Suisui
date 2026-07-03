@@ -2988,6 +2988,7 @@ final class AppExperienceSourceTests: XCTestCase {
         }
         let pushBlock = try auditedRegistrationBlock(containing: "DevelopmentPushWorkflowTool(")
         XCTAssertTrue(pushBlock.contains("AuditedTool("))
+        XCTAssertTrue(pushBlock.contains("bookmarkResolver: developmentBookmarkResolver"))
         XCTAssertTrue(pushBlock.contains("logger: auditLogger"))
         let createPullRequestBlock = try auditedRegistrationBlock(containing: "DevelopmentPullRequestCreationTool(")
         XCTAssertTrue(createPullRequestBlock.contains("AuditedTool("))

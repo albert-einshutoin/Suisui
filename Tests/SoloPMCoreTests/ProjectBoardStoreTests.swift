@@ -1101,6 +1101,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
         let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
         let branchName = "feature/solopm-\(project.id)-\(task.id)-implement-oauth-callback"
+        let headOID = String(repeating: "a", count: 40)
 
         try receiptStore.save(developmentAutomationReceipt(
             id: "receipt-prepare",
@@ -1118,6 +1119,7 @@ final class ProjectBoardStoreTests: XCTestCase {
             id: "receipt-commit",
             projectID: project.id,
             branchName: branchName,
+            commitOID: headOID,
             toolName: ActionTool.developmentCommitChanges.rawValue
         ))
 
@@ -1141,7 +1143,8 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(action.tool, .developmentPushBranch)
         XCTAssertEqual(action.arguments["projectId"], .number(Double(project.id)))
         XCTAssertEqual(action.arguments["branchName"], .string(branchName))
-        XCTAssertTrue(plan.summary.contains("Execution rechecks the current branch, clean workspace, and GitHub origin before push."))
+        XCTAssertEqual(action.arguments["expectedHeadOID"], .string(headOID))
+        XCTAssertTrue(plan.summary.contains("Execution rechecks the current branch, reviewed commit, clean workspace, and GitHub origin before push."))
         XCTAssertTrue(plan.summary.contains("Pull request creation requires a separate approval."))
     }
 
