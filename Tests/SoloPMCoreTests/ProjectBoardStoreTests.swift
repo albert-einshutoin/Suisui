@@ -874,11 +874,8 @@ final class ProjectBoardStoreTests: XCTestCase {
     @MainActor
     func testProjectBoardViewModelRequiresReviewBeforeApprovedTaskAutomationExecution() throws {
         var changeCount = 0
-        let viewModel = ProjectBoardViewModel(
-            store: InMemoryProjectBoardStore(),
-            executionReceiptStore: VolatileExecutionReceiptStore(),
-            onChange: { changeCount += 1 }
-        )
+        let subject = try makeApprovedAutomationQueueSubject(onChange: { changeCount += 1 })
+        let viewModel = subject.viewModel
         viewModel.load()
         let task = try XCTUnwrap(viewModel.createTask(
             title: "Draft release notes",
@@ -906,9 +903,10 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         viewModel.runApprovedAutomationForSelectedTask()
 
-        XCTAssertEqual(changeCount, 1)
+        XCTAssertEqual(changeCount, 2)
         XCTAssertEqual(viewModel.selectedTask?.status, .inProgress)
         XCTAssertNil(viewModel.taskAutomationReviewDecision)
+        XCTAssertEqual(try subject.assistantQueueStore.list(filter: .all()).map(\.state), [.done])
     }
 
     @MainActor
@@ -2264,10 +2262,8 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testProjectBoardViewModelRecordsTaskContentExecutionWhenApprovedAutomationRuns() throws {
-        let viewModel = ProjectBoardViewModel(
-            store: InMemoryProjectBoardStore(),
-            executionReceiptStore: VolatileExecutionReceiptStore()
-        )
+        let subject = try makeApprovedAutomationQueueSubject()
+        let viewModel = subject.viewModel
         viewModel.load()
         let task = try XCTUnwrap(viewModel.createTask(
             title: "Run release note task",
@@ -2286,6 +2282,8 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertTrue(executedTask.detail.contains("SoloPM approved automation execution"))
         XCTAssertTrue(executedTask.detail.contains("Run approved plan"))
         XCTAssertEqual(viewModel.todayCommandFeedback, "Executed approved automation for \"Run release note task\".")
+        XCTAssertEqual(try subject.assistantQueueStore.list(filter: .all()).map(\.state), [.done])
+        XCTAssertEqual(subject.executionReceiptStore.receipts.first?.primaryToolName, ActionTool.taskUpdate.rawValue)
     }
 
     @MainActor
@@ -2320,10 +2318,10 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testApprovedAutomationRequiresWritableExecutionReceiptStoreBeforeTaskMutation() throws {
-        let viewModel = ProjectBoardViewModel(
-            store: InMemoryProjectBoardStore(),
+        let subject = try makeApprovedAutomationQueueSubject(
             executionReceiptStore: FailingProjectBoardExecutionReceiptStore()
         )
+        let viewModel = subject.viewModel
         viewModel.load()
         let task = try XCTUnwrap(viewModel.createTask(
             title: "Run writable receipt-gated task",
@@ -2352,11 +2350,41 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testProjectBoardViewModelRecordsRedactedApprovedAutomationExecutionReceipt() throws {
-        let viewModel = ProjectBoardViewModel(
-            store: InMemoryProjectBoardStore(),
-            executionReceiptStore: VolatileExecutionReceiptStore()
+    func testApprovedAutomationSurfacesQueueReceiptFailureAfterToolMutation() throws {
+        let receiptStore = FailingAfterFirstProjectBoardExecutionReceiptStore()
+        let subject = try makeApprovedAutomationQueueSubject(executionReceiptStore: receiptStore)
+        let viewModel = subject.viewModel
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Run final receipt failure task",
+            detail: "Document the Assistant Queue failure semantics.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-22"
+        ))
+        viewModel.prepareAutomationReviewForSelectedTask()
+
+        viewModel.runApprovedAutomationForSelectedTask()
+
+        XCTAssertEqual(receiptStore.receipts.map(\.status), [.running])
+        XCTAssertEqual(try subject.assistantQueueStore.list(filter: .all()).map(\.state), [.failed])
+        XCTAssertNil(viewModel.lastApprovedAutomationExecutionReceipt)
+        XCTAssertTrue(viewModel.approvedAutomationExecutionReceipts.isEmpty)
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Assistant Queue execution finished, but the execution receipt could not be saved. Fix receipt storage before retrying."
         )
+
+        viewModel.load()
+        let updatedTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        XCTAssertEqual(updatedTask.status, .inProgress)
+        XCTAssertTrue(updatedTask.detail.contains("SoloPM approved automation execution"))
+    }
+
+    @MainActor
+    func testProjectBoardViewModelRecordsRedactedApprovedAutomationExecutionReceipt() throws {
+        let subject = try makeApprovedAutomationQueueSubject()
+        let viewModel = subject.viewModel
         viewModel.load()
         let task = try XCTUnwrap(viewModel.createTask(
             title: "Run provider handoff token=secret-title",
@@ -2723,11 +2751,9 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testProjectBoardViewModelPersistsApprovedAutomationReceiptToGlobalHistory() throws {
-        let receiptStore = VolatileExecutionReceiptStore()
-        let viewModel = ProjectBoardViewModel(
-            store: InMemoryProjectBoardStore(),
-            executionReceiptStore: receiptStore
-        )
+        let subject = try makeApprovedAutomationQueueSubject()
+        let receiptStore = subject.executionReceiptStore
+        let viewModel = subject.viewModel
         viewModel.load()
         _ = try XCTUnwrap(viewModel.createTask(
             title: "Launch token=approved-history-secret",
@@ -2740,7 +2766,7 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         viewModel.runApprovedAutomationForSelectedTask()
 
-        XCTAssertEqual(receiptStore.receipts.map(\.status), [.running, .succeeded])
+        XCTAssertEqual(receiptStore.receipts.map(\.status), [.running, .succeeded, .succeeded])
         let storedReceipt = try XCTUnwrap(receiptStore.receipts.last { $0.status == .succeeded })
         XCTAssertEqual(storedReceipt.status, .succeeded)
         XCTAssertEqual(storedReceipt.primaryToolName, ActionTool.taskUpdate.rawValue)
@@ -3049,10 +3075,8 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testProjectBoardViewModelPreservesBatchReviewAndReceiptHistoryAcrossApprovedTaskExecution() throws {
-        let viewModel = ProjectBoardViewModel(
-            store: InMemoryProjectBoardStore(),
-            executionReceiptStore: VolatileExecutionReceiptStore()
-        )
+        let subject = try makeApprovedAutomationQueueSubject()
+        let viewModel = subject.viewModel
         viewModel.load()
         _ = viewModel.createTask(title: "Low future", status: .planned, priority: .low, dueAt: "2026-06-24T08:00:00Z")
         let first = try XCTUnwrap(viewModel.createTask(
@@ -3108,6 +3132,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertNil(viewModel.taskAutomationReviewDecision)
         XCTAssertEqual(viewModel.approvedAutomationExecutionReceipts.map(\.taskID), [first.id, second.id])
         XCTAssertEqual(viewModel.lastApprovedAutomationExecutionReceipt?.taskID, second.id)
+        XCTAssertEqual(try subject.assistantQueueStore.list(filter: .all()).map(\.state), [.done, .done])
     }
 
     @MainActor
@@ -7768,6 +7793,59 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    private func makeApprovedAutomationQueueSubject() throws -> (
+        viewModel: ProjectBoardViewModel,
+        assistantQueueStore: SQLiteAssistantQueueStore,
+        executionReceiptStore: VolatileExecutionReceiptStore
+    ) {
+        try makeApprovedAutomationQueueSubject(onChange: {})
+    }
+
+    @MainActor
+    private func makeApprovedAutomationQueueSubject(
+        onChange: @escaping () -> Void
+    ) throws -> (
+        viewModel: ProjectBoardViewModel,
+        assistantQueueStore: SQLiteAssistantQueueStore,
+        executionReceiptStore: VolatileExecutionReceiptStore
+    ) {
+        let executionReceiptStore = VolatileExecutionReceiptStore()
+        let subject = try makeApprovedAutomationQueueSubject(
+            executionReceiptStore: executionReceiptStore,
+            onChange: onChange
+        )
+        return (subject.viewModel, subject.assistantQueueStore, executionReceiptStore)
+    }
+
+    @MainActor
+    private func makeApprovedAutomationQueueSubject(
+        executionReceiptStore: any ExecutionReceiptStore,
+        onChange: @escaping () -> Void = {}
+    ) throws -> (
+        viewModel: ProjectBoardViewModel,
+        assistantQueueStore: SQLiteAssistantQueueStore
+    ) {
+        let stores = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
+        let registry = try ToolRegistry(tools: [
+            TaskTool(name: .taskUpdate, store: stores.tasks, projectStore: stores.projects)
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: assistantQueueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: executionReceiptStore
+        )
+        let viewModel = ProjectBoardViewModel(
+            store: stores.board,
+            assistantQueueStore: assistantQueueStore,
+            assistantQueueExecutionCoordinator: coordinator,
+            executionReceiptStore: executionReceiptStore,
+            onChange: onChange
+        )
+        return (viewModel, assistantQueueStore)
+    }
+
+    @MainActor
     private func makeDevelopmentRepositoryEditPreviewSubject() throws -> (
         viewModel: ProjectBoardViewModel,
         project: ProjectBoardProject,
@@ -8211,6 +8289,60 @@ private final class FailingProjectBoardExecutionReceiptStore: ExecutionReceiptSt
         limit: Int
     ) throws -> [ExecutionReceipt] {
         []
+    }
+}
+
+private final class FailingAfterFirstProjectBoardExecutionReceiptStore: ExecutionReceiptStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [ExecutionReceipt] = []
+
+    var receipts: [ExecutionReceipt] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func save(_ receipt: ExecutionReceipt) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard storage.isEmpty else {
+            throw ProjectBoardStoreTestError.unavailable
+        }
+        storage.append(receipt)
+    }
+
+    func list(limit: Int) throws -> [ExecutionReceipt] {
+        lock.lock()
+        defer { lock.unlock() }
+        return Array(storage.suffix(max(1, min(limit, 500))).reversed())
+    }
+
+    func list(matching filter: ExecutionReceiptSearchFilter, limit: Int) throws -> [ExecutionReceipt] {
+        lock.lock()
+        defer { lock.unlock() }
+        return Array(storage.reversed())
+            .filter { filter.matches($0) }
+            .prefix(max(1, min(limit, 500)))
+            .map { $0 }
+    }
+
+    func list(
+        referenceKind: ExecutionReceiptReferenceKind,
+        referenceID: String,
+        visibleSurface: ExecutionReceiptSurface,
+        limit: Int
+    ) throws -> [ExecutionReceipt] {
+        lock.lock()
+        defer { lock.unlock() }
+        return Array(storage.reversed())
+            .filter { receipt in
+                receipt.visibleSurfaces.contains(visibleSurface)
+                    && receipt.references.contains { reference in
+                        reference.kind == referenceKind && reference.id == referenceID
+                    }
+            }
+            .prefix(max(1, min(limit, 500)))
+            .map { $0 }
     }
 }
 

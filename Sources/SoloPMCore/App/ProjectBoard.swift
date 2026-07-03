@@ -4434,6 +4434,22 @@ public final class ProjectBoardViewModel: ObservableObject {
             statusAfter: .inProgress,
             reviewReason: reviewDecision.reason
         )
+        guard executionReceiptStore != nil else {
+            _ = markExecutionReceiptStorageUnavailable()
+            return
+        }
+        guard let assistantQueueStore else {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = String(localized: "Assistant Queue is unavailable in this build.")
+            integrationStatusMessage = nil
+            return
+        }
+        guard assistantQueueExecutionCoordinator != nil else {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = String(localized: "Assistant Queue execution is unavailable in this build.")
+            integrationStatusMessage = nil
+            return
+        }
         guard persistApprovedAIWorkStartReceipt(
             ExecutionReceiptFactory.makeApprovedAutomationReceipt(
                 executionReceipt,
@@ -4447,20 +4463,25 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         do {
-            let updatedTask = try store.updateTask(
-                id: selectedTask.id,
-                ProjectBoardTaskDraft(
-                    projectID: selectedTask.projectID,
-                    title: selectedTask.title,
-                    detail: approvedAutomationExecutionDetail(for: selectedTask),
-                    status: .inProgress,
-                    priority: selectedTask.priority,
-                    dueAt: selectedTask.dueAt
-                )
+            let item = AssistantQueueAdapter.makeItem(
+                actionPlan: approvedAutomationActionPlan(
+                    for: selectedTask,
+                    reviewReason: reviewDecision.reason
+                ),
+                sourceTranscript: String(localized: "Run approved local task automation."),
+                interpretationSummary: String(localized: "Move reviewed task into active work."),
+                reason: reviewDecision.reason,
+                costPreview: .localOnly()
             )
-            selectedProjectID = updatedTask.projectID
+            _ = try assistantQueueStore.save(item)
+            _ = try assistantQueueStore.transition(id: item.id) { item in
+                try AssistantQueueStateMachine.approve(item, reviewerID: "local-user")
+            }
+            guard runAssistantQueueItem(id: item.id) else {
+                return
+            }
             load()
-            selectedProjectID = updatedTask.projectID
+            selectedProjectID = selectedTask.projectID
             selectedTaskID = selectedTask.id
             let receipt = executionReceipt
             lastApprovedAutomationExecutionReceipt = receipt
@@ -4479,7 +4500,9 @@ public final class ProjectBoardViewModel: ObservableObject {
         } catch ProjectBoardStoreError.emptyTitle {
             errorMessage = "Task title is required."
         } catch {
-            errorMessage = Self.userFacingMessage(for: error)
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueStoreError.userMessage(for: error)
+            integrationStatusMessage = nil
         }
     }
 
@@ -4911,6 +4934,58 @@ public final class ProjectBoardViewModel: ObservableObject {
             return note
         }
         return "\(trimmedDetail)\n\n\(note)"
+    }
+
+    private func approvedAutomationActionPlan(
+        for task: ProjectBoardTask,
+        reviewReason: String
+    ) -> ActionPlan {
+        var arguments: [String: JSONValue] = [
+            "id": .number(Double(task.id)),
+            "title": .string(task.title),
+            "detail": .string(approvedAutomationExecutionDetail(for: task)),
+            "projectId": .number(Double(task.projectID)),
+            "status": .string(ProjectTaskStatus.inProgress.rawValue),
+            "priority": .string(task.priority.rawValue)
+        ]
+        if let dueAt = task.dueAt {
+            arguments["dueAt"] = .string(dueAt)
+        }
+
+        return ActionPlan(
+            id: "approved-task-automation:\(task.id):\(Self.approvedAutomationPlanDigest(task: task, reviewReason: reviewReason))",
+            userInput: "Run reviewed task automation for \(task.title).",
+            summary: "Move reviewed task \(task.title) into active work after explicit approval.",
+            actions: [
+                PlanAction(
+                    id: "approved-task-automation:update:\(task.id)",
+                    tool: .taskUpdate,
+                    arguments: arguments,
+                    riskLevel: .write,
+                    requiresUserConfirmation: true
+                )
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+    }
+
+    private static func approvedAutomationPlanDigest(
+        task: ProjectBoardTask,
+        reviewReason: String
+    ) -> String {
+        let input = [
+            String(task.id),
+            String(task.projectID),
+            task.title,
+            task.detail,
+            task.status.rawValue,
+            task.priority.rawValue,
+            task.dueAt ?? "",
+            reviewReason
+        ].joined(separator: "\u{1f}")
+        let digest = SHA256.hash(data: Data(input.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined().prefix(12).description
     }
 
     private func retainUnexecutedReviewedTasks(
