@@ -39,9 +39,13 @@ seed_task_id=""
 queued_item_id=""
 repository_edit_item_id=""
 verification_item_id=""
+commit_item_id=""
 prepared_branch_name=""
+visible_commit_head_before=""
+visible_commit_head_after=""
 visible_edit_relative_path="runtime-development-pr-visible-edit.md"
 visible_edit_contents="Visible repository edit smoke proof"
+visible_commit_message="Update runtime development visible edit"
 failure_reason="development PR smoke failed"
 
 mkdir -p "$ARTIFACT_DIR" "$WORKSPACE_ROOT" "$UI_ROOT" "$UI_HOME"
@@ -91,6 +95,9 @@ write_artifact() {
     printf -- '- Repository edit Assistant Queue item: `%s`\n' "${repository_edit_item_id:-not-queued}"
     printf -- '- Repository edit path: `%s`\n' "$visible_edit_relative_path"
     printf -- '- Verification Assistant Queue item: `%s`\n' "${verification_item_id:-not-queued}"
+    printf -- '- Commit Assistant Queue item: `%s`\n' "${commit_item_id:-not-queued}"
+    printf -- '- Commit head before: `%s`\n' "${visible_commit_head_before:-not-run}"
+    printf -- '- Commit head after: `%s`\n' "${visible_commit_head_after:-not-run}"
     printf -- '- Approval boundary: `requiresPushApproval=true`, `requiresPullRequestApproval=true`\n'
     printf -- '- External writes: No live push, GitHub PR, review gate, or merge is created by this smoke.\n'
     printf -- '- Workspace retention requested: `%s`\n' "$KEEP_WORKSPACE"
@@ -1048,6 +1055,126 @@ WHERE id='$escaped_item_id';
     "$prepared_branch_name"
 }
 
+verify_visible_commit_handoff() {
+  local escaped_relative_path
+  local escaped_commit_message
+  local escaped_branch_name
+  local escaped_json_branch_name
+  local queue_sql
+  escaped_relative_path="$(sql_escape "$visible_edit_relative_path")"
+  escaped_commit_message="$(sql_escape "$visible_commit_message")"
+  escaped_branch_name="$(sql_escape "$prepared_branch_name")"
+  escaped_json_branch_name="$(sql_escape "${prepared_branch_name//\//\\/}")"
+  queue_sql="
+SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END
+FROM assistant_queue_items
+WHERE id LIKE 'action-plan:development-commit:$seed_project_id:$seed_task_id:%'
+  AND payload_kind='action_plan'
+  AND state='waitingReview'
+  AND risk_level='write'
+  AND approval_json IS NULL
+  AND payload_json LIKE '%development.pr_workflow.commit%'
+  AND payload_json LIKE '%$escaped_relative_path%'
+  AND payload_json LIKE '%$escaped_commit_message%'
+  AND (
+    payload_json LIKE '%$escaped_branch_name%'
+    OR payload_json LIKE '%$escaped_json_branch_name%'
+  )
+  AND payload_json NOT LIKE '%development.pr_workflow.push%'
+  AND payload_json NOT LIKE '%development.pr_workflow.create_pull_request%'
+  AND required_capabilities_json LIKE '%providerExecutionApproval%'
+  AND (
+    required_capabilities_json LIKE '%development.pr_workflow.commit%'
+    OR required_capabilities_json LIKE '%developmentCommitChanges%'
+  );
+"
+
+  waitForAXMarkerContaining "project-development-automation-status"
+  setTextFieldContaining "project-development-automation-commit-paths" "$visible_edit_relative_path"
+  setTextFieldContaining "project-development-automation-commit-message" "$visible_commit_message"
+  pressButtonUntilSQLiteValue \
+    "visible Project automation panel queued commit review into Assistant Queue" \
+    "project-development-automation-commit-queue" \
+    "$queue_sql" \
+    "1"
+  commit_item_id="$(wait_for_nonempty_value \
+    "queued development commit Assistant Queue item id" \
+    "SELECT id FROM assistant_queue_items WHERE id LIKE 'action-plan:development-commit:$seed_project_id:$seed_task_id:%' ORDER BY updated_at DESC LIMIT 1;")"
+}
+
+verify_visible_assistant_queue_commit_execution() {
+  if [[ -z "$commit_item_id" ]]; then
+    echo "BLOCKER: commit Assistant Queue item id is missing before approve/run" >&2
+    return 1
+  fi
+
+  local escaped_item_id
+  local approval_sql
+  local done_sql
+  local current_branch
+  local committed_paths
+  escaped_item_id="$(sql_escape "$commit_item_id")"
+  approval_sql="
+SELECT CASE WHEN state='approved' AND approval_json IS NOT NULL THEN 1 ELSE 0 END
+FROM assistant_queue_items
+WHERE id='$escaped_item_id';
+"
+  done_sql="
+SELECT CASE WHEN state='done' AND approval_json IS NOT NULL THEN 1 ELSE 0 END
+FROM assistant_queue_items
+WHERE id='$escaped_item_id';
+"
+
+  visible_commit_head_before="$(fixture_git -C "$UI_WORKSPACE" rev-parse HEAD)"
+
+  launch_app_for_assistant_queue
+  wait_for_database_table "assistant_queue_items"
+  waitForAXMarkerContaining "assistant-queue-workflow"
+  waitForAXMarkerContaining "assistant-queue-row-$commit_item_id"
+  pressButtonUntilSQLiteValue \
+    "visible Assistant Queue approved local commit" \
+    "assistant-queue-approve-$commit_item_id" \
+    "$approval_sql" \
+    "1"
+  pressButtonUntilSQLiteValue \
+    "visible Assistant Queue approved and executed local commit" \
+    "assistant-queue-run-$commit_item_id" \
+    "$done_sql" \
+    "1"
+
+  visible_commit_head_after="$(fixture_git -C "$UI_WORKSPACE" rev-parse HEAD)"
+  if [[ "$visible_commit_head_after" == "$visible_commit_head_before" ]]; then
+    echo "BLOCKER: local commit did not advance fixture HEAD" >&2
+    return 1
+  fi
+
+  current_branch="$(fixture_git -C "$UI_WORKSPACE" branch --show-current)"
+  if [[ "$current_branch" != "$prepared_branch_name" ]]; then
+    echo "BLOCKER: local commit ran on branch '$current_branch', expected '$prepared_branch_name'" >&2
+    return 1
+  fi
+
+  committed_paths="$(fixture_git -C "$UI_WORKSPACE" diff-tree --no-commit-id --name-only -r "$visible_commit_head_after")"
+  if ! printf '%s\n' "$committed_paths" | grep -Fx "$visible_edit_relative_path" >/dev/null; then
+    echo "BLOCKER: local commit did not include reviewed path $visible_edit_relative_path" >&2
+    return 1
+  fi
+
+  wait_for_receipt_json \
+    "visible Assistant Queue commit branch reference" \
+    "$commit_item_id" \
+    "development.pr_workflow.commit" \
+    "development_branch" \
+    "$prepared_branch_name"
+  wait_for_receipt_json \
+    "visible Assistant Queue commit" \
+    "$commit_item_id" \
+    "development.pr_workflow.commit" \
+    "development_commit" \
+    "$visible_commit_head_after"
+  printf "OK: visible Assistant Queue local commit advanced fixture HEAD to %s\n" "$visible_commit_head_after"
+}
+
 printf "== Runtime development PR smoke ==\n"
 ensure_no_existing_app_process
 
@@ -1110,5 +1237,12 @@ verify_visible_verification_handoff
 failure_reason="visible Assistant Queue verification execution failed"
 verify_visible_assistant_queue_verification_execution
 
-write_artifact "passed" "approved project directory fixture flow reached local commit, fake push, fake PR creation, fake review gate, fake merge, visible Project automation panel queued branch automation into Assistant Queue, visible Assistant Queue approved and executed local branch preparation, visible Project automation panel queued repository edit review into Assistant Queue, visible Assistant Queue approved and executed repository edit, visible Project automation panel queued verification review into Assistant Queue, and visible Assistant Queue approved and executed verification"
+failure_reason="visible Project detail commit handoff failed"
+launch_app_for_development_detail
+verify_visible_commit_handoff
+
+failure_reason="visible Assistant Queue commit execution failed"
+verify_visible_assistant_queue_commit_execution
+
+write_artifact "passed" "approved project directory fixture flow reached local commit, fake push, fake PR creation, fake review gate, fake merge, visible Project automation panel queued branch automation into Assistant Queue, visible Assistant Queue approved and executed local branch preparation, visible Project automation panel queued repository edit review into Assistant Queue, visible Assistant Queue approved and executed repository edit, visible Project automation panel queued verification review into Assistant Queue, visible Assistant Queue approved and executed verification, visible Project automation panel queued commit review into Assistant Queue, and visible Assistant Queue approved and executed local commit"
 printf 'OK: runtime development PR smoke passed. Evidence: %s\n' "$(relative_path "$ARTIFACT_FILE")"

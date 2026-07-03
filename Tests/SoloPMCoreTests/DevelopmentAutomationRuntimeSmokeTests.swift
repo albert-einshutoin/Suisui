@@ -119,6 +119,7 @@ final class DevelopmentAutomationRuntimeSmokeTests: XCTestCase {
         ).execute(
             arguments: [
                 "projectId": .number(Double(project.id)),
+                "branchName": .string(branchName),
                 "commandId": .string("git.diff_check")
             ],
             context: context
@@ -134,6 +135,7 @@ final class DevelopmentAutomationRuntimeSmokeTests: XCTestCase {
         ).execute(
             arguments: [
                 "projectId": .number(Double(project.id)),
+                "branchName": .string(branchName),
                 "relativePaths": .array([
                     .string("README.md"),
                     .string("docs/runtime-smoke.md")
@@ -144,6 +146,8 @@ final class DevelopmentAutomationRuntimeSmokeTests: XCTestCase {
         )
 
         XCTAssertEqual(commitResult.status, .succeeded)
+        XCTAssertEqual(commitResult.output["branchName"], .string(branchName))
+        XCTAssertNotNil(commitResult.output["headRefOid"]?.stringValue)
         XCTAssertEqual(commitResult.output["requiresPushApproval"], .bool(true))
         XCTAssertEqual(commitResult.output["requiresPullRequestApproval"], .bool(true))
         XCTAssertEqual(try stores.artifacts.list().count, 2)

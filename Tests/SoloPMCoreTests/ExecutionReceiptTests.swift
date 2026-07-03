@@ -481,6 +481,7 @@ final class ExecutionReceiptTests: XCTestCase {
 
     func testDevelopmentVerificationAndCommitReceiptsKeepReviewedBranchEvidence() throws {
         let branchName = "feature/solopm-7-42-implement-oauth-callback"
+        let headRefOID = "0123456789abcdef0123456789abcdef01234567"
         var session = ReviewSession(
             id: "review-development-verify-commit",
             plan: ActionPlan(
@@ -539,8 +540,10 @@ final class ExecutionReceiptTests: XCTestCase {
                 summary: "Created a local development commit. Push and PR creation require a separate approval gate.",
                 output: [
                     "projectId": .number(7),
+                    "branchName": .string(branchName),
                     "relativePaths": .array([.string("Sources/AuthCallback.swift")]),
                     "commitMessage": .string("Add OAuth callback support"),
+                    "headRefOid": .string(headRefOID),
                     "requiresPushApproval": .bool(true)
                 ]
             )
@@ -557,6 +560,7 @@ final class ExecutionReceiptTests: XCTestCase {
 
         XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: "7")))
         XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentCommit, id: headRefOID)))
         XCTAssertEqual(receipt.visibleSurfaces, [.projectDetail, .auditLog])
     }
 
