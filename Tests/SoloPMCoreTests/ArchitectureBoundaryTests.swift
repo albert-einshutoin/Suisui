@@ -157,6 +157,28 @@ final class ArchitectureBoundaryTests: XCTestCase {
         }
     }
 
+    func testProjectWorkflowSurfacesAreSplitIntoOwnedViewFiles() throws {
+        let workflowShellSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let expectedSurfaceFiles = [
+            ("Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift", "struct TodayWorkflowView"),
+            ("Sources/SoloPMApp/Views/ProjectWorkflowCatchUpView.swift", "struct CatchUpWorkflowView"),
+            ("Sources/SoloPMApp/Views/ProjectWorkflowScheduleView.swift", "struct ScheduleWorkflowView"),
+            ("Sources/SoloPMApp/Views/ProjectWorkflowDoneView.swift", "struct DoneWorkflowView"),
+            ("Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift", "struct InboxWorkflowView"),
+            ("Sources/SoloPMApp/Views/ProjectWorkflowAssistantQueueView.swift", "struct AssistantQueueWorkflowView")
+        ]
+        for (path, marker) in expectedSurfaceFiles {
+            let source = try readPackageFile(path)
+            XCTAssertTrue(source.contains(marker), "\(path) should own \(marker)")
+            XCTAssertFalse(workflowShellSource.contains(marker), "ProjectWorkflowViews.swift should no longer own \(marker)")
+        }
+
+        let sharedSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowSharedViews.swift")
+        XCTAssertTrue(sharedSource.contains("struct WorkflowTaskSurface"))
+        XCTAssertTrue(sharedSource.contains("struct WorkflowHeader"))
+        XCTAssertTrue(sharedSource.contains("struct WorkflowDoneToggle"))
+    }
+
     func testAutomationApprovalBoundaryKeepsQueueTranslationSeparateFromExecution() throws {
         let factorySource = try readPackageFile("Sources/SoloPMCore/App/AssistantQueueAutomationPlanFactory.swift")
         let coordinatorSource = try readPackageFile("Sources/SoloPMCore/App/AssistantQueueExecutionCoordinator.swift")

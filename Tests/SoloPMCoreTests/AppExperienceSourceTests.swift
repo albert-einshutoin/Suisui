@@ -116,7 +116,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testAssistantQueueWorkflowIsReachableFromProjectBoardSidebar() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
         let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
 
@@ -354,7 +354,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testDynamicAppStatusStringsUseLocalizationRouting() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
         let appSource = try readAppShellSource()
         let coreBoardSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let japaneseKeys = try localizableKeys(in: "Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings")
@@ -534,7 +534,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testDoneWorkflowShowsRecentAIReceiptsWithoutRawReceiptFields() throws {
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowDoneView.swift")
         let historySource = try readPackageFile("Sources/SoloPMCore/App/ExecutionReceiptHistory.swift")
 
         XCTAssertTrue(workflowSource.contains("viewModel.executionReceiptHistorySnapshot"))
@@ -560,21 +560,18 @@ final class AppExperienceSourceTests: XCTestCase {
         let receiptHistoryViewTail = try XCTUnwrap(
             workflowSource.components(separatedBy: "struct ExecutionReceiptHistoryRowView").last
         )
-        let receiptHistoryViewSource = try XCTUnwrap(
-            receiptHistoryViewTail.components(separatedBy: "private struct ScheduleDraftPanel").first
-        )
         XCTAssertTrue(historySource.contains("displayDigest(for: receipt)"))
         XCTAssertTrue(historySource.contains("Receipt Digest: %@"))
-        XCTAssertFalse(receiptHistoryViewSource.contains(".inputPreview"))
-        XCTAssertFalse(receiptHistoryViewSource.contains(".sourceLinks"))
-        XCTAssertFalse(receiptHistoryViewSource.contains(".actions"))
-        XCTAssertFalse(receiptHistoryViewSource.contains("receipt.id"))
-        XCTAssertFalse(receiptHistoryViewSource.contains("receipt.runID"))
+        XCTAssertFalse(receiptHistoryViewTail.contains(".inputPreview"))
+        XCTAssertFalse(receiptHistoryViewTail.contains(".sourceLinks"))
+        XCTAssertFalse(receiptHistoryViewTail.contains(".actions"))
+        XCTAssertFalse(receiptHistoryViewTail.contains("receipt.id"))
+        XCTAssertFalse(receiptHistoryViewTail.contains("receipt.runID"))
     }
 
     func testInspectorsShowScopedAIReceiptsWithoutRawReceiptFields() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
 
         XCTAssertTrue(boardSource.contains("Section(\"Project AI Receipts\")"))
         XCTAssertTrue(boardSource.contains("Section(\"Task AI Receipts\")"))
@@ -1015,7 +1012,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testDoneWorkflowIsReachableFromSidebarAndExposesReviewActions() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
         let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
@@ -1265,7 +1262,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testPrimaryKeyboardShortcutsAreAttachedToConcreteCommandsAndFocusedActions() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
         let appSource = try readAppShellSource()
         let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
 
@@ -1455,7 +1452,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardPromotesInboxAndTodayAsFirstClassDestinations() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
 
         XCTAssertTrue(source.contains("ProjectBoardSidebarDestination"))
@@ -1522,7 +1519,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testPhase12SidebarDoesNotStealInboxCommandNumberShortcuts() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
 
         XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
         XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
@@ -1537,7 +1534,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testInboxActionPanelSurfacesClassificationFeedbackAndUndo() throws {
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
 
@@ -1557,7 +1554,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testInboxWorkflowSurfacesVoiceCaptureMetadataWithoutReplacingVoiceCommand() throws {
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
         let appSource = try readAppShellSource()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
@@ -1632,7 +1629,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testInboxSelectionKeepsTriageInWorkflowInsteadOfInspector() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
 
         XCTAssertTrue(boardSource.contains("InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectInboxTask)"))
         XCTAssertTrue(boardSource.contains("selectedDestination != .today && selectedDestination != .inbox"))
@@ -1653,7 +1650,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testInboxAndTodayWorkflowsExposeKeyboardAndVoiceOverAnchors() throws {
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
 
@@ -1944,7 +1941,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardVoiceOverFocusPathIsSourceAnchored() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
 
@@ -2079,7 +2076,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testTodayWorkflowShowsRecommendationDueCountsAndTimeBlocks() throws {
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
         let dailyPlanningSource = try readPackageFile("Sources/SoloPMCore/App/DailyPlanningReview.swift")
@@ -2268,7 +2265,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testTodayWorkflowUsesSampleInspiredBriefingAndFlowRail() throws {
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
         let todayWorkflowStart = try XCTUnwrap(workflowSource.range(of: "struct TodayWorkflowView"))
         let todayWorkflowEnd = try XCTUnwrap(workflowSource.range(of: "struct CatchUpWorkflowView"))
         let todayWorkflowSource = String(workflowSource[todayWorkflowStart.lowerBound..<todayWorkflowEnd.lowerBound])
@@ -2294,7 +2291,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testTodayWorkflowProvidesCommonQuickActionChipsAndLocalRailActions() throws {
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-common-action-rail\")"))
@@ -2327,7 +2324,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testScheduleWorkflowIsReachableAndApprovalFirst() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
         let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
@@ -2379,7 +2376,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testScheduleWorkflowShowsLocalDailyWorkloadDashboardWithoutCalendarWrites() throws {
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let workloadSource = try readPackageFile("Sources/SoloPMCore/App/DailyWorkloadDashboard.swift")
         let weeklySource = try readPackageFile("Sources/SoloPMCore/App/WeeklyScheduleCockpit.swift")
@@ -3888,7 +3885,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(audit.contains("PR未作成のため、現時点ではcurrent branchの改善commitとsource testに紐づける"))
         XCTAssertTrue(audit.contains("PR作成時はこの表をPR descriptionに転記する"))
         XCTAssertTrue(audit.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift"))
-        XCTAssertTrue(audit.contains("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift"))
+        XCTAssertTrue(audit.contains("Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift"))
+        XCTAssertTrue(audit.contains("Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift"))
         XCTAssertTrue(audit.contains("Sources/SoloPMApp/SoloPMApp.swift"))
         XCTAssertTrue(audit.contains("Tests/SoloPMCoreTests/ProjectBoardStoreTests.swift"))
         XCTAssertTrue(audit.contains("Tests/SoloPMCoreTests/ExternalMCPTests.swift"))
@@ -4117,7 +4115,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let releaseReport = try readPackageFile("script/release_readiness_report.sh")
         let evidence = try readPackageFile("docs/release/evidence/ui-screenshots.md")
         let appSource = try readAppShellSource()
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let workflowSource = try readProjectWorkflowSources()
 
         let requiredScreenshots = [
             "inbox-voice-light.png",
@@ -4770,6 +4768,21 @@ final class AppExperienceSourceTests: XCTestCase {
             }
             return String(source[keyRange])
         })
+    }
+
+    private func readProjectWorkflowSources() throws -> String {
+        try [
+            "Sources/SoloPMApp/Views/ProjectWorkflowViews.swift",
+            "Sources/SoloPMApp/Views/ProjectWorkflowSharedViews.swift",
+            "Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift",
+            "Sources/SoloPMApp/Views/ProjectWorkflowCatchUpView.swift",
+            "Sources/SoloPMApp/Views/ProjectWorkflowScheduleView.swift",
+            "Sources/SoloPMApp/Views/ProjectWorkflowDoneView.swift",
+            "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift",
+            "Sources/SoloPMApp/Views/ProjectWorkflowAssistantQueueView.swift"
+        ]
+        .map { try readPackageFile($0) }
+        .joined(separator: "\n")
     }
 
     private func staticSwiftUILiteralKeys() throws -> Set<String> {
