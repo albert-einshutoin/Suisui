@@ -999,6 +999,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testProjectBoardDropPayloadsAreValidatedByViewModel() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let storeSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementStore.swift")
 
         XCTAssertTrue(boardSource.contains(".draggable(String(task.id))"))
         XCTAssertTrue(boardSource.contains(".dropDestination(for: String.self)"))
@@ -1007,7 +1008,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(boardSource.contains("ProjectTaskDragPayload"))
         XCTAssertTrue(coreSource.contains("moveDroppedTasks(ids taskIDs: [Int64], to status: ProjectTaskStatus)"))
         XCTAssertTrue(coreSource.contains("moveDroppedTasks(ids rawIDs: [String], to status: ProjectTaskStatus)"))
-        XCTAssertTrue(coreSource.contains("func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask]"))
+        XCTAssertTrue(storeSource.contains("func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask]"))
         XCTAssertTrue(coreSource.contains("store.moveTasks(ids: taskIDs, to: status)"))
         XCTAssertTrue(coreSource.contains("Could not move task: invalid drag payload."))
     }
@@ -1706,6 +1707,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
+        let storeSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementStore.swift")
+        let sqliteStoreSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementSQLiteStore.swift")
 
         XCTAssertTrue(source.contains("case overview"))
         XCTAssertTrue(source.contains("ProjectDetailOverview("))
@@ -1827,11 +1830,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("ActionPlan("))
         XCTAssertTrue(coreSource.contains(".developmentPreparePullRequestWorkflow"))
         XCTAssertTrue(modelSource.contains("public var artifacts: [ProjectBoardArtifact]"))
-        XCTAssertTrue(coreSource.contains("func setProjectWorkspacePath(id: Int64, path: String?, bookmarkData: Data?) throws -> ProjectBoardProject"))
+        XCTAssertTrue(storeSource.contains("func setProjectWorkspacePath(id: Int64, path: String?, bookmarkData: Data?) throws -> ProjectBoardProject"))
         XCTAssertFalse(coreSource.contains("ProjectBoardProject: Identifiable, Equatable, Sendable {\n    public var id: Int64\n    public var title: String\n    public var status: String\n    public var subtitle: String\n    public var workspacePath: String?"))
-        XCTAssertTrue(coreSource.contains("func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact"))
-        XCTAssertTrue(coreSource.contains("func deleteProjectArtifact(id: Int64) throws"))
-        XCTAssertTrue(coreSource.contains("SQLiteArtifactStore(connection: connection)"))
+        XCTAssertTrue(storeSource.contains("func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact"))
+        XCTAssertTrue(storeSource.contains("func deleteProjectArtifact(id: Int64) throws"))
+        XCTAssertTrue(sqliteStoreSource.contains("SQLiteArtifactStore(connection: connection)"))
     }
 
     func testProjectDetailSurfacesMilestonesTimelineAndAssistantWithoutDroppingExistingSections() throws {
