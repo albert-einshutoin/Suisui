@@ -39,7 +39,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardSurfaceUsesKanbanLayout() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
 
         XCTAssertTrue(source.contains("NavigationSplitView"))
         XCTAssertTrue(source.contains("BoardColumnView"))
@@ -49,9 +49,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("Show Archived"))
         XCTAssertTrue(source.contains("Restore Project"))
         XCTAssertTrue(source.contains("InspectorDestructiveConfirmation"))
-        XCTAssertTrue(coreSource.contains("Backlog"))
-        XCTAssertTrue(coreSource.contains("In Progress"))
-        XCTAssertTrue(coreSource.contains("Done"))
+        XCTAssertTrue(modelSource.contains("Backlog"))
+        XCTAssertTrue(modelSource.contains("In Progress"))
+        XCTAssertTrue(modelSource.contains("Done"))
     }
 
     func testProjectBoardLoadFailureIsNotRenderedAsNoProjects() throws {
@@ -1017,6 +1017,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
         let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
 
         XCTAssertTrue(persistenceSource.contains("case done"))
         XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(destination: .done"))
@@ -1036,9 +1037,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("analytics.bestWeekdaySummary"))
         XCTAssertTrue(workflowSource.contains("analytics.bestHourSummary"))
         XCTAssertTrue(coreSource.contains("public func doneAnalytics("))
-        XCTAssertTrue(coreSource.contains("public struct DoneAnalyticsDayBucket"))
-        XCTAssertTrue(coreSource.contains("DoneAnalyticsBestWeekdaySummary"))
-        XCTAssertTrue(coreSource.contains("DoneAnalyticsBestHourSummary"))
+        XCTAssertTrue(modelSource.contains("public struct DoneAnalyticsDayBucket"))
+        XCTAssertTrue(modelSource.contains("DoneAnalyticsBestWeekdaySummary"))
+        XCTAssertTrue(modelSource.contains("DoneAnalyticsBestHourSummary"))
         XCTAssertTrue(coreSource.contains("public func reopenCompletedTask(id: Int64)"))
         XCTAssertTrue(coreSource.contains("public func enqueueDoneFollowUpDraft(\n        for taskID: Int64"))
         XCTAssertTrue(coreSource.contains("DoneFollowUpActionDraftBuilder"))
@@ -1537,8 +1538,9 @@ final class AppExperienceSourceTests: XCTestCase {
     func testInboxActionPanelSurfacesClassificationFeedbackAndUndo() throws {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
 
-        XCTAssertTrue(coreSource.contains("public struct InboxClassificationFeedback"))
+        XCTAssertTrue(modelSource.contains("public struct InboxClassificationFeedback"))
         XCTAssertTrue(coreSource.contains("@Published public private(set) var inboxClassificationFeedback"))
         XCTAssertTrue(coreSource.contains("public func undoLastInboxClassification()"))
         XCTAssertTrue(workflowSource.contains("if let feedback = viewModel.inboxClassificationFeedback"))
@@ -1557,14 +1559,15 @@ final class AppExperienceSourceTests: XCTestCase {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
         let voiceSource = try readPackageFile("Sources/SoloPMCore/Voice/InboxCapture.swift")
 
         XCTAssertTrue(coreSource.contains("public var selectedInboxCaptureRecords"))
         XCTAssertTrue(voiceSource.contains("func updateMemo(id: Int64, memo: String?) throws -> InboxCaptureRecord"))
         XCTAssertTrue(coreSource.contains("public func updateSelectedInboxCaptureMemo(_ memo: String) -> InboxCaptureRecord?"))
-        XCTAssertTrue(coreSource.contains("public struct InboxTriageSummary"))
+        XCTAssertTrue(modelSource.contains("public struct InboxTriageSummary"))
         XCTAssertTrue(coreSource.contains("public func inboxTriageSummary(for task: ProjectBoardTask) -> InboxTriageSummary"))
-        XCTAssertTrue(coreSource.contains("public enum InboxTriageFilter"))
+        XCTAssertTrue(modelSource.contains("public enum InboxTriageFilter"))
         XCTAssertTrue(coreSource.contains("public var filteredInboxTasks"))
         XCTAssertTrue(coreSource.contains("public func setInboxTriageFilter"))
         XCTAssertTrue(workflowSource.contains("viewModel.filteredInboxTasks"))
@@ -1702,6 +1705,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testProjectDetailOrganizesTasksArtifactsTimelineAndSuggestions() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
 
         XCTAssertTrue(source.contains("case overview"))
         XCTAssertTrue(source.contains("ProjectDetailOverview("))
@@ -1813,16 +1817,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("ProjectTimelineSection"))
         XCTAssertTrue(source.contains("ProjectLocalSuggestionPanel"))
         XCTAssertTrue(source.contains("project.artifacts"))
-        XCTAssertTrue(coreSource.contains("public struct ProjectBoardArtifact"))
-        XCTAssertTrue(coreSource.contains("public var hasWorkspaceDirectory: Bool"))
-        XCTAssertTrue(coreSource.contains("public var hasWorkspaceBookmark: Bool"))
-        XCTAssertTrue(coreSource.contains("public var workspaceDisplayName: String?"))
+        XCTAssertTrue(modelSource.contains("public struct ProjectBoardArtifact"))
+        XCTAssertTrue(modelSource.contains("public var hasWorkspaceDirectory: Bool"))
+        XCTAssertTrue(modelSource.contains("public var hasWorkspaceBookmark: Bool"))
+        XCTAssertTrue(modelSource.contains("public var workspaceDisplayName: String?"))
         XCTAssertTrue(coreSource.contains("public struct ProjectDevelopmentAutomationReadiness"))
         XCTAssertTrue(coreSource.contains("public func developmentAutomationReadiness("))
         XCTAssertTrue(coreSource.contains("public func prepareDevelopmentAutomationReview("))
         XCTAssertTrue(coreSource.contains("ActionPlan("))
         XCTAssertTrue(coreSource.contains(".developmentPreparePullRequestWorkflow"))
-        XCTAssertTrue(coreSource.contains("public var artifacts: [ProjectBoardArtifact]"))
+        XCTAssertTrue(modelSource.contains("public var artifacts: [ProjectBoardArtifact]"))
         XCTAssertTrue(coreSource.contains("func setProjectWorkspacePath(id: Int64, path: String?, bookmarkData: Data?) throws -> ProjectBoardProject"))
         XCTAssertFalse(coreSource.contains("ProjectBoardProject: Identifiable, Equatable, Sendable {\n    public var id: Int64\n    public var title: String\n    public var status: String\n    public var subtitle: String\n    public var workspacePath: String?"))
         XCTAssertTrue(coreSource.contains("func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact"))
@@ -1833,6 +1837,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testProjectDetailSurfacesMilestonesTimelineAndAssistantWithoutDroppingExistingSections() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
 
         XCTAssertTrue(source.contains("ProjectMilestoneSection(project: project, viewModel: viewModel)"))
         XCTAssertTrue(source.contains("ProjectAssistantPanel(project: project, viewModel: viewModel)"))
@@ -1845,8 +1850,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("viewModel.prepareProjectAssistantSuggestedActionForReview"))
         XCTAssertFalse(source.contains("moveTask(id: suggestedTask.id, to: .inProgress)"))
 
-        XCTAssertTrue(coreSource.contains("public struct ProjectBoardMilestone"))
-        XCTAssertTrue(coreSource.contains("public var milestones: [ProjectBoardMilestone]"))
+        XCTAssertTrue(modelSource.contains("public struct ProjectBoardMilestone"))
+        XCTAssertTrue(modelSource.contains("public var milestones: [ProjectBoardMilestone]"))
         XCTAssertTrue(coreSource.contains("ProjectAssistantReviewDraft"))
     }
 
@@ -2073,6 +2078,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testTodayWorkflowShowsRecommendationDueCountsAndTimeBlocks() throws {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
         let dailyPlanningSource = try readPackageFile("Sources/SoloPMCore/App/DailyPlanningReview.swift")
         let dailyPlanningDraftSource = try readPackageFile("Sources/SoloPMCore/App/DailyPlanningActionDraft.swift")
         let missedReviewSource = try readPackageFile("Sources/SoloPMCore/App/MissedTaskReview.swift")
@@ -2119,8 +2125,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("viewModel.deferMissedTaskForLater(id: item.task.id)"))
         XCTAssertTrue(workflowSource.contains("plan.recommendationReason"))
         XCTAssertTrue(workflowSource.contains("ForEach(plan.timeBlocks)"))
-        XCTAssertTrue(coreSource.contains("public struct TodayWorkflowPlan"))
-        XCTAssertTrue(coreSource.contains("public struct TodayTimeBlock"))
+        XCTAssertTrue(modelSource.contains("public struct TodayWorkflowPlan"))
+        XCTAssertTrue(modelSource.contains("public struct TodayTimeBlock"))
         XCTAssertTrue(dailyPlanningSource.contains("public struct DailyPlanningReview"))
         XCTAssertTrue(dailyPlanningSource.contains("public enum DailyPlanningReviewBoundary"))
         XCTAssertTrue(coreSource.contains("DailyPlanningReviewReadoutBuilder.makeRequest"))
@@ -2131,8 +2137,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(dailyPlanningDraftSource.contains("tool: .taskUpdate"))
         XCTAssertTrue(dailyPlanningDraftSource.contains("tool: .taskCreate"))
         XCTAssertFalse(dailyPlanningDraftSource.contains("calendarCreate"))
-        XCTAssertTrue(coreSource.contains("public struct TodayAssistantRailContext"))
-        XCTAssertTrue(coreSource.contains("public enum TodayAssistantRailSource"))
+        XCTAssertTrue(modelSource.contains("public struct TodayAssistantRailContext"))
+        XCTAssertTrue(modelSource.contains("public enum TodayAssistantRailSource"))
         XCTAssertTrue(missedReviewSource.contains("public struct MissedTaskReviewSummary"))
         XCTAssertTrue(missedReviewSource.contains("public struct MissedTaskReviewItem"))
         XCTAssertTrue(missedReviewSource.contains("public enum MissedTaskReviewReason"))
@@ -2141,8 +2147,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("public func completeMissedTask"))
         XCTAssertTrue(coreSource.contains("public func rescheduleMissedTaskForToday"))
         XCTAssertTrue(coreSource.contains("public func deferMissedTaskForLater"))
-        XCTAssertTrue(coreSource.contains("public struct TodayRecommendationChip"))
-        XCTAssertTrue(coreSource.contains("public struct TodayScheduleDraft"))
+        XCTAssertTrue(modelSource.contains("public struct TodayRecommendationChip"))
+        XCTAssertTrue(modelSource.contains("public struct TodayScheduleDraft"))
         XCTAssertTrue(coreSource.contains("public func submitTodayCommand"))
         XCTAssertTrue(coreSource.contains("public func todayRecommendationChips"))
         XCTAssertTrue(coreSource.contains("public func todayAssistantRailContext"))
@@ -2321,6 +2327,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
         let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
 
         XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(destination: .schedule"))
         XCTAssertTrue(boardSource.contains("case .schedule:"))
@@ -2357,7 +2364,7 @@ final class AppExperienceSourceTests: XCTestCase {
             try XCTUnwrap(scheduleWorkflowSource.range(of: "ScheduleDraftPanel(viewModel: viewModel)")).lowerBound
         )
         XCTAssertFalse(scheduleWorkflowSource.contains("applyScheduleDraftToCalendar"))
-        XCTAssertTrue(coreSource.contains("public struct ScheduleDraft"))
+        XCTAssertTrue(modelSource.contains("public struct ScheduleDraft"))
         XCTAssertTrue(coreSource.contains("public func unscheduledScheduleTasks"))
         XCTAssertTrue(coreSource.contains("public func prepareScheduleDraft"))
         XCTAssertTrue(coreSource.contains("public func addUnscheduledTaskToScheduleDraft"))
