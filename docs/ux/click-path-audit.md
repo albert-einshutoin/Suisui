@@ -28,6 +28,31 @@
 | Today | sidebarの `Today` | due/overdueの未完了taskを実データから表示し、overdue/today件数、local focus suggestion、30分単位のtime block、task inspectorへつながる。 |
 | Project Detail | sidebarの個別project row | 1Projectの実行管理としてOverview / Board / List、Task、Artifact、Timeline、Milestone、Local Suggestionsを扱う。 |
 
+## Phase 14 access-flow map (2026-07-03)
+
+Phase 14 product review maps each major user goal as `app launch -> entry point -> screen/state -> action -> result/approval`. This separates user-visible reachability, runtime/AX reachability, and manual-only release evidence.
+
+| User goal | Access flow | Current reachability | Follow-up / PR |
+| --- | --- | --- | --- |
+| Project Board work | app launch -> Project Board -> sidebar `Projects` / project row -> Overview / Board / List -> inspector/details | Reachable. Current screenshots show the board, cards, inspector, and project overview as coherent first-run work surfaces. | Existing Phase 12 evidence |
+| Inbox triage | app launch -> sidebar `Inbox` -> capture or select item -> `Make Task` / `Make Project` / `Schedule Today` / `Review Later` -> optional Undo | Reachable. Runtime Inbox triage smoke covers mutation and undo path. | Existing runtime smoke |
+| Today planning | app launch -> sidebar `Today` -> Daily Planning Review / command area / review rail -> Focus / Schedule Block / Reminder Draft | Reachable. Runtime Today completion smoke covers Today rail, local schedule draft, reminder draft, and visible completion. | Existing runtime smoke |
+| Schedule Calendar apply | app launch -> sidebar `Schedule` -> `Generate Draft` -> `Queue Calendar Apply` -> Assistant Queue approval | Reachable but previously hard to follow because draft generation and Calendar apply were separated vertically. | #209 / PR #217 |
+| Done recovery/follow-up | app launch -> sidebar `Done` -> completed task row -> `Follow Up` / `Reopen` | Reachable but row/action relationship was weak on wide windows. | #210 / PR #215 |
+| Settings Google Calendar destination | app launch -> `Settings...` / `Command+,` -> `Sync` -> Google Calendar save flow -> `Save Calendar` -> `Check Readiness` | Source identifiers existed, but runtime AX proof was unstable until the save-flow group and settings smoke were hardened. | #208 / PR #218 |
+| Voice Command planning or capture | app launch -> Voice Command -> record or type -> `Save to Inbox` / `Generate Plan` -> Inbox or Assistant Queue review | Reachable, but the empty initial state did not explain record/type -> inbox/plan -> approval. | #211 / PR #216 |
+| Launch readiness proof | developer/release -> `./script/build_and_run.sh --verify` -> Project Board visible-window proof | Required for release evidence, but default timeout could false-block cold SwiftUI launch. | #212 / PR #214 |
+
+## Phase 14 hard-to-access or unproven paths
+
+| Path | Access issue found | Verification layer | Status |
+| --- | --- | --- | --- |
+| Settings Google Calendar save/readiness | Runtime Settings save path could hang or miss `settings-google-calendar-id-save`; duplicate generic Save Settings identifiers made AX targeting brittle. | source + runtime + security | Fixed in #208 / PR #218; `./script/check_runtime_settings_save_smoke.sh` proves isolated UserDefaults persistence without token or path leakage. |
+| Schedule apply after draft generation | `Queue Calendar Apply` was below the cockpit flow, so users could generate a draft and lose the next approval step. | source + runtime schedule smoke + visual | Fixed in #209 / PR #217; apply approval stays next to the draft flow and still routes Calendar writes through Assistant Queue. |
+| Done row recovery actions | `Follow Up` and `Reopen` were functionally present but visually detached from the completed task row on wide layouts. | source + visual | Fixed in #210 / PR #215; actions are attached to each completed row. |
+| Voice Command first-run path | Empty state did not teach that users can record or type, then either save to Inbox or generate an approval-reviewed plan. | source + localization + visual; runtime voice smoke remains a follow-up for AX text submission | Improved in #211 / PR #216; initial state now explains examples, readiness, Inbox save, and plan generation. |
+| Launch visible-window verifier | `build_and_run.sh --verify` could report a false blocker before the Project Board window appeared on a cold SwiftUI launch. | source + runtime verifier + security | Fixed in #212 / PR #214; default verify timeout now covers cold launch recovery. |
+
 ## クリック数
 
 | 操作 | 導線 | クリック数 | 判定 | メモ |
