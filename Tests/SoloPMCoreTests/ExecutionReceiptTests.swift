@@ -679,7 +679,8 @@ final class ExecutionReceiptTests: XCTestCase {
                         tool: .developmentPushBranch,
                         arguments: [
                             "projectId": .number(7),
-                            "branchName": .string(branchName)
+                            "branchName": .string(branchName),
+                            "expectedHeadOID": .string(headOID)
                         ],
                         riskLevel: .write
                     ),
@@ -690,6 +691,7 @@ final class ExecutionReceiptTests: XCTestCase {
                             "projectId": .number(7),
                             "branchName": .string(branchName),
                             "baseBranch": .string(baseBranch),
+                            "expectedHeadOID": .string(headOID),
                             "title": .string("Add publish gate"),
                             "body": .string("Reviewed body")
                         ],
@@ -713,6 +715,8 @@ final class ExecutionReceiptTests: XCTestCase {
                     "projectId": .number(7),
                     "branchName": .string(branchName),
                     "remoteRepository": .string("acme/solo-pm"),
+                    "headRefOid": .string(headOID),
+                    "expectedHeadOID": .string(headOID),
                     "requiresPullRequestApproval": .bool(true)
                 ]
             )
@@ -730,6 +734,7 @@ final class ExecutionReceiptTests: XCTestCase {
                     "baseBranch": .string(baseBranch),
                     "pullRequestURL": .string(pullRequestURL),
                     "headOid": .string(headOID),
+                    "expectedHeadOID": .string(headOID),
                     "title": .string("Add \(prSecret)")
                 ]
             )

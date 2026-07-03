@@ -2931,8 +2931,9 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(appSource.contains("private static func makeRuntimeToolRegistry("))
         XCTAssertTrue(coordinatorFactory.contains("makeRuntimeToolRegistry(connection: connection, auditLogger: auditLogger)"))
-        XCTAssertTrue(registryFactory.contains("DevelopmentPullRequestReviewGateTool(projectStore: projectStore)"))
-        XCTAssertTrue(registryFactory.contains("DevelopmentPullRequestMergeTool(projectStore: projectStore)"))
+        XCTAssertTrue(registryFactory.contains("DevelopmentPullRequestCreationTool(\n                projectStore: projectStore,\n                bookmarkResolver: developmentBookmarkResolver"))
+        XCTAssertTrue(registryFactory.contains("DevelopmentPullRequestReviewGateTool(\n                projectStore: projectStore,\n                bookmarkResolver: developmentBookmarkResolver"))
+        XCTAssertTrue(registryFactory.contains("DevelopmentPullRequestMergeTool(\n                projectStore: projectStore,\n                bookmarkResolver: developmentBookmarkResolver"))
         XCTAssertTrue(registryFactory.contains(".developmentReviewPullRequestGate"))
         XCTAssertTrue(registryFactory.contains(".developmentMergePullRequest"))
         XCTAssertFalse(registryFactory.contains("ToolRegistryFactory.developerMode("))

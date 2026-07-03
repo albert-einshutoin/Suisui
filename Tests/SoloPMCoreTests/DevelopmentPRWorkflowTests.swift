@@ -639,8 +639,9 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let baseBranch = "feature/phase14-product-completion"
         let title = "Add development publish gate"
         let body = "## Summary\n- Add approval-gated publish tools\n"
+        let expectedHeadOID = "0123456789abcdef0123456789abcdef01234567"
         let gitRunner = RecordingDevelopmentGitRunner()
-        stubPullRequestCreationPreflight(gitRunner, branchName: branchName)
+        stubPullRequestCreationPreflight(gitRunner, branchName: branchName, localHeadOID: expectedHeadOID)
         let githubRunner = RecordingGitHubCLICommandRunner(
             output: GitHubCLICommandOutput(
                 standardOutput: "https://github.com/albert-einshutoin/soloPM/pull/106\n",
@@ -661,7 +662,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                 "branchName": .string(branchName),
                 "baseBranch": .string(baseBranch),
                 "title": .string(title),
-                "body": .string(body)
+                "body": .string(body),
+                "expectedHeadOID": .string(expectedHeadOID)
             ],
             context: approvedContext()
         )
@@ -672,7 +674,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertEqual(result.output["baseBranch"], .string(baseBranch))
         XCTAssertEqual(result.output["pullRequestURL"], .string("https://github.com/albert-einshutoin/soloPM/pull/106"))
         XCTAssertEqual(result.output["remoteRepository"], .string("albert-einshutoin/soloPM"))
-        XCTAssertEqual(result.output["headOid"], .string("0123456789abcdef0123456789abcdef01234567"))
+        XCTAssertEqual(result.output["headOid"], .string(expectedHeadOID))
+        XCTAssertEqual(result.output["expectedHeadOID"], .string(expectedHeadOID))
         XCTAssertEqual(githubRunner.recordedInvocations.count, 1)
         let invocation = try XCTUnwrap(githubRunner.recordedInvocations.first)
         XCTAssertEqual(invocation.workingDirectory, workspace.standardizedFileURL.resolvingSymlinksInPath())
@@ -724,7 +727,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                     "branchName": .string(branchName),
                     "baseBranch": .string("main"),
                     "title": .string("Add development publish gate"),
-                    "body": .string("## Summary\n- Add approval-gated publish tools\n")
+                    "body": .string("## Summary\n- Add approval-gated publish tools\n"),
+                    "expectedHeadOID": .string("0123456789abcdef0123456789abcdef01234567")
                 ],
                 context: approvedContext()
             )
@@ -777,7 +781,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                     "branchName": .string(branchName),
                     "baseBranch": .string("main"),
                     "title": .string("Add development publish gate"),
-                    "body": .string("## Summary\n- Add approval-gated publish tools\n")
+                    "body": .string("## Summary\n- Add approval-gated publish tools\n"),
+                    "expectedHeadOID": .string("0123456789abcdef0123456789abcdef01234567")
                 ],
                 context: approvedContext()
             )
@@ -825,7 +830,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                 "branchName": .string(branchName),
                 "baseBranch": .string("main"),
                 "title": .string("Add development publish gate"),
-                "body": .string("## Summary\n- Add approval-gated publish tools\n")
+                "body": .string("## Summary\n- Add approval-gated publish tools\n"),
+                "expectedHeadOID": .string(localHeadOID)
             ],
             context: approvedContext()
         )
@@ -838,6 +844,51 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertEqual(result.output["remoteRepository"], .string("albert-einshutoin/soloPM"))
         XCTAssertEqual(result.output["localHeadOid"], .string(localHeadOID))
         XCTAssertEqual(result.output["remoteHeadOid"], .string(remoteHeadOID))
+        XCTAssertEqual(githubRunner.recordedInvocations, [])
+    }
+
+    func testCreatePullRequestRejectsReviewedHeadDriftBeforeGitHubWrite() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try createPublishProject(stores: stores, workspace: workspace)
+        let branchName = "feature/solopm-\(project.id)-publish-gate"
+        let reviewedHeadOID = "0123456789abcdef0123456789abcdef01234567"
+        let driftedHeadOID = "abcdef0123456789abcdef0123456789abcdef01"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        stubPullRequestCreationPreflight(
+            gitRunner,
+            branchName: branchName,
+            localHeadOID: driftedHeadOID,
+            remoteHeadOID: driftedHeadOID
+        )
+        let githubRunner = RecordingGitHubCLICommandRunner()
+        let tool = DevelopmentPullRequestCreationTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "branchName": .string(branchName),
+                "baseBranch": .string("main"),
+                "title": .string("Add development publish gate"),
+                "body": .string("## Summary\n- Add approval-gated publish tools\n"),
+                "expectedHeadOID": .string(reviewedHeadOID)
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertEqual(
+            result.output["publishError"],
+            .string("Reviewed commit \(reviewedHeadOID) no longer matches local HEAD \(driftedHeadOID); request push approval again.")
+        )
+        XCTAssertEqual(result.output["expectedHeadOID"], .string(reviewedHeadOID))
+        XCTAssertEqual(result.output["localHeadOid"], .string(driftedHeadOID))
+        XCTAssertEqual(result.output["remoteHeadOid"], .string(driftedHeadOID))
         XCTAssertEqual(githubRunner.recordedInvocations, [])
     }
 
@@ -875,7 +926,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                 "branchName": .string(branchName),
                 "baseBranch": .string("main"),
                 "title": .string("Add development publish gate"),
-                "body": .string("## Summary\n- Add approval-gated publish tools\n")
+                "body": .string("## Summary\n- Add approval-gated publish tools\n"),
+                "expectedHeadOID": .string(localHeadOID)
             ],
             context: approvedContext()
         )
@@ -918,7 +970,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                 "branchName": .string(branchName),
                 "baseBranch": .string("main"),
                 "title": .string("Add development publish gate"),
-                "body": .string("## Summary\n- Add approval-gated publish tools\n")
+                "body": .string("## Summary\n- Add approval-gated publish tools\n"),
+                "expectedHeadOID": .string("0123456789abcdef0123456789abcdef01234567")
             ],
             context: approvedContext()
         )
@@ -954,7 +1007,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                     "branchName": .string("feature/solopm-\(project.id)-publish-gate"),
                     "baseBranch": .string("feature/phase14-product-completion"),
                     "title": .string("Add development publish gate"),
-                    "body": .string("## Summary\n- Add approval-gated publish tools\n")
+                    "body": .string("## Summary\n- Add approval-gated publish tools\n"),
+                    "expectedHeadOID": .string("0123456789abcdef0123456789abcdef01234567")
                 ],
                 context: approvedContext()
             )
@@ -996,7 +1050,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                     "branchName": .string(branchName),
                     "baseBranch": .string("feature/phase14-product-completion"),
                     "title": .string("Add development publish gate"),
-                    "body": .string("Reviewed pull request body")
+                    "body": .string("Reviewed pull request body"),
+                    "expectedHeadOID": .string("0123456789abcdef0123456789abcdef01234567")
                 ],
                 context: approvedContext()
             )
@@ -1028,7 +1083,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                     "branchName": .string("main"),
                     "baseBranch": .string("main"),
                     "title": .string("Add publish gate"),
-                    "body": .string("Reviewed body")
+                    "body": .string("Reviewed body"),
+                    "expectedHeadOID": .string("0123456789abcdef0123456789abcdef01234567")
                 ],
                 context: approvedContext()
             )
@@ -1067,7 +1123,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                     "branchName": .string(branchName),
                     "baseBranch": .string("main"),
                     "title": .string("Add token=ghp_supersecret"),
-                    "body": .string("safe body")
+                    "body": .string("safe body"),
+                    "expectedHeadOID": .string("0123456789abcdef0123456789abcdef01234567")
                 ],
                 context: approvedContext()
             )
@@ -1105,7 +1162,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                     "branchName": .string(branchName),
                     "baseBranch": .string("main"),
                     "title": .string("Add publish gate"),
-                    "body": .string("See /Volumes/Satechi/Developer/soloPM/Sources/SoloPMCore/App.swift")
+                    "body": .string("See /Volumes/Satechi/Developer/soloPM/Sources/SoloPMCore/App.swift"),
+                    "expectedHeadOID": .string("0123456789abcdef0123456789abcdef01234567")
                 ],
                 context: approvedContext()
             )
@@ -1145,7 +1203,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                 "branchName": .string(branchName),
                 "baseBranch": .string("main"),
                 "title": .string("Add publish gate"),
-                "body": .string("Reviewed pull request body")
+                "body": .string("Reviewed pull request body"),
+                "expectedHeadOID": .string("0123456789abcdef0123456789abcdef01234567")
             ],
             context: approvedContext()
         )

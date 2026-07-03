@@ -3646,6 +3646,19 @@ private struct ProjectDevelopmentAutomationPanel: View {
             .accessibilityIdentifier("project-development-automation-push-queue")
             .accessibilityHint("Adds only the branch push review to Assistant Queue; pull request creation still needs a separate approval.")
 
+            Button {
+                _ = viewModel.enqueueDevelopmentPullRequestCreationReview(
+                    for: project,
+                    task: viewModel.selectedTask
+                )
+            } label: {
+                Label("Queue pull request creation review", systemImage: "arrow.up.right.square")
+            }
+            .disabled(!canQueuePullRequestCreationReview)
+            .help("Queues GitHub pull request creation with the reviewed draft base branch, title, and body.")
+            .accessibilityIdentifier("project-development-automation-pr-create-queue")
+            .accessibilityHint("Adds only the pull request creation review to Assistant Queue; review and merge still need separate approval.")
+
             if let pullRequestDraft {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Pull request creation")
@@ -3683,7 +3696,7 @@ private struct ProjectDevelopmentAutomationPanel: View {
                     }
                     .disabled(!canQueuePullRequestCreationReview)
                     .help("Queues GitHub pull request creation for approval after reviewing the base branch, title, and body.")
-                    .accessibilityIdentifier("project-development-automation-pr-create-queue")
+                    .accessibilityIdentifier("project-development-automation-pr-create-detailed-queue")
                     .accessibilityHint("Adds only the pull request creation review to Assistant Queue; review and merge still need separate approval.")
                 }
                 .onAppear {

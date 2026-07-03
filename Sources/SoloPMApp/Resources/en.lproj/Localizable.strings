@@ -1344,6 +1344,9 @@
 "Pull request body" = "Pull request body";
 "Queue pull request creation review" = "Queue pull request creation review";
 "Queues GitHub pull request creation for approval after reviewing the base branch, title, and body." = "Queues GitHub pull request creation for approval after reviewing the base branch, title, and body.";
+"Queues GitHub pull request creation with the reviewed default base branch, title, and body." = "Queues GitHub pull request creation with the reviewed default base branch, title, and body.";
+"Queues GitHub pull request creation with the reviewed draft base branch, title, and body." = "Queues GitHub pull request creation with the reviewed draft base branch, title, and body.";
+"Adds the pull request creation review to Assistant Queue; review and merge still need separate approval." = "Adds the pull request creation review to Assistant Queue; review and merge still need separate approval.";
 "Adds only the pull request creation review to Assistant Queue; review and merge still need separate approval." = "Adds only the pull request creation review to Assistant Queue; review and merge still need separate approval.";
 "Pull request progress" = "Pull request progress";
 "Approval Preview" = "Approval Preview";

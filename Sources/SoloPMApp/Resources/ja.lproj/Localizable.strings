@@ -1344,6 +1344,9 @@
 "Pull request body" = "Pull Request本文";
 "Queue pull request creation review" = "Pull Request作成レビューをキューへ追加";
 "Queues GitHub pull request creation for approval after reviewing the base branch, title, and body." = "baseブランチ、タイトル、本文を確認したうえでGitHub Pull Request作成を承認用にキューへ追加します。";
+"Queues GitHub pull request creation with the reviewed default base branch, title, and body." = "確認済みのデフォルトbaseブランチ、タイトル、本文でGitHub Pull Request作成をキューへ追加します。";
+"Queues GitHub pull request creation with the reviewed draft base branch, title, and body." = "確認済みの下書きbaseブランチ、タイトル、本文でGitHub Pull Request作成をキューへ追加します。";
+"Adds the pull request creation review to Assistant Queue; review and merge still need separate approval." = "Pull Request作成レビューをAssistant Queueへ追加します。レビューとマージには別の承認が必要です。";
 "Adds only the pull request creation review to Assistant Queue; review and merge still need separate approval." = "Pull Request作成レビューだけをAssistant Queueへ追加します。レビューとマージには別の承認が必要です。";
 "Pull request progress" = "Pull Request進捗";
 "Approval Preview" = "承認プレビュー";
