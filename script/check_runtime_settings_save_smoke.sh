@@ -32,6 +32,7 @@ tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-settings-save.XXXXXX")"
 settings_home="$tmp_dir/home"
 database_path="$tmp_dir/SoloPM-runtime-settings-save.sqlite"
 settings_suite_name="$BUNDLE_IDENTIFIER.runtime-settings-save.$(/usr/bin/uuidgen | tr '[:upper:]' '[:lower:]')"
+runtime_google_calendar_id="runtime-settings-smoke@group.calendar.google.com"
 app_pid=""
 
 terminate_app() {
@@ -163,6 +164,7 @@ APPLESCRIPT
 }
 
 launch_app_for_settings() {
+  local settings_tab="${1:-AI}"
   terminate_app
   mkdir -p "$settings_home/Library/Preferences"
   HOME="$settings_home" \
@@ -170,13 +172,95 @@ launch_app_for_settings() {
     SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_APP_SETTINGS_SUITE_NAME="$settings_suite_name" \
     SOLOPM_OPEN_SETTINGS_ON_LAUNCH=1 \
-    SOLOPM_SETTINGS_EVIDENCE_TAB=AI \
+    SOLOPM_SETTINGS_EVIDENCE_TAB="$settings_tab" \
+    SOLOPM_LANGUAGE_PREFERENCE=english \
     "$APP_BINARY" &
   app_pid=$!
   wait_for_app_process
   activate_app
   wait_for_visible_windows
   set_settings_window_size "$WINDOW_WIDTH" "$WINDOW_HEIGHT"
+}
+
+waitForAXElementContaining() {
+  local identifier_fragment="$1"
+  local required_text_one="${2:-}"
+  local required_text_two="${3:-}"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+
+  while true; do
+    if /usr/bin/osascript - "$APP_NAME" "$identifier_fragment" "$required_text_one" "$required_text_two" <<'APPLESCRIPT' >/dev/null 2>&1
+on run argv
+  set appName to item 1 of argv
+  set identifierFragment to item 2 of argv
+  set requiredTextOne to item 3 of argv
+  set requiredTextTwo to item 4 of argv
+  tell application "System Events"
+    if not (exists process appName) then error appName & " process is not visible to System Events"
+    tell process appName
+      set windowCount to count of windows
+      if windowCount < 1 then error appName & " has no visible windows"
+      try
+        set frontmost to true
+      end try
+      repeat with windowIndex from 1 to windowCount
+        set currentWindow to window windowIndex
+        try
+          perform action "AXRaise" of currentWindow
+        end try
+        set axItems to entire contents of currentWindow
+        repeat with axItem in axItems
+          set itemIdentifier to ""
+          set itemName to ""
+          set itemTitle to ""
+          set itemValue to ""
+          set itemDescription to ""
+          set itemHelp to ""
+          try
+            set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
+          end try
+          try
+            set itemName to name of axItem as text
+          end try
+          try
+            set itemTitle to value of attribute "AXTitle" of axItem as text
+          end try
+          try
+            set itemValue to value of axItem as text
+          end try
+          try
+            set itemValue to itemValue & " " & (value of attribute "AXValue" of axItem as text)
+          end try
+          try
+            set itemDescription to description of axItem as text
+          end try
+          try
+            set itemHelp to value of attribute "AXHelp" of axItem as text
+          end try
+          set signalText to itemIdentifier & " " & itemName & " " & itemTitle & " " & itemValue & " " & itemDescription & " " & itemHelp
+          set requiredOneMatches to requiredTextOne is "" or signalText contains requiredTextOne
+          set requiredTwoMatches to requiredTextTwo is "" or signalText contains requiredTextTwo
+          if signalText contains identifierFragment and requiredOneMatches and requiredTwoMatches then
+            return "found AX element " & identifierFragment
+          end if
+        end repeat
+      end repeat
+    end tell
+  end tell
+  error "AX element signal not found: " & identifierFragment
+end run
+APPLESCRIPT
+    then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: AX element did not expose required signal: $identifier_fragment" >&2
+      return 1
+    fi
+    activate_app
+    wait_for_visible_windows >/dev/null 2>&1 || true
+    sleep 1
+  done
 }
 
 pressControlContaining() {
@@ -253,6 +337,106 @@ APPLESCRIPT
       echo "BLOCKER: failed to press control in AX tree: $fragment" >&2
       return 1
     fi
+    sleep 1
+  done
+}
+
+setTextFieldContaining() {
+  local fragment="$1"
+  local replacement="$2"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+
+  while true; do
+    if /usr/bin/osascript - "$APP_NAME" "$fragment" "$replacement" <<'APPLESCRIPT' >/dev/null
+on run argv
+  set appName to item 1 of argv
+  set fragment to item 2 of argv
+  set replacement to item 3 of argv
+  tell application "System Events"
+    if not (exists process appName) then error appName & " process is not visible to System Events"
+    tell process appName
+      set windowCount to count of windows
+      if windowCount < 1 then error appName & " has no visible windows"
+      try
+        set frontmost to true
+      end try
+      repeat with windowIndex from 1 to windowCount
+        set currentWindow to window windowIndex
+        try
+          perform action "AXRaise" of currentWindow
+        end try
+        set axItems to entire contents of currentWindow
+        repeat with axItem in axItems
+          set itemRole to ""
+          try
+            set itemRole to role of axItem as text
+          end try
+          if itemRole is "AXTextField" or itemRole is "AXTextArea" then
+            set fieldIdentifier to ""
+            set fieldName to ""
+            set fieldTitle to ""
+            set fieldDescription to ""
+            set fieldHelp to ""
+            set fieldValue to ""
+            try
+              set fieldIdentifier to value of attribute "AXIdentifier" of axItem as text
+            end try
+            try
+              set fieldName to name of axItem as text
+            end try
+            try
+              set fieldTitle to value of attribute "AXTitle" of axItem as text
+            end try
+            try
+              set fieldDescription to description of axItem as text
+            end try
+            try
+              set fieldHelp to value of attribute "AXHelp" of axItem as text
+            end try
+            try
+              set fieldValue to value of axItem as text
+            end try
+            set signalText to fieldIdentifier & " " & fieldName & " " & fieldTitle & " " & fieldDescription & " " & fieldHelp & " " & fieldValue
+            if signalText contains fragment then
+              set previousClipboard to ""
+              try
+                set previousClipboard to the clipboard as text
+              end try
+              perform action "AXPress" of axItem
+              set focused of axItem to true
+              delay 0.2
+              set the clipboard to replacement
+              keystroke "a" using command down
+              delay 0.1
+              key code 51
+              delay 0.1
+              keystroke "v" using command down
+              delay 0.3
+              key code 48
+              delay 0.2
+              try
+                set the clipboard to previousClipboard
+              end try
+              delay 0.2
+              return "set text field " & fragment
+            end if
+          end if
+        end repeat
+      end repeat
+    end tell
+  end tell
+  error "text field signal not found: " & fragment
+end run
+APPLESCRIPT
+    then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: failed to set text field in AX tree: $fragment" >&2
+      return 1
+    fi
+    activate_app
+    wait_for_visible_windows >/dev/null 2>&1 || true
     sleep 1
   done
 }
@@ -357,7 +541,28 @@ verify_settings_saved() {
   HOME="$settings_home" \
     SOLOPM_SETTINGS_SMOKE_BUNDLE_IDENTIFIER="$settings_suite_name" \
     SOLOPM_SETTINGS_SMOKE_TIMEOUT_SECONDS="$TIMEOUT_SECONDS" \
+    SOLOPM_SETTINGS_SMOKE_GOOGLE_CALENDAR_ID="$runtime_google_calendar_id" \
     /usr/bin/swift "$ROOT_DIR/script/settings_save_smoke_check.swift"
+}
+
+verify_google_calendar_settings_controls() {
+  waitForAXElementContaining "settings-google-calendar-readiness-row"
+  waitForAXElementContaining "settings-google-calendar-readiness-status"
+  waitForAXElementContaining "settings-google-calendar-readiness-detail"
+  waitForAXElementContaining "settings-google-calendar-id"
+  waitForAXElementContaining "settings-google-calendar-id-save"
+  waitForAXElementContaining "settings-google-calendar-list-load"
+  waitForAXElementContaining "settings-google-calendar-oauth-setup"
+  waitForAXElementContaining "settings-google-calendar-oauth-disconnect"
+  waitForAXElementContaining "settings-google-calendar-readiness-check"
+  setTextFieldContaining "settings-google-calendar-id" "$runtime_google_calendar_id"
+  waitForAXElementContaining "settings-google-calendar-id" "$runtime_google_calendar_id"
+  pressControlContaining "settings-google-calendar-id-save"
+  pressControlContaining "settings-google-calendar-readiness-check"
+  waitForAXElementContaining "settings-google-calendar-readiness-status"
+  waitForAXElementContaining "settings-google-calendar-readiness-detail"
+  pressControlContaining "settings-google-calendar-list-load"
+  waitForAXElementContaining "settings-google-calendar-oauth-setup-message" "OAuth"
 }
 
 printf "== Runtime settings save smoke ==\n"
@@ -373,9 +578,11 @@ if [[ ! -x "$APP_BINARY" ]]; then
   exit 2
 fi
 
-launch_app_for_settings
+launch_app_for_settings "AI"
 enableCheckboxContaining "settings-task-auto-execution-toggle"
 pressControlContaining "settings-save-button"
+launch_app_for_settings "Sync"
+verify_google_calendar_settings_controls
 verify_settings_saved
 
-printf "OK: runtime settings save smoke enabled task automation and verified isolated UserDefaults\n"
+printf "OK: runtime settings save smoke enabled task automation, verified Google Calendar Settings controls, and checked isolated UserDefaults\n"
