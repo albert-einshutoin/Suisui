@@ -29,9 +29,11 @@ public protocol GitHubCLICommandRunner: Sendable {
 public struct ProcessGitHubCLICommandRunner: GitHubCLICommandRunner {
     private static let runtimeDevelopmentSmokeBookmarkFlagKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK"
     private static let runtimeDevelopmentExpectedBranchKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BRANCH"
+    private static let runtimeDevelopmentExpectedHeadKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD"
     private static let runtimeDevelopmentExpectedBaseKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BASE"
     private static let runtimeDevelopmentPullRequestURLKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_URL"
     private static let runtimeDevelopmentPullRequestCreateLogKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_LOG"
+    private static let runtimeDevelopmentPullRequestReviewLogKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG"
     private static let runtimeDevelopmentBlockedExternalWriteLogKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG"
 
     public init() {}
@@ -50,9 +52,9 @@ public struct ProcessGitHubCLICommandRunner: GitHubCLICommandRunner {
         let standardError = Pipe()
         let environment = ProcessInfo.processInfo.environment
 
-        // Runtime UI smoke must exercise the approval path without creating a
-        // live GitHub PR; only the exact reviewed branch/base command is simulated.
-        if let smokeOutput = Self.runtimeDevelopmentSmokePullRequestCreateOutput(
+        // Runtime UI smoke must exercise the approval path without contacting
+        // GitHub; only the exact reviewed PR create/status/thread commands are simulated.
+        if let smokeOutput = Self.runtimeDevelopmentSmokePullRequestOutput(
             arguments: arguments,
             workingDirectory: workingDirectory,
             environment: environment
@@ -84,7 +86,7 @@ public struct ProcessGitHubCLICommandRunner: GitHubCLICommandRunner {
         #endif
     }
 
-    private static func runtimeDevelopmentSmokePullRequestCreateOutput(
+    private static func runtimeDevelopmentSmokePullRequestOutput(
         arguments: [String],
         workingDirectory: URL,
         environment: [String: String]
@@ -96,15 +98,74 @@ public struct ProcessGitHubCLICommandRunner: GitHubCLICommandRunner {
         let commandPreview = (["gh"] + arguments).joined(separator: " ")
         let expectedBranch = environment[Self.runtimeDevelopmentExpectedBranchKey]?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let expectedHead = environment[Self.runtimeDevelopmentExpectedHeadKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let expectedBase = environment[Self.runtimeDevelopmentExpectedBaseKey]?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let pullRequestURL = environment[Self.runtimeDevelopmentPullRequestURLKey]?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let createLogPath = environment[Self.runtimeDevelopmentPullRequestCreateLogKey]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        let reviewLogPath = environment[Self.runtimeDevelopmentPullRequestReviewLogKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         let blockedPath = environment[Self.runtimeDevelopmentBlockedExternalWriteLogKey]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
+        if let createOutput = runtimeDevelopmentSmokePullRequestCreateOutput(
+            arguments: arguments,
+            workingDirectory: workingDirectory,
+            commandPreview: commandPreview,
+            expectedBranch: expectedBranch,
+            expectedBase: expectedBase,
+            pullRequestURL: pullRequestURL,
+            createLogPath: createLogPath
+        ) {
+            return createOutput
+        }
+
+        if let reviewStatusOutput = runtimeDevelopmentSmokePullRequestReviewStatusOutput(
+            arguments: arguments,
+            workingDirectory: workingDirectory,
+            commandPreview: commandPreview,
+            expectedBranch: expectedBranch,
+            expectedHead: expectedHead,
+            expectedBase: expectedBase,
+            pullRequestURL: pullRequestURL,
+            reviewLogPath: reviewLogPath
+        ) {
+            return reviewStatusOutput
+        }
+
+        if let reviewThreadsOutput = runtimeDevelopmentSmokePullRequestReviewThreadsOutput(
+            arguments: arguments,
+            workingDirectory: workingDirectory,
+            commandPreview: commandPreview,
+            pullRequestURL: pullRequestURL,
+            reviewLogPath: reviewLogPath
+        ) {
+            return reviewThreadsOutput
+        }
+
+        appendRuntimeDevelopmentSmokeLog(
+            "blocked GitHub CLI command: \(commandPreview)\n",
+            path: blockedPath
+        )
+        return GitHubCLICommandOutput(
+            standardOutput: "",
+            standardError: "blocked GitHub CLI command: \(commandPreview)",
+            exitCode: 43
+        )
+    }
+
+    private static func runtimeDevelopmentSmokePullRequestCreateOutput(
+        arguments: [String],
+        workingDirectory: URL,
+        commandPreview: String,
+        expectedBranch: String,
+        expectedBase: String,
+        pullRequestURL: String,
+        createLogPath: String?
+    ) -> GitHubCLICommandOutput? {
         guard arguments.count == 12,
               arguments[0] == "pr",
               arguments[1] == "create",
@@ -121,15 +182,7 @@ public struct ProcessGitHubCLICommandRunner: GitHubCLICommandRunner {
                 pullRequestURL,
                 redactor: DeveloperSecretRedactor()
               )) != nil else {
-            appendRuntimeDevelopmentSmokeLog(
-                "blocked GitHub CLI command: \(commandPreview)\n",
-                path: blockedPath
-            )
-            return GitHubCLICommandOutput(
-                standardOutput: "",
-                standardError: "blocked GitHub CLI command: \(commandPreview)",
-                exitCode: 43
-            )
+            return nil
         }
 
         let bodyFileURL = URL(fileURLWithPath: arguments[11])
@@ -148,6 +201,152 @@ public struct ProcessGitHubCLICommandRunner: GitHubCLICommandRunner {
             standardError: "",
             exitCode: 0
         )
+    }
+
+    private static func runtimeDevelopmentSmokePullRequestReviewStatusOutput(
+        arguments: [String],
+        workingDirectory: URL,
+        commandPreview: String,
+        expectedBranch: String,
+        expectedHead: String,
+        expectedBase: String,
+        pullRequestURL: String,
+        reviewLogPath: String?
+    ) -> GitHubCLICommandOutput? {
+        guard arguments.count == 5,
+              arguments[0] == "pr",
+              arguments[1] == "view",
+              arguments[2] == pullRequestURL,
+              arguments[3] == "--json",
+              arguments[4] == DevelopmentGitHubPRCommandPolicy.statusJSONFields,
+              !expectedBranch.isEmpty,
+              !expectedHead.isEmpty,
+              !expectedBase.isEmpty,
+              !pullRequestURL.isEmpty,
+              DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: arguments),
+              (try? DevelopmentGitHubPRCommandPolicy.validatedHeadCommitOID(expectedHead)) != nil,
+              let identity = try? DevelopmentGitHubPRCommandPolicy.pullRequestIdentity(
+                fromPullRequestURL: pullRequestURL
+              ) else {
+            return nil
+        }
+
+        let repositoryNameWithOwner = "\(identity.repository.owner)/\(identity.repository.name)"
+        let status: [String: Any] = [
+            "url": pullRequestURL,
+            "headRefName": expectedBranch,
+            "headRefOid": expectedHead,
+            "baseRefName": expectedBase,
+            "headRepository": [
+                "name": identity.repository.name,
+                "nameWithOwner": repositoryNameWithOwner
+            ],
+            "headRepositoryOwner": [
+                "login": identity.repository.owner
+            ],
+            "isCrossRepository": false,
+            "reviewDecision": "APPROVED",
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "statusCheckRollup": [
+                [
+                    "__typename": "CheckRun",
+                    "name": "SwiftPM macOS",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS"
+                ],
+                [
+                    "__typename": "CheckRun",
+                    "name": "GitGuardian Security Checks",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS"
+                ]
+            ]
+        ]
+        guard let json = runtimeDevelopmentSmokeJSONString(status) else {
+            return nil
+        }
+
+        let log = """
+        action=status
+        cwd=\(workingDirectory.path)
+        args=\(commandPreview)
+        url=\(pullRequestURL)
+        branch=\(expectedBranch)
+        base=\(expectedBase)
+        head=\(expectedHead)
+        """
+        appendRuntimeDevelopmentSmokeLog(log + "\n", path: reviewLogPath)
+        return GitHubCLICommandOutput(
+            standardOutput: json + "\n",
+            standardError: "",
+            exitCode: 0
+        )
+    }
+
+    private static func runtimeDevelopmentSmokePullRequestReviewThreadsOutput(
+        arguments: [String],
+        workingDirectory: URL,
+        commandPreview: String,
+        pullRequestURL: String,
+        reviewLogPath: String?
+    ) -> GitHubCLICommandOutput? {
+        guard let identity = try? DevelopmentGitHubPRCommandPolicy.pullRequestIdentity(
+            fromPullRequestURL: pullRequestURL
+        ) else {
+            return nil
+        }
+        let expectedArguments = DevelopmentGitHubPRCommandPolicy.reviewThreadsArguments(
+            owner: identity.repository.owner,
+            repository: identity.repository.name,
+            number: identity.number
+        )
+        guard arguments == expectedArguments,
+              DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: arguments) else {
+            return nil
+        }
+
+        let response: [String: Any] = [
+            "data": [
+                "repository": [
+                    "pullRequest": [
+                        "reviewThreads": [
+                            "totalCount": 0,
+                            "nodes": [],
+                            "pageInfo": [
+                                "hasNextPage": false
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        guard let json = runtimeDevelopmentSmokeJSONString(response) else {
+            return nil
+        }
+
+        let log = """
+        action=threads
+        cwd=\(workingDirectory.path)
+        args=\(commandPreview)
+        url=\(pullRequestURL)
+        repository=\(identity.repository.owner)/\(identity.repository.name)
+        number=\(identity.number)
+        """
+        appendRuntimeDevelopmentSmokeLog(log + "\n", path: reviewLogPath)
+        return GitHubCLICommandOutput(
+            standardOutput: json + "\n",
+            standardError: "",
+            exitCode: 0
+        )
+    }
+
+    private static func runtimeDevelopmentSmokeJSONString(_ value: [String: Any]) -> String? {
+        guard JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
     }
 
     private static func appendRuntimeDevelopmentSmokeLog(_ text: String, path: String?) {

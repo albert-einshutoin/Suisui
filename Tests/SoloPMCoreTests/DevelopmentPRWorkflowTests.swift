@@ -2020,6 +2020,54 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertEqual(githubRunner.recordedInvocations, [])
     }
 
+    func testRuntimeSmokeGitHubRunnerBlocksUnexpectedCommandsBeforeLiveCLI() throws {
+        let workspace = temporaryDirectory()
+        let blockedLog = workspace.appendingPathComponent("blocked-gh.log")
+        let createLog = workspace.appendingPathComponent("create.log")
+        let reviewLog = workspace.appendingPathComponent("review.log")
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let branchName = "feature/solopm-7-review-gate"
+        let headOID = "0123456789abcdef0123456789abcdef01234567"
+        let runner = ProcessGitHubCLICommandRunner()
+
+        try withRuntimeDevelopmentGitHubSmokeEnvironment(
+            expectedBranch: branchName,
+            expectedHead: headOID,
+            expectedBase: "main",
+            pullRequestURL: pullRequestURL,
+            createLog: createLog,
+            reviewLog: reviewLog,
+            blockedLog: blockedLog
+        ) {
+            let mergeOutput = try runner.runGitHub(
+                arguments: [
+                    "pr", "merge", pullRequestURL,
+                    "--merge", "--delete-branch",
+                    "--match-head-commit", headOID
+                ],
+                workingDirectory: workspace
+            )
+            XCTAssertEqual(mergeOutput.exitCode, 43)
+            XCTAssertTrue(mergeOutput.standardError.contains("blocked GitHub CLI command"))
+
+            let differentURLOutput = try runner.runGitHub(
+                arguments: [
+                    "pr", "view", "https://github.com/albert-einshutoin/soloPM/pull/99999",
+                    "--json", DevelopmentGitHubPRCommandPolicy.statusJSONFields
+                ],
+                workingDirectory: workspace
+            )
+            XCTAssertEqual(differentURLOutput.exitCode, 43)
+            XCTAssertTrue(differentURLOutput.standardError.contains("blocked GitHub CLI command"))
+        }
+
+        let blockedLogText = try String(contentsOf: blockedLog, encoding: .utf8)
+        XCTAssertTrue(blockedLogText.contains("gh pr merge \(pullRequestURL)"))
+        XCTAssertTrue(blockedLogText.contains("gh pr view https://github.com/albert-einshutoin/soloPM/pull/99999"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: createLog.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: reviewLog.path))
+    }
+
     func testPreparePullRequestWorkflowRejectsSymlinkWorkspace() throws {
         let stores = try makeStores()
         let base = temporaryDirectory()
@@ -2092,6 +2140,50 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    private func withRuntimeDevelopmentGitHubSmokeEnvironment(
+        expectedBranch: String,
+        expectedHead: String,
+        expectedBase: String,
+        pullRequestURL: String,
+        createLog: URL,
+        reviewLog: URL,
+        blockedLog: URL,
+        body: () throws -> Void
+    ) throws {
+        let values = [
+            "SOLOPM_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK": "1",
+            "SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BRANCH": expectedBranch,
+            "SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD": expectedHead,
+            "SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BASE": expectedBase,
+            "SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_URL": pullRequestURL,
+            "SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_LOG": createLog.path,
+            "SOLOPM_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG": reviewLog.path,
+            "SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG": blockedLog.path
+        ]
+        var previous: [String: String] = [:]
+        var missing: [String] = []
+        for key in values.keys {
+            if let raw = getenv(key) {
+                previous[key] = String(cString: raw)
+            } else {
+                missing.append(key)
+            }
+        }
+        defer {
+            for (key, value) in previous {
+                setenv(key, value, 1)
+            }
+            for key in missing {
+                unsetenv(key)
+            }
+        }
+        for (key, value) in values {
+            setenv(key, value, 1)
+        }
+
+        try body()
     }
 
     private func stubOrigin(
