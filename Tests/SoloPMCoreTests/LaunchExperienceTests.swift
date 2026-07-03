@@ -128,12 +128,12 @@ final class LaunchExperienceTests: XCTestCase {
     }
 
     func testFallbackProjectBoardWindowUsesTodayLaunchRecoveryView() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let source = try readLaunchRecoveryAppShellSource()
 
         XCTAssertTrue(source.contains("private struct ProjectBoardFallbackRootView: View"))
         XCTAssertTrue(source.contains("if SoloPMLaunchRecoveryEnvironment.isEnabled"))
         XCTAssertTrue(source.contains("ProjectBoardView("))
-        XCTAssertTrue(source.contains("private struct ProjectBoardLaunchRecoveryView: View"))
+        XCTAssertTrue(source.contains("struct ProjectBoardLaunchRecoveryView: View"))
         XCTAssertTrue(source.contains("TodayWorkflowView("))
         XCTAssertTrue(source.contains("selectTodayTask: selectWorkflowTask"))
         XCTAssertTrue(source.contains("openInspectorForTodayRailTask: openInspectorForWorkflowTask"))
@@ -213,7 +213,7 @@ final class LaunchExperienceTests: XCTestCase {
     }
 
     func testLaunchVerificationWindowGroupUsesLaunchRecoveryView() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let source = try readLaunchRecoveryAppShellSource()
 
         XCTAssertTrue(source.contains("if SoloPMLaunchRecoveryEnvironment.isEnabled {"))
         XCTAssertTrue(source.contains("ProjectBoardLaunchRecoveryView("))
@@ -260,6 +260,13 @@ final class LaunchExperienceTests: XCTestCase {
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func readLaunchRecoveryAppShellSource() throws -> String {
+        try [
+            readPackageFile("Sources/SoloPMApp/SoloPMApp.swift"),
+            readPackageFile("Sources/SoloPMApp/Views/ProjectBoardLaunchRecoveryViews.swift")
+        ].joined(separator: "\n\n")
     }
 
     private func packageRoot() -> URL {

@@ -91,6 +91,72 @@ final class ArchitectureBoundaryTests: XCTestCase {
         )
     }
 
+    func testPassiveAppShellViewsAreSplitFromRuntimeCompositionRoot() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let expectedViewFiles: [String: [String]] = [
+            "Sources/SoloPMApp/Views/ProjectBoardLaunchRecoveryViews.swift": [
+                "struct ProjectBoardLaunchRecoveryView: View",
+                "private struct ProjectBoardLaunchRecoveryTaskInspector: View",
+                "private struct ProjectDevelopmentAutomationRecoveryView: View"
+            ],
+            "Sources/SoloPMApp/Views/MenuBarPanel.swift": [
+                "struct MenuBarPanel: View",
+                "private struct SummaryRow: View"
+            ],
+            "Sources/SoloPMApp/Views/VoiceCaptureView.swift": [
+                "struct VoiceCaptureView: View",
+                "private struct VoiceInboxCaptureSavedPanel: View",
+                "private struct AssistantQueuePanel: View",
+                "private struct ActionPlanPreview: View"
+            ],
+            "Sources/SoloPMApp/Views/ActionReviewPanel.swift": [
+                "struct ActionReviewPanel: View",
+                "private struct ExecutionReceiptSummaryView: View",
+                "private struct ReviewActionRow: View"
+            ],
+            "Sources/SoloPMApp/Views/SettingsView.swift": [
+                "struct SettingsView: View",
+                "enum SettingsTab: String",
+                "private struct SettingsStatusOverview: View"
+            ]
+        ]
+
+        for (file, markers) in expectedViewFiles {
+            let source = try readPackageFile(file)
+            for marker in markers {
+                XCTAssertTrue(source.contains(marker), "\(file) must own \(marker)")
+            }
+            XCTAssertFalse(source.contains("SQLiteConnection("), "\(file) must not open persistence directly.")
+            XCTAssertFalse(source.contains("GoogleCalendarAppRuntimeFactory."), "\(file) must not own Google Calendar runtime factories.")
+            XCTAssertFalse(source.contains("ASWebAuthenticationSession("), "\(file) must not own OAuth sessions.")
+            XCTAssertFalse(source.contains("EventKit"), "\(file) must not own EventKit adapters.")
+            XCTAssertFalse(source.contains("KeychainSecretStore("), "\(file) must not own Keychain stores.")
+            XCTAssertFalse(source.contains("ToolRegistry."), "\(file) must not own tool registries.")
+            XCTAssertFalse(source.contains("ActionExecutor("), "\(file) must not own action execution.")
+        }
+
+        for movedDeclaration in [
+            "struct ProjectBoardLaunchRecoveryView: View",
+            "struct ProjectDevelopmentAutomationRecoveryView: View",
+            "struct MenuBarPanel: View",
+            "struct VoiceCaptureView: View",
+            "struct ActionReviewPanel: View",
+            "struct SettingsView: View"
+        ] {
+            XCTAssertFalse(appSource.contains(movedDeclaration), "SoloPMApp.swift must stop owning \(movedDeclaration)")
+        }
+
+        for compositionMarker in [
+            "WindowGroup(\"SoloPM\", id: \"project-board\")",
+            "VoiceCaptureView(viewModel: AppRuntimeFactory.makeVoiceCaptureViewModel())",
+            "MenuBarPanel(controller: menuBarController, quickCaptureViewModel: menuBarQuickCaptureViewModel)",
+            "SettingsView(",
+            "private enum AppRuntimeFactory"
+        ] {
+            XCTAssertTrue(appSource.contains(compositionMarker), "SoloPMApp.swift must keep runtime composition marker \(compositionMarker)")
+        }
+    }
+
     private let forbiddenPersistenceOwnershipPatterns = [
         #"SQLite[A-Za-z0-9_]*Store\s*\("#,
         #"SQLiteConnection\s*\("#,

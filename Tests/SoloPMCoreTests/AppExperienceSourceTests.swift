@@ -3,7 +3,7 @@ import XCTest
 
 final class AppExperienceSourceTests: XCTestCase {
     func testAppLaunchesProjectBoardBeforeVoiceCaptureWindow() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let source = try readAppShellSource()
 
         XCTAssertTrue(source.contains("WindowGroup(\"SoloPM\", id: \"project-board\")"))
         let boardWindow = try XCTUnwrap(source.range(of: "WindowGroup(\"SoloPM\", id: \"project-board\")"))
@@ -12,7 +12,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testRecordFlowDoesNotInjectCannedPhaseOneTranscript() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let source = try readAppShellSource()
 
         XCTAssertFalse(source.contains("Create a task to review the SoloPM Phase 1 UI"))
     }
@@ -88,7 +88,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardUsesPersistentViewModelInsteadOfStaticSnapshot() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
         XCTAssertTrue(appSource.contains("makeProjectBoardViewModel()"))
@@ -98,7 +98,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardRuntimeLoadsAssistantQueueReadModel() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
 
         XCTAssertTrue(appSource.contains("let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)"))
@@ -190,7 +190,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardExposesPortableTaskImportExportFileActions() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
         XCTAssertTrue(appSource.contains("SQLiteExternalTaskLinkStore(connection: connection)"))
@@ -241,7 +241,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testAppearanceSelectionIsConfiguredOnlyFromSettings() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let appearanceSectionSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsAppearanceSection.swift")
 
@@ -278,7 +278,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testLanguageSelectionSupportsJapaneseAndEnglishFromSettings() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let appearanceSectionSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsAppearanceSection.swift")
         let languagePreferenceSource = try readPackageFile("Sources/SoloPMApp/Views/AppLanguagePreference.swift")
@@ -355,7 +355,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testDynamicAppStatusStringsUseLocalizationRouting() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let coreBoardSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let japaneseKeys = try localizableKeys(in: "Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings")
 
@@ -501,7 +501,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardHeaderPreparesConfiguredTaskAutomationReview() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         XCTAssertTrue(boardSource.contains("let taskAutomationSettings: () -> TaskAutoExecutionSettings"))
         XCTAssertTrue(boardSource.contains("let appSettings: () -> AppSettings"))
@@ -977,8 +977,8 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testMenuBarPanelHostsSettingsLinkWithoutThemeControls() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
-        let panelStart = try XCTUnwrap(appSource.range(of: "private struct MenuBarPanel"))
+        let appSource = try readAppShellSource()
+        let panelStart = try XCTUnwrap(appSource.range(of: "struct MenuBarPanel"))
         let panelEnd = try XCTUnwrap(appSource.range(of: "private struct SummaryRow"))
         let panelSource = String(appSource[panelStart.lowerBound..<panelEnd.lowerBound])
 
@@ -1053,7 +1053,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardSupportsPersistentLightDarkAppearanceSelection() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let appearanceSource = try readPackageFile("Sources/SoloPMApp/Views/SoloPMAppearancePreference.swift")
 
@@ -1180,7 +1180,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardExposesPrimaryCRUDKeyboardShortcuts() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         XCTAssertTrue(source.contains(".keyboardShortcut(\"n\", modifiers: [.command])"))
         XCTAssertTrue(source.contains(".keyboardShortcut(\"n\", modifiers: [.command, .shift])"))
@@ -1266,7 +1266,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testPrimaryKeyboardShortcutsAreAttachedToConcreteCommandsAndFocusedActions() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
 
         let settingsCommand = try sourceBlock(
@@ -1558,7 +1558,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testInboxWorkflowSurfacesVoiceCaptureMetadataWithoutReplacingVoiceCommand() throws {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
         let voiceSource = try readPackageFile("Sources/SoloPMCore/Voice/InboxCapture.swift")
@@ -2172,7 +2172,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testVoiceDailyPlanningReviewBridgeUsesLocalProjectBoardReview() throws {
         let voiceSource = try readPackageFile("Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift")
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
         XCTAssertTrue(voiceSource.contains("public struct VoiceDailyPlanningReviewRequest"))
@@ -2214,7 +2214,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testVoiceInboxTriageBridgeUsesLocalProjectBoardInboxCommands() throws {
         let voiceSource = try readPackageFile("Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift")
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
         XCTAssertTrue(voiceSource.contains("public struct VoiceInboxTriageRequest"))
@@ -2239,7 +2239,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testVoiceAssistantQueueApprovalHandoffsExecutionToProjectBoardQueue() throws {
         let voiceSource = try readPackageFile("Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift")
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let englishStrings = try readPackageFile("Sources/SoloPMApp/Resources/en.lproj/Localizable.strings")
         let japaneseStrings = try readPackageFile("Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings")
@@ -2464,7 +2464,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testAppAndCLIShareDefaultDatabaseLocation() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let cliSource = try readPackageFile("Sources/SoloPMCLI/SoloPMCLIEntrypoint.swift")
 
         XCTAssertTrue(appSource.contains("SoloPMAppDatabaseLocation.defaultDatabaseURL(createDirectory: true)"))
@@ -2482,7 +2482,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testMenuBarSummaryRefreshesFromRuntimeController() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         XCTAssertTrue(appSource.contains("@StateObject private var menuBarController: MenuBarSummaryController"))
         XCTAssertTrue(appSource.contains("MenuBarPanel(controller: menuBarController, quickCaptureViewModel: menuBarQuickCaptureViewModel)"))
@@ -2495,7 +2495,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testMenuBarPanelProvidesFastInboxCaptureWithRuntimeBoardViewModel() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
 
@@ -2515,7 +2515,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testReviewPanelUsesResponsiveLongContentGuards() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         XCTAssertTrue(appSource.contains("ScrollView"))
         XCTAssertTrue(appSource.contains(".frame(minHeight: 150, idealHeight: 180, maxHeight: 180)"))
@@ -2531,7 +2531,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testReviewRuntimeDoesNotFallBackToEmptyToolRegistry() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         XCTAssertFalse(appSource.contains("registry = ToolRegistry()"))
         XCTAssertTrue(appSource.contains("runtimeValidationMessage: runtime.reviewRuntimeValidationMessage"))
@@ -2539,7 +2539,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testWatcherDiagnosticsUsesRuntimeStateStoreAndNotificationPermissions() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         XCTAssertTrue(appSource.contains("WatcherDiagnosticsProvider("))
         XCTAssertTrue(appSource.contains("SQLiteDailyCheckStateStore(connection: connection)"))
@@ -2629,7 +2629,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testRuntimeMailDraftClientStoresLocalDraftsWithoutListOrSendSurface() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let clientSource = try readPackageFile("Sources/SoloPMCore/Tools/SystemToolClients.swift")
 
         XCTAssertFalse(appSource.contains("mailDraftClient: UnavailableMailDraftClient()"))
@@ -2707,7 +2707,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testRuntimeExternalMCPSettingsUseSQLiteRegistrationStore() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let mcpRegistrationSource = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
 
         XCTAssertTrue(appSource.contains("SQLiteMCPServerRegistrationStore(connection:"))
@@ -2745,7 +2745,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testRuntimeExternalMCPAuditLoadFailureIsNotRenderedAsEmptyHistory() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let mcpRegistrationSource = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
 
         XCTAssertTrue(appSource.contains("externalMCPAuditLoadResult()"))
@@ -2757,7 +2757,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testExternalMCPArgumentsUseQuotedRoundTripTextInsteadOfSpaceSplitDisplay() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let mcpRegistrationSource = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
 
         XCTAssertTrue(appSource.contains("externalMCPViewModel.argumentsText"))
@@ -2797,7 +2797,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testSettingsAIProviderPickerUsesSelectableCatalog() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         XCTAssertTrue(appSource.contains("settingsViewModel.selectableAIProviders"))
         XCTAssertTrue(appSource.contains("settingsViewModel.selectAIProviderAndSave($0)"))
@@ -2806,7 +2806,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testSettingsShowsOpenAIProviderSmokeReadiness() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         XCTAssertTrue(appSource.contains("OpenAI Provider Smoke"))
         XCTAssertTrue(appSource.contains("settingsViewModel.openAIProviderSmokeStatusLabel"))
@@ -2933,7 +2933,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testRuntimeAppCompositionDoesNotUseDemoOrInMemorySuccessPath() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         XCTAssertFalse(appSource.contains("AppPreviewFactory"))
         XCTAssertFalse(appSource.contains("DemoPlanningProvider"))
@@ -2949,7 +2949,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testRuntimeExecutionRegistryIncludesDeveloperWorkflowToolsForAssistantQueue() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let coordinatorFactoryStart = try XCTUnwrap(appSource.range(of: "private static func makeAssistantQueueExecutionCoordinator("))
         let coordinatorFactoryEnd = try XCTUnwrap(appSource.range(of: "@MainActor\n    static func makeMenuBarSummaryController()", range: coordinatorFactoryStart.upperBound..<appSource.endIndex))
         let coordinatorFactory = String(appSource[coordinatorFactoryStart.lowerBound..<coordinatorFactoryEnd.lowerBound])
@@ -3025,7 +3025,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testReviewRuntimeRequiresAuditLoggerBeforeWriteExecution() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let reviewFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeReviewSessionViewModel(plan: ActionPlan)"))
         let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func migratedConnection()", range: reviewFactoryStart.upperBound..<appSource.endIndex))
         let reviewFactory = String(appSource[reviewFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
@@ -3056,7 +3056,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testReviewRuntimePersistsExecutionReceiptsUnderApplicationSupport() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         XCTAssertTrue(appSource.contains("private static func makeExecutionReceiptStore() throws -> any ExecutionReceiptStore"))
         XCTAssertTrue(appSource.contains("FileExecutionReceiptStore("))
@@ -3064,7 +3064,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testUnavailableReviewRegistryDoesNotSilentlyDropRegistrationFailures() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         XCTAssertFalse(appSource.contains("try? target.register(UnavailableReviewTool"))
         XCTAssertFalse(appSource.contains("try! target.register(UnavailableReviewTool"))
@@ -3074,7 +3074,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testVoicePlanningRequiresAuditLoggerBeforeGeneration() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let voiceFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeVoiceCaptureViewModel()"))
         let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
         let voiceFactory = String(appSource[voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
@@ -3086,7 +3086,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testVoiceRuntimePersistsAssistantQueueToSQLite() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let voiceFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeVoiceCaptureViewModel()"))
         let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
         let voiceFactory = String(appSource[voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
@@ -3100,7 +3100,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testVoiceRuntimeInjectsFailClosedDevelopmentProjectProvider() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let voiceFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeVoiceCaptureViewModel()"))
         let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
         let voiceFactory = String(appSource[voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
@@ -3113,7 +3113,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testVoiceCommandCanPersistRecordedTranscriptToInboxRuntimeStores() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let voiceFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeVoiceCaptureViewModel()"))
         let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
         let voiceFactory = String(appSource[voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
@@ -3130,7 +3130,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testVoiceAssistantQueuePanelRendersWithoutPlanningResponse() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let queuePanelStart = try XCTUnwrap(appSource.range(of: "if let item = viewModel.assistantQueueItem"))
         let responsePanelStart = try XCTUnwrap(appSource.range(of: "if let response = viewModel.planningResponse", range: queuePanelStart.upperBound..<appSource.endIndex))
         let queuePanelSource = String(appSource[queuePanelStart.lowerBound..<responsePanelStart.lowerBound])
@@ -3147,7 +3147,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testReviewActionButtonsDoNotDropViewModelErrors() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         XCTAssertFalse(appSource.contains("try? viewModel.approve()"))
         XCTAssertFalse(appSource.contains("try? viewModel.execute()"))
@@ -3156,7 +3156,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testRuntimeSettingsLoadDoesNotSilentlyDefaultOnDecodeFailure() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let runtimeFactoryStart = try XCTUnwrap(appSource.range(of: "private enum AppRuntimeFactory"))
         let runtimeFactory = String(appSource[runtimeFactoryStart.lowerBound..<appSource.endIndex])
 
@@ -3167,7 +3167,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testSettingsSurfaceCanPersistProviderKeysThroughViewModel() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         XCTAssertTrue(appSource.contains("AppSettingsViewModel"))
         XCTAssertTrue(appSource.contains("settingsViewModel.saveOpenAIAPIKey()"))
@@ -3191,7 +3191,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testSettingsSurfaceExposesTaskAutomationSaveAnchors() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         XCTAssertTrue(appSource.contains("Section(\"Task Automation\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-toggle\")"))
@@ -3221,7 +3221,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testVoiceCommandRuntimeEvidenceLaunchAndReviewAnchors() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         XCTAssertTrue(appSource.contains("SOLOPM_OPEN_VOICE_COMMAND_ON_LAUNCH"))
         XCTAssertTrue(appSource.contains("openVoiceCommandWindowForEvidenceIfRequested()"))
@@ -3256,7 +3256,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testSettingsSurfaceStartsWithStatusOverviewForCoreOperationalAreas() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         let overviewRange = try XCTUnwrap(appSource.range(of: "SettingsStatusOverview("))
         let overviewTabRange = try XCTUnwrap(appSource.range(of: "private var overviewSettingsTab: some View"))
@@ -3276,7 +3276,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testSettingsOverviewSurfacesIntegrationStatusTilesForPhase12() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         XCTAssertTrue(appSource.contains("integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot()"))
         XCTAssertTrue(appSource.contains("title: \"STT\""))
@@ -3296,7 +3296,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testSettingsExposesReadyGatedKokoroTTSProviderControls() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let aiTabStart = try XCTUnwrap(appSource.range(of: "private var aiSettingsTab: some View"))
         let syncTabStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
         let aiTabSource = String(appSource[aiTabStart.lowerBound..<syncTabStart.lowerBound])
@@ -3310,14 +3310,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-voice-id\")"))
         XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-test-play\")"))
         XCTAssertTrue(aiTabSource.contains("Task {\n                        await settingsViewModel.testTTSPlayback("))
-        XCTAssertTrue(aiTabSource.contains("AppRuntimeFactory.makeTextToSpeechPreviewer(settings: settingsViewModel.settings)"))
+        XCTAssertTrue(aiTabSource.contains("textToSpeechPreviewerFactory(settingsViewModel.settings)"))
+        XCTAssertTrue(appSource.contains("textToSpeechPreviewerFactory: AppRuntimeFactory.makeTextToSpeechPreviewer"))
         XCTAssertFalse(aiTabSource.contains("TTS playback adapter is not connected in this slice."))
         XCTAssertFalse(aiTabSource.contains("TTSProvider.systemSpeech.unavailableReason"))
         XCTAssertFalse(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-unavailable\")"))
     }
 
     func testSettingsExposesLocalSTTReadinessBeforeRuntimeSelection() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/AppSettings.swift")
         let aiTabStart = try XCTUnwrap(appSource.range(of: "private var aiSettingsTab: some View"))
         let syncTabStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
@@ -3332,7 +3333,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testSettingsOverviewSurfacesProValueWithoutOpeningSyncOrMCPTabs() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let investorReview = try readPackageFile("docs/product/investor-review.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
@@ -3357,13 +3358,13 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testSettingsSurfaceUsesTabbedCategoriesInsteadOfOneLongForm() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let appearanceSectionSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsAppearanceSection.swift")
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
 
         XCTAssertTrue(appSource.contains("TabView(selection: $selectedTab) {"))
-        XCTAssertTrue(appSource.contains("private enum SettingsTab: String"))
+        XCTAssertTrue(appSource.contains("enum SettingsTab: String"))
         XCTAssertTrue(appSource.contains("@State private var selectedTab: SettingsTab"))
         XCTAssertTrue(appSource.contains("private var overviewSettingsTab: some View"))
         XCTAssertTrue(appSource.contains("private var appearanceSettingsTab: some View"))
@@ -3410,7 +3411,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testAISettingsTabShowsOnlySelectedProviderFields() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
         let selectedFieldsStart = try XCTUnwrap(appSource.range(of: "private var selectedProviderConfigurationFields: some View"))
@@ -3450,7 +3451,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testAISettingsTabShowsSelectedProviderReadinessBeforeProviderFields() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
         let aiStart = try XCTUnwrap(appSource.range(of: "private var aiSettingsTab: some View"))
@@ -3487,7 +3488,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testRuntimeLLMFactoryUsesClaudeMessagesProviderWithoutOpenAIFallback() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeLLMProvider"))
         let factorySource = String(appSource[factoryStart.lowerBound..<appSource.endIndex])
 
@@ -3498,7 +3499,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testRuntimeLLMFactoryUsesGeminiDirectProviderWithoutOpenAICompatibleFallback() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeLLMProvider"))
         let factorySource = String(appSource[factoryStart.lowerBound..<appSource.endIndex])
 
@@ -3513,7 +3514,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testRuntimeLLMFactoryUsesOpenCodeLocalProviderWithoutOpenAIFallbackOrAuthFileRead() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeLLMProvider"))
         let factorySource = String(appSource[factoryStart.lowerBound..<appSource.endIndex])
 
@@ -3527,7 +3528,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testRuntimeSTTFactoryUsesWhisperCppProviderWithoutOpenAIFallback() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeSpeechToTextProvider"))
         let factorySource = String(appSource[factoryStart.lowerBound..<appSource.endIndex])
 
@@ -3539,7 +3540,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testRuntimeTTSFactoryUsesKokoroProviderWithoutSystemSpeechFallback() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let runtimeFactoryStart = try XCTUnwrap(appSource.range(of: "enum AppTextToSpeechRuntimeFactory"))
         let runtimeFactorySource = String(appSource[runtimeFactoryStart.lowerBound..<appSource.endIndex])
 
@@ -3570,7 +3571,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testRuntimeLLMFactoryUsesGroqCompatibleProviderWithoutOpenAIFallback() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeLLMProvider"))
         let factorySource = String(appSource[factoryStart.lowerBound..<appSource.endIndex])
 
@@ -3583,7 +3584,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testSettingsSurfaceUsesRuntimeReadySTTProviderPicker() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
 
         XCTAssertTrue(appSource.contains("settingsViewModel.selectableSTTProviders"))
         XCTAssertTrue(appSource.contains("settingsViewModel.setWhisperCppExecutablePath($0)"))
@@ -3596,7 +3597,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testSettingsSurfaceShowsSyncGateWithoutMockSuccessPath() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let syncSource = try readPackageFile("Sources/SoloPMCore/App/SyncService.swift")
         let entitlementSource = try readPackageFile("Sources/SoloPMCore/App/Entitlements.swift")
 
@@ -3620,7 +3621,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testSettingsGoogleCalendarRowUsesRuntimeReadinessAndOAuthActions() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let syncStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
         let providerStart = try XCTUnwrap(appSource.range(of: "@ViewBuilder\n    private var selectedProviderConfigurationFields"))
         let syncSource = String(appSource[syncStart.lowerBound..<providerStart.lowerBound])
@@ -3711,7 +3712,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testSyncSettingsTabSurfacesPaidValueAndLocalBoundaryBeforeToggle() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let investorReview = try readPackageFile("docs/product/investor-review.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
@@ -3733,7 +3734,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testSyncSettingsTabNamesExternalConnectorScopeWithoutLinkingConnectorTarget() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let syncStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
         let providerStart = try XCTUnwrap(appSource.range(of: "@ViewBuilder\n    private var selectedProviderConfigurationFields"))
         let syncSource = String(appSource[syncStart.lowerBound..<providerStart.lowerBound])
@@ -3749,7 +3750,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testAppRuntimeWiresGoogleCalendarSyncWithoutFakeUnavailableStore() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let factoryStart = try XCTUnwrap(appSource.range(of: "let googleCalendarSync = makeSettingsBackedGoogleCalendarSyncController("))
         let factoryEnd = try XCTUnwrap(appSource.range(of: "return ProjectBoardViewModel(", range: factoryStart.lowerBound..<appSource.endIndex))
         let factorySource = String(appSource[factoryStart.lowerBound..<factoryEnd.lowerBound])
@@ -3817,7 +3818,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testSettingsSurfaceShowsInlineMCPServerRowsWithCheckActions() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let mcpSource = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
@@ -3838,7 +3839,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testMCPSettingsTabSurfacesPaidExecutionBoundaryBeforeRegistrationEditing() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let executionSource = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPExecution.swift")
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let investorReview = try readPackageFile("docs/product/investor-review.md")
@@ -4115,7 +4116,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
         let releaseReport = try readPackageFile("script/release_readiness_report.sh")
         let evidence = try readPackageFile("docs/release/evidence/ui-screenshots.md")
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appSource = try readAppShellSource()
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
 
         let requiredScreenshots = [
@@ -4703,6 +4704,24 @@ final class AppExperienceSourceTests: XCTestCase {
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func readAppShellSource() throws -> String {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let runtimeFactoryRange = try XCTUnwrap(appSource.range(of: "private enum AppRuntimeFactory"))
+        let viewSources = try [
+            "Sources/SoloPMApp/Views/ProjectBoardLaunchRecoveryViews.swift",
+            "Sources/SoloPMApp/Views/MenuBarPanel.swift",
+            "Sources/SoloPMApp/Views/VoiceCaptureView.swift",
+            "Sources/SoloPMApp/Views/ActionReviewPanel.swift",
+            "Sources/SoloPMApp/Views/SettingsView.swift"
+        ].map(readPackageFile).joined(separator: "\n\n")
+
+        return [
+            String(appSource[..<runtimeFactoryRange.lowerBound]),
+            viewSources,
+            String(appSource[runtimeFactoryRange.lowerBound...])
+        ].joined(separator: "\n\n")
     }
 
     private func sourceBlock(in source: String, from startNeedle: String, to endNeedle: String) throws -> String {

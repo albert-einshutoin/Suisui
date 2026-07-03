@@ -154,7 +154,7 @@ REQUIRED_SOURCE_ANCHORS=(
   "Sources/SoloPMApp/Views/ProjectWorkflowViews.swift::.keyboardShortcut(\"2\", modifiers: [.command])"
   "Sources/SoloPMApp/Views/ProjectWorkflowViews.swift::.keyboardShortcut(\"3\", modifiers: [.command])"
   "Sources/SoloPMApp/Views/ProjectWorkflowViews.swift::.keyboardShortcut(\"4\", modifiers: [.command])"
-  "Sources/SoloPMApp/SoloPMApp.swift::.keyboardShortcut(.return, modifiers: [.command])"
+  "Sources/SoloPMApp/Views/MenuBarPanel.swift::.keyboardShortcut(.return, modifiers: [.command])"
 )
 
 usage() {
