@@ -323,7 +323,7 @@ public protocol ExternalCalendarEventSink: Sendable {
 }
 
 public struct GoogleCalendarRuntimeCredentialStatus: Equatable, Sendable {
-    public static let eventsWriteScope = "https://www.googleapis.com/auth/calendar.events"
+    public static let eventsWriteScope = ExternalAuthorizationScopeIdentifier.googleCalendarEventsWrite
 
     public var grantedScopes: Set<String>
     public var expiresAt: Date?

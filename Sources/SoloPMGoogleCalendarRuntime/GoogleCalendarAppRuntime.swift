@@ -3,9 +3,9 @@ import Foundation
 import SoloPMCore
 
 public enum GoogleCalendarRuntimeOAuthScope {
-    public static let eventsWrite = GoogleCalendarRuntimeCredentialStatus.eventsWriteScope
-    public static let calendarListReadOnly = "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
-    public static let offlineAccess = "offline_access"
+    public static let eventsWrite = ExternalAuthorizationScopeIdentifier.googleCalendarEventsWrite
+    public static let calendarListReadOnly = ExternalAuthorizationScopeIdentifier.googleCalendarCalendarListReadOnly
+    public static let offlineAccess = ExternalAuthorizationScopeIdentifier.offlineAccess
 }
 
 public enum GoogleCalendarRuntimeError: Error, Equatable, Sendable {
@@ -41,7 +41,7 @@ public protocol GoogleCalendarOAuthCredentialMetadataStore: Sendable {
 }
 
 public final class SQLiteGoogleCalendarOAuthCredentialMetadataStore: GoogleCalendarOAuthCredentialMetadataStore, @unchecked Sendable {
-    private static let settingsKey = "google_calendar.oauth.metadata.v1"
+    private static let settingsKey = "\(ExternalIntegrationIdentifier.googleCalendar).oauth.metadata.v1"
 
     private let connection: SQLiteConnection
     private let encoder: JSONEncoder
@@ -76,8 +76,8 @@ public final class SQLiteGoogleCalendarOAuthCredentialMetadataStore: GoogleCalen
 }
 
 public final class GoogleCalendarOAuthCredentialStore: @unchecked Sendable {
-    public static let accessTokenKey = SecretKey("oauth.google_calendar.access_token")
-    public static let refreshTokenKey = SecretKey("oauth.google_calendar.refresh_token")
+    public static let accessTokenKey = SecretKey("oauth.\(ExternalIntegrationIdentifier.googleCalendar).access_token")
+    public static let refreshTokenKey = SecretKey("oauth.\(ExternalIntegrationIdentifier.googleCalendar).refresh_token")
 
     private let secretStore: any SecretStore
     private let metadataStore: any GoogleCalendarOAuthCredentialMetadataStore
@@ -466,7 +466,7 @@ public struct GoogleCalendarOAuthAuthorizationService: Sendable {
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         let normalizedClientID = configuration.clientID.trimmingCharacters(in: .whitespacesAndNewlines)
-        request.httpBody = formURLEncoded([
+        request.httpBody = GoogleCalendarFormURLEncoder.encode([
             "client_id": normalizedClientID,
             "code": code,
             "code_verifier": codeVerifier,
@@ -474,13 +474,6 @@ public struct GoogleCalendarOAuthAuthorizationService: Sendable {
             "redirect_uri": configuration.redirectURI
         ]).data(using: .utf8)
         return request
-    }
-
-    private func formURLEncoded(_ values: [String: String]) -> String {
-        values
-            .sorted { $0.key < $1.key }
-            .map { key, value in "\(key.formEncoded)=\(value.formEncoded)" }
-            .joined(separator: "&")
     }
 }
 
@@ -552,15 +545,17 @@ public struct GoogleCalendarOAuthTokenRefreshService: Sendable {
         var request = URLRequest(url: configuration.tokenEndpoint)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.httpBody = formURLEncoded([
+        request.httpBody = GoogleCalendarFormURLEncoder.encode([
             "client_id": clientID,
             "grant_type": "refresh_token",
             "refresh_token": refreshToken
         ]).data(using: .utf8)
         return request
     }
+}
 
-    private func formURLEncoded(_ values: [String: String]) -> String {
+private enum GoogleCalendarFormURLEncoder {
+    static func encode(_ values: [String: String]) -> String {
         values
             .sorted { $0.key < $1.key }
             .map { key, value in "\(key.formEncoded)=\(value.formEncoded)" }
@@ -605,7 +600,7 @@ public protocol GoogleCalendarIdempotencyNamespaceStore: Sendable {
 }
 
 public final class SQLiteGoogleCalendarIdempotencyNamespaceStore: GoogleCalendarIdempotencyNamespaceStore, @unchecked Sendable {
-    private static let settingsKey = "google_calendar.idempotency_namespace.v1"
+    private static let settingsKey = "\(ExternalIntegrationIdentifier.googleCalendar).idempotency_namespace.v1"
 
     private let connection: SQLiteConnection
 
@@ -628,18 +623,7 @@ public final class SQLiteGoogleCalendarIdempotencyNamespaceStore: GoogleCalendar
     }
 }
 
-public struct GoogleCalendarHTTPConfiguration: Equatable, Sendable {
-    public var baseURL: URL
-    public var timeoutInterval: TimeInterval
-
-    public init(
-        baseURL: URL = URL(string: "https://www.googleapis.com/calendar/v3")!,
-        timeoutInterval: TimeInterval = 30
-    ) {
-        self.baseURL = baseURL
-        self.timeoutInterval = timeoutInterval
-    }
-}
+public typealias GoogleCalendarHTTPConfiguration = SoloPMCore.GoogleCalendarHTTPConfiguration
 
 public protocol GoogleCalendarBearerTokenProvider: Sendable {
     func bearerToken() throws -> String
@@ -703,9 +687,7 @@ public struct GoogleCalendarOAuthBearerTokenProvider: GoogleCalendarBearerTokenP
     }
 }
 
-public protocol SynchronousHTTPDataClient: Sendable {
-    func data(for request: URLRequest) throws -> (Data, HTTPURLResponse)
-}
+public typealias SynchronousHTTPDataClient = SoloPMCore.SynchronousHTTPDataClient
 
 public struct URLSessionSynchronousHTTPDataClient: SynchronousHTTPDataClient {
     private let session: URLSession
@@ -1190,70 +1172,6 @@ private enum SQLiteSettingsValueStore {
     private static func sqlLiteral(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "''"))'"
     }
-}
-
-private struct GoogleCalendarEventRequest: Encodable {
-    var id: String?
-    var summary: String
-    var description: String?
-    var start: GoogleCalendarEventDate
-    var end: GoogleCalendarEventDate
-    var extendedProperties: GoogleCalendarEventExtendedProperties?
-
-    init(draft: CalendarEventDraft, timeZoneIdentifier: String) {
-        let normalizedID = GoogleCalendarEventID.normalized(draft.idempotencyKey)
-        id = normalizedID
-        summary = draft.title
-        description = draft.notes
-        if draft.isAllDay {
-            start = GoogleCalendarEventDate(date: draft.startAt, dateTime: nil, timeZone: nil)
-            end = GoogleCalendarEventDate(date: draft.endAt, dateTime: nil, timeZone: nil)
-        } else {
-            start = GoogleCalendarEventDate(date: nil, dateTime: draft.startAt, timeZone: timeZoneIdentifier)
-            end = GoogleCalendarEventDate(date: nil, dateTime: draft.endAt, timeZone: timeZoneIdentifier)
-        }
-        extendedProperties = normalizedID.map {
-            GoogleCalendarEventExtendedProperties(privateProperties: ["soloPMIdempotencyKey": $0])
-        }
-    }
-}
-
-private struct GoogleCalendarEventDate: Encodable {
-    var date: String?
-    var dateTime: String?
-    var timeZone: String?
-}
-
-private struct GoogleCalendarEventExtendedProperties: Encodable {
-    var privateProperties: [String: String]
-
-    enum CodingKeys: String, CodingKey {
-        case privateProperties = "private"
-    }
-}
-
-private enum GoogleCalendarEventID {
-    private static let allowedCharacters = Set("0123456789abcdefghijklmnopqrstuv")
-    private static let prefix = "solopm"
-    private static let digestLength = 64
-
-    static func normalized(_ rawValue: String?) -> String? {
-        guard let rawValue else {
-            return nil
-        }
-        let candidate = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let suffix = candidate.dropFirst(prefix.count)
-        guard candidate.hasPrefix(prefix),
-              suffix.count == digestLength,
-              candidate.allSatisfy({ allowedCharacters.contains($0) }) else {
-            return nil
-        }
-        return candidate
-    }
-}
-
-private struct GoogleCalendarEventResponse: Decodable {
-    var id: String?
 }
 
 private struct GoogleCalendarCalendarListResponse: Decodable {

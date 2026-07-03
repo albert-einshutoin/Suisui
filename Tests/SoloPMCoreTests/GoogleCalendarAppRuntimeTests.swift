@@ -4,6 +4,32 @@ import XCTest
 @testable import SoloPMGoogleCalendarRuntime
 
 final class GoogleCalendarAppRuntimeTests: XCTestCase {
+    func testGoogleCalendarPersistentKeysStayLiteralCompatible() throws {
+        let connection = try migratedConnection()
+        let metadataStore = SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        let namespaceStore = SQLiteGoogleCalendarIdempotencyNamespaceStore(connection: connection)
+
+        try metadataStore.saveMetadata(GoogleCalendarOAuthCredentialMetadata(
+            grantedScopes: [GoogleCalendarRuntimeOAuthScope.eventsWrite],
+            expiresAt: nil,
+            accessTokenKey: GoogleCalendarOAuthCredentialStore.accessTokenKey,
+            refreshTokenKey: GoogleCalendarOAuthCredentialStore.refreshTokenKey
+        ))
+        _ = try namespaceStore.idempotencyNamespace()
+
+        XCTAssertEqual(ExternalIntegrationIdentifier.googleCalendar, "google_calendar")
+        XCTAssertEqual(GoogleCalendarOAuthCredentialStore.accessTokenKey.rawValue, "oauth.google_calendar.access_token")
+        XCTAssertEqual(GoogleCalendarOAuthCredentialStore.refreshTokenKey.rawValue, "oauth.google_calendar.refresh_token")
+        XCTAssertEqual(
+            try connection.queryRows("SELECT value FROM settings WHERE key = 'google_calendar.oauth.metadata.v1';").count,
+            1
+        )
+        XCTAssertEqual(
+            try connection.queryRows("SELECT value FROM settings WHERE key = 'google_calendar.idempotency_namespace.v1';").count,
+            1
+        )
+    }
+
     func testSQLiteMetadataStorePersistsOAuthMetadataWithoutTokenMaterial() throws {
         let connection = try migratedConnection()
         let metadataStore = SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)

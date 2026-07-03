@@ -282,6 +282,67 @@ final class ArchitectureBoundaryTests: XCTestCase {
         XCTAssertFalse(shellSource.contains("public struct AssistantQueueExecutionCoordinator"))
     }
 
+    func testIntegrationCalendarRuntimeUsesSharedIdentifiersWithoutMovingConcreteAdapters() throws {
+        let sharedSource = try readPackageFile("Sources/SoloPMCore/App/ExternalIntegrationIdentifiers.swift")
+        let calendarHTTPContractSource = try readPackageFile("Sources/SoloPMCore/App/GoogleCalendarHTTPContracts.swift")
+        let coreInteropSource = try readPackageFile("Sources/SoloPMCore/App/ExternalTaskInterop.swift")
+        let connectorSource = try readPackageFile("Sources/SoloPMExternalConnectors/SaaSConnectors.swift")
+        let googleRuntimeSource = try readPackageFile("Sources/SoloPMGoogleCalendarRuntime/GoogleCalendarAppRuntime.swift")
+        let appCompositionSource = try readPackageFile("Sources/SoloPMApp/Composition/GoogleCalendarRuntimeCompositionFactory.swift")
+        let eventKitAdapterSource = try readPackageFile("Sources/SoloPMApp/Adapters/EventKitToolClients.swift")
+
+        for marker in [
+            "public enum ExternalIntegrationIdentifier",
+            "public static let googleCalendar = \"google_calendar\"",
+            "public enum ExternalAuthorizationScopeIdentifier",
+            "public static let googleCalendarEventsWrite = \"https://www.googleapis.com/auth/calendar.events\"",
+            "public static let googleCalendarCalendarListReadOnly = \"https://www.googleapis.com/auth/calendar.calendarlist.readonly\"",
+            "public static let offlineAccess = \"offline_access\""
+        ] {
+            XCTAssertTrue(sharedSource.contains(marker), "shared integration identifiers must own \(marker)")
+        }
+
+        XCTAssertTrue(coreInteropSource.contains("ExternalAuthorizationScopeIdentifier.googleCalendarEventsWrite"))
+        XCTAssertTrue(connectorSource.contains("ExternalAuthorizationScopeIdentifier.googleCalendarEventsWrite"))
+        XCTAssertTrue(connectorSource.contains("ExternalAuthorizationScopeIdentifier.offlineAccess"))
+        XCTAssertTrue(googleRuntimeSource.contains("ExternalAuthorizationScopeIdentifier.googleCalendarEventsWrite"))
+        XCTAssertTrue(googleRuntimeSource.contains("ExternalAuthorizationScopeIdentifier.googleCalendarCalendarListReadOnly"))
+        XCTAssertTrue(googleRuntimeSource.contains("ExternalAuthorizationScopeIdentifier.offlineAccess"))
+        XCTAssertTrue(googleRuntimeSource.contains("ExternalIntegrationIdentifier.googleCalendar"))
+
+        for marker in [
+            "public struct GoogleCalendarHTTPConfiguration",
+            "public protocol SynchronousHTTPDataClient",
+            "package struct GoogleCalendarEventRequest",
+            "package enum GoogleCalendarEventID",
+            "package struct GoogleCalendarEventResponse"
+        ] {
+            XCTAssertTrue(calendarHTTPContractSource.contains(marker), "Core HTTP contracts must own \(marker)")
+        }
+        XCTAssertTrue(connectorSource.contains("public typealias GoogleCalendarHTTPConfiguration = SoloPMCore.GoogleCalendarHTTPConfiguration"))
+        XCTAssertTrue(connectorSource.contains("public typealias SynchronousHTTPDataClient = SoloPMCore.SynchronousHTTPDataClient"))
+        XCTAssertTrue(googleRuntimeSource.contains("public typealias GoogleCalendarHTTPConfiguration = SoloPMCore.GoogleCalendarHTTPConfiguration"))
+        XCTAssertTrue(googleRuntimeSource.contains("public typealias SynchronousHTTPDataClient = SoloPMCore.SynchronousHTTPDataClient"))
+        XCTAssertFalse(connectorSource.contains("private struct GoogleCalendarEventRequest"))
+        XCTAssertFalse(googleRuntimeSource.contains("private struct GoogleCalendarEventRequest"))
+
+        XCTAssertEqual(googleRuntimeSource.components(separatedBy: "private func formURLEncoded").count - 1, 0)
+        XCTAssertEqual(googleRuntimeSource.components(separatedBy: "GoogleCalendarFormURLEncoder.encode").count - 1, 2)
+        XCTAssertTrue(googleRuntimeSource.contains("private enum GoogleCalendarFormURLEncoder"))
+
+        XCTAssertTrue(appCompositionSource.contains("URLSessionSynchronousHTTPDataClient()"))
+        XCTAssertTrue(eventKitAdapterSource.contains("import EventKit"))
+        XCTAssertFalse(sharedSource.contains("URLSession"))
+        XCTAssertFalse(calendarHTTPContractSource.contains("URLSessionSynchronousHTTPDataClient"))
+        XCTAssertFalse(calendarHTTPContractSource.contains("URLSession.shared"))
+        XCTAssertFalse(sharedSource.contains("EventKit"))
+        XCTAssertFalse(calendarHTTPContractSource.contains("EventKit"))
+        XCTAssertFalse(sharedSource.contains("KeychainSecretStore"))
+        XCTAssertFalse(calendarHTTPContractSource.contains("KeychainSecretStore"))
+        XCTAssertFalse(sharedSource.contains("ASWebAuthenticationSession"))
+        XCTAssertFalse(calendarHTTPContractSource.contains("ASWebAuthenticationSession"))
+    }
+
     private let forbiddenPersistenceOwnershipPatterns = [
         #"SQLite[A-Za-z0-9_]*Store\s*\("#,
         #"SQLiteConnection\s*\("#,
