@@ -2634,6 +2634,8 @@ private struct SettingsView: View {
                 .accessibilityIdentifier("settings-task-auto-execution-toggle")
                 .accessibilityHint("Enables review-only LLM planning for due and high-priority tasks.")
 
+                taskAutomationSaveButton
+
                 Picker(
                     "Frequency",
                     selection: Binding(
@@ -2700,8 +2702,6 @@ private struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("settings-task-auto-execution-boundary")
-
-                settingsSaveButton
             }
 
             Section("Billing") {
@@ -2939,6 +2939,21 @@ private struct SettingsView: View {
                 Text("Pro unlocks external sync; import/export JSON stays local.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                GoogleCalendarSettingsSaveControls(
+                    calendarID: Binding(
+                        get: { settingsViewModel.settings.googleCalendarID },
+                        set: { settingsViewModel.setGoogleCalendarID($0) }
+                    ),
+                    currentCalendarID: settingsViewModel.settings.googleCalendarID,
+                    calendarListOptions: googleCalendarListOptions,
+                    shouldShowCurrentManualOption: shouldShowCurrentGoogleCalendarManualOption,
+                    manualCalendarLabel: googleCalendarManualCalendarLabel,
+                    calendarPickerLabel: { googleCalendarPickerLabel(for: $0) },
+                    isLoadingCalendarList: isLoadingGoogleCalendarList,
+                    isCalendarListLoadDisabled: isLoadingGoogleCalendarList || isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarListProvider == nil,
+                    saveCalendarID: saveGoogleCalendarIDSetting,
+                    loadCalendarList: loadGoogleCalendarList
+                )
                 ExternalConnectorScopeRow(
                     name: "Google Calendar",
                     status: googleCalendarSettingsReadinessRow.statusLabel,
@@ -2950,53 +2965,6 @@ private struct SettingsView: View {
                     statusActionLabel: googleCalendarSettingsReadinessRow.statusCheckActionLabel,
                     onStatusAction: refreshGoogleCalendarSettingsStatus
                 )
-                TextField(
-                    "Google Calendar ID",
-                    text: Binding(
-                        get: { settingsViewModel.settings.googleCalendarID },
-                        set: { settingsViewModel.setGoogleCalendarID($0) }
-                    )
-                )
-                .textFieldStyle(.roundedBorder)
-                .accessibilityIdentifier("settings-google-calendar-id")
-                .accessibilityHint("Sets the Google Calendar id used for approved due-task sync.")
-                .onSubmit(saveGoogleCalendarIDSetting)
-                if !googleCalendarListOptions.isEmpty {
-                    Picker("Available Calendar", selection: Binding(
-                            get: { settingsViewModel.settings.googleCalendarID },
-                            set: { settingsViewModel.setGoogleCalendarID($0) }
-                        )
-                    ) {
-                        if shouldShowCurrentGoogleCalendarManualOption {
-                            Text(googleCalendarManualCalendarLabel)
-                                .tag(settingsViewModel.settings.googleCalendarID)
-                        }
-                        ForEach(googleCalendarListOptions) { option in
-                            Text(googleCalendarPickerLabel(for: option))
-                                .tag(option.id)
-                        }
-                    }
-                    .accessibilityIdentifier("settings-google-calendar-picker")
-                    .accessibilityHint("Chooses a writable Google Calendar returned by the connected account.")
-                }
-                Button {
-                    loadGoogleCalendarList()
-                } label: {
-                    Label(
-                        isLoadingGoogleCalendarList ? "Loading Calendars" : "Load Calendars",
-                        systemImage: "calendar.badge.checkmark"
-                    )
-                }
-                .disabled(isLoadingGoogleCalendarList || isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarListProvider == nil)
-                .accessibilityIdentifier("settings-google-calendar-list-load")
-                .accessibilityHint("Loads writable Google Calendars for the connected OAuth account.")
-                Button {
-                    saveGoogleCalendarIDSetting()
-                } label: {
-                    Label("Save Calendar", systemImage: "square.and.arrow.down")
-                }
-                .accessibilityIdentifier("settings-google-calendar-id-save")
-                .accessibilityHint("Persists the selected Google Calendar id before checking sync readiness.")
                 Button(localizedSettingsDisplay(googleCalendarOAuthActionLabel)) {
                     startGoogleCalendarOAuthAuthorization()
                 }
@@ -3049,6 +3017,74 @@ private struct SettingsView: View {
 
         }
         .formStyle(.grouped)
+    }
+
+    private struct GoogleCalendarSettingsSaveControls: View {
+        let calendarID: Binding<String>
+        let currentCalendarID: String
+        let calendarListOptions: [GoogleCalendarRuntimeCalendarListEntry]
+        let shouldShowCurrentManualOption: Bool
+        let manualCalendarLabel: String
+        let calendarPickerLabel: (GoogleCalendarRuntimeCalendarListEntry) -> String
+        let isLoadingCalendarList: Bool
+        let isCalendarListLoadDisabled: Bool
+        let saveCalendarID: () -> Void
+        let loadCalendarList: () -> Void
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("Google Calendar ID", text: calendarID)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("settings-google-calendar-id")
+                    .accessibilityHint("Sets the Google Calendar id used for approved due-task sync.")
+                    .onSubmit(saveCalendarID)
+
+                if !calendarListOptions.isEmpty {
+                    Picker("Available Calendar", selection: calendarID) {
+                        if shouldShowCurrentManualOption {
+                            Text(manualCalendarLabel)
+                                .tag(currentCalendarID)
+                        }
+                        ForEach(calendarListOptions) { option in
+                            Text(calendarPickerLabel(option))
+                                .tag(option.id)
+                        }
+                    }
+                    .accessibilityIdentifier("settings-google-calendar-picker")
+                    .accessibilityHint("Chooses a writable Google Calendar returned by the connected account.")
+                }
+
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Button {
+                        saveCalendarID()
+                    } label: {
+                        Label("Save Calendar", systemImage: "square.and.arrow.down")
+                    }
+                    .accessibilityIdentifier("settings-google-calendar-id-save")
+                    .accessibilityHint("Persists the selected Google Calendar id before checking sync readiness.")
+
+                    Button {
+                        loadCalendarList()
+                    } label: {
+                        Label(
+                            isLoadingCalendarList ? "Loading Calendars" : "Load Calendars",
+                            systemImage: "calendar.badge.checkmark"
+                        )
+                    }
+                    .disabled(isCalendarListLoadDisabled)
+                    .accessibilityIdentifier("settings-google-calendar-list-load")
+                    .accessibilityHint("Loads writable Google Calendars for the connected OAuth account.")
+
+                    Text("Save Calendar before checking readiness; load calendars after OAuth is connected.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("settings-google-calendar-id-save-note")
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("settings-google-calendar-id-save-flow")
+        }
     }
 
     @ViewBuilder
@@ -3577,6 +3613,16 @@ private struct SettingsView: View {
         }
         .accessibilityIdentifier("settings-save-button")
         .accessibilityHint("Persists non-secret settings to local UserDefaults.")
+    }
+
+    private var taskAutomationSaveButton: some View {
+        Button {
+            settingsViewModel.saveSettings()
+        } label: {
+            Label("Save Automation", systemImage: "square.and.arrow.down")
+        }
+        .accessibilityIdentifier("settings-task-auto-execution-save")
+        .accessibilityHint("Persists task automation settings to local UserDefaults.")
     }
 
     private func billingCapValueLabel(_ cents: Int?) -> String {

@@ -155,7 +155,10 @@
 "Save OpenRouter Key" = "Save OpenRouter Key";
 "Save Secret" = "Save Secret";
 "Save Settings" = "Save Settings";
+"Save Automation" = "Save Automation";
 "Persists non-secret settings to local UserDefaults." = "Persists non-secret settings to local UserDefaults.";
+"Persists task automation settings to local UserDefaults." = "Persists task automation settings to local UserDefaults.";
+"Save Calendar before checking readiness; load calendars after OAuth is connected." = "Save Calendar before checking readiness; load calendars after OAuth is connected.";
 "Server Enabled" = "Server Enabled";
 "Servers" = "Servers";
 "Shows the draft-only document outputs and redacted source documents for the reviewed automation plan." = "Shows the draft-only document outputs and redacted source documents for the reviewed automation plan.";

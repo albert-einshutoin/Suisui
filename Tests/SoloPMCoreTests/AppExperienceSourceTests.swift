@@ -3174,6 +3174,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-lookahead\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-urgent-cooldown\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-boundary\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-save\")"))
         XCTAssertTrue(appSource.contains("Section(\"Billing\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-managed-ai-billing-toggle\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-managed-ai-per-run-cap\")"))
@@ -3182,6 +3183,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-managed-ai-workspace-cap\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-save-button\")"))
         XCTAssertTrue(appSource.contains(".accessibilityHint(\"Persists non-secret settings to local UserDefaults.\")"))
+
+        let taskAutomationStart = try XCTUnwrap(appSource.range(of: "Section(\"Task Automation\")"))
+        let billingStart = try XCTUnwrap(appSource.range(of: "Section(\"Billing\")"))
+        let taskAutomationSource = String(appSource[taskAutomationStart.lowerBound..<billingStart.lowerBound])
+        XCTAssertLessThan(
+            try XCTUnwrap(taskAutomationSource.range(of: "taskAutomationSaveButton")).lowerBound,
+            try XCTUnwrap(taskAutomationSource.range(of: "settings-task-auto-execution-frequency")).lowerBound
+        )
     }
 
     func testVoiceCommandRuntimeEvidenceLaunchAndReviewAnchors() throws {
@@ -3611,15 +3620,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(syncSource.contains("\"Google Calendar ID\""))
         XCTAssertTrue(syncSource.contains("settingsViewModel.settings.googleCalendarID"))
         XCTAssertTrue(syncSource.contains("settingsViewModel.setGoogleCalendarID($0)"))
+        XCTAssertTrue(syncSource.contains("GoogleCalendarSettingsSaveControls("))
+        XCTAssertTrue(syncSource.contains("settings-google-calendar-id-save-flow"))
         XCTAssertTrue(syncSource.contains("settings-google-calendar-id"))
-        XCTAssertTrue(syncSource.contains("saveGoogleCalendarIDSetting()"))
+        XCTAssertTrue(syncSource.contains("saveCalendarID: saveGoogleCalendarIDSetting"))
         XCTAssertTrue(appSource.contains("private func saveGoogleCalendarIDSetting()"))
         XCTAssertTrue(syncSource.contains("Picker(\"Available Calendar\""))
-        XCTAssertTrue(syncSource.contains("ForEach(googleCalendarListOptions)"))
+        XCTAssertTrue(syncSource.contains("ForEach(calendarListOptions)"))
         XCTAssertTrue(syncSource.contains("settings-google-calendar-picker"))
-        XCTAssertTrue(syncSource.contains("loadGoogleCalendarList()"))
+        XCTAssertTrue(syncSource.contains("loadCalendarList: loadGoogleCalendarList"))
         XCTAssertTrue(syncSource.contains("settings-google-calendar-list-load"))
-        XCTAssertTrue(syncSource.contains(".disabled(isLoadingGoogleCalendarList || isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarListProvider == nil)"))
+        XCTAssertTrue(syncSource.contains("isCalendarListLoadDisabled: isLoadingGoogleCalendarList || isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarListProvider == nil"))
         XCTAssertTrue(appSource.contains("private func loadGoogleCalendarList()"))
         XCTAssertTrue(appSource.contains("guard !isGoogleCalendarOAuthAuthorizationInProgress else"))
         XCTAssertTrue(appSource.contains("private func invalidateGoogleCalendarListOptions()"))
@@ -3639,6 +3650,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("This removes local Google Calendar OAuth tokens from Keychain. Tasks and saved calendar ID stay unchanged."))
         XCTAssertTrue(syncSource.contains("settings-google-calendar-oauth-disconnect"))
         XCTAssertTrue(syncSource.contains("role: .destructive"))
+        XCTAssertLessThan(
+            try XCTUnwrap(syncSource.range(of: "settings-google-calendar-id-save")).lowerBound,
+            try XCTUnwrap(syncSource.range(of: "settings-google-calendar-list-load")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(syncSource.range(of: "GoogleCalendarSettingsSaveControls(")).lowerBound,
+            try XCTUnwrap(syncSource.range(of: "ExternalConnectorScopeRow(\n                    name: \"Google Calendar\"")).lowerBound
+        )
         XCTAssertTrue(appSource.contains("googleCalendarOAuthConnector.startAuthorization"))
         XCTAssertTrue(appSource.contains("googleCalendarOAuthDisconnecter.disconnect()"))
         XCTAssertTrue(appSource.contains("GoogleCalendarAppRuntimeFactory.disconnectOAuthCredential"))
