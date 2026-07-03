@@ -78,7 +78,7 @@ struct VoiceCaptureView: View {
             .frame(minHeight: 150, idealHeight: 180, maxHeight: 180)
             .overlay(alignment: .topLeading) {
                 if isVoiceCommandInputEmpty {
-                    VoiceCommandInputPlaceholder()
+                    VoiceCommandInputPrompt()
                         .padding(.top, 8)
                         .padding(.horizontal, 8)
                         .allowsHitTesting(false)
@@ -259,7 +259,7 @@ struct VoiceCaptureView: View {
     }
 }
 
-private struct VoiceCommandInputPlaceholder: View {
+private struct VoiceCommandInputPrompt: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Try one of these commands")
@@ -274,7 +274,7 @@ private struct VoiceCommandInputPlaceholder: View {
         }
         .padding(8)
         .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("voice-command-input-placeholder")
+        .accessibilityIdentifier("voice-command-input-prompt")
     }
 
     private func placeholderExample(_ text: LocalizedStringKey, systemImage: String) -> some View {
