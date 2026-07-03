@@ -571,4 +571,81 @@ verify_sql_value \
   "planning audit did not start again for move-to-today local Daily Planning handoff" \
   "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='started';"
 
+# Defer and split are write-capable recommendations, so this smoke verifies
+# they only create Assistant Queue drafts and leave task/project rows unchanged
+# until the user approves the queued ActionPlan.
+setTextAreaContaining "voice-command-input" "Open Today Review and defer the recommended task to tomorrow"
+pressControlContaining "voice-command-generate-plan"
+wait_for_sql_value \
+  "1" \
+  "daily planning defer Assistant Queue draft" \
+  "SELECT count(*) FROM assistant_queue_items WHERE id LIKE 'action-plan:daily-planning:%:deferRecommendedToTomorrow:task:${daily_planning_seed_task_id}' AND payload_kind='action_plan' AND state='waitingReview' AND risk_level='write' AND source_transcript='Open Today Review and defer the recommended task to tomorrow' AND approval_json IS NULL;"
+verify_sql_value \
+  "1" \
+  "daily planning task due date remains unchanged before defer approval" \
+  "SELECT count(*) FROM tasks WHERE id=${daily_planning_seed_task_id} AND due_at='2026-01-01T09:00:00Z';"
+verify_sql_value \
+  "1" \
+  "no extra daily planning tasks before defer approval" \
+  "SELECT count(*) FROM tasks;"
+verify_sql_value \
+  "1" \
+  "no extra daily planning projects before defer approval" \
+  "SELECT count(*) FROM projects WHERE source_command='runtime-voice-review-smoke';"
+verify_sql_value \
+  "$daily_planning_seed_project_count" \
+  "total project count unchanged after defer daily planning handoff" \
+  "SELECT count(*) FROM projects;"
+verify_sql_value \
+  "3" \
+  "three daily planning queue drafts before approval" \
+  "SELECT count(*) FROM assistant_queue_items;"
+verify_sql_value \
+  "0" \
+  "defer review execution before approval" \
+  "SELECT count(*) FROM audit_logs WHERE category='review' OR action LIKE 'execution.%';"
+verify_sql_value \
+  "1" \
+  "planning audit did not start again for defer local Daily Planning handoff" \
+  "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='started';"
+
+setTextAreaContaining "voice-command-input" "Open Today Review and split the recommended task"
+pressControlContaining "voice-command-generate-plan"
+wait_for_sql_value \
+  "1" \
+  "daily planning split Assistant Queue draft" \
+  "SELECT count(*) FROM assistant_queue_items WHERE id LIKE 'action-plan:daily-planning:%:splitRecommendedTask:task:${daily_planning_seed_task_id}' AND payload_kind='action_plan' AND state='waitingReview' AND risk_level='write' AND source_transcript='Open Today Review and split the recommended task' AND approval_json IS NULL;"
+verify_sql_value \
+  "0" \
+  "no split follow-up tasks before split approval" \
+  "SELECT count(*) FROM tasks WHERE source_command LIKE 'Daily Planning Review split from task %' OR title LIKE 'Runtime Daily Planning Recommended - %';"
+verify_sql_value \
+  "1" \
+  "daily planning seed task unchanged before split approval" \
+  "SELECT count(*) FROM tasks WHERE id=${daily_planning_seed_task_id} AND title='Runtime Daily Planning Recommended' AND status='planned' AND due_at='2026-01-01T09:00:00Z' AND source_command='runtime-voice-review-smoke';"
+verify_sql_value \
+  "1" \
+  "no extra daily planning tasks before split approval" \
+  "SELECT count(*) FROM tasks;"
+verify_sql_value \
+  "1" \
+  "no extra daily planning projects before split approval" \
+  "SELECT count(*) FROM projects WHERE source_command='runtime-voice-review-smoke';"
+verify_sql_value \
+  "$daily_planning_seed_project_count" \
+  "total project count unchanged after split daily planning handoff" \
+  "SELECT count(*) FROM projects;"
+verify_sql_value \
+  "4" \
+  "four daily planning queue drafts before approval" \
+  "SELECT count(*) FROM assistant_queue_items;"
+verify_sql_value \
+  "0" \
+  "split review execution before approval" \
+  "SELECT count(*) FROM audit_logs WHERE category='review' OR action LIKE 'execution.%';"
+verify_sql_value \
+  "1" \
+  "planning audit did not start again for split local Daily Planning handoff" \
+  "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='started';"
+
 printf "OK: runtime voice review smoke verified local Daily Planning queue handoffs\n"

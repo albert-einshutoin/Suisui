@@ -46,6 +46,25 @@ final class VoiceCommandRouterTests: XCTestCase {
         }
     }
 
+    func testRoutesDailyPlanningAcceptanceExamples() {
+        let transcripts = [
+            "今日やることを3つに絞って",
+            "遅れてるものだけ教えて",
+            "今から90分でできる順に並べて",
+            "夕方にもう一回確認して",
+            "Tell me only the overdue work",
+            "Check in this evening about today's next actions"
+        ]
+
+        for transcript in transcripts {
+            let result = router.route(transcript: transcript)
+
+            XCTAssertEqual(result.intent, .dailyPlanningReview, transcript)
+            XCTAssertGreaterThanOrEqual(result.confidence, 0.7, transcript)
+            XCTAssertEqual(result.decision, .reviewOnly, transcript)
+        }
+    }
+
     func testRoutesJapaneseTaskCreateCommand() {
         let result = router.route(transcript: "リリースメモのタスクを作成して")
 
@@ -119,6 +138,33 @@ final class VoiceCommandRouterTests: XCTestCase {
 
         XCTAssertEqual(result.intent, .statusAsk)
         XCTAssertGreaterThanOrEqual(result.confidence, 0.7)
+    }
+
+    func testDailyPlanningOverdueSignalsDoNotStealExplicitCountStatusQuestion() {
+        for transcript in [
+            "今日の遅れてるタスクは何件で進捗はどう?",
+            "遅れてるタスクは何件?",
+            "How many overdue tasks today?",
+            "Show overdue progress today"
+        ] {
+            let result = router.route(transcript: transcript)
+
+            XCTAssertEqual(result.intent, .statusAsk, transcript)
+            XCTAssertGreaterThanOrEqual(result.confidence, 0.7, transcript)
+        }
+    }
+
+    func testDailyPlanningOverdueSignalsDoNotStealExplicitScheduleOrCreateCommands() {
+        let schedule = router.route(transcript: "Schedule overdue work for tomorrow")
+        let japaneseSchedule = router.route(transcript: "今日の予定をできる順に並べて")
+        let taskCreate = router.route(transcript: "Create an overdue task for today")
+
+        XCTAssertEqual(schedule.intent, .schedulePlan)
+        XCTAssertGreaterThanOrEqual(schedule.confidence, 0.7)
+        XCTAssertEqual(japaneseSchedule.intent, .schedulePlan)
+        XCTAssertGreaterThanOrEqual(japaneseSchedule.confidence, 0.7)
+        XCTAssertEqual(taskCreate.intent, .taskCreate)
+        XCTAssertGreaterThanOrEqual(taskCreate.confidence, 0.7)
     }
 
     func testAmbiguousTranscriptRequiresClarification() {
