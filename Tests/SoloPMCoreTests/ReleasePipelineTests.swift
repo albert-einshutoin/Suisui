@@ -4552,7 +4552,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains(#"Sources/SoloPMApp/Views/ProjectWorkflowViews.swift::.keyboardShortcut(\"2\", modifiers: [.command])"#))
         XCTAssertTrue(script.contains(#"Sources/SoloPMApp/Views/ProjectWorkflowViews.swift::.keyboardShortcut(\"3\", modifiers: [.command])"#))
         XCTAssertTrue(script.contains(#"Sources/SoloPMApp/Views/ProjectWorkflowViews.swift::.keyboardShortcut(\"4\", modifiers: [.command])"#))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/SoloPMApp.swift::.keyboardShortcut(.return, modifiers: [.command])"))
+        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/MenuBarPanel.swift::.keyboardShortcut(.return, modifiers: [.command])"))
         XCTAssertTrue(script.contains("--runtime"))
         XCTAssertTrue(script.contains("--skip-source-anchors"))
         XCTAssertTrue(script.contains("System Events"))
