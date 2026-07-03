@@ -36,6 +36,7 @@ receipt_directory="$UI_HOME/Library/Application Support/SoloPM/ExecutionReceipts
 runtime_fake_git_bin="$UI_ROOT/fake-publish-bin"
 runtime_fake_git_push_log="$UI_ROOT/fake-push.log"
 runtime_fake_github_pr_log="$UI_ROOT/fake-pull-request-create.log"
+runtime_fake_github_review_log="$UI_ROOT/fake-pull-request-review.log"
 runtime_blocked_external_write_log="$UI_ROOT/blocked-external-write.log"
 runtime_expected_branch_file="$UI_ROOT/fake-expected-branch.txt"
 runtime_expected_head_file="$UI_ROOT/fake-expected-head.txt"
@@ -53,6 +54,7 @@ verification_item_id=""
 commit_item_id=""
 push_item_id=""
 pull_request_item_id=""
+pull_request_review_item_id=""
 prepared_branch_name=""
 visible_commit_head_before=""
 visible_commit_head_after=""
@@ -104,7 +106,7 @@ write_artifact() {
     printf -- '- Status: `%s`\n' "$status"
     printf -- '- Reason: `%s`\n' "$reason"
     printf -- '- XCTest: `DevelopmentAutomationRuntimeSmokeTests/testApprovedProjectDirectoryCanEditVerifyCommitAndPreparePullRequestBranch`\n'
-    printf -- '- Flow: approved project directory -> `development.pr_workflow.prepare` -> `development.repository.list_files` -> `development.repository.create_file` -> `development.repository.update_file` -> `development.verification.run` -> `development.pr_workflow.commit` -> `development.pr_workflow.push` -> `development.pr_workflow.create_pull_request` with fake Git and GitHub runners; `development.pr_workflow.review_gate` and `development.pr_workflow.merge` remain unqueued in this slice.\n'
+    printf -- '- Flow: approved project directory -> `development.pr_workflow.prepare` -> `development.repository.list_files` -> `development.repository.create_file` -> `development.repository.update_file` -> `development.verification.run` -> `development.pr_workflow.commit` -> `development.pr_workflow.push` -> `development.pr_workflow.create_pull_request` -> `development.pr_workflow.review_gate` with fake Git and GitHub runners; `development.pr_workflow.merge` remains unqueued in this slice.\n'
     printf -- '- Visible UI: Project automation panel -> `project-development-automation-queue` -> `project-development-automation-queue-handoff` -> Assistant Queue approve/run -> receipt\n'
     printf -- '- Queued project: `%s`\n' "${seed_project_id:-not-seeded}"
     printf -- '- Queued task: `%s`\n' "${seed_task_id:-not-seeded}"
@@ -115,13 +117,15 @@ write_artifact() {
     printf -- '- Commit Assistant Queue item: `%s`\n' "${commit_item_id:-not-queued}"
     printf -- '- Push Assistant Queue item: `%s`\n' "${push_item_id:-not-queued}"
     printf -- '- Pull Request Assistant Queue item: `%s`\n' "${pull_request_item_id:-not-queued}"
+    printf -- '- Pull Request Review Gate Assistant Queue item: `%s`\n' "${pull_request_review_item_id:-not-queued}"
     printf -- '- Pull Request URL: `%s`\n' "${runtime_fake_pull_request_url:-not-created}"
     printf -- '- Commit head before: `%s`\n' "${visible_commit_head_before:-not-run}"
     printf -- '- Commit head after: `%s`\n' "${visible_commit_head_after:-not-run}"
     printf -- '- Approval boundary: `requiresPushApproval=true`, `requiresPullRequestApproval=true`\n'
-    printf -- '- External writes: No live GitHub PR creation, review gate, or merge is created by this smoke; branch push uses a local fake branch push wrapper and PR creation uses a smoke-only fake GitHub runner.\n'
+    printf -- '- External writes: No live GitHub PR creation or merge is created by this smoke; branch push uses a local fake branch push wrapper, and PR creation/review status use smoke-only fake GitHub runners.\n'
     printf -- '- Fake push log: `%s`\n' "$(relative_path "$runtime_fake_git_push_log")"
     printf -- '- Fake pull request create log: `%s`\n' "$(relative_path "$runtime_fake_github_pr_log")"
+    printf -- '- Fake pull request review log: `%s`\n' "$(relative_path "$runtime_fake_github_review_log")"
     printf -- '- Workspace retention requested: `%s`\n' "$KEEP_WORKSPACE"
     printf -- '- Runtime database retained: `%s`\n' "$KEEP_DATABASE"
     printf -- '- Workspace root: `%s`\n' "$(relative_path "$WORKSPACE_ROOT")"
@@ -313,6 +317,7 @@ launch_app_for_database_migration() {
     SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BASE="$runtime_pull_request_base_branch" \
     SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_URL="$runtime_fake_pull_request_url" \
     SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_LOG="$runtime_fake_github_pr_log" \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG="$runtime_fake_github_review_log" \
     SOLOPM_RUNTIME_DEVELOPMENT_PR_GIT_EXECUTABLE="$runtime_fake_git_bin/git" \
     SOLOPM_RUNTIME_DEVELOPMENT_PR_PUSH_LOG="$runtime_fake_git_push_log" \
     SOLOPM_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="$runtime_fake_git_push_log" \
@@ -337,6 +342,7 @@ launch_app_for_development_detail() {
     SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BASE="$runtime_pull_request_base_branch" \
     SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_URL="$runtime_fake_pull_request_url" \
     SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_LOG="$runtime_fake_github_pr_log" \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG="$runtime_fake_github_review_log" \
     SOLOPM_RUNTIME_DEVELOPMENT_PR_GIT_EXECUTABLE="$runtime_fake_git_bin/git" \
     SOLOPM_RUNTIME_DEVELOPMENT_PR_PUSH_LOG="$runtime_fake_git_push_log" \
     SOLOPM_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="$runtime_fake_git_push_log" \
@@ -367,6 +373,7 @@ launch_app_for_assistant_queue() {
     SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BASE="$runtime_pull_request_base_branch" \
     SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_URL="$runtime_fake_pull_request_url" \
     SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_LOG="$runtime_fake_github_pr_log" \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG="$runtime_fake_github_review_log" \
     SOLOPM_RUNTIME_DEVELOPMENT_PR_GIT_EXECUTABLE="$runtime_fake_git_bin/git" \
     SOLOPM_RUNTIME_DEVELOPMENT_PR_PUSH_LOG="$runtime_fake_git_push_log" \
     SOLOPM_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="$runtime_fake_git_push_log" \
@@ -746,7 +753,7 @@ fixture_git() {
 }
 
 install_runtime_fake_publish_tools() {
-  rm -f "$runtime_fake_git_push_log" "$runtime_fake_github_pr_log" "$runtime_blocked_external_write_log"
+  rm -f "$runtime_fake_git_push_log" "$runtime_fake_github_pr_log" "$runtime_fake_github_review_log" "$runtime_blocked_external_write_log"
   : >"$runtime_expected_branch_file"
   : >"$runtime_expected_head_file"
   local real_git_literal
@@ -1503,11 +1510,11 @@ verify_runtime_fake_push_log() {
   fi
 }
 
-verify_no_review_or_merge_followup() {
-  local lifecycle_queue_count
-  lifecycle_queue_count="$("$SQLITE3" "$database_path" "SELECT count(*) FROM assistant_queue_items WHERE payload_json LIKE '%development.pr_workflow.review_gate%' OR payload_json LIKE '%development.pr_workflow.merge%';")"
-  if [[ "$lifecycle_queue_count" != "0" ]]; then
-    echo "BLOCKER: PR creation smoke queued review gate or merge unexpectedly" >&2
+verify_no_merge_followup() {
+  local merge_queue_count
+  merge_queue_count="$("$SQLITE3" "$database_path" "SELECT count(*) FROM assistant_queue_items WHERE payload_json LIKE '%development.pr_workflow.merge%';")"
+  if [[ "$merge_queue_count" != "0" ]]; then
+    echo "BLOCKER: runtime PR smoke queued merge unexpectedly" >&2
     return 1
   fi
 
@@ -1536,14 +1543,10 @@ for file in files where file.pathExtension == "json" {
 }
 SWIFT
 )"
-  for unexpected_tool in \
-    "development.pr_workflow.review_gate" \
-    "development.pr_workflow.merge"; do
-    if printf '%s\n' "$receipt_payload_json" | grep -Fx "$unexpected_tool" >/dev/null; then
-      echo "BLOCKER: PR creation smoke created unexpected receipt for $unexpected_tool" >&2
-      return 1
-    fi
-  done
+  if printf '%s\n' "$receipt_payload_json" | grep -Fx "development.pr_workflow.merge" >/dev/null; then
+    echo "BLOCKER: runtime PR smoke created unexpected merge receipt" >&2
+    return 1
+  fi
 }
 
 verify_visible_assistant_queue_push_execution() {
@@ -1758,8 +1761,179 @@ WHERE id='$escaped_item_id';
     "development_commit" \
     "$visible_commit_head_after"
   verify_runtime_fake_pull_request_log
-  verify_no_review_or_merge_followup
+  verify_no_merge_followup
   printf "OK: visible Assistant Queue fake pull request create recorded %s\n" "$runtime_fake_pull_request_url"
+}
+
+verify_visible_pull_request_review_gate_handoff() {
+  if [[ -z "$prepared_branch_name" || -z "$visible_commit_head_after" ]]; then
+    echo "BLOCKER: branch name or reviewed commit OID is missing before PR review gate handoff" >&2
+    return 1
+  fi
+
+  local escaped_pull_request_url
+  local escaped_json_pull_request_url
+  local escaped_branch_name
+  local escaped_json_branch_name
+  local escaped_base_branch
+  local escaped_json_base_branch
+  local queue_sql
+  escaped_pull_request_url="$(sql_escape "$runtime_fake_pull_request_url")"
+  escaped_json_pull_request_url="$(sql_escape "${runtime_fake_pull_request_url//\//\\/}")"
+  escaped_branch_name="$(sql_escape "$prepared_branch_name")"
+  escaped_json_branch_name="$(sql_escape "${prepared_branch_name//\//\\/}")"
+  escaped_base_branch="$(sql_escape "$runtime_pull_request_base_branch")"
+  escaped_json_base_branch="$(sql_escape "${runtime_pull_request_base_branch//\//\\/}")"
+  queue_sql="
+SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END
+FROM assistant_queue_items
+WHERE id LIKE 'automation-request:project-development-pr-review:$seed_project_id:$seed_task_id:%'
+  AND payload_kind='automation_request'
+  AND state='waitingReview'
+  AND risk_level='write'
+  AND approval_json IS NULL
+  AND payload_json LIKE '%development.pr_workflow.review_gate%'
+  AND payload_json LIKE '%reviewGate%'
+  AND (
+    payload_json LIKE '%$escaped_pull_request_url%'
+    OR payload_json LIKE '%$escaped_json_pull_request_url%'
+  )
+  AND (
+    payload_json LIKE '%$escaped_branch_name%'
+    OR payload_json LIKE '%$escaped_json_branch_name%'
+  )
+  AND (
+    payload_json LIKE '%$escaped_base_branch%'
+    OR payload_json LIKE '%$escaped_json_base_branch%'
+  )
+  AND required_capabilities_json LIKE '%providerExecutionApproval%'
+  AND (
+    required_capabilities_json LIKE '%development.pr_workflow.review_gate%'
+    OR required_capabilities_json LIKE '%developmentReviewPullRequestGate%'
+  );
+"
+
+  waitForAXMarkerContaining "project-development-automation-status"
+  scrollProjectDetailDown
+  waitForAXMarkerContaining "project-development-automation-pr-review-queue"
+  pressButtonUntilSQLiteValue \
+    "visible Project automation panel queued pull request review gate into Assistant Queue" \
+    "project-development-automation-pr-review-queue" \
+    "$queue_sql" \
+    "1"
+  pull_request_review_item_id="$(wait_for_nonempty_value \
+    "queued development pull request review gate Assistant Queue item id" \
+    "SELECT id FROM assistant_queue_items WHERE id LIKE 'automation-request:project-development-pr-review:$seed_project_id:$seed_task_id:%' ORDER BY updated_at DESC LIMIT 1;")"
+  verify_no_merge_followup
+}
+
+verify_runtime_fake_pull_request_review_log() {
+  if [[ ! -f "$runtime_fake_github_review_log" ]]; then
+    echo "BLOCKER: fake pull request review gate did not record a log at $runtime_fake_github_review_log" >&2
+    return 1
+  fi
+  local status_count
+  local threads_count
+  status_count="$(grep -c '^action=status$' "$runtime_fake_github_review_log" || true)"
+  threads_count="$(grep -c '^action=threads$' "$runtime_fake_github_review_log" || true)"
+  if [[ "$status_count" != "1" || "$threads_count" != "1" ]]; then
+    echo "BLOCKER: fake pull request review log should contain one status and one threads entry, found status=$status_count threads=$threads_count" >&2
+    cat "$runtime_fake_github_review_log" >&2 || true
+    return 1
+  fi
+  local review_url_path
+  local expected_repository
+  local expected_number
+  review_url_path="${runtime_fake_pull_request_url#https://github.com/}"
+  expected_repository="${review_url_path%%/pull/*}"
+  expected_number="${review_url_path##*/}"
+  for expected_line in \
+    "url=$runtime_fake_pull_request_url" \
+    "branch=$prepared_branch_name" \
+    "base=$runtime_pull_request_base_branch" \
+    "head=$visible_commit_head_after" \
+    "repository=$expected_repository" \
+    "number=$expected_number"; do
+    if ! grep -Fx "$expected_line" "$runtime_fake_github_review_log" >/dev/null; then
+      echo "BLOCKER: fake pull request review log missing $expected_line" >&2
+      cat "$runtime_fake_github_review_log" >&2 || true
+      return 1
+    fi
+  done
+  if [[ -s "$runtime_blocked_external_write_log" ]]; then
+    echo "BLOCKER: unexpected external publish tool call was blocked" >&2
+    cat "$runtime_blocked_external_write_log" >&2 || true
+    return 1
+  fi
+}
+
+verify_visible_assistant_queue_pull_request_review_gate_execution() {
+  if [[ -z "$pull_request_review_item_id" ]]; then
+    echo "BLOCKER: pull request review gate Assistant Queue item id is missing before approve/run" >&2
+    return 1
+  fi
+
+  local escaped_item_id
+  local approval_sql
+  local done_sql
+  escaped_item_id="$(sql_escape "$pull_request_review_item_id")"
+  approval_sql="
+SELECT CASE WHEN state='approved' AND approval_json IS NOT NULL THEN 1 ELSE 0 END
+FROM assistant_queue_items
+WHERE id='$escaped_item_id';
+"
+  done_sql="
+SELECT CASE WHEN state='done' AND approval_json IS NOT NULL THEN 1 ELSE 0 END
+FROM assistant_queue_items
+WHERE id='$escaped_item_id';
+"
+
+  launch_app_for_assistant_queue
+  wait_for_database_table "assistant_queue_items"
+  waitForAXMarkerContaining "assistant-queue-workflow"
+  waitForAXMarkerContaining "assistant-queue-row-$pull_request_review_item_id"
+  pressButtonUntilSQLiteValue \
+    "visible Assistant Queue approved pull request review gate" \
+    "assistant-queue-approve-$pull_request_review_item_id" \
+    "$approval_sql" \
+    "1"
+  launch_app_for_assistant_queue
+  wait_for_database_table "assistant_queue_items"
+  waitForAXMarkerContaining "assistant-queue-workflow"
+  waitForAXMarkerContaining "assistant-queue-row-$pull_request_review_item_id"
+  pressButtonUntilSQLiteValue \
+    "visible Assistant Queue approved and executed fake pull request review gate" \
+    "assistant-queue-run-$pull_request_review_item_id" \
+    "$done_sql" \
+    "1"
+
+  wait_for_receipt_json \
+    "visible Assistant Queue pull request review gate URL" \
+    "$pull_request_review_item_id" \
+    "development.pr_workflow.review_gate" \
+    "pull_request" \
+    "$runtime_fake_pull_request_url"
+  wait_for_receipt_json \
+    "visible Assistant Queue pull request review gate branch" \
+    "$pull_request_review_item_id" \
+    "development.pr_workflow.review_gate" \
+    "development_branch" \
+    "$prepared_branch_name"
+  wait_for_receipt_json \
+    "visible Assistant Queue pull request review gate base" \
+    "$pull_request_review_item_id" \
+    "development.pr_workflow.review_gate" \
+    "development_base_branch" \
+    "$runtime_pull_request_base_branch"
+  wait_for_receipt_json \
+    "visible Assistant Queue pull request review gate" \
+    "$pull_request_review_item_id" \
+    "development.pr_workflow.review_gate" \
+    "development_commit" \
+    "$visible_commit_head_after"
+  verify_runtime_fake_pull_request_review_log
+  verify_no_merge_followup
+  printf "OK: visible Assistant Queue fake pull request review gate passed for %s\n" "$runtime_fake_pull_request_url"
 }
 
 printf "== Runtime development PR smoke ==\n"
@@ -1848,5 +2022,12 @@ verify_visible_pull_request_creation_handoff
 failure_reason="visible Assistant Queue pull request creation execution failed"
 verify_visible_assistant_queue_pull_request_creation_execution
 
-write_artifact "passed" "approved project directory fixture flow reached local commit, fake push, fake PR creation, visible Project automation panel queued branch automation into Assistant Queue, visible Assistant Queue approved and executed local branch preparation, visible Project automation panel queued repository edit review into Assistant Queue, visible Assistant Queue approved and executed repository edit, visible Project automation panel queued verification review into Assistant Queue, visible Assistant Queue approved and executed verification, visible Project automation panel queued commit review into Assistant Queue, visible Assistant Queue approved and executed local commit, visible Project automation panel queued branch push review into Assistant Queue, visible Assistant Queue approved and executed fake branch push, visible Project automation panel queued pull request creation review into Assistant Queue, and visible Assistant Queue approved and executed fake pull request creation"
+failure_reason="visible Project detail pull request review gate handoff failed"
+launch_app_for_development_detail
+verify_visible_pull_request_review_gate_handoff
+
+failure_reason="visible Assistant Queue pull request review gate execution failed"
+verify_visible_assistant_queue_pull_request_review_gate_execution
+
+write_artifact "passed" "approved project directory fixture flow reached local commit, fake push, fake PR creation, fake PR review gate, visible Project automation panel queued branch automation into Assistant Queue, visible Assistant Queue approved and executed local branch preparation, visible Project automation panel queued repository edit review into Assistant Queue, visible Assistant Queue approved and executed repository edit, visible Project automation panel queued verification review into Assistant Queue, visible Assistant Queue approved and executed verification, visible Project automation panel queued commit review into Assistant Queue, visible Assistant Queue approved and executed local commit, visible Project automation panel queued branch push review into Assistant Queue, visible Assistant Queue approved and executed fake branch push, visible Project automation panel queued pull request creation review into Assistant Queue, visible Assistant Queue approved and executed fake pull request creation, visible Project automation panel queued pull request review gate into Assistant Queue, and visible Assistant Queue approved and executed fake pull request review gate"
 printf 'OK: runtime development PR smoke passed. Evidence: %s\n' "$(relative_path "$ARTIFACT_FILE")"

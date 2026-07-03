@@ -697,6 +697,20 @@ private struct ProjectDevelopmentAutomationRecoveryView: View {
                 .accessibilityIdentifier("project-development-automation-pr-create-queue")
                 .accessibilityHint("Adds the pull request creation review to Assistant Queue; review and merge still need separate approval.")
 
+                Button {
+                    _ = viewModel.enqueueDevelopmentPullRequestLifecycleReview(
+                        for: project,
+                        task: task,
+                        operation: .reviewGate
+                    )
+                } label: {
+                    Label("Queue pull request review gate", systemImage: "checkmark.shield")
+                }
+                .disabled(progress?.canQueuePullRequestReviewGate != true)
+                .help("Uses the pull request creation receipt to queue review, CI, unresolved thread, and mergeability checks.")
+                .accessibilityIdentifier("project-development-automation-pr-review-queue")
+                .accessibilityHint("Adds only the receipt-backed pull request review gate to Assistant Queue; merge still needs separate approval.")
+
                 if let queueHandoff = progress?.queueHandoff {
                     VStack(alignment: .leading, spacing: 4) {
                         Label("Assistant Queue handoff", systemImage: "tray.full")
