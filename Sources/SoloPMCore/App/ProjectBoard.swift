@@ -2667,7 +2667,8 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         let progress = developmentAutomationProgress(for: project, task: task)
-        guard progress.canQueuePullRequestCreationReview else {
+        guard progress.canQueuePullRequestCreationReview,
+              let expectedHeadOID = progress.latestCommitOID else {
             developmentAutomationReviewPlan = nil
             todayCommandFeedback = progress.nextApproval?.detail
                 ?? String(localized: "Push the branch before queueing pull request creation.")
@@ -2691,11 +2692,12 @@ public final class ProjectBoardViewModel: ObservableObject {
                 body ?? draft.body,
                 redactor: DeveloperSecretRedactor()
             )
+            let reviewedExpectedHeadOID = try DevelopmentGitHubPRCommandPolicy.validatedHeadCommitOID(expectedHeadOID)
 
             let plan = ActionPlan(
-                id: "development-pr-create:\(project.id):\(draft.taskID):\(Self.developmentPullRequestCreationPlanDigest(projectID: project.id, taskID: draft.taskID, branchName: draft.branchName, baseBranch: reviewedBaseBranch, title: reviewedTitle, body: reviewedBody))",
+                id: "development-pr-create:\(project.id):\(draft.taskID):\(Self.developmentPullRequestCreationPlanDigest(projectID: project.id, taskID: draft.taskID, branchName: draft.branchName, expectedHeadOID: reviewedExpectedHeadOID, baseBranch: reviewedBaseBranch, title: reviewedTitle, body: reviewedBody))",
                 userInput: "Create a GitHub pull request for \(draft.branchName) after reviewing base branch, title, and body.",
-                summary: "Create pull request from \(draft.branchName) into \(reviewedBaseBranch). Base branch \(reviewedBaseBranch), title and body were reviewed before queueing. Execution rechecks the current branch, clean workspace, and GitHub origin before creating the pull request.",
+                summary: "Create pull request from \(draft.branchName) at reviewed commit \(reviewedExpectedHeadOID) into \(reviewedBaseBranch). Base branch \(reviewedBaseBranch), title and body were reviewed before queueing. Execution rechecks the current branch, reviewed commit, clean workspace, and GitHub origin before creating the pull request.",
                 actions: [
                     PlanAction(
                         id: "development-pr-create",
@@ -2704,6 +2706,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                             "projectId": .number(Double(project.id)),
                             "taskId": .number(Double(draft.taskID)),
                             "branchName": .string(draft.branchName),
+                            "expectedHeadOID": .string(reviewedExpectedHeadOID),
                             "baseBranch": .string(reviewedBaseBranch),
                             "title": .string(reviewedTitle),
                             "body": .string(reviewedBody)
@@ -4261,13 +4264,14 @@ public final class ProjectBoardViewModel: ObservableObject {
         projectID: Int64,
         taskID: Int64,
         branchName: String,
+        expectedHeadOID: String,
         baseBranch: String,
         title: String,
         body: String
     ) -> String {
         // Approval identity must change when any reviewed PR field changes; otherwise
         // Assistant Queue's duplicate protection can preserve an approval for stale text.
-        developmentReviewedInputDigest([String(projectID), String(taskID), branchName, baseBranch, title, body])
+        developmentReviewedInputDigest([String(projectID), String(taskID), branchName, expectedHeadOID, baseBranch, title, body])
     }
 
     private static func developmentReviewedInputDigest(_ parts: [String]) -> String {

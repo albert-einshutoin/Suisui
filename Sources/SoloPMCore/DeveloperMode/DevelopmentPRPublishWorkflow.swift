@@ -27,6 +27,13 @@ public protocol GitHubCLICommandRunner: Sendable {
 }
 
 public struct ProcessGitHubCLICommandRunner: GitHubCLICommandRunner {
+    private static let runtimeDevelopmentSmokeBookmarkFlagKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK"
+    private static let runtimeDevelopmentExpectedBranchKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BRANCH"
+    private static let runtimeDevelopmentExpectedBaseKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BASE"
+    private static let runtimeDevelopmentPullRequestURLKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_URL"
+    private static let runtimeDevelopmentPullRequestCreateLogKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_LOG"
+    private static let runtimeDevelopmentBlockedExternalWriteLogKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG"
+
     public init() {}
 
     public func runGitHub(arguments: [String], workingDirectory: URL) throws -> GitHubCLICommandOutput {
@@ -41,6 +48,17 @@ public struct ProcessGitHubCLICommandRunner: GitHubCLICommandRunner {
         let process = Process()
         let standardOutput = Pipe()
         let standardError = Pipe()
+        let environment = ProcessInfo.processInfo.environment
+
+        // Runtime UI smoke must exercise the approval path without creating a
+        // live GitHub PR; only the exact reviewed branch/base command is simulated.
+        if let smokeOutput = Self.runtimeDevelopmentSmokePullRequestCreateOutput(
+            arguments: arguments,
+            workingDirectory: workingDirectory,
+            environment: environment
+        ) {
+            return smokeOutput
+        }
 
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["gh"] + arguments
@@ -64,6 +82,88 @@ public struct ProcessGitHubCLICommandRunner: GitHubCLICommandRunner {
             exitCode: process.terminationStatus
         )
         #endif
+    }
+
+    private static func runtimeDevelopmentSmokePullRequestCreateOutput(
+        arguments: [String],
+        workingDirectory: URL,
+        environment: [String: String]
+    ) -> GitHubCLICommandOutput? {
+        guard environment[Self.runtimeDevelopmentSmokeBookmarkFlagKey] == "1" else {
+            return nil
+        }
+
+        let commandPreview = (["gh"] + arguments).joined(separator: " ")
+        let expectedBranch = environment[Self.runtimeDevelopmentExpectedBranchKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let expectedBase = environment[Self.runtimeDevelopmentExpectedBaseKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let pullRequestURL = environment[Self.runtimeDevelopmentPullRequestURLKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let createLogPath = environment[Self.runtimeDevelopmentPullRequestCreateLogKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let blockedPath = environment[Self.runtimeDevelopmentBlockedExternalWriteLogKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard arguments.count == 12,
+              arguments[0] == "pr",
+              arguments[1] == "create",
+              arguments[4] == "--base",
+              arguments[5] == expectedBase,
+              arguments[6] == "--head",
+              arguments[7] == expectedBranch,
+              arguments[10] == "--body-file",
+              !expectedBranch.isEmpty,
+              !expectedBase.isEmpty,
+              !pullRequestURL.isEmpty,
+              DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: arguments),
+              (try? DevelopmentGitHubPRCommandPolicy.validatedPullRequestURL(
+                pullRequestURL,
+                redactor: DeveloperSecretRedactor()
+              )) != nil else {
+            appendRuntimeDevelopmentSmokeLog(
+                "blocked GitHub CLI command: \(commandPreview)\n",
+                path: blockedPath
+            )
+            return GitHubCLICommandOutput(
+                standardOutput: "",
+                standardError: "blocked GitHub CLI command: \(commandPreview)",
+                exitCode: 43
+            )
+        }
+
+        let bodyFileURL = URL(fileURLWithPath: arguments[11])
+        let bodyByteCount = (try? Data(contentsOf: bodyFileURL).count) ?? -1
+        let log = """
+        cwd=\(workingDirectory.path)
+        args=\(commandPreview)
+        branch=\(expectedBranch)
+        base=\(expectedBase)
+        url=\(pullRequestURL)
+        bodyBytes=\(bodyByteCount)
+        """
+        appendRuntimeDevelopmentSmokeLog(log + "\n", path: createLogPath)
+        return GitHubCLICommandOutput(
+            standardOutput: "simulated pull request create\n\(pullRequestURL)\n",
+            standardError: "",
+            exitCode: 0
+        )
+    }
+
+    private static func appendRuntimeDevelopmentSmokeLog(_ text: String, path: String?) {
+        guard let path, !path.isEmpty else {
+            return
+        }
+        let url = URL(fileURLWithPath: path)
+        let data = Data(text.utf8)
+        if FileManager.default.fileExists(atPath: url.path),
+           let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            handle.write(data)
+        } else {
+            try? data.write(to: url, options: .atomic)
+        }
     }
 }
 
@@ -1559,16 +1659,17 @@ public struct DevelopmentPullRequestCreationTool: Tool {
     public let name: ActionTool = .developmentCreatePullRequest
     public let description: String = "Create a GitHub pull request for a reviewed pushed branch after explicit approval."
     public let inputSchema = ToolInputSchema(
-        required: ["projectId", "branchName", "baseBranch", "title", "body"],
+        required: ["projectId", "branchName", "baseBranch", "title", "body", "expectedHeadOID"],
         properties: [
             "projectId": "integer",
             "taskId": "integer",
             "branchName": "string",
             "baseBranch": "string",
             "title": "string",
-            "body": "string"
+            "body": "string",
+            "expectedHeadOID": "string"
         ],
-        nonBlank: ["branchName", "baseBranch", "title", "body"]
+        nonBlank: ["branchName", "baseBranch", "title", "body", "expectedHeadOID"]
     )
     public let permissionLevel: ToolPermissionLevel = .writeWithApproval
 
@@ -1616,6 +1717,9 @@ public struct DevelopmentPullRequestCreationTool: Tool {
                 args.requiredString("body"),
                 redactor: redactor
             )
+            let expectedHeadOID = try DevelopmentGitHubPRCommandPolicy.validatedHeadCommitOID(
+                args.requiredTrimmedString("expectedHeadOID")
+            )
             let project = try projectStore.get(id: projectID)
             let scope = try ProjectWorkspaceScope(
                 project: project,
@@ -1640,6 +1744,21 @@ public struct DevelopmentPullRequestCreationTool: Tool {
                     remoteURL: originDestination.remoteURL,
                     workingDirectory: scope.rootURL
                 )
+                guard headVerification.localHeadOID.lowercased() == expectedHeadOID.lowercased() else {
+                    return failedCommandResult(
+                        projectID: project.id,
+                        branchName: branchName,
+                        baseBranch: baseBranch,
+                        remoteRepository: originRepository,
+                        localHeadOID: headVerification.localHeadOID,
+                        remoteHeadOID: headVerification.remoteHeadOID,
+                        expectedHeadOID: expectedHeadOID,
+                        error: .reviewedHeadMismatch(
+                            expected: expectedHeadOID,
+                            actual: headVerification.localHeadOID
+                        )
+                    )
+                }
                 if let blockingError = headVerification.blockingError {
                     return failedCommandResult(
                         projectID: project.id,
@@ -1648,6 +1767,7 @@ public struct DevelopmentPullRequestCreationTool: Tool {
                         remoteRepository: originRepository,
                         localHeadOID: headVerification.localHeadOID,
                         remoteHeadOID: headVerification.remoteHeadOID,
+                        expectedHeadOID: expectedHeadOID,
                         error: blockingError
                     )
                 }
@@ -1728,6 +1848,7 @@ public struct DevelopmentPullRequestCreationTool: Tool {
                         "pullRequestURL": .string(pullRequestURL),
                         "remoteRepository": .string(originRepository.displayNameWithOwner),
                         "headOid": .string(headVerification.localHeadOID),
+                        "expectedHeadOID": .string(expectedHeadOID),
                         "workspaceClean": .bool(true)
                     ],
                     rollbackMetadata: [
@@ -1776,6 +1897,7 @@ public struct DevelopmentPullRequestCreationTool: Tool {
         pullRequestURL: String? = nil,
         localHeadOID: String? = nil,
         remoteHeadOID: String? = nil,
+        expectedHeadOID: String? = nil,
         error: DevelopmentPRPublishWorkflowError
     ) -> ToolResult {
         var output: [String: JSONValue] = [
@@ -1796,6 +1918,9 @@ public struct DevelopmentPullRequestCreationTool: Tool {
         }
         if let remoteHeadOID {
             output["remoteHeadOid"] = .string(remoteHeadOID)
+        }
+        if let expectedHeadOID {
+            output["expectedHeadOID"] = .string(expectedHeadOID)
         }
         var rollbackMetadata: [String: JSONValue] = ["branchName": .string(branchName)]
         if let pullRequestURL {

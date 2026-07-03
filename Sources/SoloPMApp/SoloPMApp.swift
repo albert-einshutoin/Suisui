@@ -687,6 +687,16 @@ private struct ProjectDevelopmentAutomationRecoveryView: View {
                 .accessibilityIdentifier("project-development-automation-push-queue")
                 .accessibilityHint("Adds the reviewed branch push to Assistant Queue before pull request creation.")
 
+                Button {
+                    _ = viewModel.enqueueDevelopmentPullRequestCreationReview(for: project, task: task)
+                } label: {
+                    Label("Queue pull request creation review", systemImage: "arrow.up.right.square")
+                }
+                .disabled(progress?.canQueuePullRequestCreationReview != true)
+                .help("Queues GitHub pull request creation with the reviewed default base branch, title, and body.")
+                .accessibilityIdentifier("project-development-automation-pr-create-queue")
+                .accessibilityHint("Adds the pull request creation review to Assistant Queue; review and merge still need separate approval.")
+
                 if let queueHandoff = progress?.queueHandoff {
                     VStack(alignment: .leading, spacing: 4) {
                         Label("Assistant Queue handoff", systemImage: "tray.full")
@@ -5013,15 +5023,24 @@ private enum AppRuntimeFactory {
             logger: auditLogger
         ))
         try registry.register(AuditedTool(
-            base: DevelopmentPullRequestCreationTool(projectStore: projectStore),
+            base: DevelopmentPullRequestCreationTool(
+                projectStore: projectStore,
+                bookmarkResolver: developmentBookmarkResolver
+            ),
             logger: auditLogger
         ))
         try registry.register(AuditedTool(
-            base: DevelopmentPullRequestReviewGateTool(projectStore: projectStore),
+            base: DevelopmentPullRequestReviewGateTool(
+                projectStore: projectStore,
+                bookmarkResolver: developmentBookmarkResolver
+            ),
             logger: auditLogger
         ))
         try registry.register(AuditedTool(
-            base: DevelopmentPullRequestMergeTool(projectStore: projectStore),
+            base: DevelopmentPullRequestMergeTool(
+                projectStore: projectStore,
+                bookmarkResolver: developmentBookmarkResolver
+            ),
             logger: auditLogger
         ))
         for requiredTool in [

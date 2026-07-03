@@ -1921,7 +1921,7 @@ public enum ExecutionReceiptFactory {
             appendReference(kind: .project, keys: ["projectId", "projectID"], output: values, references: &references)
             appendReference(kind: .developmentBranch, keys: ["branchName"], output: values, references: &references)
             appendReference(kind: .developmentBaseBranch, keys: ["baseBranch"], output: values, references: &references)
-            appendReference(kind: .developmentCommit, keys: ["headRefOid", "headRefOID", "headOid", "headOID"], output: values, references: &references)
+            appendReference(kind: .developmentCommit, keys: ["headRefOid", "headRefOID", "headOid", "headOID", "expectedHeadOID"], output: values, references: &references)
             appendReference(kind: .pullRequest, keys: ["pullRequestURL"], output: values, references: &references)
         case .developmentReviewPullRequestGate:
             appendReference(kind: .project, keys: ["projectId", "projectID"], output: values, references: &references)

@@ -203,7 +203,8 @@ final class DevelopmentAutomationRuntimeSmokeTests: XCTestCase {
                 "branchName": .string(branchName),
                 "baseBranch": .string(baseBranch),
                 "title": .string("Add development runtime smoke fixture"),
-                "body": .string("## Summary\n- Adds approved project-directory runtime smoke evidence\n")
+                "body": .string("## Summary\n- Adds approved project-directory runtime smoke evidence\n"),
+                "expectedHeadOID": .string(headOID)
             ],
             context: context
         )
@@ -214,6 +215,7 @@ final class DevelopmentAutomationRuntimeSmokeTests: XCTestCase {
             .string(pullRequestURL)
         )
         XCTAssertEqual(pullRequestResult.output["headOid"], .string(headOID))
+        XCTAssertEqual(pullRequestResult.output["expectedHeadOID"], .string(headOID))
 
         let reviewGateResult = try DevelopmentPullRequestReviewGateTool(
             projectStore: stores.projects,

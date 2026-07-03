@@ -1175,6 +1175,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
         let draft = try XCTUnwrap(viewModel.developmentPullRequestCreationDraft(for: assignedProject, task: currentTask))
         let branchName = "feature/solopm-\(project.id)-\(task.id)-implement-oauth-callback"
+        let headOID = "0123456789abcdef0123456789abcdef01234567"
 
         XCTAssertEqual(draft.baseBranch, "main")
         XCTAssertEqual(draft.branchName, branchName)
@@ -1198,12 +1199,14 @@ final class ProjectBoardStoreTests: XCTestCase {
             id: "receipt-commit",
             projectID: project.id,
             branchName: branchName,
+            commitOID: headOID,
             toolName: ActionTool.developmentCommitChanges.rawValue
         ))
         try receiptStore.save(developmentAutomationReceipt(
             id: "receipt-push",
             projectID: project.id,
             branchName: branchName,
+            commitOID: headOID,
             toolName: ActionTool.developmentPushBranch.rawValue
         ))
 
@@ -1234,11 +1237,21 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertTrue(action.requiresUserConfirmation)
         XCTAssertEqual(action.arguments["projectId"], .number(Double(project.id)))
         XCTAssertEqual(action.arguments["branchName"], .string(branchName))
+        XCTAssertEqual(action.arguments["expectedHeadOID"], .string(headOID))
         XCTAssertEqual(action.arguments["baseBranch"], .string("feature/phase14-product-completion"))
         XCTAssertEqual(action.arguments["title"], .string("Add OAuth callback support"))
         XCTAssertEqual(action.arguments["body"], .string("## Summary\n- Add reviewed OAuth callback support\n"))
+        XCTAssertTrue(plan.summary.contains("reviewed commit \(headOID)"))
         XCTAssertTrue(plan.summary.contains("Base branch feature/phase14-product-completion"))
         XCTAssertTrue(plan.summary.contains("title and body were reviewed before queueing"))
+
+        let approvedItem = try AssistantQueueStateMachine.approve(
+            item,
+            reviewerID: "runtime-smoke"
+        )
+        let approvedSnapshot = AssistantQueueReadModel.snapshot(from: [approvedItem])
+        let approvedRow = try XCTUnwrap(approvedSnapshot.rows.first)
+        XCTAssertTrue(approvedRow.canRun)
 
         XCTAssertTrue(viewModel.enqueueDevelopmentPullRequestCreationReview(
             for: assignedProject,
