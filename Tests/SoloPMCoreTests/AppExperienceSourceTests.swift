@@ -4346,6 +4346,29 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(audit.contains("Status: passed for release-machine scope."))
     }
 
+    func testPhase14UXAccessFlowAuditMapsHardToReachPathsToFollowUps() throws {
+        let clickPath = try readPackageFile("docs/ux/click-path-audit.md")
+
+        XCTAssertTrue(clickPath.contains("## Phase 14 access-flow map (2026-07-03)"))
+        XCTAssertTrue(clickPath.contains("| User goal | Access flow | Current reachability | Follow-up / PR |"))
+        XCTAssertTrue(clickPath.contains("app launch -> sidebar `Schedule` -> `Generate Draft` -> `Queue Calendar Apply` -> Assistant Queue approval"))
+        XCTAssertTrue(clickPath.contains("app launch -> sidebar `Done` -> completed task row -> `Follow Up` / `Reopen`"))
+        XCTAssertTrue(clickPath.contains("app launch -> `Settings...` / `Command+,` -> `Sync` -> Google Calendar save flow -> `Save Calendar` -> `Check Readiness`"))
+        XCTAssertTrue(clickPath.contains("app launch -> Voice Command -> record or type -> `Save to Inbox` / `Generate Plan` -> Inbox or Assistant Queue review"))
+        XCTAssertTrue(clickPath.contains("developer/release -> `./script/build_and_run.sh --verify` -> Project Board visible-window proof"))
+
+        for token in ["#208 / PR #218", "#209 / PR #217", "#210 / PR #215", "#211 / PR #216", "#212 / PR #214"] {
+            XCTAssertTrue(clickPath.contains(token), "Missing Phase 14 child issue/PR mapping: \(token)")
+        }
+
+        XCTAssertTrue(clickPath.contains("## Phase 14 hard-to-access or unproven paths"))
+        XCTAssertTrue(clickPath.contains("| Settings Google Calendar save/readiness |"))
+        XCTAssertTrue(clickPath.contains("| Schedule apply after draft generation |"))
+        XCTAssertTrue(clickPath.contains("| Done row recovery actions |"))
+        XCTAssertTrue(clickPath.contains("| Voice Command first-run path |"))
+        XCTAssertTrue(clickPath.contains("| Launch visible-window verifier |"))
+    }
+
     func testRegressionRiskMapExistsAndCoversPrimaryScreens() throws {
         let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
         let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
