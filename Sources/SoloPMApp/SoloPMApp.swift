@@ -1151,44 +1151,134 @@ private struct VoiceCaptureView: View {
         _viewModel = StateObject(wrappedValue: viewModel)
     }
 
+    private var isVoiceCommandInputEmpty: Bool {
+        viewModel.draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var actionReadinessMessage: String {
+        switch viewModel.phase {
+        case .recording:
+            String(localized: "Stop recording to transcribe before Inbox capture or planning.")
+        case .transcribing:
+            String(localized: "Transcription is running; Save to Inbox unlocks after the recording is transcribed.")
+        case .generatingPlan:
+            String(localized: "Plan generation is running; review appears below before execution.")
+        case .needsClarification:
+            String(localized: "Answer the clarification question before saving or generating a plan.")
+        case .failed:
+            String(localized: "Resolve the current voice warning before saving or generating a plan.")
+        case .idle, .reviewReady:
+            if isVoiceCommandInputEmpty {
+                String(localized: "Type a command to generate a plan, or record audio to save a transcript to Inbox.")
+            } else if viewModel.canSaveDraftToInbox && viewModel.canGeneratePlan {
+                String(localized: "Save the transcript to Inbox, or generate an approval-gated plan.")
+            } else if viewModel.canGeneratePlan {
+                String(localized: "Typed commands can generate approval-gated plans. Record audio first to save a voice capture to Inbox.")
+            } else {
+                String(localized: "Review the command before choosing Inbox capture or an approval-gated plan.")
+            }
+        }
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Label("Voice Command", systemImage: "mic")
-                        .font(.headline)
-                    Spacer()
-                    Button {
-                        viewModel.clear()
-                        clarificationAnswer = ""
-                    } label: {
-                        Label("Clear", systemImage: "xmark.circle")
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Voice Command", systemImage: "mic")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    viewModel.clear()
+                    clarificationAnswer = ""
+                } label: {
+                    Label("Clear", systemImage: "xmark.circle")
+                }
+                .disabled(viewModel.draft.text.isEmpty && viewModel.planningResponse == nil)
+                .accessibilityIdentifier("voice-command-clear")
+            }
+
+            StatusRow(phase: viewModel.phase)
+            if let message = viewModel.auditErrorMessage {
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
+            TextField(
+                "",
+                text: Binding(
+                    get: { viewModel.draft.text },
+                    set: { viewModel.updateDraftText($0) }
+                ),
+                axis: .vertical
+            )
+            .textFieldStyle(.plain)
+            .font(.body)
+            .lineLimit(5...8)
+            .padding(8)
+            .frame(minHeight: 150, idealHeight: 180, maxHeight: 180)
+            .overlay(alignment: .topLeading) {
+                if isVoiceCommandInputEmpty {
+                    VoiceCommandInputPlaceholder()
+                        .padding(.top, 8)
+                        .padding(.horizontal, 8)
+                        .allowsHitTesting(false)
+                }
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(.quaternary)
+            }
+            .accessibilityIdentifier("voice-command-input")
+
+            VoiceCommandActionReadinessRow(message: actionReadinessMessage)
+
+            HStack {
+                Button {
+                    if viewModel.isRecording {
+                        Task {
+                            await viewModel.stopRecording(
+                                outputURL: recordingOutputURL()
+                            )
+                        }
+                    } else {
+                        Task {
+                            await viewModel.startRecording()
+                        }
                     }
-                    .disabled(viewModel.draft.text.isEmpty && viewModel.planningResponse == nil)
-                    .accessibilityIdentifier("voice-command-clear")
+                } label: {
+                    Label(viewModel.isRecording ? "Stop" : "Record", systemImage: viewModel.isRecording ? "stop.circle" : "record.circle")
                 }
+                .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .transcribing)
+                .accessibilityIdentifier("voice-command-record")
 
-                StatusRow(phase: viewModel.phase)
-                if let message = viewModel.auditErrorMessage {
-                    Label(message, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                Button {
+                    viewModel.saveDraftToInbox()
+                    if viewModel.inboxCaptureResult != nil {
+                        NotificationCenter.default.post(name: .soloPMProjectBoardDidChange, object: nil)
+                    }
+                } label: {
+                    Label("Save to Inbox", systemImage: "tray.and.arrow.down")
                 }
+                .disabled(!viewModel.canSaveDraftToInbox)
+                .accessibilityIdentifier("voice-command-save-to-inbox")
 
-                TextEditor(
-                    text: Binding(
-                        get: { viewModel.draft.text },
-                        set: { viewModel.updateDraftText($0) }
-                    )
-                )
-                .font(.body)
-                .frame(minHeight: 180, idealHeight: 220)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(.quaternary)
+                Spacer()
+
+                Button {
+                    Task {
+                        await viewModel.generatePlan()
+                    }
+                } label: {
+                    Label("Generate Plan", systemImage: "wand.and.stars")
                 }
-                .accessibilityIdentifier("voice-command-input")
+                .buttonStyle(.borderedProminent)
+                .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .recording || viewModel.phase == .transcribing)
+                .accessibilityIdentifier("voice-command-generate-plan")
+                .accessibilityHint(localizedSettingsDisplay(actionReadinessMessage))
+            }
 
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
                 if let routingResult = viewModel.routingResult {
                     VoiceIntentPreview(result: routingResult)
                 }
@@ -1229,50 +1319,6 @@ private struct VoiceCaptureView: View {
                     }
                 }
 
-                HStack {
-                    Button {
-                        if viewModel.isRecording {
-                            Task {
-                                await viewModel.stopRecording(
-                                    outputURL: recordingOutputURL()
-                                )
-                            }
-                        } else {
-                            Task {
-                                await viewModel.startRecording()
-                            }
-                        }
-                    } label: {
-                        Label(viewModel.isRecording ? "Stop" : "Record", systemImage: viewModel.isRecording ? "stop.circle" : "record.circle")
-                    }
-                    .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .transcribing)
-                    .accessibilityIdentifier("voice-command-record")
-
-                    Button {
-                        viewModel.saveDraftToInbox()
-                        if viewModel.inboxCaptureResult != nil {
-                            NotificationCenter.default.post(name: .soloPMProjectBoardDidChange, object: nil)
-                        }
-                    } label: {
-                        Label("Save to Inbox", systemImage: "tray.and.arrow.down")
-                    }
-                    .disabled(!viewModel.canSaveDraftToInbox)
-                    .accessibilityIdentifier("voice-command-save-to-inbox")
-
-                    Spacer()
-
-                    Button {
-                        Task {
-                            await viewModel.generatePlan()
-                        }
-                    } label: {
-                        Label("Generate Plan", systemImage: "wand.and.stars")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!viewModel.canGeneratePlan)
-                    .accessibilityIdentifier("voice-command-generate-plan")
-                }
-
                 if let item = viewModel.assistantQueueItem {
                     Divider()
                     AssistantQueuePanel(
@@ -1289,10 +1335,13 @@ private struct VoiceCaptureView: View {
                     Divider()
                     ActionPlanPreview(response: response)
                 }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityIdentifier("voice-command-root")
         .onChange(of: viewModel.dailyPlanningReviewRequest) { _, request in
             guard let request else {
@@ -1347,6 +1396,45 @@ private struct VoiceCaptureView: View {
             object: nil,
             userInfo: [SoloPMAssistantQueueBridge.requestUserInfoKey: bridgeRequest]
         )
+    }
+}
+
+private struct VoiceCommandInputPlaceholder: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Try one of these commands")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            placeholderExample("Capture follow-up for launch review", systemImage: "tray")
+            placeholderExample("Plan tomorrow: review release risks", systemImage: "checklist")
+            Text("Inbox captures stay local. Plans wait in Assistant Queue before execution.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(8)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("voice-command-input-placeholder")
+    }
+
+    private func placeholderExample(_ text: LocalizedStringKey, systemImage: String) -> some View {
+        Label(text, systemImage: systemImage)
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+    }
+}
+
+private struct VoiceCommandActionReadinessRow: View {
+    let message: String
+
+    var body: some View {
+        Label(localizedSettingsDisplay(message), systemImage: "info.circle")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("voice-command-action-readiness")
     }
 }
 
