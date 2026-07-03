@@ -28,6 +28,13 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertFalse(script.contains("sleep 1\n    pgrep -x \"$APP_NAME\" >/dev/null\n    ;;"))
     }
 
+    func testVerifyModeDefaultTimeoutAllowsColdSwiftUILaunchWindowRecovery() throws {
+        let script = try readPackageFile("script/build_and_run.sh")
+
+        XCTAssertTrue(script.contains("VERIFY_TIMEOUT_SECONDS=\"${SOLOPM_VERIFY_TIMEOUT_SECONDS:-30}\""))
+        XCTAssertFalse(script.contains("VERIFY_TIMEOUT_SECONDS=\"${SOLOPM_VERIFY_TIMEOUT_SECONDS:-12}\""))
+    }
+
     func testWindowlessSavedStateStillShowsProjectBoardOnLaunch() throws {
         let script = try readPackageFile("script/build_and_run.sh")
         let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
