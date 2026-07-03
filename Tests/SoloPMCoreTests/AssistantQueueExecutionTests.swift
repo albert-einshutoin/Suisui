@@ -260,6 +260,8 @@ final class AssistantQueueExecutionTests: XCTestCase {
             workspaceBookmarkData: Data("approved-development-push-bookmark".utf8)
         )
         let branchName = "feature/solopm-\(project.id)-push-queue"
+        let headOID = String(repeating: "a", count: 40)
+        let pushRefSpec = "\(headOID):refs/heads/\(branchName)"
         let item = AssistantQueueAdapter.makeItem(
             actionPlan: ActionPlan(
                 id: "development-push-queue",
@@ -271,7 +273,8 @@ final class AssistantQueueExecutionTests: XCTestCase {
                         tool: .developmentPushBranch,
                         arguments: [
                             "projectId": .number(Double(project.id)),
-                            "branchName": .string(branchName)
+                            "branchName": .string(branchName),
+                            "expectedHeadOID": .string(headOID)
                         ],
                         riskLevel: .write,
                         requiresUserConfirmation: true
@@ -292,11 +295,15 @@ final class AssistantQueueExecutionTests: XCTestCase {
             output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
         )
         gitRunner.stub(
+            arguments: ["rev-parse", "HEAD"],
+            output: GitCommandOutput(standardOutput: "\(headOID)\n", standardError: "", exitCode: 0)
+        )
+        gitRunner.stub(
             arguments: ["remote", "get-url", "--push", "--all", "origin"],
             output: GitCommandOutput(standardOutput: "git@github.com:acme/solo-pm.git\n", standardError: "", exitCode: 0)
         )
         gitRunner.stub(
-            arguments: ["push", "-u", "origin", branchName],
+            arguments: ["push", "-u", "origin", pushRefSpec],
             output: GitCommandOutput(standardOutput: "branch pushed\n", standardError: "", exitCode: 0)
         )
         let registry = try ToolRegistry(tools: [
@@ -324,11 +331,13 @@ final class AssistantQueueExecutionTests: XCTestCase {
         XCTAssertEqual(receipt.assistantQueueItemID, approved.id)
         XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: String(project.id))))
         XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentCommit, id: headOID)))
         XCTAssertTrue(receipt.actions.first?.outputSummary?.contains("Remote repository acme/solo-pm") == true)
         XCTAssertEqual(gitRunner.recordedInvocations, [
             GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["rev-parse", "HEAD"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
             GitCommandInvocation(arguments: ["remote", "get-url", "--push", "--all", "origin"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
-            GitCommandInvocation(arguments: ["push", "-u", "origin", branchName], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+            GitCommandInvocation(arguments: ["push", "-u", "origin", pushRefSpec], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
         ])
     }
 
@@ -345,6 +354,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             workspaceBookmarkData: Data("approved-development-push-bookmark".utf8)
         )
         let branchName = "feature/solopm-\(project.id)-push-queue"
+        let headOID = String(repeating: "b", count: 40)
         let item = AssistantQueueAdapter.makeItem(
             actionPlan: ActionPlan(
                 id: "development-push-invalid-origin",
@@ -356,7 +366,8 @@ final class AssistantQueueExecutionTests: XCTestCase {
                         tool: .developmentPushBranch,
                         arguments: [
                             "projectId": .number(Double(project.id)),
-                            "branchName": .string(branchName)
+                            "branchName": .string(branchName),
+                            "expectedHeadOID": .string(headOID)
                         ],
                         riskLevel: .write,
                         requiresUserConfirmation: true
@@ -375,6 +386,10 @@ final class AssistantQueueExecutionTests: XCTestCase {
         gitRunner.stub(
             arguments: ["status", "--short", "--branch"],
             output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        gitRunner.stub(
+            arguments: ["rev-parse", "HEAD"],
+            output: GitCommandOutput(standardOutput: "\(headOID)\n", standardError: "", exitCode: 0)
         )
         gitRunner.stub(
             arguments: ["remote", "get-url", "--push", "--all", "origin"],
@@ -407,6 +422,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
         XCTAssertTrue(receipt.actions.first?.errorSummary?.contains("Origin remote must resolve to a GitHub repository.") == true)
         XCTAssertEqual(gitRunner.recordedInvocations, [
             GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["rev-parse", "HEAD"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
             GitCommandInvocation(arguments: ["remote", "get-url", "--push", "--all", "origin"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
         ])
     }

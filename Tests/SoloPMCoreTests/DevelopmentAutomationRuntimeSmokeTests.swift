@@ -173,12 +173,14 @@ final class DevelopmentAutomationRuntimeSmokeTests: XCTestCase {
         ).execute(
             arguments: [
                 "projectId": .number(Double(project.id)),
-                "branchName": .string(branchName)
+                "branchName": .string(branchName),
+                "expectedHeadOID": .string(headOID)
             ],
             context: context
         )
 
         XCTAssertEqual(pushResult.status, .succeeded)
+        XCTAssertEqual(pushResult.output["headRefOid"], .string(headOID))
         XCTAssertEqual(pushResult.output["requiresPullRequestApproval"], .bool(true))
         XCTAssertEqual(pushResult.output["remoteRepository"], .string("albert-einshutoin/soloPM"))
 
@@ -294,8 +296,9 @@ final class DevelopmentAutomationRuntimeSmokeTests: XCTestCase {
         ])
         XCTAssertEqual(lifecycleGitRunner.recordedInvocations, [
             GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
+            GitCommandInvocation(arguments: ["rev-parse", "HEAD"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
             GitCommandInvocation(arguments: ["remote", "get-url", "--push", "--all", "origin"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
-            GitCommandInvocation(arguments: ["push", "-u", "origin", branchName], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
+            GitCommandInvocation(arguments: ["push", "-u", "origin", "\(headOID):refs/heads/\(branchName)"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
             GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
             GitCommandInvocation(arguments: ["remote", "get-url", "--push", "--all", "origin"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
             GitCommandInvocation(arguments: ["rev-parse", "HEAD"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
@@ -403,7 +406,7 @@ private final class RuntimeSmokePullRequestGitRunner: GitCommandRunner, @uncheck
                 standardError: "",
                 exitCode: 0
             )
-        case ["push", "-u", "origin", branchName]:
+        case ["push", "-u", "origin", "\(headOID):refs/heads/\(branchName)"]:
             return GitCommandOutput(
                 standardOutput: "branch '\(branchName)' set up to track 'origin/\(branchName)'.\n",
                 standardError: "",

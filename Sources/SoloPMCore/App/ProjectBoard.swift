@@ -2519,7 +2519,8 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         let progress = developmentAutomationProgress(for: project, task: task)
-        guard progress.canQueueBranchPushReview else {
+        guard progress.canQueueBranchPushReview,
+              let expectedHeadOID = progress.latestCommitOID else {
             developmentAutomationReviewPlan = nil
             todayCommandFeedback = progress.nextApproval?.detail
                 ?? String(localized: "Create the local commit before queueing the branch push.")
@@ -2528,9 +2529,9 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         let plan = ActionPlan(
-            id: "development-pr-push:\(project.id):\(task.id):\(Self.developmentAutomationPlanDigest(projectID: project.id, taskID: task.id, branchName: branchName))",
+            id: "development-pr-push:\(project.id):\(task.id):\(Self.developmentAutomationPlanDigest(projectID: project.id, taskID: task.id, branchName: "\(branchName):\(expectedHeadOID)"))",
             userInput: "Review development branch push \(branchName) for \(task.title).",
-            summary: "Review branch \(branchName) push to origin for \(task.title). Execution rechecks the current branch, clean workspace, and GitHub origin before push. Pull request creation requires a separate approval.",
+            summary: "Review branch \(branchName) push to origin for \(task.title). Execution rechecks the current branch, reviewed commit, clean workspace, and GitHub origin before push. Pull request creation requires a separate approval.",
             actions: [
                 PlanAction(
                     id: "development-pr-push",
@@ -2538,7 +2539,8 @@ public final class ProjectBoardViewModel: ObservableObject {
                     arguments: [
                         "projectId": .number(Double(project.id)),
                         "taskId": .number(Double(task.id)),
-                        "branchName": .string(branchName)
+                        "branchName": .string(branchName),
+                        "expectedHeadOID": .string(expectedHeadOID)
                     ],
                     riskLevel: .write,
                     requiresUserConfirmation: true

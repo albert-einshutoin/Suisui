@@ -82,6 +82,7 @@ public enum DevelopmentPRPublishWorkflowError: Error, Equatable, Sendable {
     case pullRequestRepositoryMismatch(expected: String, actual: String)
     case missingRemoteHead(branchName: String)
     case remoteHeadMismatch(branchName: String, local: String, remote: String)
+    case reviewedHeadMismatch(expected: String, actual: String)
     case invalidHeadCommitOID
     case invalidPullRequestStatusJSON
     case invalidPullRequestReviewThreadsJSON
@@ -119,6 +120,8 @@ public enum DevelopmentPRPublishWorkflowError: Error, Equatable, Sendable {
             return "Remote branch \(branchName) is missing; push the reviewed branch before creating a pull request."
         case .remoteHeadMismatch(let branchName, let local, let remote):
             return "Remote branch \(branchName) points to \(remote), but local HEAD is \(local); push the reviewed commit before creating a pull request."
+        case .reviewedHeadMismatch(let expected, let actual):
+            return "Reviewed commit \(expected) no longer matches local HEAD \(actual); request push approval again."
         case .invalidHeadCommitOID:
             return "Git returned an unreadable commit OID for pull request creation."
         case .invalidPullRequestStatusJSON:
@@ -176,7 +179,7 @@ public enum DevelopmentPublishGitCommandPolicy {
               arguments[2] == "origin" else {
             return false
         }
-        return (try? validatedPublishHeadBranch(arguments[3])) != nil
+        return (try? validatedPublishHeadRefSpec(arguments[3])) != nil
     }
 
     public static func validatedPublishHeadBranch(_ rawBranch: String) throws -> String {
@@ -187,6 +190,23 @@ public enum DevelopmentPublishGitCommandPolicy {
             throw DevelopmentPRPublishWorkflowError.invalidPublishHeadBranch
         }
         return branch
+    }
+
+    public static func publishHeadRefSpec(headOID: String, branchName: String) throws -> String {
+        let oid = try DevelopmentGitHubPRCommandPolicy.validatedHeadCommitOID(headOID)
+        let branch = try validatedPublishHeadBranch(branchName)
+        return "\(oid):refs/heads/\(branch)"
+    }
+
+    private static func validatedPublishHeadRefSpec(_ rawRefSpec: String) throws -> (headOID: String, branchName: String) {
+        let parts = rawRefSpec.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2,
+              parts[1].hasPrefix("refs/heads/") else {
+            throw DevelopmentPRPublishWorkflowError.invalidPublishHeadBranch
+        }
+        let headOID = try DevelopmentGitHubPRCommandPolicy.validatedHeadCommitOID(String(parts[0]))
+        let branchName = try validatedPublishHeadBranch(String(parts[1].dropFirst("refs/heads/".count)))
+        return (headOID, branchName)
     }
 }
 
@@ -1243,13 +1263,14 @@ public struct DevelopmentPushWorkflowTool: Tool {
     public let name: ActionTool = .developmentPushBranch
     public let description: String = "Push a reviewed development branch to origin after explicit approval."
     public let inputSchema = ToolInputSchema(
-        required: ["projectId", "branchName"],
+        required: ["projectId", "branchName", "expectedHeadOID"],
         properties: [
             "projectId": "integer",
             "taskId": "integer",
-            "branchName": "string"
+            "branchName": "string",
+            "expectedHeadOID": "string"
         ],
-        nonBlank: ["branchName"]
+        nonBlank: ["branchName", "expectedHeadOID"]
     )
     public let permissionLevel: ToolPermissionLevel = .writeWithApproval
 
@@ -1287,41 +1308,59 @@ public struct DevelopmentPushWorkflowTool: Tool {
             let branchName = try DevelopmentPublishGitCommandPolicy.validatedPublishHeadBranch(
                 args.requiredTrimmedString("branchName")
             )
+            let expectedHeadOID = try validatedHeadOID(args.requiredTrimmedString("expectedHeadOID"))
 
             return try withExtendedLifetime(scope) {
                 let readiness = try workspacePublishReadiness(branchName: branchName, scope: scope)
                 guard readiness.isReady else {
                     return failedReadinessResult(projectID: project.id, branchName: branchName, readiness: readiness)
                 }
+                let currentHeadOID = try fetchLocalHeadOID(workingDirectory: scope.rootURL)
+                if expectedHeadOID != currentHeadOID {
+                    return failedReviewedHeadResult(
+                        projectID: project.id,
+                        branchName: branchName,
+                        expectedHeadOID: expectedHeadOID,
+                        actualHeadOID: currentHeadOID
+                    )
+                }
                 let originRepository = try fetchOriginRepository(workingDirectory: scope.rootURL)
+                let pushRefSpec = try DevelopmentPublishGitCommandPolicy.publishHeadRefSpec(
+                    headOID: expectedHeadOID,
+                    branchName: branchName
+                )
 
-                let push = try runGit(arguments: ["push", "-u", "origin", branchName], workingDirectory: scope.rootURL)
+                let push = try runGit(arguments: ["push", "-u", "origin", pushRefSpec], workingDirectory: scope.rootURL)
                 guard push.exitCode == 0 else {
                     return failedCommandResult(
                         projectID: project.id,
                         branchName: branchName,
                         error: .commandFailed(
                             tool: name,
-                            command: ["push", "-u", "origin", branchName],
+                            command: ["push", "-u", "origin", pushRefSpec],
                             exitCode: push.exitCode,
                             standardError: redacted(push.standardError.trimmingCharacters(in: .whitespacesAndNewlines))
                         )
                     )
                 }
 
+                var output: [String: JSONValue] = [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string(branchName),
+                    "remoteName": .string("origin"),
+                    "remoteRepository": .string(originRepository.displayNameWithOwner),
+                    "workspaceClean": .bool(true),
+                    "pushSummary": .string(redacted(push.standardOutput)),
+                    "requiresPullRequestApproval": .bool(true)
+                ]
+                output["headRefOid"] = .string(currentHeadOID)
+                output["expectedHeadOID"] = .string(expectedHeadOID)
+
                 return ToolResult(
                     tool: name,
                     status: .succeeded,
                     summary: "Pushed development branch \(branchName) to \(originRepository.displayNameWithOwner). Pull request creation requires a separate approval gate.",
-                    output: [
-                        "projectId": .number(Double(project.id)),
-                        "branchName": .string(branchName),
-                        "remoteName": .string("origin"),
-                        "remoteRepository": .string(originRepository.displayNameWithOwner),
-                        "workspaceClean": .bool(true),
-                        "pushSummary": .string(redacted(push.standardOutput)),
-                        "requiresPullRequestApproval": .bool(true)
-                    ],
+                    output: output,
                     rollbackMetadata: ["branchName": .string(branchName)],
                     compensationHint: "Review the pushed branch before creating a pull request."
                 )
@@ -1373,6 +1412,56 @@ public struct DevelopmentPushWorkflowTool: Tool {
             rollbackMetadata: ["branchName": .string(branchName)],
             compensationHint: "Inspect the branch and retry push after fixing the Git error."
         )
+    }
+
+    private func failedReviewedHeadResult(
+        projectID: Int64,
+        branchName: String,
+        expectedHeadOID: String,
+        actualHeadOID: String
+    ) -> ToolResult {
+        let error = DevelopmentPRPublishWorkflowError.reviewedHeadMismatch(
+            expected: expectedHeadOID,
+            actual: actualHeadOID
+        )
+        return ToolResult(
+            tool: name,
+            status: .failed,
+            summary: redacted(error.userMessage),
+            output: [
+                "projectId": .number(Double(projectID)),
+                "branchName": .string(branchName),
+                "headRefOid": .string(actualHeadOID),
+                "expectedHeadOID": .string(expectedHeadOID),
+                "remoteName": .string("origin"),
+                "workspaceClean": .bool(true),
+                "publishError": .string(redacted(error.userMessage))
+            ],
+            rollbackMetadata: ["branchName": .string(branchName)],
+            compensationHint: "Review the new local commit and queue branch push approval again."
+        )
+    }
+
+    private func fetchLocalHeadOID(workingDirectory: URL) throws -> String {
+        let arguments = ["rev-parse", "HEAD"]
+        let output = try runGit(arguments: arguments, workingDirectory: workingDirectory)
+        guard output.exitCode == 0 else {
+            throw DevelopmentPRPublishWorkflowError.commandFailed(
+                tool: name,
+                command: arguments,
+                exitCode: output.exitCode,
+                standardError: redacted(output.standardError.trimmingCharacters(in: .whitespacesAndNewlines))
+            )
+        }
+        return try validatedHeadOID(output.standardOutput)
+    }
+
+    private func validatedHeadOID(_ rawOID: String) throws -> String {
+        do {
+            return try DevelopmentGitHubPRCommandPolicy.validatedHeadCommitOID(rawOID)
+        } catch {
+            throw DevelopmentPRPublishWorkflowError.invalidHeadCommitOID
+        }
     }
 
     private func fetchOriginRepository(workingDirectory: URL) throws -> DevelopmentGitHubRepositoryIdentity {
