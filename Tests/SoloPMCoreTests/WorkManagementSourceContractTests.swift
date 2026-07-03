@@ -12,8 +12,28 @@ final class WorkManagementSourceContractTests: XCTestCase {
         }
 
         XCTAssertTrue(projectBoard.contains("public final class ProjectBoardViewModel"))
-        XCTAssertTrue(projectBoard.contains("public final class SQLiteProjectBoardStore"))
-        XCTAssertTrue(projectBoard.contains("public protocol ProjectBoardStore"))
+    }
+
+    func testProjectBoardStoresAreExtractedFromMonolith() throws {
+        let projectBoard = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let store = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementStore.swift")
+        let sqliteStore = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementSQLiteStore.swift")
+
+        for marker in workManagementStoreMarkers {
+            XCTAssertTrue(store.contains(marker), "WorkManagementStore.swift must contain \(marker)")
+            XCTAssertFalse(projectBoard.contains(marker), "ProjectBoard.swift should no longer own \(marker)")
+        }
+        XCTAssertTrue(sqliteStore.contains("public final class SQLiteProjectBoardStore"))
+        XCTAssertTrue(sqliteStore.contains("private extension LocalStoreDecodingError"))
+        XCTAssertTrue(sqliteStore.contains("private func makeBoardTask("))
+        XCTAssertTrue(sqliteStore.contains("private func recordPersistenceAudit("))
+        XCTAssertTrue(sqliteStore.contains("private extension Optional where Wrapped == ProjectBoardTask"))
+        XCTAssertFalse(projectBoard.contains("public final class SQLiteProjectBoardStore"))
+        XCTAssertFalse(projectBoard.contains("private extension LocalStoreDecodingError"))
+        XCTAssertFalse(projectBoard.contains("private func makeBoardTask("))
+        XCTAssertFalse(projectBoard.contains("private func recordPersistenceAudit("))
+        XCTAssertFalse(projectBoard.contains("private extension Optional where Wrapped == ProjectBoardTask"))
+        XCTAssertTrue(projectBoard.contains("public final class ProjectBoardViewModel"))
     }
 
     private let workManagementModelMarkers = [
@@ -45,6 +65,12 @@ final class WorkManagementSourceContractTests: XCTestCase {
         "public struct InboxClassificationFeedback",
         "public struct InboxTriageSummary",
         "public enum InboxTriageFilter"
+    ]
+
+    private let workManagementStoreMarkers = [
+        "public enum ProjectBoardStoreError",
+        "public protocol ProjectBoardStore",
+        "public extension ProjectBoardStore"
     ]
 
     private func readPackageFile(_ relativePath: String) throws -> String {
