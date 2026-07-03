@@ -2942,6 +2942,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK"))
         XCTAssertFalse(appSource.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_FIXTURE_BOOKMARK"))
         XCTAssertTrue(appSource.contains("solopm-runtime-development-pr-smoke:"))
+        XCTAssertTrue(appSource.contains("return try SecurityScopedProjectWorkspaceBookmarkResolver().resolve(bookmarkData: bookmarkData)"))
         XCTAssertTrue(appSource.contains("return SecurityScopedProjectWorkspaceBookmarkResolver()"))
         XCTAssertTrue(registryFactory.contains("let developmentBookmarkResolver = makeDevelopmentWorkspaceBookmarkResolver()"))
         XCTAssertTrue(registryFactory.contains("bookmarkResolver: developmentBookmarkResolver"))

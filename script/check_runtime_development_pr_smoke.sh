@@ -108,8 +108,9 @@ write_artifact() {
     printf -- '- Status: `%s`\n' "$status"
     printf -- '- Reason: `%s`\n' "$reason"
     printf -- '- XCTest: `DevelopmentAutomationRuntimeSmokeTests/testApprovedProjectDirectoryCanEditVerifyCommitAndPreparePullRequestBranch`\n'
-    printf -- '- Flow: approved project directory -> `development.pr_workflow.prepare` -> `development.repository.list_files` -> `development.repository.create_file` -> `development.repository.update_file` -> `development.verification.run` -> `development.pr_workflow.commit` -> `development.pr_workflow.push` -> `development.pr_workflow.create_pull_request` -> `development.pr_workflow.review_gate` -> `development.pr_workflow.merge` with fake Git and GitHub runners.\n'
+    printf -- '- Flow: visible Project inspector -> NSOpenPanel folder picker -> stored project workspace bookmark -> `development.pr_workflow.prepare` -> `development.repository.list_files` -> `development.repository.create_file` -> `development.repository.update_file` -> `development.verification.run` -> `development.pr_workflow.commit` -> `development.pr_workflow.push` -> `development.pr_workflow.create_pull_request` -> `development.pr_workflow.review_gate` -> `development.pr_workflow.merge` with fake Git and GitHub runners.\n'
     printf -- '- Visible UI: Project automation panel -> `project-development-automation-queue` -> `project-development-automation-queue-handoff` -> Assistant Queue approve/run -> receipt\n'
+    printf -- '- Project directory picker workspace: `%s`\n' "$(relative_path "$UI_WORKSPACE")"
     printf -- '- Queued project: `%s`\n' "${seed_project_id:-not-seeded}"
     printf -- '- Queued task: `%s`\n' "${seed_task_id:-not-seeded}"
     printf -- '- Assistant Queue item: `%s`\n' "${queued_item_id:-not-queued}"
@@ -359,6 +360,36 @@ launch_app_for_development_detail() {
     SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
     SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID="$seed_task_id" \
+    "$APP_BINARY" >>"$APP_LOG_FILE" 2>&1 &
+  app_pid=$!
+  wait_for_app_process
+  activate_app
+  wait_for_visible_windows
+  set_development_window_size "$WINDOW_WIDTH" "$WINDOW_HEIGHT"
+}
+
+launch_app_for_project_directory_picker() {
+  terminate_app
+  PATH="$runtime_fake_git_bin:$PATH" \
+    HOME="$UI_HOME" \
+    CFFIXED_USER_HOME="$UI_HOME" \
+    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK=1 \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BRANCH="$prepared_branch_name" \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD="$visible_commit_head_after" \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BASE="$runtime_pull_request_base_branch" \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_URL="$runtime_fake_pull_request_url" \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_LOG="$runtime_fake_github_pr_log" \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG="$runtime_fake_github_review_log" \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_MERGE_LOG="$runtime_fake_github_merge_log" \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_GIT_EXECUTABLE="$runtime_fake_git_bin/git" \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_PUSH_LOG="$runtime_fake_git_push_log" \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="$runtime_fake_git_push_log" \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG="$runtime_blocked_external_write_log" \
+    REAL_GIT="$REAL_GIT" \
+    SOLOPM_FORCE_PROJECT_BOARD_FALLBACK=1 \
+    SOLOPM_DATABASE_PATH="$database_path" \
+    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
     "$APP_BINARY" >>"$APP_LOG_FILE" 2>&1 &
   app_pid=$!
   wait_for_app_process
@@ -742,6 +773,29 @@ pressButtonUntilSQLiteValue() {
   done
 }
 
+waitForSQLiteValue() {
+  local label="$1"
+  local sql="$2"
+  local expected="$3"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local actual=""
+
+  while true; do
+    actual="$(query_single_value "$sql" || true)"
+    if [[ "$actual" == "$expected" ]]; then
+      printf "OK: %s verified in SQLite (%s)\n" "$label" "$actual"
+      return 0
+    fi
+
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: $label SQLite verification failed: expected '$expected', got '${actual:-<empty>}'" >&2
+      echo "SQL: $sql" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
 sql_escape() {
   printf "%s" "$1" | sed "s/'/''/g"
 }
@@ -899,11 +953,6 @@ seed_development_project() {
   printf '# Runtime Development UI Repo\n' >"$UI_WORKSPACE/README.md"
   seed_git_repository
 
-  local escaped_workspace
-  local bookmark_data
-  escaped_workspace="$(sql_escape "$UI_WORKSPACE")"
-  bookmark_data="$(make_runtime_smoke_bookmark_base64 "$UI_WORKSPACE")"
-
   "$SQLITE3" "$database_path" <<SQL
 DELETE FROM tasks WHERE source_command = 'runtime-development-pr-ui-smoke';
 DELETE FROM projects WHERE source_command = 'runtime-development-pr-ui-smoke';
@@ -925,8 +974,8 @@ VALUES (
   'active',
   'high',
   NULL,
-  '$escaped_workspace',
-  '$bookmark_data',
+  NULL,
+  NULL,
   '["runtime","development"]',
   'runtime-development-pr-ui-smoke',
   CURRENT_TIMESTAMP,
@@ -965,6 +1014,111 @@ SQL
   seed_task_id="$(wait_for_nonempty_value \
     "development UI task id" \
     "SELECT id FROM tasks WHERE title='Implement runtime branch flow' AND source_command='runtime-development-pr-ui-smoke' ORDER BY id DESC LIMIT 1;")"
+  waitForSQLiteValue \
+    "development UI project starts without a selected workspace" \
+    "SELECT CASE WHEN workspace_path IS NULL AND workspace_bookmark IS NULL THEN 1 ELSE 0 END FROM projects WHERE id=$seed_project_id;" \
+    "1"
+}
+
+chooseRuntimeProjectWorkspaceViaOpenPanel() {
+  local workspace="$1"
+
+  pressButtonContainingBounded "project-workspace-choose"
+
+  /usr/bin/osascript - "$APP_NAME" "$workspace" <<'APPLESCRIPT'
+on run argv
+  set appName to item 1 of argv
+  set folderPath to item 2 of argv
+  set deadlineDate to (current date) + 20
+  tell application "System Events"
+    repeat
+      if exists process appName then exit repeat
+      if (current date) > deadlineDate then error appName & " process is not visible to System Events"
+      delay 0.2
+    end repeat
+    tell process appName
+      set frontmost to true
+      repeat
+        if (count of windows) > 0 then exit repeat
+        if (current date) > deadlineDate then error appName & " has no window for the folder picker"
+        delay 0.2
+      end repeat
+
+      set previousClipboard to ""
+      try
+        set previousClipboard to the clipboard as text
+      end try
+      keystroke "g" using {command down, shift down}
+      delay 0.4
+      set the clipboard to folderPath
+      keystroke "v" using command down
+      delay 0.2
+      key code 36
+      delay 0.8
+
+      repeat
+        set didChoose to false
+        repeat with currentWindow in windows
+          try
+            set axItems to entire contents of currentWindow
+            repeat with axItem in axItems
+              set itemRole to ""
+              set itemName to ""
+              set itemTitle to ""
+              set itemDescription to ""
+              try
+                set itemRole to role of axItem as text
+              end try
+              try
+                set itemName to name of axItem as text
+              end try
+              try
+                set itemTitle to value of attribute "AXTitle" of axItem as text
+              end try
+              try
+                set itemDescription to description of axItem as text
+              end try
+              set signalText to itemName & " " & itemTitle & " " & itemDescription
+              if itemRole is "AXButton" and signalText contains "Choose" then
+                perform action "AXPress" of axItem
+                set didChoose to true
+                exit repeat
+              end if
+            end repeat
+          end try
+          if didChoose then exit repeat
+        end repeat
+        if didChoose then exit repeat
+        if (current date) > deadlineDate then error "Choose button not found in folder picker"
+        delay 0.2
+      end repeat
+      try
+        set the clipboard to previousClipboard
+      end try
+    end tell
+  end tell
+end run
+APPLESCRIPT
+}
+
+verify_visible_project_directory_picker_assignment() {
+  local escaped_workspace
+  local picker_sql
+  escaped_workspace="$(sql_escape "$UI_WORKSPACE")"
+  picker_sql="
+SELECT CASE WHEN workspace_path='$escaped_workspace' AND workspace_bookmark IS NOT NULL AND length(workspace_bookmark) > 0 THEN 1 ELSE 0 END
+FROM projects
+WHERE id=$seed_project_id;
+"
+
+  waitForAXMarkerContaining "project-inspector"
+  waitForAXSubtreeMarkerContaining "project-workspace-current" "Not set"
+  chooseRuntimeProjectWorkspaceViaOpenPanel "$UI_WORKSPACE"
+  waitForSQLiteValue \
+    "visible Project inspector selected project workspace through NSOpenPanel" \
+    "$picker_sql" \
+    "1"
+  waitForAXSubtreeMarkerContaining "project-workspace-current" "approved-workspace"
 }
 
 verify_runtime_fake_publish_tools_block_bypass() {
@@ -2163,6 +2317,10 @@ failure_reason="runtime development UI fixture seed failed"
 seed_development_project
 verify_runtime_fake_publish_tools_block_bypass
 
+failure_reason="visible Project inspector directory picker assignment failed"
+launch_app_for_project_directory_picker
+verify_visible_project_directory_picker_assignment
+
 failure_reason="visible Project detail Assistant Queue handoff failed"
 launch_app_for_development_detail
 wait_for_database_table "assistant_queue_items"
@@ -2220,5 +2378,5 @@ verify_visible_pull_request_merge_handoff
 failure_reason="visible Assistant Queue pull request merge execution failed"
 verify_visible_assistant_queue_pull_request_merge_execution
 
-write_artifact "passed" "approved project directory fixture flow reached local commit, fake push, fake PR creation, fake PR review gate, fake PR merge, visible Project automation panel queued branch automation into Assistant Queue, visible Assistant Queue approved and executed local branch preparation, visible Project automation panel queued repository edit review into Assistant Queue, visible Assistant Queue approved and executed repository edit, visible Project automation panel queued verification review into Assistant Queue, visible Assistant Queue approved and executed verification, visible Project automation panel queued commit review into Assistant Queue, visible Assistant Queue approved and executed local commit, visible Project automation panel queued branch push review into Assistant Queue, visible Assistant Queue approved and executed fake branch push, visible Project automation panel queued pull request creation review into Assistant Queue, visible Assistant Queue approved and executed fake pull request creation, visible Project automation panel queued pull request review gate into Assistant Queue, visible Assistant Queue approved and executed fake pull request review gate, visible Project automation panel queued pull request merge into Assistant Queue, and visible Assistant Queue approved and executed fake pull request merge"
+write_artifact "passed" "visible Project inspector selected project workspace through NSOpenPanel, approved project directory fixture flow reached local commit, fake push, fake PR creation, fake PR review gate, fake PR merge, visible Project automation panel queued branch automation into Assistant Queue, visible Assistant Queue approved and executed local branch preparation, visible Project automation panel queued repository edit review into Assistant Queue, visible Assistant Queue approved and executed repository edit, visible Project automation panel queued verification review into Assistant Queue, visible Assistant Queue approved and executed verification, visible Project automation panel queued commit review into Assistant Queue, visible Assistant Queue approved and executed local commit, visible Project automation panel queued branch push review into Assistant Queue, visible Assistant Queue approved and executed fake branch push, visible Project automation panel queued pull request creation review into Assistant Queue, visible Assistant Queue approved and executed fake pull request creation, visible Project automation panel queued pull request review gate into Assistant Queue, visible Assistant Queue approved and executed fake pull request review gate, visible Project automation panel queued pull request merge into Assistant Queue, and visible Assistant Queue approved and executed fake pull request merge"
 printf 'OK: runtime development PR smoke passed. Evidence: %s\n' "$(relative_path "$ARTIFACT_FILE")"

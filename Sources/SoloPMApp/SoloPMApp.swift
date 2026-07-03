@@ -22,28 +22,31 @@ private struct RuntimeDevelopmentPRSmokeBookmarkResolver: ProjectWorkspaceBookma
     }
 
     func resolve(bookmarkData: Data) throws -> ProjectWorkspaceBookmarkResolution {
-        guard Self.isEnabled,
-              let marker = String(data: bookmarkData, encoding: .utf8),
-              marker.hasPrefix(Self.markerPrefix) else {
-            throw DevelopmentPRWorkflowError.projectWorkspaceBookmarkUnavailable
+        if Self.isEnabled,
+           let marker = String(data: bookmarkData, encoding: .utf8),
+           marker.hasPrefix(Self.markerPrefix) {
+            let path = String(marker.dropFirst(Self.markerPrefix.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard path.hasPrefix("/") else {
+                throw DevelopmentPRWorkflowError.projectWorkspaceMustBeAbsolute
+            }
+
+            // Runtime UI smoke is launched from a shell-owned workspace, which cannot mint a
+            // user-approved app-owned security scoped bookmark. This DEBUG-only
+            // marker resolver preserves the production invariant that a bookmark field must
+            // exist, while keeping release builds on the real security-scoped resolver.
+            return ProjectWorkspaceBookmarkResolution(
+                url: URL(fileURLWithPath: path, isDirectory: true).resolvingSymlinksInPath().standardizedFileURL,
+                isStale: false,
+                didStartAccessing: true,
+                stopAccessing: {}
+            )
         }
 
-        let path = String(marker.dropFirst(Self.markerPrefix.count))
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard path.hasPrefix("/") else {
-            throw DevelopmentPRWorkflowError.projectWorkspaceMustBeAbsolute
-        }
-
-        // Runtime UI smoke is launched from a shell-owned workspace, which cannot mint a
-        // user-approved app-owned security scoped bookmark. This DEBUG-only
-        // resolver preserves the production invariant that a bookmark field must
-        // exist, while keeping release builds on the real security-scoped resolver.
-        return ProjectWorkspaceBookmarkResolution(
-            url: URL(fileURLWithPath: path, isDirectory: true).resolvingSymlinksInPath().standardizedFileURL,
-            isStale: false,
-            didStartAccessing: true,
-            stopAccessing: {}
-        )
+        // When the smoke drives the real NSOpenPanel path, the app stores a real
+        // bookmark. Falling through keeps that production path under the same
+        // execution resolver instead of accepting only the encoded smoke prefix.
+        return try SecurityScopedProjectWorkspaceBookmarkResolver().resolve(bookmarkData: bookmarkData)
     }
 }
 #endif
