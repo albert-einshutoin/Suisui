@@ -5936,6 +5936,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("runtime_fake_git_push_log"))
         XCTAssertTrue(script.contains("runtime_fake_github_pr_log"))
         XCTAssertTrue(script.contains("runtime_fake_github_review_log"))
+        XCTAssertTrue(script.contains("runtime_fake_github_merge_log"))
         XCTAssertTrue(script.contains("runtime_blocked_external_write_log"))
         XCTAssertTrue(script.contains("runtime_expected_branch_file"))
         XCTAssertTrue(script.contains("runtime_expected_head_file"))
@@ -5945,11 +5946,13 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("verify_runtime_fake_push_log()"))
         XCTAssertTrue(script.contains("verify_runtime_fake_pull_request_log()"))
         XCTAssertTrue(script.contains("verify_runtime_fake_pull_request_review_log()"))
+        XCTAssertTrue(script.contains("verify_runtime_fake_pull_request_merge_log()"))
         XCTAssertTrue(script.contains("verify_no_merge_followup()"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_PUSH_LOG=\"$runtime_fake_git_push_log\""))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_LOG=\"$runtime_fake_github_pr_log\""))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG=\"$runtime_fake_github_review_log\""))
+        XCTAssertTrue(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_MERGE_LOG=\"$runtime_fake_github_merge_log\""))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_URL=\"$runtime_fake_pull_request_url\""))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BASE=\"$runtime_pull_request_base_branch\""))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_GIT_EXECUTABLE=\"$runtime_fake_git_bin/git\""))
@@ -5981,11 +5984,15 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("assistant-queue-row-$pull_request_review_item_id"))
         XCTAssertTrue(script.contains("assistant-queue-approve-$pull_request_review_item_id"))
         XCTAssertTrue(script.contains("assistant-queue-run-$pull_request_review_item_id"))
+        XCTAssertTrue(script.contains("assistant-queue-row-$pull_request_merge_item_id"))
+        XCTAssertTrue(script.contains("assistant-queue-approve-$pull_request_merge_item_id"))
+        XCTAssertTrue(script.contains("assistant-queue-run-$pull_request_merge_item_id"))
         XCTAssertTrue(script.contains("prepared_branch_name=\"\""))
         XCTAssertTrue(script.contains("commit_item_id=\"\""))
         XCTAssertTrue(script.contains("push_item_id=\"\""))
         XCTAssertTrue(script.contains("pull_request_item_id=\"\""))
         XCTAssertTrue(script.contains("pull_request_review_item_id=\"\""))
+        XCTAssertTrue(script.contains("pull_request_merge_item_id=\"\""))
         XCTAssertTrue(script.contains("struct Reference: Decodable"))
         XCTAssertTrue(script.contains("wait_for_receipt_json \"visible Assistant Queue branch preparation\" \"$queued_item_id\" \"development.pr_workflow.prepare\""))
         XCTAssertTrue(script.contains("wait_for_receipt_json \"visible Assistant Queue repository edit\" \"$repository_edit_item_id\" \"development.repository.create_file\""))
@@ -6005,6 +6012,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("\"$runtime_fake_pull_request_url\""))
         XCTAssertTrue(script.contains("\"visible Assistant Queue pull request review gate\""))
         XCTAssertTrue(script.contains("\"development.pr_workflow.review_gate\""))
+        XCTAssertTrue(script.contains("\"visible Assistant Queue pull request merge\""))
+        XCTAssertTrue(script.contains("\"development.pr_workflow.merge\""))
         XCTAssertTrue(script.contains("ensure_no_existing_app_process"))
         XCTAssertTrue(script.contains("the smoke only terminates its own launched PID"))
         XCTAssertTrue(script.contains("kill -9 \"$app_pid\""))
@@ -6034,6 +6043,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("required_capabilities_json LIKE '%developmentPushBranch%'"))
         XCTAssertTrue(script.contains("required_capabilities_json LIKE '%developmentCreatePullRequest%'"))
         XCTAssertTrue(script.contains("required_capabilities_json LIKE '%developmentReviewPullRequestGate%'"))
+        XCTAssertTrue(script.contains("required_capabilities_json LIKE '%developmentMergePullRequest%'"))
         XCTAssertTrue(script.contains("required_capabilities_json LIKE '%providerExecutionApproval%'"))
         XCTAssertTrue(script.contains("action-plan:development-repository-edit:$seed_project_id:$seed_task_id:%"))
         XCTAssertTrue(script.contains("action-plan:development-verification:$seed_project_id:$seed_task_id:%"))
@@ -6041,9 +6051,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("action-plan:development-pr-push:$seed_project_id:$seed_task_id:%"))
         XCTAssertTrue(script.contains("action-plan:development-pr-create:$seed_project_id:$seed_task_id:%"))
         XCTAssertTrue(script.contains("automation-request:project-development-pr-review:$seed_project_id:$seed_task_id:%"))
+        XCTAssertTrue(script.contains("automation-request:project-development-pr-merge:$seed_project_id:$seed_task_id:%"))
         XCTAssertTrue(script.contains("payload_json LIKE '%expectedHeadOID%'"))
         XCTAssertTrue(script.contains("payload_json LIKE '%development.pr_workflow.create_pull_request%'"))
         XCTAssertTrue(script.contains("payload_json LIKE '%development.pr_workflow.review_gate%'"))
+        XCTAssertTrue(script.contains("payload_json LIKE '%development.pr_workflow.merge%'"))
         XCTAssertTrue(script.contains("printf '%s' \"$prepared_branch_name\" >\"$runtime_expected_branch_file\""))
         XCTAssertTrue(script.contains("printf '%s' \"$visible_commit_head_after\" >\"$runtime_expected_head_file\""))
         XCTAssertTrue(script.contains("runtime-development-pr-visible-edit.md"))
@@ -6052,12 +6064,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("fixture_git -C \"$UI_WORKSPACE\" diff-tree --no-commit-id --name-only -r \"$visible_commit_head_after\""))
         XCTAssertTrue(script.contains("project-development-automation-pr-create-queue"))
         XCTAssertTrue(script.contains("project-development-automation-pr-review-queue"))
+        XCTAssertTrue(script.contains("project-development-automation-pr-merge-queue"))
         XCTAssertTrue(script.contains("requiresPushApproval=true"))
         XCTAssertTrue(script.contains("requiresPullRequestApproval=true"))
         XCTAssertTrue(script.contains("No live GitHub PR creation or merge is created by this smoke"))
         XCTAssertTrue(script.contains("fake branch push"))
         XCTAssertTrue(script.contains("fake pull request create"))
         XCTAssertTrue(script.contains("fake pull request review gate"))
+        XCTAssertTrue(script.contains("fake pull request merge"))
         XCTAssertTrue(script.contains("payload_json NOT LIKE '%development.pr_workflow.review_gate%'"))
         XCTAssertTrue(script.contains("payload_json NOT LIKE '%development.pr_workflow.merge%'"))
         XCTAssertTrue(script.contains("receipt_payload_json"))
@@ -6075,6 +6089,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("visible Assistant Queue approved and executed fake pull request creation"))
         XCTAssertTrue(script.contains("visible Project automation panel queued pull request review gate into Assistant Queue"))
         XCTAssertTrue(script.contains("visible Assistant Queue approved and executed fake pull request review gate"))
+        XCTAssertTrue(script.contains("visible Project automation panel queued pull request merge into Assistant Queue"))
+        XCTAssertTrue(script.contains("visible Assistant Queue approved and executed fake pull request merge"))
         for prohibitedPattern in [
             #"\b(?:git|fixture_git)\b[^\n]*\bpush\b"#,
             #"\bgh\b[^\n]*\bpr\s+create\b"#,
@@ -6086,6 +6102,13 @@ final class ReleasePipelineTests: XCTestCase {
                 "runtime development PR smoke must not contain external write command matching \(prohibitedPattern)"
             )
         }
+        XCTAssertNil(
+            script.range(
+                of: #"(?m)^[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge\b"#,
+                options: .regularExpression
+            ),
+            "runtime development PR smoke must route merge through the app's smoke fake runner instead of a raw gh pr merge command"
+        )
 
         XCTAssertTrue(workflow.contains("\"development_pr\""))
         XCTAssertTrue(workflow.contains("run_development_pr()"))
@@ -6110,6 +6133,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(projectBoardViewSource.contains("project-development-automation-pr-create-queue"))
         XCTAssertTrue(projectBoardViewSource.contains("project-development-automation-pr-create-detailed-queue"))
         XCTAssertTrue(appSource.contains("enqueueDevelopmentPushReview"))
+        XCTAssertTrue(appSource.contains("project-development-automation-pr-merge-queue"))
+        XCTAssertTrue(appSource.contains("canQueuePullRequestMergeGate"))
         XCTAssertTrue(gitRunnerSource.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_GIT_EXECUTABLE"))
         XCTAssertTrue(gitRunnerSource.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK"))
         XCTAssertTrue(gitRunnerSource.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_PUSH_LOG"))
@@ -6121,11 +6146,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(githubRunnerSource.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_LOG"))
         XCTAssertTrue(githubRunnerSource.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_URL"))
         XCTAssertTrue(githubRunnerSource.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG"))
+        XCTAssertTrue(githubRunnerSource.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_MERGE_LOG"))
         XCTAssertTrue(githubRunnerSource.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD"))
         XCTAssertTrue(githubRunnerSource.contains("runtimeDevelopmentSmokePullRequestCreateOutput"))
         XCTAssertTrue(githubRunnerSource.contains("runtimeDevelopmentSmokePullRequestReviewStatusOutput"))
         XCTAssertTrue(githubRunnerSource.contains("runtimeDevelopmentSmokePullRequestReviewThreadsOutput"))
+        XCTAssertTrue(githubRunnerSource.contains("runtimeDevelopmentSmokePullRequestMergeOutput"))
         XCTAssertTrue(githubRunnerSource.contains("simulated pull request create"))
+        XCTAssertTrue(githubRunnerSource.contains("simulated pull request merge"))
     }
 
     func testRuntimeInboxTriageSmokeScriptVerifiesAllClassificationActionsAndUndo() throws {

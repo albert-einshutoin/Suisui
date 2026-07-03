@@ -2025,6 +2025,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let blockedLog = workspace.appendingPathComponent("blocked-gh.log")
         let createLog = workspace.appendingPathComponent("create.log")
         let reviewLog = workspace.appendingPathComponent("review.log")
+        let mergeLog = workspace.appendingPathComponent("merge.log")
         let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
         let branchName = "feature/solopm-7-review-gate"
         let headOID = "0123456789abcdef0123456789abcdef01234567"
@@ -2037,6 +2038,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
             pullRequestURL: pullRequestURL,
             createLog: createLog,
             reviewLog: reviewLog,
+            mergeLog: mergeLog,
             blockedLog: blockedLog
         ) {
             let mergeOutput = try runner.runGitHub(
@@ -2047,8 +2049,19 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                 ],
                 workingDirectory: workspace
             )
-            XCTAssertEqual(mergeOutput.exitCode, 43)
-            XCTAssertTrue(mergeOutput.standardError.contains("blocked GitHub CLI command"))
+            XCTAssertEqual(mergeOutput.exitCode, 0)
+            XCTAssertTrue(mergeOutput.standardOutput.contains("simulated pull request merge"))
+
+            let wrongHeadOutput = try runner.runGitHub(
+                arguments: [
+                    "pr", "merge", pullRequestURL,
+                    "--merge", "--delete-branch",
+                    "--match-head-commit", String(repeating: "f", count: 40)
+                ],
+                workingDirectory: workspace
+            )
+            XCTAssertEqual(wrongHeadOutput.exitCode, 43)
+            XCTAssertTrue(wrongHeadOutput.standardError.contains("blocked GitHub CLI command"))
 
             let differentURLOutput = try runner.runGitHub(
                 arguments: [
@@ -2062,10 +2075,14 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         }
 
         let blockedLogText = try String(contentsOf: blockedLog, encoding: .utf8)
-        XCTAssertTrue(blockedLogText.contains("gh pr merge \(pullRequestURL)"))
+        XCTAssertTrue(blockedLogText.contains("gh pr merge \(pullRequestURL) --merge --delete-branch --match-head-commit ffffffffffffffffffffffffffffffffffffffff"))
         XCTAssertTrue(blockedLogText.contains("gh pr view https://github.com/albert-einshutoin/soloPM/pull/99999"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: createLog.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: reviewLog.path))
+        let mergeLogText = try String(contentsOf: mergeLog, encoding: .utf8)
+        XCTAssertTrue(mergeLogText.contains("action=merge"))
+        XCTAssertTrue(mergeLogText.contains("url=\(pullRequestURL)"))
+        XCTAssertTrue(mergeLogText.contains("head=\(headOID)"))
     }
 
     func testPreparePullRequestWorkflowRejectsSymlinkWorkspace() throws {
@@ -2149,6 +2166,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         pullRequestURL: String,
         createLog: URL,
         reviewLog: URL,
+        mergeLog: URL,
         blockedLog: URL,
         body: () throws -> Void
     ) throws {
@@ -2160,6 +2178,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
             "SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_URL": pullRequestURL,
             "SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_LOG": createLog.path,
             "SOLOPM_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG": reviewLog.path,
+            "SOLOPM_RUNTIME_DEVELOPMENT_PR_MERGE_LOG": mergeLog.path,
             "SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG": blockedLog.path
         ]
         var previous: [String: String] = [:]
