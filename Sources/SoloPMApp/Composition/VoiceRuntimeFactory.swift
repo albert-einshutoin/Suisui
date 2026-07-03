@@ -1,0 +1,184 @@
+import Foundation
+import SoloPMCore
+
+extension AppRuntimeFactory {
+    @MainActor
+    static func makeVoiceCaptureViewModel() -> VoiceCaptureViewModel {
+        let secretStore = makeSecretStore()
+        let settingsResult = loadRuntimeSettings()
+        let audioRecorder = AVFoundationAudioRecorder()
+        let sttProvider = makeSpeechToTextProvider(settings: settingsResult.settings, secretStore: secretStore)
+        let llmProvider = makeLLMProvider(settings: settingsResult.settings, secretStore: secretStore)
+        let managedCostRateCardResolver = ManagedAICostRateCardResolver()
+        var auditLogger: (any AuditLogger)?
+        var assistantQueueStore: (any AssistantQueueStore)?
+        var inboxCaptureService: InboxVoiceCaptureService?
+        var developmentProjectProvider: () -> ProjectRecord? = { nil }
+        var runtimeValidationMessage: String?
+        var initialFailureMessage: String?
+        do {
+            auditLogger = try makeAuditLogger()
+            let connection = try migratedConnection()
+            assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+            let projectStore = SQLiteProjectStore(connection: connection)
+            let projectBoardStore = SQLiteProjectBoardStore(connection: connection)
+            let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)
+            inboxCaptureService = InboxVoiceCaptureService(
+                audioRecorder: audioRecorder,
+                sttProvider: sttProvider,
+                projectBoardStore: projectBoardStore,
+                inboxCaptureStore: inboxCaptureStore
+            )
+            developmentProjectProvider = {
+                approvedDevelopmentProject(from: projectStore)
+            }
+            runtimeValidationMessage = nil
+            initialFailureMessage = settingsResult.errorMessage
+        } catch {
+            auditLogger = nil
+            assistantQueueStore = nil
+            runtimeValidationMessage = "Voice planning is unavailable because audit logging or local data stores could not be opened."
+            initialFailureMessage = runtimeValidationMessage
+        }
+        return VoiceCaptureViewModel(
+            phase: initialFailureMessage.map(VoiceCapturePhase.failed) ?? .idle,
+            audioRecorder: audioRecorder,
+            sttProvider: sttProvider,
+            llmProvider: llmProvider,
+            auditRecorder: auditLogger.map { PlanningAuditRecorder(logger: $0) },
+            runtimeValidationMessage: runtimeValidationMessage,
+            assistantQueueStore: assistantQueueStore,
+            inboxCaptureSaver: inboxCaptureService,
+            developmentProjectProvider: developmentProjectProvider,
+            appSettingsProvider: { loadRuntimeSettings().settings },
+            managedCostRateCardProvider: { managedCostRateCardResolver.rateCard(for: $0) }
+        )
+    }
+
+    private static func approvedDevelopmentProject(from projectStore: SQLiteProjectStore) -> ProjectRecord? {
+        guard let projects = try? projectStore.list() else {
+            return nil
+        }
+        return VoiceDevelopmentProjectSelection.uniqueApprovedActiveProject(from: projects)
+    }
+
+    static func loadRuntimeSettings() -> RuntimeSettingsLoadResult {
+        do {
+            return RuntimeSettingsLoadResult(settings: try UserDefaultsAppSettingsStore().load().normalizedForRuntime)
+        } catch {
+            return RuntimeSettingsLoadResult(
+                settings: .default,
+                errorMessage: "Runtime app settings could not be loaded. Defaults are shown until settings are saved again."
+            )
+        }
+    }
+
+    private static func makeLLMProvider(settings: AppSettings, secretStore: any SecretStore) -> any LLMProvider {
+        switch settings.normalizedForRuntime.aiProvider {
+        case .openaiResponses:
+            let entry = LLMProviderCatalog.entry(for: .openaiResponses)
+            let configuration = OpenAIResponsesConfiguration(model: entry.defaultModelID)
+            return OpenAIResponsesProvider(secretStore: secretStore, configuration: configuration)
+        case .geminiDirect:
+            let entry = LLMProviderCatalog.entry(for: .geminiDirect)
+            let configuration = GeminiDirectConfiguration(model: settings.normalizedForRuntime.geminiModelID ?? entry.defaultModelID)
+            return GeminiDirectProvider(secretStore: secretStore, configuration: configuration)
+        case .claudeMessages:
+            let entry = LLMProviderCatalog.entry(for: .claudeMessages)
+            let configuration = ClaudeMessagesConfiguration(model: entry.defaultModelID)
+            return ClaudeMessagesProvider(secretStore: secretStore, configuration: configuration)
+        case .openRouterCompatible:
+            let entry = LLMProviderCatalog.entry(for: .openRouterCompatible)
+            return ChatCompletionsCompatibleProvider(
+                configuration: .openRouter(model: entry.defaultModelID),
+                secretStore: secretStore
+            )
+        case .groqOpenAICompatible:
+            let entry = LLMProviderCatalog.entry(for: .groqOpenAICompatible)
+            let defaultBaseURL = entry.baseURL
+                ?? ChatCompletionsCompatibleConfiguration.groq(model: entry.defaultModelID).baseURL
+            return ChatCompletionsCompatibleProvider(
+                configuration: .groq(
+                    model: entry.defaultModelID,
+                    baseURL: settings.normalizedForRuntime.resolvedGroqBaseURL(defaultBaseURL: defaultBaseURL)
+                ),
+                secretStore: secretStore
+            )
+        case .ollamaCompatible:
+            let entry = LLMProviderCatalog.entry(for: .ollamaCompatible)
+            return ChatCompletionsCompatibleProvider(
+                configuration: .ollama(model: entry.defaultModelID),
+                secretStore: secretStore
+            )
+        case .opencodeLocal:
+            let entry = LLMProviderCatalog.entry(for: .opencodeLocal)
+            let normalizedSettings = settings.normalizedForRuntime
+            let configuration = OpenCodeLocalConfiguration(
+                executablePath: normalizedSettings.openCodeExecutablePath,
+                workspacePath: normalizedSettings.openCodeWorkspacePath,
+                modelID: normalizedSettings.openCodeModelID ?? entry.defaultModelID,
+                isExecutionApproved: normalizedSettings.isOpenCodeLocalExecutionApproved
+            )
+            return OpenCodeLocalProvider(configuration: configuration)
+        case .geminiOpenAICompatible:
+            let entry = LLMProviderCatalog.entry(for: .geminiOpenAICompatible)
+            return UnavailableLLMProvider(
+                providerID: .geminiOpenAICompatible,
+                reason: entry.unavailableReason ?? LLMProviderCatalog.unavailableReason
+            )
+        }
+    }
+
+    private static func makeSpeechToTextProvider(
+        settings: AppSettings,
+        secretStore: any SecretStore
+    ) -> any SpeechToTextProvider {
+        let normalizedSettings = settings.normalizedForRuntime
+        switch normalizedSettings.sttProvider {
+        case .openAITranscribe, .appleSpeechAnalyzer, .localWhisperKit:
+            return OpenAITranscribeProvider(secretStore: secretStore)
+        case .localWhisperCpp:
+            let configuration = WhisperCppLocalSTTConfiguration(
+                executablePath: normalizedSettings.whisperCppExecutablePath ?? ""
+            )
+            return WhisperCppLocalSTTProvider(configuration: configuration)
+        }
+    }
+
+    static func makeTextToSpeechPreviewer(settings: AppSettings) -> any TextToSpeechPreviewing {
+        AppTextToSpeechRuntimeFactory.makePreviewer(settings: settings)
+    }
+}
+
+enum AppTextToSpeechRuntimeFactory {
+    static func makeProvider(settings: AppSettings, outputURL: URL? = nil) -> any TextToSpeechProvider {
+        let normalizedSettings = settings.normalizedForRuntime
+        switch normalizedSettings.ttsProvider {
+        case .systemSpeech, .localKokoro:
+            let configuration = KokoroLocalTTSConfiguration(
+                executablePath: normalizedSettings.kokoroExecutablePath ?? "",
+                languageCode: normalizedSettings.ttsLanguageCode,
+                voiceID: normalizedSettings.ttsVoiceID,
+                outputURL: outputURL
+            )
+            return KokoroLocalTTSProvider(configuration: configuration)
+        }
+    }
+
+    static func makePreviewer(
+        settings: AppSettings,
+        temporaryDirectoryPrefix: String = "solopm-tts-preview",
+        outputFilename: String = "preview.wav"
+    ) -> any TextToSpeechPreviewing {
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(temporaryDirectoryPrefix)-\(UUID().uuidString)", isDirectory: true)
+        let outputURL = temporaryDirectory.appendingPathComponent(outputFilename, isDirectory: false)
+        return TemporaryDirectoryTextToSpeechPreviewer(
+            previewer: TextToSpeechPreviewService(
+                provider: makeProvider(settings: settings, outputURL: outputURL),
+                audioPlayer: AVFoundationSpeechAudioPlayer()
+            ),
+            temporaryDirectory: temporaryDirectory
+        )
+    }
+}

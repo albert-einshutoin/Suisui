@@ -2950,10 +2950,10 @@ final class AppExperienceSourceTests: XCTestCase {
         let coordinatorFactoryStart = try XCTUnwrap(appSource.range(of: "private static func makeAssistantQueueExecutionCoordinator("))
         let coordinatorFactoryEnd = try XCTUnwrap(appSource.range(of: "@MainActor\n    static func makeMenuBarSummaryController()", range: coordinatorFactoryStart.upperBound..<appSource.endIndex))
         let coordinatorFactory = String(appSource[coordinatorFactoryStart.lowerBound..<coordinatorFactoryEnd.lowerBound])
-        let registryFactoryStart = try XCTUnwrap(appSource.range(of: "private static func makeRuntimeToolRegistry("))
+        let registryFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeRuntimeToolRegistry("))
         let registryFactory = String(appSource[registryFactoryStart.lowerBound..<coordinatorFactoryEnd.lowerBound])
 
-        XCTAssertTrue(appSource.contains("private static func makeRuntimeToolRegistry("))
+        XCTAssertTrue(appSource.contains("static func makeRuntimeToolRegistry("))
         XCTAssertTrue(coordinatorFactory.contains("makeRuntimeToolRegistry(connection: connection, auditLogger: auditLogger)"))
         XCTAssertTrue(registryFactory.contains("DevelopmentPullRequestCreationTool(\n                projectStore: projectStore,\n                bookmarkResolver: developmentBookmarkResolver"))
         XCTAssertTrue(registryFactory.contains("DevelopmentPullRequestReviewGateTool(\n                projectStore: projectStore,\n                bookmarkResolver: developmentBookmarkResolver"))
@@ -3024,7 +3024,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testReviewRuntimeRequiresAuditLoggerBeforeWriteExecution() throws {
         let appSource = try readAppShellSource()
         let reviewFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeReviewSessionViewModel(plan: ActionPlan)"))
-        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func migratedConnection()", range: reviewFactoryStart.upperBound..<appSource.endIndex))
+        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "static func workspaceRootURL()", range: reviewFactoryStart.upperBound..<appSource.endIndex))
         let reviewFactory = String(appSource[reviewFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
 
         XCTAssertFalse(reviewFactory.contains("try? makeAuditLogger()"))
@@ -3055,7 +3055,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testReviewRuntimePersistsExecutionReceiptsUnderApplicationSupport() throws {
         let appSource = try readAppShellSource()
 
-        XCTAssertTrue(appSource.contains("private static func makeExecutionReceiptStore() throws -> any ExecutionReceiptStore"))
+        XCTAssertTrue(appSource.contains("static func makeExecutionReceiptStore() throws -> any ExecutionReceiptStore"))
         XCTAssertTrue(appSource.contains("FileExecutionReceiptStore("))
         XCTAssertTrue(appSource.contains("appendingPathComponent(\"ExecutionReceipts\", isDirectory: true)"))
     }
@@ -3073,7 +3073,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testVoicePlanningRequiresAuditLoggerBeforeGeneration() throws {
         let appSource = try readAppShellSource()
         let voiceFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeVoiceCaptureViewModel()"))
-        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
+        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
         let voiceFactory = String(appSource[voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
 
         XCTAssertFalse(voiceFactory.contains("try? makeAuditLogger()"))
@@ -3085,7 +3085,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testVoiceRuntimePersistsAssistantQueueToSQLite() throws {
         let appSource = try readAppShellSource()
         let voiceFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeVoiceCaptureViewModel()"))
-        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
+        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
         let voiceFactory = String(appSource[voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
 
         XCTAssertTrue(voiceFactory.contains("let connection = try migratedConnection()"))
@@ -3099,7 +3099,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testVoiceRuntimeInjectsFailClosedDevelopmentProjectProvider() throws {
         let appSource = try readAppShellSource()
         let voiceFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeVoiceCaptureViewModel()"))
-        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
+        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
         let voiceFactory = String(appSource[voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
 
         XCTAssertTrue(voiceFactory.contains("let projectStore = SQLiteProjectStore(connection: connection)"))
@@ -3112,7 +3112,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testVoiceCommandCanPersistRecordedTranscriptToInboxRuntimeStores() throws {
         let appSource = try readAppShellSource()
         let voiceFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeVoiceCaptureViewModel()"))
-        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
+        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
         let voiceFactory = String(appSource[voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
 
         XCTAssertTrue(appSource.contains("viewModel.saveDraftToInbox()"))
@@ -3154,7 +3154,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testRuntimeSettingsLoadDoesNotSilentlyDefaultOnDecodeFailure() throws {
         let appSource = try readAppShellSource()
-        let runtimeFactoryStart = try XCTUnwrap(appSource.range(of: "private enum AppRuntimeFactory"))
+        let runtimeFactoryStart = try XCTUnwrap(appSource.range(of: "enum AppRuntimeFactory"))
         let runtimeFactory = String(appSource[runtimeFactoryStart.lowerBound..<appSource.endIndex])
 
         XCTAssertFalse(runtimeFactory.contains("(try? UserDefaultsAppSettingsStore().load()) ?? .default"))
@@ -3751,16 +3751,16 @@ final class AppExperienceSourceTests: XCTestCase {
         let factoryStart = try XCTUnwrap(appSource.range(of: "let googleCalendarSync = makeSettingsBackedGoogleCalendarSyncController("))
         let factoryEnd = try XCTUnwrap(appSource.range(of: "return ProjectBoardViewModel(", range: factoryStart.lowerBound..<appSource.endIndex))
         let factorySource = String(appSource[factoryStart.lowerBound..<factoryEnd.lowerBound])
-        let settingsBackedStart = try XCTUnwrap(appSource.range(of: "private static func makeSettingsBackedGoogleCalendarSyncController("))
+        let settingsBackedStart = try XCTUnwrap(appSource.range(of: "static func makeSettingsBackedGoogleCalendarSyncController("))
         let settingsBackedEnd = try XCTUnwrap(appSource.range(of: "private static func makeGoogleCalendarSyncController(", range: settingsBackedStart.lowerBound..<appSource.endIndex))
         let settingsBackedSource = String(appSource[settingsBackedStart.lowerBound..<settingsBackedEnd.lowerBound])
         let helperStart = try XCTUnwrap(appSource.range(of: "private static func makeGoogleCalendarSyncController("))
-        let helperEnd = try XCTUnwrap(appSource.range(of: "private static func makeAuditLogger()", range: helperStart.lowerBound..<appSource.endIndex))
+        let helperEnd = try XCTUnwrap(appSource.range(of: "private static func makeGoogleCalendarOAuthAuthorizationService()", range: helperStart.lowerBound..<appSource.endIndex))
         let helperSource = String(appSource[helperStart.lowerBound..<helperEnd.lowerBound])
 
         XCTAssertTrue(appSource.contains("import SoloPMGoogleCalendarRuntime"))
-        XCTAssertTrue(appSource.contains("private static func makeEntitlementStore(secretStore: any SecretStore) -> KeychainEntitlementStore"))
-        XCTAssertTrue(appSource.contains("private static func makeLocalLicenseVerifier() -> any LocalLicenseVerifier"))
+        XCTAssertTrue(appSource.contains("static func makeEntitlementStore(secretStore: any SecretStore) -> KeychainEntitlementStore"))
+        XCTAssertTrue(appSource.contains("static func makeLocalLicenseVerifier() -> any LocalLicenseVerifier"))
         XCTAssertTrue(appSource.contains("SoloPMLocalLicensePublicKey"))
         XCTAssertTrue(appSource.contains("SignedLocalLicenseVerifier(publicKeyBase64: publicKeyBase64)"))
         XCTAssertTrue(appSource.contains("let entitlementStore = makeEntitlementStore(secretStore: secretStore)"))
@@ -4706,7 +4706,6 @@ final class AppExperienceSourceTests: XCTestCase {
 
     private func readAppShellSource() throws -> String {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
-        let runtimeFactoryRange = try XCTUnwrap(appSource.range(of: "private enum AppRuntimeFactory"))
         let viewSources = try [
             "Sources/SoloPMApp/Views/ProjectBoardLaunchRecoveryViews.swift",
             "Sources/SoloPMApp/Views/MenuBarPanel.swift",
@@ -4714,11 +4713,20 @@ final class AppExperienceSourceTests: XCTestCase {
             "Sources/SoloPMApp/Views/ActionReviewPanel.swift",
             "Sources/SoloPMApp/Views/SettingsView.swift"
         ].map(readPackageFile).joined(separator: "\n\n")
+        let runtimeCompositionSources = try [
+            "Sources/SoloPMApp/Composition/AppRuntimeFactory.swift",
+            "Sources/SoloPMApp/Composition/ProjectBoardRuntimeFactory.swift",
+            "Sources/SoloPMApp/Composition/RuntimeToolCompositionFactory.swift",
+            "Sources/SoloPMApp/Composition/SettingsRuntimeFactory.swift",
+            "Sources/SoloPMApp/Composition/GoogleCalendarRuntimeCompositionFactory.swift",
+            "Sources/SoloPMApp/Composition/VoiceRuntimeFactory.swift",
+            "Sources/SoloPMApp/Composition/MenuBarRuntimeFactory.swift"
+        ].map(readPackageFile).joined(separator: "\n\n")
 
         return [
-            String(appSource[..<runtimeFactoryRange.lowerBound]),
+            appSource,
             viewSources,
-            String(appSource[runtimeFactoryRange.lowerBound...])
+            runtimeCompositionSources
         ].joined(separator: "\n\n")
     }
 

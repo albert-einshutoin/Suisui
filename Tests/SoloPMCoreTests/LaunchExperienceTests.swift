@@ -91,7 +91,7 @@ final class LaunchExperienceTests: XCTestCase {
     }
 
     func testVerifyModeCanLaunchWithoutPromptingForKeychainSecrets() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let source = try readRuntimeCompositionSources()
 
         XCTAssertTrue(source.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE"))
         XCTAssertTrue(source.contains("LaunchVerificationSecretStore"))
@@ -99,7 +99,7 @@ final class LaunchExperienceTests: XCTestCase {
     }
 
     func testRuntimeFactorySharesSecretStoreAcrossProviderSurfaces() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let source = try readRuntimeCompositionSources()
 
         XCTAssertTrue(source.contains("private static let sharedSecretStore: any SecretStore"))
         XCTAssertTrue(source.contains("return sharedSecretStore"))
@@ -283,6 +283,21 @@ final class LaunchExperienceTests: XCTestCase {
             "Sources/SoloPMApp/Views/ProjectWorkflowDoneView.swift",
             "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift",
             "Sources/SoloPMApp/Views/ProjectWorkflowAssistantQueueView.swift"
+        ]
+        .map { try readPackageFile($0) }
+        .joined(separator: "\n")
+    }
+
+    private func readRuntimeCompositionSources() throws -> String {
+        try [
+            "Sources/SoloPMApp/SoloPMApp.swift",
+            "Sources/SoloPMApp/Composition/AppRuntimeFactory.swift",
+            "Sources/SoloPMApp/Composition/ProjectBoardRuntimeFactory.swift",
+            "Sources/SoloPMApp/Composition/RuntimeToolCompositionFactory.swift",
+            "Sources/SoloPMApp/Composition/SettingsRuntimeFactory.swift",
+            "Sources/SoloPMApp/Composition/GoogleCalendarRuntimeCompositionFactory.swift",
+            "Sources/SoloPMApp/Composition/VoiceRuntimeFactory.swift",
+            "Sources/SoloPMApp/Composition/MenuBarRuntimeFactory.swift"
         ]
         .map { try readPackageFile($0) }
         .joined(separator: "\n")
