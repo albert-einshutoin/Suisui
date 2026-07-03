@@ -113,7 +113,8 @@ TODAY_UI_ACCESSIBILITY_IDENTIFIERS=(
   "today-rail-reminder-draft"
 )
 
-TODAY_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SoloPMApp/Views/ProjectWorkflowViews.swift"
+TODAY_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift"
+SIDEBAR_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SoloPMApp/Views/ProjectWorkflowViews.swift"
 SIDEBAR_DESTINATION_SOURCE="$ROOT_DIR/Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift"
 
 SOURCES=(
@@ -122,6 +123,7 @@ SOURCES=(
   "$SIDEBAR_DESTINATION_SOURCE"
   "$ROOT_DIR/Sources/SoloPMApp/Views/ProjectBoardView.swift"
   "$TODAY_WORKFLOW_SOURCE"
+  "$SIDEBAR_WORKFLOW_SOURCE"
   "$ROOT_DIR/docs/quality/accessibility-focus-paths.md"
 )
 
@@ -146,7 +148,7 @@ if [[ ! -f "$TODAY_WORKFLOW_SOURCE" ]]; then
 else
   for identifier in "${TODAY_UI_ACCESSIBILITY_IDENTIFIERS[@]}"; do
     if ! grep -F ".accessibilityIdentifier(\"$identifier\")" "$TODAY_WORKFLOW_SOURCE" >/dev/null; then
-      echo "BLOCKER: Today UI accessibilityIdentifier missing from ProjectWorkflowViews.swift: $identifier" >&2
+      echo "BLOCKER: Today UI accessibilityIdentifier missing from ProjectWorkflowTodayView.swift: $identifier" >&2
       missing=$((missing + 1))
     fi
   done
@@ -156,7 +158,7 @@ if [[ ! -f "$SIDEBAR_DESTINATION_SOURCE" ]]; then
   echo "BLOCKER: sidebar destination source is missing: $SIDEBAR_DESTINATION_SOURCE" >&2
   missing=$((missing + 1))
 else
-  if ! grep -F '.accessibilityIdentifier("sidebar-destination-\(destination.accessibilityIdentifierSuffix)")' "$TODAY_WORKFLOW_SOURCE" >/dev/null; then
+  if ! grep -F '.accessibilityIdentifier("sidebar-destination-\(destination.accessibilityIdentifierSuffix)")' "$SIDEBAR_WORKFLOW_SOURCE" >/dev/null; then
     echo "BLOCKER: generated sidebar accessibilityIdentifier template is missing from ProjectWorkflowViews.swift" >&2
     missing=$((missing + 1))
   fi

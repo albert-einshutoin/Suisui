@@ -225,10 +225,14 @@ final class LaunchExperienceTests: XCTestCase {
     }
 
     func testWorkflowRootAccessibilityKeepsNestedLaunchRecoveryIdentifiers() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let source = try readProjectWorkflowSources()
 
         XCTAssertTrue(source.contains(".accessibilityElement(children: .contain)\n        .accessibilityIdentifier(\"today-workflow\")"))
         XCTAssertTrue(source.contains(".accessibilityElement(children: .contain)\n        .accessibilityIdentifier(\"inbox-workflow\")"))
+        XCTAssertTrue(source.contains(".accessibilityElement(children: .contain)\n        .accessibilityIdentifier(\"schedule-workflow\")"))
+        XCTAssertTrue(source.contains(".accessibilityElement(children: .contain)\n        .accessibilityIdentifier(\"catch-up-workflow\")"))
+        XCTAssertTrue(source.contains(".accessibilityElement(children: .contain)\n        .accessibilityIdentifier(\"done-workflow\")"))
+        XCTAssertTrue(source.contains(".accessibilityElement(children: .contain)\n        .accessibilityIdentifier(\"assistant-queue-workflow\")"))
     }
 
     func testProjectBoardOpensOnLaunch() throws {
@@ -267,6 +271,21 @@ final class LaunchExperienceTests: XCTestCase {
             readPackageFile("Sources/SoloPMApp/SoloPMApp.swift"),
             readPackageFile("Sources/SoloPMApp/Views/ProjectBoardLaunchRecoveryViews.swift")
         ].joined(separator: "\n\n")
+    }
+
+    private func readProjectWorkflowSources() throws -> String {
+        try [
+            "Sources/SoloPMApp/Views/ProjectWorkflowViews.swift",
+            "Sources/SoloPMApp/Views/ProjectWorkflowSharedViews.swift",
+            "Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift",
+            "Sources/SoloPMApp/Views/ProjectWorkflowCatchUpView.swift",
+            "Sources/SoloPMApp/Views/ProjectWorkflowScheduleView.swift",
+            "Sources/SoloPMApp/Views/ProjectWorkflowDoneView.swift",
+            "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift",
+            "Sources/SoloPMApp/Views/ProjectWorkflowAssistantQueueView.swift"
+        ]
+        .map { try readPackageFile($0) }
+        .joined(separator: "\n")
     }
 
     private func packageRoot() -> URL {
