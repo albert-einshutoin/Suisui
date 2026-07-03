@@ -2322,6 +2322,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workflow\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-generate-draft\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-apply-calendar\")"))
+        XCTAssertTrue(workflowSource.contains("ScheduleDraftApprovalControls("))
         XCTAssertTrue(workflowSource.contains("viewModel.enqueueScheduleDraftCalendarApply(on: workloadReferenceDate)"))
         XCTAssertTrue(workflowSource.contains("viewModel.addUnscheduledTaskToScheduleDraft("))
         XCTAssertTrue(workflowSource.contains("viewModel.unscheduledScheduleTasks()"))
@@ -2339,6 +2340,14 @@ final class AppExperienceSourceTests: XCTestCase {
         let scheduleWorkflowEnd = try XCTUnwrap(workflowSource.range(of: "struct DoneWorkflowView"))
         let scheduleWorkflowSource = String(workflowSource[scheduleWorkflowStart.lowerBound..<scheduleWorkflowEnd.lowerBound])
         XCTAssertTrue(scheduleWorkflowSource.contains("viewModel.prepareScheduleDraft(on: workloadReferenceDate)"))
+        XCTAssertLessThan(
+            try XCTUnwrap(scheduleWorkflowSource.range(of: "ScheduleDraftApprovalControls(")).lowerBound,
+            try XCTUnwrap(scheduleWorkflowSource.range(of: "ScheduleMiniCalendarPanel(")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(scheduleWorkflowSource.range(of: "ScheduleDraftApprovalControls(")).lowerBound,
+            try XCTUnwrap(scheduleWorkflowSource.range(of: "ScheduleDraftPanel(viewModel: viewModel)")).lowerBound
+        )
         XCTAssertFalse(scheduleWorkflowSource.contains("applyScheduleDraftToCalendar"))
         XCTAssertTrue(coreSource.contains("public struct ScheduleDraft"))
         XCTAssertTrue(coreSource.contains("public func unscheduledScheduleTasks"))

@@ -173,6 +173,13 @@ struct ScheduleWorkflowView: View {
                     .accessibilityHint("Combines the visible day's local time blocks and unscheduled tasks without writing to Calendar.")
                 }
 
+                ScheduleDraftApprovalControls(
+                    hasDraft: viewModel.scheduleDraft != nil,
+                    queueCalendarApply: {
+                        _ = viewModel.enqueueScheduleDraftCalendarApply(on: workloadReferenceDate)
+                    }
+                )
+
                 ScheduleMiniCalendarPanel(
                     overview: workloadOverview,
                     selectedDayKey: $selectedWorkloadDayKey,
@@ -212,22 +219,6 @@ struct ScheduleWorkflowView: View {
                         viewModel: viewModel,
                         referenceDate: workloadReferenceDate
                     )
-                }
-
-                HStack(spacing: 8) {
-                    Button {
-                        _ = viewModel.enqueueScheduleDraftCalendarApply(on: workloadReferenceDate)
-                    } label: {
-                        Label("Queue Calendar Apply", systemImage: "tray.and.arrow.down")
-                    }
-                    .disabled(viewModel.scheduleDraft == nil)
-                    .accessibilityIdentifier("schedule-apply-calendar")
-                    .accessibilityHint("Adds reviewed schedule blocks to Assistant Queue before any external Calendar write.")
-                    Text("External Calendar writes run from Assistant Queue after approval.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("schedule-queue-approval-note")
                 }
 
                 if let feedback = viewModel.todayCommandFeedback {
@@ -1513,6 +1504,36 @@ private struct CatchUpReasonPills: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Reasons")
         .accessibilityValue(localizedReasonTitles.joined(separator: ", "))
+    }
+}
+
+private struct ScheduleDraftApprovalControls: View {
+    let hasDraft: Bool
+    let queueCalendarApply: () -> Void
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Button {
+                queueCalendarApply()
+            } label: {
+                Label("Queue Calendar Apply", systemImage: "tray.and.arrow.down")
+            }
+            .disabled(!hasDraft)
+            .accessibilityIdentifier("schedule-apply-calendar")
+            .accessibilityHint(
+                hasDraft
+                    ? "Adds reviewed schedule blocks to Assistant Queue before any external Calendar write."
+                    : "Create a schedule draft first."
+            )
+
+            Text(hasDraft ? "External Calendar writes run from Assistant Queue after approval." : "Create a schedule draft first.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("schedule-queue-approval-note")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("schedule-draft-approval-controls")
     }
 }
 
