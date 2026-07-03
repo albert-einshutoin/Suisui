@@ -1,0 +1,210 @@
+import Foundation
+import XCTest
+
+final class ArchitectureBoundaryTests: XCTestCase {
+    func testDomainBoundaryDocumentationDefinesOwnershipAndDependencyDirection() throws {
+        let doc = try readPackageFile("docs/architecture/domain-boundaries.md")
+
+        for marker in [
+            "# SoloPM Domain Boundaries",
+            "| Domain | Owns | Current code area | Boundary rule |",
+            "Work Management",
+            "Planning & Schedule",
+            "Workflow Surfaces",
+            "App Shell and Runtime Composition",
+            "Automation and Approval",
+            "Integrations and Sync",
+            "Voice and Assistant Intake",
+            "Knowledge & Documents",
+            "Settings, Entitlements & Billing",
+            "Persistence, Security & Audit",
+            "Developer Mode and OSS Operations",
+            "UI/platform surfaces -> domain view models/snapshots -> domain services/ports -> infrastructure adapters",
+            "Known Exceptions",
+            "Core presentation view-model exception",
+            "SQLite ownership exception",
+            "optional connector targets",
+            "No broad file moves before boundary tests",
+            "Phase 1: split Work Management",
+            "Phase 2: split `ProjectWorkflowViews.swift`",
+            "Phase 3: extract app shell/runtime composition"
+        ] {
+            XCTAssertTrue(doc.contains(marker), "domain boundary documentation must include \(marker)")
+        }
+    }
+
+    func testCoreAndRuntimeTargetsDoNotImportUIOrPlatformFrameworks() throws {
+        let scannedRoots = [
+            "Sources/SoloPMCore",
+            "Sources/SoloPMExternalConnectors",
+            "Sources/SoloPMGoogleCalendarRuntime"
+        ]
+        let violations = try scannedRoots.flatMap { root in
+            try swiftSourceFiles(under: root)
+        }.flatMap { file -> [String] in
+            let source = try readPackageFile(file)
+            return forbiddenCoreImportModules.compactMap { module in
+                containsImport(module, in: source) ? "\(file): import \(module)" : nil
+            }
+        }
+
+        XCTAssertEqual(
+            violations,
+            [],
+            "Core/runtime targets must remain UI-framework-free; move UI/platform concerns to SoloPMApp or adapters."
+        )
+    }
+
+    func testSwiftUIFeatureViewsDoNotOwnSQLiteStoresOutsideCompositionRoot() throws {
+        let allowedOwners: Set<String> = [
+            "Sources/SoloPMApp/SoloPMApp.swift"
+        ]
+        let violations = try swiftSourceFiles(under: "Sources/SoloPMApp")
+            .filter { try importsSwiftUI(at: $0) }
+            .filter { !allowedOwners.contains($0) }
+            .flatMap { file -> [String] in
+                let source = try readPackageFile(file)
+                return forbiddenPersistenceOwnershipPatterns.compactMap { pattern in
+                    source.range(of: pattern, options: .regularExpression) == nil ? nil : "\(file): \(pattern)"
+                }
+            }
+
+        XCTAssertEqual(
+            violations,
+            [],
+            "SwiftUI feature views must receive stores through composition/runtime factories instead of constructing SQLite stores."
+        )
+    }
+
+    func testRuntimeAdaptersStayOutOfSwiftUIFeatureViewFiles() throws {
+        let violations = try swiftSourceFiles(under: "Sources/SoloPMApp/Views").flatMap { file -> [String] in
+            let source = try readPackageFile(file)
+            return forbiddenRuntimeAdapterPatterns.compactMap { pattern in
+                source.range(of: pattern, options: .regularExpression) == nil ? nil : "\(file): \(pattern)"
+            }
+        }
+
+        XCTAssertEqual(
+            violations,
+            [],
+            "OAuth, network, Keychain, and EventKit runtime work must stay in app composition or adapters, not SwiftUI feature files."
+        )
+    }
+
+    private let forbiddenPersistenceOwnershipPatterns = [
+        #"SQLite[A-Za-z0-9_]*Store\s*\("#,
+        #"SQLiteConnection\s*\("#,
+        #"CoreMigrations"#,
+        #"migratedConnection\s*\("#,
+        #"KeychainSecretStore\s*\("#,
+        #"UserDefaultsAppSettingsStore\s*\("#
+    ]
+
+    private let forbiddenRuntimeAdapterPatterns = [
+        #"ActionExecutor\s*\("#,
+        #"ASWebAuthenticationSession\s*\("#,
+        #"EventKit"#,
+        #"EKEventStore"#,
+        #"GoogleCalendarAppRuntimeFactory\."#,
+        #"GoogleCalendarOAuthAuthorizationService\s*\("#,
+        #"GoogleCalendarOAuthCredentialStore\s*\("#,
+        #"KeychainSecretStore\s*\("#,
+        #"ToolRegistry\."#,
+        #"URLSession\b"#,
+        #"URLSession[A-Za-z0-9_]*HTTPDataClient\s*\("#,
+        #"URLSessionSynchronousHTTPDataClient\s*\("#
+    ]
+
+    private let forbiddenCoreImportModules = [
+        "SwiftUI",
+        "AppKit",
+        "EventKit",
+        "AVFoundation",
+        "AuthenticationServices",
+        "Sparkle",
+        "SwiftTerm"
+    ]
+
+    private func importsSwiftUI(at relativePath: String) throws -> Bool {
+        containsImport("SwiftUI", in: try readPackageFile(relativePath))
+    }
+
+    private func containsImport(_ module: String, in source: String) -> Bool {
+        let escapedModule = NSRegularExpression.escapedPattern(for: module)
+        let pattern = #"^(?:@[A-Za-z_][A-Za-z0-9_]*(?:\([^)]*\))?\s+)*import\s+(?:(?:class|struct|enum|protocol|func|var|typealias)\s+)?"# + escapedModule + #"(\.|\s*$)"#
+
+        return source.split(separator: "\n").contains { line in
+            line.trimmingCharacters(in: .whitespaces).range(of: pattern, options: .regularExpression) != nil
+        }
+    }
+
+    private func swiftSourceFiles(under relativePath: String) throws -> [String] {
+        let root = packageRoot().appendingPathComponent(relativePath)
+        var isDirectory = ObjCBool(false)
+        guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw ArchitectureBoundaryTestError.missingSourceRoot(relativePath)
+        }
+        guard let enumerator = FileManager.default.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+
+        var files: [String] = []
+        for case let url as URL in enumerator {
+            guard url.pathExtension == "swift" else {
+                continue
+            }
+            let values = try url.resourceValues(forKeys: [.isRegularFileKey])
+            guard values.isRegularFile == true else {
+                continue
+            }
+            files.append(relativePackagePath(for: url))
+        }
+        guard !files.isEmpty else {
+            throw ArchitectureBoundaryTestError.emptySourceRoot(relativePath)
+        }
+        return files.sorted()
+    }
+
+    private func readPackageFile(_ relativePath: String) throws -> String {
+        let url = packageRoot().appendingPathComponent(relativePath)
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func relativePackagePath(for url: URL) -> String {
+        let rootPath = packageRoot().standardizedFileURL.path
+        let filePath = url.standardizedFileURL.path
+        guard filePath.hasPrefix(rootPath + "/") else {
+            return filePath
+        }
+        return String(filePath.dropFirst(rootPath.count + 1))
+    }
+
+    private func packageRoot() -> URL {
+        var url = URL(fileURLWithPath: #filePath)
+        while url.pathComponents.count > 1 {
+            url.deleteLastPathComponent()
+            if FileManager.default.fileExists(atPath: url.appendingPathComponent("Package.swift").path) {
+                return url
+            }
+        }
+        return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    }
+}
+
+private enum ArchitectureBoundaryTestError: Error, CustomStringConvertible {
+    case missingSourceRoot(String)
+    case emptySourceRoot(String)
+
+    var description: String {
+        switch self {
+        case .missingSourceRoot(let path):
+            return "Architecture boundary source root is missing: \(path)"
+        case .emptySourceRoot(let path):
+            return "Architecture boundary source root has no Swift files: \(path)"
+        }
+    }
+}
