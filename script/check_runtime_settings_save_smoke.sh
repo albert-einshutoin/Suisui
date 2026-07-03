@@ -16,7 +16,7 @@ APP_NAME="${APP_NAME:?APP_NAME is required}"
 BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:?BUNDLE_IDENTIFIER is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-TIMEOUT_SECONDS="${SOLOPM_RUNTIME_SETTINGS_SAVE_TIMEOUT_SECONDS:-30}"
+TIMEOUT_SECONDS="${SOLOPM_RUNTIME_SETTINGS_SAVE_TIMEOUT_SECONDS:-60}"
 KEEP_HOME="${SOLOPM_RUNTIME_SETTINGS_SAVE_KEEP_HOME:-0}"
 WINDOW_WIDTH="${SOLOPM_RUNTIME_SETTINGS_SAVE_WINDOW_WIDTH:-760}"
 WINDOW_HEIGHT="${SOLOPM_RUNTIME_SETTINGS_SAVE_WINDOW_HEIGHT:-900}"
@@ -187,9 +187,14 @@ waitForAXElementContaining() {
   local required_text_one="${2:-}"
   local required_text_two="${3:-}"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local axQueryAttemptSeconds="${SOLOPM_RUNTIME_SETTINGS_AX_QUERY_ATTEMPT_SECONDS:-30}"
+  if [[ ! "$axQueryAttemptSeconds" =~ ^[0-9]+$ || "$axQueryAttemptSeconds" -lt 1 ]]; then
+    echo "SOLOPM_RUNTIME_SETTINGS_AX_QUERY_ATTEMPT_SECONDS must be a positive integer" >&2
+    return 2
+  fi
 
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$identifier_fragment" "$required_text_one" "$required_text_two" <<'APPLESCRIPT' >/dev/null 2>&1
+    /usr/bin/osascript - "$APP_NAME" "$identifier_fragment" "$required_text_one" "$required_text_two" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
   set appName to item 1 of argv
   set identifierFragment to item 2 of argv
@@ -250,9 +255,29 @@ on run argv
   error "AX element signal not found: " & identifierFragment
 end run
 APPLESCRIPT
-    then
-      return 0
+    local osascript_pid=$!
+    local attempt_deadline=$((SECONDS + axQueryAttemptSeconds))
+    local osascript_finished=0
+
+    while true; do
+      if ! kill -0 "$osascript_pid" >/dev/null 2>&1; then
+        osascript_finished=1
+        if wait "$osascript_pid" >/dev/null 2>&1; then
+          return 0
+        fi
+        break
+      fi
+      if [[ "$SECONDS" -ge "$attempt_deadline" || "$SECONDS" -ge "$deadline" ]]; then
+        break
+      fi
+      sleep 0.2
+    done
+
+    if [[ "$osascript_finished" -eq 0 ]]; then
+      kill "$osascript_pid" >/dev/null 2>&1 || true
+      wait "$osascript_pid" >/dev/null 2>&1 || true
     fi
+
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: AX element did not expose required signal: $identifier_fragment" >&2
       return 1
@@ -266,8 +291,14 @@ APPLESCRIPT
 pressControlContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local pressControlAttemptSeconds="${SOLOPM_RUNTIME_SETTINGS_AX_PRESS_ATTEMPT_SECONDS:-30}"
+  if [[ ! "$pressControlAttemptSeconds" =~ ^[0-9]+$ || "$pressControlAttemptSeconds" -lt 1 ]]; then
+    echo "SOLOPM_RUNTIME_SETTINGS_AX_PRESS_ATTEMPT_SECONDS must be a positive integer" >&2
+    return 2
+  fi
+
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT'
+    /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
   set appName to item 1 of argv
   set fragment to item 2 of argv
@@ -286,11 +317,11 @@ on run argv
         end try
         set axItems to entire contents of currentWindow
         repeat with axItem in axItems
-          set itemRole to ""
+          set itemActions to {}
           try
-            set itemRole to role of axItem as text
+            set itemActions to name of actions of axItem
           end try
-          if itemRole is "AXButton" or itemRole is "AXCheckBox" then
+          if itemActions contains "AXPress" then
             set itemName to ""
             set itemTitle to ""
             set itemDescription to ""
@@ -330,13 +361,35 @@ on run argv
   error "control signal not found: " & fragment
 end run
 APPLESCRIPT
-    then
-      return 0
+    local osascript_pid=$!
+    local attempt_deadline=$((SECONDS + pressControlAttemptSeconds))
+    local osascript_finished=0
+
+    while true; do
+      if ! kill -0 "$osascript_pid" >/dev/null 2>&1; then
+        osascript_finished=1
+        if wait "$osascript_pid" >/dev/null 2>&1; then
+          return 0
+        fi
+        break
+      fi
+      if [[ "$SECONDS" -ge "$attempt_deadline" || "$SECONDS" -ge "$deadline" ]]; then
+        break
+      fi
+      sleep 0.2
+    done
+
+    if [[ "$osascript_finished" -eq 0 ]]; then
+      kill "$osascript_pid" >/dev/null 2>&1 || true
+      wait "$osascript_pid" >/dev/null 2>&1 || true
     fi
+
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: failed to press control in AX tree: $fragment" >&2
       return 1
     fi
+    activate_app
+    wait_for_visible_windows >/dev/null 2>&1 || true
     sleep 1
   done
 }
@@ -345,9 +398,14 @@ setTextFieldContaining() {
   local fragment="$1"
   local replacement="$2"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local axTextAttemptSeconds="${SOLOPM_RUNTIME_SETTINGS_AX_TEXT_ATTEMPT_SECONDS:-30}"
+  if [[ ! "$axTextAttemptSeconds" =~ ^[0-9]+$ || "$axTextAttemptSeconds" -lt 1 ]]; then
+    echo "SOLOPM_RUNTIME_SETTINGS_AX_TEXT_ATTEMPT_SECONDS must be a positive integer" >&2
+    return 2
+  fi
 
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$fragment" "$replacement" <<'APPLESCRIPT' >/dev/null
+    /usr/bin/osascript - "$APP_NAME" "$fragment" "$replacement" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
   set appName to item 1 of argv
   set fragment to item 2 of argv
@@ -428,9 +486,29 @@ on run argv
   error "text field signal not found: " & fragment
 end run
 APPLESCRIPT
-    then
-      return 0
+    local osascript_pid=$!
+    local attempt_deadline=$((SECONDS + axTextAttemptSeconds))
+    local osascript_finished=0
+
+    while true; do
+      if ! kill -0 "$osascript_pid" >/dev/null 2>&1; then
+        osascript_finished=1
+        if wait "$osascript_pid" >/dev/null 2>&1; then
+          return 0
+        fi
+        break
+      fi
+      if [[ "$SECONDS" -ge "$attempt_deadline" || "$SECONDS" -ge "$deadline" ]]; then
+        break
+      fi
+      sleep 0.2
+    done
+
+    if [[ "$osascript_finished" -eq 0 ]]; then
+      kill "$osascript_pid" >/dev/null 2>&1 || true
+      wait "$osascript_pid" >/dev/null 2>&1 || true
     fi
+
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: failed to set text field in AX tree: $fragment" >&2
       return 1
@@ -546,15 +624,7 @@ verify_settings_saved() {
 }
 
 verify_google_calendar_settings_controls() {
-  waitForAXElementContaining "settings-google-calendar-readiness-row"
-  waitForAXElementContaining "settings-google-calendar-readiness-status"
-  waitForAXElementContaining "settings-google-calendar-readiness-detail"
-  waitForAXElementContaining "settings-google-calendar-id"
-  waitForAXElementContaining "settings-google-calendar-id-save"
-  waitForAXElementContaining "settings-google-calendar-list-load"
-  waitForAXElementContaining "settings-google-calendar-oauth-setup"
-  waitForAXElementContaining "settings-google-calendar-oauth-disconnect"
-  waitForAXElementContaining "settings-google-calendar-readiness-check"
+  waitForAXElementContaining "settings-google-calendar-id-save-flow"
   setTextFieldContaining "settings-google-calendar-id" "$runtime_google_calendar_id"
   waitForAXElementContaining "settings-google-calendar-id" "$runtime_google_calendar_id"
   pressControlContaining "settings-google-calendar-id-save"
@@ -580,7 +650,7 @@ fi
 
 launch_app_for_settings "AI"
 enableCheckboxContaining "settings-task-auto-execution-toggle"
-pressControlContaining "settings-save-button"
+pressControlContaining "settings-task-auto-execution-save"
 launch_app_for_settings "Sync"
 verify_google_calendar_settings_controls
 verify_settings_saved

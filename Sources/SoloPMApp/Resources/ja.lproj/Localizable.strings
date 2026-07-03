@@ -155,7 +155,10 @@
 "Save OpenRouter Key" = "OpenRouterキーを保存";
 "Save Secret" = "シークレットを保存";
 "Save Settings" = "設定を保存";
+"Save Automation" = "自動化を保存";
 "Persists non-secret settings to local UserDefaults." = "シークレットではない設定をローカルのUserDefaultsに保存します。";
+"Persists task automation settings to local UserDefaults." = "タスク自動化設定をローカルのUserDefaultsに保存します。";
+"Save Calendar before checking readiness; load calendars after OAuth is connected." = "準備状況を確認する前にカレンダーを保存します。OAuth接続後にカレンダー一覧を読み込みます。";
 "Server Enabled" = "サーバー有効";
 "Servers" = "サーバー";
 "Shows the draft-only document outputs and redacted source documents for the reviewed automation plan." = "レビュー中の自動化計画について、下書き専用の文書成果物と秘密値を伏せたソース文書を表示します。";
