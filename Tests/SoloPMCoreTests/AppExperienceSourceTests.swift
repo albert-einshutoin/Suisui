@@ -1030,6 +1030,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-best-hour-summary\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-follow-up-task-\\(task.id)\")"))
         XCTAssertTrue(workflowSource.contains("viewModel.enqueueDoneFollowUpDraft(for: task.id)"))
+        XCTAssertTrue(workflowSource.contains("private struct DoneTaskHistoryActions"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-history-row-actions-\\(task.id)\")"))
         XCTAssertTrue(workflowSource.contains("analytics.completionHeatmapBuckets"))
         XCTAssertTrue(workflowSource.contains("analytics.bestWeekdaySummary"))
         XCTAssertTrue(workflowSource.contains("analytics.bestHourSummary"))
@@ -1040,6 +1042,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("public func reopenCompletedTask(id: Int64)"))
         XCTAssertTrue(coreSource.contains("public func enqueueDoneFollowUpDraft(\n        for taskID: Int64"))
         XCTAssertTrue(coreSource.contains("DoneFollowUpActionDraftBuilder"))
+
+        let doneRowStart = try XCTUnwrap(workflowSource.range(of: "private struct DoneTaskHistoryRow"))
+        let doneRowEnd = try XCTUnwrap(workflowSource.range(of: "struct ExecutionReceiptHistoryRowView"))
+        let doneRowSource = String(workflowSource[doneRowStart.lowerBound..<doneRowEnd.lowerBound])
+        XCTAssertTrue(doneRowSource.contains("DoneTaskHistoryActions(task: task, viewModel: viewModel)"))
+        XCTAssertFalse(doneRowSource.contains("Spacer()"))
     }
 
     func testProjectBoardSupportsPersistentLightDarkAppearanceSelection() throws {
