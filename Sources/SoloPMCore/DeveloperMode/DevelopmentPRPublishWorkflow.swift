@@ -34,6 +34,7 @@ public struct ProcessGitHubCLICommandRunner: GitHubCLICommandRunner {
     private static let runtimeDevelopmentPullRequestURLKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_URL"
     private static let runtimeDevelopmentPullRequestCreateLogKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_LOG"
     private static let runtimeDevelopmentPullRequestReviewLogKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG"
+    private static let runtimeDevelopmentPullRequestMergeLogKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_MERGE_LOG"
     private static let runtimeDevelopmentBlockedExternalWriteLogKey = "SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG"
 
     public init() {}
@@ -53,7 +54,7 @@ public struct ProcessGitHubCLICommandRunner: GitHubCLICommandRunner {
         let environment = ProcessInfo.processInfo.environment
 
         // Runtime UI smoke must exercise the approval path without contacting
-        // GitHub; only the exact reviewed PR create/status/thread commands are simulated.
+        // GitHub; only the exact reviewed PR create/status/thread/merge commands are simulated.
         if let smokeOutput = Self.runtimeDevelopmentSmokePullRequestOutput(
             arguments: arguments,
             workingDirectory: workingDirectory,
@@ -108,6 +109,8 @@ public struct ProcessGitHubCLICommandRunner: GitHubCLICommandRunner {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let reviewLogPath = environment[Self.runtimeDevelopmentPullRequestReviewLogKey]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        let mergeLogPath = environment[Self.runtimeDevelopmentPullRequestMergeLogKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         let blockedPath = environment[Self.runtimeDevelopmentBlockedExternalWriteLogKey]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -144,6 +147,19 @@ public struct ProcessGitHubCLICommandRunner: GitHubCLICommandRunner {
             reviewLogPath: reviewLogPath
         ) {
             return reviewThreadsOutput
+        }
+
+        if let mergeOutput = runtimeDevelopmentSmokePullRequestMergeOutput(
+            arguments: arguments,
+            workingDirectory: workingDirectory,
+            commandPreview: commandPreview,
+            expectedBranch: expectedBranch,
+            expectedHead: expectedHead,
+            expectedBase: expectedBase,
+            pullRequestURL: pullRequestURL,
+            mergeLogPath: mergeLogPath
+        ) {
+            return mergeOutput
         }
 
         appendRuntimeDevelopmentSmokeLog(
@@ -336,6 +352,52 @@ public struct ProcessGitHubCLICommandRunner: GitHubCLICommandRunner {
         appendRuntimeDevelopmentSmokeLog(log + "\n", path: reviewLogPath)
         return GitHubCLICommandOutput(
             standardOutput: json + "\n",
+            standardError: "",
+            exitCode: 0
+        )
+    }
+
+    private static func runtimeDevelopmentSmokePullRequestMergeOutput(
+        arguments: [String],
+        workingDirectory: URL,
+        commandPreview: String,
+        expectedBranch: String,
+        expectedHead: String,
+        expectedBase: String,
+        pullRequestURL: String,
+        mergeLogPath: String?
+    ) -> GitHubCLICommandOutput? {
+        guard arguments.count == 7,
+              arguments[0] == "pr",
+              arguments[1] == "merge",
+              arguments[2] == pullRequestURL,
+              arguments[3] == "--merge",
+              arguments[4] == "--delete-branch",
+              arguments[5] == "--match-head-commit",
+              arguments[6] == expectedHead,
+              !expectedBranch.isEmpty,
+              !expectedHead.isEmpty,
+              !expectedBase.isEmpty,
+              !pullRequestURL.isEmpty,
+              DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: arguments),
+              (try? DevelopmentGitHubPRCommandPolicy.validatedHeadCommitOID(expectedHead)) != nil else {
+            return nil
+        }
+
+        let log = """
+        action=merge
+        cwd=\(workingDirectory.path)
+        args=\(commandPreview)
+        url=\(pullRequestURL)
+        branch=\(expectedBranch)
+        base=\(expectedBase)
+        head=\(expectedHead)
+        strategy=merge
+        deleteBranch=true
+        """
+        appendRuntimeDevelopmentSmokeLog(log + "\n", path: mergeLogPath)
+        return GitHubCLICommandOutput(
+            standardOutput: "simulated pull request merge\n\(pullRequestURL)\n",
             standardError: "",
             exitCode: 0
         )
