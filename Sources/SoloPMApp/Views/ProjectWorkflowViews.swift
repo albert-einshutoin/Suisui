@@ -2154,7 +2154,7 @@ private struct DoneTaskHistoryRow: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .top, spacing: 10) {
             Image(systemName: task.status == .done ? "checkmark.circle.fill" : "arrow.uturn.backward.circle")
                 .foregroundStyle(task.status == .done ? .green : .secondary)
             VStack(alignment: .leading, spacing: 2) {
@@ -2165,24 +2165,8 @@ private struct DoneTaskHistoryRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-            }
-            Spacer()
-            Button {
-                viewModel.enqueueDoneFollowUpDraft(for: task.id)
-            } label: {
-                Label("Follow Up", systemImage: "plus.bubble")
-            }
-            .buttonStyle(.borderless)
-            .accessibilityIdentifier("done-follow-up-task-\(task.id)")
-            .accessibilityHint("Creates an Assistant Queue approval item; no tasks are created until approval.")
-            if task.status == .done {
-                Button {
-                    viewModel.reopenCompletedTask(id: task.id)
-                } label: {
-                    Label("Reopen", systemImage: "arrow.uturn.backward")
-                }
-                .buttonStyle(.borderless)
-                .accessibilityIdentifier("done-reopen-task-\(task.id)")
+                DoneTaskHistoryActions(task: task, viewModel: viewModel)
+                    .padding(.top, 2)
             }
         }
         .padding(.vertical, 6)
@@ -2194,6 +2178,37 @@ private struct DoneTaskHistoryRow: View {
             return String(format: String(localized: "%@ completed at %@"), projectTitle, completedAt)
         }
         return String(format: String(localized: "%@ completed"), projectTitle)
+    }
+}
+
+private struct DoneTaskHistoryActions: View {
+    let task: ProjectBoardTask
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button {
+                viewModel.enqueueDoneFollowUpDraft(for: task.id)
+            } label: {
+                Label("Follow Up", systemImage: "plus.bubble")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("done-follow-up-task-\(task.id)")
+            .accessibilityHint("Creates an Assistant Queue approval item; no tasks are created until approval.")
+
+            if task.status == .done {
+                Button {
+                    viewModel.reopenCompletedTask(id: task.id)
+                } label: {
+                    Label("Reopen", systemImage: "arrow.uturn.backward")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityIdentifier("done-reopen-task-\(task.id)")
+            }
+        }
+        .font(.caption)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("done-history-row-actions-\(task.id)")
     }
 }
 
