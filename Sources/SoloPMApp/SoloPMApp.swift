@@ -4462,6 +4462,7 @@ private struct ExternalConnectorScopeRow: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(tone.color)
                         .lineLimit(1)
+                        .accessibilityIdentifier(name == "Google Calendar" ? "settings-google-calendar-readiness-status" : "settings-external-connector-status")
                 }
 
                 Text(localizedSettingsDisplay(detail))
@@ -4469,6 +4470,7 @@ private struct ExternalConnectorScopeRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(name == "Google Calendar" ? "settings-google-calendar-readiness-detail" : "settings-external-connector-detail")
 
                 if let nextAction {
                     Label(localizedSettingsDisplay(nextAction), systemImage: "arrow.right.circle")
@@ -4492,6 +4494,7 @@ private struct ExternalConnectorScopeRow: View {
                     onStatusAction()
                 }
                 .buttonStyle(.bordered)
+                .accessibilityIdentifier(name == "Google Calendar" ? "settings-google-calendar-readiness-check" : "settings-external-connector-readiness-check")
             }
 
             Spacer(minLength: 0)
