@@ -1483,3 +1483,11 @@
 "Move task" = "タスクを移動";
 "Opens task details in the inspector." = "インスペクタでタスク詳細を開きます。";
 "Project title" = "プロジェクトタイトル";
+"Open Voice Command" = "音声コマンドを開く";
+"Opens Settings." = "設定を開きます。";
+"Opens Voice Command." = "音声コマンドを開きます。";
+"Opens the Inbox workflow entry for accessibility verification" = "アクセシビリティ検証用にInboxワークフロー入口を開きます";
+"Opens the Inbox workflow entry for accessibility verification." = "アクセシビリティ検証用にInboxワークフロー入口を開きます。";
+"Opens the Today workflow entry for accessibility verification" = "アクセシビリティ検証用にTodayワークフロー入口を開きます";
+"Opens the Today workflow entry for accessibility verification." = "アクセシビリティ検証用にTodayワークフロー入口を開きます。";
+"Project board detail" = "プロジェクトボード詳細";

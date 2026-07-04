@@ -4566,6 +4566,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("LAUNCH_ENV_FILE=\"$DEFAULT_VOICEOVER_LAUNCH_ENV_FILE\""))
         XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
         XCTAssertTrue(script.contains("source \"$LAUNCH_ENV_FILE\""))
+        XCTAssertTrue(script.contains("export SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1"))
         XCTAssertTrue(script.contains("\"$APP_BINARY\" >/dev/null 2>&1 &"))
         XCTAssertTrue(script.contains("set frontmost to true"))
         XCTAssertFalse(script.contains("tell application \\\"$APP_NAME\\\" to activate"))

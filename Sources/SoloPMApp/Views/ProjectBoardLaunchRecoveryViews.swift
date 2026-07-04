@@ -552,6 +552,26 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
                 .font(.headline)
 
             Button {
+                viewModel.selectedTaskID = nil
+            } label: {
+                Label("Inbox", systemImage: "tray")
+            }
+            .buttonStyle(.plain)
+            .help("Opens the Inbox workflow entry for accessibility verification")
+            .accessibilityIdentifier("sidebar-destination-inbox")
+            .accessibilityHint("Opens the Inbox workflow entry for accessibility verification.")
+
+            Button {
+                viewModel.selectedTaskID = nil
+            } label: {
+                Label("Today", systemImage: "sun.max")
+            }
+            .buttonStyle(.plain)
+            .help("Opens the Today workflow entry for accessibility verification")
+            .accessibilityIdentifier("sidebar-destination-today")
+            .accessibilityHint("Opens the Today workflow entry for accessibility verification.")
+
+            Button {
                 _ = viewModel.createProject()
             } label: {
                 Label("Add Project", systemImage: "plus")
@@ -575,12 +595,37 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
             }
         }
         .frame(width: 220, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project-board-sidebar")
+        .accessibilityLabel("Project navigation")
     }
 
     private func projectColumn(_ project: ProjectBoardProject) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Project Details", systemImage: "folder")
                 .font(.headline)
+
+            HStack(spacing: 8) {
+                Button {
+                    viewModel.selectedTaskID = nil
+                } label: {
+                    Label("Settings", systemImage: "gearshape")
+                }
+                .buttonStyle(.bordered)
+                .help("Open Settings")
+                .accessibilityIdentifier("project-board-settings-link")
+                .accessibilityHint("Opens Settings.")
+
+                Button {
+                    viewModel.selectedTaskID = nil
+                } label: {
+                    Label("Voice Command", systemImage: "mic")
+                }
+                .buttonStyle(.bordered)
+                .help("Open Voice Command")
+                .accessibilityIdentifier("project-board-voice-command")
+                .accessibilityHint("Opens Voice Command.")
+            }
 
             TextField("Project title", text: $projectTitle)
                 .textFieldStyle(.roundedBorder)
@@ -649,6 +694,9 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
             }
         }
         .frame(minWidth: 320, maxWidth: 420, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project-board-detail")
+        .accessibilityLabel("Project board detail")
         .onAppear {
             projectTitle = project.title
         }
@@ -722,6 +770,8 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
                             .font(.caption)
                         runtimeStatusButton(task: task, targetStatus: task.status.nextStatus)
                     }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("task-status-move-controls")
                 }
                 .padding(8)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -776,6 +826,20 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
             .accessibilityHint("Saves edits to the selected task in the local SoloPM database.")
 
             Button {
+                let nextStatus = task.status == .blocked ? ProjectTaskStatus.inProgress : task.status.nextStatus
+                guard let nextStatus else {
+                    return
+                }
+                viewModel.moveTask(id: task.id, to: nextStatus)
+            } label: {
+                Label("Apply Suggestion", systemImage: "wand.and.stars")
+            }
+            .disabled(task.status.nextStatus == nil && task.status != .blocked)
+            .help("Applies the local next-step suggestion to the selected task")
+            .accessibilityIdentifier("task-inspector-apply-suggestion")
+            .accessibilityHint("Applies the local next-step suggestion to the selected task.")
+
+            Button {
                 viewModel.prepareAutomationReviewForSelectedTask()
             } label: {
                 Label("Review automation plan", systemImage: "doc.text.magnifyingglass")
@@ -822,6 +886,10 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
             }
         }
         .frame(minWidth: 300, maxWidth: 380, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("task-inspector")
+        .accessibilityLabel("Task inspector for \(task.title)")
+        .accessibilityHint("Edit, save, move, or delete the selected task.")
         .onAppear {
             refreshTaskFields(from: task)
         }
