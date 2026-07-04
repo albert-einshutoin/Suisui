@@ -266,6 +266,45 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertNil(issueSeeds.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
     }
 
+    func testProductOutGapLedgerClassifiesReleaseCloseoutWork() throws {
+        let ledger = try readPackageFile("docs/release/product-out-gap-ledger.md")
+        let phase15 = try readPackageFile("tasks/Phase15-ProductOutReleaseCandidate.md")
+
+        for marker in [
+            "# Product-Out Gap Ledger",
+            "Release candidate source commit",
+            "Blocker",
+            "Accepted Risk",
+            "Deferred",
+            "Google Calendar live sync",
+            "Local OSS TTS packaged runtime",
+            "Daily Planning VoiceOver closeout",
+            "Release machine signing, notarization, Sparkle",
+            "UI evidence refresh",
+            "Owner",
+            "Reproduction / verifier",
+            "Next action",
+            "Known limitations link",
+            "Phase16/17 handoff"
+        ] {
+            XCTAssertTrue(ledger.contains(marker), "Product-out gap ledger must include \(marker)")
+        }
+
+        for issueLink in [
+            "https://github.com/albert-einshutoin/soloPM/issues/3",
+            "https://github.com/albert-einshutoin/soloPM/issues/11",
+            "https://github.com/albert-einshutoin/soloPM/issues/14",
+            "https://github.com/albert-einshutoin/soloPM/issues/23",
+            "https://github.com/albert-einshutoin/soloPM/issues/12"
+        ] {
+            XCTAssertTrue(ledger.contains(issueLink), "Product-out gap ledger must link \(issueLink)")
+        }
+
+        XCTAssertTrue(phase15.contains("Product-out gap ledger"))
+        XCTAssertNil(ledger.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
+        XCTAssertNil(ledger.range(of: #"/Users/[^` ]+"#, options: .regularExpression))
+    }
+
     func testCursorNotionCompetitiveResponseDefinesAccelerationLane() throws {
         let response = try readPackageFile("docs/product/cursor-notion-competitive-response.md")
         let issueSeeds = try readPackageFile("tasks/ProductOut-IssueSeeds.md")
