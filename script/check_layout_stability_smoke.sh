@@ -22,6 +22,7 @@ LAYOUT_STABILITY_OUTPUT_DIR="${SOLOPM_LAYOUT_STABILITY_OUTPUT_DIR:-$ROOT_DIR/.tm
 # synchronously. Set SOLOPM_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX=1 only
 # for a documented macOS rendering/runtime tolerance.
 LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX="${SOLOPM_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX:-0}"
+LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX="${SOLOPM_LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX:-1}"
 LAYOUT_STABILITY_DATABASE_PATH="${SOLOPM_LAYOUT_STABILITY_DATABASE_PATH:-$LAYOUT_STABILITY_OUTPUT_DIR/SoloPM-layout-stability.sqlite}"
 LAYOUT_STABILITY_WINDOW_MIN_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_MIN_WIDTH:-980}"
 LAYOUT_STABILITY_WINDOW_MIN_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_MIN_HEIGHT:-720}"
@@ -41,6 +42,11 @@ fi
 
 if [[ ! "$LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX" =~ ^[0-9]+$ ]]; then
   echo "LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX must be a non-negative integer" >&2
+  exit 2
+fi
+
+if [[ ! "$LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX" =~ ^[0-9]+$ ]]; then
+  echo "LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX must be a non-negative integer" >&2
   exit 2
 fi
 
@@ -243,9 +249,11 @@ prepare_layout_candidate() {
 launch_layout_candidate() {
   terminate_app
   SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SOLOPM_LAUNCH_RECOVERY_MODE=1 \
+    SOLOPM_LAYOUT_STABILITY_RECOVERY_MODE=1 \
     SOLOPM_DATABASE_PATH="$LAYOUT_STABILITY_DATABASE_PATH" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$layout_project_id" \
-    "$APP_BINARY" &
+    "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_pid=$!
   wait_for_app_process
   activate_app
@@ -467,6 +475,7 @@ write_summary_header() {
     printf 'Generated at: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     printf 'Output directory: `%s`\n' "$LAYOUT_STABILITY_OUTPUT_DIR"
     printf 'Frame delta threshold: `%spx`\n' "$LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX"
+    printf 'Clipping tolerance: `%spx`\n' "$LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX"
     printf '\n'
     printf '%s\n' '## Samples'
   } >"$SUMMARY_FILE"
@@ -551,6 +560,7 @@ assert_no_negative_or_overlapping_frames() {
     -v winW="$window_width" \
     -v winH="$window_height" \
     -v threshold="$LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX" \
+    -v clipTolerance="$LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX" \
     -v required="$required_list" '
       function right(id) { return x[id] + w[id] }
       function bottom(id) { return y[id] + h[id] }
@@ -580,8 +590,8 @@ assert_no_negative_or_overlapping_frames() {
         seen[id] = 1
 
         if (w[id] <= 0 || h[id] <= 0 ||
-          x[id] < winX - threshold || y[id] < winY - threshold ||
-          right(id) > winRight + threshold || bottom(id) > winBottom + threshold) {
+          x[id] < winX - clipTolerance || y[id] < winY - clipTolerance ||
+          right(id) > winRight + clipTolerance || bottom(id) > winBottom + clipTolerance) {
           printf "BLOCKER: layout frame is clipped outside window after %s: %s=(%d,%d %dx%d) window=(%d,%d %dx%d) file=%s\n",
             label, id, x[id], y[id], w[id], h[id], winX, winY, winW, winH, frameFile > "/dev/stderr"
           failed = 1

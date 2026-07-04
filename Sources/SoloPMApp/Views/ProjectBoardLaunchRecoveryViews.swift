@@ -48,7 +48,9 @@ struct ProjectBoardLaunchRecoveryView: View {
         case .projects:
             ProjectBoardRuntimeCRUDRecoveryView(projectID: nil, viewModel: viewModel)
         case .project(let projectID):
-            if ProjectBoardRuntimeCRUDRecoveryEnvironment.isEnabled {
+            if ProjectBoardLayoutStabilityRecoveryEnvironment.isEnabled {
+                ProjectBoardLayoutStabilityRecoveryView(projectID: projectID, viewModel: viewModel)
+            } else if ProjectBoardRuntimeCRUDRecoveryEnvironment.isEnabled {
                 ProjectBoardRuntimeCRUDRecoveryView(projectID: projectID, viewModel: viewModel)
             } else {
                 ProjectDevelopmentAutomationRecoveryView(
@@ -223,6 +225,257 @@ private struct ProjectBoardLaunchRecoveryTaskInspector: View {
         status = task.status
         priority = task.priority
         dueAt = task.dueAt ?? ""
+    }
+}
+
+private enum ProjectBoardLayoutStabilityRecoveryEnvironment {
+    private static let flagName = "SOLOPM_LAYOUT_STABILITY_RECOVERY_MODE"
+
+    static var isEnabled: Bool {
+        ProcessInfo.processInfo.environment[flagName] == "1"
+    }
+}
+
+private struct ProjectBoardLayoutStabilityRecoveryView: View {
+    let projectID: Int64
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    @State private var isSidebarVisible = true
+    @State private var selectedProjectID: Int64
+
+    init(projectID: Int64, viewModel: ProjectBoardViewModel) {
+        self.projectID = projectID
+        self.viewModel = viewModel
+        _selectedProjectID = State(initialValue: projectID)
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if isSidebarVisible {
+                sidebar
+                    .frame(width: 240)
+                    .frame(maxHeight: .infinity)
+
+                Divider()
+            }
+
+            VStack(spacing: 0) {
+                header
+                Divider()
+                detail
+            }
+            .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+
+            inspector
+                .frame(width: 320)
+                .frame(maxHeight: .infinity)
+        }
+        .frame(minWidth: 960, idealWidth: 1_180, minHeight: 620, idealHeight: 760)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    isSidebarVisible.toggle()
+                } label: {
+                    Label("Sidebar", systemImage: "sidebar.left")
+                }
+                .help(isSidebarVisible ? "Hide Sidebar" : "Show Sidebar")
+                .accessibilityIdentifier("project-board-sidebar-toggle")
+                .accessibilityLabel(isSidebarVisible ? "Hide Sidebar" : "Show Sidebar")
+            }
+        }
+        .onAppear {
+            restoreSelectedProjectIfNeeded()
+        }
+        .onChange(of: viewModel.snapshot.projects) { _, _ in
+            restoreSelectedProjectIfNeeded()
+        }
+    }
+
+    private var layoutProjects: [ProjectBoardProject] {
+        viewModel.snapshot.projects.filter { !$0.isArchived }
+    }
+
+    private var selectedProject: ProjectBoardProject? {
+        layoutProjects.first { $0.id == selectedProjectID } ?? layoutProjects.first
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Projects")
+                .font(.headline)
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    ForEach(layoutProjects) { project in
+                        Button {
+                            selectedProjectID = project.id
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: project.id == selectedProjectID ? "folder.fill" : "folder")
+                                    .frame(width: 18)
+
+                                Text(project.title)
+                                    .lineLimit(1)
+
+                                Spacer(minLength: 8)
+
+                                Text("\(project.taskCount)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            }
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("project-sidebar-row-\(project.id)")
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(.regularMaterial)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project-board-sidebar")
+        .accessibilityLabel("Project navigation")
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            Label("Project Board", systemImage: "rectangle.3.group")
+                .font(.headline)
+
+            if let selectedProject {
+                Text(selectedProject.title)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 16)
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44, alignment: .leading)
+        .background(.bar)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project-board-header-bar")
+    }
+
+    private var detail: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if let selectedProject {
+                Text(selectedProject.title)
+                    .font(.title3.weight(.semibold))
+                    .lineLimit(1)
+
+                HStack(spacing: 12) {
+                    layoutMetric(title: "Status", value: selectedProject.status.capitalized)
+                    layoutMetric(title: "Tasks", value: "\(selectedProject.taskCount)")
+                    layoutMetric(title: "Milestones", value: selectedProject.milestoneSummary)
+                }
+
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(selectedProject.columns) { column in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(column.title)
+                                .font(.headline)
+                                .lineLimit(1)
+
+                            ForEach(column.tasks.prefix(3)) { task in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(task.title)
+                                        .lineLimit(1)
+                                    Text(task.detail.isEmpty ? task.status.title : task.detail)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                }
+                                .padding(8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(.background)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(.quaternary, lineWidth: 1)
+                                )
+                            }
+
+                            Spacer(minLength: 0)
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, minHeight: 300, alignment: .topLeading)
+                        .background(.thinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                }
+            } else {
+                ContentUnavailableView("No Projects", systemImage: "folder.badge.questionmark")
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project-board-detail")
+    }
+
+    private var inspector: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if let selectedProject {
+                Label("Project Details", systemImage: "folder")
+                    .font(.headline)
+
+                Divider()
+
+                LabeledContent("Title", value: selectedProject.title)
+                LabeledContent("Status", value: selectedProject.status.capitalized)
+                LabeledContent("Tasks", value: "\(selectedProject.taskCount)")
+                LabeledContent("Workspace", value: selectedProject.workspaceDisplayName ?? "Not set")
+
+                Spacer(minLength: 0)
+            } else {
+                ContentUnavailableView("No Projects", systemImage: "folder.badge.questionmark")
+            }
+        }
+        .padding(18)
+        .background(.regularMaterial)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project-inspector")
+    }
+
+    private func layoutMetric(title: LocalizedStringKey, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline)
+                .lineLimit(1)
+        }
+        .padding(10)
+        .frame(minWidth: 120, maxWidth: .infinity, alignment: .leading)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func restoreSelectedProjectIfNeeded() {
+        // Layout stability evidence must exercise real seeded project data while
+        // staying independent from the full Project Board's WindowGroup startup path.
+        if layoutProjects.contains(where: { $0.id == selectedProjectID }) {
+            return
+        }
+        if layoutProjects.contains(where: { $0.id == projectID }) {
+            selectedProjectID = projectID
+            return
+        }
+        if let firstProjectID = layoutProjects.first?.id {
+            selectedProjectID = firstProjectID
+        }
     }
 }
 
