@@ -45,11 +45,17 @@ struct ProjectBoardLaunchRecoveryView: View {
             DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())
         case .assistantQueue:
             AssistantQueueWorkflowView(viewModel: viewModel)
+        case .projects:
+            ProjectBoardRuntimeCRUDRecoveryView(projectID: nil, viewModel: viewModel)
         case .project(let projectID):
-            ProjectDevelopmentAutomationRecoveryView(
-                projectID: projectID,
-                viewModel: viewModel
-            )
+            if ProjectBoardRuntimeCRUDRecoveryEnvironment.isEnabled {
+                ProjectBoardRuntimeCRUDRecoveryView(projectID: projectID, viewModel: viewModel)
+            } else {
+                ProjectDevelopmentAutomationRecoveryView(
+                    projectID: projectID,
+                    viewModel: viewModel
+                )
+            }
         }
     }
 
@@ -220,12 +226,436 @@ private struct ProjectBoardLaunchRecoveryTaskInspector: View {
     }
 }
 
+private enum ProjectBoardRuntimeCRUDRecoveryEnvironment {
+    private static let flagName = "SOLOPM_RUNTIME_CRUD_RECOVERY_MODE"
+
+    static var isEnabled: Bool {
+        ProcessInfo.processInfo.environment[flagName] == "1"
+    }
+}
+
+private struct ProjectBoardRuntimeCRUDRecoveryView: View {
+    let projectID: Int64?
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    @State private var projectTitle = ""
+    @State private var isTaskComposerVisible = false
+    @State private var taskTitle = ""
+    @State private var taskDetail = ""
+    @State private var taskInspectorTitle = ""
+    @State private var taskInspectorDetail = ""
+    @State private var isConfirmingTaskDelete = false
+    @State private var isConfirmingProjectDelete = false
+
+    private var project: ProjectBoardProject? {
+        guard let selectedProjectID = projectID ?? viewModel.selectedProjectID else {
+            return nil
+        }
+        return viewModel.snapshot.projects.first { $0.id == selectedProjectID }
+    }
+
+    private var selectedTask: ProjectBoardTask? {
+        viewModel.selectedTask
+    }
+
+    private var hasReviewDraft: Bool {
+        guard let taskID = selectedTask?.id else {
+            return false
+        }
+        return viewModel.taskAutomationReviewDecision?.selectedTasks.contains { $0.id == taskID } == true
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            projectsColumn
+
+            if let project {
+                projectColumn(project)
+            } else {
+                ContentUnavailableView(
+                    "No project selected",
+                    systemImage: "folder",
+                    description: Text("Create or select a project for runtime CRUD verification.")
+                )
+            }
+
+            if let selectedTask {
+                taskInspector(selectedTask)
+            }
+        }
+        .padding(18)
+        .frame(minWidth: 960, idealWidth: 1_180, minHeight: 620, idealHeight: 760, alignment: .topLeading)
+        .task {
+            loadRuntimeState()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
+            loadRuntimeState()
+        }
+    }
+
+    private var projectsColumn: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Projects", systemImage: "folder")
+                .font(.headline)
+
+            Button {
+                _ = viewModel.createProject()
+            } label: {
+                Label("Add Project", systemImage: "plus")
+            }
+            .buttonStyle(.borderedProminent)
+            .help("Creates a new local project in the SoloPM database")
+            .accessibilityIdentifier("project-board-add-project")
+            .accessibilityHint("Creates a new local project in the SoloPM database.")
+
+            ForEach(viewModel.snapshot.projects) { project in
+                Button {
+                    viewModel.selectedProjectID = project.id
+                    viewModel.selectedTaskID = nil
+                    projectTitle = project.title
+                    isConfirmingProjectDelete = false
+                } label: {
+                    Text(project.title)
+                        .lineLimit(1)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(width: 220, alignment: .topLeading)
+    }
+
+    private func projectColumn(_ project: ProjectBoardProject) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Project Details", systemImage: "folder")
+                .font(.headline)
+
+            TextField("Project title", text: $projectTitle)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("project-inspector-title")
+
+            Button {
+                viewModel.updateSelectedProject(title: projectTitle)
+            } label: {
+                Label("Save Project", systemImage: "checkmark.circle")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(projectTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .help("Saves edits to the selected project in the local SoloPM database")
+            .accessibilityIdentifier("project-inspector-save")
+            .accessibilityHint("Saves edits to the selected project in the local SoloPM database.")
+
+            Button {
+                isTaskComposerVisible = true
+            } label: {
+                Label("Add Task", systemImage: "plus")
+            }
+            .buttonStyle(.borderedProminent)
+            .help("Add task to \(project.title)")
+            .accessibilityIdentifier("project-header-add-task")
+            .accessibilityHint("Opens the inline composer for a new local task.")
+
+            if isTaskComposerVisible {
+                taskComposer(projectID: project.id)
+            }
+
+            taskList(project.tasks)
+
+            Divider()
+
+            Button {
+                viewModel.completeSelectedProject()
+            } label: {
+                Label("Complete Project", systemImage: "checkmark.seal")
+            }
+            .disabled(project.isCompleted)
+            .help("Completes the selected project in the local SoloPM database")
+            .accessibilityIdentifier("project-inspector-complete")
+            .accessibilityHint("Completes the selected project in the local SoloPM database.")
+
+            if isConfirmingProjectDelete {
+                ProjectBoardRuntimeCRUDDestructiveConfirmation(
+                    title: "Delete this project?",
+                    message: "This permanently removes the project and its local tasks from SoloPM.",
+                    confirmTitle: "Delete Project",
+                    accessibilityIdentifier: "project-inspector-delete-confirmation",
+                    confirmAction: {
+                        isConfirmingProjectDelete = false
+                        viewModel.deleteSelectedProject()
+                    },
+                    cancelAction: { isConfirmingProjectDelete = false }
+                )
+            } else {
+                Button(role: .destructive) {
+                    isConfirmingProjectDelete = true
+                } label: {
+                    Label("Delete Project", systemImage: "trash")
+                }
+                .help("Deletes the selected project after confirmation")
+                .accessibilityIdentifier("project-inspector-delete")
+                .accessibilityHint("Deletes the selected project after confirmation.")
+            }
+        }
+        .frame(minWidth: 320, maxWidth: 420, alignment: .topLeading)
+        .onAppear {
+            projectTitle = project.title
+        }
+        .onChange(of: project.id) { _, _ in
+            projectTitle = project.title
+            isTaskComposerVisible = false
+            isConfirmingProjectDelete = false
+        }
+        .onChange(of: project.title) { _, newTitle in
+            if projectTitle.isEmpty || projectTitle == newTitle {
+                projectTitle = newTitle
+            }
+        }
+    }
+
+    private func taskComposer(projectID: Int64) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("Task title", text: $taskTitle)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("inline-task-title")
+
+            TextField("Detail", text: $taskDetail, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(2...3)
+                .accessibilityIdentifier("inline-task-detail")
+
+            Button {
+                _ = viewModel.createTask(
+                    title: taskTitle,
+                    detail: taskDetail,
+                    projectID: projectID,
+                    status: .backlog
+                )
+                taskTitle = ""
+                taskDetail = ""
+                isTaskComposerVisible = false
+            } label: {
+                Label("Add", systemImage: "checkmark")
+            }
+            .disabled(taskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .help("Creates the task in the local SoloPM database")
+            .accessibilityIdentifier("inline-task-create")
+            .accessibilityHint("Creates the task in the local SoloPM database.")
+        }
+        .padding(10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func taskList(_ tasks: [ProjectBoardTask]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(tasks) { task in
+                VStack(alignment: .leading, spacing: 6) {
+                    Button {
+                        viewModel.selectedProjectID = task.projectID
+                        viewModel.selectedTaskID = task.id
+                        taskInspectorTitle = task.title
+                        taskInspectorDetail = task.detail
+                        isConfirmingTaskDelete = false
+                    } label: {
+                        Text(task.title)
+                            .lineLimit(2)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("task-card-open-details")
+                    .accessibilityLabel("Open task \(task.title)")
+                    .accessibilityHint("Opens task details in the inspector.")
+
+                    HStack(spacing: 6) {
+                        runtimeStatusButton(task: task, targetStatus: task.status.previousStatus)
+                        Text(LocalizedStringKey(task.status.title))
+                            .font(.caption)
+                        runtimeStatusButton(task: task, targetStatus: task.status.nextStatus)
+                    }
+                }
+                .padding(8)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+            }
+        }
+    }
+
+    private func runtimeStatusButton(task: ProjectBoardTask, targetStatus: ProjectTaskStatus?) -> some View {
+        Button {
+            guard let targetStatus else {
+                return
+            }
+            viewModel.moveTask(id: task.id, to: targetStatus)
+        } label: {
+            Label("Move task", systemImage: "chevron.right")
+                .labelStyle(.iconOnly)
+        }
+        .disabled(targetStatus == nil)
+        .accessibilityIdentifier(targetStatus.map { "task-status-move-\($0.rawValue)-\(task.id)" } ?? "task-status-move-disabled-\(task.id)")
+        .accessibilityLabel(targetStatus.map { "Move to \($0.title)" } ?? "Move task")
+    }
+
+    private func taskInspector(_ task: ProjectBoardTask) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Task Details", systemImage: "checklist")
+                .font(.headline)
+
+            TextField("Title", text: $taskInspectorTitle)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("task-inspector-title")
+
+            TextField("Detail", text: $taskInspectorDetail, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(4...8)
+                .accessibilityIdentifier("task-inspector-detail")
+
+            Button {
+                viewModel.updateSelectedTask(
+                    title: taskInspectorTitle,
+                    detail: taskInspectorDetail,
+                    status: task.status,
+                    priority: task.priority,
+                    dueAt: task.dueAt
+                )
+            } label: {
+                Label("Save Changes", systemImage: "checkmark.circle")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(taskInspectorTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .help("Saves edits to the selected task in the local SoloPM database")
+            .accessibilityIdentifier("task-inspector-save")
+            .accessibilityHint("Saves edits to the selected task in the local SoloPM database.")
+
+            Button {
+                viewModel.prepareAutomationReviewForSelectedTask()
+            } label: {
+                Label("Review automation plan", systemImage: "doc.text.magnifyingglass")
+            }
+            .help("Prepares review-only local automation for the selected task")
+            .accessibilityIdentifier("task-auto-execution-review")
+            .accessibilityHint("Prepares review-only local automation for the selected task.")
+
+            Button {
+                viewModel.runApprovedAutomationForSelectedTask()
+            } label: {
+                Label("Run approved plan", systemImage: "play.circle")
+            }
+            .disabled(!hasReviewDraft)
+            .help("Runs the reviewed local task step after explicit user approval")
+            .accessibilityIdentifier("task-auto-execution-run-plan")
+            .accessibilityHint("Runs the reviewed local task step after explicit user approval.")
+
+            if let receipt = viewModel.approvedAutomationExecutionReceipts.last(where: { $0.taskID == task.id }) {
+                approvedExecutionReceiptView(receipt)
+            }
+
+            if isConfirmingTaskDelete {
+                ProjectBoardRuntimeCRUDDestructiveConfirmation(
+                    title: "Delete this task?",
+                    message: "This removes the task from the local SoloPM database.",
+                    confirmTitle: "Delete Task",
+                    accessibilityIdentifier: "task-inspector-delete-confirmation",
+                    confirmAction: {
+                        isConfirmingTaskDelete = false
+                        viewModel.deleteSelectedTask()
+                    },
+                    cancelAction: { isConfirmingTaskDelete = false }
+                )
+            } else {
+                Button(role: .destructive) {
+                    isConfirmingTaskDelete = true
+                } label: {
+                    Label("Delete Task", systemImage: "trash")
+                }
+                .help("Deletes the selected task after confirmation")
+                .accessibilityIdentifier("task-inspector-delete")
+                .accessibilityHint("Deletes the selected task after confirmation.")
+            }
+        }
+        .frame(minWidth: 300, maxWidth: 380, alignment: .topLeading)
+        .onAppear {
+            refreshTaskFields(from: task)
+        }
+        .onChange(of: task.id) { _, _ in
+            refreshTaskFields(from: task)
+        }
+        .onChange(of: task.title) { _, _ in
+            refreshTaskFields(from: task)
+        }
+    }
+
+    private func approvedExecutionReceiptView(_ receipt: ApprovedAutomationExecutionReceipt) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Approved execution receipt", systemImage: "checkmark.seal")
+                .font(.caption.weight(.semibold))
+            Text("Task: \(receipt.redactedTaskTitle)")
+            Text("Reviewed detail: \(receipt.redactedTaskDetail)")
+        }
+        .font(.caption)
+        .padding(10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("approved-execution-receipt")
+        .accessibilityLabel("Approved execution receipt")
+        .accessibilityValue("Task \(receipt.redactedTaskTitle), Reviewed detail \(receipt.redactedTaskDetail)")
+        .accessibilityHint("Shows the redacted task title and detail that were approved and executed.")
+    }
+
+    private func refreshTaskFields(from task: ProjectBoardTask) {
+        taskInspectorTitle = task.title
+        taskInspectorDetail = task.detail
+    }
+
+    private func loadRuntimeState() {
+        viewModel.load()
+        if let projectID {
+            viewModel.selectedProjectID = projectID
+        }
+        if let project {
+            projectTitle = project.title
+        }
+        if let selectedTask {
+            refreshTaskFields(from: selectedTask)
+        }
+    }
+}
+
+private struct ProjectBoardRuntimeCRUDDestructiveConfirmation: View {
+    let title: String
+    let message: String
+    let confirmTitle: String
+    let accessibilityIdentifier: String
+    let confirmAction: () -> Void
+    let cancelAction: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: "exclamationmark.triangle.fill")
+                .font(.headline)
+                .foregroundStyle(.red)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Button("Cancel", role: .cancel, action: cancelAction)
+                    .accessibilityIdentifier("\(accessibilityIdentifier)-cancel")
+                    .accessibilityLabel("Cancel \(confirmTitle)")
+                Button(role: .destructive, action: confirmAction) {
+                    Label(confirmTitle, systemImage: "trash")
+                }
+                .accessibilityIdentifier("\(accessibilityIdentifier)-confirm")
+                .accessibilityLabel("Confirm \(confirmTitle)")
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(accessibilityIdentifier)
+    }
+}
+
 private enum ProjectBoardLaunchRecoveryDestination: Equatable {
     case inbox
     case schedule
     case today
     case done
     case assistantQueue
+    case projects
     case project(Int64)
 
     init?(rawValue: String) {
@@ -250,6 +680,8 @@ private enum ProjectBoardLaunchRecoveryDestination: Equatable {
             self = .done
         case "assistant-queue":
             self = .assistantQueue
+        case "projects":
+            self = .projects
         default:
             return nil
         }
@@ -259,7 +691,7 @@ private enum ProjectBoardLaunchRecoveryDestination: Equatable {
         switch self {
         case .project(let projectID):
             return availableProjects.contains(where: { $0.id == projectID }) ? self : .today
-        case .inbox, .schedule, .today, .done, .assistantQueue:
+        case .inbox, .schedule, .today, .done, .assistantQueue, .projects:
             return self
         }
     }

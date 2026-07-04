@@ -148,7 +148,7 @@ APPLESCRIPT
 
 launch_app_for_database_migration() {
   terminate_app
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" "$APP_BINARY" &
+  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_LAUNCH_RECOVERY_MODE=1 SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1 SOLOPM_DATABASE_PATH="$database_path" "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_pid=$!
   wait_for_app_process
   activate_app
@@ -159,9 +159,11 @@ launch_app_for_seed_project() {
   local seed_project_id="$1"
   terminate_app
   SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SOLOPM_LAUNCH_RECOVERY_MODE=1 \
+    SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1 \
     SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
-    "$APP_BINARY" &
+    "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_pid=$!
   wait_for_app_process
   activate_app
@@ -171,9 +173,11 @@ launch_app_for_seed_project() {
 launch_app_for_crud_mutation() {
   terminate_app
   SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SOLOPM_LAUNCH_RECOVERY_MODE=1 \
+    SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1 \
     SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="projects" \
-    "$APP_BINARY" &
+    "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_pid=$!
   wait_for_app_process
   activate_app

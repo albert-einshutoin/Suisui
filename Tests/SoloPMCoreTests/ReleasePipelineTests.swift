@@ -5689,7 +5689,9 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH"))
         XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
-        XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH=\"$database_path\" \"$APP_BINARY\" &"))
+        XCTAssertTrue(script.contains("SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1"))
+        XCTAssertTrue(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
+        XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_LAUNCH_RECOVERY_MODE=1 SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1 SOLOPM_DATABASE_PATH=\"$database_path\" \"$APP_BINARY\" -ApplePersistenceIgnoreState YES &"))
         XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"projects\""))
