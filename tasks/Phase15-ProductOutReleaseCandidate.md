@@ -128,6 +128,7 @@ SoloPM起動後の通常操作でmacOS側が毎回Keychain認証を求めると�
 - [ ] Keychain fakeにread countを持たせ、通常のProject Board操作でprovider secret readが連続発火しないunit testを追加する。
 - [ ] provider readiness表示がKeychainエラーをsecret値なしで表示するtestを追加する。
 - [ ] Google CalendarはAPI keyではなくOAuth authorizationが必要であることをsource/doc testで固定する。
+- [ ] Google Calendar live sync evidence は `script/create_google_calendar_live_evidence.sh --validate-only` で、OAuth consent、writable calendar list、明示承認済みevent write、duplicate skip、Keychain token-boundary noteを検証し、raw access/refresh tokenやGoogle API keyを受け付けない。
 - [ ] Keychain prompt回避のためにsecretをUserDefaultsやSQLiteへcacheしないことをsecurity testで固定する。
 
 ### Implementation Steps
@@ -137,6 +138,7 @@ SoloPM起動後の通常操作でmacOS側が毎回Keychain認証を求めると�
 - [ ] readiness cacheは「設定済みかどうか」「最後の検証結果」だけを保持し、secret値を保持しない。
 - [ ] Keychain access denied、item missing、interaction not allowedを分けてUIに出す。
 - [ ] Google連携の文言を「Google API key」ではなく「Google OAuth authorization」として説明する。
+- [ ] 資格情報があるrelease machineでGoogle Calendar live syncを実行し、`script/create_google_calendar_live_evidence.sh --force` で `docs/release/evidence/google-calendar-live-sync.md` を生成する。
 - [ ] 実機でSoloPM起動 -> Project Board操作 -> task list -> task edit -> automation reviewを行い、不要なKeychain promptが出ないことをmanual noteに残す。
 
 ### Acceptance Criteria
@@ -145,6 +147,7 @@ SoloPM起動後の通常操作でmacOS側が毎回Keychain認証を求めると�
 - [ ] 初回保存、明示的なkey更新、OAuth再認証など必要な操作では安全に認証できる。
 - [ ] secretはKeychain以外に複製されない。
 - [ ] Google Calendarの認証境界がAPI keyとOAuthで混同されない。
+- [ ] Google Calendar live sync evidence がOAuth consent、calendar picker/list、approved write、external link duplicate skip、Keychain境界を具体的に記録している。
 
 ### Non-goals
 
