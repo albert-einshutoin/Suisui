@@ -140,6 +140,7 @@ private struct ProjectBoardFallbackRootView: View {
     @StateObject private var viewModel: ProjectBoardViewModel
     private let taskAutomationSettings: () -> TaskAutoExecutionSettings
     private let appSettings: () -> AppSettings
+    @State private var isProjectBoardReady = false
 
     init(
         viewModel: ProjectBoardViewModel,
@@ -158,15 +159,39 @@ private struct ProjectBoardFallbackRootView: View {
                     viewModel: viewModel,
                     appSettings: appSettings
                 )
-            } else {
+            } else if isProjectBoardReady {
                 ProjectBoardView(
                     viewModel: viewModel,
                     taskAutomationSettings: taskAutomationSettings,
                     appSettings: appSettings,
                     developmentAutomationReviewSession: AppRuntimeFactory.makeReviewSessionViewModel
                 )
+            } else {
+                ProjectBoardFallbackLoadingView()
             }
         }
+        .task {
+            guard !SoloPMLaunchRecoveryEnvironment.isEnabled, !isProjectBoardReady else {
+                return
+            }
+            // The direct fallback exists for screenshot and AX launches. Ordering a
+            // small visible window first prevents the full board's initial SwiftUI
+            // layout from leaving evidence scripts with a process but no window.
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            isProjectBoardReady = true
+        }
+    }
+}
+
+private struct ProjectBoardFallbackLoadingView: View {
+    var body: some View {
+        ContentUnavailableView(
+            "Opening Project Board",
+            systemImage: "rectangle.3.group",
+            description: Text("Preparing local project data for the visible window.")
+        )
+        .frame(minWidth: 960, idealWidth: 1_180, minHeight: 620, idealHeight: 760)
+        .accessibilityIdentifier("project-board-fallback-loading")
     }
 }
 

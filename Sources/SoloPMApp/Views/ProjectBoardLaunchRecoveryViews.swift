@@ -46,11 +46,15 @@ struct ProjectBoardLaunchRecoveryView: View {
         case .assistantQueue:
             AssistantQueueWorkflowView(viewModel: viewModel)
         case .projects:
-            ProjectBoardRuntimeCRUDRecoveryView(projectID: nil, viewModel: viewModel)
+            if ProjectBoardUIEvidenceRecoveryEnvironment.isEnabled {
+                ProjectBoardUIEvidenceProjectsOverviewRecoveryView(viewModel: viewModel)
+            } else {
+                ProjectBoardRuntimeCRUDRecoveryView(projectID: nil, viewModel: viewModel)
+            }
         case .project(let projectID):
             if ProjectBoardLayoutStabilityRecoveryEnvironment.isEnabled {
                 ProjectBoardLayoutStabilityRecoveryView(projectID: projectID, viewModel: viewModel)
-            } else if ProjectBoardRuntimeCRUDRecoveryEnvironment.isEnabled {
+            } else if ProjectBoardRuntimeCRUDRecoveryEnvironment.isEnabled || ProjectBoardUIEvidenceRecoveryEnvironment.isEnabled {
                 ProjectBoardRuntimeCRUDRecoveryView(projectID: projectID, viewModel: viewModel)
             } else {
                 ProjectDevelopmentAutomationRecoveryView(
@@ -112,6 +116,103 @@ struct ProjectBoardLaunchRecoveryView: View {
         // Recovery launches must not mutate persisted Project Board selection;
         // the env override only restores deterministic rail context for smoke evidence.
         viewModel.selectedTaskID = taskID
+    }
+}
+
+private enum ProjectBoardUIEvidenceRecoveryEnvironment {
+    private static let flagName = "SOLOPM_UI_EVIDENCE_RECOVERY_MODE"
+
+    static var isEnabled: Bool {
+        ProcessInfo.processInfo.environment[flagName] == "1"
+    }
+}
+
+private struct ProjectBoardUIEvidenceProjectsOverviewRecoveryView: View {
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    private var summaries: [ProjectPortfolioSummary] {
+        viewModel.projectPortfolioSummaries()
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Projects", systemImage: "folder")
+                    .font(.headline)
+                    .accessibilityIdentifier("sidebar-destination-projects")
+
+                Text("Portfolio Watchlist")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                Spacer(minLength: 0)
+            }
+            .padding(16)
+            .frame(width: 240, alignment: .topLeading)
+            .frame(maxHeight: .infinity, alignment: .topLeading)
+            .background(.regularMaterial)
+
+            VStack(alignment: .leading, spacing: 16) {
+                Label("Projects", systemImage: "rectangle.grid.2x2")
+                    .font(.title3.weight(.semibold))
+
+                if summaries.isEmpty {
+                    ContentUnavailableView("No projects", systemImage: "folder.badge.questionmark")
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 12)], alignment: .leading, spacing: 12) {
+                        ForEach(summaries.prefix(6)) { summary in
+                            portfolioCard(summary)
+                        }
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("projects-portfolio-overview")
+            .accessibilityLabel("Projects portfolio overview")
+        }
+        .frame(minWidth: 960, idealWidth: 1_180, minHeight: 620, idealHeight: 760)
+    }
+
+    private func portfolioCard(_ summary: ProjectPortfolioSummary) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(summary.title)
+                .font(.headline)
+                .lineLimit(1)
+
+            ProgressView(value: summary.progress)
+                .accessibilityLabel("Progress")
+                .accessibilityValue("\(Int((summary.progress * 100).rounded())) percent")
+
+            HStack(spacing: 10) {
+                metric("Open tasks", value: "\(summary.openTaskCount)")
+                metric("Blocked", value: "\(summary.blockedTaskCount)")
+            }
+
+            Text(summary.riskReason)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 6))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("projects-portfolio-card-\(summary.projectID)")
+    }
+
+    private func metric(_ title: LocalizedStringKey, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline.monospacedDigit())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
