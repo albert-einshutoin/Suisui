@@ -29,6 +29,8 @@ SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/release_
 
 Goal: replace stale `docs/release/evidence/accessibility-voiceover.md` with a real manual VoiceOver pass for the release-candidate source commit shown in the latest action summary.
 
+Tracking issue: [#244 Release closeout: complete manual VoiceOver evidence](https://github.com/albert-einshutoin/soloPM/issues/244)
+
 Generated helpers:
 
 - `.tmp/voiceover-review/accessibility-voiceover-pending-<release-candidate-source-commit>.md`
@@ -120,6 +122,8 @@ git commit -m "docs: record google calendar live sync evidence"
 
 Goal: replace pending competitor evidence and convert `docs/product/competitor-benchmark.md` from worksheet/desk research to real hands-on findings.
 
+Tracking issue: [#245 Release closeout: complete competitor hands-on benchmark](https://github.com/albert-einshutoin/soloPM/issues/245)
+
 Generated helpers:
 
 - `.tmp/competitor-hands-on/hands-on-worksheet.md`
@@ -162,6 +166,8 @@ git commit -m "docs: record competitor hands-on release evidence"
 ## Release machine
 
 Goal: produce a signed, notarized, stapled release artifact with production Sparkle metadata and release evidence.
+
+Tracking issue: [#246 Release closeout: configure signed notarized Sparkle release machine evidence](https://github.com/albert-einshutoin/soloPM/issues/246)
 
 Generated helpers:
 
