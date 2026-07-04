@@ -279,6 +279,7 @@ final class QualitySourceContractTests: XCTestCase {
             "Google Calendar live sync",
             "Local OSS TTS packaged runtime",
             "Daily Planning VoiceOver closeout",
+            "Competitor hands-on benchmark",
             "Release machine signing, notarization, Sparkle",
             "UI evidence refresh",
             "Owner",
@@ -295,6 +296,9 @@ final class QualitySourceContractTests: XCTestCase {
             "https://github.com/albert-einshutoin/soloPM/issues/11",
             "https://github.com/albert-einshutoin/soloPM/issues/14",
             "https://github.com/albert-einshutoin/soloPM/issues/23",
+            "https://github.com/albert-einshutoin/soloPM/issues/244",
+            "https://github.com/albert-einshutoin/soloPM/issues/245",
+            "https://github.com/albert-einshutoin/soloPM/issues/246",
             "https://github.com/albert-einshutoin/soloPM/issues/12"
         ] {
             XCTAssertTrue(ledger.contains(issueLink), "Product-out gap ledger must link \(issueLink)")

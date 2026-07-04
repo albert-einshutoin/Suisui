@@ -462,6 +462,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(runbook.contains("Run `--validate-only` before writing tracked evidence"))
         XCTAssertTrue(runbook.contains("Do not ask an LLM, automation, or a generated action summary to create passed evidence for manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, Gatekeeper, clean install, or Launch at Login checks without the real pass."))
         XCTAssertTrue(runbook.contains("Generated helpers can route the work, but only concrete observations from the real release-candidate app or signed release artifact can unblock these lanes."))
+        XCTAssertTrue(runbook.contains("https://github.com/albert-einshutoin/soloPM/issues/244"))
+        XCTAssertTrue(runbook.contains("https://github.com/albert-einshutoin/soloPM/issues/245"))
+        XCTAssertTrue(runbook.contains("https://github.com/albert-einshutoin/soloPM/issues/246"))
 
         for lane in ["VoiceOver", "Competitor hands-on", "Release machine"] {
             XCTAssertTrue(runbook.contains("## \(lane)"), "Missing lane: \(lane)")
@@ -3267,8 +3270,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actions.contains("- [x] Release evidence command is pinned to release evidence source commit: `.tmp/release-machine/create-release-evidence-command.sh`"))
         XCTAssertTrue(actions.contains("- [ ] VoiceOver manual pass clears up to"))
         XCTAssertTrue(actions.contains("Next: fill `.tmp/voiceover-review/voiceover-worksheet.md` during the manual pass, run generated `.tmp/voiceover-review/create-evidence-command.sh` validate-only first, then rerun readiness."))
+        XCTAssertTrue(actions.contains("Track closeout in https://github.com/albert-einshutoin/soloPM/issues/244."))
         XCTAssertTrue(actions.contains("- [ ] Competitor hands-on pass clears up to"))
         XCTAssertTrue(actions.contains("Next: fill `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/competitor-benchmark-pending-\(commit).md` during the 2-4h pass, complete generated `.tmp/competitor-hands-on/create-evidence-command.sh`, run its validate-only path first, then rerun readiness."))
+        XCTAssertTrue(actions.contains("Track closeout in https://github.com/albert-einshutoin/soloPM/issues/245."))
+        XCTAssertTrue(actions.contains("- Release Machine: https://github.com/albert-einshutoin/soloPM/issues/246"))
         XCTAssertFalse(actions.contains("Next: run `./script/prepare_release_manual_helpers.sh`, complete `.tmp/voiceover-review/create-evidence-command.sh`, then rerun readiness."))
         XCTAssertFalse(actions.contains("Next: run `./script/prepare_release_manual_helpers.sh`, fill `.tmp/competitor-hands-on/create-evidence-command.sh`, then rerun readiness."))
         XCTAssertTrue(actions.contains("## Ignored Stale Manual Helper Previews"))
@@ -8119,7 +8125,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("Run these non-secret diagnostics on the release machine before filling release evidence:"))
         XCTAssertTrue(actionSummary.contains("## Product-Out Gap Ledger"))
         XCTAssertTrue(actionSummary.contains("docs/release/product-out-gap-ledger.md"))
+        XCTAssertTrue(actionSummary.contains("competitor hands-on, release-machine signing/notarization/Sparkle"))
         XCTAssertTrue(actionSummary.contains("Update the ledger when a blocker becomes an accepted risk or a Phase16/17 deferred item."))
+        XCTAssertTrue(actionSummary.contains("## Release Closeout Issue Routes"))
+        XCTAssertTrue(actionSummary.contains("- Release Machine: https://github.com/albert-einshutoin/soloPM/issues/246"))
         XCTAssertTrue(actionSummary.contains("./script/check_release_machine_local_doctor.sh"))
         XCTAssertTrue(actionSummary.contains("security find-identity -p codesigning -v"))
         XCTAssertTrue(actionSummary.contains("ls -l packaging/signing.env packaging/notarization.env packaging/sparkle.env"))
@@ -8307,12 +8316,17 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("- [ ] Competitor hands-on pass clears up to"))
         XCTAssertTrue(actionSummary.contains("Next: run `./script/prepare_release_manual_helpers.sh`, fill `.tmp/voiceover-review/voiceover-worksheet.md`, run generated `.tmp/voiceover-review/create-evidence-command.sh` validate-only first, then rerun readiness."))
         XCTAssertTrue(actionSummary.contains("Next: run `./script/prepare_release_manual_helpers.sh`, fill `.tmp/competitor-hands-on/hands-on-worksheet.md`, complete `.tmp/competitor-hands-on/create-evidence-command.sh`, then rerun readiness."))
+        XCTAssertTrue(actionSummary.contains("## Release Closeout Issue Routes"))
+        XCTAssertTrue(actionSummary.contains("- Manual VoiceOver: https://github.com/albert-einshutoin/soloPM/issues/244"))
+        XCTAssertTrue(actionSummary.contains("- Competitor Hands-On: https://github.com/albert-einshutoin/soloPM/issues/245"))
+        XCTAssertTrue(actionSummary.contains("- Release Machine: https://github.com/albert-einshutoin/soloPM/issues/246"))
         XCTAssertTrue(actionSummary.contains("- [x] Phase checklist has no active blocker groups in this report run."))
         XCTAssertLessThan(
             try XCTUnwrap(actionSummary.range(of: "## Operator Priority Queue")).lowerBound,
             try XCTUnwrap(actionSummary.range(of: "## Current Blocker Groups")).lowerBound
         )
         XCTAssertTrue(actionSummary.contains("## Manual VoiceOver Blockers"))
+        XCTAssertTrue(actionSummary.contains("- Tracking issue: https://github.com/albert-einshutoin/soloPM/issues/244"))
         XCTAssertTrue(actionSummary.contains("""
         ```bash
         ./script/prepare_voiceover_review_candidate.sh --no-launch
@@ -8353,6 +8367,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("- [ ] VoiceOver accessibility evidence missing release context: Source commit"))
         XCTAssertTrue(actionSummary.contains("- [ ] VoiceOver accessibility evidence missing concrete focus note: Task inspector"))
         XCTAssertTrue(actionSummary.contains("## Competitor Hands-On Blockers"))
+        XCTAssertTrue(actionSummary.contains("- Tracking issue: https://github.com/albert-einshutoin/soloPM/issues/245"))
         XCTAssertTrue(actionSummary.contains("```bash\n./script/create_competitor_hands_on_evidence.sh --pending"))
         XCTAssertTrue(actionSummary.contains(".tmp/competitor-hands-on/hands-on-worksheet.md"))
         XCTAssertTrue(actionSummary.contains(".tmp/competitor-hands-on/create-evidence-command.sh"))

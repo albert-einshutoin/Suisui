@@ -9,6 +9,9 @@ VOICEOVER_ACTION_BLOCKERS=()
 COMPETITOR_ACTION_BLOCKERS=()
 APP_METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 RELEASE_ACTIONS_FILE="${SOLOPM_RELEASE_ACTIONS_FILE:-}"
+VOICEOVER_CLOSEOUT_ISSUE_URL="https://github.com/albert-einshutoin/soloPM/issues/244"
+COMPETITOR_CLOSEOUT_ISSUE_URL="https://github.com/albert-einshutoin/soloPM/issues/245"
+RELEASE_MACHINE_CLOSEOUT_ISSUE_URL="https://github.com/albert-einshutoin/soloPM/issues/246"
 AUTOMATED_PROOF_GATES="${SOLOPM_AUTOMATED_PROOF_GATES:-0}"
 AUTOMATED_PREFLIGHT_EVIDENCE_FILE="${SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE:-}"
 AUTOMATED_PREFLIGHT_EVIDENCE_VALID=0
@@ -577,25 +580,25 @@ release_machine_helpers_are_current() {
 
 voiceover_priority_next_action() {
   if voiceover_review_helpers_are_current; then
-    printf 'fill `.tmp/voiceover-review/voiceover-worksheet.md` during the manual pass, run generated `.tmp/voiceover-review/create-evidence-command.sh` validate-only first, then rerun readiness.'
+    printf 'fill `.tmp/voiceover-review/voiceover-worksheet.md` during the manual pass, run generated `.tmp/voiceover-review/create-evidence-command.sh` validate-only first, then rerun readiness. Track closeout in %s.' "$VOICEOVER_CLOSEOUT_ISSUE_URL"
   else
-    printf 'run `./script/prepare_release_manual_helpers.sh`, fill `.tmp/voiceover-review/voiceover-worksheet.md`, run generated `.tmp/voiceover-review/create-evidence-command.sh` validate-only first, then rerun readiness.'
+    printf 'run `./script/prepare_release_manual_helpers.sh`, fill `.tmp/voiceover-review/voiceover-worksheet.md`, run generated `.tmp/voiceover-review/create-evidence-command.sh` validate-only first, then rerun readiness. Track closeout in %s.' "$VOICEOVER_CLOSEOUT_ISSUE_URL"
   fi
 }
 
 competitor_priority_next_action() {
   if competitor_hands_on_helpers_are_current; then
-    printf 'fill `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/competitor-benchmark-pending-%s.md` during the 2-4h pass, complete generated `.tmp/competitor-hands-on/create-evidence-command.sh`, run its validate-only path first, then rerun readiness.' "$(manual_release_evidence_source_commit)"
+    printf 'fill `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/competitor-benchmark-pending-%s.md` during the 2-4h pass, complete generated `.tmp/competitor-hands-on/create-evidence-command.sh`, run its validate-only path first, then rerun readiness. Track closeout in %s.' "$(manual_release_evidence_source_commit)" "$COMPETITOR_CLOSEOUT_ISSUE_URL"
   else
-    printf 'run `./script/prepare_release_manual_helpers.sh`, fill `.tmp/competitor-hands-on/hands-on-worksheet.md`, complete `.tmp/competitor-hands-on/create-evidence-command.sh`, then rerun readiness.'
+    printf 'run `./script/prepare_release_manual_helpers.sh`, fill `.tmp/competitor-hands-on/hands-on-worksheet.md`, complete `.tmp/competitor-hands-on/create-evidence-command.sh`, then rerun readiness. Track closeout in %s.' "$COMPETITOR_CLOSEOUT_ISSUE_URL"
   fi
 }
 
 release_machine_priority_next_action() {
   if release_machine_helpers_are_current; then
-    printf 'fill `.tmp/release-machine/release-machine-worksheet.md` after signing/notarization/Sparkle/Gatekeeper checks, complete generated `.tmp/release-machine/create-release-evidence-command.sh`, run its validate-only path first, then rerun readiness.'
+    printf 'fill `.tmp/release-machine/release-machine-worksheet.md` after signing/notarization/Sparkle/Gatekeeper checks, complete generated `.tmp/release-machine/create-release-evidence-command.sh`, run its validate-only path first, then rerun readiness. Track closeout in %s.' "$RELEASE_MACHINE_CLOSEOUT_ISSUE_URL"
   else
-    printf 'run `./script/prepare_release_machine_evidence.sh`, complete signing/notarization/Sparkle/Gatekeeper evidence, then rerun readiness.'
+    printf 'run `./script/prepare_release_machine_evidence.sh`, complete signing/notarization/Sparkle/Gatekeeper evidence, then rerun readiness. Track closeout in %s.' "$RELEASE_MACHINE_CLOSEOUT_ISSUE_URL"
   fi
 }
 
@@ -981,6 +984,7 @@ write_manual_evidence_blocker_actions() {
 
   if [[ "${#VOICEOVER_ACTION_BLOCKERS[@]}" -gt 0 ]]; then
     printf "## Manual VoiceOver Blockers\n"
+    printf -- "- Tracking issue: %s\n" "$VOICEOVER_CLOSEOUT_ISSUE_URL"
     for manual_blocker in "${VOICEOVER_ACTION_BLOCKERS[@]}"; do
       printf -- "- [ ] %s\n" "$manual_blocker"
     done
@@ -989,11 +993,19 @@ write_manual_evidence_blocker_actions() {
 
   if [[ "${#COMPETITOR_ACTION_BLOCKERS[@]}" -gt 0 ]]; then
     printf "## Competitor Hands-On Blockers\n"
+    printf -- "- Tracking issue: %s\n" "$COMPETITOR_CLOSEOUT_ISSUE_URL"
     for manual_blocker in "${COMPETITOR_ACTION_BLOCKERS[@]}"; do
       printf -- "- [ ] %s\n" "$manual_blocker"
     done
     printf "\n"
   fi
+}
+
+write_release_closeout_issue_routes() {
+  printf "## Release Closeout Issue Routes\n"
+  printf -- "- Manual VoiceOver: %s\n" "$VOICEOVER_CLOSEOUT_ISSUE_URL"
+  printf -- "- Competitor Hands-On: %s\n" "$COMPETITOR_CLOSEOUT_ISSUE_URL"
+  printf -- "- Release Machine: %s\n\n" "$RELEASE_MACHINE_CLOSEOUT_ISSUE_URL"
 }
 
 write_automated_proof_gate_actions() {
@@ -1446,8 +1458,10 @@ write_release_actions() {
     printf -- "- Use \`docs/release/manual-unblockers.md\` as the tracked checklist for Manual VoiceOver, Competitor Hands-On, and Release Machine lanes.\n"
     printf -- "- Use the persistent runbook above as the stable checklist when this generated action summary is replaced or regenerated.\n\n"
 
+    write_release_closeout_issue_routes
+
     printf "## Product-Out Gap Ledger\n"
-    printf -- "- Use \`docs/release/product-out-gap-ledger.md\` to keep Google Calendar live sync, local OSS TTS packaged runtime, Daily Planning VoiceOver closeout, release-machine signing/notarization/Sparkle, and UI evidence refresh classified as Blocker, Accepted Risk, or Deferred.\n"
+    printf -- "- Use \`docs/release/product-out-gap-ledger.md\` to keep Google Calendar live sync, local OSS TTS packaged runtime, Daily Planning VoiceOver closeout, competitor hands-on, release-machine signing/notarization/Sparkle, and UI evidence refresh classified as Blocker, Accepted Risk, or Deferred.\n"
     printf -- "- Update the ledger when a blocker becomes an accepted risk or a Phase16/17 deferred item.\n"
     printf -- "- The ledger is planning state only; release evidence still comes from the verifier and evidence files referenced below.\n\n"
 
@@ -2886,7 +2900,7 @@ else
   fi
 fi
 if [[ "$voiceover_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass by running ./script/create_voiceover_evidence.sh --passed with complete release-candidate context, --capture-runtime-ax-smoke, complete focus-path notes, Inbox voice triage, Today rail actions, and no pending/template/unchecked markers; the generated evidence must include the runtime AX smoke OK line with unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, and destructiveCancelSignals=1/1. Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail.\n"
+  printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass by running ./script/create_voiceover_evidence.sh --passed with complete release-candidate context, --capture-runtime-ax-smoke, complete focus-path notes, Inbox voice triage, Today rail actions, and no pending/template/unchecked markers; the generated evidence must include the runtime AX smoke OK line with unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, and destructiveCancelSignals=1/1. Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail. Track closeout in %s.\n" "$VOICEOVER_CLOSEOUT_ISSUE_URL"
 fi
 
 section "Local voice runtime evidence"
@@ -3176,7 +3190,7 @@ else
   done
 fi
 if [[ "$competitor_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass by running ./script/prepare_release_manual_helpers.sh, filling .tmp/competitor-hands-on/hands-on-worksheet.md and .tmp/competitor-hands-on/competitor-benchmark-pending-%s.md, editing/running .tmp/competitor-hands-on/create-evidence-command.sh after replacing placeholders, or running ./script/create_competitor_hands_on_evidence.sh --passed with complete reviewer/date/source/environment context, complete Notion/Todoist/Linear/Motion notes, Ship/Defer/Reject deltas, --benchmark-output docs/product/competitor-benchmark.md, and no pending/template/unchecked markers; the generator also updates docs/product/competitor-benchmark.md from worksheet/desk research to hands-on findings.\n" "$(manual_release_evidence_source_commit)"
+  printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass by running ./script/prepare_release_manual_helpers.sh, filling .tmp/competitor-hands-on/hands-on-worksheet.md and .tmp/competitor-hands-on/competitor-benchmark-pending-%s.md, editing/running .tmp/competitor-hands-on/create-evidence-command.sh after replacing placeholders, or running ./script/create_competitor_hands_on_evidence.sh --passed with complete reviewer/date/source/environment context, complete Notion/Todoist/Linear/Motion notes, Ship/Defer/Reject deltas, --benchmark-output docs/product/competitor-benchmark.md, and no pending/template/unchecked markers; the generator also updates docs/product/competitor-benchmark.md from worksheet/desk research to hands-on findings. Track closeout in %s.\n" "$(manual_release_evidence_source_commit)" "$COMPETITOR_CLOSEOUT_ISSUE_URL"
 else
   printf "OK: competitor hands-on evidence covers Notion, Todoist, Linear, Motion, and public alpha scope boundaries\n"
 fi
@@ -3273,8 +3287,8 @@ printf "%s\n" "$preflight_output"
 if [[ "$preflight_status" -ne 0 ]]; then
   collect_release_environment_blockers "$preflight_output"
   blocker "release environment preflight did not pass"
-  printf "NEXT: run ./script/prepare_release_machine_evidence.sh on the release machine to create the manual release worksheet and evidence command before recording release evidence.\n"
-  printf "NEXT: complete docs/release/checklist.md release-machine steps: configure packaging/signing.env, packaging/notarization.env, production Sparkle feed/key, signed/notarized app, appcast, and packaging/release-evidence.json; then rerun ./script/release_readiness_report.sh.\n"
+  printf "NEXT: run ./script/prepare_release_machine_evidence.sh on the release machine to create the manual release worksheet and evidence command before recording release evidence. Track closeout in %s.\n" "$RELEASE_MACHINE_CLOSEOUT_ISSUE_URL"
+  printf "NEXT: complete docs/release/checklist.md release-machine steps: configure packaging/signing.env, packaging/notarization.env, production Sparkle feed/key, signed/notarized app, appcast, and packaging/release-evidence.json; then rerun ./script/release_readiness_report.sh. Track closeout in %s.\n" "$RELEASE_MACHINE_CLOSEOUT_ISSUE_URL"
 else
   printf "OK: release environment preflight passed\n"
 fi
