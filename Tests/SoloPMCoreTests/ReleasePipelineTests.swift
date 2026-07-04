@@ -7707,9 +7707,9 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(captureScript.contains("capture_project_board_destination system inbox"))
         XCTAssertTrue(captureScript.contains("inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture"))
-        XCTAssertTrue(captureScript.contains("inbox-voice-transcript=>Schedule launch review and capture visual evidence."))
-        XCTAssertTrue(captureScript.contains("inbox-voice-interpretation=>Create a task for launch review evidence."))
-        XCTAssertTrue(captureScript.contains("inbox-action-grid=>Make Task"))
+        XCTAssertTrue(captureScript.contains("inbox-action-panel=>Schedule launch review and capture visual evidence."))
+        XCTAssertTrue(captureScript.contains("inbox-action-panel=>Create a task for launch review evidence."))
+        XCTAssertTrue(captureScript.contains("inbox-action-make-task=>Inbox classification actions"))
         XCTAssertTrue(captureScript.contains("capture_project_board_destination system today"))
         XCTAssertTrue(captureScript.contains("capture_project_board_destination light schedule"))
         XCTAssertTrue(captureScript.contains("capture_project_board_destination dark schedule"))

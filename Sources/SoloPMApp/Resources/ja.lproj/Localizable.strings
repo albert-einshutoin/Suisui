@@ -1491,3 +1491,8 @@
 "Opens the Today workflow entry for accessibility verification" = "アクセシビリティ検証用にTodayワークフロー入口を開きます";
 "Opens the Today workflow entry for accessibility verification." = "アクセシビリティ検証用にTodayワークフロー入口を開きます。";
 "Project board detail" = "プロジェクトボード詳細";
+"Opening Project Board" = "Project Boardを開いています";
+"Preparing local project data for the visible window." = "表示ウィンドウ用にローカルプロジェクトデータを準備しています。";
+"Portfolio Watchlist" = "ポートフォリオ監視リスト";
+"No projects" = "プロジェクトがありません";
+"Open tasks" = "未完了タスク";

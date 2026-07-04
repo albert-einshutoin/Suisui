@@ -137,14 +137,18 @@ app_env_args() {
     args+=("CFFIXED_USER_HOME=$EVIDENCE_HOME")
   fi
   args+=("SOLOPM_FORCE_PROJECT_BOARD_FALLBACK=1")
+  args+=("SOLOPM_UI_EVIDENCE_RECOVERY_MODE=1")
+  # Release screenshots are machine-checked by English AX markers; pin the
+  # evidence locale so an operator's system language cannot invalidate captures.
+  args+=("SOLOPM_LANGUAGE_PREFERENCE=english")
   if [[ -n "$DATABASE_PATH" ]]; then
     # Screenshot evidence must open the exact SQLite file seeded below; relying
     # on HOME-derived defaults can silently fall back to another database.
     args+=("SOLOPM_DATABASE_PATH=$DATABASE_PATH")
   fi
-  if [[ "$P0_WORKFLOWS" == "1" || "$SCHEDULE_COCKPIT" == "1" || "$DONE_ANALYTICS" == "1" ]]; then
-    args+=("SOLOPM_LAUNCH_RECOVERY_MODE=1")
-  fi
+  # UI screenshot evidence uses the product workflow views behind an explicit
+  # recovery launch so direct binary captures do not stall with no AX window.
+  args+=("SOLOPM_LAUNCH_RECOVERY_MODE=1")
   if [[ -n "$PROJECT_BOARD_SELECTION_OVERRIDE" ]]; then
     args+=("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$PROJECT_BOARD_SELECTION_OVERRIDE")
   fi
@@ -759,7 +763,7 @@ persist_project_board_selection() {
   PROJECT_BOARD_SELECTION_OVERRIDE="project:$project_id"
   PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details=>Capture launch screenshots"
   INBOX_VOICE_TASK_OVERRIDE="$inbox_voice_task_id"
-  INBOX_VOICE_TARGET_MARKERS="sidebar-destination-inbox=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture|inbox-voice-transcript=>Schedule launch review and capture visual evidence.|inbox-voice-interpretation=>Create a task for launch review evidence.|inbox-action-grid=>Make Task"
+  INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-make-task=>Inbox classification actions"
   write_app_preference solopm.projectBoard.selectedDestination "$PROJECT_BOARD_SELECTION_OVERRIDE"
 }
 
@@ -990,6 +994,7 @@ write_evidence_file() {
     printf -- '- App bundle: `dist/%s.app`\n' "$APP_NAME"
     printf -- '- Visual baseline manifest: `%s`\n' "$(relative_path "$VISUAL_BASELINE_MANIFEST")"
     printf -- '- Viewport contract: `SOLOPM_VISUAL_BASELINE_VIEWPORT=%s`, `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT=%s`\n' "$VISUAL_BASELINE_VIEWPORT" "$SETTINGS_VISUAL_BASELINE_VIEWPORT"
+    printf '%s\n' '- Launch mode: explicit `SOLOPM_LAUNCH_RECOVERY_MODE=1` with `SOLOPM_UI_EVIDENCE_RECOVERY_MODE=1` so direct binary evidence captures expose deterministic product workflow surfaces.'
     printf '%s\n' '- Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`'
     printf '%s\n' '- Seed data: local `Launch Readiness` project with planned, in-progress, blocked, Inbox voice, Schedule, Done analytics, milestone, completed project, and deterministic MCP registration rows'
     printf '%s\n' '- Scope: Project board sidebar, task cards, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Schedule workload dashboard, Done analytics, Settings integrations, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System'
@@ -1337,18 +1342,18 @@ DONE_DARK_SCREENSHOT="$SCREENSHOT_DIR/done-dark.png"
 SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-integrations-light.png"
 SETTINGS_INTEGRATIONS_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-integrations-dark.png"
 
-INBOX_TARGET_MARKERS="sidebar-destination-inbox=>Inbox|inbox-action-panel=>Inbox"
-TODAY_TARGET_MARKERS="sidebar-destination-today=>Today|today-briefing-panel=>Today|today-assistant-rail=>Today"
+INBOX_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Inbox"
+TODAY_TARGET_MARKERS="today-workflow=>Today|today-briefing-panel=>Today|today-assistant-rail=>Today"
 P0_INBOX_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Inbox"
 P0_TODAY_TARGET_MARKERS="today-workflow=>Today|today-briefing-panel=>Today|today-assistant-rail=>Today"
 P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-make-task=>Inbox classification actions"
 PROJECTS_TARGET_MARKERS="sidebar-destination-projects=>Projects|projects-portfolio-overview=>Projects"
-SCHEDULE_TARGET_MARKERS="sidebar-destination-schedule=>Schedule|schedule-workflow=>Schedule|schedule-week-grid=>Weekly schedule grid|schedule-week-time-axis-grid=>Schedule time axis grid"
+SCHEDULE_TARGET_MARKERS="schedule-workflow=>Schedule|schedule-week-grid=>Weekly schedule grid|schedule-week-time-axis-grid=>Schedule time axis grid"
 SCHEDULE_COCKPIT_TARGET_MARKERS="schedule-workflow=>Schedule|schedule-week-grid=>schedule-week-grid|schedule-week-time-axis-grid=>schedule-week-time-axis-grid"
-SCHEDULE_WORKLOAD_TARGET_MARKERS="sidebar-destination-schedule=>Schedule|schedule-workflow=>Schedule|schedule-workload-dashboard=>schedule-workload-dashboard|schedule-workload-attention-banner=>schedule-workload-attention-banner|schedule-workload-day-detail=>schedule-workload-day-detail"
-DONE_TARGET_MARKERS="sidebar-destination-done=>Done|done-workflow=>Done"
+SCHEDULE_WORKLOAD_TARGET_MARKERS="schedule-workflow=>Schedule|schedule-workload-dashboard=>schedule-workload-dashboard|schedule-workload-attention-banner=>schedule-workload-attention-banner|schedule-workload-day-detail=>schedule-workload-day-detail"
+DONE_TARGET_MARKERS="done-workflow=>Done"
 DONE_ANALYTICS_TARGET_MARKERS="done-workflow=>Done|done-completion-heatmap=>done-completion-heatmap|done-productivity-insight=>done-productivity-insight|done-local-rule-insight=>done-local-rule-insight"
-VOICE_COMMAND_TARGET_MARKERS="voice-command-root=>Voice Command|voice-command-input=>Voice Command"
+VOICE_COMMAND_TARGET_MARKERS="voice-command-root=>Voice Command"
 
 if [[ "$P0_WORKFLOWS" == "1" ]]; then
   capture_project_board_destination light inbox "$INBOX_LIGHT_SCREENSHOT" "Inbox" "$P0_INBOX_TARGET_MARKERS"
