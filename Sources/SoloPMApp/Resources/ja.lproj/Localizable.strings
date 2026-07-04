@@ -1477,3 +1477,17 @@
 "Done follow-up generated an invalid action plan." = "Doneフォローアップが無効なアクションプランを生成しました。";
 "Done follow-up draft is already in Assistant Queue." = "Doneフォローアップ下書きは既にAssistant Queueにあります。";
 "Queued Done follow-up draft for approval." = "Doneフォローアップ下書きを承認用にキューへ追加しました。";
+"Create or select a project for runtime CRUD verification." = "runtime CRUD検証用にプロジェクトを作成または選択してください。";
+"Creates a new local project in the SoloPM database" = "SoloPMデータベースに新しいローカルプロジェクトを作成します";
+"Creates a new local project in the SoloPM database." = "SoloPMデータベースに新しいローカルプロジェクトを作成します。";
+"Move task" = "タスクを移動";
+"Opens task details in the inspector." = "インスペクタでタスク詳細を開きます。";
+"Project title" = "プロジェクトタイトル";
+"Open Voice Command" = "音声コマンドを開く";
+"Opens Settings." = "設定を開きます。";
+"Opens Voice Command." = "音声コマンドを開きます。";
+"Opens the Inbox workflow entry for accessibility verification" = "アクセシビリティ検証用にInboxワークフロー入口を開きます";
+"Opens the Inbox workflow entry for accessibility verification." = "アクセシビリティ検証用にInboxワークフロー入口を開きます。";
+"Opens the Today workflow entry for accessibility verification" = "アクセシビリティ検証用にTodayワークフロー入口を開きます";
+"Opens the Today workflow entry for accessibility verification." = "アクセシビリティ検証用にTodayワークフロー入口を開きます。";
+"Project board detail" = "プロジェクトボード詳細";

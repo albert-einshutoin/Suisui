@@ -1477,3 +1477,17 @@
 "Done follow-up generated an invalid action plan." = "Done follow-up generated an invalid action plan.";
 "Done follow-up draft is already in Assistant Queue." = "Done follow-up draft is already in Assistant Queue.";
 "Queued Done follow-up draft for approval." = "Queued Done follow-up draft for approval.";
+"Create or select a project for runtime CRUD verification." = "Create or select a project for runtime CRUD verification.";
+"Creates a new local project in the SoloPM database" = "Creates a new local project in the SoloPM database";
+"Creates a new local project in the SoloPM database." = "Creates a new local project in the SoloPM database.";
+"Move task" = "Move task";
+"Opens task details in the inspector." = "Opens task details in the inspector.";
+"Project title" = "Project title";
+"Open Voice Command" = "Open Voice Command";
+"Opens Settings." = "Opens Settings.";
+"Opens Voice Command." = "Opens Voice Command.";
+"Opens the Inbox workflow entry for accessibility verification" = "Opens the Inbox workflow entry for accessibility verification";
+"Opens the Inbox workflow entry for accessibility verification." = "Opens the Inbox workflow entry for accessibility verification.";
+"Opens the Today workflow entry for accessibility verification" = "Opens the Today workflow entry for accessibility verification";
+"Opens the Today workflow entry for accessibility verification." = "Opens the Today workflow entry for accessibility verification.";
+"Project board detail" = "Project board detail";
