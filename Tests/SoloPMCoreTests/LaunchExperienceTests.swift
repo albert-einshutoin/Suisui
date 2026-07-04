@@ -10,8 +10,7 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(script.contains("local osascript_pid=$!"))
         XCTAssertTrue(script.contains("kill \"$osascript_pid\""))
         XCTAssertTrue(script.contains("tell application \\\"$APP_NAME\\\" to activate"))
-        XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
-        XCTAssertTrue(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
+        XCTAssertTrue(script.contains("\"$APP_BINARY\" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &"))
         XCTAssertFalse(script.contains("/usr/bin/osascript -e \"tell application \\\"$APP_NAME\\\" to activate\" >/dev/null 2>&1 || true"))
     }
 
@@ -20,6 +19,10 @@ final class LaunchExperienceTests: XCTestCase {
 
         XCTAssertTrue(script.contains("SOLOPM_VERIFY_TIMEOUT_SECONDS"))
         XCTAssertTrue(script.contains("PROJECT_BOARD_WINDOW_NAME=\"${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}\""))
+        XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
+        XCTAssertTrue(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
+        XCTAssertTrue(script.contains("-ApplePersistenceIgnoreState YES"))
+        XCTAssertTrue(script.contains("LaunchServices drops"))
         XCTAssertTrue(script.contains("wait_for_project_board_window"))
         XCTAssertTrue(script.contains("SOLOPM_WINDOW_OWNER=\"$APP_NAME\""))
         XCTAssertTrue(script.contains("SOLOPM_WINDOW_NAME=\"$PROJECT_BOARD_WINDOW_NAME\""))
@@ -52,9 +55,14 @@ final class LaunchExperienceTests: XCTestCase {
 
     func testBundleDisablesWindowRestorationForPrimaryBoardLaunch() throws {
         let script = try readPackageFile("script/build_and_run.sh")
+        let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
         XCTAssertTrue(script.contains("<key>NSQuitAlwaysKeepsWindows</key>"))
         XCTAssertTrue(script.contains("<false/>"))
+        XCTAssertTrue(script.contains("-ApplePersistenceIgnoreState YES"))
+        XCTAssertTrue(source.contains("shouldSaveApplicationState"))
+        XCTAssertTrue(source.contains("shouldRestoreApplicationState"))
+        XCTAssertTrue(source.contains("return false"))
     }
 
     func testBundleCarriesSignedLocalLicensePublicKeyMetadata() throws {

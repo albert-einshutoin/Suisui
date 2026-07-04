@@ -274,6 +274,17 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    // The app owns window recovery through a lightweight fallback window; macOS
+    // persistent UI restoration can replay stale SwiftUI window state before
+    // launch/evidence gates can observe a real Project Board.
+    func application(_ application: NSApplication, shouldSaveApplicationState coder: NSCoder) -> Bool {
+        false
+    }
+
+    func application(_ application: NSApplication, shouldRestoreApplicationState coder: NSCoder) -> Bool {
+        false
+    }
+
     private func ensureProjectBoardWindowIsVisible() {
         projectBoardWindowRestoreAttempts = 0
         attemptEnsureProjectBoardWindowIsVisible(after: 0.25)

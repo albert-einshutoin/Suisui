@@ -254,11 +254,17 @@ activate_app() {
 }
 
 open_app() {
-  local open_args=(-n -F "$APP_BUNDLE")
   if [[ "$MODE" == "--verify" || "$MODE" == "verify" ]]; then
-    open_args+=(--env SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1)
-    open_args+=(--env SOLOPM_LAUNCH_RECOVERY_MODE=1)
+    # Verify mode must preserve launch-recovery env exactly so the fallback
+    # Project Board window is created even on hosts where LaunchServices drops
+    # or delays `open --env` values.
+    /usr/bin/env \
+      SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+      SOLOPM_LAUNCH_RECOVERY_MODE=1 \
+      "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
+    return
   fi
+  local open_args=(-n -F "$APP_BUNDLE")
   /usr/bin/open "${open_args[@]}"
   activate_app
 }
