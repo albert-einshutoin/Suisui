@@ -1446,6 +1446,11 @@ write_release_actions() {
     printf -- "- Use \`docs/release/manual-unblockers.md\` as the tracked checklist for Manual VoiceOver, Competitor Hands-On, and Release Machine lanes.\n"
     printf -- "- Use the persistent runbook above as the stable checklist when this generated action summary is replaced or regenerated.\n\n"
 
+    printf "## Product-Out Gap Ledger\n"
+    printf -- "- Use \`docs/release/product-out-gap-ledger.md\` to keep Google Calendar live sync, local OSS TTS packaged runtime, Daily Planning VoiceOver closeout, release-machine signing/notarization/Sparkle, and UI evidence refresh classified as Blocker, Accepted Risk, or Deferred.\n"
+    printf -- "- Update the ledger when a blocker becomes an accepted risk or a Phase16/17 deferred item.\n"
+    printf -- "- The ledger is planning state only; release evidence still comes from the verifier and evidence files referenced below.\n\n"
+
     printf "## Manual Finding Regression Bridge\n"
     printf -- "- Use \`docs/quality/manual-to-automated-regression.md\` to route any manual VoiceOver, competitor, or release-machine finding back into source/runtime/visual regression coverage.\n"
     printf -- "- VoiceOver findings should link to AX/source tests before the manual evidence is treated as closed.\n"

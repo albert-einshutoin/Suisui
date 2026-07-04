@@ -28,6 +28,7 @@ TARGET_TIMEOUT_SECONDS="${SOLOPM_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS:-30}"
 AX_MARKER_MAX_NODES="${SOLOPM_UI_EVIDENCE_AX_MAX_NODES:-6000}"
 mkdir -p "$EVIDENCE_TMPDIR"
 export TMPDIR="$EVIDENCE_TMPDIR/"
+AX_MARKER_CHECKER="$EVIDENCE_TMPDIR/ui-evidence-ax-marker-checker.$$"
 EVIDENCE_HOME="${SOLOPM_UI_EVIDENCE_HOME:-$(mktemp -d "$EVIDENCE_TMPDIR/solopm-ui-evidence.XXXXXX")}"
 KEEP_HOME="${SOLOPM_UI_EVIDENCE_KEEP_HOME:-0}"
 DRY_RUN=0
@@ -92,6 +93,7 @@ cleanup() {
   if [[ "$DRY_RUN" != "1" && "$DOCTOR" != "1" ]]; then
     stop_evidence_app
   fi
+  rm -f "$AX_MARKER_CHECKER"
   if [[ "$KEEP_HOME" != "1" && -d "$EVIDENCE_HOME" && "${SOLOPM_UI_EVIDENCE_HOME:-}" == "" ]]; then
     rm -rf "$EVIDENCE_HOME"
   fi
@@ -169,33 +171,13 @@ open_evidence_app() {
   while IFS= read -r -d '' env_arg; do
     env_args+=("$env_arg")
   done < <(app_env_args)
-  if [[ "$P0_WORKFLOWS" == "1" || "$SCHEDULE_COCKPIT" == "1" || "$DONE_ANALYTICS" == "1" ]]; then
-    wait_for_app_process_exit
-    # Targeted recovery captures need the explicit SQLite DB but LaunchServices
-    # can keep the window off-screen with that env; direct launch matches runtime smokes.
-    /usr/bin/env "${env_args[@]}" "$APP_BINARY" >/dev/null 2>&1 &
-    EVIDENCE_APP_PID=$!
-    return
-  fi
-  local open_args=(-n -F "$APP_BUNDLE")
-  local env_arg
-  for env_arg in "${env_args[@]}"; do
-    open_args+=(--env "$env_arg")
-  done
   wait_for_app_process_exit
-  # Launch through LaunchServices so SwiftUI windows become on-screen, while
-  # still passing the isolated database, appearance, and target-selection env.
-  /usr/bin/open "${open_args[@]}" >/dev/null
-  EVIDENCE_APP_PID=""
-  for _ in {1..40}; do
-    EVIDENCE_APP_PID="$(pgrep -x "$APP_NAME" | head -n 1 || true)"
-    if [[ -n "$EVIDENCE_APP_PID" ]]; then
-      return
-    fi
-    sleep 0.25
-  done
-  echo "$APP_NAME did not launch after open." >&2
-  exit 1
+  # Direct launch preserves the isolated database, appearance, fallback-window,
+  # Settings, and Voice Command env exactly. LaunchServices can drop or delay
+  # those env values on some release hosts, which makes screenshot evidence
+  # fail before the app exposes a real window.
+  /usr/bin/env "${env_args[@]}" "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
+  EVIDENCE_APP_PID=$!
 }
 
 wait_for_app_process_exit() {
@@ -315,33 +297,53 @@ target_marker_present() {
   local text="$2"
   local error_file
   local checker_pid
-  local watchdog_pid
+  local deadline
   local status
+  local timed_out=0
   error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-ui-target-marker-error.XXXXXX")"
+  prepare_ax_marker_checker
 
   # AX marker scans use a bounded Swift AX traversal because SwiftUI's generated
   # accessibility tree can make AppleScript recursion stall on detail-heavy screens.
+  # Compile the helper once; running it through `swift` for every marker leaves
+  # swift-frontend children that a shell watchdog cannot reliably terminate.
   SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
-    /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" "$APP_NAME" "$identifier" "$text" \
+    "$AX_MARKER_CHECKER" "$APP_NAME" "$identifier" "$text" \
     >/dev/null 2>"$error_file" &
   checker_pid=$!
-  (
-    sleep "$TARGET_TIMEOUT_SECONDS"
-    kill "$checker_pid" >/dev/null 2>&1 || true
-  ) &
-  watchdog_pid=$!
+  deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
+  while kill -0 "$checker_pid" >/dev/null 2>&1; do
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      timed_out=1
+      kill "$checker_pid" >/dev/null 2>&1 || true
+      sleep 1
+      kill -9 "$checker_pid" >/dev/null 2>&1 || true
+      break
+    fi
+    sleep 0.2
+  done
+  set +e
   wait "$checker_pid"
   status=$?
-  kill "$watchdog_pid" >/dev/null 2>&1 || true
-  wait "$watchdog_pid" >/dev/null 2>&1 || true
+  set -e
+  if [[ "$timed_out" == "1" ]]; then
+    status=124
+  fi
   if [[ "$status" -ne 0 ]]; then
     cat "$error_file" >&2
-    if [[ "$status" -eq 143 || "$status" -eq 137 ]]; then
+    if [[ "$status" -eq 124 || "$status" -eq 143 || "$status" -eq 137 ]]; then
       echo "AX target marker scan timed out after ${TARGET_TIMEOUT_SECONDS}s: $identifier => $text" >&2
     fi
   fi
   rm -f "$error_file"
   return "$status"
+}
+
+prepare_ax_marker_checker() {
+  if [[ -x "$AX_MARKER_CHECKER" ]]; then
+    return
+  fi
+  /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" -o "$AX_MARKER_CHECKER"
 }
 
 assert_project_board_destination_ready() {
@@ -1230,7 +1232,7 @@ run_doctor() {
 
   local blocker_count=0
   local command_name
-  for command_name in sqlite3 screencapture swift sips osascript; do
+  for command_name in sqlite3 screencapture swift swiftc sips osascript; do
     if command -v "$command_name" >/dev/null 2>&1; then
       echo "OK: found $command_name"
     else
@@ -1272,6 +1274,7 @@ fi
 require_command sqlite3
 require_command screencapture
 require_command swift
+require_command swiftc
 require_command sips
 require_command osascript
 
