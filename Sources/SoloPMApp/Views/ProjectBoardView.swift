@@ -74,28 +74,29 @@ struct ProjectBoardView: View {
     }
 
     var body: some View {
+        let sidebarMetrics = viewModel.derivedReadModels.sidebarMetrics
         NavigationSplitView(columnVisibility: $columnVisibility) {
             VStack(spacing: 0) {
                 List(selection: $selectedDestination) {
                     Section {
-                        ProjectBoardSidebarDestinationRow(destination: .inbox, count: viewModel.inboxTasks.count)
+                        ProjectBoardSidebarDestinationRow(destination: .inbox, count: sidebarMetrics.inboxCount)
                             .tag(ProjectBoardSidebarDestination.inbox)
                         ProjectBoardSidebarDestinationRow(destination: .assistantQueue, count: viewModel.assistantQueueSnapshot.needsAttentionCount)
                             .tag(ProjectBoardSidebarDestination.assistantQueue)
-                        ProjectBoardSidebarDestinationRow(destination: .today, count: viewModel.todayTasks().count)
+                        ProjectBoardSidebarDestinationRow(destination: .today, count: sidebarMetrics.todayCount)
                             .tag(ProjectBoardSidebarDestination.today)
-                        ProjectBoardSidebarDestinationRow(destination: .catchUp, count: viewModel.missedTaskReview().newlyMissedCount)
+                        ProjectBoardSidebarDestinationRow(destination: .catchUp, count: sidebarMetrics.catchUpCount)
                             .tag(ProjectBoardSidebarDestination.catchUp)
-                        ProjectBoardSidebarDestinationRow(destination: .schedule, count: viewModel.unscheduledScheduleTasks().count)
+                        ProjectBoardSidebarDestinationRow(destination: .schedule, count: sidebarMetrics.scheduleCount)
                             .tag(ProjectBoardSidebarDestination.schedule)
-                        ProjectBoardSidebarDestinationRow(destination: .done, count: viewModel.doneAnalytics().completedTaskCount)
+                        ProjectBoardSidebarDestinationRow(destination: .done, count: sidebarMetrics.doneCount)
                             .tag(ProjectBoardSidebarDestination.done)
                     }
 
                     Section("Projects") {
                         ProjectBoardSidebarDestinationRow(
                             destination: .projects,
-                            count: viewModel.projectPortfolioSummaries().count
+                            count: sidebarMetrics.projectsCount
                         )
                         .tag(ProjectBoardSidebarDestination.projects)
 
@@ -1453,7 +1454,7 @@ private struct ProjectsPortfolioOverview: View {
     @State private var sort: ProjectPortfolioSort = .risk
 
     private var summaries: [ProjectPortfolioSummary] {
-        sorted(filtered(viewModel.projectPortfolioSummaries()))
+        sorted(filtered(viewModel.derivedReadModels.projectPortfolioSummaries))
     }
 
     var body: some View {

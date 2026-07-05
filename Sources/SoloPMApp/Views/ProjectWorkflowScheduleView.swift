@@ -9,7 +9,8 @@ struct ScheduleWorkflowView: View {
     @State private var selectedWorkloadDayKey: String?
 
     var body: some View {
-        let workloadOverview = viewModel.dailyWorkloadOverview(around: workloadReferenceDate)
+        let scheduleReadModel = viewModel.derivedReadModels.schedule
+        let workloadOverview = scheduleReadModel.workloadOverview
         let workloadReferenceDayKey = scheduleDateKey(for: workloadReferenceDate)
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -54,7 +55,7 @@ struct ScheduleWorkflowView: View {
                 )
 
                 WeeklyScheduleCockpitPanel(
-                    cockpit: viewModel.weeklyScheduleCockpit(around: workloadReferenceDate),
+                    cockpit: scheduleReadModel.weeklyCockpit,
                     queueReminderDraft: { task, day in
                         viewModel.enqueueScheduleReminderDraft(
                             for: task.id,
@@ -69,7 +70,7 @@ struct ScheduleWorkflowView: View {
                 HStack(alignment: .top, spacing: 12) {
                     ScheduleDraftPanel(viewModel: viewModel)
                     ScheduleUnscheduledPanel(
-                        tasks: viewModel.unscheduledScheduleTasks(),
+                        tasks: scheduleReadModel.unscheduledTasks,
                         viewModel: viewModel,
                         referenceDate: workloadReferenceDate
                     )
@@ -90,23 +91,30 @@ struct ScheduleWorkflowView: View {
     }
 
     private func moveWorkloadToPreviousWeek() {
-        workloadReferenceDate = Calendar.current.date(byAdding: .day, value: -7, to: workloadReferenceDate) ?? workloadReferenceDate
+        let nextDate = Calendar.current.date(byAdding: .day, value: -7, to: workloadReferenceDate) ?? workloadReferenceDate
+        workloadReferenceDate = nextDate
         selectedWorkloadDayKey = nil
+        viewModel.refreshDerivedReadModels(on: nextDate)
     }
 
     private func moveWorkloadToNextWeek() {
-        workloadReferenceDate = Calendar.current.date(byAdding: .day, value: 7, to: workloadReferenceDate) ?? workloadReferenceDate
+        let nextDate = Calendar.current.date(byAdding: .day, value: 7, to: workloadReferenceDate) ?? workloadReferenceDate
+        workloadReferenceDate = nextDate
         selectedWorkloadDayKey = nil
+        viewModel.refreshDerivedReadModels(on: nextDate)
     }
 
     private func moveWorkloadToToday() {
-        workloadReferenceDate = Date()
+        let nextDate = Date()
+        workloadReferenceDate = nextDate
         selectedWorkloadDayKey = nil
+        viewModel.refreshDerivedReadModels(on: nextDate)
     }
 
     private func selectMiniCalendarDay(_ day: DailyWorkloadDay) {
         workloadReferenceDate = day.date
         selectedWorkloadDayKey = day.dateKey
+        viewModel.refreshDerivedReadModels(on: day.date)
     }
 
     private func scheduleDateKey(for date: Date) -> String {

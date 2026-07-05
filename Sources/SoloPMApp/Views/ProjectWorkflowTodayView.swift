@@ -18,9 +18,7 @@ struct TodayWorkflowView: View {
     }
 
     var body: some View {
-        let referenceDate = Date()
-        let calendar = Calendar.current
-        let snapshot = viewModel.todayWorkflowSnapshot(on: referenceDate, calendar: calendar)
+        let snapshot = viewModel.derivedReadModels.todayWorkflowSnapshot
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 0) {
                 mainSurface(snapshot: snapshot)

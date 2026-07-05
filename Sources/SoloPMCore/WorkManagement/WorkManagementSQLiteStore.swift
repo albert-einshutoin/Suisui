@@ -1,5 +1,55 @@
 import Foundation
 
+private struct ProjectBoardStoreIndexes {
+    static let empty = ProjectBoardStoreIndexes(tasksByProjectID: [:], artifactsByProjectID: [:], milestonesByProjectID: [:])
+
+    var tasksByProjectID: [Int64: [ProjectBoardTask]]
+    var artifactsByProjectID: [Int64: [ProjectBoardArtifact]]
+    var milestonesByProjectID: [Int64: [ProjectBoardMilestone]]
+
+    init(
+        tasksByProjectID: [Int64: [ProjectBoardTask]],
+        artifactsByProjectID: [Int64: [ProjectBoardArtifact]],
+        milestonesByProjectID: [Int64: [ProjectBoardMilestone]]
+    ) {
+        self.tasksByProjectID = tasksByProjectID
+        self.artifactsByProjectID = artifactsByProjectID
+        self.milestonesByProjectID = milestonesByProjectID
+    }
+
+    init(boardData: (
+        projects: [ProjectRecord],
+        tasks: [ProjectBoardTask],
+        artifacts: [ProjectBoardArtifact],
+        milestones: [ProjectBoardMilestone]
+    )) {
+        tasksByProjectID = Dictionary(grouping: boardData.tasks, by: \.projectID)
+        milestonesByProjectID = Dictionary(grouping: boardData.milestones, by: \.projectID)
+
+        let projectIDByTaskID = Dictionary(uniqueKeysWithValues: boardData.tasks.map { ($0.id, $0.projectID) })
+        let artifactsByDeclaredProject = Dictionary(grouping: boardData.artifacts, by: \.projectID)
+        var artifactsByProjectID: [Int64: [ProjectBoardArtifact]] = [:]
+        for (projectID, artifacts) in artifactsByDeclaredProject {
+            guard let projectID else {
+                continue
+            }
+            artifactsByProjectID[projectID, default: []].append(contentsOf: artifacts)
+        }
+        for artifact in boardData.artifacts {
+            guard let taskID = artifact.taskID,
+                  let projectID = projectIDByTaskID[taskID],
+                  artifact.projectID != projectID else {
+                continue
+            }
+            artifactsByProjectID[projectID, default: []].append(artifact)
+        }
+
+        // Grouping once keeps board load linear as local projects grow; per-project
+        // filter scans used to repeat the full task/artifact/milestone arrays.
+        self.artifactsByProjectID = artifactsByProjectID
+    }
+}
+
 public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
     private let connection: SQLiteConnection
     private let projectStore: SQLiteProjectStore
@@ -33,9 +83,10 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
 
     public func loadSnapshot(includeArchived: Bool) throws -> ProjectBoardSnapshot {
         let boardData = try loadBoardData(includeArchived: includeArchived)
+        let indexes = ProjectBoardStoreIndexes(boardData: boardData)
 
         let boardProjects = boardData.projects.map {
-            makeBoardProject(project: $0, tasks: boardData.tasks, artifacts: boardData.artifacts, milestones: boardData.milestones)
+            makeBoardProject(project: $0, indexes: indexes)
         }
 
         return ProjectBoardSnapshot(projects: boardProjects)
@@ -45,7 +96,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     public func createProject(title: String) throws -> ProjectBoardProject {
         let normalizedTitle = try normalizedProjectTitle(title)
         let record = try projectStore.create(title: normalizedTitle, tags: ["local"], sourceCommand: "app.project-board")
-        return makeBoardProject(project: record, tasks: [], artifacts: [])
+        return makeBoardProject(project: record)
     }
 
     @discardableResult
@@ -53,28 +104,28 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         let normalizedTitle = try normalizedProjectTitle(title)
         let record = try projectStore.updateTitleForProjectBoard(id: id, title: normalizedTitle)
         let boardData = try loadBoardData(includeArchived: true)
-        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts, milestones: boardData.milestones)
+        return makeBoardProject(project: record, indexes: ProjectBoardStoreIndexes(boardData: boardData))
     }
 
     @discardableResult
     public func completeProject(id: Int64) throws -> ProjectBoardProject {
         let record = try projectStore.completeForProjectBoard(id: id, taskStore: taskStore)
         let boardData = try loadBoardData(includeArchived: true)
-        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts, milestones: boardData.milestones)
+        return makeBoardProject(project: record, indexes: ProjectBoardStoreIndexes(boardData: boardData))
     }
 
     @discardableResult
     public func archiveProject(id: Int64) throws -> ProjectBoardProject {
         let record = try projectStore.updateStatusForProjectBoard(id: id, status: "archived")
         let boardData = try loadBoardData(includeArchived: true)
-        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts, milestones: boardData.milestones)
+        return makeBoardProject(project: record, indexes: ProjectBoardStoreIndexes(boardData: boardData))
     }
 
     @discardableResult
     public func restoreProject(id: Int64) throws -> ProjectBoardProject {
         let record = try projectStore.updateStatusForProjectBoard(id: id, status: "active")
         let boardData = try loadBoardData(includeArchived: true)
-        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts, milestones: boardData.milestones)
+        return makeBoardProject(project: record, indexes: ProjectBoardStoreIndexes(boardData: boardData))
     }
 
     @discardableResult
@@ -97,7 +148,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             workspaceBookmarkData: workspaceBookmarkData
         )
         let boardData = try loadBoardData(includeArchived: true)
-        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts, milestones: boardData.milestones)
+        return makeBoardProject(project: record, indexes: ProjectBoardStoreIndexes(boardData: boardData))
     }
 
     public func deleteProject(id: Int64) throws {
@@ -376,15 +427,10 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
 
     private func makeBoardProject(
         project: ProjectRecord,
-        tasks: [ProjectBoardTask],
-        artifacts: [ProjectBoardArtifact],
-        milestones: [ProjectBoardMilestone] = []
+        indexes: ProjectBoardStoreIndexes = .empty
     ) -> ProjectBoardProject {
-        let projectTasks = tasks.filter { $0.projectID == project.id }
-        let projectTaskIDs = Set(projectTasks.map(\.id))
-        let projectArtifacts = artifacts.filter { artifact in
-            artifact.projectID == project.id || artifact.taskID.map { projectTaskIDs.contains($0) } == true
-        }
+        let projectTasks = indexes.tasksByProjectID[project.id, default: []]
+        let projectArtifacts = indexes.artifactsByProjectID[project.id, default: []]
         let columns = ProjectTaskStatus.allCases.map { status in
             ProjectBoardColumn(
                 status: status,
@@ -405,7 +451,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             workspaceDisplayName: workspaceDisplayName(for: project.workspacePath),
             columns: columns,
             artifacts: projectArtifacts,
-            milestones: milestones.filter { $0.projectID == project.id }
+            milestones: indexes.milestonesByProjectID[project.id, default: []]
         )
     }
 

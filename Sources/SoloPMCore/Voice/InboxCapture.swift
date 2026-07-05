@@ -135,6 +135,7 @@ public protocol InboxCaptureStore {
     func createVoiceCapture(_ draft: InboxVoiceCaptureDraft) throws -> InboxCaptureRecord
     func get(id: Int64) throws -> InboxCaptureRecord
     func list(taskID: Int64) throws -> [InboxCaptureRecord]
+    func list(taskIDs: Set<Int64>) throws -> [Int64: [InboxCaptureRecord]]
     func updateMemo(id: Int64, memo: String?) throws -> InboxCaptureRecord
     func relinkCaptures(fromTaskID: Int64, toTaskID: Int64) throws -> Int
     func delete(id: Int64) throws
@@ -218,6 +219,29 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
             ORDER BY id DESC;
             """
         ).map(Self.record(row:))
+    }
+
+    public func list(taskIDs: Set<Int64>) throws -> [Int64: [InboxCaptureRecord]] {
+        guard !taskIDs.isEmpty else {
+            return [:]
+        }
+
+        lock.lock()
+        defer { lock.unlock() }
+
+        let inList = taskIDs.sorted().map(String.init).joined(separator: ",")
+        let rows = try connection.queryRows(
+            """
+            SELECT * FROM inbox_capture_records
+            WHERE task_id IN (\(inList))
+            ORDER BY task_id ASC, id DESC;
+            """
+        ).map(Self.record(row:))
+        var recordsByTaskID = Dictionary(uniqueKeysWithValues: taskIDs.map { ($0, [InboxCaptureRecord]()) })
+        for row in rows {
+            recordsByTaskID[row.taskID, default: []].append(row)
+        }
+        return recordsByTaskID
     }
 
     @discardableResult
