@@ -3419,17 +3419,13 @@ public final class ProjectBoardViewModel: ObservableObject {
         rebuildDerivedReadModels(on: referenceDate, calendar: calendar)
     }
 
+    public func refreshScheduleReadModel(around referenceDate: Date = Date(), calendar: Calendar = .current) {
+        rebuildScheduleReadModel(around: referenceDate, calendar: calendar)
+    }
+
     private func rebuildDerivedReadModels(on referenceDate: Date = Date(), calendar: Calendar = .current) {
         let todayWorkflowSnapshot = todayWorkflowSnapshot(on: referenceDate, calendar: calendar)
-        let workloadOverview = dailyWorkloadOverview(around: referenceDate, calendar: calendar)
-        let weeklyCockpit = WeeklyScheduleCockpitBuilder.cockpit(
-            from: snapshot,
-            workload: workloadOverview,
-            scheduleDraft: scheduleDraft,
-            around: referenceDate,
-            calendar: calendar
-        )
-        let scheduleUnscheduledTasks = unscheduledScheduleTasks()
+        let scheduleReadModel = makeScheduleReadModel(around: referenceDate, calendar: calendar)
         let doneAnalytics = doneAnalytics(on: referenceDate, calendar: calendar)
         let portfolioSummaries = projectPortfolioSummaries(on: referenceDate, calendar: calendar)
         let missedReview = missedTaskReview(on: referenceDate, calendar: calendar)
@@ -3444,19 +3440,42 @@ public final class ProjectBoardViewModel: ObservableObject {
                 inboxCount: inboxTasks.count,
                 todayCount: todayWorkflowSnapshot.plan.tasks.count,
                 catchUpCount: missedReview.newlyMissedCount,
-                scheduleCount: scheduleUnscheduledTasks.count,
+                scheduleCount: scheduleReadModel.unscheduledTasks.count,
                 doneCount: doneAnalytics.completedTaskCount,
                 projectsCount: portfolioSummaries.count
             ),
             todayWorkflowSnapshot: todayWorkflowSnapshot,
-            schedule: ProjectBoardScheduleReadModel(
-                workloadOverview: workloadOverview,
-                weeklyCockpit: weeklyCockpit,
-                unscheduledTasks: scheduleUnscheduledTasks
-            ),
+            schedule: scheduleReadModel,
             doneAnalytics: doneAnalytics,
             projectPortfolioSummaries: portfolioSummaries,
             builtAt: referenceDate
+        )
+    }
+
+    private func rebuildScheduleReadModel(around referenceDate: Date = Date(), calendar: Calendar = .current) {
+        var nextReadModels = derivedReadModels
+        let scheduleReadModel = makeScheduleReadModel(around: referenceDate, calendar: calendar)
+        nextReadModels.schedule = scheduleReadModel
+        nextReadModels.sidebarMetrics.scheduleCount = scheduleReadModel.unscheduledTasks.count
+        derivedReadModels = nextReadModels
+    }
+
+    private func makeScheduleReadModel(
+        around referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> ProjectBoardScheduleReadModel {
+        let workloadOverview = dailyWorkloadOverview(around: referenceDate, calendar: calendar)
+        let weeklyCockpit = WeeklyScheduleCockpitBuilder.cockpit(
+            from: snapshot,
+            workload: workloadOverview,
+            scheduleDraft: scheduleDraft,
+            around: referenceDate,
+            calendar: calendar
+        )
+        return ProjectBoardScheduleReadModel(
+            workloadOverview: workloadOverview,
+            weeklyCockpit: weeklyCockpit,
+            unscheduledTasks: unscheduledScheduleTasks()
         )
     }
 
@@ -5323,7 +5342,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             unscheduledTasks: unscheduledScheduleTasks(excludingTaskIDs: [])
         )
         scheduleDraft = draft
-        rebuildDerivedReadModels(on: referenceDate, calendar: calendar)
+        rebuildScheduleReadModel(around: referenceDate, calendar: calendar)
         scheduleApplyResult = nil
         todayCommandFeedback = String(
             format: String(localized: "Prepared schedule draft with %d time blocks and %d unscheduled tasks."),
@@ -5368,7 +5387,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         draft.timeBlocks.append(block)
         draft.unscheduledTasks.removeAll { $0.id == taskID }
         scheduleDraft = draft
-        rebuildDerivedReadModels(on: referenceDate, calendar: calendar)
+        rebuildScheduleReadModel(around: referenceDate, calendar: calendar)
         scheduleApplyResult = nil
         errorMessage = nil
         todayCommandFeedback = String(format: String(localized: "Added \"%@\" to the local schedule draft."), task.title)

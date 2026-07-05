@@ -94,27 +94,27 @@ struct ScheduleWorkflowView: View {
         let nextDate = Calendar.current.date(byAdding: .day, value: -7, to: workloadReferenceDate) ?? workloadReferenceDate
         workloadReferenceDate = nextDate
         selectedWorkloadDayKey = nil
-        viewModel.refreshDerivedReadModels(on: nextDate)
+        viewModel.refreshScheduleReadModel(around: nextDate)
     }
 
     private func moveWorkloadToNextWeek() {
         let nextDate = Calendar.current.date(byAdding: .day, value: 7, to: workloadReferenceDate) ?? workloadReferenceDate
         workloadReferenceDate = nextDate
         selectedWorkloadDayKey = nil
-        viewModel.refreshDerivedReadModels(on: nextDate)
+        viewModel.refreshScheduleReadModel(around: nextDate)
     }
 
     private func moveWorkloadToToday() {
         let nextDate = Date()
         workloadReferenceDate = nextDate
         selectedWorkloadDayKey = nil
-        viewModel.refreshDerivedReadModels(on: nextDate)
+        viewModel.refreshScheduleReadModel(around: nextDate)
     }
 
     private func selectMiniCalendarDay(_ day: DailyWorkloadDay) {
         workloadReferenceDate = day.date
         selectedWorkloadDayKey = day.dateKey
-        viewModel.refreshDerivedReadModels(on: day.date)
+        viewModel.refreshScheduleReadModel(around: day.date)
     }
 
     private func scheduleDateKey(for date: Date) -> String {

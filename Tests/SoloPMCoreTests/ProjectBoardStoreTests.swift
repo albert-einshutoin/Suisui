@@ -6565,6 +6565,47 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardScheduleReadModelRefreshKeepsTodaySnapshotAnchored() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        let todayTask = try XCTUnwrap(viewModel.createTask(
+            title: "Today launch check",
+            projectID: launch.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-19T09:00:00Z"
+        ))
+        let nextWeekTask = try XCTUnwrap(viewModel.createTask(
+            title: "Next week launch check",
+            projectID: launch.id,
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-26T09:00:00Z"
+        ))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let today = try isoDate("2026-06-19T08:37:00Z")
+        let nextWeek = try isoDate("2026-06-26T08:37:00Z")
+        viewModel.selectedTaskID = nil
+        viewModel.refreshDerivedReadModels(on: today, calendar: calendar)
+
+        XCTAssertEqual(viewModel.derivedReadModels.todayWorkflowSnapshot.plan.tasks.map(\.id), [todayTask.id])
+        XCTAssertEqual(viewModel.derivedReadModels.sidebarMetrics.todayCount, 1)
+
+        viewModel.refreshScheduleReadModel(around: nextWeek, calendar: calendar)
+
+        XCTAssertEqual(viewModel.derivedReadModels.todayWorkflowSnapshot.plan.tasks.map(\.id), [todayTask.id])
+        XCTAssertEqual(viewModel.derivedReadModels.sidebarMetrics.todayCount, 1)
+        XCTAssertTrue(viewModel.derivedReadModels.schedule.workloadOverview.days.contains { day in
+            calendar.isDate(day.date, inSameDayAs: nextWeek)
+                && day.projectContributions.contains { contribution in
+                    contribution.tasks.contains { $0.id == nextWeekTask.id }
+                }
+        })
+    }
+
+    @MainActor
     func testProjectBoardViewModelPrefersFocusedTaskWhenBuildingTodayAssistantRailContext() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
