@@ -462,6 +462,196 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertEqual(attentionItems.map(\.id), [oldWaiting.id])
     }
 
+    func testReadModelSnapshotScalesToLargeQueueWhilePreservingAttentionCounts() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteAssistantQueueStore(connection: connection)
+
+        let requiredCapabilitiesJSON = try jsonString([
+            AssistantQueueRequiredCapability.tool(.taskCreate),
+            .providerExecutionApproval
+        ])
+        let largeActionPlanPayload = try largeActionPlanPayloadJSON(
+            actions: 48,
+            argumentSize: 512
+        )
+        let automationPayload = try automationRequestPayloadJSON(
+            id: "queue-scale-automation",
+            toolName: HostedMCPTaskToolName.taskCreate.rawValue
+        )
+
+        let baseDate = Date(timeIntervalSince1970: 1_700_000_000)
+        for index in 0..<5000 {
+            try insertQueueItem(
+                connection: connection,
+                id: "queue-scale-done-\(String(format: "%05d", index))",
+                state: .done,
+                payloadKind: "action_plan",
+                payloadJSON: largeActionPlanPayload,
+                updatedAt: baseDate.addingTimeInterval(Double(index)),
+                reviewReason: "Queue terminal fixture row",
+                redactedSummary: "Scale terminal row \(index)",
+                requiredCapabilitiesJSON: requiredCapabilitiesJSON
+            )
+        }
+
+        for index in 0..<20 {
+            try insertQueueItem(
+                connection: connection,
+                id: "queue-scale-waiting-\(String(format: "%03d", index))",
+                state: .waitingReview,
+                payloadKind: index.isMultiple(of: 4) ? "automation_request" : "action_plan",
+                payloadJSON: index.isMultiple(of: 4) ? automationPayload : largeActionPlanPayload,
+                updatedAt: baseDate.addingTimeInterval(-Double(index + 1)),
+                reviewReason: "Queue attention fixture row",
+                redactedSummary: "Scale waiting row \(index)",
+                requiredCapabilitiesJSON: requiredCapabilitiesJSON
+            )
+        }
+
+        for index in 0..<10 {
+            try insertQueueItem(
+                connection: connection,
+                id: "queue-scale-blocked-\(String(format: "%03d", index))",
+                state: .blocked,
+                payloadKind: "action_plan",
+                payloadJSON: largeActionPlanPayload,
+                updatedAt: baseDate.addingTimeInterval(-Double(index + 25)),
+                reviewReason: "Queue attention fixture row",
+                redactedSummary: "Scale blocked row \(index)",
+                requiredCapabilitiesJSON: requiredCapabilitiesJSON,
+                blockingReason: "Blocked by policy review."
+            )
+        }
+
+        for index in 0..<10 {
+            try insertQueueItem(
+                connection: connection,
+                id: "queue-scale-failed-\(String(format: "%03d", index))",
+                state: .failed,
+                payloadKind: "automation_request",
+                payloadJSON: automationPayload,
+                updatedAt: baseDate.addingTimeInterval(-Double(index + 50)),
+                reviewReason: "Queue retry fixture row",
+                redactedSummary: "Scale failed row \(index)",
+                requiredCapabilitiesJSON: requiredCapabilitiesJSON
+            )
+        }
+
+        var receipts: [ExecutionReceipt] = []
+        for index in 0..<100 {
+            let itemID = "queue-scale-done-\(String(format: "%05d", index))"
+            receipts.append(contentsOf: [
+                makeReceipt(
+                    id: "queue-scale-receipt-old-\(itemID)",
+                    itemID: itemID,
+                    status: .failed,
+                    outputSummary: "Older execution for \(itemID)",
+                    finishedAt: baseDate.addingTimeInterval(Double(index))
+                ),
+                makeReceipt(
+                    id: "queue-scale-receipt-new-\(itemID)",
+                    itemID: itemID,
+                    status: .succeeded,
+                    outputSummary: "Latest execution for \(itemID)",
+                    finishedAt: baseDate.addingTimeInterval(Double(index) + 0.5)
+                )
+            ])
+        }
+
+        let allSnapshot = try store.readModelSnapshot(
+            filter: .all(limit: 500),
+            receipts: receipts,
+            viewFilter: .all,
+            sort: .needsActionFirst
+        )
+        XCTAssertEqual(allSnapshot.rows.count, 500)
+        XCTAssertEqual(allSnapshot.totalCount, 5040)
+        XCTAssertEqual(allSnapshot.doneCount, 5000)
+        XCTAssertEqual(allSnapshot.waitingReviewCount, 20)
+        XCTAssertEqual(allSnapshot.blockedCount, 10)
+        XCTAssertEqual(allSnapshot.failedCount, 10)
+        XCTAssertEqual(allSnapshot.needsAttentionCount, 40)
+        XCTAssertTrue(allSnapshot.rows.allSatisfy { $0.state == .done })
+
+        let firstDone = "queue-scale-done-00000"
+        let row = try XCTUnwrap(allSnapshot.rows.first { $0.id == firstDone })
+        XCTAssertEqual(row.latestReceipt?.status, .succeeded)
+        XCTAssertEqual(row.latestReceipt?.id, "queue-scale-receipt-new-\(firstDone)")
+
+        let attentionSnapshot = try store.readModelSnapshot(
+            filter: .states(AssistantQueueViewFilter.needsAttention.states, limit: 25),
+            receipts: receipts,
+            viewFilter: .needsAttention,
+            sort: .needsActionFirst
+        )
+        XCTAssertEqual(attentionSnapshot.rows.count, 40)
+        XCTAssertEqual(attentionSnapshot.totalCount, 5040)
+        XCTAssertEqual(Set(attentionSnapshot.rows.map(\.state)), Set([.waitingReview, .blocked, .failed]))
+        XCTAssertEqual(attentionSnapshot.waitingReviewCount, 20)
+        XCTAssertEqual(attentionSnapshot.blockedCount, 10)
+        XCTAssertEqual(attentionSnapshot.failedCount, 10)
+    }
+
+    func testReadModelSnapshotDoesNotDecodeLargeActionPlanPayloadForWindowedListRows() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteAssistantQueueStore(connection: connection)
+        let malformedPayload = String(
+            repeating: "\"",
+            count: 25_000
+        ) + "{ \"state\": \"actionPlan\" , payload_kind: action_plan"
+
+        let requiredCapabilitiesJSON = try jsonString([
+            AssistantQueueRequiredCapability.tool(.taskCreate),
+            .providerExecutionApproval
+        ])
+        let largeActionPlanPayload = try largeActionPlanPayloadJSON(actions: 96, argumentSize: 768)
+        let baseDate = Date(timeIntervalSince1970: 1_700_001_000)
+
+        for index in 0..<300 {
+            try insertQueueItem(
+                connection: connection,
+                id: "queue-scale-no-decode-done-\(index)",
+                state: .done,
+                payloadKind: "action_plan",
+                payloadJSON: largeActionPlanPayload,
+                updatedAt: baseDate.addingTimeInterval(Double(index)),
+                reviewReason: "Queue list fixture row",
+                redactedSummary: "Scale done row \(index)",
+                requiredCapabilitiesJSON: requiredCapabilitiesJSON
+            )
+        }
+
+        try insertQueueItem(
+            connection: connection,
+            id: "queue-scale-no-decode-invalid-action-plan",
+            state: .waitingReview,
+            payloadKind: "action_plan",
+            payloadJSON: malformedPayload,
+            updatedAt: baseDate.addingTimeInterval(1_000),
+            reviewReason: "Queue list fixture invalid payload",
+            redactedSummary: "Scale invalid action plan payload",
+            requiredCapabilitiesJSON: requiredCapabilitiesJSON
+        )
+
+        let snapshot = try store.readModelSnapshot(
+            filter: .all(limit: 50),
+            receipts: [],
+            viewFilter: .all,
+            sort: .needsActionFirst
+        )
+
+        let invalidRow = try XCTUnwrap(snapshot.rows.first { $0.id == "queue-scale-no-decode-invalid-action-plan" })
+        XCTAssertEqual(invalidRow.state, .waitingReview)
+        XCTAssertEqual(invalidRow.redactedSummary, "Scale invalid action plan payload")
+        XCTAssertFalse(invalidRow.title.isEmpty)
+
+        XCTAssertThrowsError(try store.list(filter: .all(limit: 50))) { error in
+            XCTAssertEqual(error as? AssistantQueueStoreError, .decodingFailed(column: "assistant_queue_items.payload_json"))
+        }
+    }
+
     @MainActor
     func testProjectBoardViewModelCountsAttentionStatesBeyondTerminalRowLimit() throws {
         let connection = try SQLiteConnection(path: ":memory:")
@@ -1286,6 +1476,130 @@ final class AssistantQueueStoreTests: XCTestCase {
             inputTokenCentsPerMillion: 100,
             outputTokenCentsPerMillion: 300
         ).preview(inputTokens: inputTokens, outputTokens: outputTokens, hardCapCents: hardCapCents)
+    }
+
+    private func jsonString<Value: Encodable>(_ value: Value) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return String(decoding: try encoder.encode(value), as: UTF8.self)
+    }
+
+    private func largeActionPlanPayloadJSON(actions: Int, argumentSize: Int) throws -> String {
+        let actionArguments = String(repeating: "x", count: argumentSize)
+        let payload = ActionPlan(
+            id: "scale-plan",
+            userInput: "Scale plan with large argument payload.",
+            summary: "Scale payload for performance regression fixture.",
+            actions: (0..<actions).map { index in
+                PlanAction(
+                    id: "scale-action-\(index)",
+                    tool: .taskCreate,
+                    arguments: ["title": .string("\(actionArguments) #\(index)")],
+                    riskLevel: .write
+                )
+            },
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        return try jsonString(AssistantQueuePayload.actionPlan(payload))
+    }
+
+    private func automationRequestPayloadJSON(id: String, toolName: String) throws -> String {
+        let payload = AssistantQueueAdapter.makeItem(
+            automationRequest: SyncAutomationRequestPayload(
+                id: id,
+                source: .cloudRelay,
+                approvalState: .pendingApproval,
+                sourceClientID: "web",
+                toolName: toolName,
+                redactedArgumentSummary: "Task create request fixture",
+                taskMutation: SyncTaskMutationPayload(
+                    taskID: 101,
+                    operation: .create,
+                    source: .cloudRelay,
+                    approvalState: .pendingApproval
+                )
+            )
+        ).payload
+        return try jsonString(payload)
+    }
+
+    private func insertQueueItem(
+        connection: SQLiteConnection,
+        id: String,
+        state: AssistantQueueState,
+        payloadKind: String,
+        payloadJSON: String,
+        updatedAt: Date,
+        sourceTranscript: String = "Scale queue source transcript",
+        interpretationSummary: String = "Scale queue intent",
+        reviewReason: String,
+        redactedSummary: String,
+        requiredCapabilitiesJSON: String,
+        blockingReason: String? = nil,
+        costPreviewJSON: String? = nil
+    ) throws {
+        let timestamp = iso8601String(updatedAt)
+        let sourceTranscriptSQL = optionalStringLiteral(sourceTranscript)
+        let interpretationSummarySQL = optionalStringLiteral(interpretationSummary)
+        let blockingReasonSQL = optionalStringLiteral(blockingReason)
+        let costPreviewSQL = optionalStringLiteral(costPreviewJSON)
+        try connection.execute(
+            """
+            INSERT INTO assistant_queue_items (
+                id,
+                schema_version,
+                payload_kind,
+                payload_json,
+                state,
+                risk_level,
+                source_transcript,
+                interpretation_summary,
+                review_reason,
+                redacted_summary,
+                required_capabilities_json,
+                approval_json,
+                blocking_reason,
+                cost_preview_json,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                '\(sqlEscaped(id))',
+                1,
+                '\(sqlEscaped(payloadKind))',
+                '\(sqlEscaped(payloadJSON))',
+                '\(sqlEscaped(state.rawValue))',
+                'write',
+                \(sourceTranscriptSQL),
+                \(interpretationSummarySQL),
+                '\(sqlEscaped(reviewReason))',
+                '\(sqlEscaped(redactedSummary))',
+                '\(sqlEscaped(requiredCapabilitiesJSON))',
+                NULL,
+                \(blockingReasonSQL),
+                \(costPreviewJSON == nil ? "NULL" : costPreviewSQL),
+                '\(timestamp)',
+                '\(timestamp)'
+            );
+            """
+        )
+    }
+
+    private func optionalStringLiteral(_ value: String?) -> String {
+        guard let value else {
+            return "NULL"
+        }
+        return "'\(sqlEscaped(value))'"
+    }
+
+    private func iso8601String(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        return formatter.string(from: date)
+    }
+
+    private func sqlEscaped(_ value: String) -> String {
+        value.replacingOccurrences(of: "'", with: "''")
     }
 
     private func makeAutomationRequestItem(
