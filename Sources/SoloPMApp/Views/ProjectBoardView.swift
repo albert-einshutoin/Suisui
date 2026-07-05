@@ -637,7 +637,7 @@ struct ProjectBoardView: View {
     ) {
         viewModel.load()
         _ = viewModel.prepareDailyPlanningReview(transcript: sourceTranscript)
-        let summary = viewModel.missedTaskReview()
+        let summary = viewModel.derivedReadModels.missedTaskReview
         if let actionDraftKind {
             // Voice-triggered planning actions still become Assistant Queue
             // drafts so Today review can suggest writes without mutating tasks

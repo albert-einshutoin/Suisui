@@ -7,7 +7,7 @@ struct CatchUpWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
 
     private var summary: MissedTaskReviewSummary {
-        viewModel.missedTaskReview()
+        viewModel.derivedReadModels.missedTaskReview
     }
 
     var body: some View {
