@@ -8,6 +8,7 @@ CI_RUNTIME_GATES="${SOLOPM_CI_RUNTIME_GATES:-0}"
 CI_VISUAL_GATES="${SOLOPM_CI_VISUAL_GATES:-0}"
 CI_RELEASE_GATES="${SOLOPM_CI_RELEASE_GATES:-0}"
 CI_PERFORMANCE_GATES="${SOLOPM_CI_PERFORMANCE_GATES:-0}"
+CI_STRESS_GATES="${SOLOPM_CI_STRESS_GATES:-0}"
 
 mkdir -p "$CI_TMP_ROOT"
 
@@ -69,6 +70,12 @@ run_performance_gates() {
     ./script/check_release_launch_performance_smoke.sh
 }
 
+run_stress_gates() {
+  # Stress gates aggregate deterministic large-fixture and bounded-operation
+  # tests so hot paths cannot regress behind the lightweight PR gate.
+  ./script/check_performance_stress_suite.sh
+}
+
 run_runtime_gates() {
   script/check_runtime_accessible_crud_smoke.sh
   script/check_layout_stability_smoke.sh
@@ -83,6 +90,7 @@ validate_ci_flag "SOLOPM_CI_RUNTIME_GATES" "$CI_RUNTIME_GATES"
 validate_ci_flag "SOLOPM_CI_VISUAL_GATES" "$CI_VISUAL_GATES"
 validate_ci_flag "SOLOPM_CI_RELEASE_GATES" "$CI_RELEASE_GATES"
 validate_ci_flag "SOLOPM_CI_PERFORMANCE_GATES" "$CI_PERFORMANCE_GATES"
+validate_ci_flag "SOLOPM_CI_STRESS_GATES" "$CI_STRESS_GATES"
 
 run_pr_gate
 if [[ "$CI_RELEASE_GATES" == "1" ]]; then
@@ -90,6 +98,9 @@ if [[ "$CI_RELEASE_GATES" == "1" ]]; then
 fi
 if [[ "$CI_PERFORMANCE_GATES" == "1" ]]; then
   run_performance_gates
+fi
+if [[ "$CI_STRESS_GATES" == "1" ]]; then
+  run_stress_gates
 fi
 if [[ "$CI_RUNTIME_GATES" == "1" ]]; then
   run_runtime_gates
