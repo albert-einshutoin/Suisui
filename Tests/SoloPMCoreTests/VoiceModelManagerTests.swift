@@ -130,6 +130,52 @@ final class VoiceModelManagerTests: XCTestCase {
         XCTAssertEqual(row.action, .retry)
     }
 
+    func testStatusInvalidatesCacheWhenExpectedChecksumChanges() throws {
+        let modelData = Data("tiny local model".utf8)
+        let model = testModel(
+            checksum: VoiceModelChecksum(
+                algorithm: .sha256,
+                value: VoiceModelChecksum.sha256Hex(for: modelData)
+            )
+        )
+        let cacheRoot = makeTemporaryDirectory()
+        let cache = VoiceModelCache(rootDirectory: cacheRoot)
+        try cache.write(modelData, for: model)
+        let manager = VoiceModelManager(cache: cache, httpClient: RecordingVoiceModelHTTPDataClient())
+
+        XCTAssertEqual(manager.status(for: model), .installed)
+
+        let changedExpectedModel = testModel(
+            checksum: VoiceModelChecksum(
+                algorithm: .sha256,
+                value: String(repeating: "0", count: 64)
+            )
+        )
+
+        XCTAssertEqual(
+            manager.status(for: changedExpectedModel),
+            .corrupted("Voice model checksum verification failed.")
+        )
+    }
+
+    func testStatusInvalidatesCacheWhenModelFileContentsChange() throws {
+        let model = testModel()
+        let originalData = Data("tiny local model".utf8)
+        let cacheRoot = makeTemporaryDirectory()
+        let cache = VoiceModelCache(rootDirectory: cacheRoot)
+        try cache.write(originalData, for: model)
+        let manager = VoiceModelManager(cache: cache, httpClient: RecordingVoiceModelHTTPDataClient())
+
+        XCTAssertEqual(manager.status(for: model), .installed)
+
+        try Data("model-version-two-changed".utf8).write(to: cache.localURL(for: model), options: [.atomic])
+
+        XCTAssertEqual(
+            manager.status(for: model),
+            .corrupted("Voice model checksum verification failed.")
+        )
+    }
+
     func testCommitStagedFileKeepsExistingFinalWhenPartialIsMissing() throws {
         let model = testModel()
         let cacheRoot = makeTemporaryDirectory()

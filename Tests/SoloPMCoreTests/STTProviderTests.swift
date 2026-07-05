@@ -269,6 +269,54 @@ final class STTProviderTests: XCTestCase {
         XCTAssertFalse(bodyText.contains("sk-test"))
     }
 
+    func testOpenAITranscriptionRequestBuilderRejectsOversizedAudio() throws {
+        let audioURL = try writeTemporaryAudio()
+        let configuration = OpenAITranscriptionConfiguration(
+            model: "gpt-transcribe-test",
+            timeoutInterval: 8,
+            maxAudioFileBytes: 1
+        )
+
+        XCTAssertThrowsError(
+            try OpenAITranscriptionRequestBuilder(configuration: configuration).makeRequest(
+                apiKey: "sk-test",
+                audio: RecordedAudio(fileURL: audioURL, format: .m4a)
+            )
+        ) { error in
+            guard case .audioFileTooLarge(let actualBytes, let maxBytes) = error as? OpenAITranscriptionRequestError else {
+                return XCTFail("Expected audio file size limit error, got \(error)")
+            }
+            XCTAssertEqual(maxBytes, 1)
+            XCTAssertGreaterThan(actualBytes, 1)
+        }
+    }
+
+    func testOpenAITranscriptionRequestBuilderSkipsReadingAudioWhenOversized() throws {
+        let audioURL = try writeTemporaryAudio()
+        let reader = FailingOpenAITranscriptionAudioDataReader()
+        let configuration = OpenAITranscriptionConfiguration(
+            model: "gpt-transcribe-test",
+            timeoutInterval: 8,
+            maxAudioFileBytes: 1
+        )
+
+        XCTAssertThrowsError(
+            try OpenAITranscriptionRequestBuilder(
+                configuration: configuration,
+                audioDataReader: reader
+            ).makeRequest(
+                apiKey: "sk-test",
+                audio: RecordedAudio(fileURL: audioURL, format: .m4a)
+            )
+        ) { error in
+            guard case .audioFileTooLarge = error as? OpenAITranscriptionRequestError else {
+                return XCTFail("Expected audio file size limit error, got \(error)")
+            }
+        }
+
+        XCTAssertEqual(reader.readCallCount, 0)
+    }
+
     func testOpenAITranscribeProviderRejectsMissingAPIKeyBeforeReadingAudio() async throws {
         let provider = OpenAITranscribeProvider(
             secretStore: InMemorySecretStore(),
@@ -282,6 +330,30 @@ final class STTProviderTests: XCTestCase {
             XCTFail("Expected missing key to fail.")
         } catch {
             XCTAssertEqual(error as? STTProviderError, .unavailable("OpenAI API key is not configured."))
+        }
+    }
+
+    func testOpenAITranscribeProviderRejectsOversizedAudioBeforeUploading() async throws {
+        let client = NeverCalledHTTPDataClient()
+        let provider = OpenAITranscribeProvider(
+            secretStore: InMemorySecretStore(values: [.openAIAPIKey: "sk-test"]),
+            httpClient: client,
+            configuration: OpenAITranscriptionConfiguration(maxAudioFileBytes: 1)
+        )
+        let audioURL = try writeTemporaryAudio()
+
+        do {
+            _ = try await provider.transcribe(
+                RecordedAudio(fileURL: audioURL, format: .m4a)
+            )
+            XCTFail("Expected oversize audio to fail before upload.")
+        } catch {
+            guard case .transcriptionFailed(let message) = error as? STTProviderError else {
+                return XCTFail("Expected transcription failed, got \(error)")
+            }
+            XCTAssertTrue(message.contains("OpenAI audio file is too large"))
+            XCTAssertEqual(client.requestCount, 0)
+            XCTAssertFalse(message.contains(audioURL.path))
         }
     }
 
@@ -476,6 +548,20 @@ private struct ThrowingSTTHTTPDataClient: HTTPDataClient {
     }
 }
 
+private final class NeverCalledHTTPDataClient: HTTPDataClient, @unchecked Sendable {
+    private let lock = NSLock()
+    private var requests: Int = 0
+
+    var requestCount: Int {
+        lock.withLock { requests }
+    }
+
+    func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        lock.withLock { requests += 1 }
+        throw NSError(domain: "SoloPM", code: -1, userInfo: nil)
+    }
+}
+
 private struct StubSTTHTTPDataClient: HTTPDataClient {
     var data: Data
     var statusCode: Int
@@ -489,6 +575,20 @@ private struct StubSTTHTTPDataClient: HTTPDataClient {
         )!
 
         return (data, response)
+    }
+}
+
+private final class FailingOpenAITranscriptionAudioDataReader: OpenAITranscriptionAudioDataReading, @unchecked Sendable {
+    private let lock = NSLock()
+    private var count: Int = 0
+
+    var readCallCount: Int {
+        lock.withLock { count }
+    }
+
+    func readAudioData(for audio: RecordedAudio) throws -> Data {
+        lock.withLock { count += 1 }
+        return Data("dummy".utf8)
     }
 }
 
