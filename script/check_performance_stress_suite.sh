@@ -22,6 +22,8 @@ join_by_pipe() {
   printf "%s" "$*"
 }
 
+# Keep the default suite deterministic and non-GUI: it should catch scale and
+# bounded-operation regressions without requiring a local Accessibility session.
 STRESS_TEST_FILTERS=(
   "DevelopmentRepositoryFileAccessTests/testListFilesCapsLargeWorkspaceResults"
   "KnowledgeAdvancedTests/testSQLiteVectorIndexSearchWithTopKBoundedRankingAndTiebreak"
