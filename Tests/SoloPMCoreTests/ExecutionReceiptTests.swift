@@ -1,16 +1,19 @@
+import CryptoKit
 import XCTest
 @testable import SoloPMCore
 
 final class ExecutionReceiptTests: XCTestCase {
     func testExecutionReceiptRedactorCoversHomeVarAndFileURLLocalPaths() {
+        let allowedRoot = packageRootPath
+        let allowedFileURL = URL(fileURLWithPath: "\(allowedRoot)/docs/plan.md").absoluteString
         let redactor = ExecutionReceiptRedactor(
             policy: ExecutionReceiptRedactionPolicy(
-                allowedLocalPathPrefixes: ["/Volumes/Satechi/Developer/soloPM"]
+                allowedLocalPathPrefixes: [allowedRoot]
             )
         )
 
         let redacted = redactor.redact(
-            "Read ~/Library/Secrets/key.txt, /var/folders/app/private.log, file:///Users/alice/private.md, and file:///Volumes/Satechi/Developer/soloPM/docs/plan.md",
+            "Read ~/Library/Secrets/key.txt, /var/folders/app/private.log, file:///Users/alice/private.md, and \(allowedFileURL)",
             maxLength: 1_000
         )
 
@@ -18,10 +21,11 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertFalse(redacted.contains("~/Library/Secrets/key.txt"))
         XCTAssertFalse(redacted.contains("/var/folders/app/private.log"))
         XCTAssertFalse(redacted.contains("file:///Users/alice/private.md"))
-        XCTAssertTrue(redacted.contains("file:///Volumes/Satechi/Developer/soloPM/docs/plan.md"))
+        XCTAssertTrue(redacted.contains(allowedFileURL))
     }
 
     func testReviewExecutionReceiptRedactsSecretsAndDisallowedLocalPaths() throws {
+        let allowedRoot = packageRootPath
         let providerKey = "sk-" + "proj-user-secret"
         let titleSecret = "token" + "=" + "secret-title"
         let outputSecret = "secret" + "=" + "output-secret"
@@ -30,7 +34,7 @@ final class ExecutionReceiptTests: XCTestCase {
             plan: ActionPlan(
                 id: "plan-1",
                 userInput: "Create task with \(providerKey) and inspect /Users/alice/My Project/secrets.md",
-                summary: "Create a launch task from /Volumes/Satechi/Developer/soloPM/docs/plan.md",
+                summary: "Create a launch task from \(allowedRoot)/docs/plan.md",
                 actions: [
                     PlanAction(
                         id: "action-1",
@@ -74,7 +78,7 @@ final class ExecutionReceiptTests: XCTestCase {
             startedAt: Date(timeIntervalSince1970: 12),
             finishedAt: Date(timeIntervalSince1970: 13),
             redactionPolicy: ExecutionReceiptRedactionPolicy(
-                allowedLocalPathPrefixes: ["/Volumes/Satechi/Developer/soloPM"]
+                allowedLocalPathPrefixes: [allowedRoot]
             )
         )
 
@@ -86,7 +90,7 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertEqual(receipt.usage.state, .estimated)
         XCTAssertTrue(receipt.inputPreview.contains("[REDACTED_SECRET]"))
         XCTAssertTrue(receipt.inputPreview.contains("[REDACTED_LOCAL_PATH]"))
-        XCTAssertTrue(receipt.inputPreview.contains("/Volumes/Satechi/Developer/soloPM/docs/plan.md"))
+        XCTAssertTrue(receipt.inputPreview.contains("\(allowedRoot)/docs/plan.md"))
         XCTAssertFalse(receipt.inputPreview.contains(providerKey))
         XCTAssertFalse(receipt.inputPreview.contains("My Project"))
         XCTAssertFalse(receipt.actions[0].inputPreview.contains("Private/escape.md"))
@@ -270,7 +274,7 @@ final class ExecutionReceiptTests: XCTestCase {
             runID: "run-document-deliverable",
             createdAt: Date(timeIntervalSince1970: 100),
             redactionPolicy: ExecutionReceiptRedactionPolicy(
-                allowedLocalPathPrefixes: ["/Volumes/Satechi/Developer/soloPM"]
+                allowedLocalPathPrefixes: [packageRootPath]
             )
         )
 
@@ -1386,7 +1390,12 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertEqual(loaded.first?.id, "receipt/file:json")
         XCTAssertTrue(loaded.first?.inputPreview.contains("[REDACTED_SECRET]") ?? false)
         XCTAssertTrue(loaded.first?.inputPreview.contains("[REDACTED_LOCAL_PATH]") ?? false)
-        let rawFile = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first)
+        let rawFile = try XCTUnwrap(
+            FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: nil
+            ).first { $0.pathExtension == "json" }
+        )
         let rawContent = try String(contentsOf: rawFile, encoding: .utf8)
         XCTAssertFalse(rawContent.contains("file-secret"))
         XCTAssertFalse(rawContent.contains("private.md"))
@@ -1475,6 +1484,407 @@ final class ExecutionReceiptTests: XCTestCase {
             limit: 5
         )
         XCTAssertEqual(scopedReceipts.map(\.id), ["receipt-task-match"])
+    }
+
+    func testFileExecutionReceiptStoreRecentSearchAndScopedQueriesUseIndexWithoutDecodingWholeDirectory() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        var decodeCount = 0
+        let store = try FileExecutionReceiptStore(
+            directoryURL: directory,
+            receiptDecodeObserver: { _ in decodeCount += 1 }
+        )
+
+        try store.save(
+            indexedReceipt(
+                id: "receipt-index-match",
+                runID: "run-index-match",
+                createdAt: Date(timeIntervalSince1970: 10),
+                finishedAt: Date(timeIntervalSince1970: 20),
+                status: .succeeded,
+                outputSummary: "Recovered launch audit row",
+                primaryToolName: ActionTool.taskUpdate.rawValue,
+                references: [
+                    ExecutionReceiptReference(kind: .task, id: "42"),
+                    ExecutionReceiptReference(kind: .project, id: "7")
+                ],
+                visibleSurfaces: [.taskDetail, .auditLog]
+            )
+        )
+
+        for index in 0..<1_500 {
+            try store.save(
+                indexedReceipt(
+                    id: "receipt-index-unrelated-\(index)",
+                    runID: "run-index-unrelated-\(index)",
+                    createdAt: Date(timeIntervalSince1970: 1_000 + TimeInterval(index)),
+                    finishedAt: Date(timeIntervalSince1970: 1_010 + TimeInterval(index)),
+                    status: .succeeded,
+                    outputSummary: "Calendar row \(index)",
+                    primaryToolName: ActionTool.calendarCreateWorkBlock.rawValue,
+                    references: [
+                        ExecutionReceiptReference(kind: .calendarEvent, id: "event-\(index)")
+                    ],
+                    visibleSurfaces: [.doneList]
+                )
+            )
+        }
+
+        let indexText = try String(contentsOf: executionReceiptIndexURL(in: directory), encoding: .utf8)
+        XCTAssertTrue(indexText.contains("receipt-index-match.json"))
+        XCTAssertFalse(indexText.contains(directory.path))
+
+        decodeCount = 0
+        let recentReceipts = try store.list(limit: 5)
+        XCTAssertEqual(recentReceipts.count, 5)
+        XCTAssertEqual(decodeCount, 5)
+
+        decodeCount = 0
+        let filter = ExecutionReceiptSearchFilter(
+            query: "launch audit",
+            statuses: [.succeeded],
+            toolNames: [ActionTool.taskUpdate.rawValue],
+            referenceKinds: [.task],
+            visibleSurface: .taskDetail
+        )
+        let searchedReceipts = try store.list(matching: filter, limit: 1)
+        XCTAssertEqual(searchedReceipts.map(\.id), ["receipt-index-match"])
+        XCTAssertEqual(decodeCount, 1)
+
+        decodeCount = 0
+        let scopedReceipts = try store.list(
+            referenceKind: .task,
+            referenceID: "42",
+            visibleSurface: .taskDetail,
+            limit: 1
+        )
+        XCTAssertEqual(scopedReceipts.map(\.id), ["receipt-index-match"])
+        XCTAssertEqual(decodeCount, 1)
+    }
+
+    func testFileExecutionReceiptStoreRefreshesIndexWrittenByAnotherStoreInstance() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let reader = try FileExecutionReceiptStore(directoryURL: directory)
+        let writer = try FileExecutionReceiptStore(directoryURL: directory)
+        try writer.save(
+            indexedReceipt(
+                id: "receipt-written-by-peer-store",
+                runID: "run-written-by-peer-store",
+                createdAt: Date(timeIntervalSince1970: 10),
+                finishedAt: Date(timeIntervalSince1970: 20),
+                status: .succeeded,
+                outputSummary: "Written through a separate runtime store",
+                primaryToolName: ActionTool.taskUpdate.rawValue,
+                references: [ExecutionReceiptReference(kind: .task, id: "42")],
+                visibleSurfaces: [.taskDetail]
+            )
+        )
+
+        let scopedReceipts = try reader.list(
+            referenceKind: .task,
+            referenceID: "42",
+            visibleSurface: .taskDetail,
+            limit: 5
+        )
+        XCTAssertEqual(scopedReceipts.map(\.id), ["receipt-written-by-peer-store"])
+    }
+
+    func testFileExecutionReceiptStoreSaveRefreshesPeerIndexBeforeUpdatingSnapshot() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let firstStore = try FileExecutionReceiptStore(directoryURL: directory)
+        let peerStore = try FileExecutionReceiptStore(directoryURL: directory)
+        try peerStore.save(
+            indexedReceipt(
+                id: "receipt-peer-before-local-save",
+                runID: "run-peer-before-local-save",
+                createdAt: Date(timeIntervalSince1970: 10),
+                finishedAt: Date(timeIntervalSince1970: 20),
+                status: .succeeded,
+                outputSummary: "Peer receipt written before local save",
+                primaryToolName: ActionTool.taskUpdate.rawValue,
+                references: [ExecutionReceiptReference(kind: .task, id: "42")],
+                visibleSurfaces: [.taskDetail]
+            )
+        )
+
+        try firstStore.save(
+            indexedReceipt(
+                id: "receipt-local-after-peer-save",
+                runID: "run-local-after-peer-save",
+                createdAt: Date(timeIntervalSince1970: 30),
+                finishedAt: Date(timeIntervalSince1970: 40),
+                status: .succeeded,
+                outputSummary: "Local receipt should not hide peer entry",
+                primaryToolName: ActionTool.taskUpdate.rawValue,
+                references: [ExecutionReceiptReference(kind: .task, id: "42")],
+                visibleSurfaces: [.taskDetail]
+            )
+        )
+
+        let scopedReceipts = try firstStore.list(
+            referenceKind: .task,
+            referenceID: "42",
+            visibleSurface: .taskDetail,
+            limit: 5
+        )
+        XCTAssertEqual(
+            scopedReceipts.map(\.id),
+            ["receipt-local-after-peer-save", "receipt-peer-before-local-save"]
+        )
+    }
+
+    func testFileExecutionReceiptStoreRepairsMissingIndexAndSkipsCorruptReceiptFiles() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        var decodeCount = 0
+        let store = try FileExecutionReceiptStore(
+            directoryURL: directory,
+            receiptDecodeObserver: { _ in decodeCount += 1 }
+        )
+
+        try store.save(
+            indexedReceipt(
+                id: "receipt-repair-old",
+                runID: "run-repair-old",
+                createdAt: Date(timeIntervalSince1970: 10),
+                finishedAt: Date(timeIntervalSince1970: 20),
+                status: .succeeded,
+                outputSummary: "Older valid receipt",
+                primaryToolName: ActionTool.taskUpdate.rawValue,
+                references: [ExecutionReceiptReference(kind: .task, id: "42")],
+                visibleSurfaces: [.taskDetail]
+            )
+        )
+        try store.save(
+            indexedReceipt(
+                id: "receipt-repair-new",
+                runID: "run-repair-new",
+                createdAt: Date(timeIntervalSince1970: 30),
+                finishedAt: Date(timeIntervalSince1970: 40),
+                status: .succeeded,
+                outputSummary: "Newer receipt that will be corrupted",
+                primaryToolName: ActionTool.taskUpdate.rawValue,
+                references: [ExecutionReceiptReference(kind: .task, id: "42")],
+                visibleSurfaces: [.taskDetail]
+            )
+        )
+
+        let corruptReceiptURL = directory.appendingPathComponent("receipt-repair-new.json")
+        try "{not valid json}".write(to: corruptReceiptURL, atomically: true, encoding: .utf8)
+
+        for url in try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ) where url.pathExtension == "jsonl" {
+            try FileManager.default.removeItem(at: url)
+        }
+
+        let repairedStore = try FileExecutionReceiptStore(
+            directoryURL: directory,
+            receiptDecodeObserver: { _ in decodeCount += 1 }
+        )
+
+        decodeCount = 0
+        let loadedReceipts = try repairedStore.list(limit: 5)
+        XCTAssertEqual(loadedReceipts.map(\.id), ["receipt-repair-old"])
+        XCTAssertEqual(decodeCount, 1)
+
+        let indexExists = try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ).contains { $0.pathExtension == "jsonl" }
+        XCTAssertTrue(indexExists)
+    }
+
+    func testFileExecutionReceiptStoreSkipsDigestMismatchWithoutTrustingModifiedReceiptJSON() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let store = try FileExecutionReceiptStore(directoryURL: directory)
+        try store.save(
+            indexedReceipt(
+                id: "receipt-digest-protected",
+                runID: "run-digest-protected",
+                createdAt: Date(timeIntervalSince1970: 10),
+                finishedAt: Date(timeIntervalSince1970: 20),
+                status: .succeeded,
+                outputSummary: "Original audit row",
+                primaryToolName: ActionTool.taskUpdate.rawValue,
+                references: [ExecutionReceiptReference(kind: .task, id: "42")],
+                visibleSurfaces: [.taskDetail]
+            )
+        )
+
+        let tamperedReceipt = indexedReceipt(
+            id: "receipt-digest-protected",
+            runID: "run-digest-protected",
+            createdAt: Date(timeIntervalSince1970: 10),
+            finishedAt: Date(timeIntervalSince1970: 20),
+            status: .succeeded,
+            outputSummary: "Tampered audit row",
+            primaryToolName: ActionTool.taskUpdate.rawValue,
+            references: [ExecutionReceiptReference(kind: .task, id: "42")],
+            visibleSurfaces: [.taskDetail]
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(tamperedReceipt).write(
+            to: directory.appendingPathComponent("receipt-digest-protected.json"),
+            options: [.atomic]
+        )
+
+        let reloadedStore = try FileExecutionReceiptStore(directoryURL: directory)
+        XCTAssertTrue(try reloadedStore.list(limit: 5).isEmpty)
+    }
+
+    func testFileExecutionReceiptStoreBackfillsReceiptWrittenAfterExistingIndex() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let store = try FileExecutionReceiptStore(directoryURL: directory)
+        try store.save(
+            indexedReceipt(
+                id: "receipt-before-crash-window",
+                runID: "run-before-crash-window",
+                createdAt: Date(timeIntervalSince1970: 10),
+                finishedAt: Date(timeIntervalSince1970: 20),
+                status: .succeeded,
+                outputSummary: "Indexed before crash window",
+                primaryToolName: ActionTool.taskUpdate.rawValue,
+                references: [ExecutionReceiptReference(kind: .task, id: "41")],
+                visibleSurfaces: [.taskDetail]
+            )
+        )
+
+        let lateReceipt = indexedReceipt(
+            id: "receipt-after-crash-window",
+            runID: "run-after-crash-window",
+            createdAt: Date(timeIntervalSince1970: 30),
+            finishedAt: Date(timeIntervalSince1970: 40),
+            status: .succeeded,
+            outputSummary: "Receipt JSON persisted before index append",
+            primaryToolName: ActionTool.taskUpdate.rawValue,
+            references: [ExecutionReceiptReference(kind: .task, id: "42")],
+            visibleSurfaces: [.taskDetail]
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(lateReceipt).write(
+            to: directory.appendingPathComponent("receipt-after-crash-window.json"),
+            options: [.atomic]
+        )
+
+        let repairedStore = try FileExecutionReceiptStore(directoryURL: directory)
+
+        XCTAssertEqual(
+            try repairedStore.list(
+                referenceKind: .task,
+                referenceID: "42",
+                visibleSurface: .taskDetail,
+                limit: 5
+            ).map(\.id),
+            ["receipt-after-crash-window"]
+        )
+        let indexText = try String(contentsOf: executionReceiptIndexURL(in: directory), encoding: .utf8)
+        XCTAssertTrue(indexText.contains("receipt-after-crash-window.json"))
+    }
+
+    func testFileExecutionReceiptStoreDoesNotFollowIndexPathsOutsideReceiptDirectory() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let externalDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+            try? FileManager.default.removeItem(at: externalDirectory)
+        }
+        try FileManager.default.createDirectory(at: externalDirectory, withIntermediateDirectories: true)
+
+        let store = try FileExecutionReceiptStore(directoryURL: directory)
+        try store.save(
+            indexedReceipt(
+                id: "receipt-inside-directory",
+                runID: "run-inside-directory",
+                createdAt: Date(timeIntervalSince1970: 10),
+                finishedAt: Date(timeIntervalSince1970: 20),
+                status: .succeeded,
+                outputSummary: "Valid local receipt",
+                primaryToolName: ActionTool.taskUpdate.rawValue,
+                references: [ExecutionReceiptReference(kind: .task, id: "41")],
+                visibleSurfaces: [.taskDetail]
+            )
+        )
+
+        let externalReceipt = indexedReceipt(
+            id: "receipt-outside-directory",
+            runID: "run-outside-directory",
+            createdAt: Date(timeIntervalSince1970: 30),
+            finishedAt: Date(timeIntervalSince1970: 40),
+            status: .succeeded,
+            outputSummary: "Should not be loaded through a cached absolute path",
+            primaryToolName: ActionTool.taskUpdate.rawValue,
+            references: [ExecutionReceiptReference(kind: .task, id: "99")],
+            visibleSurfaces: [.taskDetail]
+        )
+        let receiptEncoder = JSONEncoder()
+        receiptEncoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        receiptEncoder.dateEncodingStrategy = .iso8601
+        let externalReceiptData = try receiptEncoder.encode(externalReceipt)
+        let externalReceiptURL = externalDirectory.appendingPathComponent("receipt-outside-directory.json")
+        try externalReceiptData.write(to: externalReceiptURL, options: [.atomic])
+
+        var manifestData = try Data(contentsOf: executionReceiptIndexURL(in: directory))
+        let indexEncoder = JSONEncoder()
+        indexEncoder.outputFormatting = [.sortedKeys]
+        indexEncoder.dateEncodingStrategy = .iso8601
+        let externalEntry = TestExecutionReceiptIndexEntry(
+            id: externalReceipt.id,
+            runID: externalReceipt.runID,
+            createdAt: externalReceipt.createdAt,
+            startedAt: externalReceipt.startedAt,
+            finishedAt: externalReceipt.finishedAt,
+            status: externalReceipt.status,
+            primaryToolName: externalReceipt.primaryToolName,
+            usageState: externalReceipt.usage.state,
+            referenceKinds: externalReceipt.references.map(\.kind),
+            references: externalReceipt.references.map { reference in
+                TestExecutionReceiptIndexReference(kind: reference.kind, id: reference.id)
+            },
+            sourceLinkKinds: externalReceipt.sourceLinks.map(\.kind),
+            actionToolNames: externalReceipt.actions.map(\.toolName),
+            actionStatuses: externalReceipt.actions.map(\.status),
+            visibleSurfaces: externalReceipt.visibleSurfaces,
+            outputSummary: externalReceipt.outputSummary,
+            searchableText: "succeeded task taskdetail",
+            receiptPath: externalReceiptURL.path,
+            digest: sha256Hex(externalReceiptData)
+        )
+        manifestData.append(try indexEncoder.encode(externalEntry))
+        manifestData.append(0x0A)
+        try manifestData.write(to: executionReceiptIndexURL(in: directory), options: [.atomic])
+
+        let reloadedStore = try FileExecutionReceiptStore(directoryURL: directory)
+        let scopedReceipts = try reloadedStore.list(
+            referenceKind: .task,
+            referenceID: "99",
+            visibleSurface: .taskDetail,
+            limit: 5
+        )
+        XCTAssertTrue(scopedReceipts.isEmpty)
     }
 
     func testExecutionReceiptHistoryRowsExposeOnlySafeGlobalAuditFields() throws {
@@ -1917,5 +2327,128 @@ final class ExecutionReceiptTests: XCTestCase {
             startedAt: Date(timeIntervalSince1970: 50),
             finishedAt: Date(timeIntervalSince1970: 51)
         )
+    }
+
+    private func indexedReceipt(
+        id: String,
+        runID: String,
+        createdAt: Date,
+        finishedAt: Date,
+        status: ExecutionReceiptStatus,
+        outputSummary: String,
+        primaryToolName: String,
+        references: [ExecutionReceiptReference],
+        visibleSurfaces: [ExecutionReceiptSurface]
+    ) -> ExecutionReceipt {
+        ExecutionReceipt(
+            id: id,
+            runID: runID,
+            createdAt: createdAt,
+            finishedAt: finishedAt,
+            status: status,
+            inputPreview: "Input for \(id)",
+            outputSummary: outputSummary,
+            primaryToolName: primaryToolName,
+            references: references,
+            visibleSurfaces: visibleSurfaces
+        )
+    }
+
+    private var packageRootPath: String {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
+    }
+
+    private func executionReceiptIndexURL(in directory: URL) throws -> URL {
+        try XCTUnwrap(
+            FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: nil
+            ).first { $0.pathExtension == "jsonl" }
+        )
+    }
+
+    private func sha256Hex(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private struct TestExecutionReceiptIndexReference: Encodable {
+        var kind: ExecutionReceiptReferenceKind
+        var id: String
+    }
+
+    private struct TestExecutionReceiptIndexEntry: Encodable {
+        var id: String
+        var runID: String
+        var assistantQueueItemID: String?
+        var createdAt: Date
+        var startedAt: Date?
+        var finishedAt: Date?
+        var status: ExecutionReceiptStatus
+        var primaryToolName: String?
+        var usageState: ExecutionReceiptUsageState
+        var modelProvider: String?
+        var modelName: String?
+        var referenceKinds: [ExecutionReceiptReferenceKind]
+        var references: [TestExecutionReceiptIndexReference]
+        var sourceLinkKinds: [ExecutionReceiptReferenceKind]
+        var actionToolNames: [String]
+        var actionStatuses: [ExecutionReceiptStatus]
+        var visibleSurfaces: [ExecutionReceiptSurface]
+        var outputSummary: String
+        var searchableText: String
+        var receiptPath: String
+        var digest: String
+
+        init(
+            id: String,
+            runID: String,
+            assistantQueueItemID: String? = nil,
+            createdAt: Date,
+            startedAt: Date?,
+            finishedAt: Date?,
+            status: ExecutionReceiptStatus,
+            primaryToolName: String?,
+            usageState: ExecutionReceiptUsageState,
+            modelProvider: String? = nil,
+            modelName: String? = nil,
+            referenceKinds: [ExecutionReceiptReferenceKind],
+            references: [TestExecutionReceiptIndexReference],
+            sourceLinkKinds: [ExecutionReceiptReferenceKind],
+            actionToolNames: [String],
+            actionStatuses: [ExecutionReceiptStatus],
+            visibleSurfaces: [ExecutionReceiptSurface],
+            outputSummary: String,
+            searchableText: String,
+            receiptPath: String,
+            digest: String
+        ) {
+            self.id = id
+            self.runID = runID
+            self.assistantQueueItemID = assistantQueueItemID
+            self.createdAt = createdAt
+            self.startedAt = startedAt
+            self.finishedAt = finishedAt
+            self.status = status
+            self.primaryToolName = primaryToolName
+            self.usageState = usageState
+            self.modelProvider = modelProvider
+            self.modelName = modelName
+            self.referenceKinds = referenceKinds
+            self.references = references
+            self.sourceLinkKinds = sourceLinkKinds
+            self.actionToolNames = actionToolNames
+            self.actionStatuses = actionStatuses
+            self.visibleSurfaces = visibleSurfaces
+            self.outputSummary = outputSummary
+            self.searchableText = searchableText
+            self.receiptPath = receiptPath
+            self.digest = digest
+        }
     }
 }
