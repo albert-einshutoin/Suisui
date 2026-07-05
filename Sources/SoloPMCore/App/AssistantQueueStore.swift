@@ -154,6 +154,12 @@ public protocol AssistantQueueStore {
     func get(id: String) throws -> AssistantQueueItem
     func list(filter: AssistantQueueFilter) throws -> [AssistantQueueItem]
     func stateCounts() throws -> AssistantQueueStateCounts
+    func readModelSnapshot(
+        filter: AssistantQueueFilter,
+        receipts: [ExecutionReceipt],
+        viewFilter: AssistantQueueViewFilter,
+        sort: AssistantQueueSort
+    ) throws -> AssistantQueueSnapshot
 
     @discardableResult
     func transition(
@@ -173,6 +179,21 @@ public extension AssistantQueueStore {
         } catch AssistantQueueStoreError.notFound {
             return try save(item)
         }
+    }
+
+    func readModelSnapshot(
+        filter: AssistantQueueFilter,
+        receipts: [ExecutionReceipt] = [],
+        viewFilter: AssistantQueueViewFilter = .all,
+        sort: AssistantQueueSort = .needsActionFirst
+    ) throws -> AssistantQueueSnapshot {
+        AssistantQueueReadModel.snapshot(
+            from: try list(filter: filter),
+            receipts: receipts,
+            viewFilter: viewFilter,
+            sort: sort,
+            stateCounts: try stateCounts()
+        )
     }
 }
 
@@ -343,6 +364,23 @@ public enum AssistantQueueReadModel {
         )
     }
 
+    static func snapshot(
+        from rows: [AssistantQueueReadModelRow],
+        stateCounts counts: AssistantQueueStateCounts
+    ) -> AssistantQueueSnapshot {
+        AssistantQueueSnapshot(
+            rows: rows,
+            totalCount: counts.total,
+            needsAttentionCount: counts.count(in: AssistantQueueViewFilter.needsAttention.states),
+            waitingReviewCount: counts.count(for: .waitingReview),
+            blockedCount: counts.count(for: .blocked),
+            approvedCount: counts.count(for: .approved) + counts.count(for: .running),
+            failedCount: counts.count(for: .failed),
+            deferredCount: counts.count(for: .deferred),
+            doneCount: counts.count(for: .done)
+        )
+    }
+
     private static func row(
         from item: AssistantQueueItem,
         receipt: ExecutionReceipt? = nil
@@ -388,7 +426,7 @@ public enum AssistantQueueReadModel {
         }
     }
 
-    private static func receiptSummary(_ receipt: ExecutionReceipt) -> AssistantQueueReceiptSummary {
+    static func receiptSummary(_ receipt: ExecutionReceipt) -> AssistantQueueReceiptSummary {
         AssistantQueueReceiptSummary(
             id: receipt.id,
             runID: receipt.runID,
@@ -401,8 +439,41 @@ public enum AssistantQueueReadModel {
         )
     }
 
-    private static func receiptSortDate(_ receipt: ExecutionReceipt) -> Date {
+    static func receiptSortDate(_ receipt: ExecutionReceipt) -> Date {
         receipt.finishedAt ?? receipt.startedAt ?? receipt.createdAt
+    }
+
+    static func sortRows(
+        _ lhs: AssistantQueueReadModelRow,
+        _ rhs: AssistantQueueReadModelRow,
+        sort: AssistantQueueSort
+    ) -> Bool {
+        switch sort {
+        case .needsActionFirst:
+            return sortRowsForReview(lhs, rhs)
+        case .riskHighFirst:
+            let leftRisk = RiskLevel(rawValue: lhs.riskLabel.lowercased()) ?? .read
+            let rightRisk = RiskLevel(rawValue: rhs.riskLabel.lowercased()) ?? .read
+            if leftRisk != rightRisk {
+                return leftRisk > rightRisk
+            }
+            return sortRowsForReview(lhs, rhs)
+        case .titleAscending:
+            let titleOrder = lhs.redactedSummary.localizedCaseInsensitiveCompare(rhs.redactedSummary)
+            if titleOrder != .orderedSame {
+                return titleOrder == .orderedAscending
+            }
+            return sortRowsForReview(lhs, rhs)
+        }
+    }
+
+    private static func sortRowsForReview(_ lhs: AssistantQueueReadModelRow, _ rhs: AssistantQueueReadModelRow) -> Bool {
+        let leftRank = reviewRank(lhs.state)
+        let rightRank = reviewRank(rhs.state)
+        if leftRank != rightRank {
+            return leftRank < rightRank
+        }
+        return lhs.id < rhs.id
     }
 
     private static func sortForReview(_ lhs: AssistantQueueItem, _ rhs: AssistantQueueItem) -> Bool {
@@ -510,15 +581,15 @@ public enum AssistantQueueReadModel {
         }
     }
 
-    private static func redactedPreview(_ value: String) -> String {
+    static func redactedPreview(_ value: String) -> String {
         redactedText(value).assistantQueuePreview(maxLength: 160)
     }
 
-    private static func redactedText(_ value: String) -> String {
+    static func redactedText(_ value: String) -> String {
         DeveloperSecretRedactor().redact(value).text
     }
 
-    private static func label(for state: AssistantQueueState) -> String {
+    static func label(for state: AssistantQueueState) -> String {
         switch state {
         case .captured:
             return "Captured"
@@ -608,7 +679,7 @@ public enum AssistantQueueReadModel {
         return value < 0 ? "-\(grouped)" : grouped
     }
 
-    private static func label(for capability: AssistantQueueRequiredCapability) -> String {
+    static func label(for capability: AssistantQueueRequiredCapability) -> String {
         switch capability {
         case .tool(let tool):
             return tool.rawValue
@@ -695,6 +766,38 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
         lock.lock()
         defer { lock.unlock() }
 
+        return try stateCountsLocked()
+    }
+
+    public func readModelSnapshot(
+        filter: AssistantQueueFilter,
+        receipts: [ExecutionReceipt] = [],
+        viewFilter: AssistantQueueViewFilter = .all,
+        sort: AssistantQueueSort = .needsActionFirst
+    ) throws -> AssistantQueueSnapshot {
+        lock.lock()
+        defer { lock.unlock() }
+
+        if filter.states?.isEmpty == true {
+            return AssistantQueueReadModel.snapshot(
+                from: [],
+                stateCounts: try stateCountsLocked()
+            )
+        }
+
+        let latestReceipts = latestAssistantQueueReceiptSummariesByItemID(receipts)
+        let rows = try readModelRowsLocked(
+            filter: filter,
+            latestReceipts: latestReceipts,
+            sort: sort
+        ).filter { viewFilter.states.contains($0.state) }
+        return AssistantQueueReadModel.snapshot(
+            from: rows,
+            stateCounts: try stateCountsLocked()
+        )
+    }
+
+    private func stateCountsLocked() throws -> AssistantQueueStateCounts {
         let rows = try connection.queryRows(
             """
             SELECT state, COUNT(*) AS count
@@ -721,6 +824,233 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
             total += count
         }
         return AssistantQueueStateCounts(total: total, byState: byState)
+    }
+
+    private func readModelRowsLocked(
+        filter: AssistantQueueFilter,
+        latestReceipts: [String: AssistantQueueReceiptSummary],
+        sort: AssistantQueueSort
+    ) throws -> [AssistantQueueReadModelRow] {
+        let whereClause = filter.states.map { states in
+            let values = states.map { "'\(Self.escape($0.rawValue))'" }.sorted().joined(separator: ", ")
+            return "WHERE state IN (\(values))"
+        } ?? ""
+        let rows = try connection.query(
+            """
+            SELECT
+                id,
+                payload_kind,
+                payload_json,
+                state,
+                risk_level,
+                source_transcript,
+                review_reason,
+                redacted_summary,
+                required_capabilities_json,
+                blocking_reason,
+                cost_preview_json
+            FROM assistant_queue_items
+            \(whereClause)
+            ORDER BY updated_at DESC, id ASC
+            LIMIT \(filter.limit);
+            """
+        ) { row in
+            try readModelRow(row: row, receipt: latestReceipts[try row.string("id")])
+        }
+        // SQLite returns the latest bounded window; UI ordering still follows the
+        // read model's review/risk/title rules without decoding full payloads for
+        // every row in that window.
+        return rows.sorted { AssistantQueueReadModel.sortRows($0, $1, sort: sort) }
+    }
+
+    private func readModelRow(
+        row: SQLiteRow,
+        receipt: AssistantQueueReceiptSummary?
+    ) throws -> AssistantQueueReadModelRow {
+        let id = try row.string("id")
+        let state = try enumValue(
+            AssistantQueueState.self,
+            rawValue: try row.string("state"),
+            column: "assistant_queue_items.state"
+        )
+        let riskLevel = try enumValue(
+            RiskLevel.self,
+            rawValue: try row.string("risk_level"),
+            column: "assistant_queue_items.risk_level"
+        )
+        let redactedSummary = DeveloperSecretRedactor().redact(try row.string("redacted_summary")).text
+        let costPreview = try decodeOptional(
+            AssistantQueueCostPreview.self,
+            from: try row.optionalString("cost_preview_json"),
+            column: "assistant_queue_items.cost_preview_json"
+        )
+        let capabilities = try decode(
+            [AssistantQueueRequiredCapability].self,
+            from: try row.string("required_capabilities_json"),
+            column: "assistant_queue_items.required_capabilities_json"
+        )
+        let payloadKind = try row.string("payload_kind")
+        try validatePayloadKind(payloadKind)
+        let payloadJSON = try row.optionalString("payload_json")
+        let canApprove = canApproveReadModelRow(
+            state: state,
+            riskLevel: riskLevel,
+            costPreview: costPreview
+        )
+        let canRun = try canRunReadModelRow(
+            state: state,
+            payloadKind: payloadKind,
+            payloadJSON: payloadJSON,
+            costPreview: costPreview
+        )
+        let canRetry = try canRetryReadModelRow(
+            state: state,
+            riskLevel: riskLevel,
+            payloadKind: payloadKind,
+            payloadJSON: payloadJSON
+        )
+
+        return AssistantQueueReadModelRow(
+            id: id,
+            state: state,
+            stateLabel: AssistantQueueReadModel.label(for: state),
+            riskLabel: riskLevel.rawValue.capitalized,
+            title: redactedSummary.assistantQueuePreview(maxLength: 160),
+            redactedSummary: redactedSummary,
+            sourcePreview: try row.optionalString("source_transcript").map(AssistantQueueReadModel.redactedPreview),
+            reviewReason: try row.string("review_reason"),
+            capabilityLabels: capabilities.map {
+                AssistantQueueReadModel.redactedPreview(AssistantQueueReadModel.label(for: $0))
+            },
+            costPreviewLabel: costPreview.map { AssistantQueueReadModel.redactedPreview($0.reviewLabel) },
+            blockingReason: try row.optionalString("blocking_reason"),
+            latestReceipt: receipt,
+            canApprove: canApprove,
+            canRun: canRun,
+            canDefer: canDeferReadModelRow(state: state),
+            canEdit: canEditReadModelRow(state: state, riskLevel: riskLevel),
+            canRetry: canRetry,
+            canReject: canRejectReadModelRow(state: state)
+        )
+    }
+
+    private func latestAssistantQueueReceiptSummariesByItemID(
+        _ receipts: [ExecutionReceipt]
+    ) -> [String: AssistantQueueReceiptSummary] {
+        var latest: [String: ExecutionReceipt] = [:]
+        for receipt in receipts {
+            guard let itemID = receipt.assistantQueueItemID,
+                  receipt.visibleSurfaces.contains(.assistantQueue) else {
+                continue
+            }
+            guard let existing = latest[itemID] else {
+                latest[itemID] = receipt
+                continue
+            }
+            if AssistantQueueReadModel.receiptSortDate(receipt) > AssistantQueueReadModel.receiptSortDate(existing) {
+                latest[itemID] = receipt
+            }
+        }
+        return latest.mapValues(AssistantQueueReadModel.receiptSummary)
+    }
+
+    private func canApproveReadModelRow(
+        state: AssistantQueueState,
+        riskLevel: RiskLevel,
+        costPreview: AssistantQueueCostPreview?
+    ) -> Bool {
+        switch state {
+        case .waitingReview, .captured, .interpreted, .drafted, .deferred:
+            return riskLevel != .danger && (costPreview?.allowsApprovalAndRun ?? false)
+        case .approved, .running, .blocked, .done, .failed, .rejected:
+            return false
+        }
+    }
+
+    private func canRunReadModelRow(
+        state: AssistantQueueState,
+        payloadKind: String,
+        payloadJSON: String?,
+        costPreview: AssistantQueueCostPreview?
+    ) throws -> Bool {
+        guard state == .approved,
+              costPreview?.allowsApprovalAndRun == true else {
+            return false
+        }
+        return try payloadCanProduceActionPlan(payloadKind: payloadKind, payloadJSON: payloadJSON)
+    }
+
+    private func canRetryReadModelRow(
+        state: AssistantQueueState,
+        riskLevel: RiskLevel,
+        payloadKind: String,
+        payloadJSON: String?
+    ) throws -> Bool {
+        guard state == .failed, riskLevel != .danger else {
+            return false
+        }
+        return try payloadCanProduceActionPlan(payloadKind: payloadKind, payloadJSON: payloadJSON)
+    }
+
+    private func payloadCanProduceActionPlan(payloadKind: String, payloadJSON: String?) throws -> Bool {
+        switch payloadKind {
+        case "action_plan":
+            return true
+        case "automation_request":
+            guard let payloadJSON else {
+                return false
+            }
+            // Automation requests need factory validation, but most queue rows are
+            // action plans. Decoding only this transport case keeps large native
+            // action payload JSON out of the list read model hot path.
+            let payload = try decode(
+                AssistantQueuePayload.self,
+                from: payloadJSON,
+                column: "assistant_queue_items.payload_json"
+            )
+            return AssistantQueueExecutableActionPlanFactory.actionPlan(for: payload) != nil
+        default:
+            throw AssistantQueueStoreError.invalidStoredValue(
+                column: "assistant_queue_items.payload_kind",
+                value: payloadKind
+            )
+        }
+    }
+
+    private func validatePayloadKind(_ payloadKind: String) throws {
+        guard payloadKind == "action_plan" || payloadKind == "automation_request" else {
+            throw AssistantQueueStoreError.invalidStoredValue(
+                column: "assistant_queue_items.payload_kind",
+                value: payloadKind
+            )
+        }
+    }
+
+    private func canDeferReadModelRow(state: AssistantQueueState) -> Bool {
+        switch state {
+        case .waitingReview, .captured, .interpreted, .drafted, .approved:
+            return true
+        case .running, .blocked, .done, .failed, .rejected, .deferred:
+            return false
+        }
+    }
+
+    private func canEditReadModelRow(state: AssistantQueueState, riskLevel: RiskLevel) -> Bool {
+        switch state {
+        case .captured, .interpreted, .drafted, .waitingReview, .approved, .deferred:
+            return riskLevel != .danger
+        case .blocked, .running, .done, .failed, .rejected:
+            return false
+        }
+    }
+
+    private func canRejectReadModelRow(state: AssistantQueueState) -> Bool {
+        switch state {
+        case .done, .failed, .rejected:
+            return false
+        case .captured, .interpreted, .drafted, .waitingReview, .approved, .running, .blocked, .deferred:
+            return true
+        }
     }
 
     @discardableResult

@@ -545,6 +545,10 @@ public final class ProjectBoardViewModel: ObservableObject {
     // SwiftUI rendering never performs file I/O or holds raw receipt details.
     private var executionReceiptHistorySnapshotsByTaskID: [Int64: ExecutionReceiptHistorySnapshot]
     private var executionReceiptHistorySnapshotsByProjectID: [Int64: ExecutionReceiptHistorySnapshot]
+    // Done/audit receipts can live in a large file-backed store. Project Board
+    // startup defers those global reads until the Done workflow is actually
+    // visible while still letting receipt writes refresh an already-open audit view.
+    private var executionReceiptAuditSnapshotsLoaded: Bool
     // Selection changes only affect the Today rail context. Keeping the last
     // build context lets us refresh that slice without recomputing sidebar,
     // schedule, done, or portfolio read models for every row selection.
@@ -615,6 +619,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.executionUsageMeterSnapshot = .empty
         self.executionReceiptHistorySnapshotsByTaskID = [:]
         self.executionReceiptHistorySnapshotsByProjectID = [:]
+        self.executionReceiptAuditSnapshotsLoaded = false
         self.derivedReadModelReferenceDate = nil
         self.derivedReadModelCalendar = .current
         self.taskAutomationSessionHistory = .empty
@@ -5714,8 +5719,11 @@ public final class ProjectBoardViewModel: ObservableObject {
             let loadedSnapshot = try store.loadSnapshot(includeArchived: showsArchivedProjects)
             let captureCacheErrorMessage = refreshInboxCaptureCache(for: loadedSnapshot)
             let assistantQueueErrorMessage = refreshAssistantQueueSnapshot()
-            refreshExecutionReceiptHistorySnapshot(for: loadedSnapshot)
+            resetScopedExecutionReceiptHistorySnapshots()
             snapshot = loadedSnapshot
+            if executionReceiptAuditSnapshotsLoaded {
+                refreshExecutionReceiptAuditSnapshots()
+            }
             if selectedProjectID == nil || !snapshot.projects.contains(where: { $0.id == selectedProjectID }) {
                 selectedProjectID = snapshot.projects.first?.id
             }
@@ -5731,7 +5739,28 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     private func refreshExecutionReceiptHistorySnapshot() {
+        resetScopedExecutionReceiptHistorySnapshots()
+        guard executionReceiptAuditSnapshotsLoaded else {
+            return
+        }
+        refreshExecutionReceiptAuditSnapshots()
+    }
+
+    public func refreshExecutionReceiptAuditSnapshotsIfNeeded() {
+        guard !executionReceiptAuditSnapshotsLoaded else {
+            return
+        }
+        refreshExecutionReceiptAuditSnapshots()
+    }
+
+    public func refreshExecutionReceiptAuditSnapshots() {
+        executionReceiptAuditSnapshotsLoaded = true
         refreshExecutionReceiptHistorySnapshot(for: snapshot)
+    }
+
+    private func resetScopedExecutionReceiptHistorySnapshots() {
+        executionReceiptHistorySnapshotsByTaskID = [:]
+        executionReceiptHistorySnapshotsByProjectID = [:]
     }
 
     public func setExecutionReceiptHistorySearchText(_ text: String) {
@@ -5740,6 +5769,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
         executionReceiptHistorySearchText = text
         clearExecutionReceiptHistoryExport()
+        executionReceiptAuditSnapshotsLoaded = true
         refreshGlobalExecutionReceiptHistorySnapshot()
     }
 
@@ -5749,6 +5779,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
         executionReceiptHistoryStatusFilter = status
         clearExecutionReceiptHistoryExport()
+        executionReceiptAuditSnapshotsLoaded = true
         refreshGlobalExecutionReceiptHistorySnapshot()
     }
 
@@ -5758,11 +5789,15 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
         executionReceiptHistoryReferenceKindFilter = referenceKind
         clearExecutionReceiptHistoryExport()
+        executionReceiptAuditSnapshotsLoaded = true
         refreshGlobalExecutionReceiptHistorySnapshot()
     }
 
     public func prepareExecutionReceiptHistoryExport(exportedAt: Date = Date()) {
         do {
+            if !executionReceiptAuditSnapshotsLoaded {
+                refreshExecutionReceiptAuditSnapshots()
+            }
             let data = try ExecutionReceiptHistoryExporter.exportJSON(
                 snapshot: executionReceiptHistorySnapshot,
                 exportedAt: exportedAt
@@ -5807,6 +5842,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     private func refreshGlobalExecutionReceiptHistorySnapshot() {
+        executionReceiptAuditSnapshotsLoaded = true
         guard let executionReceiptStore else {
             executionReceiptHistorySnapshot = .empty
             return
@@ -5846,11 +5882,9 @@ public final class ProjectBoardViewModel: ObservableObject {
         do {
             executionReceiptHistorySnapshot = try globalExecutionReceiptHistorySnapshot(store: executionReceiptStore)
             executionUsageMeterSnapshot = try executionUsageMeterSnapshot(store: executionReceiptStore)
-            executionReceiptHistorySnapshotsByTaskID = [:]
-            executionReceiptHistorySnapshotsByProjectID = [:]
+            resetScopedExecutionReceiptHistorySnapshots()
         } catch {
-            executionReceiptHistorySnapshotsByTaskID = [:]
-            executionReceiptHistorySnapshotsByProjectID = [:]
+            resetScopedExecutionReceiptHistorySnapshots()
             executionReceiptHistorySnapshot = ExecutionReceiptHistorySnapshot(
                 rows: [],
                 unavailableMessage: String(localized: "Execution receipts are unavailable.")
@@ -5947,22 +5981,22 @@ public final class ProjectBoardViewModel: ObservableObject {
             // Receipts are outcome-only metadata; queue state remains the source of truth.
             // Counts come from state aggregates so terminal queue history cannot
             // hide older review work behind the row fetch limit.
-            let stateCounts = try assistantQueueStore.stateCounts()
-            let visibleItems = try assistantQueueStore.list(filter: assistantQueueViewFilter.storeFilter(limit: 100))
             var receiptErrorMessage: String?
             let receipts: [ExecutionReceipt]
             do {
-                receipts = try executionReceiptStore?.list(limit: 100) ?? []
+                receipts = try executionReceiptStore?.list(
+                    matching: ExecutionReceiptSearchFilter(visibleSurface: .assistantQueue),
+                    limit: 100
+                ) ?? []
             } catch {
                 receipts = []
                 receiptErrorMessage = assistantQueueReceiptUnavailableMessage
             }
-            assistantQueueSnapshot = AssistantQueueReadModel.snapshot(
-                from: visibleItems,
+            assistantQueueSnapshot = try assistantQueueStore.readModelSnapshot(
+                filter: assistantQueueViewFilter.storeFilter(limit: 100),
                 receipts: receipts,
                 viewFilter: assistantQueueViewFilter,
-                sort: assistantQueueSort,
-                stateCounts: stateCounts
+                sort: assistantQueueSort
             )
             pruneAssistantQueueSelectionToVisibleRows()
             return receiptErrorMessage
