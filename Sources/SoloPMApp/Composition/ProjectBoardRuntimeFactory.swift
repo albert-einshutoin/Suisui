@@ -1,43 +1,86 @@
 import Foundation
 import SoloPMCore
 
+enum ProjectBoardRuntimeBundle: @unchecked Sendable {
+    case available(
+        connection: SQLiteConnection,
+        projectBoardStore: SQLiteProjectBoardStore,
+        externalTaskLinkStore: SQLiteExternalTaskLinkStore,
+        assistantQueueStore: SQLiteAssistantQueueStore,
+        executionReceiptStore: (any ExecutionReceiptStore)?
+    )
+    case unavailable(Error)
+}
+
 extension AppRuntimeFactory {
-    @MainActor
-    static func makeProjectBoardViewModel() -> ProjectBoardViewModel {
+    static func prepareProjectBoardRuntimeBundle() async -> ProjectBoardRuntimeBundle {
+        await Task.detached(priority: .userInitiated) {
+            // SQLite open can block on external volumes and mounted app
+            // launches. Build the runtime bundle off-main, then hand it to the
+            // MainActor-only view model before any UI reads from the connection.
+            makeProjectBoardRuntimeBundle()
+        }.value
+    }
+
+    static func makeProjectBoardRuntimeBundle() -> ProjectBoardRuntimeBundle {
         do {
             let connection = try migratedConnection()
-            let projectBoardStore = SQLiteProjectBoardStore(connection: connection)
-            let externalTaskLinkStore = SQLiteExternalTaskLinkStore(connection: connection)
-            let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
-            let executionReceiptStore = try? makeExecutionReceiptStore()
-            let secretStore = makeSecretStore()
-            let entitlementStore = makeEntitlementStore(secretStore: secretStore)
-            let googleCalendarSync = makeSettingsBackedGoogleCalendarSyncController(
+            return .available(
                 connection: connection,
-                entitlementStore: entitlementStore,
-                store: projectBoardStore,
-                linkStore: externalTaskLinkStore,
-                secretStore: secretStore
+                projectBoardStore: SQLiteProjectBoardStore(connection: connection),
+                externalTaskLinkStore: SQLiteExternalTaskLinkStore(connection: connection),
+                assistantQueueStore: SQLiteAssistantQueueStore(connection: connection),
+                executionReceiptStore: try? makeExecutionReceiptStore()
             )
+        } catch {
+            return .unavailable(error)
+        }
+    }
+
+    @MainActor
+    static func makeProjectBoardViewModel() -> ProjectBoardViewModel {
+        makeProjectBoardViewModel(runtime: makeProjectBoardRuntimeBundle())
+    }
+
+    @MainActor
+    static func makeProjectBoardViewModel(runtime: ProjectBoardRuntimeBundle) -> ProjectBoardViewModel {
+        switch runtime {
+        case let .available(connection, projectBoardStore, externalTaskLinkStore, assistantQueueStore, executionReceiptStore):
             return ProjectBoardViewModel(
                 store: projectBoardStore,
                 inboxCaptureStore: SQLiteInboxCaptureStore(connection: connection),
                 assistantQueueStore: assistantQueueStore,
-                assistantQueueExecutionCoordinator: makeAssistantQueueExecutionCoordinator(
-                    connection: connection,
-                    assistantQueueStore: assistantQueueStore,
-                    executionReceiptStore: executionReceiptStore
-                ),
+                assistantQueueExecutionCoordinatorFactory: {
+                    makeAssistantQueueExecutionCoordinator(
+                        connection: connection,
+                        assistantQueueStore: assistantQueueStore,
+                        executionReceiptStore: executionReceiptStore
+                    )
+                },
                 executionReceiptStore: executionReceiptStore,
                 missedTaskReviewStateStore: SQLiteMissedTaskReviewStateStore(connection: connection),
                 missedTaskFollowUpNotificationClient: UserNotificationsNotificationClient(),
                 externalTaskLinkStore: externalTaskLinkStore,
-                googleCalendarSync: googleCalendarSync,
+                googleCalendarSyncFactory: {
+                    let secretStore = makeSecretStore()
+                    return makeSettingsBackedGoogleCalendarSyncController(
+                        connection: connection,
+                        entitlementStore: makeEntitlementStore(secretStore: secretStore),
+                        store: projectBoardStore,
+                        linkStore: externalTaskLinkStore,
+                        secretStore: secretStore
+                    )
+                },
                 onChange: postProjectBoardDidChange
             )
-        } catch {
+        case let .unavailable(error):
             return ProjectBoardViewModel(store: UnavailableProjectBoardStore(error: error))
         }
+    }
+
+    @MainActor
+    static func makeLaunchVisibleProjectBoardViewModel() -> ProjectBoardViewModel {
+        makeProjectBoardViewModel(runtime: makeProjectBoardRuntimeBundle())
     }
 
     private static func makeAssistantQueueExecutionCoordinator(

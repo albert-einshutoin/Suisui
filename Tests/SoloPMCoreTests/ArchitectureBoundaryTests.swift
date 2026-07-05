@@ -148,10 +148,10 @@ final class ArchitectureBoundaryTests: XCTestCase {
 
         for compositionMarker in [
             "WindowGroup(\"SoloPM\", id: \"project-board\")",
-            "VoiceCaptureView(viewModel: AppRuntimeFactory.makeVoiceCaptureViewModel())",
-            "MenuBarPanel(controller: menuBarController, quickCaptureViewModel: menuBarQuickCaptureViewModel)",
+            "VoiceCaptureWindowRootView()",
+            "MenuBarPanel(controller: menuBarController, quickCaptureController: menuBarQuickCaptureController)",
             "SettingsView(",
-            "AppRuntimeFactory.makeProjectBoardViewModel()"
+            "AppRuntimeFactory.prepareProjectBoardRuntimeBundle()"
         ] {
             XCTAssertTrue(appSource.contains(compositionMarker), "SoloPMApp.swift must keep runtime composition marker \(compositionMarker)")
         }
@@ -172,7 +172,10 @@ final class ArchitectureBoundaryTests: XCTestCase {
                 "static func makeSecretStore() -> any SecretStore"
             ],
             "Sources/SoloPMApp/Composition/ProjectBoardRuntimeFactory.swift": [
+                "static func prepareProjectBoardRuntimeBundle() async -> ProjectBoardRuntimeBundle",
                 "static func makeProjectBoardViewModel() -> ProjectBoardViewModel",
+                "static func makeProjectBoardViewModel(runtime: ProjectBoardRuntimeBundle) -> ProjectBoardViewModel",
+                "static func makeLaunchVisibleProjectBoardViewModel() -> ProjectBoardViewModel",
                 "makeSettingsBackedGoogleCalendarSyncController"
             ],
             "Sources/SoloPMApp/Composition/RuntimeToolCompositionFactory.swift": [
@@ -180,7 +183,7 @@ final class ArchitectureBoundaryTests: XCTestCase {
                 "static func makeReviewSessionViewModel(plan: ActionPlan) -> ReviewSessionViewModel"
             ],
             "Sources/SoloPMApp/Composition/SettingsRuntimeFactory.swift": [
-                "static func makeAppSettingsViewModel() -> AppSettingsViewModel",
+                "static func makeAppSettingsViewModel(refreshProviderSecretStatusesOnInit: Bool = true) -> AppSettingsViewModel",
                 "static func makeExternalMCPSettingsViewModel() -> ExternalMCPSettingsViewModel",
                 "static func makeIntegrationPermissionSnapshot() -> PermissionSnapshot"
             ],
@@ -195,7 +198,8 @@ final class ArchitectureBoundaryTests: XCTestCase {
                 "enum AppTextToSpeechRuntimeFactory"
             ],
             "Sources/SoloPMApp/Composition/MenuBarRuntimeFactory.swift": [
-                "static func makeMenuBarSummaryController() -> MenuBarSummaryController"
+                "static func makeMenuBarSummaryController() -> MenuBarSummaryController",
+                "static func makeMenuBarQuickCaptureController() -> MenuBarQuickCaptureController"
             ]
         ]
 

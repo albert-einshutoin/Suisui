@@ -13,17 +13,19 @@ fi
 source "$METADATA_FILE"
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
+APP_BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:-}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 WINDOW_NAME="${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}"
 TIMEOUT_SECONDS="${SOLOPM_LAYOUT_STABILITY_TIMEOUT_SECONDS:-20}"
 LAYOUT_STABILITY_OUTPUT_DIR="${SOLOPM_LAYOUT_STABILITY_OUTPUT_DIR:-$ROOT_DIR/.tmp/layout-stability}"
+LAYOUT_STABILITY_RUNTIME_DIR="${SOLOPM_LAYOUT_STABILITY_RUNTIME_DIR:-${TMPDIR:-/tmp}/solopm-layout-stability}"
 # Default to 0px because layout-sensitive mutations should settle
 # synchronously. Set SOLOPM_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX=1 only
 # for a documented macOS rendering/runtime tolerance.
 LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX="${SOLOPM_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX:-0}"
 LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX="${SOLOPM_LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX:-1}"
-LAYOUT_STABILITY_DATABASE_PATH="${SOLOPM_LAYOUT_STABILITY_DATABASE_PATH:-$LAYOUT_STABILITY_OUTPUT_DIR/SoloPM-layout-stability.sqlite}"
+LAYOUT_STABILITY_DATABASE_PATH="${SOLOPM_LAYOUT_STABILITY_DATABASE_PATH:-$LAYOUT_STABILITY_RUNTIME_DIR/SoloPM-layout-stability.sqlite}"
 LAYOUT_STABILITY_WINDOW_MIN_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_MIN_WIDTH:-980}"
 LAYOUT_STABILITY_WINDOW_MIN_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_MIN_HEIGHT:-720}"
 LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH:-1180}"
@@ -86,6 +88,7 @@ fi
 
 cd "$ROOT_DIR"
 mkdir -p "$LAYOUT_STABILITY_OUTPUT_DIR"
+mkdir -p "$(dirname "$LAYOUT_STABILITY_DATABASE_PATH")"
 
 SUMMARY_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/layout-stability-summary.md"
 SAMPLES_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/samples.tsv"
@@ -166,17 +169,41 @@ terminate_app() {
     wait "$app_pid" >/dev/null 2>&1 || true
     app_pid=""
   fi
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while pgrep -x "$APP_NAME" >/dev/null 2>&1; do
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: $APP_NAME process did not exit within ${TIMEOUT_SECONDS}s" >&2
+      return 1
+    fi
+    sleep 1
+  done
 }
 
 activate_app() {
   # Use System Events instead of LaunchServices activation so the selected
   # project/database environment stays attached to the already-running app.
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 || true
+  /usr/bin/osascript - "$APP_NAME" "$APP_BUNDLE_IDENTIFIER" <<'APPLESCRIPT' >/dev/null 2>&1 || true
 on run argv
   set appName to item 1 of argv
+  set bundleID to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then return "missing"
-    tell process appName
+    set targetProcess to missing value
+    if exists process appName then
+      tell process appName
+        if (count of windows) > 0 then set targetProcess to it
+      end tell
+    end if
+    if targetProcess is missing value and bundleID is not "" then
+      set appMatches to application processes whose bundle identifier is bundleID
+      repeat with appProcess in appMatches
+        if (count of windows of appProcess) > 0 then
+          set targetProcess to appProcess
+          exit repeat
+        end if
+      end repeat
+    end if
+    if targetProcess is missing value then return "missing"
+    tell targetProcess
       set frontmost to true
       if (count of windows) > 0 then
         try
@@ -207,12 +234,28 @@ wait_for_visible_windows() {
 
   while true; do
     set +e
-    window_count="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>/dev/null
+    window_count="$(/usr/bin/osascript - "$APP_NAME" "$APP_BUNDLE_IDENTIFIER" <<'APPLESCRIPT' 2>/dev/null
 on run argv
   set appName to item 1 of argv
+  set bundleID to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then return "0"
-    tell process appName
+    set targetProcess to missing value
+    if exists process appName then
+      tell process appName
+        if (count of windows) > 0 then set targetProcess to it
+      end tell
+    end if
+    if targetProcess is missing value and bundleID is not "" then
+      set appMatches to application processes whose bundle identifier is bundleID
+      repeat with appProcess in appMatches
+        if (count of windows of appProcess) > 0 then
+          set targetProcess to appProcess
+          exit repeat
+        end if
+      end repeat
+    end if
+    if targetProcess is missing value then return "0"
+    tell targetProcess
       return (count of windows) as text
     end tell
   end tell
@@ -332,6 +375,177 @@ APPLESCRIPT
   wait_for_window_metadata
 }
 
+window_size_key() {
+  local window_id window_x window_y window_width window_height
+  wait_for_window_metadata
+  read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE"
+  printf '%s %s\n' "$window_width" "$window_height"
+}
+
+click_sidebar_destination() {
+  local destination_identifier="$1"
+  local destination_label="$2"
+  if /usr/bin/osascript - "$APP_NAME" "$destination_identifier" "$destination_label" <<'APPLESCRIPT' >/dev/null
+on findElementByIdentifier(uiElement, wantedIdentifier)
+  tell application "System Events"
+    set identifierValue to ""
+    try
+      set identifierValue to value of attribute "AXIdentifier" of uiElement
+    end try
+    if identifierValue is wantedIdentifier then return uiElement
+    try
+      repeat with childElement in UI elements of uiElement
+        set foundElement to my findElementByIdentifier(childElement, wantedIdentifier)
+        if foundElement is not missing value then return foundElement
+      end repeat
+    end try
+  end tell
+  return missing value
+end findElementByIdentifier
+
+on pressDestination(uiElement, destinationIdentifier, destinationLabel)
+  tell application "System Events"
+    set identifierValue to ""
+    try
+      set identifierValue to value of attribute "AXIdentifier" of uiElement
+    end try
+    set nameValue to ""
+    try
+      set nameValue to name of uiElement
+    end try
+    if identifierValue is destinationIdentifier or (destinationLabel is not "" and nameValue starts with destinationLabel) then
+      try
+        perform action "AXPress" of uiElement
+        return true
+      end try
+      try
+        click uiElement
+        return true
+      end try
+    end if
+    try
+      repeat with childElement in UI elements of uiElement
+        if my pressDestination(childElement, destinationIdentifier, destinationLabel) then return true
+      end repeat
+    end try
+  end tell
+  return false
+end pressDestination
+
+on run argv
+  set appName to item 1 of argv
+  set destinationIdentifier to item 2 of argv
+  set destinationLabel to item 3 of argv
+  tell application "System Events"
+    if not (exists process appName) then error "process missing"
+    tell process appName
+      if not (exists window 1) then error "window missing"
+      set frontmost to true
+      try
+        perform action "AXRaise" of window 1
+      end try
+      set sidebarElement to my findElementByIdentifier(window 1, "project-board-sidebar")
+      if sidebarElement is missing value then set sidebarElement to window 1
+      if not my pressDestination(sidebarElement, destinationIdentifier, destinationLabel) then error "destination missing: " & destinationIdentifier
+    end tell
+  end tell
+end run
+APPLESCRIPT
+  then
+    return 0
+  fi
+  click_sidebar_destination_by_coordinate "$destination_identifier"
+}
+
+click_sidebar_destination_by_coordinate() {
+  local destination_identifier="$1"
+  local window_id window_x window_y window_width window_height destination_offset target_x target_y
+
+  wait_for_window_metadata
+  read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE"
+
+  case "$destination_identifier" in
+    sidebar-destination-inbox)
+      destination_offset=76
+      ;;
+    sidebar-destination-assistant-queue)
+      destination_offset=108
+      ;;
+    sidebar-destination-today)
+      destination_offset=140
+      ;;
+    *)
+      echo "BLOCKER: no coordinate fallback for sidebar destination: $destination_identifier" >&2
+      return 1
+      ;;
+  esac
+
+  # SwiftUI List rows do not always expose destination AX identifiers through
+  # System Events even when the row is visible. The fallback clicks within the
+  # measured window bounds so the smoke still exercises the real running app.
+  target_x=$((window_x + 112))
+  target_y=$((window_y + destination_offset))
+  /usr/bin/osascript - "$APP_NAME" "$target_x" "$target_y" <<'APPLESCRIPT' >/dev/null
+on run argv
+  set appName to item 1 of argv
+  set targetX to (item 2 of argv) as integer
+  set targetY to (item 3 of argv) as integer
+  tell application "System Events"
+    if not (exists process appName) then error "process missing"
+    tell process appName
+      set frontmost to true
+      if exists window 1 then
+        try
+          perform action "AXRaise" of window 1
+        end try
+      end if
+    end tell
+    click at {targetX, targetY}
+  end tell
+end run
+APPLESCRIPT
+}
+
+wait_for_ax_identifier() {
+  local identifier="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local safe_identifier="${identifier//[^[:alnum:]_-]/_}"
+  local probe_file="$LAYOUT_STABILITY_OUTPUT_DIR/wait-$safe_identifier.txt"
+
+  while true; do
+    if /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" "$APP_NAME" "$identifier" "" >"$probe_file" 2>"$probe_file.err"; then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: AX identifier did not appear after sidebar destination selection: $identifier" >&2
+      sed -n '1,20p' "$probe_file.err" >&2 || true
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+assert_sidebar_destination_window_size_stable() {
+  local label="$1"
+  local destination_identifier="$2"
+  local destination_label="$3"
+  local workflow_identifier="$4"
+  local before_size after_size
+
+  before_size="$(window_size_key)"
+  click_sidebar_destination "$destination_identifier" "$destination_label"
+  wait_for_ax_identifier "$workflow_identifier"
+  after_size="$(window_size_key)"
+
+  if [[ "$after_size" != "$before_size" ]]; then
+    echo "BLOCKER: Project Board window size changed after selecting $destination_identifier: before=$before_size after=$after_size" >&2
+    return 1
+  fi
+
+  printf "OK: Project Board window size stayed %s after selecting %s\n" "$after_size" "$destination_identifier"
+  printf -- '- `%s` kept window size `%s` after `%s`\n' "$label" "$after_size" "$destination_identifier" >>"$SUMMARY_FILE"
+}
+
 capture_layout_screenshot() {
   local label="$1"
   local offset_label="$2"
@@ -347,7 +561,7 @@ capture_layout_screenshot() {
 }
 
 collect_ax_frames() {
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT'
+  /usr/bin/osascript - "$APP_NAME" "$APP_BUNDLE_IDENTIFIER" <<'APPLESCRIPT'
 on collectIdentifiedElements(outputLines, uiElement)
   tell application "System Events"
     set identifierValue to ""
@@ -370,10 +584,25 @@ end collectIdentifiedElements
 
 on run argv
   set appName to item 1 of argv
+  set bundleID to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then error "process missing"
-    tell process appName
-      if not (exists window 1) then error "window missing"
+    set targetProcess to missing value
+    if exists process appName then
+      tell process appName
+        if (count of windows) > 0 then set targetProcess to it
+      end tell
+    end if
+    if targetProcess is missing value and bundleID is not "" then
+      set appMatches to application processes whose bundle identifier is bundleID
+      repeat with appProcess in appMatches
+        if (count of windows of appProcess) > 0 then
+          set targetProcess to appProcess
+          exit repeat
+        end if
+      end repeat
+    end if
+    if targetProcess is missing value then error "window missing"
+    tell targetProcess
       set frontmost to true
       set outputLines to {}
       set outputLines to my collectIdentifiedElements(outputLines, window 1)
@@ -817,6 +1046,10 @@ assert_layout_stable "window-standard"
 
 set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_WIDE_WIDTH" "$LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT"
 assert_layout_stable "window-wide"
+
+assert_sidebar_destination_window_size_stable "destination-inbox" "sidebar-destination-inbox" "Inbox" "inbox-workflow"
+assert_sidebar_destination_window_size_stable "destination-assistant-queue" "sidebar-destination-assistant-queue" "Assistant Queue" "assistant-queue-workflow"
+assert_sidebar_destination_window_size_stable "destination-today" "sidebar-destination-today" "Today" "today-workflow"
 
 write_json_artifacts
 

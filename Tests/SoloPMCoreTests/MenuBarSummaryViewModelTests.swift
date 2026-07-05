@@ -75,6 +75,30 @@ final class MenuBarSummaryViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testMenuBarSummaryControllerDefersProviderFactoryUntilRefresh() {
+        var factoryCallCount = 0
+        let provider = MutableMenuBarSummaryProvider(summary: MenuBarSummary(todayTaskCount: 2))
+        let controller = MenuBarSummaryController(providerFactory: {
+            factoryCallCount += 1
+            return provider
+        })
+
+        XCTAssertEqual(factoryCallCount, 0)
+        XCTAssertEqual(controller.viewModel.summary, .empty)
+
+        controller.refresh()
+
+        XCTAssertEqual(factoryCallCount, 1)
+        XCTAssertEqual(controller.viewModel.todayLabel, "2 tasks today")
+
+        provider.summary = MenuBarSummary(todayTaskCount: 4)
+        controller.refresh()
+
+        XCTAssertEqual(factoryCallCount, 1)
+        XCTAssertEqual(controller.viewModel.todayLabel, "4 tasks today")
+    }
+
+    @MainActor
     func testMenuBarSummaryControllerKeepsLastSummaryWhenRefreshFails() {
         let provider = FailingAfterFirstMenuBarSummaryProvider(summary: MenuBarSummary(todayTaskCount: 3))
         let controller = MenuBarSummaryController(provider: provider)

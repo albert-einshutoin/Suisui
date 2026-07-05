@@ -6,6 +6,16 @@ import UniformTypeIdentifiers
 import AppKit
 #endif
 
+enum ProjectBoardWindowMetrics {
+    // The primary window must keep one stable content contract across sidebar
+    // destinations; otherwise SwiftUI can re-fit the window when Inbox/Today
+    // switch between compact and rail-heavy workflow surfaces.
+    static let defaultWidth: CGFloat = 1_180
+    static let defaultHeight: CGFloat = 760
+    static let minWidth: CGFloat = 960
+    static let minHeight: CGFloat = 620
+}
+
 private enum ProjectBoardLayoutMetrics {
     // Project Board keeps these metrics local because the split-view header,
     // Kanban columns, inspector, and inline composer are tuned as one surface.
@@ -227,7 +237,7 @@ struct ProjectBoardView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                if isTerminalPanelPresented {
+                if isTerminalPanelPresented && isDeveloperModeEnabled {
                     Divider()
                     EmbeddedTerminalPanel(
                         workingDirectory: terminalWorkingDirectory,
@@ -264,6 +274,11 @@ struct ProjectBoardView: View {
                 .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
             }
         }
+        .frame(
+            minWidth: ProjectBoardWindowMetrics.minWidth,
+            minHeight: ProjectBoardWindowMetrics.minHeight,
+            alignment: .topLeading
+        )
         .navigationTitle("SoloPM")
         .toolbar {
             ToolbarItem(placement: .navigation) {
@@ -459,16 +474,18 @@ struct ProjectBoardView: View {
             .accessibilityLabel("Settings")
             .accessibilityIdentifier("project-board-settings-link")
 
-            Button {
-                isTerminalPanelPresented.toggle()
-            } label: {
-                Label("Terminal", systemImage: "terminal")
-                    .labelStyle(.titleAndIcon)
+            if isDeveloperModeEnabled {
+                Button {
+                    isTerminalPanelPresented.toggle()
+                } label: {
+                    Label("Terminal", systemImage: "terminal")
+                        .labelStyle(.titleAndIcon)
+                }
+                .keyboardShortcut("`", modifiers: [.control])
+                .help("Terminal")
+                .accessibilityLabel("Terminal")
+                .accessibilityIdentifier("project-board-terminal-toggle")
             }
-            .keyboardShortcut("`", modifiers: [.control])
-            .help("Terminal")
-            .accessibilityLabel("Terminal")
-            .accessibilityIdentifier("project-board-terminal-toggle")
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
@@ -520,8 +537,16 @@ struct ProjectBoardView: View {
         sidebarProjects.filter(\.isArchived)
     }
 
+    private var isDeveloperModeEnabled: Bool {
+        appSettings().isDeveloperModeEnabled
+    }
+
     private var terminalWorkingDirectory: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        if let workspacePath = appSettings().defaultWorkspacePath?.trimmingCharacters(in: .whitespacesAndNewlines),
+           workspacePath.hasPrefix("/") {
+            return URL(fileURLWithPath: workspacePath, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
     }
 
     private func restoreSelectedDestinationIfNeeded() {
@@ -799,7 +824,7 @@ private struct ProjectBoardToolbarLayoutBridge: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = ProjectBoardToolbarLayoutBridgeView(frame: .zero)
         view.onToolbarLayoutChanged = onToolbarLayoutChanged
-        view.performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: true)
+        view.reconcileProjectBoardToolbarLayout(allowRetryIfToolbarMissing: true)
         return view
     }
 
@@ -812,7 +837,7 @@ private struct ProjectBoardToolbarLayoutBridge: NSViewRepresentable {
         view.onToolbarLayoutChanged = onToolbarLayoutChanged
         view.installToolbarDisplayModeObservationIfNeeded()
         view.installToolbarDisplayModeMenuPruningIfNeeded()
-        view.performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: true)
+        view.reconcileProjectBoardToolbarLayout(allowRetryIfToolbarMissing: true)
     }
 }
 
@@ -829,19 +854,23 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
         super.viewDidMoveToWindow()
         installToolbarDisplayModeObservationIfNeeded()
         installToolbarDisplayModeMenuPruningIfNeeded()
-        performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: true)
+        reconcileProjectBoardToolbarLayout(allowRetryIfToolbarMissing: true)
         scheduleInitialProjectBoardToolbarLayoutStabilizationIfNeeded()
     }
 
     override func layout() {
         super.layout()
-        performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: false)
+        reconcileProjectBoardToolbarLayout(allowRetryIfToolbarMissing: false)
     }
 
-    private func removeNativeSidebarToggle(in toolbar: NSToolbar) {
+    @discardableResult
+    private func removeNativeSidebarToggle(in toolbar: NSToolbar) -> Bool {
         let removalIndexes = ProjectBoardToolbarLayoutPolicy.nativeSidebarRemovalIndexes(
             in: toolbar.projectBoardLayoutItems
         )
+        guard removalIndexes.isEmpty == false else {
+            return false
+        }
 
         // Keep toolbar display modes user-adaptive; only remove the native
         // sidebar item and tracking separator that visually drift in this
@@ -849,6 +878,7 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
         for index in removalIndexes.reversed() {
             toolbar.removeItem(at: index)
         }
+        return true
     }
 
     func installToolbarDisplayModeObservationIfNeeded() {
@@ -868,11 +898,11 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
 
             if Thread.isMainThread {
                 MainActor.assumeIsolated {
-                    self.reconcileToolbarDisplayModeChangeSynchronously()
+                    self.reconcileToolbarDisplayModeChange()
                 }
             } else {
                 DispatchQueue.main.async {
-                    self.reconcileToolbarDisplayModeChangeSynchronously()
+                    self.reconcileToolbarDisplayModeChange()
                 }
             }
         }
@@ -888,14 +918,15 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
             // layout-attachment-delay: initial AppKit toolbar attachment gap.
             // SwiftUI can attach the bridge before NSToolbar items exist; this
             // bounded startup sampling is the only delayed correction allowed
-            // by ADR 0009, and user-triggered display-mode/sidebar changes run synchronously.
+            // by ADR 0009, and user-triggered display-mode/sidebar changes
+            // mutate the toolbar synchronously without forcing a full view-tree layout.
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                self?.performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: false)
+                self?.reconcileProjectBoardToolbarLayout(allowRetryIfToolbarMissing: false)
             }
         }
     }
 
-    private func reconcileToolbarDisplayModeChangeSynchronously() {
+    private func reconcileToolbarDisplayModeChange() {
         guard let toolbar = observedToolbar ?? window?.toolbar,
               observedToolbarDisplayMode != toolbar.displayMode else {
             return
@@ -903,7 +934,10 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
 
         _ = enforceProjectBoardSupportedToolbarDisplayMode(toolbar)
         observedToolbarDisplayMode = toolbar.displayMode
-        performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: false)
+        reconcileProjectBoardToolbarLayout(
+            allowRetryIfToolbarMissing: false,
+            notifyColumnsWhenToolbarAlreadyStable: true
+        )
     }
 
     @discardableResult
@@ -983,7 +1017,10 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
         return hasIconAndTextMode && hasIconOnlyMode
     }
 
-    func performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: Bool) {
+    func reconcileProjectBoardToolbarLayout(
+        allowRetryIfToolbarMissing: Bool,
+        notifyColumnsWhenToolbarAlreadyStable: Bool = false
+    ) {
         guard isPerformingToolbarLayoutPass == false else {
             return
         }
@@ -998,28 +1035,39 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
         isPerformingToolbarLayoutPass = true
         defer { isPerformingToolbarLayoutPass = false }
 
+        var didMutateToolbar = false
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0
             context.allowsImplicitAnimation = false
 
-            window?.titleVisibility = .hidden
-            toolbar.centeredItemIdentifier = nil
-            _ = enforceProjectBoardSupportedToolbarDisplayMode(toolbar)
-            removeNativeSidebarToggle(in: toolbar)
-            flushProjectBoardWindowLayout()
+            if window?.titleVisibility != .hidden {
+                window?.titleVisibility = .hidden
+                didMutateToolbar = true
+            }
+            if toolbar.centeredItemIdentifier != nil {
+                toolbar.centeredItemIdentifier = nil
+                didMutateToolbar = true
+            }
+            didMutateToolbar = enforceProjectBoardSupportedToolbarDisplayMode(toolbar) || didMutateToolbar
+            didMutateToolbar = removeNativeSidebarToggle(in: toolbar) || didMutateToolbar
         }
 
-        // NSToolbar display-mode changes come from AppKit context menus, outside
-        // SwiftUI state. Mark the host dirty and bump SwiftUI state so the
-        // sidebar and detail columns recalculate their bounds together.
-        onToolbarLayoutChanged?()
+        if didMutateToolbar {
+            markProjectBoardWindowLayoutDirty()
+        }
+
+        if didMutateToolbar || notifyColumnsWhenToolbarAlreadyStable {
+            // NSToolbar display-mode changes come from AppKit context menus,
+            // outside SwiftUI state. Bump SwiftUI state only when the toolbar
+            // actually changed; forcing contentView layout here recursively
+            // size-fits the whole Project Board and stalls packaged app launch.
+            onToolbarLayoutChanged?()
+        }
     }
 
-    private func flushProjectBoardWindowLayout() {
+    private func markProjectBoardWindowLayoutDirty() {
         window?.contentView?.needsLayout = true
-        window?.contentView?.layoutSubtreeIfNeeded()
         window?.contentView?.needsDisplay = true
-        window?.displayIfNeeded()
     }
 
     private func retrySynchronousProjectBoardToolbarLayoutPass(remainingAttempts: Int) {
@@ -1037,7 +1085,7 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
                 return
             }
 
-            self.performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: false)
+            self.reconcileProjectBoardToolbarLayout(allowRetryIfToolbarMissing: false)
             if self.window?.toolbar == nil {
                 self.retrySynchronousProjectBoardToolbarLayoutPass(remainingAttempts: remainingAttempts - 1)
             }

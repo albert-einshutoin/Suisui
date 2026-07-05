@@ -137,13 +137,24 @@ public final class MenuBarSummaryController: ObservableObject {
     @Published public private(set) var viewModel: MenuBarSummaryViewModel
     @Published public private(set) var errorMessage: String?
 
-    private let provider: any MenuBarSummaryProviding
+    private var provider: (any MenuBarSummaryProviding)?
+    private let providerFactory: () throws -> any MenuBarSummaryProviding
 
     public init(
         provider: any MenuBarSummaryProviding,
         initialViewModel: MenuBarSummaryViewModel = MenuBarSummaryViewModel()
     ) {
         self.provider = provider
+        self.providerFactory = { provider }
+        self.viewModel = initialViewModel
+    }
+
+    public init(
+        providerFactory: @escaping () throws -> any MenuBarSummaryProviding,
+        initialViewModel: MenuBarSummaryViewModel = MenuBarSummaryViewModel()
+    ) {
+        self.provider = nil
+        self.providerFactory = providerFactory
         self.viewModel = initialViewModel
     }
 
@@ -156,10 +167,23 @@ public final class MenuBarSummaryController: ObservableObject {
 
     public func refresh() {
         do {
+            let provider = try resolvedProvider()
             viewModel = MenuBarSummaryViewModel(summary: try provider.loadMenuBarSummary())
             errorMessage = nil
         } catch {
             errorMessage = "Menu bar summary is unavailable."
         }
+    }
+
+    private func resolvedProvider() throws -> any MenuBarSummaryProviding {
+        if let provider {
+            return provider
+        }
+        // The menu bar extra exists before the main window. Delaying SQLite
+        // opening until refresh keeps app launch and visible-window recovery
+        // from blocking on menu-only summary data.
+        let provider = try providerFactory()
+        self.provider = provider
+        return provider
     }
 }

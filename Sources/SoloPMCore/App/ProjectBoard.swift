@@ -387,13 +387,15 @@ public final class ProjectBoardViewModel: ObservableObject {
     private let store: any ProjectBoardStore
     private let inboxCaptureStore: (any InboxCaptureStore)?
     private let assistantQueueStore: (any AssistantQueueStore)?
-    private let assistantQueueExecutionCoordinator: AssistantQueueExecutionCoordinator?
+    private var assistantQueueExecutionCoordinator: AssistantQueueExecutionCoordinator?
+    private let assistantQueueExecutionCoordinatorFactory: (() -> AssistantQueueExecutionCoordinator?)?
     private let executionReceiptStore: (any ExecutionReceiptStore)?
     private let missedTaskReviewStateStore: any MissedTaskReviewStateStore
     private let missedTaskFollowUpNotificationClient: (any NotificationClient)?
     private let externalTaskLinkStore: (any ExternalTaskLinkStore)?
     private let scheduleCalendarClient: (any CalendarClient)?
-    private let googleCalendarSync: (any GoogleCalendarRuntimeSyncing)?
+    private var googleCalendarSync: (any GoogleCalendarRuntimeSyncing)?
+    private let googleCalendarSyncFactory: (() -> (any GoogleCalendarRuntimeSyncing)?)?
     private let onChange: () -> Void
     private var lastInboxClassificationUndo: InboxClassificationUndo?
     // Inbox rows render often during filtering and selection changes, so capture
@@ -410,12 +412,14 @@ public final class ProjectBoardViewModel: ObservableObject {
         inboxCaptureStore: (any InboxCaptureStore)? = nil,
         assistantQueueStore: (any AssistantQueueStore)? = nil,
         assistantQueueExecutionCoordinator: AssistantQueueExecutionCoordinator? = nil,
+        assistantQueueExecutionCoordinatorFactory: (() -> AssistantQueueExecutionCoordinator?)? = nil,
         executionReceiptStore: (any ExecutionReceiptStore)? = nil,
         missedTaskReviewStateStore: any MissedTaskReviewStateStore = VolatileMissedTaskReviewStateStore(),
         missedTaskFollowUpNotificationClient: (any NotificationClient)? = nil,
         externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
         scheduleCalendarClient: (any CalendarClient)? = nil,
         googleCalendarSync: (any GoogleCalendarRuntimeSyncing)? = nil,
+        googleCalendarSyncFactory: (() -> (any GoogleCalendarRuntimeSyncing)?)? = nil,
         snapshot: ProjectBoardSnapshot = .empty,
         onChange: @escaping () -> Void = {}
     ) {
@@ -423,12 +427,14 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.inboxCaptureStore = inboxCaptureStore
         self.assistantQueueStore = assistantQueueStore
         self.assistantQueueExecutionCoordinator = assistantQueueExecutionCoordinator
+        self.assistantQueueExecutionCoordinatorFactory = assistantQueueExecutionCoordinatorFactory
         self.executionReceiptStore = executionReceiptStore
         self.missedTaskReviewStateStore = missedTaskReviewStateStore
         self.missedTaskFollowUpNotificationClient = missedTaskFollowUpNotificationClient
         self.externalTaskLinkStore = externalTaskLinkStore
         self.scheduleCalendarClient = scheduleCalendarClient
         self.googleCalendarSync = googleCalendarSync
+        self.googleCalendarSyncFactory = googleCalendarSyncFactory
         self.snapshot = snapshot
         self.onChange = onChange
         self.selectedProjectID = snapshot.projects.first?.id
@@ -464,7 +470,6 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.executionReceiptHistorySnapshotsByTaskID = [:]
         self.executionReceiptHistorySnapshotsByProjectID = [:]
         self.taskAutomationSessionHistory = .empty
-        refreshGoogleCalendarSyncStatus()
     }
 
     public var selectedProject: ProjectBoardProject? {
@@ -477,6 +482,35 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         return task(id: selectedTaskID)
+    }
+
+    private var resolvedAssistantQueueExecutionCoordinator: AssistantQueueExecutionCoordinator? {
+        if let assistantQueueExecutionCoordinator {
+            return assistantQueueExecutionCoordinator
+        }
+        guard let assistantQueueExecutionCoordinatorFactory else {
+            return nil
+        }
+        // Queue execution wires local tools, audit logging, and file access. Keep
+        // that graph out of Project Board launch and build it only for explicit
+        // approval/execution actions.
+        let coordinator = assistantQueueExecutionCoordinatorFactory()
+        assistantQueueExecutionCoordinator = coordinator
+        return coordinator
+    }
+
+    private var resolvedGoogleCalendarSync: (any GoogleCalendarRuntimeSyncing)? {
+        if let googleCalendarSync {
+            return googleCalendarSync
+        }
+        guard let googleCalendarSyncFactory else {
+            return nil
+        }
+        // Google sync readiness may touch credentials. Defer construction until
+        // board data has loaded so the app can publish a visible window first.
+        let sync = googleCalendarSyncFactory()
+        googleCalendarSync = sync
+        return sync
     }
 
     public func developmentAutomationReadiness(
@@ -5261,7 +5295,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     public func refreshGoogleCalendarSyncStatus(now: Date = Date()) {
-        guard let googleCalendarSync else {
+        guard let googleCalendarSync = resolvedGoogleCalendarSync else {
             googleCalendarSyncStatus = .runtimeNotConfigured
             return
         }
@@ -5279,7 +5313,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     @discardableResult
     public func syncDueTasksToGoogleCalendar(approvalToken: String?) -> GoogleCalendarTaskSyncResult? {
         refreshGoogleCalendarSyncStatus()
-        guard let googleCalendarSync else {
+        guard let googleCalendarSync = resolvedGoogleCalendarSync else {
             errorMessage = GoogleCalendarRuntimeSyncStatus.runtimeNotConfigured.detailLabel
             return nil
         }
@@ -5462,6 +5496,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             if selectedTaskID != nil, selectedTask == nil {
                 self.selectedTaskID = nil
             }
+            refreshGoogleCalendarSyncStatus()
             errorMessage = assistantQueueErrorMessage ?? captureCacheErrorMessage
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
@@ -5584,14 +5619,8 @@ public final class ProjectBoardViewModel: ObservableObject {
         do {
             executionReceiptHistorySnapshot = try globalExecutionReceiptHistorySnapshot(store: executionReceiptStore)
             executionUsageMeterSnapshot = try executionUsageMeterSnapshot(store: executionReceiptStore)
-            executionReceiptHistorySnapshotsByTaskID = try scopedExecutionReceiptSnapshotsByTaskID(
-                in: snapshot,
-                store: executionReceiptStore
-            )
-            executionReceiptHistorySnapshotsByProjectID = try scopedExecutionReceiptSnapshotsByProjectID(
-                in: snapshot,
-                store: executionReceiptStore
-            )
+            executionReceiptHistorySnapshotsByTaskID = [:]
+            executionReceiptHistorySnapshotsByProjectID = [:]
         } catch {
             executionReceiptHistorySnapshotsByTaskID = [:]
             executionReceiptHistorySnapshotsByProjectID = [:]
@@ -5620,49 +5649,62 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     public func executionReceiptHistorySnapshot(forTaskID taskID: Int64) -> ExecutionReceiptHistorySnapshot {
-        executionReceiptHistorySnapshotsByTaskID[taskID]
-            ?? ExecutionReceiptHistorySnapshot(
-                rows: [],
-                unavailableMessage: executionReceiptHistorySnapshot.unavailableMessage
-            )
+        if let cached = executionReceiptHistorySnapshotsByTaskID[taskID] {
+            return cached
+        }
+
+        let snapshot = scopedExecutionReceiptSnapshot(
+            referenceKind: .task,
+            referenceID: String(taskID),
+            visibleSurface: .taskDetail
+        )
+        executionReceiptHistorySnapshotsByTaskID[taskID] = snapshot
+        return snapshot
     }
 
     public func executionReceiptHistorySnapshot(forProjectID projectID: Int64) -> ExecutionReceiptHistorySnapshot {
-        executionReceiptHistorySnapshotsByProjectID[projectID]
-            ?? ExecutionReceiptHistorySnapshot(
+        if let cached = executionReceiptHistorySnapshotsByProjectID[projectID] {
+            return cached
+        }
+
+        let snapshot = scopedExecutionReceiptSnapshot(
+            referenceKind: .project,
+            referenceID: String(projectID),
+            visibleSurface: .projectDetail
+        )
+        executionReceiptHistorySnapshotsByProjectID[projectID] = snapshot
+        return snapshot
+    }
+
+    private func scopedExecutionReceiptSnapshot(
+        referenceKind: ExecutionReceiptReferenceKind,
+        referenceID: String,
+        visibleSurface: ExecutionReceiptSurface
+    ) -> ExecutionReceiptHistorySnapshot {
+        guard let executionReceiptStore else {
+            return ExecutionReceiptHistorySnapshot(
                 rows: [],
                 unavailableMessage: executionReceiptHistorySnapshot.unavailableMessage
             )
-    }
+        }
 
-    private func scopedExecutionReceiptSnapshotsByTaskID(
-        in snapshot: ProjectBoardSnapshot,
-        store: any ExecutionReceiptStore
-    ) throws -> [Int64: ExecutionReceiptHistorySnapshot] {
-        try Dictionary(uniqueKeysWithValues: Set(snapshot.projects.flatMap(\.tasks).map(\.id)).map { taskID in
-            let receipts = try store.list(
-                referenceKind: .task,
-                referenceID: String(taskID),
-                visibleSurface: .taskDetail,
+        do {
+            // Detail receipts are needed only for the currently opened inspector.
+            // Loading every task and project scope during Project Board startup
+            // creates N+1 file reads on DMG launches with large local histories.
+            let receipts = try executionReceiptStore.list(
+                referenceKind: referenceKind,
+                referenceID: referenceID,
+                visibleSurface: visibleSurface,
                 limit: 5
             )
-            return (taskID, ExecutionReceiptHistoryReadModel.snapshot(from: receipts, limit: 5))
-        })
-    }
-
-    private func scopedExecutionReceiptSnapshotsByProjectID(
-        in snapshot: ProjectBoardSnapshot,
-        store: any ExecutionReceiptStore
-    ) throws -> [Int64: ExecutionReceiptHistorySnapshot] {
-        try Dictionary(uniqueKeysWithValues: Set(snapshot.projects.map(\.id)).map { projectID in
-            let receipts = try store.list(
-                referenceKind: .project,
-                referenceID: String(projectID),
-                visibleSurface: .projectDetail,
-                limit: 5
+            return ExecutionReceiptHistoryReadModel.snapshot(from: receipts, limit: 5)
+        } catch {
+            return ExecutionReceiptHistorySnapshot(
+                rows: [],
+                unavailableMessage: String(localized: "Execution receipts are unavailable.")
             )
-            return (projectID, ExecutionReceiptHistoryReadModel.snapshot(from: receipts, limit: 5))
-        })
+        }
     }
 
     private func refreshAssistantQueueSnapshot() -> String? {
@@ -5882,7 +5924,7 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     @discardableResult
     public func runAssistantQueueItem(id: String) -> Bool {
-        guard let assistantQueueExecutionCoordinator else {
+        guard let assistantQueueExecutionCoordinator = resolvedAssistantQueueExecutionCoordinator else {
             _ = refreshAssistantQueueSnapshot()
             errorMessage = "Assistant Queue execution is unavailable in this build."
             integrationStatusMessage = nil

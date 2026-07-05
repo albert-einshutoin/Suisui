@@ -13,7 +13,7 @@ struct SoloPM: App {
     @NSApplicationDelegateAdaptor(SoloPMAppDelegate.self) private var appDelegate
 #endif
     @StateObject private var menuBarController: MenuBarSummaryController
-    @StateObject private var menuBarQuickCaptureViewModel: ProjectBoardViewModel
+    @StateObject private var menuBarQuickCaptureController: MenuBarQuickCaptureController
     @StateObject private var settingsViewModel: AppSettingsViewModel
     @AppStorage(SoloPMAppearancePreference.storageKey) private var appearancePreference: SoloPMAppearancePreference = .system
     @AppStorage(AppLanguagePreference.storageKey) private var languagePreference: AppLanguagePreference = .system
@@ -21,8 +21,10 @@ struct SoloPM: App {
     @MainActor
     init() {
         _menuBarController = StateObject(wrappedValue: AppRuntimeFactory.makeMenuBarSummaryController())
-        _menuBarQuickCaptureViewModel = StateObject(wrappedValue: AppRuntimeFactory.makeProjectBoardViewModel())
-        _settingsViewModel = StateObject(wrappedValue: AppRuntimeFactory.makeAppSettingsViewModel())
+        _menuBarQuickCaptureController = StateObject(wrappedValue: AppRuntimeFactory.makeMenuBarQuickCaptureController())
+        _settingsViewModel = StateObject(
+            wrappedValue: AppRuntimeFactory.makeAppSettingsViewModel(refreshProviderSecretStatusesOnInit: false)
+        )
 #if canImport(AppKit)
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -33,25 +35,11 @@ struct SoloPM: App {
 
     var body: some Scene {
         WindowGroup("SoloPM", id: "project-board") {
-            Group {
-                if SoloPMLaunchRecoveryEnvironment.isEnabled {
-                    ProjectBoardLaunchRecoveryView(
-                        viewModel: AppRuntimeFactory.makeProjectBoardViewModel(),
-                        appSettings: { settingsViewModel.settings }
-                    )
-                } else {
-                    ProjectBoardView(
-                        viewModel: AppRuntimeFactory.makeProjectBoardViewModel(),
-                        taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution },
-                        appSettings: { settingsViewModel.settings },
-                        developmentAutomationReviewSession: AppRuntimeFactory.makeReviewSessionViewModel
-                    )
-                }
-            }
+            ProjectBoardWindowRootView(settingsViewModel: settingsViewModel)
             .preferredColorScheme(effectiveAppearancePreference.colorScheme)
             .environment(\.locale, effectiveLanguagePreference.locale)
         }
-        .defaultSize(width: 1180, height: 760)
+        .defaultSize(width: ProjectBoardWindowMetrics.defaultWidth, height: ProjectBoardWindowMetrics.defaultHeight)
         .commands {
             CommandGroup(replacing: .appSettings) {
                 SettingsLink {
@@ -62,32 +50,22 @@ struct SoloPM: App {
         }
 
         Window("Voice Command", id: "voice-capture") {
-            VoiceCaptureView(viewModel: AppRuntimeFactory.makeVoiceCaptureViewModel())
+            VoiceCaptureWindowRootView()
                 .preferredColorScheme(effectiveAppearancePreference.colorScheme)
                 .environment(\.locale, effectiveLanguagePreference.locale)
         }
         .defaultSize(width: 560, height: 420)
 
         MenuBarExtra("SoloPM", systemImage: "checklist") {
-            MenuBarPanel(controller: menuBarController, quickCaptureViewModel: menuBarQuickCaptureViewModel)
+            MenuBarPanel(controller: menuBarController, quickCaptureController: menuBarQuickCaptureController)
                 .preferredColorScheme(effectiveAppearancePreference.colorScheme)
                 .environment(\.locale, effectiveLanguagePreference.locale)
         }
         .menuBarExtraStyle(.window)
 
         Settings {
-            SettingsView(
+            SettingsWindowRootView(
                 settingsViewModel: settingsViewModel,
-                launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
-                watcherDiagnosticsSnapshot: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot(),
-                integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
-                externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel(),
-                syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel(),
-                googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
-                googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
-                googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
-                googleCalendarListProvider: AppRuntimeFactory.makeGoogleCalendarListProvider(),
-                textToSpeechPreviewerFactory: AppRuntimeFactory.makeTextToSpeechPreviewer,
                 appearancePreference: $appearancePreference,
                 languagePreference: $languagePreference
             )
@@ -102,6 +80,132 @@ struct SoloPM: App {
 
     private var effectiveLanguagePreference: AppLanguagePreference {
         AppLanguagePreference.environmentOverride ?? languagePreference
+    }
+}
+
+private struct ProjectBoardWindowRootView: View {
+    @ObservedObject var settingsViewModel: AppSettingsViewModel
+    @State private var viewModel: ProjectBoardViewModel?
+
+    var body: some View {
+        Group {
+            if let viewModel {
+                projectBoardContent(viewModel: viewModel)
+            } else {
+                ProjectBoardFallbackLoadingView()
+            }
+        }
+        .task {
+            guard viewModel == nil else {
+                return
+            }
+            // Main-window creation must not wait for SQLite migration, receipt
+            // stores, or connector composition. Prepare the heavy runtime
+            // bundle off-main, then publish the MainActor-only view model.
+            try? await Task.sleep(nanoseconds: ProjectBoardLaunchHydrationDelay.nanoseconds)
+            let runtime = await AppRuntimeFactory.prepareProjectBoardRuntimeBundle()
+            guard Task.isCancelled == false else {
+                return
+            }
+            await MainActor.run {
+                viewModel = AppRuntimeFactory.makeProjectBoardViewModel(runtime: runtime)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func projectBoardContent(viewModel: ProjectBoardViewModel) -> some View {
+        if SoloPMLaunchRecoveryEnvironment.isEnabled {
+            ProjectBoardLaunchRecoveryView(
+                viewModel: viewModel,
+                appSettings: { settingsViewModel.settings }
+            )
+        } else {
+            ProjectBoardView(
+                viewModel: viewModel,
+                taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution },
+                appSettings: { settingsViewModel.settings },
+                developmentAutomationReviewSession: AppRuntimeFactory.makeReviewSessionViewModel
+            )
+        }
+    }
+}
+
+private enum ProjectBoardLaunchHydrationDelay {
+    // AX/window-server publication can lag SwiftUI's first body pass. Keep the
+    // pause short because the heavy runtime work already moves off-main.
+    static let nanoseconds: UInt64 = 150_000_000
+}
+
+private struct SettingsWindowRootView: View {
+    @ObservedObject var settingsViewModel: AppSettingsViewModel
+    @Binding var appearancePreference: SoloPMAppearancePreference
+    @Binding var languagePreference: AppLanguagePreference
+    @State private var isRuntimeReady = false
+
+    var body: some View {
+        Group {
+            if isRuntimeReady {
+                SettingsView(
+                    settingsViewModel: settingsViewModel,
+                    launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
+                    watcherDiagnosticsSnapshot: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot(),
+                    integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
+                    externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel(),
+                    syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel(),
+                    googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
+                    googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
+                    googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
+                    googleCalendarListProvider: AppRuntimeFactory.makeGoogleCalendarListProvider(),
+                    textToSpeechPreviewerFactory: AppRuntimeFactory.makeTextToSpeechPreviewer,
+                    appearancePreference: $appearancePreference,
+                    languagePreference: $languagePreference
+                )
+            } else {
+                ProgressView("Opening Settings")
+                    .frame(minWidth: 680, minHeight: 620)
+                    .accessibilityIdentifier("settings-loading")
+            }
+        }
+        .task {
+            guard !isRuntimeReady else {
+                return
+            }
+            // Settings diagnostics, sync status, and permission snapshots may
+            // open local stores or query system services. Defer them until the
+            // settings window itself is requested.
+            isRuntimeReady = true
+            Task { @MainActor in
+                // Provider readiness belongs to Settings, not app launch. Run
+                // Keychain status reads after the settings shell can render.
+                settingsViewModel.refreshProviderSecretStatuses()
+            }
+        }
+    }
+}
+
+private struct VoiceCaptureWindowRootView: View {
+    @State private var viewModel: VoiceCaptureViewModel?
+
+    var body: some View {
+        Group {
+            if let viewModel {
+                VoiceCaptureView(viewModel: viewModel)
+            } else {
+                ProgressView("Opening Voice Command")
+                    .frame(minWidth: 560, minHeight: 420)
+                    .accessibilityIdentifier("voice-capture-loading")
+            }
+        }
+        .task {
+            guard viewModel == nil else {
+                return
+            }
+            // Voice runtime construction touches audio, model providers, audit
+            // logging, and local stores. Defer it until this secondary window is
+            // opened so primary Project Board launch is not blocked.
+            viewModel = AppRuntimeFactory.makeVoiceCaptureViewModel()
+        }
     }
 }
 
@@ -120,6 +224,7 @@ private enum SoloPMLaunchRecoveryEnvironment {
 
 private enum SoloPMWindowlessFallbackEnvironment {
     private static let forceFallbackFlagName = "SOLOPM_FORCE_PROJECT_BOARD_FALLBACK"
+    static let maxWindowGroupRestoreAttempts = 3
 
     static var shouldForceProjectBoardFallback: Bool {
         ProcessInfo.processInfo.environment[forceFallbackFlagName] == "1"
@@ -137,29 +242,27 @@ private enum SoloPMWindowlessFallbackEnvironment {
 }
 
 private struct ProjectBoardFallbackRootView: View {
-    @StateObject private var viewModel: ProjectBoardViewModel
     private let taskAutomationSettings: () -> TaskAutoExecutionSettings
     private let appSettings: () -> AppSettings
+    @State private var viewModel: ProjectBoardViewModel?
     @State private var isProjectBoardReady = false
 
     init(
-        viewModel: ProjectBoardViewModel,
         taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings = { .default },
         appSettings: @escaping () -> AppSettings = { .default }
     ) {
-        _viewModel = StateObject(wrappedValue: viewModel)
         self.taskAutomationSettings = taskAutomationSettings
         self.appSettings = appSettings
     }
 
     var body: some View {
         Group {
-            if SoloPMLaunchRecoveryEnvironment.isEnabled {
+            if let viewModel, SoloPMLaunchRecoveryEnvironment.isEnabled {
                 ProjectBoardLaunchRecoveryView(
                     viewModel: viewModel,
                     appSettings: appSettings
                 )
-            } else if isProjectBoardReady {
+            } else if let viewModel, isProjectBoardReady {
                 ProjectBoardView(
                     viewModel: viewModel,
                     taskAutomationSettings: taskAutomationSettings,
@@ -171,14 +274,22 @@ private struct ProjectBoardFallbackRootView: View {
             }
         }
         .task {
-            guard !SoloPMLaunchRecoveryEnvironment.isEnabled, !isProjectBoardReady else {
+            guard viewModel == nil else {
                 return
             }
             // The direct fallback exists for screenshot and AX launches. Ordering a
-            // small visible window first prevents the full board's initial SwiftUI
-            // layout from leaving evidence scripts with a process but no window.
-            try? await Task.sleep(nanoseconds: 150_000_000)
-            isProjectBoardReady = true
+            // small visible window first prevents SQLite open/migration and the
+            // full board's initial SwiftUI layout from leaving evidence scripts
+            // with a process but no window.
+            try? await Task.sleep(nanoseconds: ProjectBoardLaunchHydrationDelay.nanoseconds)
+            let runtime = await AppRuntimeFactory.prepareProjectBoardRuntimeBundle()
+            guard Task.isCancelled == false else {
+                return
+            }
+            await MainActor.run {
+                viewModel = AppRuntimeFactory.makeProjectBoardViewModel(runtime: runtime)
+                isProjectBoardReady = !SoloPMLaunchRecoveryEnvironment.isEnabled
+            }
         }
     }
 }
@@ -214,7 +325,6 @@ private final class SoloPMProjectBoardWindowFallback {
         // Debug app bundles can reach launch verification before SwiftUI's WindowGroup creates a window; keep a direct fallback so launch smoke tests prove a real board is visible.
         let hostingController = NSHostingController(
             rootView: ProjectBoardFallbackRootView(
-                viewModel: AppRuntimeFactory.makeProjectBoardViewModel(),
                 taskAutomationSettings: AppRuntimeFactory.loadTaskAutoExecutionSettings,
                 appSettings: AppRuntimeFactory.loadRuntimeAppSettings
             )
@@ -331,7 +441,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
                 || NSApp.sendAction(#selector(NSWindow.newWindowForTab(_:)), to: nil, from: nil)
 
             self.projectBoardWindowRestoreAttempts += 1
-            guard self.projectBoardWindowRestoreAttempts < 12 else {
+            guard self.projectBoardWindowRestoreAttempts < SoloPMWindowlessFallbackEnvironment.maxWindowGroupRestoreAttempts else {
                 self.createFallbackProjectBoardWindow()
                 return
             }

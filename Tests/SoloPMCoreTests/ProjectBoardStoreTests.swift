@@ -2449,6 +2449,126 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelDefersScopedExecutionReceiptHistoryUntilDetailRequests() throws {
+        let firstTask = ProjectBoardTask(
+            id: 101,
+            projectID: 7,
+            title: "First launch task",
+            detail: "Should not trigger scoped receipt I/O during load.",
+            status: .planned,
+            priority: .medium,
+            dueAt: nil
+        )
+        let secondTask = ProjectBoardTask(
+            id: 102,
+            projectID: 7,
+            title: "Second launch task",
+            detail: "Keeps the fixture large enough to catch eager per-task loops.",
+            status: .planned,
+            priority: .medium,
+            dueAt: nil
+        )
+        let project = ProjectBoardProject(
+            id: 7,
+            title: "Launch performance project",
+            status: "active",
+            subtitle: "2 open / 2 total",
+            columns: ProjectTaskStatus.allCases.map { status in
+                ProjectBoardColumn(status: status, tasks: status == .planned ? [firstTask, secondTask] : [])
+            }
+        )
+        let receiptStore = CountingProjectBoardExecutionReceiptStore()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [project])),
+            executionReceiptStore: receiptStore
+        )
+
+        viewModel.load()
+
+        XCTAssertTrue(receiptStore.scopedListKeys.isEmpty)
+        XCTAssertEqual(receiptStore.matchingListCallCount, 2)
+
+        XCTAssertTrue(viewModel.executionReceiptHistorySnapshot(forTaskID: firstTask.id).rows.isEmpty)
+        XCTAssertEqual(receiptStore.scopedListKeys, ["task:101:task_detail"])
+
+        XCTAssertTrue(viewModel.executionReceiptHistorySnapshot(forTaskID: firstTask.id).rows.isEmpty)
+        XCTAssertEqual(receiptStore.scopedListKeys, ["task:101:task_detail"])
+
+        XCTAssertTrue(viewModel.executionReceiptHistorySnapshot(forProjectID: project.id).rows.isEmpty)
+        XCTAssertEqual(receiptStore.scopedListKeys, ["task:101:task_detail", "project:7:project_detail"])
+    }
+
+    @MainActor
+    func testProjectBoardViewModelDefersAssistantQueueExecutionCoordinatorUntilRun() throws {
+        var coordinatorFactoryCallCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            assistantQueueExecutionCoordinatorFactory: {
+                coordinatorFactoryCallCount += 1
+                return nil
+            }
+        )
+
+        viewModel.load()
+
+        XCTAssertEqual(coordinatorFactoryCallCount, 0)
+        XCTAssertFalse(viewModel.runAssistantQueueItem(id: "missing-queue-item"))
+        XCTAssertEqual(coordinatorFactoryCallCount, 1)
+        XCTAssertEqual(viewModel.errorMessage, "Assistant Queue execution is unavailable in this build.")
+    }
+
+    @MainActor
+    func testMenuBarQuickCaptureControllerCreatesInboxTaskWithoutProjectBoardViewModelLoad() throws {
+        let store = InMemoryProjectBoardStore()
+        var didPostChange = false
+        let controller = MenuBarQuickCaptureController(store: store) {
+            didPostChange = true
+        }
+
+        let task = try XCTUnwrap(controller.createInboxTask(title: "  Capture launch follow-up  "))
+
+        XCTAssertEqual(task.title, "Capture launch follow-up")
+        XCTAssertEqual(task.status, .backlog)
+        XCTAssertNil(controller.errorMessage)
+        XCTAssertTrue(didPostChange)
+
+        let snapshot = try store.loadSnapshot(includeArchived: false)
+        let inboxProject = try XCTUnwrap(snapshot.projects.first { $0.title == "Inbox" })
+        XCTAssertEqual(inboxProject.tasks.map(\.title), ["Capture launch follow-up"])
+    }
+
+    @MainActor
+    func testMenuBarQuickCaptureControllerDefersStoreFactoryUntilSubmit() throws {
+        let store = InMemoryProjectBoardStore()
+        var storeFactoryCallCount = 0
+        let controller = MenuBarQuickCaptureController(
+            storeFactory: {
+                storeFactoryCallCount += 1
+                return store
+            }
+        )
+
+        XCTAssertEqual(storeFactoryCallCount, 0)
+
+        let task = try XCTUnwrap(controller.createInboxTask(title: "Deferred capture"))
+
+        XCTAssertEqual(task.title, "Deferred capture")
+        XCTAssertEqual(storeFactoryCallCount, 1)
+
+        _ = controller.createInboxTask(title: "Second capture")
+
+        XCTAssertEqual(storeFactoryCallCount, 1)
+    }
+
+    @MainActor
+    func testMenuBarQuickCaptureControllerRejectsEmptyTitle() throws {
+        let controller = MenuBarQuickCaptureController(store: InMemoryProjectBoardStore())
+
+        XCTAssertNil(controller.createInboxTask(title: "   "))
+        XCTAssertEqual(controller.errorMessage, "Task title is required.")
+    }
+
+    @MainActor
     func testProjectBoardViewModelLoadsExecutionUsageMeterFromReceiptsWithoutRawFields() throws {
         let receiptStore = VolatileExecutionReceiptStore(receipts: [
             ExecutionReceipt(
@@ -8289,6 +8409,37 @@ private final class FailingProjectBoardExecutionReceiptStore: ExecutionReceiptSt
         limit: Int
     ) throws -> [ExecutionReceipt] {
         []
+    }
+}
+
+private final class CountingProjectBoardExecutionReceiptStore: ExecutionReceiptStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var scopedListKeys: [String] = []
+    private(set) var matchingListCallCount = 0
+
+    func save(_ receipt: ExecutionReceipt) throws {}
+
+    func list(limit: Int) throws -> [ExecutionReceipt] {
+        []
+    }
+
+    func list(matching filter: ExecutionReceiptSearchFilter, limit: Int) throws -> [ExecutionReceipt] {
+        lock.lock()
+        defer { lock.unlock() }
+        matchingListCallCount += 1
+        return []
+    }
+
+    func list(
+        referenceKind: ExecutionReceiptReferenceKind,
+        referenceID: String,
+        visibleSurface: ExecutionReceiptSurface,
+        limit: Int
+    ) throws -> [ExecutionReceipt] {
+        lock.lock()
+        defer { lock.unlock() }
+        scopedListKeys.append("\(referenceKind.rawValue):\(referenceID):\(visibleSurface.rawValue)")
+        return []
     }
 }
 

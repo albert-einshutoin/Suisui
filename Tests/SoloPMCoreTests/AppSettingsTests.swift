@@ -880,6 +880,11 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(normalized.validate().map(\.field), ["aiProvider"])
     }
 
+    func testAppSettingsDefaultsDeveloperModeOffForLocalShellSafety() {
+        XCTAssertFalse(AppSettings.default.isDeveloperModeEnabled)
+        XCTAssertFalse(AppSettings().isDeveloperModeEnabled)
+    }
+
     @MainActor
     func testAppSettingsViewModelPersistsProviderSelection() throws {
         let suiteName = "SoloPM.AppSettingsViewModelProviders.\(UUID().uuidString)"
@@ -896,6 +901,50 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertEqual(loaded.aiProvider, .groqOpenAICompatible)
         XCTAssertEqual(loaded.sttProvider, .openAITranscribe)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelPersistsDeveloperModeOptIn() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelDeveloperMode.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        viewModel.setDeveloperModeEnabled(true)
+        viewModel.saveSettings()
+
+        let loaded = try store.load()
+
+        XCTAssertTrue(loaded.isDeveloperModeEnabled)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelCanDeferProviderSecretReadsUntilSettingsOpen() throws {
+        let defaults = try makeUserDefaults("DeferredProviderSecretReads")
+        let secretStore = CountingSecretStore(values: [
+            .openAIAPIKey: "sk-test-deferred-key",
+            .anthropicAPIKey: "sk-ant-test",
+            .geminiAPIKey: "gemini-test",
+            .groqAPIKey: "gsk_test",
+            .openRouterAPIKey: "sk-or-test"
+        ])
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: secretStore,
+            refreshProviderSecretStatusesOnInit: false
+        )
+
+        XCTAssertEqual(secretStore.readCount, 0)
+        XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Not configured")
+
+        XCTAssertTrue(viewModel.refreshProviderSecretStatuses())
+        XCTAssertEqual(secretStore.readCount, 5)
+        XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Configured")
+        XCTAssertEqual(viewModel.anthropicAPIKeyStatusLabel, "Configured")
+        XCTAssertEqual(viewModel.geminiAPIKeyStatusLabel, "Configured")
+        XCTAssertEqual(viewModel.groqAPIKeyStatusLabel, "Configured")
+        XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Configured")
     }
 
     @MainActor
@@ -1404,6 +1453,41 @@ private final class FailingWriteSecretStore: SecretStore, @unchecked Sendable {
         if let deleteError {
             throw deleteError
         }
+        lock.lock()
+        defer { lock.unlock() }
+        values.removeValue(forKey: key)
+    }
+}
+
+private final class CountingSecretStore: SecretStore, @unchecked Sendable {
+    private var values: [SecretKey: String]
+    private let lock = NSLock()
+    private var readCountStorage = 0
+
+    init(values: [SecretKey: String] = [:]) {
+        self.values = values
+    }
+
+    var readCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return readCountStorage
+    }
+
+    func save(_ value: String, for key: SecretKey) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        values[key] = value
+    }
+
+    func read(_ key: SecretKey) throws -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        readCountStorage += 1
+        return values[key]
+    }
+
+    func delete(_ key: SecretKey) throws {
         lock.lock()
         defer { lock.unlock() }
         values.removeValue(forKey: key)
