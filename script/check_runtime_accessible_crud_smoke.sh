@@ -13,11 +13,13 @@ fi
 source "$METADATA_FILE"
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
+APP_BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:-}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS:-30}"
 KEEP_DATABASE="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
+AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS must be a positive integer" >&2
@@ -28,6 +30,9 @@ if ! command -v "$SQLITE3" >/dev/null 2>&1; then
   echo "BLOCKER: sqlite3 is required for runtime accessible CRUD smoke" >&2
   exit 2
 fi
+
+# shellcheck source=/dev/null
+source "$AX_HELPERS"
 
 cd "$ROOT_DIR"
 mkdir -p "$ROOT_DIR/.tmp"
@@ -112,38 +117,11 @@ APPLESCRIPT
 }
 
 wait_for_visible_windows() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  local window_count=""
-  local osascript_status=1
-
-  while true; do
-    set +e
-    window_count="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>/dev/null
-on run argv
-  set appName to item 1 of argv
-  tell application "System Events"
-    if not (exists process appName) then return "0"
-    tell process appName
-      return (count of windows) as text
-    end tell
-  end tell
-end run
-APPLESCRIPT
-)"
-    osascript_status=$?
-    set -e
-
-    if [[ "$osascript_status" -eq 0 && "${window_count:-0}" =~ ^[0-9]+$ && "$window_count" -ge 1 ]]; then
-      return 0
-    fi
-
-    activate_app
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: $APP_NAME did not expose a visible AX window within ${TIMEOUT_SECONDS}s" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  if ax_wait_for_visible_window "$APP_NAME" "$TIMEOUT_SECONDS" "$APP_BUNDLE_IDENTIFIER"; then
+    return 0
+  fi
+  echo "BLOCKER: $APP_NAME did not expose a visible AX window within ${TIMEOUT_SECONDS}s" >&2
+  return 1
 }
 
 launch_app_for_database_migration() {
