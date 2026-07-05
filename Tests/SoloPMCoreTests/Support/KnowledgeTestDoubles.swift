@@ -26,10 +26,12 @@ struct StaticEmbeddingProvider: EmbeddingProvider {
     }
 }
 
-final class InMemoryKnowledgeVectorIndex: KnowledgeVectorIndex, @unchecked Sendable {
+final class InMemoryKnowledgeVectorIndex: CandidateKnowledgeVectorIndex, @unchecked Sendable {
     let expectedDimensions: Int
     private let lock = NSLock()
     private var vectors: [Int64: KnowledgeEmbeddingVector]
+    private var recordedCandidateFrameIDs: [Set<Int64>?] = []
+    private var recordedSearchedFrameIDs: [[Int64]] = []
 
     init(expectedDimensions: Int, vectors: [Int64: KnowledgeEmbeddingVector] = [:]) {
         self.expectedDimensions = expectedDimensions
@@ -56,11 +58,36 @@ final class InMemoryKnowledgeVectorIndex: KnowledgeVectorIndex, @unchecked Senda
         return vectors[frameID]
     }
 
-    func search(queryVector: [Double], topK: Int, threshold: Double) throws -> [KnowledgeVectorSearchResult] {
+    var searchCandidateFrameIDs: [Set<Int64>?] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedCandidateFrameIDs
+    }
+
+    var searchFrameIDs: [[Int64]] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedSearchedFrameIDs
+    }
+
+    func search(
+        queryVector: [Double],
+        topK: Int,
+        threshold: Double,
+        candidateFrameIDs: Set<Int64>?
+    ) throws -> [KnowledgeVectorSearchResult] {
         try validate(queryVector)
         lock.lock()
         defer { lock.unlock() }
-        return vectors.values
+        recordedCandidateFrameIDs.append(candidateFrameIDs)
+        let searchableVectors: [KnowledgeEmbeddingVector]
+        if let candidateFrameIDs {
+            searchableVectors = vectors.values.filter { candidateFrameIDs.contains($0.frameID) }
+        } else {
+            searchableVectors = Array(vectors.values)
+        }
+        recordedSearchedFrameIDs.append(searchableVectors.map(\.frameID).sorted())
+        return searchableVectors
             .map {
                 KnowledgeVectorSearchResult(
                     frameID: $0.frameID,
@@ -75,7 +102,7 @@ final class InMemoryKnowledgeVectorIndex: KnowledgeVectorIndex, @unchecked Senda
                 }
                 return lhs.score > rhs.score
             }
-            .prefix(topK)
+            .prefix(max(topK, 0))
             .map { $0 }
     }
 
