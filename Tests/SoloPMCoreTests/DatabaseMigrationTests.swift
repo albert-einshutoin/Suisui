@@ -283,6 +283,85 @@ final class DatabaseMigrationTests: XCTestCase {
         )
     }
 
+    func testCurrentMigrationsAddWorkManagementReadModelIndexesWithoutRewritingRows() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeReadModelIndexes = Array(
+            CoreMigrations.current.prefix { $0.id != "0019_add_work_management_read_model_indexes" }
+        )
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: migrationsBeforeReadModelIndexes)
+        try connection.execute(
+            """
+            INSERT INTO projects (id, title, status, tags_json) VALUES (1, 'Large board', 'active', '[]');
+            INSERT INTO tasks (
+                id,
+                project_id,
+                title,
+                status,
+                detail,
+                due_at,
+                completed_at,
+                priority,
+                source_command
+            )
+            VALUES (
+                1,
+                1,
+                'Keep launch responsive',
+                'completed',
+                'Preserve this detail through index migration.',
+                '2026-06-19T09:00:00Z',
+                '2026-06-19T17:00:00Z',
+                'high',
+                'migration-test'
+            );
+            INSERT INTO artifacts (
+                id,
+                project_id,
+                task_id,
+                workspace_path,
+                expected_path,
+                created_state,
+                last_modified_at
+            )
+            VALUES (
+                1,
+                1,
+                1,
+                '/tmp/solopm',
+                '/tmp/solopm/launch.md',
+                'created',
+                '2026-06-19T17:30:00Z'
+            );
+            INSERT INTO project_milestones (id, project_id, title, due_at, is_completed)
+            VALUES (1, 1, 'Ship large board', '2026-06-20T09:00:00Z', 0);
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        XCTAssertTrue(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;").contains("0019_add_work_management_read_model_indexes"))
+        XCTAssertEqual(try connection.queryStrings("SELECT title FROM projects WHERE id = 1;"), ["Large board"])
+        XCTAssertEqual(try connection.queryStrings("SELECT detail FROM tasks WHERE id = 1;"), ["Preserve this detail through index migration."])
+        XCTAssertEqual(try connection.queryStrings("SELECT expected_path FROM artifacts WHERE id = 1;"), ["/tmp/solopm/launch.md"])
+        XCTAssertEqual(try connection.queryStrings("SELECT title FROM project_milestones WHERE id = 1;"), ["Ship large board"])
+
+        XCTAssertTrue(try indexNames(on: "tasks", connection: connection).isSuperset(of: [
+            "idx_tasks_project_id",
+            "idx_tasks_status_due_at",
+            "idx_tasks_due_at_status",
+            "idx_tasks_project_status",
+            "idx_tasks_completed_at"
+        ]))
+        XCTAssertTrue(try indexNames(on: "projects", connection: connection).contains("idx_projects_status"))
+        XCTAssertTrue(try indexNames(on: "artifacts", connection: connection).isSuperset(of: [
+            "idx_artifacts_project_task",
+            "idx_artifacts_task_project"
+        ]))
+        XCTAssertTrue(try indexNames(on: "project_milestones", connection: connection).contains("idx_project_milestones_project_due_sort"))
+    }
+
     func testAssistantQueueCostPreviewMigrationKeepsExistingRowsReadable() throws {
         func sql(_ value: String) -> String {
             value.replacingOccurrences(of: "'", with: "''")
@@ -409,5 +488,9 @@ final class DatabaseMigrationTests: XCTestCase {
             migratedApproved.reviewReason,
             "Cost preview was added during migration. Review this item again before running."
         )
+    }
+
+    private func indexNames(on table: String, connection: SQLiteConnection) throws -> Set<String> {
+        Set(try connection.queryRows("PRAGMA index_list(\(table));").compactMap { $0["name"] })
     }
 }

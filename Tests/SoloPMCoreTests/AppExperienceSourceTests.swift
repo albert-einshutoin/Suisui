@@ -1068,6 +1068,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testProjectBoardPerformanceReadModelsStayOutOfRenderPath() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let todayWorkflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift")
+        let catchUpWorkflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowCatchUpView.swift")
         let scheduleWorkflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowScheduleView.swift")
         let doneWorkflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowDoneView.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
@@ -1091,6 +1092,8 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(todayWorkflowSource.contains("let snapshot = viewModel.derivedReadModels.todayWorkflowSnapshot"))
         XCTAssertFalse(todayWorkflowSource.contains("viewModel.todayWorkflowSnapshot(on: referenceDate, calendar: calendar)"))
+        XCTAssertTrue(catchUpWorkflowSource.contains("viewModel.derivedReadModels.missedTaskReview"))
+        XCTAssertFalse(catchUpWorkflowSource.contains("viewModel.missedTaskReview()"))
         XCTAssertTrue(scheduleWorkflowSource.contains("let scheduleReadModel = viewModel.derivedReadModels.schedule"))
         XCTAssertTrue(scheduleWorkflowSource.contains("viewModel.refreshScheduleReadModel(around: nextDate)"))
         XCTAssertTrue(scheduleWorkflowSource.contains("viewModel.refreshScheduleReadModel(around: day.date)"))
@@ -2183,7 +2186,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("viewModel.enqueueTodayReminderDraft(for: task.id)"))
         XCTAssertTrue(workflowSource.contains("plan.overdueCount"))
         XCTAssertTrue(workflowSource.contains("plan.dueTodayCount"))
-        XCTAssertTrue(workflowSource.contains("viewModel.missedTaskReview()"))
+        XCTAssertTrue(workflowSource.contains("viewModel.derivedReadModels.missedTaskReview"))
         XCTAssertTrue(workflowSource.contains("CatchUpWorkflowView"))
         XCTAssertTrue(workflowSource.contains("CatchUpMissedTaskReviewPanel"))
         XCTAssertTrue(workflowSource.contains("summary.immediateQueue"))

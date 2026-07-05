@@ -843,6 +843,38 @@ public enum CoreMigrations {
                     ON managed_ai_usage_ledger(assistant_queue_item_digest);
                     """
                 )
+            },
+            DatabaseMigration(id: "0019_add_work_management_read_model_indexes") { connection in
+                try connection.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_tasks_project_id
+                    ON tasks(project_id);
+
+                    CREATE INDEX IF NOT EXISTS idx_tasks_status_due_at
+                    ON tasks(status, due_at);
+
+                    CREATE INDEX IF NOT EXISTS idx_tasks_due_at_status
+                    ON tasks(due_at, status);
+
+                    CREATE INDEX IF NOT EXISTS idx_tasks_project_status
+                    ON tasks(project_id, status);
+
+                    CREATE INDEX IF NOT EXISTS idx_tasks_completed_at
+                    ON tasks(completed_at);
+
+                    CREATE INDEX IF NOT EXISTS idx_projects_status
+                    ON projects(status);
+
+                    CREATE INDEX IF NOT EXISTS idx_artifacts_project_task
+                    ON artifacts(project_id, task_id);
+
+                    CREATE INDEX IF NOT EXISTS idx_artifacts_task_project
+                    ON artifacts(task_id, project_id);
+
+                    CREATE INDEX IF NOT EXISTS idx_project_milestones_project_due_sort
+                    ON project_milestones(project_id, due_at IS NULL, due_at);
+                    """
+                )
             }
         ]
     }

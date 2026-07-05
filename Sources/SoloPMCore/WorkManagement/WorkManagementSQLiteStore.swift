@@ -288,10 +288,21 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         milestones: [ProjectBoardMilestone]
     ) {
         var projects = try ensureProjects(includeArchived: includeArchived)
-        let taskRecords = try taskStore.listAll()
-        let artifacts = try artifactStore.list().map(makeBoardArtifact(_:))
-        let milestones = try milestoneStore.list().map(makeBoardMilestone(_:))
         var projectIDs = Set(projects.map(\.id))
+        let taskRecords = if includeArchived {
+            try taskStore.listForProjectBoard()
+        } else {
+            try taskStore.listForProjectBoard(projectIDs: projectIDs, includeDanglingReferences: true)
+        }
+        let taskIDs = Set(taskRecords.map(\.id))
+        let artifacts = try (includeArchived
+            ? artifactStore.listForProjectBoard()
+            : artifactStore.listForProjectBoard(projectIDs: projectIDs, taskIDs: taskIDs)
+        ).map(makeBoardArtifact(_:))
+        let milestones = try (includeArchived
+            ? milestoneStore.listForProjectBoard()
+            : milestoneStore.listForProjectBoard(projectIDs: projectIDs)
+        ).map(makeBoardMilestone(_:))
         let fallbackProjectID: Int64?
 
         let danglingProjectTasks = taskRecords.filter { task in

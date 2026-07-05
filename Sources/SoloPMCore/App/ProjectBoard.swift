@@ -416,6 +416,7 @@ public struct ProjectBoardDerivedReadModels: Equatable, Sendable {
     public var todayWorkflowSnapshot: TodayWorkflowSnapshot
     public var schedule: ProjectBoardScheduleReadModel
     public var doneAnalytics: DoneAnalyticsSummary
+    public var missedTaskReview: MissedTaskReviewSummary
     public var projectPortfolioSummaries: [ProjectPortfolioSummary]
     public var builtAt: Date
 
@@ -424,6 +425,7 @@ public struct ProjectBoardDerivedReadModels: Equatable, Sendable {
         todayWorkflowSnapshot: TodayWorkflowSnapshot,
         schedule: ProjectBoardScheduleReadModel,
         doneAnalytics: DoneAnalyticsSummary,
+        missedTaskReview: MissedTaskReviewSummary,
         projectPortfolioSummaries: [ProjectPortfolioSummary],
         builtAt: Date
     ) {
@@ -431,6 +433,7 @@ public struct ProjectBoardDerivedReadModels: Equatable, Sendable {
         self.todayWorkflowSnapshot = todayWorkflowSnapshot
         self.schedule = schedule
         self.doneAnalytics = doneAnalytics
+        self.missedTaskReview = missedTaskReview
         self.projectPortfolioSummaries = projectPortfolioSummaries
         self.builtAt = builtAt
     }
@@ -469,9 +472,50 @@ public struct ProjectBoardDerivedReadModels: Equatable, Sendable {
             recentTasks: [],
             localRuleInsight: "Done analytics uses local completed_at history; reopened tasks remain visible in completion history."
         ),
+        missedTaskReview: .empty,
         projectPortfolioSummaries: [],
         builtAt: Date(timeIntervalSince1970: 0)
     )
+}
+
+private struct ProjectBoardDerivedReadModelInputs {
+    var nonArchivedProjects: [ProjectBoardProject]
+    var committedActiveProjects: [ProjectBoardProject]
+    var portfolioProjects: [ProjectBoardProject]
+    var completedProjects: [ProjectBoardProject]
+    var inboxProject: ProjectBoardProject?
+    var inboxTasks: [ProjectBoardTask]
+    var inboxUntriagedCount: Int
+    var visibleNonArchivedTasks: [ProjectBoardTask]
+    var nonArchivedTasks: [ProjectBoardTask]
+
+    init(snapshot: ProjectBoardSnapshot, showsCompletedWorkflowTasks: Bool) {
+        let nonArchivedProjects = snapshot.projects.filter { !$0.isArchived }
+        let activeProjects = nonArchivedProjects.filter { !$0.isCompleted }
+        let inboxProject = nonArchivedProjects.first(where: Self.isInboxProject)
+
+        self.nonArchivedProjects = nonArchivedProjects
+        // Inbox is intake, not committed work; Catch Up should not make raw captures
+        // look like forgotten tasks before the user triages them into a project.
+        self.committedActiveProjects = activeProjects.filter { !Self.isInboxProject($0) }
+        self.portfolioProjects = nonArchivedProjects.filter { !Self.isInboxProject($0) }
+        self.completedProjects = nonArchivedProjects.filter { $0.isCompleted && !Self.isInboxProject($0) }
+        self.inboxProject = inboxProject
+        self.inboxTasks = inboxProject?
+            .tasks
+            .filter { showsCompletedWorkflowTasks || $0.status != .done }
+            .sorted { $0.id > $1.id } ?? []
+        self.inboxUntriagedCount = inboxProject?.tasks.filter { $0.status != .done }.count ?? 0
+        self.nonArchivedTasks = nonArchivedProjects.flatMap(\.tasks)
+        // Rebuilds need several workflow projections. Flattening once keeps a
+        // large local board from paying the same project/task traversal for
+        // Today, Done, Catch Up, and sidebar counts during a single refresh.
+        self.visibleNonArchivedTasks = self.nonArchivedTasks.filter { showsCompletedWorkflowTasks || $0.status != .done }
+    }
+
+    private static func isInboxProject(_ project: ProjectBoardProject) -> Bool {
+        project.title.caseInsensitiveCompare("Inbox") == .orderedSame
+    }
 }
 
 @MainActor
@@ -3344,16 +3388,28 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     public func todayTasks(on referenceDate: Date = Date(), calendar: Calendar = .current) -> [ProjectBoardTask] {
+        todayTasks(
+            on: referenceDate,
+            calendar: calendar,
+            inputs: ProjectBoardDerivedReadModelInputs(
+                snapshot: snapshot,
+                showsCompletedWorkflowTasks: showsCompletedWorkflowTasks
+            )
+        )
+    }
+
+    private func todayTasks(
+        on referenceDate: Date,
+        calendar: Calendar,
+        inputs: ProjectBoardDerivedReadModelInputs
+    ) -> [ProjectBoardTask] {
         guard let endOfToday = calendar.dateInterval(of: .day, for: referenceDate)?.end else {
             return []
         }
 
-        return snapshot.projects
-            .filter { !$0.isArchived }
-            .flatMap(\.tasks)
+        return inputs.visibleNonArchivedTasks
             .filter { task in
-                (showsCompletedWorkflowTasks || task.status != .done)
-                    && dueDate(for: task.dueAt, calendar: calendar).map { $0 < endOfToday } == true
+                dueDate(for: task.dueAt, calendar: calendar).map { $0 < endOfToday } == true
             }
             .sorted { lhs, rhs in
                 switch (dueDate(for: lhs.dueAt, calendar: calendar), dueDate(for: rhs.dueAt, calendar: calendar)) {
@@ -3374,14 +3430,30 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     public func unscheduledScheduleTasks() -> [ProjectBoardTask] {
         let draftedTaskIDs = Set(scheduleDraft?.timeBlocks.map(\.task.id) ?? [])
-        return unscheduledScheduleTasks(excludingTaskIDs: draftedTaskIDs)
+        return unscheduledScheduleTasks(
+            excludingTaskIDs: draftedTaskIDs,
+            inputs: ProjectBoardDerivedReadModelInputs(
+                snapshot: snapshot,
+                showsCompletedWorkflowTasks: showsCompletedWorkflowTasks
+            )
+        )
     }
 
     private func unscheduledScheduleTasks(excludingTaskIDs excludedTaskIDs: Set<Int64>) -> [ProjectBoardTask] {
-        snapshot.projects
-            .filter { project in
-                !project.isArchived && !project.isCompleted
-            }
+        unscheduledScheduleTasks(
+            excludingTaskIDs: excludedTaskIDs,
+            inputs: ProjectBoardDerivedReadModelInputs(
+                snapshot: snapshot,
+                showsCompletedWorkflowTasks: showsCompletedWorkflowTasks
+            )
+        )
+    }
+
+    private func unscheduledScheduleTasks(
+        excludingTaskIDs excludedTaskIDs: Set<Int64>,
+        inputs: ProjectBoardDerivedReadModelInputs
+    ) -> [ProjectBoardTask] {
+        inputs.committedActiveProjects
             .flatMap(\.tasks)
             .filter { task in
                 task.status != .done && task.dueAt == nil && !excludedTaskIDs.contains(task.id)
@@ -3399,8 +3471,26 @@ public final class ProjectBoardViewModel: ObservableObject {
         calendar: Calendar = .current,
         visibleDayCount: Int = 7
     ) -> DailyWorkloadOverview {
+        dailyWorkloadOverview(
+            around: referenceDate,
+            calendar: calendar,
+            visibleDayCount: visibleDayCount,
+            inputs: ProjectBoardDerivedReadModelInputs(
+                snapshot: snapshot,
+                showsCompletedWorkflowTasks: showsCompletedWorkflowTasks
+            )
+        )
+    }
+
+    private func dailyWorkloadOverview(
+        around referenceDate: Date,
+        calendar: Calendar,
+        visibleDayCount: Int = 7,
+        inputs: ProjectBoardDerivedReadModelInputs
+    ) -> DailyWorkloadOverview {
         DailyWorkloadDashboardBuilder.overview(
-            from: snapshot,
+            committedProjects: inputs.committedActiveProjects,
+            inboxUntriagedCount: inputs.inboxUntriagedCount,
             around: referenceDate,
             calendar: calendar,
             visibleDayCount: visibleDayCount
@@ -3411,9 +3501,26 @@ public final class ProjectBoardViewModel: ObservableObject {
         around referenceDate: Date = Date(),
         calendar: Calendar = .current
     ) -> WeeklyScheduleCockpit {
-        WeeklyScheduleCockpitBuilder.cockpit(
+        let workload = dailyWorkloadOverview(around: referenceDate, calendar: calendar)
+        return WeeklyScheduleCockpitBuilder.cockpit(
             from: snapshot,
-            workload: dailyWorkloadOverview(around: referenceDate, calendar: calendar),
+            workload: workload,
+            scheduleDraft: scheduleDraft,
+            around: referenceDate,
+            calendar: calendar
+        )
+    }
+
+    private func weeklyScheduleCockpit(
+        around referenceDate: Date,
+        calendar: Calendar,
+        workload: DailyWorkloadOverview,
+        inputs: ProjectBoardDerivedReadModelInputs
+    ) -> WeeklyScheduleCockpit {
+        WeeklyScheduleCockpitBuilder.cockpit(
+            projectTitles: Dictionary(uniqueKeysWithValues: inputs.nonArchivedProjects.map { ($0.id, $0.title) }),
+            completionHistoryTasks: inputs.committedActiveProjects.flatMap(\.tasks),
+            workload: workload,
             scheduleDraft: scheduleDraft,
             around: referenceDate,
             calendar: calendar
@@ -3429,11 +3536,15 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     private func rebuildDerivedReadModels(on referenceDate: Date = Date(), calendar: Calendar = .current) {
-        let todayWorkflowSnapshot = todayWorkflowSnapshot(on: referenceDate, calendar: calendar)
-        let scheduleReadModel = makeScheduleReadModel(around: referenceDate, calendar: calendar)
-        let doneAnalytics = doneAnalytics(on: referenceDate, calendar: calendar)
-        let portfolioSummaries = projectPortfolioSummaries(on: referenceDate, calendar: calendar)
-        let missedReview = missedTaskReview(on: referenceDate, calendar: calendar)
+        let inputs = ProjectBoardDerivedReadModelInputs(
+            snapshot: snapshot,
+            showsCompletedWorkflowTasks: showsCompletedWorkflowTasks
+        )
+        let todayWorkflowSnapshot = todayWorkflowSnapshot(on: referenceDate, calendar: calendar, inputs: inputs)
+        let scheduleReadModel = makeScheduleReadModel(around: referenceDate, calendar: calendar, inputs: inputs)
+        let doneAnalytics = doneAnalytics(on: referenceDate, calendar: calendar, inputs: inputs)
+        let portfolioSummaries = projectPortfolioSummaries(on: referenceDate, calendar: calendar, inputs: inputs)
+        let missedReview = missedTaskReview(on: referenceDate, calendar: calendar, inputs: inputs)
 
         derivedReadModelReferenceDate = referenceDate
         derivedReadModelCalendar = calendar
@@ -3442,7 +3553,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         // workflow updates do not rescan every project/task or refresh local stores.
         derivedReadModels = ProjectBoardDerivedReadModels(
             sidebarMetrics: ProjectBoardSidebarMetrics(
-                inboxCount: inboxTasks.count,
+                inboxCount: inputs.inboxTasks.count,
                 todayCount: todayWorkflowSnapshot.plan.tasks.count,
                 catchUpCount: missedReview.newlyMissedCount,
                 scheduleCount: scheduleReadModel.unscheduledTasks.count,
@@ -3452,6 +3563,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             todayWorkflowSnapshot: todayWorkflowSnapshot,
             schedule: scheduleReadModel,
             doneAnalytics: doneAnalytics,
+            missedTaskReview: missedReview,
             projectPortfolioSummaries: portfolioSummaries,
             builtAt: referenceDate
         )
@@ -3469,19 +3581,53 @@ public final class ProjectBoardViewModel: ObservableObject {
         around referenceDate: Date = Date(),
         calendar: Calendar = .current
     ) -> ProjectBoardScheduleReadModel {
-        let workloadOverview = dailyWorkloadOverview(around: referenceDate, calendar: calendar)
-        let weeklyCockpit = WeeklyScheduleCockpitBuilder.cockpit(
-            from: snapshot,
-            workload: workloadOverview,
-            scheduleDraft: scheduleDraft,
+        makeScheduleReadModel(
             around: referenceDate,
-            calendar: calendar
+            calendar: calendar,
+            inputs: ProjectBoardDerivedReadModelInputs(
+                snapshot: snapshot,
+                showsCompletedWorkflowTasks: showsCompletedWorkflowTasks
+            )
         )
+    }
+
+    private func makeScheduleReadModel(
+        around referenceDate: Date,
+        calendar: Calendar,
+        inputs: ProjectBoardDerivedReadModelInputs
+    ) -> ProjectBoardScheduleReadModel {
+        let workloadOverview = dailyWorkloadOverview(around: referenceDate, calendar: calendar, inputs: inputs)
+        let weeklyCockpit = weeklyScheduleCockpit(
+            around: referenceDate,
+            calendar: calendar,
+            workload: workloadOverview,
+            inputs: inputs
+        )
+        let draftedTaskIDs = Set(scheduleDraft?.timeBlocks.map(\.task.id) ?? [])
         return ProjectBoardScheduleReadModel(
             workloadOverview: workloadOverview,
             weeklyCockpit: weeklyCockpit,
-            unscheduledTasks: unscheduledScheduleTasks()
+            unscheduledTasks: unscheduledScheduleTasks(excludingTaskIDs: draftedTaskIDs, inputs: inputs)
         )
+    }
+
+    private func refreshMissedTaskReviewReadModel(on referenceDate: Date? = nil) {
+        let resolvedReferenceDate = referenceDate ?? derivedReadModelReferenceDate ?? Date()
+        let inputs = ProjectBoardDerivedReadModelInputs(
+            snapshot: snapshot,
+            showsCompletedWorkflowTasks: showsCompletedWorkflowTasks
+        )
+        let summary = missedTaskReview(
+            on: resolvedReferenceDate,
+            calendar: derivedReadModelCalendar,
+            inputs: inputs
+        )
+        var nextReadModels = derivedReadModels
+        nextReadModels.missedTaskReview = summary
+        nextReadModels.sidebarMetrics.catchUpCount = summary.newlyMissedCount
+        nextReadModels.builtAt = resolvedReferenceDate
+        derivedReadModels = nextReadModels
+        derivedReadModelReferenceDate = resolvedReferenceDate
     }
 
     private func refreshTodayDerivedReadModelForSelectionChange() {
@@ -3502,6 +3648,23 @@ public final class ProjectBoardViewModel: ObservableObject {
         calendar: Calendar = .current
     ) -> TodayWorkflowPlan {
         let tasks = todayTasks(on: referenceDate, calendar: calendar)
+        return todayPlan(from: tasks, on: referenceDate, calendar: calendar)
+    }
+
+    private func todayPlan(
+        on referenceDate: Date,
+        calendar: Calendar,
+        inputs: ProjectBoardDerivedReadModelInputs
+    ) -> TodayWorkflowPlan {
+        let tasks = todayTasks(on: referenceDate, calendar: calendar, inputs: inputs)
+        return todayPlan(from: tasks, on: referenceDate, calendar: calendar)
+    }
+
+    private func todayPlan(
+        from tasks: [ProjectBoardTask],
+        on referenceDate: Date,
+        calendar: Calendar
+    ) -> TodayWorkflowPlan {
         let dayInterval = calendar.dateInterval(of: .day, for: referenceDate)
         let dayStart = dayInterval?.start ?? referenceDate
         let overdueCount = tasks.filter { task in
@@ -3530,6 +3693,23 @@ public final class ProjectBoardViewModel: ObservableObject {
         calendar: Calendar = .current
     ) -> TodayWorkflowSnapshot {
         let plan = todayPlan(on: referenceDate, calendar: calendar)
+        return todayWorkflowSnapshot(from: plan, on: referenceDate, calendar: calendar)
+    }
+
+    private func todayWorkflowSnapshot(
+        on referenceDate: Date,
+        calendar: Calendar,
+        inputs: ProjectBoardDerivedReadModelInputs
+    ) -> TodayWorkflowSnapshot {
+        let plan = todayPlan(on: referenceDate, calendar: calendar, inputs: inputs)
+        return todayWorkflowSnapshot(from: plan, on: referenceDate, calendar: calendar)
+    }
+
+    private func todayWorkflowSnapshot(
+        from plan: TodayWorkflowPlan,
+        on referenceDate: Date,
+        calendar: Calendar
+    ) -> TodayWorkflowSnapshot {
         return TodayWorkflowSnapshot(
             plan: plan,
             assistantContext: todayAssistantRailContext(
@@ -4277,16 +4457,30 @@ public final class ProjectBoardViewModel: ObservableObject {
         calendar: Calendar = .current,
         staleAfterDays: Int = 7
     ) -> MissedTaskReviewSummary {
+        missedTaskReview(
+            on: referenceDate,
+            calendar: calendar,
+            staleAfterDays: staleAfterDays,
+            inputs: ProjectBoardDerivedReadModelInputs(
+                snapshot: snapshot,
+                showsCompletedWorkflowTasks: showsCompletedWorkflowTasks
+            )
+        )
+    }
+
+    private func missedTaskReview(
+        on referenceDate: Date,
+        calendar: Calendar,
+        staleAfterDays: Int = 7,
+        inputs: ProjectBoardDerivedReadModelInputs
+    ) -> MissedTaskReviewSummary {
         guard let dayInterval = calendar.dateInterval(of: .day, for: referenceDate) else {
             return .empty
         }
 
         let staleCutoff = calendar.date(byAdding: .day, value: -max(staleAfterDays, 1), to: dayInterval.start) ?? dayInterval.start
-        // Inbox is intake, not committed work; Catch Up should not make raw captures
-        // look like forgotten tasks before the user triages them into a project.
-        let activeProjects = snapshot.projects.filter { !$0.isArchived && !$0.isCompleted && !isInboxProject($0) }
         var didFailToLoadReviewState = false
-        let items = activeProjects
+        let items = inputs.committedActiveProjects
             .flatMap { project in
                 project.tasks.compactMap { task -> MissedTaskReviewItem? in
                     guard task.status != .done else {
@@ -4429,6 +4623,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             // Deferring from Catch Up is review-state only: it removes the item
             // from today's recovery queue without hiding or mutating the task.
             try missedTaskReviewStateStore.markReviewed(taskID: taskID, at: referenceDate)
+            refreshMissedTaskReviewReadModel(on: referenceDate)
             selectedProjectID = task.projectID
             selectedTaskID = task.id
             todayCommandFeedback = String(format: String(localized: "Deferred \"%@\" from today's missed queue."), task.title)
@@ -5598,8 +5793,22 @@ public final class ProjectBoardViewModel: ObservableObject {
         on referenceDate: Date = Date(),
         calendar: Calendar = .current
     ) -> [ProjectPortfolioSummary] {
-        snapshot.projects
-            .filter { !$0.isArchived && !isInboxProject($0) }
+        projectPortfolioSummaries(
+            on: referenceDate,
+            calendar: calendar,
+            inputs: ProjectBoardDerivedReadModelInputs(
+                snapshot: snapshot,
+                showsCompletedWorkflowTasks: showsCompletedWorkflowTasks
+            )
+        )
+    }
+
+    private func projectPortfolioSummaries(
+        on referenceDate: Date,
+        calendar: Calendar,
+        inputs: ProjectBoardDerivedReadModelInputs
+    ) -> [ProjectPortfolioSummary] {
+        inputs.portfolioProjects
             .map { projectPortfolioSummary(for: $0, on: referenceDate, calendar: calendar) }
             .sorted { lhs, rhs in
                 if lhs.health.sortRank != rhs.health.sortRank {
@@ -5616,12 +5825,24 @@ public final class ProjectBoardViewModel: ObservableObject {
         on referenceDate: Date = Date(),
         calendar: Calendar = .current
     ) -> DoneAnalyticsSummary {
-        let completedProjects = snapshot.projects.filter { !$0.isArchived && $0.isCompleted && !isInboxProject($0) }
-        let historyTasks = snapshot.projects
-            .filter { !$0.isArchived }
-            .flatMap(\.tasks)
-            // Reopened tasks keep their completedAt timestamp so Done analytics can preserve actual completion history.
-            .filter { task in task.completedAt != nil || task.status == .done }
+        doneAnalytics(
+            on: referenceDate,
+            calendar: calendar,
+            inputs: ProjectBoardDerivedReadModelInputs(
+                snapshot: snapshot,
+                showsCompletedWorkflowTasks: showsCompletedWorkflowTasks
+            )
+        )
+    }
+
+    private func doneAnalytics(
+        on referenceDate: Date,
+        calendar: Calendar,
+        inputs: ProjectBoardDerivedReadModelInputs
+    ) -> DoneAnalyticsSummary {
+        let completedProjects = inputs.completedProjects
+        // Reopened tasks keep their completedAt timestamp so Done analytics can preserve actual completion history.
+        let historyTasks = inputs.nonArchivedTasks.filter { task in task.completedAt != nil || task.status == .done }
         let dayInterval = calendar.dateInterval(of: .day, for: referenceDate)
         let rollingWeekStart = calendar.date(byAdding: .day, value: -6, to: dayInterval?.start ?? referenceDate) ?? referenceDate
         let completedTodayCount = historyTasks.filter { task in
@@ -5731,7 +5952,11 @@ public final class ProjectBoardViewModel: ObservableObject {
                 self.selectedTaskID = nil
             }
             refreshGoogleCalendarSyncStatus()
-            rebuildDerivedReadModels()
+            if let referenceDate = derivedReadModelReferenceDate {
+                rebuildDerivedReadModels(on: referenceDate, calendar: derivedReadModelCalendar)
+            } else {
+                rebuildDerivedReadModels()
+            }
             errorMessage = assistantQueueErrorMessage ?? captureCacheErrorMessage
         } catch {
             errorMessage = Self.userFacingMessage(for: error)

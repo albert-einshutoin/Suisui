@@ -75,13 +75,27 @@ final class ProjectBoardStoreTests: XCTestCase {
             projectID: 99_999,
             status: "planned"
         )
+        _ = try stores.tasks.create(
+            title: "Recover zero dangling task",
+            projectID: 0,
+            status: "planned"
+        )
+        _ = try stores.tasks.create(
+            title: "Recover negative dangling task",
+            projectID: -7,
+            status: "planned"
+        )
 
         let snapshot = try stores.board.loadSnapshot()
         let inbox = try XCTUnwrap(snapshot.projects.first { $0.title == "Inbox" })
 
-        XCTAssertEqual(inbox.column(.planned)?.tasks.map(\.title), ["Recover dangling task"])
-        XCTAssertEqual(inbox.subtitle, "1 open / 1 total")
-        XCTAssertEqual(try stores.tasks.listAll().first?.projectID, 99_999)
+        XCTAssertEqual(Set(inbox.column(.planned)?.tasks.map(\.title) ?? []), Set([
+            "Recover dangling task",
+            "Recover zero dangling task",
+            "Recover negative dangling task"
+        ]))
+        XCTAssertEqual(inbox.subtitle, "3 open / 3 total")
+        XCTAssertEqual(Set(try stores.tasks.listAll().compactMap(\.projectID)), Set([99_999, 0, -7]))
     }
 
     func testLoadSnapshotAuditsDanglingProjectRepairCandidateWithoutRawContent() throws {
@@ -2501,6 +2515,138 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         XCTAssertTrue(viewModel.executionReceiptHistorySnapshot(forProjectID: project.id).rows.isEmpty)
         XCTAssertEqual(receiptStore.scopedListKeys, ["task:101:task_detail", "project:7:project_detail"])
+    }
+
+    @MainActor
+    func testProjectBoardViewModelLoadsIndexedLargeBoardReadModelsWithoutFullScanPlans() throws {
+        let bundle = try makeStoreBundle()
+        try seedLargeProjectBoardFixture(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(store: bundle.board)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = try isoDate("2026-06-19T12:00:00Z")
+
+        viewModel.load()
+        viewModel.refreshDerivedReadModels(on: referenceDate, calendar: calendar)
+
+        let tasks = viewModel.snapshot.projects.flatMap(\.tasks)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(viewModel.snapshot.projects.count, 20)
+        XCTAssertEqual(tasks.count, 1_000)
+        XCTAssertEqual(viewModel.derivedReadModels.sidebarMetrics.projectsCount, 20)
+        XCTAssertEqual(viewModel.derivedReadModels.sidebarMetrics.inboxCount, 0)
+        XCTAssertEqual(viewModel.derivedReadModels.sidebarMetrics.todayCount, 400)
+        XCTAssertEqual(viewModel.derivedReadModels.sidebarMetrics.scheduleCount, 100)
+        XCTAssertEqual(viewModel.derivedReadModels.sidebarMetrics.doneCount, 100)
+        XCTAssertGreaterThan(viewModel.derivedReadModels.sidebarMetrics.catchUpCount, 0)
+        XCTAssertEqual(viewModel.derivedReadModels.doneAnalytics.completedTaskCount, 100)
+        XCTAssertEqual(viewModel.derivedReadModels.schedule.unscheduledTasks.count, 100)
+        XCTAssertEqual(
+            viewModel.derivedReadModels.missedTaskReview,
+            viewModel.missedTaskReview(on: referenceDate, calendar: calendar)
+        )
+
+        try assertQueryPlanSearchesIndex(
+            "idx_projects_status",
+            tableName: "projects",
+            sql: "SELECT id FROM projects WHERE status IN ('active', 'completed') ORDER BY id DESC;",
+            connection: bundle.connection
+        )
+        try assertQueryPlanSearchesIndex(
+            "idx_tasks_project_id",
+            tableName: "tasks",
+            sql: """
+            SELECT id FROM tasks
+            WHERE project_id IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)
+            ORDER BY project_id ASC, id ASC;
+            """,
+            connection: bundle.connection
+        )
+        try assertQueryPlanSearchesIndex(
+            "idx_tasks_project_id",
+            tableName: "tasks",
+            sql: "SELECT id FROM tasks WHERE project_id IS NULL ORDER BY project_id ASC, id ASC;",
+            connection: bundle.connection
+        )
+        try assertQueryPlanSearchesIndex(
+            "idx_tasks_project_id",
+            tableName: "tasks",
+            sql: """
+            SELECT id FROM tasks
+            WHERE project_id IS NOT NULL
+              AND project_id NOT IN (SELECT id FROM projects)
+            ORDER BY project_id ASC, id ASC;
+            """,
+            connection: bundle.connection
+        )
+        try assertQueryPlanSearchesIndex(
+            "idx_tasks_project_status",
+            tableName: "tasks",
+            sql: "SELECT id FROM tasks WHERE project_id = 12 AND status = 'planned' ORDER BY id ASC;",
+            connection: bundle.connection
+        )
+        try assertQueryPlanSearchesIndex(
+            "idx_tasks_due_at_status",
+            tableName: "tasks",
+            sql: """
+            SELECT tasks.id FROM tasks
+            LEFT JOIN projects ON tasks.project_id = projects.id
+            WHERE tasks.status != 'completed'
+              AND tasks.due_at IS NOT NULL
+              AND tasks.due_at <= '2026-06-19T23:59:59Z'
+              AND COALESCE(projects.status, 'active') NOT IN ('completed', 'archived')
+            ORDER BY tasks.due_at ASC, tasks.id ASC;
+            """,
+            connection: bundle.connection
+        )
+        try assertQueryPlanSearchesIndex(
+            "idx_tasks_status_due_at",
+            tableName: "tasks",
+            sql: "SELECT id FROM tasks WHERE status = 'planned' AND due_at <= '2026-06-19T23:59:59Z' ORDER BY due_at ASC;",
+            connection: bundle.connection
+        )
+        try assertQueryPlanSearchesIndex(
+            "idx_tasks_completed_at",
+            tableName: "tasks",
+            sql: "SELECT id FROM tasks WHERE completed_at >= '2026-06-01T00:00:00Z' ORDER BY completed_at DESC LIMIT 12;",
+            connection: bundle.connection
+        )
+        try assertQueryPlanSearchesIndex(
+            "idx_artifacts_project_task",
+            tableName: "artifacts",
+            sql: "SELECT id FROM artifacts WHERE project_id = 12 ORDER BY project_id ASC, task_id ASC, id ASC;",
+            connection: bundle.connection
+        )
+        try assertQueryPlanSearchesIndex(
+            "idx_artifacts_project_task",
+            tableName: "artifacts",
+            sql: """
+            SELECT id FROM artifacts
+            WHERE project_id IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)
+            ORDER BY project_id ASC, task_id ASC, id ASC;
+            """,
+            connection: bundle.connection
+        )
+        try assertQueryPlanSearchesIndex(
+            "idx_artifacts_task_project",
+            tableName: "artifacts",
+            sql: """
+            SELECT id FROM artifacts
+            WHERE task_id IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+            ORDER BY task_id ASC, project_id ASC, id ASC;
+            """,
+            connection: bundle.connection
+        )
+        try assertQueryPlanSearchesIndex(
+            "idx_project_milestones_project_due_sort",
+            tableName: "project_milestones",
+            sql: """
+            SELECT id FROM project_milestones
+            WHERE project_id IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+            ORDER BY project_id ASC, due_at IS NULL, due_at ASC, id ASC;
+            """,
+            connection: bundle.connection
+        )
     }
 
     @MainActor
@@ -7106,6 +7252,9 @@ final class ProjectBoardStoreTests: XCTestCase {
         let calendar = utcCalendar()
 
         XCTAssertEqual(viewModel.missedTaskReview(on: referenceDate, calendar: calendar).newlyMissedCount, 3)
+        viewModel.refreshDerivedReadModels(on: referenceDate, calendar: calendar)
+        XCTAssertEqual(viewModel.derivedReadModels.missedTaskReview.newlyMissedCount, 3)
+        XCTAssertEqual(viewModel.derivedReadModels.sidebarMetrics.catchUpCount, 3)
 
         viewModel.completeMissedTask(id: overdue.id, referenceDate: referenceDate)
         viewModel.rescheduleMissedTaskForToday(id: reschedule.id, referenceDate: referenceDate)
@@ -7117,6 +7266,8 @@ final class ProjectBoardStoreTests: XCTestCase {
         let tasks = reloaded.snapshot.projects.flatMap(\.tasks)
 
         XCTAssertEqual(summary.immediateQueue.map(\.task.title), [])
+        XCTAssertEqual(viewModel.derivedReadModels.missedTaskReview, summary)
+        XCTAssertEqual(viewModel.derivedReadModels.sidebarMetrics.catchUpCount, 0)
         XCTAssertEqual(tasks.first { $0.id == overdue.id }?.status, .done)
         XCTAssertEqual(tasks.first { $0.id == reschedule.id }?.dueAt, "2026-06-19T09:00:00Z")
         XCTAssertEqual(tasks.first { $0.id == reschedule.id }?.status, .planned)
@@ -8016,6 +8167,154 @@ final class ProjectBoardStoreTests: XCTestCase {
         let json = String(userInput[start..<end])
         let data = Data(json.utf8)
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    private func seedLargeProjectBoardFixture(connection: SQLiteConnection) throws {
+        try connection.execute(
+            """
+            WITH RECURSIVE project_numbers(n) AS (
+                SELECT 1
+                UNION ALL
+                SELECT n + 1 FROM project_numbers WHERE n < 20
+            )
+            INSERT INTO projects (id, title, status, tags_json, created_at, updated_at)
+            SELECT
+                n,
+                printf('Large Project %03d', n),
+                'active',
+                '[]',
+                '2026-06-01T00:00:00Z',
+                '2026-06-01T00:00:00Z'
+            FROM project_numbers;
+
+            WITH RECURSIVE task_numbers(n) AS (
+                SELECT 1
+                UNION ALL
+                SELECT n + 1 FROM task_numbers WHERE n < 1000
+            )
+            INSERT INTO tasks (
+                id,
+                project_id,
+                title,
+                status,
+                detail,
+                due_at,
+                completed_at,
+                priority,
+                source_command,
+                created_at,
+                updated_at
+            )
+            SELECT
+                n,
+                ((n - 1) % 20) + 1,
+                printf('Large board task %05d', n),
+                CASE
+                    WHEN n % 10 = 0 THEN 'completed'
+                    WHEN n % 7 = 0 THEN 'blocked'
+                    WHEN n % 3 = 0 THEN 'planned'
+                    ELSE 'backlog'
+                END,
+                printf('Large board detail %05d', n),
+                CASE
+                    WHEN n % 5 = 0 THEN NULL
+                    WHEN n % 2 = 0 THEN '2026-06-19T09:00:00Z'
+                    ELSE '2026-06-25T09:00:00Z'
+                END,
+                CASE
+                    WHEN n % 10 = 0 THEN '2026-06-18T17:00:00Z'
+                    ELSE NULL
+                END,
+                CASE
+                    WHEN n % 11 = 0 THEN 'high'
+                    WHEN n % 13 = 0 THEN 'low'
+                    ELSE 'medium'
+                END,
+                'large-board-fixture',
+                '2026-06-01T00:00:00Z',
+                CASE
+                    WHEN n % 17 = 0 THEN '2026-06-01T00:00:00Z'
+                    ELSE '2026-06-18T12:00:00Z'
+                END
+            FROM task_numbers;
+
+            WITH RECURSIVE artifact_numbers(n) AS (
+                SELECT 1
+                UNION ALL
+                SELECT n + 1 FROM artifact_numbers WHERE n < 100
+            )
+            INSERT INTO artifacts (
+                id,
+                project_id,
+                task_id,
+                workspace_path,
+                expected_path,
+                created_state,
+                last_modified_at,
+                created_at,
+                updated_at
+            )
+            SELECT
+                n,
+                ((n - 1) % 20) + 1,
+                n,
+                printf('/tmp/solopm/large-%03d', ((n - 1) % 20) + 1),
+                printf('/tmp/solopm/large-%03d/artifact-%04d.md', ((n - 1) % 20) + 1, n),
+                'created',
+                '2026-06-18T12:00:00Z',
+                '2026-06-01T00:00:00Z',
+                '2026-06-18T12:00:00Z'
+            FROM artifact_numbers;
+
+            WITH RECURSIVE milestone_numbers(n) AS (
+                SELECT 1
+                UNION ALL
+                SELECT n + 1 FROM milestone_numbers WHERE n < 100
+            )
+            INSERT INTO project_milestones (
+                id,
+                project_id,
+                title,
+                due_at,
+                is_completed,
+                created_at,
+                updated_at
+            )
+            SELECT
+                n,
+                ((n - 1) % 20) + 1,
+                printf('Large milestone %04d', n),
+                '2026-06-24T09:00:00Z',
+                CASE WHEN n % 8 = 0 THEN 1 ELSE 0 END,
+                '2026-06-01T00:00:00Z',
+                '2026-06-18T12:00:00Z'
+            FROM milestone_numbers;
+            """
+        )
+    }
+
+    private func assertQueryPlanSearchesIndex(
+        _ indexName: String,
+        tableName: String,
+        sql: String,
+        connection: SQLiteConnection,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let planDetails = try connection.queryRows("EXPLAIN QUERY PLAN \(sql)").compactMap { $0["detail"] }
+
+        XCTAssertTrue(
+            planDetails.contains { $0.contains("SEARCH \(tableName)") && $0.contains(indexName) },
+            "Expected query plan to SEARCH \(tableName) with \(indexName), got \(planDetails)",
+            file: file,
+            line: line
+        )
+        XCTAssertFalse(
+            planDetails.contains { $0.contains("SCAN \(tableName)") },
+            "Expected query plan to avoid scanning \(tableName), got \(planDetails)",
+            file: file,
+            line: line
+        )
     }
 
     private func makeStoreBundle() throws -> (

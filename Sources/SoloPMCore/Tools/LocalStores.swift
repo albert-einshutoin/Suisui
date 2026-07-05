@@ -605,7 +605,7 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        let filter = includeArchived ? "" : "WHERE status != 'archived'"
+        let filter = includeArchived ? "" : "WHERE status IN ('active', 'completed')"
         return try connection.queryRows("SELECT * FROM projects \(filter) ORDER BY id DESC;").map(ProjectRecord.init(projectBoardRow:))
     }
 
@@ -848,6 +848,47 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         return try connection.queryRows("SELECT * FROM tasks ORDER BY id ASC;").map(TaskRecord.init(row:))
     }
 
+    func listForProjectBoard() throws -> [TaskRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        // Project Board immediately groups by project. Reading in project-id
+        // order lets SQLite use the work-management index and avoids an
+        // unrelated id-order sort before the in-memory board indexes are built.
+        return try connection
+            .queryRows("SELECT * FROM tasks ORDER BY project_id ASC, id ASC;")
+            .map(TaskRecord.init(row:))
+    }
+
+    func listForProjectBoard(projectIDs: Set<Int64>, includeDanglingReferences: Bool) throws -> [TaskRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        var recordsByID: [Int64: TaskRecord] = [:]
+        if !projectIDs.isEmpty {
+            for record in try projectBoardRows(
+                where: "project_id IN (\(Self.sqlInList(projectIDs)))"
+            ) {
+                recordsByID[record.id] = record
+            }
+        }
+        for record in try projectBoardRows(where: "project_id IS NULL") {
+            recordsByID[record.id] = record
+        }
+        if includeDanglingReferences {
+            for record in try projectBoardRows(
+                where: "project_id IS NOT NULL AND project_id NOT IN (SELECT id FROM projects)"
+            ) {
+                recordsByID[record.id] = record
+            }
+        }
+
+        // Separate predicates keep SQLite on indexed SEARCH plans. A single OR
+        // query is easier to read but regresses large archived histories into a
+        // broad index scan before the active board can render.
+        return recordsByID.values.sorted(by: Self.sortForProjectBoard)
+    }
+
     public func listOverdue(before cutoff: String) throws -> [TaskRecord] {
         lock.lock()
         defer { lock.unlock() }
@@ -966,6 +1007,38 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         }
 
         try connection.execute("DELETE FROM \(table) WHERE \(predicate);")
+    }
+
+    private static func sqlInList(_ values: Set<Int64>) -> String {
+        values.sorted().map(String.init).joined(separator: ", ")
+    }
+
+    private func projectBoardRows(where predicate: String) throws -> [TaskRecord] {
+        try connection
+            .queryRows(
+                """
+                SELECT * FROM tasks
+                WHERE \(predicate)
+                ORDER BY project_id ASC, id ASC;
+                """
+            )
+            .map(TaskRecord.init(row:))
+    }
+
+    private static func sortForProjectBoard(_ lhs: TaskRecord, _ rhs: TaskRecord) -> Bool {
+        switch (lhs.projectID, rhs.projectID) {
+        case let (lhsProject?, rhsProject?):
+            if lhsProject != rhsProject {
+                return lhsProject < rhsProject
+            }
+        case (nil, _?):
+            return true
+        case (_?, nil):
+            return false
+        case (nil, nil):
+            break
+        }
+        return lhs.id < rhs.id
     }
 }
 

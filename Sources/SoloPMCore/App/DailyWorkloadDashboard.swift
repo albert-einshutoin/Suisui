@@ -105,15 +105,28 @@ enum DailyWorkloadDashboardBuilder {
         calendar inputCalendar: Calendar,
         visibleDayCount: Int
     ) -> DailyWorkloadOverview {
-        let calendar = inputCalendar
         let activeProjects = snapshot.projects.filter { project in
             !project.isArchived && !project.isCompleted
         }
-        // Inbox captures are intake, not committed workload. Keeping them as a
-        // separate triage count preserves Catch Up semantics and prevents raw
-        // voice notes from diluting daily progress percentages.
         let inboxProjects = activeProjects.filter(isInboxProject)
         let committedProjects = activeProjects.filter { !isInboxProject($0) }
+        return overview(
+            committedProjects: committedProjects,
+            inboxUntriagedCount: inboxProjects.flatMap(\.tasks).filter { $0.status != .done }.count,
+            around: referenceDate,
+            calendar: inputCalendar,
+            visibleDayCount: visibleDayCount
+        )
+    }
+
+    static func overview(
+        committedProjects: [ProjectBoardProject],
+        inboxUntriagedCount: Int,
+        around referenceDate: Date,
+        calendar inputCalendar: Calendar,
+        visibleDayCount: Int
+    ) -> DailyWorkloadOverview {
+        let calendar = inputCalendar
         let dayStarts = visibleDayStarts(
             around: referenceDate,
             calendar: calendar,
@@ -133,7 +146,10 @@ enum DailyWorkloadDashboardBuilder {
         return DailyWorkloadOverview(
             days: days,
             unscheduledTasks: unscheduledTasks(from: committedProjects),
-            inboxUntriagedCount: inboxProjects.flatMap(\.tasks).filter { $0.status != .done }.count
+            // Inbox captures are intake, not committed workload. Keeping them as a
+            // separate triage count preserves Catch Up semantics and prevents raw
+            // voice notes from diluting daily progress percentages.
+            inboxUntriagedCount: inboxUntriagedCount
         )
     }
 

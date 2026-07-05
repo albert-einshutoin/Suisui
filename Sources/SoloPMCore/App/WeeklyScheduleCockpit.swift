@@ -153,8 +153,28 @@ enum WeeklyScheduleCockpitBuilder {
         around referenceDate: Date,
         calendar inputCalendar: Calendar
     ) -> WeeklyScheduleCockpit {
+        let completionHistoryTasks = snapshot.projects
+            .filter { !$0.isArchived && !$0.isCompleted && !isInboxProject($0) }
+            .flatMap(\.tasks)
+        return cockpit(
+            projectTitles: projectTitleLookup(from: snapshot),
+            completionHistoryTasks: completionHistoryTasks,
+            workload: workload,
+            scheduleDraft: scheduleDraft,
+            around: referenceDate,
+            calendar: inputCalendar
+        )
+    }
+
+    static func cockpit(
+        projectTitles: [Int64: String],
+        completionHistoryTasks: [ProjectBoardTask],
+        workload: DailyWorkloadOverview,
+        scheduleDraft: ScheduleDraft?,
+        around referenceDate: Date,
+        calendar inputCalendar: Calendar
+    ) -> WeeklyScheduleCockpit {
         let calendar = inputCalendar
-        let projectTitles = projectTitleLookup(from: snapshot)
         let draftBlocks = scheduleDraftBlocks(
             from: scheduleDraft,
             projectTitles: projectTitles,
@@ -166,7 +186,7 @@ enum WeeklyScheduleCockpitBuilder {
         ).mapValues { Set($0.map(\.task.id)) }
         let draftedTaskIDs = Set(draftBlocks.map(\.task.id))
         let completionHistoryCounts = completionHistoryCountsByDay(
-            from: snapshot,
+            from: completionHistoryTasks,
             calendar: calendar
         )
 
@@ -392,16 +412,23 @@ enum WeeklyScheduleCockpitBuilder {
         from snapshot: ProjectBoardSnapshot,
         calendar: Calendar
     ) -> [String: Int] {
-        var counts: [String: Int] = [:]
-        snapshot.projects
+        let tasks = snapshot.projects
             .filter { !$0.isArchived && !$0.isCompleted && !isInboxProject($0) }
             .flatMap(\.tasks)
-            .forEach { task in
-                guard let completedDate = completedDate(task.completedAt, calendar: calendar) else {
-                    return
-                }
-                counts[dateKey(for: completedDate, calendar: calendar), default: 0] += 1
+        return completionHistoryCountsByDay(from: tasks, calendar: calendar)
+    }
+
+    private static func completionHistoryCountsByDay(
+        from tasks: [ProjectBoardTask],
+        calendar: Calendar
+    ) -> [String: Int] {
+        var counts: [String: Int] = [:]
+        for task in tasks {
+            guard let completedDate = completedDate(task.completedAt, calendar: calendar) else {
+                continue
             }
+            counts[dateKey(for: completedDate, calendar: calendar), default: 0] += 1
+        }
         return counts
     }
 
