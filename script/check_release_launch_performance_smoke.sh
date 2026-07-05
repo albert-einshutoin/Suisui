@@ -20,6 +20,8 @@ OUTPUT_DIR="${SOLOPM_PERFORMANCE_OUTPUT_DIR:-$ROOT_DIR/.tmp/release-launch-perfo
 SUMMARY_FILE="$OUTPUT_DIR/summary.md"
 SAMPLES_FILE="$OUTPUT_DIR/samples.tsv"
 BUILD_CONFIGURATION="${SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-release}"
+MAX_COLD_LAUNCH_MS="${SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS:-}"
+MAX_DESTINATION_SWITCH_MS="${SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS:-}"
 
 cd "$ROOT_DIR"
 mkdir -p "$OUTPUT_DIR"
@@ -155,13 +157,36 @@ wait_for_marker() {
   done
 }
 
+assert_sample_within_budget() {
+  local label="$1"
+  local elapsed_ms="$2"
+  local budget_ms="$3"
+  if [[ -z "$budget_ms" ]]; then
+    return 0
+  fi
+  if [[ ! "$budget_ms" =~ ^[0-9]+$ ]]; then
+    echo "BLOCKER: invalid performance budget for $label: $budget_ms" >&2
+    return 1
+  fi
+  if (( elapsed_ms > budget_ms )); then
+    echo "BLOCKER: performance budget exceeded for $label: ${elapsed_ms}ms > ${budget_ms}ms" >&2
+    return 1
+  fi
+}
+
 record_sample() {
   local label="$1"
   local start_ms="$2"
   local end_ms="$3"
+  local budget_ms="${4:-}"
   local elapsed_ms=$((end_ms - start_ms))
   printf '%s\t%s\n' "$label" "$elapsed_ms" >>"$SAMPLES_FILE"
-  printf -- '- `%s`: `%sms`\n' "$label" "$elapsed_ms" >>"$SUMMARY_FILE"
+  if [[ -n "$budget_ms" ]]; then
+    printf -- '- `%s`: `%sms` (budget `%sms`)\n' "$label" "$elapsed_ms" "$budget_ms" >>"$SUMMARY_FILE"
+  else
+    printf -- '- `%s`: `%sms`\n' "$label" "$elapsed_ms" >>"$SUMMARY_FILE"
+  fi
+  assert_sample_within_budget "$label" "$elapsed_ms" "$budget_ms"
   printf "OK: %s completed in %sms\n" "$label" "$elapsed_ms"
 }
 
@@ -175,7 +200,7 @@ measure_destination() {
   click_sidebar_destination "$destination_identifier" "$destination_label"
   wait_for_marker "$marker"
   end_ms="$(now_ms)"
-  record_sample "$label" "$start_ms" "$end_ms"
+  record_sample "$label" "$start_ms" "$end_ms" "$MAX_DESTINATION_SWITCH_MS"
 }
 
 trap terminate_app EXIT
@@ -198,7 +223,7 @@ open_app
 wait_for_visible_window
 wait_for_marker "project-board-header-bar"
 launch_end_ms="$(now_ms)"
-record_sample "cold-launch-visible-window" "$launch_start_ms" "$launch_end_ms"
+record_sample "cold-launch-visible-window" "$launch_start_ms" "$launch_end_ms" "$MAX_COLD_LAUNCH_MS"
 
 measure_destination "destination-inbox" "sidebar-destination-inbox" "Inbox" "inbox-workflow"
 measure_destination "destination-assistant-queue" "sidebar-destination-assistant-queue" "Assistant Queue" "assistant-queue-workflow"

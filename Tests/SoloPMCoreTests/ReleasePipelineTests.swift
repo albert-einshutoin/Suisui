@@ -6469,6 +6469,10 @@ final class ReleasePipelineTests: XCTestCase {
         let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
 
         XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-release"))
+        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS"))
+        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS"))
+        XCTAssertTrue(script.contains("assert_sample_within_budget"))
+        XCTAssertTrue(script.contains("BLOCKER: performance budget exceeded"))
         XCTAssertTrue(script.contains("SOLOPM_BUILD_CONFIGURATION=\"$BUILD_CONFIGURATION\" ./script/build_and_run.sh --build-only"))
         XCTAssertTrue(script.contains("cold-launch-visible-window"))
         XCTAssertTrue(script.contains("wait_for_visible_window"))

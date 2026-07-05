@@ -345,13 +345,148 @@ public struct ProjectAssistantReviewDraft: Equatable, Sendable {
     }
 }
 
+public struct ProjectBoardSidebarMetrics: Equatable, Sendable {
+    public var inboxCount: Int
+    public var todayCount: Int
+    public var catchUpCount: Int
+    public var scheduleCount: Int
+    public var doneCount: Int
+    public var projectsCount: Int
+
+    public init(
+        inboxCount: Int,
+        todayCount: Int,
+        catchUpCount: Int,
+        scheduleCount: Int,
+        doneCount: Int,
+        projectsCount: Int
+    ) {
+        self.inboxCount = inboxCount
+        self.todayCount = todayCount
+        self.catchUpCount = catchUpCount
+        self.scheduleCount = scheduleCount
+        self.doneCount = doneCount
+        self.projectsCount = projectsCount
+    }
+
+    public static let empty = ProjectBoardSidebarMetrics(
+        inboxCount: 0,
+        todayCount: 0,
+        catchUpCount: 0,
+        scheduleCount: 0,
+        doneCount: 0,
+        projectsCount: 0
+    )
+}
+
+public struct ProjectBoardScheduleReadModel: Equatable, Sendable {
+    public var workloadOverview: DailyWorkloadOverview
+    public var weeklyCockpit: WeeklyScheduleCockpit
+    public var unscheduledTasks: [ProjectBoardTask]
+
+    public init(
+        workloadOverview: DailyWorkloadOverview,
+        weeklyCockpit: WeeklyScheduleCockpit,
+        unscheduledTasks: [ProjectBoardTask]
+    ) {
+        self.workloadOverview = workloadOverview
+        self.weeklyCockpit = weeklyCockpit
+        self.unscheduledTasks = unscheduledTasks
+    }
+
+    public static let empty = ProjectBoardScheduleReadModel(
+        workloadOverview: DailyWorkloadOverview(days: [], unscheduledTasks: [], inboxUntriagedCount: 0),
+        weeklyCockpit: WeeklyScheduleCockpit(
+            days: [],
+            unscheduledTasks: [],
+            agendaDay: nil,
+            focusForecast: WeeklyScheduleFocusForecast(
+                state: .open,
+                overloadedDayKeys: [],
+                heavyDayKeys: [],
+                reminderProposalCount: 0
+            )
+        ),
+        unscheduledTasks: []
+    )
+}
+
+public struct ProjectBoardDerivedReadModels: Equatable, Sendable {
+    public var sidebarMetrics: ProjectBoardSidebarMetrics
+    public var todayWorkflowSnapshot: TodayWorkflowSnapshot
+    public var schedule: ProjectBoardScheduleReadModel
+    public var doneAnalytics: DoneAnalyticsSummary
+    public var projectPortfolioSummaries: [ProjectPortfolioSummary]
+    public var builtAt: Date
+
+    public init(
+        sidebarMetrics: ProjectBoardSidebarMetrics,
+        todayWorkflowSnapshot: TodayWorkflowSnapshot,
+        schedule: ProjectBoardScheduleReadModel,
+        doneAnalytics: DoneAnalyticsSummary,
+        projectPortfolioSummaries: [ProjectPortfolioSummary],
+        builtAt: Date
+    ) {
+        self.sidebarMetrics = sidebarMetrics
+        self.todayWorkflowSnapshot = todayWorkflowSnapshot
+        self.schedule = schedule
+        self.doneAnalytics = doneAnalytics
+        self.projectPortfolioSummaries = projectPortfolioSummaries
+        self.builtAt = builtAt
+    }
+
+    public static let empty = ProjectBoardDerivedReadModels(
+        sidebarMetrics: .empty,
+        todayWorkflowSnapshot: TodayWorkflowSnapshot(
+            plan: TodayWorkflowPlan(
+                tasks: [],
+                overdueCount: 0,
+                dueTodayCount: 0,
+                recommendedTask: nil,
+                recommendationReason: "No open tasks due today.",
+                timeBlocks: []
+            ),
+            assistantContext: TodayAssistantRailContext(
+                source: .empty,
+                task: nil,
+                projectTitle: "Today",
+                nextActionTitle: "No open tasks due today",
+                nextActionReason: "Captured work remains in Inbox until it is scheduled or moved to a project.",
+                nextBlockLabel: nil,
+                notes: "",
+                subtaskSummary: "No subtasks",
+                reminderSummary: "No reminders"
+            ),
+            recommendationChips: []
+        ),
+        schedule: .empty,
+        doneAnalytics: DoneAnalyticsSummary(
+            completedTaskCount: 0,
+            completedProjectCount: 0,
+            completedTodayCount: 0,
+            completedThisWeekCount: 0,
+            streakDays: 0,
+            recentTasks: [],
+            localRuleInsight: "Done analytics uses local completed_at history; reopened tasks remain visible in completion history."
+        ),
+        projectPortfolioSummaries: [],
+        builtAt: Date(timeIntervalSince1970: 0)
+    )
+}
+
 @MainActor
 public final class ProjectBoardViewModel: ObservableObject {
     private static let doneAnalyticsHeatmapWindowDays = 28
 
     @Published public private(set) var snapshot: ProjectBoardSnapshot
+    @Published public private(set) var derivedReadModels: ProjectBoardDerivedReadModels
     @Published public var selectedProjectID: Int64?
-    @Published public var selectedTaskID: Int64?
+    @Published public var selectedTaskID: Int64? {
+        didSet {
+            guard oldValue != selectedTaskID else { return }
+            refreshTodayDerivedReadModelForSelectionChange()
+        }
+    }
     @Published public private(set) var showsArchivedProjects: Bool
     @Published public private(set) var showsCompletedWorkflowTasks: Bool
     @Published public private(set) var errorMessage: String?
@@ -359,7 +494,12 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var inboxClassificationFeedback: InboxClassificationFeedback?
     @Published public private(set) var inboxTriageFilter: InboxTriageFilter
     @Published public private(set) var todayCommandFeedback: String?
-    @Published public private(set) var todayFocusTaskID: Int64?
+    @Published public private(set) var todayFocusTaskID: Int64? {
+        didSet {
+            guard oldValue != todayFocusTaskID else { return }
+            refreshTodayDerivedReadModelForSelectionChange()
+        }
+    }
     @Published public private(set) var todayScheduleDraft: TodayScheduleDraft?
     @Published public private(set) var dailyPlanningReview: DailyPlanningReview?
     @Published public private(set) var scheduleDraft: ScheduleDraft?
@@ -405,6 +545,11 @@ public final class ProjectBoardViewModel: ObservableObject {
     // SwiftUI rendering never performs file I/O or holds raw receipt details.
     private var executionReceiptHistorySnapshotsByTaskID: [Int64: ExecutionReceiptHistorySnapshot]
     private var executionReceiptHistorySnapshotsByProjectID: [Int64: ExecutionReceiptHistorySnapshot]
+    // Selection changes only affect the Today rail context. Keeping the last
+    // build context lets us refresh that slice without recomputing sidebar,
+    // schedule, done, or portfolio read models for every row selection.
+    private var derivedReadModelReferenceDate: Date?
+    private var derivedReadModelCalendar: Calendar
     private var taskAutomationSessionHistory: TaskAutoExecutionHistory
 
     public init(
@@ -436,6 +581,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.googleCalendarSync = googleCalendarSync
         self.googleCalendarSyncFactory = googleCalendarSyncFactory
         self.snapshot = snapshot
+        self.derivedReadModels = .empty
         self.onChange = onChange
         self.selectedProjectID = snapshot.projects.first?.id
         self.showsArchivedProjects = false
@@ -469,6 +615,8 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.executionUsageMeterSnapshot = .empty
         self.executionReceiptHistorySnapshotsByTaskID = [:]
         self.executionReceiptHistorySnapshotsByProjectID = [:]
+        self.derivedReadModelReferenceDate = nil
+        self.derivedReadModelCalendar = .current
         self.taskAutomationSessionHistory = .empty
     }
 
@@ -3116,7 +3264,6 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     public func inboxTriageCount(for filter: InboxTriageFilter) -> Int {
-        refreshInboxCaptureCacheForInbox()
         return inboxTasks.filter { task in
             matchesInboxTriageFilter(task, filter: filter)
         }.count
@@ -3266,6 +3413,83 @@ public final class ProjectBoardViewModel: ObservableObject {
             around: referenceDate,
             calendar: calendar
         )
+    }
+
+    public func refreshDerivedReadModels(on referenceDate: Date = Date(), calendar: Calendar = .current) {
+        rebuildDerivedReadModels(on: referenceDate, calendar: calendar)
+    }
+
+    public func refreshScheduleReadModel(around referenceDate: Date = Date(), calendar: Calendar = .current) {
+        rebuildScheduleReadModel(around: referenceDate, calendar: calendar)
+    }
+
+    private func rebuildDerivedReadModels(on referenceDate: Date = Date(), calendar: Calendar = .current) {
+        let todayWorkflowSnapshot = todayWorkflowSnapshot(on: referenceDate, calendar: calendar)
+        let scheduleReadModel = makeScheduleReadModel(around: referenceDate, calendar: calendar)
+        let doneAnalytics = doneAnalytics(on: referenceDate, calendar: calendar)
+        let portfolioSummaries = projectPortfolioSummaries(on: referenceDate, calendar: calendar)
+        let missedReview = missedTaskReview(on: referenceDate, calendar: calendar)
+
+        derivedReadModelReferenceDate = referenceDate
+        derivedReadModelCalendar = calendar
+
+        // SwiftUI body rendering reads this compact model so repeated sidebar and
+        // workflow updates do not rescan every project/task or refresh local stores.
+        derivedReadModels = ProjectBoardDerivedReadModels(
+            sidebarMetrics: ProjectBoardSidebarMetrics(
+                inboxCount: inboxTasks.count,
+                todayCount: todayWorkflowSnapshot.plan.tasks.count,
+                catchUpCount: missedReview.newlyMissedCount,
+                scheduleCount: scheduleReadModel.unscheduledTasks.count,
+                doneCount: doneAnalytics.completedTaskCount,
+                projectsCount: portfolioSummaries.count
+            ),
+            todayWorkflowSnapshot: todayWorkflowSnapshot,
+            schedule: scheduleReadModel,
+            doneAnalytics: doneAnalytics,
+            projectPortfolioSummaries: portfolioSummaries,
+            builtAt: referenceDate
+        )
+    }
+
+    private func rebuildScheduleReadModel(around referenceDate: Date = Date(), calendar: Calendar = .current) {
+        var nextReadModels = derivedReadModels
+        let scheduleReadModel = makeScheduleReadModel(around: referenceDate, calendar: calendar)
+        nextReadModels.schedule = scheduleReadModel
+        nextReadModels.sidebarMetrics.scheduleCount = scheduleReadModel.unscheduledTasks.count
+        derivedReadModels = nextReadModels
+    }
+
+    private func makeScheduleReadModel(
+        around referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> ProjectBoardScheduleReadModel {
+        let workloadOverview = dailyWorkloadOverview(around: referenceDate, calendar: calendar)
+        let weeklyCockpit = WeeklyScheduleCockpitBuilder.cockpit(
+            from: snapshot,
+            workload: workloadOverview,
+            scheduleDraft: scheduleDraft,
+            around: referenceDate,
+            calendar: calendar
+        )
+        return ProjectBoardScheduleReadModel(
+            workloadOverview: workloadOverview,
+            weeklyCockpit: weeklyCockpit,
+            unscheduledTasks: unscheduledScheduleTasks()
+        )
+    }
+
+    private func refreshTodayDerivedReadModelForSelectionChange() {
+        guard let referenceDate = derivedReadModelReferenceDate else {
+            return
+        }
+
+        var nextReadModels = derivedReadModels
+        nextReadModels.todayWorkflowSnapshot = todayWorkflowSnapshot(
+            on: referenceDate,
+            calendar: derivedReadModelCalendar
+        )
+        derivedReadModels = nextReadModels
     }
 
     public func todayPlan(
@@ -5118,6 +5342,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             unscheduledTasks: unscheduledScheduleTasks(excludingTaskIDs: [])
         )
         scheduleDraft = draft
+        rebuildScheduleReadModel(around: referenceDate, calendar: calendar)
         scheduleApplyResult = nil
         todayCommandFeedback = String(
             format: String(localized: "Prepared schedule draft with %d time blocks and %d unscheduled tasks."),
@@ -5162,6 +5387,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         draft.timeBlocks.append(block)
         draft.unscheduledTasks.removeAll { $0.id == taskID }
         scheduleDraft = draft
+        rebuildScheduleReadModel(around: referenceDate, calendar: calendar)
         scheduleApplyResult = nil
         errorMessage = nil
         todayCommandFeedback = String(format: String(localized: "Added \"%@\" to the local schedule draft."), task.title)
@@ -5497,6 +5723,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 self.selectedTaskID = nil
             }
             refreshGoogleCalendarSyncStatus()
+            rebuildDerivedReadModels()
             errorMessage = assistantQueueErrorMessage ?? captureCacheErrorMessage
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
@@ -7297,21 +7524,14 @@ public final class ProjectBoardViewModel: ObservableObject {
             return nil
         }
 
-        var refreshedRecords = inboxCaptureRecordsByTaskID
-        var firstErrorMessage: String?
         let taskIDs = Self.inboxTaskIDs(in: snapshot)
-        for taskID in taskIDs {
-            do {
-                refreshedRecords[taskID] = try inboxCaptureStore.list(taskID: taskID)
-            } catch {
-                refreshedRecords[taskID] = []
-                if firstErrorMessage == nil {
-                    firstErrorMessage = InboxCaptureStoreError.userMessage(for: error)
-                }
-            }
+        do {
+            inboxCaptureRecordsByTaskID = try inboxCaptureStore.list(taskIDs: taskIDs)
+            return nil
+        } catch {
+            inboxCaptureRecordsByTaskID = Dictionary(uniqueKeysWithValues: taskIDs.map { ($0, [InboxCaptureRecord]()) })
+            return InboxCaptureStoreError.userMessage(for: error)
         }
-        inboxCaptureRecordsByTaskID = refreshedRecords
-        return firstErrorMessage
     }
 
     private func refreshInboxCaptureCacheForInbox() {

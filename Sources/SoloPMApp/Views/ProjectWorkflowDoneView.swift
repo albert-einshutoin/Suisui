@@ -15,7 +15,7 @@ struct DoneWorkflowView: View {
     }
 
     private var analytics: DoneAnalyticsSummary {
-        viewModel.doneAnalytics()
+        viewModel.derivedReadModels.doneAnalytics
     }
 
     var body: some View {

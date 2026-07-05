@@ -196,6 +196,51 @@ final class InboxCaptureStoreTests: XCTestCase {
         }
     }
 
+    func testSQLiteInboxCaptureStoreListsVoiceCapturesForTaskBatch() throws {
+        let stores = try makeStores()
+        let firstTask = try stores.board.createInboxTask(title: "First voice capture")
+        let secondTask = try stores.board.createInboxTask(title: "Second voice capture")
+        let emptyTask = try stores.board.createInboxTask(title: "No capture yet")
+        let olderFirstCapture = try stores.captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: firstTask.id,
+            audioFilePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/first-old.m4a",
+            durationSeconds: 6,
+            transcript: "First old",
+            interpretationSummary: nil,
+            memo: nil,
+            transcriptionStatus: .succeeded,
+            createdAt: "2026-06-21T10:00:00Z"
+        ))
+        let newerFirstCapture = try stores.captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: firstTask.id,
+            audioFilePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/first-new.m4a",
+            durationSeconds: 9,
+            transcript: "First new",
+            interpretationSummary: nil,
+            memo: nil,
+            transcriptionStatus: .succeeded,
+            createdAt: "2026-06-21T10:05:00Z"
+        ))
+        let secondCapture = try stores.captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: secondTask.id,
+            audioFilePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/second.m4a",
+            durationSeconds: 7,
+            transcript: "Second",
+            interpretationSummary: nil,
+            memo: nil,
+            transcriptionStatus: .succeeded,
+            createdAt: "2026-06-21T10:10:00Z"
+        ))
+
+        let recordsByTaskID = try stores.captures.list(taskIDs: [firstTask.id, secondTask.id, emptyTask.id])
+
+        XCTAssertEqual(Set(recordsByTaskID.keys), [firstTask.id, secondTask.id, emptyTask.id])
+        XCTAssertEqual(recordsByTaskID[firstTask.id]?.map(\.id), [newerFirstCapture.id, olderFirstCapture.id])
+        XCTAssertEqual(recordsByTaskID[secondTask.id]?.map(\.id), [secondCapture.id])
+        XCTAssertEqual(recordsByTaskID[emptyTask.id], [])
+        XCTAssertEqual(try stores.captures.list(taskIDs: []), [:])
+    }
+
     func testSQLiteInboxCaptureStoreUpdatesVoiceCaptureMemo() throws {
         let stores = try makeStores()
         let task = try stores.board.createInboxTask(title: "Annotate capture")
