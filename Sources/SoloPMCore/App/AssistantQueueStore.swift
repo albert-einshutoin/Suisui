@@ -989,7 +989,7 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
         guard state == .failed, riskLevel != .danger else {
             return false
         }
-        return try payloadCanProduceActionPlan(payloadKind: payloadKind, payloadJSON: payloadJSON)
+        return try payloadCanProduceRetryableActionPlan(payloadKind: payloadKind, payloadJSON: payloadJSON)
     }
 
     private func payloadCanProduceActionPlan(payloadKind: String, payloadJSON: String?) throws -> Bool {
@@ -1009,6 +1009,34 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
                 column: "assistant_queue_items.payload_json"
             )
             return AssistantQueueExecutableActionPlanFactory.actionPlan(for: payload) != nil
+        default:
+            throw AssistantQueueStoreError.invalidStoredValue(
+                column: "assistant_queue_items.payload_kind",
+                value: payloadKind
+            )
+        }
+    }
+
+    private func payloadCanProduceRetryableActionPlan(payloadKind: String, payloadJSON: String?) throws -> Bool {
+        switch payloadKind {
+        case "action_plan":
+            guard let payloadJSON else {
+                return false
+            }
+            // Retry is a user-visible execution affordance. Failed action-plan rows
+            // are less common than normal list rows, so this narrow decode preserves
+            // the hot-path optimization while keeping hidden danger actions gated.
+            let payload = try decode(
+                AssistantQueuePayload.self,
+                from: payloadJSON,
+                column: "assistant_queue_items.payload_json"
+            )
+            guard case .actionPlan(let plan) = payload else {
+                return false
+            }
+            return !plan.containsDangerousRetryAction
+        case "automation_request":
+            return try payloadCanProduceActionPlan(payloadKind: payloadKind, payloadJSON: payloadJSON)
         default:
             throw AssistantQueueStoreError.invalidStoredValue(
                 column: "assistant_queue_items.payload_kind",
@@ -1301,6 +1329,12 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
 
     private static func escape(_ value: String) -> String {
         value.replacingOccurrences(of: "'", with: "''")
+    }
+}
+
+private extension ActionPlan {
+    var containsDangerousRetryAction: Bool {
+        riskLevel == .danger || actions.contains { $0.riskLevel == .danger }
     }
 }
 

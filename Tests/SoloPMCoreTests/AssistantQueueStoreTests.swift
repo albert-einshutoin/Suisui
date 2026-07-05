@@ -107,6 +107,46 @@ final class AssistantQueueStoreTests: XCTestCase {
         }
     }
 
+    func testSQLiteReadModelBlocksRetryWhenFailedActionPlanPayloadContainsDanger() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteAssistantQueueStore(connection: connection)
+        let item = AssistantQueueItem(
+            id: "queue-failed-hidden-danger",
+            state: .failed,
+            payload: .actionPlan(ActionPlan(
+                id: "hidden-danger-plan",
+                userInput: "Delete task during retry",
+                summary: "Delete task during retry",
+                actions: [
+                    PlanAction(id: "danger-action", tool: .taskDelete, riskLevel: .danger)
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )),
+            riskLevel: .write,
+            sourceTranscript: nil,
+            interpretationSummary: "Delete task",
+            reviewReason: "Retry failed local action.",
+            redactedSummary: "Delete task",
+            requiredCapabilities: [.tool(.taskDelete), .providerExecutionApproval],
+            blockingReason: "Dangerous retry should stay gated."
+        )
+
+        try store.save(item)
+        let snapshot = try store.readModelSnapshot(
+            filter: .all(limit: 10),
+            receipts: [],
+            viewFilter: .all,
+            sort: .needsActionFirst
+        )
+
+        let sqliteRow = try XCTUnwrap(snapshot.rows.first)
+        XCTAssertFalse(sqliteRow.canRetry)
+        let inMemoryRow = try XCTUnwrap(AssistantQueueReadModel.snapshot(from: [item]).rows.first)
+        XCTAssertFalse(inMemoryRow.canRetry)
+    }
+
     func testReadModelBlocksApprovalAndRunWithoutAllowedCostPreview() throws {
         let missingPreview = AssistantQueueItem(
             id: "queue-missing-preview",
