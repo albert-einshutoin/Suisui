@@ -92,6 +92,8 @@ struct VoiceCaptureView: View {
 
             VoiceCommandActionReadinessRow(message: actionReadinessMessage)
 
+            LowLatencyVoiceAgentPanel(viewModel: viewModel)
+
             HStack {
                 Button {
                     if viewModel.isRecording {
@@ -108,7 +110,7 @@ struct VoiceCaptureView: View {
                 } label: {
                     Label(viewModel.isRecording ? "Stop" : "Record", systemImage: viewModel.isRecording ? "stop.circle" : "record.circle")
                 }
-                .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .transcribing)
+                .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .transcribing || viewModel.isLowLatencyVoiceAgentListening)
                 .accessibilityIdentifier("voice-command-record")
 
                 Button {
@@ -119,7 +121,7 @@ struct VoiceCaptureView: View {
                 } label: {
                     Label("Save to Inbox", systemImage: "tray.and.arrow.down")
                 }
-                .disabled(!viewModel.canSaveDraftToInbox)
+                .disabled(!viewModel.canSaveDraftToInbox || viewModel.isLowLatencyVoiceAgentListening)
                 .accessibilityIdentifier("voice-command-save-to-inbox")
 
                 Spacer()
@@ -132,7 +134,7 @@ struct VoiceCaptureView: View {
                     Label("Generate Plan", systemImage: "wand.and.stars")
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .recording || viewModel.phase == .transcribing)
+                .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .recording || viewModel.phase == .transcribing || viewModel.isLowLatencyVoiceAgentListening)
                 .accessibilityIdentifier("voice-command-generate-plan")
                 .accessibilityHint(localizedSettingsDisplay(actionReadinessMessage))
             }
@@ -256,6 +258,110 @@ struct VoiceCaptureView: View {
             object: nil,
             userInfo: [SoloPMAssistantQueueBridge.requestUserInfoKey: bridgeRequest]
         )
+    }
+}
+
+private struct LowLatencyVoiceAgentPanel: View {
+    @ObservedObject var viewModel: VoiceCaptureViewModel
+
+    private var isBusyOutsideVoiceAgent: Bool {
+        switch viewModel.phase {
+        case .recording, .transcribing, .generatingPlan:
+            true
+        case .idle, .needsClarification, .reviewReady, .failed:
+            false
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Label("Low-latency agent", systemImage: "waveform")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                if viewModel.isLowLatencyVoiceAgentListening {
+                    Button {
+                        viewModel.stopLowLatencyVoiceAgentMode()
+                    } label: {
+                        Label("Stop", systemImage: "stop.circle")
+                    }
+                    .accessibilityIdentifier("voice-agent-stop")
+                } else {
+                    Button {
+                        Task {
+                            await viewModel.startLowLatencyVoiceAgentMode()
+                        }
+                    } label: {
+                        Label("Start", systemImage: "play.circle")
+                    }
+                    .disabled(isBusyOutsideVoiceAgent)
+                    .accessibilityIdentifier("voice-agent-start")
+                }
+            }
+
+            Label(stateLabel, systemImage: stateSystemImage)
+                .font(.caption)
+                .foregroundStyle(stateTone)
+                .accessibilityIdentifier("voice-agent-status")
+
+            if !viewModel.liveTranscript.isEmpty {
+                Text(viewModel.liveTranscript)
+                    .font(.caption)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("voice-agent-live-transcript")
+            }
+
+            if let preview = viewModel.liveIntentPreview {
+                Label(preview.interpretationSummary, systemImage: "sparkles")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("voice-agent-live-intent")
+            }
+        }
+        .padding(10)
+        .overlay {
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(.quaternary)
+        }
+        .accessibilityIdentifier("voice-agent-panel")
+    }
+
+    private var stateLabel: String {
+        switch viewModel.lowLatencyVoiceAgentState {
+        case .idle:
+            String(localized: "Idle")
+        case .listening:
+            String(localized: "Listening")
+        case .disabled(let message), .unavailable(let message), .failed(let message):
+            localizedSettingsDisplay(message)
+        }
+    }
+
+    private var stateSystemImage: String {
+        switch viewModel.lowLatencyVoiceAgentState {
+        case .idle:
+            "pause.circle"
+        case .listening:
+            "waveform.circle"
+        case .disabled, .unavailable:
+            "lock.circle"
+        case .failed:
+            "exclamationmark.triangle"
+        }
+    }
+
+    private var stateTone: Color {
+        switch viewModel.lowLatencyVoiceAgentState {
+        case .failed:
+            .red
+        case .disabled, .unavailable:
+            .secondary
+        case .idle, .listening:
+            .primary
+        }
     }
 }
 
