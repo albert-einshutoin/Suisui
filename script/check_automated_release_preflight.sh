@@ -125,6 +125,7 @@ VoiceOver candidate selected destination: $VOICEOVER_CANDIDATE_SELECTED_DESTINAT
 ## Passed Gates
 
 - Release CI: passed
+- Release launch performance smoke: passed
 - Local CRUD smoke: passed
 - Runtime accessible CRUD smoke: passed
 - Layout stability smoke: passed
@@ -279,6 +280,16 @@ run_xcodebuild_with_timeout
 
 section "Launch preflight"
 ./script/build_and_run.sh --verify
+
+section "Release launch performance smoke"
+# Release preflight should validate the same release-oriented launch budgets
+# that operators rely on for release evidence. Keep these assignments fixed so
+# caller-provided debug or relaxed-budget env cannot weaken automated evidence.
+SOLOPM_PERFORMANCE_PROFILE=release \
+SOLOPM_PERFORMANCE_BUILD_CONFIGURATION=release \
+SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS=15000 \
+SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS=3000 \
+  ./script/check_release_launch_performance_smoke.sh
 
 section "Runtime accessibility candidate"
 ./script/prepare_voiceover_review_candidate.sh --skip-build --no-launch

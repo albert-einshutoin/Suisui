@@ -19,10 +19,67 @@ TIMEOUT_SECONDS="${SOLOPM_PERFORMANCE_TIMEOUT_SECONDS:-30}"
 OUTPUT_DIR="${SOLOPM_PERFORMANCE_OUTPUT_DIR:-$ROOT_DIR/.tmp/release-launch-performance}"
 SUMMARY_FILE="$OUTPUT_DIR/summary.md"
 SAMPLES_FILE="$OUTPUT_DIR/samples.tsv"
-BUILD_CONFIGURATION="${SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-release}"
-MAX_COLD_LAUNCH_MS="${SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS:-}"
-MAX_DESTINATION_SWITCH_MS="${SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS:-}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
+SOLOPM_PERFORMANCE_PROFILE="${SOLOPM_PERFORMANCE_PROFILE:-release}"
+
+case "$SOLOPM_PERFORMANCE_PROFILE" in
+  release)
+    # Release profile keeps the build aligned with release-machine evidence and
+    # the stricter Sparkle requirements already enforced by the release path.
+    DEFAULT_BUILD_CONFIGURATION=release
+    DEFAULT_COLD_LAUNCH_BUDGET_MS=15000
+    DEFAULT_DESTINATION_SWITCH_BUDGET_MS=3000
+    ;;
+  debug)
+    # Debug profile keeps local and CI diagnostics usable when release secrets
+    # are intentionally absent, while still enforcing measured launch budgets.
+    DEFAULT_BUILD_CONFIGURATION=debug
+    DEFAULT_COLD_LAUNCH_BUDGET_MS=25000
+    DEFAULT_DESTINATION_SWITCH_BUDGET_MS=5000
+    ;;
+  *)
+    echo "BLOCKER: SOLOPM_PERFORMANCE_PROFILE must be release or debug" >&2
+    exit 2
+    ;;
+esac
+
+PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE="${SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-}"
+if [[ "$SOLOPM_PERFORMANCE_PROFILE" == "release" && -n "$PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE" && "$PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE" != "release" ]]; then
+  # Release safety stays strict here so release evidence cannot be weakened by
+  # a debug build override hiding launch behavior differences.
+  echo "BLOCKER: release performance profile requires release build configuration" >&2
+  exit 2
+fi
+
+BUILD_CONFIGURATION="${PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE:-$DEFAULT_BUILD_CONFIGURATION}"
+MAX_COLD_LAUNCH_MS="${SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS:-$DEFAULT_COLD_LAUNCH_BUDGET_MS}"
+MAX_DESTINATION_SWITCH_MS="${SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS:-$DEFAULT_DESTINATION_SWITCH_BUDGET_MS}"
+
+require_positive_integer_budget() {
+  local name="$1"
+  local value="$2"
+  if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
+    echo "BLOCKER: $name must be a positive integer millisecond budget" >&2
+    exit 2
+  fi
+}
+
+reject_relaxed_release_budget() {
+  local name="$1"
+  local value="$2"
+  local default_value="$3"
+  if [[ "$SOLOPM_PERFORMANCE_PROFILE" == "release" && "$value" -gt "$default_value" ]]; then
+    # Release evidence must not be made easier by env overrides; lower values are
+    # allowed because they are stricter and preserve the release baseline.
+    echo "BLOCKER: release performance budget override cannot exceed default $name budget (${default_value}ms)" >&2
+    exit 2
+  fi
+}
+
+require_positive_integer_budget "SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS" "$MAX_COLD_LAUNCH_MS"
+require_positive_integer_budget "SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS" "$MAX_DESTINATION_SWITCH_MS"
+reject_relaxed_release_budget "cold launch" "$MAX_COLD_LAUNCH_MS" "$DEFAULT_COLD_LAUNCH_BUDGET_MS"
+reject_relaxed_release_budget "destination switch" "$MAX_DESTINATION_SWITCH_MS" "$DEFAULT_DESTINATION_SWITCH_BUDGET_MS"
 
 cd "$ROOT_DIR"
 mkdir -p "$OUTPUT_DIR"
@@ -78,7 +135,7 @@ wait_for_marker() {
   if ax_wait_for_ax_identifier "$APP_NAME" "$identifier" "$TIMEOUT_SECONDS" "$ROOT_DIR" "$probe_file"; then
     return 0
   fi
-  echo "BLOCKER: AX marker did not appear during performance smoke: $identifier" >&2
+  echo "BLOCKER: performance smoke could not inspect the AX marker: $identifier" >&2
   sed -n '1,20p' "$probe_file.err" >&2 || true
   sed -n '1,20p' "$probe_file" >&2 || true
   return 1
@@ -136,7 +193,10 @@ trap terminate_app EXIT
   printf '%s\n' '# Release Launch Performance Smoke'
   printf '\n'
   printf 'Generated at: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  printf 'Performance profile: `%s`\n' "$SOLOPM_PERFORMANCE_PROFILE"
   printf 'Build configuration: `%s`\n' "$BUILD_CONFIGURATION"
+  printf 'Default cold launch budget: `%sms`\n' "$MAX_COLD_LAUNCH_MS"
+  printf 'Default destination switch budget: `%sms`\n' "$MAX_DESTINATION_SWITCH_MS"
   printf '\n'
   printf '%s\n' '## Samples'
 } >"$SUMMARY_FILE"

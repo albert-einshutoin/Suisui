@@ -7,6 +7,7 @@ CI_TMPDIR_CREATED=0
 CI_RUNTIME_GATES="${SOLOPM_CI_RUNTIME_GATES:-0}"
 CI_VISUAL_GATES="${SOLOPM_CI_VISUAL_GATES:-0}"
 CI_RELEASE_GATES="${SOLOPM_CI_RELEASE_GATES:-0}"
+CI_PERFORMANCE_GATES="${SOLOPM_CI_PERFORMANCE_GATES:-0}"
 
 mkdir -p "$CI_TMP_ROOT"
 
@@ -59,6 +60,15 @@ run_release_gates() {
   swift test --filter ReleasePipelineTests
 }
 
+run_performance_gates() {
+  # Performance gates are opt-in because they boot the GUI app and depend on
+  # accessibility automation; debug defaults keep CI usable without release
+  # Sparkle secrets while still enforcing measured launch budgets.
+  SOLOPM_PERFORMANCE_PROFILE="${SOLOPM_PERFORMANCE_PROFILE:-debug}" \
+  SOLOPM_PERFORMANCE_BUILD_CONFIGURATION="${SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-debug}" \
+    ./script/check_release_launch_performance_smoke.sh
+}
+
 run_runtime_gates() {
   script/check_runtime_accessible_crud_smoke.sh
   script/check_layout_stability_smoke.sh
@@ -72,10 +82,14 @@ run_visual_gates() {
 validate_ci_flag "SOLOPM_CI_RUNTIME_GATES" "$CI_RUNTIME_GATES"
 validate_ci_flag "SOLOPM_CI_VISUAL_GATES" "$CI_VISUAL_GATES"
 validate_ci_flag "SOLOPM_CI_RELEASE_GATES" "$CI_RELEASE_GATES"
+validate_ci_flag "SOLOPM_CI_PERFORMANCE_GATES" "$CI_PERFORMANCE_GATES"
 
 run_pr_gate
 if [[ "$CI_RELEASE_GATES" == "1" ]]; then
   run_release_gates
+fi
+if [[ "$CI_PERFORMANCE_GATES" == "1" ]]; then
+  run_performance_gates
 fi
 if [[ "$CI_RUNTIME_GATES" == "1" ]]; then
   run_runtime_gates

@@ -55,17 +55,23 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("CI_RUNTIME_GATES=\"${SOLOPM_CI_RUNTIME_GATES:-0}\""))
         XCTAssertTrue(script.contains("CI_VISUAL_GATES=\"${SOLOPM_CI_VISUAL_GATES:-0}\""))
         XCTAssertTrue(script.contains("CI_RELEASE_GATES=\"${SOLOPM_CI_RELEASE_GATES:-0}\""))
+        XCTAssertTrue(script.contains("CI_PERFORMANCE_GATES=\"${SOLOPM_CI_PERFORMANCE_GATES:-0}\""))
         XCTAssertTrue(script.contains("run_pr_gate()"))
         XCTAssertTrue(script.contains("swift test --filter AppExperienceSourceTests"))
         XCTAssertTrue(script.contains("swift test --filter QualitySourceContractTests"))
         XCTAssertTrue(script.contains("script/check_pseudo_voiceover_paths.sh --swift-test"))
         XCTAssertTrue(script.contains("swift test --filter ProjectBoardStoreTests"))
+        XCTAssertTrue(script.contains("run_performance_gates()"))
+        XCTAssertTrue(script.contains("script/check_release_launch_performance_smoke.sh"))
+        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_PROFILE=\"${SOLOPM_PERFORMANCE_PROFILE:-debug}\""))
+        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_BUILD_CONFIGURATION=\"${SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-debug}\""))
         XCTAssertTrue(script.contains("run_runtime_gates()"))
         XCTAssertTrue(script.contains("script/check_runtime_accessible_crud_smoke.sh"))
         XCTAssertTrue(script.contains("script/check_layout_stability_smoke.sh"))
         XCTAssertTrue(script.contains("script/check_accessibility_preflight.sh --runtime"))
         XCTAssertTrue(script.contains("run_visual_gates()"))
         XCTAssertTrue(script.contains("script/check_visual_regression_smoke.sh"))
+        XCTAssertTrue(script.contains("if [[ \"$CI_PERFORMANCE_GATES\" == \"1\" ]]; then\n  run_performance_gates"))
         XCTAssertTrue(script.contains("if [[ \"$CI_RUNTIME_GATES\" == \"1\" ]]; then\n  run_runtime_gates"))
         XCTAssertTrue(script.contains("if [[ \"$CI_VISUAL_GATES\" == \"1\" ]]; then\n  run_visual_gates"))
         XCTAssertLessThan(
@@ -3036,12 +3042,21 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains(".swiftpm/xcode/package.xcworkspace"))
         XCTAssertTrue(script.contains("-scheme \"$XCODE_SCHEME\""))
         XCTAssertTrue(script.contains("./script/build_and_run.sh --verify"))
+        XCTAssertTrue(script.contains("section \"Release launch performance smoke\""))
+        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_PROFILE=release"))
+        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_BUILD_CONFIGURATION=release"))
+        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS=15000"))
+        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS=3000"))
+        XCTAssertTrue(script.contains("./script/check_release_launch_performance_smoke.sh"))
         XCTAssertTrue(script.contains("./script/prepare_voiceover_review_candidate.sh --skip-build --no-launch"))
         XCTAssertTrue(script.contains("./script/check_accessibility_preflight.sh --runtime --launch-env .tmp/voiceover-review/launch.env --timeout 30"))
         let launchPreflightRange = try XCTUnwrap(script.range(of: "section \"Launch preflight\""))
+        let performanceSmokeRange = try XCTUnwrap(script.range(of: "section \"Release launch performance smoke\""))
         let voiceOverCandidateRange = try XCTUnwrap(script.range(of: "./script/prepare_voiceover_review_candidate.sh --skip-build --no-launch"))
         let runtimeAccessibilityRange = try XCTUnwrap(script.range(of: "section \"Runtime accessibility preflight\""))
         XCTAssertLessThan(launchPreflightRange.lowerBound, voiceOverCandidateRange.lowerBound)
+        XCTAssertLessThan(launchPreflightRange.lowerBound, performanceSmokeRange.lowerBound)
+        XCTAssertLessThan(performanceSmokeRange.lowerBound, voiceOverCandidateRange.lowerBound)
         XCTAssertLessThan(voiceOverCandidateRange.lowerBound, runtimeAccessibilityRange.lowerBound)
         XCTAssertTrue(script.contains("./script/verify_mcp_compliance.sh"))
         XCTAssertTrue(script.contains("section \"Refresh manual release helpers\""))
@@ -3071,6 +3086,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("automated preflight evidence requires a clean tracked source tree"))
         XCTAssertTrue(script.contains("Tracked source tree: clean"))
         XCTAssertTrue(script.contains("Release CI: passed"))
+        XCTAssertTrue(script.contains("Release launch performance smoke: passed"))
         XCTAssertTrue(script.contains("Local CRUD smoke: passed"))
         XCTAssertTrue(script.contains("Runtime accessible CRUD smoke: passed"))
         XCTAssertTrue(script.contains("Layout stability smoke: passed"))
@@ -6475,11 +6491,21 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
         XCTAssertTrue(script.contains("source \"$AX_HELPERS\""))
-        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-release"))
+        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_PROFILE=\"${SOLOPM_PERFORMANCE_PROFILE:-release}\""))
+        XCTAssertTrue(script.contains("DEFAULT_BUILD_CONFIGURATION=release"))
+        XCTAssertTrue(script.contains("DEFAULT_BUILD_CONFIGURATION=debug"))
+        XCTAssertTrue(script.contains("DEFAULT_COLD_LAUNCH_BUDGET_MS"))
+        XCTAssertTrue(script.contains("DEFAULT_DESTINATION_SWITCH_BUDGET_MS"))
+        XCTAssertTrue(script.contains("BLOCKER: SOLOPM_PERFORMANCE_PROFILE must be release or debug"))
+        XCTAssertTrue(script.contains("BLOCKER: release performance profile requires release build configuration"))
+        XCTAssertTrue(script.contains("BLOCKER: release performance budget override cannot exceed default"))
+        XCTAssertTrue(script.contains("require_positive_integer_budget"))
+        XCTAssertTrue(script.contains("reject_relaxed_release_budget"))
         XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS"))
         XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS"))
         XCTAssertTrue(script.contains("assert_sample_within_budget"))
         XCTAssertTrue(script.contains("BLOCKER: performance budget exceeded"))
+        XCTAssertTrue(script.contains("BLOCKER: performance smoke could not inspect the AX marker"))
         XCTAssertTrue(script.contains("SOLOPM_BUILD_CONFIGURATION=\"$BUILD_CONFIGURATION\" ./script/build_and_run.sh --build-only"))
         XCTAssertTrue(script.contains("cold-launch-visible-window"))
         XCTAssertTrue(script.contains("wait_for_visible_window"))
@@ -6492,7 +6518,29 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("ax_wait_for_ax_identifier"))
         XCTAssertTrue(script.contains("samples.tsv"))
         XCTAssertTrue(script.contains("summary.md"))
+        XCTAssertTrue(script.contains("Performance profile: `%s`"))
+        XCTAssertTrue(script.contains("BLOCKER: release performance profile requires release build configuration"))
         XCTAssertFalse(script.contains("set -x"))
+    }
+
+    func testReleaseLaunchPerformanceSmokeRejectsRelaxedReleaseBudgetsBeforeBuild() throws {
+        let outputDirectory = packageRoot()
+            .appendingPathComponent(".build/test-release-launch-performance-budget-guard", isDirectory: true)
+        try? FileManager.default.removeItem(at: outputDirectory)
+        defer { try? FileManager.default.removeItem(at: outputDirectory) }
+
+        let result = try runScript(
+            "script/check_release_launch_performance_smoke.sh",
+            environment: [
+                "SOLOPM_PERFORMANCE_PROFILE": "release",
+                "SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS": "15001",
+                "SOLOPM_PERFORMANCE_OUTPUT_DIR": outputDirectory.path
+            ]
+        )
+
+        XCTAssertEqual(result.exitCode, 2)
+        XCTAssertTrue(result.output.contains("BLOCKER: release performance budget override cannot exceed default cold launch budget (15000ms)"))
+        XCTAssertFalse(result.output.contains("./script/build_and_run.sh"))
     }
 
     func testLayoutStabilitySmokeScriptDoesNotUseEmptyAXSamplesAsBaseline() throws {
@@ -6784,6 +6832,7 @@ final class ReleasePipelineTests: XCTestCase {
         ## Passed Gates
 
         - Release CI: passed
+        - Release launch performance smoke: passed
         - Local CRUD smoke: passed
         - Runtime accessible CRUD smoke: passed
         - Layout stability smoke: passed
@@ -6936,6 +6985,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
         XCTAssertTrue(actionSummary.contains("## Automated Proof Gates"))
         XCTAssertTrue(actionSummary.contains("- [x] Automated preflight evidence accepted: `.tmp/automated-release-preflight.md`"))
+        XCTAssertTrue(actionSummary.contains("- [x] Release launch performance smoke: passed"))
         XCTAssertTrue(actionSummary.contains("- Source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(actionSummary.contains("- Release candidate product source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(actionSummary.contains("- Generated at: `2026-06-19T12:30:44Z`"))
@@ -7011,6 +7061,7 @@ final class ReleasePipelineTests: XCTestCase {
         ## Passed Gates
 
         - Release CI: passed
+        - Release launch performance smoke: passed
         - Local CRUD smoke: passed
         - Runtime accessible CRUD smoke: passed
         - Layout stability smoke: passed
@@ -7070,6 +7121,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(result.output.contains("release launch preflight was not run"))
         XCTAssertFalse(result.output.contains("accessibility runtime preflight was not run"))
         XCTAssertTrue(actionSummary.contains("- [x] Automated preflight evidence accepted: `.tmp/automated-release-preflight-\(currentShortCommit).md`"))
+        XCTAssertTrue(actionSummary.contains("- [x] Release launch performance smoke: passed"))
         XCTAssertTrue(actionSummary.contains("- Runtime AX smoke: `OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1`"))
         XCTAssertTrue(actionSummary.contains("- Release candidate product source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(actionSummary.contains("- VoiceOver candidate: source `\(currentShortCommit)`, project `42`, destination `project:42`"))
@@ -7122,6 +7174,7 @@ final class ReleasePipelineTests: XCTestCase {
         ## Passed Gates
 
         - Release CI: passed
+        - Release launch performance smoke: passed
         - Local CRUD smoke: passed
         - Runtime accessible CRUD smoke: passed
         - Layout stability smoke: passed
@@ -7152,6 +7205,98 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("automated preflight evidence is invalid: missing runtime AX smoke proof"))
+        XCTAssertFalse(result.output.contains("OK: automated preflight evidence covers current commit and all local proof gates"))
+        XCTAssertTrue(result.output.contains("release CI preflight was not run"))
+    }
+
+    func testReleaseReadinessReportRejectsAutomatedPreflightEvidenceWithoutReleaseLaunchPerformanceSmokeGate() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-automated-preflight-evidence-missing-performance-smoke", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let tmpDirectory = fixtureRoot.appendingPathComponent(".tmp", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let runnerURL = fixtureRoot.appendingPathComponent("run-release-readiness-report.sh")
+        let evidenceURL = tmpDirectory.appendingPathComponent("missing-performance-smoke-preflight.md")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tmpDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        let currentShortCommit = try currentShortGitCommit()
+        try """
+        # Automated Release Preflight Evidence
+
+        Status: passed
+        Generated by: script/check_automated_release_preflight.sh
+        Generated at: 2026-06-19T12:30:44Z
+        Source commit: \(currentShortCommit)
+        Tracked source tree: clean
+        App: SoloPM
+        Xcode workspace: .swiftpm/xcode/package.xcworkspace
+        Xcode scheme: SoloPM
+        Xcode configuration: Debug
+        Xcode destination: platform=macOS
+        VoiceOver candidate source commit: \(currentShortCommit)
+        VoiceOver candidate project ID: 42
+        VoiceOver candidate database: /tmp/SoloPM-voiceover-review.sqlite
+        VoiceOver candidate selected destination: project:42
+
+        ## Passed Gates
+
+        - Release CI: passed
+        - Local CRUD smoke: passed
+        - Runtime accessible CRUD smoke: passed
+        - Layout stability smoke: passed
+        - Xcode build preflight: passed
+        - Launch preflight: passed
+        - Runtime accessibility preflight: passed
+        - MCP compliance preflight: passed
+
+        ## Runtime AX Smoke
+
+        Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
+
+        ## Boundaries
+
+        - This does not mark the release ready.
+        - Manual VoiceOver evidence remains separate.
+        - Competitor hands-on evidence remains separate.
+        - Developer ID signing, notarization, Sparkle, Gatekeeper, and clean-environment evidence remain separate.
+        """.write(to: evidenceURL, atomically: true, encoding: .utf8)
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        cd "$ROOT_DIR"
+        exec bash "$ROOT_DIR/script/release_readiness_report.sh"
+        """.write(to: runnerURL, atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: runnerURL.path)
+
+        let result = try runTool(
+            ["bash", runnerURL.path],
+            environment: ["SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE": evidenceURL.path]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("automated preflight evidence is invalid: missing passed gate: Release launch performance smoke"))
         XCTAssertFalse(result.output.contains("OK: automated preflight evidence covers current commit and all local proof gates"))
         XCTAssertTrue(result.output.contains("release CI preflight was not run"))
     }
@@ -7197,6 +7342,7 @@ final class ReleasePipelineTests: XCTestCase {
         ## Passed Gates
 
         - Release CI: passed
+        - Release launch performance smoke: passed
         - Local CRUD smoke: passed
         - Runtime accessible CRUD smoke: passed
         - Layout stability smoke: passed
@@ -7276,6 +7422,7 @@ final class ReleasePipelineTests: XCTestCase {
         ## Passed Gates
 
         - Release CI: passed
+        - Release launch performance smoke: passed
         - Local CRUD smoke: passed
         - Runtime accessible CRUD smoke: passed
         - Layout stability smoke: passed
