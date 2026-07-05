@@ -6139,6 +6139,44 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testInboxTriageCountUsesCachedCapturesWithoutRefreshingStore() throws {
+        let captureStore = CountingInboxCaptureStore()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            inboxCaptureStore: captureStore
+        )
+        viewModel.load()
+        let manual = try XCTUnwrap(viewModel.createInboxTask(title: "Manual capture"))
+        let voice = try XCTUnwrap(viewModel.createInboxTask(title: "Voice capture"))
+        captureStore.recordsByTaskID[voice.id] = [
+            InboxCaptureRecord(
+                id: 1,
+                taskID: voice.id,
+                sourceKind: .voiceMemo,
+                audioFilePath: "/tmp/solopm-inbox-voice.m4a",
+                durationSeconds: 4,
+                transcript: "Follow up",
+                interpretationSummary: "Likely task: follow up",
+                memo: nil,
+                classificationStatus: .unclassified,
+                transcriptionStatus: .succeeded,
+                createdAt: "2026-07-05T00:00:00Z"
+            )
+        ]
+        viewModel.load()
+        let batchListCallCountAfterLoad = captureStore.batchListCallCount
+        let singleListCallCountAfterLoad = captureStore.singleListCallCount
+
+        XCTAssertEqual(viewModel.inboxTriageCount(for: .all), 2)
+        XCTAssertEqual(viewModel.inboxTriageCount(for: .voice), 1)
+        XCTAssertEqual(viewModel.inboxTriageCount(for: .aiSuggested), 1)
+        XCTAssertEqual(viewModel.inboxTriageCount(for: .manual), 1)
+        XCTAssertEqual(viewModel.filteredInboxTasks.map(\.id), [voice.id, manual.id])
+        XCTAssertEqual(captureStore.batchListCallCount, batchListCallCountAfterLoad)
+        XCTAssertEqual(captureStore.singleListCallCount, singleListCallCountAfterLoad)
+    }
+
+    @MainActor
     func testProjectBoardViewModelFallsBackSelectionWhenInboxFilterHidesCurrentTask() throws {
         let bundle = try makeStoreBundle()
         let captures = SQLiteInboxCaptureStore(connection: bundle.connection)
@@ -6488,6 +6526,42 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(context.nextActionTitle, "Resume focused task")
         XCTAssertEqual(context.nextActionReason, "This task is already in focus.")
         XCTAssertEqual(context.notes, "Keep the current focus visible")
+    }
+
+    @MainActor
+    func testProjectBoardDerivedTodayReadModelRefreshesWhenFocusChanges() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        let recommended = try XCTUnwrap(viewModel.createTask(
+            title: "Fix launch blocker",
+            projectID: launch.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-19T09:00:00Z"
+        ))
+        let focused = try XCTUnwrap(viewModel.createTask(
+            title: "Write launch memo",
+            detail: "Keep the current focus visible",
+            projectID: launch.id,
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-19T11:00:00Z"
+        ))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        viewModel.selectedTaskID = nil
+        viewModel.refreshDerivedReadModels(on: try isoDate("2026-06-19T08:37:00Z"), calendar: calendar)
+
+        XCTAssertEqual(viewModel.derivedReadModels.todayWorkflowSnapshot.assistantContext.source, .recommended)
+        XCTAssertEqual(viewModel.derivedReadModels.todayWorkflowSnapshot.assistantContext.task?.id, recommended.id)
+
+        viewModel.startFocus(taskID: focused.id)
+
+        let context = viewModel.derivedReadModels.todayWorkflowSnapshot.assistantContext
+        XCTAssertEqual(context.source, .focused)
+        XCTAssertEqual(context.task?.id, focused.id)
+        XCTAssertEqual(context.nextActionTitle, "Resume focused task")
     }
 
     @MainActor
@@ -8386,6 +8460,83 @@ private enum ProjectBoardStoreTestError: Error, CustomStringConvertible {
 
     var description: String {
         "Project board unavailable"
+    }
+}
+
+private final class CountingInboxCaptureStore: InboxCaptureStore, @unchecked Sendable {
+    var recordsByTaskID: [Int64: [InboxCaptureRecord]]
+    private(set) var singleListCallCount: Int
+    private(set) var batchListCallCount: Int
+
+    init(recordsByTaskID: [Int64: [InboxCaptureRecord]] = [:]) {
+        self.recordsByTaskID = recordsByTaskID
+        self.singleListCallCount = 0
+        self.batchListCallCount = 0
+    }
+
+    func createVoiceCapture(_ draft: InboxVoiceCaptureDraft) throws -> InboxCaptureRecord {
+        let nextID = (recordsByTaskID.values.flatMap { $0 }.map(\.id).max() ?? 0) + 1
+        let record = InboxCaptureRecord(
+            id: nextID,
+            taskID: draft.taskID,
+            sourceKind: .voiceMemo,
+            audioFilePath: draft.audioFilePath,
+            durationSeconds: draft.durationSeconds,
+            transcript: draft.transcript,
+            interpretationSummary: draft.interpretationSummary,
+            memo: draft.memo,
+            classificationStatus: draft.classificationStatus,
+            transcriptionStatus: draft.transcriptionStatus,
+            createdAt: draft.createdAt ?? "2026-07-05T00:00:00Z"
+        )
+        recordsByTaskID[draft.taskID, default: []].insert(record, at: 0)
+        return record
+    }
+
+    func get(id: Int64) throws -> InboxCaptureRecord {
+        guard let record = recordsByTaskID.values.flatMap({ $0 }).first(where: { $0.id == id }) else {
+            throw InboxCaptureStoreError.notFound(id)
+        }
+        return record
+    }
+
+    func list(taskID: Int64) throws -> [InboxCaptureRecord] {
+        singleListCallCount += 1
+        return recordsByTaskID[taskID] ?? []
+    }
+
+    func list(taskIDs: Set<Int64>) throws -> [Int64: [InboxCaptureRecord]] {
+        batchListCallCount += 1
+        return Dictionary(uniqueKeysWithValues: taskIDs.map { taskID in
+            (taskID, recordsByTaskID[taskID] ?? [])
+        })
+    }
+
+    func updateMemo(id: Int64, memo: String?) throws -> InboxCaptureRecord {
+        for taskID in recordsByTaskID.keys {
+            guard let index = recordsByTaskID[taskID]?.firstIndex(where: { $0.id == id }) else {
+                continue
+            }
+            recordsByTaskID[taskID]?[index].memo = memo
+            return recordsByTaskID[taskID]![index]
+        }
+        throw InboxCaptureStoreError.notFound(id)
+    }
+
+    func relinkCaptures(fromTaskID: Int64, toTaskID: Int64) throws -> Int {
+        let records = recordsByTaskID.removeValue(forKey: fromTaskID) ?? []
+        recordsByTaskID[toTaskID, default: []].append(contentsOf: records.map { record in
+            var updated = record
+            updated.taskID = toTaskID
+            return updated
+        })
+        return records.count
+    }
+
+    func delete(id: Int64) throws {
+        for taskID in recordsByTaskID.keys {
+            recordsByTaskID[taskID]?.removeAll { $0.id == id }
+        }
     }
 }
 
