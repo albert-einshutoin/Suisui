@@ -1503,3 +1503,9 @@
 "Voice transcript preview" = "Voice transcript preview";
 "Transcript-only voice capture, duration %@, waveform preview" = "Transcript-only voice capture, duration %@, waveform preview";
 "%lld connector policies stay out of Settings until connect, check, revoke, and audit UI is complete. %lld connector send paths remain Assistant Queue draft-only." = "%lld connector policies stay out of Settings until connect, check, revoke, and audit UI is complete. %lld connector send paths remain Assistant Queue draft-only.";
+"Loading MCP settings..." = "Loading MCP settings...";
+"Loading Sync settings..." = "Loading Sync settings...";
+"Loading watcher diagnostics..." = "Loading watcher diagnostics...";
+"MCP settings not loaded yet." = "MCP settings not loaded yet.";
+"Sync settings not loaded yet." = "Sync settings not loaded yet.";
+"Watcher diagnostics not loaded yet." = "Watcher diagnostics not loaded yet.";
