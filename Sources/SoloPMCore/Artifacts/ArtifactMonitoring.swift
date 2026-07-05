@@ -87,6 +87,50 @@ public final class SQLiteArtifactStore: @unchecked Sendable {
         return try connection.queryRows("SELECT * FROM artifacts ORDER BY id ASC;").map(ArtifactRecord.init(row:))
     }
 
+    func listForProjectBoard() throws -> [ArtifactRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        // Board snapshots group artifacts by project/task, so this order lets
+        // the large-board index do useful work before Swift builds the snapshot.
+        return try connection
+            .queryRows("SELECT * FROM artifacts ORDER BY project_id ASC, task_id ASC, id ASC;")
+            .map(ArtifactRecord.init(row:))
+    }
+
+    func listForProjectBoard(projectIDs: Set<Int64>, taskIDs: Set<Int64>) throws -> [ArtifactRecord] {
+        guard !projectIDs.isEmpty || !taskIDs.isEmpty else {
+            return []
+        }
+
+        lock.lock()
+        defer { lock.unlock() }
+
+        var recordsByID: [Int64: ArtifactRecord] = [:]
+        if !projectIDs.isEmpty {
+            for record in try projectBoardRows(
+                where: "project_id IN (\(Self.sqlInList(projectIDs)))",
+                orderBy: "project_id ASC, task_id ASC, id ASC"
+            ) {
+                recordsByID[record.id] = record
+            }
+        }
+        if !taskIDs.isEmpty {
+            for record in try projectBoardRows(
+                where: "task_id IN (\(Self.sqlInList(taskIDs)))",
+                orderBy: "task_id ASC, project_id ASC, id ASC"
+            ) {
+                recordsByID[record.id] = record
+            }
+        }
+
+        // Task-linked artifacts can have a different project_id after imports,
+        // so scope by both visible projects and loaded task ids. Splitting the
+        // two predicates lets each side use its leading index instead of making
+        // SQLite scan the artifact index for an OR expression.
+        return recordsByID.values.sorted(by: Self.sortForProjectBoard)
+    }
+
     public func delete(id: Int64) throws {
         lock.lock()
         defer { lock.unlock() }
@@ -189,6 +233,50 @@ public final class SQLiteArtifactStore: @unchecked Sendable {
             ORDER BY id ASC;
             """
         ).map(ArtifactRecord.init(row:))
+    }
+
+    private static func sqlInList(_ values: Set<Int64>) -> String {
+        values.sorted().map(String.init).joined(separator: ", ")
+    }
+
+    private func projectBoardRows(where predicate: String, orderBy: String) throws -> [ArtifactRecord] {
+        try connection
+            .queryRows(
+                """
+                SELECT * FROM artifacts
+                WHERE \(predicate)
+                ORDER BY \(orderBy);
+                """
+            )
+            .map(ArtifactRecord.init(row:))
+    }
+
+    private static func sortForProjectBoard(_ lhs: ArtifactRecord, _ rhs: ArtifactRecord) -> Bool {
+        switch (lhs.projectID, rhs.projectID) {
+        case let (lhsProject?, rhsProject?):
+            if lhsProject != rhsProject {
+                return lhsProject < rhsProject
+            }
+        case (nil, _?):
+            return true
+        case (_?, nil):
+            return false
+        case (nil, nil):
+            break
+        }
+        switch (lhs.taskID, rhs.taskID) {
+        case let (lhsTask?, rhsTask?):
+            if lhsTask != rhsTask {
+                return lhsTask < rhsTask
+            }
+        case (nil, _?):
+            return true
+        case (_?, nil):
+            return false
+        case (nil, nil):
+            break
+        }
+        return lhs.id < rhs.id
     }
 }
 

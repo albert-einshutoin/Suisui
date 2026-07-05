@@ -72,6 +72,36 @@ public final class SQLiteProjectMilestoneStore: @unchecked Sendable {
         return try connection.queryRows("SELECT * FROM project_milestones ORDER BY due_at IS NULL, due_at ASC, id ASC;").map(ProjectMilestoneRecord.init(row:))
     }
 
+    func listForProjectBoard() throws -> [ProjectMilestoneRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+        // Project Board renders milestones inside each project card; project-id
+        // order lines the SQL read up with the snapshot grouping pass.
+        return try connection
+            .queryRows("SELECT * FROM project_milestones ORDER BY project_id ASC, due_at IS NULL, due_at ASC, id ASC;")
+            .map(ProjectMilestoneRecord.init(row:))
+    }
+
+    func listForProjectBoard(projectIDs: Set<Int64>) throws -> [ProjectMilestoneRecord] {
+        guard !projectIDs.isEmpty else {
+            return []
+        }
+
+        lock.lock()
+        defer { lock.unlock() }
+        // Archived project milestones can be numerous history. Active board
+        // loads only need milestones belonging to the visible project set.
+        return try connection
+            .queryRows(
+                """
+                SELECT * FROM project_milestones
+                WHERE project_id IN (\(Self.sqlInList(projectIDs)))
+                ORDER BY project_id ASC, due_at IS NULL, due_at ASC, id ASC;
+                """
+            )
+            .map(ProjectMilestoneRecord.init(row:))
+    }
+
     public func delete(id: Int64) throws {
         lock.lock()
         defer { lock.unlock() }
@@ -85,6 +115,10 @@ public final class SQLiteProjectMilestoneStore: @unchecked Sendable {
             throw ProjectMilestoneStoreError.notFound(id)
         }
         return try ProjectMilestoneRecord(row: row)
+    }
+
+    private static func sqlInList(_ values: Set<Int64>) -> String {
+        values.sorted().map(String.init).joined(separator: ", ")
     }
 }
 
