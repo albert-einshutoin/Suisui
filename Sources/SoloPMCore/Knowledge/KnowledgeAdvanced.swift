@@ -178,10 +178,28 @@ public protocol KnowledgeVectorIndex: Sendable {
     func search(queryVector: [Double], topK: Int, threshold: Double) throws -> [KnowledgeVectorSearchResult]
 }
 
-public final class SQLiteKnowledgeVectorIndex: KnowledgeVectorIndex, @unchecked Sendable {
+/// Candidate-scoped search is an opt-in refinement so existing OSS vector index
+/// implementations keep the stable `KnowledgeVectorIndex` contract.
+public protocol CandidateKnowledgeVectorIndex: KnowledgeVectorIndex {
+    func search(
+        queryVector: [Double],
+        topK: Int,
+        threshold: Double,
+        candidateFrameIDs: Set<Int64>?
+    ) throws -> [KnowledgeVectorSearchResult]
+}
+
+public extension CandidateKnowledgeVectorIndex {
+    func search(queryVector: [Double], topK: Int, threshold: Double) throws -> [KnowledgeVectorSearchResult] {
+        try search(queryVector: queryVector, topK: topK, threshold: threshold, candidateFrameIDs: nil)
+    }
+}
+
+public final class SQLiteKnowledgeVectorIndex: CandidateKnowledgeVectorIndex, @unchecked Sendable {
     public let expectedDimensions: Int
     private let connection: SQLiteConnection
     private let lock = NSLock()
+    private var sqliteVecState: SQLiteVecIndexState = .unknown
 
     public init(connection: SQLiteConnection, expectedDimensions: Int) {
         self.connection = connection
@@ -192,31 +210,42 @@ public final class SQLiteKnowledgeVectorIndex: KnowledgeVectorIndex, @unchecked 
         try validate(vector)
         let valuesJSON = try jsonString(vector.values)
         try lock.withLock {
-            try connection.execute(
-                """
-                INSERT INTO knowledge_frame_vectors (frame_id, provider_id, dimensions, vector_json, redacted_preview, updated_at)
-                VALUES (
-                  \(vector.frameID),
-                  '\(KnowledgeSQL.escape(vector.providerID))',
-                  \(vector.values.count),
-                  '\(KnowledgeSQL.escape(valuesJSON))',
-                  '\(KnowledgeSQL.escape(vector.redactedPreview))',
-                  CURRENT_TIMESTAMP
+            try connection.transaction {
+                try connection.execute(
+                    """
+                    INSERT INTO knowledge_frame_vectors (frame_id, provider_id, dimensions, vector_json, redacted_preview, updated_at)
+                    VALUES (
+                      \(vector.frameID),
+                      '\(KnowledgeSQL.escape(vector.providerID))',
+                      \(vector.values.count),
+                      '\(KnowledgeSQL.escape(valuesJSON))',
+                      '\(KnowledgeSQL.escape(vector.redactedPreview))',
+                      CURRENT_TIMESTAMP
+                    )
+                    ON CONFLICT(frame_id) DO UPDATE SET
+                      provider_id = excluded.provider_id,
+                      dimensions = excluded.dimensions,
+                      vector_json = excluded.vector_json,
+                      redacted_preview = excluded.redacted_preview,
+                      updated_at = CURRENT_TIMESTAMP;
+                    """
                 )
-                ON CONFLICT(frame_id) DO UPDATE SET
-                  provider_id = excluded.provider_id,
-                  dimensions = excluded.dimensions,
-                  vector_json = excluded.vector_json,
-                  redacted_preview = excluded.redacted_preview,
-                  updated_at = CURRENT_TIMESTAMP;
-                """
-            )
+                if try ensureSQLiteVecIndexLocked() {
+                    try upsertSQLiteVecVectorLocked(vector)
+                }
+            }
         }
     }
 
     public func delete(frameID: Int64) throws {
         try lock.withLock {
-            try connection.execute("DELETE FROM knowledge_frame_vectors WHERE frame_id = \(frameID);")
+            try connection.transaction {
+                if try ensureSQLiteVecIndexLocked() {
+                    try connection.execute("DELETE FROM \(sqliteVecTableName) WHERE frame_id = \(frameID);")
+                    try connection.execute("DELETE FROM \(sqliteVecMetaTableName) WHERE frame_id = \(frameID);")
+                }
+                try connection.execute("DELETE FROM knowledge_frame_vectors WHERE frame_id = \(frameID);")
+            }
         }
     }
 
@@ -229,17 +258,34 @@ public final class SQLiteKnowledgeVectorIndex: KnowledgeVectorIndex, @unchecked 
         }
     }
 
-    public func search(queryVector: [Double], topK: Int, threshold: Double) throws -> [KnowledgeVectorSearchResult] {
+    public func search(
+        queryVector: [Double],
+        topK: Int,
+        threshold: Double,
+        candidateFrameIDs: Set<Int64>?
+    ) throws -> [KnowledgeVectorSearchResult] {
         try validate(queryVector)
         let maxResults = max(topK, 0)
         guard maxResults > 0 else {
             return []
         }
+        if let candidateFrameIDs, candidateFrameIDs.isEmpty {
+            return []
+        }
         return try lock.withLock {
-            var results: [KnowledgeVectorSearchResult] = []
+            if candidateFrameIDs == nil,
+               shouldUseSQLiteVecSearch(queryVector: queryVector, threshold: threshold),
+               try ensureSQLiteVecIndexLocked(),
+               try isSQLiteVecIndexFreshLocked() {
+                return try searchSQLiteVecLocked(queryVector: queryVector, maxResults: maxResults, threshold: threshold)
+            }
 
-            // Bounded topK accumulator keeps query work proportional to topK instead of sorting every row.
-            for row in try connection.queryRows("SELECT * FROM knowledge_frame_vectors;") {
+            var results: [KnowledgeVectorSearchResult] = []
+            let rows = try connection.queryRows(searchSQL(candidateFrameIDs: candidateFrameIDs))
+
+            // SQL-side candidate filtering keeps direct candidate searches from
+            // decoding unrelated vector_json rows after a caller narrows scope.
+            for row in rows {
                 let vector = try vector(row: row)
                 let score = cosineSimilarity(queryVector, vector.values)
                 guard score >= threshold else {
@@ -258,6 +304,203 @@ public final class SQLiteKnowledgeVectorIndex: KnowledgeVectorIndex, @unchecked 
             }
             return results
         }
+    }
+
+    private func searchSQL(candidateFrameIDs: Set<Int64>?) -> String {
+        let filter = candidateFrameIDs.map { "WHERE frame_id IN (\($0.sorted().map(String.init).joined(separator: ", ")))" } ?? ""
+        return """
+        SELECT *
+        FROM knowledge_frame_vectors
+        \(filter)
+        ORDER BY frame_id ASC;
+        """
+    }
+
+    private enum SQLiteVecIndexState {
+        case unknown
+        case available
+        case unavailableFallback
+    }
+
+    private var sqliteVecTableName: String {
+        "knowledge_frame_vector_index_\(max(expectedDimensions, 0))"
+    }
+
+    private var sqliteVecMetaTableName: String {
+        "knowledge_frame_vector_index_meta_\(max(expectedDimensions, 0))"
+    }
+
+    private func ensureSQLiteVecIndexLocked() throws -> Bool {
+        guard expectedDimensions > 0 else {
+            sqliteVecState = .unavailableFallback
+            return false
+        }
+        switch sqliteVecState {
+        case .available:
+            return true
+        case .unavailableFallback:
+            return false
+        case .unknown:
+            do {
+                try connection.execute(
+                    """
+                    CREATE VIRTUAL TABLE IF NOT EXISTS \(sqliteVecTableName) USING vec0(
+                        frame_id integer primary key,
+                        embedding float[\(expectedDimensions)]
+                    );
+                    """
+                )
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS \(sqliteVecMetaTableName) (
+                        frame_id INTEGER PRIMARY KEY NOT NULL,
+                        source_updated_at TEXT NOT NULL,
+                        provider_id TEXT NOT NULL,
+                        dimensions INTEGER NOT NULL,
+                        is_indexed INTEGER NOT NULL CHECK(is_indexed IN (0, 1))
+                    );
+                    """
+                )
+                sqliteVecState = .available
+                return true
+            } catch {
+                sqliteVecState = .unavailableFallback
+                return false
+            }
+        }
+    }
+
+    private func upsertSQLiteVecVectorLocked(_ vector: KnowledgeEmbeddingVector) throws {
+        let sourceRow = try connection.queryRows(
+            """
+            SELECT updated_at
+            FROM knowledge_frame_vectors
+            WHERE frame_id = \(vector.frameID)
+            LIMIT 1;
+            """
+        ).first
+        let sourceUpdatedAt = try KnowledgeSQL.requiredString(
+            sourceRow?["updated_at"],
+            column: "knowledge_frame_vectors.updated_at"
+        )
+        let isIndexed = vectorMagnitude(vector.values) > 0
+        try connection.execute("DELETE FROM \(sqliteVecTableName) WHERE frame_id = \(vector.frameID);")
+        if isIndexed {
+            let normalizedValuesJSON = try jsonString(normalize(vector.values))
+            try connection.execute(
+                """
+                INSERT INTO \(sqliteVecTableName) (frame_id, embedding)
+                VALUES (\(vector.frameID), '\(KnowledgeSQL.escape(normalizedValuesJSON))');
+                """
+            )
+        }
+        try connection.execute(
+            """
+            INSERT INTO \(sqliteVecMetaTableName) (frame_id, source_updated_at, provider_id, dimensions, is_indexed)
+            VALUES (
+                \(vector.frameID),
+                '\(KnowledgeSQL.escape(sourceUpdatedAt))',
+                '\(KnowledgeSQL.escape(vector.providerID))',
+                \(vector.values.count),
+                \(isIndexed ? 1 : 0)
+            )
+            ON CONFLICT(frame_id) DO UPDATE SET
+                source_updated_at = excluded.source_updated_at,
+                provider_id = excluded.provider_id,
+                dimensions = excluded.dimensions,
+                is_indexed = excluded.is_indexed;
+            """
+        )
+    }
+
+    private func isSQLiteVecIndexFreshLocked() throws -> Bool {
+        let baseCount = try KnowledgeSQL.requiredInt(
+            connection.queryRows(
+                """
+                SELECT COUNT(*) AS count
+                FROM knowledge_frame_vectors;
+                """
+            ).first?["count"],
+            column: "knowledge_frame_vectors.count"
+        )
+        let freshMetaCount = try KnowledgeSQL.requiredInt(
+            connection.queryRows(
+                """
+                SELECT COUNT(*) AS count
+                FROM knowledge_frame_vectors AS base
+                JOIN \(sqliteVecMetaTableName) AS meta ON meta.frame_id = base.frame_id
+                WHERE meta.source_updated_at = base.updated_at
+                  AND meta.provider_id = base.provider_id
+                  AND meta.dimensions = base.dimensions;
+                """
+            ).first?["count"],
+            column: "\(sqliteVecMetaTableName).count"
+        )
+        return baseCount == freshMetaCount
+    }
+
+    private func searchSQLiteVecLocked(queryVector: [Double], maxResults: Int, threshold: Double) throws -> [KnowledgeVectorSearchResult] {
+        let normalizedQueryJSON = try jsonString(normalize(queryVector))
+        let requestedK = sqliteVecK(maxResults: maxResults)
+        let rows = try connection.queryRows(
+            """
+            SELECT
+                base.frame_id AS frame_id,
+                base.provider_id AS provider_id,
+                base.dimensions AS dimensions,
+                base.vector_json AS vector_json,
+                base.redacted_preview AS redacted_preview,
+                indexed.frame_id AS indexed_frame_id,
+                indexed.distance AS vector_distance
+            FROM \(sqliteVecTableName) AS indexed
+            JOIN \(sqliteVecMetaTableName) AS meta ON meta.frame_id = indexed.frame_id
+            JOIN knowledge_frame_vectors AS base ON base.frame_id = indexed.frame_id
+            WHERE indexed.embedding MATCH '\(KnowledgeSQL.escape(normalizedQueryJSON))'
+              AND k = \(requestedK)
+              AND meta.is_indexed = 1
+              AND meta.source_updated_at = base.updated_at
+              AND meta.provider_id = base.provider_id
+              AND meta.dimensions = base.dimensions
+            ORDER BY indexed.distance ASC, indexed.frame_id ASC;
+            """
+        )
+
+        var results: [KnowledgeVectorSearchResult] = []
+        for row in rows {
+            let baseVector = try vector(row: row)
+            _ = try KnowledgeSQL.requiredDouble(
+                row["vector_distance"],
+                column: "\(sqliteVecTableName).distance"
+            )
+            // sqlite-vec is only the candidate generator; the persisted base row
+            // remains the source of truth for score/threshold semantics.
+            let score = cosineSimilarity(queryVector, baseVector.values)
+            guard score >= threshold else {
+                continue
+            }
+            insert(
+                KnowledgeVectorSearchResult(
+                    frameID: baseVector.frameID,
+                    score: score,
+                    providerID: baseVector.providerID
+                ),
+                into: &results,
+                maxCount: maxResults
+            )
+        }
+        return results
+    }
+
+    private func shouldUseSQLiteVecSearch(queryVector: [Double], threshold: Double) -> Bool {
+        // Zero-vector and non-positive-threshold searches rely on fallback cosine
+        // semantics, where zero similarity can still be a valid returned score.
+        threshold > 0 && vectorMagnitude(queryVector) > 0
+    }
+
+    private func sqliteVecK(maxResults: Int) -> Int {
+        // Over-fetch a bounded amount so Swift can keep the existing score/id
+        // tie-break semantics after sqlite-vec does the expensive distance pass.
+        max(maxResults, min(maxResults * 8, maxResults + 128))
     }
 
     private func shouldRankBefore(_ lhs: KnowledgeVectorSearchResult, _ rhs: KnowledgeVectorSearchResult) -> Bool {
@@ -634,10 +877,63 @@ public struct RetrievalEvaluationResult: Equatable, Sendable {
     public var topFrameID: Int64?
     public var isMatch: Bool
     public var latencyMilliseconds: Double
+
+    public init(
+        query: String,
+        mode: RetrievalMode,
+        topFrameID: Int64?,
+        isMatch: Bool,
+        latencyMilliseconds: Double
+    ) {
+        self.query = query
+        self.mode = mode
+        self.topFrameID = topFrameID
+        self.isMatch = isMatch
+        self.latencyMilliseconds = latencyMilliseconds
+    }
 }
 
 public struct RetrievalEvaluationReport: Equatable, Sendable {
     public var results: [RetrievalEvaluationResult]
+
+    public init(results: [RetrievalEvaluationResult]) {
+        self.results = results
+    }
+}
+
+public struct RetrievalEvaluationLatencyViolation: Equatable, Sendable {
+    public var query: String
+    public var mode: RetrievalMode
+    public var latencyMilliseconds: Double
+    public var maxLatencyMilliseconds: Double
+
+    public init(
+        query: String,
+        mode: RetrievalMode,
+        latencyMilliseconds: Double,
+        maxLatencyMilliseconds: Double
+    ) {
+        self.query = query
+        self.mode = mode
+        self.latencyMilliseconds = latencyMilliseconds
+        self.maxLatencyMilliseconds = maxLatencyMilliseconds
+    }
+}
+
+public extension RetrievalEvaluationReport {
+    func latencyViolations(maxLatencyMilliseconds: Double) -> [RetrievalEvaluationLatencyViolation] {
+        results.compactMap { result in
+            guard result.latencyMilliseconds > maxLatencyMilliseconds else {
+                return nil
+            }
+            return RetrievalEvaluationLatencyViolation(
+                query: result.query,
+                mode: result.mode,
+                latencyMilliseconds: result.latencyMilliseconds,
+                maxLatencyMilliseconds: maxLatencyMilliseconds
+            )
+        }
+    }
 }
 
 public struct RetrievalEvaluationHarness: Sendable {
@@ -672,11 +968,15 @@ public struct RetrievalEvaluationHarness: Sendable {
 }
 
 private func normalize(_ values: [Double]) -> [Double] {
-    let magnitude = sqrt(values.reduce(0) { $0 + $1 * $1 })
+    let magnitude = vectorMagnitude(values)
     guard magnitude > 0 else {
         return values
     }
     return values.map { $0 / magnitude }
+}
+
+private func vectorMagnitude(_ values: [Double]) -> Double {
+    sqrt(values.reduce(0) { $0 + $1 * $1 })
 }
 
 private func cosineSimilarity(_ lhs: [Double], _ rhs: [Double]) -> Double {
@@ -684,8 +984,8 @@ private func cosineSimilarity(_ lhs: [Double], _ rhs: [Double]) -> Double {
         return 0
     }
     let dot = zip(lhs, rhs).reduce(0) { $0 + $1.0 * $1.1 }
-    let lhsMagnitude = sqrt(lhs.reduce(0) { $0 + $1 * $1 })
-    let rhsMagnitude = sqrt(rhs.reduce(0) { $0 + $1 * $1 })
+    let lhsMagnitude = vectorMagnitude(lhs)
+    let rhsMagnitude = vectorMagnitude(rhs)
     guard lhsMagnitude > 0, rhsMagnitude > 0 else {
         return 0
     }
@@ -746,6 +1046,14 @@ private enum KnowledgeSQL {
             throw LocalStoreDecodingError.invalidInt64(column: column, value: rawValue)
         }
         return intValue
+    }
+
+    static func requiredDouble(_ value: String?, column: String) throws -> Double {
+        let rawValue = try requiredString(value, column: column)
+        guard let doubleValue = Double(rawValue) else {
+            throw DatabaseError.invalidColumnValue(column: column, value: rawValue)
+        }
+        return doubleValue
     }
 }
 

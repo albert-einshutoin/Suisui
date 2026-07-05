@@ -143,6 +143,100 @@ final class KnowledgeAdvancedTests: XCTestCase {
         XCTAssertEqual(topThree[2].score, 0.7071067811865475, accuracy: 1e-12)
     }
 
+    func testSQLiteVectorIndexLargeCorpusKeepsTopKAndTiebreakStable() throws {
+        let connection = try migratedPhase9Connection()
+        let frameStore = SQLiteKnowledgeFrameStore(connection: connection)
+        let vectorIndex = SQLiteKnowledgeVectorIndex(connection: connection, expectedDimensions: 3)
+        var exactMatchIDs: [Int64] = []
+
+        for index in 0..<1_000 {
+            let frame = try frameStore.create(name: "Frame \(index)", body: "knowledge \(index)", triggers: [])
+            let values: [Double]
+            if index < 3 {
+                exactMatchIDs.append(frame.id)
+                values = [1, 0, 0]
+            } else if index.isMultiple(of: 2) {
+                values = [0, 1, 0]
+            } else {
+                values = [0, 0, 1]
+            }
+            try vectorIndex.upsert(KnowledgeEmbeddingVector(
+                frameID: frame.id,
+                values: values,
+                providerID: "local",
+                redactedPreview: "large-corpus"
+            ))
+        }
+
+        let results = try vectorIndex.search(queryVector: [1, 0, 0], topK: 3, threshold: 0.10)
+
+        XCTAssertEqual(results.map(\.frameID), exactMatchIDs)
+        XCTAssertEqual(results.map(\.score), [1.0, 1.0, 1.0])
+    }
+
+    func testSQLiteVecFastPathWhenRuntimeExtensionAvailable() throws {
+        let connection = try migratedPhase9Connection()
+        guard SQLiteVecCapabilityProbe().capability(connection: connection) == .available else {
+            throw XCTSkip("sqlite-vec extension is not available in this SQLite runtime.")
+        }
+
+        let frameStore = SQLiteKnowledgeFrameStore(connection: connection)
+        let vectorIndex = SQLiteKnowledgeVectorIndex(connection: connection, expectedDimensions: 3)
+        let first = try frameStore.create(name: "First", body: "one", triggers: [])
+        let second = try frameStore.create(name: "Second", body: "two", triggers: [])
+        let third = try frameStore.create(name: "Third", body: "three", triggers: [])
+        try vectorIndex.upsert(KnowledgeEmbeddingVector(frameID: first.id, values: [1, 0, 0], providerID: "local", redactedPreview: "first"))
+        try vectorIndex.upsert(KnowledgeEmbeddingVector(frameID: second.id, values: [1, 0, 0], providerID: "local", redactedPreview: "second"))
+        try vectorIndex.upsert(KnowledgeEmbeddingVector(frameID: third.id, values: [0, 1, 0], providerID: "local", redactedPreview: "third"))
+
+        let results = try vectorIndex.search(queryVector: [1, 0, 0], topK: 2, threshold: 0.10)
+
+        XCTAssertEqual(results.map(\.frameID), [first.id, second.id])
+        XCTAssertEqual(results[0].score, 1.0, accuracy: 1e-12)
+        XCTAssertEqual(results[1].score, 1.0, accuracy: 1e-12)
+
+        try connection.execute("UPDATE knowledge_frame_vectors SET vector_json = 'not-json' WHERE frame_id = \(first.id);")
+        XCTAssertThrowsError(try vectorIndex.search(queryVector: [1, 0, 0], topK: 1, threshold: 0.10)) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidDoubleArray(column: "knowledge_frame_vectors.vector_json"))
+        }
+    }
+
+    func testSQLiteVectorIndexCandidateSearchSkipsUnrelatedCorruptedVectors() throws {
+        let connection = try migratedPhase9Connection()
+        let frameStore = SQLiteKnowledgeFrameStore(connection: connection)
+        let vectorIndex = SQLiteKnowledgeVectorIndex(connection: connection, expectedDimensions: 3)
+        let candidate = try frameStore.create(name: "Candidate", body: "invoice", triggers: [])
+
+        try vectorIndex.upsert(KnowledgeEmbeddingVector(frameID: candidate.id, values: [1, 0, 0], providerID: "local", redactedPreview: "candidate"))
+        var unrelatedIDs: [Int64] = []
+        for index in 0..<1_000 {
+            let frame = try frameStore.create(name: "Unrelated \(index)", body: "secret \(index)", triggers: [])
+            unrelatedIDs.append(frame.id)
+            let values: [Double] = index.isMultiple(of: 2) ? [0, 1, 0] : [0, 0, 1]
+            try vectorIndex.upsert(KnowledgeEmbeddingVector(
+                frameID: frame.id,
+                values: values,
+                providerID: "local",
+                redactedPreview: "unrelated"
+            ))
+        }
+        let corruptedID = try XCTUnwrap(unrelatedIDs.last)
+        try connection.execute("UPDATE knowledge_frame_vectors SET vector_json = 'not-json' WHERE frame_id = \(corruptedID);")
+
+        let results = try vectorIndex.search(
+            queryVector: [1, 0, 0],
+            topK: 2,
+            threshold: 0.10,
+            candidateFrameIDs: [candidate.id]
+        )
+
+        XCTAssertEqual(results.map(\.frameID), [candidate.id])
+        XCTAssertTrue(try vectorIndex.search(queryVector: [1, 0, 0], topK: 2, threshold: 0.10, candidateFrameIDs: []).isEmpty)
+        XCTAssertThrowsError(try vectorIndex.search(queryVector: [1, 0, 0], topK: 2, threshold: 0.10)) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidDoubleArray(column: "knowledge_frame_vectors.vector_json"))
+        }
+    }
+
     func testSQLiteVectorIndexSearchReturnsEmptyForNonPositiveTopK() throws {
         let connection = try migratedPhase9Connection()
         let frameStore = SQLiteKnowledgeFrameStore(connection: connection)
@@ -212,6 +306,12 @@ final class KnowledgeAdvancedTests: XCTestCase {
                 .inconsistentDimensions(column: "knowledge_frame_vectors.dimensions", expected: 2, actual: 4)
             )
         }
+        XCTAssertThrowsError(try vectorIndex.search(queryVector: [1, 0, 0, 0], topK: 1, threshold: 0.10)) { error in
+            XCTAssertEqual(
+                error as? LocalStoreDecodingError,
+                .inconsistentDimensions(column: "knowledge_frame_vectors.dimensions", expected: 2, actual: 4)
+            )
+        }
     }
 
     func testHybridRetrieverExplainsExactSemanticNoMatchAndLowConfidence() throws {
@@ -243,6 +343,60 @@ final class KnowledgeAdvancedTests: XCTestCase {
 
         XCTAssertTrue(try retriever.search(query: "", mode: .hybrid, userApprovedForEmbedding: true).isEmpty)
         XCTAssertTrue(try retriever.search(query: "unrelated", mode: .hybrid, userApprovedForEmbedding: true).isEmpty)
+    }
+
+    func testHybridRetrieverPreservesGlobalVectorRecallWhenTextAlsoMatches() throws {
+        let exact = KnowledgeFrameRecord(id: 1, name: "QZT", body: "QZT launch checklist", triggers: ["qzt"])
+        let unrelatedSemantic = KnowledgeFrameRecord(id: 2, name: "Billing", body: "Invoice follow-up", triggers: ["invoice"])
+        let vectorIndex = InMemoryKnowledgeVectorIndex(expectedDimensions: 2)
+        try vectorIndex.upsert(KnowledgeEmbeddingVector(frameID: 1, values: [0, 1], providerID: "static", redactedPreview: "QZT"))
+        try vectorIndex.upsert(KnowledgeEmbeddingVector(frameID: 2, values: [1, 0], providerID: "static", redactedPreview: "Billing"))
+        for id in Int64(3)...Int64(1_000) {
+            try vectorIndex.upsert(KnowledgeEmbeddingVector(
+                frameID: id,
+                values: [1, 0],
+                providerID: "static",
+                redactedPreview: "Noise"
+            ))
+        }
+        let retriever = HybridKnowledgeRetriever(
+            textSearch: StaticKnowledgeTextSearch(resultsByQuery: ["QZT": [exact]]),
+            vectorIndex: vectorIndex,
+            embeddingProvider: StaticEmbeddingProvider(vectorsByText: ["QZT": [1, 0]]),
+            framesByID: [1: exact, 2: unrelatedSemantic],
+            configuration: HybridRetrievalConfiguration(topK: 3, threshold: 0.10)
+        )
+
+        let results = try retriever.search(query: "QZT", mode: .hybrid, userApprovedForEmbedding: true)
+
+        XCTAssertEqual(results.map(\.frame.id), [1, 2])
+        let recordedCandidates = vectorIndex.searchCandidateFrameIDs
+        XCTAssertEqual(recordedCandidates.count, 1)
+        XCTAssertNil(recordedCandidates[0])
+        XCTAssertEqual(vectorIndex.searchFrameIDs.first?.count, 1_000)
+        XCTAssertTrue(results.first?.explanation.contains("fts") ?? false)
+        XCTAssertTrue(results[1].explanation.contains("vector"))
+    }
+
+    func testHybridRetrieverFallsBackToGlobalVectorSearchWhenFTSHasNoCandidates() throws {
+        let semantic = KnowledgeFrameRecord(id: 2, name: "Billing", body: "Invoice follow-up", triggers: ["invoice"])
+        let vectorIndex = InMemoryKnowledgeVectorIndex(expectedDimensions: 2)
+        try vectorIndex.upsert(KnowledgeEmbeddingVector(frameID: 2, values: [1, 0], providerID: "static", redactedPreview: "Billing"))
+        let retriever = HybridKnowledgeRetriever(
+            textSearch: StaticKnowledgeTextSearch(resultsByQuery: [:]),
+            vectorIndex: vectorIndex,
+            embeddingProvider: StaticEmbeddingProvider(vectorsByText: ["invoice payment": [1, 0]]),
+            framesByID: [2: semantic],
+            configuration: HybridRetrievalConfiguration(topK: 3, threshold: 0.10)
+        )
+
+        let results = try retriever.search(query: "invoice payment", mode: .hybrid, userApprovedForEmbedding: true)
+
+        XCTAssertEqual(results.map(\.frame.id), [2])
+        let recordedCandidates = vectorIndex.searchCandidateFrameIDs
+        XCTAssertEqual(recordedCandidates.count, 1)
+        XCTAssertNil(recordedCandidates[0])
+        XCTAssertTrue(results.first?.explanation.contains("vector") ?? false)
     }
 
     func testHybridRetrieverRejectsQueryEmbeddingDimensionMismatchInsteadOfReturningFTSOnly() throws {
@@ -355,6 +509,34 @@ final class KnowledgeAdvancedTests: XCTestCase {
         XCTAssertEqual(Set(report.results.map(\.mode)), Set(RetrievalMode.allCases))
         XCTAssertTrue(report.results.allSatisfy { $0.latencyMilliseconds >= 0 })
         XCTAssertTrue(report.results.first { $0.mode == .hybrid }?.isMatch ?? false)
+        XCTAssertTrue(report.latencyViolations(maxLatencyMilliseconds: 1_000).isEmpty)
+    }
+
+    func testRetrievalEvaluationReportFlagsLatencyBudgetViolations() {
+        let report = RetrievalEvaluationReport(results: [
+            RetrievalEvaluationResult(
+                query: "invoice",
+                mode: .vectorOnly,
+                topFrameID: 1,
+                isMatch: true,
+                latencyMilliseconds: 25
+            ),
+            RetrievalEvaluationResult(
+                query: "qzt",
+                mode: .hybrid,
+                topFrameID: 2,
+                isMatch: true,
+                latencyMilliseconds: 125
+            )
+        ])
+
+        let violations = report.latencyViolations(maxLatencyMilliseconds: 100)
+
+        XCTAssertEqual(violations.count, 1)
+        XCTAssertEqual(violations[0].query, "qzt")
+        XCTAssertEqual(violations[0].mode, .hybrid)
+        XCTAssertEqual(violations[0].latencyMilliseconds, 125)
+        XCTAssertEqual(violations[0].maxLatencyMilliseconds, 100)
     }
 
     private func migratedPhase9Connection() throws -> SQLiteConnection {
