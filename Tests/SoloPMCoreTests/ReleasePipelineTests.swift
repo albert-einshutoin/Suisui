@@ -3043,8 +3043,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("-scheme \"$XCODE_SCHEME\""))
         XCTAssertTrue(script.contains("./script/build_and_run.sh --verify"))
         XCTAssertTrue(script.contains("section \"Release launch performance smoke\""))
-        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_PROFILE=\"${SOLOPM_PERFORMANCE_PROFILE:-release}\""))
-        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_BUILD_CONFIGURATION=\"${SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-release}\""))
+        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_PROFILE=release"))
+        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_BUILD_CONFIGURATION=release"))
+        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS=15000"))
+        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS=3000"))
         XCTAssertTrue(script.contains("./script/check_release_launch_performance_smoke.sh"))
         XCTAssertTrue(script.contains("./script/prepare_voiceover_review_candidate.sh --skip-build --no-launch"))
         XCTAssertTrue(script.contains("./script/check_accessibility_preflight.sh --runtime --launch-env .tmp/voiceover-review/launch.env --timeout 30"))
@@ -6495,6 +6497,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("DEFAULT_COLD_LAUNCH_BUDGET_MS"))
         XCTAssertTrue(script.contains("DEFAULT_DESTINATION_SWITCH_BUDGET_MS"))
         XCTAssertTrue(script.contains("BLOCKER: SOLOPM_PERFORMANCE_PROFILE must be release or debug"))
+        XCTAssertTrue(script.contains("BLOCKER: release performance profile requires release build configuration"))
+        XCTAssertTrue(script.contains("BLOCKER: release performance budget override cannot exceed default"))
+        XCTAssertTrue(script.contains("require_positive_integer_budget"))
+        XCTAssertTrue(script.contains("reject_relaxed_release_budget"))
         XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS"))
         XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS"))
         XCTAssertTrue(script.contains("assert_sample_within_budget"))
@@ -6515,6 +6521,26 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Performance profile: `%s`"))
         XCTAssertTrue(script.contains("BLOCKER: release performance profile requires release build configuration"))
         XCTAssertFalse(script.contains("set -x"))
+    }
+
+    func testReleaseLaunchPerformanceSmokeRejectsRelaxedReleaseBudgetsBeforeBuild() throws {
+        let outputDirectory = packageRoot()
+            .appendingPathComponent(".build/test-release-launch-performance-budget-guard", isDirectory: true)
+        try? FileManager.default.removeItem(at: outputDirectory)
+        defer { try? FileManager.default.removeItem(at: outputDirectory) }
+
+        let result = try runScript(
+            "script/check_release_launch_performance_smoke.sh",
+            environment: [
+                "SOLOPM_PERFORMANCE_PROFILE": "release",
+                "SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS": "15001",
+                "SOLOPM_PERFORMANCE_OUTPUT_DIR": outputDirectory.path
+            ]
+        )
+
+        XCTAssertEqual(result.exitCode, 2)
+        XCTAssertTrue(result.output.contains("BLOCKER: release performance budget override cannot exceed default cold launch budget (15000ms)"))
+        XCTAssertFalse(result.output.contains("./script/build_and_run.sh"))
     }
 
     func testLayoutStabilitySmokeScriptDoesNotUseEmptyAXSamplesAsBaseline() throws {

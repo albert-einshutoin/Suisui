@@ -55,6 +55,32 @@ BUILD_CONFIGURATION="${PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE:-$DEFAULT_BUILD_
 MAX_COLD_LAUNCH_MS="${SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS:-$DEFAULT_COLD_LAUNCH_BUDGET_MS}"
 MAX_DESTINATION_SWITCH_MS="${SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS:-$DEFAULT_DESTINATION_SWITCH_BUDGET_MS}"
 
+require_positive_integer_budget() {
+  local name="$1"
+  local value="$2"
+  if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
+    echo "BLOCKER: $name must be a positive integer millisecond budget" >&2
+    exit 2
+  fi
+}
+
+reject_relaxed_release_budget() {
+  local name="$1"
+  local value="$2"
+  local default_value="$3"
+  if [[ "$SOLOPM_PERFORMANCE_PROFILE" == "release" && "$value" -gt "$default_value" ]]; then
+    # Release evidence must not be made easier by env overrides; lower values are
+    # allowed because they are stricter and preserve the release baseline.
+    echo "BLOCKER: release performance budget override cannot exceed default $name budget (${default_value}ms)" >&2
+    exit 2
+  fi
+}
+
+require_positive_integer_budget "SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS" "$MAX_COLD_LAUNCH_MS"
+require_positive_integer_budget "SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS" "$MAX_DESTINATION_SWITCH_MS"
+reject_relaxed_release_budget "cold launch" "$MAX_COLD_LAUNCH_MS" "$DEFAULT_COLD_LAUNCH_BUDGET_MS"
+reject_relaxed_release_budget "destination switch" "$MAX_DESTINATION_SWITCH_MS" "$DEFAULT_DESTINATION_SWITCH_BUDGET_MS"
+
 cd "$ROOT_DIR"
 mkdir -p "$OUTPUT_DIR"
 

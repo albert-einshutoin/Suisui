@@ -283,9 +283,12 @@ section "Launch preflight"
 
 section "Release launch performance smoke"
 # Release preflight should validate the same release-oriented launch budgets
-# that operators rely on for release evidence, not the looser debug-only path.
-SOLOPM_PERFORMANCE_PROFILE="${SOLOPM_PERFORMANCE_PROFILE:-release}" \
-SOLOPM_PERFORMANCE_BUILD_CONFIGURATION="${SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-release}" \
+# that operators rely on for release evidence. Keep these assignments fixed so
+# caller-provided debug or relaxed-budget env cannot weaken automated evidence.
+SOLOPM_PERFORMANCE_PROFILE=release \
+SOLOPM_PERFORMANCE_BUILD_CONFIGURATION=release \
+SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS=15000 \
+SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS=3000 \
   ./script/check_release_launch_performance_smoke.sh
 
 section "Runtime accessibility candidate"
