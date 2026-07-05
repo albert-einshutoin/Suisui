@@ -231,25 +231,54 @@ public final class SQLiteKnowledgeVectorIndex: KnowledgeVectorIndex, @unchecked 
 
     public func search(queryVector: [Double], topK: Int, threshold: Double) throws -> [KnowledgeVectorSearchResult] {
         try validate(queryVector)
+        let maxResults = max(topK, 0)
+        guard maxResults > 0 else {
+            return []
+        }
         return try lock.withLock {
-            try connection.queryRows("SELECT * FROM knowledge_frame_vectors;")
-                .map { try vector(row: $0) }
-                .map {
+            var results: [KnowledgeVectorSearchResult] = []
+
+            // Bounded topK accumulator keeps query work proportional to topK instead of sorting every row.
+            for row in try connection.queryRows("SELECT * FROM knowledge_frame_vectors;") {
+                let vector = try vector(row: row)
+                let score = cosineSimilarity(queryVector, vector.values)
+                guard score >= threshold else {
+                    continue
+                }
+
+                insert(
                     KnowledgeVectorSearchResult(
-                        frameID: $0.frameID,
-                        score: cosineSimilarity(queryVector, $0.values),
-                        providerID: $0.providerID
-                    )
-                }
-                .filter { $0.score >= threshold }
-                .sorted { lhs, rhs in
-                    if lhs.score == rhs.score {
-                        return lhs.frameID < rhs.frameID
-                    }
-                    return lhs.score > rhs.score
-                }
-                .prefix(topK)
-                .map { $0 }
+                        frameID: vector.frameID,
+                        score: score,
+                        providerID: vector.providerID
+                    ),
+                    into: &results,
+                    maxCount: maxResults
+                )
+            }
+            return results
+        }
+    }
+
+    private func shouldRankBefore(_ lhs: KnowledgeVectorSearchResult, _ rhs: KnowledgeVectorSearchResult) -> Bool {
+        if lhs.score != rhs.score {
+            return lhs.score > rhs.score
+        }
+        return lhs.frameID < rhs.frameID
+    }
+
+    private func insert(
+        _ candidate: KnowledgeVectorSearchResult,
+        into results: inout [KnowledgeVectorSearchResult],
+        maxCount: Int
+    ) {
+        let insertIndex = results.firstIndex(where: { shouldRankBefore(candidate, $0) }) ?? results.count
+        guard insertIndex < maxCount else {
+            return
+        }
+        results.insert(candidate, at: insertIndex)
+        if results.count > maxCount {
+            results.removeLast()
         }
     }
 
