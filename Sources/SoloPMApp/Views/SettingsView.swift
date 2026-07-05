@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SoloPMCore
 import SoloPMGoogleCalendarRuntime
@@ -53,6 +54,38 @@ private final class LazyDependencyLoader<Value>: ObservableObject {
     }
 }
 
+@MainActor
+private final class LazyObservableObjectLoader<Value: ObservableObject>: ObservableObject {
+    @Published private(set) var value: Value?
+    @Published private(set) var isLoading = false
+    private let loadValue: () -> Value
+    private var valueCancellable: AnyCancellable?
+
+    init(loadValue: @escaping () -> Value) {
+        self.loadValue = loadValue
+    }
+
+    func loadIfNeeded() {
+        guard value == nil, isLoading == false else {
+            return
+        }
+        isLoading = true
+
+        Task { @MainActor in
+            await Task.yield()
+            let loadedValue = self.loadValue()
+            // The loader owns tab-scoped view models outside SwiftUI's direct
+            // @ObservedObject path, so it republishes nested changes to keep lazy
+            // Settings tabs live after actions mutate their model.
+            self.valueCancellable = loadedValue.objectWillChange.sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            self.value = loadedValue
+            self.isLoading = false
+        }
+    }
+}
+
 struct SettingsView: View {
     let watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot
     let integrationPermissionSnapshot: PermissionSnapshot
@@ -67,8 +100,8 @@ struct SettingsView: View {
     @StateObject private var settingsViewModel: AppSettingsViewModel
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
     @StateObject private var watcherDiagnosticsLoader: LazyDependencyLoader<WatcherDiagnosticsSnapshot>
-    @StateObject private var externalMCPSettingsViewModelLoader: LazyDependencyLoader<ExternalMCPSettingsViewModel>
-    @StateObject private var syncSettingsViewModelLoader: LazyDependencyLoader<SyncSettingsViewModel>
+    @StateObject private var externalMCPSettingsViewModelLoader: LazyObservableObjectLoader<ExternalMCPSettingsViewModel>
+    @StateObject private var syncSettingsViewModelLoader: LazyObservableObjectLoader<SyncSettingsViewModel>
     @Binding private var appearancePreference: SoloPMAppearancePreference
     @Binding private var languagePreference: AppLanguagePreference
     @State private var isConfirmingMCPRegistrationDeletion = false
@@ -117,10 +150,10 @@ struct SettingsView: View {
             wrappedValue: LazyDependencyLoader(loadValue: watcherDiagnosticsSnapshotFactory)
         )
         _externalMCPSettingsViewModelLoader = StateObject(
-            wrappedValue: LazyDependencyLoader(loadValue: externalMCPSettingsViewModelFactory)
+            wrappedValue: LazyObservableObjectLoader(loadValue: externalMCPSettingsViewModelFactory)
         )
         _syncSettingsViewModelLoader = StateObject(
-            wrappedValue: LazyDependencyLoader(loadValue: syncSettingsViewModelFactory)
+            wrappedValue: LazyObservableObjectLoader(loadValue: syncSettingsViewModelFactory)
         )
         _appearancePreference = appearancePreference
         _languagePreference = languagePreference

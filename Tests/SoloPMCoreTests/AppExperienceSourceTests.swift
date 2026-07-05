@@ -2780,7 +2780,10 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(appSource.contains("SQLiteMCPServerRegistrationStore(connection:"))
         XCTAssertFalse(appSource.contains("Picker(\"Server\""))
+        XCTAssertTrue(appSource.contains("private final class LazyObservableObjectLoader<Value: ObservableObject>: ObservableObject"))
+        XCTAssertTrue(appSource.contains("loadedValue.objectWillChange.sink"))
         XCTAssertTrue(appSource.contains("MCPServerSettingsRow("))
+        XCTAssertTrue(appSource.contains("@StateObject private var externalMCPSettingsViewModelLoader: LazyObservableObjectLoader<ExternalMCPSettingsViewModel>"))
         XCTAssertTrue(appSource.contains("let loadedExternalMCPViewModel = externalMCPSettingsViewModelLoader.value"))
         XCTAssertTrue(appSource.contains("if let loadedExternalMCPViewModel"))
         XCTAssertTrue(appSource.contains("loadedExternalMCPViewModel.registrationRows"))
@@ -3679,7 +3682,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let syncSource = try readPackageFile("Sources/SoloPMCore/App/SyncService.swift")
         let entitlementSource = try readPackageFile("Sources/SoloPMCore/App/Entitlements.swift")
 
-        XCTAssertTrue(appSource.contains("@StateObject private var syncSettingsViewModelLoader: LazyDependencyLoader<SyncSettingsViewModel>"))
+        XCTAssertTrue(appSource.contains("@StateObject private var syncSettingsViewModelLoader: LazyObservableObjectLoader<SyncSettingsViewModel>"))
+        XCTAssertTrue(appSource.contains("loadedValue.objectWillChange.sink"))
         XCTAssertTrue(appSource.contains("let loadedSyncViewModel = syncSettingsViewModelLoader.value"))
         XCTAssertTrue(appSource.contains("if let loadedSyncViewModel"))
         XCTAssertTrue(appSource.contains("Section(\"Sync\")"))
