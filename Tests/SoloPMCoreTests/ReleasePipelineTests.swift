@@ -56,6 +56,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("CI_VISUAL_GATES=\"${SOLOPM_CI_VISUAL_GATES:-0}\""))
         XCTAssertTrue(script.contains("CI_RELEASE_GATES=\"${SOLOPM_CI_RELEASE_GATES:-0}\""))
         XCTAssertTrue(script.contains("CI_PERFORMANCE_GATES=\"${SOLOPM_CI_PERFORMANCE_GATES:-0}\""))
+        XCTAssertTrue(script.contains("CI_STRESS_GATES=\"${SOLOPM_CI_STRESS_GATES:-0}\""))
         XCTAssertTrue(script.contains("run_pr_gate()"))
         XCTAssertTrue(script.contains("swift test --filter AppExperienceSourceTests"))
         XCTAssertTrue(script.contains("swift test --filter QualitySourceContractTests"))
@@ -65,6 +66,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("script/check_release_launch_performance_smoke.sh"))
         XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_PROFILE=\"${SOLOPM_PERFORMANCE_PROFILE:-debug}\""))
         XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_BUILD_CONFIGURATION=\"${SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-debug}\""))
+        XCTAssertTrue(script.contains("run_stress_gates()"))
+        XCTAssertTrue(script.contains("./script/check_performance_stress_suite.sh"))
         XCTAssertTrue(script.contains("run_runtime_gates()"))
         XCTAssertTrue(script.contains("script/check_runtime_accessible_crud_smoke.sh"))
         XCTAssertTrue(script.contains("script/check_layout_stability_smoke.sh"))
@@ -72,6 +75,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("run_visual_gates()"))
         XCTAssertTrue(script.contains("script/check_visual_regression_smoke.sh"))
         XCTAssertTrue(script.contains("if [[ \"$CI_PERFORMANCE_GATES\" == \"1\" ]]; then\n  run_performance_gates"))
+        XCTAssertTrue(script.contains("if [[ \"$CI_STRESS_GATES\" == \"1\" ]]; then\n  run_stress_gates"))
         XCTAssertTrue(script.contains("if [[ \"$CI_RUNTIME_GATES\" == \"1\" ]]; then\n  run_runtime_gates"))
         XCTAssertTrue(script.contains("if [[ \"$CI_VISUAL_GATES\" == \"1\" ]]; then\n  run_visual_gates"))
         XCTAssertLessThan(
@@ -82,6 +86,21 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(automatedPreflight.contains("SOLOPM_CI_RELEASE_GATES=1 ./scripts/ci.sh"))
         XCTAssertTrue(phase.contains("- [x] `scripts/ci.sh` が軽量PR gateと重いruntime gateを混同しないことをsource testで固定する。"))
         XCTAssertTrue(phase.contains("- [x] `scripts/ci.sh` はunit/sourceを必須、runtime/visualは明示フラグで実行する。"))
+    }
+
+    func testPerformanceStressSuiteAggregatesScaleRegressionFilters() throws {
+        let script = try readPackageFile("script/check_performance_stress_suite.sh")
+
+        XCTAssertTrue(script.contains("STRESS_TEST_FILTERS=("))
+        XCTAssertTrue(script.contains("KnowledgeAdvancedTests/testSQLiteVectorIndexLargeCorpusKeepsTopKAndTiebreakStable"))
+        XCTAssertTrue(script.contains("ExternalTaskInteropTests/testGoogleCalendarTaskSyncBoundsWritesAndCountsDeferredDueTasksAcrossLargeFixtures"))
+        XCTAssertTrue(script.contains("ExecutionReceiptTests/testExecutionReceiptStoreSearchFiltersBeforeLimitForAuditRows"))
+        XCTAssertTrue(script.contains("AssistantQueueStoreTests/testReadModelSnapshotScalesToLargeQueueWhilePreservingAttentionCounts"))
+        XCTAssertTrue(script.contains("ProjectBoardStoreTests/testProjectBoardViewModelLoadsIndexedLargeBoardReadModelsWithoutFullScanPlans"))
+        XCTAssertTrue(script.contains("STTProviderTests/testProcessWhisperCppCommandRunnerDrainsAndCapsLargeStderr"))
+        XCTAssertTrue(script.contains("ReleasePipelineTests/testReleaseLaunchPerformanceSmokeMeasuresColdLaunchAndWorkflowSwitches"))
+        XCTAssertTrue(script.contains("SOLOPM_STRESS_RUNTIME_PERFORMANCE"))
+        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_PROFILE=\"${SOLOPM_PERFORMANCE_PROFILE:-debug}\""))
     }
 
     func testNotarizationScriptUsesStoredCredentialsStaplingAndLogRecovery() throws {
@@ -6507,6 +6526,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("BLOCKER: performance budget exceeded"))
         XCTAssertTrue(script.contains("BLOCKER: performance smoke could not inspect the AX marker"))
         XCTAssertTrue(script.contains("SOLOPM_BUILD_CONFIGURATION=\"$BUILD_CONFIGURATION\" ./script/build_and_run.sh --build-only"))
+        XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
+        XCTAssertTrue(script.contains("if [[ \"$SOLOPM_PERFORMANCE_PROFILE\" == \"debug\" ]]; then"))
+        XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
+        XCTAssertTrue(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
+        XCTAssertTrue(script.contains("\"$APP_BINARY\" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &"))
+        XCTAssertTrue(script.contains("\"$APP_BINARY\" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &\n    activate_app"))
         XCTAssertTrue(script.contains("cold-launch-visible-window"))
         XCTAssertTrue(script.contains("wait_for_visible_window"))
         XCTAssertTrue(script.contains("wait_for_marker \"project-board-header-bar\""))

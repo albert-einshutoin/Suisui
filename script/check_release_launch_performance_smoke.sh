@@ -15,6 +15,7 @@ source "$METADATA_FILE"
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:-}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
+APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 TIMEOUT_SECONDS="${SOLOPM_PERFORMANCE_TIMEOUT_SECONDS:-30}"
 OUTPUT_DIR="${SOLOPM_PERFORMANCE_OUTPUT_DIR:-$ROOT_DIR/.tmp/release-launch-performance}"
 SUMMARY_FILE="$OUTPUT_DIR/summary.md"
@@ -110,6 +111,17 @@ activate_app() {
 }
 
 open_app() {
+  if [[ "$SOLOPM_PERFORMANCE_PROFILE" == "debug" ]]; then
+    # Debug diagnostics must preserve launch-recovery env. LaunchServices can
+    # drop env values for `open`, which turns performance smoke into a
+    # windowless-launch failure instead of measuring the app's workflow latency.
+    /usr/bin/env \
+      SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+      SOLOPM_LAUNCH_RECOVERY_MODE=1 \
+      "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
+    activate_app
+    return
+  fi
   /usr/bin/open -n -F "$APP_BUNDLE" --args -ApplePersistenceIgnoreState YES
   activate_app
 }
