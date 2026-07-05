@@ -11,6 +11,14 @@ public enum VoiceCapturePhase: Equatable, Sendable {
     case failed(String)
 }
 
+public enum LowLatencyVoiceAgentState: Equatable, Sendable {
+    case idle
+    case listening
+    case disabled(String)
+    case unavailable(String)
+    case failed(String)
+}
+
 public struct VoiceDailyPlanningReviewRequest: Equatable, Sendable, Identifiable {
     public var id: UUID
     public var sourceTranscript: String
@@ -70,6 +78,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
     @Published public private(set) var inboxTriageRequest: VoiceInboxTriageRequest?
     @Published public private(set) var inboxCaptureResult: InboxVoiceCaptureResult?
     @Published public private(set) var developmentPullRequestAutomationRequest: SyncAutomationRequestPayload?
+    @Published public private(set) var lowLatencyVoiceAgentState: LowLatencyVoiceAgentState
+    @Published public private(set) var liveTranscript: String
+    @Published public private(set) var liveIntentPreview: VoiceCommandRoutingResult?
 
     private var audioRecorder: any AudioRecorder
     private let sttProvider: any SpeechToTextProvider
@@ -84,10 +95,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private let developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder
     private let appSettingsProvider: @Sendable () -> AppSettings
     private let managedCostRateCardProvider: @Sendable (PlanningResponse) -> AssistantQueueCostRateCard?
+    private let lowLatencySegmentDuration: TimeInterval
+    private let lowLatencySegmentOutputURLProvider: @Sendable () -> URL
     // Save-to-Inbox must be tied to the audio that produced the current
     // transcript so a failed new recording cannot reuse stale typed text.
     private var lastTranscribedAudioURL: URL?
     private var savedInboxAudioURL: URL?
+    private var lowLatencyStreamTask: Task<Void, Never>?
+    private var lowLatencyStreamID: UUID
 
     public init(
         draft: TranscriptDraft = TranscriptDraft(),
@@ -103,7 +118,12 @@ public final class VoiceCaptureViewModel: ObservableObject {
         developmentProjectProvider: @escaping () -> ProjectRecord? = { nil },
         developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder = VoiceDevelopmentPullRequestAutomationRequestBuilder(),
         appSettingsProvider: @escaping @Sendable () -> AppSettings = { .default },
-        managedCostRateCardProvider: @escaping @Sendable (PlanningResponse) -> AssistantQueueCostRateCard? = { _ in nil }
+        managedCostRateCardProvider: @escaping @Sendable (PlanningResponse) -> AssistantQueueCostRateCard? = { _ in nil },
+        lowLatencySegmentDuration: TimeInterval = 1.2,
+        lowLatencySegmentOutputURLProvider: @escaping @Sendable () -> URL = {
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent("solopm-low-latency-\(UUID().uuidString).m4a")
+        }
     ) {
         self.draft = draft
         self.phase = phase
@@ -119,6 +139,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.developmentPullRequestAutomationRequestBuilder = developmentPullRequestAutomationRequestBuilder
         self.appSettingsProvider = appSettingsProvider
         self.managedCostRateCardProvider = managedCostRateCardProvider
+        self.lowLatencySegmentDuration = lowLatencySegmentDuration
+        self.lowLatencySegmentOutputURLProvider = lowLatencySegmentOutputURLProvider
         self.recordingState = audioRecorder.state
         self.auditErrorMessage = nil
         self.routingResult = draft.canGeneratePlan ? commandRouter.route(transcript: draft.normalizedText) : nil
@@ -128,9 +150,13 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.inboxTriageRequest = nil
         self.inboxCaptureResult = nil
         self.developmentPullRequestAutomationRequest = nil
+        self.lowLatencyVoiceAgentState = .idle
+        self.liveTranscript = ""
+        self.liveIntentPreview = nil
         self.inboxTriageCommandParser = InboxVoiceTriageCommandParser()
         self.lastTranscribedAudioURL = nil
         self.savedInboxAudioURL = nil
+        self.lowLatencyStreamID = UUID()
     }
 
     public var canGeneratePlan: Bool {
@@ -168,6 +194,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
         return false
     }
 
+    public var isLowLatencyVoiceAgentListening: Bool {
+        lowLatencyVoiceAgentState == .listening
+    }
+
     public var clarificationQuestion: ClarificationQuestion? {
         clarificationSession?.currentQuestion
     }
@@ -191,6 +221,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     }
 
     public func clear() {
+        stopLowLatencyVoiceAgentMode()
         audioRecorder.reset()
         draft = TranscriptDraft()
         planningResponse = nil
@@ -209,7 +240,85 @@ public final class VoiceCaptureViewModel: ObservableObject {
         phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
     }
 
+    public func startLowLatencyVoiceAgentMode(
+        currentDate: Date = Date(),
+        timeZoneIdentifier: String = TimeZone.current.identifier,
+        availableTools: [ActionTool] = ActionTool.defaultPlanningTools,
+        knowledgeFrameCandidates: [KnowledgeFrameCandidate] = []
+    ) async {
+        stopLowLatencyVoiceAgentMode()
+        let settings = appSettingsProvider().normalizedForRuntime
+        guard phase != .recording, phase != .transcribing, phase != .generatingPlan else {
+            lowLatencyVoiceAgentState = .unavailable("Finish the current voice operation before starting low-latency voice agent mode.")
+            clearLiveVoiceAgentState()
+            return
+        }
+        guard settings.isLowLatencyVoiceAgentModeEnabled else {
+            lowLatencyVoiceAgentState = .disabled("Low-latency voice agent mode is disabled in Settings.")
+            clearLiveVoiceAgentState()
+            return
+        }
+        guard sttProvider.availability.isAvailable else {
+            lowLatencyVoiceAgentState = .unavailable(sttProvider.availability.reason ?? "Speech transcription is unavailable.")
+            clearLiveVoiceAgentState()
+            return
+        }
+        // Voice windows keep provider instances alive while Settings can change underneath.
+        // Fail closed so a stale cloud provider cannot run under a newly selected local setting.
+        guard settings.sttProvider.providerID == sttProvider.id else {
+            lowLatencyVoiceAgentState = .unavailable("Restart Voice Command after changing speech-to-text provider settings.")
+            clearLiveVoiceAgentState()
+            return
+        }
+        guard canUseLowLatencySTT(settings: settings) else {
+            lowLatencyVoiceAgentState = .unavailable("Select local speech-to-text, or enable visible realtime cloud cost before using low-latency voice agent mode.")
+            clearLiveVoiceAgentState()
+            return
+        }
+        guard let stream = sttProvider.streamingTranscriptionEvents() ?? segmentedLowLatencyTranscriptionEvents(settings: settings) else {
+            lowLatencyVoiceAgentState = .unavailable("Selected speech-to-text provider does not support low-latency voice agent mode yet.")
+            clearLiveVoiceAgentState()
+            return
+        }
+
+        let streamID = UUID()
+        lowLatencyStreamID = streamID
+        lowLatencyVoiceAgentState = .listening
+        clearLiveVoiceAgentState()
+        lowLatencyStreamTask = Task { [weak self] in
+            do {
+                for try await event in stream {
+                    let shouldContinue = await self?.handleLowLatencyStreamingEvent(
+                        event,
+                        streamID: streamID,
+                        currentDate: currentDate,
+                        timeZoneIdentifier: timeZoneIdentifier,
+                        availableTools: availableTools,
+                        knowledgeFrameCandidates: knowledgeFrameCandidates
+                    ) ?? false
+                    if !shouldContinue {
+                        break
+                    }
+                }
+                self?.finishLowLatencyStreamIfCurrent(streamID)
+            } catch is CancellationError {
+                return
+            } catch {
+                self?.handleLowLatencyStreamingError(error, streamID: streamID)
+            }
+        }
+    }
+
+    public func stopLowLatencyVoiceAgentMode() {
+        lowLatencyStreamID = UUID()
+        lowLatencyStreamTask?.cancel()
+        lowLatencyStreamTask = nil
+        lowLatencyVoiceAgentState = .idle
+        clearLiveVoiceAgentState()
+    }
+
     public func startRecording(at date: Date = Date()) async {
+        stopLowLatencyVoiceAgentMode()
         do {
             try await audioRecorder.start(at: date)
             recordingState = audioRecorder.state
@@ -474,6 +583,182 @@ public final class VoiceCaptureViewModel: ObservableObject {
         let session = ClarificationSession(route: route)
         clarificationSession = session
         phase = .needsClarification(session.currentQuestion?.prompt ?? route.clarificationReason ?? "Voice command needs clarification.")
+    }
+
+    private func handleLowLatencyStreamingEvent(
+        _ event: STTStreamingEvent,
+        streamID: UUID,
+        currentDate: Date,
+        timeZoneIdentifier: String,
+        availableTools: [ActionTool],
+        knowledgeFrameCandidates: [KnowledgeFrameCandidate]
+    ) async -> Bool {
+        guard streamID == lowLatencyStreamID, lowLatencyVoiceAgentState == .listening else {
+            return false
+        }
+
+        switch event {
+        case .partial(let transcript):
+            publishLiveTranscript(transcript.text)
+            return true
+        case .final(let transcript):
+            await handleLowLatencyFinalTranscript(
+                transcript.text,
+                currentDate: currentDate,
+                timeZoneIdentifier: timeZoneIdentifier,
+                availableTools: availableTools,
+                knowledgeFrameCandidates: knowledgeFrameCandidates
+            )
+            return streamID == lowLatencyStreamID && lowLatencyVoiceAgentState == .listening
+        case .stopped:
+            stopLowLatencyVoiceAgentMode()
+            return false
+        }
+    }
+
+    private func segmentedLowLatencyTranscriptionEvents(
+        settings: AppSettings
+    ) -> AsyncThrowingStream<STTStreamingEvent, Error>? {
+        guard canUseSegmentedLowLatencySTT(settings: settings) else {
+            return nil
+        }
+
+        return AsyncThrowingStream { continuation in
+            let segmentTask = Task { @MainActor [weak self] in
+                guard let self else {
+                    continuation.yield(.stopped)
+                    continuation.finish()
+                    return
+                }
+                do {
+                    let startedAt = Date()
+                    try await audioRecorder.start(at: startedAt)
+                    recordingState = audioRecorder.state
+                    if lowLatencySegmentDuration > 0 {
+                        try await Task.sleep(
+                            nanoseconds: UInt64(max(lowLatencySegmentDuration, 0) * 1_000_000_000)
+                        )
+                    }
+                    let audio = try audioRecorder.stop(
+                        outputURL: lowLatencySegmentOutputURLProvider(),
+                        at: Date()
+                    )
+                    recordingState = audioRecorder.state
+                    let transcript = try await sttProvider.transcribe(audio)
+                    continuation.yield(.final(transcript))
+                    continuation.yield(.stopped)
+                    continuation.finish()
+                } catch is CancellationError {
+                    audioRecorder.reset()
+                    recordingState = audioRecorder.state
+                    continuation.finish()
+                } catch {
+                    audioRecorder.reset()
+                    recordingState = audioRecorder.state
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in
+                segmentTask.cancel()
+            }
+        }
+    }
+
+    private func canUseSegmentedLowLatencySTT(settings: AppSettings) -> Bool {
+        guard canUseLowLatencySTT(settings: settings) else {
+            return false
+        }
+
+        switch settings.sttProvider {
+        case .localWhisperCpp:
+            return true
+        case .openAITranscribe:
+            return true
+        case .appleSpeechAnalyzer, .localWhisperKit:
+            return false
+        }
+    }
+
+    private func canUseLowLatencySTT(settings: AppSettings) -> Bool {
+        switch settings.sttProvider {
+        case .localWhisperCpp:
+            return true
+        case .openAITranscribe:
+            return settings.isLowLatencyVoiceAgentCloudFallbackEnabled
+                && settings.isLowLatencyVoiceAgentCloudFallbackCostVisible
+        case .appleSpeechAnalyzer, .localWhisperKit:
+            return false
+        }
+    }
+
+    private func handleLowLatencyStreamingError(_ error: Error, streamID: UUID) {
+        guard streamID == lowLatencyStreamID else {
+            return
+        }
+        lowLatencyStreamTask = nil
+        lowLatencyStreamID = UUID()
+        lowLatencyVoiceAgentState = .failed(userMessage(for: error))
+        clearLiveVoiceAgentState()
+    }
+
+    private func publishLiveTranscript(_ text: String) {
+        liveTranscript = text
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Partial transcripts are intentionally local-only previews. Calling an
+        // LLM or enqueueing work on unstable audio would waste provider budget
+        // and could surface review items for words the user has not finished.
+        liveIntentPreview = normalized.isEmpty ? nil : commandRouter.route(transcript: normalized)
+    }
+
+    private func handleLowLatencyFinalTranscript(
+        _ text: String,
+        currentDate: Date,
+        timeZoneIdentifier: String,
+        availableTools: [ActionTool],
+        knowledgeFrameCandidates: [KnowledgeFrameCandidate]
+    ) async {
+        clearLiveVoiceAgentState()
+
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            phase = .failed("Transcript is empty.")
+            return
+        }
+
+        if clarificationSession != nil {
+            await submitClarificationAnswer(
+                normalized,
+                inputMode: .voice,
+                currentDate: currentDate,
+                timeZoneIdentifier: timeZoneIdentifier,
+                availableTools: availableTools,
+                knowledgeFrameCandidates: knowledgeFrameCandidates
+            )
+            return
+        }
+
+        updateDraftText(normalized)
+        await generatePlan(
+            currentDate: currentDate,
+            timeZoneIdentifier: timeZoneIdentifier,
+            availableTools: availableTools,
+            knowledgeFrameCandidates: knowledgeFrameCandidates
+        )
+    }
+
+    private func clearLiveVoiceAgentState() {
+        liveTranscript = ""
+        liveIntentPreview = nil
+    }
+
+    private func finishLowLatencyStreamIfCurrent(_ streamID: UUID) {
+        guard streamID == lowLatencyStreamID else {
+            return
+        }
+        lowLatencyStreamTask = nil
+        lowLatencyStreamID = UUID()
+        lowLatencyVoiceAgentState = .idle
+        clearLiveVoiceAgentState()
     }
 
     private func beginDailyPlanningReviewRequest(for route: VoiceCommandRoutingResult, requestedAt: Date) {

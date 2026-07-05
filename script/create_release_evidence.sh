@@ -179,7 +179,7 @@ SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
 SPARKLE_PUBLIC_ED_KEY="${SOLOPM_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
 
 current_git_commit() {
-  if [[ -d "$ROOT_DIR/.git" ]] && command -v git >/dev/null 2>&1; then
+  if command -v git >/dev/null 2>&1 && git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || true
   fi
 }

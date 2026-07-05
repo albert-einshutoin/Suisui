@@ -7,6 +7,59 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(AppSettings.default.validate().isEmpty)
     }
 
+    func testLowLatencyVoiceAgentDefaultsOffAndCloudFallbackDisabled() throws {
+        XCTAssertFalse(AppSettings.default.isLowLatencyVoiceAgentModeEnabled)
+        XCTAssertFalse(AppSettings.default.isLowLatencyVoiceAgentAlwaysOnRecordingEnabled)
+        XCTAssertFalse(AppSettings.default.isLowLatencyVoiceAgentCloudFallbackEnabled)
+        XCTAssertFalse(AppSettings.default.isLowLatencyVoiceAgentCloudFallbackCostVisible)
+
+        let legacyData = Data("""
+        {
+          "aiProvider": "openAIResponses",
+          "sttProvider": "openAITranscribe",
+          "notificationsEnabled": false,
+          "defaultWorkspacePath": null,
+          "timeZoneIdentifier": "UTC"
+        }
+        """.utf8)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: legacyData)
+        XCTAssertFalse(decoded.isLowLatencyVoiceAgentModeEnabled)
+        XCTAssertFalse(decoded.isLowLatencyVoiceAgentAlwaysOnRecordingEnabled)
+        XCTAssertFalse(decoded.isLowLatencyVoiceAgentCloudFallbackEnabled)
+        XCTAssertFalse(decoded.isLowLatencyVoiceAgentCloudFallbackCostVisible)
+
+        let hiddenCostFallback = AppSettings(
+            isLowLatencyVoiceAgentModeEnabled: true,
+            isLowLatencyVoiceAgentAlwaysOnRecordingEnabled: true,
+            isLowLatencyVoiceAgentCloudFallbackEnabled: true,
+            isLowLatencyVoiceAgentCloudFallbackCostVisible: false
+        ).normalizedForRuntime
+        XCTAssertTrue(hiddenCostFallback.isLowLatencyVoiceAgentModeEnabled)
+        XCTAssertFalse(hiddenCostFallback.isLowLatencyVoiceAgentAlwaysOnRecordingEnabled)
+        XCTAssertFalse(hiddenCostFallback.isLowLatencyVoiceAgentCloudFallbackEnabled)
+
+        let explicitCostVisibleFallback = AppSettings(
+            isLowLatencyVoiceAgentModeEnabled: true,
+            isLowLatencyVoiceAgentCloudFallbackEnabled: true,
+            isLowLatencyVoiceAgentCloudFallbackCostVisible: true
+        ).normalizedForRuntime
+        XCTAssertTrue(explicitCostVisibleFallback.isLowLatencyVoiceAgentCloudFallbackEnabled)
+
+        XCTAssertEqual(
+            AppSettings(
+                isLowLatencyVoiceAgentCloudFallbackEnabled: true,
+                isLowLatencyVoiceAgentCloudFallbackCostVisible: false
+            ).validate().filter { $0.field == "isLowLatencyVoiceAgentCloudFallbackEnabled" },
+            [
+                ValidationIssue(
+                    field: "isLowLatencyVoiceAgentCloudFallbackEnabled",
+                    message: "Low-latency cloud fallback requires visible cost disclosure.",
+                    severity: .error
+                )
+            ]
+        )
+    }
+
     func testInvalidTimeZoneProducesValidationIssue() {
         let settings = AppSettings(timeZoneIdentifier: "Invalid/Timezone")
 
@@ -735,6 +788,9 @@ final class AppSettingsTests: XCTestCase {
         viewModel.setOpenCodeModelID(" opencode-go/kimi-k2.7-code ")
         viewModel.setOpenCodeLocalExecutionApproved(true)
         viewModel.setWhisperCppExecutablePath(" /opt/homebrew/bin/whisper-cli ")
+        viewModel.setLowLatencyVoiceAgentModeEnabled(true)
+        viewModel.setLowLatencyVoiceAgentCloudFallbackCostVisible(true)
+        viewModel.setLowLatencyVoiceAgentCloudFallbackEnabled(true)
         viewModel.saveSettings()
 
         let loaded = try store.load()
@@ -748,6 +804,9 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(loaded.openCodeModelID, "opencode-go/kimi-k2.7-code")
         XCTAssertTrue(loaded.isOpenCodeLocalExecutionApproved)
         XCTAssertEqual(loaded.whisperCppExecutablePath, "/opt/homebrew/bin/whisper-cli")
+        XCTAssertTrue(loaded.isLowLatencyVoiceAgentModeEnabled)
+        XCTAssertTrue(loaded.isLowLatencyVoiceAgentCloudFallbackCostVisible)
+        XCTAssertTrue(loaded.isLowLatencyVoiceAgentCloudFallbackEnabled)
     }
 
     @MainActor

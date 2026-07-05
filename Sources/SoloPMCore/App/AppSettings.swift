@@ -20,6 +20,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var openCodeWorkspacePath: String?
     public var openCodeModelID: String?
     public var isOpenCodeLocalExecutionApproved: Bool
+    public var isLowLatencyVoiceAgentModeEnabled: Bool
+    public var isLowLatencyVoiceAgentAlwaysOnRecordingEnabled: Bool
+    public var isLowLatencyVoiceAgentCloudFallbackEnabled: Bool
+    public var isLowLatencyVoiceAgentCloudFallbackCostVisible: Bool
     public var taskAutoExecution: TaskAutoExecutionSettings
     public var managedAIBilling: ManagedAIBillingSettings
 
@@ -42,6 +46,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case openCodeWorkspacePath
         case openCodeModelID
         case isOpenCodeLocalExecutionApproved
+        case isLowLatencyVoiceAgentModeEnabled
+        case isLowLatencyVoiceAgentAlwaysOnRecordingEnabled
+        case isLowLatencyVoiceAgentCloudFallbackEnabled
+        case isLowLatencyVoiceAgentCloudFallbackCostVisible
         case taskAutoExecution
         case managedAIBilling
     }
@@ -65,6 +73,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
         openCodeWorkspacePath: String? = nil,
         openCodeModelID: String? = nil,
         isOpenCodeLocalExecutionApproved: Bool = false,
+        // Realtime voice is privacy- and cost-sensitive, so all recording and
+        // paid/cloud escalation paths start as explicit opt-ins.
+        isLowLatencyVoiceAgentModeEnabled: Bool = false,
+        isLowLatencyVoiceAgentAlwaysOnRecordingEnabled: Bool = false,
+        isLowLatencyVoiceAgentCloudFallbackEnabled: Bool = false,
+        isLowLatencyVoiceAgentCloudFallbackCostVisible: Bool = false,
         taskAutoExecution: TaskAutoExecutionSettings = .default,
         managedAIBilling: ManagedAIBillingSettings = .default
     ) {
@@ -86,6 +100,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.openCodeWorkspacePath = openCodeWorkspacePath
         self.openCodeModelID = openCodeModelID
         self.isOpenCodeLocalExecutionApproved = isOpenCodeLocalExecutionApproved
+        self.isLowLatencyVoiceAgentModeEnabled = isLowLatencyVoiceAgentModeEnabled
+        self.isLowLatencyVoiceAgentAlwaysOnRecordingEnabled = isLowLatencyVoiceAgentAlwaysOnRecordingEnabled
+        self.isLowLatencyVoiceAgentCloudFallbackEnabled = isLowLatencyVoiceAgentCloudFallbackEnabled
+        self.isLowLatencyVoiceAgentCloudFallbackCostVisible = isLowLatencyVoiceAgentCloudFallbackCostVisible
         self.taskAutoExecution = taskAutoExecution
         self.managedAIBilling = managedAIBilling
     }
@@ -110,6 +128,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.openCodeWorkspacePath = try container.decodeIfPresent(String.self, forKey: .openCodeWorkspacePath)
         self.openCodeModelID = try container.decodeIfPresent(String.self, forKey: .openCodeModelID)
         self.isOpenCodeLocalExecutionApproved = try container.decodeIfPresent(Bool.self, forKey: .isOpenCodeLocalExecutionApproved) ?? false
+        self.isLowLatencyVoiceAgentModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .isLowLatencyVoiceAgentModeEnabled) ?? false
+        self.isLowLatencyVoiceAgentAlwaysOnRecordingEnabled = try container.decodeIfPresent(Bool.self, forKey: .isLowLatencyVoiceAgentAlwaysOnRecordingEnabled) ?? false
+        self.isLowLatencyVoiceAgentCloudFallbackEnabled = try container.decodeIfPresent(Bool.self, forKey: .isLowLatencyVoiceAgentCloudFallbackEnabled) ?? false
+        self.isLowLatencyVoiceAgentCloudFallbackCostVisible = try container.decodeIfPresent(Bool.self, forKey: .isLowLatencyVoiceAgentCloudFallbackCostVisible) ?? false
         self.taskAutoExecution = try container.decodeIfPresent(TaskAutoExecutionSettings.self, forKey: .taskAutoExecution) ?? .default
         self.managedAIBilling = try container.decodeIfPresent(ManagedAIBillingSettings.self, forKey: .managedAIBilling) ?? .default
     }
@@ -134,6 +156,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encodeIfPresent(openCodeWorkspacePath, forKey: .openCodeWorkspacePath)
         try container.encodeIfPresent(openCodeModelID, forKey: .openCodeModelID)
         try container.encode(isOpenCodeLocalExecutionApproved, forKey: .isOpenCodeLocalExecutionApproved)
+        try container.encode(isLowLatencyVoiceAgentModeEnabled, forKey: .isLowLatencyVoiceAgentModeEnabled)
+        try container.encode(isLowLatencyVoiceAgentAlwaysOnRecordingEnabled, forKey: .isLowLatencyVoiceAgentAlwaysOnRecordingEnabled)
+        try container.encode(isLowLatencyVoiceAgentCloudFallbackEnabled, forKey: .isLowLatencyVoiceAgentCloudFallbackEnabled)
+        try container.encode(isLowLatencyVoiceAgentCloudFallbackCostVisible, forKey: .isLowLatencyVoiceAgentCloudFallbackCostVisible)
         try container.encode(taskAutoExecution, forKey: .taskAutoExecution)
         try container.encode(managedAIBilling, forKey: .managedAIBilling)
     }
@@ -174,6 +200,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
         if let openCodeModelID = copy.openCodeModelID?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.openCodeModelID = openCodeModelID.isEmpty ? nil : openCodeModelID
+        }
+        // Runtime starts low-latency listening only from an explicit user
+        // action. Persisted or future always-on flags cannot make launch record.
+        copy.isLowLatencyVoiceAgentAlwaysOnRecordingEnabled = false
+        if !copy.isLowLatencyVoiceAgentCloudFallbackCostVisible {
+            copy.isLowLatencyVoiceAgentCloudFallbackEnabled = false
         }
         copy.taskAutoExecution = copy.taskAutoExecution.normalized
         copy.managedAIBilling = copy.managedAIBilling.normalized
@@ -266,6 +298,15 @@ public struct AppSettings: Codable, Equatable, Sendable {
         appendWhisperCppExecutablePathIssue(to: &issues, isRequired: sttProvider == .localWhisperCpp)
         appendKokoroExecutablePathIssue(to: &issues)
         appendTTSSelectionIssues(to: &issues)
+        if isLowLatencyVoiceAgentCloudFallbackEnabled && !isLowLatencyVoiceAgentCloudFallbackCostVisible {
+            issues.append(
+                ValidationIssue(
+                    field: "isLowLatencyVoiceAgentCloudFallbackEnabled",
+                    message: "Low-latency cloud fallback requires visible cost disclosure.",
+                    severity: .error
+                )
+            )
+        }
         issues.append(contentsOf: taskAutoExecution.validationIssues())
         issues.append(contentsOf: managedAIBilling.validationIssues())
 
@@ -546,6 +587,19 @@ public enum STTProvider: String, CaseIterable, Codable, Equatable, Sendable {
 
     public var isReleaseReady: Bool {
         Self.releaseReadyCases.contains(self)
+    }
+
+    public var providerID: STTProviderID {
+        switch self {
+        case .appleSpeechAnalyzer:
+            .appleSpeechAnalyzer
+        case .localWhisperKit:
+            .whisperKit
+        case .localWhisperCpp:
+            .whisperCpp
+        case .openAITranscribe:
+            .openAITranscribe
+        }
     }
 
     public var displayName: String {
@@ -1243,6 +1297,24 @@ public final class AppSettingsViewModel: ObservableObject {
 
     public func setOpenCodeLocalExecutionApproved(_ isApproved: Bool) {
         settings.isOpenCodeLocalExecutionApproved = isApproved
+        clearMessages()
+    }
+
+    public func setLowLatencyVoiceAgentModeEnabled(_ isEnabled: Bool) {
+        settings.isLowLatencyVoiceAgentModeEnabled = isEnabled
+        clearMessages()
+    }
+
+    public func setLowLatencyVoiceAgentCloudFallbackCostVisible(_ isVisible: Bool) {
+        settings.isLowLatencyVoiceAgentCloudFallbackCostVisible = isVisible
+        if !isVisible {
+            settings.isLowLatencyVoiceAgentCloudFallbackEnabled = false
+        }
+        clearMessages()
+    }
+
+    public func setLowLatencyVoiceAgentCloudFallbackEnabled(_ isEnabled: Bool) {
+        settings.isLowLatencyVoiceAgentCloudFallbackEnabled = isEnabled
         clearMessages()
     }
 

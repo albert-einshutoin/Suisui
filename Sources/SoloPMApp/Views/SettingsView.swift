@@ -530,6 +530,43 @@ struct SettingsView: View {
 
                 LocalSTTProviderStatusRow(row: settingsViewModel.localSTTProviderReadinessRow)
 
+                Toggle(
+                    isOn: Binding(
+                        get: { settingsViewModel.settings.isLowLatencyVoiceAgentModeEnabled },
+                        set: { settingsViewModel.setLowLatencyVoiceAgentModeEnabled($0) }
+                    )
+                ) {
+                    Label("Low-latency voice agent", systemImage: "waveform")
+                }
+                .accessibilityIdentifier("settings-low-latency-voice-agent-toggle")
+                .accessibilityHint("Enables explicit Start and Stop controls in the Voice Command window.")
+
+                Toggle(
+                    isOn: Binding(
+                        get: { settingsViewModel.settings.isLowLatencyVoiceAgentCloudFallbackCostVisible },
+                        set: { settingsViewModel.setLowLatencyVoiceAgentCloudFallbackCostVisible($0) }
+                    )
+                ) {
+                    Label("Show realtime cloud cost", systemImage: "dollarsign.circle")
+                }
+                .accessibilityIdentifier("settings-low-latency-voice-agent-cost-visible")
+
+                Toggle(
+                    isOn: Binding(
+                        get: { settingsViewModel.settings.isLowLatencyVoiceAgentCloudFallbackEnabled },
+                        set: { settingsViewModel.setLowLatencyVoiceAgentCloudFallbackEnabled($0) }
+                    )
+                ) {
+                    Label("Allow realtime cloud fallback", systemImage: "cloud")
+                }
+                .disabled(!settingsViewModel.settings.isLowLatencyVoiceAgentCloudFallbackCostVisible)
+                .accessibilityIdentifier("settings-low-latency-voice-agent-cloud-fallback")
+
+                Label("Voice agent sessions start only from the Voice Command window; cloud fallback requires visible cost disclosure before it can be saved.", systemImage: "checkmark.shield")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("settings-low-latency-voice-agent-boundary")
+
                 LabeledContent("Shortcut", value: "Option + Space")
                 Picker(
                     "Text to Speech",
@@ -590,6 +627,8 @@ struct SettingsView: View {
                 .disabled(!settingsViewModel.ttsProviderReadinessRow.isReady)
                 .accessibilityIdentifier("settings-tts-test-play")
                 .accessibilityHint("Tests the selected local TTS provider when the model and runtime are ready.")
+
+                settingsSaveButton
             }
 
             Section("Voice Models") {

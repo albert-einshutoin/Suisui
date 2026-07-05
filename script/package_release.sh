@@ -30,7 +30,7 @@ ZIP_PATH="$RELEASE_DIR/$ARTIFACT_BASENAME.zip"
 PACKAGE_CREATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 current_git_commit() {
-  if [[ -d "$ROOT_DIR/.git" ]] && command -v git >/dev/null 2>&1; then
+  if command -v git >/dev/null 2>&1 && git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || true
   fi
 }
