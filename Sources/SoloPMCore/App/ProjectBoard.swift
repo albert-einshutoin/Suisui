@@ -6526,15 +6526,47 @@ public final class ProjectBoardViewModel: ObservableObject {
             format: String(localized: result.createdEventCount == 1 ? "%d Google Calendar event" : "%d Google Calendar events"),
             result.createdEventCount
         )
-        guard result.skippedAlreadyLinkedCount > 0 else {
-            return String(format: String(localized: "Created %@."), createdLabel)
+        var sentences = [
+            String(format: String(localized: "Created %@."), createdLabel)
+        ]
+
+        if result.skippedAlreadyLinkedCount > 0 {
+            let skippedLabel = String(
+                format: String(localized: result.skippedAlreadyLinkedCount == 1 ? "%d already-linked task" : "%d already-linked tasks"),
+                result.skippedAlreadyLinkedCount
+            )
+            sentences.append(String(format: String(localized: "Skipped %@."), skippedLabel))
         }
 
-        let skippedLabel = String(
-            format: String(localized: result.skippedAlreadyLinkedCount == 1 ? "%d already-linked task" : "%d already-linked tasks"),
-            result.skippedAlreadyLinkedCount
-        )
-        return String(format: String(localized: "Created %@. Skipped %@."), createdLabel, skippedLabel)
+        if result.deferredDueToRunLimitCount > 0 {
+            let deferredLabel = String(
+                format: String(localized: result.deferredDueToRunLimitCount == 1 ? "%d due task" : "%d due tasks"),
+                result.deferredDueToRunLimitCount
+            )
+            sentences.append(String(format: String(localized: "Deferred %@."), deferredLabel))
+        }
+
+        if result.failedRetryableCount > 0 {
+            let retryableLabel = String(
+                format: String(localized: result.failedRetryableCount == 1 ? "%d retryable task" : "%d retryable tasks"),
+                result.failedRetryableCount
+            )
+            sentences.append(String(format: String(localized: "Rate-limited %@."), retryableLabel))
+        }
+
+        if result.failedNonRetryableCount > 0 {
+            let failedLabel = String(
+                format: String(localized: result.failedNonRetryableCount == 1 ? "%d task" : "%d tasks"),
+                result.failedNonRetryableCount
+            )
+            sentences.append(String(format: String(localized: "Failed %@."), failedLabel))
+        }
+
+        if result.hasMoreWork {
+            sentences.append(String(localized: "More due tasks remain; run sync again after approval."))
+        }
+
+        return sentences.joined(separator: " ")
     }
 
     @discardableResult

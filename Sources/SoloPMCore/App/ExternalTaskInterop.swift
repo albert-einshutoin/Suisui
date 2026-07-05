@@ -578,6 +578,7 @@ public enum GoogleCalendarRuntimeSyncError: Error, Equatable, Sendable {
     case approvalRequired
     case invalidDueDate(String)
     case notReady(GoogleCalendarRuntimeSyncState)
+    case rateLimited(retryAfterSeconds: TimeInterval?)
 }
 
 public protocol GoogleCalendarRuntimeSyncing: Sendable {
@@ -707,14 +708,32 @@ public final class GoogleCalendarRuntimeSyncController: GoogleCalendarRuntimeSyn
 public struct GoogleCalendarTaskSyncResult: Equatable, Sendable {
     public var createdEventCount: Int
     public var skippedAlreadyLinkedCount: Int
+    public var deferredDueToRunLimitCount: Int
+    public var failedRetryableCount: Int
+    public var failedNonRetryableCount: Int
 
-    public init(createdEventCount: Int = 0, skippedAlreadyLinkedCount: Int = 0) {
+    public init(
+        createdEventCount: Int = 0,
+        skippedAlreadyLinkedCount: Int = 0,
+        deferredDueToRunLimitCount: Int = 0,
+        failedRetryableCount: Int = 0,
+        failedNonRetryableCount: Int = 0
+    ) {
         self.createdEventCount = createdEventCount
         self.skippedAlreadyLinkedCount = skippedAlreadyLinkedCount
+        self.deferredDueToRunLimitCount = deferredDueToRunLimitCount
+        self.failedRetryableCount = failedRetryableCount
+        self.failedNonRetryableCount = failedNonRetryableCount
+    }
+
+    public var hasMoreWork: Bool {
+        deferredDueToRunLimitCount > 0 || failedRetryableCount > 0
     }
 }
 
 public final class GoogleCalendarTaskSyncService: @unchecked Sendable {
+    public static let defaultMaximumCreatedEventCountPerRun = 25
+
     private let entitlementStore: any EntitlementStore
     private let store: any ProjectBoardStore
     private let linkStore: any ExternalTaskLinkStore
@@ -722,6 +741,7 @@ public final class GoogleCalendarTaskSyncService: @unchecked Sendable {
     private let calendarID: String
     private let timeZoneIdentifier: String
     private let idempotencyNamespace: String?
+    private let maximumCreatedEventCountPerRun: Int
 
     public init(
         entitlementStore: any EntitlementStore,
@@ -730,7 +750,8 @@ public final class GoogleCalendarTaskSyncService: @unchecked Sendable {
         calendarSink: any ExternalCalendarEventSink,
         calendarID: String,
         timeZoneIdentifier: String,
-        idempotencyNamespace: String? = nil
+        idempotencyNamespace: String? = nil,
+        maximumCreatedEventCountPerRun: Int = GoogleCalendarTaskSyncService.defaultMaximumCreatedEventCountPerRun
     ) {
         self.entitlementStore = entitlementStore
         self.store = store
@@ -740,6 +761,7 @@ public final class GoogleCalendarTaskSyncService: @unchecked Sendable {
         self.timeZoneIdentifier = timeZoneIdentifier
         let normalizedNamespace = idempotencyNamespace?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.idempotencyNamespace = normalizedNamespace?.isEmpty == false ? normalizedNamespace : nil
+        self.maximumCreatedEventCountPerRun = max(1, maximumCreatedEventCountPerRun)
     }
 
     public func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult {
@@ -770,14 +792,51 @@ public final class GoogleCalendarTaskSyncService: @unchecked Sendable {
             ).map(\.taskID)
         )
 
-        var result = GoogleCalendarTaskSyncResult()
-        for (project, task) in dueTasks where !linkedTasks.contains(task.id) {
-            let record = try calendarSink.createEvent(
-                calendarDraft(for: task, project: project),
-                calendarID: calendarID,
-                timeZoneIdentifier: timeZoneIdentifier,
-                context: context
-            )
+        var result = GoogleCalendarTaskSyncResult(
+            skippedAlreadyLinkedCount: dueTasks.filter { linkedTasks.contains($0.1.id) }.count
+        )
+        let unlinkedDueTasks = dueTasks.filter { !linkedTasks.contains($0.1.id) }
+        var attemptedExternalWriteCount = 0
+
+        for (index, pair) in unlinkedDueTasks.enumerated() {
+            // Bound each approved run so a large backlog cannot turn one click
+            // into an unbounded sequence of external Calendar writes.
+            guard attemptedExternalWriteCount < maximumCreatedEventCountPerRun else {
+                result.deferredDueToRunLimitCount = unlinkedDueTasks.count - index
+                break
+            }
+
+            let project = pair.0
+            let task = pair.1
+            let draft: CalendarEventDraft
+            do {
+                draft = try calendarDraft(for: task, project: project)
+            } catch GoogleCalendarRuntimeSyncError.invalidDueDate(_) {
+                result.failedNonRetryableCount += 1
+                continue
+            }
+
+            let record: ExternalCalendarEventRecord
+            attemptedExternalWriteCount += 1
+            do {
+                record = try calendarSink.createEvent(
+                    draft,
+                    calendarID: calendarID,
+                    timeZoneIdentifier: timeZoneIdentifier,
+                    context: context
+                )
+            } catch GoogleCalendarRuntimeSyncError.rateLimited(_) {
+                // A rate-limit response means this approval run has reached the
+                // external service boundary. Stop immediately so retries require
+                // a later approved run and cannot duplicate already-linked tasks.
+                result.failedRetryableCount += 1
+                result.deferredDueToRunLimitCount += unlinkedDueTasks.count - index - 1
+                break
+            } catch {
+                result.failedNonRetryableCount += 1
+                continue
+            }
+
             _ = try linkStore.link(
                 providerID: ExternalTaskSource.googleCalendar.rawValue,
                 externalID: record.externalID,
@@ -787,8 +846,6 @@ public final class GoogleCalendarTaskSyncService: @unchecked Sendable {
             )
             result.createdEventCount += 1
         }
-
-        result.skippedAlreadyLinkedCount = dueTasks.filter { linkedTasks.contains($0.1.id) }.count
 
         return result
     }

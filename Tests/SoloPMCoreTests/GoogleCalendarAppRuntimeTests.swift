@@ -442,6 +442,53 @@ final class GoogleCalendarAppRuntimeTests: XCTestCase {
         XCTAssertEqual(record.event.draft.title, "Due task")
     }
 
+    func testHTTPEventClientReports429RetryAfterAsRateLimit() throws {
+        let httpClient = GoogleCalendarRecordingHTTPDataClient(
+            responseBody: #"{"error":{"code":429}}"#.data(using: .utf8)!,
+            statusCode: 429,
+            headers: ["Retry-After": "90"]
+        )
+        let client = GoogleCalendarHTTPEventClient(
+            tokenProvider: StaticGoogleCalendarBearerTokenProvider(token: "calendar-access-token"),
+            httpClient: httpClient
+        )
+
+        XCTAssertThrowsError(try client.createEvent(
+            CalendarEventDraft(title: "Due task", startAt: "2026-07-04", endAt: "2026-07-05", isAllDay: true),
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo"
+        )) { error in
+            guard case GoogleCalendarRuntimeError.rateLimited(let retryAfterSeconds) = error else {
+                return XCTFail("Expected GoogleCalendarRuntimeError.rateLimited, got \(error)")
+            }
+            XCTAssertEqual(retryAfterSeconds, 90)
+        }
+        XCTAssertEqual(httpClient.requests.count, 1)
+    }
+
+    func testHTTPEventClientReports503WithoutRetryAfterAsRateLimit() throws {
+        let httpClient = GoogleCalendarRecordingHTTPDataClient(
+            responseBody: #"{"error":{"code":503}}"#.data(using: .utf8)!,
+            statusCode: 503
+        )
+        let client = GoogleCalendarHTTPEventClient(
+            tokenProvider: StaticGoogleCalendarBearerTokenProvider(token: "calendar-access-token"),
+            httpClient: httpClient
+        )
+
+        XCTAssertThrowsError(try client.createEvent(
+            CalendarEventDraft(title: "Due task", startAt: "2026-07-04", endAt: "2026-07-05", isAllDay: true),
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo"
+        )) { error in
+            guard case GoogleCalendarRuntimeError.rateLimited(let retryAfterSeconds) = error else {
+                return XCTFail("Expected GoogleCalendarRuntimeError.rateLimited, got \(error)")
+            }
+            XCTAssertNil(retryAfterSeconds)
+        }
+        XCTAssertEqual(httpClient.requests.count, 1)
+    }
+
     func testHTTPCalendarListClientListsWritableCalendarsWithOAuthToken() throws {
         let httpClient = GoogleCalendarRecordingHTTPDataClient(
             responseBody: """
@@ -1136,15 +1183,15 @@ private struct StaticGoogleCalendarBearerTokenProvider: GoogleCalendarBearerToke
 
 private final class GoogleCalendarRecordingHTTPDataClient: SynchronousHTTPDataClient, @unchecked Sendable {
     private let lock = NSLock()
-    private let responses: [(body: Data, statusCode: Int)]
+    private let responses: [(body: Data, statusCode: Int, headers: [String: String])]
     private var recordedRequests: [URLRequest] = []
 
-    init(responseBody: Data, statusCode: Int) {
-        self.responses = [(responseBody, statusCode)]
+    init(responseBody: Data, statusCode: Int, headers: [String: String] = [:]) {
+        self.responses = [(responseBody, statusCode, headers)]
     }
 
     init(responses: [(Data, Int)]) {
-        self.responses = responses.map { (body: $0.0, statusCode: $0.1) }
+        self.responses = responses.map { (body: $0.0, statusCode: $0.1, headers: [:]) }
     }
 
     var requests: [URLRequest] {
@@ -1163,7 +1210,7 @@ private final class GoogleCalendarRecordingHTTPDataClient: SynchronousHTTPDataCl
             url: request.url ?? URL(string: "https://www.googleapis.com")!,
             statusCode: response.statusCode,
             httpVersion: nil,
-            headerFields: nil
+            headerFields: response.headers
         )!
         return (response.body, httpResponse)
     }
