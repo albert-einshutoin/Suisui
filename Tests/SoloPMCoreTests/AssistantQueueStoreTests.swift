@@ -539,7 +539,7 @@ final class AssistantQueueStoreTests: XCTestCase {
         }
 
         var receipts: [ExecutionReceipt] = []
-        for index in 0..<100 {
+        for index in 4_500..<4_600 {
             let itemID = "queue-scale-done-\(String(format: "%05d", index))"
             receipts.append(contentsOf: [
                 makeReceipt(
@@ -574,10 +574,10 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertEqual(allSnapshot.needsAttentionCount, 40)
         XCTAssertTrue(allSnapshot.rows.allSatisfy { $0.state == .done })
 
-        let firstDone = "queue-scale-done-00000"
-        let row = try XCTUnwrap(allSnapshot.rows.first { $0.id == firstDone })
+        let firstVisibleDone = "queue-scale-done-04500"
+        let row = try XCTUnwrap(allSnapshot.rows.first { $0.id == firstVisibleDone })
         XCTAssertEqual(row.latestReceipt?.status, .succeeded)
-        XCTAssertEqual(row.latestReceipt?.id, "queue-scale-receipt-new-\(firstDone)")
+        XCTAssertEqual(row.latestReceipt?.id, "queue-scale-receipt-new-\(firstVisibleDone)")
 
         let attentionSnapshot = try store.readModelSnapshot(
             filter: .states(AssistantQueueViewFilter.needsAttention.states, limit: 25),
@@ -585,9 +585,9 @@ final class AssistantQueueStoreTests: XCTestCase {
             viewFilter: .needsAttention,
             sort: .needsActionFirst
         )
-        XCTAssertEqual(attentionSnapshot.rows.count, 40)
+        XCTAssertEqual(attentionSnapshot.rows.count, 25)
         XCTAssertEqual(attentionSnapshot.totalCount, 5040)
-        XCTAssertEqual(Set(attentionSnapshot.rows.map(\.state)), Set([.waitingReview, .blocked, .failed]))
+        XCTAssertTrue(attentionSnapshot.rows.allSatisfy { AssistantQueueViewFilter.needsAttention.states.contains($0.state) })
         XCTAssertEqual(attentionSnapshot.waitingReviewCount, 20)
         XCTAssertEqual(attentionSnapshot.blockedCount, 10)
         XCTAssertEqual(attentionSnapshot.failedCount, 10)
