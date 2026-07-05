@@ -244,6 +244,50 @@ public final class SQLiteExternalTaskLinkStore: ExternalTaskLinkStore, @unchecke
         ).first.map(ExternalTaskLinkRecord.init(row:))
     }
 
+    public func links(providerID: String, taskIDs: [Int64]) throws -> [ExternalTaskLinkRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let uniqueTaskIDs = Array(Set(taskIDs))
+        guard !uniqueTaskIDs.isEmpty else {
+            return []
+        }
+
+        let taskIDList = uniqueTaskIDs.map(String.init).joined(separator: ", ")
+        return try connection.queryRows(
+            """
+            SELECT * FROM external_task_links
+            WHERE provider_id = '\(SQL.escape(providerID))'
+              AND task_id IN (\(taskIDList))
+            ORDER BY id ASC;
+            """
+        ).map(ExternalTaskLinkRecord.init(row:))
+    }
+
+    public func links(providerID: String, externalIDs: [String]) throws -> [ExternalTaskLinkRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let uniqueExternalIDs = Array(Set(externalIDs))
+        guard !uniqueExternalIDs.isEmpty else {
+            return []
+        }
+
+        let inClause = uniqueExternalIDs
+            .sorted()
+            .map { "'\(SQL.escape($0))'" }
+            .joined(separator: ", ")
+
+        return try connection.queryRows(
+            """
+            SELECT * FROM external_task_links
+            WHERE provider_id = '\(SQL.escape(providerID))'
+              AND external_id IN (\(inClause))
+            ORDER BY id ASC;
+            """
+        ).map(ExternalTaskLinkRecord.init(row:))
+    }
+
     public func link(providerID: String, taskID: Int64) throws -> ExternalTaskLinkRecord? {
         lock.lock()
         defer { lock.unlock() }

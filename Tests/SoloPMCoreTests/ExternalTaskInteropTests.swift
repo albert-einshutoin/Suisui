@@ -63,6 +63,110 @@ final class ExternalTaskInteropTests: XCTestCase {
         XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.todoist.rawValue, externalID: "todoist-task-1")?.title, "Imported task")
     }
 
+    func testTaskImportUsesIndexedProjectsAndBatchedLinkLookup() throws {
+        let store = CountingProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
+            makeProject(
+                id: 10,
+                title: "Inbox",
+                tasks: []
+            )
+        ]))
+        let linkStore = InMemoryExternalTaskLinkStore()
+        let service = ExternalTaskImportService(store: store, linkStore: linkStore)
+
+        _ = try linkStore.link(
+            providerID: ExternalTaskSource.todoist.rawValue,
+            externalID: "todoist-task-existing",
+            taskID: 200,
+            projectID: 10,
+            title: "Existing"
+        )
+
+        let items = [
+            ExternalTaskImportItem(
+                source: .todoist,
+                externalID: "todoist-task-existing",
+                projectTitle: "Imported",
+                title: "Existing",
+                detail: "From Todoist",
+                status: .planned,
+                priority: .high,
+                dueAt: "2026-07-04"
+            ),
+            ExternalTaskImportItem(
+                source: .todoist,
+                externalID: "todoist-task-new",
+                projectTitle: "Imported",
+                title: "New task",
+                detail: "From Todoist",
+                status: .planned,
+                priority: .medium,
+                dueAt: "2026-07-05"
+            ),
+            ExternalTaskImportItem(
+                source: .todoist,
+                externalID: "todoist-task-duplicate",
+                projectTitle: "Imported",
+                title: "Duplicate import task",
+                detail: "From Todoist",
+                status: .planned,
+                priority: .medium,
+                dueAt: "2026-07-06"
+            ),
+            ExternalTaskImportItem(
+                source: .todoist,
+                externalID: "todoist-task-duplicate",
+                projectTitle: "Imported",
+                title: "Duplicate import task 2",
+                detail: "From Todoist",
+                status: .planned,
+                priority: .medium,
+                dueAt: "2026-07-07"
+            )
+        ]
+
+        let result = try service.importItems(items)
+
+        XCTAssertEqual(result.createdProjectCount, 1)
+        XCTAssertEqual(result.createdTaskCount, 2)
+        XCTAssertEqual(result.skippedDuplicateCount, 2)
+        XCTAssertEqual(store.loadSnapshotCallCount, 1)
+        XCTAssertEqual(linkStore.batchExternalIDLookupCount, 1)
+        XCTAssertEqual(linkStore.singleExternalIDLookupCount, 0)
+    }
+
+    func testPortableTaskDocumentImportBuildsActiveProjectIndexBeforeTaskLoop() throws {
+        let store = CountingProjectBoardStore()
+        let linkStore = InMemoryExternalTaskLinkStore()
+        let service = TaskInteropDocumentImportService(store: store, linkStore: linkStore)
+        let document = TaskInteropDocument(
+            exportedAt: Date(timeIntervalSince1970: 1_800_000_010),
+            projects: [
+                TaskInteropProject(localID: 1, title: "Imported Empty Project", status: "active"),
+                TaskInteropProject(localID: 2, title: "Imported Empty Project", status: "active")
+            ],
+            tasks: [
+                TaskInteropTask(
+                    localID: 10,
+                    localProjectID: 1,
+                    projectTitle: "Imported Empty Project",
+                    title: "Round-trip task",
+                    detail: "From exported JSON",
+                    status: .planned,
+                    priority: .high,
+                    dueAt: "2026-07-08"
+                )
+            ]
+        )
+
+        let result = try service.importDocument(document)
+
+        XCTAssertEqual(result.createdProjectCount, 1)
+        XCTAssertEqual(result.createdTaskCount, 1)
+        XCTAssertEqual(result.skippedDuplicateCount, 0)
+        XCTAssertEqual(store.loadSnapshotCallCount, 1)
+    }
+
     func testPortableTaskDocumentImportCreatesEmptyProjectsAndSkipsRepeatedTasks() throws {
         let store = InMemoryProjectBoardStore()
         let linkStore = InMemoryExternalTaskLinkStore()
@@ -70,7 +174,8 @@ final class ExternalTaskInteropTests: XCTestCase {
         let document = TaskInteropDocument(
             exportedAt: Date(timeIntervalSince1970: 1_800_000_001),
             projects: [
-                TaskInteropProject(localID: 12, title: "Imported Empty Project", status: "active")
+                TaskInteropProject(localID: 12, title: "Imported Empty Project", status: "active"),
+                TaskInteropProject(localID: 13, title: "   ", status: "active")
             ],
             tasks: [
                 TaskInteropTask(
@@ -88,7 +193,8 @@ final class ExternalTaskInteropTests: XCTestCase {
 
         let firstResult = try service.importDocument(document)
         let secondResult = try service.importDocument(document)
-        let importedProject = try XCTUnwrap(try store.loadSnapshot(includeArchived: true).projects.first { $0.title == "Imported Empty Project" })
+        let snapshot = try store.loadSnapshot(includeArchived: true)
+        let importedProject = try XCTUnwrap(snapshot.projects.first { $0.title == "Imported Empty Project" })
 
         XCTAssertEqual(firstResult.createdProjectCount, 1)
         XCTAssertEqual(firstResult.createdTaskCount, 1)
@@ -97,6 +203,7 @@ final class ExternalTaskInteropTests: XCTestCase {
         XCTAssertEqual(secondResult.createdTaskCount, 0)
         XCTAssertEqual(secondResult.skippedDuplicateCount, 1)
         XCTAssertEqual(importedProject.tasks.map(\.title), ["Round-trip task"])
+        XCTAssertFalse(snapshot.projects.contains { $0.title == "Imported Tasks" && $0.tasks.isEmpty })
     }
 
     @MainActor
@@ -209,6 +316,43 @@ final class ExternalTaskInteropTests: XCTestCase {
         XCTAssertEqual(calendarSink.createdDrafts.first?.idempotencyKey?.hasPrefix("solopm"), true)
         XCTAssertEqual(calendarSink.createdDrafts.first?.idempotencyKey?.count, 70)
         XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 1)?.externalID, "calendar-event-1")
+    }
+
+    func testGoogleCalendarTaskSyncUsesBatchedTaskLinkLookup() throws {
+        let store = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
+            makeProject(
+                id: 7,
+                title: "Launch",
+                tasks: [
+                    ProjectBoardTask(id: 10, projectID: 7, title: "Due task 1", detail: "", status: .planned, priority: .high, dueAt: "2026-07-04"),
+                    ProjectBoardTask(id: 11, projectID: 7, title: "Due task 2", detail: "", status: .planned, priority: .high, dueAt: "2026-07-05"),
+                    ProjectBoardTask(id: 12, projectID: 7, title: "No due date", detail: "", status: .planned, priority: .medium, dueAt: nil)
+                ]
+            )
+        ]))
+        let linkStore = InMemoryExternalTaskLinkStore()
+        _ = try linkStore.link(
+            providerID: ExternalTaskSource.googleCalendar.rawValue,
+            externalID: "calendar-event-linked",
+            taskID: 11,
+            projectID: 7,
+            title: "Due task 2"
+        )
+        let service = GoogleCalendarTaskSyncService(
+            entitlementStore: StaticEntitlementStore(plan: .pro),
+            store: store,
+            linkStore: linkStore,
+            calendarSink: RecordingExternalCalendarEventSink(),
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo"
+        )
+
+        let result = try service.syncDueTasks(context: approvedContext())
+
+        XCTAssertEqual(result.createdEventCount, 1)
+        XCTAssertEqual(result.skippedAlreadyLinkedCount, 1)
+        XCTAssertEqual(linkStore.batchTaskLookupCount, 1)
+        XCTAssertEqual(linkStore.singleTaskLookupCount, 0)
     }
 
     func testGoogleCalendarRuntimeReadinessSurfacesPlanOAuthScopeTokenAndCalendarStates() throws {
@@ -695,10 +839,120 @@ private final class MutableAppSettingsStore: AppSettingsStore, @unchecked Sendab
     }
 }
 
+private final class CountingProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
+    private let wrapped: InMemoryProjectBoardStore
+    private let lock = NSLock()
+
+    private(set) var loadSnapshotCallCount = 0
+
+    init(snapshot: ProjectBoardSnapshot = ProjectBoardSnapshot(projects: [
+        ProjectBoardProject(
+            id: 1,
+            title: "Inbox",
+            status: "active",
+            subtitle: "0 open / 0 total",
+            columns: ProjectTaskStatus.allCases.map { ProjectBoardColumn(status: $0, tasks: []) }
+        )
+    ])) {
+        self.wrapped = InMemoryProjectBoardStore(snapshot: snapshot)
+    }
+
+    func loadSnapshot() throws -> ProjectBoardSnapshot {
+        return try lock.withLock {
+            loadSnapshotCallCount += 1
+            return try wrapped.loadSnapshot()
+        }
+    }
+
+    func loadSnapshot(includeArchived: Bool) throws -> ProjectBoardSnapshot {
+        return try lock.withLock {
+            loadSnapshotCallCount += 1
+            return try wrapped.loadSnapshot(includeArchived: includeArchived)
+        }
+    }
+
+    func createProject(title: String) throws -> ProjectBoardProject {
+        try wrapped.createProject(title: title)
+    }
+
+    func updateProject(id: Int64, title: String) throws -> ProjectBoardProject {
+        try wrapped.updateProject(id: id, title: title)
+    }
+
+    func completeProject(id: Int64) throws -> ProjectBoardProject {
+        try wrapped.completeProject(id: id)
+    }
+
+    func archiveProject(id: Int64) throws -> ProjectBoardProject {
+        try wrapped.archiveProject(id: id)
+    }
+
+    func restoreProject(id: Int64) throws -> ProjectBoardProject {
+        try wrapped.restoreProject(id: id)
+    }
+
+    func setProjectWorkspacePath(id: Int64, path: String?, bookmarkData: Data?) throws -> ProjectBoardProject {
+        try wrapped.setProjectWorkspacePath(id: id, path: path, bookmarkData: bookmarkData)
+    }
+
+    func deleteProject(id: Int64) throws {
+        try wrapped.deleteProject(id: id)
+    }
+
+    func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
+        try wrapped.createTask(draft)
+    }
+
+    func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
+        try wrapped.updateTask(id: id, draft)
+    }
+
+    func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask {
+        try wrapped.moveTask(id: id, to: status)
+    }
+
+    func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask] {
+        try wrapped.moveTasks(ids: ids, to: status)
+    }
+
+    func moveTasks(ids: [Int64], toProjectID projectID: Int64) throws -> [ProjectBoardTask] {
+        try wrapped.moveTasks(ids: ids, toProjectID: projectID)
+    }
+
+    func deleteTask(id: Int64) throws {
+        try wrapped.deleteTask(id: id)
+    }
+
+    func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact {
+        try wrapped.createProjectArtifact(projectID: projectID, expectedPath: expectedPath)
+    }
+
+    func deleteProjectArtifact(id: Int64) throws {
+        try wrapped.deleteProjectArtifact(id: id)
+    }
+
+    func createProjectMilestone(projectID: Int64, title: String, dueAt: String?) throws -> ProjectBoardMilestone {
+        try wrapped.createProjectMilestone(projectID: projectID, title: title, dueAt: dueAt)
+    }
+
+    func updateProjectMilestone(id: Int64, title: String, dueAt: String?, isCompleted: Bool) throws -> ProjectBoardMilestone {
+        try wrapped.updateProjectMilestone(id: id, title: title, dueAt: dueAt, isCompleted: isCompleted)
+    }
+
+    func deleteProjectMilestone(id: Int64) throws {
+        try wrapped.deleteProjectMilestone(id: id)
+    }
+}
+
 private final class InMemoryExternalTaskLinkStore: ExternalTaskLinkStore, @unchecked Sendable {
     private let lock = NSLock()
     private var records: [ExternalTaskLinkRecord] = []
     private var nextID: Int64 = 1
+
+    private(set) var singleExternalIDLookupCount = 0
+    private(set) var singleTaskLookupCount = 0
+    private(set) var batchTaskLookupCount = 0
+    private(set) var batchExternalIDLookupCount = 0
 
     func link(providerID: String, externalID: String, taskID: Int64, projectID: Int64?, title: String?) throws -> ExternalTaskLinkRecord {
         lock.withLock {
@@ -724,14 +978,36 @@ private final class InMemoryExternalTaskLinkStore: ExternalTaskLinkStore, @unche
     }
 
     func link(providerID: String, externalID: String) throws -> ExternalTaskLinkRecord? {
+        return lock.withLock {
+            singleExternalIDLookupCount += 1
+            return records.first { $0.providerID == providerID && $0.externalID == externalID }
+        }
+    }
+
+    func links(providerID: String, taskIDs: [Int64]) throws -> [ExternalTaskLinkRecord] {
         lock.withLock {
-            records.first { $0.providerID == providerID && $0.externalID == externalID }
+            batchTaskLookupCount += 1
+            let taskIDSet = Set(taskIDs)
+            return records.filter { record in
+                record.providerID == providerID && taskIDSet.contains(record.taskID)
+            }
+        }
+    }
+
+    func links(providerID: String, externalIDs: [String]) throws -> [ExternalTaskLinkRecord] {
+        lock.withLock {
+            batchExternalIDLookupCount += 1
+            let externalIDSet = Set(externalIDs)
+            return records.filter { record in
+                record.providerID == providerID && externalIDSet.contains(record.externalID)
+            }
         }
     }
 
     func link(providerID: String, taskID: Int64) throws -> ExternalTaskLinkRecord? {
-        lock.withLock {
-            records.first { $0.providerID == providerID && $0.taskID == taskID }
+        return lock.withLock {
+            singleTaskLookupCount += 1
+            return records.first { $0.providerID == providerID && $0.taskID == taskID }
         }
     }
 
