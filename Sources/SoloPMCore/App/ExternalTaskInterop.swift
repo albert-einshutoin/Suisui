@@ -166,21 +166,46 @@ public final class ExternalTaskImportService {
     private let store: any ProjectBoardStore
     private let linkStore: any ExternalTaskLinkStore
 
+    private struct ExternalTaskLinkProviderAndExternalIDKey: Hashable {
+        let providerID: String
+        let externalID: String
+    }
+
     public init(store: any ProjectBoardStore, linkStore: any ExternalTaskLinkStore) {
         self.store = store
         self.linkStore = linkStore
     }
 
     public func importItems(_ items: [ExternalTaskImportItem]) throws -> ExternalTaskImportResult {
+        var activeProjectIndex = Self.activeProjectIndex(from: try store.loadSnapshot(includeArchived: true))
+        return try importItems(items, activeProjectIndex: &activeProjectIndex)
+    }
+
+    func importItems(
+        _ items: [ExternalTaskImportItem],
+        activeProjectIndex: inout [String: ProjectBoardProject]
+    ) throws -> ExternalTaskImportResult {
         var result = ExternalTaskImportResult()
 
+        // Fetch existing links as a single batch per provider so each import item
+        // doesn't trigger one lookup query.
+        var existingLinks = try existingLinksLookup(for: items)
+
         for item in items {
-            if try linkStore.link(providerID: item.source.rawValue, externalID: item.externalID) != nil {
+            let key = ExternalTaskLinkProviderAndExternalIDKey(
+                providerID: item.source.rawValue,
+                externalID: item.externalID
+            )
+            if existingLinks[key] != nil {
                 result.skippedDuplicateCount += 1
                 continue
             }
 
-            let project = try projectForImport(title: item.projectTitle, createdProjectCount: &result.createdProjectCount)
+            let project = try projectForImport(
+                title: item.projectTitle,
+                createdProjectCount: &result.createdProjectCount,
+                activeProjectIndex: &activeProjectIndex
+            )
             let task = try store.createTask(ProjectBoardTaskDraft(
                 projectID: project.id,
                 title: item.title,
@@ -189,29 +214,67 @@ public final class ExternalTaskImportService {
                 priority: item.priority,
                 dueAt: item.dueAt
             ))
-            _ = try linkStore.link(
+            let linkedRecord = try linkStore.link(
                 providerID: item.source.rawValue,
                 externalID: item.externalID,
                 taskID: task.id,
                 projectID: task.projectID,
                 title: task.title
             )
+            existingLinks[key] = linkedRecord
             result.createdTaskCount += 1
         }
 
         return result
     }
 
-    private func projectForImport(title: String, createdProjectCount: inout Int) throws -> ProjectBoardProject {
-        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let importTitle = normalizedTitle.isEmpty ? "Imported Tasks" : normalizedTitle
-        let snapshot = try store.loadSnapshot(includeArchived: true)
-        if let existing = snapshot.projects.first(where: { $0.title == importTitle && !$0.isArchived }) {
+    static func activeProjectIndex(from snapshot: ProjectBoardSnapshot) -> [String: ProjectBoardProject] {
+        Dictionary(
+            snapshot.projects
+                .filter { !$0.isArchived }
+                .map { (Self.normalizedProjectTitle($0.title), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    private func projectForImport(
+        title: String,
+        createdProjectCount: inout Int,
+        activeProjectIndex: inout [String: ProjectBoardProject]
+    ) throws -> ProjectBoardProject {
+        let normalizedTitle = Self.normalizedProjectTitle(title)
+        if let existing = activeProjectIndex[normalizedTitle] {
             return existing
         }
-        let project = try store.createProject(title: importTitle)
+
+        // Indexing active projects lets each imported item resolve the target
+        // project without re-reading the full snapshot on every row.
+        let project = try store.createProject(title: normalizedTitle)
+        activeProjectIndex[normalizedTitle] = project
         createdProjectCount += 1
         return project
+    }
+
+    private func existingLinksLookup(for items: [ExternalTaskImportItem]) throws -> [ExternalTaskImportService.ExternalTaskLinkProviderAndExternalIDKey: ExternalTaskLinkRecord] {
+        let linksByProvider = Dictionary(grouping: items, by: { $0.source.rawValue })
+
+        var allLinks: [ExternalTaskLinkRecord] = []
+        for (providerID, providerItems) in linksByProvider {
+            let externalIDs = Array(Set(providerItems.map { $0.externalID }))
+            allLinks += try linkStore.links(providerID: providerID, externalIDs: externalIDs)
+        }
+
+        return Dictionary(
+            uniqueKeysWithValues: allLinks.map {
+                (ExternalTaskLinkProviderAndExternalIDKey(providerID: $0.providerID, externalID: $0.externalID), $0)
+            }
+        )
+    }
+
+    static func normalizedProjectTitle(_ title: String) -> String {
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let importTitle = normalizedTitle.isEmpty ? "Imported Tasks" : normalizedTitle
+        return importTitle
     }
 }
 
@@ -227,16 +290,19 @@ public final class TaskInteropDocumentImportService {
     public func importDocument(_ document: TaskInteropDocument) throws -> ExternalTaskImportResult {
         var result = ExternalTaskImportResult()
 
+        var activeProjectIndex = ExternalTaskImportService.activeProjectIndex(from: try store.loadSnapshot(includeArchived: true))
+
         for project in document.projects {
-            let title = project.title.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !title.isEmpty else {
+            let rawTitle = project.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rawTitle.isEmpty else {
                 continue
             }
-            let snapshot = try store.loadSnapshot(includeArchived: true)
-            guard snapshot.projects.contains(where: { $0.title == title && !$0.isArchived }) == false else {
+            let title = ExternalTaskImportService.normalizedProjectTitle(rawTitle)
+            guard activeProjectIndex[title] == nil else {
                 continue
             }
-            _ = try store.createProject(title: title)
+            let createdProject = try store.createProject(title: title)
+            activeProjectIndex[title] = createdProject
             result.createdProjectCount += 1
         }
 
@@ -253,7 +319,10 @@ public final class TaskInteropDocumentImportService {
                 dueAt: task.dueAt
             )
         }
-        let taskResult = try ExternalTaskImportService(store: store, linkStore: linkStore).importItems(taskItems)
+        // Reuse the prebuilt project index for all task imports to avoid per-item
+        // snapshot reads while keeping project creation/idempotency behavior.
+        let taskResult = try ExternalTaskImportService(store: store, linkStore: linkStore)
+            .importItems(taskItems, activeProjectIndex: &activeProjectIndex)
         result.createdProjectCount += taskResult.createdProjectCount
         result.createdTaskCount += taskResult.createdTaskCount
         result.skippedDuplicateCount += taskResult.skippedDuplicateCount
@@ -294,6 +363,8 @@ public protocol ExternalTaskLinkStore: Sendable {
     func link(providerID: String, externalID: String, taskID: Int64, projectID: Int64?, title: String?) throws -> ExternalTaskLinkRecord
     func link(providerID: String, externalID: String) throws -> ExternalTaskLinkRecord?
     func link(providerID: String, taskID: Int64) throws -> ExternalTaskLinkRecord?
+    func links(providerID: String, taskIDs: [Int64]) throws -> [ExternalTaskLinkRecord]
+    func links(providerID: String, externalIDs: [String]) throws -> [ExternalTaskLinkRecord]
     func list() throws -> [ExternalTaskLinkRecord]
 }
 
@@ -682,31 +753,43 @@ public final class GoogleCalendarTaskSyncService: @unchecked Sendable {
               !approvalToken.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw GoogleCalendarRuntimeSyncError.approvalRequired
         }
+        let snapshotProjects = try store.loadSnapshot(includeArchived: false).projects
+        let dueTasks = snapshotProjects
+            .filter { !$0.isCompleted && !$0.isArchived }
+            .flatMap { project in
+                project.tasks
+                    .filter { $0.status != .done && $0.dueAt != nil }
+                    .map { (project, $0) }
+            }
+
+        // One batch query for all due-task links avoids N+1 task-by-task lookups.
+        let linkedTasks = Set(
+            try linkStore.links(
+                providerID: ExternalTaskSource.googleCalendar.rawValue,
+                taskIDs: dueTasks.map { $0.1.id }
+            ).map(\.taskID)
+        )
 
         var result = GoogleCalendarTaskSyncResult()
-        for project in try store.loadSnapshot(includeArchived: false).projects where !project.isCompleted && !project.isArchived {
-            for task in project.tasks where task.status != .done && task.dueAt != nil {
-                if try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: task.id) != nil {
-                    result.skippedAlreadyLinkedCount += 1
-                    continue
-                }
-
-                let record = try calendarSink.createEvent(
-                    calendarDraft(for: task, project: project),
-                    calendarID: calendarID,
-                    timeZoneIdentifier: timeZoneIdentifier,
-                    context: context
-                )
-                _ = try linkStore.link(
-                    providerID: ExternalTaskSource.googleCalendar.rawValue,
-                    externalID: record.externalID,
-                    taskID: task.id,
-                    projectID: project.id,
-                    title: task.title
-                )
-                result.createdEventCount += 1
-            }
+        for (project, task) in dueTasks where !linkedTasks.contains(task.id) {
+            let record = try calendarSink.createEvent(
+                calendarDraft(for: task, project: project),
+                calendarID: calendarID,
+                timeZoneIdentifier: timeZoneIdentifier,
+                context: context
+            )
+            _ = try linkStore.link(
+                providerID: ExternalTaskSource.googleCalendar.rawValue,
+                externalID: record.externalID,
+                taskID: task.id,
+                projectID: project.id,
+                title: task.title
+            )
+            result.createdEventCount += 1
         }
+
+        result.skippedAlreadyLinkedCount = dueTasks.filter { linkedTasks.contains($0.1.id) }.count
+
         return result
     }
 

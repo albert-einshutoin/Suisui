@@ -22,9 +22,13 @@ SAMPLES_FILE="$OUTPUT_DIR/samples.tsv"
 BUILD_CONFIGURATION="${SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-release}"
 MAX_COLD_LAUNCH_MS="${SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS:-}"
 MAX_DESTINATION_SWITCH_MS="${SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS:-}"
+AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 
 cd "$ROOT_DIR"
 mkdir -p "$OUTPUT_DIR"
+
+# shellcheck source=/dev/null
+source "$AX_HELPERS"
 
 now_ms() {
   /usr/bin/perl -MTime::HiRes=time -e 'printf "%d\n", time() * 1000'
@@ -54,107 +58,30 @@ open_app() {
 }
 
 wait_for_visible_window() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$BUNDLE_IDENTIFIER" <<'APPLESCRIPT' >/dev/null 2>&1; then
-on run argv
-  set appName to item 1 of argv
-  set bundleID to item 2 of argv
-  tell application "System Events"
-    if exists process appName then
-      tell process appName
-        if (count of windows) > 0 then return "visible"
-      end tell
-    end if
-    if bundleID is not "" then
-      set appMatches to application processes whose bundle identifier is bundleID
-      repeat with appProcess in appMatches
-        if (count of windows of appProcess) > 0 then return "visible"
-      end repeat
-    end if
-  end tell
-  error "window not visible"
-end run
-APPLESCRIPT
-      return 0
-    fi
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: $APP_NAME did not publish a visible window within ${TIMEOUT_SECONDS}s" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  if ax_wait_for_visible_window "$APP_NAME" "$TIMEOUT_SECONDS" "$BUNDLE_IDENTIFIER"; then
+    return 0
+  fi
+  echo "BLOCKER: $APP_NAME did not publish a visible window within ${TIMEOUT_SECONDS}s" >&2
+  return 1
 }
 
 click_sidebar_destination() {
   local destination_identifier="$1"
   local destination_label="$2"
-  /usr/bin/osascript - "$APP_NAME" "$destination_identifier" "$destination_label" <<'APPLESCRIPT' >/dev/null
-on pressDestination(uiElement, destinationIdentifier, destinationLabel)
-  tell application "System Events"
-    set identifierValue to ""
-    try
-      set identifierValue to value of attribute "AXIdentifier" of uiElement
-    end try
-    set nameValue to ""
-    try
-      set nameValue to name of uiElement
-    end try
-    if identifierValue is destinationIdentifier or nameValue starts with destinationLabel then
-      try
-        perform action "AXPress" of uiElement
-        return true
-      end try
-      try
-        click uiElement
-        return true
-      end try
-    end if
-    try
-      repeat with childElement in UI elements of uiElement
-        if my pressDestination(childElement, destinationIdentifier, destinationLabel) then return true
-      end repeat
-    end try
-  end tell
-  return false
-end pressDestination
-
-on run argv
-  set appName to item 1 of argv
-  set destinationIdentifier to item 2 of argv
-  set destinationLabel to item 3 of argv
-  tell application "System Events"
-    if not (exists process appName) then error "process missing"
-    tell process appName
-      if not (exists window 1) then error "window missing"
-      set frontmost to true
-      try
-        perform action "AXRaise" of window 1
-      end try
-      if not my pressDestination(window 1, destinationIdentifier, destinationLabel) then error "destination missing: " & destinationIdentifier
-    end tell
-  end tell
-end run
-APPLESCRIPT
+  ax_click_sidebar_destination "$APP_NAME" "$destination_identifier" "$destination_label"
 }
 
 wait_for_marker() {
   local identifier="$1"
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
   local safe_identifier="${identifier//[^[:alnum:]_-]/_}"
   local probe_file="$OUTPUT_DIR/wait-$safe_identifier.txt"
-  while true; do
-    if /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" "$APP_NAME" "$identifier" "" >"$probe_file" 2>"$probe_file.err"; then
-      return 0
-    fi
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: AX marker did not appear during performance smoke: $identifier" >&2
-      sed -n '1,20p' "$probe_file.err" >&2 || true
-      sed -n '1,20p' "$probe_file" >&2 || true
-      return 1
-    fi
-    sleep 1
-  done
+  if ax_wait_for_ax_identifier "$APP_NAME" "$identifier" "$TIMEOUT_SECONDS" "$ROOT_DIR" "$probe_file"; then
+    return 0
+  fi
+  echo "BLOCKER: AX marker did not appear during performance smoke: $identifier" >&2
+  sed -n '1,20p' "$probe_file.err" >&2 || true
+  sed -n '1,20p' "$probe_file" >&2 || true
+  return 1
 }
 
 assert_sample_within_budget() {

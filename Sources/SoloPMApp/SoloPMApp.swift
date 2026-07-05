@@ -141,45 +141,33 @@ private struct SettingsWindowRootView: View {
     @ObservedObject var settingsViewModel: AppSettingsViewModel
     @Binding var appearancePreference: SoloPMAppearancePreference
     @Binding var languagePreference: AppLanguagePreference
-    @State private var isRuntimeReady = false
+    @State private var didScheduleProviderSecretStatusRefresh = false
 
     var body: some View {
-        Group {
-            if isRuntimeReady {
-                SettingsView(
-                    settingsViewModel: settingsViewModel,
-                    launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
-                    watcherDiagnosticsSnapshot: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot(),
-                    integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
-                    externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel(),
-                    syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel(),
-                    googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
-                    googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
-                    googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
-                    googleCalendarListProvider: AppRuntimeFactory.makeGoogleCalendarListProvider(),
-                    textToSpeechPreviewerFactory: AppRuntimeFactory.makeTextToSpeechPreviewer,
-                    appearancePreference: $appearancePreference,
-                    languagePreference: $languagePreference
-                )
-            } else {
-                ProgressView("Opening Settings")
-                    .frame(minWidth: 680, minHeight: 620)
-                    .accessibilityIdentifier("settings-loading")
-            }
-        }
+        SettingsView(
+            settingsViewModel: settingsViewModel,
+            launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
+            watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot(),
+            integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
+            watcherDiagnosticsSnapshotFactory: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot,
+            externalMCPSettingsViewModelFactory: AppRuntimeFactory.makeExternalMCPSettingsViewModel,
+            syncSettingsViewModelFactory: AppRuntimeFactory.makeSyncSettingsViewModel,
+            googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
+            googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
+            googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
+            googleCalendarListProviderFactory: AppRuntimeFactory.makeGoogleCalendarListProvider,
+            textToSpeechPreviewerFactory: AppRuntimeFactory.makeTextToSpeechPreviewer,
+            appearancePreference: $appearancePreference,
+            languagePreference: $languagePreference
+        )
         .task {
-            guard !isRuntimeReady else {
+            guard !didScheduleProviderSecretStatusRefresh else {
                 return
             }
-            // Settings diagnostics, sync status, and permission snapshots may
-            // open local stores or query system services. Defer them until the
-            // settings window itself is requested.
-            isRuntimeReady = true
-            Task { @MainActor in
-                // Provider readiness belongs to Settings, not app launch. Run
-                // Keychain status reads after the settings shell can render.
-                settingsViewModel.refreshProviderSecretStatuses()
-            }
+            didScheduleProviderSecretStatusRefresh = true
+            // Provider secret status reads are Settings-shell work and should
+            // not block the first paint of the Settings window.
+            settingsViewModel.refreshProviderSecretStatuses()
         }
     }
 }
@@ -484,14 +472,15 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
                 rootView: SettingsView(
                     settingsViewModel: AppRuntimeFactory.makeAppSettingsViewModel(),
                     launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
-                    watcherDiagnosticsSnapshot: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot(),
+                    watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot(),
                     integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
-                    externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel(),
-                    syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel(),
+                    watcherDiagnosticsSnapshotFactory: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot,
+                    externalMCPSettingsViewModelFactory: AppRuntimeFactory.makeExternalMCPSettingsViewModel,
+                    syncSettingsViewModelFactory: AppRuntimeFactory.makeSyncSettingsViewModel,
                     googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
                     googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
                     googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
-                    googleCalendarListProvider: AppRuntimeFactory.makeGoogleCalendarListProvider(),
+                    googleCalendarListProviderFactory: AppRuntimeFactory.makeGoogleCalendarListProvider,
                     textToSpeechPreviewerFactory: AppRuntimeFactory.makeTextToSpeechPreviewer,
                     appearancePreference: .constant(SoloPMAppearancePreference.environmentOverride ?? .system),
                     languagePreference: .constant(AppLanguagePreference.environmentOverride ?? .system),

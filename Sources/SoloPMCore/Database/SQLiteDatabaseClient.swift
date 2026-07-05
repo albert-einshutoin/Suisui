@@ -6,6 +6,77 @@ public enum DatabaseError: Error, Equatable {
     case executeFailed(String)
     case prepareFailed(String)
     case stepFailed(String)
+    case missingColumn(String)
+    case invalidColumnValue(column: String, value: String)
+}
+
+public struct SQLiteRow {
+    fileprivate let statement: OpaquePointer?
+    fileprivate let columnIndexes: [String: Int32]
+
+    public func string(_ column: String) throws -> String {
+        guard let value = try optionalString(column) else {
+            throw DatabaseError.missingColumn(column)
+        }
+        return value
+    }
+
+    public func optionalString(_ column: String) throws -> String? {
+        let index = try columnIndex(column)
+        guard sqlite3_column_type(statement, index) != SQLITE_NULL,
+              let text = sqlite3_column_text(statement, index) else {
+            return nil
+        }
+        let cString = UnsafeRawPointer(text).assumingMemoryBound(to: CChar.self)
+        return String(cString: cString)
+    }
+
+    public func int64(_ column: String) throws -> Int64 {
+        guard let value = try optionalInt64(column) else {
+            throw DatabaseError.missingColumn(column)
+        }
+        return value
+    }
+
+    public func optionalInt64(_ column: String) throws -> Int64? {
+        let index = try columnIndex(column)
+        guard sqlite3_column_type(statement, index) != SQLITE_NULL else {
+            return nil
+        }
+        if sqlite3_column_type(statement, index) == SQLITE_INTEGER {
+            return sqlite3_column_int64(statement, index)
+        }
+        let rawValue = try optionalString(column) ?? ""
+        guard let value = Int64(rawValue) else {
+            throw DatabaseError.invalidColumnValue(column: column, value: rawValue)
+        }
+        return value
+    }
+
+    public func data(_ column: String) throws -> Data {
+        guard let value = try optionalData(column) else {
+            throw DatabaseError.missingColumn(column)
+        }
+        return value
+    }
+
+    public func optionalData(_ column: String) throws -> Data? {
+        let index = try columnIndex(column)
+        guard sqlite3_column_type(statement, index) != SQLITE_NULL else {
+            return nil
+        }
+        guard let bytes = sqlite3_column_blob(statement, index) else {
+            return Data()
+        }
+        return Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, index)))
+    }
+
+    private func columnIndex(_ column: String) throws -> Int32 {
+        guard let index = columnIndexes[column] else {
+            throw DatabaseError.missingColumn(column)
+        }
+        return index
+    }
 }
 
 public final class SQLiteConnection {
@@ -111,6 +182,34 @@ public final class SQLiteConnection {
         }
     }
 
+    public func query<T>(_ sql: String, _ map: (SQLiteRow) throws -> T) throws -> [T] {
+        var statement: OpaquePointer?
+        let prepareStatus = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
+
+        guard prepareStatus == SQLITE_OK else {
+            throw DatabaseError.prepareFailed(errorMessage)
+        }
+
+        defer { sqlite3_finalize(statement) }
+
+        let row = SQLiteRow(statement: statement, columnIndexes: columnIndexes(for: statement))
+        var results: [T] = []
+
+        while true {
+            let stepStatus = sqlite3_step(statement)
+
+            if stepStatus == SQLITE_ROW {
+                // Hot list paths use typed row access so they do not allocate a full
+                // [String: String] dictionary for columns the caller never reads.
+                results.append(try map(row))
+            } else if stepStatus == SQLITE_DONE {
+                return results
+            } else {
+                throw DatabaseError.stepFailed(errorMessage)
+            }
+        }
+    }
+
     public var lastInsertedRowID: Int64 {
         sqlite3_last_insert_rowid(database)
     }
@@ -125,6 +224,15 @@ public final class SQLiteConnection {
 
     private var errorMessage: String {
         database.map { String(cString: sqlite3_errmsg($0)) } ?? "Unknown SQLite error."
+    }
+
+    private func columnIndexes(for statement: OpaquePointer?) -> [String: Int32] {
+        var indexes: [String: Int32] = [:]
+        for index in 0..<sqlite3_column_count(statement) {
+            let name = String(cString: sqlite3_column_name(statement, index))
+            indexes[name] = index
+        }
+        return indexes
     }
 
     private func enableForeignKeys() throws {

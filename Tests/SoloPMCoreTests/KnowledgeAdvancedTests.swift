@@ -115,6 +115,46 @@ final class KnowledgeAdvancedTests: XCTestCase {
         }
     }
 
+    func testSQLiteVectorIndexSearchWithTopKBoundedRankingAndTiebreak() throws {
+        let connection = try migratedPhase9Connection()
+        let frameStore = SQLiteKnowledgeFrameStore(connection: connection)
+        let vectorIndex = SQLiteKnowledgeVectorIndex(connection: connection, expectedDimensions: 3)
+
+        let first = try frameStore.create(name: "First", body: "one", triggers: [])
+        let second = try frameStore.create(name: "Second", body: "two", triggers: [])
+        let third = try frameStore.create(name: "Third", body: "three", triggers: [])
+        let fourth = try frameStore.create(name: "Fourth", body: "four", triggers: [])
+
+        try vectorIndex.upsert(KnowledgeEmbeddingVector(frameID: first.id, values: [1, 0, 0], providerID: "local", redactedPreview: "one"))
+        try vectorIndex.upsert(KnowledgeEmbeddingVector(frameID: second.id, values: [1, 0, 0], providerID: "local", redactedPreview: "two"))
+        try vectorIndex.upsert(KnowledgeEmbeddingVector(frameID: third.id, values: [1, 1, 0], providerID: "local", redactedPreview: "three"))
+        try vectorIndex.upsert(KnowledgeEmbeddingVector(frameID: fourth.id, values: [0, 1, 0], providerID: "local", redactedPreview: "four"))
+
+        let topOne = try vectorIndex.search(queryVector: [1, 0, 0], topK: 1, threshold: 0.10)
+        XCTAssertEqual(topOne.map(\.frameID), [first.id])
+
+        let topTwo = try vectorIndex.search(queryVector: [1, 0, 0], topK: 2, threshold: 0.10)
+        XCTAssertEqual(topTwo.map(\.frameID), [first.id, second.id])
+        XCTAssertEqual(topTwo.map(\.score), [1.0, 1.0])
+
+        let topThree = try vectorIndex.search(queryVector: [1, 0, 0], topK: 3, threshold: 0.10)
+        XCTAssertEqual(topThree.map(\.frameID), [first.id, second.id, third.id])
+        XCTAssertEqual(topThree.count, 3)
+        XCTAssertEqual(topThree[2].score, 0.7071067811865475, accuracy: 1e-12)
+    }
+
+    func testSQLiteVectorIndexSearchReturnsEmptyForNonPositiveTopK() throws {
+        let connection = try migratedPhase9Connection()
+        let frameStore = SQLiteKnowledgeFrameStore(connection: connection)
+        let vectorIndex = SQLiteKnowledgeVectorIndex(connection: connection, expectedDimensions: 3)
+        let frame = try frameStore.create(name: "Billing", body: "Invoice follow-up", triggers: [])
+
+        try vectorIndex.upsert(KnowledgeEmbeddingVector(frameID: frame.id, values: [1, 0, 0], providerID: "local", redactedPreview: "Billing"))
+
+        XCTAssertTrue(try vectorIndex.search(queryVector: [1, 0, 0], topK: 0, threshold: 0.10).isEmpty)
+        XCTAssertTrue(try vectorIndex.search(queryVector: [1, 0, 0], topK: -1, threshold: 0.10).isEmpty)
+    }
+
     func testSQLiteVectorIndexRejectsBlankProviderIDBeforePersistingVector() throws {
         let connection = try migratedPhase9Connection()
         let frameStore = SQLiteKnowledgeFrameStore(connection: connection)

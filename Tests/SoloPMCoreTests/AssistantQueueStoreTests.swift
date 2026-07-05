@@ -47,6 +47,66 @@ final class AssistantQueueStoreTests: XCTestCase {
         )
     }
 
+    func testSQLiteReadModelSnapshotDoesNotDecodeActionPayloadJSONForListRows() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteAssistantQueueStore(connection: connection)
+        try connection.execute(
+            """
+            INSERT INTO assistant_queue_items (
+                id,
+                schema_version,
+                payload_kind,
+                payload_json,
+                state,
+                risk_level,
+                source_transcript,
+                interpretation_summary,
+                review_reason,
+                redacted_summary,
+                required_capabilities_json,
+                approval_json,
+                blocking_reason,
+                cost_preview_json,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                'queue-summary-invalid-payload',
+                1,
+                'action_plan',
+                '{not-json',
+                'waitingReview',
+                'write',
+                'Create task token=sk-summary-secret',
+                'Routed as task intent.',
+                'Summary row should not need full action payload.',
+                'Create task token=sk-summary-secret',
+                '[]',
+                NULL,
+                NULL,
+                NULL,
+                '2026-07-05T00:00:00Z',
+                '2026-07-05T00:00:00Z'
+            );
+            """
+        )
+
+        let snapshot = try store.readModelSnapshot(
+            filter: .all(limit: 10),
+            receipts: [],
+            viewFilter: .all,
+            sort: .needsActionFirst
+        )
+
+        let row = try XCTUnwrap(snapshot.rows.first)
+        XCTAssertEqual(row.id, "queue-summary-invalid-payload")
+        XCTAssertFalse(row.redactedSummary.contains("sk-summary-secret"))
+        XCTAssertThrowsError(try store.list(filter: .all(limit: 10))) { error in
+            XCTAssertEqual(error as? AssistantQueueStoreError, .decodingFailed(column: "assistant_queue_items.payload_json"))
+        }
+    }
+
     func testReadModelBlocksApprovalAndRunWithoutAllowedCostPreview() throws {
         let missingPreview = AssistantQueueItem(
             id: "queue-missing-preview",

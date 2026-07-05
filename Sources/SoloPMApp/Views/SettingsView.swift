@@ -26,18 +26,49 @@ private extension VoiceModelID {
     }
 }
 
+@MainActor
+private final class LazyDependencyLoader<Value>: ObservableObject {
+    @Published private(set) var value: Value?
+    @Published private(set) var isLoading = false
+    private let loadValue: () -> Value
+
+    init(loadValue: @escaping () -> Value) {
+        self.loadValue = loadValue
+    }
+
+    func loadIfNeeded() {
+        guard value == nil, isLoading == false else {
+            return
+        }
+        isLoading = true
+
+        // Dependencies can open persistent stores. Kick off loading on a
+        // delayed main-task to keep Settings shell paint responsive while the tab
+        // starts hydrating.
+        Task { @MainActor in
+            await Task.yield()
+            self.value = self.loadValue()
+            self.isLoading = false
+        }
+    }
+}
+
 struct SettingsView: View {
     let watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot
     let integrationPermissionSnapshot: PermissionSnapshot
+    let watcherDiagnosticsSnapshotFactory: () -> WatcherDiagnosticsSnapshot
+    let externalMCPSettingsViewModelFactory: () -> ExternalMCPSettingsViewModel
+    let syncSettingsViewModelFactory: () -> SyncSettingsViewModel
     let googleCalendarStatusProvider: () -> GoogleCalendarRuntimeSyncStatus
     let googleCalendarOAuthConnector: (any GoogleCalendarOAuthConnecting)?
     let googleCalendarOAuthDisconnecter: (any GoogleCalendarOAuthDisconnecting)?
-    let googleCalendarListProvider: (any GoogleCalendarListProviding)?
+    let googleCalendarListProviderFactory: () -> (any GoogleCalendarListProviding)?
     let textToSpeechPreviewerFactory: (AppSettings) -> any TextToSpeechPreviewing
     @StateObject private var settingsViewModel: AppSettingsViewModel
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
-    @StateObject private var externalMCPViewModel: ExternalMCPSettingsViewModel
-    @StateObject private var syncViewModel: SyncSettingsViewModel
+    @StateObject private var watcherDiagnosticsLoader: LazyDependencyLoader<WatcherDiagnosticsSnapshot>
+    @StateObject private var externalMCPSettingsViewModelLoader: LazyDependencyLoader<ExternalMCPSettingsViewModel>
+    @StateObject private var syncSettingsViewModelLoader: LazyDependencyLoader<SyncSettingsViewModel>
     @Binding private var appearancePreference: SoloPMAppearancePreference
     @Binding private var languagePreference: AppLanguagePreference
     @State private var isConfirmingMCPRegistrationDeletion = false
@@ -47,21 +78,24 @@ struct SettingsView: View {
     @State private var googleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus?
     @State private var googleCalendarSetupMessage: String?
     @State private var isGoogleCalendarOAuthAuthorizationInProgress = false
+    @State private var googleCalendarListProvider: (any GoogleCalendarListProviding)?
     @State private var isLoadingGoogleCalendarList = false
     @State private var googleCalendarListOptions: [GoogleCalendarRuntimeCalendarListEntry] = []
     @State private var googleCalendarListLoadGeneration = 0
+    @State private var hasLoadedCalendarListProvider = false
 
     init(
         settingsViewModel: AppSettingsViewModel,
         launchAtLoginViewModel: LaunchAtLoginSettingsViewModel,
         watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot,
         integrationPermissionSnapshot: PermissionSnapshot,
-        externalMCPViewModel: ExternalMCPSettingsViewModel,
-        syncViewModel: SyncSettingsViewModel,
+        watcherDiagnosticsSnapshotFactory: @escaping () -> WatcherDiagnosticsSnapshot,
+        externalMCPSettingsViewModelFactory: @escaping () -> ExternalMCPSettingsViewModel,
+        syncSettingsViewModelFactory: @escaping () -> SyncSettingsViewModel,
         googleCalendarStatusProvider: @escaping () -> GoogleCalendarRuntimeSyncStatus,
         googleCalendarOAuthConnector: (any GoogleCalendarOAuthConnecting)?,
         googleCalendarOAuthDisconnecter: (any GoogleCalendarOAuthDisconnecting)?,
-        googleCalendarListProvider: (any GoogleCalendarListProviding)?,
+        googleCalendarListProviderFactory: @escaping () -> (any GoogleCalendarListProviding)?,
         textToSpeechPreviewerFactory: @escaping (AppSettings) -> any TextToSpeechPreviewing,
         appearancePreference: Binding<SoloPMAppearancePreference>,
         languagePreference: Binding<AppLanguagePreference>,
@@ -69,20 +103,43 @@ struct SettingsView: View {
     ) {
         self.watcherDiagnosticsSnapshot = watcherDiagnosticsSnapshot
         self.integrationPermissionSnapshot = integrationPermissionSnapshot
+        self.watcherDiagnosticsSnapshotFactory = watcherDiagnosticsSnapshotFactory
+        self.externalMCPSettingsViewModelFactory = externalMCPSettingsViewModelFactory
+        self.syncSettingsViewModelFactory = syncSettingsViewModelFactory
         self.googleCalendarStatusProvider = googleCalendarStatusProvider
         self.googleCalendarOAuthConnector = googleCalendarOAuthConnector
         self.googleCalendarOAuthDisconnecter = googleCalendarOAuthDisconnecter
-        self.googleCalendarListProvider = googleCalendarListProvider
+        self.googleCalendarListProviderFactory = googleCalendarListProviderFactory
         self.textToSpeechPreviewerFactory = textToSpeechPreviewerFactory
         _settingsViewModel = StateObject(wrappedValue: settingsViewModel)
         _launchAtLoginViewModel = StateObject(wrappedValue: launchAtLoginViewModel)
-        _externalMCPViewModel = StateObject(wrappedValue: externalMCPViewModel)
-        _syncViewModel = StateObject(wrappedValue: syncViewModel)
+        _watcherDiagnosticsLoader = StateObject(
+            wrappedValue: LazyDependencyLoader(loadValue: watcherDiagnosticsSnapshotFactory)
+        )
+        _externalMCPSettingsViewModelLoader = StateObject(
+            wrappedValue: LazyDependencyLoader(loadValue: externalMCPSettingsViewModelFactory)
+        )
+        _syncSettingsViewModelLoader = StateObject(
+            wrappedValue: LazyDependencyLoader(loadValue: syncSettingsViewModelFactory)
+        )
         _appearancePreference = appearancePreference
         _languagePreference = languagePreference
         _selectedTab = State(initialValue: initialTab)
         _googleCalendarSyncStatus = State(initialValue: nil)
         _googleCalendarSetupMessage = State(initialValue: nil)
+        _googleCalendarListProvider = State(wrappedValue: nil)
+    }
+
+    private var watcherDiagnosticsSnapshotForPrivacy: WatcherDiagnosticsSnapshot {
+        watcherDiagnosticsLoader.value ?? watcherDiagnosticsSnapshot
+    }
+
+    private var externalMCPViewModel: ExternalMCPSettingsViewModel? {
+        externalMCPSettingsViewModelLoader.value
+    }
+
+    private var syncViewModel: SyncSettingsViewModel? {
+        syncSettingsViewModelLoader.value
     }
 
     var body: some View {
@@ -115,13 +172,17 @@ struct SettingsView: View {
         .scenePadding()
         .onAppear {
             launchAtLoginViewModel.refresh()
+            requestRuntimeDependencies(for: selectedTab)
+        }
+        .onChange(of: selectedTab) { _, tab in
+            requestRuntimeDependencies(for: tab)
         }
         .confirmationDialog(
             "Delete MCP Server",
             isPresented: $isConfirmingMCPRegistrationDeletion
         ) {
             Button("Delete", role: .destructive) {
-                externalMCPViewModel.deleteRegistration()
+                externalMCPViewModel?.deleteRegistration()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -141,8 +202,42 @@ struct SettingsView: View {
         }
     }
 
+    private func requestRuntimeDependencies(for tab: SettingsTab) {
+        switch tab {
+        case .mcp:
+            // MCP audit/history needs sqlite/opened stores; load only when the tab is visible.
+            externalMCPSettingsViewModelLoader.loadIfNeeded()
+        case .sync:
+            // Google Calendar sync tooling and list provider are not needed until the sync tab opens.
+            syncSettingsViewModelLoader.loadIfNeeded()
+            prepareGoogleCalendarListProviderIfNeeded()
+        case .privacy:
+            // Watcher diagnostics are a best-effort status surface; keep shell paint first.
+            watcherDiagnosticsLoader.loadIfNeeded()
+        default:
+            break
+        }
+    }
+
+    private func prepareGoogleCalendarListProviderIfNeeded() {
+        guard googleCalendarListProvider == nil, hasLoadedCalendarListProvider == false else {
+            return
+        }
+        hasLoadedCalendarListProvider = true
+
+        Task { @MainActor in
+            await Task.yield()
+            googleCalendarListProvider = googleCalendarListProviderFactory()
+        }
+    }
+
     private var overviewSettingsTab: some View {
-        Form {
+        let currentSyncStatusLabel = syncViewModel?.statusLabel ?? "Unavailable"
+        let currentSyncPlanLabel = syncViewModel?.planLabel ?? "Unavailable"
+        let currentMcpStatusLabel = externalMCPViewModel?.connectionCheckResultLabel ?? "Unavailable"
+        let currentMcpDetailLabel = externalMCPViewModel?.display.statusLabel ?? "Unavailable"
+
+        return Form {
             Section("Status Overview") {
                 SettingsStatusOverview(
                     aiProviderLabel: settingsViewModel.settings.aiProvider.displayName,
@@ -160,11 +255,11 @@ struct SettingsView: View {
                     reminderStatusLabel: reminderOverviewStatusLabel,
                     reminderDetailLabel: reminderOverviewDetailLabel,
                     reminderTone: integrationTone(for: integrationPermissionSnapshot.status(for: .reminders)),
-                    mcpStatusLabel: externalMCPViewModel.connectionCheckResultLabel,
-                    mcpDetailLabel: externalMCPViewModel.display.statusLabel,
+                    mcpStatusLabel: currentMcpStatusLabel,
+                    mcpDetailLabel: currentMcpDetailLabel,
                     mcpTone: mcpOverviewTone,
-                    syncStatusLabel: syncViewModel.statusLabel,
-                    syncDetailLabel: localizedDisplay("Plan: %@", syncViewModel.planLabel),
+                    syncStatusLabel: currentSyncStatusLabel,
+                    syncDetailLabel: localizedDisplay("Plan: %@", currentSyncPlanLabel),
                     syncTone: syncOverviewTone,
                     privacyStatusLabel: privacyOverviewStatusLabel,
                     privacyDetailLabel: localizedDisplay("Login Item: %@", localizedSettingsDisplay(launchAtLoginViewModel.statusLabel)),
@@ -177,7 +272,7 @@ struct SettingsView: View {
 
             Section("Pro Value") {
                 ProValueOverviewRow(
-                    syncStatusLabel: syncViewModel.statusLabel,
+                    syncStatusLabel: currentSyncStatusLabel,
                     syncValueLabel: syncPaidValueLabel,
                     syncBoundaryLabel: syncSafetyBoundaryLabel,
                     syncTone: syncOverviewTone,
@@ -189,7 +284,7 @@ struct SettingsView: View {
             }
 
         }
-        .formStyle(.grouped)
+            .formStyle(.grouped)
     }
 
     private var appearanceSettingsTab: some View {
@@ -497,105 +592,132 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
 
+    @ViewBuilder
     private var syncSettingsTab: some View {
-        Form {
-            Section("Sync") {
-                LabeledContent("Plan", value: syncViewModel.planLabel)
-                LocalizedValueLabeledContent("Status", value: syncViewModel.statusLabel)
-                LocalizedValueLabeledContent("Last Attempt", value: syncViewModel.lastAttemptLabel)
-                LocalizedValueLabeledContent("Data Included", value: syncViewModel.dataIncludedLabel)
-                SyncValueStatusRow(
-                    planLabel: syncViewModel.planLabel,
-                    statusLabel: syncViewModel.statusLabel,
-                    valueLabel: syncPaidValueLabel,
-                    boundaryLabel: syncSafetyBoundaryLabel,
-                    tone: syncOverviewTone
-                )
-                Toggle(
-                    isOn: Binding(
-                        get: { syncViewModel.isSyncEnabled },
-                        set: { isEnabled in
-                            if isEnabled {
-                                syncViewModel.startSync()
-                            } else {
-                                syncViewModel.stopSync()
-                            }
+        let loadedSyncViewModel = syncSettingsViewModelLoader.value
+        Group {
+            if let loadedSyncViewModel {
+                Form {
+                    Section("Sync") {
+                        LabeledContent("Plan", value: loadedSyncViewModel.planLabel)
+                        LocalizedValueLabeledContent("Status", value: loadedSyncViewModel.statusLabel)
+                        LocalizedValueLabeledContent("Last Attempt", value: loadedSyncViewModel.lastAttemptLabel)
+                        LocalizedValueLabeledContent("Data Included", value: loadedSyncViewModel.dataIncludedLabel)
+                        SyncValueStatusRow(
+                            planLabel: loadedSyncViewModel.planLabel,
+                            statusLabel: loadedSyncViewModel.statusLabel,
+                            valueLabel: syncPaidValueLabel,
+                            boundaryLabel: syncSafetyBoundaryLabel,
+                            tone: syncOverviewTone
+                        )
+                        Toggle(
+                            isOn: Binding(
+                                get: { loadedSyncViewModel.isSyncEnabled },
+                                set: { isEnabled in
+                                    if isEnabled {
+                                        loadedSyncViewModel.startSync()
+                                    } else {
+                                        loadedSyncViewModel.stopSync()
+                                    }
+                                }
+                            )
+                        ) {
+                            Label("External Sync", systemImage: "arrow.triangle.2.circlepath")
                         }
-                    )
-                ) {
-                    Label("External Sync", systemImage: "arrow.triangle.2.circlepath")
-                }
-                .disabled(!syncViewModel.canEnableSync)
-                if let syncUnavailableLabel = syncViewModel.syncUnavailableLabel {
-                    Label(localizedSettingsDisplay(syncUnavailableLabel), systemImage: "lock")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if let errorMessage = syncViewModel.errorMessage {
-                    Label(errorMessage, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-            }
+                        .disabled(!loadedSyncViewModel.canEnableSync)
+                        if let syncUnavailableLabel = loadedSyncViewModel.syncUnavailableLabel {
+                            Label(localizedSettingsDisplay(syncUnavailableLabel), systemImage: "lock")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let errorMessage = loadedSyncViewModel.errorMessage {
+                            Label(errorMessage, systemImage: "exclamationmark.triangle")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
 
-            Section("External Task Tools") {
-                Text("Pro unlocks external sync; import/export JSON stays local.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                GoogleCalendarSettingsSaveControls(
-                    calendarID: Binding(
-                        get: { settingsViewModel.settings.googleCalendarID },
-                        set: { settingsViewModel.setGoogleCalendarID($0) }
-                    ),
-                    currentCalendarID: settingsViewModel.settings.googleCalendarID,
-                    calendarListOptions: googleCalendarListOptions,
-                    shouldShowCurrentManualOption: shouldShowCurrentGoogleCalendarManualOption,
-                    manualCalendarLabel: googleCalendarManualCalendarLabel,
-                    calendarPickerLabel: { googleCalendarPickerLabel(for: $0) },
-                    isLoadingCalendarList: isLoadingGoogleCalendarList,
-                    isCalendarListLoadDisabled: isLoadingGoogleCalendarList || isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarListProvider == nil,
-                    saveCalendarID: saveGoogleCalendarIDSetting,
-                    loadCalendarList: loadGoogleCalendarList
-                )
-                ExternalConnectorScopeRow(
-                    name: "Google Calendar",
-                    status: googleCalendarSettingsReadinessRow.statusLabel,
-                    detail: googleCalendarSettingsReadinessRow.detailLabel,
-                    nextAction: googleCalendarSettingsReadinessRow.nextActionLabel,
-                    privacyBoundary: googleCalendarSettingsReadinessRow.privacyBoundaryLabel,
-                    systemImage: ExternalConnectorExposurePolicy.exposure(for: .googleCalendar).systemImage,
-                    tone: googleCalendarSettingsTone,
-                    statusActionLabel: googleCalendarSettingsReadinessRow.statusCheckActionLabel,
-                    onStatusAction: refreshGoogleCalendarSettingsStatus
-                )
-                Button(localizedSettingsDisplay(googleCalendarOAuthActionLabel)) {
-                    startGoogleCalendarOAuthAuthorization()
-                }
-                .disabled(isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarOAuthConnector == nil)
-                .accessibilityIdentifier("settings-google-calendar-oauth-setup")
-                .accessibilityHint("Opens Google Calendar OAuth authorization with PKCE. Tokens stay in Keychain.")
-                Button(role: .destructive) {
-                    isConfirmingGoogleCalendarOAuthDisconnect = true
-                } label: {
-                    Label("Disconnect Google Calendar", systemImage: "xmark.circle")
-                }
-                .disabled(isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarOAuthDisconnecter == nil)
-                .accessibilityIdentifier("settings-google-calendar-oauth-disconnect")
-                .accessibilityHint("Deletes local Google Calendar OAuth metadata and Keychain tokens without changing tasks.")
-                if let googleCalendarSetupMessage {
-                    Label(localizedSettingsDisplay(googleCalendarSetupMessage), systemImage: "info.circle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("settings-google-calendar-oauth-setup-message")
-                }
-                Label(hiddenConnectorPolicySummary, systemImage: "eye.slash")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("settings-external-connector-policy-boundary")
-            }
+                    Section("External Task Tools") {
+                        Text("Pro unlocks external sync; import/export JSON stays local.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        GoogleCalendarSettingsSaveControls(
+                            calendarID: Binding(
+                                get: { settingsViewModel.settings.googleCalendarID },
+                                set: { settingsViewModel.setGoogleCalendarID($0) }
+                            ),
+                            currentCalendarID: settingsViewModel.settings.googleCalendarID,
+                            calendarListOptions: googleCalendarListOptions,
+                            shouldShowCurrentManualOption: shouldShowCurrentGoogleCalendarManualOption,
+                            manualCalendarLabel: googleCalendarManualCalendarLabel,
+                            calendarPickerLabel: { googleCalendarPickerLabel(for: $0) },
+                            isLoadingCalendarList: isLoadingGoogleCalendarList,
+                            isCalendarListLoadDisabled: isLoadingGoogleCalendarList || isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarListProvider == nil,
+                            saveCalendarID: saveGoogleCalendarIDSetting,
+                            loadCalendarList: loadGoogleCalendarList
+                        )
+                        ExternalConnectorScopeRow(
+                            name: "Google Calendar",
+                            status: googleCalendarSettingsReadinessRow.statusLabel,
+                            detail: googleCalendarSettingsReadinessRow.detailLabel,
+                            nextAction: googleCalendarSettingsReadinessRow.nextActionLabel,
+                            privacyBoundary: googleCalendarSettingsReadinessRow.privacyBoundaryLabel,
+                            systemImage: ExternalConnectorExposurePolicy.exposure(for: .googleCalendar).systemImage,
+                            tone: googleCalendarSettingsTone,
+                            statusActionLabel: googleCalendarSettingsReadinessRow.statusCheckActionLabel,
+                            onStatusAction: refreshGoogleCalendarSettingsStatus
+                        )
+                        Button(localizedSettingsDisplay(googleCalendarOAuthActionLabel)) {
+                            startGoogleCalendarOAuthAuthorization()
+                        }
+                        .disabled(isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarOAuthConnector == nil)
+                        .accessibilityIdentifier("settings-google-calendar-oauth-setup")
+                        .accessibilityHint("Opens Google Calendar OAuth authorization with PKCE. Tokens stay in Keychain.")
+                        Button(role: .destructive) {
+                            isConfirmingGoogleCalendarOAuthDisconnect = true
+                        } label: {
+                            Label("Disconnect Google Calendar", systemImage: "xmark.circle")
+                        }
+                        .disabled(isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarOAuthDisconnecter == nil)
+                        .accessibilityIdentifier("settings-google-calendar-oauth-disconnect")
+                        .accessibilityHint("Deletes local Google Calendar OAuth metadata and Keychain tokens without changing tasks.")
+                        if let googleCalendarSetupMessage {
+                            Label(localizedSettingsDisplay(googleCalendarSetupMessage), systemImage: "info.circle")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .accessibilityIdentifier("settings-google-calendar-oauth-setup-message")
+                        }
+                        Label(hiddenConnectorPolicySummary, systemImage: "eye.slash")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("settings-external-connector-policy-boundary")
+                    }
 
+                }
+                .formStyle(.grouped)
+            } else if syncSettingsViewModelLoader.isLoading {
+                Form {
+                    Section("Sync") {
+                        HStack {
+                            ProgressView()
+                            Text("Loading Sync settings...")
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityIdentifier("settings-sync-loading")
+                    }
+                }
+                .formStyle(.grouped)
+            } else {
+                Form {
+                    Section("Sync") {
+                        Text("Sync settings not loaded yet.")
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("settings-sync-unavailable")
+                        settingsLazyLoadUnavailableHint(message: "Open this tab to load Sync settings.")
+                    }
+                }.formStyle(.grouped)
+            }
         }
-        .formStyle(.grouped)
     }
 
     private struct GoogleCalendarSettingsSaveControls: View {
@@ -974,13 +1096,26 @@ struct SettingsView: View {
             }
 
             Section("Watcher") {
-                LabeledContent("Last Check", value: diagnosticDateLabel(watcherDiagnosticsSnapshot.lastCheckAt))
-                LabeledContent("Next Check", value: diagnosticDateLabel(watcherDiagnosticsSnapshot.nextCheckAt))
-                LocalizedValueLabeledContent("Notifications", value: permissionLabel(watcherDiagnosticsSnapshot.notificationPermissionStatus))
-                if let errorMessage = watcherDiagnosticsSnapshot.errorMessage {
-                    Label(errorMessage, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                if let diagnosticsSnapshot = watcherDiagnosticsLoader.value {
+                    LabeledContent("Last Check", value: diagnosticDateLabel(diagnosticsSnapshot.lastCheckAt))
+                    LabeledContent("Next Check", value: diagnosticDateLabel(diagnosticsSnapshot.nextCheckAt))
+                    LocalizedValueLabeledContent("Notifications", value: permissionLabel(diagnosticsSnapshot.notificationPermissionStatus))
+                    if let errorMessage = diagnosticsSnapshot.errorMessage {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                } else if watcherDiagnosticsLoader.isLoading {
+                    HStack {
+                        ProgressView()
+                        Text("Loading watcher diagnostics...")
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityIdentifier("settings-privacy-watcher-loading")
+                } else {
+                    Text("Watcher diagnostics not loaded yet.")
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("settings-privacy-watcher-unavailable")
                 }
             }
 
@@ -1003,201 +1138,238 @@ struct SettingsView: View {
         }
     }
 
+    @ViewBuilder
     private var mcpSettingsTab: some View {
-        Form {
-            Section("External MCP") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Label("Servers", systemImage: "externaldrive.connected.to.line.below")
-                            .font(.headline)
-                        Spacer()
-                        Button {
-                            externalMCPViewModel.createRegistration()
-                        } label: {
-                            Label("Add Server", systemImage: "plus")
-                        }
-                    }
-
-                    ForEach(externalMCPViewModel.registrationRows) { row in
-                        MCPServerSettingsRow(
-                            row: row,
-                            isCheckDisabled: externalMCPViewModel.isCheckingConnection,
-                            onSelect: {
-                                externalMCPViewModel.selectRegistration(id: row.id)
-                            },
-                            onCheck: {
-                                Task {
-                                    await externalMCPViewModel.checkConnection(id: row.id)
+        let loadedExternalMCPViewModel = externalMCPSettingsViewModelLoader.value
+        Group {
+            if let loadedExternalMCPViewModel {
+                Form {
+                    Section("External MCP") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Label("Servers", systemImage: "externaldrive.connected.to.line.below")
+                                    .font(.headline)
+                                Spacer()
+                                Button {
+                                    loadedExternalMCPViewModel.createRegistration()
+                                } label: {
+                                    Label("Add Server", systemImage: "plus")
                                 }
                             }
-                        )
-                    }
-                }
 
-                MCPPaidExecutionBoundaryRow(
-                    planLabel: syncViewModel.planLabel,
-                    statusLabel: mcpExecutionStatusLabel,
-                    valueLabel: mcpExecutionValueLabel,
-                    boundaryLabel: mcpExecutionSafetyBoundaryLabel,
-                    tone: mcpExecutionTone
-                )
-
-                Toggle(
-                    isOn: Binding(
-                        get: { externalMCPViewModel.registration.isEnabled },
-                        set: { externalMCPViewModel.updateEnabled($0) }
-                    )
-                ) {
-                    Label("Server Enabled", systemImage: "externaldrive.connected.to.line.below")
-                }
-                TextField("Display Name", text: Binding(
-                    get: { externalMCPViewModel.registration.displayName },
-                    set: { externalMCPViewModel.updateDisplayName($0) }
-                ))
-                TextField("Command", text: Binding(
-                    get: { externalMCPViewModel.registration.command },
-                    set: { externalMCPViewModel.updateCommand($0) }
-                ))
-                TextField("Arguments", text: Binding(
-                    get: { externalMCPViewModel.argumentsText },
-                    set: { externalMCPViewModel.updateArgumentsText($0) }
-                ))
-                TextField("Working Directory", text: Binding(
-                    get: { externalMCPViewModel.registration.workingDirectory ?? "" },
-                    set: { externalMCPViewModel.updateWorkingDirectory($0) }
-                ))
-                TextField("Environment References", text: Binding(
-                    get: { externalMCPViewModel.environmentText },
-                    set: { externalMCPViewModel.updateEnvironmentText($0) }
-                ), axis: .vertical)
-                .lineLimit(2...4)
-                .help("Use NAME=keychain:secret_key per line. Raw secret values are rejected.")
-
-                Group {
-                    LocalizedValueLabeledContent("MCP Keychain Secret", value: settingsViewModel.keychainSecretStatusLabel)
-                    TextField("Secret Key", text: Binding(
-                        get: { settingsViewModel.keychainSecretKeyInput },
-                        set: { settingsViewModel.updateKeychainSecretKeyInput($0) }
-                    ))
-                    .help("Use the same key name referenced by keychain:<secret_key>.")
-                    SecureField("Secret Value", text: Binding(
-                        get: { settingsViewModel.keychainSecretValueInput },
-                        set: { settingsViewModel.updateKeychainSecretValueInput($0) }
-                    ))
-                    HStack {
-                        Button {
-                            settingsViewModel.saveKeychainSecret()
-                        } label: {
-                            Label("Save Secret", systemImage: "key")
+                            ForEach(loadedExternalMCPViewModel.registrationRows) { row in
+                                MCPServerSettingsRow(
+                                    row: row,
+                                    isCheckDisabled: loadedExternalMCPViewModel.isCheckingConnection,
+                                    onSelect: {
+                                        loadedExternalMCPViewModel.selectRegistration(id: row.id)
+                                    },
+                                    onCheck: {
+                                        Task {
+                                            await loadedExternalMCPViewModel.checkConnection(id: row.id)
+                                        }
+                                    }
+                                )
+                            }
                         }
-                        .disabled(
-                            settingsViewModel.keychainSecretKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                            settingsViewModel.keychainSecretValueInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+                        MCPPaidExecutionBoundaryRow(
+                            planLabel: syncViewModel?.planLabel ?? "Unavailable",
+                            statusLabel: mcpExecutionStatusLabel,
+                            valueLabel: mcpExecutionValueLabel,
+                            boundaryLabel: mcpExecutionSafetyBoundaryLabel,
+                            tone: mcpExecutionTone
                         )
 
-                        Button(role: .destructive) {
-                            settingsViewModel.deleteKeychainSecret()
-                        } label: {
-                            Label("Delete Secret", systemImage: "trash")
+                        Toggle(
+                            isOn: Binding(
+                                get: { loadedExternalMCPViewModel.registration.isEnabled },
+                                set: { loadedExternalMCPViewModel.updateEnabled($0) }
+                            )
+                        ) {
+                            Label("Server Enabled", systemImage: "externaldrive.connected.to.line.below")
                         }
-                        .disabled(settingsViewModel.keychainSecretKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                }
+                        TextField("Display Name", text: Binding(
+                            get: { loadedExternalMCPViewModel.registration.displayName },
+                            set: { loadedExternalMCPViewModel.updateDisplayName($0) }
+                        ))
+                        TextField("Command", text: Binding(
+                            get: { loadedExternalMCPViewModel.registration.command },
+                            set: { loadedExternalMCPViewModel.updateCommand($0) }
+                        ))
+                        TextField("Arguments", text: Binding(
+                            get: { loadedExternalMCPViewModel.argumentsText },
+                            set: { loadedExternalMCPViewModel.updateArgumentsText($0) }
+                        ))
+                        TextField("Working Directory", text: Binding(
+                            get: { loadedExternalMCPViewModel.registration.workingDirectory ?? "" },
+                            set: { loadedExternalMCPViewModel.updateWorkingDirectory($0) }
+                        ))
+                        TextField("Environment References", text: Binding(
+                            get: { loadedExternalMCPViewModel.environmentText },
+                            set: { loadedExternalMCPViewModel.updateEnvironmentText($0) }
+                        ), axis: .vertical)
+                        .lineLimit(2...4)
+                        .help("Use NAME=keychain:secret_key per line. Raw secret values are rejected.")
 
-                LabeledContent("Transport", value: externalMCPViewModel.display.transportLabel)
-                LocalizedValueLabeledContent("Status", value: externalMCPViewModel.display.statusLabel)
-                LabeledContent("Protocol Version", value: externalMCPViewModel.protocolVersionLabel)
-                LocalizedValueLabeledContent("Check Result", value: externalMCPViewModel.connectionCheckResultLabel)
-                LocalizedValueLabeledContent("Resources", value: "Not supported in this release")
-                LocalizedValueLabeledContent("Prompts", value: "Not supported in this release")
-                ForEach(externalMCPViewModel.display.environmentRows, id: \.name) { row in
-                    LabeledContent(row.name, value: row.sourceLabel)
-                }
-                if let errorMessage = externalMCPViewModel.errorMessage {
-                    Label(errorMessage, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
-                HStack {
-                    Button {
-                        externalMCPViewModel.save()
-                    } label: {
-                        Label("Save", systemImage: "square.and.arrow.down")
-                    }
+                        Group {
+                            LocalizedValueLabeledContent("MCP Keychain Secret", value: settingsViewModel.keychainSecretStatusLabel)
+                            TextField("Secret Key", text: Binding(
+                                get: { settingsViewModel.keychainSecretKeyInput },
+                                set: { settingsViewModel.updateKeychainSecretKeyInput($0) }
+                            ))
+                            .help("Use the same key name referenced by keychain:<secret_key>.")
+                            SecureField("Secret Value", text: Binding(
+                                get: { settingsViewModel.keychainSecretValueInput },
+                                set: { settingsViewModel.updateKeychainSecretValueInput($0) }
+                            ))
+                            HStack {
+                                Button {
+                                    settingsViewModel.saveKeychainSecret()
+                                } label: {
+                                    Label("Save Secret", systemImage: "key")
+                                }
+                                .disabled(
+                                    settingsViewModel.keychainSecretKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                                    settingsViewModel.keychainSecretValueInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                )
 
-                    Button(role: .destructive) {
-                        isConfirmingMCPRegistrationDeletion = true
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
-
-                    Button {
-                        Task {
-                            await externalMCPViewModel.checkConnection()
+                                Button(role: .destructive) {
+                                    settingsViewModel.deleteKeychainSecret()
+                                } label: {
+                                    Label("Delete Secret", systemImage: "trash")
+                                }
+                                .disabled(settingsViewModel.keychainSecretKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            }
                         }
-                    } label: {
-                        Label("Check Connection", systemImage: "network")
-                    }
-                    .disabled(externalMCPViewModel.isCheckingConnection)
 
-                    if externalMCPViewModel.isCheckingConnection {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                }
-            }
-
-            Section("MCP Tool Permissions") {
-                if externalMCPViewModel.toolRows.isEmpty {
-                    Text("No tools discovered")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(externalMCPViewModel.toolRows, id: \.id) { row in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Label(row.title, systemImage: toolPermissionIcon(row.permissionLevel))
-                            Spacer()
-                            Text(row.permissionLabel)
+                        LabeledContent("Transport", value: loadedExternalMCPViewModel.display.transportLabel)
+                        LocalizedValueLabeledContent("Status", value: loadedExternalMCPViewModel.display.statusLabel)
+                        LabeledContent("Protocol Version", value: loadedExternalMCPViewModel.protocolVersionLabel)
+                        LocalizedValueLabeledContent("Check Result", value: loadedExternalMCPViewModel.connectionCheckResultLabel)
+                        LocalizedValueLabeledContent("Resources", value: "Not supported in this release")
+                        LocalizedValueLabeledContent("Prompts", value: "Not supported in this release")
+                        ForEach(loadedExternalMCPViewModel.display.environmentRows, id: \.name) { row in
+                            LabeledContent(row.name, value: row.sourceLabel)
+                        }
+                        if let errorMessage = loadedExternalMCPViewModel.errorMessage {
+                            Label(errorMessage, systemImage: "exclamationmark.triangle")
                                 .font(.caption)
-                                .foregroundStyle(toolPermissionColor(row.permissionLevel))
+                                .foregroundStyle(.red)
                         }
-                        Text(row.inputSchemaSummary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-            }
-
-            Section("MCP Audit") {
-                if let auditErrorMessage = externalMCPViewModel.auditErrorMessage {
-                    Label(auditErrorMessage, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                } else if externalMCPViewModel.auditRows.isEmpty {
-                    Text("No external calls recorded")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(Array(externalMCPViewModel.auditRows.enumerated()), id: \.offset) { _, row in
-                    VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Label(row.toolName, systemImage: row.status == .failed ? "xmark.octagon" : "checkmark.circle")
-                            Spacer()
-                            Text(localizedSettingsDisplay(row.statusLabel))
-                                .font(.caption)
-                                .foregroundStyle(row.status == .failed ? .red : .secondary)
+                            Button {
+                                loadedExternalMCPViewModel.save()
+                            } label: {
+                                Label("Save", systemImage: "square.and.arrow.down")
+                            }
+
+                            Button(role: .destructive) {
+                                isConfirmingMCPRegistrationDeletion = true
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+
+                            Button {
+                                Task {
+                                    await loadedExternalMCPViewModel.checkConnection()
+                                }
+                            } label: {
+                                Label("Check Connection", systemImage: "network")
+                            }
+                            .disabled(loadedExternalMCPViewModel.isCheckingConnection)
+
+                            if loadedExternalMCPViewModel.isCheckingConnection {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
                         }
-                        Text("\(row.serverName) / \(row.risk) / \(row.approval)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                    }
+
+                    Section("MCP Tool Permissions") {
+                        if loadedExternalMCPViewModel.toolRows.isEmpty {
+                            Text("No tools discovered")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(loadedExternalMCPViewModel.toolRows, id: \.id) { row in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Label(row.title, systemImage: toolPermissionIcon(row.permissionLevel))
+                                    Spacer()
+                                    Text(row.permissionLabel)
+                                        .font(.caption)
+                                        .foregroundStyle(toolPermissionColor(row.permissionLevel))
+                                }
+                                Text(row.inputSchemaSummary)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
+                        }
+                    }
+
+                    Section("MCP Audit") {
+                        if let auditErrorMessage = loadedExternalMCPViewModel.auditErrorMessage {
+                            Label(auditErrorMessage, systemImage: "exclamationmark.triangle")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        } else if loadedExternalMCPViewModel.auditRows.isEmpty {
+                            Text("No external calls recorded")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(Array(loadedExternalMCPViewModel.auditRows.enumerated()), id: \.offset) { _, row in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Label(row.toolName, systemImage: row.status == .failed ? "xmark.octagon" : "checkmark.circle")
+                                    Spacer()
+                                    Text(localizedSettingsDisplay(row.statusLabel))
+                                        .font(.caption)
+                                        .foregroundStyle(row.status == .failed ? .red : .secondary)
+                                }
+                                Text("\(row.serverName) / \(row.risk) / \(row.approval)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
                     }
                 }
+                .formStyle(.grouped)
+            } else if externalMCPSettingsViewModelLoader.isLoading {
+                Form {
+                    Section("External MCP") {
+                        HStack {
+                            ProgressView()
+                            Text("Loading MCP settings...")
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityIdentifier("settings-mcp-loading")
+                    }
+                }
+                .formStyle(.grouped)
+            } else {
+                Form {
+                    Section("External MCP") {
+                        Text("MCP settings not loaded yet.")
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("settings-mcp-unavailable")
+                        settingsLazyLoadUnavailableHint(message: "MCP settings load when this tab is opened.")
+                    }
+                }
+                .formStyle(.grouped)
             }
         }
-        .formStyle(.grouped)
+    }
+
+    @ViewBuilder
+    private func settingsLazyLoadUnavailableHint(message: String) -> some View {
+        Label(message, systemImage: "clock")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+            .accessibilityIdentifier("settings-tab-lazy-load-hint")
     }
 
     private var settingsSaveButton: some View {
@@ -1528,6 +1700,10 @@ struct SettingsView: View {
     }
 
     private var mcpOverviewTone: SettingsStatusTone {
+        guard let externalMCPViewModel else {
+            return .neutral
+        }
+
         if externalMCPViewModel.connectionCheckResultLabel == "Connected" {
             return .ready
         }
@@ -1561,12 +1737,24 @@ struct SettingsView: View {
         }
     }
 
+    private var syncStatusLabelForOverview: String {
+        syncViewModel?.statusLabel ?? "Unavailable"
+    }
+
     private var mcpExecutionStatusLabel: String {
-        syncViewModel.status.plan.allows(.advancedMCPExecution) ? "Execution unlocked" : "Execution gated"
+        guard let syncViewModel else {
+            return "Execution gated"
+        }
+
+        return syncViewModel.status.plan.allows(.advancedMCPExecution) ? "Execution unlocked" : "Execution gated"
     }
 
     private var mcpExecutionValueLabel: String {
         let requiredPlan = FeatureGate.advancedMCPExecution.requiredPlan.displayName
+        guard let syncViewModel else {
+            return localizedDisplay("%@ is required before external MCP tools can execute.", requiredPlan)
+        }
+
         if syncViewModel.status.plan.allows(.advancedMCPExecution) {
             return localizedDisplay("Advanced MCP tools can execute on %@.", syncViewModel.planLabel)
         }
@@ -1578,11 +1766,15 @@ struct SettingsView: View {
     }
 
     private var mcpExecutionTone: SettingsStatusTone {
-        syncViewModel.status.plan.allows(.advancedMCPExecution) ? .ready : .warning
+        guard let syncViewModel else {
+            return .warning
+        }
+
+        return syncViewModel.status.plan.allows(.advancedMCPExecution) ? .ready : .warning
     }
 
     private var syncOverviewTone: SettingsStatusTone {
-        switch syncViewModel.statusLabel {
+        switch syncStatusLabelForOverview {
         case "Ready", "Syncing":
             .ready
         case "Failed":
@@ -1593,7 +1785,7 @@ struct SettingsView: View {
     }
 
     private var syncPaidValueLabel: String {
-        switch syncViewModel.statusLabel {
+        switch syncStatusLabelForOverview {
         case "Ready", "Syncing":
             "Projects, Tasks, and Settings are ready to sync."
         case "Sync backend is not configured":
@@ -1606,7 +1798,7 @@ struct SettingsView: View {
     }
 
     private var syncSafetyBoundaryLabel: String {
-        switch syncViewModel.statusLabel {
+        switch syncStatusLabelForOverview {
         case "Ready", "Syncing":
             "Only selected SoloPM data classes are included."
         case "Sync backend is not configured":

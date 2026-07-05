@@ -419,10 +419,14 @@ public struct HTTPDataVoiceModelDownloadClient: VoiceModelDownloadClient {
 public struct VoiceModelManager: VoiceModelManaging {
     private let cache: VoiceModelCache
     private let downloadClient: any VoiceModelDownloadClient
+    /// Cache status results by model metadata + expected checksum to avoid re-reading
+    /// large model files on every readiness check.
+    private let readinessCache: VoiceModelReadinessCache
 
     public init(cache: VoiceModelCache = VoiceModelCache(), downloadClient: any VoiceModelDownloadClient = URLSessionVoiceModelDownloadClient()) {
         self.cache = cache
         self.downloadClient = downloadClient
+        self.readinessCache = VoiceModelReadinessCache()
     }
 
     public init(cache: VoiceModelCache = VoiceModelCache(), httpClient: any HTTPDataClient) {
@@ -436,18 +440,33 @@ public struct VoiceModelManager: VoiceModelManaging {
     public func verifiedStatus(for model: VoiceModelDescriptor) -> VoiceModelInstallStatus {
         let url = cache.localURL(for: model)
         guard FileManager.default.fileExists(atPath: url.path) else {
+            readinessCache.remove(for: model)
             return .notInstalled
         }
-        guard let digest = try? model.checksum.hexDigest(forFileAt: url) else {
+        guard let localMetadata = modelFileMetadata(at: url) else {
+            readinessCache.remove(for: model)
             return .corrupted("Voice model cache entry could not be read.")
         }
-        return digest == model.checksum.value
-            ? .installed
-            : .corrupted("Voice model checksum verification failed.")
+
+        if let cached = readinessCache.cachedStatus(for: model, checksum: model.checksum.value),
+           cached.metadata == localMetadata {
+            return cached.status
+        }
+
+        let digest = try? model.checksum.hexDigest(forFileAt: url)
+        let computedStatus: VoiceModelInstallStatus
+        if let digest {
+            computedStatus = digest == model.checksum.value ? .installed : .corrupted("Voice model checksum verification failed.")
+        } else {
+            computedStatus = .corrupted("Voice model cache entry could not be read.")
+        }
+        readinessCache.storeStatus(computedStatus, for: model, checksum: model.checksum.value, metadata: localMetadata)
+        return computedStatus
     }
 
     public func install(_ model: VoiceModelDescriptor) async throws -> VoiceModelInstall {
         try validate(model)
+        readinessCache.remove(for: model)
 
         let downloadedFile: VoiceModelDownloadedFile
         do {
@@ -464,15 +483,18 @@ public struct VoiceModelManager: VoiceModelManaging {
         // A model should only look installed after checksum verification; staging
         // avoids treating interrupted downloads as usable local voice providers.
         let partialURL = try cache.stageDownloadedFile(at: downloadedFile.temporaryURL, for: model)
+        readinessCache.remove(for: model)
         let actualChecksum: String
         do {
             actualChecksum = try model.checksum.hexDigest(forFileAt: partialURL)
         } catch {
             cache.removePartial(model)
+            readinessCache.remove(for: model)
             throw VoiceModelManagerError.verificationFailed("Voice model checksum verification could not read the staged download.")
         }
         guard actualChecksum == model.checksum.value else {
             cache.removePartial(model)
+            readinessCache.remove(for: model)
             throw VoiceModelManagerError.checksumMismatch(
                 modelID: model.id.rawValue,
                 expected: model.checksum.value,
@@ -481,11 +503,18 @@ public struct VoiceModelManager: VoiceModelManaging {
         }
 
         let localURL = try cache.commitStagedFile(for: model)
+        if let localMetadata = modelFileMetadata(at: localURL) {
+            readinessCache.storeStatus(.installed, for: model, checksum: model.checksum.value, metadata: localMetadata)
+        } else {
+            readinessCache.remove(for: model)
+        }
         return VoiceModelInstall(modelID: model.id, status: .installed, localURL: localURL)
     }
 
     public func removeFromCache(_ model: VoiceModelDescriptor) throws {
+        readinessCache.remove(for: model)
         try cache.remove(model)
+        cache.removePartial(model)
     }
 
     private func validate(_ model: VoiceModelDescriptor) throws {
@@ -494,6 +523,23 @@ public struct VoiceModelManager: VoiceModelManaging {
             throw VoiceModelManagerError.invalidModelMetadata(
                 issues.map(\.message).joined(separator: " ")
             )
+        }
+    }
+
+    private func modelFileMetadata(at url: URL) -> VoiceModelFileMetadata? {
+        do {
+            let values = try url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+            guard let fileSize = values.fileSize else {
+                return nil
+            }
+
+            return VoiceModelFileMetadata(
+                filePath: url.path,
+                fileSize: Int64(fileSize),
+                modifiedAt: values.contentModificationDate
+            )
+        } catch {
+            return nil
         }
     }
 }
@@ -600,5 +646,61 @@ private extension HashFunction {
             hasher.update(data: chunk)
         }
         return hasher.finalize()
+    }
+}
+
+private struct VoiceModelFileMetadata: Equatable {
+    var filePath: String
+    var fileSize: Int64
+    var modifiedAt: Date?
+}
+
+private struct VoiceModelReadinessCacheEntry: Equatable {
+    var checksum: String
+    var metadata: VoiceModelFileMetadata
+    var status: VoiceModelInstallStatus
+}
+
+private final class VoiceModelReadinessCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var entries: [String: VoiceModelReadinessCacheEntry] = [:]
+
+    func cachedStatus(for model: VoiceModelDescriptor, checksum: String) -> VoiceModelReadinessCacheEntry? {
+        let key = cacheKey(for: model)
+        return lock.withLock {
+            entries[key]
+        }.flatMap { entry in
+            entry.checksum == checksum ? entry : nil
+        }
+    }
+
+    func storeStatus(_ status: VoiceModelInstallStatus, for model: VoiceModelDescriptor, checksum: String, metadata: VoiceModelFileMetadata) {
+        let key = cacheKey(for: model)
+        lock.withLock {
+            entries[key] = VoiceModelReadinessCacheEntry(
+                checksum: checksum,
+                metadata: metadata,
+                status: status
+            )
+        }
+    }
+
+    func remove(for model: VoiceModelDescriptor) {
+        let key = cacheKey(for: model)
+        lock.withLock {
+            entries[key] = nil
+        }
+    }
+
+    private func cacheKey(for model: VoiceModelDescriptor) -> String {
+        "\(model.id.rawValue):\(model.cacheFileName)"
+    }
+}
+
+private extension NSLock {
+    func withLock<T>(_ operation: () throws -> T) rethrows -> T {
+        lock()
+        defer { unlock() }
+        return try operation()
     }
 }

@@ -5694,6 +5694,8 @@ final class ReleasePipelineTests: XCTestCase {
     func testRuntimeAccessibleCRUDSmokeScriptLaunchesIsolatedAppAndVerifiesSQLiteMutations() throws {
         let script = try readPackageFile("script/check_runtime_accessible_crud_smoke.sh")
 
+        XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
+        XCTAssertTrue(script.contains("source \"$AX_HELPERS\""))
         XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH"))
         XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1"))
@@ -5706,6 +5708,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("wait \"$app_pid\" >/dev/null 2>&1 || true"))
         XCTAssertTrue(script.contains("wait_for_visible_windows()"))
         XCTAssertGreaterThanOrEqual(script.components(separatedBy: "wait_for_visible_windows").count - 1, 4)
+        XCTAssertTrue(script.contains("ax_wait_for_visible_window"))
         XCTAssertFalse(script.contains("open -n -F --env \"SOLOPM_DATABASE_PATH=$database_path\""))
         XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
         XCTAssertFalse(script.contains("script/check_accessibility_preflight.sh --runtime --skip-launch"))
@@ -6399,6 +6402,8 @@ final class ReleasePipelineTests: XCTestCase {
         let script = try readPackageFile("script/check_layout_stability_smoke.sh")
         let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
 
+        XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
+        XCTAssertTrue(script.contains("source \"$AX_HELPERS\""))
         XCTAssertTrue(script.contains("LAYOUT_STABILITY_OUTPUT_DIR=\"${SOLOPM_LAYOUT_STABILITY_OUTPUT_DIR:-$ROOT_DIR/.tmp/layout-stability}\""))
         XCTAssertTrue(script.contains("APP_BUNDLE_IDENTIFIER=\"${BUNDLE_IDENTIFIER:-}\""))
         XCTAssertTrue(script.contains("application processes whose bundle identifier is bundleID"))
@@ -6468,6 +6473,8 @@ final class ReleasePipelineTests: XCTestCase {
     func testReleaseLaunchPerformanceSmokeMeasuresColdLaunchAndWorkflowSwitches() throws {
         let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
 
+        XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
+        XCTAssertTrue(script.contains("source \"$AX_HELPERS\""))
         XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-release"))
         XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS"))
         XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS"))
@@ -6480,6 +6487,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("measure_destination \"destination-inbox\" \"sidebar-destination-inbox\" \"Inbox\" \"inbox-workflow\""))
         XCTAssertTrue(script.contains("measure_destination \"destination-assistant-queue\" \"sidebar-destination-assistant-queue\" \"Assistant Queue\" \"assistant-queue-workflow\""))
         XCTAssertTrue(script.contains("measure_destination \"destination-today\" \"sidebar-destination-today\" \"Today\" \"today-workflow\""))
+        XCTAssertTrue(script.contains("ax_wait_for_visible_window"))
+        XCTAssertTrue(script.contains("ax_click_sidebar_destination"))
+        XCTAssertTrue(script.contains("ax_wait_for_ax_identifier"))
         XCTAssertTrue(script.contains("samples.tsv"))
         XCTAssertTrue(script.contains("summary.md"))
         XCTAssertFalse(script.contains("set -x"))

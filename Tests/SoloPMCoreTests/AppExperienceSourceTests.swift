@@ -9,7 +9,6 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("VoiceCaptureWindowRootView()"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"voice-capture-loading\")"))
         XCTAssertTrue(source.contains("SettingsWindowRootView("))
-        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"settings-loading\")"))
         XCTAssertFalse(source.contains("Window(\"Voice Command\", id: \"voice-capture\") {\n            VoiceCaptureView(viewModel: AppRuntimeFactory.makeVoiceCaptureViewModel())"))
         let boardWindow = try XCTUnwrap(source.range(of: "WindowGroup(\"SoloPM\", id: \"project-board\")"))
         let voiceWindow = try XCTUnwrap(source.range(of: "Window(\"Voice Command\", id: \"voice-capture\")"))
@@ -106,6 +105,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testProjectBoardRuntimeLoadsAssistantQueueReadModel() throws {
         let appSource = try readAppShellSource()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let reviewSessionSource = try readPackageFile("Sources/SoloPMCore/Review/ReviewSessionViewModel.swift")
 
         XCTAssertTrue(appSource.contains("assistantQueueStore: SQLiteAssistantQueueStore(connection: connection)"))
         XCTAssertTrue(appSource.contains("assistantQueueStore: assistantQueueStore"))
@@ -117,7 +117,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("return AssistantQueueExecutionCoordinator("))
         XCTAssertTrue(coreSource.contains("@Published public private(set) var assistantQueueSnapshot: AssistantQueueSnapshot"))
         XCTAssertTrue(coreSource.contains("AssistantQueueReadModel.snapshot("))
-        XCTAssertTrue(coreSource.contains("executionReceiptStore?.list(limit: 100)"))
+        XCTAssertTrue(reviewSessionSource.contains("executionReceiptStore?.list(limit: 100)"))
     }
 
     func testAssistantQueueWorkflowIsReachableFromProjectBoardSidebar() throws {
@@ -711,6 +711,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(layoutSmoke.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$layout_project_id\""))
         XCTAssertTrue(crudSmoke.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
         XCTAssertTrue(crudSmoke.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"projects\""))
+        XCTAssertTrue(layoutSmoke.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
+        XCTAssertTrue(layoutSmoke.contains("source \"$AX_HELPERS\""))
+        XCTAssertTrue(crudSmoke.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
+        XCTAssertTrue(crudSmoke.contains("source \"$AX_HELPERS\""))
     }
 
     func testProjectBoardToolbarDisplayModeOnlyAllowsIconAndTextOrIconOnly() throws {
@@ -2608,7 +2612,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("WatcherDiagnosticsProvider("))
         XCTAssertTrue(appSource.contains("SQLiteDailyCheckStateStore(connection: connection)"))
         XCTAssertTrue(appSource.contains("UserNotificationsPermissionSnapshotReader.snapshot()"))
-        XCTAssertTrue(appSource.contains("watcherDiagnosticsSnapshot.errorMessage"))
+        XCTAssertTrue(appSource.contains("diagnosticsSnapshot.errorMessage"))
         XCTAssertTrue(appSource.contains("Watcher diagnostics are unavailable because local state could not be opened."))
         XCTAssertFalse(appSource.contains("lastCheckAt: nil"))
         XCTAssertFalse(appSource.contains("nextCheckAt: Date()"))
@@ -2777,18 +2781,20 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("SQLiteMCPServerRegistrationStore(connection:"))
         XCTAssertFalse(appSource.contains("Picker(\"Server\""))
         XCTAssertTrue(appSource.contains("MCPServerSettingsRow("))
-        XCTAssertTrue(appSource.contains("externalMCPViewModel.registrationRows"))
-        XCTAssertTrue(appSource.contains("externalMCPViewModel.selectRegistration(id: row.id)"))
-        XCTAssertTrue(appSource.contains("await externalMCPViewModel.checkConnection(id: row.id)"))
-        XCTAssertTrue(appSource.contains("externalMCPViewModel.createRegistration()"))
+        XCTAssertTrue(appSource.contains("let loadedExternalMCPViewModel = externalMCPSettingsViewModelLoader.value"))
+        XCTAssertTrue(appSource.contains("if let loadedExternalMCPViewModel"))
+        XCTAssertTrue(appSource.contains("loadedExternalMCPViewModel.registrationRows"))
+        XCTAssertTrue(appSource.contains("loadedExternalMCPViewModel.selectRegistration(id: row.id)"))
+        XCTAssertTrue(appSource.contains("await loadedExternalMCPViewModel.checkConnection(id: row.id)"))
+        XCTAssertTrue(appSource.contains("loadedExternalMCPViewModel.createRegistration()"))
         XCTAssertTrue(appSource.contains("Add Server"))
         XCTAssertTrue(appSource.contains("Environment References"))
-        XCTAssertTrue(appSource.contains("externalMCPViewModel.environmentText"))
-        XCTAssertTrue(appSource.contains("externalMCPViewModel.updateEnvironmentText($0)"))
+        XCTAssertTrue(appSource.contains("loadedExternalMCPViewModel.environmentText"))
+        XCTAssertTrue(appSource.contains("loadedExternalMCPViewModel.updateEnvironmentText($0)"))
         XCTAssertTrue(appSource.contains("Protocol Version"))
-        XCTAssertTrue(appSource.contains("externalMCPViewModel.protocolVersionLabel"))
+        XCTAssertTrue(appSource.contains("loadedExternalMCPViewModel.protocolVersionLabel"))
         XCTAssertTrue(appSource.contains("Check Result"))
-        XCTAssertTrue(appSource.contains("externalMCPViewModel.connectionCheckResultLabel"))
+        XCTAssertTrue(appSource.contains("loadedExternalMCPViewModel.connectionCheckResultLabel"))
         XCTAssertTrue(appSource.contains("LabeledContent(\"Resources\", value: \"Not supported in this release\")"))
         XCTAssertTrue(appSource.contains("LabeledContent(\"Prompts\", value: \"Not supported in this release\")"))
         XCTAssertTrue(appSource.contains("MCP Keychain Secret"))
@@ -2799,7 +2805,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("settingsViewModel.deleteKeychainSecret()"))
         XCTAssertTrue(appSource.contains("isConfirmingMCPRegistrationDeletion = true"))
         XCTAssertTrue(appSource.contains(#"confirmationDialog("#))
-        XCTAssertTrue(appSource.contains("externalMCPViewModel.deleteRegistration()"))
+        XCTAssertTrue(appSource.contains("externalMCPViewModel?.deleteRegistration()"))
+        XCTAssertTrue(appSource.contains("externalMCPSettingsViewModelFactory: AppRuntimeFactory.makeExternalMCPSettingsViewModel"))
         XCTAssertTrue(mcpRegistrationSource.contains("MCPServerRegistrationRow"))
         XCTAssertTrue(mcpRegistrationSource.contains("selectedRegistrationID"))
         XCTAssertTrue(mcpRegistrationSource.contains("MCPEnvironmentTextCodec"))
@@ -2814,7 +2821,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(appSource.contains("externalMCPAuditLoadResult()"))
         XCTAssertTrue(appSource.contains("auditErrorMessage: auditLoadResult.errorMessage"))
-        XCTAssertTrue(appSource.contains("externalMCPViewModel.auditErrorMessage"))
+        XCTAssertTrue(appSource.contains("loadedExternalMCPViewModel.auditErrorMessage"))
         XCTAssertTrue(appSource.contains("MCP audit history is unavailable because audit logging could not be opened."))
         XCTAssertFalse(appSource.contains("private static func externalMCPAuditRows() -> [ExternalMCPAuditHistoryRow]"))
         XCTAssertTrue(mcpRegistrationSource.contains("@Published public private(set) var auditErrorMessage: String?"))
@@ -2824,7 +2831,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readAppShellSource()
         let mcpRegistrationSource = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
 
-        XCTAssertTrue(appSource.contains("externalMCPViewModel.argumentsText"))
+        XCTAssertTrue(appSource.contains("loadedExternalMCPViewModel.argumentsText"))
         XCTAssertFalse(appSource.contains("registration.arguments.joined(separator: \" \")"))
         XCTAssertTrue(mcpRegistrationSource.contains("MCPArgumentTextCodec.parse"))
         XCTAssertTrue(mcpRegistrationSource.contains("MCPArgumentTextCodec.format"))
@@ -3334,8 +3341,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("title: \"Sync\""))
         XCTAssertTrue(appSource.contains("title: \"Privacy\""))
         XCTAssertTrue(appSource.contains("settingsViewModel.settings.aiProvider.displayName"))
-        XCTAssertTrue(appSource.contains("externalMCPViewModel.connectionCheckResultLabel"))
-        XCTAssertTrue(appSource.contains("syncViewModel.statusLabel"))
+        XCTAssertTrue(appSource.contains("let currentSyncStatusLabel = syncViewModel?.statusLabel ?? \"Unavailable\""))
+        XCTAssertTrue(appSource.contains("let currentMcpStatusLabel = externalMCPViewModel?.connectionCheckResultLabel ?? \"Unavailable\""))
+        XCTAssertTrue(appSource.contains("mcpStatusLabel: currentMcpStatusLabel"))
+        XCTAssertTrue(appSource.contains("syncStatusLabel: currentSyncStatusLabel"))
         XCTAssertTrue(appSource.contains("settingsViewModel.settings.notificationsEnabled"))
     }
 
@@ -3670,11 +3679,13 @@ final class AppExperienceSourceTests: XCTestCase {
         let syncSource = try readPackageFile("Sources/SoloPMCore/App/SyncService.swift")
         let entitlementSource = try readPackageFile("Sources/SoloPMCore/App/Entitlements.swift")
 
-        XCTAssertTrue(appSource.contains("@StateObject private var syncViewModel: SyncSettingsViewModel"))
+        XCTAssertTrue(appSource.contains("@StateObject private var syncSettingsViewModelLoader: LazyDependencyLoader<SyncSettingsViewModel>"))
+        XCTAssertTrue(appSource.contains("let loadedSyncViewModel = syncSettingsViewModelLoader.value"))
+        XCTAssertTrue(appSource.contains("if let loadedSyncViewModel"))
         XCTAssertTrue(appSource.contains("Section(\"Sync\")"))
-        XCTAssertTrue(appSource.contains("syncViewModel.startSync()"))
+        XCTAssertTrue(appSource.contains("loadedSyncViewModel.startSync()"))
         XCTAssertTrue(appSource.contains("makeEntitlementStore(secretStore: secretStore)"))
-        XCTAssertTrue(appSource.contains("if let syncUnavailableLabel = syncViewModel.syncUnavailableLabel"))
+        XCTAssertTrue(appSource.contains("if let syncUnavailableLabel = loadedSyncViewModel.syncUnavailableLabel"))
         XCTAssertTrue(appSource.contains("Label(localizedSettingsDisplay(syncUnavailableLabel), systemImage: \"lock\")"))
         XCTAssertTrue(syncSource.contains("public var syncUnavailableLabel: String?"))
         XCTAssertTrue(syncSource.contains("status.state == .idle"))
@@ -3692,13 +3703,13 @@ final class AppExperienceSourceTests: XCTestCase {
     func testSettingsGoogleCalendarRowUsesRuntimeReadinessAndOAuthActions() throws {
         let appSource = try readAppShellSource()
         let syncStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
-        let providerStart = try XCTUnwrap(appSource.range(of: "@ViewBuilder\n    private var selectedProviderConfigurationFields"))
+        let providerStart = try XCTUnwrap(appSource.range(of: "private var selectedProviderConfigurationFields: some View"))
         let syncSource = String(appSource[syncStart.lowerBound..<providerStart.lowerBound])
 
         XCTAssertTrue(appSource.contains("let googleCalendarStatusProvider: () -> GoogleCalendarRuntimeSyncStatus"))
         XCTAssertTrue(appSource.contains("let googleCalendarOAuthConnector: (any GoogleCalendarOAuthConnecting)?"))
         XCTAssertTrue(appSource.contains("let googleCalendarOAuthDisconnecter: (any GoogleCalendarOAuthDisconnecting)?"))
-        XCTAssertTrue(appSource.contains("let googleCalendarListProvider: (any GoogleCalendarListProviding)?"))
+        XCTAssertTrue(appSource.contains("let googleCalendarListProviderFactory: () -> (any GoogleCalendarListProviding)?"))
         XCTAssertTrue(appSource.contains("@State private var googleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus?"))
         XCTAssertTrue(appSource.contains("@State private var googleCalendarSetupMessage: String?"))
         XCTAssertTrue(appSource.contains("@State private var isGoogleCalendarOAuthAuthorizationInProgress = false"))
@@ -3757,7 +3768,7 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertLessThan(
             try XCTUnwrap(syncSource.range(of: "GoogleCalendarSettingsSaveControls(")).lowerBound,
-            try XCTUnwrap(syncSource.range(of: "ExternalConnectorScopeRow(\n                    name: \"Google Calendar\"")).lowerBound
+            try XCTUnwrap(syncSource.range(of: "ExternalConnectorScopeRow(")).lowerBound
         )
         XCTAssertTrue(appSource.contains("googleCalendarOAuthConnector.startAuthorization"))
         XCTAssertTrue(appSource.contains("googleCalendarOAuthDisconnecter.disconnect()"))
@@ -3899,8 +3910,9 @@ final class AppExperienceSourceTests: XCTestCase {
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
 
         XCTAssertTrue(appSource.contains("MCPServerSettingsRow("))
-        XCTAssertTrue(appSource.contains("ForEach(externalMCPViewModel.registrationRows) { row in"))
-        XCTAssertTrue(appSource.contains("await externalMCPViewModel.checkConnection(id: row.id)"))
+        XCTAssertTrue(appSource.contains("if let loadedExternalMCPViewModel"))
+        XCTAssertTrue(appSource.contains("ForEach(loadedExternalMCPViewModel.registrationRows) { row in"))
+        XCTAssertTrue(appSource.contains("await loadedExternalMCPViewModel.checkConnection(id: row.id)"))
         XCTAssertTrue(appSource.contains("row.connectionCheckResultLabel"))
         XCTAssertTrue(appSource.contains("row.statusLabel"))
         XCTAssertTrue(appSource.contains("row.isCheckingConnection"))

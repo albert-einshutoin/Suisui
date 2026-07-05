@@ -36,6 +36,7 @@ LAYOUT_STABILITY_AX_COLLECTION_TIMEOUT_SECONDS="${SOLOPM_LAYOUT_STABILITY_AX_COL
 LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_COUNT="${SOLOPM_LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_COUNT:-3}"
 LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_DELAY_MS="${SOLOPM_LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_DELAY_MS:-50}"
 SQLITE3="${SQLITE3:-sqlite3}"
+AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_LAYOUT_STABILITY_TIMEOUT_SECONDS must be a positive integer" >&2
@@ -85,6 +86,9 @@ if ! command -v "$SQLITE3" >/dev/null 2>&1; then
   echo "BLOCKER: sqlite3 is required for layout stability smoke" >&2
   exit 2
 fi
+
+# shellcheck source=/dev/null
+source "$AX_HELPERS"
 
 cd "$ROOT_DIR"
 mkdir -p "$LAYOUT_STABILITY_OUTPUT_DIR"
@@ -228,54 +232,12 @@ wait_for_app_process() {
 }
 
 wait_for_visible_windows() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  local window_count=""
-  local osascript_status=1
-
-  while true; do
-    set +e
-    window_count="$(/usr/bin/osascript - "$APP_NAME" "$APP_BUNDLE_IDENTIFIER" <<'APPLESCRIPT' 2>/dev/null
-on run argv
-  set appName to item 1 of argv
-  set bundleID to item 2 of argv
-  tell application "System Events"
-    set targetProcess to missing value
-    if exists process appName then
-      tell process appName
-        if (count of windows) > 0 then set targetProcess to it
-      end tell
-    end if
-    if targetProcess is missing value and bundleID is not "" then
-      set appMatches to application processes whose bundle identifier is bundleID
-      repeat with appProcess in appMatches
-        if (count of windows of appProcess) > 0 then
-          set targetProcess to appProcess
-          exit repeat
-        end if
-      end repeat
-    end if
-    if targetProcess is missing value then return "0"
-    tell targetProcess
-      return (count of windows) as text
-    end tell
-  end tell
-end run
-APPLESCRIPT
-)"
-    osascript_status=$?
-    set -e
-
-    if [[ "$osascript_status" -eq 0 && "${window_count:-0}" =~ ^[0-9]+$ && "$window_count" -ge 1 ]]; then
-      return 0
-    fi
-
-    activate_app
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: $APP_NAME did not expose a visible AX window within ${TIMEOUT_SECONDS}s" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  if ax_wait_for_visible_window "$APP_NAME" "$TIMEOUT_SECONDS" "$APP_BUNDLE_IDENTIFIER"; then
+    return 0
+  fi
+  activate_app
+  echo "BLOCKER: $APP_NAME did not expose a visible AX window within ${TIMEOUT_SECONDS}s" >&2
+  return 1
 }
 
 prepare_layout_candidate() {
@@ -385,78 +347,24 @@ window_size_key() {
 click_sidebar_destination() {
   local destination_identifier="$1"
   local destination_label="$2"
-  if /usr/bin/osascript - "$APP_NAME" "$destination_identifier" "$destination_label" <<'APPLESCRIPT' >/dev/null
-on findElementByIdentifier(uiElement, wantedIdentifier)
-  tell application "System Events"
-    set identifierValue to ""
-    try
-      set identifierValue to value of attribute "AXIdentifier" of uiElement
-    end try
-    if identifierValue is wantedIdentifier then return uiElement
-    try
-      repeat with childElement in UI elements of uiElement
-        set foundElement to my findElementByIdentifier(childElement, wantedIdentifier)
-        if foundElement is not missing value then return foundElement
-      end repeat
-    end try
-  end tell
-  return missing value
-end findElementByIdentifier
-
-on pressDestination(uiElement, destinationIdentifier, destinationLabel)
-  tell application "System Events"
-    set identifierValue to ""
-    try
-      set identifierValue to value of attribute "AXIdentifier" of uiElement
-    end try
-    set nameValue to ""
-    try
-      set nameValue to name of uiElement
-    end try
-    if identifierValue is destinationIdentifier or (destinationLabel is not "" and nameValue starts with destinationLabel) then
-      try
-        perform action "AXPress" of uiElement
-        return true
-      end try
-      try
-        click uiElement
-        return true
-      end try
-    end if
-    try
-      repeat with childElement in UI elements of uiElement
-        if my pressDestination(childElement, destinationIdentifier, destinationLabel) then return true
-      end repeat
-    end try
-  end tell
-  return false
-end pressDestination
-
-on run argv
-  set appName to item 1 of argv
-  set destinationIdentifier to item 2 of argv
-  set destinationLabel to item 3 of argv
-  tell application "System Events"
-    if not (exists process appName) then error "process missing"
-    tell process appName
-      if not (exists window 1) then error "window missing"
-      set frontmost to true
-      try
-        perform action "AXRaise" of window 1
-      end try
-      set sidebarElement to my findElementByIdentifier(window 1, "project-board-sidebar")
-      if sidebarElement is missing value then set sidebarElement to window 1
-      if not my pressDestination(sidebarElement, destinationIdentifier, destinationLabel) then error "destination missing: " & destinationIdentifier
-    end tell
-  end tell
-end run
-APPLESCRIPT
-  then
+  if ax_click_sidebar_destination "$APP_NAME" "$destination_identifier" "$destination_label"; then
     return 0
   fi
   click_sidebar_destination_by_coordinate "$destination_identifier"
 }
 
+wait_for_ax_identifier() {
+  local identifier="$1"
+  local safe_identifier="${identifier//[^[:alnum:]_-]/_}"
+  local probe_file="$LAYOUT_STABILITY_OUTPUT_DIR/wait-$safe_identifier.txt"
+
+  if ax_wait_for_ax_identifier "$APP_NAME" "$identifier" "$TIMEOUT_SECONDS" "$ROOT_DIR" "$probe_file"; then
+    return 0
+  fi
+  echo "BLOCKER: AX identifier did not appear after sidebar destination selection: $identifier" >&2
+  sed -n '1,20p' "$probe_file.err" >&2 || true
+  return 1
+}
 click_sidebar_destination_by_coordinate() {
   local destination_identifier="$1"
   local window_id window_x window_y window_width window_height destination_offset target_x target_y
@@ -504,25 +412,6 @@ on run argv
   end tell
 end run
 APPLESCRIPT
-}
-
-wait_for_ax_identifier() {
-  local identifier="$1"
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  local safe_identifier="${identifier//[^[:alnum:]_-]/_}"
-  local probe_file="$LAYOUT_STABILITY_OUTPUT_DIR/wait-$safe_identifier.txt"
-
-  while true; do
-    if /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" "$APP_NAME" "$identifier" "" >"$probe_file" 2>"$probe_file.err"; then
-      return 0
-    fi
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: AX identifier did not appear after sidebar destination selection: $identifier" >&2
-      sed -n '1,20p' "$probe_file.err" >&2 || true
-      return 1
-    fi
-    sleep 1
-  done
 }
 
 assert_sidebar_destination_window_size_stable() {

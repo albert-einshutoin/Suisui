@@ -2435,6 +2435,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         )
 
         viewModel.load()
+        viewModel.refreshExecutionReceiptAuditSnapshotsIfNeeded()
 
         let row = try XCTUnwrap(viewModel.executionReceiptHistorySnapshot.rows.first)
         XCTAssertTrue(row.id.hasPrefix("receipt-"))
@@ -2486,6 +2487,10 @@ final class ProjectBoardStoreTests: XCTestCase {
         viewModel.load()
 
         XCTAssertTrue(receiptStore.scopedListKeys.isEmpty)
+        XCTAssertEqual(receiptStore.matchingListCallCount, 0)
+
+        viewModel.refreshExecutionReceiptAuditSnapshotsIfNeeded()
+
         XCTAssertEqual(receiptStore.matchingListCallCount, 2)
 
         XCTAssertTrue(viewModel.executionReceiptHistorySnapshot(forTaskID: firstTask.id).rows.isEmpty)
@@ -2632,6 +2637,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         )
 
         viewModel.load()
+        viewModel.refreshExecutionReceiptAuditSnapshotsIfNeeded()
 
         let snapshot = viewModel.executionUsageMeterSnapshot
         XCTAssertNil(snapshot.unavailableMessage)
@@ -2676,6 +2682,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
 
         viewModel.load()
+        viewModel.refreshExecutionReceiptAuditSnapshotsIfNeeded()
 
         XCTAssertEqual(viewModel.executionUsageMeterSnapshot.summary.trackedReceiptCount, 0)
         XCTAssertEqual(viewModel.executionUsageMeterSnapshot.unavailableMessage, "Execution usage meter is unavailable")
@@ -2894,6 +2901,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertTrue(storedReceipt.inputPreview.contains("[REDACTED_SECRET]"))
         XCTAssertFalse(storedReceipt.inputPreview.contains("approved-history-secret"))
 
+        viewModel.refreshExecutionReceiptAuditSnapshotsIfNeeded()
         let row = try XCTUnwrap(viewModel.executionReceiptHistorySnapshot.rows.first)
         let rowText = [
             row.id,
@@ -2973,6 +2981,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertFalse(storedReceipt.inputPreview.contains("document-source-secret"))
         XCTAssertFalse(storedReceipt.inputPreview.contains("document-source-reason-secret"))
 
+        viewModel.refreshExecutionReceiptAuditSnapshotsIfNeeded()
         let globalRow = try XCTUnwrap(viewModel.executionReceiptHistorySnapshot.rows.first)
         let taskRow = try XCTUnwrap(viewModel.executionReceiptHistorySnapshot(forTaskID: task.id).rows.first)
         let projectRow = try XCTUnwrap(viewModel.executionReceiptHistorySnapshot(forProjectID: task.projectID).rows.first)
@@ -5773,6 +5782,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertFalse(encodedReceipt.contains("task-secret"))
         XCTAssertFalse(encodedReceipt.contains("project-secret"))
 
+        viewModel.refreshExecutionReceiptAuditSnapshotsIfNeeded()
         let globalRow = try XCTUnwrap(viewModel.executionReceiptHistorySnapshot.rows.first)
         XCTAssertEqual(globalRow.status, .succeeded)
         XCTAssertEqual(globalRow.toolLabel, ActionTool.calendarCreateWorkBlock.rawValue)
@@ -5819,6 +5829,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(receipt.primaryToolName, ActionTool.calendarCreateWorkBlock.rawValue)
         XCTAssertEqual(receipt.references.map(\.kind), [.task, .project])
         XCTAssertTrue(receipt.actions.contains { $0.status == .failed && ($0.errorSummary?.contains("Calendar permission is denied") ?? false) })
+        viewModel.refreshExecutionReceiptAuditSnapshotsIfNeeded()
         XCTAssertEqual(viewModel.executionReceiptHistorySnapshot.rows.first?.status, .failed)
         XCTAssertEqual(viewModel.executionReceiptHistorySnapshot(forTaskID: task.id).rows.map(\.status), [.failed, .running])
     }

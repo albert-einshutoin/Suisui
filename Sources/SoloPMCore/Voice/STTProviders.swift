@@ -44,7 +44,14 @@ public struct OpenAITranscribeProvider: SpeechToTextProvider {
             throw STTProviderError.unavailable("OpenAI API key is invalid.")
         }
 
-        let request = try requestBuilder.makeRequest(apiKey: apiKey, audio: audio)
+        let request: URLRequest
+        do {
+            request = try requestBuilder.makeRequest(apiKey: apiKey, audio: audio)
+        } catch let error as OpenAITranscriptionRequestError {
+            throw STTProviderError.transcriptionFailed(error.userMessage)
+        } catch {
+            throw STTProviderError.transcriptionFailed(ProviderErrorMessageSanitizer.message(from: error))
+        }
         let data: Data
         let response: HTTPURLResponse
 
@@ -477,23 +484,42 @@ public struct OpenAITranscriptionConfiguration: Equatable, Sendable {
     public var baseURL: URL
     public var model: String
     public var timeoutInterval: TimeInterval
+    public var maxAudioFileBytes: Int64
 
     public init(
         baseURL: URL = URL(string: "https://api.openai.com/v1")!,
         model: String = "gpt-4o-mini-transcribe",
-        timeoutInterval: TimeInterval = 120
+        timeoutInterval: TimeInterval = 120,
+        maxAudioFileBytes: Int64 = 25 * 1024 * 1024
     ) {
         self.baseURL = baseURL
         self.model = model
         self.timeoutInterval = timeoutInterval
+        self.maxAudioFileBytes = maxAudioFileBytes
+    }
+}
+
+public enum OpenAITranscriptionRequestError: Error, Equatable, Sendable {
+    case audioFileTooLarge(actualBytes: Int64, maxBytes: Int64)
+
+    public var userMessage: String {
+        switch self {
+        case .audioFileTooLarge(let actualBytes, let maxBytes):
+            "OpenAI audio file is too large (\(actualBytes) bytes, max \(maxBytes))."
+        }
     }
 }
 
 public struct OpenAITranscriptionRequestBuilder: Sendable {
     private let configuration: OpenAITranscriptionConfiguration
+    private let audioDataReader: any OpenAITranscriptionAudioDataReading
 
-    public init(configuration: OpenAITranscriptionConfiguration = OpenAITranscriptionConfiguration()) {
+    public init(
+        configuration: OpenAITranscriptionConfiguration = OpenAITranscriptionConfiguration(),
+        audioDataReader: any OpenAITranscriptionAudioDataReading = OpenAITranscriptionAudioDataReader()
+    ) {
         self.configuration = configuration
+        self.audioDataReader = audioDataReader
     }
 
     public func makeRequest(apiKey: String, audio: RecordedAudio) throws -> URLRequest {
@@ -514,7 +540,14 @@ public struct OpenAITranscriptionRequestBuilder: Sendable {
         body.appendMultipartField(name: "model", value: configuration.model, boundary: boundary)
         body.appendMultipartField(name: "response_format", value: "json", boundary: boundary)
 
-        let fileData = try Data(contentsOf: audio.fileURL)
+        let fileSize = try audioFileSize(for: audio)
+        if let fileSize {
+            try validateAudioSize(fileSize)
+        }
+        let fileData = try readAudioData(for: audio)
+        if fileSize == nil {
+            try validateAudioSize(Int64(fileData.count))
+        }
         let filename = audio.fileURL.lastPathComponent.isEmpty ? "audio.\(audio.format.rawValue)" : audio.fileURL.lastPathComponent
         body.append("--\(boundary)\r\n")
         body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n")
@@ -523,6 +556,37 @@ public struct OpenAITranscriptionRequestBuilder: Sendable {
         body.append("\r\n")
         body.append("--\(boundary)--\r\n")
         return body
+    }
+
+    private func readAudioData(for audio: RecordedAudio) throws -> Data {
+        try audioDataReader.readAudioData(for: audio)
+    }
+
+    private func audioFileSize(for audio: RecordedAudio) throws -> Int64? {
+        let values = try audio.fileURL.resourceValues(forKeys: [.fileSizeKey])
+        return values.fileSize.map(Int64.init)
+    }
+
+    private func validateAudioSize(_ byteCount: Int64) throws {
+        let size = byteCount
+        guard size <= configuration.maxAudioFileBytes else {
+            throw OpenAITranscriptionRequestError.audioFileTooLarge(
+                actualBytes: size,
+                maxBytes: configuration.maxAudioFileBytes
+            )
+        }
+    }
+}
+
+public protocol OpenAITranscriptionAudioDataReading: Sendable {
+    func readAudioData(for audio: RecordedAudio) throws -> Data
+}
+
+public struct OpenAITranscriptionAudioDataReader: OpenAITranscriptionAudioDataReading {
+    public init() {}
+
+    public func readAudioData(for audio: RecordedAudio) throws -> Data {
+        try Data(contentsOf: audio.fileURL)
     }
 }
 

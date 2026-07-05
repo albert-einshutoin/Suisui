@@ -60,6 +60,48 @@ final class DatabaseMigrationTests: XCTestCase {
         }
     }
 
+    func testSQLiteConnectionTypedRowsReadOnlyRequestedColumns() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try connection.execute(
+            """
+            CREATE TABLE typed_rows (
+                id INTEGER PRIMARY KEY NOT NULL,
+                title TEXT NOT NULL,
+                optional_note TEXT,
+                payload BLOB
+            );
+            INSERT INTO typed_rows (id, title, optional_note, payload)
+            VALUES (42, 'Launch', NULL, X'73616665');
+            """
+        )
+
+        let rows = try connection.query("SELECT id, title, optional_note, payload FROM typed_rows;") { row in
+            (
+                id: try row.int64("id"),
+                title: try row.string("title"),
+                note: try row.optionalString("optional_note"),
+                payload: try row.data("payload")
+            )
+        }
+
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.id, 42)
+        XCTAssertEqual(rows.first?.title, "Launch")
+        XCTAssertNil(rows.first?.note)
+        XCTAssertEqual(rows.first?.payload, Data("safe".utf8))
+    }
+
+    func testSQLiteConnectionTypedRowsFailOnMissingColumn() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try connection.execute("CREATE TABLE typed_rows (id INTEGER PRIMARY KEY NOT NULL); INSERT INTO typed_rows (id) VALUES (1);")
+
+        XCTAssertThrowsError(try connection.query("SELECT id FROM typed_rows;") { row in
+            try row.string("title")
+        }) { error in
+            XCTAssertEqual(error as? DatabaseError, .missingColumn("title"))
+        }
+    }
+
     func testPhase0MigrationsAreIdempotent() throws {
         let database = try SQLiteDatabaseClient(path: ":memory:")
 

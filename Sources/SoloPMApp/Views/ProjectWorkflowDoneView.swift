@@ -189,6 +189,9 @@ struct DoneWorkflowView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("done-workflow")
+        .onAppear {
+            viewModel.refreshExecutionReceiptAuditSnapshotsIfNeeded()
+        }
         .fileExporter(
             isPresented: $isExportingExecutionReceipts,
             document: executionReceiptExportDocument,
