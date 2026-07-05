@@ -325,6 +325,140 @@ public enum ExecutionReceiptStoreError: Error, Equatable, Sendable {
     case duplicateReceiptID(String)
 }
 
+fileprivate func executionReceiptNormalizedSearchText(_ value: String) -> String {
+    value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        .lowercased()
+}
+
+fileprivate func executionReceiptSearchTokens(in query: String) -> [String] {
+    executionReceiptNormalizedSearchText(query)
+        .split(whereSeparator: \.isWhitespace)
+        .map(String.init)
+}
+
+fileprivate struct ExecutionReceiptIndexReference: Codable, Equatable, Sendable {
+    var kind: ExecutionReceiptReferenceKind
+    var id: String
+
+    init(kind: ExecutionReceiptReferenceKind, id: String) {
+        self.kind = kind
+        self.id = id
+    }
+}
+
+fileprivate struct ExecutionReceiptIndexEntry: Codable, Equatable, Sendable {
+    var id: String
+    var runID: String
+    var assistantQueueItemID: String?
+    var createdAt: Date
+    var startedAt: Date?
+    var finishedAt: Date?
+    var status: ExecutionReceiptStatus
+    var primaryToolName: String?
+    var usageState: ExecutionReceiptUsageState
+    var modelProvider: String?
+    var modelName: String?
+    var referenceKinds: [ExecutionReceiptReferenceKind]
+    var references: [ExecutionReceiptIndexReference]
+    var sourceLinkKinds: [ExecutionReceiptReferenceKind]
+    var actionToolNames: [String]
+    var actionStatuses: [ExecutionReceiptStatus]
+    var visibleSurfaces: [ExecutionReceiptSurface]
+    var outputSummary: String
+    var searchableText: String
+    var receiptPath: String
+    var digest: String
+
+    var occurrenceDate: Date {
+        finishedAt ?? startedAt ?? createdAt
+    }
+
+    var toolNames: Set<String> {
+        Set(([primaryToolName].compactMap { $0 } + actionToolNames)
+            .map(executionReceiptNormalizedSearchText)
+            .filter { !$0.isEmpty })
+    }
+
+    init(receipt: ExecutionReceipt, receiptPath: String, digest: String) {
+        self.id = receipt.id
+        self.runID = receipt.runID
+        self.assistantQueueItemID = receipt.assistantQueueItemID
+        self.createdAt = receipt.createdAt
+        self.startedAt = receipt.startedAt
+        self.finishedAt = receipt.finishedAt
+        self.status = receipt.status
+        self.primaryToolName = receipt.primaryToolName
+        self.usageState = receipt.usage.state
+        self.modelProvider = receipt.model?.provider
+        self.modelName = receipt.model?.name
+        self.referenceKinds = receipt.references.map(\.kind)
+        self.references = receipt.references.map { reference in
+            ExecutionReceiptIndexReference(kind: reference.kind, id: reference.id)
+        }
+        self.sourceLinkKinds = receipt.sourceLinks.map(\.kind)
+        self.actionToolNames = receipt.actions.map(\.toolName)
+        self.actionStatuses = receipt.actions.map(\.status)
+        self.visibleSurfaces = receipt.visibleSurfaces
+        self.outputSummary = receipt.outputSummary
+        self.searchableText = executionReceiptSearchableText(
+            status: receipt.status,
+            outputSummary: receipt.outputSummary,
+            usageState: receipt.usage.state,
+            primaryToolName: receipt.primaryToolName,
+            modelProvider: receipt.model?.provider,
+            modelName: receipt.model?.name,
+            referenceKinds: receipt.references.map(\.kind),
+            sourceLinkKinds: receipt.sourceLinks.map(\.kind),
+            visibleSurfaces: receipt.visibleSurfaces,
+            actionToolNames: receipt.actions.map(\.toolName),
+            actionStatuses: receipt.actions.map(\.status)
+        )
+        self.receiptPath = receiptPath
+        self.digest = digest
+    }
+}
+
+fileprivate struct ExecutionReceiptIndexFileSnapshot: Equatable, Sendable {
+    var modificationDate: Date?
+    var byteCount: Int?
+}
+
+fileprivate struct ExecutionReceiptDirectorySnapshot: Equatable, Sendable {
+    var modificationDate: Date?
+}
+
+fileprivate func executionReceiptSearchableText(
+    status: ExecutionReceiptStatus,
+    outputSummary: String,
+    usageState: ExecutionReceiptUsageState,
+    primaryToolName: String?,
+    modelProvider: String?,
+    modelName: String?,
+    referenceKinds: [ExecutionReceiptReferenceKind],
+    sourceLinkKinds: [ExecutionReceiptReferenceKind],
+    visibleSurfaces: [ExecutionReceiptSurface],
+    actionToolNames: [String],
+    actionStatuses: [ExecutionReceiptStatus]
+) -> String {
+    var parts: [String] = [
+        status.rawValue,
+        outputSummary,
+        usageState.rawValue,
+        primaryToolName ?? "",
+        modelProvider ?? "",
+        modelName ?? ""
+    ]
+    parts.append(contentsOf: referenceKinds.map(\.rawValue))
+    parts.append(contentsOf: sourceLinkKinds.map(\.rawValue))
+    parts.append(contentsOf: visibleSurfaces.map(\.rawValue))
+    parts.append(contentsOf: actionToolNames)
+    parts.append(contentsOf: actionStatuses.map(\.rawValue))
+
+    // This index stores the redacted, query-safe vocabulary so recent history
+    // and scoped search can stay fast without decoding every receipt JSON file.
+    return executionReceiptNormalizedSearchText(parts.joined(separator: " "))
+}
+
 public struct ExecutionReceiptSearchFilter: Equatable, Sendable {
     public var query: String
     public var statuses: Set<ExecutionReceiptStatus>
@@ -406,18 +540,36 @@ public struct ExecutionReceiptSearchFilter: Equatable, Sendable {
     }
 
     private static func searchTokens(in query: String) -> [String] {
-        normalizedSearchText(query)
-            .split(whereSeparator: \.isWhitespace)
-            .map(String.init)
+        executionReceiptSearchTokens(in: query)
     }
 
     private static func normalizedIdentifier(_ value: String) -> String {
-        normalizedSearchText(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        executionReceiptNormalizedSearchText(value.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     private static func normalizedSearchText(_ value: String) -> String {
-        value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-            .lowercased()
+        executionReceiptNormalizedSearchText(value)
+    }
+
+    fileprivate func matches(_ entry: ExecutionReceiptIndexEntry) -> Bool {
+        if !statuses.isEmpty && !statuses.contains(entry.status) {
+            return false
+        }
+        if let visibleSurface, !entry.visibleSurfaces.contains(visibleSurface) {
+            return false
+        }
+        if !toolNames.isEmpty && toolNames.isDisjoint(with: entry.toolNames) {
+            return false
+        }
+        if !referenceKinds.isEmpty && referenceKinds.isDisjoint(with: Set(entry.referenceKinds)) {
+            return false
+        }
+
+        let tokens = Self.searchTokens(in: query)
+        guard !tokens.isEmpty else {
+            return true
+        }
+        return tokens.allSatisfy { entry.searchableText.contains($0) }
     }
 }
 
@@ -484,61 +636,82 @@ public final class VolatileExecutionReceiptStore: ExecutionReceiptStore, @unchec
 }
 
 public final class FileExecutionReceiptStore: ExecutionReceiptStore, @unchecked Sendable {
+    private static let receiptIndexFileName = "execution-receipt-index.jsonl"
     private let directoryURL: URL
+    private let indexURL: URL
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    private let receiptDecodeObserver: ((URL) -> Void)?
     private let lock = NSLock()
+    private var indexEntriesByID: [String: ExecutionReceiptIndexEntry]
+    private var orderedIndexEntries: [ExecutionReceiptIndexEntry]
+    private var loadedIndexSnapshot: ExecutionReceiptIndexFileSnapshot?
+    private var loadedReceiptDirectorySnapshot: ExecutionReceiptDirectorySnapshot?
 
-    public init(directoryURL: URL) throws {
+    public convenience init(directoryURL: URL) throws {
+        try self.init(directoryURL: directoryURL, receiptDecodeObserver: nil)
+    }
+
+    init(directoryURL: URL, receiptDecodeObserver: ((URL) -> Void)? = nil) throws {
         self.directoryURL = directoryURL
+        self.indexURL = directoryURL.appendingPathComponent(Self.receiptIndexFileName)
         self.encoder = JSONEncoder()
         self.encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         self.encoder.dateEncodingStrategy = .iso8601
         self.decoder = JSONDecoder()
         self.decoder.dateDecodingStrategy = .iso8601
+        self.receiptDecodeObserver = receiptDecodeObserver
+        self.indexEntriesByID = [:]
+        self.orderedIndexEntries = []
+        self.loadedIndexSnapshot = nil
+        self.loadedReceiptDirectorySnapshot = nil
         try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        try loadOrRepairIndex()
     }
 
     public func save(_ receipt: ExecutionReceipt) throws {
         lock.lock()
         defer { lock.unlock() }
+        try refreshIndexIfNeeded()
         let data = try encoder.encode(receipt)
         let destinationURL = fileURL(for: receipt.id)
         guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
             throw ExecutionReceiptStoreError.duplicateReceiptID(receipt.id)
         }
         try data.write(to: destinationURL, options: [.atomic])
+        let entry = ExecutionReceiptIndexEntry(
+            receipt: receipt,
+            receiptPath: destinationURL.lastPathComponent,
+            digest: ExecutionReceiptDigest.sha256(data)
+        )
+        upsertIndexEntry(entry)
+        do {
+            try appendIndexEntry(entry)
+            updateLoadedFileSystemSnapshots()
+        } catch {
+            // The receipt JSON is the durable evidence. The index is a repairable
+            // cache, so rebuild it if an incremental append fails.
+            try rebuildIndexFromReceiptDirectory()
+        }
     }
 
     public func list(limit: Int = 100) throws -> [ExecutionReceipt] {
         lock.lock()
         defer { lock.unlock() }
         let boundedLimit = max(1, min(limit, 500))
-        return try sortedReceiptURLs()
-            .prefix(boundedLimit)
-            .map { url in
-                try loadReceipt(from: url)
-            }
+        try refreshIndexIfNeeded()
+        return try loadedReceipts(from: orderedIndexEntries, limit: boundedLimit)
     }
 
     public func list(matching filter: ExecutionReceiptSearchFilter, limit: Int = 100) throws -> [ExecutionReceipt] {
         lock.lock()
         defer { lock.unlock() }
         let boundedLimit = max(1, min(limit, 500))
-        var matches: [ExecutionReceipt] = []
-        // Filter before limiting so an admin search can still find older
-        // relevant receipts even when recent automation generated many rows.
-        for url in try sortedReceiptURLs() {
-            let receipt = try loadReceipt(from: url)
-            guard filter.matches(receipt) else {
-                continue
-            }
-            matches.append(receipt)
-            if matches.count >= boundedLimit {
-                break
-            }
-        }
-        return matches
+        try refreshIndexIfNeeded()
+        return try loadedReceipts(
+            from: orderedIndexEntries.filter { filter.matches($0) },
+            limit: boundedLimit
+        )
     }
 
     public func list(
@@ -550,44 +723,242 @@ public final class FileExecutionReceiptStore: ExecutionReceiptStore, @unchecked 
         lock.lock()
         defer { lock.unlock() }
         let boundedLimit = max(1, min(limit, 500))
-        var matches: [ExecutionReceipt] = []
-        // Scope before limiting so a busy global receipt stream cannot hide
-        // older task/project evidence from the detail inspector.
-        for url in try sortedReceiptURLs() {
-            let receipt = try loadReceipt(from: url)
-            guard receipt.visibleSurfaces.contains(visibleSurface),
-                  receipt.references.contains(where: { reference in
-                      reference.kind == referenceKind && reference.id == referenceID
-                  }) else {
+        try refreshIndexIfNeeded()
+        let matchingEntries = orderedIndexEntries.filter { entry in
+            entry.visibleSurfaces.contains(visibleSurface)
+                && entry.references.contains { reference in
+                    reference.kind == referenceKind && reference.id == referenceID
+                }
+        }
+        return try loadedReceipts(from: matchingEntries, limit: boundedLimit)
+    }
+
+    private func loadOrRepairIndex() throws {
+        if let loadedEntries = try loadIndexEntriesFromManifest() {
+            let receiptURLs = try receiptURLsInDirectory()
+            if indexIsMissingReceiptFiles(loadedEntries, receiptURLs: receiptURLs) {
+                try rebuildIndexFromReceiptDirectory()
+                return
+            }
+            indexEntriesByID = Dictionary(uniqueKeysWithValues: loadedEntries.map { ($0.id, $0) })
+            orderedIndexEntries = sortIndexEntries(Array(indexEntriesByID.values))
+            updateLoadedFileSystemSnapshots()
+            return
+        }
+        try rebuildIndexFromReceiptDirectory()
+    }
+
+    private func refreshIndexIfNeeded() throws {
+        let currentIndexSnapshot = currentIndexFileSnapshot()
+        let currentDirectorySnapshot = currentReceiptDirectorySnapshot()
+        guard currentIndexSnapshot != loadedIndexSnapshot
+            || currentDirectorySnapshot != loadedReceiptDirectorySnapshot else {
+            return
+        }
+        // Multiple runtime surfaces can hold their own receipt store instance.
+        // Refreshing on lightweight filesystem snapshots preserves cross-store
+        // visibility without returning to a full JSON directory scan per query.
+        try loadOrRepairIndex()
+    }
+
+    private func indexIsMissingReceiptFiles(
+        _ entries: [ExecutionReceiptIndexEntry],
+        receiptURLs: [URL]
+    ) -> Bool {
+        let indexedPaths = Set(entries.map(\.receiptPath))
+        let indexedFileNames = Set(entries.map { URL(fileURLWithPath: $0.receiptPath).lastPathComponent })
+        return receiptURLs.contains { url in
+            let path = url.path
+            let fileName = url.lastPathComponent
+            return !indexedPaths.contains(path) && !indexedFileNames.contains(fileName)
+        }
+    }
+
+    private func loadIndexEntriesFromManifest() throws -> [ExecutionReceiptIndexEntry]? {
+        guard FileManager.default.fileExists(atPath: indexURL.path) else {
+            return nil
+        }
+
+        let data = try Data(contentsOf: indexURL)
+        guard !data.isEmpty else {
+            return []
+        }
+
+        let contents = String(decoding: data, as: UTF8.self)
+        var entriesByID: [String: ExecutionReceiptIndexEntry] = [:]
+        var didEncounterInvalidLine = false
+
+        for line in contents.split(whereSeparator: \.isNewline) {
+            guard !line.isEmpty else {
                 continue
             }
-            matches.append(receipt)
-            if matches.count >= boundedLimit {
+            do {
+                let entry = try JSONDecoder.executionReceiptIndexDecoder.decode(
+                    ExecutionReceiptIndexEntry.self,
+                    from: Data(line.utf8)
+                )
+                entriesByID[entry.id] = entry
+            } catch {
+                didEncounterInvalidLine = true
+            }
+        }
+
+        if didEncounterInvalidLine {
+            return nil
+        }
+        return sortIndexEntries(Array(entriesByID.values))
+    }
+
+    private func rebuildIndexFromReceiptDirectory() throws {
+        let receiptURLs = try receiptURLsInDirectory()
+        var entriesByID: [String: ExecutionReceiptIndexEntry] = [:]
+        entriesByID.reserveCapacity(receiptURLs.count)
+
+        for url in receiptURLs {
+            guard let loaded = try loadReceiptAndData(from: url) else {
+                continue
+            }
+            let entry = ExecutionReceiptIndexEntry(
+                receipt: loaded.receipt,
+                receiptPath: url.lastPathComponent,
+                digest: ExecutionReceiptDigest.sha256(loaded.data)
+            )
+            entriesByID[entry.id] = entry
+        }
+
+        indexEntriesByID = entriesByID
+        orderedIndexEntries = sortIndexEntries(Array(entriesByID.values))
+        try writeIndexManifest(orderedIndexEntries)
+        updateLoadedFileSystemSnapshots()
+    }
+
+    private func appendIndexEntry(_ entry: ExecutionReceiptIndexEntry) throws {
+        let data = try JSONEncoder.executionReceiptIndexEncoder.encode(entry)
+        try appendLine(data)
+    }
+
+    private func writeIndexManifest(_ entries: [ExecutionReceiptIndexEntry]) throws {
+        var data = Data()
+        for entry in entries {
+            let encoded = try JSONEncoder.executionReceiptIndexEncoder.encode(entry)
+            data.append(encoded)
+            data.append(0x0A)
+        }
+        try data.write(to: indexURL, options: [.atomic])
+    }
+
+    private func appendLine(_ data: Data) throws {
+        let line = data + Data([0x0A])
+        if FileManager.default.fileExists(atPath: indexURL.path) {
+            let handle = try FileHandle(forWritingTo: indexURL)
+            defer { try? handle.close() }
+            try handle.seekToEnd()
+            try handle.write(contentsOf: line)
+        } else {
+            try line.write(to: indexURL, options: [.atomic])
+        }
+    }
+
+    private func loadedReceipts(from entries: [ExecutionReceiptIndexEntry], limit: Int) throws -> [ExecutionReceipt] {
+        var receipts: [ExecutionReceipt] = []
+        receipts.reserveCapacity(limit)
+
+        for entry in entries {
+            guard let receipt = try loadReceipt(from: entry) else {
+                continue
+            }
+            receipts.append(receipt)
+            if receipts.count >= limit {
                 break
             }
         }
-        return matches
+
+        return receipts
     }
 
-    private func sortedReceiptURLs() throws -> [URL] {
+    private func loadReceipt(from entry: ExecutionReceiptIndexEntry) throws -> ExecutionReceipt? {
+        try loadReceipt(from: receiptURL(for: entry), expectedDigest: entry.digest)
+    }
+
+    private func loadReceipt(from url: URL) throws -> ExecutionReceipt? {
+        try loadReceipt(from: url, expectedDigest: nil)
+    }
+
+    private func loadReceipt(from url: URL, expectedDigest: String?) throws -> ExecutionReceipt? {
+        guard let loaded = try loadReceiptAndData(from: url, expectedDigest: expectedDigest) else {
+            return nil
+        }
+        return loaded.receipt
+    }
+
+    private func loadReceiptAndData(
+        from url: URL,
+        expectedDigest: String? = nil
+    ) throws -> (receipt: ExecutionReceipt, data: Data)? {
+        do {
+            let data = try Data(contentsOf: url)
+            if let expectedDigest, expectedDigest != ExecutionReceiptDigest.sha256(data) {
+                return nil
+            }
+            receiptDecodeObserver?(url)
+            return (try decoder.decode(ExecutionReceipt.self, from: data), data)
+        } catch {
+            return nil
+        }
+    }
+
+    private func receiptURLsInDirectory() throws -> [URL] {
         let urls = try FileManager.default.contentsOfDirectory(
             at: directoryURL,
-            includingPropertiesForKeys: [.contentModificationDateKey],
+            includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles]
         )
-        return try urls
-            .filter { $0.pathExtension == "json" }
-            .map { url -> (URL, Date) in
-                let values = try url.resourceValues(forKeys: [.contentModificationDateKey])
-                return (url, values.contentModificationDate ?? .distantPast)
-            }
-            .sorted { $0.1 > $1.1 }
-            .map(\.0)
+        return urls.filter { $0.pathExtension == "json" }
     }
 
-    private func loadReceipt(from url: URL) throws -> ExecutionReceipt {
-        let data = try Data(contentsOf: url)
-        return try decoder.decode(ExecutionReceipt.self, from: data)
+    private func upsertIndexEntry(_ entry: ExecutionReceiptIndexEntry) {
+        indexEntriesByID[entry.id] = entry
+        orderedIndexEntries = sortIndexEntries(Array(indexEntriesByID.values))
+    }
+
+    private func sortIndexEntries(_ entries: [ExecutionReceiptIndexEntry]) -> [ExecutionReceiptIndexEntry] {
+        entries.sorted { lhs, rhs in
+            if lhs.occurrenceDate != rhs.occurrenceDate {
+                return lhs.occurrenceDate > rhs.occurrenceDate
+            }
+            if lhs.createdAt != rhs.createdAt {
+                return lhs.createdAt > rhs.createdAt
+            }
+            return lhs.id > rhs.id
+        }
+    }
+
+    private func receiptURL(for entry: ExecutionReceiptIndexEntry) -> URL {
+        // The index is a repairable cache, so do not trust cached paths to read
+        // outside the receipt directory if a stale or hand-edited manifest exists.
+        let fileName = URL(fileURLWithPath: entry.receiptPath).lastPathComponent
+        return directoryURL.appendingPathComponent(fileName)
+    }
+
+    private func updateLoadedFileSystemSnapshots() {
+        loadedIndexSnapshot = currentIndexFileSnapshot()
+        loadedReceiptDirectorySnapshot = currentReceiptDirectorySnapshot()
+    }
+
+    private func currentIndexFileSnapshot() -> ExecutionReceiptIndexFileSnapshot? {
+        guard FileManager.default.fileExists(atPath: indexURL.path),
+              let attributes = try? FileManager.default.attributesOfItem(atPath: indexURL.path) else {
+            return nil
+        }
+        return ExecutionReceiptIndexFileSnapshot(
+            modificationDate: attributes[.modificationDate] as? Date,
+            byteCount: (attributes[.size] as? NSNumber)?.intValue
+        )
+    }
+
+    private func currentReceiptDirectorySnapshot() -> ExecutionReceiptDirectorySnapshot {
+        let values = try? directoryURL.resourceValues(forKeys: [.contentModificationDateKey])
+        return ExecutionReceiptDirectorySnapshot(modificationDate: values?.contentModificationDate)
     }
 
     private func fileURL(for id: String) -> URL {
@@ -597,6 +968,23 @@ public final class FileExecutionReceiptStore: ExecutionReceiptStore, @unchecked 
             }
             .reduce(into: "") { $0.append($1) }
         return directoryURL.appendingPathComponent("\(safeName).json")
+    }
+}
+
+private extension JSONEncoder {
+    static var executionReceiptIndexEncoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+}
+
+private extension JSONDecoder {
+    static var executionReceiptIndexDecoder: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
     }
 }
 
@@ -1968,7 +2356,11 @@ private enum ExecutionReceiptDigest {
     }
 
     static func sha256(_ value: String) -> String {
-        let digest = SHA256.hash(data: Data(value.utf8))
+        sha256(Data(value.utf8))
+    }
+
+    static func sha256(_ data: Data) -> String {
+        let digest = SHA256.hash(data: data)
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 }
