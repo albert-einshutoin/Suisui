@@ -5,7 +5,7 @@ struct MenuBarPanel: View {
     @Environment(\.openWindow) private var openWindow
 
     @ObservedObject var controller: MenuBarSummaryController
-    @ObservedObject var quickCaptureViewModel: ProjectBoardViewModel
+    @ObservedObject var quickCaptureController: MenuBarQuickCaptureController
     @State private var quickCaptureTitle = ""
 
     private var viewModel: MenuBarSummaryViewModel {
@@ -77,11 +77,9 @@ struct MenuBarPanel: View {
         .frame(width: 320)
         .task {
             controller.refresh()
-            quickCaptureViewModel.load()
         }
         .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
             controller.refresh()
-            quickCaptureViewModel.load()
         }
     }
 
@@ -109,7 +107,7 @@ struct MenuBarPanel: View {
                 .accessibilityHint("Adds the typed item to the local Inbox.")
             }
 
-            if let errorMessage = quickCaptureViewModel.errorMessage {
+            if let errorMessage = quickCaptureController.errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.orange)
@@ -125,7 +123,7 @@ struct MenuBarPanel: View {
             return
         }
 
-        if quickCaptureViewModel.createInboxTask(title: title) != nil {
+        if quickCaptureController.createInboxTask(title: title) != nil {
             quickCaptureTitle = ""
             controller.refresh()
         }

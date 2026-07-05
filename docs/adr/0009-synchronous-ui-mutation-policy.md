@@ -11,10 +11,10 @@ Phase 14 の layout stability smoke は `t=0ms` の即時サンプルも見る�
 
 ## Decision
 
-Layout-sensitive operation は、ユーザー操作と同じ同期境界で mutation と layout flush を完了させる。
+Layout-sensitive operation は、ユーザー操作と同じ同期境界で state / AppKit object mutation を完了させる。SwiftUI hosted view tree 全体の size fitting は重いため、同期境界では dirty mark に留める。
 
 - Sidebar toggle は `Transaction.disablesAnimations = true` を設定した最小 scope の `withTransaction` に閉じる。
-- toolbar display mode は AppKit 側で即時に正規化し、`layoutSubtreeIfNeeded` と `displayIfNeeded` を同じ pass で呼ぶ。
+- toolbar display mode は AppKit 側で即時に正規化し、content view に dirty mark だけ付ける。ProjectBoardToolbarLayoutBridgeView does not call `layoutSubtreeIfNeeded` or `displayIfNeeded` because packaged app launch samples showed full Project Board size fitting can monopolize the main thread before the window is AX-visible.
 - split view visibility は sidebar toggle と同じ transaction に含め、`DispatchQueue.main.asyncAfter` へ逃がさない。
 - theme switching は Settings の state と persisted preference の更新に限定し、layout correction のための timer を置かない。
 - inspector open/close は binding の同期更新として扱い、開閉直後の位置補正を遅延しない。
@@ -30,7 +30,7 @@ Layout-sensitive operation は、ユーザー操作と同じ同期境界で muta
 許容する例外:
 
 - `layout-attachment-delay:` コメントがあり、initial AppKit toolbar attachment gap のように SwiftUI がまだ AppKit object を持っていない初期化境界に限る。
-- 例外は bounded retry にし、user-triggered display-mode/sidebar changes run synchronously であることをコメントと `AppExperienceSourceTests` で固定する。
+- 例外は bounded retry にし、user-triggered display-mode/sidebar changes mutate the toolbar synchronously without forcing a full view-tree layout であることをコメントと `AppExperienceSourceTests` で固定する。
 - 例外は runtime smoke を緑にするための隠れ retry ではなく、AppKit object が存在しない期間だけを吸収する。
 
 SwiftUI state mutationは最小scopeのtransactionに閉じる。AppKit interopはProjectBoardToolbarLayoutBridgeView のような局所 bridge に置き、View tree の通常 rendering と責務を混ぜない。

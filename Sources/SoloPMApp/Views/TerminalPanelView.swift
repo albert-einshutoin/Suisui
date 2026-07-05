@@ -126,7 +126,7 @@ struct EmbeddedTerminalPanel: View {
             ContentUnavailableView(
                 "Terminal Locked",
                 systemImage: "terminal",
-                description: Text("Local shell execution requires explicit approval.")
+                description: Text("Developer Mode is enabled. Local shell execution requires explicit approval and starts in \(displayDirectory).")
             )
 
             Button { isExecutionApproved = true } label: {

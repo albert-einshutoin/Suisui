@@ -3,10 +3,11 @@ import SoloPMCore
 
 extension AppRuntimeFactory {
     @MainActor
-    static func makeAppSettingsViewModel() -> AppSettingsViewModel {
+    static func makeAppSettingsViewModel(refreshProviderSecretStatusesOnInit: Bool = true) -> AppSettingsViewModel {
         AppSettingsViewModel(
             settingsStore: UserDefaultsAppSettingsStore(),
-            secretStore: makeSecretStore()
+            secretStore: makeSecretStore(),
+            refreshProviderSecretStatusesOnInit: refreshProviderSecretStatusesOnInit
         )
     }
 

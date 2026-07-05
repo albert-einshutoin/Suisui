@@ -1094,10 +1094,10 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
     }
 
     func testTaskAutomationFrequencyControlDocumentsManualScheduledBoundary() throws {
-        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let settingsSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsView.swift")
         let productDoc = try readPackageFile("docs/product/role-and-strengths.md")
 
-        XCTAssertTrue(appSource.contains("Manual frequency only prepares reviews after a user action"))
+        XCTAssertTrue(settingsSource.contains("Manual frequency only prepares reviews after a user action"))
         XCTAssertTrue(productDoc.contains("Manual cadence is explicit user-triggered review"))
     }
 

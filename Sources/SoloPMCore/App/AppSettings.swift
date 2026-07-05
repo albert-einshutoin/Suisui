@@ -6,6 +6,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var sttProvider: STTProvider
     public var ttsProvider: TTSProvider
     public var notificationsEnabled: Bool
+    public var isDeveloperModeEnabled: Bool
     public var defaultWorkspacePath: String?
     public var timeZoneIdentifier: String
     public var googleCalendarID: String
@@ -27,6 +28,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case sttProvider
         case ttsProvider
         case notificationsEnabled
+        case isDeveloperModeEnabled
         case defaultWorkspacePath
         case timeZoneIdentifier
         case googleCalendarID
@@ -49,6 +51,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         sttProvider: STTProvider = .openAITranscribe,
         ttsProvider: TTSProvider = .localKokoro,
         notificationsEnabled: Bool = false,
+        isDeveloperModeEnabled: Bool = false,
         defaultWorkspacePath: String? = nil,
         timeZoneIdentifier: String = TimeZone.current.identifier,
         googleCalendarID: String = "primary",
@@ -69,6 +72,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.sttProvider = sttProvider
         self.ttsProvider = ttsProvider
         self.notificationsEnabled = notificationsEnabled
+        self.isDeveloperModeEnabled = isDeveloperModeEnabled
         self.defaultWorkspacePath = defaultWorkspacePath
         self.timeZoneIdentifier = timeZoneIdentifier
         self.googleCalendarID = googleCalendarID
@@ -92,6 +96,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.sttProvider = try container.decode(STTProvider.self, forKey: .sttProvider)
         self.ttsProvider = try container.decodeIfPresent(TTSProvider.self, forKey: .ttsProvider) ?? .localKokoro
         self.notificationsEnabled = try container.decode(Bool.self, forKey: .notificationsEnabled)
+        self.isDeveloperModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .isDeveloperModeEnabled) ?? false
         self.defaultWorkspacePath = try container.decodeIfPresent(String.self, forKey: .defaultWorkspacePath)
         self.timeZoneIdentifier = try container.decode(String.self, forKey: .timeZoneIdentifier)
         self.googleCalendarID = try container.decodeIfPresent(String.self, forKey: .googleCalendarID) ?? "primary"
@@ -115,6 +120,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(sttProvider, forKey: .sttProvider)
         try container.encode(ttsProvider, forKey: .ttsProvider)
         try container.encode(notificationsEnabled, forKey: .notificationsEnabled)
+        try container.encode(isDeveloperModeEnabled, forKey: .isDeveloperModeEnabled)
         try container.encodeIfPresent(defaultWorkspacePath, forKey: .defaultWorkspacePath)
         try container.encode(timeZoneIdentifier, forKey: .timeZoneIdentifier)
         try container.encode(googleCalendarID, forKey: .googleCalendarID)
@@ -778,7 +784,8 @@ public final class AppSettingsViewModel: ObservableObject {
         settingsStore: any AppSettingsStore,
         secretStore: any SecretStore,
         voiceModelCatalog: VoiceModelCatalog = .phase1Default,
-        voiceModelManager: any VoiceModelManaging = VoiceModelManager()
+        voiceModelManager: any VoiceModelManaging = VoiceModelManager(),
+        refreshProviderSecretStatusesOnInit: Bool = true
     ) {
         let initialVoiceModelStatuses = Dictionary(
             uniqueKeysWithValues: voiceModelCatalog.models.map { model in
@@ -823,11 +830,26 @@ public final class AppSettingsViewModel: ObservableObject {
         self.successMessage = nil
         self.voiceModelStatusOverrides = initialVoiceModelStatuses
         self.rejectedAIProvider = nil
-        refreshOpenAIAPIKeyStatus()
-        refreshAnthropicAPIKeyStatus()
-        refreshGeminiAPIKeyStatus()
-        refreshGroqAPIKeyStatus()
-        refreshOpenRouterAPIKeyStatus()
+        if refreshProviderSecretStatusesOnInit {
+            refreshProviderSecretStatuses()
+        }
+    }
+
+    @discardableResult
+    public func refreshProviderSecretStatuses() -> Bool {
+        // Provider Keychain reads can prompt or block on first app launch. Keep
+        // them explicit so the Project Board can publish a window before
+        // Settings asks for provider readiness.
+        let openAIStatus = refreshOpenAIAPIKeyStatus()
+        let anthropicStatus = refreshAnthropicAPIKeyStatus()
+        let geminiStatus = refreshGeminiAPIKeyStatus()
+        let groqStatus = refreshGroqAPIKeyStatus()
+        let openRouterStatus = refreshOpenRouterAPIKeyStatus()
+        return openAIStatus
+            && anthropicStatus
+            && geminiStatus
+            && groqStatus
+            && openRouterStatus
     }
 
     public var selectableAIProviders: [AIProvider] {
@@ -1059,6 +1081,11 @@ public final class AppSettingsViewModel: ObservableObject {
 
     public func setNotificationsEnabled(_ isEnabled: Bool) {
         settings.notificationsEnabled = isEnabled
+        clearMessages()
+    }
+
+    public func setDeveloperModeEnabled(_ isEnabled: Bool) {
+        settings.isDeveloperModeEnabled = isEnabled
         clearMessages()
     }
 

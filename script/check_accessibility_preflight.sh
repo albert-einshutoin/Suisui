@@ -130,7 +130,7 @@ REQUIRED_SOURCE_ANCHORS=(
   "Sources/SoloPMApp/Views/ProjectWorkflowSharedViews.swift::inbox-row-triage-summary-"
   "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-action-grid"
   "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-intake-detail"
-  "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-playback"
+  "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-transcript-preview"
   "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-waveform"
   "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-transcript"
   "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-interpretation"

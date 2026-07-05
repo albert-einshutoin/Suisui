@@ -409,18 +409,16 @@ private struct InboxVoiceIntakeDetail: View {
 
     private func voicePlayback(_ capture: InboxCaptureRecord) -> some View {
         HStack(spacing: 8) {
-            Button {} label: {
-                Label("Play", systemImage: "play.fill")
-                    .labelStyle(.iconOnly)
-            }
-            .disabled(true)
-            .frame(width: 28, height: 28)
-            .accessibilityLabel("Voice playback")
-            .accessibilityValue("Playback unavailable")
-
-            Text("00:00")
-                .font(.caption.monospacedDigit())
+            Image(systemName: "text.quote")
                 .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+                .accessibilityHidden(true)
+
+            Text("Transcript only")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
 
             HStack(alignment: .center, spacing: 3) {
                 ForEach(waveformBars.indices, id: \.self) { index in
@@ -443,9 +441,9 @@ private struct InboxVoiceIntakeDetail: View {
         .padding(8)
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("inbox-voice-playback")
-        .accessibilityLabel("Voice playback")
-        .accessibilityValue("Playback unavailable in this MVP, duration \(capture.durationLabel), waveform preview only")
+        .accessibilityIdentifier("inbox-voice-transcript-preview")
+        .accessibilityLabel("Voice transcript preview")
+        .accessibilityValue("Transcript-only voice capture, duration \(capture.durationLabel), waveform preview")
     }
 
     private var waveformBars: [CGFloat] {

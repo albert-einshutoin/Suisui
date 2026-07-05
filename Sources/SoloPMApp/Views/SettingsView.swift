@@ -563,7 +563,7 @@ struct SettingsView: View {
                     detail: googleCalendarSettingsReadinessRow.detailLabel,
                     nextAction: googleCalendarSettingsReadinessRow.nextActionLabel,
                     privacyBoundary: googleCalendarSettingsReadinessRow.privacyBoundaryLabel,
-                    systemImage: "calendar.badge.plus",
+                    systemImage: ExternalConnectorExposurePolicy.exposure(for: .googleCalendar).systemImage,
                     tone: googleCalendarSettingsTone,
                     statusActionLabel: googleCalendarSettingsReadinessRow.statusCheckActionLabel,
                     onStatusAction: refreshGoogleCalendarSettingsStatus
@@ -588,34 +588,10 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("settings-google-calendar-oauth-setup-message")
                 }
-                ExternalConnectorScopeRow(
-                    name: "Todoist",
-                    status: "Connector planned",
-                    detail: "Task import/export uses the external connector boundary and explicit approval.",
-                    systemImage: "checklist",
-                    tone: .neutral
-                )
-                ExternalConnectorScopeRow(
-                    name: "Notion",
-                    status: "Connector planned",
-                    detail: "Database mappings stay explicit before tasks are exported.",
-                    systemImage: "doc.richtext",
-                    tone: .neutral
-                )
-                ExternalConnectorScopeRow(
-                    name: "Linear",
-                    status: "Connector planned",
-                    detail: "Issue sync is scoped to the selected team.",
-                    systemImage: "line.3.horizontal.decrease.circle",
-                    tone: .neutral
-                )
-                ExternalConnectorScopeRow(
-                    name: "GitHub Issues",
-                    status: "Connector planned",
-                    detail: "Issue sync is scoped to the selected repository.",
-                    systemImage: "number",
-                    tone: .neutral
-                )
+                Label(hiddenConnectorPolicySummary, systemImage: "eye.slash")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("settings-external-connector-policy-boundary")
             }
 
         }
@@ -935,6 +911,22 @@ struct SettingsView: View {
                         set: { settingsViewModel.setNotificationsEnabled($0) }
                     )
                 )
+                Toggle(
+                    isOn: Binding(
+                        get: { settingsViewModel.settings.isDeveloperModeEnabled },
+                        set: { settingsViewModel.setDeveloperModeEnabled($0) }
+                    )
+                ) {
+                    Label("Developer Mode", systemImage: "hammer")
+                }
+                .accessibilityIdentifier("settings-developer-mode-toggle")
+                Label(
+                    "Developer Mode exposes local shell and repository automation controls after explicit approval.",
+                    systemImage: "terminal"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("settings-developer-mode-boundary")
                 Toggle(
                     isOn: Binding(
                         get: { launchAtLoginViewModel.isEnabled },
@@ -1303,6 +1295,12 @@ struct SettingsView: View {
         default:
             return .warning
         }
+    }
+
+    private var hiddenConnectorPolicySummary: String {
+        let hiddenCount = ExternalConnectorExposurePolicy.all.count - ExternalConnectorExposurePolicy.settingsVisible.count
+        let draftOnlyCount = ExternalConnectorExposurePolicy.assistantQueueDraftOnly.count
+        return String(localized: "\(hiddenCount) connector policies stay out of Settings until connect, check, revoke, and audit UI is complete. \(draftOnlyCount) connector send paths remain Assistant Queue draft-only.")
     }
 
     private var googleCalendarOAuthActionLabel: String {
