@@ -44,6 +44,33 @@ final class STTProviderTests: XCTestCase {
         }
     }
 
+    func testStreamingTranscriptFixtureEmitsPartialFinalAndStopEventsInOrder() async throws {
+        let provider = StreamingSTTProviderFixture()
+        let stream = try XCTUnwrap(provider.streamingTranscriptionEvents())
+        let eventsTask = Task {
+            var events: [STTStreamingEvent] = []
+            for try await event in stream {
+                events.append(event)
+                if event == .stopped {
+                    break
+                }
+            }
+            return events
+        }
+
+        provider.yield(.partial(STTTranscript(text: "Create")))
+        provider.yield(.final(STTTranscript(text: "Create a task")))
+        provider.yield(.stopped)
+        provider.finish()
+
+        let events = try await eventsTask.value
+        XCTAssertEqual(events, [
+            .partial(STTTranscript(text: "Create")),
+            .final(STTTranscript(text: "Create a task")),
+            .stopped
+        ])
+    }
+
     func testPhase1DefaultCatalogRegistersOpenAIAndReadyGatedWhisperCppProvider() {
         let catalog = STTProviderCatalog.phase1Default
 

@@ -78,6 +78,67 @@ struct FakeSTTProvider: SpeechToTextProvider {
     }
 }
 
+final class StreamingSTTProviderFixture: SpeechToTextProvider, @unchecked Sendable {
+    let id: STTProviderID
+    let availability: STTProviderAvailability
+    private let transcript: STTTranscript
+    private let lock = NSLock()
+    private var continuation: AsyncThrowingStream<STTStreamingEvent, Error>.Continuation?
+    private var isStreaming = false
+    private var wasCancelled = false
+
+    init(
+        id: STTProviderID = .whisperCpp,
+        availability: STTProviderAvailability? = nil,
+        transcript: STTTranscript = STTTranscript(text: "")
+    ) {
+        self.id = id
+        self.availability = availability ?? STTProviderAvailability(providerID: id, isAvailable: true)
+        self.transcript = transcript
+    }
+
+    var didStartStreaming: Bool {
+        lock.withLock { isStreaming }
+    }
+
+    var didCancelStream: Bool {
+        lock.withLock { wasCancelled }
+    }
+
+    func transcribe(_ audio: RecordedAudio) async throws -> STTTranscript {
+        guard availability.isAvailable else {
+            throw STTProviderError.unavailable(availability.reason ?? "STT provider is unavailable.")
+        }
+        return transcript
+    }
+
+    func streamingTranscriptionEvents() -> AsyncThrowingStream<STTStreamingEvent, Error>? {
+        guard availability.isAvailable else {
+            return nil
+        }
+        return AsyncThrowingStream { continuation in
+            lock.withLock {
+                self.continuation = continuation
+                self.isStreaming = true
+                self.wasCancelled = false
+            }
+            continuation.onTermination = { [weak self] _ in
+                self?.lock.withLock {
+                    self?.wasCancelled = true
+                }
+            }
+        }
+    }
+
+    func yield(_ event: STTStreamingEvent) {
+        lock.withLock { continuation }?.yield(event)
+    }
+
+    func finish(throwing error: Error? = nil) {
+        lock.withLock { continuation }?.finish(throwing: error)
+    }
+}
+
 struct FakeLLMProvider: LLMProvider {
     var providerID: String
     private var response: PlanningResponse

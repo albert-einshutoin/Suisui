@@ -72,11 +72,24 @@ public struct STTTranscript: Equatable, Sendable {
     }
 }
 
+public enum STTStreamingEvent: Equatable, Sendable {
+    case partial(STTTranscript)
+    case final(STTTranscript)
+    case stopped
+}
+
 public protocol SpeechToTextProvider: Sendable {
     var id: STTProviderID { get }
     var availability: STTProviderAvailability { get }
 
     func transcribe(_ audio: RecordedAudio) async throws -> STTTranscript
+    func streamingTranscriptionEvents() -> AsyncThrowingStream<STTStreamingEvent, Error>?
+}
+
+public extension SpeechToTextProvider {
+    func streamingTranscriptionEvents() -> AsyncThrowingStream<STTStreamingEvent, Error>? {
+        nil
+    }
 }
 
 public enum STTProviderError: Error, Equatable, Sendable {

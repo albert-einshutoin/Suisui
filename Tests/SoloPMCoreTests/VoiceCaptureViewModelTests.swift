@@ -1885,6 +1885,407 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.recordingState, .recording(startedAt: Date(timeIntervalSince1970: 20)))
     }
 
+    func testLowLatencyAgentModeDoesNotStartRecordingAutomatically() {
+        let provider = StreamingSTTProviderFixture()
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: provider,
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            ))
+        )
+
+        XCTAssertEqual(viewModel.lowLatencyVoiceAgentState, .idle)
+        XCTAssertFalse(viewModel.isLowLatencyVoiceAgentListening)
+        XCTAssertFalse(provider.didStartStreaming)
+        XCTAssertEqual(viewModel.phase, .idle)
+    }
+
+    func testLowLatencyAgentModePublishesPartialTranscriptAndIntentWithoutProviderPlanning() async {
+        let sttProvider = StreamingSTTProviderFixture()
+        let llmProvider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "recording",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "unexpected-provider-plan",
+                userInput: "Should not be called for partials",
+                summary: "Should not be used",
+                actions: [PlanAction(id: "unexpected", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: sttProvider,
+            llmProvider: llmProvider,
+            appSettingsProvider: { Self.lowLatencyLocalVoiceAgentSettings() }
+        )
+
+        await viewModel.startLowLatencyVoiceAgentMode()
+        sttProvider.yield(.partial(STTTranscript(text: "Slackに今すぐ送信して")))
+        let didPublishPreview = await waitForVoiceCondition { viewModel.liveIntentPreview != nil }
+        XCTAssertTrue(didPublishPreview)
+
+        XCTAssertEqual(viewModel.lowLatencyVoiceAgentState, .listening)
+        XCTAssertEqual(viewModel.liveTranscript, "Slackに今すぐ送信して")
+        XCTAssertEqual(viewModel.liveIntentPreview?.intent, .connectorSendGate)
+        XCTAssertEqual(viewModel.draft.text, "")
+        XCTAssertNil(viewModel.assistantQueueItem)
+        XCTAssertTrue(llmProvider.requests.isEmpty)
+    }
+
+    func testLowLatencyAgentModeStopCancelsStreamAndClearsInFlightPartialState() async {
+        let sttProvider = StreamingSTTProviderFixture()
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: sttProvider,
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            )),
+            appSettingsProvider: { Self.lowLatencyLocalVoiceAgentSettings() }
+        )
+
+        await viewModel.startLowLatencyVoiceAgentMode()
+        sttProvider.yield(.partial(STTTranscript(text: "Create")))
+        let didPublishTranscript = await waitForVoiceCondition { viewModel.liveTranscript == "Create" }
+        XCTAssertTrue(didPublishTranscript)
+        viewModel.stopLowLatencyVoiceAgentMode()
+        let didCancelStream = await waitForVoiceCondition { sttProvider.didCancelStream }
+        XCTAssertTrue(didCancelStream)
+
+        XCTAssertEqual(viewModel.lowLatencyVoiceAgentState, .idle)
+        XCTAssertFalse(viewModel.isLowLatencyVoiceAgentListening)
+        XCTAssertEqual(viewModel.liveTranscript, "")
+        XCTAssertNil(viewModel.liveIntentPreview)
+    }
+
+    func testLowLatencyAgentModeUsesSegmentedLocalBatchTranscriptionWhenProviderDoesNotStream() async throws {
+        let sttProvider = FakeSTTProvider(id: .whisperCpp, transcript: STTTranscript(text: "Slackに今すぐ送信して"))
+        let llmProvider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "recording",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: sttProvider,
+            llmProvider: llmProvider,
+            appSettingsProvider: {
+                AppSettings(
+                    sttProvider: .localWhisperCpp,
+                    isLowLatencyVoiceAgentModeEnabled: true
+                )
+            },
+            lowLatencySegmentDuration: 0,
+            lowLatencySegmentOutputURLProvider: { URL(filePath: "/tmp/solopm-low-latency-segment.m4a") }
+        )
+
+        await viewModel.startLowLatencyVoiceAgentMode()
+        let didQueueSegmentedItem = await waitForVoiceCondition { viewModel.assistantQueueItem != nil }
+        XCTAssertTrue(didQueueSegmentedItem)
+
+        let item = try XCTUnwrap(viewModel.assistantQueueItem)
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertEqual(viewModel.lowLatencyVoiceAgentState, .idle)
+        XCTAssertEqual(viewModel.recordingState, .completed(RecordedAudio(
+            fileURL: URL(filePath: "/tmp/solopm-low-latency-segment.m4a"),
+            format: .m4a,
+            duration: viewModel.recordingState.completedAudioDuration
+        )))
+        XCTAssertEqual(item.state, .blocked)
+        XCTAssertTrue(llmProvider.requests.isEmpty)
+    }
+
+    func testLowLatencyAgentModeRejectsCloudBatchSTTWithoutVisibleFallback() async {
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(id: .openAITranscribe, transcript: STTTranscript(text: "Create a task")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            )),
+            appSettingsProvider: {
+                AppSettings(
+                    sttProvider: .openAITranscribe,
+                    isLowLatencyVoiceAgentModeEnabled: true,
+                    isLowLatencyVoiceAgentCloudFallbackEnabled: false,
+                    isLowLatencyVoiceAgentCloudFallbackCostVisible: false
+                )
+            },
+            lowLatencySegmentDuration: 0
+        )
+
+        await viewModel.startLowLatencyVoiceAgentMode()
+
+        XCTAssertEqual(
+            viewModel.lowLatencyVoiceAgentState,
+            .unavailable("Select local speech-to-text, or enable visible realtime cloud cost before using low-latency voice agent mode.")
+        )
+        XCTAssertEqual(viewModel.draft.text, "")
+    }
+
+    func testLowLatencyAgentModeRejectsProviderSettingsMismatchBeforeTranscription() async {
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(id: .openAITranscribe, transcript: STTTranscript(text: "Create a task")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            )),
+            appSettingsProvider: { Self.lowLatencyLocalVoiceAgentSettings() },
+            lowLatencySegmentDuration: 0
+        )
+
+        await viewModel.startLowLatencyVoiceAgentMode()
+
+        XCTAssertEqual(
+            viewModel.lowLatencyVoiceAgentState,
+            .unavailable("Restart Voice Command after changing speech-to-text provider settings.")
+        )
+        XCTAssertEqual(viewModel.recordingState, .idle)
+        XCTAssertEqual(viewModel.draft.text, "")
+    }
+
+    func testLowLatencyAgentModeRejectsCloudStreamingSTTWithoutVisibleFallback() async {
+        let sttProvider = StreamingSTTProviderFixture(id: .openAITranscribe)
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: sttProvider,
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            )),
+            appSettingsProvider: {
+                AppSettings(
+                    sttProvider: .openAITranscribe,
+                    isLowLatencyVoiceAgentModeEnabled: true,
+                    isLowLatencyVoiceAgentCloudFallbackEnabled: false,
+                    isLowLatencyVoiceAgentCloudFallbackCostVisible: false
+                )
+            }
+        )
+
+        await viewModel.startLowLatencyVoiceAgentMode()
+
+        XCTAssertEqual(
+            viewModel.lowLatencyVoiceAgentState,
+            .unavailable("Select local speech-to-text, or enable visible realtime cloud cost before using low-latency voice agent mode.")
+        )
+        XCTAssertFalse(sttProvider.didStartStreaming)
+    }
+
+    func testStartingRecordingStopsLowLatencyAgentModeBeforeRecorderUse() async {
+        let sttProvider = StreamingSTTProviderFixture()
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: sttProvider,
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            )),
+            appSettingsProvider: { Self.lowLatencyLocalVoiceAgentSettings() }
+        )
+
+        await viewModel.startLowLatencyVoiceAgentMode()
+        XCTAssertEqual(viewModel.lowLatencyVoiceAgentState, .listening)
+
+        await viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
+
+        XCTAssertEqual(viewModel.phase, .recording)
+        XCTAssertEqual(viewModel.lowLatencyVoiceAgentState, .idle)
+        let didCancelStream = await waitForVoiceCondition { sttProvider.didCancelStream }
+        XCTAssertTrue(didCancelStream)
+    }
+
+    func testLowLatencyAgentModeStopIgnoresLateFinalTranscript() async {
+        let sttProvider = StreamingSTTProviderFixture()
+        let llmProvider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "recording",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "late-plan",
+                userInput: "Late transcript",
+                summary: "Should not be queued",
+                actions: [PlanAction(id: "late-action", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: sttProvider,
+            llmProvider: llmProvider,
+            appSettingsProvider: { Self.lowLatencyLocalVoiceAgentSettings() }
+        )
+
+        await viewModel.startLowLatencyVoiceAgentMode()
+        viewModel.stopLowLatencyVoiceAgentMode()
+        sttProvider.yield(.final(STTTranscript(text: "Create a late task")))
+        try? await Task.sleep(nanoseconds: 30_000_000)
+
+        XCTAssertEqual(viewModel.lowLatencyVoiceAgentState, .idle)
+        XCTAssertEqual(viewModel.draft.text, "")
+        XCTAssertNil(viewModel.assistantQueueItem)
+        XCTAssertTrue(llmProvider.requests.isEmpty)
+    }
+
+    func testLowLatencyAgentModeFinalPlanningCommandDoesNotCancelProviderRequest() async throws {
+        let sttProvider = StreamingSTTProviderFixture()
+        let llmProvider = CancellationAwareVoiceLLMProvider(response: PlanningResponse(
+            providerID: "cancellation-aware",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-low-latency-final",
+                userInput: "Create a task",
+                summary: "Create task",
+                actions: [PlanAction(id: "action-create", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: sttProvider,
+            llmProvider: llmProvider,
+            assistantQueueStore: RecordingAssistantQueueStore(),
+            appSettingsProvider: { Self.lowLatencyLocalVoiceAgentSettings() }
+        )
+
+        await viewModel.startLowLatencyVoiceAgentMode()
+        sttProvider.yield(.final(STTTranscript(text: "Create a task")))
+        let didQueuePlanningItem = await waitForVoiceCondition { viewModel.assistantQueueItem != nil }
+        XCTAssertTrue(didQueuePlanningItem)
+
+        let item = try XCTUnwrap(viewModel.assistantQueueItem)
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertEqual(item.sourceTranscript, "Create a task")
+        XCTAssertEqual(llmProvider.requests.count, 1)
+        XCTAssertFalse(llmProvider.didObserveCancellation)
+        XCTAssertEqual(viewModel.lowLatencyVoiceAgentState, .listening)
+        viewModel.stopLowLatencyVoiceAgentMode()
+    }
+
+    func testLowLatencyAgentModeFinalCommandCreatesAssistantQueueItemBeforeExecution() async throws {
+        let sttProvider = StreamingSTTProviderFixture()
+        let llmProvider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "recording",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let store = RecordingAssistantQueueStore()
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: sttProvider,
+            llmProvider: llmProvider,
+            assistantQueueStore: store,
+            appSettingsProvider: { Self.lowLatencyLocalVoiceAgentSettings() }
+        )
+
+        await viewModel.startLowLatencyVoiceAgentMode()
+        sttProvider.yield(.final(STTTranscript(text: "Slackに今すぐ送信して token=sk-low-latency-secret")))
+        let didQueueConnectorItem = await waitForVoiceCondition { viewModel.assistantQueueItem != nil }
+        XCTAssertTrue(didQueueConnectorItem)
+
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertEqual(viewModel.lowLatencyVoiceAgentState, .listening)
+        XCTAssertTrue(llmProvider.requests.isEmpty)
+        let item = try XCTUnwrap(viewModel.assistantQueueItem)
+        XCTAssertEqual(store.savedItems.map(\.id), [item.id])
+        XCTAssertEqual(item.state, .blocked)
+        XCTAssertEqual(item.requiredCapabilities, [
+            .externalConnector(serviceID: "slack", action: "message.send"),
+            .providerExecutionApproval
+        ])
+        XCTAssertFalse(item.redactedSummary.contains("sk-low-latency-secret"))
+        viewModel.stopLowLatencyVoiceAgentMode()
+    }
+
+    func testLowLatencyAgentModeNativeStreamHandlesMultipleFinalCommandsUntilStop() async throws {
+        let sttProvider = StreamingSTTProviderFixture()
+        let llmProvider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "recording",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let store = RecordingAssistantQueueStore()
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: sttProvider,
+            llmProvider: llmProvider,
+            assistantQueueStore: store,
+            appSettingsProvider: { Self.lowLatencyLocalVoiceAgentSettings() }
+        )
+
+        await viewModel.startLowLatencyVoiceAgentMode()
+        sttProvider.yield(.final(STTTranscript(text: "Slackに今すぐ送信して 最初の連絡")))
+        let didQueueFirstItem = await waitForVoiceCondition { store.savedItems.count == 1 }
+        XCTAssertTrue(didQueueFirstItem)
+        XCTAssertEqual(viewModel.lowLatencyVoiceAgentState, .listening)
+
+        sttProvider.yield(.final(STTTranscript(text: "Slackに今すぐ送信して 次の連絡")))
+        let didQueueSecondItem = await waitForVoiceCondition { store.savedItems.count == 2 }
+        XCTAssertTrue(didQueueSecondItem)
+        XCTAssertEqual(viewModel.lowLatencyVoiceAgentState, .listening)
+
+        sttProvider.yield(.stopped)
+        let didStop = await waitForVoiceCondition { viewModel.lowLatencyVoiceAgentState == .idle }
+        XCTAssertTrue(didStop)
+        XCTAssertTrue(llmProvider.requests.isEmpty)
+    }
+
+    func testLowLatencyAgentModeClarificationUsesStreamingFinalTranscriptAsVoiceAnswer() async {
+        let sttProvider = StreamingSTTProviderFixture()
+        let llmProvider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: sttProvider,
+            llmProvider: llmProvider,
+            appSettingsProvider: { Self.lowLatencyLocalVoiceAgentSettings() }
+        )
+
+        viewModel.updateDraftText("これ明日やって")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .taskTitle)
+
+        await viewModel.startLowLatencyVoiceAgentMode(currentDate: Date(timeIntervalSince1970: 1), timeZoneIdentifier: "UTC")
+        sttProvider.yield(.final(STTTranscript(text: "リリースメモを書く")))
+        let didCaptureVoiceAnswer = await waitForVoiceCondition { viewModel.clarificationSession?.turns.first?.inputMode == .voice }
+        XCTAssertTrue(didCaptureVoiceAnswer)
+
+        XCTAssertEqual(viewModel.draft.text, "これ明日やって")
+        XCTAssertEqual(viewModel.clarificationSession?.turns.first?.answer, .text("リリースメモを書く"))
+        XCTAssertEqual(viewModel.clarificationSession?.turns.first?.inputMode, .voice)
+        XCTAssertEqual(viewModel.lowLatencyVoiceAgentState, .listening)
+        XCTAssertTrue(llmProvider.requests.isEmpty)
+        viewModel.stopLowLatencyVoiceAgentMode()
+    }
+
     func testGeneratePlanRejectsEmptyDraft() async {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
@@ -1900,6 +2301,33 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         await viewModel.generatePlan()
 
         XCTAssertEqual(viewModel.phase, .failed("Transcript is empty."))
+    }
+
+    private func waitForVoiceCondition(
+        timeout: TimeInterval = 1,
+        condition: @MainActor @escaping () -> Bool
+    ) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return condition()
+    }
+
+    nonisolated private static func lowLatencyLocalVoiceAgentSettings() -> AppSettings {
+        AppSettings(
+            sttProvider: .localWhisperCpp,
+            isLowLatencyVoiceAgentModeEnabled: true
+        )
+    }
+}
+
+private extension AudioRecordingState {
+    var completedAudioDuration: TimeInterval? {
+        guard case .completed(let audio) = self else {
+            return nil
+        }
+        return audio.duration
     }
 }
 
@@ -1945,6 +2373,37 @@ private final class RecordingVoiceLLMProvider: LLMProvider, @unchecked Sendable 
     func generatePlan(for request: PlanningRequest) async throws -> PlanningResponse {
         queue.sync {
             recordedRequests.append(request)
+        }
+        return response
+    }
+}
+
+private final class CancellationAwareVoiceLLMProvider: LLMProvider, @unchecked Sendable {
+    let providerID: String = "cancellation-aware"
+    private let response: PlanningResponse
+    private let queue = DispatchQueue(label: "dev.solopm.tests.cancellation-aware-voice-llm-provider")
+    private var recordedRequests: [PlanningRequest] = []
+    private var observedCancellation = false
+
+    init(response: PlanningResponse) {
+        self.response = response
+    }
+
+    var requests: [PlanningRequest] {
+        queue.sync { recordedRequests }
+    }
+
+    var didObserveCancellation: Bool {
+        queue.sync { observedCancellation }
+    }
+
+    func generatePlan(for request: PlanningRequest) async throws -> PlanningResponse {
+        queue.sync {
+            recordedRequests.append(request)
+            observedCancellation = Task.isCancelled
+        }
+        if Task.isCancelled {
+            throw CancellationError()
         }
         return response
     }
