@@ -1496,3 +1496,10 @@
 "Portfolio Watchlist" = "Portfolio Watchlist";
 "No projects" = "No projects";
 "Open tasks" = "Open tasks";
+"Developer Mode" = "Developer Mode";
+"Developer Mode exposes local shell and repository automation controls after explicit approval." = "Developer Mode exposes local shell and repository automation controls after explicit approval.";
+"Developer Mode is enabled. Local shell execution requires explicit approval and starts in %@." = "Developer Mode is enabled. Local shell execution requires explicit approval and starts in %@.";
+"Transcript only" = "Transcript only";
+"Voice transcript preview" = "Voice transcript preview";
+"Transcript-only voice capture, duration %@, waveform preview" = "Transcript-only voice capture, duration %@, waveform preview";
+"%lld connector policies stay out of Settings until connect, check, revoke, and audit UI is complete. %lld connector send paths remain Assistant Queue draft-only." = "%lld connector policies stay out of Settings until connect, check, revoke, and audit UI is complete. %lld connector send paths remain Assistant Queue draft-only.";

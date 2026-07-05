@@ -1496,3 +1496,10 @@
 "Portfolio Watchlist" = "ポートフォリオ監視リスト";
 "No projects" = "プロジェクトがありません";
 "Open tasks" = "未完了タスク";
+"Developer Mode" = "開発者モード";
+"Developer Mode exposes local shell and repository automation controls after explicit approval." = "開発者モードでは、明示承認後にローカルシェルとリポジトリ自動化コントロールを表示します。";
+"Developer Mode is enabled. Local shell execution requires explicit approval and starts in %@." = "開発者モードが有効です。ローカルシェル実行には明示承認が必要で、%@ で開始します。";
+"Transcript only" = "文字起こしのみ";
+"Voice transcript preview" = "音声文字起こしプレビュー";
+"Transcript-only voice capture, duration %@, waveform preview" = "文字起こしのみの音声キャプチャ、長さ %@、波形プレビュー";
+"%lld connector policies stay out of Settings until connect, check, revoke, and audit UI is complete. %lld connector send paths remain Assistant Queue draft-only." = "%lld件のコネクターポリシーは、接続・確認・取り消し・監査UIが完成するまで設定に表示しません。%lld件のコネクター送信経路はAssistant Queue下書き専用のままです。";
