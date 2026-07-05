@@ -355,6 +355,243 @@ final class ExternalTaskInteropTests: XCTestCase {
         XCTAssertEqual(linkStore.singleTaskLookupCount, 0)
     }
 
+    func testGoogleCalendarTaskSyncBoundsWritesAndCountsDeferredDueTasksAcrossLargeFixtures() throws {
+        let activeTasks = (1...100).map { index -> ProjectBoardTask in
+            let taskStatus: ProjectTaskStatus = index == 50 ? .done : .planned
+            let dueAt: String?
+            if index == 75 {
+                dueAt = nil
+            } else {
+                let day = String(format: "%02d", (index % 28) + 1)
+                dueAt = "2026-07-\(day)"
+            }
+
+            return ProjectBoardTask(
+                id: Int64(1000 + index),
+                projectID: 1,
+                title: "Active due \(index)",
+                detail: "",
+                status: taskStatus,
+                priority: .high,
+                dueAt: dueAt
+            )
+        }
+        let store = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
+            makeProject(
+                id: 1,
+                title: "Active Launch",
+                tasks: activeTasks
+            ),
+            makeProject(
+                id: 2,
+                title: "Archived Ops",
+                status: "archived",
+                tasks: [
+                    ProjectBoardTask(id: 2001, projectID: 2, title: "Archived due 1", detail: "", status: .planned, priority: .high, dueAt: "2026-07-10"),
+                    ProjectBoardTask(id: 2002, projectID: 2, title: "Archived due 2", detail: "", status: .inProgress, priority: .high, dueAt: "2026-07-11")
+                ]
+            ),
+            makeProject(
+                id: 3,
+                title: "Completed Project",
+                status: "completed",
+                tasks: [
+                    ProjectBoardTask(id: 3001, projectID: 3, title: "Completed due 1", detail: "", status: .planned, priority: .high, dueAt: "2026-07-12")
+                ]
+            ),
+            makeProject(
+                id: 4,
+                title: "Archived Project",
+                status: "archived",
+                tasks: [
+                    ProjectBoardTask(id: 4001, projectID: 4, title: "Archived due 1", detail: "", status: .planned, priority: .high, dueAt: "2026-07-13")
+                ]
+            )
+        ]))
+        let linkStore = InMemoryExternalTaskLinkStore()
+        _ = try linkStore.link(
+            providerID: ExternalTaskSource.googleCalendar.rawValue,
+            externalID: "calendar-event-linked-1",
+            taskID: 1003,
+            projectID: 1,
+            title: "Active due 3"
+        )
+        _ = try linkStore.link(
+            providerID: ExternalTaskSource.googleCalendar.rawValue,
+            externalID: "calendar-event-linked-2",
+            taskID: 1007,
+            projectID: 1,
+            title: "Active due 7"
+        )
+        let calendarSink = RecordingExternalCalendarEventSink()
+        let service = GoogleCalendarTaskSyncService(
+            entitlementStore: StaticEntitlementStore(plan: .pro),
+            store: store,
+            linkStore: linkStore,
+            calendarSink: calendarSink,
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo",
+            idempotencyNamespace: "test-installation",
+            maximumCreatedEventCountPerRun: 10
+        )
+
+        let result = try service.syncDueTasks(context: approvedContext())
+
+        XCTAssertEqual(result.createdEventCount, 10)
+        XCTAssertEqual(result.skippedAlreadyLinkedCount, 2)
+        XCTAssertEqual(result.deferredDueToRunLimitCount, 86)
+        XCTAssertEqual(result.failedRetryableCount, 0)
+        XCTAssertEqual(result.failedNonRetryableCount, 0)
+        XCTAssertEqual(calendarSink.createdDrafts.map(\.title), [
+            "Active due 1",
+            "Active due 2",
+            "Active due 4",
+            "Active due 5",
+            "Active due 6",
+            "Active due 8",
+            "Active due 9",
+            "Active due 10",
+            "Active due 11",
+            "Active due 12"
+        ])
+        XCTAssertEqual(calendarSink.createdRecords.map(\.externalID), [
+            "calendar-event-1",
+            "calendar-event-2",
+            "calendar-event-3",
+            "calendar-event-4",
+            "calendar-event-5",
+            "calendar-event-6",
+            "calendar-event-7",
+            "calendar-event-8",
+            "calendar-event-9",
+            "calendar-event-10"
+        ])
+        XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 1001)?.externalID, "calendar-event-1")
+        XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 1002)?.externalID, "calendar-event-2")
+        XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 1004)?.externalID, "calendar-event-3")
+        XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 1005)?.externalID, "calendar-event-4")
+        XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 1006)?.externalID, "calendar-event-5")
+        XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 1008)?.externalID, "calendar-event-6")
+        XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 1009)?.externalID, "calendar-event-7")
+        XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 1010)?.externalID, "calendar-event-8")
+        XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 1011)?.externalID, "calendar-event-9")
+        XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 1012)?.externalID, "calendar-event-10")
+        XCTAssertNil(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 2001))
+        XCTAssertNil(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 3001))
+        XCTAssertNil(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 4001))
+    }
+
+    func testGoogleCalendarTaskSyncReportsRetryableRateLimitFailuresWithoutLoopingUnboundedly() throws {
+        let store = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
+            makeProject(
+                id: 1,
+                title: "Launch",
+                tasks: [
+                    ProjectBoardTask(id: 10, projectID: 1, title: "Due 1", detail: "", status: .planned, priority: .high, dueAt: "2026-07-04"),
+                    ProjectBoardTask(id: 11, projectID: 1, title: "Due 2", detail: "", status: .planned, priority: .high, dueAt: "2026-07-05"),
+                    ProjectBoardTask(id: 12, projectID: 1, title: "Due 3", detail: "", status: .planned, priority: .high, dueAt: "2026-07-06")
+                ]
+            )
+        ]))
+        let linkStore = InMemoryExternalTaskLinkStore()
+        let sink = RateLimitedCalendarEventSink(rateLimitAfterSuccessfulCreates: 1, retryAfterSeconds: 90)
+        let service = GoogleCalendarTaskSyncService(
+            entitlementStore: StaticEntitlementStore(plan: .pro),
+            store: store,
+            linkStore: linkStore,
+            calendarSink: sink,
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo",
+            maximumCreatedEventCountPerRun: 5
+        )
+
+        let result = try service.syncDueTasks(context: approvedContext())
+
+        XCTAssertEqual(result.createdEventCount, 1)
+        XCTAssertEqual(result.skippedAlreadyLinkedCount, 0)
+        XCTAssertEqual(result.deferredDueToRunLimitCount, 1)
+        XCTAssertEqual(result.failedRetryableCount, 1)
+        XCTAssertEqual(result.failedNonRetryableCount, 0)
+        XCTAssertTrue(result.hasMoreWork)
+        XCTAssertEqual(sink.createdDrafts.map(\.title), ["Due 1"])
+        XCTAssertEqual(sink.attemptedTitles, ["Due 1", "Due 2"])
+        XCTAssertNil(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 11))
+        XCTAssertNil(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 12))
+    }
+
+    func testGoogleCalendarTaskSyncBoundsExternalWriteAttemptsWhenSinkFailuresContinue() throws {
+        let dueTasks = (1...20).map { index in
+            ProjectBoardTask(
+                id: Int64(index),
+                projectID: 1,
+                title: "Due \(index)",
+                detail: "",
+                status: .planned,
+                priority: .high,
+                dueAt: "2026-07-04"
+            )
+        }
+        let store = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
+            makeProject(id: 1, title: "Launch", tasks: dueTasks)
+        ]))
+        let linkStore = InMemoryExternalTaskLinkStore()
+        let sink = FailingExternalCalendarEventSink()
+        let service = GoogleCalendarTaskSyncService(
+            entitlementStore: StaticEntitlementStore(plan: .pro),
+            store: store,
+            linkStore: linkStore,
+            calendarSink: sink,
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo",
+            maximumCreatedEventCountPerRun: 5
+        )
+
+        let result = try service.syncDueTasks(context: approvedContext())
+
+        XCTAssertEqual(result.createdEventCount, 0)
+        XCTAssertEqual(result.skippedAlreadyLinkedCount, 0)
+        XCTAssertEqual(result.deferredDueToRunLimitCount, 15)
+        XCTAssertEqual(result.failedRetryableCount, 0)
+        XCTAssertEqual(result.failedNonRetryableCount, 5)
+        XCTAssertEqual(sink.attemptedTitles, ["Due 1", "Due 2", "Due 3", "Due 4", "Due 5"])
+        XCTAssertNil(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 1))
+    }
+
+    func testGoogleCalendarTaskSyncCountsNonRetryableTaskFailuresWithoutBlockingLaterTasks() throws {
+        let store = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
+            makeProject(
+                id: 1,
+                title: "Launch",
+                tasks: [
+                    ProjectBoardTask(id: 10, projectID: 1, title: "Due 1", detail: "", status: .planned, priority: .high, dueAt: "2026-07-04"),
+                    ProjectBoardTask(id: 11, projectID: 1, title: "Invalid due", detail: "", status: .planned, priority: .high, dueAt: "2026-02-31"),
+                    ProjectBoardTask(id: 12, projectID: 1, title: "Due 3", detail: "", status: .planned, priority: .high, dueAt: "2026-07-06")
+                ]
+            )
+        ]))
+        let linkStore = InMemoryExternalTaskLinkStore()
+        let sink = RecordingExternalCalendarEventSink()
+        let service = GoogleCalendarTaskSyncService(
+            entitlementStore: StaticEntitlementStore(plan: .pro),
+            store: store,
+            linkStore: linkStore,
+            calendarSink: sink,
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo",
+            maximumCreatedEventCountPerRun: 5
+        )
+
+        let result = try service.syncDueTasks(context: approvedContext())
+
+        XCTAssertEqual(result.createdEventCount, 2)
+        XCTAssertEqual(result.skippedAlreadyLinkedCount, 0)
+        XCTAssertEqual(result.deferredDueToRunLimitCount, 0)
+        XCTAssertEqual(result.failedRetryableCount, 0)
+        XCTAssertEqual(result.failedNonRetryableCount, 1)
+        XCTAssertEqual(sink.createdDrafts.map(\.title), ["Due 1", "Due 3"])
+        XCTAssertNil(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 11))
+    }
+
     func testGoogleCalendarRuntimeReadinessSurfacesPlanOAuthScopeTokenAndCalendarStates() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let credentialStore = MutableGoogleCalendarRuntimeCredentialStatusStore()
@@ -592,6 +829,55 @@ final class ExternalTaskInteropTests: XCTestCase {
         XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 1)?.externalID, "calendar-event-1")
     }
 
+    @MainActor
+    func testProjectBoardViewModelGoogleCalendarSyncReportsDeferredWork() throws {
+        let store = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
+            makeProject(
+                id: 42,
+                title: "Launch",
+                tasks: [
+                    ProjectBoardTask(id: 1, projectID: 42, title: "Due task 1", detail: "", status: .planned, priority: .high, dueAt: "2026-07-04"),
+                    ProjectBoardTask(id: 2, projectID: 42, title: "Due task 2", detail: "", status: .planned, priority: .high, dueAt: "2026-07-05")
+                ]
+            )
+        ]))
+        let linkStore = InMemoryExternalTaskLinkStore()
+        let service = GoogleCalendarTaskSyncService(
+            entitlementStore: StaticEntitlementStore(plan: .pro),
+            store: store,
+            linkStore: linkStore,
+            calendarSink: RecordingExternalCalendarEventSink(),
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo",
+            maximumCreatedEventCountPerRun: 1
+        )
+        let controller = GoogleCalendarRuntimeSyncController(
+            entitlementStore: StaticEntitlementStore(plan: .pro),
+            credentialStatusStore: MutableGoogleCalendarRuntimeCredentialStatusStore(status: GoogleCalendarRuntimeCredentialStatus(
+                grantedScopes: [GoogleCalendarRuntimeCredentialStatus.eventsWriteScope],
+                expiresAt: Date(timeIntervalSince1970: 1_800_000_600),
+                hasRefreshToken: false
+            )),
+            configuration: GoogleCalendarRuntimeSyncConfiguration(calendarID: "primary", timeZoneIdentifier: "Asia/Tokyo"),
+            taskSyncService: service
+        )
+        let viewModel = ProjectBoardViewModel(
+            store: store,
+            externalTaskLinkStore: linkStore,
+            googleCalendarSync: controller
+        )
+        viewModel.load()
+
+        let result = try XCTUnwrap(viewModel.syncDueTasksToGoogleCalendar(approvalToken: "approved"))
+
+        XCTAssertEqual(result.createdEventCount, 1)
+        XCTAssertEqual(result.deferredDueToRunLimitCount, 1)
+        XCTAssertEqual(
+            viewModel.integrationStatusMessage,
+            "Created 1 Google Calendar event. Deferred 1 due task. More due tasks remain; run sync again after approval."
+        )
+    }
+
     func testGoogleCalendarTaskSyncKeepsTimedEventsAndUsesStableIdempotencyKey() throws {
         let store = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
             makeProject(
@@ -695,7 +981,7 @@ final class ExternalTaskInteropTests: XCTestCase {
         XCTAssertFalse(firstKey.contains("Due task"))
     }
 
-    func testGoogleCalendarTaskSyncRejectsInvalidDateOnlyDueAtBeforeExternalWrite() throws {
+    func testGoogleCalendarTaskSyncCountsInvalidDateOnlyDueAtWithoutExternalWrite() throws {
         let store = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
             makeProject(
                 id: 7,
@@ -716,9 +1002,10 @@ final class ExternalTaskInteropTests: XCTestCase {
             idempotencyNamespace: "test-installation"
         )
 
-        XCTAssertThrowsError(try service.syncDueTasks(context: approvedContext())) { error in
-            XCTAssertEqual(error as? GoogleCalendarRuntimeSyncError, .invalidDueDate("2026-02-31"))
-        }
+        let result = try service.syncDueTasks(context: approvedContext())
+
+        XCTAssertEqual(result.createdEventCount, 0)
+        XCTAssertEqual(result.failedNonRetryableCount, 1)
         XCTAssertEqual(calendarSink.createdDrafts.count, 0)
     }
 
@@ -749,11 +1036,16 @@ final class ExternalTaskInteropTests: XCTestCase {
         XCTAssertEqual(calendarSink.createdDrafts.map(\.endAt), ["2027-01-01", "2028-03-01"])
     }
 
-    private func makeProject(id: Int64, title: String, tasks: [ProjectBoardTask]) -> ProjectBoardProject {
+    private func makeProject(
+        id: Int64,
+        title: String,
+        status: String = "active",
+        tasks: [ProjectBoardTask]
+    ) -> ProjectBoardProject {
         ProjectBoardProject(
             id: id,
             title: title,
-            status: "active",
+            status: status,
             subtitle: "\(tasks.filter { $0.status != .done }.count) open / \(tasks.count) total",
             columns: ProjectTaskStatus.allCases.map { status in
                 ProjectBoardColumn(status: status, tasks: tasks.filter { $0.status == status })
@@ -1016,6 +1308,8 @@ private final class InMemoryExternalTaskLinkStore: ExternalTaskLinkStore, @unche
     }
 }
 
+private struct CalendarSinkTestFailure: Error {}
+
 private final class RecordingExternalCalendarEventSink: ExternalCalendarEventSink, @unchecked Sendable {
     private let lock = NSLock()
     private var nextID = 1
@@ -1049,6 +1343,75 @@ private final class RecordingExternalCalendarEventSink: ExternalCalendarEventSin
             records.append(record)
             return record
         }
+    }
+}
+
+private final class FailingExternalCalendarEventSink: ExternalCalendarEventSink, @unchecked Sendable {
+    private let lock = NSLock()
+    private var attemptedTitlesStorage: [String] = []
+
+    var attemptedTitles: [String] {
+        lock.withLock { attemptedTitlesStorage }
+    }
+
+    func createEvent(
+        _ draft: CalendarEventDraft,
+        calendarID: String,
+        timeZoneIdentifier: String,
+        context: ToolExecutionContext
+    ) throws -> ExternalCalendarEventRecord {
+        lock.withLock {
+            attemptedTitlesStorage.append(draft.title)
+        }
+        throw CalendarSinkTestFailure()
+    }
+}
+
+private final class RateLimitedCalendarEventSink: ExternalCalendarEventSink, @unchecked Sendable {
+    private let lock = NSLock()
+    private let rateLimitAfterSuccessfulCreates: Int
+    private let retryAfterSeconds: TimeInterval?
+    private var successfulCreateCount = 0
+    private var recordedDrafts: [CalendarEventDraft] = []
+    private var attemptedTitlesStorage: [String] = []
+
+    init(rateLimitAfterSuccessfulCreates: Int, retryAfterSeconds: TimeInterval?) {
+        self.rateLimitAfterSuccessfulCreates = rateLimitAfterSuccessfulCreates
+        self.retryAfterSeconds = retryAfterSeconds
+    }
+
+    var createdDrafts: [CalendarEventDraft] {
+        lock.withLock { recordedDrafts }
+    }
+
+    var attemptedTitles: [String] {
+        lock.withLock { attemptedTitlesStorage }
+    }
+
+    func createEvent(
+        _ draft: CalendarEventDraft,
+        calendarID: String,
+        timeZoneIdentifier: String,
+        context: ToolExecutionContext
+    ) throws -> ExternalCalendarEventRecord {
+        lock.lock()
+        attemptedTitlesStorage.append(draft.title)
+        if successfulCreateCount >= rateLimitAfterSuccessfulCreates {
+            lock.unlock()
+            throw GoogleCalendarRuntimeSyncError.rateLimited(retryAfterSeconds: retryAfterSeconds)
+        }
+
+        successfulCreateCount += 1
+        recordedDrafts.append(draft)
+        let record = ExternalCalendarEventRecord(
+            providerID: ExternalTaskSource.googleCalendar.rawValue,
+            externalID: "calendar-event-\(successfulCreateCount)",
+            calendarID: calendarID,
+            timeZoneIdentifier: timeZoneIdentifier,
+            title: draft.title
+        )
+        lock.unlock()
+        return record
     }
 }
 

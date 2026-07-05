@@ -12,6 +12,7 @@ public enum GoogleCalendarRuntimeError: Error, Equatable, Sendable {
     case disconnected
     case invalidAccessToken
     case missingRequiredScope(String)
+    case rateLimited(retryAfterSeconds: TimeInterval?)
     case apiFailure(String)
 }
 
@@ -897,6 +898,11 @@ public struct GoogleCalendarHTTPEventClient: GoogleCalendarRuntimeEventClient {
                 event: CalendarEventRecord(id: idempotencyID, draft: draft)
             )
         }
+        if response.statusCode == 429 || response.statusCode == 503 {
+            throw GoogleCalendarRuntimeError.rateLimited(
+                retryAfterSeconds: Self.retryAfterSeconds(from: response)
+            )
+        }
         guard (200..<300).contains(response.statusCode) else {
             throw GoogleCalendarRuntimeError.apiFailure("Google Calendar events.insert failed with HTTP \(response.statusCode).")
         }
@@ -934,6 +940,24 @@ public struct GoogleCalendarHTTPEventClient: GoogleCalendarRuntimeEventClient {
         request.httpBody = try JSONEncoder().encode(GoogleCalendarEventRequest(draft: draft, timeZoneIdentifier: timeZoneIdentifier))
         return request
     }
+
+    private static func retryAfterSeconds(from response: HTTPURLResponse) -> TimeInterval? {
+        guard let value = response.value(forHTTPHeaderField: "Retry-After")?.trimmingCharacters(in: .whitespacesAndNewlines),
+              value.isEmpty == false else {
+            return nil
+        }
+        if let seconds = TimeInterval(value), seconds >= 0 {
+            return seconds
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "EEE',' dd MMM yyyy HH':'mm':'ss zzz"
+        if let retryDate = formatter.date(from: value) {
+            return max(0, retryDate.timeIntervalSinceNow)
+        }
+        return nil
+    }
 }
 
 public struct GoogleCalendarHTTPEventSink: ExternalCalendarEventSink {
@@ -952,7 +976,12 @@ public struct GoogleCalendarHTTPEventSink: ExternalCalendarEventSink {
         guard context.approvalToken != nil else {
             throw GoogleCalendarRuntimeSyncError.approvalRequired
         }
-        let record = try client.createEvent(draft, calendarID: calendarID, timeZoneIdentifier: timeZoneIdentifier)
+        let record: GoogleCalendarRuntimeEventRecord
+        do {
+            record = try client.createEvent(draft, calendarID: calendarID, timeZoneIdentifier: timeZoneIdentifier)
+        } catch GoogleCalendarRuntimeError.rateLimited(let retryAfterSeconds) {
+            throw GoogleCalendarRuntimeSyncError.rateLimited(retryAfterSeconds: retryAfterSeconds)
+        }
         return ExternalCalendarEventRecord(
             providerID: ExternalTaskSource.googleCalendar.rawValue,
             externalID: record.event.id,
