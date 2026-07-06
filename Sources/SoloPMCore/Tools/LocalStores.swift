@@ -1002,6 +1002,16 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         return try getLocked(id: id)
     }
 
+    public func exists(id: Int64) throws -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try !connection.queryStrings(
+            "SELECT id FROM tasks WHERE id = ? LIMIT 1;",
+            parameters: [.integer(id)]
+        ).isEmpty
+    }
+
     @discardableResult
     public func delete(id: Int64) throws -> TaskDeletionResult {
         lock.lock()

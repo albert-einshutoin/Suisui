@@ -87,6 +87,12 @@ public struct DeadlineNotificationActionHandler {
         let scheduledAt = DeadlineDateParser.string(from: notifyAt)
 
         do {
+            // Delivered notifications can outlive their task rows. Re-check the
+            // task before re-scheduling so stale actions do not create reminders
+            // whose follow-up Complete action can only fail.
+            guard try taskStore.exists(id: taskID) else {
+                return .ignoredMissingTaskReference
+            }
             let record = try notificationClient.schedule(
                 NotificationDraft(
                     title: notificationTitle,

@@ -97,6 +97,28 @@ final class DeadlineNotificationActionTests: XCTestCase {
         XCTAssertEqual(try taskStore.get(id: task.id).status, "open")
     }
 
+    func testSnoozeActionForDeletedTaskDoesNotScheduleFollowUpNotification() throws {
+        let taskStore = try makeTaskStore()
+        let task = try taskStore.create(title: "Remove stale reminder")
+        try taskStore.delete(id: task.id)
+        let client = RecordingNotificationClient()
+        let handler = DeadlineNotificationActionHandler(
+            taskStore: taskStore,
+            notificationClient: client,
+            dateProvider: FixedDateProvider(now: Date(timeIntervalSince1970: 1_760_000_000))
+        )
+
+        let outcome = handler.handle(
+            actionIdentifier: DeadlineNotificationInteraction.snoozeOneHourActionIdentifier,
+            notificationTitle: "Deadline: Remove stale reminder",
+            notificationBody: "1 unfinished.",
+            userInfo: [DeadlineNotificationInteraction.taskIDUserInfoKey: String(task.id)]
+        )
+
+        XCTAssertEqual(outcome, .ignoredMissingTaskReference)
+        XCTAssertTrue(client.scheduledDrafts.isEmpty)
+    }
+
     func testUnknownActionAndMissingTaskReferenceAreIgnored() throws {
         let taskStore = try makeTaskStore()
         let task = try taskStore.create(title: "Untouched")
