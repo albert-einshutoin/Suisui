@@ -21,6 +21,12 @@ final class UserNotificationsNotificationClient: NotificationClient, @unchecked 
         let content = UNMutableNotificationContent()
         content.title = draft.title
         content.body = draft.body ?? ""
+        if let categoryIdentifier = draft.categoryIdentifier {
+            content.categoryIdentifier = categoryIdentifier
+        }
+        if !draft.userInfo.isEmpty {
+            content.userInfo = draft.userInfo
+        }
 
         let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: scheduledDate)
         let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)

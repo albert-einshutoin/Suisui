@@ -50,11 +50,13 @@
 "Generate Plan" = "Generate Plan";
 "Invalid configuration" = "Invalid configuration";
 "invalidConfiguration" = "Invalid configuration";
+"Mark as Done" = "Mark as Done";
 "Microphone" = "Microphone";
 "notConfigured" = "Not configured";
 "Opens Settings to choose an AI provider and store its API key in Keychain." = "Opens Settings to choose an AI provider and store its API key in Keychain.";
 "Ready for manual smoke" = "Ready to test";
 "readyForManualSmoke" = "Ready to test";
+"Remind Me in 1 Hour" = "Remind Me in 1 Hour";
 "Reminders" = "Reminders";
 "Review" = "Review";
 "Save to Inbox" = "Save to Inbox";

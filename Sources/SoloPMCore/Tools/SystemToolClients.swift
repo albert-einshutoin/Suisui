@@ -27,12 +27,23 @@ public struct NotificationDraft: Equatable, Sendable {
     public var body: String?
     public var scheduledAt: String
     public var identifierHint: String?
+    public var categoryIdentifier: String?
+    public var userInfo: [String: String]
 
-    public init(title: String, body: String? = nil, scheduledAt: String, identifierHint: String? = nil) {
+    public init(
+        title: String,
+        body: String? = nil,
+        scheduledAt: String,
+        identifierHint: String? = nil,
+        categoryIdentifier: String? = nil,
+        userInfo: [String: String] = [:]
+    ) {
         self.title = title
         self.body = body
         self.scheduledAt = scheduledAt
         self.identifierHint = identifierHint
+        self.categoryIdentifier = categoryIdentifier
+        self.userInfo = userInfo
     }
 }
 

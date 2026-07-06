@@ -47,6 +47,7 @@ struct SoloPM: App {
                 }
                 .keyboardShortcut(",", modifiers: [.command])
             }
+            SoloPMWindowCommands()
         }
 
         Window("Voice Command", id: "voice-capture") {
@@ -80,6 +81,32 @@ struct SoloPM: App {
 
     private var effectiveLanguagePreference: AppLanguagePreference {
         AppLanguagePreference.environmentOverride ?? languagePreference
+    }
+}
+
+/// App-menu window commands so the primary surfaces are reachable from the
+/// keyboard anywhere in the app (File menu, next to New SoloPM Window).
+private struct SoloPMWindowCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        CommandGroup(after: .newItem) {
+            Divider()
+
+            Button {
+                openWindow(id: "project-board")
+            } label: {
+                Label("Project Board", systemImage: "rectangle.3.group")
+            }
+            .keyboardShortcut("0", modifiers: [.command])
+
+            Button {
+                openWindow(id: "voice-capture")
+            } label: {
+                Label("Voice Command", systemImage: "mic")
+            }
+            .keyboardShortcut("v", modifiers: [.command, .shift])
+        }
     }
 }
 
@@ -384,6 +411,8 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
+        SoloPMNotificationResponder.shared.install()
+        DockTileBadgeController.shared.start()
         ensureProjectBoardWindowIsVisible()
         openSettingsWindowForEvidenceIfRequested()
         openVoiceCommandWindowForEvidenceIfRequested()

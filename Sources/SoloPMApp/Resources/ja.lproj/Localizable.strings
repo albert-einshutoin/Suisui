@@ -50,11 +50,13 @@
 "Generate Plan" = "計画生成";
 "Invalid configuration" = "設定が無効";
 "invalidConfiguration" = "設定が無効";
+"Mark as Done" = "完了にする";
 "Microphone" = "マイク";
 "notConfigured" = "未設定";
 "Opens Settings to choose an AI provider and store its API key in Keychain." = "設定を開き、AIプロバイダーの選択とAPIキーのKeychain保存を行います。";
 "Ready for manual smoke" = "テスト可能";
 "readyForManualSmoke" = "テスト可能";
+"Remind Me in 1 Hour" = "1時間後に再通知";
 "Reminders" = "リマインダー";
 "Review" = "確認";
 "Save to Inbox" = "Inboxに保存";
