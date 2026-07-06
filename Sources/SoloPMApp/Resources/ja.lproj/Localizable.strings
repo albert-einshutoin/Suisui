@@ -11,6 +11,7 @@
 "Assistant Queue execution receipt" = "Assistant Queue 実行レシート";
 "Approve Local Shell Execution" = "ローカルシェル実行を承認";
 "Approve OpenCode Local Execution" = "OpenCodeローカル実行を承認";
+"Back" = "戻る";
 "Backlog" = "バックログ";
 "Blocked" = "ブロック中";
 "Board" = "ボード";
@@ -22,7 +23,10 @@
 "Close Project Details" = "プロジェクト詳細を閉じる";
 "Close Task Details" = "タスク詳細を閉じる";
 "Close Terminal" = "ターミナルを閉じる";
+"Closes setup. You can configure everything later in Settings." = "セットアップを閉じます。すべて後から設定で構成できます。";
 "Command not set" = "コマンド未設定";
+"Connect your Mac" = "Macと連携";
+"Continue" = "続ける";
 "Delete" = "削除";
 "Delete Claude Key" = "Claudeキーを削除";
 "Delete Gemini Key" = "Geminiキーを削除";
@@ -42,12 +46,16 @@
 "External Sync" = "外部同期";
 "External Task Tools" = "外部タスクツール";
 "Export Tasks" = "タスクをエクスポート";
+"Finishes setup and opens the Voice Command window." = "セットアップを完了し、音声コマンドウィンドウを開きます。";
 "Generate Plan" = "計画生成";
 "Invalid configuration" = "設定が無効";
 "invalidConfiguration" = "設定が無効";
+"Microphone" = "マイク";
 "notConfigured" = "未設定";
+"Opens Settings to choose an AI provider and store its API key in Keychain." = "設定を開き、AIプロバイダーの選択とAPIキーのKeychain保存を行います。";
 "Ready for manual smoke" = "テスト可能";
 "readyForManualSmoke" = "テスト可能";
+"Reminders" = "リマインダー";
 "Save to Inbox" = "Inboxに保存";
 "Saved to Inbox" = "Inboxに保存しました";
 "Open Inbox" = "Inboxを開く";
@@ -96,6 +104,15 @@
 "Loads writable Google Calendars for the connected OAuth account." = "接続済みOAuthアカウントの書き込み可能なGoogle Calendarを読み込みます。";
 "No writable Google Calendars were returned." = "書き込み可能なGoogle Calendarは返りませんでした。";
 "Reconnect Google Calendar with OAuth before loading calendars." = "カレンダー一覧を読み込む前にOAuthでGoogle Calendarへ再接続してください。";
+"Selected provider: %@" = "選択中のプロバイダー: %@";
+"Set up your AI" = "AIをセットアップ";
+"Skip Setup" = "セットアップをスキップ";
+"SoloPM plans with the AI provider you choose. Add an API key in Settings, or pick a local model that needs no key." = "SoloPMは選択したAIプロバイダーでプランを作ります。設定でAPIキーを追加するか、キー不要のローカルモデルを選んでください。";
+"SoloPM works with your microphone, Calendar, Reminders, and Notifications. macOS asks for each permission the first time it is needed." = "SoloPMはマイク、カレンダー、リマインダー、通知と連携します。各権限は初めて使うときにmacOSが確認します。";
+"Speak or type what you need to do. SoloPM drafts the tasks, events, and reminders for you, and writes nothing until you approve it." = "やりたいことを話すか入力してください。SoloPMがタスク・予定・リマインダーの下書きを作り、承認するまで何も書き込みません。";
+"Start Using SoloPM" = "SoloPMを使いはじめる";
+"Step %d of %d" = "ステップ %d / %d";
+"Try saying: \"Plan a release checklist due next Friday.\" Review the plan, then approve it." = "「来週金曜までのリリースチェックリストを作って」と話しかけてみてください。プランを確認して、承認するだけです。";
 "unavailable" = "利用不可";
 "Wait for Google Calendar OAuth authorization to finish before loading calendars." = "Google Calendar OAuth認証が完了してからカレンダー一覧を読み込んでください。";
 "%@ (Primary calendar)" = "%@（メインカレンダー）";
@@ -228,6 +245,7 @@
 "Review the command before choosing Inbox capture or an approval-gated plan." = "Inboxキャプチャまたは承認付きプランを選ぶ前に、コマンドを確認してください。";
 "Wait for download" = "ダウンロード完了を待機";
 "Watcher" = "監視";
+"Welcome to SoloPM" = "SoloPMへようこそ";
 "whisper.cpp executable path is required for offline speech to text." = "オフライン音声認識にはwhisper.cpp実行ファイルのパスが必要です。";
 "whisper.cpp model metadata is not registered." = "whisper.cppモデルのメタデータが登録されていません。";
 "Changes the appearance for all SoloPM windows." = "すべてのSoloPMウィンドウの表示を変更します。";
@@ -1530,3 +1548,4 @@
 "Selected speech-to-text provider does not support low-latency voice agent mode yet." = "選択中の音声認識プロバイダーは、まだ低レイテンシ音声エージェントモードに対応していません。";
 "Speech transcription is unavailable." = "音声認識を利用できません。";
 "Voice agent sessions start only from the Voice Command window; cloud fallback requires visible cost disclosure before it can be saved." = "音声エージェントのセッションは音声コマンドウィンドウからのみ開始します。クラウドフォールバックを保存するには、費用表示を有効にする必要があります。";
+"You're ready" = "準備完了";

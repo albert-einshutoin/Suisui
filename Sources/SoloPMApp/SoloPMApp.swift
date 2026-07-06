@@ -86,6 +86,8 @@ struct SoloPM: App {
 private struct ProjectBoardWindowRootView: View {
     @ObservedObject var settingsViewModel: AppSettingsViewModel
     @State private var viewModel: ProjectBoardViewModel?
+    @AppStorage(FirstRunOnboardingGate.completionDefaultsKey) private var hasCompletedOnboarding = false
+    @State private var isOnboardingPresented = false
 
     var body: some View {
         Group {
@@ -93,6 +95,17 @@ private struct ProjectBoardWindowRootView: View {
                 projectBoardContent(viewModel: viewModel)
             } else {
                 ProjectBoardFallbackLoadingView()
+            }
+        }
+        .onAppear {
+            isOnboardingPresented = FirstRunOnboardingGate.shouldPresent(
+                hasCompletedOnboarding: hasCompletedOnboarding
+            )
+        }
+        .sheet(isPresented: $isOnboardingPresented) {
+            OnboardingWelcomeView(settingsViewModel: settingsViewModel) {
+                hasCompletedOnboarding = true
+                isOnboardingPresented = false
             }
         }
         .task {
