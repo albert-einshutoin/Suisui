@@ -206,7 +206,8 @@ public final class SQLiteMCPServerRegistrationStore: MCPServerRegistrationStore,
 
         do {
             try connection.execute(
-                "DELETE FROM mcp_server_registrations WHERE id = '\(MCPRegistrationSQL.escape(id))';"
+                "DELETE FROM mcp_server_registrations WHERE id = ?;",
+                parameters: [.text(id)]
             )
         } catch {
             throw MCPRegistrationStoreError.encodingFailed
@@ -228,17 +229,18 @@ public final class SQLiteMCPServerRegistrationStore: MCPServerRegistrationStore,
               working_directory,
               is_enabled
             )
-            VALUES (
-              '\(MCPRegistrationSQL.escape(registration.id))',
-              \(sortOrder),
-              '\(MCPRegistrationSQL.escape(registration.displayName))',
-              '\(MCPRegistrationSQL.escape(registration.command))',
-              '\(MCPRegistrationSQL.escape(argumentsJSON))',
-              '\(MCPRegistrationSQL.escape(environmentJSON))',
-              \(MCPRegistrationSQL.optional(registration.workingDirectory)),
-              \(registration.isEnabled ? 1 : 0)
-            );
-            """
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            parameters: [
+                .text(registration.id),
+                .integer(Int64(sortOrder)),
+                .text(registration.displayName),
+                .text(registration.command),
+                .text(argumentsJSON),
+                .text(environmentJSON),
+                SQLiteValue(registration.workingDirectory),
+                .integer(registration.isEnabled ? 1 : 0)
+            ]
         )
     }
 
@@ -257,16 +259,7 @@ public final class SQLiteMCPServerRegistrationStore: MCPServerRegistrationStore,
               working_directory,
               is_enabled
             )
-            VALUES (
-              '\(MCPRegistrationSQL.escape(registration.id))',
-              \(sortOrder),
-              '\(MCPRegistrationSQL.escape(registration.displayName))',
-              '\(MCPRegistrationSQL.escape(registration.command))',
-              '\(MCPRegistrationSQL.escape(argumentsJSON))',
-              '\(MCPRegistrationSQL.escape(environmentJSON))',
-              \(MCPRegistrationSQL.optional(registration.workingDirectory)),
-              \(registration.isEnabled ? 1 : 0)
-            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               display_name = excluded.display_name,
               command = excluded.command,
@@ -275,13 +268,26 @@ public final class SQLiteMCPServerRegistrationStore: MCPServerRegistrationStore,
               working_directory = excluded.working_directory,
               is_enabled = excluded.is_enabled,
               updated_at = CURRENT_TIMESTAMP;
-            """
+            """,
+            parameters: [
+                .text(registration.id),
+                .integer(Int64(sortOrder)),
+                .text(registration.displayName),
+                .text(registration.command),
+                .text(argumentsJSON),
+                .text(environmentJSON),
+                SQLiteValue(registration.workingDirectory),
+                .integer(registration.isEnabled ? 1 : 0)
+            ]
         )
     }
 
     private func sortOrderLocked(for id: String) throws -> Int {
         if let existingValue = try connection
-            .queryRows("SELECT sort_order FROM mcp_server_registrations WHERE id = '\(MCPRegistrationSQL.escape(id))' LIMIT 1;")
+            .queryRows(
+                "SELECT sort_order FROM mcp_server_registrations WHERE id = ? LIMIT 1;",
+                parameters: [.text(id)]
+            )
             .first?["sort_order"],
            let existingSortOrder = Int(existingValue) {
             return existingSortOrder
@@ -1094,20 +1100,6 @@ public enum MCPEnvironmentTextCodec {
 
     private static func isASCIIDigit(_ scalar: Unicode.Scalar) -> Bool {
         ("0"..."9").contains(scalar)
-    }
-}
-
-private enum MCPRegistrationSQL {
-    static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
-    }
-
-    static func optional(_ value: String?) -> String {
-        guard let value else {
-            return "NULL"
-        }
-
-        return "'\(escape(value))'"
     }
 }
 

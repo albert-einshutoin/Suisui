@@ -36,8 +36,9 @@ public final class SQLiteProjectMilestoneStore: @unchecked Sendable {
         try connection.execute(
             """
             INSERT INTO project_milestones (project_id, title, due_at, is_completed)
-            VALUES (\(projectID), '\(MilestoneSQL.escape(title))', \(MilestoneSQL.optional(dueAt)), 0);
-            """
+            VALUES (?, ?, ?, 0);
+            """,
+            parameters: [.integer(projectID), .text(title), SQLiteValue(MilestoneSQL.nilIfEmpty(dueAt))]
         )
         return try getLocked(id: connection.lastInsertedRowID)
     }
@@ -50,12 +51,18 @@ public final class SQLiteProjectMilestoneStore: @unchecked Sendable {
         try connection.execute(
             """
             UPDATE project_milestones
-            SET title = '\(MilestoneSQL.escape(title))',
-                due_at = \(MilestoneSQL.optional(dueAt)),
-                is_completed = \(isCompleted ? 1 : 0),
+            SET title = ?,
+                due_at = ?,
+                is_completed = ?,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = \(id);
-            """
+            WHERE id = ?;
+            """,
+            parameters: [
+                .text(title),
+                SQLiteValue(MilestoneSQL.nilIfEmpty(dueAt)),
+                .integer(isCompleted ? 1 : 0),
+                .integer(id)
+            ]
         )
         return try getLocked(id: id)
     }
@@ -91,13 +98,16 @@ public final class SQLiteProjectMilestoneStore: @unchecked Sendable {
         defer { lock.unlock() }
         // Archived project milestones can be numerous history. Active board
         // loads only need milestones belonging to the visible project set.
+        let sortedIDs = projectIDs.sorted()
+        let placeholders = Array(repeating: "?", count: sortedIDs.count).joined(separator: ", ")
         return try connection
             .queryRows(
                 """
                 SELECT * FROM project_milestones
-                WHERE project_id IN (\(Self.sqlInList(projectIDs)))
+                WHERE project_id IN (\(placeholders))
                 ORDER BY project_id ASC, due_at IS NULL, due_at ASC, id ASC;
-                """
+                """,
+                parameters: sortedIDs.map { .integer($0) }
             )
             .map(ProjectMilestoneRecord.init(row:))
     }
@@ -107,18 +117,17 @@ public final class SQLiteProjectMilestoneStore: @unchecked Sendable {
         defer { lock.unlock() }
 
         _ = try getLocked(id: id)
-        try connection.execute("DELETE FROM project_milestones WHERE id = \(id);")
+        try connection.execute("DELETE FROM project_milestones WHERE id = ?;", parameters: [.integer(id)])
     }
 
     private func getLocked(id: Int64) throws -> ProjectMilestoneRecord {
-        guard let row = try connection.queryRows("SELECT * FROM project_milestones WHERE id = \(id) LIMIT 1;").first else {
+        guard let row = try connection.queryRows(
+            "SELECT * FROM project_milestones WHERE id = ? LIMIT 1;",
+            parameters: [.integer(id)]
+        ).first else {
             throw ProjectMilestoneStoreError.notFound(id)
         }
         return try ProjectMilestoneRecord(row: row)
-    }
-
-    private static func sqlInList(_ values: Set<Int64>) -> String {
-        values.sorted().map(String.init).joined(separator: ", ")
     }
 }
 
@@ -135,17 +144,6 @@ private extension ProjectMilestoneRecord {
 }
 
 private enum MilestoneSQL {
-    static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
-    }
-
-    static func optional(_ value: String?) -> String {
-        guard let value, !value.isEmpty else {
-            return "NULL"
-        }
-        return "'\(escape(value))'"
-    }
-
     static func nilIfEmpty(_ value: String?) -> String? {
         guard let value, !value.isEmpty else {
             return nil

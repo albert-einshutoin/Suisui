@@ -748,17 +748,19 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
         if filter.states?.isEmpty == true {
             return []
         }
-        let whereClause = filter.states.map { states in
-            let values = states.map { "'\(Self.escape($0.rawValue))'" }.sorted().joined(separator: ", ")
-            return "WHERE state IN (\(values))"
+        let stateValues = filter.states.map { states in states.map(\.rawValue).sorted() } ?? []
+        let whereClause = filter.states.map { _ in
+            let placeholders = Array(repeating: "?", count: stateValues.count).joined(separator: ", ")
+            return "WHERE state IN (\(placeholders))"
         } ?? ""
         return try connection.queryRows(
             """
             SELECT * FROM assistant_queue_items
             \(whereClause)
             ORDER BY updated_at DESC, id ASC
-            LIMIT \(filter.limit);
-            """
+            LIMIT ?;
+            """,
+            parameters: stateValues.map { .text($0) } + [.integer(Int64(filter.limit))]
         ).map(item(row:))
     }
 
@@ -831,9 +833,10 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
         latestReceipts: [String: AssistantQueueReceiptSummary],
         sort: AssistantQueueSort
     ) throws -> [AssistantQueueReadModelRow] {
-        let whereClause = filter.states.map { states in
-            let values = states.map { "'\(Self.escape($0.rawValue))'" }.sorted().joined(separator: ", ")
-            return "WHERE state IN (\(values))"
+        let stateValues = filter.states.map { states in states.map(\.rawValue).sorted() } ?? []
+        let whereClause = filter.states.map { _ in
+            let placeholders = Array(repeating: "?", count: stateValues.count).joined(separator: ", ")
+            return "WHERE state IN (\(placeholders))"
         } ?? ""
         let rows = try connection.query(
             """
@@ -852,8 +855,9 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
             FROM assistant_queue_items
             \(whereClause)
             ORDER BY updated_at DESC, id ASC
-            LIMIT \(filter.limit);
-            """
+            LIMIT ?;
+            """,
+            parameters: stateValues.map { .text($0) } + [.integer(Int64(filter.limit))]
         ) { row in
             try readModelRow(row: row, receipt: latestReceipts[try row.string("id")])
         }
@@ -1099,7 +1103,8 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
 
     private func getLocked(id: String) throws -> AssistantQueueItem {
         guard let row = try connection.queryRows(
-            "SELECT * FROM assistant_queue_items WHERE id = '\(Self.escape(id))' LIMIT 1;"
+            "SELECT * FROM assistant_queue_items WHERE id = ? LIMIT 1;",
+            parameters: [.text(id)]
         ).first else {
             throw AssistantQueueStoreError.notFound(id)
         }
@@ -1108,7 +1113,8 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
 
     private func saveLocked(_ item: AssistantQueueItem) throws {
         let existing = try connection.queryStrings(
-            "SELECT id FROM assistant_queue_items WHERE id = '\(Self.escape(item.id))' LIMIT 1;"
+            "SELECT id FROM assistant_queue_items WHERE id = ? LIMIT 1;",
+            parameters: [.text(item.id)]
         ).first != nil
         let payloadJSON = try encode(item.payload, column: "assistant_queue_items.payload_json")
         let requiredCapabilitiesJSON = try encode(item.requiredCapabilities, column: "assistant_queue_items.required_capabilities_json")
@@ -1121,21 +1127,37 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
                 """
                 UPDATE assistant_queue_items
                 SET schema_version = 1,
-                    payload_kind = '\(Self.escape(payloadKind(for: item.payload)))',
-                    payload_json = '\(Self.escape(payloadJSON))',
-                    state = '\(Self.escape(item.state.rawValue))',
-                    risk_level = '\(Self.escape(item.riskLevel.rawValue))',
-                    source_transcript = \(Self.optional(item.sourceTranscript)),
-                    interpretation_summary = \(Self.optional(item.interpretationSummary)),
-                    review_reason = '\(Self.escape(item.reviewReason))',
-                    redacted_summary = '\(Self.escape(item.redactedSummary))',
-                    required_capabilities_json = '\(Self.escape(requiredCapabilitiesJSON))',
-                    approval_json = \(Self.optional(approvalJSON)),
-                    blocking_reason = \(Self.optional(item.blockingReason)),
-                    cost_preview_json = \(Self.optional(costPreviewJSON)),
-                    updated_at = '\(Self.escape(now))'
-                WHERE id = '\(Self.escape(item.id))';
-                """
+                    payload_kind = ?,
+                    payload_json = ?,
+                    state = ?,
+                    risk_level = ?,
+                    source_transcript = ?,
+                    interpretation_summary = ?,
+                    review_reason = ?,
+                    redacted_summary = ?,
+                    required_capabilities_json = ?,
+                    approval_json = ?,
+                    blocking_reason = ?,
+                    cost_preview_json = ?,
+                    updated_at = ?
+                WHERE id = ?;
+                """,
+                parameters: [
+                    .text(payloadKind(for: item.payload)),
+                    .text(payloadJSON),
+                    .text(item.state.rawValue),
+                    .text(item.riskLevel.rawValue),
+                    SQLiteValue(item.sourceTranscript),
+                    SQLiteValue(item.interpretationSummary),
+                    .text(item.reviewReason),
+                    .text(item.redactedSummary),
+                    .text(requiredCapabilitiesJSON),
+                    SQLiteValue(approvalJSON),
+                    SQLiteValue(item.blockingReason),
+                    SQLiteValue(costPreviewJSON),
+                    .text(now),
+                    .text(item.id)
+                ]
             )
         } else {
             _ = try insertLocked(item)
@@ -1175,24 +1197,41 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
                 updated_at
             )
             VALUES (
-                '\(Self.escape(item.id))',
+                ?,
                 1,
-                '\(Self.escape(payloadKind(for: item.payload)))',
-                '\(Self.escape(payloadJSON))',
-                '\(Self.escape(item.state.rawValue))',
-                '\(Self.escape(item.riskLevel.rawValue))',
-                \(Self.optional(item.sourceTranscript)),
-                \(Self.optional(item.interpretationSummary)),
-                '\(Self.escape(item.reviewReason))',
-                '\(Self.escape(item.redactedSummary))',
-                '\(Self.escape(requiredCapabilitiesJSON))',
-                \(Self.optional(approvalJSON)),
-                \(Self.optional(item.blockingReason)),
-                \(Self.optional(costPreviewJSON)),
-                '\(Self.escape(now))',
-                '\(Self.escape(now))'
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?
             )\(conflictSQL);
-            """
+            """,
+            parameters: [
+                .text(item.id),
+                .text(payloadKind(for: item.payload)),
+                .text(payloadJSON),
+                .text(item.state.rawValue),
+                .text(item.riskLevel.rawValue),
+                SQLiteValue(item.sourceTranscript),
+                SQLiteValue(item.interpretationSummary),
+                .text(item.reviewReason),
+                .text(item.redactedSummary),
+                .text(requiredCapabilitiesJSON),
+                SQLiteValue(approvalJSON),
+                SQLiteValue(item.blockingReason),
+                SQLiteValue(costPreviewJSON),
+                .text(now),
+                .text(now)
+            ]
         )
         return try connection.queryStrings("SELECT changes();").first == "1"
     }
@@ -1291,13 +1330,6 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
         ISO8601DateFormatter().string(from: Date())
     }
 
-    private static func optional(_ value: String?) -> String {
-        guard let value else {
-            return "NULL"
-        }
-        return "'\(escape(value))'"
-    }
-
     private static func nilIfEmpty(_ value: String?) -> String? {
         guard let value, !value.isEmpty else {
             return nil
@@ -1325,10 +1357,6 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
             throw AssistantQueueStoreError.invalidStoredValue(column: column, value: rawValue)
         }
         return value
-    }
-
-    private static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
     }
 }
 

@@ -59,14 +59,15 @@ public final class SQLiteAuditLogger: AuditLogger, @unchecked Sendable {
         try connection.execute(
             """
             INSERT INTO audit_logs (timestamp, category, action, status, metadata_json)
-            VALUES (
-              '\(SQLAudit.escape(dateFormatter.string(from: event.timestamp)))',
-              '\(SQLAudit.escape(event.category))',
-              '\(SQLAudit.escape(event.action))',
-              '\(SQLAudit.escape(event.status.rawValue))',
-              '\(SQLAudit.escape(metadata))'
-            );
-            """
+            VALUES (?, ?, ?, ?, ?);
+            """,
+            parameters: [
+                .text(dateFormatter.string(from: event.timestamp)),
+                .text(event.category),
+                .text(event.action),
+                .text(event.status.rawValue),
+                .text(metadata)
+            ]
         )
     }
 
@@ -80,8 +81,9 @@ public final class SQLiteAuditLogger: AuditLogger, @unchecked Sendable {
             SELECT timestamp, category, action, status, metadata_json
             FROM audit_logs
             ORDER BY id DESC
-            LIMIT \(boundedLimit);
-            """
+            LIMIT ?;
+            """,
+            parameters: [.integer(Int64(boundedLimit))]
         ).map { row in
             let timestampText = try SQLAudit.requiredString(row["timestamp"], column: "audit_logs.timestamp")
             guard let timestamp = dateFormatter.date(from: timestampText) else {
@@ -120,10 +122,6 @@ public struct RedactingAuditLogger: AuditLogger {
 }
 
 private enum SQLAudit {
-    static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
-    }
-
     static func decodeMetadata(_ value: String, column: String) throws -> [String: String] {
         guard let data = value.data(using: .utf8),
               let decoded = try? JSONDecoder().decode([String: String].self, from: data) else {

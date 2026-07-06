@@ -227,21 +227,34 @@ public final class SQLiteManagedAIUsageLedgerStore: ManagedAIUsageLedgerStore, @
                 occurred_at
             )
             VALUES (
-                '\(Self.escape(entry.sourceReceiptDigest))',
-                \(Self.sqlString(entry.assistantQueueItemDigest)),
-                '\(Self.escape(entry.billingMode.rawValue))',
-                '\(Self.escape(entry.provider))',
-                '\(Self.escape(entry.modelName))',
-                '\(Self.escape(entry.usageState.rawValue))',
-                \(Self.sqlInt(entry.inputTokens)),
-                \(Self.sqlInt(entry.outputTokens)),
-                \(entry.costCents),
-                '\(Self.escape(entry.currencyCode))',
-                '\(Self.escape(Self.timestamp(entry.occurredAt)))'
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?
             )
             ON CONFLICT(source_receipt_digest) DO NOTHING
             ON CONFLICT(assistant_queue_item_digest) DO NOTHING;
-            """
+            """,
+            parameters: [
+                .text(entry.sourceReceiptDigest),
+                SQLiteValue(entry.assistantQueueItemDigest),
+                .text(entry.billingMode.rawValue),
+                .text(entry.provider),
+                .text(entry.modelName),
+                .text(entry.usageState.rawValue),
+                SQLiteValue(entry.inputTokens),
+                SQLiteValue(entry.outputTokens),
+                .real(entry.costCents),
+                .text(entry.currencyCode),
+                .text(Self.timestamp(entry.occurredAt))
+            ]
         )
     }
 
@@ -254,8 +267,9 @@ public final class SQLiteManagedAIUsageLedgerStore: ManagedAIUsageLedgerStore, @
             SELECT *
             FROM managed_ai_usage_ledger
             ORDER BY occurred_at DESC, source_receipt_digest ASC
-            LIMIT \(min(max(limit, 1), 500));
-            """
+            LIMIT ?;
+            """,
+            parameters: [.integer(Int64(min(max(limit, 1), 500)))]
         ).map(entry(row:))
     }
 
@@ -271,9 +285,13 @@ public final class SQLiteManagedAIUsageLedgerStore: ManagedAIUsageLedgerStore, @
         let dayInterval = calendar.dateInterval(of: .day, for: referenceDate)
         let monthInterval = calendar.dateInterval(of: .month, for: referenceDate)
         let baseCondition = """
-            billing_mode = '\(Self.escape(AssistantQueueCostBillingMode.soloPMManaged.rawValue))'
-            AND currency_code = '\(Self.escape(normalizedCurrencyCode))'
+            billing_mode = ?
+            AND currency_code = ?
             """
+        let baseParameters: [SQLiteValue] = [
+            .text(AssistantQueueCostBillingMode.soloPMManaged.rawValue),
+            .text(normalizedCurrencyCode)
+        ]
         let dailyCondition = intervalCondition(
             baseCondition: baseCondition,
             interval: dayInterval
@@ -285,9 +303,15 @@ public final class SQLiteManagedAIUsageLedgerStore: ManagedAIUsageLedgerStore, @
 
         return ManagedAIUsageLedgerTotals(
             currencyCode: normalizedCurrencyCode,
-            dailyCostCents: try sumCostCents(where: dailyCondition),
-            monthlyCostCents: try sumCostCents(where: monthlyCondition),
-            workspaceCostCents: try sumCostCents(where: baseCondition)
+            dailyCostCents: try sumCostCents(
+                where: dailyCondition.condition,
+                parameters: baseParameters + dailyCondition.parameters
+            ),
+            monthlyCostCents: try sumCostCents(
+                where: monthlyCondition.condition,
+                parameters: baseParameters + monthlyCondition.parameters
+            ),
+            workspaceCostCents: try sumCostCents(where: baseCondition, parameters: baseParameters)
         )
     }
 
@@ -338,13 +362,14 @@ public final class SQLiteManagedAIUsageLedgerStore: ManagedAIUsageLedgerStore, @
         return Int(value)
     }
 
-    private func sumCostCents(where condition: String) throws -> Double {
+    private func sumCostCents(where condition: String, parameters: [SQLiteValue]) throws -> Double {
         let rows = try connection.queryRows(
             """
             SELECT COALESCE(SUM(cost_cents), 0) AS total
             FROM managed_ai_usage_ledger
             WHERE \(condition);
-            """
+            """,
+            parameters: parameters
         )
         return Double(rows.first?["total"] ?? "0") ?? 0
     }
@@ -352,26 +377,21 @@ public final class SQLiteManagedAIUsageLedgerStore: ManagedAIUsageLedgerStore, @
     private func intervalCondition(
         baseCondition: String,
         interval: DateInterval?
-    ) -> String {
+    ) -> (condition: String, parameters: [SQLiteValue]) {
         guard let interval else {
-            return "\(baseCondition) AND 1 = 0"
+            return ("\(baseCondition) AND 1 = 0", [])
         }
-        return """
-            \(baseCondition)
-            AND occurred_at >= '\(Self.escape(Self.timestamp(interval.start)))'
-            AND occurred_at < '\(Self.escape(Self.timestamp(interval.end)))'
+        return (
             """
-    }
-
-    private static func sqlString(_ value: String?) -> String {
-        guard let value else {
-            return "NULL"
-        }
-        return "'\(escape(value))'"
-    }
-
-    private static func sqlInt(_ value: Int?) -> String {
-        value.map(String.init) ?? "NULL"
+            \(baseCondition)
+            AND occurred_at >= ?
+            AND occurred_at < ?
+            """,
+            [
+                .text(Self.timestamp(interval.start)),
+                .text(Self.timestamp(interval.end))
+            ]
+        )
     }
 
     private static func timestamp(_ date: Date) -> String {
@@ -380,9 +400,5 @@ public final class SQLiteManagedAIUsageLedgerStore: ManagedAIUsageLedgerStore, @
 
     private static func date(from value: String) -> Date? {
         ISO8601DateFormatter().date(from: value)
-    }
-
-    private static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
     }
 }
