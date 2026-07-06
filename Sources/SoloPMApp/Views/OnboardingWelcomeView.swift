@@ -46,7 +46,41 @@ struct OnboardingWelcomeView: View {
             Text("Speak or type what you need to do. SoloPM drafts the tasks, events, and reminders for you, and writes nothing until you approve it.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
+
+            HStack(spacing: SoloPMSpacing.sm) {
+                onboardingFlowPill(systemImage: "mic.fill", title: "Speak")
+                flowArrow
+                onboardingFlowPill(systemImage: "list.bullet.clipboard", title: "Review")
+                flowArrow
+                onboardingFlowPill(systemImage: "checkmark.seal", title: "Approve")
+            }
+            .padding(.top, SoloPMSpacing.sm)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("onboarding-flow-pills")
         }
+    }
+
+    private var flowArrow: some View {
+        Image(systemName: "chevron.right")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.tertiary)
+            .accessibilityHidden(true)
+    }
+
+    private func onboardingFlowPill(systemImage: String, title: LocalizedStringKey) -> some View {
+        VStack(spacing: SoloPMSpacing.xs) {
+            Image(systemName: systemImage)
+                .font(.body)
+                .foregroundStyle(.tint)
+            Text(title)
+                .font(.caption.weight(.medium))
+        }
+        .frame(minWidth: 72)
+        .padding(.vertical, SoloPMSpacing.sm)
+        .background(
+            RoundedRectangle(cornerRadius: SoloPMRadius.card, style: .continuous)
+                .fill(.quaternary.opacity(0.5))
+        )
     }
 
     private var aiProviderStep: some View {
@@ -59,14 +93,15 @@ struct OnboardingWelcomeView: View {
                 .foregroundStyle(.secondary)
 
             if let row = selectedProviderRow {
-                VStack(spacing: 4) {
+                VStack(spacing: SoloPMSpacing.xs) {
                     Text(localizedDisplay("Selected provider: %@", row.provider.displayName))
                         .font(.headline)
                     Text(localizedSettingsDisplay(row.statusLabel))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                .padding(.top, 4)
+                .frame(maxWidth: .infinity)
+                .soloCard()
                 .accessibilityIdentifier("onboarding-provider-status")
             }
 
@@ -87,14 +122,15 @@ struct OnboardingWelcomeView: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: SoloPMSpacing.sm) {
                 Label("Microphone", systemImage: "mic")
                 Label("Calendar", systemImage: "calendar")
                 Label("Reminders", systemImage: "checklist")
                 Label("Notifications", systemImage: "bell")
             }
             .font(.subheadline)
-            .padding(.top, 4)
+            .frame(minWidth: 200, alignment: .leading)
+            .soloCard()
             .accessibilityIdentifier("onboarding-permission-list")
         }
     }
@@ -124,11 +160,16 @@ struct OnboardingWelcomeView: View {
         title: LocalizedStringKey,
         @ViewBuilder content: () -> some View
     ) -> some View {
-        VStack(spacing: 14) {
+        VStack(spacing: SoloPMSpacing.lg) {
             Spacer(minLength: 0)
             Image(systemName: systemImage)
-                .font(.system(size: 44, weight: .light))
+                .font(.system(size: 34, weight: .medium))
                 .foregroundStyle(.tint)
+                .frame(width: 76, height: 76)
+                .background(
+                    Circle()
+                        .fill(.tint.opacity(0.12))
+                )
                 .accessibilityHidden(true)
             Text(title)
                 .font(.title2.weight(.semibold))
@@ -151,10 +192,17 @@ struct OnboardingWelcomeView: View {
 
             Spacer()
 
-            Text(localizedDisplay("Step %d of %d", flow.stepIndex + 1, flow.stepCount))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .accessibilityIdentifier("onboarding-step-indicator")
+            HStack(spacing: SoloPMSpacing.xs + 2) {
+                ForEach(0..<flow.stepCount, id: \.self) { index in
+                    Capsule(style: .continuous)
+                        .fill(index == flow.stepIndex ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary))
+                        .frame(width: index == flow.stepIndex ? 18 : 6, height: 6)
+                        .animation(.snappy(duration: 0.2), value: flow.stepIndex)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(localizedDisplay("Step %d of %d", flow.stepIndex + 1, flow.stepCount))
+            .accessibilityIdentifier("onboarding-step-indicator")
 
             Spacer()
 
@@ -169,12 +217,14 @@ struct OnboardingWelcomeView: View {
                 Button("Start Using SoloPM") {
                     completeOnboarding()
                 }
+                .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .accessibilityIdentifier("onboarding-finish")
             } else {
                 Button("Continue") {
                     flow.advance()
                 }
+                .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .accessibilityIdentifier("onboarding-continue")
             }

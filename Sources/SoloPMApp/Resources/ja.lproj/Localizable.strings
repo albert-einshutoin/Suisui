@@ -56,6 +56,7 @@
 "Ready for manual smoke" = "テスト可能";
 "readyForManualSmoke" = "テスト可能";
 "Reminders" = "リマインダー";
+"Review" = "確認";
 "Save to Inbox" = "Inboxに保存";
 "Saved to Inbox" = "Inboxに保存しました";
 "Open Inbox" = "Inboxを開く";
@@ -109,6 +110,7 @@
 "Skip Setup" = "セットアップをスキップ";
 "SoloPM plans with the AI provider you choose. Add an API key in Settings, or pick a local model that needs no key." = "SoloPMは選択したAIプロバイダーでプランを作ります。設定でAPIキーを追加するか、キー不要のローカルモデルを選んでください。";
 "SoloPM works with your microphone, Calendar, Reminders, and Notifications. macOS asks for each permission the first time it is needed." = "SoloPMはマイク、カレンダー、リマインダー、通知と連携します。各権限は初めて使うときにmacOSが確認します。";
+"Speak" = "話す";
 "Speak or type what you need to do. SoloPM drafts the tasks, events, and reminders for you, and writes nothing until you approve it." = "やりたいことを話すか入力してください。SoloPMがタスク・予定・リマインダーの下書きを作り、承認するまで何も書き込みません。";
 "Start Using SoloPM" = "SoloPMを使いはじめる";
 "Step %d of %d" = "ステップ %d / %d";

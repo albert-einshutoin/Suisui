@@ -31,17 +31,17 @@ struct ActionReviewPanel: View {
             if let message = viewModel.errorMessage {
                 Label(message, systemImage: "exclamationmark.triangle")
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(SoloPMTone.danger.color)
             }
             if let message = viewModel.auditErrorMessage {
                 Label(message, systemImage: "exclamationmark.triangle")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(SoloPMTone.attention.color)
             }
             if let message = viewModel.executionReceiptErrorMessage {
                 Label(message, systemImage: "exclamationmark.triangle")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(SoloPMTone.attention.color)
             }
             if let receipt = viewModel.lastExecutionReceipt {
                 ExecutionReceiptSummaryView(receipt: receipt)
@@ -183,11 +183,11 @@ private struct ExecutionReceiptSummaryView: View {
     private var statusColor: Color {
         switch receipt.status {
         case .succeeded:
-            .green
+            SoloPMTone.positive.color
         case .failed:
-            .red
+            SoloPMTone.danger.color
         case .canceled, .skipped:
-            .orange
+            SoloPMTone.attention.color
         case .notStarted, .running:
             .secondary
         }
@@ -256,7 +256,7 @@ private struct ActionReviewHeader: View {
     private var riskBadge: some View {
         Text(riskLevel.rawValue.capitalized)
             .font(.caption)
-            .foregroundStyle(riskLevel >= .write ? .orange : .secondary)
+            .foregroundStyle(riskLevel >= .write ? SoloPMTone.attention.color : .secondary)
             .lineLimit(1)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
@@ -302,19 +302,19 @@ private struct ReviewActionRow: View {
             ForEach(viewModel.validationIssues(for: item.id), id: \.message) { issue in
                 Label(issue.message, systemImage: "exclamationmark.triangle")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(SoloPMTone.attention.color)
                     .lineLimit(2)
             }
 
             if let result = item.result {
                 Text(result.summary)
                     .font(.caption)
-                    .foregroundStyle(.green)
+                    .foregroundStyle(SoloPMTone.positive.color)
             }
             if let error = item.errorMessage {
                 Text(error)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(SoloPMTone.danger.color)
                     .lineLimit(2)
             }
             if let failureRecovery = item.failureRecovery {
@@ -343,9 +343,9 @@ private struct ReviewActionRow: View {
     private var statusColor: Color {
         switch item.executionStatus {
         case .succeeded:
-            .green
+            SoloPMTone.positive.color
         case .failed:
-            .red
+            SoloPMTone.danger.color
         case .skipped:
             .secondary
         default:
@@ -375,7 +375,7 @@ private struct ReviewActionRow: View {
         case .retryable:
             .secondary
         case .notRetryable:
-            .orange
+            SoloPMTone.attention.color
         }
     }
 }

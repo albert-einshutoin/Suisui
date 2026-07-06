@@ -13,67 +13,28 @@ struct MenuBarPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("SoloPM")
-                .font(.headline)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button {
-                openWindow(id: "project-board")
-            } label: {
-                Label("Project Board", systemImage: "rectangle.3.group")
-            }
-
-            Button {
-                openWindow(id: "voice-capture")
-            } label: {
-                Label("Voice Command", systemImage: "mic")
-            }
-            .keyboardShortcut(.space, modifiers: [.option])
-
-            SettingsLink {
-                Label("Settings", systemImage: "gearshape")
-            }
-            .help("Open Settings")
-            .accessibilityIdentifier("menu-bar-settings-link")
-
-            Divider()
+        VStack(alignment: .leading, spacing: SoloPMSpacing.lg) {
+            headerRow
 
             quickCaptureSection
 
-            Divider()
-
-            ForEach(viewModel.rows) { row in
-                SummaryRow(row: row)
-            }
-
-            if let emptyStateLabel = controller.emptyStateLabel {
-                Text(emptyStateLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            summarySection
 
             if let errorMessage = controller.errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(SoloPMTone.attention.color)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+
+            windowShortcutsRow
 
             if viewModel.hasRecentProjects {
-                Divider()
-                Text("Recent Projects")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                ForEach(viewModel.summary.recentProjectTitles, id: \.self) { title in
-                    Text(title)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .help(title)
-                }
+                recentProjectsSection
             }
         }
-        .padding(16)
+        .padding(SoloPMSpacing.lg)
         .frame(width: 320)
         .task {
             controller.refresh()
@@ -83,13 +44,27 @@ struct MenuBarPanel: View {
         }
     }
 
-    private var quickCaptureSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Quick Add")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+    private var headerRow: some View {
+        HStack(spacing: SoloPMSpacing.sm) {
+            Text("SoloPM")
+                .font(.headline)
 
-            HStack(spacing: 8) {
+            Spacer()
+
+            SettingsLink {
+                Label("Settings", systemImage: "gearshape")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .help("Open Settings")
+            .accessibilityIdentifier("menu-bar-settings-link")
+        }
+    }
+
+    private var quickCaptureSection: some View {
+        VStack(alignment: .leading, spacing: SoloPMSpacing.sm) {
+            HStack(spacing: SoloPMSpacing.sm) {
                 TextField("Quick add to Inbox", text: $quickCaptureTitle)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(addQuickCapture)
@@ -99,7 +74,9 @@ struct MenuBarPanel: View {
 
                 Button(action: addQuickCapture) {
                     Label("Add", systemImage: "plus")
+                        .labelStyle(.iconOnly)
                 }
+                .buttonStyle(.borderedProminent)
                 .disabled(quickCaptureTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .keyboardShortcut(.return, modifiers: [.command])
                 .help("Add to Inbox")
@@ -110,9 +87,62 @@ struct MenuBarPanel: View {
             if let errorMessage = quickCaptureController.errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(SoloPMTone.attention.color)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var summarySection: some View {
+        VStack(alignment: .leading, spacing: SoloPMSpacing.sm) {
+            ForEach(viewModel.rows) { row in
+                SummaryRow(row: row)
+            }
+
+            if let emptyStateLabel = controller.emptyStateLabel {
+                Text(emptyStateLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .soloCard()
+    }
+
+    private var windowShortcutsRow: some View {
+        HStack(spacing: SoloPMSpacing.sm) {
+            Button {
+                openWindow(id: "project-board")
+            } label: {
+                Label("Project Board", systemImage: "rectangle.3.group")
+                    .frame(maxWidth: .infinity)
+            }
+
+            Button {
+                openWindow(id: "voice-capture")
+            } label: {
+                Label("Voice Command", systemImage: "mic")
+                    .frame(maxWidth: .infinity)
+            }
+            .keyboardShortcut(.space, modifiers: [.option])
+        }
+        .controlSize(.large)
+    }
+
+    private var recentProjectsSection: some View {
+        VStack(alignment: .leading, spacing: SoloPMSpacing.xs) {
+            Text("Recent Projects")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            ForEach(viewModel.summary.recentProjectTitles, id: \.self) { title in
+                Label(title, systemImage: "folder")
+                    .font(.callout)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(title)
             }
         }
     }
@@ -136,9 +166,12 @@ private struct SummaryRow: View {
     var body: some View {
         HStack {
             Label(row.title, systemImage: row.systemImage)
+                .font(.callout)
             Spacer()
-            Text(row.value)
-                .foregroundStyle(row.tone == .attention ? .orange : .secondary)
+            SoloPMStatusChip(
+                text: row.value,
+                tone: row.tone == .attention ? .attention : .neutral
+            )
         }
     }
 }

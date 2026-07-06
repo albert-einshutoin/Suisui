@@ -56,6 +56,7 @@
 "Ready for manual smoke" = "Ready to test";
 "readyForManualSmoke" = "Ready to test";
 "Reminders" = "Reminders";
+"Review" = "Review";
 "Save to Inbox" = "Save to Inbox";
 "Saved to Inbox" = "Saved to Inbox";
 "Open Inbox" = "Open Inbox";
@@ -109,6 +110,7 @@
 "Skip Setup" = "Skip Setup";
 "SoloPM plans with the AI provider you choose. Add an API key in Settings, or pick a local model that needs no key." = "SoloPM plans with the AI provider you choose. Add an API key in Settings, or pick a local model that needs no key.";
 "SoloPM works with your microphone, Calendar, Reminders, and Notifications. macOS asks for each permission the first time it is needed." = "SoloPM works with your microphone, Calendar, Reminders, and Notifications. macOS asks for each permission the first time it is needed.";
+"Speak" = "Speak";
 "Speak or type what you need to do. SoloPM drafts the tasks, events, and reminders for you, and writes nothing until you approve it." = "Speak or type what you need to do. SoloPM drafts the tasks, events, and reminders for you, and writes nothing until you approve it.";
 "Start Using SoloPM" = "Start Using SoloPM";
 "Step %d of %d" = "Step %d of %d";
