@@ -15,7 +15,7 @@ This is not just "remote MCP." The user-facing value is that SoloPM can receive 
 ## Packaging Principles
 
 - Local-first remains the default. The app, local database, BYOK LLM providers, and local review flow should work without an account.
-- SoloPM should not pay for general LLM inference. Users bring provider keys unless a later hosted AI plan is explicitly introduced.
+- SoloPM should not pay for general LLM inference. Users bring provider keys unless a later hosted AI plan is explicitly introduced. The managed AI add-on design (credits, rate cards, auto routing, relay metering) lives in `docs/product/ai-billing-model.md`.
 - Paid value should map to real operating cost: encrypted sync storage, relay uptime, audit logs, remote execution controls, and support.
 - Paid status must never bypass approval, dangerous-tool blocking, or audit requirements.
 - Remote execution should be framed as Cloud Relay and Hosted MCP, not as the default local MCP path.
@@ -226,3 +226,4 @@ Avoid:
 - Whether Sync and Pro should launch together or Sync should launch first.
 - Whether Founder should be a one-time supporter plan or an annual early-access plan.
 - Whether PC-off capture auto-creates only plain tasks or can create projects and due dates under a policy.
+- Managed AI add-on decisions (overage policy, credit expiry, launch providers) are tracked in `docs/product/ai-billing-model.md`.
