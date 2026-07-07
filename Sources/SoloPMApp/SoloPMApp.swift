@@ -55,7 +55,7 @@ struct SoloPM: App {
                 .preferredColorScheme(effectiveAppearancePreference.colorScheme)
                 .environment(\.locale, effectiveLanguagePreference.locale)
         }
-        .defaultSize(width: 560, height: 420)
+        .defaultSize(width: 680, height: 640)
 
         MenuBarExtra {
             MenuBarPanel(controller: menuBarController, quickCaptureController: menuBarQuickCaptureController)
@@ -266,7 +266,7 @@ private struct VoiceCaptureWindowRootView: View {
                 VoiceCaptureView(viewModel: viewModel)
             } else {
                 ProgressView("Opening Voice Command")
-                    .frame(minWidth: 560, minHeight: 420)
+                    .frame(minWidth: 680, minHeight: 640)
                     .accessibilityIdentifier("voice-capture-loading")
             }
         }
