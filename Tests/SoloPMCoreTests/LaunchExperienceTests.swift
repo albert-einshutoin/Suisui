@@ -236,6 +236,22 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(screenshotCapture.contains("args+=(\"SOLOPM_LAUNCH_RECOVERY_MODE=1\")"))
     }
 
+    func testDeadlineWatcherStaysOutOfEvidenceHarnessLaunches() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Composition/DeadlineWatcherRuntime.swift")
+
+        XCTAssertTrue(source.contains("bundleIdentifier: String? = Bundle.main.bundleIdentifier"))
+        XCTAssertTrue(source.contains("SOLOPM_DATABASE_PATH"))
+        XCTAssertTrue(source.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
+        XCTAssertTrue(source.contains("SOLOPM_FORCE_PROJECT_BOARD_FALLBACK"))
+        XCTAssertTrue(source.contains("SOLOPM_UI_EVIDENCE_RECOVERY_MODE"))
+        XCTAssertTrue(source.contains("SOLOPM_RUNTIME_CRUD_RECOVERY_MODE"))
+        XCTAssertTrue(source.contains("SOLOPM_LAYOUT_STABILITY_RECOVERY_MODE"))
+        XCTAssertTrue(source.contains("SOLOPM_OPEN_SETTINGS_ON_LAUNCH"))
+        XCTAssertTrue(source.contains("SOLOPM_OPEN_VOICE_COMMAND_ON_LAUNCH"))
+        XCTAssertTrue(source.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK"))
+        XCTAssertTrue(source.contains("key == \"SOLOPM_DATABASE_PATH\" || value == \"1\""))
+    }
+
     func testLaunchVerificationWindowGroupUsesLaunchRecoveryView() throws {
         let source = try readLaunchRecoveryAppShellSource()
 
