@@ -2562,6 +2562,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("UnavailableMenuBarSummaryProvider(error: error)"))
     }
 
+    func testMenuBarAttentionLabelRefreshesBeforePanelOpens() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let labelStart = try XCTUnwrap(source.range(of: "private struct MenuBarExtraLabel: View"))
+        let labelEnd = try XCTUnwrap(source.range(of: "/// App-menu window commands", range: labelStart.lowerBound..<source.endIndex))
+        let labelSource = String(source[labelStart.lowerBound..<labelEnd.lowerBound])
+
+        XCTAssertTrue(labelSource.contains("@ObservedObject var controller: MenuBarSummaryController"))
+        XCTAssertTrue(labelSource.contains(".task {"))
+        XCTAssertTrue(labelSource.contains(".onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange))"))
+        XCTAssertEqual(labelSource.components(separatedBy: "controller.refresh()").count - 1, 2)
+    }
+
     func testMenuBarPanelProvidesFastInboxCaptureWithLightweightController() throws {
         let appSource = try readAppShellSource()
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
