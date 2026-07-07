@@ -4551,6 +4551,16 @@ public final class ProjectBoardViewModel: ObservableObject {
         )
         .scheduleIfNeeded(summary: summary)
 
+        if let assistantQueueStore {
+            // Best-effort assistant suggestion: overdue/stalled tasks gain a
+            // one-tap "reschedule to tomorrow" item in the Assistant Queue.
+            _ = MissedTaskRescheduleSuggestionPlanner(
+                queueStore: assistantQueueStore,
+                dateProvider: dateProvider,
+                settings: normalizedSettings
+            ).enqueueSuggestions(for: summary)
+        }
+
         if result.status == .failed {
             integrationStatusMessage = result.message
         }
