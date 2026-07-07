@@ -29,9 +29,10 @@ public struct GeminiDirectRequestBuilder: Sendable {
     public func makeRequest(
         apiKey: String,
         prompt: PlanningPrompt,
-        availableTools: [ActionTool] = []
+        availableTools: [ActionTool] = [],
+        stream: Bool = false
     ) throws -> URLRequest {
-        var request = URLRequest(url: makeURL(), timeoutInterval: configuration.timeoutInterval)
+        var request = URLRequest(url: makeURL(stream: stream), timeoutInterval: configuration.timeoutInterval)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
@@ -63,14 +64,18 @@ public struct GeminiDirectRequestBuilder: Sendable {
         return request
     }
 
-    private func makeURL() -> URL {
+    private func makeURL(stream: Bool) -> URL {
         var components = URLComponents(url: configuration.baseURL, resolvingAgainstBaseURL: false)!
         let basePath = components.percentEncodedPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         var allowedModelCharacters = CharacterSet.urlPathAllowed
         allowedModelCharacters.remove(charactersIn: "/:")
         let model = configuration.model.addingPercentEncoding(withAllowedCharacters: allowedModelCharacters)
             ?? configuration.model
-        components.percentEncodedPath = "/\(basePath)/models/\(model):generateContent"
+        let method = stream ? "streamGenerateContent" : "generateContent"
+        components.percentEncodedPath = "/\(basePath)/models/\(model):\(method)"
+        if stream {
+            components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "alt", value: "sse")]
+        }
         return components.url!
     }
 }
@@ -173,11 +178,12 @@ public struct GeminiDirectOutputTextExtractor: Sendable {
     }
 }
 
-public struct GeminiDirectProvider: LLMProvider {
+public struct GeminiDirectProvider: StreamingLLMProvider {
     public let providerID = "gemini.direct"
 
     private let secretStore: any SecretStore
     private let httpClient: any HTTPDataClient
+    private let byteStreamClient: any HTTPByteStreamClient
     private let promptBuilder: PlanningPromptBuilder?
     private let requestBuilder: GeminiDirectRequestBuilder
     private let outputTextExtractor: GeminiDirectOutputTextExtractor
@@ -186,6 +192,7 @@ public struct GeminiDirectProvider: LLMProvider {
     public init(
         secretStore: any SecretStore,
         httpClient: any HTTPDataClient = URLSessionHTTPDataClient(),
+        byteStreamClient: any HTTPByteStreamClient = URLSessionHTTPByteStreamClient(),
         promptBuilder: PlanningPromptBuilder? = nil,
         configuration: GeminiDirectConfiguration = GeminiDirectConfiguration(),
         outputTextExtractor: GeminiDirectOutputTextExtractor = GeminiDirectOutputTextExtractor(),
@@ -193,6 +200,7 @@ public struct GeminiDirectProvider: LLMProvider {
     ) {
         self.secretStore = secretStore
         self.httpClient = httpClient
+        self.byteStreamClient = byteStreamClient
         self.promptBuilder = promptBuilder
         self.requestBuilder = GeminiDirectRequestBuilder(configuration: configuration)
         self.outputTextExtractor = outputTextExtractor
@@ -233,6 +241,82 @@ public struct GeminiDirectProvider: LLMProvider {
         return responseParser.parse(rawContent: rawContent, providerID: providerID)
     }
 
+    public func generatePlanStream(
+        for request: PlanningRequest,
+        onTextDelta: @escaping @Sendable (String) -> Void
+    ) async throws -> PlanningResponse {
+        let apiKey: String
+        let storedAPIKey = try secretStore.read(.geminiAPIKey)
+        do {
+            apiKey = try APIKeyValidator.normalize(storedAPIKey)
+        } catch APIKeyValidationError.empty, APIKeyValidationError.containsWhitespace {
+            throw LLMProviderError.authenticationFailed
+        }
+
+        // Streaming surfaces incremental JSON text, so the request omits
+        // function declarations; declared tools could make Gemini answer with
+        // functionCall parts that carry no streamable text.
+        let prompt = try (promptBuilder ?? PlanningPromptBuilder.loadDefault()).buildPrompt(for: request)
+        let httpRequest = try requestBuilder.makeRequest(apiKey: apiKey, prompt: prompt, stream: true)
+
+        let lines: AsyncThrowingStream<String, Error>
+        let response: HTTPURLResponse
+        do {
+            (lines, response) = try await byteStreamClient.lines(for: httpRequest)
+        } catch let error as LLMProviderError {
+            throw error
+        } catch {
+            throw LLMProviderError.network(ProviderErrorMessageSanitizer.message(from: error))
+        }
+
+        guard (200..<300).contains(response.statusCode) else {
+            let body = try await collectBody(from: lines)
+            throw mapHTTPError(statusCode: response.statusCode, data: body)
+        }
+
+        var accumulated = ""
+        do {
+            for try await line in lines {
+                guard let payload = GeminiDirectSSEParser.dataPayload(from: line) else {
+                    continue
+                }
+                switch try GeminiDirectSSEParser.parse(payload) {
+                case .textDelta(let text):
+                    accumulated += text
+                    onTextDelta(text)
+                case .error(let message):
+                    throw LLMProviderError.invalidResponse(message)
+                case .ignored:
+                    continue
+                }
+            }
+        } catch let error as LLMProviderError {
+            throw error
+        } catch {
+            throw LLMProviderError.network(ProviderErrorMessageSanitizer.message(from: error))
+        }
+
+        let rawContent = accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawContent.isEmpty else {
+            throw LLMProviderError.invalidResponse("Gemini Direct stream did not contain text content.")
+        }
+        return responseParser.parse(rawContent: rawContent, providerID: providerID)
+    }
+
+    private func collectBody(from lines: AsyncThrowingStream<String, Error>) async throws -> Data {
+        var body = ""
+        do {
+            for try await line in lines {
+                body += line
+                body += "\n"
+            }
+        } catch {
+            // The error payload is best effort; status mapping proceeds with
+            // whatever body arrived before the connection failed.
+        }
+        return Data(body.utf8)
+    }
+
     private func mapHTTPError(statusCode: Int, data: Data) -> LLMProviderError {
         switch statusCode {
         case 401, 403:
@@ -250,6 +334,68 @@ public struct GeminiDirectProvider: LLMProvider {
         LLMHTTPErrorMessageExtractor.message(from: data)?
             .localizedCaseInsensitiveContains("api key") == true
     }
+}
+
+enum GeminiDirectSSEEvent: Equatable {
+    case textDelta(String)
+    case error(String)
+    case ignored
+}
+
+enum GeminiDirectSSEParser {
+    static func dataPayload(from line: String) -> String? {
+        guard line.hasPrefix("data:") else {
+            return nil
+        }
+        let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
+        guard !payload.isEmpty else {
+            return nil
+        }
+        return payload
+    }
+
+    static func parse(_ payload: String) throws -> GeminiDirectSSEEvent {
+        guard let data = payload.data(using: .utf8),
+              let envelope = try? JSONDecoder().decode(GeminiDirectSSEEnvelope.self, from: data) else {
+            throw LLMProviderError.invalidResponse("Gemini Direct stream event could not be decoded.")
+        }
+
+        if let error = envelope.error {
+            let message = error.message ?? "Gemini Direct stream reported an error."
+            return .error(DeveloperSecretRedactor().redact(message).text)
+        }
+
+        // Chunks that only carry promptFeedback or empty candidates are
+        // progress noise rather than text output.
+        let text = (envelope.candidates?.first?.content?.parts ?? [])
+            .compactMap(\.text)
+            .joined()
+        guard !text.isEmpty else {
+            return .ignored
+        }
+        return .textDelta(text)
+    }
+}
+
+private struct GeminiDirectSSEEnvelope: Decodable {
+    var candidates: [GeminiDirectSSECandidate]?
+    var error: GeminiDirectSSEError?
+}
+
+private struct GeminiDirectSSECandidate: Decodable {
+    var content: GeminiDirectSSEContent?
+}
+
+private struct GeminiDirectSSEContent: Decodable {
+    var parts: [GeminiDirectSSEPart]?
+}
+
+private struct GeminiDirectSSEPart: Decodable {
+    var text: String?
+}
+
+private struct GeminiDirectSSEError: Decodable {
+    var message: String?
 }
 
 private struct GeminiDirectRequestBody: Encodable {

@@ -91,7 +91,7 @@ public struct ChatCompletionsCompatibleRequestBuilder: Sendable {
         self.configuration = configuration
     }
 
-    public func makeRequest(apiKey: String?, prompt: PlanningPrompt) throws -> URLRequest {
+    public func makeRequest(apiKey: String?, prompt: PlanningPrompt, stream: Bool = false) throws -> URLRequest {
         let url = configuration.baseURL.appendingPathComponent("chat/completions")
         var request = URLRequest(url: url, timeoutInterval: configuration.timeoutInterval)
         request.httpMethod = "POST"
@@ -107,7 +107,7 @@ public struct ChatCompletionsCompatibleRequestBuilder: Sendable {
                 ChatCompletionsMessage(role: "system", content: prompt.system),
                 ChatCompletionsMessage(role: "user", content: prompt.user)
             ],
-            stream: false
+            stream: stream
         )
         request.httpBody = try JSONEncoder().encode(body)
 
@@ -176,7 +176,7 @@ public struct ChatCompletionsResponseMetadataExtractor: Sendable {
     }
 }
 
-public struct ChatCompletionsCompatibleProvider: LLMProvider {
+public struct ChatCompletionsCompatibleProvider: StreamingLLMProvider {
     public var providerID: String {
         configuration.providerID
     }
@@ -184,6 +184,7 @@ public struct ChatCompletionsCompatibleProvider: LLMProvider {
     private let configuration: ChatCompletionsCompatibleConfiguration
     private let secretStore: any SecretStore
     private let httpClient: any HTTPDataClient
+    private let byteStreamClient: any HTTPByteStreamClient
     private let promptBuilder: PlanningPromptBuilder?
     private let requestBuilder: ChatCompletionsCompatibleRequestBuilder
     private let outputTextExtractor: ChatCompletionsOutputTextExtractor
@@ -194,6 +195,7 @@ public struct ChatCompletionsCompatibleProvider: LLMProvider {
         configuration: ChatCompletionsCompatibleConfiguration,
         secretStore: any SecretStore,
         httpClient: any HTTPDataClient = URLSessionHTTPDataClient(),
+        byteStreamClient: any HTTPByteStreamClient = URLSessionHTTPByteStreamClient(),
         promptBuilder: PlanningPromptBuilder? = nil,
         outputTextExtractor: ChatCompletionsOutputTextExtractor = ChatCompletionsOutputTextExtractor(),
         metadataExtractor: ChatCompletionsResponseMetadataExtractor = ChatCompletionsResponseMetadataExtractor(),
@@ -202,6 +204,7 @@ public struct ChatCompletionsCompatibleProvider: LLMProvider {
         self.configuration = configuration
         self.secretStore = secretStore
         self.httpClient = httpClient
+        self.byteStreamClient = byteStreamClient
         self.promptBuilder = promptBuilder
         self.requestBuilder = ChatCompletionsCompatibleRequestBuilder(configuration: configuration)
         self.outputTextExtractor = outputTextExtractor
@@ -242,6 +245,86 @@ public struct ChatCompletionsCompatibleProvider: LLMProvider {
         )
     }
 
+    public func generatePlanStream(
+        for request: PlanningRequest,
+        onTextDelta: @escaping @Sendable (String) -> Void
+    ) async throws -> PlanningResponse {
+        let apiKey = try readAPIKey()
+        let prompt = try (promptBuilder ?? PlanningPromptBuilder.loadDefault()).buildPrompt(for: request)
+        let httpRequest = try requestBuilder.makeRequest(apiKey: apiKey, prompt: prompt, stream: true)
+
+        let lines: AsyncThrowingStream<String, Error>
+        let response: HTTPURLResponse
+        do {
+            (lines, response) = try await byteStreamClient.lines(for: httpRequest)
+        } catch let error as LLMProviderError {
+            throw error
+        } catch {
+            throw LLMProviderError.network(ProviderErrorMessageSanitizer.message(from: error))
+        }
+
+        guard (200..<300).contains(response.statusCode) else {
+            let body = try await collectBody(from: lines)
+            throw mapHTTPError(statusCode: response.statusCode, data: body)
+        }
+
+        var accumulated = ""
+        do {
+            deltaLoop: for try await line in lines {
+                guard let payload = ChatCompletionsSSEParser.dataPayload(from: line) else {
+                    continue
+                }
+                switch try ChatCompletionsSSEParser.parse(payload) {
+                case .textDelta(let text):
+                    accumulated += text
+                    onTextDelta(text)
+                case .error(let message):
+                    throw LLMProviderError.invalidResponse(message)
+                case .done:
+                    break deltaLoop
+                case .ignored:
+                    continue
+                }
+            }
+        } catch let error as LLMProviderError {
+            throw error
+        } catch {
+            throw LLMProviderError.network(ProviderErrorMessageSanitizer.message(from: error))
+        }
+
+        let rawContent = accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawContent.isEmpty else {
+            throw LLMProviderError.invalidResponse("Chat completion stream did not contain text content.")
+        }
+        // Streaming chunks do not carry a reliable usage envelope, so the
+        // receipt falls back to the configured model with unknown usage.
+        let metadata = metadataExtractor.extractMetadata(
+            from: Data(),
+            providerID: providerID,
+            fallbackModelName: configuration.model
+        )
+        return responseParser.parse(
+            rawContent: rawContent,
+            providerID: providerID,
+            model: metadata.model,
+            usage: metadata.usage
+        )
+    }
+
+    private func collectBody(from lines: AsyncThrowingStream<String, Error>) async throws -> Data {
+        var body = ""
+        do {
+            for try await line in lines {
+                body += line
+                body += "\n"
+            }
+        } catch {
+            // The error payload is best effort; status mapping proceeds with
+            // whatever body arrived before the connection failed.
+        }
+        return Data(body.utf8)
+    }
+
     private func readAPIKey() throws -> String? {
         guard let apiKeySecretKey = configuration.apiKeySecretKey else {
             return nil
@@ -279,6 +362,65 @@ private struct ChatCompletionsRequestBody: Encodable {
 private struct ChatCompletionsMessage: Codable {
     var role: String
     var content: String
+}
+
+enum ChatCompletionsSSEEvent: Equatable {
+    case textDelta(String)
+    case error(String)
+    case done
+    case ignored
+}
+
+enum ChatCompletionsSSEParser {
+    static func dataPayload(from line: String) -> String? {
+        guard line.hasPrefix("data:") else {
+            return nil
+        }
+        let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
+        guard !payload.isEmpty else {
+            return nil
+        }
+        return payload
+    }
+
+    static func parse(_ payload: String) throws -> ChatCompletionsSSEEvent {
+        // The terminal marker is not JSON, so it must short-circuit decoding.
+        guard payload != "[DONE]" else {
+            return .done
+        }
+
+        guard let data = payload.data(using: .utf8),
+              let envelope = try? JSONDecoder().decode(ChatCompletionsSSEEnvelope.self, from: data) else {
+            throw LLMProviderError.invalidResponse("Chat completion stream event could not be decoded.")
+        }
+
+        if let error = envelope.error {
+            let message = error.message ?? "Chat completion stream reported an error."
+            return .error(DeveloperSecretRedactor().redact(message).text)
+        }
+
+        guard let content = envelope.choices?.first?.delta?.content, !content.isEmpty else {
+            return .ignored
+        }
+        return .textDelta(content)
+    }
+}
+
+private struct ChatCompletionsSSEEnvelope: Decodable {
+    var choices: [ChatCompletionsSSEChoice]?
+    var error: ChatCompletionsSSEError?
+}
+
+private struct ChatCompletionsSSEChoice: Decodable {
+    var delta: ChatCompletionsSSEDelta?
+}
+
+private struct ChatCompletionsSSEDelta: Decodable {
+    var content: String?
+}
+
+private struct ChatCompletionsSSEError: Decodable {
+    var message: String?
 }
 
 private struct ChatCompletionsResponseBody: Decodable {
