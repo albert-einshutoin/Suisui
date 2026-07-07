@@ -26,3 +26,5 @@ __pycache__/
 /packaging/release-evidence.json
 *.local
 Package.resolved
+
+/.claude/

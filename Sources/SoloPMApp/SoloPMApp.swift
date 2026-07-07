@@ -413,6 +413,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.activate(ignoringOtherApps: true)
         SoloPMNotificationResponder.shared.install()
         DockTileBadgeController.shared.start()
+        DeadlineWatcherRuntime.shared.start()
         ensureProjectBoardWindowIsVisible()
         openSettingsWindowForEvidenceIfRequested()
         openVoiceCommandWindowForEvidenceIfRequested()

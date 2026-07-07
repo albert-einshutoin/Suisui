@@ -949,7 +949,19 @@ public enum CoreMigrations {
                     ON project_milestones(project_id, due_at IS NULL, due_at);
                     """
                 )
-            }
+            },
+            DatabaseMigration(id: "0020_create_morning_digest_state") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS morning_digest_state (
+                        id INTEGER PRIMARY KEY CHECK(id = 1),
+                        last_digest_day TEXT,
+                        recorded_at TEXT,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    """
+                )
+            },
         ]
     }
 }
