@@ -13,6 +13,7 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertTrue(script.contains("fixtures/mcp/stdio-fixture-server.mjs"))
         XCTAssertTrue(script.contains("docs/release/evidence/mcp-inspector.md"))
         XCTAssertTrue(script.contains("mcp_evidence_source_commit()"))
+        XCTAssertTrue(script.contains("Sources/SoloPMApp/Composition"))
         XCTAssertFalse(script.contains("Sources/SoloPMCore/ExternalMCP/ExternalMCPTestKit"))
     }
 
@@ -61,6 +62,7 @@ final class MCPInspectorEvidenceTests: XCTestCase {
             "--",
             "Sources/SoloPMCore/ExternalMCP",
             "Sources/SoloPMApp/SoloPMApp.swift",
+            "Sources/SoloPMApp/Composition",
             "fixtures/mcp",
             "Package.swift"
         )
