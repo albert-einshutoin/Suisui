@@ -895,6 +895,11 @@
 "Task Automation" = "タスク自動化";
 "Review task automation" = "タスク自動化を確認";
 "Review before execution" = "実行前に確認";
+"Automation mode" = "自動化モード";
+"Auto-create low-risk tasks" = "低リスクタスクを自動作成";
+"Auto-create runs a plan automatically only when it is a single low-risk task; everything else still requires review." = "自動作成は、単一の低リスクタスクのプランのみを自動実行します。それ以外は引き続きレビューが必要です。";
+"Task created" = "タスクを作成しました";
+"Deletes the automatically created task." = "自動作成されたタスクを削除します。";
 "Manual review" = "手動レビュー";
 "Hourly review" = "1時間ごとにレビュー";
 "Daily review" = "1日ごとにレビュー";

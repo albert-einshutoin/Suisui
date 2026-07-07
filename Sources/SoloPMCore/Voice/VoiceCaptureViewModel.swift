@@ -91,6 +91,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     @Published public private(set) var liveTranscript: String
     @Published public private(set) var liveIntentPreview: VoiceCommandRoutingResult?
     @Published public private(set) var workspaceAnswer: WorkspaceAnswerState = .idle
+    @Published public private(set) var autoCreatedTask: AutoCreatedTaskRecord?
 
     private var audioRecorder: any AudioRecorder
     private let sttProvider: any SpeechToTextProvider
@@ -107,6 +108,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private let managedCostRateCardProvider: @Sendable (PlanningResponse) -> AssistantQueueCostRateCard?
     private let workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])?
     private let workspaceAnswerReadout: (@Sendable (String) -> Void)?
+    private let taskAutomationSettingsProvider: (@Sendable () -> TaskAutoExecutionSettings)?
+    private let lowRiskTaskAutoExecutor: (@Sendable (ActionPlan) async throws -> LowRiskAutoCreationOutcome)?
+    private let taskDeleter: (@Sendable (Int64) throws -> Void)?
     private let lowLatencySegmentDuration: TimeInterval
     private let lowLatencySegmentOutputURLProvider: @Sendable () -> URL
     // Save-to-Inbox must be tied to the audio that produced the current
@@ -133,6 +137,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
         managedCostRateCardProvider: @escaping @Sendable (PlanningResponse) -> AssistantQueueCostRateCard? = { _ in nil },
         workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])? = nil,
         workspaceAnswerReadout: (@Sendable (String) -> Void)? = nil,
+        taskAutomationSettingsProvider: (@Sendable () -> TaskAutoExecutionSettings)? = nil,
+        lowRiskTaskAutoExecutor: (@Sendable (ActionPlan) async throws -> LowRiskAutoCreationOutcome)? = nil,
+        taskDeleter: (@Sendable (Int64) throws -> Void)? = nil,
         lowLatencySegmentDuration: TimeInterval = 1.2,
         lowLatencySegmentOutputURLProvider: @escaping @Sendable () -> URL = {
             FileManager.default.temporaryDirectory
@@ -155,6 +162,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.managedCostRateCardProvider = managedCostRateCardProvider
         self.workspaceContextRetriever = workspaceContextRetriever
         self.workspaceAnswerReadout = workspaceAnswerReadout
+        self.taskAutomationSettingsProvider = taskAutomationSettingsProvider
+        self.lowRiskTaskAutoExecutor = lowRiskTaskAutoExecutor
+        self.taskDeleter = taskDeleter
         self.lowLatencySegmentDuration = lowLatencySegmentDuration
         self.lowLatencySegmentOutputURLProvider = lowLatencySegmentOutputURLProvider
         self.recordingState = audioRecorder.state
@@ -230,6 +240,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         inboxTriageRequest = nil
         inboxCaptureResult = nil
         developmentPullRequestAutomationRequest = nil
+        autoCreatedTask = nil
         refreshRoutingResult()
         if shouldResetPhaseAfterDraftChange, runtimeValidationMessage == nil {
             phase = .idle
@@ -252,6 +263,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         lastTranscribedAudioURL = nil
         savedInboxAudioURL = nil
         developmentPullRequestAutomationRequest = nil
+        autoCreatedTask = nil
         workspaceAnswer = .idle
         recordingState = audioRecorder.state
         phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
@@ -1351,6 +1363,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
         developmentPullRequestAutomationRequest = nil
+        autoCreatedTask = nil
 
         do {
             try auditRecorder?.recordStarted(input: request.userInput, providerID: llmProvider.providerID)
@@ -1387,6 +1400,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 return
             }
             phase = response.validationResult.isValid ? .reviewReady : .failed("ActionPlan validation failed.")
+            if phase == .reviewReady {
+                await autoCreateLowRiskTaskIfEligible(from: response)
+            }
         } catch {
             guard isCurrentTranscript(plannedTranscript) else {
                 recordPlanningAudit {
@@ -1403,6 +1419,59 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 try auditRecorder?.recordFailed(input: request.userInput, providerID: llmProvider.providerID, error: error)
             }
             phase = .failed(userMessage(for: error))
+        }
+    }
+
+    /// Opt-in auto-creation of a single low-risk task. The plan already passed
+    /// validation and reached `.reviewReady`; when the user selected the
+    /// autoCreateLowRisk automation mode and the plan qualifies, run it through
+    /// the injected review execution pipeline (same executor, audit trail, and
+    /// receipts as a manual approval) and publish an undoable record.
+    private func autoCreateLowRiskTaskIfEligible(from response: PlanningResponse) async {
+        guard let taskAutomationSettingsProvider,
+              let lowRiskTaskAutoExecutor,
+              let plan = response.actionPlan else {
+            return
+        }
+        guard LowRiskAutoCreationPolicy.qualifies(
+            plan: plan,
+            validation: response.validationResult,
+            settings: taskAutomationSettingsProvider()
+        ) else {
+            return
+        }
+
+        do {
+            let outcome = try await lowRiskTaskAutoExecutor(plan)
+            guard let taskID = outcome.taskID else {
+                return
+            }
+            autoCreatedTask = AutoCreatedTaskRecord(taskID: taskID, title: outcome.taskTitle)
+        } catch {
+            // Auto-create is best effort: the plan itself stays reviewReady with
+            // the manual approval buttons as the fallback, so an execution
+            // failure must never turn a successful plan into a failed phase.
+            autoCreatedTask = nil
+        }
+    }
+
+    /// Post-hoc undo for an auto-created task. Deletion failures keep the
+    /// record so the user can retry, and surface through the existing
+    /// audit/error message channel.
+    public func undoAutoCreatedTask() {
+        guard let record = autoCreatedTask else {
+            return
+        }
+        guard let taskDeleter else {
+            auditErrorMessage = "Undo is unavailable because local data stores could not be opened."
+            return
+        }
+        do {
+            try taskDeleter(record.taskID)
+            autoCreatedTask = nil
+            auditErrorMessage = nil
+        } catch {
+            auditErrorMessage = userMessage(for: error)
         }
     }
 

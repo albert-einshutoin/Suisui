@@ -69,6 +69,7 @@ Out of scope (assumed trusted or handled elsewhere):
 | SQL injection via task/knowledge text | Parameterized SQL everywhere (`?` placeholders in all stores; enforced by database parameter-binding tests) |
 | Content leaks through side channels | Redaction before TTS, audit logging, and notifications; digest and weekly-review notifications are count-only by design |
 | Destructive automation (deletes, sends, pushes) | Review-before-write action plans; MVP safety boundaries in SECURITY.md forbid email/Slack sends, file deletion, and Git push |
+| Voice auto-create bypassing review | Opt-in Settings mode limited to one validated low-risk `task.create` per plan; execution goes through the same audited, receipted ActionExecutor as manual review; result is undoable from the voice window; destructive or external writes always stay pending approval |
 | Lock-screen exposure | Count-only notification bodies ("N overdue", "N completed this week"); titles and paths stay in the board UI |
 | Cloud operator reading synced content | E2EE sync design: `EncryptedSyncPayload` envelope, key IDs instead of key material, no plaintext domain payloads server-side |
 | Update tampering | Sparkle EdDSA-signed appcast; signing keys kept out of the repository |

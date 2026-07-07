@@ -2,11 +2,14 @@ import Foundation
 
 public enum TaskAutoExecutionMode: String, Codable, CaseIterable, Equatable, Sendable {
     case reviewOnly
+    case autoCreateLowRisk
 
     public var label: String {
         switch self {
         case .reviewOnly:
             "Review before execution"
+        case .autoCreateLowRisk:
+            "Auto-create low-risk tasks"
         }
     }
 }

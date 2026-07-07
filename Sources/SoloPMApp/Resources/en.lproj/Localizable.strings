@@ -895,6 +895,11 @@
 "Task Automation" = "Task Automation";
 "Review task automation" = "Review task automation";
 "Review before execution" = "Review before execution";
+"Automation mode" = "Automation mode";
+"Auto-create low-risk tasks" = "Auto-create low-risk tasks";
+"Auto-create runs a plan automatically only when it is a single low-risk task; everything else still requires review." = "Auto-create runs a plan automatically only when it is a single low-risk task; everything else still requires review.";
+"Task created" = "Task created";
+"Deletes the automatically created task." = "Deletes the automatically created task.";
 "Manual review" = "Manual review";
 "Hourly review" = "Hourly review";
 "Daily review" = "Daily review";

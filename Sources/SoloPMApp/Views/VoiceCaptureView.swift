@@ -341,6 +341,25 @@ struct VoiceCaptureView: View {
                 )
             }
 
+            if let autoCreatedTask = viewModel.autoCreatedTask {
+                VStack(alignment: .leading, spacing: SoloPMSpacing.xs) {
+                    Label("Task created", systemImage: "checkmark.circle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(verbatim: autoCreatedTask.title)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        viewModel.undoAutoCreatedTask()
+                    } label: {
+                        Label("Undo", systemImage: "arrow.uturn.backward")
+                    }
+                    .accessibilityIdentifier("voice-auto-created-undo")
+                    .accessibilityHint("Deletes the automatically created task.")
+                }
+                .soloCard()
+                .accessibilityIdentifier("voice-auto-created-banner")
+            }
+
             if let response = viewModel.planningResponse {
                 ActionPlanPreview(response: response)
                     .soloCard()
