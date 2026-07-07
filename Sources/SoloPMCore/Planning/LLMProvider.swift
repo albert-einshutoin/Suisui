@@ -6,6 +6,17 @@ public protocol LLMProvider: Sendable {
     func generatePlan(for request: PlanningRequest) async throws -> PlanningResponse
 }
 
+/// Providers that can report incremental raw-output text while a plan is
+/// being generated. The returned response must be equivalent to what
+/// `generatePlan(for:)` would have produced for the same request, so callers
+/// can treat streaming purely as a progress surface.
+public protocol StreamingLLMProvider: LLMProvider {
+    func generatePlanStream(
+        for request: PlanningRequest,
+        onTextDelta: @escaping @Sendable (String) -> Void
+    ) async throws -> PlanningResponse
+}
+
 public enum LLMProviderError: Error, Equatable, Sendable {
     case authenticationFailed
     case rateLimited

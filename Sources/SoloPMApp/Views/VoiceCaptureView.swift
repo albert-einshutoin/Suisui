@@ -63,6 +63,10 @@ struct VoiceCaptureView: View {
                     .foregroundStyle(SoloPMTone.attention.color)
             }
 
+            if viewModel.phase == .generatingPlan && !viewModel.planGenerationLiveText.isEmpty {
+                PlanGenerationLivePreview(text: viewModel.planGenerationLiveText)
+            }
+
             TextField(
                 "",
                 text: Binding(
@@ -258,6 +262,34 @@ struct VoiceCaptureView: View {
             object: nil,
             userInfo: [SoloPMAssistantQueueBridge.requestUserInfoKey: bridgeRequest]
         )
+    }
+}
+
+/// Tail of the provider's raw streamed output while a plan is generating,
+/// so the wait feels alive and obviously in progress. The full response is
+/// replaced by the structured plan preview once parsing completes.
+private struct PlanGenerationLivePreview: View {
+    let text: String
+
+    private var tailText: String {
+        String(text.suffix(600))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SoloPMSpacing.xs) {
+            Label("Drafting plan", systemImage: "sparkles")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(verbatim: tailText)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(6)
+                .truncationMode(.head)
+        }
+        .soloCard()
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("voice-plan-live-preview")
     }
 }
 

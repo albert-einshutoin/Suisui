@@ -67,6 +67,7 @@ public struct VoiceInboxTriageRequest: Equatable, Sendable, Identifiable {
 public final class VoiceCaptureViewModel: ObservableObject {
     @Published public private(set) var draft: TranscriptDraft
     @Published public private(set) var phase: VoiceCapturePhase
+    @Published public private(set) var planGenerationLiveText: String = ""
     @Published public private(set) var recordingState: AudioRecordingState
     @Published public private(set) var planningResponse: PlanningResponse?
     @Published public private(set) var recordedAudio: RecordedAudio?
@@ -1225,6 +1226,24 @@ public final class VoiceCaptureViewModel: ObservableObject {
         )
     }
 
+    /// Streams provider output into `planGenerationLiveText` when the
+    /// configured provider supports it; otherwise falls back to the
+    /// single-response path with identical results.
+    private func generatePlanResponse(for request: PlanningRequest) async throws -> PlanningResponse {
+        guard let streamingProvider = llmProvider as? StreamingLLMProvider else {
+            return try await llmProvider.generatePlan(for: request)
+        }
+
+        return try await streamingProvider.generatePlanStream(for: request) { [weak self] delta in
+            Task { @MainActor [weak self] in
+                guard let self, self.phase == .generatingPlan else {
+                    return
+                }
+                self.planGenerationLiveText += delta
+            }
+        }
+    }
+
     private func generatePlan(
         for routedCommand: VoiceCommandRoutingResult,
         plannedTranscript: String,
@@ -1242,6 +1261,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         )
 
         phase = .generatingPlan
+        planGenerationLiveText = ""
         auditErrorMessage = nil
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
@@ -1257,7 +1277,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
 
         do {
-            let response = try await llmProvider.generatePlan(for: request)
+            let response = try await generatePlanResponse(for: request)
             guard isCurrentTranscript(plannedTranscript) else {
                 recordPlanningAudit {
                     try auditRecorder?.recordFailed(
