@@ -138,8 +138,6 @@ struct CommandPaletteView: View {
         .accessibilityIdentifier("command-palette-row-\(item.id)")
     }
 
-    /// Static command titles route through localization; the create-task row
-    /// and project rows carry user-provided text and must render verbatim.
     private func rowTitle(for item: CommandPaletteItem) -> Text {
         switch item.kind {
         // Smart list names arrive pre-localized (presets) or user-provided

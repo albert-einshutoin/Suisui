@@ -5,8 +5,10 @@ final class GeminiDirectStreamingTests: XCTestCase {
     private struct StubByteStreamClient: HTTPByteStreamClient {
         var lines: [String]
         var statusCode: Int = 200
+        var onRequest: (@Sendable (URLRequest) -> Void)?
 
         func lines(for request: URLRequest) async throws -> (AsyncThrowingStream<String, Error>, HTTPURLResponse) {
+            onRequest?(request)
             let response = HTTPURLResponse(
                 url: request.url ?? URL(string: "https://generativelanguage.googleapis.com/v1beta")!,
                 statusCode: statusCode,
@@ -35,6 +37,23 @@ final class GeminiDirectStreamingTests: XCTestCase {
         }
 
         var deltas: [String] {
+            lock.lock()
+            defer { lock.unlock() }
+            return storage
+        }
+    }
+
+    private final class RequestRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var storage: URLRequest?
+
+        func record(_ request: URLRequest) {
+            lock.lock()
+            defer { lock.unlock() }
+            storage = request
+        }
+
+        var request: URLRequest? {
             lock.lock()
             defer { lock.unlock() }
             return storage
@@ -72,6 +91,74 @@ final class GeminiDirectStreamingTests: XCTestCase {
         )
         XCTAssertEqual(response.providerID, "gemini.direct")
         XCTAssertEqual(response.rawContent, recorder.deltas.joined())
+    }
+
+    func testStreamingSendsAvailableToolsAsGeminiFunctionDeclarations() async throws {
+        let requestRecorder = RequestRecorder()
+        let client = StubByteStreamClient(
+            lines: [
+                #"data: {"candidates":[{"content":{"parts":[{"text":"{\"plan_summary\": \"Ship notes\", \"risk_level\": \"write\", \"actions\": []}"}]},"finishReason":"STOP"}]}"#
+            ],
+            onRequest: { requestRecorder.record($0) }
+        )
+        let provider = makeProvider(client: client)
+
+        _ = try await provider.generatePlanStream(
+            for: PlanningRequest(
+                userInput: "Create a task to ship the release notes tomorrow.",
+                availableTools: [.taskCreate]
+            )
+        ) { _ in }
+
+        let body = try XCTUnwrap(requestRecorder.request?.httpBody)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let generationConfig = try XCTUnwrap(object["generationConfig"] as? [String: Any])
+        let tools = try XCTUnwrap(object["tools"] as? [[String: Any]])
+        let firstTool = try XCTUnwrap(tools.first)
+        let declarations = try XCTUnwrap(firstTool["functionDeclarations"] as? [[String: Any]])
+        let names = declarations.compactMap { $0["name"] as? String }
+
+        XCTAssertNil(generationConfig["responseMimeType"])
+        XCTAssertEqual(names, ["task_create"])
+    }
+
+    func testStreamingMapsGeminiFunctionCallsToActionPlan() async throws {
+        let client = StubByteStreamClient(lines: [
+            """
+            data: {"candidates":[{"content":{"parts":[{"functionCall":{"id":"call-1","name":"task_create","args":{"title":"Review MCP bridge","priority":"high"}}}]},"finishReason":"STOP"}]}
+            """
+        ])
+        let provider = makeProvider(client: client)
+        let recorder = DeltaRecorder()
+
+        let response = try await provider.generatePlanStream(
+            for: PlanningRequest(
+                userInput: "MCP bridge review taskを作って",
+                availableTools: [.taskCreate]
+            )
+        ) { delta in
+            recorder.append(delta)
+        }
+
+        XCTAssertTrue(recorder.deltas.isEmpty)
+        XCTAssertEqual(response.providerID, "gemini.direct")
+        XCTAssertTrue(response.validationResult.isValid)
+        XCTAssertEqual(response.actionPlan?.id, "gemini-function-plan")
+        XCTAssertEqual(response.actionPlan?.requiresApproval, true)
+        XCTAssertEqual(response.actionPlan?.riskLevel, .write)
+        XCTAssertEqual(response.actionPlan?.summary, "Create task: Review MCP bridge")
+        XCTAssertEqual(response.actionPlan?.actions, [
+            PlanAction(
+                id: "call-1",
+                tool: .taskCreate,
+                arguments: [
+                    "title": .string("Review MCP bridge"),
+                    "priority": .string("high")
+                ],
+                riskLevel: .write,
+                requiresUserConfirmation: false
+            )
+        ])
     }
 
     func testStreamingIgnoresPromptFeedbackAndEmptyCandidateChunks() async throws {

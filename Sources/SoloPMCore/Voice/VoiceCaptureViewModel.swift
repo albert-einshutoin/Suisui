@@ -1390,6 +1390,11 @@ public final class VoiceCaptureViewModel: ObservableObject {
             recordPlanningAudit {
                 try auditRecorder?.recordCompleted(response: response)
             }
+            phase = response.validationResult.isValid ? .reviewReady : .failed("ActionPlan validation failed.")
+            if phase == .reviewReady,
+               await autoCreateLowRiskTaskIfEligible(from: response) {
+                return
+            }
             do {
                 if let queueItem = makeAssistantQueueItem(from: response, routedCommand: routedCommand) {
                     assistantQueueItem = try persistAssistantQueueItemIfNeeded(queueItem)
@@ -1398,10 +1403,6 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 assistantQueueItem = nil
                 phase = .failed(userMessage(for: error))
                 return
-            }
-            phase = response.validationResult.isValid ? .reviewReady : .failed("ActionPlan validation failed.")
-            if phase == .reviewReady {
-                await autoCreateLowRiskTaskIfEligible(from: response)
             }
         } catch {
             guard isCurrentTranscript(plannedTranscript) else {
@@ -1427,31 +1428,33 @@ public final class VoiceCaptureViewModel: ObservableObject {
     /// autoCreateLowRisk automation mode and the plan qualifies, run it through
     /// the injected review execution pipeline (same executor, audit trail, and
     /// receipts as a manual approval) and publish an undoable record.
-    private func autoCreateLowRiskTaskIfEligible(from response: PlanningResponse) async {
+    private func autoCreateLowRiskTaskIfEligible(from response: PlanningResponse) async -> Bool {
         guard let taskAutomationSettingsProvider,
               let lowRiskTaskAutoExecutor,
               let plan = response.actionPlan else {
-            return
+            return false
         }
         guard LowRiskAutoCreationPolicy.qualifies(
             plan: plan,
             validation: response.validationResult,
             settings: taskAutomationSettingsProvider()
         ) else {
-            return
+            return false
         }
 
         do {
             let outcome = try await lowRiskTaskAutoExecutor(plan)
             guard let taskID = outcome.taskID else {
-                return
+                return false
             }
             autoCreatedTask = AutoCreatedTaskRecord(taskID: taskID, title: outcome.taskTitle)
+            return true
         } catch {
             // Auto-create is best effort: the plan itself stays reviewReady with
             // the manual approval buttons as the fallback, so an execution
             // failure must never turn a successful plan into a failed phase.
             autoCreatedTask = nil
+            return false
         }
     }
 

@@ -108,12 +108,12 @@ public enum QuickAddDueDateParser {
             pattern("明日") { _, _ in .offset(1) },
             pattern("今日|本日") { _, _ in .offset(0) },
             pattern("今晩|今夜") { _, _ in .offsetEvening(0) },
-            pattern("来週([月火水木金土日])曜日?") { match, text in
+            pattern("来週([月火水木金土日])曜(?:日)?") { match, text in
                 let symbol = text.substring(with: match.range(at: 1)).first
                 return .nextWeekWeekday(symbol.flatMap { japaneseWeekdays[$0] } ?? 2)
             },
             pattern("来週") { _, _ in .nextWeekWeekday(2) },
-            pattern("([月火水木金土日])曜日?") { match, text in
+            pattern("([月火水木金土日])曜(?:日)?") { match, text in
                 let symbol = text.substring(with: match.range(at: 1)).first
                 return .upcomingWeekday(symbol.flatMap { japaneseWeekdays[$0] } ?? 2)
             },

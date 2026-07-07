@@ -253,11 +253,13 @@ public struct GeminiDirectProvider: StreamingLLMProvider {
             throw LLMProviderError.authenticationFailed
         }
 
-        // Streaming surfaces incremental JSON text, so the request omits
-        // function declarations; declared tools could make Gemini answer with
-        // functionCall parts that carry no streamable text.
         let prompt = try (promptBuilder ?? PlanningPromptBuilder.loadDefault()).buildPrompt(for: request)
-        let httpRequest = try requestBuilder.makeRequest(apiKey: apiKey, prompt: prompt, stream: true)
+        let httpRequest = try requestBuilder.makeRequest(
+            apiKey: apiKey,
+            prompt: prompt,
+            availableTools: request.availableTools,
+            stream: true
+        )
 
         let lines: AsyncThrowingStream<String, Error>
         let response: HTTPURLResponse
@@ -275,6 +277,7 @@ public struct GeminiDirectProvider: StreamingLLMProvider {
         }
 
         var accumulated = ""
+        var functionCalls: [GeminiDirectFunctionCall] = []
         do {
             for try await line in lines {
                 guard let payload = GeminiDirectSSEParser.dataPayload(from: line) else {
@@ -284,6 +287,8 @@ public struct GeminiDirectProvider: StreamingLLMProvider {
                 case .textDelta(let text):
                     accumulated += text
                     onTextDelta(text)
+                case .functionCalls(let calls):
+                    functionCalls.append(contentsOf: calls)
                 case .error(let message):
                     throw LLMProviderError.invalidResponse(message)
                 case .ignored:
@@ -296,9 +301,17 @@ public struct GeminiDirectProvider: StreamingLLMProvider {
             throw LLMProviderError.network(ProviderErrorMessageSanitizer.message(from: error))
         }
 
-        let rawContent = accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !rawContent.isEmpty else {
-            throw LLMProviderError.invalidResponse("Gemini Direct stream did not contain text content.")
+        let rawContent: String
+        if functionCalls.isEmpty {
+            rawContent = accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rawContent.isEmpty else {
+                throw LLMProviderError.invalidResponse("Gemini Direct stream did not contain text content.")
+            }
+        } else {
+            rawContent = try GeminiDirectFunctionCallActionPlanMapper().rawActionPlan(
+                from: functionCalls,
+                request: request
+            )
         }
         return responseParser.parse(rawContent: rawContent, providerID: providerID)
     }
@@ -400,13 +413,14 @@ extension GeminiDirectProvider: AnswerGeneratingLLMProvider {
     }
 }
 
-enum GeminiDirectSSEEvent: Equatable {
+private enum GeminiDirectSSEEvent: Equatable {
     case textDelta(String)
+    case functionCalls([GeminiDirectFunctionCall])
     case error(String)
     case ignored
 }
 
-enum GeminiDirectSSEParser {
+private enum GeminiDirectSSEParser {
     static func dataPayload(from line: String) -> String? {
         guard line.hasPrefix("data:") else {
             return nil
@@ -431,7 +445,12 @@ enum GeminiDirectSSEParser {
 
         // Chunks that only carry promptFeedback or empty candidates are
         // progress noise rather than text output.
-        let text = (envelope.candidates?.first?.content?.parts ?? [])
+        let parts = envelope.candidates?.first?.content?.parts ?? []
+        let functionCalls = parts.compactMap(\.functionCall)
+        if !functionCalls.isEmpty {
+            return .functionCalls(functionCalls)
+        }
+        let text = parts
             .compactMap(\.text)
             .joined()
         guard !text.isEmpty else {
@@ -456,6 +475,7 @@ private struct GeminiDirectSSEContent: Decodable {
 
 private struct GeminiDirectSSEPart: Decodable {
     var text: String?
+    var functionCall: GeminiDirectFunctionCall?
 }
 
 private struct GeminiDirectSSEError: Decodable {
@@ -507,7 +527,7 @@ private struct GeminiDirectCandidate: Decodable {
     var finishReason: String?
 }
 
-private struct GeminiDirectFunctionCall: Codable {
+private struct GeminiDirectFunctionCall: Codable, Equatable {
     var id: String?
     var name: String
     var args: [String: JSONValue]?

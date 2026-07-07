@@ -136,6 +136,16 @@ final class QuickAddDueDateParserTests: XCTestCase {
         XCTAssertEqual(result.title, "update satellite dashboard")
     }
 
+    func testJapaneseWeekdayCharactersInsidePlainTitlesDoNotTrigger() {
+        for title in ["月次レポート", "日報を書く", "金額確認", "水準を確認"] {
+            let result = parse(title)
+
+            XCTAssertNil(result.dueAt, title)
+            XCTAssertNil(result.matchedPhrase, title)
+            XCTAssertEqual(result.title, title)
+        }
+    }
+
     @MainActor
     func testQuickCaptureControllerAppliesParsedDueDate() throws {
         let connection = try SQLiteConnection(path: ":memory:")

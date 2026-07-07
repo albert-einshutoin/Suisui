@@ -158,6 +158,7 @@ final class LowRiskAutoCreationTests: XCTestCase {
         XCTAssertEqual(viewModel.autoCreatedTask, AutoCreatedTaskRecord(taskID: 42, title: "Buy stamps"))
         XCTAssertEqual(viewModel.phase, .reviewReady)
         XCTAssertEqual(viewModel.planningResponse?.actionPlan?.id, "plan-auto")
+        XCTAssertNil(viewModel.assistantQueueItem)
     }
 
     func testReviewOnlyModeNeverCallsExecutor() async {
@@ -177,6 +178,7 @@ final class LowRiskAutoCreationTests: XCTestCase {
         XCTAssertTrue(recorder.executedPlans.isEmpty)
         XCTAssertNil(viewModel.autoCreatedTask)
         XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertEqual(viewModel.assistantQueueItem?.state, .waitingReview)
     }
 
     func testExecutorFailureFallsBackToManualReviewWithoutFailingPlan() async {
@@ -194,6 +196,7 @@ final class LowRiskAutoCreationTests: XCTestCase {
         XCTAssertNil(viewModel.autoCreatedTask)
         XCTAssertEqual(viewModel.phase, .reviewReady)
         XCTAssertEqual(viewModel.planningResponse?.actionPlan?.id, "plan-auto")
+        XCTAssertEqual(viewModel.assistantQueueItem?.state, .waitingReview)
     }
 
     func testOutcomeWithoutTaskIDDoesNotPublishUndoableRecord() async {
@@ -210,6 +213,7 @@ final class LowRiskAutoCreationTests: XCTestCase {
 
         XCTAssertNil(viewModel.autoCreatedTask)
         XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertEqual(viewModel.assistantQueueItem?.state, .waitingReview)
     }
 
     func testUndoAutoCreatedTaskCallsDeleterAndClearsRecord() async {
@@ -298,7 +302,7 @@ final class LowRiskAutoCreationTests: XCTestCase {
 
     func testLegacyReviewOnlySettingsStillDecode() throws {
         let legacyJSON = """
-        {"isEnabled":true,"mode":"reviewOnly","cadence":"manual","maxTasksPerRun":3,"dailyLLMCallLimit":6,"lookaheadHours":48}
+        {"isEnabled":true,"cadence":"manual","maxTasksPerRun":3,"dailyLLMCallLimit":6,"lookaheadHours":48}
         """
         let decoded = try JSONDecoder().decode(TaskAutoExecutionSettings.self, from: Data(legacyJSON.utf8))
 
