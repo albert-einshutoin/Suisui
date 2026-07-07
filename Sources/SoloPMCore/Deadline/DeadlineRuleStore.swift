@@ -22,15 +22,16 @@ public final class SQLiteDeadlineRuleStore: @unchecked Sendable {
               muted_at,
               last_notified_at
             )
-            VALUES (
-              '\(SQL.escape(rule.target.targetType))',
-              \(rule.target.targetID),
-              '\(SQL.escape(rule.kind.rawValue))',
-              \(SQL.optionalDate(rule.customNotifyAt)),
-              \(SQL.optionalDate(rule.mutedAt)),
-              \(SQL.optionalDate(rule.lastNotifiedAt))
-            );
-            """
+            VALUES (?, ?, ?, ?, ?, ?);
+            """,
+            parameters: [
+                .text(rule.target.targetType),
+                .integer(rule.target.targetID),
+                .text(rule.kind.rawValue),
+                SQLiteValue(rule.customNotifyAt.map { DeadlineDateParser.string(from: $0) }),
+                SQLiteValue(rule.mutedAt.map { DeadlineDateParser.string(from: $0) }),
+                SQLiteValue(rule.lastNotifiedAt.map { DeadlineDateParser.string(from: $0) })
+            ]
         )
 
         return try getLocked(id: connection.lastInsertedRowID)
@@ -52,9 +53,10 @@ public final class SQLiteDeadlineRuleStore: @unchecked Sendable {
         return try connection.queryRows(
             """
             SELECT * FROM deadline_rules
-            WHERE target_type = '\(SQL.escape(target.targetType))' AND target_id = \(target.targetID)
+            WHERE target_type = ? AND target_id = ?
             ORDER BY id ASC;
-            """
+            """,
+            parameters: [.text(target.targetType), .integer(target.targetID)]
         ).map { try DeadlineRule(row: $0) }
     }
 
@@ -65,10 +67,11 @@ public final class SQLiteDeadlineRuleStore: @unchecked Sendable {
         try connection.execute(
             """
             UPDATE deadline_rules
-            SET last_notified_at = '\(SQL.escape(DeadlineDateParser.string(from: notifiedAt)))',
+            SET last_notified_at = ?,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = \(id);
-            """
+            WHERE id = ?;
+            """,
+            parameters: [.text(DeadlineDateParser.string(from: notifiedAt)), .integer(id)]
         )
         return try getLocked(id: id)
     }
@@ -81,7 +84,7 @@ public final class SQLiteDeadlineRuleStore: @unchecked Sendable {
 
     private func getLocked(id: Int64) throws -> DeadlineRule {
         guard let row = try connection
-            .queryRows("SELECT * FROM deadline_rules WHERE id = \(id) LIMIT 1;")
+            .queryRows("SELECT * FROM deadline_rules WHERE id = ? LIMIT 1;", parameters: [.integer(id)])
             .first else {
             throw DatabaseError.stepFailed("Deadline rule \(id) was not found.")
         }
@@ -115,18 +118,6 @@ private extension DeadlineRule {
 }
 
 private enum SQL {
-    static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
-    }
-
-    static func optionalDate(_ value: Date?) -> String {
-        guard let value else {
-            return "NULL"
-        }
-
-        return "'\(escape(DeadlineDateParser.string(from: value)))'"
-    }
-
     static func optionalDate(_ value: String?, column: String) throws -> Date? {
         guard let value, !value.isEmpty else {
             return nil

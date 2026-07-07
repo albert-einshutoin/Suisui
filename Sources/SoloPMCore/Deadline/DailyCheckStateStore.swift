@@ -32,17 +32,12 @@ public final class SQLiteDailyCheckStateStore: DailyCheckStateStore, @unchecked 
         try connection.execute(
             """
             INSERT INTO daily_check_state (id, last_run_at, updated_at)
-            VALUES (1, '\(SQL.escape(DeadlineDateParser.string(from: date)))', CURRENT_TIMESTAMP)
+            VALUES (1, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               last_run_at = excluded.last_run_at,
               updated_at = CURRENT_TIMESTAMP;
-            """
+            """,
+            parameters: [.text(DeadlineDateParser.string(from: date))]
         )
-    }
-}
-
-private enum SQL {
-    static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
     }
 }

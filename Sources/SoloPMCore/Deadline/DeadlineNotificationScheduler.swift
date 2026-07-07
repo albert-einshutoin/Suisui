@@ -81,12 +81,21 @@ public final class DeadlineNotificationScheduler: @unchecked Sendable {
                 )
             }
 
+            // Task deadlines carry an actionable category so the user can
+            // complete or snooze straight from the delivered notification.
+            let isTaskItem = item.kind == .task
             let record = try notificationClient.schedule(
                 NotificationDraft(
                     title: "Deadline: \(item.title)",
                     body: makeBody(item: item, openTasks: openTasks),
                     scheduledAt: scheduledAt,
-                    identifierHint: idempotencyKey
+                    identifierHint: idempotencyKey,
+                    categoryIdentifier: isTaskItem
+                        ? DeadlineNotificationInteraction.taskCategoryIdentifier
+                        : nil,
+                    userInfo: isTaskItem
+                        ? [DeadlineNotificationInteraction.taskIDUserInfoKey: String(item.id)]
+                        : [:]
                 )
             )
 

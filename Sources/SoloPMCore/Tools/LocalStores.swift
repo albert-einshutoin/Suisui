@@ -212,19 +212,20 @@ public final class SQLiteExternalTaskLinkStore: ExternalTaskLinkStore, @unchecke
         try connection.execute(
             """
             INSERT INTO external_task_links (provider_id, external_id, task_id, project_id, title)
-            VALUES (
-              '\(SQL.escape(normalizedProviderID))',
-              '\(SQL.escape(normalizedExternalID))',
-              \(taskID),
-              \(projectID.map(String.init) ?? "NULL"),
-              \(SQL.optional(title))
-            )
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(provider_id, external_id) DO UPDATE SET
               task_id = excluded.task_id,
               project_id = excluded.project_id,
               title = excluded.title,
               updated_at = CURRENT_TIMESTAMP;
-            """
+            """,
+            parameters: [
+                .text(normalizedProviderID),
+                .text(normalizedExternalID),
+                .integer(taskID),
+                SQLiteValue(projectID),
+                SQLiteValue(title)
+            ]
         )
 
         return try getLocked(providerID: normalizedProviderID, externalID: normalizedExternalID)
@@ -237,10 +238,11 @@ public final class SQLiteExternalTaskLinkStore: ExternalTaskLinkStore, @unchecke
         return try connection.queryRows(
             """
             SELECT * FROM external_task_links
-            WHERE provider_id = '\(SQL.escape(providerID))'
-              AND external_id = '\(SQL.escape(externalID))'
+            WHERE provider_id = ?
+              AND external_id = ?
             LIMIT 1;
-            """
+            """,
+            parameters: [.text(providerID), .text(externalID)]
         ).first.map(ExternalTaskLinkRecord.init(row:))
     }
 
@@ -253,14 +255,15 @@ public final class SQLiteExternalTaskLinkStore: ExternalTaskLinkStore, @unchecke
             return []
         }
 
-        let taskIDList = uniqueTaskIDs.map(String.init).joined(separator: ", ")
+        let placeholders = Array(repeating: "?", count: uniqueTaskIDs.count).joined(separator: ", ")
         return try connection.queryRows(
             """
             SELECT * FROM external_task_links
-            WHERE provider_id = '\(SQL.escape(providerID))'
-              AND task_id IN (\(taskIDList))
+            WHERE provider_id = ?
+              AND task_id IN (\(placeholders))
             ORDER BY id ASC;
-            """
+            """,
+            parameters: [.text(providerID)] + uniqueTaskIDs.map(SQLiteValue.integer)
         ).map(ExternalTaskLinkRecord.init(row:))
     }
 
@@ -273,18 +276,17 @@ public final class SQLiteExternalTaskLinkStore: ExternalTaskLinkStore, @unchecke
             return []
         }
 
-        let inClause = uniqueExternalIDs
-            .sorted()
-            .map { "'\(SQL.escape($0))'" }
-            .joined(separator: ", ")
+        let sortedExternalIDs = uniqueExternalIDs.sorted()
+        let placeholders = Array(repeating: "?", count: sortedExternalIDs.count).joined(separator: ", ")
 
         return try connection.queryRows(
             """
             SELECT * FROM external_task_links
-            WHERE provider_id = '\(SQL.escape(providerID))'
-              AND external_id IN (\(inClause))
+            WHERE provider_id = ?
+              AND external_id IN (\(placeholders))
             ORDER BY id ASC;
-            """
+            """,
+            parameters: [.text(providerID)] + sortedExternalIDs.map(SQLiteValue.text)
         ).map(ExternalTaskLinkRecord.init(row:))
     }
 
@@ -295,10 +297,11 @@ public final class SQLiteExternalTaskLinkStore: ExternalTaskLinkStore, @unchecke
         return try connection.queryRows(
             """
             SELECT * FROM external_task_links
-            WHERE provider_id = '\(SQL.escape(providerID))'
-              AND task_id = \(taskID)
+            WHERE provider_id = ?
+              AND task_id = ?
             LIMIT 1;
-            """
+            """,
+            parameters: [.text(providerID), .integer(taskID)]
         ).first.map(ExternalTaskLinkRecord.init(row:))
     }
 
@@ -313,10 +316,11 @@ public final class SQLiteExternalTaskLinkStore: ExternalTaskLinkStore, @unchecke
         guard let row = try connection.queryRows(
             """
             SELECT * FROM external_task_links
-            WHERE provider_id = '\(SQL.escape(providerID))'
-              AND external_id = '\(SQL.escape(externalID))'
+            WHERE provider_id = ?
+              AND external_id = ?
             LIMIT 1;
-            """
+            """,
+            parameters: [.text(providerID), .text(externalID)]
         ).first else {
             throw DatabaseError.stepFailed("External task link \(providerID):\(externalID) was not found.")
         }
@@ -368,17 +372,17 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         try connection.execute(
             """
             INSERT INTO projects (title, status, priority, deadline, workspace_path, workspace_bookmark, tags_json, source_command)
-            VALUES (
-              '\(SQL.escape(normalizedTitle))',
-              'active',
-              \(SQL.optional(priority)),
-              \(SQL.optional(deadline)),
-              \(SQL.optional(workspacePath)),
-              \(SQL.optional(workspaceBookmarkData?.base64EncodedString())),
-              '\(SQL.escape(tagsJSON))',
-              \(SQL.optional(sourceCommand))
-            );
-            """
+            VALUES (?, 'active', ?, ?, ?, ?, ?, ?);
+            """,
+            parameters: [
+                .text(normalizedTitle),
+                SQLiteValue(priority),
+                SQLiteValue(deadline),
+                SQLiteValue(workspacePath),
+                SQLiteValue(workspaceBookmarkData?.base64EncodedString()),
+                .text(tagsJSON),
+                SQLiteValue(sourceCommand)
+            ]
         )
 
         return try getLocked(id: connection.lastInsertedRowID)
@@ -396,10 +400,11 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         try connection.execute(
             """
             UPDATE projects
-            SET title = '\(SQL.escape(normalizedTitle))',
+            SET title = ?,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = \(id);
-            """
+            WHERE id = ?;
+            """,
+            parameters: [.text(normalizedTitle), .integer(id)]
         )
         return try getForProjectBoardLocked(id: id)
     }
@@ -412,10 +417,11 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         try connection.execute(
             """
             UPDATE projects
-            SET status = '\(SQL.escape(normalizedStatus))',
+            SET status = ?,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = \(id);
-            """
+            WHERE id = ?;
+            """,
+            parameters: [.text(normalizedStatus), .integer(id)]
         )
         return try getForProjectBoardLocked(id: id)
     }
@@ -434,20 +440,24 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         defer { lock.unlock() }
 
         var assignments: [String] = []
+        var parameters: [SQLiteValue] = []
         if let title {
             let normalizedTitle = try StoreFieldValidation.requiredTrimmed(title, argument: "title", tool: .projectUpdate)
-            assignments.append("title = '\(SQL.escape(normalizedTitle))'")
+            assignments.append("title = ?")
+            parameters.append(.text(normalizedTitle))
         }
         if let status {
             let normalizedStatus = try StoreFieldValidation.projectStatus(status, tool: .projectUpdate)
-            assignments.append("status = '\(SQL.escape(normalizedStatus))'")
+            assignments.append("status = ?")
+            parameters.append(.text(normalizedStatus))
         }
         switch priority {
         case .unchanged:
             break
         case .set(let priority):
             let normalizedPriority = try StoreFieldValidation.requiredTrimmed(priority, argument: "priority", tool: .projectUpdate)
-            assignments.append("priority = '\(SQL.escape(normalizedPriority))'")
+            assignments.append("priority = ?")
+            parameters.append(.text(normalizedPriority))
         case .clear:
             assignments.append("priority = NULL")
         }
@@ -456,7 +466,8 @@ public final class SQLiteProjectStore: @unchecked Sendable {
             break
         case .set(let deadline):
             let normalizedDeadline = try StoreFieldValidation.requiredTrimmed(deadline, argument: "deadline", tool: .projectUpdate)
-            assignments.append("deadline = '\(SQL.escape(normalizedDeadline))'")
+            assignments.append("deadline = ?")
+            parameters.append(.text(normalizedDeadline))
         case .clear:
             assignments.append("deadline = NULL")
         }
@@ -465,7 +476,8 @@ public final class SQLiteProjectStore: @unchecked Sendable {
             break
         case .set(let workspacePath):
             let normalizedWorkspacePath = try StoreFieldValidation.requiredTrimmed(workspacePath, argument: "workspacePath", tool: .projectUpdate)
-            assignments.append("workspace_path = '\(SQL.escape(normalizedWorkspacePath))'")
+            assignments.append("workspace_path = ?")
+            parameters.append(.text(normalizedWorkspacePath))
         case .clear:
             assignments.append("workspace_path = NULL")
         }
@@ -473,7 +485,8 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         case .unchanged:
             break
         case .set(let workspaceBookmarkData):
-            assignments.append("workspace_bookmark = '\(SQL.escape(workspaceBookmarkData.base64EncodedString()))'")
+            assignments.append("workspace_bookmark = ?")
+            parameters.append(.text(workspaceBookmarkData.base64EncodedString()))
         case .clear:
             assignments.append("workspace_bookmark = NULL")
         }
@@ -483,13 +496,17 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         case .set(let tags):
             let normalizedTags = try StoreFieldValidation.trimmedStringArray(tags, argument: "tags", tool: .projectUpdate)
             let tagsJSON = try SQL.jsonArray(normalizedTags, column: "projects.tags_json")
-            assignments.append("tags_json = '\(SQL.escape(tagsJSON))'")
+            assignments.append("tags_json = ?")
+            parameters.append(.text(tagsJSON))
         case .clear:
             assignments.append("tags_json = '[]'")
         }
         assignments.append("updated_at = CURRENT_TIMESTAMP")
 
-        try connection.execute("UPDATE projects SET \(assignments.joined(separator: ", ")) WHERE id = \(id);")
+        try connection.execute(
+            "UPDATE projects SET \(assignments.joined(separator: ", ")) WHERE id = ?;",
+            parameters: parameters + [.integer(id)]
+        )
         return try getLocked(id: id)
     }
 
@@ -511,8 +528,9 @@ public final class SQLiteProjectStore: @unchecked Sendable {
                 UPDATE projects
                 SET status = 'completed',
                     updated_at = CURRENT_TIMESTAMP
-                WHERE id = \(id);
-                """
+                WHERE id = ?;
+                """,
+                parameters: [.integer(id)]
             )
             let record = try getForProjectBoardLocked(id: id)
             _ = try taskStore.completeOpenTasks(projectID: id)
@@ -530,8 +548,9 @@ public final class SQLiteProjectStore: @unchecked Sendable {
                 UPDATE projects
                 SET status = 'completed',
                     updated_at = CURRENT_TIMESTAMP
-                WHERE id = \(id);
-                """
+                WHERE id = ?;
+                """,
+                parameters: [.integer(id)]
             )
             let record = try getLocked(id: id)
             _ = try taskStore.completeOpenTasks(projectID: id)
@@ -545,28 +564,32 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         defer { lock.unlock() }
 
         let project = try getLocked(id: id)
-        let childTaskPredicate = "project_id = \(id)"
-        let linkedProjectOrTaskPredicate = "project_id = \(id) OR task_id IN (SELECT id FROM tasks WHERE project_id = \(id))"
-        let taskDeadlinePredicate = "target_type = 'task' AND target_id IN (SELECT id FROM tasks WHERE project_id = \(id))"
-        let projectDeadlinePredicate = "target_type = 'project' AND target_id = \(id)"
+        let childTaskPredicate = "project_id = ?"
+        let childTaskParameters: [SQLiteValue] = [.integer(id)]
+        let linkedProjectOrTaskPredicate = "project_id = ? OR task_id IN (SELECT id FROM tasks WHERE project_id = ?)"
+        let linkedProjectOrTaskParameters: [SQLiteValue] = [.integer(id), .integer(id)]
+        let taskDeadlinePredicate = "target_type = 'task' AND target_id IN (SELECT id FROM tasks WHERE project_id = ?)"
+        let projectDeadlinePredicate = "target_type = 'project' AND target_id = ?"
+        let deadlineParameters: [SQLiteValue] = [.integer(id), .integer(id)]
         let artifactPredicate = linkedProjectOrTaskPredicate
+        let artifactParameters = linkedProjectOrTaskParameters
 
         let result = try ProjectDeletionResult(
             project: project,
-            deletedTaskCount: rowCountLocked(table: "tasks", where: childTaskPredicate),
-            deletedCalendarLinkCount: rowCountIfTableExistsLocked(table: "calendar_links", where: linkedProjectOrTaskPredicate),
-            deletedReminderLinkCount: rowCountIfTableExistsLocked(table: "reminder_links", where: linkedProjectOrTaskPredicate),
-            deletedDeadlineRuleCount: rowCountIfTableExistsLocked(table: "deadline_rules", where: "(\(projectDeadlinePredicate)) OR (\(taskDeadlinePredicate))"),
-            deletedArtifactCount: rowCountIfTableExistsLocked(table: "artifacts", where: artifactPredicate)
+            deletedTaskCount: rowCountLocked(table: "tasks", where: childTaskPredicate, parameters: childTaskParameters),
+            deletedCalendarLinkCount: rowCountIfTableExistsLocked(table: "calendar_links", where: linkedProjectOrTaskPredicate, parameters: linkedProjectOrTaskParameters),
+            deletedReminderLinkCount: rowCountIfTableExistsLocked(table: "reminder_links", where: linkedProjectOrTaskPredicate, parameters: linkedProjectOrTaskParameters),
+            deletedDeadlineRuleCount: rowCountIfTableExistsLocked(table: "deadline_rules", where: "(\(projectDeadlinePredicate)) OR (\(taskDeadlinePredicate))", parameters: deadlineParameters),
+            deletedArtifactCount: rowCountIfTableExistsLocked(table: "artifacts", where: artifactPredicate, parameters: artifactParameters)
         )
 
         try connection.transaction {
-            try deleteRowsIfTableExistsLocked(table: "calendar_links", where: linkedProjectOrTaskPredicate)
-            try deleteRowsIfTableExistsLocked(table: "reminder_links", where: linkedProjectOrTaskPredicate)
-            try deleteRowsIfTableExistsLocked(table: "deadline_rules", where: "(\(projectDeadlinePredicate)) OR (\(taskDeadlinePredicate))")
-            try deleteRowsIfTableExistsLocked(table: "artifacts", where: artifactPredicate)
-            try connection.execute("DELETE FROM tasks WHERE \(childTaskPredicate);")
-            try connection.execute("DELETE FROM projects WHERE id = \(id);")
+            try deleteRowsIfTableExistsLocked(table: "calendar_links", where: linkedProjectOrTaskPredicate, parameters: linkedProjectOrTaskParameters)
+            try deleteRowsIfTableExistsLocked(table: "reminder_links", where: linkedProjectOrTaskPredicate, parameters: linkedProjectOrTaskParameters)
+            try deleteRowsIfTableExistsLocked(table: "deadline_rules", where: "(\(projectDeadlinePredicate)) OR (\(taskDeadlinePredicate))", parameters: deadlineParameters)
+            try deleteRowsIfTableExistsLocked(table: "artifacts", where: artifactPredicate, parameters: artifactParameters)
+            try connection.execute("DELETE FROM tasks WHERE \(childTaskPredicate);", parameters: childTaskParameters)
+            try connection.execute("DELETE FROM projects WHERE id = ?;", parameters: [.integer(id)])
         }
 
         return result
@@ -577,19 +600,23 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         defer { lock.unlock() }
 
         _ = try getForProjectBoardLocked(id: id)
-        let childTaskPredicate = "project_id = \(id)"
-        let linkedProjectOrTaskPredicate = "project_id = \(id) OR task_id IN (SELECT id FROM tasks WHERE project_id = \(id))"
-        let taskDeadlinePredicate = "target_type = 'task' AND target_id IN (SELECT id FROM tasks WHERE project_id = \(id))"
-        let projectDeadlinePredicate = "target_type = 'project' AND target_id = \(id)"
+        let childTaskPredicate = "project_id = ?"
+        let childTaskParameters: [SQLiteValue] = [.integer(id)]
+        let linkedProjectOrTaskPredicate = "project_id = ? OR task_id IN (SELECT id FROM tasks WHERE project_id = ?)"
+        let linkedProjectOrTaskParameters: [SQLiteValue] = [.integer(id), .integer(id)]
+        let taskDeadlinePredicate = "target_type = 'task' AND target_id IN (SELECT id FROM tasks WHERE project_id = ?)"
+        let projectDeadlinePredicate = "target_type = 'project' AND target_id = ?"
+        let deadlineParameters: [SQLiteValue] = [.integer(id), .integer(id)]
         let artifactPredicate = linkedProjectOrTaskPredicate
+        let artifactParameters = linkedProjectOrTaskParameters
 
         try connection.transaction {
-            try deleteRowsIfTableExistsLocked(table: "calendar_links", where: linkedProjectOrTaskPredicate)
-            try deleteRowsIfTableExistsLocked(table: "reminder_links", where: linkedProjectOrTaskPredicate)
-            try deleteRowsIfTableExistsLocked(table: "deadline_rules", where: "(\(projectDeadlinePredicate)) OR (\(taskDeadlinePredicate))")
-            try deleteRowsIfTableExistsLocked(table: "artifacts", where: artifactPredicate)
-            try connection.execute("DELETE FROM tasks WHERE \(childTaskPredicate);")
-            try connection.execute("DELETE FROM projects WHERE id = \(id);")
+            try deleteRowsIfTableExistsLocked(table: "calendar_links", where: linkedProjectOrTaskPredicate, parameters: linkedProjectOrTaskParameters)
+            try deleteRowsIfTableExistsLocked(table: "reminder_links", where: linkedProjectOrTaskPredicate, parameters: linkedProjectOrTaskParameters)
+            try deleteRowsIfTableExistsLocked(table: "deadline_rules", where: "(\(projectDeadlinePredicate)) OR (\(taskDeadlinePredicate))", parameters: deadlineParameters)
+            try deleteRowsIfTableExistsLocked(table: "artifacts", where: artifactPredicate, parameters: artifactParameters)
+            try connection.execute("DELETE FROM tasks WHERE \(childTaskPredicate);", parameters: childTaskParameters)
+            try connection.execute("DELETE FROM projects WHERE id = ?;", parameters: [.integer(id)])
         }
     }
 
@@ -635,7 +662,7 @@ public final class SQLiteProjectStore: @unchecked Sendable {
     }
 
     private func getForProjectBoardLocked(id: Int64) throws -> ProjectRecord {
-        guard let row = try connection.queryRows("SELECT * FROM projects WHERE id = \(id) LIMIT 1;").first else {
+        guard let row = try connection.queryRows("SELECT * FROM projects WHERE id = ? LIMIT 1;", parameters: [.integer(id)]).first else {
             throw ToolExecutionError.executionFailed(.projectGet, "Project \(id) was not found.")
         }
 
@@ -643,34 +670,34 @@ public final class SQLiteProjectStore: @unchecked Sendable {
     }
 
     private func getLocked(id: Int64) throws -> ProjectRecord {
-        guard let row = try connection.queryRows("SELECT * FROM projects WHERE id = \(id) LIMIT 1;").first else {
+        guard let row = try connection.queryRows("SELECT * FROM projects WHERE id = ? LIMIT 1;", parameters: [.integer(id)]).first else {
             throw ToolExecutionError.executionFailed(.projectGet, "Project \(id) was not found.")
         }
 
         return try ProjectRecord(row: row)
     }
 
-    private func rowCountLocked(table: String, where predicate: String) throws -> Int {
+    private func rowCountLocked(table: String, where predicate: String, parameters: [SQLiteValue]) throws -> Int {
         let countValue = try connection
-            .queryRows("SELECT COUNT(*) AS count FROM \(table) WHERE \(predicate);")
+            .queryRows("SELECT COUNT(*) AS count FROM \(table) WHERE \(predicate);", parameters: parameters)
             .first?["count"]
         return Int(try SQL.requiredInt64(countValue, column: "\(table).count"))
     }
 
-    private func rowCountIfTableExistsLocked(table: String, where predicate: String) throws -> Int {
+    private func rowCountIfTableExistsLocked(table: String, where predicate: String, parameters: [SQLiteValue]) throws -> Int {
         guard try connection.tableExists(table) else {
             return 0
         }
 
-        return try rowCountLocked(table: table, where: predicate)
+        return try rowCountLocked(table: table, where: predicate, parameters: parameters)
     }
 
-    private func deleteRowsIfTableExistsLocked(table: String, where predicate: String) throws {
+    private func deleteRowsIfTableExistsLocked(table: String, where predicate: String, parameters: [SQLiteValue]) throws {
         guard try connection.tableExists(table) else {
             return
         }
 
-        try connection.execute("DELETE FROM \(table) WHERE \(predicate);")
+        try connection.execute("DELETE FROM \(table) WHERE \(predicate);", parameters: parameters)
     }
 }
 
@@ -724,16 +751,25 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             """
             INSERT INTO tasks (project_id, title, status, detail, due_at, completed_at, priority, source_command)
             VALUES (
-              \(draft.projectID.map(String.init) ?? "NULL"),
-              '\(SQL.escape(normalizedTitle))',
-              '\(SQL.escape(normalizedStatus))',
-              \(SQL.optional(draft.detail)),
-              \(SQL.optional(draft.dueAt)),
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
               \(normalizedStatus == "completed" ? "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')" : "NULL"),
-              \(SQL.optional(draft.priority)),
-              \(SQL.optional(draft.sourceCommand))
+              ?,
+              ?
             );
-            """
+            """,
+            parameters: [
+                SQLiteValue(draft.projectID),
+                .text(normalizedTitle),
+                .text(normalizedStatus),
+                SQLiteValue(draft.detail),
+                SQLiteValue(draft.dueAt),
+                SQLiteValue(draft.priority),
+                SQLiteValue(draft.sourceCommand)
+            ]
         )
 
         return try getLocked(id: connection.lastInsertedRowID)
@@ -772,13 +808,16 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         defer { lock.unlock() }
 
         var assignments: [String] = []
+        var parameters: [SQLiteValue] = []
         if let title {
             let normalizedTitle = try StoreFieldValidation.requiredTrimmed(title, argument: "title", tool: .taskUpdate)
-            assignments.append("title = '\(SQL.escape(normalizedTitle))'")
+            assignments.append("title = ?")
+            parameters.append(.text(normalizedTitle))
         }
         if let status {
             let normalizedStatus = try StoreFieldValidation.taskStatus(status, tool: .taskUpdate)
-            assignments.append("status = '\(SQL.escape(normalizedStatus))'")
+            assignments.append("status = ?")
+            parameters.append(.text(normalizedStatus))
             if normalizedStatus == "completed" {
                 // Completion history is intentionally write-once so reopened tasks still appear in Done analytics.
                 assignments.append("completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))")
@@ -788,7 +827,8 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         case .unchanged:
             break
         case .set(let detail):
-            assignments.append("detail = '\(SQL.escape(detail))'")
+            assignments.append("detail = ?")
+            parameters.append(.text(detail))
         case .clear:
             assignments.append("detail = NULL")
         }
@@ -796,7 +836,8 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         case .unchanged:
             break
         case .set(let dueAt):
-            assignments.append("due_at = '\(SQL.escape(dueAt))'")
+            assignments.append("due_at = ?")
+            parameters.append(.text(dueAt))
         case .clear:
             assignments.append("due_at = NULL")
         }
@@ -804,7 +845,8 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         case .unchanged:
             break
         case .set(let priority):
-            assignments.append("priority = '\(SQL.escape(priority))'")
+            assignments.append("priority = ?")
+            parameters.append(.text(priority))
         case .clear:
             assignments.append("priority = NULL")
         }
@@ -812,13 +854,17 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         case .unchanged:
             break
         case .set(let projectID):
-            assignments.append("project_id = \(projectID)")
+            assignments.append("project_id = ?")
+            parameters.append(.integer(projectID))
         case .clear:
             assignments.append("project_id = NULL")
         }
         assignments.append("updated_at = CURRENT_TIMESTAMP")
 
-        try connection.execute("UPDATE tasks SET \(assignments.joined(separator: ", ")) WHERE id = \(id);")
+        try connection.execute(
+            "UPDATE tasks SET \(assignments.joined(separator: ", ")) WHERE id = ?;",
+            parameters: parameters + [.integer(id)]
+        )
         return try getLocked(id: id)
     }
 
@@ -833,10 +879,11 @@ public final class SQLiteTaskStore: @unchecked Sendable {
                 LEFT JOIN projects ON tasks.project_id = projects.id
                 WHERE tasks.status != 'completed'
                   AND tasks.due_at IS NOT NULL
-                  AND tasks.due_at <= '\(SQL.escape(cutoff))'
+                  AND tasks.due_at <= ?
                   AND COALESCE(projects.status, 'active') NOT IN ('completed', 'archived')
                 ORDER BY tasks.due_at ASC, tasks.id ASC;
-                """
+                """,
+                parameters: [.text(cutoff)]
             )
             .map(TaskRecord.init(row:))
     }
@@ -866,8 +913,11 @@ public final class SQLiteTaskStore: @unchecked Sendable {
 
         var recordsByID: [Int64: TaskRecord] = [:]
         if !projectIDs.isEmpty {
+            let sortedProjectIDs = projectIDs.sorted()
+            let placeholders = Array(repeating: "?", count: sortedProjectIDs.count).joined(separator: ", ")
             for record in try projectBoardRows(
-                where: "project_id IN (\(Self.sqlInList(projectIDs)))"
+                where: "project_id IN (\(placeholders))",
+                parameters: sortedProjectIDs.map(SQLiteValue.integer)
             ) {
                 recordsByID[record.id] = record
             }
@@ -900,10 +950,11 @@ public final class SQLiteTaskStore: @unchecked Sendable {
                 LEFT JOIN projects ON tasks.project_id = projects.id
                 WHERE tasks.status != 'completed'
                   AND tasks.due_at IS NOT NULL
-                  AND tasks.due_at < '\(SQL.escape(cutoff))'
+                  AND tasks.due_at < ?
                   AND COALESCE(projects.status, 'active') NOT IN ('completed', 'archived')
                 ORDER BY tasks.due_at ASC, tasks.id ASC;
-                """
+                """,
+                parameters: [.text(cutoff)]
             )
             .map(TaskRecord.init(row:))
     }
@@ -934,13 +985,14 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             SET status = 'completed',
                 completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 updated_at = CURRENT_TIMESTAMP
-            WHERE project_id = \(projectID)
+            WHERE project_id = ?
               AND status != 'completed';
-            """
+            """,
+            parameters: [.integer(projectID)]
         )
 
         return try connection
-            .queryRows("SELECT * FROM tasks WHERE project_id = \(projectID) ORDER BY id ASC;")
+            .queryRows("SELECT * FROM tasks WHERE project_id = ? ORDER BY id ASC;", parameters: [.integer(projectID)])
             .map(TaskRecord.init(row:))
     }
 
@@ -950,77 +1002,86 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         return try getLocked(id: id)
     }
 
+    public func exists(id: Int64) throws -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try !connection.queryStrings(
+            "SELECT id FROM tasks WHERE id = ? LIMIT 1;",
+            parameters: [.integer(id)]
+        ).isEmpty
+    }
+
     @discardableResult
     public func delete(id: Int64) throws -> TaskDeletionResult {
         lock.lock()
         defer { lock.unlock() }
 
         let task = try getLocked(id: id)
-        let taskPredicate = "task_id = \(id)"
-        let deadlinePredicate = "target_type = 'task' AND target_id = \(id)"
+        let taskPredicate = "task_id = ?"
+        let taskParameters: [SQLiteValue] = [.integer(id)]
+        let deadlinePredicate = "target_type = 'task' AND target_id = ?"
+        let deadlineParameters: [SQLiteValue] = [.integer(id)]
 
         let result = try TaskDeletionResult(
             task: task,
-            deletedCalendarLinkCount: rowCountIfTableExistsLocked(table: "calendar_links", where: taskPredicate),
-            deletedReminderLinkCount: rowCountIfTableExistsLocked(table: "reminder_links", where: taskPredicate),
-            deletedDeadlineRuleCount: rowCountIfTableExistsLocked(table: "deadline_rules", where: deadlinePredicate),
-            deletedArtifactCount: rowCountIfTableExistsLocked(table: "artifacts", where: taskPredicate)
+            deletedCalendarLinkCount: rowCountIfTableExistsLocked(table: "calendar_links", where: taskPredicate, parameters: taskParameters),
+            deletedReminderLinkCount: rowCountIfTableExistsLocked(table: "reminder_links", where: taskPredicate, parameters: taskParameters),
+            deletedDeadlineRuleCount: rowCountIfTableExistsLocked(table: "deadline_rules", where: deadlinePredicate, parameters: deadlineParameters),
+            deletedArtifactCount: rowCountIfTableExistsLocked(table: "artifacts", where: taskPredicate, parameters: taskParameters)
         )
 
         try connection.transaction {
-            try deleteRowsIfTableExistsLocked(table: "calendar_links", where: taskPredicate)
-            try deleteRowsIfTableExistsLocked(table: "reminder_links", where: taskPredicate)
-            try deleteRowsIfTableExistsLocked(table: "deadline_rules", where: deadlinePredicate)
-            try deleteRowsIfTableExistsLocked(table: "artifacts", where: taskPredicate)
-            try connection.execute("DELETE FROM tasks WHERE id = \(id);")
+            try deleteRowsIfTableExistsLocked(table: "calendar_links", where: taskPredicate, parameters: taskParameters)
+            try deleteRowsIfTableExistsLocked(table: "reminder_links", where: taskPredicate, parameters: taskParameters)
+            try deleteRowsIfTableExistsLocked(table: "deadline_rules", where: deadlinePredicate, parameters: deadlineParameters)
+            try deleteRowsIfTableExistsLocked(table: "artifacts", where: taskPredicate, parameters: taskParameters)
+            try connection.execute("DELETE FROM tasks WHERE id = ?;", parameters: [.integer(id)])
         }
 
         return result
     }
 
     private func getLocked(id: Int64) throws -> TaskRecord {
-        guard let row = try connection.queryRows("SELECT * FROM tasks WHERE id = \(id) LIMIT 1;").first else {
+        guard let row = try connection.queryRows("SELECT * FROM tasks WHERE id = ? LIMIT 1;", parameters: [.integer(id)]).first else {
             throw ToolExecutionError.executionFailed(.taskUpdate, "Task \(id) was not found.")
         }
 
         return try TaskRecord(row: row)
     }
 
-    private func rowCountLocked(table: String, where predicate: String) throws -> Int {
+    private func rowCountLocked(table: String, where predicate: String, parameters: [SQLiteValue]) throws -> Int {
         let countValue = try connection
-            .queryRows("SELECT COUNT(*) AS count FROM \(table) WHERE \(predicate);")
+            .queryRows("SELECT COUNT(*) AS count FROM \(table) WHERE \(predicate);", parameters: parameters)
             .first?["count"]
         return Int(try SQL.requiredInt64(countValue, column: "\(table).count"))
     }
 
-    private func rowCountIfTableExistsLocked(table: String, where predicate: String) throws -> Int {
+    private func rowCountIfTableExistsLocked(table: String, where predicate: String, parameters: [SQLiteValue]) throws -> Int {
         guard try connection.tableExists(table) else {
             return 0
         }
 
-        return try rowCountLocked(table: table, where: predicate)
+        return try rowCountLocked(table: table, where: predicate, parameters: parameters)
     }
 
-    private func deleteRowsIfTableExistsLocked(table: String, where predicate: String) throws {
+    private func deleteRowsIfTableExistsLocked(table: String, where predicate: String, parameters: [SQLiteValue]) throws {
         guard try connection.tableExists(table) else {
             return
         }
 
-        try connection.execute("DELETE FROM \(table) WHERE \(predicate);")
+        try connection.execute("DELETE FROM \(table) WHERE \(predicate);", parameters: parameters)
     }
 
-    private static func sqlInList(_ values: Set<Int64>) -> String {
-        values.sorted().map(String.init).joined(separator: ", ")
-    }
-
-    private func projectBoardRows(where predicate: String) throws -> [TaskRecord] {
+    private func projectBoardRows(where predicate: String, parameters: [SQLiteValue] = []) throws -> [TaskRecord] {
         try connection
             .queryRows(
                 """
                 SELECT * FROM tasks
                 WHERE \(predicate)
                 ORDER BY project_id ASC, id ASC;
-                """
+                """,
+                parameters: parameters
             )
             .map(TaskRecord.init(row:))
     }
@@ -1058,8 +1119,9 @@ public final class SQLiteNotificationRequestStore: @unchecked Sendable {
         try connection.execute(
             """
             INSERT INTO notification_requests (request_id, status, title, scheduled_at)
-            VALUES ('\(SQL.escape(requestID))', 'pending', '\(SQL.escape(title))', '\(SQL.escape(scheduledAt))');
-            """
+            VALUES (?, 'pending', ?, ?);
+            """,
+            parameters: [.text(requestID), .text(title), .text(scheduledAt)]
         )
         return try getLocked(requestID: requestID)
     }
@@ -1073,11 +1135,12 @@ public final class SQLiteNotificationRequestStore: @unchecked Sendable {
             """
             UPDATE notification_requests
             SET status = 'scheduled',
-                external_notification_id = '\(SQL.escape(externalNotificationID))',
+                external_notification_id = ?,
                 failure_reason = NULL,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE request_id = '\(SQL.escape(requestID))';
-            """
+            WHERE request_id = ?;
+            """,
+            parameters: [.text(externalNotificationID), .text(requestID)]
         )
         return try getLocked(requestID: requestID)
     }
@@ -1091,10 +1154,11 @@ public final class SQLiteNotificationRequestStore: @unchecked Sendable {
             """
             UPDATE notification_requests
             SET status = 'failed',
-                failure_reason = '\(SQL.escape(reason))',
+                failure_reason = ?,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE request_id = '\(SQL.escape(requestID))';
-            """
+            WHERE request_id = ?;
+            """,
+            parameters: [.text(reason), .text(requestID)]
         )
         return try getLocked(requestID: requestID)
     }
@@ -1108,7 +1172,8 @@ public final class SQLiteNotificationRequestStore: @unchecked Sendable {
 
     private func getLocked(requestID: String) throws -> NotificationRequestRecord {
         guard let row = try connection.queryRows(
-            "SELECT * FROM notification_requests WHERE request_id = '\(SQL.escape(requestID))' LIMIT 1;"
+            "SELECT * FROM notification_requests WHERE request_id = ? LIMIT 1;",
+            parameters: [.text(requestID)]
         ).first else {
             throw DatabaseError.stepFailed("Notification request \(requestID) was not found.")
         }
@@ -1132,8 +1197,9 @@ public final class SQLiteCalendarLinkStore: @unchecked Sendable {
         try connection.execute(
             """
             INSERT INTO calendar_links (event_id, project_id, task_id, title)
-            VALUES ('\(SQL.escape(eventID))', \(projectID.map(String.init) ?? "NULL"), \(taskID.map(String.init) ?? "NULL"), \(SQL.optional(title)));
-            """
+            VALUES (?, ?, ?, ?);
+            """,
+            parameters: [.text(eventID), SQLiteValue(projectID), SQLiteValue(taskID), SQLiteValue(title)]
         )
         return try getLocked(eventID: eventID)
     }
@@ -1147,7 +1213,8 @@ public final class SQLiteCalendarLinkStore: @unchecked Sendable {
 
     private func getLocked(eventID: String) throws -> CalendarLinkRecord {
         guard let row = try connection.queryRows(
-            "SELECT * FROM calendar_links WHERE event_id = '\(SQL.escape(eventID))' LIMIT 1;"
+            "SELECT * FROM calendar_links WHERE event_id = ? LIMIT 1;",
+            parameters: [.text(eventID)]
         ).first else {
             throw DatabaseError.stepFailed("Calendar link \(eventID) was not found.")
         }
@@ -1171,8 +1238,9 @@ public final class SQLiteReminderLinkStore: @unchecked Sendable {
         try connection.execute(
             """
             INSERT INTO reminder_links (reminder_id, project_id, task_id, title)
-            VALUES ('\(SQL.escape(reminderID))', \(projectID.map(String.init) ?? "NULL"), \(taskID.map(String.init) ?? "NULL"), \(SQL.optional(title)));
-            """
+            VALUES (?, ?, ?, ?);
+            """,
+            parameters: [.text(reminderID), SQLiteValue(projectID), SQLiteValue(taskID), SQLiteValue(title)]
         )
         return try getLocked(reminderID: reminderID)
     }
@@ -1186,7 +1254,8 @@ public final class SQLiteReminderLinkStore: @unchecked Sendable {
 
     private func getLocked(reminderID: String) throws -> ReminderLinkRecord {
         guard let row = try connection.queryRows(
-            "SELECT * FROM reminder_links WHERE reminder_id = '\(SQL.escape(reminderID))' LIMIT 1;"
+            "SELECT * FROM reminder_links WHERE reminder_id = ? LIMIT 1;",
+            parameters: [.text(reminderID)]
         ).first else {
             throw DatabaseError.stepFailed("Reminder link \(reminderID) was not found.")
         }
@@ -1213,15 +1282,17 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             try connection.execute(
                 """
                 INSERT INTO knowledge_frames (name, body, triggers_json)
-                VALUES ('\(SQL.escape(normalizedName))', '\(SQL.escape(validatedBody))', '\(SQL.escape(triggersJSON))');
-                """
+                VALUES (?, ?, ?);
+                """,
+                parameters: [.text(normalizedName), .text(validatedBody), .text(triggersJSON)]
             )
             let id = connection.lastInsertedRowID
             try connection.execute(
                 """
                 INSERT INTO knowledge_frames_fts (rowid, name, body)
-                VALUES (\(id), '\(SQL.escape(normalizedName))', '\(SQL.escape(validatedBody))');
-                """
+                VALUES (?, ?, ?);
+                """,
+                parameters: [.integer(id), .text(normalizedName), .text(validatedBody)]
             )
 
             return try getLocked(id: id)
@@ -1234,17 +1305,21 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
 
         let oldRecord = try getLocked(id: id)
         var assignments: [String] = []
+        var parameters: [SQLiteValue] = []
         if let name {
             let normalizedName = try StoreFieldValidation.requiredTrimmed(name, argument: "name", tool: .frameUpdate)
-            assignments.append("name = '\(SQL.escape(normalizedName))'")
+            assignments.append("name = ?")
+            parameters.append(.text(normalizedName))
         }
         if let body {
             let validatedBody = try StoreFieldValidation.requiredNonBlank(body, argument: "body", tool: .frameUpdate)
-            assignments.append("body = '\(SQL.escape(validatedBody))'")
+            assignments.append("body = ?")
+            parameters.append(.text(validatedBody))
         }
         if let triggers {
             let triggersJSON = try SQL.jsonArray(triggers, column: "knowledge_frames.triggers_json")
-            assignments.append("triggers_json = '\(SQL.escape(triggersJSON))'")
+            assignments.append("triggers_json = ?")
+            parameters.append(.text(triggersJSON))
         }
         assignments.append("updated_at = CURRENT_TIMESTAMP")
 
@@ -1252,16 +1327,21 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             try connection.execute(
                 """
                 INSERT INTO knowledge_frames_fts (knowledge_frames_fts, rowid, name, body)
-                VALUES ('delete', \(id), '\(SQL.escape(oldRecord.name))', '\(SQL.escape(oldRecord.body))');
-                """
+                VALUES ('delete', ?, ?, ?);
+                """,
+                parameters: [.integer(id), .text(oldRecord.name), .text(oldRecord.body)]
             )
-            try connection.execute("UPDATE knowledge_frames SET \(assignments.joined(separator: ", ")) WHERE id = \(id);")
+            try connection.execute(
+                "UPDATE knowledge_frames SET \(assignments.joined(separator: ", ")) WHERE id = ?;",
+                parameters: parameters + [.integer(id)]
+            )
             let record = try getLocked(id: id)
             try connection.execute(
                 """
                 INSERT INTO knowledge_frames_fts (rowid, name, body)
-                VALUES (\(id), '\(SQL.escape(record.name))', '\(SQL.escape(record.body))');
-                """
+                VALUES (?, ?, ?);
+                """,
+                parameters: [.integer(id), .text(record.name), .text(record.body)]
             )
             return record
         }
@@ -1289,10 +1369,11 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             try connection.execute(
                 """
                 INSERT INTO knowledge_frames_fts (knowledge_frames_fts, rowid, name, body)
-                VALUES ('delete', \(id), '\(SQL.escape(record.name))', '\(SQL.escape(record.body))');
-                """
+                VALUES ('delete', ?, ?, ?);
+                """,
+                parameters: [.integer(id), .text(record.name), .text(record.body)]
             )
-            try connection.execute("DELETE FROM knowledge_frames WHERE id = \(id);")
+            try connection.execute("DELETE FROM knowledge_frames WHERE id = ?;", parameters: [.integer(id)])
         }
     }
 
@@ -1311,14 +1392,15 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             SELECT knowledge_frames.*
             FROM knowledge_frames_fts
             JOIN knowledge_frames ON knowledge_frames_fts.rowid = knowledge_frames.id
-            WHERE knowledge_frames_fts MATCH '\(SQL.escape(match))'
+            WHERE knowledge_frames_fts MATCH ?
             ORDER BY rank;
-            """
+            """,
+            parameters: [.text(match)]
         ).map(KnowledgeFrameRecord.init(row:))
     }
 
     private func getLocked(id: Int64) throws -> KnowledgeFrameRecord {
-        guard let row = try connection.queryRows("SELECT * FROM knowledge_frames WHERE id = \(id) LIMIT 1;").first else {
+        guard let row = try connection.queryRows("SELECT * FROM knowledge_frames WHERE id = ? LIMIT 1;", parameters: [.integer(id)]).first else {
             throw ToolExecutionError.executionFailed(.frameGet, "Knowledge frame \(id) was not found.")
         }
 
@@ -1574,18 +1656,6 @@ enum StoreFieldValidation {
 }
 
 private enum SQL {
-    static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
-    }
-
-    static func optional(_ value: String?) -> String {
-        guard let value else {
-            return "NULL"
-        }
-
-        return "'\(escape(value))'"
-    }
-
     static func jsonArray(_ values: [String], column: String) throws -> String {
         let data = try JSONEncoder().encode(values)
         guard let json = String(data: data, encoding: .utf8) else {

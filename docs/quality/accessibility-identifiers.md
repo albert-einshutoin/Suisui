@@ -35,6 +35,7 @@ The suffix must be a stable internal ID or enum raw value. Do not encode user-pr
 - `today`: today planning, recommendation, and time-block controls.
 - `settings`: settings tabs, fields, save controls, and task automation settings.
 - `menu-bar`: menu bar quick capture and settings links.
+- `onboarding`: first-run welcome sheet steps, navigation, and completion controls.
 
 ## Required for new interactive components
 

@@ -79,8 +79,43 @@ public struct SQLiteRow {
     }
 }
 
+public enum SQLiteValue: Equatable, Sendable {
+    case null
+    case integer(Int64)
+    case real(Double)
+    case text(String)
+    case blob(Data)
+
+    public init(_ value: String?) {
+        self = value.map(SQLiteValue.text) ?? .null
+    }
+
+    public init(_ value: Int64?) {
+        self = value.map(SQLiteValue.integer) ?? .null
+    }
+
+    public init(_ value: Int?) {
+        self = value.map { SQLiteValue.integer(Int64($0)) } ?? .null
+    }
+
+    public init(_ value: Double?) {
+        self = value.map(SQLiteValue.real) ?? .null
+    }
+
+    public init(_ value: Data?) {
+        self = value.map(SQLiteValue.blob) ?? .null
+    }
+
+    public init(_ value: Bool?) {
+        self = value.map { SQLiteValue.integer($0 ? 1 : 0) } ?? .null
+    }
+}
+
 public final class SQLiteConnection {
     private var database: OpaquePointer?
+    // sqlite3_bind copies bound buffers when given SQLITE_TRANSIENT, so Swift
+    // strings and Data can be released as soon as the bind call returns.
+    private static let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     public init(path: String, readOnly: Bool = false) throws {
         let flags = readOnly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
@@ -107,6 +142,18 @@ public final class SQLiteConnection {
         }
     }
 
+    /// Executes a single statement with `?` placeholders bound to `parameters`.
+    /// Binding happens inside SQLite, so values never require manual escaping.
+    public func execute(_ sql: String, parameters: [SQLiteValue]) throws {
+        let statement = try prepare(sql, parameters: parameters)
+        defer { sqlite3_finalize(statement) }
+
+        let stepStatus = sqlite3_step(statement)
+        guard stepStatus == SQLITE_DONE || stepStatus == SQLITE_ROW else {
+            throw DatabaseError.stepFailed(errorMessage)
+        }
+    }
+
     public func transaction<T>(_ body: () throws -> T) throws -> T {
         try execute("BEGIN;")
         do {
@@ -119,14 +166,8 @@ public final class SQLiteConnection {
         }
     }
 
-    public func queryStrings(_ sql: String) throws -> [String] {
-        var statement: OpaquePointer?
-        let prepareStatus = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
-
-        guard prepareStatus == SQLITE_OK else {
-            throw DatabaseError.prepareFailed(errorMessage)
-        }
-
+    public func queryStrings(_ sql: String, parameters: [SQLiteValue] = []) throws -> [String] {
+        let statement = try prepare(sql, parameters: parameters)
         defer { sqlite3_finalize(statement) }
 
         var results: [String] = []
@@ -147,14 +188,8 @@ public final class SQLiteConnection {
         }
     }
 
-    public func queryRows(_ sql: String) throws -> [[String: String]] {
-        var statement: OpaquePointer?
-        let prepareStatus = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
-
-        guard prepareStatus == SQLITE_OK else {
-            throw DatabaseError.prepareFailed(errorMessage)
-        }
-
+    public func queryRows(_ sql: String, parameters: [SQLiteValue] = []) throws -> [[String: String]] {
+        let statement = try prepare(sql, parameters: parameters)
         defer { sqlite3_finalize(statement) }
 
         var rows: [[String: String]] = []
@@ -182,14 +217,8 @@ public final class SQLiteConnection {
         }
     }
 
-    public func query<T>(_ sql: String, _ map: (SQLiteRow) throws -> T) throws -> [T] {
-        var statement: OpaquePointer?
-        let prepareStatus = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
-
-        guard prepareStatus == SQLITE_OK else {
-            throw DatabaseError.prepareFailed(errorMessage)
-        }
-
+    public func query<T>(_ sql: String, parameters: [SQLiteValue] = [], _ map: (SQLiteRow) throws -> T) throws -> [T] {
+        let statement = try prepare(sql, parameters: parameters)
         defer { sqlite3_finalize(statement) }
 
         let row = SQLiteRow(statement: statement, columnIndexes: columnIndexes(for: statement))
@@ -215,11 +244,59 @@ public final class SQLiteConnection {
     }
 
     public func tableExists(_ tableName: String) throws -> Bool {
-        let escaped = tableName.replacingOccurrences(of: "'", with: "''")
         let result = try queryStrings(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '\(escaped)' LIMIT 1;"
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1;",
+            parameters: [.text(tableName)]
         )
         return !result.isEmpty
+    }
+
+    private func prepare(_ sql: String, parameters: [SQLiteValue]) throws -> OpaquePointer? {
+        var statement: OpaquePointer?
+        let prepareStatus = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
+
+        guard prepareStatus == SQLITE_OK else {
+            sqlite3_finalize(statement)
+            throw DatabaseError.prepareFailed(errorMessage)
+        }
+
+        let expectedCount = Int(sqlite3_bind_parameter_count(statement))
+        guard expectedCount == parameters.count else {
+            sqlite3_finalize(statement)
+            throw DatabaseError.prepareFailed(
+                "Statement expects \(expectedCount) bound parameters but \(parameters.count) were provided."
+            )
+        }
+
+        for (offset, parameter) in parameters.enumerated() {
+            let index = Int32(offset + 1)
+            let bindStatus: Int32
+            switch parameter {
+            case .null:
+                bindStatus = sqlite3_bind_null(statement, index)
+            case let .integer(value):
+                bindStatus = sqlite3_bind_int64(statement, index, value)
+            case let .real(value):
+                bindStatus = sqlite3_bind_double(statement, index, value)
+            case let .text(value):
+                bindStatus = sqlite3_bind_text(statement, index, value, -1, Self.transientDestructor)
+            case let .blob(value) where value.isEmpty:
+                // An empty Data has no base address; zeroblob keeps the bound
+                // value an empty BLOB instead of collapsing it to NULL.
+                bindStatus = sqlite3_bind_zeroblob(statement, index, 0)
+            case let .blob(value):
+                bindStatus = value.withUnsafeBytes { buffer in
+                    sqlite3_bind_blob(statement, index, buffer.baseAddress, Int32(buffer.count), Self.transientDestructor)
+                }
+            }
+            guard bindStatus == SQLITE_OK else {
+                let message = errorMessage
+                sqlite3_finalize(statement)
+                throw DatabaseError.prepareFailed(message)
+            }
+        }
+
+        return statement
     }
 
     private var errorMessage: String {
@@ -271,7 +348,8 @@ public enum SQLiteMigrationRunner {
                 try connection.execute("BEGIN;")
                 try migration.apply(connection)
                 try connection.execute(
-                    "INSERT INTO schema_migrations (id) VALUES ('\(escape(migration.id))');"
+                    "INSERT INTO schema_migrations (id) VALUES (?);",
+                    parameters: [.text(migration.id)]
                 )
                 try connection.execute("COMMIT;")
             } catch {
@@ -279,10 +357,6 @@ public enum SQLiteMigrationRunner {
                 throw error
             }
         }
-    }
-
-    private static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
     }
 }
 
@@ -723,13 +797,13 @@ public enum CoreMigrations {
                     )),
                     as: UTF8.self
                 )
-                let escapedPreviewJSON = previewJSON.replacingOccurrences(of: "'", with: "''")
                 try connection.execute(
                     """
                     UPDATE assistant_queue_items
-                    SET cost_preview_json = '\(escapedPreviewJSON)'
+                    SET cost_preview_json = ?
                     WHERE cost_preview_json IS NULL;
-                    """
+                    """,
+                    parameters: [.text(previewJSON)]
                 )
 
                 try connection.execute(

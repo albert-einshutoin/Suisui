@@ -60,7 +60,7 @@ struct VoiceCaptureView: View {
             if let message = viewModel.auditErrorMessage {
                 Label(message, systemImage: "exclamationmark.triangle")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(SoloPMTone.attention.color)
             }
 
             TextField(
@@ -356,7 +356,7 @@ private struct LowLatencyVoiceAgentPanel: View {
     private var stateTone: Color {
         switch viewModel.lowLatencyVoiceAgentState {
         case .failed:
-            .red
+            SoloPMTone.danger.color
         case .disabled, .unavailable:
             .secondary
         case .idle, .listening:
@@ -594,7 +594,7 @@ private struct AssistantQueuePanel: View {
             if let blockingReason = item.blockingReason {
                 Label(localizedSettingsDisplay(blockingReason), systemImage: "exclamationmark.octagon")
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(SoloPMTone.danger.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -691,11 +691,11 @@ private struct AssistantQueuePanel: View {
     private var stateColor: Color {
         switch item.state {
         case .blocked, .failed, .rejected:
-            .red
+            SoloPMTone.danger.color
         case .approved, .done:
-            .green
+            SoloPMTone.positive.color
         case .deferred:
-            .orange
+            SoloPMTone.attention.color
         case .captured, .interpreted, .drafted, .waitingReview, .running:
             .secondary
         }
@@ -785,7 +785,7 @@ private struct StatusRow: View {
     var body: some View {
         Label(localizedSettingsDisplay(label), systemImage: systemImage)
             .font(.caption)
-            .foregroundStyle(isError ? .red : .secondary)
+            .foregroundStyle(isError ? SoloPMTone.danger.color : .secondary)
             .accessibilityIdentifier("voice-command-status")
     }
 
@@ -861,7 +861,7 @@ private struct VoiceIntentPreview: View {
             if let reason = result.clarificationReason {
                 Label(localizedSettingsDisplay(reason), systemImage: "questionmark.circle")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(SoloPMTone.attention.color)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -882,7 +882,7 @@ private struct VoiceIntentPreview: View {
     private var confidenceLabel: some View {
         Text("\(Int((result.confidence * 100).rounded()))%")
             .font(.caption)
-            .foregroundStyle(result.needsClarification ? .orange : .secondary)
+            .foregroundStyle(result.needsClarification ? SoloPMTone.attention.color : .secondary)
             .lineLimit(1)
             .accessibilityLabel(localizedSettingsDisplay("Voice command confidence"))
     }
@@ -930,7 +930,7 @@ private struct ActionPlanPreview: View {
                     Spacer()
                     Text(plan.riskLevel.rawValue.capitalized)
                         .font(.caption)
-                        .foregroundStyle(plan.riskLevel >= .write ? .orange : .secondary)
+                        .foregroundStyle(plan.riskLevel >= .write ? SoloPMTone.attention.color : .secondary)
                 }
 
                 ForEach(plan.actions, id: \.id) { action in
@@ -953,7 +953,7 @@ private struct ActionPlanPreview: View {
                 ForEach(response.validationResult.issues, id: \.message) { issue in
                     Label(issue.message, systemImage: issue.severity == .blocking ? "xmark.octagon" : "exclamationmark.triangle")
                         .font(.caption)
-                        .foregroundStyle(issue.severity == .blocking ? .red : .orange)
+                        .foregroundStyle(issue.severity == .blocking ? SoloPMTone.danger.color : SoloPMTone.attention.color)
                 }
             }
         }

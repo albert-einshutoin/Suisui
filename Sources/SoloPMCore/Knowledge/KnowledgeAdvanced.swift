@@ -214,21 +214,21 @@ public final class SQLiteKnowledgeVectorIndex: CandidateKnowledgeVectorIndex, @u
                 try connection.execute(
                     """
                     INSERT INTO knowledge_frame_vectors (frame_id, provider_id, dimensions, vector_json, redacted_preview, updated_at)
-                    VALUES (
-                      \(vector.frameID),
-                      '\(KnowledgeSQL.escape(vector.providerID))',
-                      \(vector.values.count),
-                      '\(KnowledgeSQL.escape(valuesJSON))',
-                      '\(KnowledgeSQL.escape(vector.redactedPreview))',
-                      CURRENT_TIMESTAMP
-                    )
+                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                     ON CONFLICT(frame_id) DO UPDATE SET
                       provider_id = excluded.provider_id,
                       dimensions = excluded.dimensions,
                       vector_json = excluded.vector_json,
                       redacted_preview = excluded.redacted_preview,
                       updated_at = CURRENT_TIMESTAMP;
-                    """
+                    """,
+                    parameters: [
+                        .integer(vector.frameID),
+                        .text(vector.providerID),
+                        .integer(Int64(vector.values.count)),
+                        .text(valuesJSON),
+                        .text(vector.redactedPreview)
+                    ]
                 )
                 if try ensureSQLiteVecIndexLocked() {
                     try upsertSQLiteVecVectorLocked(vector)
@@ -241,17 +241,20 @@ public final class SQLiteKnowledgeVectorIndex: CandidateKnowledgeVectorIndex, @u
         try lock.withLock {
             try connection.transaction {
                 if try ensureSQLiteVecIndexLocked() {
-                    try connection.execute("DELETE FROM \(sqliteVecTableName) WHERE frame_id = \(frameID);")
-                    try connection.execute("DELETE FROM \(sqliteVecMetaTableName) WHERE frame_id = \(frameID);")
+                    try connection.execute("DELETE FROM \(sqliteVecTableName) WHERE frame_id = ?;", parameters: [.integer(frameID)])
+                    try connection.execute("DELETE FROM \(sqliteVecMetaTableName) WHERE frame_id = ?;", parameters: [.integer(frameID)])
                 }
-                try connection.execute("DELETE FROM knowledge_frame_vectors WHERE frame_id = \(frameID);")
+                try connection.execute("DELETE FROM knowledge_frame_vectors WHERE frame_id = ?;", parameters: [.integer(frameID)])
             }
         }
     }
 
     public func vector(frameID: Int64) throws -> KnowledgeEmbeddingVector? {
         try lock.withLock {
-            guard let row = try connection.queryRows("SELECT * FROM knowledge_frame_vectors WHERE frame_id = \(frameID) LIMIT 1;").first else {
+            guard let row = try connection.queryRows(
+                "SELECT * FROM knowledge_frame_vectors WHERE frame_id = ? LIMIT 1;",
+                parameters: [.integer(frameID)]
+            ).first else {
                 return nil
             }
             return try vector(row: row)
@@ -281,7 +284,8 @@ public final class SQLiteKnowledgeVectorIndex: CandidateKnowledgeVectorIndex, @u
             }
 
             var results: [KnowledgeVectorSearchResult] = []
-            let rows = try connection.queryRows(searchSQL(candidateFrameIDs: candidateFrameIDs))
+            let search = searchSQL(candidateFrameIDs: candidateFrameIDs)
+            let rows = try connection.queryRows(search.sql, parameters: search.parameters)
 
             // SQL-side candidate filtering keeps direct candidate searches from
             // decoding unrelated vector_json rows after a caller narrows scope.
@@ -306,14 +310,18 @@ public final class SQLiteKnowledgeVectorIndex: CandidateKnowledgeVectorIndex, @u
         }
     }
 
-    private func searchSQL(candidateFrameIDs: Set<Int64>?) -> String {
-        let filter = candidateFrameIDs.map { "WHERE frame_id IN (\($0.sorted().map(String.init).joined(separator: ", ")))" } ?? ""
-        return """
+    private func searchSQL(candidateFrameIDs: Set<Int64>?) -> (sql: String, parameters: [SQLiteValue]) {
+        let sortedCandidateFrameIDs = candidateFrameIDs.map { $0.sorted() } ?? []
+        let filter = candidateFrameIDs == nil
+            ? ""
+            : "WHERE frame_id IN (\(Array(repeating: "?", count: sortedCandidateFrameIDs.count).joined(separator: ", ")))"
+        let sql = """
         SELECT *
         FROM knowledge_frame_vectors
         \(filter)
         ORDER BY frame_id ASC;
         """
+        return (sql, sortedCandidateFrameIDs.map(SQLiteValue.integer))
     }
 
     private enum SQLiteVecIndexState {
@@ -375,41 +383,44 @@ public final class SQLiteKnowledgeVectorIndex: CandidateKnowledgeVectorIndex, @u
             """
             SELECT updated_at
             FROM knowledge_frame_vectors
-            WHERE frame_id = \(vector.frameID)
+            WHERE frame_id = ?
             LIMIT 1;
-            """
+            """,
+            parameters: [.integer(vector.frameID)]
         ).first
         let sourceUpdatedAt = try KnowledgeSQL.requiredString(
             sourceRow?["updated_at"],
             column: "knowledge_frame_vectors.updated_at"
         )
         let isIndexed = vectorMagnitude(vector.values) > 0
-        try connection.execute("DELETE FROM \(sqliteVecTableName) WHERE frame_id = \(vector.frameID);")
+        try connection.execute("DELETE FROM \(sqliteVecTableName) WHERE frame_id = ?;", parameters: [.integer(vector.frameID)])
         if isIndexed {
             let normalizedValuesJSON = try jsonString(normalize(vector.values))
             try connection.execute(
                 """
                 INSERT INTO \(sqliteVecTableName) (frame_id, embedding)
-                VALUES (\(vector.frameID), '\(KnowledgeSQL.escape(normalizedValuesJSON))');
-                """
+                VALUES (?, ?);
+                """,
+                parameters: [.integer(vector.frameID), .text(normalizedValuesJSON)]
             )
         }
         try connection.execute(
             """
             INSERT INTO \(sqliteVecMetaTableName) (frame_id, source_updated_at, provider_id, dimensions, is_indexed)
-            VALUES (
-                \(vector.frameID),
-                '\(KnowledgeSQL.escape(sourceUpdatedAt))',
-                '\(KnowledgeSQL.escape(vector.providerID))',
-                \(vector.values.count),
-                \(isIndexed ? 1 : 0)
-            )
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(frame_id) DO UPDATE SET
                 source_updated_at = excluded.source_updated_at,
                 provider_id = excluded.provider_id,
                 dimensions = excluded.dimensions,
                 is_indexed = excluded.is_indexed;
-            """
+            """,
+            parameters: [
+                .integer(vector.frameID),
+                .text(sourceUpdatedAt),
+                .text(vector.providerID),
+                .integer(Int64(vector.values.count)),
+                .integer(isIndexed ? 1 : 0)
+            ]
         )
     }
 
@@ -455,14 +466,15 @@ public final class SQLiteKnowledgeVectorIndex: CandidateKnowledgeVectorIndex, @u
             FROM \(sqliteVecTableName) AS indexed
             JOIN \(sqliteVecMetaTableName) AS meta ON meta.frame_id = indexed.frame_id
             JOIN knowledge_frame_vectors AS base ON base.frame_id = indexed.frame_id
-            WHERE indexed.embedding MATCH '\(KnowledgeSQL.escape(normalizedQueryJSON))'
-              AND k = \(requestedK)
+            WHERE indexed.embedding MATCH ?
+              AND k = ?
               AND meta.is_indexed = 1
               AND meta.source_updated_at = base.updated_at
               AND meta.provider_id = base.provider_id
               AND meta.dimensions = base.dimensions
             ORDER BY indexed.distance ASC, indexed.frame_id ASC;
-            """
+            """,
+            parameters: [.text(normalizedQueryJSON), .integer(Int64(requestedK))]
         )
 
         var results: [KnowledgeVectorSearchResult] = []
@@ -1014,10 +1026,6 @@ private func values(from json: String, column: String) throws -> [Double] {
 }
 
 private enum KnowledgeSQL {
-    static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
-    }
-
     static func requiredString(_ value: String?, column: String) throws -> String {
         guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw LocalStoreDecodingError.missingRequiredColumn(column: column)

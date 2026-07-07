@@ -180,21 +180,22 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
                   transcription_status,
                   created_at
                 )
-                VALUES (
-                  \(draft.taskID),
-                  '\(InboxCaptureSourceKind.voiceMemo.rawValue)',
-                  '\(Self.escape(normalizedPath))',
-                  \(draft.durationSeconds),
-                  \(Self.optional(draft.transcript)),
-                  \(Self.optional(draft.interpretationSummary)),
-                  \(Self.optional(draft.memo)),
-                  '\(draft.classificationStatus.rawValue)',
-                  '\(draft.transcriptionStatus.rawValue)',
-                  \(Self.optional(draft.createdAt, defaultSQL: "CURRENT_TIMESTAMP"))
-                );
-                """
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP));
+                """,
+                parameters: [
+                    .integer(draft.taskID),
+                    .text(InboxCaptureSourceKind.voiceMemo.rawValue),
+                    .text(normalizedPath),
+                    .real(draft.durationSeconds),
+                    SQLiteValue(draft.transcript),
+                    SQLiteValue(draft.interpretationSummary),
+                    SQLiteValue(draft.memo),
+                    .text(draft.classificationStatus.rawValue),
+                    .text(draft.transcriptionStatus.rawValue),
+                    SQLiteValue(draft.createdAt)
+                ]
             )
-        } catch DatabaseError.executeFailed {
+        } catch DatabaseError.executeFailed, DatabaseError.stepFailed {
             throw InboxCaptureStoreError.linkedTaskMissing
         }
 
@@ -215,9 +216,10 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
         return try connection.queryRows(
             """
             SELECT * FROM inbox_capture_records
-            WHERE task_id = \(taskID)
+            WHERE task_id = ?
             ORDER BY id DESC;
-            """
+            """,
+            parameters: [.integer(taskID)]
         ).map(Self.record(row:))
     }
 
@@ -229,13 +231,15 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
         lock.lock()
         defer { lock.unlock() }
 
-        let inList = taskIDs.sorted().map(String.init).joined(separator: ",")
+        let sortedTaskIDs = taskIDs.sorted()
+        let placeholders = Array(repeating: "?", count: sortedTaskIDs.count).joined(separator: ", ")
         let rows = try connection.queryRows(
             """
             SELECT * FROM inbox_capture_records
-            WHERE task_id IN (\(inList))
+            WHERE task_id IN (\(placeholders))
             ORDER BY task_id ASC, id DESC;
-            """
+            """,
+            parameters: sortedTaskIDs.map(SQLiteValue.integer)
         ).map(Self.record(row:))
         var recordsByTaskID = Dictionary(uniqueKeysWithValues: taskIDs.map { ($0, [InboxCaptureRecord]()) })
         for row in rows {
@@ -256,10 +260,11 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
         try connection.execute(
             """
             UPDATE inbox_capture_records
-            SET memo = \(Self.optional(normalizedMemo)),
+            SET memo = ?,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = \(id);
-            """
+            WHERE id = ?;
+            """,
+            parameters: [SQLiteValue(normalizedMemo), .integer(id)]
         )
         return try getLocked(id: id)
     }
@@ -270,7 +275,8 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
         defer { lock.unlock() }
 
         let count = try connection.queryRows(
-            "SELECT COUNT(*) AS count FROM inbox_capture_records WHERE task_id = \(fromTaskID);"
+            "SELECT COUNT(*) AS count FROM inbox_capture_records WHERE task_id = ?;",
+            parameters: [.integer(fromTaskID)]
         ).first?["count"].flatMap(Int.init) ?? 0
         guard count > 0 else {
             return 0
@@ -280,12 +286,13 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
             try connection.execute(
                 """
                 UPDATE inbox_capture_records
-                SET task_id = \(toTaskID),
+                SET task_id = ?,
                     updated_at = CURRENT_TIMESTAMP
-                WHERE task_id = \(fromTaskID);
-                """
+                WHERE task_id = ?;
+                """,
+                parameters: [.integer(toTaskID), .integer(fromTaskID)]
             )
-        } catch DatabaseError.executeFailed {
+        } catch DatabaseError.executeFailed, DatabaseError.stepFailed {
             throw InboxCaptureStoreError.linkedTaskMissing
         }
 
@@ -297,12 +304,13 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
         defer { lock.unlock() }
 
         _ = try getLocked(id: id)
-        try connection.execute("DELETE FROM inbox_capture_records WHERE id = \(id);")
+        try connection.execute("DELETE FROM inbox_capture_records WHERE id = ?;", parameters: [.integer(id)])
     }
 
     private func getLocked(id: Int64) throws -> InboxCaptureRecord {
         guard let row = try connection.queryRows(
-            "SELECT * FROM inbox_capture_records WHERE id = \(id) LIMIT 1;"
+            "SELECT * FROM inbox_capture_records WHERE id = ? LIMIT 1;",
+            parameters: [.integer(id)]
         ).first else {
             throw InboxCaptureStoreError.notFound(id)
         }
@@ -399,23 +407,6 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private static func optional(_ value: String?) -> String {
-        guard let value else {
-            return "NULL"
-        }
-        return "'\(escape(value))'"
-    }
-
-    private static func optional(_ value: String?, defaultSQL: String) -> String {
-        guard let value else {
-            return defaultSQL
-        }
-        return "'\(escape(value))'"
-    }
-
-    private static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
-    }
 }
 
 @MainActor

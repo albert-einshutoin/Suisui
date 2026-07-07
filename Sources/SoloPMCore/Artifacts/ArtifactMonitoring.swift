@@ -60,15 +60,16 @@ public final class SQLiteArtifactStore: @unchecked Sendable {
         try connection.execute(
             """
             INSERT INTO artifacts (project_id, task_id, workspace_path, expected_path, created_state, last_modified_at)
-            VALUES (
-              \(ArtifactSQL.optionalInt(projectID)),
-              \(ArtifactSQL.optionalInt(taskID)),
-              '\(ArtifactSQL.escape(workspacePath))',
-              '\(ArtifactSQL.escape(expectedPath))',
-              '\(createdState.rawValue)',
-              \(ArtifactSQL.optionalDate(lastModifiedAt))
-            );
-            """
+            VALUES (?, ?, ?, ?, ?, ?);
+            """,
+            parameters: [
+                SQLiteValue(projectID),
+                SQLiteValue(taskID),
+                .text(workspacePath),
+                .text(expectedPath),
+                .text(createdState.rawValue),
+                SQLiteValue(lastModifiedAt.map { DeadlineDateParser.string(from: $0) })
+            ]
         )
 
         return try getLocked(id: connection.lastInsertedRowID)
@@ -108,17 +109,21 @@ public final class SQLiteArtifactStore: @unchecked Sendable {
 
         var recordsByID: [Int64: ArtifactRecord] = [:]
         if !projectIDs.isEmpty {
+            let sortedProjectIDs = projectIDs.sorted()
             for record in try projectBoardRows(
-                where: "project_id IN (\(Self.sqlInList(projectIDs)))",
-                orderBy: "project_id ASC, task_id ASC, id ASC"
+                where: "project_id IN (\(Self.sqlInPlaceholders(count: sortedProjectIDs.count)))",
+                orderBy: "project_id ASC, task_id ASC, id ASC",
+                parameters: sortedProjectIDs.map(SQLiteValue.integer)
             ) {
                 recordsByID[record.id] = record
             }
         }
         if !taskIDs.isEmpty {
+            let sortedTaskIDs = taskIDs.sorted()
             for record in try projectBoardRows(
-                where: "task_id IN (\(Self.sqlInList(taskIDs)))",
-                orderBy: "task_id ASC, project_id ASC, id ASC"
+                where: "task_id IN (\(Self.sqlInPlaceholders(count: sortedTaskIDs.count)))",
+                orderBy: "task_id ASC, project_id ASC, id ASC",
+                parameters: sortedTaskIDs.map(SQLiteValue.integer)
             ) {
                 recordsByID[record.id] = record
             }
@@ -136,7 +141,7 @@ public final class SQLiteArtifactStore: @unchecked Sendable {
         defer { lock.unlock() }
 
         _ = try getLocked(id: id)
-        try connection.execute("DELETE FROM artifacts WHERE id = \(id);")
+        try connection.execute("DELETE FROM artifacts WHERE id = ?;", parameters: [.integer(id)])
     }
 
     public func updateFromFileEvent(workspacePath: String, path: String, modifiedAt: Date) throws -> [ArtifactRecord] {
@@ -146,12 +151,18 @@ public final class SQLiteArtifactStore: @unchecked Sendable {
         try connection.execute(
             """
             UPDATE artifacts
-            SET created_state = '\(ArtifactCreatedState.created.rawValue)',
-                last_modified_at = '\(DeadlineDateParser.string(from: modifiedAt))',
+            SET created_state = ?,
+                last_modified_at = ?,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE workspace_path = '\(ArtifactSQL.escape(workspacePath))'
-              AND expected_path = '\(ArtifactSQL.escape(path))';
-            """
+            WHERE workspace_path = ?
+              AND expected_path = ?;
+            """,
+            parameters: [
+                .text(ArtifactCreatedState.created.rawValue),
+                .text(DeadlineDateParser.string(from: modifiedAt)),
+                .text(workspacePath),
+                .text(path)
+            ]
         )
 
         return try listByWorkspaceAndExpectedPathLocked(workspacePath: workspacePath, path: path)
@@ -169,14 +180,21 @@ public final class SQLiteArtifactStore: @unchecked Sendable {
         try connection.execute(
             """
             UPDATE artifacts
-            SET created_state = '\(ArtifactCreatedState.created.rawValue)',
-                last_modified_at = '\(DeadlineDateParser.string(from: modifiedAt))',
-                workspace_path = '\(ArtifactSQL.escape(workspacePath))',
+            SET created_state = ?,
+                last_modified_at = ?,
+                workspace_path = ?,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE project_id = \(projectID)
+            WHERE project_id = ?
               AND task_id IS NULL
-              AND expected_path = '\(ArtifactSQL.escape(path))';
-            """
+              AND expected_path = ?;
+            """,
+            parameters: [
+                .text(ArtifactCreatedState.created.rawValue),
+                .text(DeadlineDateParser.string(from: modifiedAt)),
+                .text(workspacePath),
+                .integer(projectID),
+                .text(path)
+            ]
         )
 
         return try listByProjectAndExpectedPathLocked(
@@ -192,17 +210,25 @@ public final class SQLiteArtifactStore: @unchecked Sendable {
         return try connection.queryRows(
             """
             SELECT * FROM artifacts
-            WHERE workspace_path = '\(ArtifactSQL.escape(workspacePath))'
-              AND created_state = '\(ArtifactCreatedState.created.rawValue)'
+            WHERE workspace_path = ?
+              AND created_state = ?
               AND last_modified_at IS NOT NULL
-              AND last_modified_at < '\(DeadlineDateParser.string(from: cutoff))'
+              AND last_modified_at < ?
             ORDER BY last_modified_at ASC, id ASC;
-            """
+            """,
+            parameters: [
+                .text(workspacePath),
+                .text(ArtifactCreatedState.created.rawValue),
+                .text(DeadlineDateParser.string(from: cutoff))
+            ]
         ).map(ArtifactRecord.init(row:))
     }
 
     private func getLocked(id: Int64) throws -> ArtifactRecord {
-        guard let row = try connection.queryRows("SELECT * FROM artifacts WHERE id = \(id) LIMIT 1;").first else {
+        guard let row = try connection.queryRows(
+            "SELECT * FROM artifacts WHERE id = ? LIMIT 1;",
+            parameters: [.integer(id)]
+        ).first else {
             throw ArtifactStoreError.notFound(id)
         }
 
@@ -213,10 +239,11 @@ public final class SQLiteArtifactStore: @unchecked Sendable {
         try connection.queryRows(
             """
             SELECT * FROM artifacts
-            WHERE workspace_path = '\(ArtifactSQL.escape(workspacePath))'
-              AND expected_path = '\(ArtifactSQL.escape(path))'
+            WHERE workspace_path = ?
+              AND expected_path = ?
             ORDER BY id ASC;
-            """
+            """,
+            parameters: [.text(workspacePath), .text(path)]
         ).map(ArtifactRecord.init(row:))
     }
 
@@ -227,26 +254,32 @@ public final class SQLiteArtifactStore: @unchecked Sendable {
         try connection.queryRows(
             """
             SELECT * FROM artifacts
-            WHERE project_id = \(projectID)
+            WHERE project_id = ?
               AND task_id IS NULL
-              AND expected_path = '\(ArtifactSQL.escape(path))'
+              AND expected_path = ?
             ORDER BY id ASC;
-            """
+            """,
+            parameters: [.integer(projectID), .text(path)]
         ).map(ArtifactRecord.init(row:))
     }
 
-    private static func sqlInList(_ values: Set<Int64>) -> String {
-        values.sorted().map(String.init).joined(separator: ", ")
+    private static func sqlInPlaceholders(count: Int) -> String {
+        Array(repeating: "?", count: count).joined(separator: ", ")
     }
 
-    private func projectBoardRows(where predicate: String, orderBy: String) throws -> [ArtifactRecord] {
+    private func projectBoardRows(
+        where predicate: String,
+        orderBy: String,
+        parameters: [SQLiteValue]
+    ) throws -> [ArtifactRecord] {
         try connection
             .queryRows(
                 """
                 SELECT * FROM artifacts
                 WHERE \(predicate)
                 ORDER BY \(orderBy);
-                """
+                """,
+                parameters: parameters
             )
             .map(ArtifactRecord.init(row:))
     }
@@ -525,21 +558,6 @@ private extension ArtifactRecord {
 }
 
 private enum ArtifactSQL {
-    static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
-    }
-
-    static func optionalInt(_ value: Int64?) -> String {
-        value.map(String.init) ?? "NULL"
-    }
-
-    static func optionalDate(_ value: Date?) -> String {
-        guard let value else {
-            return "NULL"
-        }
-        return "'\(DeadlineDateParser.string(from: value))'"
-    }
-
     static func requiredString(_ value: String?, column: String) throws -> String {
         guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw LocalStoreDecodingError.missingRequiredColumn(column: column)

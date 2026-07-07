@@ -309,7 +309,8 @@ public final class SQLiteMissedTaskReviewStateStore: MissedTaskReviewStateStore,
         defer { lock.unlock() }
 
         let value = try connection.queryStrings(
-            "SELECT last_reviewed_at FROM missed_task_review_state WHERE task_id = \(taskID) LIMIT 1;"
+            "SELECT last_reviewed_at FROM missed_task_review_state WHERE task_id = ? LIMIT 1;",
+            parameters: [.integer(taskID)]
         ).first
         guard let value, !value.isEmpty else {
             return nil
@@ -328,12 +329,13 @@ public final class SQLiteMissedTaskReviewStateStore: MissedTaskReviewStateStore,
         try connection.execute(
             """
             INSERT INTO missed_task_review_state (task_id, last_reviewed_at, last_reviewed_day, updated_at)
-            VALUES (\(taskID), '\(SQLMissedTaskReview.escape(reviewedAt))', '\(SQLMissedTaskReview.escape(reviewedDay))', CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(task_id) DO UPDATE SET
               last_reviewed_at = excluded.last_reviewed_at,
               last_reviewed_day = excluded.last_reviewed_day,
               updated_at = CURRENT_TIMESTAMP;
-            """
+            """,
+            parameters: [.integer(taskID), .text(reviewedAt), .text(reviewedDay)]
         )
     }
 
@@ -360,17 +362,12 @@ public final class SQLiteMissedTaskReviewStateStore: MissedTaskReviewStateStore,
         try connection.execute(
             """
             INSERT INTO missed_task_review_state (task_id, last_notified_day, updated_at)
-            VALUES (0, '\(SQLMissedTaskReview.escape(day))', '\(SQLMissedTaskReview.escape(notifiedAt))')
+            VALUES (0, ?, ?)
             ON CONFLICT(task_id) DO UPDATE SET
               last_notified_day = excluded.last_notified_day,
               updated_at = excluded.updated_at;
-            """
+            """,
+            parameters: [.text(day), .text(notifiedAt)]
         )
-    }
-}
-
-private enum SQLMissedTaskReview {
-    static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
     }
 }
