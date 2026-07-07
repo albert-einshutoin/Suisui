@@ -27,6 +27,7 @@
 "Close Terminal" = "ターミナルを閉じる";
 "Closes setup. You can configure everything later in Settings." = "セットアップを閉じます。すべて後から設定で構成できます。";
 "Command not set" = "コマンド未設定";
+"Command palette" = "コマンドパレット";
 "Connect your Mac" = "Macと連携";
 "Continue" = "続ける";
 "Delete" = "削除";
@@ -249,6 +250,7 @@
 "Plan generation is running; review appears below before execution." = "プラン生成中です。実行前のレビューが下に表示されます。";
 "Answer the clarification question before saving or generating a plan." = "保存またはプラン生成の前に、確認質問へ回答してください。";
 "Resolve the current voice warning before saving or generating a plan." = "保存またはプラン生成の前に、現在の音声警告を解消してください。";
+"Type a command or task…" = "コマンドまたはタスクを入力…";
 "Type a command to generate a plan, or record audio to save a transcript to Inbox." = "プランを生成するにはコマンドを入力し、文字起こしをInboxへ保存するには音声を録音してください。";
 "Save the transcript to Inbox, or generate an approval-gated plan." = "文字起こしをInboxへ保存するか、承認付きプランを生成できます。";
 "Typed commands can generate approval-gated plans. Record audio first to save a voice capture to Inbox." = "入力したコマンドは承認付きプランを生成できます。音声キャプチャをInboxへ保存するには先に録音してください。";
@@ -328,6 +330,7 @@
 "Creates a new local project and selects it." = "新しいローカルプロジェクトを作成して選択します。";
 "Creates the task in the local SoloPM database" = "ローカルSoloPMデータベースにタスクを作成します";
 "Creates the task in the local SoloPM database." = "ローカルSoloPMデータベースにタスクを作成します。";
+"Creates the task in your Inbox." = "Inboxにタスクを作成します。";
 "Danger Zone" = "危険な操作";
 "Dark" = "ダーク";
 "Data Included" = "含まれるデータ";

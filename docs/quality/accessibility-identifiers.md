@@ -27,6 +27,7 @@ The suffix must be a stable internal ID or enum raw value. Do not encode user-pr
 ## Screen Prefixes
 
 - `project-board`: top-level board, toolbar, sidebar, and shared project board actions.
+- `command-palette`: command palette overlay, its query input, and `command-palette-row-<itemID>` result rows.
 - `project-header`: selected project header and project-scoped actions.
 - `project-inspector`: project editing and destructive confirmation controls.
 - `task-inspector`: task editing, automation review, execution, and destructive confirmation controls.

@@ -27,6 +27,7 @@
 "Close Terminal" = "Close Terminal";
 "Closes setup. You can configure everything later in Settings." = "Closes setup. You can configure everything later in Settings.";
 "Command not set" = "Command not set";
+"Command palette" = "Command palette";
 "Connect your Mac" = "Connect your Mac";
 "Continue" = "Continue";
 "Delete" = "Delete";
@@ -249,6 +250,7 @@
 "Plan generation is running; review appears below before execution." = "Plan generation is running; review appears below before execution.";
 "Answer the clarification question before saving or generating a plan." = "Answer the clarification question before saving or generating a plan.";
 "Resolve the current voice warning before saving or generating a plan." = "Resolve the current voice warning before saving or generating a plan.";
+"Type a command or task…" = "Type a command or task…";
 "Type a command to generate a plan, or record audio to save a transcript to Inbox." = "Type a command to generate a plan, or record audio to save a transcript to Inbox.";
 "Save the transcript to Inbox, or generate an approval-gated plan." = "Save the transcript to Inbox, or generate an approval-gated plan.";
 "Typed commands can generate approval-gated plans. Record audio first to save a voice capture to Inbox." = "Typed commands can generate approval-gated plans. Record audio first to save a voice capture to Inbox.";
@@ -328,6 +330,7 @@
 "Creates a new local project and selects it." = "Creates a new local project and selects it.";
 "Creates the task in the local SoloPM database" = "Creates the task in the local SoloPM database";
 "Creates the task in the local SoloPM database." = "Creates the task in the local SoloPM database.";
+"Creates the task in your Inbox." = "Creates the task in your Inbox.";
 "Danger Zone" = "Danger Zone";
 "Dark" = "Dark";
 "Data Included" = "Data Included";

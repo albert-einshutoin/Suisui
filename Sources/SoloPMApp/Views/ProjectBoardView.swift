@@ -44,6 +44,7 @@ private struct DevelopmentAutomationReviewSheet: Identifiable {
 
 struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @StateObject private var viewModel: ProjectBoardViewModel
     private let taskAutomationSettings: () -> TaskAutoExecutionSettings
     private let appSettings: () -> AppSettings
@@ -60,6 +61,7 @@ struct ProjectBoardView: View {
     @State private var isGoogleCalendarSyncApprovalPresented = false
     @State private var developmentAutomationReviewSheet: DevelopmentAutomationReviewSheet?
     @State private var taskInteropExportDocument = TaskInteropFileDocument(data: Data())
+    @State private var isCommandPaletteVisible = false
 
     init(
         viewModel: ProjectBoardViewModel,
@@ -381,6 +383,48 @@ struct ProjectBoardView: View {
             .frame(minWidth: 520, minHeight: 360)
             .accessibilityIdentifier("project-development-automation-review-sheet")
         }
+        .background(
+            // Hidden button so ⌘K opens the palette without disturbing the
+            // pinned toolbar structure. Hidden views stay out of the AX tree.
+            Button("") {
+                isCommandPaletteVisible = true
+            }
+            .keyboardShortcut("k", modifiers: [.command])
+            .hidden()
+            .accessibilityHidden(true)
+        )
+        .overlay {
+            if isCommandPaletteVisible {
+                CommandPaletteView(
+                    projects: commandPaletteProjects,
+                    onExecute: executeCommandPaletteAction,
+                    onDismiss: { isCommandPaletteVisible = false }
+                )
+            }
+        }
+    }
+
+    private var commandPaletteProjects: [(id: Int64, title: String, isArchived: Bool)] {
+        sidebarProjects.map { project in
+            (id: project.id, title: project.title, isArchived: project.isArchived)
+        }
+    }
+
+    private func executeCommandPaletteAction(_ kind: CommandPaletteActionKind) {
+        switch kind {
+        case .createInboxTask(let title):
+            viewModel.createInboxTask(title: title)
+            selectedDestination = .inbox
+        case .openDestination(let destination):
+            selectedDestination = destination
+        case .openProject(let projectID, _):
+            selectedDestination = .project(projectID)
+        case .openVoiceCommandWindow:
+            openWindow(id: "voice-capture")
+        case .openSettingsWindow:
+            openSettings()
+        }
+        isCommandPaletteVisible = false
     }
 
     private var inspectorBinding: Binding<Bool> {
