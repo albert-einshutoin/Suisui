@@ -57,10 +57,12 @@ struct SoloPM: App {
         }
         .defaultSize(width: 560, height: 420)
 
-        MenuBarExtra("SoloPM", systemImage: "checklist") {
+        MenuBarExtra {
             MenuBarPanel(controller: menuBarController, quickCaptureController: menuBarQuickCaptureController)
                 .preferredColorScheme(effectiveAppearancePreference.colorScheme)
                 .environment(\.locale, effectiveLanguagePreference.locale)
+        } label: {
+            MenuBarExtraLabel(controller: menuBarController)
         }
         .menuBarExtraStyle(.window)
 
@@ -81,6 +83,35 @@ struct SoloPM: App {
 
     private var effectiveLanguagePreference: AppLanguagePreference {
         AppLanguagePreference.environmentOverride ?? languagePreference
+    }
+}
+
+/// Menu bar status item label that surfaces overdue deadline debt at a glance.
+/// This lives in its own view (not inline in the App body) because the
+/// MenuBarExtra label closure does not re-render for @StateObject changes
+/// observed only inside the App struct; @ObservedObject here re-renders the
+/// label whenever the controller publishes a refreshed summary.
+private struct MenuBarExtraLabel: View {
+    @ObservedObject var controller: MenuBarSummaryController
+
+    var body: some View {
+        if overdueTaskCount > 0 {
+            HStack(spacing: 2) {
+                Image(systemName: "checklist")
+                Text(verbatim: "\(overdueTaskCount)")
+                    .monospacedDigit()
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text(verbatim: controller.viewModel.overdueLabel))
+            .accessibilityIdentifier("menu-bar-extra-label")
+        } else {
+            Image(systemName: "checklist")
+                .accessibilityIdentifier("menu-bar-extra-label")
+        }
+    }
+
+    private var overdueTaskCount: Int {
+        controller.viewModel.summary.overdueTaskCount
     }
 }
 

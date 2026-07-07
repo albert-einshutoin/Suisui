@@ -291,7 +291,7 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("WindowGroup(\"SoloPM\", id: \"project-board\")"))
 
         let boardWindow = try XCTUnwrap(source.range(of: "WindowGroup(\"SoloPM\", id: \"project-board\")"))
-        let menuBar = try XCTUnwrap(source.range(of: "MenuBarExtra(\"SoloPM\", systemImage: \"checklist\")"))
+        let menuBar = try XCTUnwrap(source.range(of: "MenuBarExtraLabel(controller: menuBarController)"))
         XCTAssertLessThan(boardWindow.lowerBound, menuBar.lowerBound)
     }
 
