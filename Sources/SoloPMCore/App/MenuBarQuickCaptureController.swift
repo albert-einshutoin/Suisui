@@ -34,10 +34,19 @@ public final class MenuBarQuickCaptureController: ObservableObject {
         priority: ProjectTaskPriority = .medium,
         dueAt: String? = nil
     ) -> ProjectBoardTask? {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        var trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else {
             errorMessage = "Task title is required."
             return nil
+        }
+
+        var resolvedDueAt = dueAt
+        if dueAt == nil {
+            let parsed = QuickAddDueDateParser.parse(trimmedTitle)
+            if let parsedDueAt = parsed.dueAt {
+                trimmedTitle = parsed.title
+                resolvedDueAt = DeadlineDateParser.string(from: parsedDueAt)
+            }
         }
 
         do {
@@ -50,7 +59,7 @@ public final class MenuBarQuickCaptureController: ObservableObject {
                 detail: detail,
                 status: .backlog,
                 priority: priority,
-                dueAt: dueAt
+                dueAt: resolvedDueAt
             ))
             errorMessage = nil
             onChange()

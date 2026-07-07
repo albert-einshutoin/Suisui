@@ -4,6 +4,7 @@ import SwiftUI
 
 struct VoiceCaptureView: View {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel: VoiceCaptureViewModel
     @State private var clarificationAnswer = ""
 
@@ -40,8 +41,32 @@ struct VoiceCaptureView: View {
         }
     }
 
+    /// Zone 2 ("Working") renders only while the command is being interpreted:
+    /// streaming plan text, an open clarification question, a routed intent,
+    /// or an in-flight/finished workspace answer.
+    private var hasWorkingContent: Bool {
+        (viewModel.phase == .generatingPlan && !viewModel.planGenerationLiveText.isEmpty)
+            || viewModel.clarificationQuestion != nil
+            || viewModel.routingResult != nil
+            || viewModel.workspaceAnswer != .idle
+    }
+
+    private var isWorkspaceAnswerBusy: Bool {
+        viewModel.workspaceAnswer == .retrieving || viewModel.workspaceAnswer == .answering
+    }
+
+    /// Zone 3 ("Review") renders only when there is an approval-gated result
+    /// to inspect, so the capture zone keeps the window to itself otherwise.
+    private var hasReviewContent: Bool {
+        viewModel.dailyPlanningReviewRequest != nil
+            || viewModel.inboxTriageRequest != nil
+            || viewModel.inboxCaptureResult != nil
+            || viewModel.assistantQueueItem != nil
+            || viewModel.planningResponse != nil
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: SoloPMSpacing.md) {
             HStack {
                 Label("Voice Command", systemImage: "mic")
                     .font(.headline)
@@ -56,6 +81,49 @@ struct VoiceCaptureView: View {
                 .accessibilityIdentifier("voice-command-clear")
             }
 
+            captureZone
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: SoloPMSpacing.md) {
+                    if hasWorkingContent {
+                        workingZone
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+
+                    if hasReviewContent {
+                        reviewZone
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                // Zones fade/slide in briefly as they appear; Reduce Motion
+                // disables the animation so state changes apply instantly.
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: hasWorkingContent)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: hasReviewContent)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .padding(SoloPMSpacing.lg)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityIdentifier("voice-command-root")
+        .onChange(of: viewModel.dailyPlanningReviewRequest) { _, request in
+            guard let request else {
+                return
+            }
+            postDailyPlanningReviewRequest(request)
+        }
+        .onChange(of: viewModel.inboxTriageRequest) { _, request in
+            guard let request else {
+                return
+            }
+            postInboxTriageRequest(request)
+        }
+    }
+
+    /// Zone 1: everything needed to enter a command and start work, grouped in
+    /// one card so it reads as a single surface above the working/review zones.
+    private var captureZone: some View {
+        VStack(alignment: .leading, spacing: SoloPMSpacing.md) {
             StatusRow(phase: viewModel.phase)
             if let message = viewModel.auditErrorMessage {
                 Label(message, systemImage: "exclamationmark.triangle")
@@ -124,6 +192,23 @@ struct VoiceCaptureView: View {
                 .disabled(!viewModel.canSaveDraftToInbox || viewModel.isLowLatencyVoiceAgentListening)
                 .accessibilityIdentifier("voice-command-save-to-inbox")
 
+                Button {
+                    Task {
+                        await viewModel.askWorkspaceQuestion()
+                    }
+                } label: {
+                    Label("Ask", systemImage: "questionmark.bubble")
+                }
+                .disabled(
+                    isVoiceCommandInputEmpty
+                        || viewModel.phase == .recording
+                        || viewModel.phase == .transcribing
+                        || viewModel.phase == .generatingPlan
+                        || isWorkspaceAnswerBusy
+                )
+                .accessibilityIdentifier("voice-ask-button")
+                .accessibilityHint("Answers a question from local workspace data using the configured AI provider.")
+
                 Spacer()
 
                 Button {
@@ -138,85 +223,149 @@ struct VoiceCaptureView: View {
                 .accessibilityIdentifier("voice-command-generate-plan")
                 .accessibilityHint(localizedSettingsDisplay(actionReadinessMessage))
             }
+        }
+        .soloCard()
+        .accessibilityIdentifier("voice-command-capture-zone")
+    }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                if let routingResult = viewModel.routingResult {
-                    VoiceIntentPreview(result: routingResult)
-                }
+    /// Zone 2: transient interpretation state. Panels self-title, so the zone
+    /// stays header-free and simply stacks whichever surface is active.
+    @ViewBuilder
+    private var workingZone: some View {
+        VStack(alignment: .leading, spacing: SoloPMSpacing.sm) {
+            if viewModel.phase == .generatingPlan && !viewModel.planGenerationLiveText.isEmpty {
+                PlanGenerationLivePreview(text: viewModel.planGenerationLiveText)
+            }
 
-                if let question = viewModel.clarificationQuestion {
-                    ClarificationPanel(
-                        question: question,
-                        turns: viewModel.clarificationSession?.turns ?? [],
-                        answerText: $clarificationAnswer,
-                        onSubmit: { answer in
-                            Task {
-                                await viewModel.submitClarificationAnswer(answer)
-                                clarificationAnswer = ""
-                            }
-                        },
-                        onCancel: {
-                            viewModel.cancelClarification()
+            if let routingResult = viewModel.routingResult {
+                VoiceIntentPreview(result: routingResult)
+            }
+
+            workspaceAnswerZone
+
+            if let question = viewModel.clarificationQuestion {
+                ClarificationPanel(
+                    question: question,
+                    turns: viewModel.clarificationSession?.turns ?? [],
+                    answerText: $clarificationAnswer,
+                    onSubmit: { answer in
+                        Task {
+                            await viewModel.submitClarificationAnswer(answer)
                             clarificationAnswer = ""
                         }
-                    )
-                }
-
-                if let request = viewModel.dailyPlanningReviewRequest {
-                    VoiceDailyPlanningReviewRequestPanel(request: request) {
-                        postDailyPlanningReviewRequest(request)
+                    },
+                    onCancel: {
+                        viewModel.cancelClarification()
+                        clarificationAnswer = ""
                     }
-                }
+                )
+            }
+        }
+        .accessibilityIdentifier("voice-command-working-zone")
+    }
 
-                if let request = viewModel.inboxTriageRequest {
-                    VoiceInboxTriageRequestPanel(request: request) {
-                        postInboxTriageRequest(request)
+    /// Workspace Q&A state inside the working zone: progress while
+    /// retrieving/answering, the answer card, or an attention-tone failure.
+    @ViewBuilder
+    private var workspaceAnswerZone: some View {
+        switch viewModel.workspaceAnswer {
+        case .idle:
+            EmptyView()
+        case .retrieving:
+            HStack(spacing: SoloPMSpacing.sm) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Searching your workspace")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityIdentifier("voice-answer-retrieving")
+        case .answering:
+            HStack(spacing: SoloPMSpacing.sm) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Composing answer")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityIdentifier("voice-answer-answering")
+        case .answered(let text, let contextCount):
+            WorkspaceAnswerPanel(answer: text, contextCount: contextCount) {
+                viewModel.replayWorkspaceAnswer()
+            }
+        case .failed(let message):
+            Label(localizedSettingsDisplay(message), systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(SoloPMTone.attention.color)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("voice-answer-failed")
+        }
+    }
+
+    /// Zone 3: approval-gated outcomes. A small secondary header marks the
+    /// review boundary; each panel keeps its own title and actions.
+    @ViewBuilder
+    private var reviewZone: some View {
+        VStack(alignment: .leading, spacing: SoloPMSpacing.sm) {
+            Label("Review", systemImage: "checklist")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("voice-command-review-header")
+
+            if let request = viewModel.dailyPlanningReviewRequest {
+                VoiceDailyPlanningReviewRequestPanel(request: request) {
+                    postDailyPlanningReviewRequest(request)
+                }
+            }
+
+            if let request = viewModel.inboxTriageRequest {
+                VoiceInboxTriageRequestPanel(request: request) {
+                    postInboxTriageRequest(request)
+                }
+            }
+
+            if let result = viewModel.inboxCaptureResult {
+                VoiceInboxCaptureSavedPanel(result: result) {
+                    openWindow(id: "project-board")
+                }
+            }
+
+            if let item = viewModel.assistantQueueItem {
+                AssistantQueuePanel(
+                    item: item,
+                    executionHandoffItemID: viewModel.assistantQueueExecutionHandoffItemID,
+                    onApprove: { viewModel.approveAssistantQueueItem() },
+                    onDefer: { viewModel.deferAssistantQueueItem() },
+                    onReject: { viewModel.rejectAssistantQueueItem() },
+                    onOpenQueue: { postAssistantQueueOpenRequest() }
+                )
+            }
+
+            if let autoCreatedTask = viewModel.autoCreatedTask {
+                VStack(alignment: .leading, spacing: SoloPMSpacing.xs) {
+                    Label("Task created", systemImage: "checkmark.circle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(verbatim: autoCreatedTask.title)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        viewModel.undoAutoCreatedTask()
+                    } label: {
+                        Label("Undo", systemImage: "arrow.uturn.backward")
                     }
+                    .accessibilityIdentifier("voice-auto-created-undo")
+                    .accessibilityHint("Deletes the automatically created task.")
                 }
-
-                if let result = viewModel.inboxCaptureResult {
-                    VoiceInboxCaptureSavedPanel(result: result) {
-                        openWindow(id: "project-board")
-                    }
-                }
-
-                if let item = viewModel.assistantQueueItem {
-                    Divider()
-                    AssistantQueuePanel(
-                        item: item,
-                        executionHandoffItemID: viewModel.assistantQueueExecutionHandoffItemID,
-                        onApprove: { viewModel.approveAssistantQueueItem() },
-                        onDefer: { viewModel.deferAssistantQueueItem() },
-                        onReject: { viewModel.rejectAssistantQueueItem() },
-                        onOpenQueue: { postAssistantQueueOpenRequest() }
-                    )
-                }
-
-                if let response = viewModel.planningResponse {
-                    Divider()
-                    ActionPlanPreview(response: response)
-                }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .soloCard()
+                .accessibilityIdentifier("voice-auto-created-banner")
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .accessibilityIdentifier("voice-command-root")
-        .onChange(of: viewModel.dailyPlanningReviewRequest) { _, request in
-            guard let request else {
-                return
+
+            if let response = viewModel.planningResponse {
+                ActionPlanPreview(response: response)
+                    .soloCard()
             }
-            postDailyPlanningReviewRequest(request)
         }
-        .onChange(of: viewModel.inboxTriageRequest) { _, request in
-            guard let request else {
-                return
-            }
-            postInboxTriageRequest(request)
-        }
+        .accessibilityIdentifier("voice-command-review-zone")
     }
 
     private func recordingOutputURL() -> URL {
@@ -258,6 +407,70 @@ struct VoiceCaptureView: View {
             object: nil,
             userInfo: [SoloPMAssistantQueueBridge.requestUserInfoKey: bridgeRequest]
         )
+    }
+}
+
+/// Tail of the provider's raw streamed output while a plan is generating,
+/// so the wait feels alive and obviously in progress. The full response is
+/// replaced by the structured plan preview once parsing completes.
+private struct PlanGenerationLivePreview: View {
+    let text: String
+
+    private var tailText: String {
+        String(text.suffix(600))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SoloPMSpacing.xs) {
+            Label("Drafting plan", systemImage: "sparkles")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(verbatim: tailText)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(6)
+                .truncationMode(.head)
+        }
+        .soloCard()
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("voice-plan-live-preview")
+    }
+}
+
+/// Written result of a workspace question with a replay control, so the
+/// spoken answer can be re-read without asking the provider again.
+private struct WorkspaceAnswerPanel: View {
+    let answer: String
+    let contextCount: Int
+    let onSpeak: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SoloPMSpacing.xs) {
+            Label("Answer", systemImage: "text.bubble")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Text(verbatim: answer)
+                .font(.body)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(localizedDisplay("Based on %d workspace items", contextCount))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button {
+                onSpeak()
+            } label: {
+                Label("Speak", systemImage: "speaker.wave.2")
+            }
+            .accessibilityIdentifier("voice-answer-speak")
+            .accessibilityHint("Speaks the workspace answer with the local text-to-speech voice.")
+        }
+        .soloCard()
+        .accessibilityIdentifier("voice-answer-panel")
     }
 }
 

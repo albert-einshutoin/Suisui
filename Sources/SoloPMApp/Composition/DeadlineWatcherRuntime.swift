@@ -44,6 +44,17 @@ extension AppRuntimeFactory {
             settings: settings
         )
     }
+
+    static func makeWeeklyReviewSummaryScheduler() throws -> WeeklyReviewSummaryScheduler {
+        let connection = try migratedConnection()
+        let settings = loadRuntimeSettings().settings
+        return WeeklyReviewSummaryScheduler(
+            taskStore: SQLiteTaskStore(connection: connection),
+            stateStore: SQLiteWeeklyReviewSummaryStateStore(connection: connection),
+            notificationClient: UserNotificationsNotificationClient(),
+            settings: settings
+        )
+    }
 }
 
 /// Activates the deadline watcher for real app launches: the daily check and
@@ -120,6 +131,9 @@ final class DeadlineWatcherRuntime {
             }
             if let digest = try? AppRuntimeFactory.makeMorningDigestScheduler() {
                 _ = digest.scheduleIfNeeded()
+            }
+            if let weeklyReview = try? AppRuntimeFactory.makeWeeklyReviewSummaryScheduler() {
+                _ = weeklyReview.scheduleIfNeeded()
             }
             await MainActor.run {
                 DockTileBadgeController.shared.refresh()

@@ -92,6 +92,7 @@ public struct TaskRecord: Equatable, Sendable {
     public var sourceCommand: String?
     public var detail: String?
     public var updatedAt: String?
+    public var recurrence: String?
 
     public init(
         id: Int64,
@@ -103,7 +104,8 @@ public struct TaskRecord: Equatable, Sendable {
         priority: String?,
         sourceCommand: String?,
         detail: String? = nil,
-        updatedAt: String? = nil
+        updatedAt: String? = nil,
+        recurrence: String? = nil
     ) {
         self.id = id
         self.projectID = projectID
@@ -115,6 +117,7 @@ public struct TaskRecord: Equatable, Sendable {
         self.sourceCommand = sourceCommand
         self.detail = detail
         self.updatedAt = updatedAt
+        self.recurrence = recurrence
     }
 }
 
@@ -126,6 +129,7 @@ public struct TaskCreateDraft: Equatable, Sendable {
     public var sourceCommand: String?
     public var status: String
     public var detail: String?
+    public var recurrence: String?
 
     public init(
         title: String,
@@ -134,7 +138,8 @@ public struct TaskCreateDraft: Equatable, Sendable {
         priority: String? = nil,
         sourceCommand: String? = nil,
         status: String = "open",
-        detail: String? = nil
+        detail: String? = nil,
+        recurrence: String? = nil
     ) {
         self.title = title
         self.projectID = projectID
@@ -143,6 +148,7 @@ public struct TaskCreateDraft: Equatable, Sendable {
         self.sourceCommand = sourceCommand
         self.status = status
         self.detail = detail
+        self.recurrence = recurrence
     }
 }
 
@@ -716,7 +722,8 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         priority: String? = nil,
         sourceCommand: String? = nil,
         status: String = "open",
-        detail: String? = nil
+        detail: String? = nil,
+        recurrence: String? = nil
     ) throws -> TaskRecord {
         lock.lock()
         defer { lock.unlock() }
@@ -729,10 +736,42 @@ public final class SQLiteTaskStore: @unchecked Sendable {
                 priority: priority,
                 sourceCommand: sourceCommand,
                 status: status,
-                detail: detail
+                detail: detail,
+                recurrence: recurrence
             ),
             tool: .taskCreate
         )
+    }
+
+    /// Backup restore inserts completed tasks with their original completion
+    /// timestamp instead of stamping "now", so Done analytics survive a
+    /// restore. Only `WorkspaceBackupImporter` should use this entry point.
+    public func createForBackupRestore(_ draft: TaskCreateDraft, completedAt: String?) throws -> TaskRecord {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let normalizedTitle = try StoreFieldValidation.requiredTrimmed(draft.title, argument: "title", tool: .taskCreate)
+        let normalizedStatus = try StoreFieldValidation.taskStatus(draft.status, tool: .taskCreate)
+        let normalizedRecurrence = try draft.recurrence.map { try StoreFieldValidation.taskRecurrence($0, tool: .taskCreate) }
+        try connection.execute(
+            """
+            INSERT INTO tasks (project_id, title, status, detail, due_at, completed_at, priority, source_command, recurrence)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            parameters: [
+                SQLiteValue(draft.projectID),
+                .text(normalizedTitle),
+                .text(normalizedStatus),
+                SQLiteValue(draft.detail),
+                SQLiteValue(draft.dueAt),
+                SQLiteValue(normalizedStatus == "completed" ? completedAt : nil),
+                SQLiteValue(draft.priority),
+                SQLiteValue(draft.sourceCommand),
+                SQLiteValue(normalizedRecurrence)
+            ]
+        )
+
+        return try getLocked(id: connection.lastInsertedRowID)
     }
 
     public func createMany(_ drafts: [TaskCreateDraft]) throws -> [TaskRecord] {
@@ -747,9 +786,10 @@ public final class SQLiteTaskStore: @unchecked Sendable {
     private func insertLocked(_ draft: TaskCreateDraft, tool: ActionTool) throws -> TaskRecord {
         let normalizedTitle = try StoreFieldValidation.requiredTrimmed(draft.title, argument: "title", tool: tool)
         let normalizedStatus = try StoreFieldValidation.taskStatus(draft.status, tool: tool)
+        let normalizedRecurrence = try draft.recurrence.map { try StoreFieldValidation.taskRecurrence($0, tool: tool) }
         try connection.execute(
             """
-            INSERT INTO tasks (project_id, title, status, detail, due_at, completed_at, priority, source_command)
+            INSERT INTO tasks (project_id, title, status, detail, due_at, completed_at, priority, source_command, recurrence)
             VALUES (
               ?,
               ?,
@@ -757,6 +797,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
               ?,
               ?,
               \(normalizedStatus == "completed" ? "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')" : "NULL"),
+              ?,
               ?,
               ?
             );
@@ -768,7 +809,8 @@ public final class SQLiteTaskStore: @unchecked Sendable {
                 SQLiteValue(draft.detail),
                 SQLiteValue(draft.dueAt),
                 SQLiteValue(draft.priority),
-                SQLiteValue(draft.sourceCommand)
+                SQLiteValue(draft.sourceCommand),
+                SQLiteValue(normalizedRecurrence)
             ]
         )
 
@@ -802,11 +844,37 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         detail: NullableFieldUpdate<String> = .unchanged,
         dueAt: NullableFieldUpdate<String> = .unchanged,
         priority: NullableFieldUpdate<String> = .unchanged,
-        projectID: NullableFieldUpdate<Int64> = .unchanged
+        projectID: NullableFieldUpdate<Int64> = .unchanged,
+        recurrence: NullableFieldUpdate<String> = .unchanged
     ) throws -> TaskRecord {
         lock.lock()
         defer { lock.unlock() }
 
+        return try updateFieldsLocked(
+            id: id,
+            title: title,
+            status: status,
+            detail: detail,
+            dueAt: dueAt,
+            priority: priority,
+            projectID: projectID,
+            recurrence: recurrence
+        )
+    }
+
+    // The store lock is not reentrant, so composed operations such as
+    // completeAndRegenerate share this locked implementation instead of
+    // re-entering the public updateFields entry point.
+    private func updateFieldsLocked(
+        id: Int64,
+        title: String? = nil,
+        status: String? = nil,
+        detail: NullableFieldUpdate<String> = .unchanged,
+        dueAt: NullableFieldUpdate<String> = .unchanged,
+        priority: NullableFieldUpdate<String> = .unchanged,
+        projectID: NullableFieldUpdate<Int64> = .unchanged,
+        recurrence: NullableFieldUpdate<String> = .unchanged
+    ) throws -> TaskRecord {
         var assignments: [String] = []
         var parameters: [SQLiteValue] = []
         if let title {
@@ -859,6 +927,16 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         case .clear:
             assignments.append("project_id = NULL")
         }
+        switch recurrence {
+        case .unchanged:
+            break
+        case .set(let recurrence):
+            let normalizedRecurrence = try StoreFieldValidation.taskRecurrence(recurrence, tool: .taskUpdate)
+            assignments.append("recurrence = ?")
+            parameters.append(.text(normalizedRecurrence))
+        case .clear:
+            assignments.append("recurrence = NULL")
+        }
         assignments.append("updated_at = CURRENT_TIMESTAMP")
 
         try connection.execute(
@@ -866,6 +944,40 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             parameters: parameters + [.integer(id)]
         )
         return try getLocked(id: id)
+    }
+
+    /// Marks a task completed and, when the completed record carries a
+    /// recurrence, inserts the next occurrence in the same locked scope.
+    ///
+    /// This is the completion entry point for user-driven flows (board moves,
+    /// inspector saves that transition to done, notification actions). The
+    /// LLM-facing taskUpdate tool intentionally keeps calling updateFields, so
+    /// model-driven status edits never regenerate occurrences.
+    ///
+    /// No explicit SQL transaction is opened here: SQLiteConnection.transaction
+    /// issues a plain BEGIN and callers such as moveTasks already wrap this in
+    /// an outer transaction, so nesting would fail. The store lock serializes
+    /// the two statements instead, matching how completeOpenTasks composes.
+    @discardableResult
+    public func completeAndRegenerate(
+        id: Int64,
+        now: Date = Date(),
+        timeZoneIdentifier: String = TimeZone.current.identifier
+    ) throws -> (completed: TaskRecord, regenerated: TaskRecord?) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let completed = try updateFieldsLocked(id: id, status: "completed")
+        guard let draft = TaskRecurrenceRegenerator.regenerationDraft(
+            for: completed,
+            completedAt: now,
+            timeZoneIdentifier: timeZoneIdentifier
+        ) else {
+            return (completed, nil)
+        }
+
+        let regenerated = try insertLocked(draft, tool: .taskCreate)
+        return (completed, regenerated)
     }
 
     public func listDue(onOrBefore cutoff: String) throws -> [TaskRecord] {
@@ -1010,6 +1122,32 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             "SELECT id FROM tasks WHERE id = ? LIMIT 1;",
             parameters: [.integer(id)]
         ).isEmpty
+    }
+
+    public func completedCount(since: String, until: String) throws -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let value = try connection.queryStrings(
+            """
+            SELECT COUNT(*) FROM tasks
+            WHERE completed_at IS NOT NULL
+              AND completed_at >= ?
+              AND completed_at < ?;
+            """,
+            parameters: [.text(since), .text(until)]
+        ).first
+        return value.flatMap(Int.init) ?? 0
+    }
+
+    public func openCount() throws -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let value = try connection.queryStrings(
+            "SELECT COUNT(*) FROM tasks WHERE status != 'completed';"
+        ).first
+        return value.flatMap(Int.init) ?? 0
     }
 
     @discardableResult
@@ -1472,7 +1610,8 @@ private extension TaskRecord {
             priority: SQL.nilIfEmpty(row["priority"]),
             sourceCommand: SQL.nilIfEmpty(row["source_command"]),
             detail: SQL.nilIfEmpty(row["detail"]),
-            updatedAt: SQL.nilIfEmpty(row["updated_at"])
+            updatedAt: SQL.nilIfEmpty(row["updated_at"]),
+            recurrence: SQL.nilIfEmpty(row["recurrence"])
         )
     }
 }
@@ -1620,6 +1759,22 @@ enum StoreFieldValidation {
             )
         }
         return canonical
+    }
+
+    private static let taskRecurrences = ["daily", "weekly", "monthly"]
+
+    static func taskRecurrence(_ value: String, tool: ActionTool) throws -> String {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else {
+            throw ToolExecutionError.validationFailed(tool, "Argument 'recurrence' cannot be blank.")
+        }
+        guard taskRecurrences.contains(normalized) else {
+            throw ToolExecutionError.validationFailed(
+                tool,
+                "Argument 'recurrence' must be one of \(taskRecurrences.joined(separator: ", "))."
+            )
+        }
+        return normalized
     }
 
     private static func normalizedStatusKey(_ value: String) -> String {

@@ -44,9 +44,12 @@ private struct DevelopmentAutomationReviewSheet: Identifiable {
 
 struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel: ProjectBoardViewModel
     private let taskAutomationSettings: () -> TaskAutoExecutionSettings
     private let appSettings: () -> AppSettings
+    private let smartListStore: (any SmartListStore)?
     private let developmentAutomationReviewSession: (ActionPlan) -> ReviewSessionViewModel
     @AppStorage(ProjectBoardSelectionPersistence.storageKey) private var persistedSelectedDestinationRawValue = ProjectBoardSelectionPersistence.defaultRawValue
     @State private var displayMode: ProjectBoardDisplayMode = .board
@@ -60,16 +63,22 @@ struct ProjectBoardView: View {
     @State private var isGoogleCalendarSyncApprovalPresented = false
     @State private var developmentAutomationReviewSheet: DevelopmentAutomationReviewSheet?
     @State private var taskInteropExportDocument = TaskInteropFileDocument(data: Data())
+    @State private var isCommandPaletteVisible = false
+    @State private var selectedSmartListID: String?
+    @State private var savedSmartLists: [SmartList] = []
+    @State private var isPresentingSmartListEditor = false
 
     init(
         viewModel: ProjectBoardViewModel,
         taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings = { .default },
         appSettings: @escaping () -> AppSettings = { .default },
+        smartListStore: (any SmartListStore)? = AppRuntimeFactory.makeSmartListStoreIfAvailable(),
         developmentAutomationReviewSession: @escaping (ActionPlan) -> ReviewSessionViewModel
     ) {
         _viewModel = StateObject(wrappedValue: viewModel)
         self.taskAutomationSettings = taskAutomationSettings
         self.appSettings = appSettings
+        self.smartListStore = smartListStore
         self.developmentAutomationReviewSession = developmentAutomationReviewSession
     }
 
@@ -92,6 +101,14 @@ struct ProjectBoardView: View {
                         ProjectBoardSidebarDestinationRow(destination: .done, count: sidebarMetrics.doneCount)
                             .tag(ProjectBoardSidebarDestination.done)
                     }
+
+                    SmartListSidebarSection(
+                        smartLists: allSmartLists,
+                        selectedSmartListID: selectedSmartListID,
+                        onSelect: selectSmartList,
+                        onCreate: { isPresentingSmartListEditor = true },
+                        onDelete: deleteSmartList
+                    )
 
                     Section("Projects") {
                         ProjectBoardSidebarDestinationRow(
@@ -196,6 +213,12 @@ struct ProjectBoardView: View {
                             systemImage: "exclamationmark.triangle",
                             description: Text(errorMessage)
                         )
+                    } else if let smartList = selectedSmartList {
+                        SmartListWorkflowView(
+                            smartList: smartList,
+                            viewModel: viewModel,
+                            timeZoneIdentifier: appSettings().timeZoneIdentifier
+                        )
                     } else {
                         switch selectedDestination ?? .today {
                         case .inbox:
@@ -226,7 +249,8 @@ struct ProjectBoardView: View {
                                 ProjectBoardDetail(
                                     project: project,
                                     displayMode: $displayMode,
-                                    viewModel: viewModel
+                                    viewModel: viewModel,
+                                    onOpenTaskInspector: { isInspectorPresented = true }
                                 )
                             } else if viewModel.isEmptyProjectStateVisible {
                                 ContentUnavailableView("No Projects", systemImage: "folder")
@@ -303,6 +327,7 @@ struct ProjectBoardView: View {
         .task {
             viewModel.load()
             viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
+            reloadSavedSmartLists()
             restoreSelectedDestinationIfNeeded()
             consumePendingVoiceDailyPlanningReviewRequestIfNeeded()
             consumePendingVoiceInboxTriageRequestIfNeeded()
@@ -323,6 +348,9 @@ struct ProjectBoardView: View {
             handleAssistantQueueOpenRequest(notification)
         }
         .onChange(of: selectedDestination) { _, destination in
+            if destination != nil {
+                selectedSmartListID = nil
+            }
             persistSelectedDestination(destination)
             applySelectedDestination(destination)
             // Destination changes intentionally clear normal user selection; the
@@ -380,6 +408,119 @@ struct ProjectBoardView: View {
             .padding(16)
             .frame(minWidth: 520, minHeight: 360)
             .accessibilityIdentifier("project-development-automation-review-sheet")
+        }
+        .sheet(isPresented: $isPresentingSmartListEditor) {
+            SmartListEditorSheet(
+                onSave: { smartList in
+                    saveSmartList(smartList)
+                    isPresentingSmartListEditor = false
+                },
+                onCancel: { isPresentingSmartListEditor = false }
+            )
+        }
+        .background(
+            // Hidden button so ⌘K opens the palette without disturbing the
+            // pinned toolbar structure. Hidden views stay out of the AX tree.
+            Button("") {
+                isCommandPaletteVisible = true
+            }
+            .keyboardShortcut("k", modifiers: [.command])
+            .hidden()
+            .accessibilityHidden(true)
+        )
+        .overlay {
+            ZStack {
+                if isCommandPaletteVisible {
+                    CommandPaletteView(
+                        projects: commandPaletteProjects,
+                        smartLists: commandPaletteSmartLists,
+                        onExecute: executeCommandPaletteAction,
+                        onDismiss: { isCommandPaletteVisible = false }
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                }
+            }
+            // Brief fade/scale on palette open and close; Reduce Motion makes
+            // the palette appear and disappear instantly instead.
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isCommandPaletteVisible)
+        }
+    }
+
+    private var commandPaletteProjects: [(id: Int64, title: String, isArchived: Bool)] {
+        sidebarProjects.map { project in
+            (id: project.id, title: project.title, isArchived: project.isArchived)
+        }
+    }
+
+    private var commandPaletteSmartLists: [(id: String, name: String)] {
+        allSmartLists.map { smartList in
+            (id: smartList.id, name: smartList.isPreset ? localizedDisplay(smartList.name) : smartList.name)
+        }
+    }
+
+    private func executeCommandPaletteAction(_ kind: CommandPaletteActionKind) {
+        switch kind {
+        case .createInboxTask(let title):
+            viewModel.createInboxTask(title: title)
+            selectedDestination = .inbox
+        case .openDestination(let destination):
+            selectedDestination = destination
+        case .openProject(let projectID, _):
+            selectedDestination = .project(projectID)
+        case .openSmartList(let smartListID, _):
+            if let smartList = allSmartLists.first(where: { $0.id == smartListID }) {
+                selectSmartList(smartList)
+            }
+        case .openVoiceCommandWindow:
+            openWindow(id: "voice-capture")
+        case .openSettingsWindow:
+            openSettings()
+        }
+        isCommandPaletteVisible = false
+    }
+
+    private var allSmartLists: [SmartList] {
+        SmartList.presets + savedSmartLists
+    }
+
+    private var selectedSmartList: SmartList? {
+        guard let selectedSmartListID else {
+            return nil
+        }
+        return allSmartLists.first { $0.id == selectedSmartListID }
+    }
+
+    private func selectSmartList(_ smartList: SmartList) {
+        selectedSmartListID = smartList.id
+        viewModel.selectedTaskID = nil
+        isInspectorPresented = false
+        // Smart lists overlay the detail without extending the contract-pinned
+        // destination enum; clearing the destination keeps exactly one of the
+        // two selection sources active at a time.
+        selectedDestination = nil
+    }
+
+    private func reloadSavedSmartLists() {
+        savedSmartLists = (try? smartListStore?.list()) ?? []
+    }
+
+    private func saveSmartList(_ smartList: SmartList) {
+        try? smartListStore?.save(smartList)
+        reloadSavedSmartLists()
+        if savedSmartLists.contains(where: { $0.id == smartList.id }) || SmartList.presets.contains(where: { $0.id == smartList.id }) {
+            selectSmartList(smartList)
+        }
+    }
+
+    private func deleteSmartList(_ smartList: SmartList) {
+        guard !smartList.isPreset else {
+            return
+        }
+        try? smartListStore?.delete(id: smartList.id)
+        reloadSavedSmartLists()
+        if selectedSmartListID == smartList.id {
+            selectedSmartListID = nil
+            selectedDestination = .today
         }
     }
 
@@ -551,6 +692,12 @@ struct ProjectBoardView: View {
     }
 
     private func restoreSelectedDestinationIfNeeded() {
+        // A smart list selection intentionally leaves the destination nil, so a
+        // data-change reload must not clobber it by restoring the persisted
+        // destination underneath the visible smart list.
+        guard selectedSmartListID == nil else {
+            return
+        }
         let rawValue = ProjectBoardSelectionPersistence.environmentOverrideRawValue
             ?? persistedSelectedDestinationRawValue
         let destination = ProjectBoardSelectionPersistence.destination(
@@ -1713,6 +1860,7 @@ private struct ProjectBoardDetail: View {
     let project: ProjectBoardProject
     @Binding var displayMode: ProjectBoardDisplayMode
     @ObservedObject var viewModel: ProjectBoardViewModel
+    var onOpenTaskInspector: () -> Void = {}
     @State private var composingStatus: ProjectTaskStatus?
 
     var body: some View {
@@ -1768,7 +1916,8 @@ private struct ProjectBoardDetail: View {
                     ProjectKanbanBoard(
                         project: project,
                         composingStatus: $composingStatus,
-                        viewModel: viewModel
+                        viewModel: viewModel,
+                        onOpenTaskInspector: onOpenTaskInspector
                     )
                 case .list:
                     ProjectTaskList(project: project, viewModel: viewModel)
@@ -2554,6 +2703,8 @@ private struct ProjectKanbanBoard: View {
     let project: ProjectBoardProject
     @Binding var composingStatus: ProjectTaskStatus?
     @ObservedObject var viewModel: ProjectBoardViewModel
+    var onOpenTaskInspector: () -> Void = {}
+    @FocusState private var isBoardFocused: Bool
 
     var body: some View {
         ScrollView([.horizontal, .vertical]) {
@@ -2590,11 +2741,129 @@ private struct ProjectKanbanBoard: View {
         }
         .defaultScrollAnchor(.topLeading)
         .scrollIndicators(.visible)
+        // Keyboard-first task manipulation. The handler is scoped to the board
+        // container so text editors outside it (task/project inspector) keep
+        // their own focus and never route plain characters here. The inline
+        // composer is the only editor inside this container, so its visibility
+        // (composingStatus != nil) gates every shortcut.
+        .focusable()
+        .focusEffectDisabled()
+        .focused($isBoardFocused)
+        .onKeyPress(phases: .down) { keyPress in
+            handleBoardKeyPress(keyPress)
+        }
+        .onChange(of: viewModel.selectedTaskID) { _, selectedTaskID in
+            // Clicking a card should let J/K/E/D/1-3 work immediately, but the
+            // board never steals focus while the inline composer is editing.
+            if selectedTaskID != nil && composingStatus == nil {
+                isBoardFocused = true
+            }
+        }
+        .help("Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority")
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project-kanban-board")
         .accessibilityLabel("Kanban board for \(project.title)")
         .accessibilityHint("Open a task card, use status controls, or move tasks between columns.")
         .accessibilitySortPriority(2)
+    }
+
+    private var orderedTaskIDs: [Int64] {
+        ProjectBoardKeyboardNavigation.orderedTaskIDs(in: project)
+    }
+
+    private func handleBoardKeyPress(_ keyPress: KeyPress) -> KeyPress.Result {
+        // While the inline composer is open its text fields own every plain
+        // character; ignoring here keeps typed letters out of board shortcuts.
+        guard composingStatus == nil else {
+            return .ignored
+        }
+        guard keyPress.modifiers.isEmpty else {
+            return .ignored
+        }
+
+        switch keyPress.key {
+        case .downArrow:
+            return selectAdjacentTask(forward: true)
+        case .upArrow:
+            return selectAdjacentTask(forward: false)
+        default:
+            break
+        }
+
+        switch keyPress.characters {
+        case "j":
+            return selectAdjacentTask(forward: true)
+        case "k":
+            return selectAdjacentTask(forward: false)
+        case "e":
+            return openInspectorForSelectedTask()
+        case "d":
+            return completeSelectedTask()
+        case "1":
+            return setSelectedTaskPriority(.low)
+        case "2":
+            return setSelectedTaskPriority(.medium)
+        case "3":
+            return setSelectedTaskPriority(.high)
+        default:
+            return .ignored
+        }
+    }
+
+    private func selectAdjacentTask(forward: Bool) -> KeyPress.Result {
+        let targetTaskID = forward
+            ? ProjectBoardKeyboardNavigation.nextTaskID(after: viewModel.selectedTaskID, in: orderedTaskIDs)
+            : ProjectBoardKeyboardNavigation.previousTaskID(before: viewModel.selectedTaskID, in: orderedTaskIDs)
+        guard let targetTaskID else {
+            return .ignored
+        }
+        viewModel.selectedTaskID = targetTaskID
+        return .handled
+    }
+
+    private func openInspectorForSelectedTask() -> KeyPress.Result {
+        guard selectedBoardTask != nil else {
+            return .ignored
+        }
+        onOpenTaskInspector()
+        return .handled
+    }
+
+    private func completeSelectedTask() -> KeyPress.Result {
+        guard let task = selectedBoardTask else {
+            return .ignored
+        }
+        guard task.status != .done else {
+            return .handled
+        }
+        // Same recurrence-aware completion route as the card status controls.
+        viewModel.moveTask(id: task.id, to: .done)
+        return .handled
+    }
+
+    private func setSelectedTaskPriority(_ priority: ProjectTaskPriority) -> KeyPress.Result {
+        guard let task = selectedBoardTask else {
+            return .ignored
+        }
+        guard task.priority != priority else {
+            return .handled
+        }
+        viewModel.updateSelectedTask(
+            title: task.title,
+            detail: task.detail,
+            status: task.status,
+            priority: priority,
+            dueAt: task.dueAt,
+            recurrence: task.recurrence
+        )
+        return .handled
+    }
+
+    private var selectedBoardTask: ProjectBoardTask? {
+        guard let selectedTaskID = viewModel.selectedTaskID else {
+            return nil
+        }
+        return project.tasks.first { $0.id == selectedTaskID }
     }
 }
 
@@ -3098,10 +3367,31 @@ private struct TaskCardMetadataStrip: View {
             systemImage: "calendar",
             tint: task.dueLabel == nil ? .secondary : .blue
         )
+
+        if let recurrenceValue {
+            TaskMetadataChip(
+                value: recurrenceValue,
+                systemImage: "repeat",
+                tint: .purple
+            )
+        }
     }
 
     private var dueValue: String {
         task.dueLabel ?? "No due date"
+    }
+
+    private var recurrenceValue: String? {
+        switch task.recurrence {
+        case "daily":
+            localizedDisplay("Daily")
+        case "weekly":
+            localizedDisplay("Weekly")
+        case "monthly":
+            localizedDisplay("Monthly")
+        default:
+            nil
+        }
     }
 }
 
@@ -4333,6 +4623,7 @@ private struct TaskInspectorView: View {
     @State private var status: ProjectTaskStatus
     @State private var priority: ProjectTaskPriority
     @State private var dueAt: String
+    @State private var recurrence: String
     @State private var isConfirmingDelete = false
 
     init(task: ProjectBoardTask, viewModel: ProjectBoardViewModel, onClose: @escaping () -> Void) {
@@ -4344,6 +4635,7 @@ private struct TaskInspectorView: View {
         _status = State(initialValue: task.status)
         _priority = State(initialValue: task.priority)
         _dueAt = State(initialValue: task.dueAt ?? "")
+        _recurrence = State(initialValue: task.recurrence ?? "")
     }
 
     var body: some View {
@@ -4394,6 +4686,15 @@ private struct TaskInspectorView: View {
 
                 TextField("Due", text: $dueAt)
                     .accessibilityIdentifier("task-inspector-due")
+
+                Picker("Repeat", selection: $recurrence) {
+                    Text("None").tag("")
+                    Text("Daily").tag("daily")
+                    Text("Weekly").tag("weekly")
+                    Text("Monthly").tag("monthly")
+                }
+                .help("Repeats the task by creating the next occurrence when it is completed")
+                .accessibilityIdentifier("task-inspector-recurrence-picker")
             }
 
             Section("Save") {
@@ -4403,7 +4704,8 @@ private struct TaskInspectorView: View {
                         detail: detail,
                         status: status,
                         priority: priority,
-                        dueAt: dueAt.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank
+                        dueAt: dueAt.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank,
+                        recurrence: recurrence.nilIfBlank
                     )
                 } label: {
                     Label("Save Changes", systemImage: "checkmark.circle")
@@ -4479,6 +4781,7 @@ private struct TaskInspectorView: View {
         status = task.status
         priority = task.priority
         dueAt = task.dueAt ?? ""
+        recurrence = task.recurrence ?? ""
     }
 
     private func deleteSelectedTaskAfterConfirmationDismissal() {

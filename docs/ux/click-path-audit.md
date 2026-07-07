@@ -12,8 +12,8 @@
 | Taskステータス変更 | 1回のドラッグ、またはカード上の1ボタン |
 | Project作成 | 2クリック以内 |
 | Provider設定 | Settingsを開いてから2クリック以内 |
-| MCP接続確認 | Settingsを開いてから2クリック以内 |
-| Sync状態確認 | Settingsを開いてから1クリック以内 |
+| MCP接続確認 | Settingsを開いてから2クリック以内。MCP tabはOverviewの `Show advanced settings` toggleをONにすると表示され、ON後の導線は従来通り。 |
+| Sync状態確認 | Settingsを開いてから1クリック以内。Sync tabはOverviewの `Show advanced settings` toggleをONにすると表示され、ON後の導線は従来通り。 |
 
 クリック数はマウスクリックだけを数える。入力、ドラッグ距離、スクロール距離は別の操作負荷として記録する。
 
@@ -92,10 +92,10 @@ Phase 14 product review maps each major user goal as `app launch -> entry point 
 | AI Provider変更 | Settings -> provider picker -> provider | 2 | Pass | Provider選択時に自動保存されるため、保存ボタンを探す必要がない。AI Provider readiness rowで選択中providerの状態、smoke readiness、次の操作がすぐ分かる。 |
 | Provider API key保存 | Settings -> API key field -> save key | 3 | Pass | 初期設定として3操作は残るが、readiness rowが「Keychainへ保存」「再入力」「manual smoke」の次操作を出すため迷子になりにくい。 |
 | OpenCode Local設定 | Settings -> executable/workspace/model入力 -> approval toggle -> save | 5+ | Watch | 複数fieldが必要な設定だが、readiness rowが executable / workspace / approval の不足を先に示す。設定量自体はlocal subprocess providerの安全境界として許容する。 |
-| 選択中MCP serverの接続確認 | Settings -> server rowの `Check` | 2 | Pass | 各server rowにEnabled/Disabled、接続結果、protocol versionを表示する。 |
-| 別MCP serverの接続確認 | Settings -> 対象server rowの `Check` | 2 | Pass | Picker切替を不要にし、rowのCheckで対象serverを選択して接続確認できる。 |
+| 選択中MCP serverの接続確認 | Settings -> server rowの `Check` | 2 | Pass | 各server rowにEnabled/Disabled、接続結果、protocol versionを表示する。MCP/Sync tabはOverviewの `Show advanced settings` toggleをONにすると表示される。ON後の導線は従来通り。 |
+| 別MCP serverの接続確認 | Settings -> 対象server rowの `Check` | 2 | Pass | Picker切替を不要にし、rowのCheckで対象serverを選択して接続確認できる。MCP/Sync tabはOverviewの `Show advanced settings` toggleをONにすると表示される。ON後の導線は従来通り。 |
 | MCP実行境界確認 | Settings -> MCP tab | 1 | Pass | MCP paid execution boundary rowで、登録/接続確認はFreeでも可能、tools/callはProかつentitlement/policy/approval必須だと分かる。 |
-| Sync状態確認 | Settings -> Status Overviewを見る | 1 | Pass | Planと状態がSettings先頭で分かる。Sync tabではpaid value rowがPro価値、Freeのlocal-only境界、backend未構成状態をtoggle前に示す。 |
+| Sync状態確認 | Settings -> Status Overviewを見る | 1 | Pass | Planと状態がSettings先頭で分かる。Sync tabではpaid value rowがPro価値、Freeのlocal-only境界、backend未構成状態をtoggle前に示す。MCP/Sync tabはOverviewの `Show advanced settings` toggleをONにすると表示される。ON後の導線は従来通り。 |
 | Pro価値確認 | Settings -> OverviewのPro Value rowを見る | 1 | Pass | Settings Overview Pro Value rowで、SyncとAdvanced MCP Executionの価値、Free/local-only、backend未構成、tools/call前のentitlement/policy/approval境界がタブ移動なしで分かる。 |
 | Free userでSync開始 | Settings -> `External Sync` toggle | 2 | Pass | network前にupgrade gateで止まる。Free stays local / no data leaves this Mac の境界もtoggle前に見える。 |
 | text commandからplan生成 | Voice Command -> 入力 -> `Generate Plan` | 2 | Pass | 生成後にreview panelが同じ画面へ出る。 |
@@ -163,3 +163,22 @@ Risk: Artifact追加は絶対パスに限定してworkspace推測を避け、削
 1. P11-033: 実機VoiceOverでProject board -> card -> Inline Task Composer -> inspectorのfocus orderを確認する。
 2. P11-040: Notion / Todoist / Linear / Motion の実操作メモを追加し、desk researchとの差分だけ更新する。
 3. P5/P10: Developer ID signing / notarization / Sparkle appcast のrelease-machine gateを埋める。
+
+## Keyboard (2026-07-07)
+
+Project boardのkanban surfaceにフォーカスがあるとき(タスクカードをクリックすると自動でフォーカスされる)、次のショートカットが使える。テキスト入力中(inline task composer表示中、またはinspectorのfield編集中)はすべて無効になり、文字はそのまま入力欄へ渡る。
+
+| Key | 操作 |
+| --- | --- |
+| `J` / `↓` | ボードの表示順(列の左→右、列内の上→下)で次のタスクを選択 |
+| `K` / `↑` | 同じ表示順で前のタスクを選択 |
+| `E` | 選択中タスクのtask inspectorを開く |
+| `D` | 選択中タスクを完了にする(カードのstatus controlsと同じ`moveTask(.done)`経路。繰り返しタスクは次回occurrenceが作られる) |
+| `1` / `2` / `3` | 選択中タスクの優先度をLow / Medium / Highに設定(既存の`updateSelectedTask`経路) |
+| `⌘K` | コマンドパレット(destinations、projects、smart lists、Inboxへのタスク作成) |
+
+順序ロジックは`ProjectBoardKeyboardNavigation`(SoloPMCore)にあり、`ProjectBoardKeyboardNavigationTests`で検証する。キーのUI配線自体はunit testでは検証できないため、ボードにフォーカスがある状態での手動確認を対象とする。
+
+### Smart Lists
+
+Sidebarの`Smart Lists` sectionにpreset(`Due this week`、`High priority`、`Overdue`)と保存済みリストが並ぶ。`New Smart List…`でstatus/priority/due-within/overdue/検索テキストを組み合わせたフィルタを保存でき、選択するとboard detailに一致タスクのflat listが出る(Todayと同じrow componentを再利用)。選択は`selectedDestination`とは独立した`selectedSmartListID`で管理し、どちらか一方だけがアクティブになる。

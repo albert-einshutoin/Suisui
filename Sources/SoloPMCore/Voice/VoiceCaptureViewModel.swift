@@ -11,6 +11,14 @@ public enum VoiceCapturePhase: Equatable, Sendable {
     case failed(String)
 }
 
+public enum WorkspaceAnswerState: Equatable, Sendable {
+    case idle
+    case retrieving
+    case answering
+    case answered(text: String, contextCount: Int)
+    case failed(String)
+}
+
 public enum LowLatencyVoiceAgentState: Equatable, Sendable {
     case idle
     case listening
@@ -67,6 +75,7 @@ public struct VoiceInboxTriageRequest: Equatable, Sendable, Identifiable {
 public final class VoiceCaptureViewModel: ObservableObject {
     @Published public private(set) var draft: TranscriptDraft
     @Published public private(set) var phase: VoiceCapturePhase
+    @Published public private(set) var planGenerationLiveText: String = ""
     @Published public private(set) var recordingState: AudioRecordingState
     @Published public private(set) var planningResponse: PlanningResponse?
     @Published public private(set) var recordedAudio: RecordedAudio?
@@ -81,6 +90,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
     @Published public private(set) var lowLatencyVoiceAgentState: LowLatencyVoiceAgentState
     @Published public private(set) var liveTranscript: String
     @Published public private(set) var liveIntentPreview: VoiceCommandRoutingResult?
+    @Published public private(set) var workspaceAnswer: WorkspaceAnswerState = .idle
+    @Published public private(set) var autoCreatedTask: AutoCreatedTaskRecord?
 
     private var audioRecorder: any AudioRecorder
     private let sttProvider: any SpeechToTextProvider
@@ -95,6 +106,11 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private let developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder
     private let appSettingsProvider: @Sendable () -> AppSettings
     private let managedCostRateCardProvider: @Sendable (PlanningResponse) -> AssistantQueueCostRateCard?
+    private let workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])?
+    private let workspaceAnswerReadout: (@Sendable (String) -> Void)?
+    private let taskAutomationSettingsProvider: (@Sendable () -> TaskAutoExecutionSettings)?
+    private let lowRiskTaskAutoExecutor: (@Sendable (ActionPlan) async throws -> LowRiskAutoCreationOutcome)?
+    private let taskDeleter: (@Sendable (Int64) throws -> Void)?
     private let lowLatencySegmentDuration: TimeInterval
     private let lowLatencySegmentOutputURLProvider: @Sendable () -> URL
     // Save-to-Inbox must be tied to the audio that produced the current
@@ -119,6 +135,11 @@ public final class VoiceCaptureViewModel: ObservableObject {
         developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder = VoiceDevelopmentPullRequestAutomationRequestBuilder(),
         appSettingsProvider: @escaping @Sendable () -> AppSettings = { .default },
         managedCostRateCardProvider: @escaping @Sendable (PlanningResponse) -> AssistantQueueCostRateCard? = { _ in nil },
+        workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])? = nil,
+        workspaceAnswerReadout: (@Sendable (String) -> Void)? = nil,
+        taskAutomationSettingsProvider: (@Sendable () -> TaskAutoExecutionSettings)? = nil,
+        lowRiskTaskAutoExecutor: (@Sendable (ActionPlan) async throws -> LowRiskAutoCreationOutcome)? = nil,
+        taskDeleter: (@Sendable (Int64) throws -> Void)? = nil,
         lowLatencySegmentDuration: TimeInterval = 1.2,
         lowLatencySegmentOutputURLProvider: @escaping @Sendable () -> URL = {
             FileManager.default.temporaryDirectory
@@ -139,6 +160,11 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.developmentPullRequestAutomationRequestBuilder = developmentPullRequestAutomationRequestBuilder
         self.appSettingsProvider = appSettingsProvider
         self.managedCostRateCardProvider = managedCostRateCardProvider
+        self.workspaceContextRetriever = workspaceContextRetriever
+        self.workspaceAnswerReadout = workspaceAnswerReadout
+        self.taskAutomationSettingsProvider = taskAutomationSettingsProvider
+        self.lowRiskTaskAutoExecutor = lowRiskTaskAutoExecutor
+        self.taskDeleter = taskDeleter
         self.lowLatencySegmentDuration = lowLatencySegmentDuration
         self.lowLatencySegmentOutputURLProvider = lowLatencySegmentOutputURLProvider
         self.recordingState = audioRecorder.state
@@ -214,6 +240,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         inboxTriageRequest = nil
         inboxCaptureResult = nil
         developmentPullRequestAutomationRequest = nil
+        autoCreatedTask = nil
         refreshRoutingResult()
         if shouldResetPhaseAfterDraftChange, runtimeValidationMessage == nil {
             phase = .idle
@@ -236,6 +263,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         lastTranscribedAudioURL = nil
         savedInboxAudioURL = nil
         developmentPullRequestAutomationRequest = nil
+        autoCreatedTask = nil
+        workspaceAnswer = .idle
         recordingState = audioRecorder.state
         phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
     }
@@ -530,6 +559,73 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 knowledgeFrameCandidates: knowledgeFrameCandidates
             )
         }
+    }
+
+    /// Answers a free-form question about local work: retrieve workspace
+    /// context, ask the configured provider for a short speakable answer,
+    /// then hand the redacted answer to the readout closure for TTS.
+    public func askWorkspaceQuestion(
+        currentDate: Date = Date(),
+        timeZoneIdentifier: String = TimeZone.current.identifier
+    ) async {
+        let question = draft.normalizedText
+        guard !question.isEmpty else {
+            workspaceAnswer = .failed("Type or dictate a question first.")
+            return
+        }
+        guard let workspaceContextRetriever else {
+            workspaceAnswer = .failed("Workspace question answering is unavailable because local data stores could not be opened.")
+            return
+        }
+        switch workspaceAnswer {
+        case .retrieving, .answering:
+            return
+        case .idle, .answered, .failed:
+            break
+        }
+
+        workspaceAnswer = .retrieving
+        let snippets: [WorkspaceContextSnippet]
+        do {
+            snippets = try workspaceContextRetriever(question)
+        } catch {
+            workspaceAnswer = .failed(userMessage(for: error))
+            return
+        }
+
+        guard let answeringProvider = llmProvider as? AnswerGeneratingLLMProvider else {
+            workspaceAnswer = .failed("The configured AI provider does not support workspace question answering yet.")
+            return
+        }
+
+        workspaceAnswer = .answering
+        let settings = appSettingsProvider().normalizedForRuntime
+        let request = WorkspaceAnswerRequest(
+            question: question,
+            contextSnippets: snippets,
+            currentDate: currentDate,
+            timeZoneIdentifier: timeZoneIdentifier,
+            languageCode: AppSettings.normalizedTTSLanguageCode(settings.ttsLanguageCode)
+        )
+        do {
+            let answer = try await answeringProvider.generateAnswer(for: request)
+            // Defensive redaction: the provider was already given redacted
+            // context, but the model could still echo secrets or paths from
+            // the question itself.
+            let redactedAnswer = LocalPathRedactor.redact(DeveloperSecretRedactor().redact(answer).text)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            workspaceAnswer = .answered(text: redactedAnswer, contextCount: snippets.count)
+            workspaceAnswerReadout?(redactedAnswer)
+        } catch {
+            workspaceAnswer = .failed(userMessage(for: error))
+        }
+    }
+
+    public func replayWorkspaceAnswer() {
+        guard case .answered(let text, _) = workspaceAnswer else {
+            return
+        }
+        workspaceAnswerReadout?(text)
     }
 
     public func cancelClarification() {
@@ -1225,6 +1321,24 @@ public final class VoiceCaptureViewModel: ObservableObject {
         )
     }
 
+    /// Streams provider output into `planGenerationLiveText` when the
+    /// configured provider supports it; otherwise falls back to the
+    /// single-response path with identical results.
+    private func generatePlanResponse(for request: PlanningRequest) async throws -> PlanningResponse {
+        guard let streamingProvider = llmProvider as? StreamingLLMProvider else {
+            return try await llmProvider.generatePlan(for: request)
+        }
+
+        return try await streamingProvider.generatePlanStream(for: request) { [weak self] delta in
+            Task { @MainActor [weak self] in
+                guard let self, self.phase == .generatingPlan else {
+                    return
+                }
+                self.planGenerationLiveText += delta
+            }
+        }
+    }
+
     private func generatePlan(
         for routedCommand: VoiceCommandRoutingResult,
         plannedTranscript: String,
@@ -1242,11 +1356,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
         )
 
         phase = .generatingPlan
+        planGenerationLiveText = ""
+        workspaceAnswer = .idle
         auditErrorMessage = nil
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
         developmentPullRequestAutomationRequest = nil
+        autoCreatedTask = nil
 
         do {
             try auditRecorder?.recordStarted(input: request.userInput, providerID: llmProvider.providerID)
@@ -1257,7 +1374,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
 
         do {
-            let response = try await llmProvider.generatePlan(for: request)
+            let response = try await generatePlanResponse(for: request)
             guard isCurrentTranscript(plannedTranscript) else {
                 recordPlanningAudit {
                     try auditRecorder?.recordFailed(
@@ -1273,6 +1390,11 @@ public final class VoiceCaptureViewModel: ObservableObject {
             recordPlanningAudit {
                 try auditRecorder?.recordCompleted(response: response)
             }
+            phase = response.validationResult.isValid ? .reviewReady : .failed("ActionPlan validation failed.")
+            if phase == .reviewReady,
+               await autoCreateLowRiskTaskIfEligible(from: response) {
+                return
+            }
             do {
                 if let queueItem = makeAssistantQueueItem(from: response, routedCommand: routedCommand) {
                     assistantQueueItem = try persistAssistantQueueItemIfNeeded(queueItem)
@@ -1282,7 +1404,6 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 phase = .failed(userMessage(for: error))
                 return
             }
-            phase = response.validationResult.isValid ? .reviewReady : .failed("ActionPlan validation failed.")
         } catch {
             guard isCurrentTranscript(plannedTranscript) else {
                 recordPlanningAudit {
@@ -1299,6 +1420,61 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 try auditRecorder?.recordFailed(input: request.userInput, providerID: llmProvider.providerID, error: error)
             }
             phase = .failed(userMessage(for: error))
+        }
+    }
+
+    /// Opt-in auto-creation of a single low-risk task. The plan already passed
+    /// validation and reached `.reviewReady`; when the user selected the
+    /// autoCreateLowRisk automation mode and the plan qualifies, run it through
+    /// the injected review execution pipeline (same executor, audit trail, and
+    /// receipts as a manual approval) and publish an undoable record.
+    private func autoCreateLowRiskTaskIfEligible(from response: PlanningResponse) async -> Bool {
+        guard let taskAutomationSettingsProvider,
+              let lowRiskTaskAutoExecutor,
+              let plan = response.actionPlan else {
+            return false
+        }
+        guard LowRiskAutoCreationPolicy.qualifies(
+            plan: plan,
+            validation: response.validationResult,
+            settings: taskAutomationSettingsProvider()
+        ) else {
+            return false
+        }
+
+        do {
+            let outcome = try await lowRiskTaskAutoExecutor(plan)
+            guard let taskID = outcome.taskID else {
+                return false
+            }
+            autoCreatedTask = AutoCreatedTaskRecord(taskID: taskID, title: outcome.taskTitle)
+            return true
+        } catch {
+            // Auto-create is best effort: the plan itself stays reviewReady with
+            // the manual approval buttons as the fallback, so an execution
+            // failure must never turn a successful plan into a failed phase.
+            autoCreatedTask = nil
+            return false
+        }
+    }
+
+    /// Post-hoc undo for an auto-created task. Deletion failures keep the
+    /// record so the user can retry, and surface through the existing
+    /// audit/error message channel.
+    public func undoAutoCreatedTask() {
+        guard let record = autoCreatedTask else {
+            return
+        }
+        guard let taskDeleter else {
+            auditErrorMessage = "Undo is unavailable because local data stores could not be opened."
+            return
+        }
+        do {
+            try taskDeleter(record.taskID)
+            autoCreatedTask = nil
+            auditErrorMessage = nil
+        } catch {
+            auditErrorMessage = userMessage(for: error)
         }
     }
 

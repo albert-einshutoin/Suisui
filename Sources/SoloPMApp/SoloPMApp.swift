@@ -55,7 +55,7 @@ struct SoloPM: App {
                 .preferredColorScheme(effectiveAppearancePreference.colorScheme)
                 .environment(\.locale, effectiveLanguagePreference.locale)
         }
-        .defaultSize(width: 560, height: 420)
+        .defaultSize(width: 680, height: 640)
 
         MenuBarExtra {
             MenuBarPanel(controller: menuBarController, quickCaptureController: menuBarQuickCaptureController)
@@ -266,7 +266,7 @@ private struct VoiceCaptureWindowRootView: View {
                 VoiceCaptureView(viewModel: viewModel)
             } else {
                 ProgressView("Opening Voice Command")
-                    .frame(minWidth: 560, minHeight: 420)
+                    .frame(minWidth: 680, minHeight: 640)
                     .accessibilityIdentifier("voice-capture-loading")
             }
         }
@@ -452,6 +452,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
     private var fallbackProjectBoardWindow: NSWindow?
     private var settingsEvidenceWindow: NSWindow?
     private var voiceCommandEvidenceWindow: NSWindow?
+    private var digestNotificationOpenedObserver: (any NSObjectProtocol)?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
@@ -460,6 +461,17 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
         DockTileBadgeController.shared.start()
         DeadlineWatcherRuntime.shared.start()
         ensureProjectBoardWindowIsVisible()
+        // Tapping a digest notification must surface the Project Board even
+        // when every window was closed; reuse the reopen recovery path.
+        digestNotificationOpenedObserver = NotificationCenter.default.addObserver(
+            forName: .soloPMDigestNotificationOpened,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.ensureProjectBoardWindowIsVisible()
+            }
+        }
         openSettingsWindowForEvidenceIfRequested()
         openVoiceCommandWindowForEvidenceIfRequested()
 

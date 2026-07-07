@@ -114,7 +114,7 @@ public enum LLMProviderCatalog {
             baseURL: URL(string: "https://api.openai.com/v1")!,
             defaultModelID: "gpt-5.5",
             requestFamily: .openAIResponses,
-            supportsStreaming: false,
+            supportsStreaming: true,
             supportsStructuredOutput: true
         ),
         LLMProviderCatalogEntry(
@@ -181,7 +181,7 @@ public enum LLMProviderCatalog {
             baseURL: URL(string: "https://openrouter.ai/api/v1")!,
             defaultModelID: "openai/gpt-latest",
             requestFamily: .openAIChatCompletions,
-            supportsStreaming: false,
+            supportsStreaming: true,
             supportsStructuredOutput: false
         ),
         LLMProviderCatalogEntry(
@@ -192,7 +192,7 @@ public enum LLMProviderCatalog {
             baseURL: URL(string: "http://localhost:11434/v1")!,
             defaultModelID: "llama3.2",
             requestFamily: .openAIChatCompletions,
-            supportsStreaming: false,
+            supportsStreaming: true,
             supportsStructuredOutput: false
         )
     ]

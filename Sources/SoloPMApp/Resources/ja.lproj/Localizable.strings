@@ -2,6 +2,8 @@
 "Add Project" = "プロジェクト追加";
 "Add Server" = "サーバー追加";
 "Add Task" = "タスク追加";
+"Advanced" = "詳細";
+"Advanced AI Options" = "AIの詳細オプション";
 "AI" = "AI";
 "Appearance" = "表示";
 "Apply Suggestion" = "提案を適用";
@@ -25,6 +27,7 @@
 "Close Terminal" = "ターミナルを閉じる";
 "Closes setup. You can configure everything later in Settings." = "セットアップを閉じます。すべて後から設定で構成できます。";
 "Command not set" = "コマンド未設定";
+"Command palette" = "コマンドパレット";
 "Connect your Mac" = "Macと連携";
 "Continue" = "続ける";
 "Delete" = "削除";
@@ -38,6 +41,7 @@
 "Delete Task" = "タスクを削除";
 "Document deliverables" = "文書から作る成果物";
 "Done" = "完了";
+"Drafting plan" = "プラン作成中";
 "Due Today" = "本日期限";
 "English" = "英語";
 "Embedded terminal requires macOS AppKit support." = "埋め込みターミナルにはmacOS AppKit対応が必要です。";
@@ -174,6 +178,8 @@
 "Recent Projects" = "最近のプロジェクト";
 "Record" = "録音";
 "Restart Shell" = "シェルを再起動";
+"Reveals MCP, Sync, and managed billing controls." = "MCP、同期、管理課金の設定を表示します。";
+"Reveals the MCP and Sync tabs and advanced AI options." = "MCPと同期のタブ、およびAIの詳細オプションを表示します。";
 "Save" = "保存";
 "Save Claude Key" = "Claudeキーを保存";
 "Save Gemini Key" = "Geminiキーを保存";
@@ -195,6 +201,7 @@
 "Sets the absolute path to the local Kokoro TTS executable." = "ローカルKokoro TTS実行ファイルの絶対パスを設定します。";
 "Hide Sidebar" = "サイドバーを非表示";
 "Sidebar" = "サイドバー";
+"Show advanced settings" = "詳細設定を表示";
 "Show Archived" = "アーカイブを表示";
 "Show Sidebar" = "サイドバーを表示";
 "Shell Ended" = "シェルは終了しました";
@@ -243,6 +250,7 @@
 "Plan generation is running; review appears below before execution." = "プラン生成中です。実行前のレビューが下に表示されます。";
 "Answer the clarification question before saving or generating a plan." = "保存またはプラン生成の前に、確認質問へ回答してください。";
 "Resolve the current voice warning before saving or generating a plan." = "保存またはプラン生成の前に、現在の音声警告を解消してください。";
+"Type a command or task…" = "コマンドまたはタスクを入力…";
 "Type a command to generate a plan, or record audio to save a transcript to Inbox." = "プランを生成するにはコマンドを入力し、文字起こしをInboxへ保存するには音声を録音してください。";
 "Save the transcript to Inbox, or generate an approval-gated plan." = "文字起こしをInboxへ保存するか、承認付きプランを生成できます。";
 "Typed commands can generate approval-gated plans. Record audio first to save a voice capture to Inbox." = "入力したコマンドは承認付きプランを生成できます。音声キャプチャをInboxへ保存するには先に録音してください。";
@@ -322,6 +330,7 @@
 "Creates a new local project and selects it." = "新しいローカルプロジェクトを作成して選択します。";
 "Creates the task in the local SoloPM database" = "ローカルSoloPMデータベースにタスクを作成します";
 "Creates the task in the local SoloPM database." = "ローカルSoloPMデータベースにタスクを作成します。";
+"Creates the task in your Inbox." = "Inboxにタスクを作成します。";
 "Danger Zone" = "危険な操作";
 "Dark" = "ダーク";
 "Data Included" = "含まれるデータ";
@@ -390,6 +399,7 @@
 "Memo" = "メモ";
 "Microphone permission denied." = "マイク権限が拒否されています。";
 "Missing" = "未設定";
+"Monthly" = "毎月";
 "Move To" = "移動先";
 "Move the suggested blocked task to In Progress" = "提案されたブロック中タスクを進行中へ移動";
 "Move this task to the next status when you are ready." = "準備ができたらこのタスクを次のステータスへ移動してください。";
@@ -414,6 +424,7 @@
 "No transcript yet" = "文字起こしはまだありません";
 "No tracked artifacts linked to this project" = "このプロジェクトに紐づく追跡成果物はありません";
 "No upload starts while the backend is missing." = "バックエンド未設定の間はアップロードを開始しません。";
+"None" = "なし";
 "Not Determined" = "未決定";
 "Not available" = "利用不可";
 "Not required" = "不要";
@@ -473,6 +484,8 @@
 "Remove artifact link without deleting the local file" = "ローカルファイルを削除せずに成果物リンクを削除";
 "Removes this local SoloPM artifact link without deleting the file." = "ファイルを削除せず、このローカルSoloPM成果物リンクを削除します。";
 "Reopen task" = "タスクを再開";
+"Repeat" = "繰り返し";
+"Repeats the task by creating the next occurrence when it is completed" = "完了すると次の繰り返しタスクを自動作成します";
 "Requires edit or Settings" = "編集または設定が必要";
 "Resources" = "リソース";
 "Restore Project" = "プロジェクトを復元";
@@ -557,6 +570,7 @@
 "Voice notes, manual captures, and unassigned tasks land here before classification." = "音声メモ、手動入力、未割り当てタスクは分類前にここへ入ります。";
 "Voice planning is unavailable because audit logging or local data stores could not be opened." = "監査ログまたはローカルデータストアを開けなかったため、音声計画を利用できません。";
 "Watcher diagnostics are unavailable because local state could not be opened." = "ローカル状態を開けなかったため、監視診断を利用できません。";
+"Weekly" = "毎週";
 "Working Directory" = "作業ディレクトリ";
 "Workspace" = "ワークスペース";
 "%d open due or overdue tasks" = "期限中または期限超過の未完了タスク %d 件";
@@ -881,6 +895,11 @@
 "Task Automation" = "タスク自動化";
 "Review task automation" = "タスク自動化を確認";
 "Review before execution" = "実行前に確認";
+"Automation mode" = "自動化モード";
+"Auto-create low-risk tasks" = "低リスクタスクを自動作成";
+"Auto-create runs a plan automatically only when it is a single low-risk task; everything else still requires review." = "自動作成は、単一の低リスクタスクのプランのみを自動実行します。それ以外は引き続きレビューが必要です。";
+"Task created" = "タスクを作成しました";
+"Deletes the automatically created task." = "自動作成されたタスクを削除します。";
 "Manual review" = "手動レビュー";
 "Hourly review" = "1時間ごとにレビュー";
 "Daily review" = "1日ごとにレビュー";
@@ -1553,3 +1572,57 @@
 "Speech transcription is unavailable." = "音声認識を利用できません。";
 "Voice agent sessions start only from the Voice Command window; cloud fallback requires visible cost disclosure before it can be saved." = "音声エージェントのセッションは音声コマンドウィンドウからのみ開始します。クラウドフォールバックを保存するには、費用表示を有効にする必要があります。";
 "You're ready" = "準備完了";
+
+/* Smart lists and board keyboard shortcuts */
+"Smart Lists" = "スマートリスト";
+"Smart List" = "スマートリスト";
+"New Smart List…" = "新規スマートリスト…";
+"New Smart List" = "新規スマートリスト";
+"Create a saved smart list filter" = "保存できるスマートリストフィルタを作成します";
+"Opens a sheet that saves a reusable task filter to local app storage." = "再利用できるタスクフィルタをローカルのアプリ保存領域に保存するシートを開きます。";
+"Delete Smart List" = "スマートリストを削除";
+"Shows tasks matching this saved filter in the board detail." = "この保存済みフィルタに一致するタスクをボード詳細に表示します。";
+"Lists local tasks matching the selected smart list filter." = "選択中のスマートリストフィルタに一致するローカルタスクを一覧表示します。";
+"Smart list %@" = "スマートリスト %@";
+"%d matching tasks" = "一致するタスク %d件";
+"No matching tasks" = "一致するタスクはありません";
+"Tasks matching this smart list appear here as projects change." = "プロジェクトの変化に応じて、このスマートリストに一致するタスクがここに表示されます。";
+"Due this week" = "今週締切";
+"Name" = "名前";
+"Statuses" = "ステータス";
+"Priorities" = "優先度";
+"Due within days" = "日数以内の締切";
+"Due within %d days" = "%d日以内の締切";
+"Overdue only" = "期限超過のみ";
+"Search" = "検索";
+"Search text" = "検索テキスト";
+"Save Smart List" = "スマートリストを保存";
+"Saves this smart list to local app storage" = "このスマートリストをローカルのアプリ保存領域に保存します";
+"Saves this smart list to local app storage." = "このスマートリストをローカルのアプリ保存領域に保存します。";
+"Closes the sheet without saving a smart list." = "スマートリストを保存せずにシートを閉じます。";
+"Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority" = "キーボード: J/Kまたは矢印キーでタスク選択、Eで詳細、Dで完了、1/2/3で優先度設定";
+
+"Back Up All Data…" = "すべてのデータをバックアップ…";
+"Restore from Backup…" = "バックアップから復元…";
+"Save all projects, tasks, and knowledge frames to a local JSON file" = "すべてのプロジェクト、タスク、ナレッジフレームをローカルのJSONファイルに保存します";
+"Writes a local backup file. No data leaves this Mac." = "ローカルにバックアップファイルを書き出します。データがこのMacの外に送信されることはありません。";
+"Add items from a SoloPM backup file to this workspace" = "SoloPMバックアップファイルの項目をこのワークスペースに追加します";
+"Opens a backup file and asks for confirmation before adding its items." = "バックアップファイルを開き、項目を追加する前に確認を求めます。";
+"Restore from backup?" = "バックアップから復元しますか?";
+"Add Backup Items" = "バックアップ項目を追加";
+"Restore is additive: %d projects, %d tasks, and %d knowledge frames are added as new items. Existing data is never changed or deleted." = "復元は追加のみです: %d件のプロジェクト、%d件のタスク、%d件のナレッジフレームが新しい項目として追加されます。既存のデータが変更・削除されることはありません。";
+"Backed up %d projects, %d tasks, and %d knowledge frames." = "%d件のプロジェクト、%d件のタスク、%d件のナレッジフレームをバックアップしました。";
+"Restored %d projects, %d tasks, and %d knowledge frames. Skipped %d duplicate frames." = "%d件のプロジェクト、%d件のタスク、%d件のナレッジフレームを復元しました。重複するフレーム%d件をスキップしました。";
+"Back Up" = "バックアップ";
+"Choose" = "選択";
+"Choose where to save the SoloPM backup file" = "SoloPMバックアップファイルの保存先を選択してください";
+"Choose a SoloPM backup file to restore" = "復元するSoloPMバックアップファイルを選択してください";
+"Add a task for today" = "今日のタスクを追加";
+"Capture with Voice" = "音声でキャプチャ";
+
+/* Voice workspace Q&A */
+"Searching your workspace" = "ワークスペースを検索中";
+"Composing answer" = "回答を作成中";
+"Based on %d workspace items" = "ワークスペースの%d件に基づく回答";
+"Answers a question from local workspace data using the configured AI provider." = "設定済みのAIプロバイダを使い、ローカルのワークスペースデータから質問に回答します。";
+"Speaks the workspace answer with the local text-to-speech voice." = "ローカルの音声合成でワークスペースの回答を読み上げます。";

@@ -5,6 +5,12 @@ import SoloPMCore
 import AppKit
 #endif
 
+extension Notification.Name {
+    /// Posted when the user taps (default-activates) a digest-style
+    /// notification so the app shell can bring the Project Board on screen.
+    static let soloPMDigestNotificationOpened = Notification.Name("dev.solopm.digestNotificationOpened")
+}
+
 extension AppRuntimeFactory {
     static func makeDeadlineNotificationActionHandler() throws -> DeadlineNotificationActionHandler {
         let connection = try migratedConnection()
@@ -66,6 +72,20 @@ final class SoloPMNotificationResponder: NSObject, UNUserNotificationCenterDeleg
     ) {
         let actionIdentifier = response.actionIdentifier
         let content = response.notification.request.content
+        let requestIdentifier = response.notification.request.identifier
+
+        // Tapping a digest-style notification should land the user on the
+        // Project Board, not just foreground a windowless app.
+        if actionIdentifier == UNNotificationDefaultActionIdentifier,
+           requestIdentifier.hasPrefix("solopm-daily-digest-")
+               || requestIdentifier.hasPrefix("solopm-weekly-review-") {
+#if canImport(AppKit)
+            DispatchQueue.main.async {
+                NSApp.activate(ignoringOtherApps: true)
+                NotificationCenter.default.post(name: .soloPMDigestNotificationOpened, object: nil)
+            }
+#endif
+        }
         let userInfo = content.userInfo.reduce(into: [String: String]()) { result, pair in
             if let key = pair.key as? String, let value = pair.value as? String {
                 result[key] = value

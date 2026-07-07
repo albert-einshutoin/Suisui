@@ -2,6 +2,8 @@
 "Add Project" = "Add Project";
 "Add Server" = "Add Server";
 "Add Task" = "Add Task";
+"Advanced" = "Advanced";
+"Advanced AI Options" = "Advanced AI Options";
 "AI" = "AI";
 "Appearance" = "Appearance";
 "Apply Suggestion" = "Apply Suggestion";
@@ -25,6 +27,7 @@
 "Close Terminal" = "Close Terminal";
 "Closes setup. You can configure everything later in Settings." = "Closes setup. You can configure everything later in Settings.";
 "Command not set" = "Command not set";
+"Command palette" = "Command palette";
 "Connect your Mac" = "Connect your Mac";
 "Continue" = "Continue";
 "Delete" = "Delete";
@@ -38,6 +41,7 @@
 "Delete Task" = "Delete Task";
 "Document deliverables" = "Document deliverables";
 "Done" = "Done";
+"Drafting plan" = "Drafting plan";
 "Due Today" = "Due Today";
 "English" = "English";
 "Embedded terminal requires macOS AppKit support." = "Embedded terminal requires macOS AppKit support.";
@@ -174,6 +178,8 @@
 "Recent Projects" = "Recent Projects";
 "Record" = "Record";
 "Restart Shell" = "Restart Shell";
+"Reveals MCP, Sync, and managed billing controls." = "Reveals MCP, Sync, and managed billing controls.";
+"Reveals the MCP and Sync tabs and advanced AI options." = "Reveals the MCP and Sync tabs and advanced AI options.";
 "Save" = "Save";
 "Save Claude Key" = "Save Claude Key";
 "Save Gemini Key" = "Save Gemini Key";
@@ -195,6 +201,7 @@
 "Sets the absolute path to the local Kokoro TTS executable." = "Sets the absolute path to the local Kokoro TTS executable.";
 "Hide Sidebar" = "Hide Sidebar";
 "Sidebar" = "Sidebar";
+"Show advanced settings" = "Show advanced settings";
 "Show Archived" = "Show Archived";
 "Show Sidebar" = "Show Sidebar";
 "Shell Ended" = "Shell Ended";
@@ -243,6 +250,7 @@
 "Plan generation is running; review appears below before execution." = "Plan generation is running; review appears below before execution.";
 "Answer the clarification question before saving or generating a plan." = "Answer the clarification question before saving or generating a plan.";
 "Resolve the current voice warning before saving or generating a plan." = "Resolve the current voice warning before saving or generating a plan.";
+"Type a command or task…" = "Type a command or task…";
 "Type a command to generate a plan, or record audio to save a transcript to Inbox." = "Type a command to generate a plan, or record audio to save a transcript to Inbox.";
 "Save the transcript to Inbox, or generate an approval-gated plan." = "Save the transcript to Inbox, or generate an approval-gated plan.";
 "Typed commands can generate approval-gated plans. Record audio first to save a voice capture to Inbox." = "Typed commands can generate approval-gated plans. Record audio first to save a voice capture to Inbox.";
@@ -322,6 +330,7 @@
 "Creates a new local project and selects it." = "Creates a new local project and selects it.";
 "Creates the task in the local SoloPM database" = "Creates the task in the local SoloPM database";
 "Creates the task in the local SoloPM database." = "Creates the task in the local SoloPM database.";
+"Creates the task in your Inbox." = "Creates the task in your Inbox.";
 "Danger Zone" = "Danger Zone";
 "Dark" = "Dark";
 "Data Included" = "Data Included";
@@ -390,6 +399,7 @@
 "Memo" = "Memo";
 "Microphone permission denied." = "Microphone permission denied.";
 "Missing" = "Missing";
+"Monthly" = "Monthly";
 "Move To" = "Move To";
 "Move the suggested blocked task to In Progress" = "Move the suggested blocked task to In Progress";
 "Move this task to the next status when you are ready." = "Move this task to the next status when you are ready.";
@@ -414,6 +424,7 @@
 "No transcript yet" = "No transcript yet";
 "No tracked artifacts linked to this project" = "No tracked artifacts linked to this project";
 "No upload starts while the backend is missing." = "No upload starts while the backend is missing.";
+"None" = "None";
 "Not Determined" = "Not Determined";
 "Not available" = "Not available";
 "Not required" = "Not required";
@@ -473,6 +484,8 @@
 "Remove artifact link without deleting the local file" = "Remove artifact link without deleting the local file";
 "Removes this local SoloPM artifact link without deleting the file." = "Removes this local SoloPM artifact link without deleting the file.";
 "Reopen task" = "Reopen task";
+"Repeat" = "Repeat";
+"Repeats the task by creating the next occurrence when it is completed" = "Repeats the task by creating the next occurrence when it is completed";
 "Requires edit or Settings" = "Requires edit or Settings";
 "Resources" = "Resources";
 "Restore Project" = "Restore Project";
@@ -557,6 +570,7 @@
 "Voice notes, manual captures, and unassigned tasks land here before classification." = "Voice notes, manual captures, and unassigned tasks land here before classification.";
 "Voice planning is unavailable because audit logging or local data stores could not be opened." = "Voice planning is unavailable because audit logging or local data stores could not be opened.";
 "Watcher diagnostics are unavailable because local state could not be opened." = "Watcher diagnostics are unavailable because local state could not be opened.";
+"Weekly" = "Weekly";
 "Working Directory" = "Working Directory";
 "Workspace" = "Workspace";
 "%d open due or overdue tasks" = "%d open due or overdue tasks";
@@ -881,6 +895,11 @@
 "Task Automation" = "Task Automation";
 "Review task automation" = "Review task automation";
 "Review before execution" = "Review before execution";
+"Automation mode" = "Automation mode";
+"Auto-create low-risk tasks" = "Auto-create low-risk tasks";
+"Auto-create runs a plan automatically only when it is a single low-risk task; everything else still requires review." = "Auto-create runs a plan automatically only when it is a single low-risk task; everything else still requires review.";
+"Task created" = "Task created";
+"Deletes the automatically created task." = "Deletes the automatically created task.";
 "Manual review" = "Manual review";
 "Hourly review" = "Hourly review";
 "Daily review" = "Daily review";
@@ -1553,3 +1572,57 @@
 "Speech transcription is unavailable." = "Speech transcription is unavailable.";
 "Voice agent sessions start only from the Voice Command window; cloud fallback requires visible cost disclosure before it can be saved." = "Voice agent sessions start only from the Voice Command window; cloud fallback requires visible cost disclosure before it can be saved.";
 "You're ready" = "You're ready";
+
+/* Smart lists and board keyboard shortcuts */
+"Smart Lists" = "Smart Lists";
+"Smart List" = "Smart List";
+"New Smart List…" = "New Smart List…";
+"New Smart List" = "New Smart List";
+"Create a saved smart list filter" = "Create a saved smart list filter";
+"Opens a sheet that saves a reusable task filter to local app storage." = "Opens a sheet that saves a reusable task filter to local app storage.";
+"Delete Smart List" = "Delete Smart List";
+"Shows tasks matching this saved filter in the board detail." = "Shows tasks matching this saved filter in the board detail.";
+"Lists local tasks matching the selected smart list filter." = "Lists local tasks matching the selected smart list filter.";
+"Smart list %@" = "Smart list %@";
+"%d matching tasks" = "%d matching tasks";
+"No matching tasks" = "No matching tasks";
+"Tasks matching this smart list appear here as projects change." = "Tasks matching this smart list appear here as projects change.";
+"Due this week" = "Due this week";
+"Name" = "Name";
+"Statuses" = "Statuses";
+"Priorities" = "Priorities";
+"Due within days" = "Due within days";
+"Due within %d days" = "Due within %d days";
+"Overdue only" = "Overdue only";
+"Search" = "Search";
+"Search text" = "Search text";
+"Save Smart List" = "Save Smart List";
+"Saves this smart list to local app storage" = "Saves this smart list to local app storage";
+"Saves this smart list to local app storage." = "Saves this smart list to local app storage.";
+"Closes the sheet without saving a smart list." = "Closes the sheet without saving a smart list.";
+"Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority" = "Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority";
+
+"Back Up All Data…" = "Back Up All Data…";
+"Restore from Backup…" = "Restore from Backup…";
+"Save all projects, tasks, and knowledge frames to a local JSON file" = "Save all projects, tasks, and knowledge frames to a local JSON file";
+"Writes a local backup file. No data leaves this Mac." = "Writes a local backup file. No data leaves this Mac.";
+"Add items from a SoloPM backup file to this workspace" = "Add items from a SoloPM backup file to this workspace";
+"Opens a backup file and asks for confirmation before adding its items." = "Opens a backup file and asks for confirmation before adding its items.";
+"Restore from backup?" = "Restore from backup?";
+"Add Backup Items" = "Add Backup Items";
+"Restore is additive: %d projects, %d tasks, and %d knowledge frames are added as new items. Existing data is never changed or deleted." = "Restore is additive: %d projects, %d tasks, and %d knowledge frames are added as new items. Existing data is never changed or deleted.";
+"Backed up %d projects, %d tasks, and %d knowledge frames." = "Backed up %d projects, %d tasks, and %d knowledge frames.";
+"Restored %d projects, %d tasks, and %d knowledge frames. Skipped %d duplicate frames." = "Restored %d projects, %d tasks, and %d knowledge frames. Skipped %d duplicate frames.";
+"Back Up" = "Back Up";
+"Choose" = "Choose";
+"Choose where to save the SoloPM backup file" = "Choose where to save the SoloPM backup file";
+"Choose a SoloPM backup file to restore" = "Choose a SoloPM backup file to restore";
+"Add a task for today" = "Add a task for today";
+"Capture with Voice" = "Capture with Voice";
+
+/* Voice workspace Q&A */
+"Searching your workspace" = "Searching your workspace";
+"Composing answer" = "Composing answer";
+"Based on %d workspace items" = "Based on %d workspace items";
+"Answers a question from local workspace data using the configured AI provider." = "Answers a question from local workspace data using the configured AI provider.";
+"Speaks the workspace answer with the local text-to-speech voice." = "Speaks the workspace answer with the local text-to-speech voice.";

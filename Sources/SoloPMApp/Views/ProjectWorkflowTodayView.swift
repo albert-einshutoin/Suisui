@@ -57,6 +57,16 @@ struct TodayWorkflowView: View {
             tasks: snapshot.plan.tasks,
             emptyTitle: "No tasks due today",
             emptyDescription: "Captured work remains in Inbox until it is scheduled or moved to a project.",
+            emptyStateAction: WorkflowEmptyStateAction(
+                title: "Add a task for today",
+                systemImage: "plus.circle",
+                accessibilityIdentifier: "today-empty-add-task",
+                handler: {
+                    // Mirrors the Add Task chip: prefill the Today capture
+                    // field so the next keystroke creates a local Inbox item.
+                    commandTitle = String(localized: "New task: ")
+                }
+            ),
             viewModel: viewModel,
             onSelectTask: selectTodayTask,
             headerAccessory: {

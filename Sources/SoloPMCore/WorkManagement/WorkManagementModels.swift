@@ -196,6 +196,7 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
     public var dueAt: String?
     public var completedAt: String?
     public var updatedAt: String?
+    public var recurrence: String?
 
     public init(
         id: Int64,
@@ -206,7 +207,8 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
         priority: ProjectTaskPriority,
         dueAt: String?,
         completedAt: String? = nil,
-        updatedAt: String? = nil
+        updatedAt: String? = nil,
+        recurrence: String? = nil
     ) {
         self.id = id
         self.projectID = projectID
@@ -217,6 +219,7 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
         self.dueAt = dueAt
         self.completedAt = completedAt
         self.updatedAt = updatedAt
+        self.recurrence = recurrence
     }
 
     public var dueLabel: String? {
@@ -325,6 +328,7 @@ public struct ProjectBoardTaskDraft: Equatable, Sendable {
     public var status: ProjectTaskStatus
     public var priority: ProjectTaskPriority
     public var dueAt: String?
+    public var recurrence: String?
 
     public init(
         projectID: Int64,
@@ -332,7 +336,8 @@ public struct ProjectBoardTaskDraft: Equatable, Sendable {
         detail: String = "",
         status: ProjectTaskStatus = .backlog,
         priority: ProjectTaskPriority = .medium,
-        dueAt: String? = nil
+        dueAt: String? = nil,
+        recurrence: String? = nil
     ) {
         self.projectID = projectID
         self.title = title
@@ -340,6 +345,7 @@ public struct ProjectBoardTaskDraft: Equatable, Sendable {
         self.status = status
         self.priority = priority
         self.dueAt = dueAt
+        self.recurrence = recurrence
     }
 }
 

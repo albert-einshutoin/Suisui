@@ -14,6 +14,8 @@ extension AppRuntimeFactory {
         var assistantQueueStore: (any AssistantQueueStore)?
         var inboxCaptureService: InboxVoiceCaptureService?
         var developmentProjectProvider: () -> ProjectRecord? = { nil }
+        var workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])?
+        var taskDeleter: (@Sendable (Int64) throws -> Void)?
         var runtimeValidationMessage: String?
         var initialFailureMessage: String?
         do {
@@ -31,6 +33,20 @@ extension AppRuntimeFactory {
             )
             developmentProjectProvider = {
                 approvedDevelopmentProject(from: projectStore)
+            }
+            let questionRetriever = WorkspaceQuestionRetriever(
+                projectStore: projectStore,
+                taskStore: SQLiteTaskStore(connection: connection),
+                knowledgeFrameStore: SQLiteKnowledgeFrameStore(connection: connection),
+                settings: settingsResult.settings
+            )
+            workspaceContextRetriever = { question in
+                try questionRetriever.retrieve(question: question)
+            }
+            let undoTaskStore = SQLiteTaskStore(connection: connection)
+            taskDeleter = { taskID in
+                _ = try undoTaskStore.delete(id: taskID)
+                NotificationCenter.default.post(name: .soloPMProjectBoardDidChange, object: nil)
             }
             runtimeValidationMessage = nil
             initialFailureMessage = settingsResult.errorMessage
@@ -51,8 +67,85 @@ extension AppRuntimeFactory {
             inboxCaptureSaver: inboxCaptureService,
             developmentProjectProvider: developmentProjectProvider,
             appSettingsProvider: { loadRuntimeSettings().settings },
-            managedCostRateCardProvider: { managedCostRateCardResolver.rateCard(for: $0) }
+            managedCostRateCardProvider: { managedCostRateCardResolver.rateCard(for: $0) },
+            workspaceContextRetriever: workspaceContextRetriever,
+            workspaceAnswerReadout: { answer in
+                speakWorkspaceAnswer(answer)
+            },
+            taskAutomationSettingsProvider: { loadRuntimeSettings().settings.taskAutoExecution },
+            lowRiskTaskAutoExecutor: { plan in
+                try await executeLowRiskAutoCreation(plan: plan)
+            },
+            taskDeleter: taskDeleter
         )
+    }
+
+    /// Runs an opt-in auto-create plan through the exact ReviewSession pipeline
+    /// used by manual review (`makeReviewSessionViewModel`): the same
+    /// ActionExecutor, tool registry, audit logging, and execution receipts.
+    /// The only difference is that the approval token is granted
+    /// programmatically because the low-risk auto-create policy already gated
+    /// the plan to a single validated `task.create` action.
+    @MainActor
+    private static func executeLowRiskAutoCreation(plan: ActionPlan) throws -> LowRiskAutoCreationOutcome {
+        let reviewViewModel = makeReviewSessionViewModel(plan: plan)
+        if reviewViewModel.session.canApprove {
+            try reviewViewModel.approve()
+        }
+        try reviewViewModel.execute()
+        let session = reviewViewModel.session
+        guard session.executionStatus == .completed else {
+            throw LowRiskAutoCreationError.executionFailed(
+                reviewViewModel.errorMessage ?? "Low-risk task auto-creation did not complete."
+            )
+        }
+
+        let executedItem = session.enabledItems.first
+        var taskID: Int64?
+        if case .number(let value)? = executedItem?.result?.output["taskId"] {
+            taskID = Int64(value)
+        }
+        let taskTitle: String
+        if case .string(let title)? = executedItem?.editedAction.arguments["title"] {
+            taskTitle = title
+        } else {
+            taskTitle = plan.summary
+        }
+        NotificationCenter.default.post(name: .soloPMProjectBoardDidChange, object: nil)
+        return LowRiskAutoCreationOutcome(
+            taskID: taskID,
+            taskTitle: taskTitle,
+            summaryMessage: executedItem?.result?.summary ?? "Task created"
+        )
+    }
+
+    /// Speaks a workspace answer with the same local TTS preview machinery as
+    /// the Settings "Test Play" button. Speech is best effort: a missing or
+    /// misconfigured Kokoro runtime must never turn a successful written
+    /// answer into an error.
+    private static func speakWorkspaceAnswer(_ answer: String) {
+        let settings = loadRuntimeSettings().settings
+        let languageCode = AppSettings.normalizedTTSLanguageCode(settings.ttsLanguageCode)
+        let request = TextToSpeechRequest(
+            text: limitedWorkspaceAnswerReadoutText(answer),
+            languageCode: languageCode,
+            voiceID: AppSettings.normalizedTTSVoiceID(settings.ttsVoiceID, languageCode: languageCode)
+        )
+        let previewer = makeTextToSpeechPreviewer(settings: settings)
+        Task {
+            try? await previewer.playPreview(request)
+        }
+    }
+
+    private static func limitedWorkspaceAnswerReadoutText(_ text: String) -> String {
+        let maxPromptLength = 280
+        let flattened = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard flattened.count > maxPromptLength else {
+            return flattened
+        }
+        return "\(flattened.prefix(maxPromptLength - 3))..."
     }
 
     private static func approvedDevelopmentProject(from projectStore: SQLiteProjectStore) -> ProjectRecord? {

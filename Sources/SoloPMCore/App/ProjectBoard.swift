@@ -4551,6 +4551,16 @@ public final class ProjectBoardViewModel: ObservableObject {
         )
         .scheduleIfNeeded(summary: summary)
 
+        if let assistantQueueStore {
+            // Best-effort assistant suggestion: overdue/stalled tasks gain a
+            // one-tap "reschedule to tomorrow" item in the Assistant Queue.
+            _ = MissedTaskRescheduleSuggestionPlanner(
+                queueStore: assistantQueueStore,
+                dateProvider: dateProvider,
+                settings: normalizedSettings
+            ).enqueueSuggestions(for: summary)
+        }
+
         if result.status == .failed {
             integrationStatusMessage = result.message
         }
@@ -4594,7 +4604,8 @@ public final class ProjectBoardViewModel: ObservableObject {
                     detail: task.detail,
                     status: .planned,
                     priority: task.priority,
-                    dueAt: ISO8601DateFormatter().string(from: referenceDate)
+                    dueAt: ISO8601DateFormatter().string(from: referenceDate),
+                    recurrence: task.recurrence
                 )
             )
             try missedTaskReviewStateStore.markReviewed(taskID: taskID, at: referenceDate)
@@ -6842,6 +6853,15 @@ public final class ProjectBoardViewModel: ObservableObject {
         priority: ProjectTaskPriority = .medium,
         dueAt: String? = nil
     ) -> ProjectBoardTask? {
+        var resolvedTitle = title
+        var resolvedDueAt = dueAt
+        if dueAt == nil {
+            let parsed = QuickAddDueDateParser.parse(title)
+            if let parsedDueAt = parsed.dueAt {
+                resolvedTitle = parsed.title
+                resolvedDueAt = DeadlineDateParser.string(from: parsedDueAt)
+            }
+        }
         do {
             let liveSnapshot = try store.loadSnapshot(includeArchived: false)
             snapshot = liveSnapshot
@@ -6855,11 +6875,11 @@ public final class ProjectBoardViewModel: ObservableObject {
             }
             let task = try store.createTask(ProjectBoardTaskDraft(
                 projectID: inboxProject.id,
-                title: title,
+                title: resolvedTitle,
                 detail: detail,
                 status: .backlog,
                 priority: priority,
-                dueAt: dueAt
+                dueAt: resolvedDueAt
             ))
             selectedProjectID = inboxProject.id
             selectedTaskID = task.id
@@ -7038,7 +7058,8 @@ public final class ProjectBoardViewModel: ObservableObject {
         detail: String,
         status: ProjectTaskStatus,
         priority: ProjectTaskPriority,
-        dueAt: String?
+        dueAt: String?,
+        recurrence: String? = nil
     ) {
         guard let selectedTask else {
             return
@@ -7053,7 +7074,8 @@ public final class ProjectBoardViewModel: ObservableObject {
                     detail: detail,
                     status: status,
                     priority: priority,
-                    dueAt: dueAt
+                    dueAt: dueAt,
+                    recurrence: recurrence
                 )
             )
             load()
@@ -7081,7 +7103,8 @@ public final class ProjectBoardViewModel: ObservableObject {
                 detail: selectedTask.detail,
                 status: .backlog,
                 priority: selectedTask.priority,
-                dueAt: selectedTask.dueAt
+                dueAt: selectedTask.dueAt,
+                recurrence: selectedTask.recurrence
             ),
             feedback: InboxClassificationFeedback(
                 message: String(format: String(localized: "Kept \"%@\" as a task."), selectedTask.title),
@@ -7108,7 +7131,8 @@ public final class ProjectBoardViewModel: ObservableObject {
                     detail: selectedTask.detail,
                     status: .planned,
                     priority: selectedTask.priority,
-                    dueAt: selectedTask.dueAt
+                    dueAt: selectedTask.dueAt,
+                    recurrence: selectedTask.recurrence
                 )
             )
             finishInboxClassification(
@@ -7155,7 +7179,8 @@ public final class ProjectBoardViewModel: ObservableObject {
                 detail: selectedTask.detail,
                 status: .planned,
                 priority: selectedTask.priority,
-                dueAt: ISO8601DateFormatter().string(from: referenceDate)
+                dueAt: ISO8601DateFormatter().string(from: referenceDate),
+                recurrence: selectedTask.recurrence
             ),
             feedback: InboxClassificationFeedback(
                 message: String(format: String(localized: "Scheduled \"%@\" for today."), selectedTask.title),
@@ -7178,7 +7203,8 @@ public final class ProjectBoardViewModel: ObservableObject {
                 detail: selectedTask.detail,
                 status: .backlog,
                 priority: selectedTask.priority,
-                dueAt: nil
+                dueAt: nil,
+                recurrence: selectedTask.recurrence
             ),
             feedback: InboxClassificationFeedback(
                 message: String(format: String(localized: "Deferred \"%@\" for later review."), selectedTask.title),
@@ -7229,7 +7255,8 @@ public final class ProjectBoardViewModel: ObservableObject {
                     detail: selectedTask.detail,
                     status: .done,
                     priority: selectedTask.priority,
-                    dueAt: selectedTask.dueAt
+                    dueAt: selectedTask.dueAt,
+                    recurrence: selectedTask.recurrence
                 ),
                 feedback: InboxClassificationFeedback(
                     message: String(format: String(localized: "Completed \"%@\"."), selectedTask.title),
@@ -7251,7 +7278,8 @@ public final class ProjectBoardViewModel: ObservableObject {
                     detail: selectedTask.detail,
                     status: selectedTask.status,
                     priority: priority,
-                    dueAt: selectedTask.dueAt
+                    dueAt: selectedTask.dueAt,
+                    recurrence: selectedTask.recurrence
                 ),
                 feedback: InboxClassificationFeedback(
                     message: String(format: String(localized: "Set \"%@\" to %@ priority."), selectedTask.title, priority.label),
@@ -8549,7 +8577,8 @@ private extension ProjectBoardTask {
             detail: detail,
             status: status,
             priority: priority,
-            dueAt: dueAt
+            dueAt: dueAt,
+            recurrence: recurrence
         )
     }
 }

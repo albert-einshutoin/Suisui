@@ -2,11 +2,14 @@ import Foundation
 
 public enum TaskAutoExecutionMode: String, Codable, CaseIterable, Equatable, Sendable {
     case reviewOnly
+    case autoCreateLowRisk
 
     public var label: String {
         switch self {
         case .reviewOnly:
             "Review before execution"
+        case .autoCreateLowRisk:
+            "Auto-create low-risk tasks"
         }
     }
 }
@@ -89,7 +92,9 @@ public struct TaskAutoExecutionSettings: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
-        self.mode = try container.decode(TaskAutoExecutionMode.self, forKey: .mode)
+        // Settings saved before low-risk auto-create did not have an explicit
+        // mode; review-only preserves the previous approval boundary on upgrade.
+        self.mode = try container.decodeIfPresent(TaskAutoExecutionMode.self, forKey: .mode) ?? .reviewOnly
         self.cadence = try container.decode(TaskAutoExecutionCadence.self, forKey: .cadence)
         self.maxTasksPerRun = try container.decode(Int.self, forKey: .maxTasksPerRun)
         self.dailyLLMCallLimit = try container.decode(Int.self, forKey: .dailyLLMCallLimit)

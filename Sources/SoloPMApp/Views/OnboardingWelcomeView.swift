@@ -7,6 +7,7 @@ struct OnboardingWelcomeView: View {
 
     @State private var flow = FirstRunOnboardingFlow()
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
@@ -197,7 +198,7 @@ struct OnboardingWelcomeView: View {
                     Capsule(style: .continuous)
                         .fill(index == flow.stepIndex ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary))
                         .frame(width: index == flow.stepIndex ? 18 : 6, height: 6)
-                        .animation(.snappy(duration: 0.2), value: flow.stepIndex)
+                        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: flow.stepIndex)
                 }
             }
             .accessibilityElement(children: .ignore)

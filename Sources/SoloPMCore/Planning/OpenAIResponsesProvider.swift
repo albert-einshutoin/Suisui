@@ -44,7 +44,7 @@ public struct OpenAIResponsesRequestBuilder: Sendable {
         self.configuration = configuration
     }
 
-    public func makeRequest(apiKey: String, prompt: PlanningPrompt) throws -> URLRequest {
+    public func makeRequest(apiKey: String, prompt: PlanningPrompt, stream: Bool = false) throws -> URLRequest {
         let url = configuration.baseURL.appendingPathComponent("responses")
         var request = URLRequest(url: url, timeoutInterval: configuration.timeoutInterval)
         request.httpMethod = "POST"
@@ -57,7 +57,8 @@ public struct OpenAIResponsesRequestBuilder: Sendable {
                 .message(role: "system", text: prompt.system),
                 .message(role: "user", text: prompt.user)
             ],
-            toolChoice: "none"
+            toolChoice: "none",
+            stream: stream
         )
         request.httpBody = try JSONEncoder().encode(body)
 
@@ -141,11 +142,12 @@ public struct OpenAIResponsesMetadataExtractor: Sendable {
     }
 }
 
-public struct OpenAIResponsesProvider: LLMProvider {
+public struct OpenAIResponsesProvider: StreamingLLMProvider {
     public let providerID = "openai.responses"
 
     private let secretStore: any SecretStore
     private let httpClient: any HTTPDataClient
+    private let byteStreamClient: any HTTPByteStreamClient
     private let promptBuilder: PlanningPromptBuilder?
     private let configuration: OpenAIResponsesConfiguration
     private let requestBuilder: OpenAIResponsesRequestBuilder
@@ -156,6 +158,7 @@ public struct OpenAIResponsesProvider: LLMProvider {
     public init(
         secretStore: any SecretStore,
         httpClient: any HTTPDataClient = URLSessionHTTPDataClient(),
+        byteStreamClient: any HTTPByteStreamClient = URLSessionHTTPByteStreamClient(),
         promptBuilder: PlanningPromptBuilder? = nil,
         configuration: OpenAIResponsesConfiguration = OpenAIResponsesConfiguration(),
         outputTextExtractor: OpenAIResponsesOutputTextExtractor = OpenAIResponsesOutputTextExtractor(),
@@ -164,6 +167,7 @@ public struct OpenAIResponsesProvider: LLMProvider {
     ) {
         self.secretStore = secretStore
         self.httpClient = httpClient
+        self.byteStreamClient = byteStreamClient
         self.promptBuilder = promptBuilder
         self.configuration = configuration
         self.requestBuilder = OpenAIResponsesRequestBuilder(configuration: configuration)
@@ -212,6 +216,91 @@ public struct OpenAIResponsesProvider: LLMProvider {
         )
     }
 
+    public func generatePlanStream(
+        for request: PlanningRequest,
+        onTextDelta: @escaping @Sendable (String) -> Void
+    ) async throws -> PlanningResponse {
+        let apiKey: String
+        let storedAPIKey = try secretStore.read(.openAIAPIKey)
+        do {
+            apiKey = try APIKeyValidator.normalize(storedAPIKey)
+        } catch APIKeyValidationError.empty, APIKeyValidationError.containsWhitespace {
+            throw LLMProviderError.authenticationFailed
+        }
+
+        let prompt = try (promptBuilder ?? PlanningPromptBuilder.loadDefault()).buildPrompt(for: request)
+        let httpRequest = try requestBuilder.makeRequest(apiKey: apiKey, prompt: prompt, stream: true)
+
+        let lines: AsyncThrowingStream<String, Error>
+        let response: HTTPURLResponse
+        do {
+            (lines, response) = try await byteStreamClient.lines(for: httpRequest)
+        } catch let error as LLMProviderError {
+            throw error
+        } catch {
+            throw LLMProviderError.network(ProviderErrorMessageSanitizer.message(from: error))
+        }
+
+        guard (200..<300).contains(response.statusCode) else {
+            let body = try await collectBody(from: lines)
+            throw mapHTTPError(statusCode: response.statusCode, data: body)
+        }
+
+        var accumulated = ""
+        do {
+            for try await line in lines {
+                guard let payload = OpenAIResponsesSSEParser.dataPayload(from: line) else {
+                    continue
+                }
+                switch try OpenAIResponsesSSEParser.parse(payload) {
+                case .textDelta(let text):
+                    accumulated += text
+                    onTextDelta(text)
+                case .error(let message):
+                    throw LLMProviderError.invalidResponse(message)
+                case .ignored:
+                    continue
+                }
+            }
+        } catch let error as LLMProviderError {
+            throw error
+        } catch {
+            throw LLMProviderError.network(ProviderErrorMessageSanitizer.message(from: error))
+        }
+
+        let rawContent = accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawContent.isEmpty else {
+            throw LLMProviderError.invalidResponse("OpenAI Responses stream did not contain text content.")
+        }
+        // Streaming deltas do not carry a reliable usage envelope, so the
+        // receipt falls back to the configured model with unknown usage.
+        let metadata = metadataExtractor.extractMetadata(
+            from: Data(),
+            providerID: providerID,
+            fallbackModelName: configuration.model
+        )
+        return responseParser.parse(
+            rawContent: rawContent,
+            providerID: providerID,
+            model: metadata.model,
+            usage: metadata.usage
+        )
+    }
+
+    private func collectBody(from lines: AsyncThrowingStream<String, Error>) async throws -> Data {
+        var body = ""
+        do {
+            for try await line in lines {
+                body += line
+                body += "\n"
+            }
+        } catch {
+            // The error payload is best effort; status mapping proceeds with
+            // whatever body arrived before the connection failed.
+        }
+        return Data(body.utf8)
+    }
+
     private func mapHTTPError(statusCode: Int, data: Data) -> LLMProviderError {
         switch statusCode {
         case 401, 403:
@@ -224,15 +313,111 @@ public struct OpenAIResponsesProvider: LLMProvider {
     }
 }
 
+extension OpenAIResponsesProvider: AnswerGeneratingLLMProvider {
+    public func generateAnswer(for request: WorkspaceAnswerRequest) async throws -> String {
+        let apiKey: String
+        let storedAPIKey = try secretStore.read(.openAIAPIKey)
+        do {
+            apiKey = try APIKeyValidator.normalize(storedAPIKey)
+        } catch APIKeyValidationError.empty, APIKeyValidationError.containsWhitespace {
+            throw LLMProviderError.authenticationFailed
+        }
+
+        let prompt = WorkspaceAnswerPromptBuilder.buildPrompt(for: request)
+        let httpRequest = try requestBuilder.makeRequest(apiKey: apiKey, prompt: prompt)
+        let data: Data
+        let response: HTTPURLResponse
+
+        do {
+            (data, response) = try await httpClient.data(for: httpRequest)
+        } catch let error as LLMProviderError {
+            throw error
+        } catch {
+            throw LLMProviderError.network(ProviderErrorMessageSanitizer.message(from: error))
+        }
+
+        guard (200..<300).contains(response.statusCode) else {
+            throw mapHTTPError(statusCode: response.statusCode, data: data)
+        }
+
+        let answer = try outputTextExtractor.extractText(from: data)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !answer.isEmpty else {
+            throw LLMProviderError.invalidResponse("OpenAI Responses response did not contain answer text.")
+        }
+        return answer
+    }
+}
+
+enum OpenAIResponsesSSEEvent: Equatable {
+    case textDelta(String)
+    case error(String)
+    case ignored
+}
+
+enum OpenAIResponsesSSEParser {
+    static func dataPayload(from line: String) -> String? {
+        guard line.hasPrefix("data:") else {
+            return nil
+        }
+        let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
+        guard !payload.isEmpty else {
+            return nil
+        }
+        return payload
+    }
+
+    static func parse(_ payload: String) throws -> OpenAIResponsesSSEEvent {
+        guard let data = payload.data(using: .utf8),
+              let envelope = try? JSONDecoder().decode(OpenAIResponsesSSEEnvelope.self, from: data) else {
+            throw LLMProviderError.invalidResponse("OpenAI Responses stream event could not be decoded.")
+        }
+
+        switch envelope.type {
+        case "response.output_text.delta":
+            guard let text = envelope.delta else {
+                throw LLMProviderError.invalidResponse("OpenAI Responses text delta did not contain text.")
+            }
+            return .textDelta(text)
+        case "response.failed", "error":
+            let message = envelope.message
+                ?? envelope.error?.message
+                ?? envelope.response?.error?.message
+                ?? "OpenAI Responses stream reported an error."
+            return .error(DeveloperSecretRedactor().redact(message).text)
+        default:
+            return .ignored
+        }
+    }
+}
+
+private struct OpenAIResponsesSSEEnvelope: Decodable {
+    var type: String
+    var delta: String?
+    var message: String?
+    var error: OpenAIResponsesSSEError?
+    var response: OpenAIResponsesSSEResponse?
+}
+
+private struct OpenAIResponsesSSEResponse: Decodable {
+    var error: OpenAIResponsesSSEError?
+}
+
+private struct OpenAIResponsesSSEError: Decodable {
+    var message: String?
+}
+
 private struct OpenAIResponsesRequestBody: Encodable {
     var model: String
     var input: [OpenAIResponsesInputMessage]
     var toolChoice: String
+    var stream: Bool
 
     private enum CodingKeys: String, CodingKey {
         case model
         case input
         case toolChoice = "tool_choice"
+        case stream
     }
 }
 
