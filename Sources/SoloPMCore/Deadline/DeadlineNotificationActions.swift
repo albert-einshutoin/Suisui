@@ -70,7 +70,9 @@ public struct DeadlineNotificationActionHandler {
 
     private func completeTask(id: Int64) -> DeadlineNotificationActionOutcome {
         do {
-            _ = try taskStore.updateFields(id: id, status: "completed")
+            // Completion-driven recurrence: notification completions regenerate
+            // the next occurrence just like board completions do.
+            _ = try taskStore.completeAndRegenerate(id: id, now: dateProvider.now)
             return .completedTask(taskID: id)
         } catch {
             return .failed(UserFacingErrorMessageSanitizer.message(from: error))

@@ -441,6 +441,7 @@ public enum CoreMigrations {
                         due_at TEXT,
                         completed_at TEXT,
                         priority TEXT,
+                        recurrence TEXT,
                         source_command TEXT,
                         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -973,6 +974,13 @@ public enum CoreMigrations {
                     );
                     """
                 )
+            },
+            DatabaseMigration(id: "0022_add_task_recurrence") { connection in
+                let columns = try connection.queryRows("PRAGMA table_info(tasks);").compactMap { $0["name"] }
+                guard !columns.contains("recurrence") else {
+                    return
+                }
+                try connection.execute("ALTER TABLE tasks ADD COLUMN recurrence TEXT;")
             },
         ]
     }

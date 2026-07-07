@@ -136,6 +136,7 @@ final class QuickAddDueDateParserTests: XCTestCase {
         XCTAssertEqual(result.title, "update satellite dashboard")
     }
 
+    @MainActor
     func testQuickCaptureControllerAppliesParsedDueDate() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)

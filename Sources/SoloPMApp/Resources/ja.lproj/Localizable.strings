@@ -399,6 +399,7 @@
 "Memo" = "メモ";
 "Microphone permission denied." = "マイク権限が拒否されています。";
 "Missing" = "未設定";
+"Monthly" = "毎月";
 "Move To" = "移動先";
 "Move the suggested blocked task to In Progress" = "提案されたブロック中タスクを進行中へ移動";
 "Move this task to the next status when you are ready." = "準備ができたらこのタスクを次のステータスへ移動してください。";
@@ -423,6 +424,7 @@
 "No transcript yet" = "文字起こしはまだありません";
 "No tracked artifacts linked to this project" = "このプロジェクトに紐づく追跡成果物はありません";
 "No upload starts while the backend is missing." = "バックエンド未設定の間はアップロードを開始しません。";
+"None" = "なし";
 "Not Determined" = "未決定";
 "Not available" = "利用不可";
 "Not required" = "不要";
@@ -482,6 +484,8 @@
 "Remove artifact link without deleting the local file" = "ローカルファイルを削除せずに成果物リンクを削除";
 "Removes this local SoloPM artifact link without deleting the file." = "ファイルを削除せず、このローカルSoloPM成果物リンクを削除します。";
 "Reopen task" = "タスクを再開";
+"Repeat" = "繰り返し";
+"Repeats the task by creating the next occurrence when it is completed" = "完了すると次の繰り返しタスクを自動作成します";
 "Requires edit or Settings" = "編集または設定が必要";
 "Resources" = "リソース";
 "Restore Project" = "プロジェクトを復元";
@@ -566,6 +570,7 @@
 "Voice notes, manual captures, and unassigned tasks land here before classification." = "音声メモ、手動入力、未割り当てタスクは分類前にここへ入ります。";
 "Voice planning is unavailable because audit logging or local data stores could not be opened." = "監査ログまたはローカルデータストアを開けなかったため、音声計画を利用できません。";
 "Watcher diagnostics are unavailable because local state could not be opened." = "ローカル状態を開けなかったため、監視診断を利用できません。";
+"Weekly" = "毎週";
 "Working Directory" = "作業ディレクトリ";
 "Workspace" = "ワークスペース";
 "%d open due or overdue tasks" = "期限中または期限超過の未完了タスク %d 件";

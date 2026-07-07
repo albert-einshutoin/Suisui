@@ -3142,10 +3142,31 @@ private struct TaskCardMetadataStrip: View {
             systemImage: "calendar",
             tint: task.dueLabel == nil ? .secondary : .blue
         )
+
+        if let recurrenceValue {
+            TaskMetadataChip(
+                value: recurrenceValue,
+                systemImage: "repeat",
+                tint: .purple
+            )
+        }
     }
 
     private var dueValue: String {
         task.dueLabel ?? "No due date"
+    }
+
+    private var recurrenceValue: String? {
+        switch task.recurrence {
+        case "daily":
+            localizedDisplay("Daily")
+        case "weekly":
+            localizedDisplay("Weekly")
+        case "monthly":
+            localizedDisplay("Monthly")
+        default:
+            nil
+        }
     }
 }
 
@@ -4377,6 +4398,7 @@ private struct TaskInspectorView: View {
     @State private var status: ProjectTaskStatus
     @State private var priority: ProjectTaskPriority
     @State private var dueAt: String
+    @State private var recurrence: String
     @State private var isConfirmingDelete = false
 
     init(task: ProjectBoardTask, viewModel: ProjectBoardViewModel, onClose: @escaping () -> Void) {
@@ -4388,6 +4410,7 @@ private struct TaskInspectorView: View {
         _status = State(initialValue: task.status)
         _priority = State(initialValue: task.priority)
         _dueAt = State(initialValue: task.dueAt ?? "")
+        _recurrence = State(initialValue: task.recurrence ?? "")
     }
 
     var body: some View {
@@ -4438,6 +4461,15 @@ private struct TaskInspectorView: View {
 
                 TextField("Due", text: $dueAt)
                     .accessibilityIdentifier("task-inspector-due")
+
+                Picker("Repeat", selection: $recurrence) {
+                    Text("None").tag("")
+                    Text("Daily").tag("daily")
+                    Text("Weekly").tag("weekly")
+                    Text("Monthly").tag("monthly")
+                }
+                .help("Repeats the task by creating the next occurrence when it is completed")
+                .accessibilityIdentifier("task-inspector-recurrence-picker")
             }
 
             Section("Save") {
@@ -4447,7 +4479,8 @@ private struct TaskInspectorView: View {
                         detail: detail,
                         status: status,
                         priority: priority,
-                        dueAt: dueAt.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank
+                        dueAt: dueAt.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank,
+                        recurrence: recurrence.nilIfBlank
                     )
                 } label: {
                     Label("Save Changes", systemImage: "checkmark.circle")
@@ -4523,6 +4556,7 @@ private struct TaskInspectorView: View {
         status = task.status
         priority = task.priority
         dueAt = task.dueAt ?? ""
+        recurrence = task.recurrence ?? ""
     }
 
     private func deleteSelectedTaskAfterConfirmationDismissal() {

@@ -166,7 +166,8 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             priority: normalized.priority.rawValue,
             sourceCommand: "app.project-board",
             status: normalized.status.rawValue,
-            detail: normalized.detail
+            detail: normalized.detail,
+            recurrence: normalized.recurrence
         )
         return try makeBoardTask(record).requiredTask()
     }
@@ -175,16 +176,27 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     public func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
         let normalized = try normalizedDraft(draft)
         try prepareProjectForTaskMutation(projectID: normalized.projectID, taskStatus: normalized.status)
+        let current = try taskStore.get(id: id)
+        // Completion-driven recurrence: only the transition into done routes
+        // through completeAndRegenerate, so editing an already-done task never
+        // regenerates a second copy of a recurring occurrence.
+        let isCompletionTransition = normalized.status == .done
+            && ProjectTaskStatus.normalized(current.status) != .done
         let record = try taskStore.updateFields(
             id: id,
             title: normalized.title,
-            status: normalized.status.rawValue,
+            status: isCompletionTransition ? nil : normalized.status.rawValue,
             detail: normalized.detail.isEmpty ? .clear : .set(normalized.detail),
             dueAt: normalized.dueAt.map { .set($0) } ?? .clear,
             priority: .set(normalized.priority.rawValue),
-            projectID: .set(normalized.projectID)
+            projectID: .set(normalized.projectID),
+            recurrence: normalized.recurrence.map { .set($0) } ?? .clear
         )
-        return try makeBoardTask(record).requiredTask()
+        guard isCompletionTransition else {
+            return try makeBoardTask(record).requiredTask()
+        }
+        let (completed, _) = try taskStore.completeAndRegenerate(id: id)
+        return try makeBoardTask(completed).requiredTask()
     }
 
     @discardableResult
@@ -192,6 +204,15 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         let current = try taskStore.get(id: id)
         let projectID = try current.projectID ?? ensureActiveInboxProject().id
         try prepareProjectForTaskMutation(projectID: projectID, taskStatus: status)
+        if status == .done, ProjectTaskStatus.normalized(current.status) != .done {
+            // Completion-driven recurrence: single-task board completions spawn
+            // the next occurrence in the same task-store locked scope.
+            if current.projectID != projectID {
+                _ = try taskStore.updateFields(id: id, projectID: .set(projectID))
+            }
+            let (completed, _) = try taskStore.completeAndRegenerate(id: id)
+            return try makeBoardTask(completed).requiredTask()
+        }
         let record = try taskStore.update(id: id, status: status.rawValue, projectID: projectID)
         return try makeBoardTask(record).requiredTask()
     }
@@ -360,6 +381,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
 
         let detail = draft.detail.trimmingCharacters(in: .whitespacesAndNewlines)
         let dueAt = draft.dueAt?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let recurrence = draft.recurrence?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return ProjectBoardTaskDraft(
             projectID: draft.projectID,
@@ -367,7 +389,8 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             detail: detail,
             status: draft.status,
             priority: draft.priority,
-            dueAt: dueAt?.isEmpty == true ? nil : dueAt
+            dueAt: dueAt?.isEmpty == true ? nil : dueAt,
+            recurrence: recurrence?.isEmpty == true ? nil : recurrence
         )
     }
 
@@ -491,7 +514,8 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             priority: try ProjectTaskPriority.normalized(record.priority, column: "tasks.priority"),
             dueAt: record.dueAt,
             completedAt: record.completedAt,
-            updatedAt: record.updatedAt
+            updatedAt: record.updatedAt,
+            recurrence: record.recurrence
         )
     }
 

@@ -281,11 +281,16 @@ final class KnowledgeAdvancedTests: XCTestCase {
                 redactedPreview: "Missing frame"
             ))
         ) { error in
-            guard case let DatabaseError.executeFailed(message) = error else {
+            // Parameterized statements surface constraint violations as
+            // stepFailed while multi-statement scripts surface executeFailed;
+            // both prove SQLite enforced the foreign key.
+            switch error {
+            case let DatabaseError.executeFailed(message),
+                 let DatabaseError.stepFailed(message):
+                XCTAssertTrue(message.localizedCaseInsensitiveContains("foreign key"))
+            default:
                 XCTFail("Expected SQLite foreign key enforcement, got \(error).")
-                return
             }
-            XCTAssertTrue(message.localizedCaseInsensitiveContains("foreign key"))
         }
 
         XCTAssertNil(try vectorIndex.vector(frameID: 404))

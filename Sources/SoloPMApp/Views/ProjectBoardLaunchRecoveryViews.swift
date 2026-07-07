@@ -295,7 +295,10 @@ private struct ProjectBoardLaunchRecoveryTaskInspector: View {
                         detail: detail,
                         status: status,
                         priority: priority,
-                        dueAt: trimmedDueAt.isEmpty ? nil : trimmedDueAt
+                        dueAt: trimmedDueAt.isEmpty ? nil : trimmedDueAt,
+                        // The recovery inspector has no repeat picker; keep the
+                        // task's recurrence unchanged on save.
+                        recurrence: task.recurrence
                     )
                 } label: {
                     Label("Save Changes", systemImage: "checkmark.circle")
@@ -915,7 +918,10 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
                     detail: taskInspectorDetail,
                     status: task.status,
                     priority: task.priority,
-                    dueAt: task.dueAt
+                    dueAt: task.dueAt,
+                    // The recovery inspector has no repeat picker; keep the
+                    // task's recurrence unchanged on save.
+                    recurrence: task.recurrence
                 )
             } label: {
                 Label("Save Changes", systemImage: "checkmark.circle")

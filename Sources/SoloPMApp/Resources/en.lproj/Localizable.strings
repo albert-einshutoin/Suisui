@@ -399,6 +399,7 @@
 "Memo" = "Memo";
 "Microphone permission denied." = "Microphone permission denied.";
 "Missing" = "Missing";
+"Monthly" = "Monthly";
 "Move To" = "Move To";
 "Move the suggested blocked task to In Progress" = "Move the suggested blocked task to In Progress";
 "Move this task to the next status when you are ready." = "Move this task to the next status when you are ready.";
@@ -423,6 +424,7 @@
 "No transcript yet" = "No transcript yet";
 "No tracked artifacts linked to this project" = "No tracked artifacts linked to this project";
 "No upload starts while the backend is missing." = "No upload starts while the backend is missing.";
+"None" = "None";
 "Not Determined" = "Not Determined";
 "Not available" = "Not available";
 "Not required" = "Not required";
@@ -482,6 +484,8 @@
 "Remove artifact link without deleting the local file" = "Remove artifact link without deleting the local file";
 "Removes this local SoloPM artifact link without deleting the file." = "Removes this local SoloPM artifact link without deleting the file.";
 "Reopen task" = "Reopen task";
+"Repeat" = "Repeat";
+"Repeats the task by creating the next occurrence when it is completed" = "Repeats the task by creating the next occurrence when it is completed";
 "Requires edit or Settings" = "Requires edit or Settings";
 "Resources" = "Resources";
 "Restore Project" = "Restore Project";
@@ -566,6 +570,7 @@
 "Voice notes, manual captures, and unassigned tasks land here before classification." = "Voice notes, manual captures, and unassigned tasks land here before classification.";
 "Voice planning is unavailable because audit logging or local data stores could not be opened." = "Voice planning is unavailable because audit logging or local data stores could not be opened.";
 "Watcher diagnostics are unavailable because local state could not be opened." = "Watcher diagnostics are unavailable because local state could not be opened.";
+"Weekly" = "Weekly";
 "Working Directory" = "Working Directory";
 "Workspace" = "Workspace";
 "%d open due or overdue tasks" = "%d open due or overdue tasks";
