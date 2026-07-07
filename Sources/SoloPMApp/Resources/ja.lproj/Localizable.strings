@@ -1614,3 +1614,10 @@
 "Choose a SoloPM backup file to restore" = "復元するSoloPMバックアップファイルを選択してください";
 "Add a task for today" = "今日のタスクを追加";
 "Capture with Voice" = "音声でキャプチャ";
+
+/* Voice workspace Q&A */
+"Searching your workspace" = "ワークスペースを検索中";
+"Composing answer" = "回答を作成中";
+"Based on %d workspace items" = "ワークスペースの%d件に基づく回答";
+"Answers a question from local workspace data using the configured AI provider." = "設定済みのAIプロバイダを使い、ローカルのワークスペースデータから質問に回答します。";
+"Speaks the workspace answer with the local text-to-speech voice." = "ローカルの音声合成でワークスペースの回答を読み上げます。";

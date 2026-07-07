@@ -11,6 +11,14 @@ public enum VoiceCapturePhase: Equatable, Sendable {
     case failed(String)
 }
 
+public enum WorkspaceAnswerState: Equatable, Sendable {
+    case idle
+    case retrieving
+    case answering
+    case answered(text: String, contextCount: Int)
+    case failed(String)
+}
+
 public enum LowLatencyVoiceAgentState: Equatable, Sendable {
     case idle
     case listening
@@ -82,6 +90,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     @Published public private(set) var lowLatencyVoiceAgentState: LowLatencyVoiceAgentState
     @Published public private(set) var liveTranscript: String
     @Published public private(set) var liveIntentPreview: VoiceCommandRoutingResult?
+    @Published public private(set) var workspaceAnswer: WorkspaceAnswerState = .idle
 
     private var audioRecorder: any AudioRecorder
     private let sttProvider: any SpeechToTextProvider
@@ -96,6 +105,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private let developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder
     private let appSettingsProvider: @Sendable () -> AppSettings
     private let managedCostRateCardProvider: @Sendable (PlanningResponse) -> AssistantQueueCostRateCard?
+    private let workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])?
+    private let workspaceAnswerReadout: (@Sendable (String) -> Void)?
     private let lowLatencySegmentDuration: TimeInterval
     private let lowLatencySegmentOutputURLProvider: @Sendable () -> URL
     // Save-to-Inbox must be tied to the audio that produced the current
@@ -120,6 +131,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder = VoiceDevelopmentPullRequestAutomationRequestBuilder(),
         appSettingsProvider: @escaping @Sendable () -> AppSettings = { .default },
         managedCostRateCardProvider: @escaping @Sendable (PlanningResponse) -> AssistantQueueCostRateCard? = { _ in nil },
+        workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])? = nil,
+        workspaceAnswerReadout: (@Sendable (String) -> Void)? = nil,
         lowLatencySegmentDuration: TimeInterval = 1.2,
         lowLatencySegmentOutputURLProvider: @escaping @Sendable () -> URL = {
             FileManager.default.temporaryDirectory
@@ -140,6 +153,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.developmentPullRequestAutomationRequestBuilder = developmentPullRequestAutomationRequestBuilder
         self.appSettingsProvider = appSettingsProvider
         self.managedCostRateCardProvider = managedCostRateCardProvider
+        self.workspaceContextRetriever = workspaceContextRetriever
+        self.workspaceAnswerReadout = workspaceAnswerReadout
         self.lowLatencySegmentDuration = lowLatencySegmentDuration
         self.lowLatencySegmentOutputURLProvider = lowLatencySegmentOutputURLProvider
         self.recordingState = audioRecorder.state
@@ -237,6 +252,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         lastTranscribedAudioURL = nil
         savedInboxAudioURL = nil
         developmentPullRequestAutomationRequest = nil
+        workspaceAnswer = .idle
         recordingState = audioRecorder.state
         phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
     }
@@ -531,6 +547,73 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 knowledgeFrameCandidates: knowledgeFrameCandidates
             )
         }
+    }
+
+    /// Answers a free-form question about local work: retrieve workspace
+    /// context, ask the configured provider for a short speakable answer,
+    /// then hand the redacted answer to the readout closure for TTS.
+    public func askWorkspaceQuestion(
+        currentDate: Date = Date(),
+        timeZoneIdentifier: String = TimeZone.current.identifier
+    ) async {
+        let question = draft.normalizedText
+        guard !question.isEmpty else {
+            workspaceAnswer = .failed("Type or dictate a question first.")
+            return
+        }
+        guard let workspaceContextRetriever else {
+            workspaceAnswer = .failed("Workspace question answering is unavailable because local data stores could not be opened.")
+            return
+        }
+        switch workspaceAnswer {
+        case .retrieving, .answering:
+            return
+        case .idle, .answered, .failed:
+            break
+        }
+
+        workspaceAnswer = .retrieving
+        let snippets: [WorkspaceContextSnippet]
+        do {
+            snippets = try workspaceContextRetriever(question)
+        } catch {
+            workspaceAnswer = .failed(userMessage(for: error))
+            return
+        }
+
+        guard let answeringProvider = llmProvider as? AnswerGeneratingLLMProvider else {
+            workspaceAnswer = .failed("The configured AI provider does not support workspace question answering yet.")
+            return
+        }
+
+        workspaceAnswer = .answering
+        let settings = appSettingsProvider().normalizedForRuntime
+        let request = WorkspaceAnswerRequest(
+            question: question,
+            contextSnippets: snippets,
+            currentDate: currentDate,
+            timeZoneIdentifier: timeZoneIdentifier,
+            languageCode: AppSettings.normalizedTTSLanguageCode(settings.ttsLanguageCode)
+        )
+        do {
+            let answer = try await answeringProvider.generateAnswer(for: request)
+            // Defensive redaction: the provider was already given redacted
+            // context, but the model could still echo secrets or paths from
+            // the question itself.
+            let redactedAnswer = LocalPathRedactor.redact(DeveloperSecretRedactor().redact(answer).text)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            workspaceAnswer = .answered(text: redactedAnswer, contextCount: snippets.count)
+            workspaceAnswerReadout?(redactedAnswer)
+        } catch {
+            workspaceAnswer = .failed(userMessage(for: error))
+        }
+    }
+
+    public func replayWorkspaceAnswer() {
+        guard case .answered(let text, _) = workspaceAnswer else {
+            return
+        }
+        workspaceAnswerReadout?(text)
     }
 
     public func cancelClarification() {
@@ -1262,6 +1345,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
         phase = .generatingPlan
         planGenerationLiveText = ""
+        workspaceAnswer = .idle
         auditErrorMessage = nil
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil

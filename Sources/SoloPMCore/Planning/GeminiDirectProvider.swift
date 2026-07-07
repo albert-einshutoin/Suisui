@@ -336,6 +336,70 @@ public struct GeminiDirectProvider: StreamingLLMProvider {
     }
 }
 
+extension GeminiDirectRequestBuilder {
+    /// Workspace answers reuse the streaming request nuance: no function
+    /// declarations, and additionally no forced JSON response MIME type, so
+    /// Gemini returns plain speakable prose instead of a JSON document.
+    func makeAnswerRequest(apiKey: String, prompt: PlanningPrompt) throws -> URLRequest {
+        var request = URLRequest(url: makeURL(stream: false), timeoutInterval: configuration.timeoutInterval)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+
+        let body = GeminiDirectRequestBody(
+            systemInstruction: GeminiDirectContent(parts: [GeminiDirectPart(text: prompt.system)]),
+            contents: [
+                GeminiDirectContent(role: "user", parts: [GeminiDirectPart(text: prompt.user)])
+            ],
+            generationConfig: GeminiDirectGenerationConfig(
+                maxOutputTokens: configuration.maxOutputTokens,
+                responseMimeType: nil
+            ),
+            tools: nil,
+            toolConfig: nil
+        )
+        request.httpBody = try JSONEncoder().encode(body)
+
+        return request
+    }
+}
+
+extension GeminiDirectProvider: AnswerGeneratingLLMProvider {
+    public func generateAnswer(for request: WorkspaceAnswerRequest) async throws -> String {
+        let apiKey: String
+        let storedAPIKey = try secretStore.read(.geminiAPIKey)
+        do {
+            apiKey = try APIKeyValidator.normalize(storedAPIKey)
+        } catch APIKeyValidationError.empty, APIKeyValidationError.containsWhitespace {
+            throw LLMProviderError.authenticationFailed
+        }
+
+        let prompt = WorkspaceAnswerPromptBuilder.buildPrompt(for: request)
+        let httpRequest = try requestBuilder.makeAnswerRequest(apiKey: apiKey, prompt: prompt)
+        let data: Data
+        let response: HTTPURLResponse
+
+        do {
+            (data, response) = try await httpClient.data(for: httpRequest)
+        } catch let error as LLMProviderError {
+            throw error
+        } catch {
+            throw LLMProviderError.network(ProviderErrorMessageSanitizer.message(from: error))
+        }
+
+        guard (200..<300).contains(response.statusCode) else {
+            throw mapHTTPError(statusCode: response.statusCode, data: data)
+        }
+
+        let answer = try outputTextExtractor.extractText(from: data)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !answer.isEmpty else {
+            throw LLMProviderError.invalidResponse("Gemini Direct response did not contain answer text.")
+        }
+        return answer
+    }
+}
+
 enum GeminiDirectSSEEvent: Equatable {
     case textDelta(String)
     case error(String)

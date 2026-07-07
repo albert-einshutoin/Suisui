@@ -42,11 +42,17 @@ struct VoiceCaptureView: View {
     }
 
     /// Zone 2 ("Working") renders only while the command is being interpreted:
-    /// streaming plan text, an open clarification question, or a routed intent.
+    /// streaming plan text, an open clarification question, a routed intent,
+    /// or an in-flight/finished workspace answer.
     private var hasWorkingContent: Bool {
         (viewModel.phase == .generatingPlan && !viewModel.planGenerationLiveText.isEmpty)
             || viewModel.clarificationQuestion != nil
             || viewModel.routingResult != nil
+            || viewModel.workspaceAnswer != .idle
+    }
+
+    private var isWorkspaceAnswerBusy: Bool {
+        viewModel.workspaceAnswer == .retrieving || viewModel.workspaceAnswer == .answering
     }
 
     /// Zone 3 ("Review") renders only when there is an approval-gated result
@@ -186,6 +192,23 @@ struct VoiceCaptureView: View {
                 .disabled(!viewModel.canSaveDraftToInbox || viewModel.isLowLatencyVoiceAgentListening)
                 .accessibilityIdentifier("voice-command-save-to-inbox")
 
+                Button {
+                    Task {
+                        await viewModel.askWorkspaceQuestion()
+                    }
+                } label: {
+                    Label("Ask", systemImage: "questionmark.bubble")
+                }
+                .disabled(
+                    isVoiceCommandInputEmpty
+                        || viewModel.phase == .recording
+                        || viewModel.phase == .transcribing
+                        || viewModel.phase == .generatingPlan
+                        || isWorkspaceAnswerBusy
+                )
+                .accessibilityIdentifier("voice-ask-button")
+                .accessibilityHint("Answers a question from local workspace data using the configured AI provider.")
+
                 Spacer()
 
                 Button {
@@ -218,6 +241,8 @@ struct VoiceCaptureView: View {
                 VoiceIntentPreview(result: routingResult)
             }
 
+            workspaceAnswerZone
+
             if let question = viewModel.clarificationQuestion {
                 ClarificationPanel(
                     question: question,
@@ -237,6 +262,44 @@ struct VoiceCaptureView: View {
             }
         }
         .accessibilityIdentifier("voice-command-working-zone")
+    }
+
+    /// Workspace Q&A state inside the working zone: progress while
+    /// retrieving/answering, the answer card, or an attention-tone failure.
+    @ViewBuilder
+    private var workspaceAnswerZone: some View {
+        switch viewModel.workspaceAnswer {
+        case .idle:
+            EmptyView()
+        case .retrieving:
+            HStack(spacing: SoloPMSpacing.sm) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Searching your workspace")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityIdentifier("voice-answer-retrieving")
+        case .answering:
+            HStack(spacing: SoloPMSpacing.sm) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Composing answer")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityIdentifier("voice-answer-answering")
+        case .answered(let text, let contextCount):
+            WorkspaceAnswerPanel(answer: text, contextCount: contextCount) {
+                viewModel.replayWorkspaceAnswer()
+            }
+        case .failed(let message):
+            Label(localizedSettingsDisplay(message), systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(SoloPMTone.attention.color)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("voice-answer-failed")
+        }
     }
 
     /// Zone 3: approval-gated outcomes. A small secondary header marks the
@@ -353,6 +416,42 @@ private struct PlanGenerationLivePreview: View {
         .soloCard()
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("voice-plan-live-preview")
+    }
+}
+
+/// Written result of a workspace question with a replay control, so the
+/// spoken answer can be re-read without asking the provider again.
+private struct WorkspaceAnswerPanel: View {
+    let answer: String
+    let contextCount: Int
+    let onSpeak: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SoloPMSpacing.xs) {
+            Label("Answer", systemImage: "text.bubble")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Text(verbatim: answer)
+                .font(.body)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(localizedDisplay("Based on %d workspace items", contextCount))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button {
+                onSpeak()
+            } label: {
+                Label("Speak", systemImage: "speaker.wave.2")
+            }
+            .accessibilityIdentifier("voice-answer-speak")
+            .accessibilityHint("Speaks the workspace answer with the local text-to-speech voice.")
+        }
+        .soloCard()
+        .accessibilityIdentifier("voice-answer-panel")
     }
 }
 

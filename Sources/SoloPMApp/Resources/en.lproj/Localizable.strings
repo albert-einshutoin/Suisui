@@ -1614,3 +1614,10 @@
 "Choose a SoloPM backup file to restore" = "Choose a SoloPM backup file to restore";
 "Add a task for today" = "Add a task for today";
 "Capture with Voice" = "Capture with Voice";
+
+/* Voice workspace Q&A */
+"Searching your workspace" = "Searching your workspace";
+"Composing answer" = "Composing answer";
+"Based on %d workspace items" = "Based on %d workspace items";
+"Answers a question from local workspace data using the configured AI provider." = "Answers a question from local workspace data using the configured AI provider.";
+"Speaks the workspace answer with the local text-to-speech voice." = "Speaks the workspace answer with the local text-to-speech voice.";

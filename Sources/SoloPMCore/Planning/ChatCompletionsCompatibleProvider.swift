@@ -353,6 +353,35 @@ public struct ChatCompletionsCompatibleProvider: StreamingLLMProvider {
     }
 }
 
+extension ChatCompletionsCompatibleProvider: AnswerGeneratingLLMProvider {
+    public func generateAnswer(for request: WorkspaceAnswerRequest) async throws -> String {
+        let apiKey = try readAPIKey()
+        let prompt = WorkspaceAnswerPromptBuilder.buildPrompt(for: request)
+        let httpRequest = try requestBuilder.makeRequest(apiKey: apiKey, prompt: prompt)
+        let data: Data
+        let response: HTTPURLResponse
+
+        do {
+            (data, response) = try await httpClient.data(for: httpRequest)
+        } catch let error as LLMProviderError {
+            throw error
+        } catch {
+            throw LLMProviderError.network(ProviderErrorMessageSanitizer.message(from: error))
+        }
+
+        guard (200..<300).contains(response.statusCode) else {
+            throw mapHTTPError(statusCode: response.statusCode, data: data)
+        }
+
+        let answer = try outputTextExtractor.extractText(from: data)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !answer.isEmpty else {
+            throw LLMProviderError.invalidResponse("Chat completion did not contain answer text.")
+        }
+        return answer
+    }
+}
+
 private struct ChatCompletionsRequestBody: Encodable {
     var model: String
     var messages: [ChatCompletionsMessage]

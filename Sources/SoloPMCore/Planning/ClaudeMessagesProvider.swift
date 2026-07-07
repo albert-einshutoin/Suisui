@@ -234,6 +234,42 @@ public struct ClaudeMessagesProvider: StreamingLLMProvider {
     }
 }
 
+extension ClaudeMessagesProvider: AnswerGeneratingLLMProvider {
+    public func generateAnswer(for request: WorkspaceAnswerRequest) async throws -> String {
+        let apiKey: String
+        let storedAPIKey = try secretStore.read(.anthropicAPIKey)
+        do {
+            apiKey = try APIKeyValidator.normalize(storedAPIKey)
+        } catch APIKeyValidationError.empty, APIKeyValidationError.containsWhitespace {
+            throw LLMProviderError.authenticationFailed
+        }
+
+        let prompt = WorkspaceAnswerPromptBuilder.buildPrompt(for: request)
+        let httpRequest = try requestBuilder.makeRequest(apiKey: apiKey, prompt: prompt)
+        let data: Data
+        let response: HTTPURLResponse
+
+        do {
+            (data, response) = try await httpClient.data(for: httpRequest)
+        } catch let error as LLMProviderError {
+            throw error
+        } catch {
+            throw LLMProviderError.network(ProviderErrorMessageSanitizer.message(from: error))
+        }
+
+        guard (200..<300).contains(response.statusCode) else {
+            throw mapHTTPError(statusCode: response.statusCode, data: data)
+        }
+
+        let answer = try outputTextExtractor.extractText(from: data)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !answer.isEmpty else {
+            throw LLMProviderError.invalidResponse("Claude Messages response did not contain answer text.")
+        }
+        return answer
+    }
+}
+
 private struct ClaudeMessagesRequestBody: Encodable {
     var model: String
     var maxTokens: Int

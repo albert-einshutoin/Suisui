@@ -45,6 +45,7 @@ Out of scope (assumed trusted or handled elsewhere):
 |---|---|---|
 | App → Keychain | API keys, OAuth tokens | Keychain ACL scoped to the app; never mirrored to SQLite or UserDefaults |
 | App → LLM provider | Prompt text, model parameters | HTTPS; key in header only; user chooses what content enters prompts |
+| App → LLM provider (workspace Q&A) | User question plus retrieved workspace snippets (task, project, knowledge titles and details) | Explicit user action per question; secret-pattern and local-path redaction on snippets before send; HTTPS with key in header only |
 | App → Notification Center | Digest and deadline notifications | Count-only bodies; no titles, paths, or customer names |
 | App → TTS / audio out | Spoken summaries | Redaction before synthesis |
 | App → audit_logs table | Action metadata | Secret-pattern redaction before insert; parameterized SQL |
