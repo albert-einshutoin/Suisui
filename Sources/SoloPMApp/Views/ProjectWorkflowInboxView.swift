@@ -4,6 +4,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct InboxWorkflowView: View {
+    @Environment(\.openWindow) private var openWindow
     @ObservedObject var viewModel: ProjectBoardViewModel
     var selectInboxTask: (ProjectBoardTask) -> Void = { _ in }
     @State private var quickTitle = ""
@@ -72,6 +73,14 @@ struct InboxWorkflowView: View {
             tasks: tasks,
             emptyTitle: "Inbox is clear",
             emptyDescription: "Voice notes, manual captures, and unassigned tasks land here before classification.",
+            emptyStateAction: WorkflowEmptyStateAction(
+                title: "Capture with Voice",
+                systemImage: "mic",
+                accessibilityIdentifier: "inbox-empty-capture-voice",
+                handler: {
+                    openWindow(id: "voice-capture")
+                }
+            ),
             viewModel: viewModel,
             onSelectTask: selectInboxTask,
             triageSummary: { task in

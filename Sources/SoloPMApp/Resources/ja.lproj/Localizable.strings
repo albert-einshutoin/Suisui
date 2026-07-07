@@ -1596,3 +1596,21 @@
 "Saves this smart list to local app storage." = "このスマートリストをローカルのアプリ保存領域に保存します。";
 "Closes the sheet without saving a smart list." = "スマートリストを保存せずにシートを閉じます。";
 "Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority" = "キーボード: J/Kまたは矢印キーでタスク選択、Eで詳細、Dで完了、1/2/3で優先度設定";
+
+"Back Up All Data…" = "すべてのデータをバックアップ…";
+"Restore from Backup…" = "バックアップから復元…";
+"Save all projects, tasks, and knowledge frames to a local JSON file" = "すべてのプロジェクト、タスク、ナレッジフレームをローカルのJSONファイルに保存します";
+"Writes a local backup file. No data leaves this Mac." = "ローカルにバックアップファイルを書き出します。データがこのMacの外に送信されることはありません。";
+"Add items from a SoloPM backup file to this workspace" = "SoloPMバックアップファイルの項目をこのワークスペースに追加します";
+"Opens a backup file and asks for confirmation before adding its items." = "バックアップファイルを開き、項目を追加する前に確認を求めます。";
+"Restore from backup?" = "バックアップから復元しますか?";
+"Add Backup Items" = "バックアップ項目を追加";
+"Restore is additive: %d projects, %d tasks, and %d knowledge frames are added as new items. Existing data is never changed or deleted." = "復元は追加のみです: %d件のプロジェクト、%d件のタスク、%d件のナレッジフレームが新しい項目として追加されます。既存のデータが変更・削除されることはありません。";
+"Backed up %d projects, %d tasks, and %d knowledge frames." = "%d件のプロジェクト、%d件のタスク、%d件のナレッジフレームをバックアップしました。";
+"Restored %d projects, %d tasks, and %d knowledge frames. Skipped %d duplicate frames." = "%d件のプロジェクト、%d件のタスク、%d件のナレッジフレームを復元しました。重複するフレーム%d件をスキップしました。";
+"Back Up" = "バックアップ";
+"Choose" = "選択";
+"Choose where to save the SoloPM backup file" = "SoloPMバックアップファイルの保存先を選択してください";
+"Choose a SoloPM backup file to restore" = "復元するSoloPMバックアップファイルを選択してください";
+"Add a task for today" = "今日のタスクを追加";
+"Capture with Voice" = "音声でキャプチャ";

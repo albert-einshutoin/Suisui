@@ -45,6 +45,7 @@ private struct DevelopmentAutomationReviewSheet: Identifiable {
 struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel: ProjectBoardViewModel
     private let taskAutomationSettings: () -> TaskAutoExecutionSettings
     private let appSettings: () -> AppSettings
@@ -428,14 +429,20 @@ struct ProjectBoardView: View {
             .accessibilityHidden(true)
         )
         .overlay {
-            if isCommandPaletteVisible {
-                CommandPaletteView(
-                    projects: commandPaletteProjects,
-                    smartLists: commandPaletteSmartLists,
-                    onExecute: executeCommandPaletteAction,
-                    onDismiss: { isCommandPaletteVisible = false }
-                )
+            ZStack {
+                if isCommandPaletteVisible {
+                    CommandPaletteView(
+                        projects: commandPaletteProjects,
+                        smartLists: commandPaletteSmartLists,
+                        onExecute: executeCommandPaletteAction,
+                        onDismiss: { isCommandPaletteVisible = false }
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                }
             }
+            // Brief fade/scale on palette open and close; Reduce Motion makes
+            // the palette appear and disappear instantly instead.
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isCommandPaletteVisible)
         }
     }
 

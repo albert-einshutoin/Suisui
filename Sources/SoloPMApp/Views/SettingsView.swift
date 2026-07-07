@@ -4,6 +4,9 @@ import SoloPMCore
 import SoloPMGoogleCalendarRuntime
 import SwiftUI
 import UniformTypeIdentifiers
+#if canImport(AppKit)
+import AppKit
+#endif
 
 enum SettingsTab: String {
     case overview = "Overview"
@@ -107,6 +110,10 @@ struct SettingsView: View {
     @State private var isConfirmingMCPRegistrationDeletion = false
     @State private var isConfirmingGoogleCalendarOAuthDisconnect = false
     @State private var isChoosingDataLocation = false
+    @State private var pendingBackupRestoreDocument: WorkspaceBackupDocument?
+    @State private var isConfirmingBackupRestore = false
+    @State private var backupStatusMessage: String?
+    @State private var backupErrorMessage: String?
     @State private var selectedTab: SettingsTab
     @State private var googleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus?
     @State private var googleCalendarSetupMessage: String?
@@ -1194,6 +1201,34 @@ struct SettingsView: View {
                 } label: {
                     Label("Choose Data Location", systemImage: "folder")
                 }
+                Button {
+                    presentBackupExportPanel()
+                } label: {
+                    Label("Back Up All Data…", systemImage: "arrow.down.doc")
+                }
+                .help("Save all projects, tasks, and knowledge frames to a local JSON file")
+                .accessibilityIdentifier("settings-backup-export")
+                .accessibilityHint("Writes a local backup file. No data leaves this Mac.")
+                Button {
+                    presentBackupRestorePanel()
+                } label: {
+                    Label("Restore from Backup…", systemImage: "arrow.up.doc")
+                }
+                .help("Add items from a SoloPM backup file to this workspace")
+                .accessibilityIdentifier("settings-backup-restore")
+                .accessibilityHint("Opens a backup file and asks for confirmation before adding its items.")
+                if let backupStatusMessage {
+                    Label(backupStatusMessage, systemImage: "checkmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                        .accessibilityIdentifier("settings-backup-status")
+                }
+                if let backupErrorMessage {
+                    Label(backupErrorMessage, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .accessibilityIdentifier("settings-backup-error")
+                }
                 settingsSaveButton
                 if let errorMessage = settingsViewModel.errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.triangle")
@@ -1247,6 +1282,135 @@ struct SettingsView: View {
                 settingsViewModel.setDefaultWorkspacePath(settingsViewModel.settings.defaultWorkspacePath ?? "")
                 settingsViewModel.setTransientErrorMessage(error.localizedDescription)
             }
+        }
+        .confirmationDialog(
+            "Restore from backup?",
+            isPresented: $isConfirmingBackupRestore,
+            titleVisibility: .visible
+        ) {
+            Button("Add Backup Items") {
+                applyPendingBackupRestore()
+            }
+            .accessibilityIdentifier("settings-backup-restore-confirm")
+
+            Button("Cancel", role: .cancel) {
+                pendingBackupRestoreDocument = nil
+            }
+            .accessibilityIdentifier("settings-backup-restore-cancel")
+        } message: {
+            Text(backupRestoreConfirmationMessage)
+        }
+    }
+
+    private var backupRestoreConfirmationMessage: String {
+        guard let document = pendingBackupRestoreDocument else {
+            return ""
+        }
+        return localizedDisplay(
+            "Restore is additive: %d projects, %d tasks, and %d knowledge frames are added as new items. Existing data is never changed or deleted.",
+            document.projects.count,
+            document.tasks.count,
+            document.knowledgeFrames.count
+        )
+    }
+
+    private var defaultBackupFilename: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return "SoloPM-Backup-\(formatter.string(from: Date())).json"
+    }
+
+    private func presentBackupExportPanel() {
+        #if canImport(AppKit)
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        panel.nameFieldStringValue = defaultBackupFilename
+        panel.prompt = String(localized: "Back Up")
+        panel.message = String(localized: "Choose where to save the SoloPM backup file")
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else {
+                return
+            }
+            DispatchQueue.main.async {
+                exportBackup(to: url)
+            }
+        }
+        #endif
+    }
+
+    private func exportBackup(to url: URL) {
+        do {
+            let document = try AppRuntimeFactory.makeWorkspaceBackupExporter().export()
+            try WorkspaceBackupCoding.encode(document).write(to: url, options: [.atomic])
+            backupErrorMessage = nil
+            backupStatusMessage = localizedDisplay(
+                "Backed up %d projects, %d tasks, and %d knowledge frames.",
+                document.projects.count,
+                document.tasks.count,
+                document.knowledgeFrames.count
+            )
+        } catch {
+            backupStatusMessage = nil
+            backupErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func presentBackupRestorePanel() {
+        #if canImport(AppKit)
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.json]
+        panel.prompt = String(localized: "Choose")
+        panel.message = String(localized: "Choose a SoloPM backup file to restore")
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else {
+                return
+            }
+            DispatchQueue.main.async {
+                loadBackupForRestore(from: url)
+            }
+        }
+        #endif
+    }
+
+    private func loadBackupForRestore(from url: URL) {
+        do {
+            let document = try WorkspaceBackupCoding.decode(try Data(contentsOf: url))
+            pendingBackupRestoreDocument = document
+            backupErrorMessage = nil
+            // Counts are confirmed in the dialog before any row is written.
+            isConfirmingBackupRestore = true
+        } catch {
+            pendingBackupRestoreDocument = nil
+            backupStatusMessage = nil
+            backupErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func applyPendingBackupRestore() {
+        guard let document = pendingBackupRestoreDocument else {
+            return
+        }
+        pendingBackupRestoreDocument = nil
+        do {
+            let summary = try AppRuntimeFactory.makeWorkspaceBackupImporter().restore(document, mode: .merge)
+            backupErrorMessage = nil
+            backupStatusMessage = localizedDisplay(
+                "Restored %d projects, %d tasks, and %d knowledge frames. Skipped %d duplicate frames.",
+                summary.projectsCreated,
+                summary.tasksCreated,
+                summary.framesCreated,
+                summary.framesSkipped
+            )
+            AppRuntimeFactory.postProjectBoardDidChange()
+        } catch {
+            backupStatusMessage = nil
+            backupErrorMessage = error.localizedDescription
         }
     }
 

@@ -3,6 +3,15 @@ import SoloPMCore
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// One optional next-step button for an empty workflow surface, so empty
+/// states can point at the most useful capture action instead of dead-ending.
+struct WorkflowEmptyStateAction {
+    let title: String
+    let systemImage: String
+    let accessibilityIdentifier: String
+    let handler: () -> Void
+}
+
 struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
     let title: String
     let subtitle: String
@@ -10,6 +19,7 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
     let tasks: [ProjectBoardTask]
     let emptyTitle: String
     let emptyDescription: String
+    let emptyStateAction: WorkflowEmptyStateAction?
     @ObservedObject var viewModel: ProjectBoardViewModel
     let onSelectTask: ((ProjectBoardTask) -> Void)?
     let triageSummary: (ProjectBoardTask) -> InboxTriageSummary?
@@ -23,6 +33,7 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
         tasks: [ProjectBoardTask],
         emptyTitle: String,
         emptyDescription: String,
+        emptyStateAction: WorkflowEmptyStateAction? = nil,
         viewModel: ProjectBoardViewModel,
         onSelectTask: ((ProjectBoardTask) -> Void)? = nil,
         triageSummary: @escaping (ProjectBoardTask) -> InboxTriageSummary? = { _ in nil },
@@ -35,6 +46,7 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
         self.tasks = tasks
         self.emptyTitle = emptyTitle
         self.emptyDescription = emptyDescription
+        self.emptyStateAction = emptyStateAction
         self.viewModel = viewModel
         self.onSelectTask = onSelectTask
         self.triageSummary = triageSummary
@@ -58,11 +70,20 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
             }
 
             if tasks.isEmpty {
-                ContentUnavailableView(
-                    LocalizedStringKey(emptyTitle),
-                    systemImage: systemImage,
-                    description: Text(LocalizedStringKey(emptyDescription))
-                )
+                ContentUnavailableView {
+                    Label(LocalizedStringKey(emptyTitle), systemImage: systemImage)
+                } description: {
+                    Text(LocalizedStringKey(emptyDescription))
+                } actions: {
+                    if let emptyStateAction {
+                        Button {
+                            emptyStateAction.handler()
+                        } label: {
+                            Label(LocalizedStringKey(emptyStateAction.title), systemImage: emptyStateAction.systemImage)
+                        }
+                        .accessibilityIdentifier(emptyStateAction.accessibilityIdentifier)
+                    }
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {

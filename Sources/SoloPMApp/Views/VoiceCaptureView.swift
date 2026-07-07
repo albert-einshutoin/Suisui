@@ -4,6 +4,7 @@ import SwiftUI
 
 struct VoiceCaptureView: View {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel: VoiceCaptureViewModel
     @State private var clarificationAnswer = ""
 
@@ -80,13 +81,19 @@ struct VoiceCaptureView: View {
                 VStack(alignment: .leading, spacing: SoloPMSpacing.md) {
                     if hasWorkingContent {
                         workingZone
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                     }
 
                     if hasReviewContent {
                         reviewZone
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // Zones fade/slide in briefly as they appear; Reduce Motion
+                // disables the animation so state changes apply instantly.
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: hasWorkingContent)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: hasReviewContent)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }

@@ -743,6 +743,37 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         )
     }
 
+    /// Backup restore inserts completed tasks with their original completion
+    /// timestamp instead of stamping "now", so Done analytics survive a
+    /// restore. Only `WorkspaceBackupImporter` should use this entry point.
+    public func createForBackupRestore(_ draft: TaskCreateDraft, completedAt: String?) throws -> TaskRecord {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let normalizedTitle = try StoreFieldValidation.requiredTrimmed(draft.title, argument: "title", tool: .taskCreate)
+        let normalizedStatus = try StoreFieldValidation.taskStatus(draft.status, tool: .taskCreate)
+        let normalizedRecurrence = try draft.recurrence.map { try StoreFieldValidation.taskRecurrence($0, tool: .taskCreate) }
+        try connection.execute(
+            """
+            INSERT INTO tasks (project_id, title, status, detail, due_at, completed_at, priority, source_command, recurrence)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            parameters: [
+                SQLiteValue(draft.projectID),
+                .text(normalizedTitle),
+                .text(normalizedStatus),
+                SQLiteValue(draft.detail),
+                SQLiteValue(draft.dueAt),
+                SQLiteValue(normalizedStatus == "completed" ? completedAt : nil),
+                SQLiteValue(draft.priority),
+                SQLiteValue(draft.sourceCommand),
+                SQLiteValue(normalizedRecurrence)
+            ]
+        )
+
+        return try getLocked(id: connection.lastInsertedRowID)
+    }
+
     public func createMany(_ drafts: [TaskCreateDraft]) throws -> [TaskRecord] {
         lock.lock()
         defer { lock.unlock() }

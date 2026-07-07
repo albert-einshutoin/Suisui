@@ -1596,3 +1596,21 @@
 "Saves this smart list to local app storage." = "Saves this smart list to local app storage.";
 "Closes the sheet without saving a smart list." = "Closes the sheet without saving a smart list.";
 "Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority" = "Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority";
+
+"Back Up All Data…" = "Back Up All Data…";
+"Restore from Backup…" = "Restore from Backup…";
+"Save all projects, tasks, and knowledge frames to a local JSON file" = "Save all projects, tasks, and knowledge frames to a local JSON file";
+"Writes a local backup file. No data leaves this Mac." = "Writes a local backup file. No data leaves this Mac.";
+"Add items from a SoloPM backup file to this workspace" = "Add items from a SoloPM backup file to this workspace";
+"Opens a backup file and asks for confirmation before adding its items." = "Opens a backup file and asks for confirmation before adding its items.";
+"Restore from backup?" = "Restore from backup?";
+"Add Backup Items" = "Add Backup Items";
+"Restore is additive: %d projects, %d tasks, and %d knowledge frames are added as new items. Existing data is never changed or deleted." = "Restore is additive: %d projects, %d tasks, and %d knowledge frames are added as new items. Existing data is never changed or deleted.";
+"Backed up %d projects, %d tasks, and %d knowledge frames." = "Backed up %d projects, %d tasks, and %d knowledge frames.";
+"Restored %d projects, %d tasks, and %d knowledge frames. Skipped %d duplicate frames." = "Restored %d projects, %d tasks, and %d knowledge frames. Skipped %d duplicate frames.";
+"Back Up" = "Back Up";
+"Choose" = "Choose";
+"Choose where to save the SoloPM backup file" = "Choose where to save the SoloPM backup file";
+"Choose a SoloPM backup file to restore" = "Choose a SoloPM backup file to restore";
+"Add a task for today" = "Add a task for today";
+"Capture with Voice" = "Capture with Voice";

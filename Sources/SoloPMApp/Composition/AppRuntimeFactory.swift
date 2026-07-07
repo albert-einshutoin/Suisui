@@ -64,6 +64,24 @@ enum AppRuntimeFactory {
         )
     }
 
+    static func makeWorkspaceBackupExporter() throws -> WorkspaceBackupExporter {
+        let connection = try migratedConnection()
+        return WorkspaceBackupExporter(
+            projectStore: SQLiteProjectStore(connection: connection),
+            taskStore: SQLiteTaskStore(connection: connection),
+            knowledgeFrameStore: SQLiteKnowledgeFrameStore(connection: connection)
+        )
+    }
+
+    static func makeWorkspaceBackupImporter() throws -> WorkspaceBackupImporter {
+        let connection = try migratedConnection()
+        return WorkspaceBackupImporter(
+            projectStore: SQLiteProjectStore(connection: connection),
+            taskStore: SQLiteTaskStore(connection: connection),
+            knowledgeFrameStore: SQLiteKnowledgeFrameStore(connection: connection)
+        )
+    }
+
     static func postProjectBoardDidChange() {
         NotificationCenter.default.post(name: .soloPMProjectBoardDidChange, object: nil)
     }
