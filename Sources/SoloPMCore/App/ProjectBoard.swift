@@ -6842,6 +6842,15 @@ public final class ProjectBoardViewModel: ObservableObject {
         priority: ProjectTaskPriority = .medium,
         dueAt: String? = nil
     ) -> ProjectBoardTask? {
+        var resolvedTitle = title
+        var resolvedDueAt = dueAt
+        if dueAt == nil {
+            let parsed = QuickAddDueDateParser.parse(title)
+            if let parsedDueAt = parsed.dueAt {
+                resolvedTitle = parsed.title
+                resolvedDueAt = DeadlineDateParser.string(from: parsedDueAt)
+            }
+        }
         do {
             let liveSnapshot = try store.loadSnapshot(includeArchived: false)
             snapshot = liveSnapshot
@@ -6855,11 +6864,11 @@ public final class ProjectBoardViewModel: ObservableObject {
             }
             let task = try store.createTask(ProjectBoardTaskDraft(
                 projectID: inboxProject.id,
-                title: title,
+                title: resolvedTitle,
                 detail: detail,
                 status: .backlog,
                 priority: priority,
-                dueAt: dueAt
+                dueAt: resolvedDueAt
             ))
             selectedProjectID = inboxProject.id
             selectedTaskID = task.id
