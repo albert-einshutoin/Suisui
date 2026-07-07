@@ -90,11 +90,25 @@ struct SoloPM: App {
 /// This lives in its own view (not inline in the App body) because the
 /// MenuBarExtra label closure does not re-render for @StateObject changes
 /// observed only inside the App struct; @ObservedObject here re-renders the
-/// label whenever the controller publishes a refreshed summary.
+/// label whenever the controller publishes a refreshed summary. The initial
+/// refresh and board-change subscription live here as well, because the label
+/// is always present while the panel content only appears after the user opens
+/// the menu bar extra.
 private struct MenuBarExtraLabel: View {
     @ObservedObject var controller: MenuBarSummaryController
 
     var body: some View {
+        labelContent
+            .task {
+                controller.refresh()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
+                controller.refresh()
+            }
+    }
+
+    @ViewBuilder
+    private var labelContent: some View {
         if overdueTaskCount > 0 {
             HStack(spacing: 2) {
                 Image(systemName: "checklist")
