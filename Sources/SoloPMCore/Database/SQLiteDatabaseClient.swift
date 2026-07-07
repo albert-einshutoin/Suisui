@@ -962,6 +962,18 @@ public enum CoreMigrations {
                     """
                 )
             },
+            DatabaseMigration(id: "0021_create_weekly_review_state") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS weekly_review_state (
+                        id INTEGER PRIMARY KEY CHECK(id = 1),
+                        last_summary_week TEXT,
+                        recorded_at TEXT,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    """
+                )
+            },
         ]
     }
 }

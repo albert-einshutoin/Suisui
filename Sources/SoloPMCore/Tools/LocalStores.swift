@@ -1012,6 +1012,32 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         ).isEmpty
     }
 
+    public func completedCount(since: String, until: String) throws -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let value = try connection.queryStrings(
+            """
+            SELECT COUNT(*) FROM tasks
+            WHERE completed_at IS NOT NULL
+              AND completed_at >= ?
+              AND completed_at < ?;
+            """,
+            parameters: [.text(since), .text(until)]
+        ).first
+        return value.flatMap(Int.init) ?? 0
+    }
+
+    public func openCount() throws -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let value = try connection.queryStrings(
+            "SELECT COUNT(*) FROM tasks WHERE status != 'completed';"
+        ).first
+        return value.flatMap(Int.init) ?? 0
+    }
+
     @discardableResult
     public func delete(id: Int64) throws -> TaskDeletionResult {
         lock.lock()
