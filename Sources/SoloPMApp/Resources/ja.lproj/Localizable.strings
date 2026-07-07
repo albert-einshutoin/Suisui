@@ -2,6 +2,8 @@
 "Add Project" = "プロジェクト追加";
 "Add Server" = "サーバー追加";
 "Add Task" = "タスク追加";
+"Advanced" = "詳細";
+"Advanced AI Options" = "AIの詳細オプション";
 "AI" = "AI";
 "Appearance" = "表示";
 "Apply Suggestion" = "提案を適用";
@@ -175,6 +177,8 @@
 "Recent Projects" = "最近のプロジェクト";
 "Record" = "録音";
 "Restart Shell" = "シェルを再起動";
+"Reveals MCP, Sync, and managed billing controls." = "MCP、同期、管理課金の設定を表示します。";
+"Reveals the MCP and Sync tabs and advanced AI options." = "MCPと同期のタブ、およびAIの詳細オプションを表示します。";
 "Save" = "保存";
 "Save Claude Key" = "Claudeキーを保存";
 "Save Gemini Key" = "Geminiキーを保存";
@@ -196,6 +200,7 @@
 "Sets the absolute path to the local Kokoro TTS executable." = "ローカルKokoro TTS実行ファイルの絶対パスを設定します。";
 "Hide Sidebar" = "サイドバーを非表示";
 "Sidebar" = "サイドバー";
+"Show advanced settings" = "詳細設定を表示";
 "Show Archived" = "アーカイブを表示";
 "Show Sidebar" = "サイドバーを表示";
 "Shell Ended" = "シェルは終了しました";
