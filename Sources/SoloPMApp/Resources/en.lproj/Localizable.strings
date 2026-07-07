@@ -1567,3 +1567,32 @@
 "Speech transcription is unavailable." = "Speech transcription is unavailable.";
 "Voice agent sessions start only from the Voice Command window; cloud fallback requires visible cost disclosure before it can be saved." = "Voice agent sessions start only from the Voice Command window; cloud fallback requires visible cost disclosure before it can be saved.";
 "You're ready" = "You're ready";
+
+/* Smart lists and board keyboard shortcuts */
+"Smart Lists" = "Smart Lists";
+"Smart List" = "Smart List";
+"New Smart List…" = "New Smart List…";
+"New Smart List" = "New Smart List";
+"Create a saved smart list filter" = "Create a saved smart list filter";
+"Opens a sheet that saves a reusable task filter to local app storage." = "Opens a sheet that saves a reusable task filter to local app storage.";
+"Delete Smart List" = "Delete Smart List";
+"Shows tasks matching this saved filter in the board detail." = "Shows tasks matching this saved filter in the board detail.";
+"Lists local tasks matching the selected smart list filter." = "Lists local tasks matching the selected smart list filter.";
+"Smart list %@" = "Smart list %@";
+"%d matching tasks" = "%d matching tasks";
+"No matching tasks" = "No matching tasks";
+"Tasks matching this smart list appear here as projects change." = "Tasks matching this smart list appear here as projects change.";
+"Due this week" = "Due this week";
+"Name" = "Name";
+"Statuses" = "Statuses";
+"Priorities" = "Priorities";
+"Due within days" = "Due within days";
+"Due within %d days" = "Due within %d days";
+"Overdue only" = "Overdue only";
+"Search" = "Search";
+"Search text" = "Search text";
+"Save Smart List" = "Save Smart List";
+"Saves this smart list to local app storage" = "Saves this smart list to local app storage";
+"Saves this smart list to local app storage." = "Saves this smart list to local app storage.";
+"Closes the sheet without saving a smart list." = "Closes the sheet without saving a smart list.";
+"Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority" = "Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority";

@@ -1567,3 +1567,32 @@
 "Speech transcription is unavailable." = "音声認識を利用できません。";
 "Voice agent sessions start only from the Voice Command window; cloud fallback requires visible cost disclosure before it can be saved." = "音声エージェントのセッションは音声コマンドウィンドウからのみ開始します。クラウドフォールバックを保存するには、費用表示を有効にする必要があります。";
 "You're ready" = "準備完了";
+
+/* Smart lists and board keyboard shortcuts */
+"Smart Lists" = "スマートリスト";
+"Smart List" = "スマートリスト";
+"New Smart List…" = "新規スマートリスト…";
+"New Smart List" = "新規スマートリスト";
+"Create a saved smart list filter" = "保存できるスマートリストフィルタを作成します";
+"Opens a sheet that saves a reusable task filter to local app storage." = "再利用できるタスクフィルタをローカルのアプリ保存領域に保存するシートを開きます。";
+"Delete Smart List" = "スマートリストを削除";
+"Shows tasks matching this saved filter in the board detail." = "この保存済みフィルタに一致するタスクをボード詳細に表示します。";
+"Lists local tasks matching the selected smart list filter." = "選択中のスマートリストフィルタに一致するローカルタスクを一覧表示します。";
+"Smart list %@" = "スマートリスト %@";
+"%d matching tasks" = "一致するタスク %d件";
+"No matching tasks" = "一致するタスクはありません";
+"Tasks matching this smart list appear here as projects change." = "プロジェクトの変化に応じて、このスマートリストに一致するタスクがここに表示されます。";
+"Due this week" = "今週締切";
+"Name" = "名前";
+"Statuses" = "ステータス";
+"Priorities" = "優先度";
+"Due within days" = "日数以内の締切";
+"Due within %d days" = "%d日以内の締切";
+"Overdue only" = "期限超過のみ";
+"Search" = "検索";
+"Search text" = "検索テキスト";
+"Save Smart List" = "スマートリストを保存";
+"Saves this smart list to local app storage" = "このスマートリストをローカルのアプリ保存領域に保存します";
+"Saves this smart list to local app storage." = "このスマートリストをローカルのアプリ保存領域に保存します。";
+"Closes the sheet without saving a smart list." = "スマートリストを保存せずにシートを閉じます。";
+"Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority" = "キーボード: J/Kまたは矢印キーでタスク選択、Eで詳細、Dで完了、1/2/3で優先度設定";

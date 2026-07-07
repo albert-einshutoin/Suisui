@@ -108,6 +108,52 @@ final class CommandPaletteTests: XCTestCase {
         XCTAssertEqual(items.first?.id, "create-inbox-task")
     }
 
+    func testEmptyQueryWithoutSmartListsOmitsSmartListItems() {
+        let items = CommandPaletteComposer.items(query: "", projects: [])
+
+        XCTAssertFalse(items.contains { item in
+            if case .openSmartList = item.kind {
+                return true
+            }
+            return false
+        })
+    }
+
+    func testEmptyQueryPlacesSmartListsAfterWindowActionsBeforeProjects() throws {
+        let items = CommandPaletteComposer.items(
+            query: "",
+            projects: makeProjects([("Release prep", false)]),
+            smartLists: [(id: "preset-high-priority", name: "High priority")]
+        )
+
+        let settingsIndex = try XCTUnwrap(items.firstIndex { $0.id == "window-settings" })
+        let smartListIndex = try XCTUnwrap(items.firstIndex { $0.id == "smart-list-preset-high-priority" })
+        let projectIndex = try XCTUnwrap(items.firstIndex { $0.id == "project-1" })
+
+        XCTAssertLessThan(settingsIndex, smartListIndex)
+        XCTAssertLessThan(smartListIndex, projectIndex)
+        XCTAssertEqual(
+            items[smartListIndex].kind,
+            .openSmartList(id: "preset-high-priority", name: "High priority")
+        )
+    }
+
+    func testQueryFuzzyMatchesSmartListsAlongsideOtherCandidates() {
+        let items = CommandPaletteComposer.items(
+            query: "high",
+            projects: makeProjects([("High seas", false)]),
+            smartLists: [
+                (id: "preset-high-priority", name: "High priority"),
+                (id: "saved-1", name: "Blocked reviews")
+            ]
+        )
+
+        XCTAssertEqual(items.first?.kind, .createInboxTask(title: "high"))
+        XCTAssertTrue(items.contains { $0.kind == .openSmartList(id: "preset-high-priority", name: "High priority") })
+        XCTAssertTrue(items.contains { $0.kind == .openProject(id: 1, title: "High seas") })
+        XCTAssertFalse(items.contains { $0.id == "smart-list-saved-1" })
+    }
+
     func testQueryOrdersMatchesByScoreThenTitle() {
         let items = CommandPaletteComposer.items(
             query: "pre",

@@ -27,6 +27,8 @@ The suffix must be a stable internal ID or enum raw value. Do not encode user-pr
 ## Screen Prefixes
 
 - `project-board`: top-level board, toolbar, sidebar, and shared project board actions.
+- `project-board-smart-list`: sidebar smart list rows (`project-board-smart-list-row-<id>`), the `project-board-smart-list-new` creation affordance, and `project-board-smart-list-delete-<id>` context actions. The `<id>` suffix is the stable smart list ID (a preset ID or saved UUID), never the user-provided name.
+- `smart-list`: smart list editor sheet fields (`smart-list-name`, `smart-list-status-<status>`, `smart-list-priority-<priority>`, `smart-list-due-within-toggle`, `smart-list-due-within-stepper`, `smart-list-overdue-toggle`, `smart-list-search`, `smart-list-save`, `smart-list-cancel`) and the `smart-list-workflow` filtered task surface.
 - `command-palette`: command palette overlay, its query input, and `command-palette-row-<itemID>` result rows.
 - `project-header`: selected project header and project-scoped actions.
 - `project-inspector`: project editing and destructive confirmation controls.

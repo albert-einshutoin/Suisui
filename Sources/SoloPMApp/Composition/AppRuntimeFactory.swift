@@ -46,6 +46,18 @@ enum AppRuntimeFactory {
         )
     }
 
+    static func makeSmartListStore() throws -> any SmartListStore {
+        try FileSmartListStore(
+            directoryURL: applicationSupportDirectoryURL().appendingPathComponent("SmartLists", isDirectory: true)
+        )
+    }
+
+    static func makeSmartListStoreIfAvailable() -> (any SmartListStore)? {
+        // Smart lists degrade gracefully: presets still work if Application
+        // Support is unavailable, so the board never blocks on this store.
+        try? makeSmartListStore()
+    }
+
     static func makeMailDraftClient() throws -> any MailDraftClient {
         LocalFileMailDraftClient(
             draftsDirectoryURL: try applicationSupportDirectoryURL().appendingPathComponent("MailDrafts", isDirectory: true)

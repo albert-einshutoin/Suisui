@@ -7,6 +7,7 @@ public enum CommandPaletteActionKind: Equatable, Sendable {
     case createInboxTask(title: String)
     case openDestination(ProjectBoardSidebarDestination)
     case openProject(id: Int64, title: String)
+    case openSmartList(id: String, name: String)
     case openVoiceCommandWindow
     case openSettingsWindow
 }
@@ -52,7 +53,8 @@ public enum CommandPaletteComposer {
     public static func items(
         query: String,
         projects: [(id: Int64, title: String, isArchived: Bool)],
-        destinations: [ProjectBoardSidebarDestination] = defaultDestinations
+        destinations: [ProjectBoardSidebarDestination] = defaultDestinations,
+        smartLists: [(id: String, name: String)] = []
     ) -> [CommandPaletteItem] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let activeProjects = projects.filter { !$0.isArchived }
@@ -61,6 +63,7 @@ public enum CommandPaletteComposer {
             var items = destinations.map(destinationItem)
             items.append(voiceCommandWindowItem)
             items.append(settingsWindowItem)
+            items.append(contentsOf: smartLists.map(smartListItem))
             items.append(contentsOf: activeProjects.prefix(maxEmptyQueryProjectCount).map(projectItem))
             return Array(items.prefix(maxItemCount))
         }
@@ -68,6 +71,7 @@ public enum CommandPaletteComposer {
         var candidates = destinations.map(destinationItem)
         candidates.append(voiceCommandWindowItem)
         candidates.append(settingsWindowItem)
+        candidates.append(contentsOf: smartLists.map(smartListItem))
         candidates.append(contentsOf: activeProjects.map(projectItem))
 
         let matches = candidates
@@ -154,6 +158,16 @@ public enum CommandPaletteComposer {
             title: project.title,
             systemImage: "folder",
             kind: .openProject(id: project.id, title: project.title)
+        )
+    }
+
+    private static func smartListItem(_ smartList: (id: String, name: String)) -> CommandPaletteItem {
+        CommandPaletteItem(
+            id: "smart-list-\(smartList.id)",
+            title: smartList.name,
+            subtitle: "Smart List",
+            systemImage: "line.3.horizontal.decrease.circle",
+            kind: .openSmartList(id: smartList.id, name: smartList.name)
         )
     }
 

@@ -6,6 +6,7 @@ import SwiftUI
 /// tracks keyboard selection, and forwards the chosen action to the board.
 struct CommandPaletteView: View {
     let projects: [(id: Int64, title: String, isArchived: Bool)]
+    var smartLists: [(id: String, name: String)] = []
     let onExecute: (CommandPaletteActionKind) -> Void
     let onDismiss: () -> Void
 
@@ -14,7 +15,7 @@ struct CommandPaletteView: View {
     @FocusState private var isInputFocused: Bool
 
     private var items: [CommandPaletteItem] {
-        CommandPaletteComposer.items(query: query, projects: projects)
+        CommandPaletteComposer.items(query: query, projects: projects, smartLists: smartLists)
     }
 
     var body: some View {
@@ -141,7 +142,9 @@ struct CommandPaletteView: View {
     /// and project rows carry user-provided text and must render verbatim.
     private func rowTitle(for item: CommandPaletteItem) -> Text {
         switch item.kind {
-        case .createInboxTask, .openProject:
+        // Smart list names arrive pre-localized (presets) or user-provided
+        // (saved lists), so they render verbatim like project titles.
+        case .createInboxTask, .openProject, .openSmartList:
             Text(item.title)
         case .openDestination, .openVoiceCommandWindow, .openSettingsWindow:
             Text(LocalizedStringKey(item.title))

@@ -163,3 +163,22 @@ Risk: Artifact追加は絶対パスに限定してworkspace推測を避け、削
 1. P11-033: 実機VoiceOverでProject board -> card -> Inline Task Composer -> inspectorのfocus orderを確認する。
 2. P11-040: Notion / Todoist / Linear / Motion の実操作メモを追加し、desk researchとの差分だけ更新する。
 3. P5/P10: Developer ID signing / notarization / Sparkle appcast のrelease-machine gateを埋める。
+
+## Keyboard (2026-07-07)
+
+Project boardのkanban surfaceにフォーカスがあるとき(タスクカードをクリックすると自動でフォーカスされる)、次のショートカットが使える。テキスト入力中(inline task composer表示中、またはinspectorのfield編集中)はすべて無効になり、文字はそのまま入力欄へ渡る。
+
+| Key | 操作 |
+| --- | --- |
+| `J` / `↓` | ボードの表示順(列の左→右、列内の上→下)で次のタスクを選択 |
+| `K` / `↑` | 同じ表示順で前のタスクを選択 |
+| `E` | 選択中タスクのtask inspectorを開く |
+| `D` | 選択中タスクを完了にする(カードのstatus controlsと同じ`moveTask(.done)`経路。繰り返しタスクは次回occurrenceが作られる) |
+| `1` / `2` / `3` | 選択中タスクの優先度をLow / Medium / Highに設定(既存の`updateSelectedTask`経路) |
+| `⌘K` | コマンドパレット(destinations、projects、smart lists、Inboxへのタスク作成) |
+
+順序ロジックは`ProjectBoardKeyboardNavigation`(SoloPMCore)にあり、`ProjectBoardKeyboardNavigationTests`で検証する。キーのUI配線自体はunit testでは検証できないため、ボードにフォーカスがある状態での手動確認を対象とする。
+
+### Smart Lists
+
+Sidebarの`Smart Lists` sectionにpreset(`Due this week`、`High priority`、`Overdue`)と保存済みリストが並ぶ。`New Smart List…`でstatus/priority/due-within/overdue/検索テキストを組み合わせたフィルタを保存でき、選択するとboard detailに一致タスクのflat listが出る(Todayと同じrow componentを再利用)。選択は`selectedDestination`とは独立した`selectedSmartListID`で管理し、どちらか一方だけがアクティブになる。
