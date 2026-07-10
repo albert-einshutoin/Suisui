@@ -5809,7 +5809,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("scrollAXContainerDown \"task-inspector\""))
         XCTAssertTrue(scrollHelper.contains("AXUIElementCreateApplication(pid)"))
         XCTAssertTrue(scrollHelper.contains("NSWorkspace.shared.frontmostApplication?.processIdentifier == pid"))
-        XCTAssertTrue(scrollHelper.contains("CGEvent(scrollWheelEvent2Source:"))
+        XCTAssertTrue(scrollHelper.contains("scrollWheelEvent2Source: source"))
         XCTAssertTrue(scrollHelper.contains("event.location = center"))
         XCTAssertTrue(scrollHelper.contains("event.post(tap: .cghidEventTap)"))
         XCTAssertFalse(scrollHelper.contains("NSWorkspace.shared.runningApplications.first"))

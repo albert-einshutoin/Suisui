@@ -22,6 +22,7 @@ SQLITE3="${SQLITE3:-sqlite3}"
 SQLITE_BUSY_TIMEOUT_MS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS:-5000}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_TEXT_INPUT_HELPER="${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}"
+AX_SCROLL_HELPER="${AX_SCROLL_HELPER:-$ROOT_DIR/script/ui_evidence_ax_scroll_container.swift}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS must be a positive integer" >&2
@@ -500,6 +501,22 @@ setTextFieldContaining() {
   done
 }
 
+scrollAXContainerDown() {
+  local fragment="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/swift "$AX_SCROLL_HELPER" "$app_pid" "$fragment"; then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: failed to scroll AX container: $fragment" >&2
+      return 1
+    fi
+    activate_app
+    sleep 1
+  done
+}
+
 waitForTextFieldContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
@@ -765,6 +782,7 @@ pressButtonContaining "task-auto-execution-run-plan"
 verify_single_value "executed task status" "SELECT status FROM tasks WHERE id=$execution_task_id;" "in_progress"
 verify_single_value "executed task detail marker" "SELECT CASE WHEN detail LIKE '%SoloPM approved automation execution%' THEN 1 ELSE 0 END FROM tasks WHERE id=$execution_task_id;" "1"
 pressButtonContaining "task-card-open-details"
+scrollAXContainerDown "task-inspector"
 waitForAXElementContaining "approved-execution-receipt" "AX Runtime Execution Task" "Execute this runtime task through the approved plan."
 
 pressButtonUntilTextFieldContaining "project-header-add-task" "inline-task-title"
