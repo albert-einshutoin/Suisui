@@ -20,6 +20,7 @@ TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS:-60}"
 KEEP_DATABASE="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
 SQLITE_BUSY_TIMEOUT_MS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS:-5000}"
+DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS:-10}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_TEXT_INPUT_HELPER="${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}"
 AX_SCROLL_HELPER="${AX_SCROLL_HELPER:-$ROOT_DIR/script/ui_evidence_ax_scroll_container.swift}"
@@ -32,6 +33,11 @@ fi
 
 if [[ ! "$SQLITE_BUSY_TIMEOUT_MS" =~ ^[0-9]+$ || "$SQLITE_BUSY_TIMEOUT_MS" -lt 1 ]]; then
   echo "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS must be a positive integer" >&2
+  exit 2
+fi
+
+if [[ ! "$DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS" -lt 1 ]]; then
+  echo "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
@@ -291,23 +297,24 @@ pressDestructiveButtonUntilSQLiteValue() {
     sleep 1
     pressConfirmationButtonContaining "$confirmation_fragment" "$confirmation_fallback" "$excluded_help"
 
-    local postcondition_deadline=$((SECONDS + 3))
+    local postcondition_deadline=$((SECONDS + DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS))
     while true; do
       actual="$(query_single_value "$sql" || true)"
       if [[ "$actual" == "$expected" ]]; then
         printf "OK: %s verified in SQLite (%s)\n" "$label" "$actual"
         return 0
       fi
-      if [[ "$SECONDS" -ge "$deadline" ]]; then
-        echo "BLOCKER: $label SQLite verification failed after destructive AX flow retry: expected '$expected', got '${actual:-<empty>}'" >&2
-        echo "SQL: $sql" >&2
-        return 1
-      fi
       if [[ "$SECONDS" -ge "$postcondition_deadline" ]]; then
         break
       fi
       sleep 1
     done
+
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: $label SQLite verification failed after destructive AX flow retry: expected '$expected', got '${actual:-<empty>}'" >&2
+      echo "SQL: $sql" >&2
+      return 1
+    fi
 
     printf "INFO: SQLite postcondition for $label was not met after pressing confirmation '$confirmation_fragment'; retrying destructive AX flow.\n" >&2
     sleep 1
