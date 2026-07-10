@@ -80,6 +80,9 @@ run_runtime_gates() {
   script/check_runtime_accessible_crud_smoke.sh
   script/check_layout_stability_smoke.sh
   script/check_accessibility_preflight.sh --runtime
+  # The production-route smoke launches a GUI and reads AX/log diagnostics, so
+  # it remains behind the existing explicit runtime gate rather than PR CI.
+  script/check_runtime_today_production_route_smoke.sh
 }
 
 run_visual_gates() {
