@@ -518,6 +518,15 @@ private struct ProjectBoardDerivedReadModelInputs {
     }
 }
 
+public enum TodaySnapshotInvalidationReason: String, Sendable {
+    case storeReload
+    case taskMutation
+    case projectMutation
+    case completedVisibilityChanged
+    case dateBoundaryChanged
+    case timezoneOrCalendarChanged
+}
+
 @MainActor
 public final class ProjectBoardViewModel: ObservableObject {
     private static let doneAnalyticsHeatmapWindowDays = 28
@@ -598,6 +607,11 @@ public final class ProjectBoardViewModel: ObservableObject {
     // schedule, done, or portfolio read models for every row selection.
     private var derivedReadModelReferenceDate: Date?
     private var derivedReadModelCalendar: Calendar
+    // The preview is a derived value, not authoritative review state. The key
+    // prevents SwiftUI re-evaluation and selection-only updates from rebuilding
+    // the same review while still forcing a new value after board data changes.
+    private var dailyPlanningReviewPreviewCache: DailyPlanningReviewPreviewCache
+    private var todaySnapshotSourceRevision: UInt64
     private var taskAutomationSessionHistory: TaskAutoExecutionHistory
 
     public init(
@@ -666,6 +680,8 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.executionReceiptAuditSnapshotsLoaded = false
         self.derivedReadModelReferenceDate = nil
         self.derivedReadModelCalendar = .current
+        self.dailyPlanningReviewPreviewCache = DailyPlanningReviewPreviewCache()
+        self.todaySnapshotSourceRevision = 0
         self.taskAutomationSessionHistory = .empty
     }
 
@@ -679,6 +695,12 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         return task(id: selectedTaskID)
+    }
+
+    public var currentDailyPlanningReview: DailyPlanningReview? {
+        // A voice/prepare/readout/action-draft review is authoritative user
+        // intent. The derived value is only the passive default for Today.
+        dailyPlanningReview ?? derivedReadModels.todayWorkflowSnapshot.dailyPlanningReviewPreview
     }
 
     private var resolvedAssistantQueueExecutionCoordinator: AssistantQueueExecutionCoordinator? {
@@ -3531,6 +3553,14 @@ public final class ProjectBoardViewModel: ObservableObject {
         rebuildDerivedReadModels(on: referenceDate, calendar: calendar)
     }
 
+    public func invalidateTodayWorkflowSnapshot(_ reason: TodaySnapshotInvalidationReason) {
+        // A revision is cheaper and safer than attempting to diff every task:
+        // all store mutations already pass through load(), while the day key
+        // separately handles midnight, DST, timezone, and calendar changes.
+        todaySnapshotSourceRevision &+= 1
+        dailyPlanningReviewPreviewCache.invalidate()
+    }
+
     public func refreshScheduleReadModel(around referenceDate: Date = Date(), calendar: Calendar = .current) {
         rebuildScheduleReadModel(around: referenceDate, calendar: calendar)
     }
@@ -3540,8 +3570,33 @@ public final class ProjectBoardViewModel: ObservableObject {
             snapshot: snapshot,
             showsCompletedWorkflowTasks: showsCompletedWorkflowTasks
         )
-        let todayWorkflowSnapshot = todayWorkflowSnapshot(on: referenceDate, calendar: calendar, inputs: inputs)
-        let scheduleReadModel = makeScheduleReadModel(around: referenceDate, calendar: calendar, inputs: inputs)
+        let todayPlan = todayPlan(on: referenceDate, calendar: calendar, inputs: inputs)
+        let workloadOverview = dailyWorkloadOverview(
+            around: referenceDate,
+            calendar: calendar,
+            inputs: inputs
+        )
+        let planningDayKey = PlanningDayKey(referenceDate: referenceDate, calendar: calendar)
+        let dailyPlanningReviewPreview = makeCachedDailyPlanningReviewPreview(
+            plan: todayPlan,
+            workload: workloadOverview,
+            referenceDate: referenceDate,
+            calendar: calendar,
+            planningDayKey: planningDayKey
+        )
+        let todayWorkflowSnapshot = todayWorkflowSnapshot(
+            from: todayPlan,
+            on: referenceDate,
+            calendar: calendar,
+            planningDayKey: planningDayKey,
+            dailyPlanningReviewPreview: dailyPlanningReviewPreview
+        )
+        let scheduleReadModel = makeScheduleReadModel(
+            around: referenceDate,
+            calendar: calendar,
+            workloadOverview: workloadOverview,
+            inputs: inputs
+        )
         let doneAnalytics = doneAnalytics(on: referenceDate, calendar: calendar, inputs: inputs)
         let portfolioSummaries = projectPortfolioSummaries(on: referenceDate, calendar: calendar, inputs: inputs)
         let missedReview = missedTaskReview(on: referenceDate, calendar: calendar, inputs: inputs)
@@ -3597,6 +3652,20 @@ public final class ProjectBoardViewModel: ObservableObject {
         inputs: ProjectBoardDerivedReadModelInputs
     ) -> ProjectBoardScheduleReadModel {
         let workloadOverview = dailyWorkloadOverview(around: referenceDate, calendar: calendar, inputs: inputs)
+        return makeScheduleReadModel(
+            around: referenceDate,
+            calendar: calendar,
+            workloadOverview: workloadOverview,
+            inputs: inputs
+        )
+    }
+
+    private func makeScheduleReadModel(
+        around referenceDate: Date,
+        calendar: Calendar,
+        workloadOverview: DailyWorkloadOverview,
+        inputs: ProjectBoardDerivedReadModelInputs
+    ) -> ProjectBoardScheduleReadModel {
         let weeklyCockpit = weeklyScheduleCockpit(
             around: referenceDate,
             calendar: calendar,
@@ -3635,12 +3704,57 @@ public final class ProjectBoardViewModel: ObservableObject {
             return
         }
 
+        let inputs = ProjectBoardDerivedReadModelInputs(
+            snapshot: snapshot,
+            showsCompletedWorkflowTasks: showsCompletedWorkflowTasks
+        )
+        let plan = todayPlan(on: referenceDate, calendar: derivedReadModelCalendar, inputs: inputs)
+        let workload = dailyWorkloadOverview(
+            around: referenceDate,
+            calendar: derivedReadModelCalendar,
+            inputs: inputs
+        )
+        let planningDayKey = PlanningDayKey(referenceDate: referenceDate, calendar: derivedReadModelCalendar)
         var nextReadModels = derivedReadModels
         nextReadModels.todayWorkflowSnapshot = todayWorkflowSnapshot(
+            from: plan,
             on: referenceDate,
-            calendar: derivedReadModelCalendar
+            calendar: derivedReadModelCalendar,
+            planningDayKey: planningDayKey,
+            dailyPlanningReviewPreview: makeCachedDailyPlanningReviewPreview(
+                plan: plan,
+                workload: workload,
+                referenceDate: referenceDate,
+                calendar: derivedReadModelCalendar,
+                planningDayKey: planningDayKey
+            )
         )
         derivedReadModels = nextReadModels
+    }
+
+    private func makeCachedDailyPlanningReviewPreview(
+        plan: TodayWorkflowPlan,
+        workload: DailyWorkloadOverview,
+        referenceDate: Date,
+        calendar: Calendar,
+        planningDayKey: PlanningDayKey
+    ) -> DailyPlanningReview {
+        let cacheKey = DailyPlanningReviewPreviewCacheKey(
+            planningDayKey: planningDayKey,
+            sourceRevision: todaySnapshotSourceRevision
+        )
+        return dailyPlanningReviewPreviewCache.review(for: cacheKey) {
+            // Cache at the derived-model boundary: task/project mutations and
+            // date/calendar changes rebuild it, while rendering and selection
+            // changes reuse the immutable value without doing board work.
+            DailyPlanningReviewBuilder.review(
+                transcript: "Today daily planning review",
+                plan: plan,
+                workload: workload,
+                referenceDate: referenceDate,
+                calendar: calendar
+            )
+        }
     }
 
     public func todayPlan(
@@ -3708,7 +3822,9 @@ public final class ProjectBoardViewModel: ObservableObject {
     private func todayWorkflowSnapshot(
         from plan: TodayWorkflowPlan,
         on referenceDate: Date,
-        calendar: Calendar
+        calendar: Calendar,
+        planningDayKey: PlanningDayKey = .empty,
+        dailyPlanningReviewPreview: DailyPlanningReview? = nil
     ) -> TodayWorkflowSnapshot {
         return TodayWorkflowSnapshot(
             plan: plan,
@@ -3721,7 +3837,9 @@ public final class ProjectBoardViewModel: ObservableObject {
                 from: plan.tasks,
                 on: referenceDate,
                 calendar: calendar
-            )
+            ),
+            planningDayKey: planningDayKey,
+            dailyPlanningReviewPreview: dailyPlanningReviewPreview
         )
     }
 
@@ -3986,11 +4104,12 @@ public final class ProjectBoardViewModel: ObservableObject {
             return false
         }
 
-        let review = dailyPlanningReview ?? makeDailyPlanningReview(
-            transcript: transcript,
-            on: referenceDate,
-            calendar: calendar
-        )
+        let review = currentDailyPlanningReview
+            ?? makeDailyPlanningReview(
+                transcript: transcript,
+                on: referenceDate,
+                calendar: calendar
+            )
         dailyPlanningReview = review
 
         guard let recommendedTaskID = review.recommendedTaskID,
@@ -4274,11 +4393,12 @@ public final class ProjectBoardViewModel: ObservableObject {
         on referenceDate: Date = Date(),
         calendar: Calendar = .current
     ) async -> Bool {
-        let review = dailyPlanningReview ?? makeDailyPlanningReview(
-            transcript: transcript,
-            on: referenceDate,
-            calendar: calendar
-        )
+        let review = currentDailyPlanningReview
+            ?? makeDailyPlanningReview(
+                transcript: transcript,
+                on: referenceDate,
+                calendar: calendar
+            )
         dailyPlanningReview = review
 
         let request = DailyPlanningReviewReadoutBuilder.makeRequest(
@@ -5963,6 +6083,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 self.selectedTaskID = nil
             }
             refreshGoogleCalendarSyncStatus()
+            invalidateTodayWorkflowSnapshot(.storeReload)
             if let referenceDate = derivedReadModelReferenceDate {
                 rebuildDerivedReadModels(on: referenceDate, calendar: derivedReadModelCalendar)
             } else {

@@ -54,7 +54,7 @@ struct TodayWorkflowView: View {
             title: "Today",
             subtitle: subtitle(for: snapshot),
             systemImage: "sun.max",
-            tasks: snapshot.plan.tasks,
+                tasks: snapshot.plan.tasks,
             emptyTitle: "No tasks due today",
             emptyDescription: "Captured work remains in Inbox until it is scheduled or moved to a project.",
             emptyStateAction: WorkflowEmptyStateAction(
@@ -75,6 +75,7 @@ struct TodayWorkflowView: View {
                     plan: snapshot.plan,
                     recommendationChips: snapshot.recommendationChips,
                     viewModel: viewModel,
+                    dailyPlanningReview: viewModel.currentDailyPlanningReview,
                     playDailyPlanningReadout: playDailyPlanningReadout
                 )
             },
@@ -87,15 +88,11 @@ struct TodayWorkflowView: View {
 
 private struct TodayDailyPlanningReviewPanel: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
+    let review: DailyPlanningReview?
     let playDailyPlanningReadout: () -> Void
     private let actionButtonColumns = [
         GridItem(.adaptive(minimum: 130), spacing: 8, alignment: .leading)
     ]
-
-    private var review: DailyPlanningReview {
-        viewModel.dailyPlanningReview
-            ?? viewModel.makeDailyPlanningReview(transcript: String(localized: "Today daily planning review"))
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -111,101 +108,107 @@ private struct TodayDailyPlanningReviewPanel: View {
                     .background(Color.secondary.opacity(0.08), in: Capsule())
             }
 
-            Text(review.headline)
-                .font(.caption.weight(.semibold))
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+            if let review {
+                Text(review.headline)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            Text(review.spokenSummary)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
+                Text(review.spokenSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            if !review.focusItems.isEmpty {
-                VStack(alignment: .leading, spacing: 5) {
-                    ForEach(review.focusItems.prefix(3)) { item in
-                        HStack(spacing: 7) {
-                            Image(systemName: "target")
-                                .font(.caption)
-                                .foregroundStyle(.blue)
-                                .accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(item.title)
-                                    .font(.caption.weight(.medium))
-                                    .lineLimit(1)
-                                Text(item.reason)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
+                if !review.focusItems.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(review.focusItems.prefix(3)) { item in
+                            HStack(spacing: 7) {
+                                Image(systemName: "target")
+                                    .font(.caption)
+                                    .foregroundStyle(.blue)
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(item.title)
+                                        .font(.caption.weight(.medium))
+                                        .lineLimit(1)
+                                    Text(item.reason)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer(minLength: 6)
                             }
-                            Spacer(minLength: 6)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("today-daily-planning-focus-\(item.taskID)")
                         }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityIdentifier("today-daily-planning-focus-\(item.taskID)")
                     }
                 }
-            }
 
-            LazyVGrid(columns: actionButtonColumns, alignment: .leading, spacing: 8) {
-                Button {
-                    playDailyPlanningReadout()
-                } label: {
-                    Label("Read Aloud", systemImage: "speaker.wave.2")
-                }
-                .controlSize(.small)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .help("Reads this daily planning review with the configured local TTS provider.")
-                .accessibilityIdentifier("today-daily-planning-readout")
-                .accessibilityHint("Uses local TTS to read the review without changing tasks or writing Calendar.")
+                LazyVGrid(columns: actionButtonColumns, alignment: .leading, spacing: 8) {
+                    Button {
+                        playDailyPlanningReadout()
+                    } label: {
+                        Label("Read Aloud", systemImage: "speaker.wave.2")
+                    }
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .help("Reads this daily planning review with the configured local TTS provider.")
+                    .accessibilityIdentifier("today-daily-planning-readout")
+                    .accessibilityHint("Uses local TTS to read the review without changing tasks or writing Calendar.")
 
-                Button {
-                    viewModel.enqueueDailyPlanningActionDraft(kind: .startRecommended)
-                } label: {
-                    Label("Draft Start", systemImage: "play.circle")
-                }
-                .controlSize(.small)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .disabled(review.recommendedTaskID == nil)
-                .help("Queue the recommended task status update for review.")
-                .accessibilityIdentifier("today-daily-planning-draft-start")
-                .accessibilityHint("Creates an Assistant Queue approval item without changing the task.")
+                    Button {
+                        viewModel.enqueueDailyPlanningActionDraft(kind: .startRecommended)
+                    } label: {
+                        Label("Draft Start", systemImage: "play.circle")
+                    }
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .disabled(review.recommendedTaskID == nil)
+                    .help("Queue the recommended task status update for review.")
+                    .accessibilityIdentifier("today-daily-planning-draft-start")
+                    .accessibilityHint("Creates an Assistant Queue approval item without changing the task.")
 
-                Button {
-                    viewModel.enqueueDailyPlanningActionDraft(kind: .deferRecommendedToTomorrow)
-                } label: {
-                    Label("Draft Defer", systemImage: "calendar.badge.clock")
-                }
-                .controlSize(.small)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .disabled(review.recommendedTaskID == nil)
-                .help("Queue a tomorrow due-date update for review.")
-                .accessibilityIdentifier("today-daily-planning-draft-defer")
-                .accessibilityHint("Creates an Assistant Queue approval item without writing Calendar.")
+                    Button {
+                        viewModel.enqueueDailyPlanningActionDraft(kind: .deferRecommendedToTomorrow)
+                    } label: {
+                        Label("Draft Defer", systemImage: "calendar.badge.clock")
+                    }
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .disabled(review.recommendedTaskID == nil)
+                    .help("Queue a tomorrow due-date update for review.")
+                    .accessibilityIdentifier("today-daily-planning-draft-defer")
+                    .accessibilityHint("Creates an Assistant Queue approval item without writing Calendar.")
 
-                Button {
-                    viewModel.enqueueDailyPlanningActionDraft(kind: .moveRecommendedDueDateToToday)
-                } label: {
-                    Label("Draft Move to Today", systemImage: "arrow.right.circle")
-                }
-                .controlSize(.small)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .disabled(review.recommendedTaskID == nil)
-                .help("Queue a today due-date update for review without creating a Calendar event.")
-                .accessibilityIdentifier("today-daily-planning-draft-move-today")
-                .accessibilityHint("Creates an Assistant Queue approval item; task due date and Calendar stay unchanged until approval.")
+                    Button {
+                        viewModel.enqueueDailyPlanningActionDraft(kind: .moveRecommendedDueDateToToday)
+                    } label: {
+                        Label("Draft Move to Today", systemImage: "arrow.right.circle")
+                    }
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .disabled(review.recommendedTaskID == nil)
+                    .help("Queue a today due-date update for review without creating a Calendar event.")
+                    .accessibilityIdentifier("today-daily-planning-draft-move-today")
+                    .accessibilityHint("Creates an Assistant Queue approval item; task due date and Calendar stay unchanged until approval.")
 
-                Button {
-                    viewModel.enqueueDailyPlanningActionDraft(kind: .splitRecommendedTask)
-                } label: {
-                    Label("Draft Split", systemImage: "square.split.2x1")
+                    Button {
+                        viewModel.enqueueDailyPlanningActionDraft(kind: .splitRecommendedTask)
+                    } label: {
+                        Label("Draft Split", systemImage: "square.split.2x1")
+                    }
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .disabled(review.recommendedTaskID == nil)
+                    .help("Queue reviewable follow-up task drafts without changing the original task.")
+                    .accessibilityIdentifier("today-daily-planning-draft-split")
+                    .accessibilityHint("Creates an Assistant Queue approval item; no tasks are created until approval.")
                 }
-                .controlSize(.small)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .disabled(review.recommendedTaskID == nil)
-                .help("Queue reviewable follow-up task drafts without changing the original task.")
-                .accessibilityIdentifier("today-daily-planning-draft-split")
-                .accessibilityHint("Creates an Assistant Queue approval item; no tasks are created until approval.")
+            } else {
+                Text("Preparing Daily Planning Review…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(10)
@@ -226,12 +229,14 @@ private struct TodayCommandPanel: View {
     let plan: TodayWorkflowPlan
     let recommendationChips: [TodayRecommendationChip]
     @ObservedObject var viewModel: ProjectBoardViewModel
+    let dailyPlanningReview: DailyPlanningReview?
     let playDailyPlanningReadout: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             TodayDailyPlanningReviewPanel(
                 viewModel: viewModel,
+                review: dailyPlanningReview,
                 playDailyPlanningReadout: playDailyPlanningReadout
             )
             TodayBriefingPanel(

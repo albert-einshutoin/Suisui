@@ -79,6 +79,45 @@ public struct DailyPlanningReview: Codable, Equatable, Sendable {
     }
 }
 
+struct DailyPlanningReviewPreviewCacheKey: Equatable, Sendable {
+    let planningDayKey: PlanningDayKey
+    let sourceRevision: UInt64
+
+    init(planningDayKey: PlanningDayKey, sourceRevision: UInt64) {
+        self.planningDayKey = planningDayKey
+        self.sourceRevision = sourceRevision
+    }
+}
+
+struct DailyPlanningReviewPreviewCache {
+    private var cachedKey: DailyPlanningReviewPreviewCacheKey?
+    private var cachedReview: DailyPlanningReview?
+
+    init() {
+        self.cachedKey = nil
+        self.cachedReview = nil
+    }
+
+    mutating func review(
+        for key: DailyPlanningReviewPreviewCacheKey,
+        build: () -> DailyPlanningReview
+    ) -> DailyPlanningReview {
+        if cachedKey == key, let cachedReview {
+            return cachedReview
+        }
+
+        let review = build()
+        cachedKey = key
+        cachedReview = review
+        return review
+    }
+
+    mutating func invalidate() {
+        cachedKey = nil
+        cachedReview = nil
+    }
+}
+
 public enum DailyPlanningReviewBuilder {
     public static func review(
         transcript: String,

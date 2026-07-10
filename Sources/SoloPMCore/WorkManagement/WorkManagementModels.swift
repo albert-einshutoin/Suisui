@@ -462,19 +462,42 @@ public struct TodayRecommendationChip: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct PlanningDayKey: Hashable, Sendable {
+    public var localDate: Date
+    public var calendarIdentifier: Calendar.Identifier
+    public var timeZoneIdentifier: String
+
+    public init(referenceDate: Date, calendar: Calendar) {
+        self.localDate = calendar.startOfDay(for: referenceDate)
+        self.calendarIdentifier = calendar.identifier
+        self.timeZoneIdentifier = calendar.timeZone.identifier
+    }
+
+    public static let empty = PlanningDayKey(
+        referenceDate: Date(timeIntervalSince1970: 0),
+        calendar: Calendar(identifier: .gregorian)
+    )
+}
+
 public struct TodayWorkflowSnapshot: Equatable, Sendable {
+    public var planningDayKey: PlanningDayKey
     public var plan: TodayWorkflowPlan
     public var assistantContext: TodayAssistantRailContext
     public var recommendationChips: [TodayRecommendationChip]
+    public var dailyPlanningReviewPreview: DailyPlanningReview?
 
     public init(
         plan: TodayWorkflowPlan,
         assistantContext: TodayAssistantRailContext,
-        recommendationChips: [TodayRecommendationChip]
+        recommendationChips: [TodayRecommendationChip],
+        planningDayKey: PlanningDayKey = .empty,
+        dailyPlanningReviewPreview: DailyPlanningReview? = nil
     ) {
+        self.planningDayKey = planningDayKey
         self.plan = plan
         self.assistantContext = assistantContext
         self.recommendationChips = recommendationChips
+        self.dailyPlanningReviewPreview = dailyPlanningReviewPreview
     }
 }
 
