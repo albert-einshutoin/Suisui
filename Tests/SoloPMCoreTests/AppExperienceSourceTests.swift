@@ -108,7 +108,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("@Environment(\\.scenePhase) private var scenePhase"))
         XCTAssertTrue(source.contains(".onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged))"))
         XCTAssertTrue(source.contains(".onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange))"))
+        XCTAssertTrue(source.contains(".onReceive(NotificationCenter.default.publisher(for: .NSSystemClockDidChange))"))
         XCTAssertTrue(source.contains(".onChange(of: scenePhase)"))
+        XCTAssertTrue(source.contains("@State private var boundaryRefreshTask: Task<Void, Never>?"))
+        XCTAssertTrue(source.contains("DailyPlanningReviewRefreshSchedule.nextStrictBoundary"))
+        XCTAssertTrue(source.contains("try await Task.sleep(nanoseconds:"))
+        XCTAssertTrue(source.contains(".onDisappear"))
+        XCTAssertTrue(source.contains("boundaryRefreshTask?.cancel()"))
+        XCTAssertFalse(source.contains("Timer.publish"))
         XCTAssertTrue(source.contains("viewModel.refreshDerivedReadModels()"))
     }
 

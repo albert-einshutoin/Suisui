@@ -140,7 +140,38 @@ final class DailyPlanningReviewPreviewCacheTests: XCTestCase {
         XCTAssertNotEqual(beforeHalfHourKey, afterHalfHourKey)
     }
 
-    func testDSTFoldAndSpringSkipRemainDistinctPreviewKeys() throws {
+    func testCacheKeyUsesTimeBlockCeilingAtAnExactHalfHourBoundary() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let planningDay = try isoDate("2026-07-10T12:29:59Z")
+        let exactBoundary = try isoDate("2026-07-10T12:30:00Z")
+        let afterBoundary = try isoDate("2026-07-10T12:30:01Z")
+        let planningDayKey = PlanningDayKey(referenceDate: planningDay, calendar: calendar)
+
+        let beforeKey = DailyPlanningReviewPreviewCacheKey(
+            planningDayKey: planningDayKey,
+            sourceRevision: 1,
+            referenceDate: planningDay,
+            calendar: calendar
+        )
+        let exactKey = DailyPlanningReviewPreviewCacheKey(
+            planningDayKey: planningDayKey,
+            sourceRevision: 1,
+            referenceDate: exactBoundary,
+            calendar: calendar
+        )
+        let afterKey = DailyPlanningReviewPreviewCacheKey(
+            planningDayKey: planningDayKey,
+            sourceRevision: 1,
+            referenceDate: afterBoundary,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(beforeKey, exactKey)
+        XCTAssertNotEqual(exactKey, afterKey)
+    }
+
+    func testDSTFoldRemainsDistinctAndSpringSkipSharesItsNextPreviewKey() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
 
@@ -177,7 +208,31 @@ final class DailyPlanningReviewPreviewCacheTests: XCTestCase {
         )
 
         XCTAssertNotEqual(firstFoldKey, secondFoldKey)
-        XCTAssertNotEqual(beforeSpringKey, afterSpringKey)
+        // 01:59 EST ceilings to the first valid 03:00 EDT boundary, which is
+        // also the block selected at that exact instant after the skipped hour.
+        XCTAssertEqual(beforeSpringKey, afterSpringKey)
+    }
+
+    func testRefreshScheduleReturnsTheNextStrictHalfHourBoundaryAcrossDST() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+
+        let exactBoundary = try isoDate("2026-11-01T05:30:00Z")
+        let afterBoundary = try isoDate("2026-11-01T05:30:01Z")
+        let beforeSpringSkip = try isoDate("2026-03-08T06:59:00Z")
+
+        XCTAssertEqual(
+            DailyPlanningReviewRefreshSchedule.nextStrictBoundary(after: exactBoundary, calendar: calendar),
+            try isoDate("2026-11-01T06:00:00Z")
+        )
+        XCTAssertEqual(
+            DailyPlanningReviewRefreshSchedule.nextStrictBoundary(after: afterBoundary, calendar: calendar),
+            try isoDate("2026-11-01T06:00:00Z")
+        )
+        XCTAssertEqual(
+            DailyPlanningReviewRefreshSchedule.nextStrictBoundary(after: beforeSpringSkip, calendar: calendar),
+            try isoDate("2026-03-08T07:00:00Z")
+        )
     }
 
     private func makeReview(sourceTranscript: String) -> DailyPlanningReview {
