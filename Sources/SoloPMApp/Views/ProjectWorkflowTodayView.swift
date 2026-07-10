@@ -3,6 +3,10 @@ import SoloPMCore
 import SwiftUI
 import UniformTypeIdentifiers
 
+private enum TodayWorkflowLayoutMetrics {
+    static let twoColumnMinimumWidth: CGFloat = 900
+}
+
 struct TodayWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     var selectTodayTask: (ProjectBoardTask) -> Void = { _ in }
@@ -19,32 +23,42 @@ struct TodayWorkflowView: View {
 
     var body: some View {
         let snapshot = viewModel.derivedReadModels.todayWorkflowSnapshot
-        // ViewThatFits repeatedly measures both branches while the detail
-        // column is still negotiating its width, which can keep the Today
-        // tree in a size-fitting loop. An adaptive grid makes the same
-        // wide/narrow decision with one stable layout proposal and keeps the
-        // rail below the surface when the detail column is narrow.
-        LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 420, maximum: 620), spacing: 18, alignment: .top)],
-            alignment: .leading,
-            spacing: 0
-        ) {
-            mainSurface(snapshot: snapshot)
-            TodayAssistantRail(
-                commandTitle: $commandTitle,
-                context: snapshot.assistantContext,
-                viewModel: viewModel,
-                openInspector: openInspectorForTodayRailTask
-            )
-            .frame(minWidth: 300, idealWidth: 320, maxWidth: 340)
-            .padding(.vertical, 18)
-            .padding(.trailing, 18)
+        GeometryReader { proxy in
+            Group {
+                if proxy.size.width >= TodayWorkflowLayoutMetrics.twoColumnMinimumWidth {
+                    // The explicit threshold keeps the rail as a stable second
+                    // column while both columns have enough room to retain their
+                    // existing controls and accessibility order.
+                    HStack(alignment: .top, spacing: 0) {
+                        mainSurface(snapshot: snapshot, fillsAvailableHeight: true)
+                        todayAssistantRail(context: snapshot.assistantContext)
+                    }
+                } else {
+                    // A vertical scroll container is finite-height safe when
+                    // the detail column is narrow: the task surface must measure
+                    // to its content instead of requesting the scroll view's
+                    // unbounded height.
+                    ScrollView(.vertical) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            mainSurface(snapshot: snapshot, fillsAvailableHeight: false)
+                            todayAssistantRail(context: snapshot.assistantContext)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 18)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-workflow")
     }
 
-    private func mainSurface(snapshot: TodayWorkflowSnapshot) -> some View {
+    private func mainSurface(
+        snapshot: TodayWorkflowSnapshot,
+        fillsAvailableHeight: Bool
+    ) -> some View {
         WorkflowTaskSurface(
             title: "Today",
             subtitle: subtitle(for: snapshot),
@@ -64,6 +78,7 @@ struct TodayWorkflowView: View {
             ),
             viewModel: viewModel,
             onSelectTask: selectTodayTask,
+            fillsAvailableHeight: fillsAvailableHeight,
             headerAccessory: {
                 TodayCommandPanel(
                     commandTitle: $commandTitle,
@@ -78,6 +93,18 @@ struct TodayWorkflowView: View {
                 TodaySuggestionPanel(plan: snapshot.plan, viewModel: viewModel)
             }
         )
+    }
+
+    private func todayAssistantRail(context: TodayAssistantRailContext) -> some View {
+        TodayAssistantRail(
+            commandTitle: $commandTitle,
+            context: context,
+            viewModel: viewModel,
+            openInspector: openInspectorForTodayRailTask
+        )
+        .frame(minWidth: 300, idealWidth: 320, maxWidth: 340)
+        .padding(.vertical, 18)
+        .padding(.trailing, 18)
     }
 }
 

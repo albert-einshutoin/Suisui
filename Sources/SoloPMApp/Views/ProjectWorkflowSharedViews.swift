@@ -22,6 +22,7 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
     let emptyStateAction: WorkflowEmptyStateAction?
     @ObservedObject var viewModel: ProjectBoardViewModel
     let onSelectTask: ((ProjectBoardTask) -> Void)?
+    let fillsAvailableHeight: Bool
     let triageSummary: (ProjectBoardTask) -> InboxTriageSummary?
     @ViewBuilder var headerAccessory: () -> HeaderAccessory
     @ViewBuilder var footer: () -> Footer
@@ -36,6 +37,7 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
         emptyStateAction: WorkflowEmptyStateAction? = nil,
         viewModel: ProjectBoardViewModel,
         onSelectTask: ((ProjectBoardTask) -> Void)? = nil,
+        fillsAvailableHeight: Bool = true,
         triageSummary: @escaping (ProjectBoardTask) -> InboxTriageSummary? = { _ in nil },
         @ViewBuilder headerAccessory: @escaping () -> HeaderAccessory = { EmptyView() },
         @ViewBuilder footer: @escaping () -> Footer
@@ -49,6 +51,7 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
         self.emptyStateAction = emptyStateAction
         self.viewModel = viewModel
         self.onSelectTask = onSelectTask
+        self.fillsAvailableHeight = fillsAvailableHeight
         self.triageSummary = triageSummary
         self.headerAccessory = headerAccessory
         self.footer = footer
@@ -103,7 +106,7 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
             footer()
         }
         .padding(18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: fillsAvailableHeight ? .infinity : nil, alignment: .topLeading)
     }
 
     private func selectTask(_ task: ProjectBoardTask) {
