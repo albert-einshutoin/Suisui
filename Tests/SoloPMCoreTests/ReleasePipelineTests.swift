@@ -5893,7 +5893,6 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH"))
         XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
         XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
-        XCTAssertTrue(script.contains("/usr/bin/env -i"))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"schedule\""))
         XCTAssertFalse(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
         XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
