@@ -983,7 +983,7 @@ private struct ProjectBoardTodayRefreshLifecycleModifier: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
                 refresh()
             }
-            .onReceive(NotificationCenter.default.publisher(for: .NSCurrentLocaleDidChange)) { _ in
+            .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
                 refresh()
             }
             .onChange(of: scenePhase) { _, phase in
@@ -1208,7 +1208,7 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
         toolbarLayoutReconcileDepth += 1
         toolbarLayoutMaxDepth = max(toolbarLayoutMaxDepth, toolbarLayoutReconcileDepth)
         runtimeDiagnosticLogger.notice(
-            "solopm.toolbar.layout.maxDepth=\(toolbarLayoutMaxDepth, privacy: .public)"
+            "solopm.toolbar.layout.maxDepth=\(self.toolbarLayoutMaxDepth, privacy: .public)"
         )
         defer { toolbarLayoutReconcileDepth -= 1 }
 
