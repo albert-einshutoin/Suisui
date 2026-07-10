@@ -5729,10 +5729,12 @@ final class ReleasePipelineTests: XCTestCase {
     func testRuntimeAccessibleCRUDSmokeScriptLaunchesIsolatedAppAndVerifiesSQLiteMutations() throws {
         let script = try readPackageFile("script/check_runtime_accessible_crud_smoke.sh")
         let scrollHelper = try readPackageFile("script/ui_evidence_ax_scroll_container.swift")
+        let buttonHelper = try readPackageFile("script/ui_evidence_ax_press_button.swift")
 
         XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
         XCTAssertTrue(script.contains("AX_TEXT_INPUT_HELPER=\"${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}\""))
         XCTAssertTrue(script.contains("AX_SCROLL_HELPER=\"${AX_SCROLL_HELPER:-$ROOT_DIR/script/ui_evidence_ax_scroll_container.swift}\""))
+        XCTAssertTrue(script.contains("AX_BUTTON_HELPER=\"${AX_BUTTON_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_button.swift}\""))
         XCTAssertTrue(script.contains("source \"$AX_HELPERS\""))
         XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH"))
         XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
@@ -5792,6 +5794,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("BLOCKER: $label mutated before confirmation"))
         XCTAssertTrue(script.contains("local confirmation_fallback=\"$4\""))
         XCTAssertTrue(script.contains("pressConfirmationButtonContaining \"$confirmation_fragment\" \"$confirmation_fallback\" \"$excluded_help\""))
+        XCTAssertTrue(script.contains("/usr/bin/swift \"$AX_BUTTON_HELPER\" \"$app_pid\" \"$confirmation_fragment\""))
+        XCTAssertTrue(buttonHelper.contains("Int32(appSelector)"))
+        XCTAssertTrue(buttonHelper.contains("NSRunningApplication(processIdentifier: pid)"))
         XCTAssertTrue(script.contains("set fallbackFragment to item 3 of argv"))
         XCTAssertTrue(script.contains("set matchesFallback to false"))
         XCTAssertTrue(script.contains("if fallbackFragment is not \"\" and signalText contains fallbackFragment then set matchesFallback to true"))
