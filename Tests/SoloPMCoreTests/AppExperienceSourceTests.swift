@@ -1864,6 +1864,25 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] Inbox / Today workflowのrow、Quick Add、分類action、Today summary、time blockにsource-level accessibility identifiers / hints / keyboard anchorsを付ける。"))
     }
 
+    func testWorkflowTaskRowKeepsCompletionAndSelectionAsSeparateAccessibilityButtons() throws {
+        let workflowSource = try readProjectWorkflowSources()
+        let rowStart = try XCTUnwrap(workflowSource.range(of: "private struct WorkflowTaskRow: View"))
+        let rowEnd = try XCTUnwrap(workflowSource[rowStart.lowerBound...].range(of: "private var workflowAccessibilityValue"))
+        let rowSource = String(workflowSource[rowStart.lowerBound..<rowEnd.lowerBound])
+
+        XCTAssertEqual(
+            rowSource.components(separatedBy: ".accessibilityElement(children: .ignore)").count - 1,
+            2,
+            "The completion and selection buttons must each remain a named accessibility element."
+        )
+        XCTAssertFalse(
+            rowSource.contains(".accessibilityElement(children: .combine)"),
+            "Combining the selection button's children hides the sibling button identifiers in the normal ProjectBoard route."
+        )
+        XCTAssertTrue(rowSource.contains(".accessibilityIdentifier(\"workflow-task-completion-\\(task.id)\")"))
+        XCTAssertTrue(rowSource.contains(".accessibilityIdentifier(\"workflow-task-row-\\(task.id)\")"))
+    }
+
     func testProjectDetailOrganizesTasksArtifactsTimelineAndSuggestions() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
