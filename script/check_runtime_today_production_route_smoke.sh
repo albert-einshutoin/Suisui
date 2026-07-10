@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Exercises the normal ProjectBoard route with an isolated local database.  This
-# intentionally does not use launch recovery: a healthy production route must
-# publish the real header and Today workflow without a recovery-only view.
+# Exercises the normal ProjectBoardView route with an isolated local database.
+# This intentionally does not use launch recovery: a healthy production route
+# must publish the real header and Today workflow without a recovery-only view.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
@@ -67,7 +67,9 @@ export SOLOPM_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1
 mkdir -p "$ROOT_DIR/.tmp" "$ARTIFACT_ROOT"
 
 app_pid=""
+app_launch_pid=""
 case_artifact_dir=""
+route_artifact_dir=""
 case_home=""
 case_cf_user_home=""
 database_path=""
@@ -75,10 +77,19 @@ case_deadline=""
 locale_label=""
 expected_today_label=""
 small_fixture_today_due_at=""
+small_fixture_missed_due_at=""
+seed_project_id=""
+route_id=""
+route_destination=""
+route_sidebar_marker=""
+route_content_marker=""
+route_text=""
+route_failure_category=""
 
 terminate_app() {
   # A PID-scoped shutdown avoids terminating a developer's separately running
   # SoloPM instance while still guaranteeing each smoke launch is cleaned up.
+  local launched_pid="${app_launch_pid:-}"
   if [[ -n "${app_pid:-}" ]]; then
     kill "$app_pid" >/dev/null 2>&1 || true
     local deadline=$((SECONDS + 3))
@@ -89,6 +100,11 @@ terminate_app() {
     wait "$app_pid" >/dev/null 2>&1 || true
     app_pid=""
   fi
+  if [[ -n "$launched_pid" && "$launched_pid" != "${app_pid:-}" ]]; then
+    kill "$launched_pid" >/dev/null 2>&1 || true
+    wait "$launched_pid" >/dev/null 2>&1 || true
+  fi
+  app_launch_pid=""
 }
 
 sanitize_sample() {
@@ -168,7 +184,9 @@ capture_runtime_route_diagnostics() {
 capture_failure_artifact() {
   local reason="$1"
   mkdir -p "$case_artifact_dir/ax-probes"
-  printf 'status=failed\nreason=%s\nfixture=%s\nlocale=%s\nlanguage_preference=%s\n' "$reason" "${fixture:-unknown}" "${locale_label:-unknown}" "${locale:-unknown}" >"$case_artifact_dir/summary.txt"
+  printf 'status=failed\nreason=%s\nfailure_category=%s\nfixture=%s\nlocale=%s\nlanguage_preference=%s\nroute=%s\ndestination=%s\nsidebar_marker=%s\ncontent_marker=%s\n' \
+    "$reason" "${route_failure_category:-unknown}" "${fixture:-unknown}" "${locale_label:-unknown}" "${locale:-unknown}" \
+    "${route_id:-none}" "${route_destination:-none}" "${route_sidebar_marker:-none}" "${route_content_marker:-none}" >"$case_artifact_dir/summary.txt"
   capture_sanitized_processes
   capture_sanitized_windows
   capture_runtime_route_diagnostics || true
@@ -182,9 +200,11 @@ trap cleanup EXIT INT TERM
 
 launch_app() {
   local locale="$1"
+  local selected_destination="$2"
   terminate_app
   # Start from an empty environment so host API keys, proxy settings, and saved
   # smoke flags cannot supply credentials or alter this normal-route exercise.
+  # The default Today route remains SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="today";
   /usr/bin/env -i \
     PATH="$PATH" \
     TMPDIR="$case_artifact_dir/tmp" \
@@ -193,9 +213,18 @@ launch_app() {
     SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
     SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_LANGUAGE_PREFERENCE="$locale" \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="today" \
+    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="$selected_destination" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
-  app_pid=$!
+  app_launch_pid=$!
+  app_pid=""
+}
+
+resolve_app_pid() {
+  if app_pid="$(ax_wait_for_owned_app_pid "$app_launch_pid" "$APP_BINARY" "$RUNTIME_TIMEOUT_SECONDS")"; then
+    return 0
+  fi
+  app_pid=""
+  return 1
 }
 
 wait_for_database_table() {
@@ -214,10 +243,13 @@ wait_for_database_table() {
 
 seed_small_fixture() {
   local today_due_at
+  local missed_due_at
   today_due_at="$(date '+%Y-%m-%dT12:00:00%z')"
+  missed_due_at="$(date -v-1d '+%Y-%m-%dT12:00:00%z')"
   # Keep the exact local-noon value used for INSERT. Recomputing it after a
   # midnight boundary could verify a different calendar day than the fixture.
   small_fixture_today_due_at="$today_due_at"
+  small_fixture_missed_due_at="$missed_due_at"
   "$SQLITE3" "$database_path" <<SQL
 INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command, created_at, updated_at)
 VALUES ('fixture-project-1', 'active', 'high', NULL, NULL, '[]', 'runtime-today-production-route', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
@@ -229,15 +261,25 @@ VALUES ((SELECT id FROM projects WHERE source_command='runtime-today-production-
        ((SELECT id FROM projects WHERE source_command='runtime-today-production-route' AND title='fixture-project-2'), 'fixture-later-1', 'backlog', NULL, NULL, NULL, 'low', 'runtime-today-production-route', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
        ((SELECT id FROM projects WHERE source_command='runtime-today-production-route' AND title='fixture-project-2'), 'fixture-done-1', 'completed', NULL, '$today_due_at', CURRENT_TIMESTAMP, 'low', 'runtime-today-production-route', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
        ((SELECT id FROM projects WHERE source_command='runtime-today-production-route' AND title='fixture-project-3'), 'fixture-today-3', 'planned', NULL, '$today_due_at', NULL, 'high', 'runtime-today-production-route', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-       ((SELECT id FROM projects WHERE source_command='runtime-today-production-route' AND title='fixture-project-3'), 'fixture-later-2', 'backlog', NULL, NULL, NULL, 'medium', 'runtime-today-production-route', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+       ((SELECT id FROM projects WHERE source_command='runtime-today-production-route' AND title='fixture-project-3'), 'fixture-later-2', 'backlog', NULL, NULL, NULL, 'medium', 'runtime-today-production-route', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+       ((SELECT id FROM projects WHERE source_command='runtime-today-production-route' AND title='fixture-project-1'), 'fixture-catch-up-1', 'planned', NULL, '$missed_due_at', NULL, 'high', 'runtime-today-production-route', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 SQL
+
+  seed_project_id="$($SQLITE3 "$database_path" "SELECT id FROM projects WHERE source_command='runtime-today-production-route' AND title='fixture-project-1' ORDER BY id DESC LIMIT 1;")"
 }
 
 verify_small_fixture_today_data() {
   local due_at="$1"
   local today_task_count
   today_task_count="$("$SQLITE3" "$database_path" "SELECT COUNT(*) FROM tasks WHERE source_command='runtime-today-production-route' AND due_at='$due_at' AND status IN ('planned', 'in_progress') AND completed_at IS NULL;")"
-  [[ "$today_task_count" == "3" ]]
+  [[ "$today_task_count" == "3" && "$seed_project_id" =~ ^[0-9]+$ ]]
+}
+
+verify_small_fixture_catch_up_data() {
+  local due_at="$1"
+  local missed_task_count
+  missed_task_count="$("$SQLITE3" "$database_path" "SELECT COUNT(*) FROM tasks WHERE source_command='runtime-today-production-route' AND title='fixture-catch-up-1' AND due_at='$due_at' AND status IN ('planned', 'in_progress') AND completed_at IS NULL;")"
+  [[ "$missed_task_count" == "1" ]]
 }
 
 locale_label_for() {
@@ -260,7 +302,10 @@ wait_for_marker_until() {
   local marker="$1"
   local required_text="$2"
   local deadline="$3"
-  local probe_file="$case_artifact_dir/ax-probes/${marker}.txt"
+  local probe_root="${route_artifact_dir:-$case_artifact_dir}"
+  local probe_file="$probe_root/ax-probes/${marker}.txt"
+  last_marker_probe_file="$probe_file"
+  mkdir -p "$probe_root/ax-probes"
   while true; do
     if ax_wait_for_ax_identifier "$APP_NAME" "$marker" 1 "$ROOT_DIR" "$probe_file" "$required_text" "$app_pid"; then
       return 0
@@ -274,6 +319,135 @@ wait_for_marker_until() {
 wait_for_required_markers() {
   wait_for_marker_until "project-board-header-bar" "" "$case_deadline"
   wait_for_marker_until "today-workflow" "$expected_today_label" "$case_deadline"
+}
+
+route_text_for() {
+  local route="$1"
+  case "$route:$locale_label" in
+    inbox:en) printf '%s' "Inbox" ;;
+    inbox:ja) printf '%s' "インボックス" ;;
+    today:en) printf '%s' "Today" ;;
+    today:ja) printf '%s' "今日" ;;
+    catch-up:en) printf '%s' "Catch Up" ;;
+    catch-up:ja) printf '%s' "キャッチアップ" ;;
+    projects:en) printf '%s' "Projects" ;;
+    projects:ja) printf '%s' "プロジェクト" ;;
+    project:*|inspector:*) printf '%s' "fixture-project-1" ;;
+    *) return 1 ;;
+  esac
+}
+
+record_route_evidence() {
+  local status="$1"
+  local category="$2"
+  local evidence_file="$case_artifact_dir/route-evidence.tsv"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$status" "$route_id" "$route_destination" "$route_sidebar_marker" "$route_content_marker" "$route_text" "$category" >>"$evidence_file"
+  {
+    printf 'status=%s\nroute=%s\ndestination=%s\nsidebar_marker=%s\ncontent_marker=%s\ntext=%s\nfailure_category=%s\n' \
+      "$status" "$route_id" "$route_destination" "$route_sidebar_marker" "$route_content_marker" "$route_text" "$category"
+  } >"$route_artifact_dir/summary.txt"
+}
+
+fail_route() {
+  route_failure_category="$1"
+  local reason="${2:-route-${route_id}-${route_failure_category}}"
+  printf 'failure_category=%s\nfailure_route=%s\nfailure_destination=%s\nfailure_sidebar_marker=%s\nfailure_content_marker=%s\n' \
+    "$route_failure_category" "$route_id" "$route_destination" "$route_sidebar_marker" "$route_content_marker" >&2
+  record_route_evidence "failed" "$route_failure_category"
+  capture_failure_artifact "$reason"
+  terminate_app
+  return 1
+}
+
+run_route() {
+  route_id="$1"
+  route_destination="$2"
+  route_sidebar_marker="$3"
+  route_content_marker="$4"
+  route_text="$5"
+  route_artifact_dir="$case_artifact_dir/routes/$route_id"
+  route_failure_category=""
+  rm -rf "$route_artifact_dir"
+  mkdir -p "$route_artifact_dir/ax-probes"
+
+  launch_app "$locale" "$route_destination"
+  case_deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
+  if ! resolve_app_pid; then
+    fail_route "launch"
+    return 1
+  fi
+  if ! ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$RUNTIME_TIMEOUT_SECONDS" "$APP_BINARY"; then
+    fail_route "launch"
+    return 1
+  fi
+
+  local window_diagnostic="$route_artifact_dir/window.err"
+  if ! ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "" "$RUNTIME_TIMEOUT_SECONDS" "$window_diagnostic" "$APP_BINARY"; then
+    route_failure_category="$(ax_classify_window_failure "$window_diagnostic")"
+    fail_route "$route_failure_category"
+    return 1
+  fi
+
+  if ! wait_for_marker_until "project-board-header-bar" "" "$case_deadline"; then
+    route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
+    fail_route "$route_failure_category"
+    return 1
+  fi
+  if ! wait_for_marker_until "$route_sidebar_marker" "" "$case_deadline"; then
+    route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
+    fail_route "$route_failure_category"
+    return 1
+  fi
+  if ! wait_for_marker_until "$route_content_marker" "$route_text" "$case_deadline"; then
+    route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
+    fail_route "$route_failure_category"
+    return 1
+  fi
+
+  if [[ "$route_id" == "today" ]]; then
+    # Keep the existing Today acceptance contract: the production route must
+    # settle below the CPU threshold and retain the toolbar/preview recursion
+    # diagnostics after AX readiness, for both empty and seeded databases.
+    case_deadline=$((SECONDS + CPU_CONVERGENCE_TIMEOUT_SECONDS))
+    if ! cpu_convergence_gate; then
+      fail_route "cpu" "cpu-convergence-timeout"
+      return 1
+    fi
+    if ! capture_runtime_route_diagnostics; then
+      fail_route "diagnostics" "runtime-route-diagnostics-failed"
+      return 1
+    fi
+  fi
+
+  record_route_evidence "passed" "none"
+  printf 'OK: route=%s destination=%s sidebar=%s content=%s text=%s\n' \
+    "$route_id" "$route_destination" "$route_sidebar_marker" "$route_content_marker" "$route_text"
+  terminate_app
+  return 0
+}
+
+run_normal_routes() {
+  local route_spec
+  local route_destination_value
+  local route_sidebar_marker_value
+  local route_content_marker_value
+  local routes=(
+    "inbox|inbox|sidebar-destination-inbox|inbox-workflow"
+    "today|today|sidebar-destination-today|today-workflow"
+    "catch-up|catch-up|sidebar-destination-catch-up|catch-up-workflow"
+    "projects|projects|sidebar-destination-projects|projects-portfolio-overview"
+    "project|project:$seed_project_id|project-board-sidebar|project-board-detail"
+    "inspector|project:$seed_project_id|project-board-sidebar|project-inspector"
+  )
+
+  for route_spec in "${routes[@]}"; do
+    IFS='|' read -r route_id route_destination_value route_sidebar_marker_value route_content_marker_value <<<"$route_spec"
+    route_text="$(route_text_for "$route_id")"
+    if ! run_route "$route_id" "$route_destination_value" "$route_sidebar_marker_value" "$route_content_marker_value" "$route_text"; then
+      return 1
+    fi
+  done
 }
 
 cpu_percent_for_app() {
@@ -316,13 +490,27 @@ run_case() {
   case_home="$case_artifact_dir/home"
   case_cf_user_home="$case_artifact_dir/cf-user-home"
   database_path="$case_artifact_dir/SoloPM.sqlite"
+  route_artifact_dir=""
+  route_id=""
+  route_destination=""
+  route_sidebar_marker=""
+  route_content_marker=""
+  route_text=""
+  route_failure_category=""
+  seed_project_id=""
   rm -rf "$case_artifact_dir"
   mkdir -p "$case_home/Library/Preferences" "$case_cf_user_home" "$case_artifact_dir/ax-probes" "$case_artifact_dir/tmp"
 
   # The first normal launch creates the schema. It uses the same isolated home,
   # database, and no-Keychain configuration as the measured launch.
-  launch_app "$locale"
+  launch_app "$locale" "today"
+  if ! resolve_app_pid || ! ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$RUNTIME_TIMEOUT_SECONDS" "$APP_BINARY"; then
+    route_failure_category="launch"
+    capture_failure_artifact "database-bootstrap-launch-failed"
+    return 1
+  fi
   if ! wait_for_database_table "projects" || ! wait_for_database_table "tasks"; then
+    route_failure_category="database"
     capture_failure_artifact "database-schema-timeout"
     return 1
   fi
@@ -330,36 +518,34 @@ run_case() {
 
   if [[ "$fixture" == "small" ]]; then
     if ! seed_small_fixture; then
+      route_failure_category="fixture"
       capture_failure_artifact "fixture-seed-failed"
       return 1
     fi
     if ! verify_small_fixture_today_data "$small_fixture_today_due_at"; then
+      route_failure_category="fixture"
       capture_failure_artifact "fixture-today-data-missing"
+      return 1
+    fi
+    if ! verify_small_fixture_catch_up_data "$small_fixture_missed_due_at"; then
+      route_failure_category="fixture"
+      capture_failure_artifact "fixture-catch-up-data-missing"
       return 1
     fi
   fi
 
-  launch_app "$locale"
-  case_deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
-  if ! wait_for_required_markers; then
-    capture_failure_artifact "today-route-marker-timeout"
-    return 1
-  fi
-  # AX probes compile and traverse accessibility state inside the route-ready
-  # budget. CPU stabilization is a separate post-ready acceptance condition,
-  # so it needs its own bounded window and must always collect real samples.
-  case_deadline=$((SECONDS + CPU_CONVERGENCE_TIMEOUT_SECONDS))
-  if ! cpu_convergence_gate; then
-    capture_failure_artifact "cpu-convergence-timeout"
-    return 1
-  fi
-  if ! capture_runtime_route_diagnostics; then
-    capture_failure_artifact "runtime-route-diagnostics-failed"
-    return 1
+  : >"$case_artifact_dir/route-evidence.tsv"
+  printf 'status\troute\tdestination\tsidebar_marker\tcontent_marker\ttext\tfailure_category\n' >"$case_artifact_dir/route-evidence.tsv"
+  if [[ "$fixture" == "small" ]]; then
+    run_normal_routes || return 1
+  else
+    # The empty fixture preserves the original Today CPU/toolbar regression
+    # gate. The seeded fixture covers the complete navigation matrix in en/ja.
+    route_text="$(route_text_for "today")"
+    run_route "today" "today" "sidebar-destination-today" "today-workflow" "$route_text" || return 1
   fi
 
   printf 'status=passed\nfixture=%s\nlocale=%s\nlanguage_preference=%s\n' "$fixture" "$locale_label" "$locale" >"$case_artifact_dir/summary.txt"
-  terminate_app
   if [[ "$KEEP_ARTIFACTS" != "1" ]]; then
     rm -rf "$case_artifact_dir"
   fi
