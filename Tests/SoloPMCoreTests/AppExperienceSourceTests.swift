@@ -102,6 +102,37 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("createTask("))
     }
 
+    func testTodayProductionRouteSmokeCoversNormalBoardDestinationMatrix() throws {
+        let script = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(script.contains("run_route()"))
+        XCTAssertTrue(script.contains("routes=("))
+        XCTAssertTrue(script.contains("inbox|inbox|sidebar-destination-inbox|inbox-workflow"))
+        XCTAssertTrue(script.contains("today|today|sidebar-destination-today|today-workflow"))
+        XCTAssertTrue(script.contains("catch-up|catch-up|sidebar-destination-catch-up|catch-up-workflow"))
+        XCTAssertTrue(script.contains("projects|projects|sidebar-destination-projects|projects-portfolio-overview"))
+        XCTAssertTrue(script.contains("project|project:$seed_project_id|project-board-sidebar|project-board-detail"))
+        XCTAssertTrue(script.contains("inspector|project:$seed_project_id|project-board-sidebar|project-inspector"))
+        XCTAssertTrue(script.contains("IFS='|' read -r route_id route_destination_value route_sidebar_marker_value route_content_marker_value"))
+        XCTAssertTrue(script.contains("wait_for_marker_until \"$route_sidebar_marker\" \"\""))
+        XCTAssertTrue(script.contains("wait_for_marker_until \"$route_content_marker\" \"$route_text\""))
+        XCTAssertTrue(script.contains("seed_project_id="))
+        XCTAssertTrue(script.contains("fixture-catch-up-1"))
+        XCTAssertTrue(script.contains("route-evidence.tsv"))
+        XCTAssertTrue(script.contains("failure_category="))
+        XCTAssertTrue(script.contains("ax_wait_for_ax_identifier \"$APP_NAME\" \"$marker\" 1 \"$ROOT_DIR\" \"$probe_file\" \"$required_text\" \"$app_pid\""))
+        XCTAssertTrue(script.contains("/usr/bin/env -i"))
+        XCTAssertTrue(script.contains("HOME=\"$case_home\""))
+        XCTAssertTrue(script.contains("CFFIXED_USER_HOME=\"$case_cf_user_home\""))
+        XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH=\"$database_path\""))
+        XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
+        XCTAssertTrue(script.contains("ax_wait_for_owned_app_pid \"$app_launch_pid\" \"$APP_BINARY\""))
+        XCTAssertFalse(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE="))
+        XCTAssertFalse(script.contains("ProjectBoardLaunchRecoveryView"))
+        XCTAssertTrue(appSource.contains("else {\n            ProjectBoardView("))
+    }
+
     func testProjectBoardRefreshesTodayFromProductionDateAndLifecycleNotifications() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
