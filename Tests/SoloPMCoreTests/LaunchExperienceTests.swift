@@ -295,23 +295,40 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("window.occlusionState.contains(.visible)"))
     }
 
-    func testRuntimeWorkflowSmokesOptIntoLaunchRecoveryExplicitly() throws {
+    func testRuntimeWorkflowSmokesUseNormalProjectBoardRoute() throws {
         let todaySmoke = try readPackageFile("script/check_runtime_today_complete_smoke.sh")
         let inboxSmoke = try readPackageFile("script/check_runtime_inbox_triage_smoke.sh")
         let runtimeCRUDSmoke = try readPackageFile("script/check_runtime_accessible_crud_smoke.sh")
         let screenshotCapture = try readPackageFile("script/capture_ui_evidence.sh")
 
-        XCTAssertTrue(todaySmoke.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
-        XCTAssertTrue(inboxSmoke.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
-        XCTAssertTrue(runtimeCRUDSmoke.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
-        XCTAssertTrue(runtimeCRUDSmoke.contains("SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1"))
+        XCTAssertFalse(todaySmoke.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
+        XCTAssertFalse(inboxSmoke.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
+        XCTAssertFalse(runtimeCRUDSmoke.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
+        XCTAssertFalse(runtimeCRUDSmoke.contains("SOLOPM_RUNTIME_CRUD_RECOVERY_MODE"))
+        XCTAssertFalse(screenshotCapture.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
+        XCTAssertFalse(screenshotCapture.contains("SOLOPM_FORCE_PROJECT_BOARD_FALLBACK"))
+        XCTAssertFalse(screenshotCapture.contains("SOLOPM_UI_EVIDENCE_RECOVERY_MODE"))
+        XCTAssertTrue(todaySmoke.contains("HOME=\"$runtime_home\""))
+        XCTAssertTrue(inboxSmoke.contains("HOME=\"$runtime_home\""))
+        XCTAssertTrue(runtimeCRUDSmoke.contains("HOME=\"$runtime_home\""))
+        XCTAssertTrue(todaySmoke.contains("/usr/bin/env -i"))
+        XCTAssertTrue(inboxSmoke.contains("/usr/bin/env -i"))
+        XCTAssertTrue(runtimeCRUDSmoke.contains("/usr/bin/env -i"))
+        XCTAssertTrue(screenshotCapture.contains("/usr/bin/env -i"))
+        XCTAssertTrue(screenshotCapture.contains("HOME=$EVIDENCE_HOME"))
+        XCTAssertTrue(screenshotCapture.contains("CFFIXED_USER_HOME=$EVIDENCE_HOME"))
+        XCTAssertTrue(todaySmoke.contains("ax_wait_for_owned_app_pid"))
+        XCTAssertTrue(inboxSmoke.contains("ax_wait_for_owned_app_pid"))
+        XCTAssertTrue(runtimeCRUDSmoke.contains("ax_wait_for_owned_app_pid"))
+        XCTAssertTrue(screenshotCapture.contains("ax_wait_for_owned_app_pid"))
         XCTAssertTrue(screenshotCapture.contains("--p0-workflows"))
         XCTAssertTrue(screenshotCapture.contains("--schedule-cockpit"))
         XCTAssertTrue(screenshotCapture.contains("--done-analytics"))
         XCTAssertTrue(screenshotCapture.contains("if [[ \"$P0_WORKFLOWS\" == \"1\" ]]"))
-        XCTAssertTrue(screenshotCapture.contains("SOLOPM_UI_EVIDENCE_RECOVERY_MODE=1"))
-        XCTAssertTrue(screenshotCapture.contains("SOLOPM_LANGUAGE_PREFERENCE=english"))
-        XCTAssertTrue(screenshotCapture.contains("args+=(\"SOLOPM_LAUNCH_RECOVERY_MODE=1\")"))
+        XCTAssertTrue(screenshotCapture.contains("EVIDENCE_LOCALES=(\"english\" \"japanese\")"))
+        XCTAssertTrue(screenshotCapture.contains("SOLOPM_LANGUAGE_PREFERENCE=$EVIDENCE_LOCALE"))
+        XCTAssertTrue(screenshotCapture.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION"))
+        XCTAssertTrue(screenshotCapture.contains("\"$AX_MARKER_CHECKER\" \"$APP_NAME\" \"$identifier\" \"$text\" \"$EVIDENCE_APP_PID\""))
     }
 
     func testTodayProductionRouteSmokeDoesNotUseLaunchRecoveryAndChecksRealBoardMarkers() throws {
