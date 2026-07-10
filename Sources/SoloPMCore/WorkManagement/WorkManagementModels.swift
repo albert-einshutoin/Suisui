@@ -463,9 +463,9 @@ public struct TodayRecommendationChip: Identifiable, Equatable, Sendable {
 }
 
 public struct PlanningDayKey: Hashable, Sendable {
-    public var localDate: Date
-    public var calendarIdentifier: Calendar.Identifier
-    public var timeZoneIdentifier: String
+    public let localDate: Date
+    public let calendarIdentifier: Calendar.Identifier
+    public let timeZoneIdentifier: String
 
     public init(referenceDate: Date, calendar: Calendar) {
         self.localDate = calendar.startOfDay(for: referenceDate)
