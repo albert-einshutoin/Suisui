@@ -5741,6 +5741,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("CFFIXED_USER_HOME=\"$runtime_home\""))
         XCTAssertTrue(script.contains("ax_wait_for_owned_app_pid"))
         XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
+        XCTAssertTrue(script.contains("SQLITE_BUSY_TIMEOUT_MS=\"${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS:-5000}\""))
+        XCTAssertTrue(script.contains("-cmd \".timeout $SQLITE_BUSY_TIMEOUT_MS\""))
         XCTAssertTrue(script.contains("/usr/bin/env -i"))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"projects\""))
