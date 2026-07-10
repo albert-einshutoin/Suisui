@@ -629,11 +629,15 @@ wait_for_required_layout_subjects() {
   local probe_file="$LAYOUT_STABILITY_OUTPUT_DIR/required-identifiers-probe.tsv"
 
   while true; do
-    ensure_project_detail_visible
     if collect_ax_frames >"$probe_file" 2>"$LAYOUT_STABILITY_OUTPUT_DIR/required-identifiers-probe.err" &&
       has_required_ax_identifiers "$probe_file"; then
       return 0
     fi
+
+    # The selected destination is already supplied at launch. Only press a
+    # project row after proving that its detail region is absent; pressing the
+    # selected row before every probe keeps SwiftUI rebuilding the AX subtree.
+    ensure_project_detail_visible
 
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       require_ax_identifiers "$probe_file"
