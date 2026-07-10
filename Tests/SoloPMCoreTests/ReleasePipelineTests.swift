@@ -6359,7 +6359,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(helper.contains("CommandLine.arguments.count == 4 || CommandLine.arguments.count == 5"))
         XCTAssertTrue(helper.contains("let requestedPID"))
         XCTAssertTrue(helper.contains("AXUIElementCreateApplication(appPID)"))
-        XCTAssertTrue(helper.contains("processIdentifier == appPID"))
+        XCTAssertTrue(helper.contains("processIdentifier == requestedPID"))
         XCTAssertTrue(ci.contains("script/check_runtime_today_production_route_smoke.sh"))
         XCTAssertTrue(ci.contains("if [[ \"$CI_RUNTIME_GATES\" == \"1\" ]]; then\n  run_runtime_gates"))
     }

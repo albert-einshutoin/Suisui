@@ -118,7 +118,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let end = try XCTUnwrap(source.range(of: "private func makeCachedDailyPlanningReviewPreview(", range: start.upperBound..<source.endIndex))
         let selectionRefresh = String(source[start.lowerBound..<end.lowerBound])
 
-        XCTAssertTrue(selectionRefresh.contains("derivedReadModels.todayWorkflowSnapshot.plan"))
+        XCTAssertTrue(selectionRefresh.contains("nextReadModels.todayWorkflowSnapshot.plan"))
         XCTAssertTrue(selectionRefresh.contains("assistantContext"))
         XCTAssertFalse(selectionRefresh.contains("todayPlan("))
         XCTAssertFalse(selectionRefresh.contains("dailyWorkloadOverview("))
@@ -2343,7 +2343,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertFalse(panelSource.contains("makeDailyPlanningReview"))
         XCTAssertFalse(panelSource.contains("dailyWorkloadOverview"))
-        XCTAssertTrue(workflowSource.contains("currentDailyPlanningReview"))
+        XCTAssertTrue(workflowSource.contains("viewModel.dailyPlanningReview ?? snapshot.dailyPlanningReviewPreview"))
     }
 
     func testVoiceInboxTriageBridgeUsesLocalProjectBoardInboxCommands() throws {
