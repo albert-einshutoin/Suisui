@@ -7,7 +7,8 @@ Generated with `script/capture_ui_evidence.sh`.
 - App bundle: `dist/SoloPM.app`
 - Visual baseline manifest: `docs/quality/visual-baseline-manifest.json`
 - Viewport contract: `SOLOPM_VISUAL_BASELINE_VIEWPORT=1560x860`, `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT=1200x720`
-- Launch mode: explicit `SOLOPM_LAUNCH_RECOVERY_MODE=1` with `SOLOPM_UI_EVIDENCE_RECOVERY_MODE=1` so direct binary evidence captures expose deterministic product workflow surfaces.
+- Historical status: this tracked listing was produced through a recovery-only route and is retained only for diagnostics. It is not release proof and must not be regenerated or reported as current evidence without a successful normal `ProjectBoardView` capture.
+- Release-capture contract: `script/capture_ui_evidence.sh` uses an isolated HOME/CFFIXED_USER_HOME/SQLite database, explicit Project Board destination, deterministic `english` or `japanese` locale, and Light/Dark/System appearance. Recovery flags are excluded.
 - Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`
 - Seed data: local `Launch Readiness` project with planned, in-progress, blocked, Inbox voice, Schedule, Done analytics, milestone, completed project, and deterministic MCP registration rows
 - Scope: Project board sidebar, task cards, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Schedule workload dashboard, Done analytics, Settings integrations, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System

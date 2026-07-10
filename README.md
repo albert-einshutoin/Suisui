@@ -60,7 +60,7 @@ swift build --product solopm-cli
 
 `./script/build_and_run.sh --verify` is product-path proof: it launches the normal ProjectBoard with isolated `HOME`, `CFFIXED_USER_HOME`, SQLite, and keychain-disabled settings, then checks the PID-owned window and the `project-board-header-bar`, `project-board-sidebar`, and `project-board-detail` product markers. Failures use the machine-readable categories `launch`, `window`, `accessibility`, or `product-marker`.
 
-Recovery diagnostics are a separate contract for designated diagnostic scripts. Those scripts may use `SOLOPM_LAUNCH_RECOVERY_MODE=1` and related recovery flags to inspect a degraded or recovery-only surface. Recovery success is diagnostic evidence, not product or release proof; release evidence must pass the normal `--verify` path.
+Recovery diagnostics are a separate contract for designated diagnostic scripts. Those scripts may use `SOLOPM_LAUNCH_RECOVERY_MODE=1` and related recovery flags to inspect a degraded or recovery-only surface. Recovery success is diagnostic evidence, not product or release proof; release evidence must pass the normal `--verify` path. Today, Inbox, accessible CRUD, layout, launch-performance, and UI screenshot release flows launch the normal `ProjectBoardView` route with an explicit selected destination instead.
 
 Release verification starts from the [Release Checklist](docs/release/checklist.md).
 

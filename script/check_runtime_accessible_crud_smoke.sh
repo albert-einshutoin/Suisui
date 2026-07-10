@@ -38,18 +38,22 @@ cd "$ROOT_DIR"
 mkdir -p "$ROOT_DIR/.tmp"
 tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-accessible-crud.XXXXXX")"
 database_path="$tmp_dir/SoloPM-runtime-accessible-crud.sqlite"
+runtime_home="$tmp_dir/home"
+mkdir -p "$runtime_home"
 created_project_id=""
 created_task_id=""
 execution_task_id=""
 cascade_task_id=""
 app_pid=""
+app_launch_pid=""
 
 terminate_app() {
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
   if [[ -n "${app_pid:-}" ]]; then
+    kill "$app_pid" >/dev/null 2>&1 || true
     wait "$app_pid" >/dev/null 2>&1 || true
     app_pid=""
   fi
+  app_launch_pid=""
 }
 
 cleanup() {
@@ -63,25 +67,17 @@ cleanup() {
 trap cleanup EXIT
 
 wait_for_app_process() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: $APP_NAME process did not appear within ${TIMEOUT_SECONDS}s" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  app_pid="$(ax_wait_for_owned_app_pid "$app_launch_pid" "$APP_BINARY" "$TIMEOUT_SECONDS")" || {
+    echo "BLOCKER: $APP_NAME did not launch from pid $app_launch_pid" >&2
+    return 1
+  }
+  ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$TIMEOUT_SECONDS" "$APP_BINARY"
 }
 
 wait_for_no_app_process() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while pgrep -x "$APP_NAME" >/dev/null 2>&1; do
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-      return 0
-    fi
-    sleep 1
-  done
+  # The smoke owns only app_pid. Do not inspect or terminate another user's
+  # SoloPM process while resetting the isolated test database.
+  [[ -z "${app_pid:-}" ]]
 }
 
 activate_app() {
@@ -117,17 +113,17 @@ APPLESCRIPT
 }
 
 wait_for_visible_windows() {
-  if ax_wait_for_visible_window "$APP_NAME" "$TIMEOUT_SECONDS" "$APP_BUNDLE_IDENTIFIER"; then
-    return 0
+  if ! ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "" "$TIMEOUT_SECONDS" "" "$APP_BINARY"; then
+    echo "BLOCKER: $APP_NAME did not expose a window for launched pid $app_pid" >&2
+    return 1
   fi
-  echo "BLOCKER: $APP_NAME did not expose a visible AX window within ${TIMEOUT_SECONDS}s" >&2
-  return 1
+  return 0
 }
 
 launch_app_for_database_migration() {
   terminate_app
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_LAUNCH_RECOVERY_MODE=1 SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1 SOLOPM_DATABASE_PATH="$database_path" "$APP_BINARY" -ApplePersistenceIgnoreState YES &
-  app_pid=$!
+  /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="projects" "$APP_BINARY" -ApplePersistenceIgnoreState YES &
+  app_launch_pid=$!
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -136,13 +132,11 @@ launch_app_for_database_migration() {
 launch_app_for_seed_project() {
   local seed_project_id="$1"
   terminate_app
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_LAUNCH_RECOVERY_MODE=1 \
-    SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1 \
-    SOLOPM_DATABASE_PATH="$database_path" \
+  /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
+    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES &
-  app_pid=$!
+  app_launch_pid=$!
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -150,13 +144,11 @@ launch_app_for_seed_project() {
 
 launch_app_for_crud_mutation() {
   terminate_app
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_LAUNCH_RECOVERY_MODE=1 \
-    SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1 \
-    SOLOPM_DATABASE_PATH="$database_path" \
+  /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
+    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="projects" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES &
-  app_pid=$!
+  app_launch_pid=$!
   wait_for_app_process
   activate_app
   wait_for_visible_windows

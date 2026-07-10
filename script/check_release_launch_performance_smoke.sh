@@ -18,6 +18,8 @@ APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 TIMEOUT_SECONDS="${SOLOPM_PERFORMANCE_TIMEOUT_SECONDS:-30}"
 OUTPUT_DIR="${SOLOPM_PERFORMANCE_OUTPUT_DIR:-$ROOT_DIR/.tmp/release-launch-performance}"
+PERFORMANCE_HOME="${SOLOPM_PERFORMANCE_HOME:-$OUTPUT_DIR/home}"
+PERFORMANCE_DATABASE_PATH="${SOLOPM_PERFORMANCE_DATABASE_PATH:-$PERFORMANCE_HOME/Library/Application Support/SoloPM/SoloPM.sqlite}"
 SUMMARY_FILE="$OUTPUT_DIR/summary.md"
 SAMPLES_FILE="$OUTPUT_DIR/samples.tsv"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
@@ -84,6 +86,7 @@ reject_relaxed_release_budget "destination switch" "$MAX_DESTINATION_SWITCH_MS" 
 
 cd "$ROOT_DIR"
 mkdir -p "$OUTPUT_DIR"
+mkdir -p "$(dirname "$PERFORMANCE_DATABASE_PATH")"
 
 # shellcheck source=/dev/null
 source "$AX_HELPERS"
@@ -93,7 +96,12 @@ now_ms() {
 }
 
 terminate_app() {
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+  if [[ -n "${APP_PID:-}" ]]; then
+    kill "$APP_PID" >/dev/null 2>&1 || true
+    wait "$APP_PID" >/dev/null 2>&1 || true
+  fi
+  APP_PID=""
+  APP_LAUNCH_PID=""
 }
 
 activate_app() {
@@ -111,27 +119,27 @@ activate_app() {
 }
 
 open_app() {
-  if [[ "$SOLOPM_PERFORMANCE_PROFILE" == "debug" ]]; then
-    # Debug diagnostics must preserve launch-recovery env. LaunchServices can
-    # drop env values for `open`, which turns performance smoke into a
-    # windowless-launch failure instead of measuring the app's workflow latency.
-    /usr/bin/env \
-      SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-      SOLOPM_LAUNCH_RECOVERY_MODE=1 \
-      "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
-    activate_app
-    return
-  fi
-  /usr/bin/open -n -F "$APP_BUNDLE" --args -ApplePersistenceIgnoreState YES
+  # Direct launch retains the deterministic HOME/SQLite/selection contract;
+  # unlike LaunchServices it cannot silently drop normal-route environment.
+  /usr/bin/env -i PATH="$PATH" TMPDIR="$OUTPUT_DIR" HOME="$PERFORMANCE_HOME" CFFIXED_USER_HOME="$PERFORMANCE_HOME" \
+    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$PERFORMANCE_DATABASE_PATH" \
+    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="today" \
+    "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
+  APP_LAUNCH_PID=$!
+  APP_PID="$(ax_wait_for_owned_app_pid "$APP_LAUNCH_PID" "$APP_BINARY" "$TIMEOUT_SECONDS")" || {
+    echo "BLOCKER: performance app did not launch from pid $APP_LAUNCH_PID" >&2
+    return 1
+  }
+  ax_wait_for_pid_owned_process "$APP_NAME" "$APP_PID" "$TIMEOUT_SECONDS" "$APP_BINARY"
   activate_app
 }
 
 wait_for_visible_window() {
-  if ax_wait_for_visible_window "$APP_NAME" "$TIMEOUT_SECONDS" "$BUNDLE_IDENTIFIER"; then
-    return 0
+  if ! ax_wait_for_pid_owned_window "$APP_NAME" "$APP_PID" "" "$TIMEOUT_SECONDS" "" "$APP_BINARY"; then
+    echo "BLOCKER: $APP_NAME did not publish a visible window for launched pid $APP_PID within ${TIMEOUT_SECONDS}s" >&2
+    return 1
   fi
-  echo "BLOCKER: $APP_NAME did not publish a visible window within ${TIMEOUT_SECONDS}s" >&2
-  return 1
+  return 0
 }
 
 click_sidebar_destination() {
@@ -144,7 +152,7 @@ wait_for_marker() {
   local identifier="$1"
   local safe_identifier="${identifier//[^[:alnum:]_-]/_}"
   local probe_file="$OUTPUT_DIR/wait-$safe_identifier.txt"
-  if ax_wait_for_ax_identifier "$APP_NAME" "$identifier" "$TIMEOUT_SECONDS" "$ROOT_DIR" "$probe_file"; then
+  if ax_wait_for_ax_identifier "$APP_NAME" "$identifier" "$TIMEOUT_SECONDS" "$ROOT_DIR" "$probe_file" "" "$APP_PID"; then
     return 0
   fi
   echo "BLOCKER: performance smoke could not inspect the AX marker: $identifier" >&2
@@ -215,6 +223,8 @@ trap terminate_app EXIT
 printf '%s\t%s\n' "label" "elapsed_ms" >"$SAMPLES_FILE"
 
 terminate_app
+APP_PID=""
+APP_LAUNCH_PID=""
 SOLOPM_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
 
 launch_start_ms="$(now_ms)"

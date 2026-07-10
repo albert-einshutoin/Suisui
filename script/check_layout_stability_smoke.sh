@@ -93,6 +93,7 @@ source "$AX_HELPERS"
 cd "$ROOT_DIR"
 mkdir -p "$LAYOUT_STABILITY_OUTPUT_DIR"
 mkdir -p "$(dirname "$LAYOUT_STABILITY_DATABASE_PATH")"
+mkdir -p "$LAYOUT_STABILITY_RUNTIME_DIR/home"
 
 SUMMARY_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/layout-stability-summary.md"
 SAMPLES_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/samples.tsv"
@@ -110,6 +111,7 @@ REQUIRED_AX_IDENTIFIERS=(
 SAMPLE_OFFSETS_MS=(0 50 150 300)
 layout_project_id=""
 app_pid=""
+app_launch_pid=""
 
 : >"$SAMPLES_FILE"
 : >"$DIFF_FILE"
@@ -168,19 +170,12 @@ write_json_artifacts() {
 }
 
 terminate_app() {
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
   if [[ -n "${app_pid:-}" ]]; then
+    kill "$app_pid" >/dev/null 2>&1 || true
     wait "$app_pid" >/dev/null 2>&1 || true
     app_pid=""
   fi
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while pgrep -x "$APP_NAME" >/dev/null 2>&1; do
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: $APP_NAME process did not exit within ${TIMEOUT_SECONDS}s" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  app_launch_pid=""
 }
 
 activate_app() {
@@ -221,23 +216,19 @@ APPLESCRIPT
 }
 
 wait_for_app_process() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: $APP_NAME process did not appear within ${TIMEOUT_SECONDS}s" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  app_pid="$(ax_wait_for_owned_app_pid "$app_launch_pid" "$APP_BINARY" "$TIMEOUT_SECONDS")" || {
+    echo "BLOCKER: $APP_NAME did not launch from pid $app_launch_pid" >&2
+    return 1
+  }
+  ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$TIMEOUT_SECONDS" "$APP_BINARY"
 }
 
 wait_for_visible_windows() {
-  if ax_wait_for_visible_window "$APP_NAME" "$TIMEOUT_SECONDS" "$APP_BUNDLE_IDENTIFIER"; then
-    return 0
+  if ! ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "$WINDOW_NAME" "$TIMEOUT_SECONDS" "" "$APP_BINARY"; then
+    echo "BLOCKER: $APP_NAME did not expose a visible AX window for launched pid $app_pid" >&2
+    return 1
   fi
-  activate_app
-  echo "BLOCKER: $APP_NAME did not expose a visible AX window within ${TIMEOUT_SECONDS}s" >&2
-  return 1
+  return 0
 }
 
 prepare_layout_candidate() {
@@ -253,13 +244,11 @@ prepare_layout_candidate() {
 
 launch_layout_candidate() {
   terminate_app
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_LAUNCH_RECOVERY_MODE=1 \
-    SOLOPM_LAYOUT_STABILITY_RECOVERY_MODE=1 \
-    SOLOPM_DATABASE_PATH="$LAYOUT_STABILITY_DATABASE_PATH" \
+  /usr/bin/env -i PATH="$PATH" TMPDIR="$LAYOUT_STABILITY_RUNTIME_DIR" HOME="$LAYOUT_STABILITY_RUNTIME_DIR/home" CFFIXED_USER_HOME="$LAYOUT_STABILITY_RUNTIME_DIR/home" \
+    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$LAYOUT_STABILITY_DATABASE_PATH" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$layout_project_id" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES &
-  app_pid=$!
+  app_launch_pid=$!
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -358,7 +347,7 @@ wait_for_ax_identifier() {
   local safe_identifier="${identifier//[^[:alnum:]_-]/_}"
   local probe_file="$LAYOUT_STABILITY_OUTPUT_DIR/wait-$safe_identifier.txt"
 
-  if ax_wait_for_ax_identifier "$APP_NAME" "$identifier" "$TIMEOUT_SECONDS" "$ROOT_DIR" "$probe_file"; then
+  if ax_wait_for_ax_identifier "$APP_NAME" "$identifier" "$TIMEOUT_SECONDS" "$ROOT_DIR" "$probe_file" "" "$app_pid"; then
     return 0
   fi
   echo "BLOCKER: AX identifier did not appear after sidebar destination selection: $identifier" >&2
