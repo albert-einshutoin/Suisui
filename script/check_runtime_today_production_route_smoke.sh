@@ -372,7 +372,6 @@ run_route() {
   mkdir -p "$route_artifact_dir/ax-probes"
 
   launch_app "$locale" "$route_destination"
-  case_deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
   if ! resolve_app_pid; then
     fail_route "launch"
     return 1
@@ -389,6 +388,10 @@ run_route() {
     return 1
   fi
 
+  # PID resolution and cold window publication have independent bounded waits.
+  # Start the marker budget only after the owned production window is ready so
+  # a healthy cold launch cannot consume the entire destination proof window.
+  case_deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
   if ! wait_for_marker_until "project-board-header-bar" "" "$case_deadline"; then
     route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
     fail_route "$route_failure_category"
