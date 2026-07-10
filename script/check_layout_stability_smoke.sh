@@ -37,6 +37,7 @@ LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_COUNT="${SOLOPM_LAYOUT_STABILITY_AX_IDENTIF
 LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_DELAY_MS="${SOLOPM_LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_DELAY_MS:-50}"
 SQLITE3="${SQLITE3:-sqlite3}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
+AX_FRAME_HELPER="${AX_FRAME_HELPER:-$ROOT_DIR/script/ui_evidence_ax_frame_dump.swift}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_LAYOUT_STABILITY_TIMEOUT_SECONDS must be a positive integer" >&2
@@ -439,60 +440,7 @@ capture_layout_screenshot() {
 }
 
 collect_ax_frames() {
-  /usr/bin/osascript - "$APP_NAME" "$APP_BUNDLE_IDENTIFIER" <<'APPLESCRIPT'
-on appendIdentifiedElement(outputLines, uiElement)
-  tell application "System Events"
-    set identifierValue to ""
-    try
-      set identifierValue to value of attribute "AXIdentifier" of uiElement
-    end try
-    if identifierValue is not equal to "" then
-      set itemPosition to position of uiElement
-      set itemSize to size of uiElement
-      set end of outputLines to identifierValue & tab & (item 1 of itemPosition as text) & tab & (item 2 of itemPosition as text) & tab & (item 1 of itemSize as text) & tab & (item 2 of itemSize as text)
-    end if
-  end tell
-  return outputLines
-end appendIdentifiedElement
-
-on run argv
-  set appName to item 1 of argv
-  set bundleID to item 2 of argv
-  tell application "System Events"
-    set targetProcess to missing value
-    if exists process appName then
-      tell process appName
-        if (count of windows) > 0 then set targetProcess to it
-      end tell
-    end if
-    if targetProcess is missing value and bundleID is not "" then
-      set appMatches to application processes whose bundle identifier is bundleID
-      repeat with appProcess in appMatches
-        if (count of windows of appProcess) > 0 then
-          set targetProcess to appProcess
-          exit repeat
-        end if
-      end repeat
-    end if
-    if targetProcess is missing value then error "window missing"
-    tell targetProcess
-      set frontmost to true
-      set outputLines to {}
-      set currentWindow to window 1
-      set outputLines to my appendIdentifiedElement(outputLines, currentWindow)
-      -- SwiftUI exposes some semantic containers through AXContents rather
-      -- than the recursive UI elements relation. `entire contents` follows
-      -- those relations and preserves the parent frames needed by this smoke.
-      set axItems to entire contents of currentWindow
-      repeat with axItem in axItems
-        set outputLines to my appendIdentifiedElement(outputLines, axItem)
-      end repeat
-      set AppleScript's text item delimiters to linefeed
-      return outputLines as text
-    end tell
-  end tell
-end run
-APPLESCRIPT
+  /usr/bin/swift "$AX_FRAME_HELPER" "$app_pid"
 }
 
 collect_ax_frames_with_timeout() {
