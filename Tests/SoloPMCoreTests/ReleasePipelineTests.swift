@@ -6215,6 +6215,7 @@ final class ReleasePipelineTests: XCTestCase {
 
     func testRuntimeInboxTriageSmokeScriptVerifiesAllClassificationActionsAndUndo() throws {
         let script = try readPackageFile("script/check_runtime_inbox_triage_smoke.sh")
+        let textInputHelper = try readPackageFile("script/ui_evidence_ax_text_input.swift")
 
         XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH"))
         XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
@@ -6225,9 +6226,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("set_inbox_window_size()"))
         XCTAssertTrue(script.contains("pressButtonUntilSQLiteValue()"))
         XCTAssertTrue(script.contains("setTextFieldContaining()"))
-        XCTAssertTrue(script.contains("set value of axItem to replacement"))
-        XCTAssertTrue(script.contains("return value of axItem as text"))
+        XCTAssertTrue(script.contains("AX_TEXT_INPUT_HELPER="))
+        XCTAssertTrue(script.contains("/usr/bin/swift \"$AX_TEXT_INPUT_HELPER\" \"$app_pid\" \"$fragment\" \"$replacement\""))
+        XCTAssertFalse(script.contains("set value of axItem to replacement"))
         XCTAssertFalse(script.contains("set the clipboard to replacement"))
+        XCTAssertTrue(textInputHelper.contains("AXUIElementCreateApplication(pid)"))
+        XCTAssertTrue(textInputHelper.contains("kAXFocusedAttribute"))
+        XCTAssertTrue(textInputHelper.contains("keyboardSetUnicodeString"))
+        XCTAssertTrue(textInputHelper.contains("postToPid(pid)"))
+        XCTAssertFalse(textInputHelper.contains("NSWorkspace.shared.runningApplications.first"))
+        XCTAssertFalse(textInputHelper.contains("NSPasteboard"))
         XCTAssertTrue(script.contains("pressButtonContaining \"workflow-task-row-$task_id\""))
         XCTAssertTrue(script.contains("pressButtonContaining \"inbox-action-make-task\""))
         XCTAssertTrue(script.contains("pressButtonUntilSQLiteValue \"schedule inbox item\" \"inbox-action-schedule-today\""))
