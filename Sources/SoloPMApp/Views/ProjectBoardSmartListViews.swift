@@ -84,7 +84,7 @@ struct SmartListWorkflowView: View {
     var body: some View {
         let tasks = smartList.matchingTasks(
             in: viewModel.snapshot,
-            now: Date(),
+            now: VisualEvidenceRuntimeContext.referenceDate(),
             timeZoneIdentifier: timeZoneIdentifier
         )
         WorkflowTaskSurface(

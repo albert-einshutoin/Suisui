@@ -22,16 +22,27 @@ SCHEDULE_COCKPIT_EVIDENCE_FILE="${SOLOPM_SCHEDULE_COCKPIT_EVIDENCE_FILE:-$ROOT_D
 DONE_ANALYTICS_EVIDENCE_FILE="${SOLOPM_DONE_ANALYTICS_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/done-analytics-screenshots.md}"
 EVIDENCE_TMPDIR="${SOLOPM_UI_EVIDENCE_TMPDIR:-$ROOT_DIR/.tmp}"
 VISUAL_BASELINE_MANIFEST="$ROOT_DIR/docs/quality/visual-baseline-manifest.json"
-VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1560x860}"
-SETTINGS_VISUAL_BASELINE_VIEWPORT="${SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT:-1200x720}"
+SOLOPM_VISUAL_AX_AUDIT_RESULT="${SOLOPM_VISUAL_AX_AUDIT_RESULT:-$EVIDENCE_TMPDIR/visual-ax-audit-receipt.json}"
+VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1420x860}"
+SETTINGS_VISUAL_BASELINE_VIEWPORT="${SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT:-720x712}"
+VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT="${SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT:-760x640}"
 TARGET_TIMEOUT_SECONDS="${SOLOPM_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS:-30}"
 AX_MARKER_MAX_NODES="${SOLOPM_UI_EVIDENCE_AX_MAX_NODES:-6000}"
 EVIDENCE_LOCALE="${SOLOPM_UI_EVIDENCE_LOCALE:-english}"
 EVIDENCE_LOCALES=("english" "japanese")
+# A fixed instant keeps relative seed dates and UI read models on one day even
+# when a long 33-screen capture crosses midnight. These capture-only variables
+# are ignored by normal launches, which continue to use the system clock.
+EVIDENCE_REFERENCE_INSTANT="${SOLOPM_VISUAL_EVIDENCE_REFERENCE_INSTANT:-2026-07-10T12:00:00Z}"
+EVIDENCE_TIME_ZONE="${SOLOPM_VISUAL_EVIDENCE_TIME_ZONE:-UTC}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 mkdir -p "$EVIDENCE_TMPDIR"
 export TMPDIR="$EVIDENCE_TMPDIR/"
 AX_MARKER_CHECKER="$EVIDENCE_TMPDIR/ui-evidence-ax-marker-checker.$$"
+AX_SCROLL_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-scroll-to.$$"
+AX_TARGET_FRAME_AUDITOR="$EVIDENCE_TMPDIR/ui-evidence-ax-target-frame-auditor.$$"
+AX_CAPTURE_RECEIPT_TSV="$EVIDENCE_TMPDIR/visual-ax-captures.$$.tsv"
+AX_RECEIPT_WRITER="$EVIDENCE_TMPDIR/write-visual-ax-audit-receipt.$$"
 EVIDENCE_HOME="${SOLOPM_UI_EVIDENCE_HOME:-$(mktemp -d "$EVIDENCE_TMPDIR/solopm-ui-evidence.XXXXXX")}"
 KEEP_HOME="${SOLOPM_UI_EVIDENCE_KEEP_HOME:-0}"
 DRY_RUN=0
@@ -95,6 +106,42 @@ if [[ " ${EVIDENCE_LOCALES[*]} " != *" $EVIDENCE_LOCALE "* ]]; then
   echo "SOLOPM_UI_EVIDENCE_LOCALE must be english or japanese" >&2
   exit 2
 fi
+if [[ ! "$EVIDENCE_REFERENCE_INSTANT" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+  echo "SOLOPM_VISUAL_EVIDENCE_REFERENCE_INSTANT must be a whole-second UTC ISO-8601 instant" >&2
+  exit 2
+fi
+if ! /bin/date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$EVIDENCE_REFERENCE_INSTANT" "+%Y-%m-%dT%H:%M:%SZ" >/dev/null 2>&1; then
+  echo "SOLOPM_VISUAL_EVIDENCE_REFERENCE_INSTANT is not a valid UTC instant" >&2
+  exit 2
+fi
+if [[ "$EVIDENCE_TIME_ZONE" != "UTC" ]]; then
+  echo "SOLOPM_VISUAL_EVIDENCE_TIME_ZONE must be UTC for canonical visual baselines" >&2
+  exit 2
+fi
+
+# The product language override controls SoloPM's localized strings, while
+# AppleLanguages/AppleLocale control Foundation/AppKit formatters. Keep all
+# three values in one mapping so the runtime pixels and signed receipt cannot
+# claim different locales on capture hosts with different system settings.
+case "$EVIDENCE_LOCALE" in
+  english)
+    APPLE_LANGUAGES="(en)"
+    APPLE_LOCALE="en_US"
+    EVIDENCE_RECEIPT_LOCALE="en-US"
+    ;;
+  japanese)
+    APPLE_LANGUAGES="(ja)"
+    APPLE_LOCALE="ja_JP"
+    EVIDENCE_RECEIPT_LOCALE="ja-JP"
+    ;;
+esac
+
+# Any mode that can overwrite screenshot artifacts invalidates the previous
+# complete-run receipt up front. Otherwise a failed or partial recapture could
+# leave a still-fresh receipt that incorrectly authenticates a mixed image set.
+if [[ "$DRY_RUN" != "1" && "$DOCTOR" != "1" ]]; then
+  rm -f "$SOLOPM_VISUAL_AX_AUDIT_RESULT"
+fi
 
 # shellcheck source=/dev/null
 source "$AX_HELPERS"
@@ -104,9 +151,41 @@ cleanup() {
     stop_evidence_app
   fi
   rm -f "$AX_MARKER_CHECKER"
+  rm -f "$AX_SCROLL_HELPER"
+  rm -f "$AX_TARGET_FRAME_AUDITOR"
+  rm -f "$AX_CAPTURE_RECEIPT_TSV" "$AX_RECEIPT_WRITER"
   if [[ "$KEEP_HOME" != "1" && -d "$EVIDENCE_HOME" && "${SOLOPM_UI_EVIDENCE_HOME:-}" == "" ]]; then
     rm -rf "$EVIDENCE_HOME"
   fi
+}
+
+ui_evidence_product_source_commit() {
+  local commit
+  commit="$(
+    git -C "$ROOT_DIR" log -1 --format=%H -- \
+      Sources \
+      Package.swift 2>/dev/null || true
+  )"
+  if [[ -n "$commit" ]]; then
+    printf '%s\n' "$commit"
+  else
+    git -C "$ROOT_DIR" rev-parse HEAD
+  fi
+}
+
+visual_product_source_is_clean() {
+  git -C "$ROOT_DIR" diff --quiet -- Sources Package.swift \
+    && git -C "$ROOT_DIR" diff --cached --quiet -- Sources Package.swift \
+    && [[ -z "$(git -C "$ROOT_DIR" ls-files --others --exclude-standard -- Sources Package.swift)" ]]
+}
+
+assert_visual_product_source_is_committed() {
+  if visual_product_source_is_clean; then
+    return
+  fi
+  echo "BLOCKER: visual evidence product source is dirty under Sources or Package.swift" >&2
+  echo "NEXT: commit every product-source change before capture so receipt sourceCommit identifies the binary that produced the screenshots." >&2
+  return 1
 }
 trap cleanup EXIT
 
@@ -129,8 +208,7 @@ ui_evidence_source_commit() {
   local commit
   commit="$(
     git -C "$ROOT_DIR" log -1 --format=%h -- \
-      Sources/SoloPMApp \
-      Sources/SoloPMCore \
+      Sources \
       Package.swift 2>/dev/null || true
   )"
   if [[ -n "$commit" ]]; then
@@ -144,7 +222,12 @@ app_env_args() {
   local args=("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1")
   args+=("HOME=$EVIDENCE_HOME")
   args+=("CFFIXED_USER_HOME=$EVIDENCE_HOME")
-  # Pin the locale so AX labels and pixels are reproducible across capture hosts.
+  args+=("TZ=$EVIDENCE_TIME_ZONE")
+  args+=("SOLOPM_VISUAL_EVIDENCE_REFERENCE_INSTANT=$EVIDENCE_REFERENCE_INSTANT")
+  args+=("SOLOPM_VISUAL_EVIDENCE_TIME_ZONE=$EVIDENCE_TIME_ZONE")
+  args+=("SOLOPM_VISUAL_EVIDENCE_LOCALE_IDENTIFIER=$EVIDENCE_RECEIPT_LOCALE")
+  # Pin SoloPM's product language. Foundation/AppKit locale defaults are pinned
+  # separately through launch arguments in open_evidence_app.
   args+=("SOLOPM_LANGUAGE_PREFERENCE=$EVIDENCE_LOCALE")
   if [[ -n "$DATABASE_PATH" ]]; then
     # Screenshot evidence must open the exact SQLite file seeded below; relying
@@ -182,7 +265,12 @@ open_evidence_app() {
   # Settings, and Voice Command env exactly. LaunchServices can drop or delay
   # those env values on some release hosts, which makes screenshot evidence
   # fail before the app exposes a real window.
-  /usr/bin/env -i PATH="$PATH" TMPDIR="$EVIDENCE_TMPDIR" "${env_args[@]}" "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
+  /usr/bin/env -i PATH="$PATH" TMPDIR="$EVIDENCE_TMPDIR" "${env_args[@]}" \
+    "$APP_BINARY" \
+    -ApplePersistenceIgnoreState YES \
+    -AppleLanguages "$APPLE_LANGUAGES" \
+    -AppleLocale "$APPLE_LOCALE" \
+    >/dev/null 2>&1 &
   EVIDENCE_APP_PID=$!
 }
 
@@ -337,6 +425,112 @@ prepare_ax_marker_checker() {
   /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" -o "$AX_MARKER_CHECKER"
 }
 
+prepare_ax_scroll_helper() {
+  if [[ -x "$AX_SCROLL_HELPER" ]]; then
+    return
+  fi
+  /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_scroll_to.swift" -o "$AX_SCROLL_HELPER"
+}
+
+prepare_ax_target_frame_auditor() {
+  if [[ -x "$AX_TARGET_FRAME_AUDITOR" ]]; then
+    return
+  fi
+  /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_target_frame_audit.swift" -o "$AX_TARGET_FRAME_AUDITOR"
+}
+
+audit_ax_target_frame() {
+  local identifier="$1"
+  local window_name="$2"
+  local output_file
+  local error_file
+  local auditor_pid
+  local deadline
+  local status
+  local timed_out=0
+
+  output_file="$(mktemp "${TMPDIR:-/tmp}/solopm-ui-target-frame-output.XXXXXX")"
+  error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-ui-target-frame-error.XXXXXX")"
+  prepare_ax_target_frame_auditor
+  SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+    "$AX_TARGET_FRAME_AUDITOR" "$APP_NAME" "$identifier" "$EVIDENCE_APP_PID" "$window_name" \
+    >"$output_file" 2>"$error_file" &
+  auditor_pid=$!
+  deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
+  while kill -0 "$auditor_pid" >/dev/null 2>&1; do
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      timed_out=1
+      kill "$auditor_pid" >/dev/null 2>&1 || true
+      sleep 1
+      kill -9 "$auditor_pid" >/dev/null 2>&1 || true
+      break
+    fi
+    sleep 0.2
+  done
+  set +e
+  wait "$auditor_pid"
+  status=$?
+  set -e
+  if [[ "$timed_out" == "1" ]]; then
+    status=124
+  fi
+  if [[ "$status" -ne 0 ]]; then
+    cat "$error_file" >&2
+    if [[ "$status" -eq 124 || "$status" -eq 143 || "$status" -eq 137 ]]; then
+      echo "AX target frame audit timed out after ${TARGET_TIMEOUT_SECONDS}s: $identifier" >&2
+    fi
+    rm -f "$output_file" "$error_file"
+    return "$status"
+  fi
+  cat "$output_file"
+  rm -f "$output_file" "$error_file"
+}
+
+scroll_ax_target_into_view() {
+  local identifier="$1"
+  local label="$2"
+  local error_file
+  local helper_pid
+  local deadline
+  local status
+  local timed_out=0
+
+  if [[ -z "$identifier" ]]; then
+    return 0
+  fi
+
+  error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-ui-scroll-target-error.XXXXXX")"
+  prepare_ax_scroll_helper
+  SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+    "$AX_SCROLL_HELPER" "$APP_NAME" "$identifier" "$EVIDENCE_APP_PID" \
+    >/dev/null 2>"$error_file" &
+  helper_pid=$!
+  deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
+  while kill -0 "$helper_pid" >/dev/null 2>&1; do
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      timed_out=1
+      kill "$helper_pid" >/dev/null 2>&1 || true
+      sleep 1
+      kill -9 "$helper_pid" >/dev/null 2>&1 || true
+      break
+    fi
+    sleep 0.2
+  done
+  set +e
+  wait "$helper_pid"
+  status=$?
+  set -e
+  if [[ "$timed_out" == "1" ]]; then
+    status=124
+  fi
+  if [[ "$status" -ne 0 ]]; then
+    cat "$error_file" >&2
+    echo "Could not scroll $label to live AX target: $identifier" >&2
+  fi
+  rm -f "$error_file"
+  return "$status"
+}
+
 assert_project_board_destination_ready() {
   local label="$1"
   local marker_spec="$2"
@@ -408,7 +602,15 @@ position_window_for_capture() {
   local window_name="${1:-}"
   local bounds
 
-  if [[ -n "$window_name" ]]; then
+  if [[ "$window_name" == "Voice Command" ]]; then
+    bounds="$(visual_baseline_bounds "$VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT" 160 140)"
+    /usr/bin/osascript \
+      -e 'tell application "System Events"' \
+      -e "tell process \"$APP_NAME\"" \
+      -e "if exists window \"$window_name\" then set bounds of window \"$window_name\" to $bounds" \
+      -e 'end tell' \
+      -e 'end tell' >/dev/null 2>&1 || true
+  elif [[ -n "$window_name" ]]; then
     bounds="$(visual_baseline_bounds "$SETTINGS_VISUAL_BASELINE_VIEWPORT" 120 90)"
     /usr/bin/osascript \
       -e 'tell application "System Events"' \
@@ -565,9 +767,12 @@ seed_database() {
   local today
   local tomorrow
   local yesterday
-  today="$(date +%Y-%m-%d)"
-  tomorrow="$(date -v+1d +%Y-%m-%d)"
-  yesterday="$(date -v-1d -u +%Y-%m-%dT%H:%M:%SZ)"
+  # Derive every relative fixture from the same capture instant injected into
+  # the app. Host wall clock and midnight crossings must not reclassify Today,
+  # Schedule, or Done pixels while a baseline set is being produced.
+  today="$(/bin/date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$EVIDENCE_REFERENCE_INSTANT" "+%Y-%m-%d")"
+  tomorrow="$(/bin/date -j -u -v+1d -f "%Y-%m-%dT%H:%M:%SZ" "$EVIDENCE_REFERENCE_INSTANT" "+%Y-%m-%d")"
+  yesterday="$(/bin/date -j -u -v-1d -f "%Y-%m-%dT%H:%M:%SZ" "$EVIDENCE_REFERENCE_INSTANT" "+%Y-%m-%dT%H:%M:%SZ")"
 
   sqlite3 "$database_path" "
 DELETE FROM inbox_capture_records WHERE task_id IN (SELECT id FROM tasks WHERE source_command = 'ui-evidence');
@@ -594,6 +799,8 @@ VALUES
    'Document remaining release blockers', 'blocked', 'Keep signing, notarization, and manual accessibility gates visible.', NULL, NULL, 'medium', 'ui-evidence'),
   ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Inbox' ORDER BY id DESC LIMIT 1),
    'Scheduled manual capture', 'planned', 'Voice memo capture with transcript and local interpretation metadata.', NULL, NULL, 'high', 'ui-evidence'),
+  ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Inbox' ORDER BY id DESC LIMIT 1),
+   'Review captured note', 'backlog', 'Manual Inbox item keeps the normal route visually distinct from the seeded voice intake detail.', NULL, NULL, 'medium', 'ui-evidence'),
   ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
    'Unscheduled schedule draft input', 'planned', 'Appears in Schedule cockpit as an unscheduled task.', NULL, NULL, 'medium', 'ui-evidence'),
   ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Completed Evidence Project' ORDER BY id DESC LIMIT 1),
@@ -655,7 +862,7 @@ INSERT INTO mcp_server_registrations (
   '/usr/bin/env',
   '[\"node\",\"@modelcontextprotocol/server-filesystem\",\"/tmp\"]',
   '{\"SOLOPM_FILESYSTEM_TOKEN\":{\"type\":\"keychain\",\"key\":\"mcp_filesystem_token\"}}',
-  '$ROOT_DIR',
+  './fixtures/mcp-workspace',
   1
 );
 
@@ -675,7 +882,7 @@ INSERT INTO mcp_server_registrations (
   '/usr/bin/env',
   '[\"npx\",\"-y\",\"@modelcontextprotocol/server-github\"]',
   '{\"GITHUB_TOKEN\":{\"type\":\"keychain\",\"key\":\"mcp_github_token\"}}',
-  '$ROOT_DIR',
+  './fixtures/mcp-workspace',
   0
 );
 "
@@ -758,6 +965,12 @@ capture_visible_window() {
   local label="$1"
   local output_path="$2"
   local window_name="${3:-}"
+  local target_identifier="${4:-}"
+
+  if [[ -z "$target_identifier" ]]; then
+    echo "missing AX target frame audit identifier for $label" >&2
+    exit 2
+  fi
 
   position_window_for_capture "$window_name"
   sleep 0.25
@@ -772,6 +985,8 @@ capture_visible_window() {
   local window_height="$5"
   local window_context
   window_context="id=$window_id bounds=${window_width}x${window_height}+${window_x}+${window_y}"
+  local target_frame_audit
+  target_frame_audit="$(audit_ax_target_frame "$target_identifier" "$window_name")"
 
   if ! screencapture -x -l "$window_id" "$output_path"; then
     if ! screencapture -x -R "${window_x},${window_y},${window_width},${window_height}" "$output_path"; then
@@ -804,6 +1019,21 @@ capture_visible_window() {
     rm -f "$output_path"
     exit 1
   fi
+
+  local sha256
+  sha256="$(/usr/bin/shasum -a 256 "$output_path" | /usr/bin/awk '{print $1}')"
+  if [[ ! "$sha256" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "could not compute canonical screenshot SHA-256: $output_path" >&2
+    rm -f "$output_path"
+    exit 1
+  fi
+
+  # Record only after the live AX window was selected and the raster passed all
+  # health checks. The receipt is intentionally end-of-run so partial captures
+  # can never be mistaken for complete runtime AX evidence.
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$(basename "$output_path")" "$label" "$window_width" "$window_height" "$target_frame_audit" "$sha256" \
+    >>"$AX_CAPTURE_RECEIPT_TSV"
 }
 
 open_mcp_settings_tab() {
@@ -816,6 +1046,10 @@ open_settings_appearance_tab() {
 
 open_settings_overview_tab() {
   wait_for_window_capture_metadata "Overview" >/dev/null
+}
+
+open_settings_sync_tab() {
+  wait_for_window_capture_metadata "Sync" >/dev/null
 }
 
 capture_settings_overview() {
@@ -833,9 +1067,34 @@ capture_settings_overview() {
   activate_evidence_app
   sleep 1.0
   open_settings_overview_tab
+  position_window_for_capture "Overview"
+  wait_for_project_board_destination "Settings overview" "settings-status-overview=>"
   sleep 1.0
 
-  capture_visible_window "$appearance Settings overview" "$output_path" "Overview"
+  capture_visible_window "$appearance Settings overview" "$output_path" "Overview" "settings-status-overview"
+}
+
+capture_settings_sync() {
+  local appearance="$1"
+  local output_path="$2"
+
+  APPEARANCE_OVERRIDE="$appearance"
+  SETTINGS_WINDOW_OVERRIDE=1
+  SETTINGS_TAB_OVERRIDE="Sync"
+  VOICE_COMMAND_WINDOW_OVERRIDE=""
+  stop_evidence_app
+  write_appearance_preference "$appearance"
+  open_evidence_app
+  wait_for_process
+  activate_evidence_app
+  sleep 1.0
+  open_settings_sync_tab
+  position_window_for_capture "Sync"
+  wait_for_project_board_destination "Settings integrations" "settings-google-calendar-id-save-flow=>"
+  scroll_ax_target_into_view "settings-google-calendar-id-save-flow" "Settings integrations"
+  sleep 1.0
+
+  capture_visible_window "$appearance Settings integrations" "$output_path" "Sync" "settings-google-calendar-id-save-flow"
 }
 
 capture_settings_appearance() {
@@ -853,9 +1112,11 @@ capture_settings_appearance() {
   activate_evidence_app
   sleep 1.0
   open_settings_appearance_tab
+  position_window_for_capture "Appearance"
+  wait_for_project_board_destination "Settings appearance" "settings-theme-picker=>"
   sleep 1.0
 
-  capture_visible_window "$appearance Settings appearance" "$output_path" "Appearance"
+  capture_visible_window "$appearance Settings appearance" "$output_path" "Appearance" "settings-theme-picker"
 }
 
 capture_mcp_settings_appearance() {
@@ -873,9 +1134,12 @@ capture_mcp_settings_appearance() {
   activate_evidence_app
   sleep 1.0
   open_mcp_settings_tab
+  position_window_for_capture "MCP"
+  wait_for_project_board_destination "MCP settings" "mcp-paid-execution-boundary-row=>"
+  scroll_ax_target_into_view "mcp-paid-execution-boundary-row" "MCP settings"
   sleep 1.0
 
-  capture_visible_window "$appearance MCP settings" "$output_path" "MCP"
+  capture_visible_window "$appearance MCP settings" "$output_path" "MCP" "mcp-paid-execution-boundary-row"
 }
 
 capture_appearance() {
@@ -893,7 +1157,7 @@ capture_appearance() {
   activate_evidence_app
   sleep 1.5
 
-  capture_visible_window "$appearance" "$output_path"
+  capture_visible_window "$appearance" "$output_path" "" "project-board-detail"
 }
 
 capture_project_board_destination() {
@@ -903,6 +1167,8 @@ capture_project_board_destination() {
   local label="$4"
   local target_markers="${5:-}"
   local selected_task_id="${6:-}"
+  local scroll_target_identifier="${7:-}"
+  local target_audit_identifier="${8:-}"
 
   APPEARANCE_OVERRIDE="$appearance"
   PROJECT_BOARD_SELECTION_OVERRIDE="$selected_destination"
@@ -924,8 +1190,13 @@ capture_project_board_destination() {
   position_window_for_capture
   sleep 0.25
   wait_for_project_board_destination "$label" "$target_markers"
+  # Route markers can exist outside the current ScrollView viewport. Scroll the
+  # evidence-specific landmark into view so captures of the same route prove a
+  # distinct visual state instead of producing duplicate raster baselines.
+  scroll_ax_target_into_view "$scroll_target_identifier" "$label"
+  sleep 0.5
 
-  capture_visible_window "$appearance $label" "$output_path"
+  capture_visible_window "$appearance $label" "$output_path" "" "$target_audit_identifier"
 }
 
 capture_voice_command_appearance() {
@@ -946,7 +1217,7 @@ capture_voice_command_appearance() {
   wait_for_window_capture_metadata "Voice Command" >/dev/null
   wait_for_project_board_destination "Voice Command" "$VOICE_COMMAND_TARGET_MARKERS"
 
-  capture_visible_window "$appearance Voice Command" "$output_path" "Voice Command"
+  capture_visible_window "$appearance Voice Command" "$output_path" "Voice Command" "voice-command-root"
 }
 
 write_evidence_file() {
@@ -980,7 +1251,8 @@ write_evidence_file() {
     printf -- '- Source commit: `%s`\n' "$(ui_evidence_source_commit)"
     printf -- '- App bundle: `dist/%s.app`\n' "$APP_NAME"
     printf -- '- Visual baseline manifest: `%s`\n' "$(relative_path "$VISUAL_BASELINE_MANIFEST")"
-    printf -- '- Viewport contract: `SOLOPM_VISUAL_BASELINE_VIEWPORT=%s`, `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT=%s`\n' "$VISUAL_BASELINE_VIEWPORT" "$SETTINGS_VISUAL_BASELINE_VIEWPORT"
+    printf -- '- Viewport contract: `SOLOPM_VISUAL_BASELINE_VIEWPORT=%s`, `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT=%s`, `SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT=%s`\n' "$VISUAL_BASELINE_VIEWPORT" "$SETTINGS_VISUAL_BASELINE_VIEWPORT" "$VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT"
+    printf -- '- Runtime context: locale `%s`, timezone `%s`, reference instant `%s`\n' "$EVIDENCE_RECEIPT_LOCALE" "$EVIDENCE_TIME_ZONE" "$EVIDENCE_REFERENCE_INSTANT"
     printf '%s\n' '- Launch mode: normal `ProjectBoardView` route with explicit selected destination; recovery flags are excluded from release evidence.'
     printf '%s\n' '- Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`'
     printf '%s\n' '- Seed data: local `Launch Readiness` project with planned, in-progress, blocked, Inbox voice, Schedule, Done analytics, milestone, completed project, and deterministic MCP registration rows'
@@ -1202,10 +1474,15 @@ write_visual_baseline_capture_manifest() {
   {
     printf '%s\n' '{'
     printf '  "generatedAt": "%s",\n' "$generated_at"
+    printf '  "sourceCommit": "%s",\n' "$(ui_evidence_product_source_commit)"
+    printf '  "locale": "%s",\n' "$EVIDENCE_RECEIPT_LOCALE"
+    printf '  "timeZoneIdentifier": "%s",\n' "$EVIDENCE_TIME_ZONE"
+    printf '  "referenceInstant": "%s",\n' "$EVIDENCE_REFERENCE_INSTANT"
     printf '  "sourceManifest": "%s",\n' "$(relative_path "$VISUAL_BASELINE_MANIFEST")"
     printf '  "screenshotDirectory": "%s",\n' "$(relative_path "$SCREENSHOT_DIR")"
     printf '  "mainViewport": "%s",\n' "$VISUAL_BASELINE_VIEWPORT"
     printf '  "settingsViewport": "%s",\n' "$SETTINGS_VISUAL_BASELINE_VIEWPORT"
+    printf '  "voiceCommandViewport": "%s",\n' "$VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT"
     printf '  "comparison": "semantic"\n'
     printf '%s\n' '}'
   } >"$output_file"
@@ -1220,6 +1497,10 @@ run_doctor() {
   echo "visual baseline manifest: $VISUAL_BASELINE_MANIFEST"
   echo "visual viewport: $VISUAL_BASELINE_VIEWPORT"
   echo "settings visual viewport: $SETTINGS_VISUAL_BASELINE_VIEWPORT"
+  echo "voice command visual viewport: $VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT"
+  echo "runtime locale: $EVIDENCE_RECEIPT_LOCALE"
+  echo "runtime timezone: $EVIDENCE_TIME_ZONE"
+  echo "reference instant: $EVIDENCE_REFERENCE_INSTANT"
   echo "mode: screen capture preflight; does not write release evidence"
 
   local blocker_count=0
@@ -1235,6 +1516,14 @@ run_doctor() {
 
   if [[ ! -d "$APP_BUNDLE" ]]; then
     echo "INFO: app bundle is not present yet; normal capture mode will run script/build_and_run.sh --build-only."
+  fi
+
+  if visual_product_source_is_clean; then
+    echo "OK: visual evidence product source is fully committed"
+  else
+    echo "BLOCKER: visual evidence product source is dirty under Sources or Package.swift"
+    echo "NEXT: commit product-source changes before running a mutating capture."
+    blocker_count=$((blocker_count + 1))
   fi
 
   if command -v screencapture >/dev/null 2>&1 && command -v swift >/dev/null 2>&1; then
@@ -1263,6 +1552,22 @@ if [[ "$DOCTOR" == "1" ]]; then
   exit 0
 fi
 
+write_visual_ax_audit_receipt() {
+  local source_commit="$1"
+  rm -f "$SOLOPM_VISUAL_AX_AUDIT_RESULT"
+  /usr/bin/swiftc "$ROOT_DIR/script/write_visual_ax_audit_receipt.swift" -o "$AX_RECEIPT_WRITER"
+  "$AX_RECEIPT_WRITER" \
+    "$VISUAL_BASELINE_MANIFEST" \
+    "$AX_CAPTURE_RECEIPT_TSV" \
+    "$SOLOPM_VISUAL_AX_AUDIT_RESULT" \
+    "$source_commit" \
+    "normal" \
+    "$EVIDENCE_RECEIPT_LOCALE" \
+    "$EVIDENCE_TIME_ZONE" \
+    "$EVIDENCE_REFERENCE_INSTANT"
+  echo "AX audit receipt: $SOLOPM_VISUAL_AX_AUDIT_RESULT"
+}
+
 require_command sqlite3
 require_command screencapture
 require_command swift
@@ -1282,10 +1587,23 @@ if [[ "$DRY_RUN" == "1" ]]; then
   echo "visual baseline manifest: $VISUAL_BASELINE_MANIFEST"
   echo "visual viewport: $VISUAL_BASELINE_VIEWPORT"
   echo "settings visual viewport: $SETTINGS_VISUAL_BASELINE_VIEWPORT"
+  echo "voice command visual viewport: $VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT"
+  echo "runtime locale: $EVIDENCE_RECEIPT_LOCALE"
+  echo "runtime timezone: $EVIDENCE_TIME_ZONE"
+  echo "reference instant: $EVIDENCE_REFERENCE_INSTANT"
+  if visual_product_source_is_clean; then
+    echo "product source: committed"
+  else
+    echo "product source: dirty (a mutating capture would be blocked)"
+  fi
   exit 0
 fi
 
+assert_visual_product_source_is_committed
+
 "$ROOT_DIR/script/build_and_run.sh" --build-only
+
+SOURCE_COMMIT="$(ui_evidence_product_source_commit)"
 
 DATABASE_PATH="$EVIDENCE_HOME/Library/Application Support/SoloPM/SoloPM.sqlite"
 initialize_database "$DATABASE_PATH"
@@ -1367,14 +1685,14 @@ DONE_ANALYTICS_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL|done-completion-
 VOICE_COMMAND_TARGET_MARKERS="voice-command-root=>$VOICE_COMMAND_LABEL"
 
 if [[ "$P0_WORKFLOWS" == "1" ]]; then
-  capture_project_board_destination light inbox "$INBOX_LIGHT_SCREENSHOT" "Inbox" "$P0_INBOX_TARGET_MARKERS"
-  capture_project_board_destination dark inbox "$INBOX_DARK_SCREENSHOT" "Inbox" "$P0_INBOX_TARGET_MARKERS"
-  capture_project_board_destination system inbox "$INBOX_SYSTEM_SCREENSHOT" "Inbox" "$P0_INBOX_TARGET_MARKERS"
-  capture_project_board_destination light today "$TODAY_LIGHT_SCREENSHOT" "Today" "$P0_TODAY_TARGET_MARKERS"
-  capture_project_board_destination dark today "$TODAY_DARK_SCREENSHOT" "Today" "$P0_TODAY_TARGET_MARKERS"
-  capture_project_board_destination system today "$TODAY_SYSTEM_SCREENSHOT" "Today" "$P0_TODAY_TARGET_MARKERS"
-  capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$P0_INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE"
-  capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$P0_INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE"
+  capture_project_board_destination light inbox "$INBOX_LIGHT_SCREENSHOT" "Inbox" "$P0_INBOX_TARGET_MARKERS" "" "" "inbox-workflow"
+  capture_project_board_destination dark inbox "$INBOX_DARK_SCREENSHOT" "Inbox" "$P0_INBOX_TARGET_MARKERS" "" "" "inbox-workflow"
+  capture_project_board_destination system inbox "$INBOX_SYSTEM_SCREENSHOT" "Inbox" "$P0_INBOX_TARGET_MARKERS" "" "" "inbox-workflow"
+  capture_project_board_destination light today "$TODAY_LIGHT_SCREENSHOT" "Today" "$P0_TODAY_TARGET_MARKERS" "" "" "today-workflow"
+  capture_project_board_destination dark today "$TODAY_DARK_SCREENSHOT" "Today" "$P0_TODAY_TARGET_MARKERS" "" "" "today-workflow"
+  capture_project_board_destination system today "$TODAY_SYSTEM_SCREENSHOT" "Today" "$P0_TODAY_TARGET_MARKERS" "" "" "today-workflow"
+  capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$P0_INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail"
+  capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$P0_INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail"
 
   GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   write_p0_workflow_evidence_file "$GENERATED_AT" "$INBOX_LIGHT_SCREENSHOT" "$INBOX_DARK_SCREENSHOT" "$INBOX_SYSTEM_SCREENSHOT" "$TODAY_LIGHT_SCREENSHOT" "$TODAY_DARK_SCREENSHOT" "$TODAY_SYSTEM_SCREENSHOT" "$INBOX_VOICE_LIGHT_SCREENSHOT" "$INBOX_VOICE_DARK_SCREENSHOT"
@@ -1386,8 +1704,8 @@ if [[ "$P0_WORKFLOWS" == "1" ]]; then
 fi
 
 if [[ "$SCHEDULE_COCKPIT" == "1" ]]; then
-  capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_COCKPIT_TARGET_MARKERS"
-  capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_COCKPIT_TARGET_MARKERS"
+  capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_COCKPIT_TARGET_MARKERS" "" "schedule-week-grid" "schedule-week-grid"
+  capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_COCKPIT_TARGET_MARKERS" "" "schedule-week-grid" "schedule-week-grid"
 
   GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   write_schedule_cockpit_evidence_file "$GENERATED_AT" "$SCHEDULE_LIGHT_SCREENSHOT" "$SCHEDULE_DARK_SCREENSHOT"
@@ -1399,8 +1717,8 @@ if [[ "$SCHEDULE_COCKPIT" == "1" ]]; then
 fi
 
 if [[ "$SCHEDULE_WORKLOAD" == "1" ]]; then
-  capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS"
-  capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS"
+  capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard"
+  capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard"
 
   GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   write_schedule_workload_evidence_file "$GENERATED_AT" "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT"
@@ -1412,8 +1730,8 @@ if [[ "$SCHEDULE_WORKLOAD" == "1" ]]; then
 fi
 
 if [[ "$DONE_ANALYTICS" == "1" ]]; then
-  capture_project_board_destination light done "$DONE_LIGHT_SCREENSHOT" "Done analytics" "$DONE_ANALYTICS_TARGET_MARKERS"
-  capture_project_board_destination dark done "$DONE_DARK_SCREENSHOT" "Done analytics" "$DONE_ANALYTICS_TARGET_MARKERS"
+  capture_project_board_destination light done "$DONE_LIGHT_SCREENSHOT" "Done analytics" "$DONE_ANALYTICS_TARGET_MARKERS" "" "" "done-workflow"
+  capture_project_board_destination dark done "$DONE_DARK_SCREENSHOT" "Done analytics" "$DONE_ANALYTICS_TARGET_MARKERS" "" "" "done-workflow"
 
   GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   write_done_analytics_evidence_file "$GENERATED_AT" "$DONE_LIGHT_SCREENSHOT" "$DONE_DARK_SCREENSHOT"
@@ -1424,32 +1742,32 @@ if [[ "$DONE_ANALYTICS" == "1" ]]; then
   exit 0
 fi
 
-capture_project_board_destination light "$PROJECT_BOARD_SELECTION_OVERRIDE" "$LIGHT_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS"
-capture_project_board_destination dark "$PROJECT_BOARD_SELECTION_OVERRIDE" "$DARK_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS"
-capture_project_board_destination system "$PROJECT_BOARD_SELECTION_OVERRIDE" "$SYSTEM_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS"
-capture_project_board_destination light inbox "$INBOX_LIGHT_SCREENSHOT" "Inbox" "$INBOX_TARGET_MARKERS"
-capture_project_board_destination dark inbox "$INBOX_DARK_SCREENSHOT" "Inbox" "$INBOX_TARGET_MARKERS"
-capture_project_board_destination system inbox "$INBOX_SYSTEM_SCREENSHOT" "Inbox" "$INBOX_TARGET_MARKERS"
-capture_project_board_destination light today "$TODAY_LIGHT_SCREENSHOT" "Today" "$TODAY_TARGET_MARKERS"
-capture_project_board_destination dark today "$TODAY_DARK_SCREENSHOT" "Today" "$TODAY_TARGET_MARKERS"
-capture_project_board_destination system today "$TODAY_SYSTEM_SCREENSHOT" "Today" "$TODAY_TARGET_MARKERS"
+capture_project_board_destination light "$PROJECT_BOARD_SELECTION_OVERRIDE" "$LIGHT_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS" "" "" "project-board-detail"
+capture_project_board_destination dark "$PROJECT_BOARD_SELECTION_OVERRIDE" "$DARK_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS" "" "" "project-board-detail"
+capture_project_board_destination system "$PROJECT_BOARD_SELECTION_OVERRIDE" "$SYSTEM_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS" "" "" "project-board-detail"
+capture_project_board_destination light inbox "$INBOX_LIGHT_SCREENSHOT" "Inbox" "$INBOX_TARGET_MARKERS" "" "" "inbox-workflow"
+capture_project_board_destination dark inbox "$INBOX_DARK_SCREENSHOT" "Inbox" "$INBOX_TARGET_MARKERS" "" "" "inbox-workflow"
+capture_project_board_destination system inbox "$INBOX_SYSTEM_SCREENSHOT" "Inbox" "$INBOX_TARGET_MARKERS" "" "" "inbox-workflow"
+capture_project_board_destination light today "$TODAY_LIGHT_SCREENSHOT" "Today" "$TODAY_TARGET_MARKERS" "" "" "today-workflow"
+capture_project_board_destination dark today "$TODAY_DARK_SCREENSHOT" "Today" "$TODAY_TARGET_MARKERS" "" "" "today-workflow"
+capture_project_board_destination system today "$TODAY_SYSTEM_SCREENSHOT" "Today" "$TODAY_TARGET_MARKERS" "" "" "today-workflow"
 capture_voice_command_appearance light "$VOICE_COMMAND_LIGHT_SCREENSHOT"
 capture_voice_command_appearance dark "$VOICE_COMMAND_DARK_SCREENSHOT"
 capture_voice_command_appearance system "$VOICE_COMMAND_SYSTEM_SCREENSHOT"
-capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE"
-capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE"
-capture_project_board_destination light projects "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS"
-capture_project_board_destination dark projects "$PROJECTS_OVERVIEW_DARK_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS"
-capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS"
-capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS"
-capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS"
-capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS"
-capture_project_board_destination light done "$DONE_LIGHT_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS"
-capture_project_board_destination dark done "$DONE_DARK_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS"
+capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail"
+capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail"
+capture_project_board_destination light projects "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS" "" "" "projects-portfolio-overview"
+capture_project_board_destination dark projects "$PROJECTS_OVERVIEW_DARK_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS" "" "" "projects-portfolio-overview"
+capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS" "" "schedule-week-grid" "schedule-week-grid"
+capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS" "" "schedule-week-grid" "schedule-week-grid"
+capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard"
+capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard"
+capture_project_board_destination light done "$DONE_LIGHT_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS" "" "" "done-workflow"
+capture_project_board_destination dark done "$DONE_DARK_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS" "" "" "done-workflow"
 capture_settings_overview light "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT"
 capture_settings_overview dark "$SETTINGS_OVERVIEW_DARK_SCREENSHOT"
-capture_settings_overview light "$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT"
-capture_settings_overview dark "$SETTINGS_INTEGRATIONS_DARK_SCREENSHOT"
+capture_settings_sync light "$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT"
+capture_settings_sync dark "$SETTINGS_INTEGRATIONS_DARK_SCREENSHOT"
 capture_settings_overview system "$SETTINGS_OVERVIEW_SYSTEM_SCREENSHOT"
 capture_settings_appearance light "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT"
 capture_settings_appearance dark "$SETTINGS_APPEARANCE_DARK_SCREENSHOT"
@@ -1459,6 +1777,7 @@ capture_mcp_settings_appearance dark "$MCP_SETTINGS_DARK_SCREENSHOT"
 capture_mcp_settings_appearance system "$MCP_SETTINGS_SYSTEM_SCREENSHOT"
 
 GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+write_visual_ax_audit_receipt "$SOURCE_COMMIT"
 write_evidence_file "$GENERATED_AT" "$LIGHT_SCREENSHOT" "$DARK_SCREENSHOT" "$SYSTEM_SCREENSHOT" "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT" "$SETTINGS_OVERVIEW_DARK_SCREENSHOT" "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT" "$SETTINGS_APPEARANCE_DARK_SCREENSHOT" "$MCP_SETTINGS_LIGHT_SCREENSHOT" "$MCP_SETTINGS_DARK_SCREENSHOT" "$INBOX_VOICE_LIGHT_SCREENSHOT" "$INBOX_VOICE_DARK_SCREENSHOT" "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT" "$PROJECTS_OVERVIEW_DARK_SCREENSHOT" "$SCHEDULE_LIGHT_SCREENSHOT" "$SCHEDULE_DARK_SCREENSHOT" "$DONE_LIGHT_SCREENSHOT" "$DONE_DARK_SCREENSHOT" "$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT" "$SETTINGS_INTEGRATIONS_DARK_SCREENSHOT"
 write_visual_baseline_capture_manifest "$GENERATED_AT"
 
