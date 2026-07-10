@@ -5728,9 +5728,11 @@ final class ReleasePipelineTests: XCTestCase {
 
     func testRuntimeAccessibleCRUDSmokeScriptLaunchesIsolatedAppAndVerifiesSQLiteMutations() throws {
         let script = try readPackageFile("script/check_runtime_accessible_crud_smoke.sh")
+        let scrollHelper = try readPackageFile("script/ui_evidence_ax_scroll_container.swift")
 
         XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
         XCTAssertTrue(script.contains("AX_TEXT_INPUT_HELPER=\"${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}\""))
+        XCTAssertTrue(script.contains("AX_SCROLL_HELPER=\"${AX_SCROLL_HELPER:-$ROOT_DIR/script/ui_evidence_ax_scroll_container.swift}\""))
         XCTAssertTrue(script.contains("source \"$AX_HELPERS\""))
         XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH"))
         XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
@@ -5804,6 +5806,13 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("verify_single_value \"executed task status\" \"SELECT status FROM tasks WHERE id=$execution_task_id;\" \"in_progress\""))
         XCTAssertTrue(script.contains("verify_single_value \"executed task detail marker\" \"SELECT CASE WHEN detail LIKE '%SoloPM approved automation execution%' THEN 1 ELSE 0 END FROM tasks WHERE id=$execution_task_id;\" \"1\""))
         XCTAssertTrue(script.contains("waitForAXElementContaining \"approved-execution-receipt\" \"AX Runtime Execution Task\" \"Execute this runtime task through the approved plan.\""))
+        XCTAssertTrue(script.contains("scrollAXContainerDown \"task-inspector\""))
+        XCTAssertTrue(scrollHelper.contains("AXUIElementCreateApplication(pid)"))
+        XCTAssertTrue(scrollHelper.contains("NSWorkspace.shared.frontmostApplication?.processIdentifier == pid"))
+        XCTAssertTrue(scrollHelper.contains("CGEvent(scrollWheelEvent2Source:"))
+        XCTAssertTrue(scrollHelper.contains("event.location = center"))
+        XCTAssertTrue(scrollHelper.contains("event.post(tap: .cghidEventTap)"))
+        XCTAssertFalse(scrollHelper.contains("NSWorkspace.shared.runningApplications.first"))
         XCTAssertTrue(script.contains("setTextFieldContaining \"inline-task-title\" \"AX Runtime Cascade Task\""))
         XCTAssertTrue(script.contains("activate_app()"))
         XCTAssertTrue(script.contains("set isEnabled to enabled of axItem as boolean"))
