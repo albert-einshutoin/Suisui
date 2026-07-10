@@ -38,6 +38,7 @@ mkdir -p "$ROOT_DIR/.tmp"
 tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-today-complete.XXXXXX")"
 database_path="$tmp_dir/SoloPM-runtime-today-complete.sqlite"
 runtime_home="$tmp_dir/home"
+today_due_at="$(date '+%Y-%m-%dT09:00:00%z')"
 mkdir -p "$runtime_home"
 app_pid=""
 app_launch_pid=""
@@ -538,11 +539,11 @@ APPLESCRIPT
 }
 
 seed_today_task() {
-  "$SQLITE3" "$database_path" <<'SQL'
+  "$SQLITE3" "$database_path" <<SQL
 INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command, created_at, updated_at)
 VALUES ('AX Runtime Today Project', 'active', 'high', NULL, NULL, '[]', 'runtime-today-complete-smoke', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 INSERT INTO tasks (project_id, title, status, detail, due_at, completed_at, priority, source_command, created_at, updated_at)
-VALUES (last_insert_rowid(), 'AX Runtime Today Complete', 'planned', 'Complete this visible Today row through runtime AX smoke', '2026-01-01T09:00:00Z', NULL, 'high', 'runtime-today-complete-smoke', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+VALUES (last_insert_rowid(), 'AX Runtime Today Complete', 'planned', 'Complete this visible Today row through runtime AX smoke', '$today_due_at', NULL, 'high', 'runtime-today-complete-smoke', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 SQL
   wait_for_nonempty_value \
     "today task id" \
@@ -590,7 +591,7 @@ terminate_app
 wait_for_no_app_process
 launch_app_for_today
 wait_for_database_table "assistant_queue_items"
-verify_single_value "seeded today task is open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL AND due_at='2026-01-01T09:00:00Z' THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
+verify_single_value "seeded today task is open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL AND due_at='$today_due_at' THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
 # The isolated launch explicitly selects today_task_id. Re-pressing the row is
 # redundant and can be off-screen in the normal scrollable Today composition;
 # the actionable rail marker below proves the selected-task controls are ready.
