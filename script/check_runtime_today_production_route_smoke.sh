@@ -451,6 +451,37 @@ launch_route_process_and_window() {
   return 0
 }
 
+launch_route_and_wait_for_markers() {
+  local window_diagnostic="$1"
+
+  if ! launch_route_process_and_window "$window_diagnostic"; then
+    return 1
+  fi
+  if [[ -z "$app_pid" ]]; then
+    route_failure_category="launch"
+    return 1
+  fi
+
+  # Window publication and the first production-route markers form one
+  # readiness unit. Hosted SwiftUI can briefly publish a real window before
+  # its AX route subtree is queryable; only a window-classified failure gets
+  # one clean relaunch below.
+  case_deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
+  if ! wait_for_marker_until "project-board-header-bar" "" "$case_deadline"; then
+    route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
+    return 1
+  fi
+  if ! wait_for_marker_until "$route_sidebar_marker" "" "$case_deadline"; then
+    route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
+    return 1
+  fi
+  if ! wait_for_marker_until "$route_content_marker" "$route_text" "$case_deadline"; then
+    route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
+    return 1
+  fi
+  return 0
+}
+
 run_route() {
   route_id="$1"
   route_destination="$2"
@@ -465,50 +496,24 @@ run_route() {
   mkdir -p "$route_artifact_dir/ax-probes"
 
   route_start_day_key="$(date '+%Y-%m-%d')"
-  if ! launch_route_process_and_window "$route_artifact_dir/window-attempt-1.err"; then
+  if ! launch_route_and_wait_for_markers "$route_artifact_dir/window-attempt-1.err"; then
     if [[ "$route_failure_category" != "window" ]]; then
       fail_route "$route_failure_category"
       return 1
     fi
-    echo "INFO: retrying production route after owned window publication timeout (attempt 2/$RUNTIME_WINDOW_ATTEMPTS)" >&2
+    echo "INFO: retrying production route after window-classified readiness failure (attempt 2/$RUNTIME_WINDOW_ATTEMPTS)" >&2
     terminate_app
     if ! wait_for_database_write_access; then
       fail_route "harness" "database-write-lock-timeout"
       return 1
     fi
     sleep 1
-    if ! launch_route_process_and_window "$route_artifact_dir/window-attempt-2.err"; then
+    if ! launch_route_and_wait_for_markers "$route_artifact_dir/window-attempt-2.err"; then
       # A second failure is evidence, not a reason to keep rerunning. Preserve
       # its concrete launch/window/accessibility classification and fail closed.
       fail_route "$route_failure_category"
       return 1
     fi
-  fi
-
-  if [[ -z "$app_pid" ]]; then
-    route_failure_category="launch"
-    fail_route "$route_failure_category"
-    return 1
-  fi
-
-  # PID resolution and cold window publication have independent bounded waits.
-  # Start the marker budget only after the owned production window is ready so
-  # a healthy cold launch cannot consume the entire destination proof window.
-  case_deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
-  if ! wait_for_marker_until "project-board-header-bar" "" "$case_deadline"; then
-    route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
-    fail_route "$route_failure_category"
-    return 1
-  fi
-  if ! wait_for_marker_until "$route_sidebar_marker" "" "$case_deadline"; then
-    route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
-    fail_route "$route_failure_category"
-    return 1
-  fi
-  if ! wait_for_marker_until "$route_content_marker" "$route_text" "$case_deadline"; then
-    route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
-    fail_route "$route_failure_category"
-    return 1
   fi
 
   if [[ "$route_id" == "today" ]]; then
