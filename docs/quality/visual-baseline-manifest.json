@@ -1,7 +1,19 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "artifactRoot": "docs/release/evidence/ui-screenshots",
   "baselineRoot": "docs/quality/visual-baselines",
+  "baselineContext": {
+    "sourceCommit": "08dbedb455b633b031965bc2703a02fda8498542",
+    "normalRoute": "normal",
+    "locale": "en-US",
+    "timeZoneIdentifier": "UTC",
+    "referenceInstant": "2026-07-10T12:00:00Z"
+  },
+  "rasterComparison": {
+    "perChannelDeltaThreshold": 0.10,
+    "maximumChangedPixelRatio": 0.005,
+    "maximumMeanAbsoluteError": 0.01
+  },
   "semanticTolerances": {
     "comparisonMode": "semantic",
     "allowPixelPerfectOnly": false,
@@ -19,10 +31,11 @@
       "title": "Project Board",
       "themes": ["light", "dark", "system"],
       "viewport": {
-        "width": 1560,
+        "width": 1420,
         "height": 860
       },
       "axFrameAudit": true,
+      "axTargetIdentifier": "project-board-detail",
       "artifacts": {
         "light": "project-board-light.png",
         "dark": "project-board-dark.png",
@@ -34,10 +47,11 @@
       "title": "Inbox",
       "themes": ["light", "dark", "system"],
       "viewport": {
-        "width": 1560,
+        "width": 1420,
         "height": 860
       },
       "axFrameAudit": true,
+      "axTargetIdentifier": "inbox-workflow",
       "artifacts": {
         "light": "inbox-light.png",
         "dark": "inbox-dark.png",
@@ -49,10 +63,11 @@
       "title": "Today",
       "themes": ["light", "dark", "system"],
       "viewport": {
-        "width": 1560,
+        "width": 1420,
         "height": 860
       },
       "axFrameAudit": true,
+      "axTargetIdentifier": "today-workflow",
       "artifacts": {
         "light": "today-light.png",
         "dark": "today-dark.png",
@@ -64,10 +79,11 @@
       "title": "Inbox Voice",
       "themes": ["light", "dark"],
       "viewport": {
-        "width": 1560,
+        "width": 1420,
         "height": 860
       },
       "axFrameAudit": true,
+      "axTargetIdentifier": "inbox-voice-intake-detail",
       "artifacts": {
         "light": "inbox-voice-light.png",
         "dark": "inbox-voice-dark.png"
@@ -78,10 +94,11 @@
       "title": "Projects Overview",
       "themes": ["light", "dark"],
       "viewport": {
-        "width": 1560,
+        "width": 1420,
         "height": 860
       },
       "axFrameAudit": true,
+      "axTargetIdentifier": "projects-portfolio-overview",
       "artifacts": {
         "light": "projects-overview-light.png",
         "dark": "projects-overview-dark.png"
@@ -92,10 +109,11 @@
       "title": "Schedule",
       "themes": ["light", "dark"],
       "viewport": {
-        "width": 1560,
+        "width": 1420,
         "height": 860
       },
       "axFrameAudit": true,
+      "axTargetIdentifier": "schedule-week-grid",
       "artifacts": {
         "light": "schedule-light.png",
         "dark": "schedule-dark.png"
@@ -106,10 +124,11 @@
       "title": "Schedule Workload",
       "themes": ["light", "dark"],
       "viewport": {
-        "width": 1560,
+        "width": 1420,
         "height": 860
       },
       "axFrameAudit": true,
+      "axTargetIdentifier": "schedule-workload-dashboard",
       "artifacts": {
         "light": "schedule-workload-light.png",
         "dark": "schedule-workload-dark.png"
@@ -120,10 +139,11 @@
       "title": "Done",
       "themes": ["light", "dark"],
       "viewport": {
-        "width": 1560,
+        "width": 1420,
         "height": 860
       },
       "axFrameAudit": true,
+      "axTargetIdentifier": "done-workflow",
       "artifacts": {
         "light": "done-light.png",
         "dark": "done-dark.png"
@@ -134,10 +154,11 @@
       "title": "Settings Overview",
       "themes": ["light", "dark", "system"],
       "viewport": {
-        "width": 1200,
-        "height": 720
+        "width": 720,
+        "height": 712
       },
       "axFrameAudit": true,
+      "axTargetIdentifier": "settings-status-overview",
       "artifacts": {
         "light": "settings-overview-light.png",
         "dark": "settings-overview-dark.png",
@@ -149,10 +170,11 @@
       "title": "Settings Integrations",
       "themes": ["light", "dark"],
       "viewport": {
-        "width": 1200,
-        "height": 720
+        "width": 720,
+        "height": 712
       },
       "axFrameAudit": true,
+      "axTargetIdentifier": "settings-google-calendar-id-save-flow",
       "artifacts": {
         "light": "settings-integrations-light.png",
         "dark": "settings-integrations-dark.png"
@@ -163,10 +185,11 @@
       "title": "Settings Appearance",
       "themes": ["light", "dark", "system"],
       "viewport": {
-        "width": 1200,
-        "height": 720
+        "width": 720,
+        "height": 712
       },
       "axFrameAudit": true,
+      "axTargetIdentifier": "settings-theme-picker",
       "artifacts": {
         "light": "settings-appearance-light.png",
         "dark": "settings-appearance-dark.png",
@@ -178,10 +201,11 @@
       "title": "MCP Settings",
       "themes": ["light", "dark", "system"],
       "viewport": {
-        "width": 1200,
-        "height": 720
+        "width": 720,
+        "height": 712
       },
       "axFrameAudit": true,
+      "axTargetIdentifier": "mcp-paid-execution-boundary-row",
       "artifacts": {
         "light": "settings-mcp-light.png",
         "dark": "settings-mcp-dark.png",
@@ -193,10 +217,11 @@
       "title": "Voice Command",
       "themes": ["light", "dark", "system"],
       "viewport": {
-        "width": 1560,
-        "height": 860
+        "width": 760,
+        "height": 640
       },
       "axFrameAudit": true,
+      "axTargetIdentifier": "voice-command-root",
       "artifacts": {
         "light": "voice-command-light.png",
         "dark": "voice-command-dark.png",

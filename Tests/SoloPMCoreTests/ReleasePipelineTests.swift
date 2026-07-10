@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import CryptoKit
 import ImageIO
 import XCTest
 
@@ -8009,7 +8010,7 @@ final class ReleasePipelineTests: XCTestCase {
         let screens = try XCTUnwrap(manifest["screens"] as? [[String: Any]])
         let tolerances = try XCTUnwrap(manifest["semanticTolerances"] as? [String: Any])
 
-        XCTAssertEqual((manifest["schemaVersion"] as? NSNumber)?.intValue, 1)
+        XCTAssertEqual((manifest["schemaVersion"] as? NSNumber)?.intValue, 2)
         XCTAssertEqual(artifactRoot, "docs/release/evidence/ui-screenshots")
         let screenIDs = Set(screens.compactMap { $0["id"] as? String })
         let coreSystemScreens: Set<String> = [
@@ -8030,6 +8031,36 @@ final class ReleasePipelineTests: XCTestCase {
             "settings-integrations"
         ]
         XCTAssertEqual(screenIDs, coreSystemScreens.union(sampleDerivedScreens))
+        let expectedViewports: [String: (width: Int, height: Int)] = [
+            "project-board": (1_420, 860),
+            "inbox": (1_420, 860),
+            "today": (1_420, 860),
+            "inbox-voice": (1_420, 860),
+            "projects-overview": (1_420, 860),
+            "schedule": (1_420, 860),
+            "schedule-workload": (1_420, 860),
+            "done": (1_420, 860),
+            "settings-overview": (720, 712),
+            "settings-integrations": (720, 712),
+            "settings-appearance": (720, 712),
+            "mcp-settings": (720, 712),
+            "voice-command": (760, 640)
+        ]
+        let expectedAXTargets: [String: String] = [
+            "project-board": "project-board-detail",
+            "inbox": "inbox-workflow",
+            "today": "today-workflow",
+            "inbox-voice": "inbox-voice-intake-detail",
+            "projects-overview": "projects-portfolio-overview",
+            "schedule": "schedule-week-grid",
+            "schedule-workload": "schedule-workload-dashboard",
+            "done": "done-workflow",
+            "settings-overview": "settings-status-overview",
+            "settings-integrations": "settings-google-calendar-id-save-flow",
+            "settings-appearance": "settings-theme-picker",
+            "mcp-settings": "mcp-paid-execution-boundary-row",
+            "voice-command": "voice-command-root"
+        ]
 
         for screen in screens {
             let screenID = try XCTUnwrap(screen["id"] as? String)
@@ -8042,8 +8073,10 @@ final class ReleasePipelineTests: XCTestCase {
             if coreSystemScreens.contains(screenID) {
                 XCTAssertTrue(themes.contains("system"), "core visual baseline must cover System appearance for \(screenID)")
             }
-            XCTAssertGreaterThanOrEqual((viewport["width"] as? NSNumber)?.intValue ?? 0, 1_200, "viewport width too small for \(screenID)")
-            XCTAssertGreaterThanOrEqual((viewport["height"] as? NSNumber)?.intValue ?? 0, 720, "viewport height too small for \(screenID)")
+            let expectedViewport = try XCTUnwrap(expectedViewports[screenID])
+            XCTAssertEqual((viewport["width"] as? NSNumber)?.intValue, expectedViewport.width)
+            XCTAssertEqual((viewport["height"] as? NSNumber)?.intValue, expectedViewport.height)
+            XCTAssertEqual(screen["axTargetIdentifier"] as? String, expectedAXTargets[screenID])
             XCTAssertTrue((screen["axFrameAudit"] as? Bool) == true, "visual-only comparison is not enough for \(screenID)")
 
             for theme in themes {
@@ -8061,12 +8094,32 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertGreaterThanOrEqual((tolerances["minimumLuminanceRange"] as? NSNumber)?.intValue ?? 0, 12)
         XCTAssertGreaterThanOrEqual((tolerances["minimumColorBuckets"] as? NSNumber)?.intValue ?? 0, 8)
         XCTAssertEqual(tolerances["requiresAXFrameAudit"] as? Bool, true)
+
+        let rasterComparison = try XCTUnwrap(manifest["rasterComparison"] as? [String: Any])
+        XCTAssertEqual((rasterComparison["perChannelDeltaThreshold"] as? NSNumber)?.doubleValue, 0.10)
+        XCTAssertEqual((rasterComparison["maximumChangedPixelRatio"] as? NSNumber)?.doubleValue, 0.005)
+        XCTAssertEqual((rasterComparison["maximumMeanAbsoluteError"] as? NSNumber)?.doubleValue, 0.01)
+
+        let baselineContext = try XCTUnwrap(manifest["baselineContext"] as? [String: Any])
+        let productCommit = try runTool([
+            "git", "-C", packageRoot().path, "log", "-1", "--format=%H", "--",
+            "Sources", "Package.swift"
+        ])
+        XCTAssertEqual(productCommit.exitCode, 0, productCommit.output)
+        XCTAssertEqual(
+            baselineContext["sourceCommit"] as? String,
+            productCommit.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        XCTAssertEqual(baselineContext["locale"] as? String, "en-US")
+        XCTAssertEqual(baselineContext["timeZoneIdentifier"] as? String, "UTC")
+        XCTAssertEqual(baselineContext["referenceInstant"] as? String, "2026-07-10T12:00:00Z")
     }
 
     func testVisualBaselineDocumentationAndCaptureScriptDescribeReviewableUpdates() throws {
         let documentation = try readPackageFile("docs/quality/visual-baselines.md")
         let captureScript = try readPackageFile("script/capture_ui_evidence.sh")
         let visualSmokeScript = try readPackageFile("script/check_visual_regression_smoke.sh")
+        let visualChecker = try readPackageFile("script/visual_regression_smoke_check.swift")
 
         for screen in [
             "Project Board",
@@ -8092,9 +8145,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(documentation.contains("before/after artifact"))
         XCTAssertTrue(documentation.contains("`--update-baselines --allow-update`"))
         XCTAssertTrue(documentation.contains("does not overwrite baselines"))
+        XCTAssertTrue(documentation.contains("SOLOPM_VISUAL_AX_AUDIT_RESULT"))
+        XCTAssertTrue(documentation.contains("successful live AX target/window capture"))
+        XCTAssertTrue(documentation.contains("not a hand-authored JSON"))
+        XCTAssertTrue(documentation.contains("whole-screen sibling-overlap proof"))
+        XCTAssertTrue(documentation.contains("script/check_layout_stability_smoke.sh"))
 
         XCTAssertTrue(captureScript.contains("VISUAL_BASELINE_MANIFEST=\"$ROOT_DIR/docs/quality/visual-baseline-manifest.json\""))
         XCTAssertTrue(captureScript.contains("SOLOPM_VISUAL_BASELINE_VIEWPORT"))
+        XCTAssertTrue(captureScript.contains("SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT"))
+        XCTAssertTrue(captureScript.contains("ui_evidence_product_source_commit"))
         XCTAssertTrue(captureScript.contains("set bounds of front window"))
         XCTAssertTrue(captureScript.contains("write_visual_baseline_capture_manifest"))
         XCTAssertTrue(captureScript.contains("Light/Dark/System visual baseline manifest"))
@@ -8102,8 +8162,147 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(visualSmokeScript.contains("visual_regression_smoke_check.swift"))
         XCTAssertTrue(visualSmokeScript.contains("SOLOPM_VISUAL_BASELINE_MANIFEST"))
         XCTAssertTrue(visualSmokeScript.contains("SOLOPM_VISUAL_SCREENSHOT_DIR"))
+        XCTAssertTrue(visualSmokeScript.contains("SOLOPM_VISUAL_AX_AUDIT_RESULT"))
+        XCTAssertTrue(visualSmokeScript.contains(".tmp/visual-ax-audit-receipt.json"))
         XCTAssertTrue(visualSmokeScript.contains("--update-baselines"))
         XCTAssertTrue(visualSmokeScript.contains("--allow-update"))
+        XCTAssertTrue(visualChecker.contains("CGColorSpace.sRGB"))
+    }
+
+    func testVisualAXAuditReceiptWriterAcceptsCompleteFixtureAndRejectsMissingRow() throws {
+        let root = packageRoot().appendingPathComponent(".build/test-visual-ax-audit-receipt", isDirectory: true)
+        try? FileManager.default.removeItem(at: root)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let manifest = root.appendingPathComponent("manifest.json")
+        let captures = root.appendingPathComponent("captures.tsv")
+        let output = root.appendingPathComponent("receipt.json")
+        let writer = root.appendingPathComponent("writer")
+        let baselineSourceCommit = String(repeating: "a", count: 40)
+        let currentSourceCommit = String(repeating: "b", count: 40)
+        let captureSHA256 = String(repeating: "c", count: 64)
+        try """
+        {
+          "schemaVersion": 2,
+          "baselineContext": { "sourceCommit": "\(baselineSourceCommit)", "normalRoute": "normal", "locale": "en-US", "timeZoneIdentifier": "UTC", "referenceInstant": "2026-07-10T12:00:00Z" },
+          "screens": [{
+            "id": "project-board",
+            "themes": ["light"],
+            "viewport": { "width": 800, "height": 600 },
+            "axTargetIdentifier": "project-board-root",
+            "artifacts": { "light": "project-board-light.png" }
+          }]
+        }
+        """.write(to: manifest, atomically: true, encoding: .utf8)
+        try "project-board-light.png\tProject Board\t800\t600\tproject-board-root\t760.25\t540.5\t760.25\t540.5\t\(captureSHA256)\n"
+            .write(to: captures, atomically: true, encoding: .utf8)
+
+        let compile = try runTool(["swiftc", packageRoot().appendingPathComponent("script/write_visual_ax_audit_receipt.swift").path, "-o", writer.path])
+        XCTAssertEqual(compile.exitCode, 0, compile.output)
+        let success = try runTool([writer.path, manifest.path, captures.path, output.path, currentSourceCommit, "normal", "en-US", "UTC", "2026-07-10T12:00:00Z"])
+        XCTAssertEqual(success.exitCode, 0, success.output)
+        let receipt = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: output)) as? [String: Any])
+        XCTAssertEqual(receipt["result"] as? String, "passed")
+        XCTAssertEqual(receipt["sourceCommit"] as? String, currentSourceCommit)
+        XCTAssertNotEqual(receipt["sourceCommit"] as? String, baselineSourceCommit)
+        XCTAssertEqual(receipt["locale"] as? String, "en-US")
+        XCTAssertEqual(receipt["timeZoneIdentifier"] as? String, "UTC")
+        XCTAssertEqual(receipt["referenceInstant"] as? String, "2026-07-10T12:00:00Z")
+        let screens = try XCTUnwrap(receipt["screens"] as? [[String: Any]])
+        XCTAssertEqual(screens.count, 1)
+        XCTAssertEqual(screens[0]["artifact"] as? String, "project-board-light.png")
+        XCTAssertEqual(screens[0]["sha256"] as? String, captureSHA256)
+        XCTAssertEqual((screens[0]["actualWindowFrame"] as? [String: Any])?["width"] as? Int, 800)
+        XCTAssertEqual((screens[0]["actualWindowFrame"] as? [String: Any])?["height"] as? Int, 600)
+        let targetFrame = try XCTUnwrap(screens[0]["targetFrameAudit"] as? [String: Any])
+        XCTAssertEqual(targetFrame["identifier"] as? String, "project-board-root")
+        XCTAssertEqual((targetFrame["visibleWidth"] as? NSNumber)?.doubleValue, 760.25)
+
+        try? FileManager.default.removeItem(at: output)
+        let wrongRoute = try runTool([writer.path, manifest.path, captures.path, output.path, currentSourceCommit, "recovery", "en-US", "UTC", "2026-07-10T12:00:00Z"])
+        XCTAssertNotEqual(wrongRoute.exitCode, 0, wrongRoute.output)
+        XCTAssertTrue(wrongRoute.output.contains("route") || wrongRoute.output.contains("locale"), wrongRoute.output)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: output.path))
+
+        try "project-board-light.png\tProject Board\t812\t612\tproject-board-root\t760\t540\t760\t540\t\(captureSHA256)\n"
+            .write(to: captures, atomically: true, encoding: .utf8)
+        try? FileManager.default.removeItem(at: output)
+        let wrongViewport = try runTool([writer.path, manifest.path, captures.path, output.path, currentSourceCommit, "normal", "en-US", "UTC", "2026-07-10T12:00:00Z"])
+        XCTAssertNotEqual(wrongViewport.exitCode, 0, wrongViewport.output)
+        XCTAssertTrue(wrongViewport.output.contains("manifest viewport"), wrongViewport.output)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: output.path))
+
+        try "".write(to: captures, atomically: true, encoding: .utf8)
+        try? FileManager.default.removeItem(at: output)
+        let missing = try runTool([writer.path, manifest.path, captures.path, output.path, currentSourceCommit, "normal", "en-US", "UTC", "2026-07-10T12:00:00Z"])
+        XCTAssertNotEqual(missing.exitCode, 0, missing.output)
+        XCTAssertTrue(missing.output.contains("BLOCKER"), missing.output)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: output.path))
+    }
+
+    func testVisualAXAuditCaptureContractIsEndOfRunAndExcludesPartialModes() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+        let helper = try readPackageFile("script/write_visual_ax_audit_receipt.swift")
+        let frameAuditor = try readPackageFile("script/ui_evidence_ax_target_frame_audit.swift")
+        let health = try XCTUnwrap(script.range(of: "assert_screenshot_has_visible_content"))
+        let bytes = try XCTUnwrap(script.range(of: "bytes=\"$(wc -c"))
+        let digest = try XCTUnwrap(script.range(of: "shasum -a 256"))
+        let record = try XCTUnwrap(script.range(of: ">>\"$AX_CAPTURE_RECEIPT_TSV\""))
+        XCTAssertLessThan(health.lowerBound, record.lowerBound)
+        XCTAssertLessThan(bytes.lowerBound, record.lowerBound)
+        XCTAssertLessThan(bytes.lowerBound, digest.lowerBound)
+        XCTAssertLessThan(digest.lowerBound, record.lowerBound)
+        XCTAssertTrue(script.contains("write_visual_ax_audit_receipt \"$SOURCE_COMMIT\""))
+        XCTAssertTrue(script.contains("SOURCE_COMMIT=\"$(ui_evidence_product_source_commit)\""))
+        XCTAssertTrue(script.contains("SOLOPM_VISUAL_AX_AUDIT_RESULT"))
+        XCTAssertTrue(script.contains("APPLE_LANGUAGES=\"(en)\""))
+        XCTAssertTrue(script.contains("APPLE_LOCALE=\"en_US\""))
+        XCTAssertTrue(script.contains("EVIDENCE_RECEIPT_LOCALE=\"en-US\""))
+        XCTAssertTrue(script.contains("APPLE_LANGUAGES=\"(ja)\""))
+        XCTAssertTrue(script.contains("APPLE_LOCALE=\"ja_JP\""))
+        XCTAssertTrue(script.contains("EVIDENCE_RECEIPT_LOCALE=\"ja-JP\""))
+        XCTAssertTrue(script.contains("-AppleLanguages \"$APPLE_LANGUAGES\""))
+        XCTAssertTrue(script.contains("-AppleLocale \"$APPLE_LOCALE\""))
+        XCTAssertTrue(script.contains("EVIDENCE_REFERENCE_INSTANT=\"${SOLOPM_VISUAL_EVIDENCE_REFERENCE_INSTANT:-2026-07-10T12:00:00Z}\""))
+        XCTAssertTrue(script.contains("EVIDENCE_TIME_ZONE=\"${SOLOPM_VISUAL_EVIDENCE_TIME_ZONE:-UTC}\""))
+        XCTAssertTrue(script.contains("args+=(\"TZ=$EVIDENCE_TIME_ZONE\")"))
+        XCTAssertTrue(script.contains("SOLOPM_VISUAL_EVIDENCE_REFERENCE_INSTANT=$EVIDENCE_REFERENCE_INSTANT"))
+        XCTAssertTrue(script.contains("SOLOPM_VISUAL_EVIDENCE_TIME_ZONE=$EVIDENCE_TIME_ZONE"))
+        XCTAssertTrue(script.contains("SOLOPM_VISUAL_EVIDENCE_LOCALE_IDENTIFIER=$EVIDENCE_RECEIPT_LOCALE"))
+        XCTAssertTrue(script.contains("visual_product_source_is_clean()"))
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" diff --quiet -- Sources Package.swift"))
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" diff --cached --quiet -- Sources Package.swift"))
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" ls-files --others --exclude-standard -- Sources Package.swift"))
+        XCTAssertTrue(script.contains("assert_visual_product_source_is_committed"))
+        XCTAssertFalse(script.contains("SOLOPM_ALLOW_DIRTY_VISUAL_PRODUCT_SOURCE"))
+        XCTAssertTrue(script.contains("today=\"$(/bin/date -j -u -f"))
+        XCTAssertTrue(script.contains("tomorrow=\"$(/bin/date -j -u -v+1d -f"))
+        XCTAssertTrue(script.contains("yesterday=\"$(/bin/date -j -u -v-1d -f"))
+        XCTAssertTrue(script.contains("\"$EVIDENCE_RECEIPT_LOCALE\""))
+        XCTAssertTrue(script.contains("\"$EVIDENCE_TIME_ZONE\""))
+        XCTAssertTrue(script.contains("\"$EVIDENCE_REFERENCE_INSTANT\""))
+        XCTAssertTrue(script.contains("can overwrite screenshot artifacts invalidates the previous"))
+        let invalidateReceipt = try XCTUnwrap(script.range(of: "rm -f \"$SOLOPM_VISUAL_AX_AUDIT_RESULT\""))
+        let firstCapture = try XCTUnwrap(script.range(of: "capture_project_board_destination light inbox"))
+        XCTAssertLessThan(invalidateReceipt.lowerBound, firstCapture.lowerBound)
+        let dirtySourceGate = try XCTUnwrap(script.range(of: "assert_visual_product_source_is_committed\n\n\"$ROOT_DIR/script/build_and_run.sh\""))
+        XCTAssertLessThan(dirtySourceGate.lowerBound, firstCapture.lowerBound)
+        XCTAssertTrue(script.contains("rm -f \"$AX_CAPTURE_RECEIPT_TSV\""))
+        XCTAssertTrue(script.contains("The receipt is intentionally end-of-run"))
+        XCTAssertTrue(helper.contains("incomplete capture coverage"))
+        XCTAssertTrue(helper.contains("actualWindowFrame"))
+        XCTAssertTrue(helper.contains("targetFrameAudit"))
+        XCTAssertTrue(helper.contains("sha256"))
+        XCTAssertTrue(script.contains("shasum -a 256"))
+        XCTAssertTrue(helper.contains("does not equal manifest viewport"))
+        XCTAssertTrue(frameAuditor.contains("processIdentifier == appPID"))
+        XCTAssertTrue(frameAuditor.contains("identifier == targetIdentifier"))
+        XCTAssertTrue(frameAuditor.contains("kAXScrollAreaRole"))
+        XCTAssertTrue(frameAuditor.contains("visibleFrame.width >= min(44"))
+        XCTAssertTrue(script.contains("if [[ \"$P0_WORKFLOWS\" == \"1\" ]]; then"))
+        XCTAssertTrue(script.contains("if [[ \"$DOCTOR\" == \"1\" ]]; then"))
+        XCTAssertTrue(script.contains("if [[ \"$DRY_RUN\" == \"1\" ]]; then"))
     }
 
     func testVisualBaselineCaptureScriptTargetsManifestArtifacts() throws {
@@ -8111,13 +8310,16 @@ final class ReleasePipelineTests: XCTestCase {
         let manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: manifestData) as? [String: Any])
         let screens = try XCTUnwrap(manifest["screens"] as? [[String: Any]])
         let captureScript = try readPackageFile("script/capture_ui_evidence.sh")
+        let scrollHelper = try readPackageFile("script/ui_evidence_ax_scroll_to.swift")
 
         for screen in screens {
             let screenID = try XCTUnwrap(screen["id"] as? String)
             let artifacts = try XCTUnwrap(screen["artifacts"] as? [String: String], "missing artifacts for \(screenID)")
+            let axTargetIdentifier = try XCTUnwrap(screen["axTargetIdentifier"] as? String)
             for artifact in artifacts.values {
                 XCTAssertTrue(captureScript.contains(artifact), "capture script must produce manifest artifact \(artifact) for \(screenID)")
             }
+            XCTAssertTrue(captureScript.contains("\"\(axTargetIdentifier)\""), "capture script must audit the manifest AX target for \(screenID)")
         }
 
         XCTAssertTrue(captureScript.contains("capture_project_board_destination system inbox"))
@@ -8128,10 +8330,22 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("capture_project_board_destination system today"))
         XCTAssertTrue(captureScript.contains("capture_project_board_destination light schedule"))
         XCTAssertTrue(captureScript.contains("capture_project_board_destination dark schedule"))
+        XCTAssertTrue(captureScript.contains("\"inbox-voice-intake-detail\""))
+        XCTAssertTrue(captureScript.contains("\"schedule-week-grid\""))
+        XCTAssertTrue(captureScript.contains("\"schedule-workload-dashboard\""))
+        XCTAssertTrue(captureScript.contains("capture_settings_sync light \"$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT\""))
+        XCTAssertTrue(captureScript.contains("capture_settings_sync dark \"$SETTINGS_INTEGRATIONS_DARK_SCREENSHOT\""))
+        XCTAssertTrue(captureScript.contains("'Review captured note', 'backlog'"))
+        XCTAssertTrue(captureScript.contains("'./fixtures/mcp-workspace'"))
+        XCTAssertFalse(captureScript.contains("'$ROOT_DIR'"))
         XCTAssertTrue(captureScript.contains("capture_settings_overview system"))
         XCTAssertTrue(captureScript.contains("capture_settings_appearance system"))
         XCTAssertTrue(captureScript.contains("capture_mcp_settings_appearance system"))
         XCTAssertTrue(captureScript.contains("VOICE_COMMAND_SYSTEM_SCREENSHOT"))
+        XCTAssertTrue(scrollHelper.contains("app.processIdentifier == appPID"))
+        XCTAssertTrue(scrollHelper.contains("identifier == targetIdentifier"))
+        XCTAssertTrue(scrollHelper.contains("AXScrollToVisible"))
+        XCTAssertTrue(scrollHelper.contains("SOLOPM_UI_EVIDENCE_AX_MAX_NODES"))
     }
 
     func testVisualRegressionSmokeBlocksSmallBlackAndLowInformationImages() throws {
@@ -8195,12 +8409,15 @@ final class ReleasePipelineTests: XCTestCase {
             .appendingPathComponent(".build/test-visual-regression-smoke-update-guard", isDirectory: true)
         let screenshotDirectory = fixtureRoot.appendingPathComponent("screenshots", isDirectory: true)
         let baselineDirectory = fixtureRoot.appendingPathComponent("baselines", isDirectory: true)
+        let artifactDirectory = fixtureRoot.appendingPathComponent("artifacts", isDirectory: true)
+        let auditURL = fixtureRoot.appendingPathComponent("ax-audit.json")
         let manifestURL = fixtureRoot.appendingPathComponent("visual-baseline-manifest.json")
         let baselineURL = baselineDirectory.appendingPathComponent("project-board-light.png")
 
         try? FileManager.default.removeItem(at: fixtureRoot)
         try FileManager.default.createDirectory(at: screenshotDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: baselineDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: artifactDirectory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixtureRoot) }
 
         try writeVisiblePNG(
@@ -8209,7 +8426,19 @@ final class ReleasePipelineTests: XCTestCase {
             height: 600,
             trailingBytes: 60_000
         )
-        try "existing baseline\n".write(to: baselineURL, atomically: true, encoding: .utf8)
+        let currentSHA256 = try sha256Hex(of: screenshotDirectory.appendingPathComponent("project-board-light.png"))
+        try writeVisiblePNG(to: baselineURL, width: 800, height: 600, trailingBytes: 60_000)
+        let originalBaseline = try Data(contentsOf: baselineURL)
+        try """
+        { "sourceCommit": "fixture-commit", "normalRoute": "project-board", "locale": "en-US", "timeZoneIdentifier": "UTC", "referenceInstant": "2026-07-10T12:00:00Z", "viewport": { "width": 800, "height": 600 }, "appearance": "light", "rasterWidth": 800, "rasterHeight": 600, "generatedAt": "2026-07-10T00:00:00Z" }
+        """.write(
+            to: baselineDirectory.appendingPathComponent("project-board-light.metadata.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try """
+        { "result": "passed", "sourceCommit": "fixture-commit", "normalRoute": "project-board", "locale": "en-US", "timeZoneIdentifier": "UTC", "referenceInstant": "2026-07-10T12:00:00Z", "createdAt": "\(ISO8601DateFormatter().string(from: Date()))", "screens": [{ "id": "project-board", "viewport": { "width": 800, "height": 600 }, "appearance": "light", "status": "passed", "artifact": "project-board-light.png", "sha256": "\(currentSHA256)", "actualWindowFrame": { "width": 800, "height": 600 }, "targetFrameAudit": { "identifier": "project-board-root", "width": 760, "height": 540, "visibleWidth": 760, "visibleHeight": 540 } }] }
+        """.write(to: auditURL, atomically: true, encoding: .utf8)
         try visualBaselineManifestFixture(artifacts: ["light": "project-board-light.png"])
             .write(to: manifestURL, atomically: true, encoding: .utf8)
 
@@ -8219,6 +8448,9 @@ final class ReleasePipelineTests: XCTestCase {
                 "--manifest", manifestURL.path,
                 "--screenshot-dir", screenshotDirectory.path,
                 "--baseline-dir", baselineDirectory.path,
+                "--artifact-dir", artifactDirectory.path,
+                "--ax-audit-result", auditURL.path,
+                "--current-source-commit", "fixture-commit",
                 "--update-baselines"
             ]
         )
@@ -8231,13 +8463,752 @@ final class ReleasePipelineTests: XCTestCase {
             arguments: [
                 "--manifest", manifestURL.path,
                 "--screenshot-dir", screenshotDirectory.path,
-                "--baseline-dir", baselineDirectory.path
+                "--baseline-dir", baselineDirectory.path,
+                "--artifact-dir", artifactDirectory.path,
+                "--ax-audit-result", auditURL.path,
+                "--current-source-commit", "fixture-commit"
             ]
         )
 
         XCTAssertEqual(normalResult.exitCode, 0, normalResult.output)
-        XCTAssertEqual(try String(contentsOf: baselineURL, encoding: .utf8), "existing baseline\n")
-        XCTAssertTrue(normalResult.output.contains("OK: visual regression smoke passed"))
+        XCTAssertEqual(try Data(contentsOf: baselineURL), originalBaseline)
+
+        let authorizedUpdateResult = try runScript(
+            "script/check_visual_regression_smoke.sh",
+            arguments: [
+                "--manifest", manifestURL.path,
+                "--screenshot-dir", screenshotDirectory.path,
+                "--baseline-dir", baselineDirectory.path,
+                "--artifact-dir", artifactDirectory.path,
+                "--ax-audit-result", auditURL.path,
+                "--current-source-commit", "fixture-commit",
+                "--update-baselines",
+                "--allow-update"
+            ]
+        )
+        XCTAssertEqual(authorizedUpdateResult.exitCode, 0, authorizedUpdateResult.output)
+    }
+
+    func testVisualRegressionSmokeRequiresRasterOverrideReasons() throws {
+        let fixture = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let manifestData = try Data(contentsOf: fixture.manifest)
+        var manifest = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
+        )
+        manifest["overrides"] = [[
+            "screen": "project-board",
+            "theme": "light",
+            "maximumChangedPixelRatio": 0.02
+        ]]
+        let overrides = try XCTUnwrap(manifest["overrides"] as? [[String: Any]])
+        XCTAssertEqual(overrides.count, 1)
+        XCTAssertEqual(overrides[0]["screen"] as? String, "project-board")
+        XCTAssertEqual(overrides[0]["theme"] as? String, "light")
+        XCTAssertEqual(overrides[0]["maximumChangedPixelRatio"] as? Double, 0.02)
+        XCTAssertNil(overrides[0]["reason"])
+        try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted])
+            .write(to: fixture.manifest, options: .atomic)
+
+        let result = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", fixture.manifest.path,
+            "--screenshot-dir", fixture.current.path,
+            "--baseline-dir", fixture.baseline.path,
+            "--artifact-dir", fixture.artifacts.path,
+            "--ax-audit-result", fixture.audit.path,
+            "--current-source-commit", "fixture-commit"
+        ])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("reason"), result.output)
+
+        let updateResult = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", fixture.manifest.path,
+            "--screenshot-dir", fixture.current.path,
+            "--baseline-dir", fixture.baseline.path,
+            "--artifact-dir", fixture.artifacts.path,
+            "--ax-audit-result", fixture.audit.path,
+            "--current-source-commit", "fixture-commit",
+            "--update-baselines",
+            "--allow-update"
+        ])
+        XCTAssertNotEqual(updateResult.exitCode, 0)
+        XCTAssertTrue(updateResult.output.contains("reason"), updateResult.output)
+    }
+
+    func testVisualRegressionSmokeRejectsUnsafeManifestPathsAndComponents() throws {
+        let cases: [(field: String, value: String)] = [
+            ("artifact", "../escaped.png"),
+            ("artifact", "/tmp/soloPM-visual-escaped.png"),
+            ("screen", "../project-board"),
+            ("theme", "../light")
+        ]
+
+        for testCase in cases {
+            let fixture = try makeVisualRegressionFixture()
+            defer { try? FileManager.default.removeItem(at: fixture.root) }
+            var manifest = try XCTUnwrap(
+                try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.manifest)) as? [String: Any]
+            )
+            var screens = try XCTUnwrap(manifest["screens"] as? [[String: Any]])
+            switch testCase.field {
+            case "artifact":
+                screens[0]["artifacts"] = ["light": testCase.value]
+            case "screen":
+                screens[0]["id"] = testCase.value
+            default:
+                screens[0]["themes"] = [testCase.value]
+                screens[0]["artifacts"] = [testCase.value: "project-board-light.png"]
+            }
+            manifest["screens"] = screens
+            try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted])
+                .write(to: fixture.manifest, options: .atomic)
+
+            let result = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+                "--manifest", fixture.manifest.path,
+                "--screenshot-dir", fixture.current.path,
+                "--baseline-dir", fixture.baseline.path,
+                "--artifact-dir", fixture.artifacts.path,
+                "--ax-audit-result", fixture.audit.path,
+                "--current-source-commit", "fixture-commit",
+                "--update-baselines",
+                "--allow-update"
+            ])
+            XCTAssertNotEqual(result.exitCode, 0, "unsafe \(testCase.field) must fail")
+            XCTAssertTrue(
+                result.output.localizedCaseInsensitiveContains("safe") ||
+                    result.output.localizedCaseInsensitiveContains("path") ||
+                    result.output.localizedCaseInsensitiveContains("component"),
+                result.output
+            )
+            XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.root.appendingPathComponent("escaped.png").path))
+        }
+    }
+
+    func testVisualRegressionSmokeRejectsOutOfRangeThresholdsBeforeUpdate() throws {
+        let fixture = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let baselineURL = fixture.baseline.appendingPathComponent("project-board-light.png")
+        let originalBaseline = try Data(contentsOf: baselineURL)
+        var manifest = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.manifest)) as? [String: Any]
+        )
+        var comparison = try XCTUnwrap(manifest["rasterComparison"] as? [String: Any])
+        comparison["maximumChangedPixelRatio"] = 1.01
+        manifest["rasterComparison"] = comparison
+        try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted])
+            .write(to: fixture.manifest, options: .atomic)
+
+        let result = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", fixture.manifest.path,
+            "--screenshot-dir", fixture.current.path,
+            "--baseline-dir", fixture.baseline.path,
+            "--artifact-dir", fixture.artifacts.path,
+            "--ax-audit-result", fixture.audit.path,
+            "--current-source-commit", "fixture-commit",
+            "--update-baselines",
+            "--allow-update"
+        ])
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("0...1") || result.output.localizedCaseInsensitiveContains("threshold"), result.output)
+        XCTAssertEqual(try Data(contentsOf: baselineURL), originalBaseline)
+    }
+
+    func testVisualRegressionSmokeAcceptsArtifactDirectoryAndAXAuditForIdenticalPNGs() throws {
+        let fixture = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let result = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", fixture.manifest.path,
+            "--screenshot-dir", fixture.current.path,
+            "--baseline-dir", fixture.baseline.path,
+            "--artifact-dir", fixture.artifacts.path,
+            "--ax-audit-result", fixture.audit.path,
+            "--current-source-commit", "fixture-commit"
+        ])
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("visual regression smoke passed"), result.output)
+    }
+
+    func testVisualRegressionSmokeRejectsScreenshotDigestMismatchInNormalAndUpdateModes() throws {
+        let fixture = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let screenshot = fixture.current.appendingPathComponent("project-board-light.png")
+        let handle = try FileHandle(forWritingTo: screenshot)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data("tampered-after-audit".utf8))
+        try handle.close()
+        let baseline = fixture.baseline.appendingPathComponent("project-board-light.png")
+        let originalBaseline = try Data(contentsOf: baseline)
+
+        for updateBaselines in [false, true] {
+            let result = try runVisualRegressionFixture(fixture, updateBaselines: updateBaselines)
+            XCTAssertNotEqual(result.exitCode, 0, result.output)
+            XCTAssertTrue(
+                result.output.localizedCaseInsensitiveContains("sha-256") ||
+                    result.output.localizedCaseInsensitiveContains("digest"),
+                result.output
+            )
+        }
+        XCTAssertEqual(try Data(contentsOf: baseline), originalBaseline)
+    }
+
+    func testVisualRegressionSmokeFailsWhenBaselineIsMissingOrUnreadable() throws {
+        let missing = try makeVisualRegressionFixture(includeBaseline: false)
+        defer { try? FileManager.default.removeItem(at: missing.root) }
+        let missingResult = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", missing.manifest.path,
+            "--screenshot-dir", missing.current.path,
+            "--baseline-dir", missing.baseline.path,
+            "--artifact-dir", missing.artifacts.path,
+            "--ax-audit-result", missing.audit.path,
+            "--current-source-commit", "fixture-commit"
+        ])
+        XCTAssertNotEqual(missingResult.exitCode, 0)
+        XCTAssertTrue(missingResult.output.contains("missing baseline"), missingResult.output)
+
+        let unreadable = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: unreadable.root) }
+        try Data("not a png".utf8).write(to: unreadable.baseline.appendingPathComponent("project-board-light.png"))
+        let unreadableResult = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", unreadable.manifest.path,
+            "--screenshot-dir", unreadable.current.path,
+            "--baseline-dir", unreadable.baseline.path,
+            "--artifact-dir", unreadable.artifacts.path,
+            "--ax-audit-result", unreadable.audit.path,
+            "--current-source-commit", "fixture-commit"
+        ])
+        XCTAssertNotEqual(unreadableResult.exitCode, 0)
+        XCTAssertTrue(unreadableResult.output.contains("decode") || unreadableResult.output.contains("read"), unreadableResult.output)
+
+        let unreadableCurrent = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: unreadableCurrent.root) }
+        try Data("not a png".utf8).write(to: unreadableCurrent.current.appendingPathComponent("project-board-light.png"))
+        try refreshVisualAuditDigest(unreadableCurrent)
+        let unreadableCurrentResult = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", unreadableCurrent.manifest.path,
+            "--screenshot-dir", unreadableCurrent.current.path,
+            "--baseline-dir", unreadableCurrent.baseline.path,
+            "--artifact-dir", unreadableCurrent.artifacts.path,
+            "--ax-audit-result", unreadableCurrent.audit.path,
+            "--current-source-commit", "fixture-commit"
+        ])
+        XCTAssertNotEqual(unreadableCurrentResult.exitCode, 0)
+        XCTAssertTrue(unreadableCurrentResult.output.contains("decode") || unreadableCurrentResult.output.contains("read"), unreadableCurrentResult.output)
+    }
+
+    func testVisualRegressionSmokeFailsLargeRasterChangeAndWritesPerArtifactEvidence() throws {
+        let fixture = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try writeChangedVisiblePNG(
+            to: fixture.current.appendingPathComponent("project-board-light.png"),
+            width: 800,
+            height: 600,
+            trailingBytes: 60_000
+        )
+        try refreshVisualAuditDigest(fixture)
+
+        let result = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", fixture.manifest.path,
+            "--screenshot-dir", fixture.current.path,
+            "--baseline-dir", fixture.baseline.path,
+            "--artifact-dir", fixture.artifacts.path,
+            "--ax-audit-result", fixture.audit.path,
+            "--current-source-commit", "fixture-commit"
+        ])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        let evidence = fixture.artifacts.appendingPathComponent("project-board/light")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: evidence.appendingPathComponent("baseline.png").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: evidence.appendingPathComponent("current.png").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: evidence.appendingPathComponent("diff.png").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: evidence.appendingPathComponent("metrics.json").path))
+        let metrics = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: Data(contentsOf: evidence.appendingPathComponent("metrics.json"))
+            ) as? [String: Any]
+        )
+        let viewport = try XCTUnwrap(metrics["viewport"] as? [String: Any])
+        XCTAssertEqual(viewport["width"] as? Int, 800)
+        XCTAssertEqual(viewport["height"] as? Int, 600)
+    }
+
+    func testVisualRegressionSmokeRejectsFailureEvidenceSymlinkEscape() throws {
+        let fixture = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try writeChangedVisiblePNG(
+            to: fixture.current.appendingPathComponent("project-board-light.png"),
+            width: 800,
+            height: 600,
+            trailingBytes: 60_000
+        )
+        try refreshVisualAuditDigest(fixture)
+        let external = fixture.root.appendingPathComponent("external-evidence", isDirectory: true)
+        try FileManager.default.createDirectory(at: external, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: fixture.artifacts.appendingPathComponent("project-board"),
+            withDestinationURL: external
+        )
+
+        let result = try runVisualRegressionFixture(fixture)
+        XCTAssertNotEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(
+            result.output.localizedCaseInsensitiveContains("evidence") &&
+                (result.output.localizedCaseInsensitiveContains("escape") ||
+                    result.output.localizedCaseInsensitiveContains("symlink")),
+            result.output
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: external.appendingPathComponent("light/baseline.png").path))
+    }
+
+    func testVisualRegressionSmokeEnforcesIndependentRasterThresholds() throws {
+        let pixelCount = 800 * 600
+
+        let lightDelta = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: lightDelta.root) }
+        try writeVisiblePNGWithBlueDelta(
+            to: lightDelta.current.appendingPathComponent("project-board-light.png"),
+            width: 800,
+            height: 600,
+            mutatedPixelCount: pixelCount,
+            blueDelta: 1,
+            trailingBytes: 60_000
+        )
+        try refreshVisualAuditDigest(lightDelta)
+        let lightDeltaResult = try runVisualRegressionFixture(lightDelta)
+        XCTAssertEqual(lightDeltaResult.exitCode, 0, lightDeltaResult.output)
+
+        let changedRatio = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: changedRatio.root) }
+        try writeVisiblePNGWithBlueDelta(
+            to: changedRatio.current.appendingPathComponent("project-board-light.png"),
+            width: 800,
+            height: 600,
+            mutatedPixelCount: 2_401,
+            blueDelta: 26,
+            trailingBytes: 60_000
+        )
+        try refreshVisualAuditDigest(changedRatio)
+        let changedRatioResult = try runVisualRegressionFixture(changedRatio)
+        XCTAssertNotEqual(changedRatioResult.exitCode, 0, changedRatioResult.output)
+        let changedRatioMetrics = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: Data(contentsOf: changedRatio.artifacts.appendingPathComponent("project-board/light/metrics.json"))
+            ) as? [String: Any]
+        )
+        XCTAssertGreaterThan((changedRatioMetrics["changedPixelRatio"] as? NSNumber)?.doubleValue ?? 0, 0.005)
+        XCTAssertLessThan((changedRatioMetrics["changedPixelRatio"] as? NSNumber)?.doubleValue ?? 1, 0.00501)
+        XCTAssertLessThan((changedRatioMetrics["meanAbsoluteError"] as? NSNumber)?.doubleValue ?? 1, 0.01)
+
+        let meanError = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: meanError.root) }
+        try writeVisiblePNGWithBlueDelta(
+            to: meanError.current.appendingPathComponent("project-board-light.png"),
+            width: 800,
+            height: 600,
+            mutatedPixelCount: pixelCount,
+            blueDelta: 8,
+            trailingBytes: 60_000
+        )
+        try refreshVisualAuditDigest(meanError)
+        let meanErrorResult = try runVisualRegressionFixture(meanError)
+        XCTAssertNotEqual(meanErrorResult.exitCode, 0, meanErrorResult.output)
+        let meanErrorMetrics = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: Data(contentsOf: meanError.artifacts.appendingPathComponent("project-board/light/metrics.json"))
+            ) as? [String: Any]
+        )
+        XCTAssertEqual((meanErrorMetrics["changedPixelRatio"] as? NSNumber)?.doubleValue, 0)
+        XCTAssertGreaterThan((meanErrorMetrics["meanAbsoluteError"] as? NSNumber)?.doubleValue ?? 0, 0.01)
+    }
+
+    func testVisualRegressionSmokeRejectsDimensionMismatchWithoutResizing() throws {
+        let fixture = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try writeVisiblePNG(to: fixture.current.appendingPathComponent("project-board-light.png"), width: 640, height: 480, trailingBytes: 60_000)
+        try refreshVisualAuditDigest(fixture)
+
+        let result = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", fixture.manifest.path,
+            "--screenshot-dir", fixture.current.path,
+            "--baseline-dir", fixture.baseline.path,
+            "--artifact-dir", fixture.artifacts.path,
+            "--ax-audit-result", fixture.audit.path,
+            "--current-source-commit", "fixture-commit"
+        ])
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("dimension") || result.output.contains("resize"), result.output)
+    }
+
+    func testVisualRegressionSmokeRequiresValidFreshMatchingAXFrameAudit() throws {
+        let missing = try makeVisualRegressionFixture(includeAudit: false)
+        defer { try? FileManager.default.removeItem(at: missing.root) }
+        let missingResult = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", missing.manifest.path, "--screenshot-dir", missing.current.path,
+            "--baseline-dir", missing.baseline.path, "--artifact-dir", missing.artifacts.path,
+            "--ax-audit-result", missing.audit.path,
+            "--current-source-commit", "fixture-commit"
+        ])
+        XCTAssertNotEqual(missingResult.exitCode, 0)
+        XCTAssertTrue(missingResult.output.contains("AX") || missingResult.output.contains("audit"), missingResult.output)
+
+        let invalid = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: invalid.root) }
+        try Data("{}".utf8).write(to: invalid.audit)
+        let invalidResult = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", invalid.manifest.path, "--screenshot-dir", invalid.current.path,
+            "--baseline-dir", invalid.baseline.path, "--artifact-dir", invalid.artifacts.path,
+            "--ax-audit-result", invalid.audit.path,
+            "--current-source-commit", "fixture-commit"
+        ])
+        XCTAssertNotEqual(invalidResult.exitCode, 0)
+
+        let mismatch = try makeVisualRegressionFixture(auditSourceCommit: "different-commit")
+        defer { try? FileManager.default.removeItem(at: mismatch.root) }
+        let mismatchResult = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", mismatch.manifest.path, "--screenshot-dir", mismatch.current.path,
+            "--baseline-dir", mismatch.baseline.path, "--artifact-dir", mismatch.artifacts.path,
+            "--ax-audit-result", mismatch.audit.path,
+            "--current-source-commit", "fixture-commit"
+        ])
+        XCTAssertNotEqual(mismatchResult.exitCode, 0)
+        XCTAssertTrue(mismatchResult.output.contains("sourceCommit") || mismatchResult.output.contains("audit"), mismatchResult.output)
+
+        let runtimeContextMismatch = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: runtimeContextMismatch.root) }
+        var mismatchedAudit = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: runtimeContextMismatch.audit)) as? [String: Any]
+        )
+        mismatchedAudit["timeZoneIdentifier"] = "Asia/Tokyo"
+        try JSONSerialization.data(withJSONObject: mismatchedAudit, options: [.sortedKeys])
+            .write(to: runtimeContextMismatch.audit)
+        let runtimeContextMismatchResult = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", runtimeContextMismatch.manifest.path,
+            "--screenshot-dir", runtimeContextMismatch.current.path,
+            "--baseline-dir", runtimeContextMismatch.baseline.path,
+            "--artifact-dir", runtimeContextMismatch.artifacts.path,
+            "--ax-audit-result", runtimeContextMismatch.audit.path,
+            "--current-source-commit", "fixture-commit"
+        ])
+        XCTAssertNotEqual(runtimeContextMismatchResult.exitCode, 0)
+        XCTAssertTrue(runtimeContextMismatchResult.output.contains("timeZoneIdentifier"), runtimeContextMismatchResult.output)
+
+        let stale = try makeVisualRegressionFixture(auditCreatedAt: "2020-01-01T00:00:00Z")
+        defer { try? FileManager.default.removeItem(at: stale.root) }
+        let staleResult = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", stale.manifest.path, "--screenshot-dir", stale.current.path,
+            "--baseline-dir", stale.baseline.path, "--artifact-dir", stale.artifacts.path,
+            "--ax-audit-result", stale.audit.path,
+            "--current-source-commit", "fixture-commit"
+        ])
+        XCTAssertNotEqual(staleResult.exitCode, 0)
+        XCTAssertTrue(
+            staleResult.output.localizedCaseInsensitiveContains("stale") ||
+                staleResult.output.localizedCaseInsensitiveContains("fresh") ||
+                staleResult.output.contains("createdAt") ||
+                staleResult.output.localizedCaseInsensitiveContains("audit"),
+            staleResult.output
+        )
+    }
+
+    func testVisualRegressionSmokeSeparatesCurrentAndBaselineSourceCommitSemantics() throws {
+        let fixture = try makeVisualRegressionFixture(auditSourceCommit: "current-product-B")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let baselineURL = fixture.baseline.appendingPathComponent("project-board-light.png")
+        let originalBaseline = try Data(contentsOf: baselineURL)
+
+        let normal = try runVisualRegressionFixture(
+            fixture,
+            currentSourceCommit: "current-product-B"
+        )
+        XCTAssertEqual(normal.exitCode, 0, normal.output)
+
+        let wrongCurrent = try runVisualRegressionFixture(
+            fixture,
+            currentSourceCommit: "wrong-product-C"
+        )
+        XCTAssertNotEqual(wrongCurrent.exitCode, 0, wrongCurrent.output)
+        XCTAssertTrue(
+            wrongCurrent.output.contains("current-source-commit") ||
+                wrongCurrent.output.localizedCaseInsensitiveContains("current source"),
+            wrongCurrent.output
+        )
+
+        let update = try runVisualRegressionFixture(
+            fixture,
+            updateBaselines: true,
+            currentSourceCommit: "current-product-B"
+        )
+        XCTAssertNotEqual(update.exitCode, 0, update.output)
+        XCTAssertTrue(
+            update.output.localizedCaseInsensitiveContains("baseline") ||
+                update.output.localizedCaseInsensitiveContains("update"),
+            update.output
+        )
+        XCTAssertEqual(try Data(contentsOf: baselineURL), originalBaseline)
+    }
+
+    func testVisualRegressionSmokeUsesOnlyGlobalBaselineContextForUpdates() throws {
+        let fixture = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        var manifest = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: fixture.manifest)) as? [String: Any]
+        )
+        var screens = try XCTUnwrap(manifest["screens"] as? [[String: Any]])
+        screens[0]["sourceCommit"] = "legacy-override"
+        screens[0]["normalRoute"] = "recovery"
+        screens[0]["locale"] = "ja-JP"
+        manifest["screens"] = screens
+        try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted])
+            .write(to: fixture.manifest, options: .atomic)
+
+        let update = try runVisualRegressionFixture(fixture, updateBaselines: true)
+        XCTAssertEqual(update.exitCode, 0, update.output)
+        let metadata = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: Data(contentsOf: fixture.baseline.appendingPathComponent("project-board-light.metadata.json"))
+            ) as? [String: Any]
+        )
+        XCTAssertEqual(metadata["sourceCommit"] as? String, "fixture-commit")
+        XCTAssertEqual(metadata["normalRoute"] as? String, "project-board")
+        XCTAssertEqual(metadata["locale"] as? String, "en-US")
+    }
+
+    func testVisualRegressionSmokeRequiresExactAXArtifactCoverageAndAuditedFrames() throws {
+        let fixture = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let baseAudit = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.audit)) as? [String: Any]
+        )
+        let baseScreens = try XCTUnwrap(baseAudit["screens"] as? [[String: Any]])
+
+        var duplicateAudit = baseAudit
+        duplicateAudit["screens"] = baseScreens + baseScreens
+        try JSONSerialization.data(withJSONObject: duplicateAudit, options: [.prettyPrinted])
+            .write(to: fixture.audit, options: .atomic)
+        let duplicate = try runVisualRegressionFixture(fixture)
+        XCTAssertNotEqual(duplicate.exitCode, 0)
+        XCTAssertTrue(duplicate.output.localizedCaseInsensitiveContains("duplicate"), duplicate.output)
+
+        var invalidEntry = baseScreens[0]
+        invalidEntry["artifact"] = "wrong-artifact.png"
+        invalidEntry["actualWindowFrame"] = ["width": 0, "height": 600]
+        var invalidAudit = baseAudit
+        invalidAudit["screens"] = [invalidEntry]
+        try JSONSerialization.data(withJSONObject: invalidAudit, options: [.prettyPrinted])
+            .write(to: fixture.audit, options: .atomic)
+        let invalid = try runVisualRegressionFixture(fixture)
+        XCTAssertNotEqual(invalid.exitCode, 0)
+        XCTAssertTrue(invalid.output.contains("artifact"), invalid.output)
+        XCTAssertTrue(invalid.output.contains("actualWindowFrame") || invalid.output.contains("window frame"), invalid.output)
+
+        var mismatchedWindowEntry = baseScreens[0]
+        mismatchedWindowEntry["actualWindowFrame"] = ["width": 799, "height": 600]
+        var mismatchedWindowAudit = baseAudit
+        mismatchedWindowAudit["screens"] = [mismatchedWindowEntry]
+        try JSONSerialization.data(withJSONObject: mismatchedWindowAudit, options: [.prettyPrinted])
+            .write(to: fixture.audit, options: .atomic)
+        let mismatchedWindow = try runVisualRegressionFixture(fixture)
+        XCTAssertNotEqual(mismatchedWindow.exitCode, 0)
+        XCTAssertTrue(
+            mismatchedWindow.output.contains("actualWindowFrame") ||
+                mismatchedWindow.output.localizedCaseInsensitiveContains("viewport"),
+            mismatchedWindow.output
+        )
+
+        var missingTargetEntry = baseScreens[0]
+        missingTargetEntry.removeValue(forKey: "targetFrameAudit")
+        var missingTargetAudit = baseAudit
+        missingTargetAudit["screens"] = [missingTargetEntry]
+        try JSONSerialization.data(withJSONObject: missingTargetAudit, options: [.prettyPrinted])
+            .write(to: fixture.audit, options: .atomic)
+        let missingTarget = try runVisualRegressionFixture(fixture)
+        XCTAssertNotEqual(missingTarget.exitCode, 0)
+        XCTAssertTrue(
+            missingTarget.output.contains("targetFrameAudit") ||
+                missingTarget.output.localizedCaseInsensitiveContains("audit"),
+            missingTarget.output
+        )
+
+        let invalidTargetFrames: [[String: Any]] = [
+            ["identifier": "", "width": 760, "height": 540, "visibleWidth": 760, "visibleHeight": 540],
+            ["identifier": "wrong-root", "width": 760, "height": 540, "visibleWidth": 760, "visibleHeight": 540],
+            ["identifier": "project-board-root", "width": 0, "height": 540, "visibleWidth": 1, "visibleHeight": 540],
+            ["identifier": "project-board-root", "width": 760, "height": 540, "visibleWidth": 761, "visibleHeight": 540],
+            ["identifier": "project-board-root", "width": 760, "height": 540, "visibleWidth": 43.999, "visibleHeight": 540]
+        ]
+        for invalidTargetFrame in invalidTargetFrames {
+            var targetEntry = baseScreens[0]
+            targetEntry["targetFrameAudit"] = invalidTargetFrame
+            var targetAudit = baseAudit
+            targetAudit["screens"] = [targetEntry]
+            try JSONSerialization.data(withJSONObject: targetAudit, options: [.prettyPrinted])
+                .write(to: fixture.audit, options: .atomic)
+            let targetResult = try runVisualRegressionFixture(fixture)
+            XCTAssertNotEqual(targetResult.exitCode, 0)
+            XCTAssertTrue(
+                targetResult.output.contains("targetFrameAudit") ||
+                    targetResult.output.localizedCaseInsensitiveContains("target frame"),
+                targetResult.output
+            )
+        }
+
+        var extraEntry = baseScreens[0]
+        extraEntry["id"] = "unexpected-screen"
+        var extraAudit = baseAudit
+        extraAudit["screens"] = baseScreens + [extraEntry]
+        try JSONSerialization.data(withJSONObject: extraAudit, options: [.prettyPrinted])
+            .write(to: fixture.audit, options: .atomic)
+        let extra = try runVisualRegressionFixture(fixture)
+        XCTAssertNotEqual(extra.exitCode, 0)
+        XCTAssertTrue(extra.output.localizedCaseInsensitiveContains("unexpected") || extra.output.localizedCaseInsensitiveContains("coverage"), extra.output)
+    }
+
+    func testVisualRegressionSmokeRejectsSymlinkEscapesInNormalAndUpdateModes() throws {
+        let currentFixture = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: currentFixture.root) }
+        let currentArtifact = currentFixture.current.appendingPathComponent("project-board-light.png")
+        let externalCurrent = currentFixture.root.appendingPathComponent("external-current.png")
+        try FileManager.default.moveItem(at: currentArtifact, to: externalCurrent)
+        try FileManager.default.createSymbolicLink(at: currentArtifact, withDestinationURL: externalCurrent)
+
+        for updateBaselines in [false, true] {
+            let result = try runVisualRegressionFixture(currentFixture, updateBaselines: updateBaselines)
+            XCTAssertNotEqual(result.exitCode, 0, result.output)
+            XCTAssertTrue(
+                result.output.localizedCaseInsensitiveContains("escape") ||
+                    result.output.localizedCaseInsensitiveContains("symlink") ||
+                    result.output.localizedCaseInsensitiveContains("root"),
+                result.output
+            )
+        }
+
+        let baselineFixture = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: baselineFixture.root) }
+        let baselineArtifact = baselineFixture.baseline.appendingPathComponent("project-board-light.png")
+        let externalBaseline = baselineFixture.root.appendingPathComponent("external-baseline.png")
+        try FileManager.default.moveItem(at: baselineArtifact, to: externalBaseline)
+        try FileManager.default.createSymbolicLink(at: baselineArtifact, withDestinationURL: externalBaseline)
+        for updateBaselines in [false, true] {
+            let baselineResult = try runVisualRegressionFixture(baselineFixture, updateBaselines: updateBaselines)
+            XCTAssertNotEqual(baselineResult.exitCode, 0, baselineResult.output)
+            XCTAssertTrue(
+                baselineResult.output.localizedCaseInsensitiveContains("escape") ||
+                    baselineResult.output.localizedCaseInsensitiveContains("symlink") ||
+                    baselineResult.output.localizedCaseInsensitiveContains("root"),
+                baselineResult.output
+            )
+        }
+
+        let metadataFixture = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: metadataFixture.root) }
+        let metadata = metadataFixture.baseline.appendingPathComponent("project-board-light.metadata.json")
+        let externalMetadata = metadataFixture.root.appendingPathComponent("external.metadata.json")
+        try FileManager.default.moveItem(at: metadata, to: externalMetadata)
+        try FileManager.default.createSymbolicLink(at: metadata, withDestinationURL: externalMetadata)
+        for updateBaselines in [false, true] {
+            let metadataResult = try runVisualRegressionFixture(metadataFixture, updateBaselines: updateBaselines)
+            XCTAssertNotEqual(metadataResult.exitCode, 0, metadataResult.output)
+            XCTAssertTrue(
+                metadataResult.output.localizedCaseInsensitiveContains("escape") ||
+                    metadataResult.output.localizedCaseInsensitiveContains("symlink") ||
+                    metadataResult.output.localizedCaseInsensitiveContains("root"),
+                metadataResult.output
+            )
+        }
+    }
+
+    func testVisualRegressionSmokeRequiresBaselineMetadataMatchingManifest() throws {
+        let fixture = try makeVisualRegressionFixture(includeBaselineMetadata: false)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let result = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", fixture.manifest.path, "--screenshot-dir", fixture.current.path,
+            "--baseline-dir", fixture.baseline.path, "--artifact-dir", fixture.artifacts.path,
+            "--ax-audit-result", fixture.audit.path,
+            "--current-source-commit", "fixture-commit"
+        ])
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("metadata"), result.output)
+
+        let mismatched = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: mismatched.root) }
+        try """
+        { "sourceCommit": "wrong", "normalRoute": "project-board", "locale": "en-US", "viewport": { "width": 800, "height": 600 }, "appearance": "light" }
+        """.write(
+            to: mismatched.baseline.appendingPathComponent("project-board-light.metadata.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let mismatchResult = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", mismatched.manifest.path, "--screenshot-dir", mismatched.current.path,
+            "--baseline-dir", mismatched.baseline.path, "--artifact-dir", mismatched.artifacts.path,
+            "--ax-audit-result", mismatched.audit.path,
+            "--current-source-commit", "fixture-commit"
+        ])
+        XCTAssertNotEqual(mismatchResult.exitCode, 0)
+        XCTAssertTrue(mismatchResult.output.contains("metadata") || mismatchResult.output.contains("sourceCommit"), mismatchResult.output)
+
+        let rasterMismatch = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: rasterMismatch.root) }
+        try """
+        { "sourceCommit": "fixture-commit", "normalRoute": "project-board", "locale": "en-US", "timeZoneIdentifier": "UTC", "referenceInstant": "2026-07-10T12:00:00Z", "viewport": { "width": 800, "height": 600 }, "appearance": "light", "rasterWidth": 799, "rasterHeight": 600, "generatedAt": "2026-07-10T00:00:00Z" }
+        """.write(
+            to: rasterMismatch.baseline.appendingPathComponent("project-board-light.metadata.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let rasterMismatchResult = try runVisualRegressionFixture(rasterMismatch)
+        XCTAssertNotEqual(rasterMismatchResult.exitCode, 0)
+        XCTAssertTrue(
+            rasterMismatchResult.output.contains("rasterWidth") ||
+                rasterMismatchResult.output.localizedCaseInsensitiveContains("metadata raster"),
+            rasterMismatchResult.output
+        )
+    }
+
+    func testVisualRegressionSmokeRejectsIdenticalDecodedRasterAcrossDifferentScreens() throws {
+        let fixture = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let secondArtifact = "inbox-voice-light.png"
+        try FileManager.default.copyItem(
+            at: fixture.current.appendingPathComponent("project-board-light.png"),
+            to: fixture.current.appendingPathComponent(secondArtifact)
+        )
+
+        var manifest = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.manifest)) as? [String: Any]
+        )
+        var screens = try XCTUnwrap(manifest["screens"] as? [[String: Any]])
+        var secondScreen = screens[0]
+        secondScreen["id"] = "inbox-voice"
+        secondScreen["title"] = "Inbox Voice"
+        secondScreen["artifacts"] = ["light": secondArtifact]
+        screens.append(secondScreen)
+        manifest["screens"] = screens
+        try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted])
+            .write(to: fixture.manifest, options: .atomic)
+
+        var audit = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.audit)) as? [String: Any]
+        )
+        var auditScreens = try XCTUnwrap(audit["screens"] as? [[String: Any]])
+        var secondAudit = auditScreens[0]
+        secondAudit["id"] = "inbox-voice"
+        secondAudit["artifact"] = secondArtifact
+        auditScreens.append(secondAudit)
+        audit["screens"] = auditScreens
+        try JSONSerialization.data(withJSONObject: audit, options: [.prettyPrinted])
+            .write(to: fixture.audit, options: .atomic)
+
+        let normal = try runVisualRegressionFixture(fixture)
+        XCTAssertNotEqual(normal.exitCode, 0)
+        XCTAssertTrue(normal.output.localizedCaseInsensitiveContains("decoded raster"), normal.output)
+
+        let update = try runVisualRegressionFixture(fixture, updateBaselines: true)
+        XCTAssertNotEqual(update.exitCode, 0)
+        XCTAssertTrue(update.output.localizedCaseInsensitiveContains("decoded raster"), update.output)
     }
 
     func testReleaseReadinessReportCanWriteOperatorActionSummaryWithoutPassingManualGates() throws {
@@ -12761,6 +13732,132 @@ final class ReleasePipelineTests: XCTestCase {
         return appcastURL
     }
 
+    private struct VisualRegressionFixture {
+        let root: URL
+        let manifest: URL
+        let current: URL
+        let baseline: URL
+        let artifacts: URL
+        let audit: URL
+    }
+
+    private func runVisualRegressionFixture(
+        _ fixture: VisualRegressionFixture,
+        updateBaselines: Bool = false,
+        currentSourceCommit: String = "fixture-commit"
+    ) throws -> (exitCode: Int32, output: String) {
+        var arguments = [
+            "--manifest", fixture.manifest.path,
+            "--screenshot-dir", fixture.current.path,
+            "--baseline-dir", fixture.baseline.path,
+            "--artifact-dir", fixture.artifacts.path,
+            "--ax-audit-result", fixture.audit.path,
+            "--current-source-commit", currentSourceCommit
+        ]
+        if updateBaselines {
+            arguments.append(contentsOf: ["--update-baselines", "--allow-update"])
+        }
+        return try runScript("script/check_visual_regression_smoke.sh", arguments: arguments)
+    }
+
+    private func makeVisualRegressionFixture(
+        includeBaseline: Bool = true,
+        includeAudit: Bool = true,
+        includeBaselineMetadata: Bool = true,
+        auditSourceCommit: String = "fixture-commit",
+        auditCreatedAt: String = ISO8601DateFormatter().string(from: Date())
+    ) throws -> VisualRegressionFixture {
+        let root = packageRoot().appendingPathComponent(
+            ".build/test-visual-regression-contract-\(UUID().uuidString)", isDirectory: true
+        )
+        let current = root.appendingPathComponent("current", isDirectory: true)
+        let baseline = root.appendingPathComponent("baseline", isDirectory: true)
+        let artifacts = root.appendingPathComponent("artifacts", isDirectory: true)
+        let manifest = root.appendingPathComponent("manifest.json")
+        let audit = root.appendingPathComponent("ax-audit.json")
+        try FileManager.default.createDirectory(at: current, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: baseline, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: artifacts, withIntermediateDirectories: true)
+
+        let currentPNG = current.appendingPathComponent("project-board-light.png")
+        try writeVisiblePNG(to: currentPNG, width: 800, height: 600, trailingBytes: 60_000)
+        let currentSHA256 = try sha256Hex(of: currentPNG)
+        if includeBaseline {
+            let baselinePNG = baseline.appendingPathComponent("project-board-light.png")
+            try writeVisiblePNG(to: baselinePNG, width: 800, height: 600, trailingBytes: 60_000)
+            if includeBaselineMetadata {
+                try """
+                {
+                  "sourceCommit": "fixture-commit",
+                  "normalRoute": "project-board",
+                  "locale": "en-US",
+                  "timeZoneIdentifier": "UTC",
+                  "referenceInstant": "2026-07-10T12:00:00Z",
+                  "viewport": { "width": 800, "height": 600 },
+                  "appearance": "light",
+                  "rasterWidth": 800,
+                  "rasterHeight": 600,
+                  "generatedAt": "2026-07-10T00:00:00Z"
+                }
+                """.write(to: baseline.appendingPathComponent("project-board-light.metadata.json"), atomically: true, encoding: .utf8)
+            }
+        }
+
+        try visualBaselineManifestFixture(artifacts: ["light": "project-board-light.png"])
+            .write(to: manifest, atomically: true, encoding: .utf8)
+        if includeAudit {
+            try """
+            {
+              "result": "passed",
+              "sourceCommit": "\(auditSourceCommit)",
+              "normalRoute": "project-board",
+              "locale": "en-US",
+              "timeZoneIdentifier": "UTC",
+              "referenceInstant": "2026-07-10T12:00:00Z",
+              "createdAt": "\(auditCreatedAt)",
+              "screens": [{
+                "id": "project-board",
+                "viewport": { "width": 800, "height": 600 },
+                "appearance": "light",
+                "status": "passed",
+                "artifact": "project-board-light.png",
+                "sha256": "\(currentSHA256)",
+                "actualWindowFrame": { "width": 800, "height": 600 },
+                "targetFrameAudit": {
+                  "identifier": "project-board-root",
+                  "width": 760.25,
+                  "height": 540.5,
+                  "visibleWidth": 760.2505,
+                  "visibleHeight": 540.5
+                }
+              }]
+            }
+            """.write(to: audit, atomically: true, encoding: .utf8)
+        }
+
+        return VisualRegressionFixture(root: root, manifest: manifest, current: current, baseline: baseline, artifacts: artifacts, audit: audit)
+    }
+
+    private func sha256Hex(of url: URL) throws -> String {
+        SHA256.hash(data: try Data(contentsOf: url))
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    private func refreshVisualAuditDigest(_ fixture: VisualRegressionFixture) throws {
+        var audit = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: fixture.audit)) as? [String: Any]
+        )
+        var screens = try XCTUnwrap(audit["screens"] as? [[String: Any]])
+        for index in screens.indices {
+            guard let artifact = screens[index]["artifact"] as? String else { continue }
+            screens[index]["sha256"] = try sha256Hex(of: fixture.current.appendingPathComponent(artifact))
+        }
+        audit["screens"] = screens
+        try JSONSerialization.data(withJSONObject: audit, options: [.prettyPrinted, .sortedKeys])
+            .write(to: fixture.audit, options: .atomic)
+    }
+
     private func writeSolidPNG(
         to url: URL,
         width: Int,
@@ -12854,6 +13951,105 @@ final class ReleasePipelineTests: XCTestCase {
         }
     }
 
+    private func writeChangedVisiblePNG(
+        to url: URL,
+        width: Int,
+        height: Int,
+        trailingBytes: Int = 0
+    ) throws {
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        for y in 0..<height {
+            for x in 0..<width {
+                let offset = ((y * width) + x) * 4
+                let lightStripe = ((x / 24) + (y / 24)).isMultiple(of: 2)
+                pixels[offset] = lightStripe ? 40 : 220
+                pixels[offset + 1] = lightStripe ? 220 : 40
+                pixels[offset + 2] = lightStripe ? 80 : 180
+                pixels[offset + 3] = 255
+            }
+        }
+
+        guard let context = CGContext(
+            data: &pixels,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ), let image = context.makeImage() else {
+            XCTFail("Could not create changed PNG fixture context.")
+            return
+        }
+
+        guard let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
+            XCTFail("Could not create changed PNG fixture destination.")
+            return
+        }
+
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+
+        if trailingBytes > 0 {
+            let handle = try FileHandle(forWritingTo: url)
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data(repeating: 0, count: trailingBytes))
+            try handle.close()
+        }
+    }
+
+    private func writeVisiblePNGWithBlueDelta(
+        to url: URL,
+        width: Int,
+        height: Int,
+        mutatedPixelCount: Int,
+        blueDelta: UInt8,
+        trailingBytes: Int = 0
+    ) throws {
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let boundedMutationCount = max(0, min(mutatedPixelCount, width * height))
+        for y in 0..<height {
+            for x in 0..<width {
+                let pixelIndex = (y * width) + x
+                let offset = pixelIndex * 4
+                let lightStripe = ((x / 24) + (y / 24)).isMultiple(of: 2)
+                pixels[offset] = lightStripe ? 245 : 32
+                pixels[offset + 1] = lightStripe ? 245 : 74
+                let originalBlue: UInt8 = lightStripe ? 245 : 128
+                pixels[offset + 2] = pixelIndex < boundedMutationCount
+                    ? UInt8(max(0, Int(originalBlue) - Int(blueDelta)))
+                    : originalBlue
+                pixels[offset + 3] = 255
+            }
+        }
+
+        guard let context = CGContext(
+            data: &pixels,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ), let image = context.makeImage() else {
+            XCTFail("Could not create threshold PNG fixture context.")
+            return
+        }
+        guard let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
+            XCTFail("Could not create threshold PNG fixture destination.")
+            return
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+
+        if trailingBytes > 0 {
+            let handle = try FileHandle(forWritingTo: url)
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data(repeating: 0, count: trailingBytes))
+            try handle.close()
+        }
+    }
+
     private func visualBaselineManifestFixture(artifacts: [String: String]) -> String {
         let artifactLines = artifacts
             .sorted { $0.key < $1.key }
@@ -12866,9 +14062,21 @@ final class ReleasePipelineTests: XCTestCase {
 
         return """
         {
-          "schemaVersion": 1,
+          "schemaVersion": 2,
           "artifactRoot": "screenshots",
           "baselineRoot": "baselines",
+          "baselineContext": {
+            "sourceCommit": "fixture-commit",
+            "normalRoute": "project-board",
+            "locale": "en-US",
+            "timeZoneIdentifier": "UTC",
+            "referenceInstant": "2026-07-10T12:00:00Z"
+          },
+          "rasterComparison": {
+            "perChannelDeltaThreshold": 0.10,
+            "maximumChangedPixelRatio": 0.005,
+            "maximumMeanAbsoluteError": 0.01
+          },
           "semanticTolerances": {
             "comparisonMode": "semantic",
             "allowPixelPerfectOnly": false,
@@ -12886,10 +14094,15 @@ final class ReleasePipelineTests: XCTestCase {
               "title": "Project Board",
               "themes": [\(themeLines)],
               "viewport": {
-                "width": 1200,
-                "height": 720
+                "width": 800,
+                "height": 600
               },
+              "sourceCommit": "fixture-commit",
+              "normalRoute": "project-board",
+              "locale": "en-US",
+              "appearances": [\(themeLines)],
               "axFrameAudit": true,
+              "axTargetIdentifier": "project-board-root",
               "artifacts": {
         \(artifactLines)
               }
