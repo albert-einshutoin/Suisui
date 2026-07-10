@@ -63,6 +63,7 @@ EVIDENCE_APP_PID=""
 EVIDENCE_APP_LAUNCH_PID=""
 EVIDENCE_APP_IDENTITY=""
 EVIDENCE_APP_LAUNCH_IDENTITY=""
+EVIDENCE_APP_LOG="$EVIDENCE_TMPDIR/visual-evidence-app.$$.log"
 DATABASE_PATH=""
 
 for arg in "$@"; do
@@ -157,6 +158,7 @@ cleanup() {
   rm -f "$AX_SCROLL_HELPER"
   rm -f "$AX_TARGET_FRAME_AUDITOR"
   rm -f "$AX_CAPTURE_RECEIPT_TSV" "$AX_RECEIPT_WRITER"
+  rm -f "$EVIDENCE_APP_LOG"
   if [[ "$KEEP_HOME" != "1" && -d "$EVIDENCE_HOME" && "${SOLOPM_UI_EVIDENCE_HOME:-}" == "" ]]; then
     rm -rf "$EVIDENCE_HOME"
   fi
@@ -258,12 +260,24 @@ app_env_args() {
   printf '%s\0' "${args[@]}"
 }
 
+emit_evidence_app_diagnostic() {
+  [[ -s "$EVIDENCE_APP_LOG" ]] || return 0
+  echo "Sanitized SoloPM launch diagnostic:" >&2
+  /usr/bin/sed -E \
+    -e 's#/(Users|Volumes)/[^[:space:]]+#<path>#g' \
+    -e 's#/private/var/folders/[^[:space:]]+#<temp-path>#g' \
+    -e 's#(/var)?/tmp/[^[:space:]]+#<temp-path>#g' \
+    -e 's#(token|secret|password|api[_-]?key)[=:][^[:space:]]+#\1=<redacted>#g' \
+    "$EVIDENCE_APP_LOG" | /usr/bin/tail -n 80 >&2
+}
+
 open_evidence_app() {
   local env_args=()
   while IFS= read -r -d '' env_arg; do
     env_args+=("$env_arg")
   done < <(app_env_args)
   stop_evidence_app
+  : >"$EVIDENCE_APP_LOG"
   # Direct launch preserves the isolated database, appearance, selected route,
   # Settings, and Voice Command env exactly. LaunchServices can drop or delay
   # those env values on some release hosts, which makes screenshot evidence
@@ -273,10 +287,15 @@ open_evidence_app() {
     -ApplePersistenceIgnoreState YES \
     -AppleLanguages "$APPLE_LANGUAGES" \
     -AppleLocale "$APPLE_LOCALE" \
-    >/dev/null 2>&1 &
+    >>"$EVIDENCE_APP_LOG" 2>&1 &
   EVIDENCE_APP_LAUNCH_PID=$!
   EVIDENCE_APP_PID="$EVIDENCE_APP_LAUNCH_PID"
-  EVIDENCE_APP_LAUNCH_IDENTITY="$(ax_wait_for_owned_process_identity "$EVIDENCE_APP_LAUNCH_PID" "$APP_BINARY" 3)" || return 1
+  EVIDENCE_APP_LAUNCH_IDENTITY="$(ax_wait_for_owned_process_identity "$EVIDENCE_APP_LAUNCH_PID" "$APP_BINARY" "$TARGET_TIMEOUT_SECONDS")" || {
+    echo "failure_category=launch" >&2
+    echo "failure_message=visual-launch-identity-unavailable" >&2
+    emit_evidence_app_diagnostic
+    return 1
+  }
   EVIDENCE_APP_IDENTITY="$EVIDENCE_APP_LAUNCH_IDENTITY"
 }
 
@@ -339,9 +358,15 @@ wait_for_process() {
   if [[ -n "$EVIDENCE_APP_PID" ]]; then
     EVIDENCE_APP_PID="$(ax_wait_for_owned_app_pid "$EVIDENCE_APP_PID" "$APP_BINARY" "$TARGET_TIMEOUT_SECONDS")" || {
       echo "$APP_NAME did not launch as expected pid $EVIDENCE_APP_PID." >&2
+      emit_evidence_app_diagnostic
       exit 1
     }
-    EVIDENCE_APP_IDENTITY="$(ax_wait_for_owned_process_identity "$EVIDENCE_APP_PID" "$APP_BINARY" 3)" || return 1
+    EVIDENCE_APP_IDENTITY="$(ax_wait_for_owned_process_identity "$EVIDENCE_APP_PID" "$APP_BINARY" "$TARGET_TIMEOUT_SECONDS")" || {
+      echo "failure_category=launch" >&2
+      echo "failure_message=visual-owned-identity-unavailable" >&2
+      emit_evidence_app_diagnostic
+      return 1
+    }
     ax_wait_for_pid_owned_process "$APP_NAME" "$EVIDENCE_APP_PID" "$TARGET_TIMEOUT_SECONDS" "$APP_BINARY"
     ax_wait_for_pid_owned_window "$APP_NAME" "$EVIDENCE_APP_PID" "" "$TARGET_TIMEOUT_SECONDS" "" "$APP_BINARY"
     return

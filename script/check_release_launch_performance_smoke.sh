@@ -201,6 +201,71 @@ wait_for_visible_window() {
   return 0
 }
 
+wait_for_database_schema() {
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if [[ -f "$PERFORMANCE_DATABASE_PATH" ]] &&
+      [[ "$(sqlite3 -batch -noheader "$PERFORMANCE_DATABASE_PATH" \
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('projects', 'tasks');" 2>/dev/null || true)" == "2" ]]; then
+      return 0
+    fi
+    if ! ax_process_matches_identity "$APP_PID" "$APP_BINARY" "$APP_IDENTITY"; then
+      ax_emit_failure_category "launch" "performance-bootstrap-exited"
+      echo "BLOCKER: performance bootstrap app exited before its database schema was ready" >&2
+      return 1
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      ax_emit_failure_category "launch" "performance-database-schema-unavailable"
+      echo "BLOCKER: performance database schema was not ready within ${TIMEOUT_SECONDS}s" >&2
+      return 1
+    fi
+    sleep 0.2
+  done
+}
+
+seed_production_fixture() {
+  # A fresh CI workspace otherwise opens the recovery route because it has no
+  # projects. Seed one deterministic local project before starting the measured
+  # launch so the sample can only pass through the production Project Board.
+  if ! sqlite3 "$PERFORMANCE_DATABASE_PATH" <<'SQL'
+.bail on
+.timeout 5000
+BEGIN IMMEDIATE;
+DELETE FROM tasks WHERE source_command = 'ui-performance';
+DELETE FROM projects WHERE source_command = 'ui-performance';
+INSERT INTO projects (
+  title, status, priority, deadline, workspace_path, tags_json, source_command,
+  created_at, updated_at
+) VALUES (
+  'UI performance fixture', 'active', 'high', NULL, NULL, '[]', 'ui-performance',
+  CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+);
+INSERT INTO tasks (
+  project_id, title, status, detail, due_at, completed_at, priority,
+  source_command, created_at, updated_at
+) VALUES (
+  (SELECT id FROM projects WHERE source_command = 'ui-performance' ORDER BY id DESC LIMIT 1),
+  'Measure production destinations', 'planned',
+  'Deterministic local task for production-route launch performance.',
+  NULL, NULL, 'high', 'ui-performance', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+);
+COMMIT;
+SQL
+  then
+    ax_emit_failure_category "harness" "performance-fixture-seed-failed"
+    echo "BLOCKER: performance production fixture could not be seeded" >&2
+    return 1
+  fi
+}
+
+prepare_production_fixture() {
+  rm -f "$PERFORMANCE_DATABASE_PATH" "$PERFORMANCE_DATABASE_PATH-wal" "$PERFORMANCE_DATABASE_PATH-shm"
+  open_app
+  wait_for_database_schema
+  terminate_app
+  seed_production_fixture
+}
+
 click_sidebar_destination() {
   local destination_identifier="$1"
   local destination_label="$2"
@@ -290,11 +355,13 @@ printf '%s\t%s\n' "label" "elapsed_ms" >"$SAMPLES_FILE"
 terminate_app
 prepare_ax_helpers
 SOLOPM_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
+prepare_production_fixture
 
 launch_start_ms="$(now_ms)"
 open_app
 wait_for_visible_window
 wait_for_marker "project-board-header-bar"
+wait_for_marker "today-workflow"
 launch_end_ms="$(now_ms)"
 record_sample "cold-launch-visible-window" "$launch_start_ms" "$launch_end_ms" "$MAX_COLD_LAUNCH_MS"
 

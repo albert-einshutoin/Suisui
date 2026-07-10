@@ -14,6 +14,7 @@ final class UIGateScriptsTests: XCTestCase {
         XCTAssertTrue(script.contains("pgrep -x WindowServer"))
         XCTAssertTrue(script.contains("required_commands=(id launchctl pgrep swift swiftc osascript)"))
         XCTAssertTrue(script.contains("required_commands+=(sqlite3 screencapture)"))
+        XCTAssertTrue(script.contains("performance)\n    required_commands+=(sqlite3)"))
         XCTAssertTrue(script.contains("required_commands+=(sqlite3 sips screencapture)"))
         XCTAssertTrue(script.contains("system-events-automation-unavailable"))
         XCTAssertTrue(script.contains("get unix id of first application process"))

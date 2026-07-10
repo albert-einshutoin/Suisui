@@ -91,6 +91,9 @@ case "$GATE_MODE" in
   runtime)
     required_commands+=(sqlite3 screencapture)
     ;;
+  performance)
+    required_commands+=(sqlite3)
+    ;;
   visual)
     required_commands+=(sqlite3 sips screencapture)
     ;;
