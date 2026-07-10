@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 
 struct ScheduleWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
-    @State private var workloadReferenceDate = Date()
+    @State private var workloadReferenceDate = VisualEvidenceRuntimeContext.referenceDate()
     @State private var selectedWorkloadDayKey: String?
 
     var body: some View {
@@ -91,21 +91,23 @@ struct ScheduleWorkflowView: View {
     }
 
     private func moveWorkloadToPreviousWeek() {
-        let nextDate = Calendar.current.date(byAdding: .day, value: -7, to: workloadReferenceDate) ?? workloadReferenceDate
+        let calendar = VisualEvidenceRuntimeContext.runtimeCalendar()
+        let nextDate = calendar.date(byAdding: .day, value: -7, to: workloadReferenceDate) ?? workloadReferenceDate
         workloadReferenceDate = nextDate
         selectedWorkloadDayKey = nil
         viewModel.refreshScheduleReadModel(around: nextDate)
     }
 
     private func moveWorkloadToNextWeek() {
-        let nextDate = Calendar.current.date(byAdding: .day, value: 7, to: workloadReferenceDate) ?? workloadReferenceDate
+        let calendar = VisualEvidenceRuntimeContext.runtimeCalendar()
+        let nextDate = calendar.date(byAdding: .day, value: 7, to: workloadReferenceDate) ?? workloadReferenceDate
         workloadReferenceDate = nextDate
         selectedWorkloadDayKey = nil
         viewModel.refreshScheduleReadModel(around: nextDate)
     }
 
     private func moveWorkloadToToday() {
-        let nextDate = Date()
+        let nextDate = VisualEvidenceRuntimeContext.referenceDate()
         workloadReferenceDate = nextDate
         selectedWorkloadDayKey = nil
         viewModel.refreshScheduleReadModel(around: nextDate)
@@ -119,9 +121,10 @@ struct ScheduleWorkflowView: View {
 
     private func scheduleDateKey(for date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.calendar = Calendar.current
+        let calendar = VisualEvidenceRuntimeContext.runtimeCalendar()
+        formatter.calendar = calendar
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = Calendar.current.timeZone
+        formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
     }
@@ -270,6 +273,10 @@ private struct ScheduleMiniCalendarDayChip: View {
 
     private var shortDateLabel: String {
         let formatter = DateFormatter()
+        let calendar = VisualEvidenceRuntimeContext.runtimeCalendar()
+        formatter.calendar = calendar
+        formatter.locale = calendar.locale ?? .current
+        formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "E d"
         return formatter.string(from: day.date)
     }
@@ -623,6 +630,10 @@ private struct WeeklyScheduleDayColumn: View {
 
     private var shortDateLabel: String {
         let formatter = DateFormatter()
+        let calendar = VisualEvidenceRuntimeContext.runtimeCalendar()
+        formatter.calendar = calendar
+        formatter.locale = calendar.locale ?? .current
+        formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "E d"
         return formatter.string(from: day.date)
     }
@@ -1019,6 +1030,10 @@ private struct DailyWorkloadDayCell: View {
 
     private var shortDateLabel: String {
         let formatter = DateFormatter()
+        let calendar = VisualEvidenceRuntimeContext.runtimeCalendar()
+        formatter.calendar = calendar
+        formatter.locale = calendar.locale ?? .current
+        formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "E d"
         return formatter.string(from: day.date)
     }

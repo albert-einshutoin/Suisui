@@ -608,6 +608,8 @@ public final class ProjectBoardViewModel: ObservableObject {
     // Selection changes only affect the Today rail context. Keeping the last
     // build context lets us refresh that slice without recomputing sidebar,
     // schedule, done, or portfolio read models for every row selection.
+    private let readModelNow: () -> Date
+    private let readModelCalendarProvider: () -> Calendar
     private var derivedReadModelReferenceDate: Date?
     private var derivedReadModelCalendar: Calendar
     // The preview is a derived value, not authoritative review state. The key
@@ -636,6 +638,8 @@ public final class ProjectBoardViewModel: ObservableObject {
         scheduleCalendarClient: (any CalendarClient)? = nil,
         googleCalendarSync: (any GoogleCalendarRuntimeSyncing)? = nil,
         googleCalendarSyncFactory: (() -> (any GoogleCalendarRuntimeSyncing)?)? = nil,
+        readModelNow: @escaping () -> Date = { VisualEvidenceRuntimeContext.referenceDate() },
+        readModelCalendar: @escaping () -> Calendar = { VisualEvidenceRuntimeContext.runtimeCalendar() },
         snapshot: ProjectBoardSnapshot = .empty,
         onChange: @escaping () -> Void = {}
     ) {
@@ -651,6 +655,8 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.scheduleCalendarClient = scheduleCalendarClient
         self.googleCalendarSync = googleCalendarSync
         self.googleCalendarSyncFactory = googleCalendarSyncFactory
+        self.readModelNow = readModelNow
+        self.readModelCalendarProvider = readModelCalendar
         self.snapshot = snapshot
         self.derivedReadModels = .empty
         self.onChange = onChange
@@ -688,7 +694,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.executionReceiptHistorySnapshotsByProjectID = [:]
         self.executionReceiptAuditSnapshotsLoaded = false
         self.derivedReadModelReferenceDate = nil
-        self.derivedReadModelCalendar = .current
+        self.derivedReadModelCalendar = readModelCalendar()
         self.dailyPlanningReviewPreviewCache = DailyPlanningReviewPreviewCache()
         self.todaySnapshotSourceRevision = 0
         self.dailyPlanningReviewPreviewBuildCount = 0
@@ -3559,7 +3565,11 @@ public final class ProjectBoardViewModel: ObservableObject {
         )
     }
 
-    public func refreshDerivedReadModels(on referenceDate: Date = Date(), calendar: Calendar = .current) {
+    public func refreshDerivedReadModels() {
+        rebuildDerivedReadModels(on: readModelNow(), calendar: readModelCalendarProvider())
+    }
+
+    public func refreshDerivedReadModels(on referenceDate: Date, calendar: Calendar = .current) {
         rebuildDerivedReadModels(on: referenceDate, calendar: calendar)
     }
 
@@ -3571,11 +3581,15 @@ public final class ProjectBoardViewModel: ObservableObject {
         dailyPlanningReviewPreviewCache.invalidate()
     }
 
-    public func refreshScheduleReadModel(around referenceDate: Date = Date(), calendar: Calendar = .current) {
+    public func refreshScheduleReadModel() {
+        rebuildScheduleReadModel(around: readModelNow(), calendar: readModelCalendarProvider())
+    }
+
+    public func refreshScheduleReadModel(around referenceDate: Date, calendar: Calendar = .current) {
         rebuildScheduleReadModel(around: referenceDate, calendar: calendar)
     }
 
-    private func rebuildDerivedReadModels(on referenceDate: Date = Date(), calendar: Calendar = .current) {
+    private func rebuildDerivedReadModels(on referenceDate: Date, calendar: Calendar) {
         let inputs = ProjectBoardDerivedReadModelInputs(
             snapshot: snapshot,
             showsCompletedWorkflowTasks: showsCompletedWorkflowTasks
@@ -3634,7 +3648,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         )
     }
 
-    private func rebuildScheduleReadModel(around referenceDate: Date = Date(), calendar: Calendar = .current) {
+    private func rebuildScheduleReadModel(around referenceDate: Date, calendar: Calendar) {
         var nextReadModels = derivedReadModels
         let scheduleReadModel = makeScheduleReadModel(around: referenceDate, calendar: calendar)
         nextReadModels.schedule = scheduleReadModel
@@ -3691,7 +3705,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     private func refreshMissedTaskReviewReadModel(on referenceDate: Date? = nil) {
-        let resolvedReferenceDate = referenceDate ?? derivedReadModelReferenceDate ?? Date()
+        let resolvedReferenceDate = referenceDate ?? derivedReadModelReferenceDate ?? readModelNow()
         let inputs = ProjectBoardDerivedReadModelInputs(
             snapshot: snapshot,
             showsCompletedWorkflowTasks: showsCompletedWorkflowTasks
@@ -6111,7 +6125,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 if let referenceDate = derivedReadModelReferenceDate {
                     rebuildDerivedReadModels(on: referenceDate, calendar: derivedReadModelCalendar)
                 } else {
-                    rebuildDerivedReadModels()
+                    rebuildDerivedReadModels(on: readModelNow(), calendar: readModelCalendarProvider())
                 }
             }
             errorMessage = assistantQueueErrorMessage ?? captureCacheErrorMessage

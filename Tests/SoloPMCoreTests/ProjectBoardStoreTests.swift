@@ -6956,6 +6956,52 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardInitialLoadAndImplicitRefreshUseInjectedReadModelClock() throws {
+        let store = InMemoryProjectBoardStore()
+        let seedingViewModel = ProjectBoardViewModel(store: store)
+        seedingViewModel.load()
+        let project = try XCTUnwrap(seedingViewModel.createProject(title: "Deterministic capture"))
+        let task = try XCTUnwrap(seedingViewModel.createTask(
+            title: "Pinned Today task",
+            projectID: project.id,
+            status: .planned,
+            dueAt: "2026-07-10T09:00:00Z"
+        ))
+        let referenceInstant = try isoDate("2026-07-10T12:00:00Z")
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "en_US")
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        var calendarRequestCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: store,
+            readModelNow: { referenceInstant },
+            readModelCalendar: {
+                calendarRequestCount += 1
+                return calendar
+            }
+        )
+
+        viewModel.load()
+
+        XCTAssertEqual(viewModel.derivedReadModels.builtAt, referenceInstant)
+        XCTAssertEqual(viewModel.derivedReadModels.todayWorkflowSnapshot.plan.tasks.map(\.id), [task.id])
+        let captureDay = viewModel.derivedReadModels.schedule.workloadOverview.days.first {
+            $0.dateKey == "2026-07-10"
+        }
+        let captureDayTaskIDs = try XCTUnwrap(captureDay).projectContributions
+            .flatMap(\.tasks)
+            .map(\.id)
+        XCTAssertTrue(captureDayTaskIDs.contains(task.id))
+
+        let calendarRequestCountBeforeRefresh = calendarRequestCount
+        viewModel.refreshDerivedReadModels()
+
+        XCTAssertEqual(viewModel.derivedReadModels.builtAt, referenceInstant)
+        XCTAssertEqual(viewModel.derivedReadModels.todayWorkflowSnapshot.plan.tasks.map(\.id), [task.id])
+        XCTAssertGreaterThan(calendarRequestCount, calendarRequestCountBeforeRefresh)
+    }
+
+    @MainActor
     func testProjectBoardViewModelPrefersFocusedTaskWhenBuildingTodayAssistantRailContext() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
