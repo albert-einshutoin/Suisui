@@ -2279,6 +2279,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(boardSource.contains("AVSpeechSynthesizer"))
     }
 
+    func testTodayViewReadsPrecomputedDailyPlanningReviewWithoutRenderPathFallback() throws {
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift")
+        let panelStart = try XCTUnwrap(workflowSource.range(of: "private struct TodayDailyPlanningReviewPanel"))
+        let panelEnd = try XCTUnwrap(workflowSource.range(of: "private struct TodayCommandPanel"))
+        let panelSource = String(workflowSource[panelStart.lowerBound..<panelEnd.lowerBound])
+
+        XCTAssertFalse(panelSource.contains("makeDailyPlanningReview"))
+        XCTAssertFalse(panelSource.contains("dailyWorkloadOverview"))
+        XCTAssertTrue(workflowSource.contains("currentDailyPlanningReview"))
+    }
+
     func testVoiceInboxTriageBridgeUsesLocalProjectBoardInboxCommands() throws {
         let voiceSource = try readPackageFile("Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift")
         let appSource = try readAppShellSource()
