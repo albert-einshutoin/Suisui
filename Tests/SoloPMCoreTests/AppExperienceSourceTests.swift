@@ -1873,14 +1873,14 @@ final class AppExperienceSourceTests: XCTestCase {
         let rowEnd = try XCTUnwrap(workflowSource[rowStart.lowerBound...].range(of: "private var workflowAccessibilityValue"))
         let rowSource = String(workflowSource[rowStart.lowerBound..<rowEnd.lowerBound])
 
-        XCTAssertEqual(
-            rowSource.components(separatedBy: ".accessibilityElement(children: .ignore)").count - 1,
-            2,
-            "The completion and selection buttons must each remain a named accessibility element."
-        )
         XCTAssertFalse(
-            rowSource.contains(".accessibilityElement(children: .combine)"),
-            "Combining the selection button's children hides the sibling button identifiers in the normal ProjectBoard route."
+            rowSource.contains(".accessibilityElement(children: .ignore)"),
+            "Ignoring a native Button's children changes its macOS accessibility role from AXButton to AXUnknown."
+        )
+        XCTAssertEqual(
+            rowSource.components(separatedBy: ".accessibilityElement(children: .combine)").count - 1,
+            1,
+            "Combine only the selection button's visible text while preserving the native button role."
         )
         XCTAssertTrue(rowSource.contains(".accessibilityIdentifier(\"workflow-task-completion-\\(task.id)\")"))
         XCTAssertTrue(rowSource.contains(".accessibilityIdentifier(\"workflow-task-row-\\(task.id)\")"))
