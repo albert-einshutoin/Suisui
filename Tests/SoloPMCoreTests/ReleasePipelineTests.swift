@@ -8090,14 +8090,14 @@ final class ReleasePipelineTests: XCTestCase {
         ]
         XCTAssertEqual(screenIDs, coreSystemScreens.union(sampleDerivedScreens))
         let expectedViewports: [String: (width: Int, height: Int)] = [
-            "project-board": (1_420, 860),
-            "inbox": (1_420, 860),
-            "today": (1_420, 860),
-            "inbox-voice": (1_420, 860),
-            "projects-overview": (1_420, 860),
-            "schedule": (1_420, 860),
-            "schedule-workload": (1_420, 860),
-            "done": (1_420, 860),
+            "project-board": (1_024, 674),
+            "inbox": (1_024, 674),
+            "today": (1_024, 674),
+            "inbox-voice": (1_024, 674),
+            "projects-overview": (1_024, 674),
+            "schedule": (1_024, 674),
+            "schedule-workload": (1_024, 674),
+            "done": (1_024, 674),
             "settings-overview": (720, 712),
             "settings-integrations": (720, 712),
             "settings-appearance": (720, 712),
@@ -8385,14 +8385,17 @@ final class ReleasePipelineTests: XCTestCase {
         }
 
         XCTAssertTrue(captureScript.contains("capture_project_board_destination system inbox"))
+        XCTAssertTrue(captureScript.contains("INBOX_VOICE_ROUTE_MARKERS=\"inbox-workflow=>$INBOX_ROUTE_LABEL\""))
         XCTAssertTrue(captureScript.contains("inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture"))
         XCTAssertTrue(captureScript.contains("inbox-action-panel=>Schedule launch review and capture visual evidence."))
         XCTAssertTrue(captureScript.contains("inbox-action-panel=>Create a task for launch review evidence."))
-        XCTAssertTrue(captureScript.contains("inbox-action-make-task=>Inbox classification actions"))
+        XCTAssertTrue(captureScript.contains("inbox-action-panel=>Inbox classification actions"))
         XCTAssertTrue(captureScript.contains("capture_project_board_destination system today"))
         XCTAssertTrue(captureScript.contains("capture_project_board_destination light schedule"))
         XCTAssertTrue(captureScript.contains("capture_project_board_destination dark schedule"))
         XCTAssertTrue(captureScript.contains("\"inbox-voice-intake-detail\""))
+        XCTAssertTrue(captureScript.contains("post_scroll_target_markers"))
+        XCTAssertTrue(captureScript.contains("wait_for_project_board_destination \"$label after scroll\" \"$post_scroll_target_markers\""))
         XCTAssertTrue(captureScript.contains("\"schedule-week-grid\""))
         XCTAssertTrue(captureScript.contains("\"schedule-workload-dashboard\""))
         XCTAssertTrue(captureScript.contains("capture_settings_sync light \"$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT\""))
@@ -8404,6 +8407,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("capture_settings_appearance system"))
         XCTAssertTrue(captureScript.contains("capture_mcp_settings_appearance system"))
         XCTAssertTrue(captureScript.contains("VOICE_COMMAND_SYSTEM_SCREENSHOT"))
+        XCTAssertTrue(captureScript.contains("set position of targetWindow to {originX, originY}"))
+        XCTAssertTrue(captureScript.contains("set size of targetWindow to {targetWidth, targetHeight}"))
+        XCTAssertFalse(captureScript.contains("set bounds of front window"))
+        XCTAssertTrue(captureScript.contains("wait_for_stable_ax_target_frame()"))
+        XCTAssertTrue(captureScript.contains("local stable_samples_required=3"))
+        XCTAssertTrue(captureScript.contains("target_frame_audit=\"$(wait_for_stable_ax_target_frame \"$target_identifier\" \"$window_name\")\""))
         XCTAssertTrue(scrollHelper.contains("app.processIdentifier == appPID"))
         XCTAssertTrue(scrollHelper.contains("identifier == targetIdentifier"))
         XCTAssertTrue(scrollHelper.contains("AXScrollToVisible"))

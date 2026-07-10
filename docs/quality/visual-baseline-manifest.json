@@ -3,7 +3,7 @@
   "artifactRoot": "docs/release/evidence/ui-screenshots",
   "baselineRoot": "docs/quality/visual-baselines",
   "baselineContext": {
-    "sourceCommit": "08dbedb455b633b031965bc2703a02fda8498542",
+    "sourceCommit": "2b5e3d13bb6b04cea71924866d07cab73beb1138",
     "normalRoute": "normal",
     "locale": "en-US",
     "timeZoneIdentifier": "UTC",
@@ -31,8 +31,8 @@
       "title": "Project Board",
       "themes": ["light", "dark", "system"],
       "viewport": {
-        "width": 1420,
-        "height": 860
+        "width": 1024,
+        "height": 674
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "project-board-detail",
@@ -47,8 +47,8 @@
       "title": "Inbox",
       "themes": ["light", "dark", "system"],
       "viewport": {
-        "width": 1420,
-        "height": 860
+        "width": 1024,
+        "height": 674
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "inbox-workflow",
@@ -63,8 +63,8 @@
       "title": "Today",
       "themes": ["light", "dark", "system"],
       "viewport": {
-        "width": 1420,
-        "height": 860
+        "width": 1024,
+        "height": 674
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "today-workflow",
@@ -79,8 +79,8 @@
       "title": "Inbox Voice",
       "themes": ["light", "dark"],
       "viewport": {
-        "width": 1420,
-        "height": 860
+        "width": 1024,
+        "height": 674
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "inbox-voice-intake-detail",
@@ -94,8 +94,8 @@
       "title": "Projects Overview",
       "themes": ["light", "dark"],
       "viewport": {
-        "width": 1420,
-        "height": 860
+        "width": 1024,
+        "height": 674
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "projects-portfolio-overview",
@@ -109,8 +109,8 @@
       "title": "Schedule",
       "themes": ["light", "dark"],
       "viewport": {
-        "width": 1420,
-        "height": 860
+        "width": 1024,
+        "height": 674
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "schedule-week-grid",
@@ -124,8 +124,8 @@
       "title": "Schedule Workload",
       "themes": ["light", "dark"],
       "viewport": {
-        "width": 1420,
-        "height": 860
+        "width": 1024,
+        "height": 674
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "schedule-workload-dashboard",
@@ -139,8 +139,8 @@
       "title": "Done",
       "themes": ["light", "dark"],
       "viewport": {
-        "width": 1420,
-        "height": 860
+        "width": 1024,
+        "height": 674
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "done-workflow",

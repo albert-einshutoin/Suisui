@@ -23,7 +23,7 @@ DONE_ANALYTICS_EVIDENCE_FILE="${SOLOPM_DONE_ANALYTICS_EVIDENCE_FILE:-$ROOT_DIR/d
 EVIDENCE_TMPDIR="${SOLOPM_UI_EVIDENCE_TMPDIR:-$ROOT_DIR/.tmp}"
 VISUAL_BASELINE_MANIFEST="$ROOT_DIR/docs/quality/visual-baseline-manifest.json"
 SOLOPM_VISUAL_AX_AUDIT_RESULT="${SOLOPM_VISUAL_AX_AUDIT_RESULT:-$EVIDENCE_TMPDIR/visual-ax-audit-receipt.json}"
-VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1420x860}"
+VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1024x674}"
 SETTINGS_VISUAL_BASELINE_VIEWPORT="${SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT:-720x712}"
 VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT="${SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT:-760x640}"
 TARGET_TIMEOUT_SECONDS="${SOLOPM_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS:-30}"
@@ -585,6 +585,36 @@ audit_ax_target_frame() {
   rm -f "$output_file" "$error_file"
 }
 
+wait_for_stable_ax_target_frame() {
+  local identifier="$1"
+  local window_name="$2"
+  local stable_samples_required=3
+  local stable_samples=0
+  local previous_sample=""
+  local current_sample
+  local deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
+
+  while [[ "$SECONDS" -lt "$deadline" ]]; do
+    if ! current_sample="$(audit_ax_target_frame "$identifier" "$window_name")"; then
+      return 1
+    fi
+    if [[ "$current_sample" == "$previous_sample" ]]; then
+      stable_samples=$((stable_samples + 1))
+    else
+      previous_sample="$current_sample"
+      stable_samples=1
+    fi
+    if [[ "$stable_samples" -ge "$stable_samples_required" ]]; then
+      printf '%s\n' "$current_sample"
+      return 0
+    fi
+    sleep 0.25
+  done
+
+  echo "AX target frame did not converge for screenshot evidence: $identifier" >&2
+  return 1
+}
+
 scroll_ax_target_into_view() {
   local identifier="$1"
   local label="$2"
@@ -705,7 +735,7 @@ position_window_for_capture() {
     return 2
   fi
 
-  /usr/bin/osascript - "$EVIDENCE_APP_PID" "$window_name" "$origin_x" "$origin_y" "$width" "$height" <<'APPLESCRIPT' >/dev/null 2>&1 || true
+  /usr/bin/osascript - "$EVIDENCE_APP_PID" "$window_name" "$origin_x" "$origin_y" "$width" "$height" <<'APPLESCRIPT' >/dev/null
 on run argv
   set appPID to item 1 of argv as integer
   set windowName to item 2 of argv
@@ -713,7 +743,6 @@ on run argv
   set originY to item 4 of argv as integer
   set targetWidth to item 5 of argv as integer
   set targetHeight to item 6 of argv as integer
-  set targetBounds to {originX, originY, originX + targetWidth, originY + targetHeight}
   tell application "System Events"
     set matchingProcesses to application processes whose unix id is appPID
     if (count of matchingProcesses) is 0 then return "missing"
@@ -721,10 +750,14 @@ on run argv
     tell targetProcess
       set frontmost to true
       if windowName is not "" then
-        if exists window windowName then set bounds of window windowName to targetBounds
+        if not (exists window windowName) then error "missing named evidence window: " & windowName
+        set targetWindow to window windowName
       else
-        if exists front window then set bounds of front window to targetBounds
+        if not (exists front window) then error "missing front evidence window"
+        set targetWindow to front window
       end if
+      set position of targetWindow to {originX, originY}
+      set size of targetWindow to {targetWidth, targetHeight}
     end tell
   end tell
 end run
@@ -1059,7 +1092,7 @@ persist_project_board_selection() {
   PROJECT_BOARD_SELECTION_OVERRIDE="project:$project_id"
   PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details=>Capture launch screenshots"
   INBOX_VOICE_TASK_OVERRIDE="$inbox_voice_task_id"
-  INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-make-task=>Inbox classification actions"
+  INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>Inbox classification actions"
   write_app_preference solopm.projectBoard.selectedDestination "$PROJECT_BOARD_SELECTION_OVERRIDE"
 }
 
@@ -1088,7 +1121,10 @@ capture_visible_window() {
   local window_context
   window_context="id=$window_id bounds=${window_width}x${window_height}+${window_x}+${window_y}"
   local target_frame_audit
-  target_frame_audit="$(audit_ax_target_frame "$target_identifier" "$window_name")"
+  # SwiftUI can publish the target before its wrapping text finishes layout.
+  # Bind the raster to a converged AX frame so repeated captures do not approve
+  # different subpixel layouts for the same product state.
+  target_frame_audit="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name")"
 
   if ! screencapture -x -l "$window_id" "$output_path"; then
     if ! screencapture -x -R "${window_x},${window_y},${window_width},${window_height}" "$output_path"; then
@@ -1271,6 +1307,7 @@ capture_project_board_destination() {
   local selected_task_id="${6:-}"
   local scroll_target_identifier="${7:-}"
   local target_audit_identifier="${8:-}"
+  local post_scroll_target_markers="${9:-}"
   local route_attempt
   local marker_diagnostic
   local launch_destination="$selected_destination"
@@ -1344,6 +1381,9 @@ capture_project_board_destination() {
   # distinct visual state instead of producing duplicate raster baselines.
   scroll_ax_target_into_view "$scroll_target_identifier" "$label"
   sleep 0.5
+  if [[ -n "$post_scroll_target_markers" ]]; then
+    wait_for_project_board_destination "$label after scroll" "$post_scroll_target_markers"
+  fi
 
   capture_visible_window "$appearance $label" "$output_path" "" "$target_audit_identifier"
 }
@@ -1824,7 +1864,8 @@ INBOX_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-action-panel=>$IN
 TODAY_TARGET_MARKERS="today-workflow=>$TODAY_ROUTE_LABEL|today-briefing-panel=>$TODAY_ROUTE_LABEL|today-assistant-rail=>$TODAY_ROUTE_LABEL"
 P0_INBOX_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-action-panel=>$INBOX_ROUTE_LABEL"
 P0_TODAY_TARGET_MARKERS="today-workflow=>$TODAY_ROUTE_LABEL|today-briefing-panel=>$TODAY_ROUTE_LABEL|today-assistant-rail=>$TODAY_ROUTE_LABEL"
-P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-make-task=>"
+INBOX_VOICE_ROUTE_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL"
+P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>Inbox classification actions"
 PROJECTS_TARGET_MARKERS="sidebar-destination-projects=>$PROJECTS_ROUTE_LABEL|projects-portfolio-overview=>$PROJECTS_ROUTE_LABEL"
 SCHEDULE_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-week-grid=>$WEEKLY_GRID_LABEL|schedule-week-time-axis-grid=>"
 SCHEDULE_COCKPIT_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-week-grid=>$WEEKLY_GRID_LABEL|schedule-week-time-axis-grid=>"
@@ -1840,8 +1881,8 @@ if [[ "$P0_WORKFLOWS" == "1" ]]; then
   capture_project_board_destination light today "$TODAY_LIGHT_SCREENSHOT" "Today" "$P0_TODAY_TARGET_MARKERS" "" "" "today-workflow"
   capture_project_board_destination dark today "$TODAY_DARK_SCREENSHOT" "Today" "$P0_TODAY_TARGET_MARKERS" "" "" "today-workflow"
   capture_project_board_destination system today "$TODAY_SYSTEM_SCREENSHOT" "Today" "$P0_TODAY_TARGET_MARKERS" "" "" "today-workflow"
-  capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$P0_INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail"
-  capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$P0_INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail"
+  capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_ROUTE_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail" "$P0_INBOX_VOICE_TARGET_MARKERS"
+  capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_ROUTE_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail" "$P0_INBOX_VOICE_TARGET_MARKERS"
 
   GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   write_p0_workflow_evidence_file "$GENERATED_AT" "$INBOX_LIGHT_SCREENSHOT" "$INBOX_DARK_SCREENSHOT" "$INBOX_SYSTEM_SCREENSHOT" "$TODAY_LIGHT_SCREENSHOT" "$TODAY_DARK_SCREENSHOT" "$TODAY_SYSTEM_SCREENSHOT" "$INBOX_VOICE_LIGHT_SCREENSHOT" "$INBOX_VOICE_DARK_SCREENSHOT"
@@ -1903,8 +1944,8 @@ capture_project_board_destination system today "$TODAY_SYSTEM_SCREENSHOT" "Today
 capture_voice_command_appearance light "$VOICE_COMMAND_LIGHT_SCREENSHOT"
 capture_voice_command_appearance dark "$VOICE_COMMAND_DARK_SCREENSHOT"
 capture_voice_command_appearance system "$VOICE_COMMAND_SYSTEM_SCREENSHOT"
-capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail"
-capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail"
+capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_ROUTE_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail" "$INBOX_VOICE_TARGET_MARKERS"
+capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_ROUTE_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail" "$INBOX_VOICE_TARGET_MARKERS"
 capture_project_board_destination light projects "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS" "" "" "projects-portfolio-overview"
 capture_project_board_destination dark projects "$PROJECTS_OVERVIEW_DARK_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS" "" "" "projects-portfolio-overview"
 capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS" "" "schedule-week-grid" "schedule-week-grid"
