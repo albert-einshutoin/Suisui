@@ -3275,11 +3275,12 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testRuntimeExecutionRegistryIncludesDeveloperWorkflowToolsForAssistantQueue() throws {
         let appSource = try readAppShellSource()
-        let coordinatorFactoryStart = try XCTUnwrap(appSource.range(of: "private static func makeAssistantQueueExecutionCoordinator("))
-        let coordinatorFactoryEnd = try XCTUnwrap(appSource.range(of: "@MainActor\n    static func makeMenuBarSummaryController()", range: coordinatorFactoryStart.upperBound..<appSource.endIndex))
-        let coordinatorFactory = String(appSource[coordinatorFactoryStart.lowerBound..<coordinatorFactoryEnd.lowerBound])
+        let projectRuntimeSource = try readPackageFile("Sources/SoloPMApp/Composition/ProjectBoardRuntimeFactory.swift")
+        let coordinatorFactoryStart = try XCTUnwrap(projectRuntimeSource.range(of: "private static func makeAssistantQueueExecutionCoordinator("))
+        let coordinatorFactoryEnd = try XCTUnwrap(projectRuntimeSource.range(of: "\n}\n\nprivate struct UnavailableProjectBoardStore", range: coordinatorFactoryStart.upperBound..<projectRuntimeSource.endIndex))
+        let coordinatorFactory = String(projectRuntimeSource[coordinatorFactoryStart.lowerBound..<coordinatorFactoryEnd.lowerBound])
         let registryFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeRuntimeToolRegistry("))
-        let registryFactory = String(appSource[registryFactoryStart.lowerBound..<coordinatorFactoryEnd.lowerBound])
+        let registryFactory = String(appSource[registryFactoryStart.lowerBound...])
 
         XCTAssertTrue(appSource.contains("static func makeRuntimeToolRegistry("))
         XCTAssertTrue(coordinatorFactory.contains("makeRuntimeToolRegistry(connection: connection, auditLogger: auditLogger)"))

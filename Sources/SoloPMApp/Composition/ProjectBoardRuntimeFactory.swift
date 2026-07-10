@@ -92,7 +92,10 @@ extension AppRuntimeFactory {
             return nil
         }
         do {
-            let auditLogger = try makeAuditLogger()
+            // Queue execution shares the already-migrated board connection so
+            // an explicit approval cannot open a second connection and rerun
+            // migrations while the visible board still owns active statements.
+            let auditLogger = RedactingAuditLogger(base: SQLiteAuditLogger(connection: connection))
             let registry = try makeRuntimeToolRegistry(connection: connection, auditLogger: auditLogger)
             return AssistantQueueExecutionCoordinator(
                 queueStore: assistantQueueStore,
