@@ -6572,6 +6572,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
         XCTAssertTrue(script.contains("source \"$AX_HELPERS\""))
         XCTAssertTrue(script.contains("LAYOUT_STABILITY_OUTPUT_DIR=\"${SOLOPM_LAYOUT_STABILITY_OUTPUT_DIR:-$ROOT_DIR/.tmp/layout-stability}\""))
+        XCTAssertTrue(script.contains("TIMEOUT_SECONDS=\"${SOLOPM_LAYOUT_STABILITY_TIMEOUT_SECONDS:-60}\""))
         XCTAssertTrue(script.contains("APP_BUNDLE_IDENTIFIER=\"${BUNDLE_IDENTIFIER:-}\""))
         XCTAssertTrue(script.contains("application processes whose bundle identifier is bundleID"))
         XCTAssertTrue(script.contains("LAYOUT_STABILITY_RUNTIME_DIR=\"${SOLOPM_LAYOUT_STABILITY_RUNTIME_DIR:-${TMPDIR:-/tmp}/solopm-layout-stability}\""))
