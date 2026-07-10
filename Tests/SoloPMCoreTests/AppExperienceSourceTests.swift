@@ -2426,7 +2426,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("TodayAISuggestionCard(plan: plan, viewModel: viewModel)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-ai-suggestion-card\")"))
         XCTAssertTrue(todayWorkflowSource.contains("let snapshot = viewModel.derivedReadModels.todayWorkflowSnapshot"))
-        XCTAssertTrue(todayWorkflowSource.contains("mainSurface(snapshot: snapshot)"))
+        XCTAssertTrue(todayWorkflowSource.contains("mainSurface(snapshot: snapshot, fillsAvailableHeight:"))
         XCTAssertTrue(todayWorkflowSource.contains("TodayAssistantRail("))
         XCTAssertTrue(todayWorkflowSource.contains("commandTitle: $commandTitle"))
         XCTAssertTrue(todayWorkflowSource.contains("context: snapshot.assistantContext"))

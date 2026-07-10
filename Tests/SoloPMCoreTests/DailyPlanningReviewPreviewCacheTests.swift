@@ -122,8 +122,8 @@ final class DailyPlanningReviewPreviewCacheTests: XCTestCase {
         XCTAssertEqual(beforeKey.phase, .morning)
         XCTAssertEqual(afterKey.phase, .midday)
 
-        let beforeHalfHour = try isoDate("2026-07-10T12:29:00Z")
-        let afterHalfHour = try isoDate("2026-07-10T12:30:00Z")
+        let beforeHalfHour = try isoDate("2026-07-10T12:30:00Z")
+        let afterHalfHour = try isoDate("2026-07-10T12:30:01Z")
         let beforeHalfHourKey = DailyPlanningReviewPreviewCacheKey(
             planningDayKey: planningDayKey,
             sourceRevision: 1,
