@@ -1866,6 +1866,9 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testWorkflowTaskRowKeepsCompletionAndSelectionAsSeparateAccessibilityButtons() throws {
         let workflowSource = try readProjectWorkflowSources()
+        let surfaceStart = try XCTUnwrap(workflowSource.range(of: "struct WorkflowTaskSurface"))
+        let surfaceEnd = try XCTUnwrap(workflowSource[surfaceStart.lowerBound...].range(of: "struct WorkflowDoneToggle"))
+        let surfaceSource = String(workflowSource[surfaceStart.lowerBound..<surfaceEnd.lowerBound])
         let rowStart = try XCTUnwrap(workflowSource.range(of: "private struct WorkflowTaskRow: View"))
         let rowEnd = try XCTUnwrap(workflowSource[rowStart.lowerBound...].range(of: "private var workflowAccessibilityValue"))
         let rowSource = String(workflowSource[rowStart.lowerBound..<rowEnd.lowerBound])
@@ -1881,6 +1884,14 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertTrue(rowSource.contains(".accessibilityIdentifier(\"workflow-task-completion-\\(task.id)\")"))
         XCTAssertTrue(rowSource.contains(".accessibilityIdentifier(\"workflow-task-row-\\(task.id)\")"))
+        XCTAssertFalse(
+            surfaceSource.contains(".draggable(String(task.id))"),
+            "Wrapping WorkflowTaskRow in a drag source strips its child button metadata from the normal macOS AX tree."
+        )
+        XCTAssertTrue(
+            rowSource.contains(".draggable(String(task.id))"),
+            "Keep drag-and-drop on the selection control so the sibling completion button remains accessible."
+        )
     }
 
     func testProjectDetailOrganizesTasksArtifactsTimelineAndSuggestions() throws {
