@@ -236,6 +236,17 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(screenshotCapture.contains("args+=(\"SOLOPM_LAUNCH_RECOVERY_MODE=1\")"))
     }
 
+    func testTodayProductionRouteSmokeDoesNotUseLaunchRecoveryAndChecksRealBoardMarkers() throws {
+        let source = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
+
+        XCTAssertFalse(source.contains("SOLOPM_LAUNCH_RECOVERY_MODE="))
+        XCTAssertTrue(source.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"today\""))
+        XCTAssertTrue(source.contains("ax_wait_for_ax_identifier \"$APP_NAME\" \"project-board-header-bar\""))
+        XCTAssertTrue(source.contains("ax_wait_for_ax_identifier \"$APP_NAME\" \"today-workflow\""))
+        XCTAssertTrue(source.contains("RUNTIME_TIMEOUT_SECONDS=10"))
+        XCTAssertTrue(source.contains("SOLOPM_LANGUAGE_PREFERENCE=\"$locale\""))
+    }
+
     func testDeadlineWatcherStaysOutOfEvidenceHarnessLaunches() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Composition/DeadlineWatcherRuntime.swift")
 

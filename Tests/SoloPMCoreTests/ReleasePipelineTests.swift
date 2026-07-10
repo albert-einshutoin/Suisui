@@ -6288,6 +6288,40 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("not implemented yet"))
     }
 
+    func testRuntimeTodayProductionRouteSmokeScriptDefinesIsolatedMatrixAndConvergenceGate() throws {
+        let script = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
+
+        XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
+        XCTAssertEqual(script.components(separatedBy: "./script/build_and_run.sh --build-only").count - 1, 1)
+        XCTAssertTrue(script.contains("FIXTURES=(\"empty\" \"small\")"))
+        XCTAssertTrue(script.contains("LOCALES=(\"en\" \"ja\")"))
+        XCTAssertTrue(script.contains("HOME=\"$case_home\""))
+        XCTAssertTrue(script.contains("CFFIXED_USER_HOME=\"$case_cf_user_home\""))
+        XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH=\"$database_path\""))
+        XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
+        XCTAssertTrue(script.contains("/usr/bin/env -i"))
+        XCTAssertFalse(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE="))
+        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"today\""))
+        XCTAssertTrue(script.contains("project-board-header-bar"))
+        XCTAssertTrue(script.contains("today-workflow"))
+        XCTAssertTrue(script.contains("CPU_SAMPLE_INTERVAL_SECONDS=1"))
+        XCTAssertTrue(script.contains("REQUIRED_CONSECUTIVE_CPU_SAMPLES=3"))
+        XCTAssertTrue(script.contains("MAX_CPU_PERCENT=20"))
+        XCTAssertTrue(script.contains("case_deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))"))
+        XCTAssertTrue(script.contains("cpu_convergence_gate"))
+        XCTAssertTrue(script.contains("ps -o %cpu="))
+        XCTAssertTrue(script.contains("sanitized-processes.txt"))
+        XCTAssertTrue(script.contains("sanitized-windows.txt"))
+        XCTAssertTrue(script.contains("ax-probes"))
+        XCTAssertTrue(script.contains("cpu-samples.tsv"))
+        XCTAssertTrue(script.contains("sample"))
+        XCTAssertTrue(script.contains("kill \"$app_pid\" >/dev/null 2>&1 || true"))
+        XCTAssertTrue(script.contains("wait \"$app_pid\" >/dev/null 2>&1 || true"))
+        XCTAssertTrue(script.contains("toolbar-recursion-diagnostic"))
+        XCTAssertFalse(script.contains(":memory:"))
+        XCTAssertFalse(script.contains("set -x"))
+    }
+
     func testRuntimeSettingsSaveSmokeScriptPersistsNonSecretSettingsToIsolatedUserDefaults() throws {
         let script = try readPackageFile("script/check_runtime_settings_save_smoke.sh")
         let helper = try readPackageFile("script/settings_save_smoke_check.swift")
