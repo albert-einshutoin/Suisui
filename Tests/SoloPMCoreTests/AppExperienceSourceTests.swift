@@ -832,6 +832,33 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(bridgeSource.contains("scheduleToolbarLayoutRefreshIfDisplayModeChanged()"))
     }
 
+    func testRuntimeDiagnosticsExposeOnlyStablePublicIntegerCounters() throws {
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let bridgeStart = try XCTUnwrap(boardSource.range(of: "private final class ProjectBoardToolbarLayoutBridgeView"))
+        let appKitEnd = try XCTUnwrap(boardSource.range(of: "#else", range: bridgeStart.upperBound..<boardSource.endIndex))
+        let bridgeSource = String(boardSource[bridgeStart.lowerBound..<appKitEnd.lowerBound])
+
+        XCTAssertTrue(coreSource.contains("Logger(subsystem: \"dev.solopm.app\""))
+        XCTAssertTrue(coreSource.contains("solopm.dailyPlanningPreview.buildCount="))
+        XCTAssertTrue(coreSource.contains("privacy: .public"))
+        XCTAssertTrue(coreSource.contains("projectBoardRuntimeDiagnosticLogger.notice"))
+        XCTAssertTrue(coreSource.contains("dailyPlanningReviewPreviewBuildCount += 1"))
+        XCTAssertTrue(coreSource.contains("dailyPlanningReviewPreviewCache.review(for: cacheKey) {"))
+
+        XCTAssertTrue(bridgeSource.contains("Logger(subsystem: \"dev.solopm.app\""))
+        XCTAssertTrue(bridgeSource.contains("solopm.toolbar.layout.maxDepth="))
+        XCTAssertTrue(bridgeSource.contains("privacy: .public"))
+        XCTAssertTrue(bridgeSource.contains("runtimeDiagnosticLogger.notice"))
+        XCTAssertTrue(bridgeSource.contains("private var toolbarLayoutReconcileDepth = 0"))
+        XCTAssertTrue(bridgeSource.contains("private var toolbarLayoutMaxDepth = 0"))
+        XCTAssertTrue(bridgeSource.contains("toolbarLayoutReconcileDepth += 1"))
+        XCTAssertTrue(bridgeSource.contains("toolbarLayoutMaxDepth = max(toolbarLayoutMaxDepth, toolbarLayoutReconcileDepth)"))
+        XCTAssertTrue(bridgeSource.contains("defer { toolbarLayoutReconcileDepth -= 1 }"))
+        XCTAssertTrue(bridgeSource.contains("guard isPerformingToolbarLayoutPass == false else"))
+        XCTAssertTrue(bridgeSource.contains("guard toolbarLayoutReconcileDepth == 1 else"))
+    }
+
     func testSynchronousUIMutationPolicyADRDefinesLayoutSensitiveBoundaries() throws {
         let adr = try readPackageFile("docs/adr/0009-synchronous-ui-mutation-policy.md")
 

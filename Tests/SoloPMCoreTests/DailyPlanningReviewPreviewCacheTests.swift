@@ -2,6 +2,24 @@ import XCTest
 @testable import SoloPMCore
 
 final class DailyPlanningReviewPreviewCacheTests: XCTestCase {
+    @MainActor
+    func testProjectBoardViewModelCountsOnlyDailyPlanningPreviewCacheMisses() {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        let referenceDate = Date(timeIntervalSince1970: 1_783_000_000)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+
+        viewModel.refreshDerivedReadModels(on: referenceDate, calendar: calendar)
+        XCTAssertEqual(viewModel.dailyPlanningReviewPreviewBuildCount, 1)
+
+        viewModel.refreshDerivedReadModels(on: referenceDate, calendar: calendar)
+        XCTAssertEqual(viewModel.dailyPlanningReviewPreviewBuildCount, 1)
+
+        viewModel.invalidateTodayWorkflowSnapshot(.taskMutation)
+        viewModel.refreshDerivedReadModels(on: referenceDate, calendar: calendar)
+        XCTAssertEqual(viewModel.dailyPlanningReviewPreviewBuildCount, 2)
+    }
+
     func testSamePlanningDayAndRevisionBuildsPreviewOnlyOnce() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Tokyo")!
