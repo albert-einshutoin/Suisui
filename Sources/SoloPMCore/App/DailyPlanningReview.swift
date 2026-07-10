@@ -79,13 +79,50 @@ public struct DailyPlanningReview: Codable, Equatable, Sendable {
     }
 }
 
+struct DailyPlanningReviewTimeBlockKey: Equatable, Sendable {
+    let year: Int
+    let month: Int
+    let day: Int
+    let hour: Int
+    let minute: Int
+    let utcOffset: Int
+
+    init(referenceDate: Date, calendar: Calendar) {
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: referenceDate)
+        self.year = components.year ?? 0
+        self.month = components.month ?? 0
+        self.day = components.day ?? 0
+        self.hour = components.hour ?? 0
+        // The review can change at half-hour boundaries even when the local day
+        // and source revision stay the same, so cache the normalized local
+        // boundary rather than only the PlanningDayKey.
+        self.minute = ((components.minute ?? 0) / 30) * 30
+        // Local wall-clock components alone collapse the two 01:30 values in a
+        // fall-back fold. The offset keeps both instants distinct and also
+        // records which side of a spring-forward skip produced this key.
+        self.utcOffset = calendar.timeZone.secondsFromGMT(for: referenceDate)
+    }
+}
+
 struct DailyPlanningReviewPreviewCacheKey: Equatable, Sendable {
     let planningDayKey: PlanningDayKey
     let sourceRevision: UInt64
+    let phase: DailyPlanningReviewPhase
+    let timeBlock: DailyPlanningReviewTimeBlockKey
 
-    init(planningDayKey: PlanningDayKey, sourceRevision: UInt64) {
+    init(
+        planningDayKey: PlanningDayKey,
+        sourceRevision: UInt64,
+        referenceDate: Date,
+        calendar: Calendar
+    ) {
         self.planningDayKey = planningDayKey
         self.sourceRevision = sourceRevision
+        self.phase = DailyPlanningReviewBuilder.phase(for: referenceDate, calendar: calendar)
+        self.timeBlock = DailyPlanningReviewTimeBlockKey(
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
     }
 }
 
@@ -165,7 +202,7 @@ public enum DailyPlanningReviewBuilder {
         )
     }
 
-    private static func phase(for date: Date, calendar: Calendar) -> DailyPlanningReviewPhase {
+    fileprivate static func phase(for date: Date, calendar: Calendar) -> DailyPlanningReviewPhase {
         let hour = calendar.component(.hour, from: date)
         switch hour {
         case 5..<12:

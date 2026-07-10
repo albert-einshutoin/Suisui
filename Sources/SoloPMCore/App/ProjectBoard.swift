@@ -611,7 +611,10 @@ public final class ProjectBoardViewModel: ObservableObject {
     // prevents SwiftUI re-evaluation and selection-only updates from rebuilding
     // the same review while still forcing a new value after board data changes.
     private var dailyPlanningReviewPreviewCache: DailyPlanningReviewPreviewCache
-    private var todaySnapshotSourceRevision: UInt64
+    // Keep this revision stable when an external change notification causes a
+    // second load of the same snapshot; otherwise one mutation invalidates the
+    // preview twice before SwiftUI has a chance to consume the first result.
+    private(set) var todaySnapshotSourceRevision: UInt64
     private var taskAutomationSessionHistory: TaskAutoExecutionHistory
 
     public init(
@@ -3704,30 +3707,14 @@ public final class ProjectBoardViewModel: ObservableObject {
             return
         }
 
-        let inputs = ProjectBoardDerivedReadModelInputs(
-            snapshot: snapshot,
-            showsCompletedWorkflowTasks: showsCompletedWorkflowTasks
-        )
-        let plan = todayPlan(on: referenceDate, calendar: derivedReadModelCalendar, inputs: inputs)
-        let workload = dailyWorkloadOverview(
-            around: referenceDate,
-            calendar: derivedReadModelCalendar,
-            inputs: inputs
-        )
-        let planningDayKey = PlanningDayKey(referenceDate: referenceDate, calendar: derivedReadModelCalendar)
+        // Selection and focus only change the assistant rail. Reusing the
+        // existing plan, preview, and chips avoids flattening every project and
+        // rebuilding the time-based review for each row selection on MainActor.
         var nextReadModels = derivedReadModels
-        nextReadModels.todayWorkflowSnapshot = todayWorkflowSnapshot(
-            from: plan,
-            on: referenceDate,
-            calendar: derivedReadModelCalendar,
-            planningDayKey: planningDayKey,
-            dailyPlanningReviewPreview: makeCachedDailyPlanningReviewPreview(
-                plan: plan,
-                workload: workload,
-                referenceDate: referenceDate,
-                calendar: derivedReadModelCalendar,
-                planningDayKey: planningDayKey
-            )
+        nextReadModels.todayWorkflowSnapshot.assistantContext = todayAssistantRailContext(
+            plan: nextReadModels.todayWorkflowSnapshot.plan,
+            referenceDate: referenceDate,
+            calendar: derivedReadModelCalendar
         )
         derivedReadModels = nextReadModels
     }
@@ -3741,7 +3728,9 @@ public final class ProjectBoardViewModel: ObservableObject {
     ) -> DailyPlanningReview {
         let cacheKey = DailyPlanningReviewPreviewCacheKey(
             planningDayKey: planningDayKey,
-            sourceRevision: todaySnapshotSourceRevision
+            sourceRevision: todaySnapshotSourceRevision,
+            referenceDate: referenceDate,
+            calendar: calendar
         )
         return dailyPlanningReviewPreviewCache.review(for: cacheKey) {
             // Cache at the derived-model boundary: task/project mutations and
@@ -3807,7 +3796,12 @@ public final class ProjectBoardViewModel: ObservableObject {
         calendar: Calendar = .current
     ) -> TodayWorkflowSnapshot {
         let plan = todayPlan(on: referenceDate, calendar: calendar)
-        return todayWorkflowSnapshot(from: plan, on: referenceDate, calendar: calendar)
+        return todayWorkflowSnapshot(
+            from: plan,
+            on: referenceDate,
+            calendar: calendar,
+            planningDayKey: PlanningDayKey(referenceDate: referenceDate, calendar: calendar)
+        )
     }
 
     private func todayWorkflowSnapshot(
@@ -3816,14 +3810,19 @@ public final class ProjectBoardViewModel: ObservableObject {
         inputs: ProjectBoardDerivedReadModelInputs
     ) -> TodayWorkflowSnapshot {
         let plan = todayPlan(on: referenceDate, calendar: calendar, inputs: inputs)
-        return todayWorkflowSnapshot(from: plan, on: referenceDate, calendar: calendar)
+        return todayWorkflowSnapshot(
+            from: plan,
+            on: referenceDate,
+            calendar: calendar,
+            planningDayKey: PlanningDayKey(referenceDate: referenceDate, calendar: calendar)
+        )
     }
 
     private func todayWorkflowSnapshot(
         from plan: TodayWorkflowPlan,
         on referenceDate: Date,
         calendar: Calendar,
-        planningDayKey: PlanningDayKey = .empty,
+        planningDayKey: PlanningDayKey,
         dailyPlanningReviewPreview: DailyPlanningReview? = nil
     ) -> TodayWorkflowSnapshot {
         return TodayWorkflowSnapshot(
@@ -4104,7 +4103,10 @@ public final class ProjectBoardViewModel: ObservableObject {
             return false
         }
 
-        let review = currentDailyPlanningReview
+        // An explicit action request owns its transcript/date/calendar. Only a
+        // previously prepared review may override those arguments; the passive
+        // Today preview must never silently become an action input.
+        let review = dailyPlanningReview
             ?? makeDailyPlanningReview(
                 transcript: transcript,
                 on: referenceDate,
@@ -4393,7 +4395,9 @@ public final class ProjectBoardViewModel: ObservableObject {
         on referenceDate: Date = Date(),
         calendar: Calendar = .current
     ) async -> Bool {
-        let review = currentDailyPlanningReview
+        // Readout callers with explicit inputs must receive a review built from
+        // those inputs unless the user already prepared an explicit review.
+        let review = dailyPlanningReview
             ?? makeDailyPlanningReview(
                 transcript: transcript,
                 on: referenceDate,
@@ -6067,8 +6071,13 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     public func load() {
+        load(invalidationReason: nil)
+    }
+
+    private func load(invalidationReason: TodaySnapshotInvalidationReason?) {
         do {
             let loadedSnapshot = try store.loadSnapshot(includeArchived: showsArchivedProjects)
+            let snapshotChanged = loadedSnapshot != snapshot
             let captureCacheErrorMessage = refreshInboxCaptureCache(for: loadedSnapshot)
             let assistantQueueErrorMessage = refreshAssistantQueueSnapshot()
             resetScopedExecutionReceiptHistorySnapshots()
@@ -6083,11 +6092,16 @@ public final class ProjectBoardViewModel: ObservableObject {
                 self.selectedTaskID = nil
             }
             refreshGoogleCalendarSyncStatus()
-            invalidateTodayWorkflowSnapshot(.storeReload)
-            if let referenceDate = derivedReadModelReferenceDate {
-                rebuildDerivedReadModels(on: referenceDate, calendar: derivedReadModelCalendar)
-            } else {
-                rebuildDerivedReadModels()
+            if snapshotChanged || invalidationReason != nil || derivedReadModelReferenceDate == nil {
+                // A mutation followed by its own board-change notification can
+                // load the same snapshot twice. Rebuild only on the first load
+                // so one logical mutation advances the preview revision once.
+                invalidateTodayWorkflowSnapshot(invalidationReason ?? .storeReload)
+                if let referenceDate = derivedReadModelReferenceDate {
+                    rebuildDerivedReadModels(on: referenceDate, calendar: derivedReadModelCalendar)
+                } else {
+                    rebuildDerivedReadModels()
+                }
             }
             errorMessage = assistantQueueErrorMessage ?? captureCacheErrorMessage
         } catch {
@@ -6804,8 +6818,11 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     public func setShowsCompletedWorkflowTasks(_ isShown: Bool) {
+        guard showsCompletedWorkflowTasks != isShown else {
+            return
+        }
         showsCompletedWorkflowTasks = isShown
-        load()
+        load(invalidationReason: .completedVisibilityChanged)
     }
 
     public func exportTaskInteropJSON(exportedAt: Date = Date()) -> Data? {

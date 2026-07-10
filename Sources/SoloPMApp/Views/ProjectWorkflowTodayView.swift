@@ -75,7 +75,7 @@ struct TodayWorkflowView: View {
                     plan: snapshot.plan,
                     recommendationChips: snapshot.recommendationChips,
                     viewModel: viewModel,
-                    dailyPlanningReview: viewModel.currentDailyPlanningReview,
+                    dailyPlanningReview: viewModel.dailyPlanningReview ?? snapshot.dailyPlanningReviewPreview,
                     playDailyPlanningReadout: playDailyPlanningReadout
                 )
             },

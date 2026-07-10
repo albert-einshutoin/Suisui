@@ -46,6 +46,7 @@ struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel: ProjectBoardViewModel
     private let taskAutomationSettings: () -> TaskAutoExecutionSettings
     private let appSettings: () -> AppSettings
@@ -332,6 +333,21 @@ struct ProjectBoardView: View {
             consumePendingVoiceDailyPlanningReviewRequestIfNeeded()
             consumePendingVoiceInboxTriageRequestIfNeeded()
             consumePendingAssistantQueueRequestIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+            viewModel.refreshDerivedReadModels()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
+            viewModel.refreshDerivedReadModels()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCurrentLocaleDidChange)) { _ in
+            viewModel.refreshDerivedReadModels()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else {
+                return
+            }
+            viewModel.refreshDerivedReadModels()
         }
         .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
             viewModel.load()
