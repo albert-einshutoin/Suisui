@@ -21,6 +21,7 @@ KEEP_DATABASE="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
 SQLITE_BUSY_TIMEOUT_MS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS:-5000}"
 DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS:-10}"
+FORM_POSTCONDITION_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_FORM_POSTCONDITION_TIMEOUT_SECONDS:-10}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_TEXT_INPUT_HELPER="${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}"
 AX_SCROLL_HELPER="${AX_SCROLL_HELPER:-$ROOT_DIR/script/ui_evidence_ax_scroll_container.swift}"
@@ -38,6 +39,11 @@ fi
 
 if [[ ! "$DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS must be a positive integer" >&2
+  exit 2
+fi
+
+if [[ ! "$FORM_POSTCONDITION_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$FORM_POSTCONDITION_TIMEOUT_SECONDS" -lt 1 ]]; then
+  echo "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_FORM_POSTCONDITION_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
@@ -703,14 +709,13 @@ pressButtonUntilTextFieldContaining() {
   while true; do
     pressButtonContaining "$button_fragment"
 
-    local postcondition_deadline=$((SECONDS + 3))
+    # A successful AXPress can consume the phase timeout while SwiftUI is
+    # rebuilding its window. Give the resulting form its own bounded window so
+    # a real press is not misclassified as a failure before the field appears.
+    local postcondition_deadline=$((SECONDS + FORM_POSTCONDITION_TIMEOUT_SECONDS))
     while true; do
       if textFieldContainingExists "$field_fragment"; then
         return 0
-      fi
-      if [[ "$SECONDS" -ge "$deadline" ]]; then
-        echo "BLOCKER: text field did not appear after pressing '$button_fragment': $field_fragment" >&2
-        return 1
       fi
       if [[ "$SECONDS" -ge "$postcondition_deadline" ]]; then
         break
@@ -719,6 +724,11 @@ pressButtonUntilTextFieldContaining() {
       wait_for_visible_windows >/dev/null 2>&1 || true
       sleep 1
     done
+
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: text field did not appear after pressing '$button_fragment': $field_fragment" >&2
+      return 1
+    fi
 
     printf "INFO: text field '%s' did not appear after pressing '%s'; retrying AX press.\n" "$field_fragment" "$button_fragment" >&2
     sleep 1
