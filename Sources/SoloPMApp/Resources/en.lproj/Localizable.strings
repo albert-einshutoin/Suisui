@@ -1096,6 +1096,7 @@
 "Missed %d, blocked %d, unscheduled %d, Inbox %d" = "Missed %d, blocked %d, unscheduled %d, Inbox %d";
 "%d tasks, %d open, %d in progress, %d blocked, %d done, %d missed, %d percent complete" = "%d tasks, %d open, %d in progress, %d blocked, %d done, %d missed, %d percent complete";
 "Daily Planning Review" = "Daily Planning Review";
+"Preparing Daily Planning Review…" = "Preparing Daily Planning Review…";
 "Daily Planning Review action is already in Assistant Queue." = "Daily Planning Review action is already in Assistant Queue.";
 "Daily Planning Review generated an invalid action plan." = "Daily Planning Review generated an invalid action plan.";
 "Daily Planning Review has no recommended task to queue." = "Daily Planning Review has no recommended task to queue.";
