@@ -21,6 +21,7 @@ APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 SQLITE3="${SQLITE3:-sqlite3}"
 RUNTIME_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS:-10}"
+CPU_CONVERGENCE_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_TODAY_CPU_CONVERGENCE_TIMEOUT_SECONDS:-10}"
 CPU_SAMPLE_INTERVAL_SECONDS=1
 REQUIRED_CONSECUTIVE_CPU_SAMPLES=3
 MAX_CPU_PERCENT=20
@@ -33,6 +34,11 @@ AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 
 if [[ ! "$RUNTIME_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$RUNTIME_TIMEOUT_SECONDS" -lt 3 ]]; then
   echo "SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS must be an integer of at least 3" >&2
+  exit 2
+fi
+
+if [[ ! "$CPU_CONVERGENCE_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$CPU_CONVERGENCE_TIMEOUT_SECONDS" -lt 3 ]]; then
+  echo "SOLOPM_RUNTIME_TODAY_CPU_CONVERGENCE_TIMEOUT_SECONDS must be an integer of at least 3" >&2
   exit 2
 fi
 
@@ -284,7 +290,7 @@ cpu_convergence_gate() {
 
   while [[ "$SECONDS" -le "$case_deadline" ]]; do
     sample_index=$((sample_index + 1))
-    elapsed=$((RUNTIME_TIMEOUT_SECONDS - (case_deadline - SECONDS)))
+    elapsed=$((CPU_CONVERGENCE_TIMEOUT_SECONDS - (case_deadline - SECONDS)))
     cpu_percent="$(cpu_percent_for_app || true)"
     if [[ "$cpu_percent" =~ ^[0-9]+([.][0-9]+)?$ ]] && awk -v cpu="$cpu_percent" -v max="$MAX_CPU_PERCENT" 'BEGIN { exit !(cpu <= max) }'; then
       consecutive=$((consecutive + 1))
@@ -339,6 +345,10 @@ run_case() {
     capture_failure_artifact "today-route-marker-timeout"
     return 1
   fi
+  # AX probes compile and traverse accessibility state inside the route-ready
+  # budget. CPU stabilization is a separate post-ready acceptance condition,
+  # so it needs its own bounded window and must always collect real samples.
+  case_deadline=$((SECONDS + CPU_CONVERGENCE_TIMEOUT_SECONDS))
   if ! cpu_convergence_gate; then
     capture_failure_artifact "cpu-convergence-timeout"
     return 1
