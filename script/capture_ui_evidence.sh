@@ -60,6 +60,9 @@ SETTINGS_WINDOW_OVERRIDE=""
 SETTINGS_TAB_OVERRIDE=""
 VOICE_COMMAND_WINDOW_OVERRIDE=""
 EVIDENCE_APP_PID=""
+EVIDENCE_APP_LAUNCH_PID=""
+EVIDENCE_APP_IDENTITY=""
+EVIDENCE_APP_LAUNCH_IDENTITY=""
 DATABASE_PATH=""
 
 for arg in "$@"; do
@@ -271,31 +274,44 @@ open_evidence_app() {
     -AppleLanguages "$APPLE_LANGUAGES" \
     -AppleLocale "$APPLE_LOCALE" \
     >/dev/null 2>&1 &
-  EVIDENCE_APP_PID=$!
+  EVIDENCE_APP_LAUNCH_PID=$!
+  EVIDENCE_APP_PID="$EVIDENCE_APP_LAUNCH_PID"
+  EVIDENCE_APP_LAUNCH_IDENTITY="$(ax_wait_for_owned_process_identity "$EVIDENCE_APP_LAUNCH_PID" "$APP_BINARY" 3)" || return 1
+  EVIDENCE_APP_IDENTITY="$EVIDENCE_APP_LAUNCH_IDENTITY"
 }
 
 wait_for_app_process_exit() {
-  [[ -z "${EVIDENCE_APP_PID:-}" ]]
+  [[ -z "${EVIDENCE_APP_PID:-}" && -z "${EVIDENCE_APP_LAUNCH_PID:-}" ]]
 }
 
 stop_evidence_app() {
-  if [[ -n "$EVIDENCE_APP_PID" ]]; then
-    kill "$EVIDENCE_APP_PID" >/dev/null 2>&1 || true
-    wait "$EVIDENCE_APP_PID" >/dev/null 2>&1 || true
-    EVIDENCE_APP_PID=""
+  local owned_pid="${EVIDENCE_APP_PID:-}"
+  local launch_pid="${EVIDENCE_APP_LAUNCH_PID:-}"
+  if [[ -n "$owned_pid" ]]; then
+    ax_terminate_owned_process "$owned_pid" "$APP_BINARY" "${EVIDENCE_APP_IDENTITY:-}"
   fi
+  if [[ -n "$launch_pid" && "$launch_pid" != "$owned_pid" ]]; then
+    ax_terminate_owned_process "$launch_pid" "$APP_BINARY" "${EVIDENCE_APP_LAUNCH_IDENTITY:-}"
+  fi
+  EVIDENCE_APP_PID=""
+  EVIDENCE_APP_LAUNCH_PID=""
+  EVIDENCE_APP_IDENTITY=""
+  EVIDENCE_APP_LAUNCH_IDENTITY=""
   wait_for_app_process_exit
 }
 
 activate_evidence_app() {
   # Avoid LaunchServices activation; it can start a second app instance without
   # the isolated screenshot database, target selection, or appearance env.
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
+  /usr/bin/osascript - "$EVIDENCE_APP_PID" "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
-  set appName to item 1 of argv
+  set appPID to item 1 of argv as integer
+  set appName to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then return "missing"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then return "missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set frontmost to true
       if (count of windows) > 0 then
         try
@@ -325,6 +341,7 @@ wait_for_process() {
       echo "$APP_NAME did not launch as expected pid $EVIDENCE_APP_PID." >&2
       exit 1
     }
+    EVIDENCE_APP_IDENTITY="$(ax_wait_for_owned_process_identity "$EVIDENCE_APP_PID" "$APP_BINARY" 3)" || return 1
     ax_wait_for_pid_owned_process "$APP_NAME" "$EVIDENCE_APP_PID" "$TARGET_TIMEOUT_SECONDS" "$APP_BINARY"
     ax_wait_for_pid_owned_window "$APP_NAME" "$EVIDENCE_APP_PID" "" "$TARGET_TIMEOUT_SECONDS" "" "$APP_BINARY"
     return
@@ -348,6 +365,7 @@ wait_for_database() {
 find_window_capture_metadata() {
   local window_name="${1:-}"
   SOLOPM_WINDOW_OWNER="$APP_NAME" \
+    SOLOPM_WINDOW_OWNER_PID="$EVIDENCE_APP_PID" \
     SOLOPM_WINDOW_NAME="$window_name" \
     /usr/bin/swift "$ROOT_DIR/script/ui_evidence_window_metadata.swift"
 }
@@ -583,50 +601,53 @@ wait_for_project_board_destination() {
   done
 }
 
-visual_baseline_bounds() {
-  local viewport="$1"
-  local origin_x="$2"
-  local origin_y="$3"
-  local width="${viewport%x*}"
-  local height="${viewport#*x}"
-
-  if [[ ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
-    echo "invalid viewport: $viewport" >&2
-    exit 2
-  fi
-
-  printf '{%s, %s, %s, %s}' "$origin_x" "$origin_y" "$((origin_x + width))" "$((origin_y + height))"
-}
-
 position_window_for_capture() {
   local window_name="${1:-}"
-  local bounds
+  local viewport="$VISUAL_BASELINE_VIEWPORT"
+  local origin_x=80
+  local origin_y=70
 
   if [[ "$window_name" == "Voice Command" ]]; then
-    bounds="$(visual_baseline_bounds "$VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT" 160 140)"
-    /usr/bin/osascript \
-      -e 'tell application "System Events"' \
-      -e "tell process \"$APP_NAME\"" \
-      -e "if exists window \"$window_name\" then set bounds of window \"$window_name\" to $bounds" \
-      -e 'end tell' \
-      -e 'end tell' >/dev/null 2>&1 || true
+    viewport="$VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT"
+    origin_x=160
+    origin_y=140
   elif [[ -n "$window_name" ]]; then
-    bounds="$(visual_baseline_bounds "$SETTINGS_VISUAL_BASELINE_VIEWPORT" 120 90)"
-    /usr/bin/osascript \
-      -e 'tell application "System Events"' \
-      -e "tell process \"$APP_NAME\"" \
-      -e "if exists window \"$window_name\" then set bounds of window \"$window_name\" to $bounds" \
-      -e 'end tell' \
-      -e 'end tell' >/dev/null 2>&1 || true
-  else
-    bounds="$(visual_baseline_bounds "$VISUAL_BASELINE_VIEWPORT" 80 70)"
-    /usr/bin/osascript \
-      -e 'tell application "System Events"' \
-      -e "tell process \"$APP_NAME\"" \
-      -e "if exists front window then set bounds of front window to $bounds" \
-      -e 'end tell' \
-      -e 'end tell' >/dev/null 2>&1 || true
+    viewport="$SETTINGS_VISUAL_BASELINE_VIEWPORT"
+    origin_x=120
+    origin_y=90
   fi
+
+  local width="${viewport%x*}"
+  local height="${viewport#*x}"
+  if [[ ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
+    echo "invalid viewport: $viewport" >&2
+    return 2
+  fi
+
+  /usr/bin/osascript - "$EVIDENCE_APP_PID" "$window_name" "$origin_x" "$origin_y" "$width" "$height" <<'APPLESCRIPT' >/dev/null 2>&1 || true
+on run argv
+  set appPID to item 1 of argv as integer
+  set windowName to item 2 of argv
+  set originX to item 3 of argv as integer
+  set originY to item 4 of argv as integer
+  set targetWidth to item 5 of argv as integer
+  set targetHeight to item 6 of argv as integer
+  set targetBounds to {originX, originY, originX + targetWidth, originY + targetHeight}
+  tell application "System Events"
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then return "missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
+      set frontmost to true
+      if windowName is not "" then
+        if exists window windowName then set bounds of window windowName to targetBounds
+      else
+        if exists front window then set bounds of front window to targetBounds
+      end if
+    end tell
+  end tell
+end run
+APPLESCRIPT
 }
 
 assert_screenshot_has_visible_content() {

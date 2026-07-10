@@ -18,6 +18,7 @@ APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS:-60}"
 KEEP_DATABASE="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE:-0}"
+ARTIFACT_DIR="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_ARTIFACT_DIR:-}"
 SQLITE3="${SQLITE3:-sqlite3}"
 SQLITE_BUSY_TIMEOUT_MS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS:-5000}"
 DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS:-10}"
@@ -67,29 +68,52 @@ execution_task_id=""
 cascade_task_id=""
 app_pid=""
 app_launch_pid=""
+app_identity=""
+app_launch_identity=""
+CRUD_STATUS="failed"
+
+write_artifact_summary() {
+  [[ -n "$ARTIFACT_DIR" ]] || return 0
+  mkdir -p "$ARTIFACT_DIR"
+  printf 'gate=runtime-accessible-crud\nstatus=%s\n' "$CRUD_STATUS" >"$ARTIFACT_DIR/summary.env"
+}
 
 terminate_app() {
-  if [[ -n "${app_pid:-}" ]]; then
-    kill "$app_pid" >/dev/null 2>&1 || true
-    wait "$app_pid" >/dev/null 2>&1 || true
-    app_pid=""
+  local owned_pid="${app_pid:-}"
+  local launch_pid="${app_launch_pid:-}"
+  if [[ -n "$owned_pid" ]]; then
+    ax_terminate_owned_process "$owned_pid" "$APP_BINARY" "${app_identity:-}"
   fi
+  if [[ -n "$launch_pid" && "$launch_pid" != "$owned_pid" ]]; then
+    ax_terminate_owned_process "$launch_pid" "$APP_BINARY" "${app_launch_identity:-}"
+  fi
+  app_pid=""
   app_launch_pid=""
+  app_identity=""
+  app_launch_identity=""
 }
 
 cleanup() {
+  local exit_code=$?
   terminate_app
+  write_artifact_summary
   if [[ "$KEEP_DATABASE" != "1" ]]; then
     rm -rf "$tmp_dir"
   else
     printf "INFO: kept runtime accessible CRUD database at %s\n" "$database_path"
   fi
+  return "$exit_code"
 }
 trap cleanup EXIT
 
 wait_for_app_process() {
   app_pid="$(ax_wait_for_owned_app_pid "$app_launch_pid" "$APP_BINARY" "$TIMEOUT_SECONDS")" || {
+    ax_emit_failure_category "launch" "runtime-crud-owned-pid-unavailable"
     echo "BLOCKER: $APP_NAME did not launch from pid $app_launch_pid" >&2
+    return 1
+  }
+  app_identity="$(ax_wait_for_owned_process_identity "$app_pid" "$APP_BINARY" 3)" || {
+    ax_emit_failure_category "launch" "runtime-crud-owned-identity-unavailable"
     return 1
   }
   ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$TIMEOUT_SECONDS" "$APP_BINARY"
@@ -104,12 +128,15 @@ wait_for_no_app_process() {
 activate_app() {
   # Keep activation inside System Events so LaunchServices does not start a
   # second app instance without the isolated SQLite/keychain test environment.
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
+  /usr/bin/osascript - "$app_pid" "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
-  set appName to item 1 of argv
+  set appPID to item 1 of argv as integer
+  set appName to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then return "missing"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then return "missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set frontmost to true
       if (count of windows) > 0 then
         try
@@ -145,6 +172,7 @@ launch_app_for_database_migration() {
   terminate_app
   /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="projects" "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_launch_pid=$!
+  app_launch_identity="$(ax_wait_for_owned_process_identity "$app_launch_pid" "$APP_BINARY" 3)" || return 1
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -167,6 +195,7 @@ launch_app_for_seed_project() {
       "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   fi
   app_launch_pid=$!
+  app_launch_identity="$(ax_wait_for_owned_process_identity "$app_launch_pid" "$APP_BINARY" 3)" || return 1
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -179,6 +208,7 @@ launch_app_for_crud_mutation() {
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="projects" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_launch_pid=$!
+  app_launch_identity="$(ax_wait_for_owned_process_identity "$app_launch_pid" "$APP_BINARY" 3)" || return 1
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -341,13 +371,16 @@ pressButtonContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT'
+    if /usr/bin/osascript - "$app_pid" "$APP_NAME" "$fragment" <<'APPLESCRIPT'
 on run argv
-  set appName to item 1 of argv
-  set fragment to item 2 of argv
+  set appPID to item 1 of argv as integer
+  set appName to item 2 of argv
+  set fragment to item 3 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error appName & " pid " & appPID & " is not visible to System Events"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set windowCount to count of windows
       if windowCount < 1 then error appName & " has no visible windows"
       try
@@ -431,15 +464,18 @@ pressConfirmationButtonContaining() {
       printf "pressed confirmation %s\n" "$fragment"
       return 0
     fi
-    if /usr/bin/osascript - "$APP_NAME" "$fragment" "$fallback_fragment" "$excluded_help" <<'APPLESCRIPT'
+    if /usr/bin/osascript - "$app_pid" "$APP_NAME" "$fragment" "$fallback_fragment" "$excluded_help" <<'APPLESCRIPT'
 on run argv
-  set appName to item 1 of argv
-  set fragment to item 2 of argv
-  set fallbackFragment to item 3 of argv
-  set excludedHelp to item 4 of argv
+  set appPID to item 1 of argv as integer
+  set appName to item 2 of argv
+  set fragment to item 3 of argv
+  set fallbackFragment to item 4 of argv
+  set excludedHelp to item 5 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error appName & " pid " & appPID & " is not visible to System Events"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set windowCount to count of windows
       if windowCount < 1 then error appName & " has no visible windows"
       try
@@ -563,13 +599,16 @@ waitForTextFieldContaining() {
 
 textFieldContainingExists() {
   local fragment="$1"
-  /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT' >/dev/null 2>&1
+  /usr/bin/osascript - "$app_pid" "$APP_NAME" "$fragment" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
-  set appName to item 1 of argv
-  set fragment to item 2 of argv
+  set appPID to item 1 of argv as integer
+  set appName to item 2 of argv
+  set fragment to item 3 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error appName & " pid " & appPID & " is not visible to System Events"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set windowCount to count of windows
       if windowCount < 1 then error appName & " has no visible windows"
       try
@@ -629,15 +668,18 @@ waitForAXElementContaining() {
   local required_text_two="$3"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$identifier_fragment" "$required_text_one" "$required_text_two" <<'APPLESCRIPT' >/dev/null 2>&1
+    if /usr/bin/osascript - "$app_pid" "$APP_NAME" "$identifier_fragment" "$required_text_one" "$required_text_two" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
-  set appName to item 1 of argv
-  set identifierFragment to item 2 of argv
-  set requiredTextOne to item 3 of argv
-  set requiredTextTwo to item 4 of argv
+  set appPID to item 1 of argv as integer
+  set appName to item 2 of argv
+  set identifierFragment to item 3 of argv
+  set requiredTextOne to item 4 of argv
+  set requiredTextTwo to item 5 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error appName & " pid " & appPID & " is not visible to System Events"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set windowCount to count of windows
       if windowCount < 1 then error appName & " has no visible windows"
       try
@@ -832,4 +874,5 @@ pressButtonUntilSQLiteValue "completed project" "project-inspector-complete" "SE
 pressDestructiveButtonUntilSQLiteValue "deleted project" "project-inspector-delete" "project-inspector-delete-confirmation-confirm" "Confirm Delete Project" "" "SELECT count(*) FROM projects WHERE id=$created_project_id;" "0" "1"
 verify_single_value "deleted task cascade" "SELECT count(*) FROM tasks WHERE id=$cascade_task_id OR project_id=$created_project_id;" "0"
 
+CRUD_STATUS="passed"
 printf "OK: runtime accessible CRUD smoke created, renamed, completed, and deleted a project, then created, updated, moved, executed approved task content with a readable AX receipt, directly deleted, and cascade-deleted tasks through the visible app\n"

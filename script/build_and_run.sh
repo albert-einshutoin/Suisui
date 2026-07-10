@@ -164,6 +164,74 @@ cleanup_build_and_run() {
   cleanup_build_and_run_tmpdir
 }
 
+# BEGIN INTERACTIVE DIST APP OWNERSHIP HELPERS
+dist_app_process_identity() {
+  local app_pid="$1"
+  local process_command
+  local process_start
+
+  [[ "$app_pid" =~ ^[0-9]+$ && "$app_pid" -gt 0 ]] || return 1
+  process_command="$(ps -p "$app_pid" -o command= 2>/dev/null)" || return 1
+  process_command="${process_command#"${process_command%%[![:space:]]*}"}"
+  case "$process_command" in
+    "$APP_BINARY"|"$APP_BINARY "*) ;;
+    *) return 1 ;;
+  esac
+
+  # The start token prevents a PID reused after TERM from inheriting the
+  # original process's bounded KILL fallback, even when the new process happens
+  # to execute the same dist binary.
+  process_start="$(ps -p "$app_pid" -o lstart= 2>/dev/null)" || return 1
+  process_start="${process_start#"${process_start%%[![:space:]]*}"}"
+  [[ -n "$process_start" ]] || return 1
+  printf '%s\t%s\n' "$process_start" "$process_command"
+}
+
+dist_app_process_matches_identity() {
+  local app_pid="$1"
+  local expected_identity="$2"
+  local current_identity
+
+  current_identity="$(dist_app_process_identity "$app_pid")" || return 1
+  [[ "$current_identity" == "$expected_identity" ]]
+}
+
+terminate_existing_dist_app_for_interactive_mode() {
+  local app_pid
+  local process_identity
+  local deadline
+
+  while IFS= read -r app_pid; do
+    [[ -n "$app_pid" ]] || continue
+    process_identity="$(dist_app_process_identity "$app_pid")" || continue
+
+    # Recheck immediately before every signal. Name-only process discovery is
+    # intentionally insufficient because another SoloPM binary belongs to the
+    # user, not to this dist rebuild.
+    if ! dist_app_process_matches_identity "$app_pid" "$process_identity"; then
+      continue
+    fi
+    kill -TERM "$app_pid" >/dev/null 2>&1 || true
+
+    deadline=$((SECONDS + 3))
+    while dist_app_process_matches_identity "$app_pid" "$process_identity" && [[ "$SECONDS" -lt "$deadline" ]]; do
+      sleep 0.1
+    done
+    if dist_app_process_matches_identity "$app_pid" "$process_identity"; then
+      kill -KILL "$app_pid" >/dev/null 2>&1 || true
+    fi
+  done < <(pgrep -x "$APP_NAME" 2>/dev/null || true)
+}
+
+stop_existing_dist_apps_for_mode() {
+  case "$MODE" in
+    run|--debug|debug|--logs|logs|--telemetry|telemetry)
+      terminate_existing_dist_app_for_interactive_mode
+      ;;
+  esac
+}
+# END INTERACTIVE DIST APP OWNERSHIP HELPERS
+
 copy_app_localizations() {
   if [[ ! -d "$APP_LOCALIZATION_SOURCE" ]]; then
     return
@@ -201,7 +269,7 @@ acquire_build_and_run_lock() {
 trap cleanup_build_and_run EXIT INT TERM
 acquire_build_and_run_lock
 
-pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+stop_existing_dist_apps_for_mode
 
 SOLOPM_SPARKLE_CONFIG_QUIET=1 "$ROOT_DIR/script/validate_sparkle_release_config.sh"
 

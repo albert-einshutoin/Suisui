@@ -20,6 +20,7 @@ APP_NAME="${APP_NAME:?APP_NAME is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 SQLITE3="${SQLITE3:-sqlite3}"
+SQLITE_BUSY_TIMEOUT_MS="${SOLOPM_RUNTIME_TODAY_SQLITE_BUSY_TIMEOUT_MS:-5000}"
 RUNTIME_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS:-30}"
 CPU_CONVERGENCE_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_TODAY_CPU_CONVERGENCE_TIMEOUT_SECONDS:-10}"
 CPU_SAMPLE_INTERVAL_SECONDS=1
@@ -47,6 +48,11 @@ if [[ ! "$MAX_TOOLBAR_LAYOUT_DEPTH" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
+if [[ ! "$SQLITE_BUSY_TIMEOUT_MS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "SOLOPM_RUNTIME_TODAY_SQLITE_BUSY_TIMEOUT_MS must be a positive integer" >&2
+  exit 2
+fi
+
 if ! command -v "$SQLITE3" >/dev/null 2>&1; then
   echo "BLOCKER: sqlite3 is required for runtime Today production-route smoke" >&2
   exit 2
@@ -68,6 +74,8 @@ mkdir -p "$ROOT_DIR/.tmp" "$ARTIFACT_ROOT"
 
 app_pid=""
 app_launch_pid=""
+app_identity=""
+app_launch_identity=""
 case_artifact_dir=""
 route_artifact_dir=""
 case_home=""
@@ -86,26 +94,23 @@ route_content_marker=""
 route_text=""
 route_failure_category=""
 route_failure_reason=""
+route_start_day_key=""
 
 terminate_app() {
   # A PID-scoped shutdown avoids terminating a developer's separately running
   # SoloPM instance while still guaranteeing each smoke launch is cleaned up.
-  local launched_pid="${app_launch_pid:-}"
-  if [[ -n "${app_pid:-}" ]]; then
-    kill "$app_pid" >/dev/null 2>&1 || true
-    local deadline=$((SECONDS + 3))
-    while kill -0 "$app_pid" >/dev/null 2>&1 && [[ "$SECONDS" -lt "$deadline" ]]; do
-      sleep 0.1
-    done
-    kill -9 "$app_pid" >/dev/null 2>&1 || true
-    wait "$app_pid" >/dev/null 2>&1 || true
-    app_pid=""
+  local owned_pid="${app_pid:-}"
+  local launch_pid="${app_launch_pid:-}"
+  if [[ -n "$owned_pid" ]]; then
+    ax_terminate_owned_process "$owned_pid" "$APP_BINARY" "${app_identity:-}"
   fi
-  if [[ -n "$launched_pid" && "$launched_pid" != "${app_pid:-}" ]]; then
-    kill "$launched_pid" >/dev/null 2>&1 || true
-    wait "$launched_pid" >/dev/null 2>&1 || true
+  if [[ -n "$launch_pid" && "$launch_pid" != "$owned_pid" ]]; then
+    ax_terminate_owned_process "$launch_pid" "$APP_BINARY" "${app_launch_identity:-}"
   fi
+  app_pid=""
   app_launch_pid=""
+  app_identity=""
+  app_launch_identity=""
 }
 
 sanitize_sample() {
@@ -163,8 +168,18 @@ runtime_counter_value() {
 capture_runtime_route_diagnostics() {
   local preview_build_count
   local toolbar_layout_max_depth
+  local current_day_key
+  local allowed_preview_build_count=1
+  local preview_build_reason="single-day-route"
   preview_build_count="$(runtime_counter_value 'solopm.dailyPlanningPreview.buildCount')"
   toolbar_layout_max_depth="$(runtime_counter_value 'solopm.toolbar.layout.maxDepth')"
+  current_day_key="$(date '+%Y-%m-%d')"
+  if [[ -n "$route_start_day_key" && "$current_day_key" != "$route_start_day_key" ]]; then
+    # Today legitimately rebuilds once when the route crossed the local day boundary.
+    # Keep the normal limit at one; only the observed midnight transition permits two.
+    allowed_preview_build_count=2
+    preview_build_reason="local-day-boundary-crossed"
+  fi
 
   if [[ ! "$preview_build_count" =~ ^[0-9]+$ || ! "$toolbar_layout_max_depth" =~ ^[0-9]+$ ]]; then
     printf 'status=diagnostic-unavailable\npreview-build-count=%s\ntoolbar-layout-max-depth=%s\n' \
@@ -173,13 +188,13 @@ capture_runtime_route_diagnostics() {
     return 1
   fi
 
-  printf 'status=measured\npreview-build-count=%s\ntoolbar-layout-max-depth=%s\n' \
-    "$preview_build_count" "$toolbar_layout_max_depth" \
+  printf 'status=measured\npreview-build-count=%s\nallowed-preview-build-count=%s\npreview-build-reason=%s\ntoolbar-layout-max-depth=%s\n' \
+    "$preview_build_count" "$allowed_preview_build_count" "$preview_build_reason" "$toolbar_layout_max_depth" \
     >"$case_artifact_dir/toolbar-recursion-diagnostic.txt"
   printf '%s\n' "$preview_build_count" >"$case_artifact_dir/preview-build-count.txt"
   printf '%s\n' "$toolbar_layout_max_depth" >"$case_artifact_dir/toolbar-layout-max-depth.txt"
 
-  [[ "$preview_build_count" -le 1 && "$toolbar_layout_max_depth" -le "$MAX_TOOLBAR_LAYOUT_DEPTH" ]]
+  [[ "$preview_build_count" -le "$allowed_preview_build_count" && "$toolbar_layout_max_depth" -le "$MAX_TOOLBAR_LAYOUT_DEPTH" ]]
 }
 
 capture_failure_artifact() {
@@ -199,6 +214,13 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+remove_case_database_from_artifacts() {
+  # Failure uploads need AX/process diagnostics, not the SQLite fixture. Even
+  # isolated seed data is unnecessary binary payload in a public artifact.
+  [[ -n "${database_path:-}" ]] || return 0
+  rm -f "$database_path" "$database_path-shm" "$database_path-wal"
+}
+
 launch_app() {
   local locale="$1"
   local selected_destination="$2"
@@ -217,11 +239,14 @@ launch_app() {
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="$selected_destination" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
   app_launch_pid=$!
+  app_launch_identity="$(ax_wait_for_owned_process_identity "$app_launch_pid" "$APP_BINARY" 3)" || return 1
   app_pid=""
+  app_identity=""
 }
 
 resolve_app_pid() {
   if app_pid="$(ax_wait_for_owned_app_pid "$app_launch_pid" "$APP_BINARY" "$RUNTIME_TIMEOUT_SECONDS")"; then
+    app_identity="$(ax_wait_for_owned_process_identity "$app_pid" "$APP_BINARY" 3)" || return 1
     return 0
   fi
   app_pid=""
@@ -232,13 +257,34 @@ wait_for_database_table() {
   local table="$1"
   local deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
   while true; do
-    if [[ -f "$database_path" ]] && "$SQLITE3" "$database_path" "SELECT name FROM sqlite_master WHERE type='table' AND name='$table';" | grep -Fx "$table" >/dev/null; then
+    if [[ -f "$database_path" ]] &&
+      "$SQLITE3" -batch -bail -cmd ".timeout $SQLITE_BUSY_TIMEOUT_MS" "$database_path" \
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='$table';" 2>/dev/null | grep -Fx "$table" >/dev/null; then
       return 0
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       return 1
     fi
     sleep 0.2
+  done
+}
+
+wait_for_database_write_access() {
+  [[ -f "$database_path" ]] || return 0
+  local deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
+  while true; do
+    # A successful immediate transaction proves the owned app has released its
+    # SQLite writer before the next locale/route starts. This prevents a noisy
+    # migration retry from being mistaken for a healthy deterministic launch.
+    if "$SQLITE3" -batch -cmd ".timeout 250" "$database_path" "BEGIN IMMEDIATE; ROLLBACK;" >/dev/null 2>&1; then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      ax_emit_failure_category "harness" "database-write-lock-timeout"
+      echo "BLOCKER: isolated Today database remained write-locked after owned app shutdown" >&2
+      return 1
+    fi
+    sleep 0.1
   done
 }
 
@@ -251,7 +297,8 @@ seed_small_fixture() {
   # midnight boundary could verify a different calendar day than the fixture.
   small_fixture_today_due_at="$today_due_at"
   small_fixture_missed_due_at="$missed_due_at"
-  "$SQLITE3" "$database_path" <<SQL
+  if ! "$SQLITE3" -batch -bail -cmd ".timeout $SQLITE_BUSY_TIMEOUT_MS" "$database_path" <<SQL
+BEGIN IMMEDIATE;
 INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command, created_at, updated_at)
 VALUES ('fixture-project-1', 'active', 'high', NULL, NULL, '[]', 'runtime-today-production-route', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
        ('fixture-project-2', 'active', 'medium', NULL, NULL, '[]', 'runtime-today-production-route', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
@@ -264,9 +311,13 @@ VALUES ((SELECT id FROM projects WHERE source_command='runtime-today-production-
        ((SELECT id FROM projects WHERE source_command='runtime-today-production-route' AND title='fixture-project-3'), 'fixture-today-3', 'planned', NULL, '$today_due_at', NULL, 'high', 'runtime-today-production-route', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
        ((SELECT id FROM projects WHERE source_command='runtime-today-production-route' AND title='fixture-project-3'), 'fixture-later-2', 'backlog', NULL, NULL, NULL, 'medium', 'runtime-today-production-route', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
        ((SELECT id FROM projects WHERE source_command='runtime-today-production-route' AND title='fixture-project-1'), 'fixture-catch-up-1', 'planned', NULL, '$missed_due_at', NULL, 'high', 'runtime-today-production-route', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+COMMIT;
 SQL
+  then
+    return 1
+  fi
 
-  seed_project_id="$($SQLITE3 "$database_path" "SELECT id FROM projects WHERE source_command='runtime-today-production-route' AND title='fixture-project-1' ORDER BY id DESC LIMIT 1;")"
+  seed_project_id="$("$SQLITE3" -batch -bail -cmd ".timeout $SQLITE_BUSY_TIMEOUT_MS" "$database_path" "SELECT id FROM projects WHERE source_command='runtime-today-production-route' AND title='fixture-project-1' ORDER BY id DESC LIMIT 1;")" || return 1
 }
 
 verify_small_fixture_today_data() {
@@ -361,6 +412,7 @@ fail_route() {
   record_route_evidence "failed" "$route_failure_category" "$reason"
   capture_failure_artifact "$reason"
   terminate_app
+  remove_case_database_from_artifacts
   return 1
 }
 
@@ -370,6 +422,7 @@ fail_case() {
   ax_emit_failure_category "$route_failure_category" "$route_failure_reason"
   capture_failure_artifact "$route_failure_reason"
   terminate_app
+  remove_case_database_from_artifacts
   return 1
 }
 
@@ -385,6 +438,7 @@ run_route() {
   rm -rf "$route_artifact_dir"
   mkdir -p "$route_artifact_dir/ax-probes"
 
+  route_start_day_key="$(date '+%Y-%m-%d')"
   launch_app "$locale" "$route_destination"
   if ! resolve_app_pid; then
     fail_route "launch"
@@ -441,6 +495,7 @@ run_route() {
   printf 'OK: route=%s destination=%s sidebar=%s content=%s text=%s\n' \
     "$route_id" "$route_destination" "$route_sidebar_marker" "$route_content_marker" "$route_text"
   terminate_app
+  wait_for_database_write_access
   return 0
 }
 
@@ -531,6 +586,10 @@ run_case() {
     return 1
   fi
   terminate_app
+  if ! wait_for_database_write_access; then
+    fail_case "harness" "database-write-lock-timeout"
+    return 1
+  fi
 
   if [[ "$fixture" == "small" ]]; then
     if ! seed_small_fixture; then

@@ -13,7 +13,6 @@ fi
 source "$METADATA_FILE"
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
-APP_BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:-}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 WINDOW_NAME="${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}"
@@ -114,6 +113,8 @@ SAMPLE_OFFSETS_MS=(0 50 150 300)
 layout_project_id=""
 app_pid=""
 app_launch_pid=""
+app_identity=""
+app_launch_identity=""
 AX_FRAME_HELPER_BINARY="$LAYOUT_STABILITY_OUTPUT_DIR/ui-evidence-ax-frame-dump.$$"
 AX_PRESS_ELEMENT_HELPER_BINARY="$LAYOUT_STABILITY_OUTPUT_DIR/ui-evidence-ax-press-element.$$"
 
@@ -174,12 +175,18 @@ write_json_artifacts() {
 }
 
 terminate_app() {
-  if [[ -n "${app_pid:-}" ]]; then
-    kill "$app_pid" >/dev/null 2>&1 || true
-    wait "$app_pid" >/dev/null 2>&1 || true
-    app_pid=""
+  local owned_pid="${app_pid:-}"
+  local launch_pid="${app_launch_pid:-}"
+  if [[ -n "$owned_pid" ]]; then
+    ax_terminate_owned_process "$owned_pid" "$APP_BINARY" "${app_identity:-}"
   fi
+  if [[ -n "$launch_pid" && "$launch_pid" != "$owned_pid" ]]; then
+    ax_terminate_owned_process "$launch_pid" "$APP_BINARY" "${app_launch_identity:-}"
+  fi
+  app_pid=""
   app_launch_pid=""
+  app_identity=""
+  app_launch_identity=""
 }
 
 cleanup() {
@@ -195,29 +202,16 @@ prepare_ax_helpers() {
 }
 
 activate_app() {
-  # Use System Events instead of LaunchServices activation so the selected
-  # project/database environment stays attached to the already-running app.
-  /usr/bin/osascript - "$APP_NAME" "$APP_BUNDLE_IDENTIFIER" <<'APPLESCRIPT' >/dev/null 2>&1 || true
+  # PID ownership keeps the isolated layout database attached to every AX
+  # action even when another developer-run SoloPM instance exists.
+  /usr/bin/osascript - "$app_pid" "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 || true
 on run argv
-  set appName to item 1 of argv
-  set bundleID to item 2 of argv
+  set appPID to item 1 of argv as integer
+  set appName to item 2 of argv
   tell application "System Events"
-    set targetProcess to missing value
-    if exists process appName then
-      tell process appName
-        if (count of windows) > 0 then set targetProcess to it
-      end tell
-    end if
-    if targetProcess is missing value and bundleID is not "" then
-      set appMatches to application processes whose bundle identifier is bundleID
-      repeat with appProcess in appMatches
-        if (count of windows of appProcess) > 0 then
-          set targetProcess to appProcess
-          exit repeat
-        end if
-      end repeat
-    end if
-    if targetProcess is missing value then return "missing"
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then return "missing"
+    set targetProcess to item 1 of matchingProcesses
     tell targetProcess
       set frontmost to true
       if (count of windows) > 0 then
@@ -233,7 +227,12 @@ APPLESCRIPT
 
 wait_for_app_process() {
   app_pid="$(ax_wait_for_owned_app_pid "$app_launch_pid" "$APP_BINARY" "$TIMEOUT_SECONDS")" || {
+    ax_emit_failure_category "launch" "layout-owned-pid-unavailable"
     echo "BLOCKER: $APP_NAME did not launch from pid $app_launch_pid" >&2
+    return 1
+  }
+  app_identity="$(ax_wait_for_owned_process_identity "$app_pid" "$APP_BINARY" 3)" || {
+    ax_emit_failure_category "launch" "layout-owned-identity-unavailable"
     return 1
   }
   ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$TIMEOUT_SECONDS" "$APP_BINARY"
@@ -247,15 +246,70 @@ wait_for_visible_windows() {
   return 0
 }
 
-prepare_layout_candidate() {
-  ./script/build_and_run.sh --build-only
-  SOLOPM_VOICEOVER_REVIEW_TIMEOUT_SECONDS="$TIMEOUT_SECONDS" \
-    ./script/prepare_voiceover_review_candidate.sh --database "$LAYOUT_STABILITY_DATABASE_PATH" --no-launch --skip-build >/dev/null
-  layout_project_id="$("$SQLITE3" -batch -noheader "$LAYOUT_STABILITY_DATABASE_PATH" "SELECT id FROM projects WHERE title='VoiceOver Review Project' AND source_command='voiceover-review-seed' ORDER BY id DESC LIMIT 1;" | tail -n 1)"
+wait_for_database_table() {
+  local table="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if [[ -f "$LAYOUT_STABILITY_DATABASE_PATH" ]] &&
+      "$SQLITE3" "$LAYOUT_STABILITY_DATABASE_PATH" "SELECT name FROM sqlite_master WHERE type='table' AND name='$table';" | grep -Fx "$table" >/dev/null; then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: SQLite table '$table' was not created in layout stability database: $LAYOUT_STABILITY_DATABASE_PATH" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+migrate_layout_database() {
+  terminate_app
+  rm -f "$LAYOUT_STABILITY_DATABASE_PATH" "$LAYOUT_STABILITY_DATABASE_PATH-shm" "$LAYOUT_STABILITY_DATABASE_PATH-wal"
+  /usr/bin/env -i PATH="$PATH" TMPDIR="$LAYOUT_STABILITY_RUNTIME_DIR" HOME="$LAYOUT_STABILITY_RUNTIME_DIR/home" CFFIXED_USER_HOME="$LAYOUT_STABILITY_RUNTIME_DIR/home" \
+    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$LAYOUT_STABILITY_DATABASE_PATH" \
+    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="projects" \
+    "$APP_BINARY" -ApplePersistenceIgnoreState YES &
+  app_launch_pid=$!
+  app_launch_identity="$(ax_wait_for_owned_process_identity "$app_launch_pid" "$APP_BINARY" 3)" || return 1
+  wait_for_app_process
+  wait_for_database_table "projects"
+  terminate_app
+}
+
+seed_layout_candidate() {
+  # Keep layout fixtures local to this smoke. Reusing the VoiceOver recovery
+  # candidate would make a required production-route gate depend on a recovery
+  # launch and on process-name-wide cleanup.
+  "$SQLITE3" "$LAYOUT_STABILITY_DATABASE_PATH" <<'SQL'
+PRAGMA foreign_keys = ON;
+DELETE FROM tasks WHERE source_command='layout-stability-seed';
+DELETE FROM projects WHERE source_command='layout-stability-seed';
+INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command, created_at, updated_at)
+VALUES ('Layout Stability Project', 'active', 'high', NULL, NULL, '["layout"]', 'layout-stability-seed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+SQL
+
+  layout_project_id="$("$SQLITE3" -batch -noheader "$LAYOUT_STABILITY_DATABASE_PATH" "SELECT id FROM projects WHERE source_command='layout-stability-seed' ORDER BY id DESC LIMIT 1;" | tail -n 1)"
   if [[ -z "${layout_project_id//[[:space:]]/}" ]]; then
     echo "BLOCKER: layout stability candidate project was not seeded" >&2
     return 1
   fi
+
+  "$SQLITE3" "$LAYOUT_STABILITY_DATABASE_PATH" <<SQL
+PRAGMA foreign_keys = ON;
+INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command, created_at, updated_at)
+VALUES
+  ($layout_project_id, 'Layout backlog', 'backlog', 'Layout stability seed', NULL, 'medium', 'layout-stability-seed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ($layout_project_id, 'Layout planned', 'planned', 'Layout stability seed', NULL, 'medium', 'layout-stability-seed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ($layout_project_id, 'Layout in progress', 'in_progress', 'Layout stability seed', NULL, 'medium', 'layout-stability-seed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ($layout_project_id, 'Layout blocked', 'blocked', 'Layout stability seed', NULL, 'medium', 'layout-stability-seed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ($layout_project_id, 'Layout completed', 'completed', 'Layout stability seed', NULL, 'medium', 'layout-stability-seed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+SQL
+}
+
+prepare_layout_candidate() {
+  ./script/build_and_run.sh --build-only
+  migrate_layout_database
+  seed_layout_candidate
 }
 
 launch_layout_candidate() {
@@ -265,6 +319,7 @@ launch_layout_candidate() {
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$layout_project_id" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_launch_pid=$!
+  app_launch_identity="$(ax_wait_for_owned_process_identity "$app_launch_pid" "$APP_BINARY" 3)" || return 1
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -276,6 +331,7 @@ read_window_metadata() {
   set +e
   output="$(
     SOLOPM_WINDOW_OWNER="$APP_NAME" \
+    SOLOPM_WINDOW_OWNER_PID="$app_pid" \
     SOLOPM_WINDOW_NAME="$WINDOW_NAME" \
     /usr/bin/swift "$ROOT_DIR/script/ui_evidence_window_metadata.swift"
   )"
@@ -415,14 +471,16 @@ click_sidebar_destination_by_coordinate() {
   # measured window bounds so the smoke still exercises the real running app.
   target_x=$((window_x + 112))
   target_y=$((window_y + destination_offset))
-  /usr/bin/osascript - "$APP_NAME" "$target_x" "$target_y" <<'APPLESCRIPT' >/dev/null
+  /usr/bin/osascript - "$app_pid" "$target_x" "$target_y" <<'APPLESCRIPT' >/dev/null
 on run argv
-  set appName to item 1 of argv
+  set appPID to item 1 of argv as integer
   set targetX to (item 2 of argv) as integer
   set targetY to (item 3 of argv) as integer
   tell application "System Events"
-    if not (exists process appName) then error "process missing"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "process missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set frontmost to true
       if exists window 1 then
         try
@@ -519,7 +577,7 @@ write_summary_header() {
     printf '%s\n' '# Layout Stability Smoke'
     printf '\n'
     printf 'Generated at: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-    printf 'Output directory: `%s`\n' "$LAYOUT_STABILITY_OUTPUT_DIR"
+    printf '%s\n' 'Output artifact: `layout-stability`'
     printf 'Frame delta threshold: `%spx`\n' "$LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX"
     printf 'Clipping tolerance: `%spx`\n' "$LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX"
     printf '\n'
@@ -756,7 +814,7 @@ sample_layout_frames() {
       return 1
     fi
 
-    printf -- '- `%s` sample %s (`t=%sms`) -> `%s`\n' "$label" "$sample_index" "$offset_ms" "$frame_file" >>"$SUMMARY_FILE"
+    printf -- '- `%s` sample %s (`t=%sms`) -> `%s`\n' "$label" "$sample_index" "$offset_ms" "${frame_file##*/}" >>"$SUMMARY_FILE"
     sample_index=$((sample_index + 1))
     previous_offset_ms="$offset_ms"
   done
@@ -825,11 +883,14 @@ assert_layout_stable() {
 }
 
 click_sidebar_toggle() {
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null
+  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null
 on run argv
-  set appName to item 1 of argv
+  set appPID to item 1 of argv as integer
   tell application "System Events"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "process missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       tell toolbar 1 of window 1
         click (first button whose value of attribute "AXIdentifier" is "project-board-sidebar-toggle")
       end tell

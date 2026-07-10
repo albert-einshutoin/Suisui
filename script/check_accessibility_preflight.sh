@@ -22,6 +22,7 @@ SKIP_SOURCE_ANCHORS=0
 LAUNCH_ENV_FILE=""
 DEFAULT_VOICEOVER_LAUNCH_ENV_FILE="$ROOT_DIR/.tmp/voiceover-review/launch.env"
 TIMEOUT_SECONDS=12
+APP_LAUNCH_PID=""
 MIN_AX_BUTTONS=5
 MIN_AX_TEXT_FIELDS=1
 MIN_AX_STATIC_TEXTS=5
@@ -218,6 +219,33 @@ if [[ "$SKIP_SOURCE_ANCHORS" -eq 1 && "$RUN_RUNTIME" -ne 1 ]]; then
   echo "--skip-source-anchors requires --runtime" >&2
   exit 2
 fi
+
+launched_app_matches_binary() {
+  local process_command
+  [[ "$APP_LAUNCH_PID" =~ ^[1-9][0-9]*$ ]] || return 1
+  process_command="$(ps -p "$APP_LAUNCH_PID" -o command= 2>/dev/null)" || return 1
+  process_command="${process_command#"${process_command%%[![:space:]]*}"}"
+  case "$process_command" in
+    "$APP_BINARY"|"$APP_BINARY "*) return 0 ;;
+  esac
+  return 1
+}
+
+cleanup_launched_app() {
+  if launched_app_matches_binary; then
+    kill -TERM "$APP_LAUNCH_PID" >/dev/null 2>&1 || true
+    local deadline=$((SECONDS + 3))
+    while launched_app_matches_binary && [[ "$SECONDS" -lt "$deadline" ]]; do
+      sleep 0.1
+    done
+    if launched_app_matches_binary; then
+      kill -KILL "$APP_LAUNCH_PID" >/dev/null 2>&1 || true
+    fi
+    wait "$APP_LAUNCH_PID" >/dev/null 2>&1 || true
+  fi
+  APP_LAUNCH_PID=""
+}
+trap cleanup_launched_app EXIT INT TERM
 
 if [[ "$SKIP_SOURCE_ANCHORS" -ne 1 ]]; then
   missing_count=0
@@ -585,7 +613,6 @@ APPLESCRIPT
 }
 
 if [[ "$LAUNCH_APP" -eq 1 ]]; then
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
   if [[ -n "$LAUNCH_ENV_FILE" ]]; then
     # Launching the binary directly preserves the generated review database and selected project env.
     set -a
@@ -597,6 +624,7 @@ if [[ "$LAUNCH_APP" -eq 1 ]]; then
     # instead of the development-automation project recovery view.
     export SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1
     "$APP_BINARY" >/dev/null 2>&1 &
+    APP_LAUNCH_PID=$!
   else
     /usr/bin/open -n -F "$APP_BUNDLE"
   fi
@@ -604,7 +632,12 @@ if [[ "$LAUNCH_APP" -eq 1 ]]; then
 fi
 
 deadline=$((SECONDS + TIMEOUT_SECONDS))
-while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
+while true; do
+  if [[ -n "$APP_LAUNCH_PID" ]]; then
+    launched_app_matches_binary && break
+  elif pgrep -x "$APP_NAME" >/dev/null 2>&1; then
+    break
+  fi
   if [[ "$SECONDS" -ge "$deadline" ]]; then
     echo "BLOCKER: $APP_NAME process did not appear within ${TIMEOUT_SECONDS}s" >&2
     exit 1

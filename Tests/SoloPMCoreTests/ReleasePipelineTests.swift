@@ -72,19 +72,21 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("run_runtime_gates()"))
         XCTAssertTrue(script.contains("script/check_runtime_accessible_crud_smoke.sh"))
         XCTAssertTrue(script.contains("script/check_layout_stability_smoke.sh"))
-        XCTAssertTrue(script.contains("script/check_accessibility_preflight.sh --runtime"))
         XCTAssertTrue(script.contains("run_visual_gates()"))
-        XCTAssertTrue(script.contains("script/check_visual_regression_smoke.sh"))
-        XCTAssertTrue(script.contains("if [[ \"$CI_PERFORMANCE_GATES\" == \"1\" ]]; then\n  run_performance_gates"))
-        XCTAssertTrue(script.contains("if [[ \"$CI_STRESS_GATES\" == \"1\" ]]; then\n  run_stress_gates"))
-        XCTAssertTrue(script.contains("if [[ \"$CI_RUNTIME_GATES\" == \"1\" ]]; then\n  run_runtime_gates"))
-        XCTAssertTrue(script.contains("if [[ \"$CI_VISUAL_GATES\" == \"1\" ]]; then\n  run_visual_gates"))
+        XCTAssertTrue(script.contains("script/check_ci_visual_gate.sh"))
+        XCTAssertTrue(script.contains("if [[ \"$CI_PERFORMANCE_GATES\" == \"1\" ]]; then"))
+        XCTAssertTrue(script.contains("if [[ \"$CI_STRESS_GATES\" == \"1\" ]]; then\n    run_stress_gates"))
+        XCTAssertTrue(script.contains("if [[ \"$CI_RUNTIME_GATES\" == \"1\" ]]; then"))
+        XCTAssertTrue(script.contains("if [[ \"$CI_VISUAL_GATES\" == \"1\" ]]; then"))
         XCTAssertLessThan(
             try XCTUnwrap(script.range(of: "run_pr_gate")).lowerBound,
             try XCTUnwrap(script.range(of: "run_runtime_gates")).lowerBound
         )
 
         XCTAssertTrue(automatedPreflight.contains("SOLOPM_CI_RELEASE_GATES=1 ./scripts/ci.sh"))
+        XCTAssertTrue(automatedPreflight.contains("./scripts/ci.sh ui-runtime"))
+        XCTAssertTrue(automatedPreflight.contains("./scripts/ci.sh ui-visual"))
+        XCTAssertTrue(automatedPreflight.contains("./scripts/ci.sh ui-performance"))
         XCTAssertTrue(phase.contains("- [x] `scripts/ci.sh` が軽量PR gateと重いruntime gateを混同しないことをsource testで固定する。"))
         XCTAssertTrue(phase.contains("- [x] `scripts/ci.sh` はunit/sourceを必須、runtime/visualは明示フラグで実行する。"))
     }
@@ -3056,26 +3058,27 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(script.contains("./scripts/ci.sh"))
         XCTAssertTrue(script.contains("./script/check_local_crud_smoke.sh"))
-        XCTAssertTrue(script.contains("./script/check_runtime_accessible_crud_smoke.sh"))
-        XCTAssertTrue(script.contains("./script/check_layout_stability_smoke.sh"))
+        XCTAssertTrue(script.contains("./scripts/ci.sh ui-runtime"))
         XCTAssertTrue(script.contains("xcodebuild"))
         XCTAssertTrue(script.contains(".swiftpm/xcode/package.xcworkspace"))
         XCTAssertTrue(script.contains("-scheme \"$XCODE_SCHEME\""))
-        XCTAssertTrue(script.contains("./script/build_and_run.sh --verify"))
+        XCTAssertTrue(script.contains("section \"Real visual regression\""))
+        XCTAssertTrue(script.contains("./scripts/ci.sh ui-visual"))
         XCTAssertTrue(script.contains("section \"Release launch performance smoke\""))
         XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_PROFILE=release"))
         XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_BUILD_CONFIGURATION=release"))
         XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS=15000"))
         XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS=3000"))
-        XCTAssertTrue(script.contains("./script/check_release_launch_performance_smoke.sh"))
+        XCTAssertTrue(script.contains("./scripts/ci.sh ui-performance"))
         XCTAssertTrue(script.contains("./script/prepare_voiceover_review_candidate.sh --skip-build --no-launch"))
         XCTAssertTrue(script.contains("./script/check_accessibility_preflight.sh --runtime --launch-env .tmp/voiceover-review/launch.env --timeout 30"))
-        let launchPreflightRange = try XCTUnwrap(script.range(of: "section \"Launch preflight\""))
+        let runtimeGateRange = try XCTUnwrap(script.range(of: "section \"Production UI runtime gate\""))
+        let visualGateRange = try XCTUnwrap(script.range(of: "section \"Real visual regression\""))
         let performanceSmokeRange = try XCTUnwrap(script.range(of: "section \"Release launch performance smoke\""))
         let voiceOverCandidateRange = try XCTUnwrap(script.range(of: "./script/prepare_voiceover_review_candidate.sh --skip-build --no-launch"))
         let runtimeAccessibilityRange = try XCTUnwrap(script.range(of: "section \"Runtime accessibility preflight\""))
-        XCTAssertLessThan(launchPreflightRange.lowerBound, voiceOverCandidateRange.lowerBound)
-        XCTAssertLessThan(launchPreflightRange.lowerBound, performanceSmokeRange.lowerBound)
+        XCTAssertLessThan(runtimeGateRange.lowerBound, visualGateRange.lowerBound)
+        XCTAssertLessThan(visualGateRange.lowerBound, performanceSmokeRange.lowerBound)
         XCTAssertLessThan(performanceSmokeRange.lowerBound, voiceOverCandidateRange.lowerBound)
         XCTAssertLessThan(voiceOverCandidateRange.lowerBound, runtimeAccessibilityRange.lowerBound)
         XCTAssertTrue(script.contains("./script/verify_mcp_compliance.sh"))
@@ -3127,7 +3130,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("MCP compliance preflight: passed"))
         XCTAssertTrue(script.contains("This does not mark the release ready."))
         XCTAssertTrue(script.contains("Automated release preflight evidence written to"))
-        XCTAssertTrue(script.contains("terminate_app"))
+        XCTAssertTrue(script.contains("cleanup()"))
+        XCTAssertFalse(script.contains("pkill -x \"$APP_NAME\""))
         XCTAssertFalse(script.contains("create_voiceover_evidence.sh --passed"))
         XCTAssertFalse(script.contains("create_competitor_hands_on_evidence.sh --passed"))
         XCTAssertFalse(script.contains("confirm-manual-voiceover-pass"))
@@ -5758,7 +5762,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("selected_task_environment"))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"projects\""))
         XCTAssertTrue(script.contains("app_launch_pid=$!"))
-        XCTAssertTrue(script.contains("wait \"$app_pid\" >/dev/null 2>&1 || true"))
+        XCTAssertTrue(script.contains("ax_terminate_owned_process \"$owned_pid\" \"$APP_BINARY\" \"${app_identity:-}\""))
         XCTAssertTrue(script.contains("wait_for_visible_windows()"))
         XCTAssertGreaterThanOrEqual(script.components(separatedBy: "wait_for_visible_windows").count - 1, 4)
         XCTAssertFalse(script.contains("ax_wait_for_visible_window"))
@@ -5808,7 +5812,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("/usr/bin/swift \"$AX_BUTTON_HELPER\" \"$app_pid\" \"$fragment\""))
         XCTAssertTrue(buttonHelper.contains("Int32(appSelector)"))
         XCTAssertTrue(buttonHelper.contains("NSRunningApplication(processIdentifier: pid)"))
-        XCTAssertTrue(script.contains("set fallbackFragment to item 3 of argv"))
+        XCTAssertTrue(script.contains("set fallbackFragment to item 4 of argv"))
         XCTAssertTrue(script.contains("set matchesFallback to false"))
         XCTAssertTrue(script.contains("if fallbackFragment is not \"\" and signalText contains fallbackFragment then set matchesFallback to true"))
         XCTAssertTrue(script.contains("if isEnabled and (matchesPrimary or matchesFallback) and (excludedHelp is \"\" or not (signalText contains excludedHelp)) then"))
@@ -5831,6 +5835,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(scrollHelper.contains("NSWorkspace.shared.runningApplications.first"))
         XCTAssertTrue(script.contains("setTextFieldContaining \"inline-task-title\" \"AX Runtime Cascade Task\""))
         XCTAssertTrue(script.contains("activate_app()"))
+        XCTAssertTrue(script.contains("application processes whose unix id is appPID"))
+        XCTAssertTrue(script.contains("set targetProcess to item 1 of matchingProcesses"))
+        XCTAssertFalse(script.contains("/usr/bin/osascript - \"$APP_NAME\""))
         XCTAssertTrue(script.contains("set isEnabled to enabled of axItem as boolean"))
         XCTAssertTrue(script.contains("if isEnabled and signalText contains fragment then"))
         XCTAssertTrue(script.contains("local deadline=$((SECONDS + TIMEOUT_SECONDS))"))
@@ -5847,7 +5854,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("/usr/bin/osascript -e \"tell application \\\"$APP_NAME\\\" to activate\" >/dev/null 2>&1 || true"))
         XCTAssertFalse(script.contains("tell application \"$APP_NAME\" to activate"))
         XCTAssertFalse(script.contains("tell application \"$APP_NAME\" to quit"))
-        XCTAssertTrue(script.contains("if not (exists process appName) then return \"missing\""))
+        XCTAssertTrue(script.contains("if (count of matchingProcesses) is 0 then return \"missing\""))
         XCTAssertGreaterThanOrEqual(script.components(separatedBy: "waitForTextFieldContaining \"project-inspector-title\"").count - 1, 2)
         XCTAssertTrue(script.contains("pressButtonUntilSQLiteValue \"completed project\" \"project-inspector-complete\""))
         XCTAssertTrue(script.contains("pressDestructiveButtonUntilSQLiteValue \"deleted project\" \"project-inspector-delete\" \"project-inspector-delete-confirmation-confirm\" \"Confirm Delete Project\" \"\" \"SELECT count(*) FROM projects WHERE id=$created_project_id;\" \"0\" \"1\""))
@@ -6383,13 +6390,29 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("ps -o %cpu="))
         XCTAssertTrue(script.contains("sanitized-processes.txt"))
         XCTAssertTrue(script.contains("sanitized-windows.txt"))
+        XCTAssertTrue(script.contains("remove_case_database_from_artifacts"))
+        XCTAssertTrue(script.contains("rm -f \"$database_path\" \"$database_path-shm\" \"$database_path-wal\""))
         XCTAssertTrue(script.contains("ax-probes"))
         XCTAssertTrue(script.contains("cpu-samples.tsv"))
         XCTAssertTrue(script.contains("sample"))
-        XCTAssertTrue(script.contains("kill \"$app_pid\" >/dev/null 2>&1 || true"))
-        XCTAssertTrue(script.contains("wait \"$app_pid\" >/dev/null 2>&1 || true"))
+        XCTAssertTrue(script.contains("ax_terminate_owned_process \"$owned_pid\" \"$APP_BINARY\" \"${app_identity:-}\""))
+        XCTAssertTrue(script.contains("app_launch_identity"))
+        XCTAssertTrue(script.contains("wait_for_database_write_access()"))
+        XCTAssertTrue(script.contains("BEGIN IMMEDIATE; ROLLBACK;"))
+        XCTAssertTrue(script.contains("terminate_app\n  wait_for_database_write_access"))
+        XCTAssertTrue(script.contains("SQLITE_BUSY_TIMEOUT_MS=\"${SOLOPM_RUNTIME_TODAY_SQLITE_BUSY_TIMEOUT_MS:-5000}\""))
+        XCTAssertTrue(script.contains("-batch -bail -cmd \".timeout $SQLITE_BUSY_TIMEOUT_MS\""))
+        XCTAssertTrue(script.contains("COMMIT;"))
+        let waitForDatabaseTableStart = try XCTUnwrap(script.range(of: "wait_for_database_table() {"))
+        let waitForDatabaseWriteAccessStart = try XCTUnwrap(script.range(of: "wait_for_database_write_access() {"))
+        let waitForDatabaseTableSource = String(script[waitForDatabaseTableStart.lowerBound..<waitForDatabaseWriteAccessStart.lowerBound])
+        XCTAssertTrue(waitForDatabaseTableSource.contains("-cmd \".timeout $SQLITE_BUSY_TIMEOUT_MS\""))
+        XCTAssertTrue(waitForDatabaseTableSource.contains("2>/dev/null"))
         XCTAssertTrue(script.contains("toolbar-recursion-diagnostic"))
         XCTAssertTrue(script.contains("capture_runtime_route_diagnostics"))
+        XCTAssertTrue(script.contains("route_start_day_key"))
+        XCTAssertTrue(script.contains("allowed_preview_build_count=2"))
+        XCTAssertTrue(script.contains("route crossed the local day boundary"))
         XCTAssertTrue(script.contains("processID == $app_pid"))
         XCTAssertTrue(script.contains("preview-build-count"))
         XCTAssertTrue(script.contains("toolbar-layout-max-depth"))
@@ -6434,7 +6457,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(helper.contains("AXUIElementCreateApplication(appPID)"))
         XCTAssertTrue(helper.contains("processIdentifier == requestedPID"))
         XCTAssertTrue(ci.contains("script/check_runtime_today_production_route_smoke.sh"))
-        XCTAssertTrue(ci.contains("if [[ \"$CI_RUNTIME_GATES\" == \"1\" ]]; then\n  run_runtime_gates"))
+        XCTAssertTrue(ci.contains("run_lane_with_artifacts \"ui-runtime\" run_runtime_gates"))
     }
 
     func testRuntimeSettingsSaveSmokeScriptPersistsNonSecretSettingsToIsolatedUserDefaults() throws {
@@ -6586,6 +6609,7 @@ final class ReleasePipelineTests: XCTestCase {
         let script = try readPackageFile("script/check_layout_stability_smoke.sh")
         let frameHelper = try readPackageFile("script/ui_evidence_ax_frame_dump.swift")
         let pressElementHelper = try readPackageFile("script/ui_evidence_ax_press_element.swift")
+        let windowMetadataHelper = try readPackageFile("script/ui_evidence_window_metadata.swift")
         let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
 
         XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
@@ -6594,19 +6618,24 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("source \"$AX_HELPERS\""))
         XCTAssertTrue(script.contains("LAYOUT_STABILITY_OUTPUT_DIR=\"${SOLOPM_LAYOUT_STABILITY_OUTPUT_DIR:-$ROOT_DIR/.tmp/layout-stability}\""))
         XCTAssertTrue(script.contains("TIMEOUT_SECONDS=\"${SOLOPM_LAYOUT_STABILITY_TIMEOUT_SECONDS:-60}\""))
-        XCTAssertTrue(script.contains("APP_BUNDLE_IDENTIFIER=\"${BUNDLE_IDENTIFIER:-}\""))
-        XCTAssertTrue(script.contains("application processes whose bundle identifier is bundleID"))
         XCTAssertTrue(script.contains("LAYOUT_STABILITY_RUNTIME_DIR=\"${SOLOPM_LAYOUT_STABILITY_RUNTIME_DIR:-${TMPDIR:-/tmp}/solopm-layout-stability}\""))
         XCTAssertTrue(script.contains("LAYOUT_STABILITY_DATABASE_PATH=\"${SOLOPM_LAYOUT_STABILITY_DATABASE_PATH:-$LAYOUT_STABILITY_RUNTIME_DIR/SoloPM-layout-stability.sqlite}\""))
         XCTAssertTrue(script.contains("mkdir -p \"$(dirname \"$LAYOUT_STABILITY_DATABASE_PATH\")\""))
         XCTAssertFalse(script.contains("pkill -x \"$APP_NAME\""))
         XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
-        XCTAssertTrue(script.contains("./script/prepare_voiceover_review_candidate.sh --database \"$LAYOUT_STABILITY_DATABASE_PATH\" --no-launch --skip-build"))
+        XCTAssertFalse(script.contains("prepare_voiceover_review_candidate.sh"))
+        XCTAssertTrue(script.contains("migrate_layout_database()"))
+        XCTAssertTrue(script.contains("layout-stability-seed"))
+        XCTAssertTrue(script.contains("INSERT INTO projects"))
+        XCTAssertTrue(script.contains("INSERT INTO tasks"))
         XCTAssertFalse(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
         XCTAssertFalse(script.contains("SOLOPM_LAYOUT_STABILITY_RECOVERY_MODE"))
         XCTAssertTrue(script.contains("HOME=\"$LAYOUT_STABILITY_RUNTIME_DIR/home\""))
         XCTAssertTrue(script.contains("CFFIXED_USER_HOME=\"$LAYOUT_STABILITY_RUNTIME_DIR/home\""))
         XCTAssertTrue(script.contains("ax_wait_for_owned_app_pid"))
+        XCTAssertTrue(script.contains("application processes whose unix id is appPID"))
+        XCTAssertFalse(script.contains("/usr/bin/osascript - \"$APP_NAME\""))
+        XCTAssertTrue(script.contains("SOLOPM_WINDOW_OWNER_PID=\"$app_pid\""))
         XCTAssertTrue(script.contains("/usr/bin/env -i"))
         XCTAssertTrue(script.contains("\"$APP_BINARY\" -ApplePersistenceIgnoreState YES &"))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$layout_project_id\""))
@@ -6618,6 +6647,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("/usr/bin/swift \"$AX_FRAME_HELPER\""))
         XCTAssertFalse(script.contains("set axItems to entire contents of currentWindow"))
         XCTAssertTrue(frameHelper.contains("NSRunningApplication(processIdentifier: appPID)"))
+        XCTAssertTrue(windowMetadataHelper.contains("SOLOPM_WINDOW_OWNER_PID"))
+        XCTAssertTrue(windowMetadataHelper.contains("kCGWindowOwnerPID"))
         XCTAssertTrue(frameHelper.contains("kAXChildrenAttribute as String"))
         XCTAssertTrue(frameHelper.contains("\"AXVisibleChildren\""))
         XCTAssertTrue(frameHelper.contains("\"AXContents\""))
@@ -6674,6 +6705,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("project-board-sidebar"))
         XCTAssertTrue(script.contains("project-inspector"))
         XCTAssertTrue(script.contains("layout-stability-summary.md"))
+        XCTAssertTrue(script.contains("Output artifact: `layout-stability`"))
+        XCTAssertFalse(script.contains("Output directory: `$LAYOUT_STABILITY_OUTPUT_DIR`"))
+        XCTAssertTrue(script.contains("\"${frame_file##*/}\" >>\"$SUMMARY_FILE\""))
         XCTAssertTrue(script.contains("samples.tsv"))
         XCTAssertTrue(script.contains("diff.tsv"))
 
@@ -6716,6 +6750,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("CFFIXED_USER_HOME=\"$PERFORMANCE_HOME\""))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"today\""))
         XCTAssertTrue(script.contains("ax_wait_for_owned_app_pid"))
+        XCTAssertTrue(script.contains("application processes whose unix id is appPID"))
+        XCTAssertTrue(script.contains("set targetProcess to item 1 of matchingProcesses"))
+        XCTAssertFalse(script.contains("tell application \"$APP_NAME\" to activate"))
+        XCTAssertFalse(script.contains("/usr/bin/osascript - \"$APP_NAME\""))
         XCTAssertTrue(script.contains("/usr/bin/env -i"))
         XCTAssertTrue(script.contains("\"$APP_BINARY\" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &"))
         XCTAssertTrue(script.contains("cold-launch-visible-window"))
@@ -7049,6 +7087,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         - Release CI: passed
         - Release launch performance smoke: passed
+        - Real visual regression: passed
         - Local CRUD smoke: passed
         - Runtime accessible CRUD smoke: passed
         - Layout stability smoke: passed
@@ -7278,6 +7317,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         - Release CI: passed
         - Release launch performance smoke: passed
+        - Real visual regression: passed
         - Local CRUD smoke: passed
         - Runtime accessible CRUD smoke: passed
         - Layout stability smoke: passed
@@ -7391,6 +7431,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         - Release CI: passed
         - Release launch performance smoke: passed
+        - Real visual regression: passed
         - Local CRUD smoke: passed
         - Runtime accessible CRUD smoke: passed
         - Layout stability smoke: passed
@@ -7471,6 +7512,7 @@ final class ReleasePipelineTests: XCTestCase {
         ## Passed Gates
 
         - Release CI: passed
+        - Real visual regression: passed
         - Local CRUD smoke: passed
         - Runtime accessible CRUD smoke: passed
         - Layout stability smoke: passed
@@ -7559,6 +7601,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         - Release CI: passed
         - Release launch performance smoke: passed
+        - Real visual regression: passed
         - Local CRUD smoke: passed
         - Runtime accessible CRUD smoke: passed
         - Layout stability smoke: passed
@@ -7639,6 +7682,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         - Release CI: passed
         - Release launch performance smoke: passed
+        - Real visual regression: passed
         - Local CRUD smoke: passed
         - Runtime accessible CRUD smoke: passed
         - Layout stability smoke: passed
@@ -8156,6 +8200,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT"))
         XCTAssertTrue(captureScript.contains("ui_evidence_product_source_commit"))
         XCTAssertTrue(captureScript.contains("set bounds of front window"))
+        XCTAssertTrue(captureScript.contains("application processes whose unix id is appPID"))
+        XCTAssertTrue(captureScript.contains("SOLOPM_WINDOW_OWNER_PID=\"$EVIDENCE_APP_PID\""))
+        XCTAssertFalse(captureScript.contains("/usr/bin/osascript - \"$APP_NAME\""))
+        XCTAssertFalse(captureScript.contains("tell process \"$APP_NAME\""))
         XCTAssertTrue(captureScript.contains("write_visual_baseline_capture_manifest"))
         XCTAssertTrue(captureScript.contains("Light/Dark/System visual baseline manifest"))
 

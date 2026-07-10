@@ -3,6 +3,7 @@ import Foundation
 
 let environment = ProcessInfo.processInfo.environment
 let ownerName = environment["SOLOPM_WINDOW_OWNER"] ?? "SoloPM"
+let ownerPID = environment["SOLOPM_WINDOW_OWNER_PID"].flatMap(Int.init)
 let requiredWindowName = environment["SOLOPM_WINDOW_NAME"]?.trimmingCharacters(in: .whitespacesAndNewlines)
 let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
 
@@ -22,6 +23,9 @@ struct Candidate {
 
 let candidates = windowInfo.compactMap { window -> Candidate? in
     guard window[kCGWindowOwnerName as String] as? String == ownerName else { return nil }
+    if let ownerPID {
+        guard window[kCGWindowOwnerPID as String] as? Int == ownerPID else { return nil }
+    }
     guard (window[kCGWindowLayer as String] as? Int) == 0 else { return nil }
     guard (window[kCGWindowAlpha as String] as? Double ?? 1) > 0 else { return nil }
     let windowName = window[kCGWindowName as String] as? String ?? ""
