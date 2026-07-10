@@ -52,6 +52,7 @@ final class WorkManagementSourceContractTests: XCTestCase {
         "public struct TodayAssistantRailContext",
         "public enum TodayRecommendationKind",
         "public struct TodayRecommendationChip",
+        "public struct PlanningDayKey",
         "public struct TodayWorkflowSnapshot",
         "public struct TodayScheduleDraft",
         "public struct ScheduleDraft",

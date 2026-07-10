@@ -1,5 +1,6 @@
 import SoloPMCore
 import Dispatch
+import os
 import SwiftUI
 import UniformTypeIdentifiers
 #if canImport(AppKit)
@@ -333,6 +334,9 @@ struct ProjectBoardView: View {
             consumePendingVoiceInboxTriageRequestIfNeeded()
             consumePendingAssistantQueueRequestIfNeeded()
         }
+        .modifier(ProjectBoardTodayRefreshLifecycleModifier {
+            viewModel.refreshDerivedReadModels()
+        })
         .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
             viewModel.load()
             viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
@@ -964,6 +968,83 @@ private extension View {
     }
 }
 
+private struct ProjectBoardTodayRefreshLifecycleModifier: ViewModifier {
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var boundaryRefreshTask: Task<Void, Never>?
+    let refresh: () -> Void
+
+    func body(content: Content) -> some View {
+        // Keep time-driven refreshes outside ProjectBoardView's already-large
+        // modifier chain so Swift can type-check the view while the live app
+        // still crosses day, timezone, locale, and activation boundaries.
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+                refreshAndRescheduleBoundary()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
+                refreshAndRescheduleBoundary()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
+                refreshAndRescheduleBoundary()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .NSSystemClockDidChange)) { _ in
+                refreshAndRescheduleBoundary()
+            }
+            .onAppear {
+                scheduleBoundaryRefreshIfActive()
+            }
+            .onDisappear {
+                cancelBoundaryRefresh()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else {
+                    cancelBoundaryRefresh()
+                    return
+                }
+                refreshAndRescheduleBoundary()
+            }
+    }
+
+    private func refreshAndRescheduleBoundary() {
+        guard scenePhase == .active else {
+            return
+        }
+        refresh()
+        scheduleBoundaryRefreshIfActive()
+    }
+
+    private func scheduleBoundaryRefreshIfActive() {
+        cancelBoundaryRefresh()
+        guard scenePhase == .active else {
+            return
+        }
+
+        let boundary = DailyPlanningReviewRefreshSchedule.nextStrictBoundary(
+            after: Date(),
+            calendar: .current
+        )
+        let nanoseconds = UInt64(max(boundary.timeIntervalSinceNow, 0) * 1_000_000_000)
+        boundaryRefreshTask = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: nanoseconds)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, scenePhase == .active else {
+                return
+            }
+
+            refresh()
+            scheduleBoundaryRefreshIfActive()
+        }
+    }
+
+    private func cancelBoundaryRefresh() {
+        boundaryRefreshTask?.cancel()
+        boundaryRefreshTask = nil
+    }
+}
+
 #if canImport(AppKit)
 private struct ProjectBoardToolbarLayoutBridge: NSViewRepresentable {
     let columnVisibility: NavigationSplitViewVisibility
@@ -991,11 +1072,14 @@ private struct ProjectBoardToolbarLayoutBridge: NSViewRepresentable {
 
 private final class ProjectBoardToolbarLayoutBridgeView: NSView {
     var onToolbarLayoutChanged: (() -> Void)?
+    private let runtimeDiagnosticLogger = Logger(subsystem: "dev.solopm.app", category: "runtime")
     private weak var observedToolbar: NSToolbar?
     private var toolbarDisplayModeObservation: NSKeyValueObservation?
     private var isToolbarDisplayModeMenuPruningInstalled = false
     private var observedToolbarDisplayMode: NSToolbar.DisplayMode?
     private var isPerformingToolbarLayoutPass = false
+    private var toolbarLayoutReconcileDepth = 0
+    private var toolbarLayoutMaxDepth = 0
     private var didScheduleInitialToolbarLayoutStabilization = false
 
     override func viewDidMoveToWindow() {
@@ -1169,7 +1253,20 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
         allowRetryIfToolbarMissing: Bool,
         notifyColumnsWhenToolbarAlreadyStable: Bool = false
     ) {
+        // Record re-entry before the existing boolean guard returns. This keeps
+        // nested attempts observable without allowing nested toolbar mutation.
+        toolbarLayoutReconcileDepth += 1
+        toolbarLayoutMaxDepth = max(toolbarLayoutMaxDepth, toolbarLayoutReconcileDepth)
+        runtimeDiagnosticLogger.notice(
+            "solopm.toolbar.layout.maxDepth=\(self.toolbarLayoutMaxDepth, privacy: .public)"
+        )
+        defer { toolbarLayoutReconcileDepth -= 1 }
+
         guard isPerformingToolbarLayoutPass == false else {
+            return
+        }
+
+        guard toolbarLayoutReconcileDepth == 1 else {
             return
         }
 

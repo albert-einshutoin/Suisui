@@ -1096,6 +1096,7 @@
 "Missed %d, blocked %d, unscheduled %d, Inbox %d" = "見落とし%d件、ブロック%d件、未スケジュール%d件、Inbox%d件";
 "%d tasks, %d open, %d in progress, %d blocked, %d done, %d missed, %d percent complete" = "%d件のタスク、未完了%d件、進行中%d件、ブロック%d件、完了%d件、見落とし%d件、進捗%dパーセント";
 "Daily Planning Review" = "日次計画レビュー";
+"Preparing Daily Planning Review…" = "日次計画レビューを準備中…";
 "Daily Planning Review action is already in Assistant Queue." = "日次計画レビューのアクションはすでにAssistant Queueにあります。";
 "Daily Planning Review generated an invalid action plan." = "日次計画レビューが無効なアクションプランを生成しました。";
 "Daily Planning Review has no recommended task to queue." = "Assistant Queueへ追加できる推奨タスクが日次計画レビューにありません。";

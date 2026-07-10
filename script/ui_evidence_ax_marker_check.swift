@@ -2,14 +2,24 @@ import ApplicationServices
 import AppKit
 import Foundation
 
-guard CommandLine.arguments.count == 4 else {
-    fputs("AX marker check requires app name, AX identifier marker, and text marker.\n", stderr)
+guard CommandLine.arguments.count == 4 || CommandLine.arguments.count == 5 else {
+    fputs("AX marker check requires app name, AX identifier marker, text marker, and an optional app PID.\n", stderr)
     exit(2)
 }
 
 let appName = CommandLine.arguments[1]
 let identifierNeedle = CommandLine.arguments[2]
 let textNeedle = CommandLine.arguments[3]
+let requestedPID: pid_t?
+if CommandLine.arguments.count == 5 {
+    guard let rawPID = Int32(CommandLine.arguments[4]), rawPID > 0 else {
+        fputs("AX marker check app PID must be a positive integer.\n", stderr)
+        exit(2)
+    }
+    requestedPID = pid_t(rawPID)
+} else {
+    requestedPID = nil
+}
 let environment = ProcessInfo.processInfo.environment
 let maxNodes = Int(environment["SOLOPM_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
 let requireIdentifierSubtree = environment["SOLOPM_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE"] == "1"
@@ -19,14 +29,28 @@ guard AXIsProcessTrusted() else {
     exit(2)
 }
 
-guard let runningApp = NSWorkspace.shared.runningApplications.first(where: { app in
-    app.localizedName == appName || app.bundleIdentifier == "dev.solopm.app"
-}) else {
-    fputs("\(appName) process is not visible to Accessibility.\n", stderr)
-    exit(2)
+let appPID: pid_t
+if let requestedPID {
+    // A smoke owns this exact PID. Resolving by display name here could inspect
+    // a developer's separately running SoloPM and turn a failed launch green.
+    guard NSWorkspace.shared.runningApplications.contains(where: { app in
+        app.processIdentifier == requestedPID
+    }) else {
+        fputs("\(appName) PID \(requestedPID) is not visible to Accessibility.\n", stderr)
+        exit(2)
+    }
+    appPID = requestedPID
+} else {
+    guard let runningApp = NSWorkspace.shared.runningApplications.first(where: { app in
+        app.localizedName == appName || app.bundleIdentifier == "dev.solopm.app"
+    }) else {
+        fputs("\(appName) process is not visible to Accessibility.\n", stderr)
+        exit(2)
+    }
+    appPID = runningApp.processIdentifier
 }
 
-let appElement = AXUIElementCreateApplication(runningApp.processIdentifier)
+let appElement = AXUIElementCreateApplication(appPID)
 AXUIElementSetMessagingTimeout(appElement, 1.0)
 
 func copyAttribute(_ element: AXUIElement, _ attribute: CFString) -> CFTypeRef? {

@@ -6655,6 +6655,159 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDerivedTodayWorkflowPrecomputesDailyReviewAndReusesItForSelectionRefresh() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Review launch plan",
+            projectID: launch.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-07-10"
+        ))
+        let referenceDate = try isoDate("2026-07-10T09:00:00Z")
+        let calendar = utcCalendar()
+
+        viewModel.refreshDerivedReadModels(on: referenceDate, calendar: calendar)
+        let firstPreview = try XCTUnwrap(viewModel.derivedReadModels.todayWorkflowSnapshot.dailyPlanningReviewPreview)
+        let firstPlan = viewModel.derivedReadModels.todayWorkflowSnapshot.plan
+        let firstChips = viewModel.derivedReadModels.todayWorkflowSnapshot.recommendationChips
+
+        viewModel.selectedTaskID = nil
+        viewModel.selectedTaskID = task.id
+
+        XCTAssertEqual(
+            viewModel.derivedReadModels.todayWorkflowSnapshot.dailyPlanningReviewPreview,
+            firstPreview
+        )
+        XCTAssertEqual(viewModel.derivedReadModels.todayWorkflowSnapshot.plan, firstPlan)
+        XCTAssertEqual(viewModel.derivedReadModels.todayWorkflowSnapshot.recommendationChips, firstChips)
+        XCTAssertEqual(
+            viewModel.derivedReadModels.todayWorkflowSnapshot.planningDayKey,
+            PlanningDayKey(referenceDate: referenceDate, calendar: calendar)
+        )
+    }
+
+    @MainActor
+    func testRepeatedLoadOfTheSameSnapshotDoesNotAdvanceTodayPreviewRevision() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let firstRevision = viewModel.todaySnapshotSourceRevision
+
+        viewModel.load()
+
+        XCTAssertEqual(viewModel.todaySnapshotSourceRevision, firstRevision)
+    }
+
+    @MainActor
+    func testPublicTodayWorkflowSnapshotUsesItsRealPlanningDayKey() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        let referenceDate = try isoDate("2026-07-10T12:01:00Z")
+        let calendar = utcCalendar()
+
+        let snapshot = viewModel.todayWorkflowSnapshot(on: referenceDate, calendar: calendar)
+
+        XCTAssertEqual(
+            snapshot.planningDayKey,
+            PlanningDayKey(referenceDate: referenceDate, calendar: calendar)
+        )
+        XCTAssertNotEqual(snapshot.planningDayKey, .empty)
+    }
+
+    @MainActor
+    func testDailyReviewPreviewInvalidatesAfterTaskMutationAndCompletedVisibilityChange() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Ship launch",
+            projectID: launch.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-07-10"
+        ))
+        let referenceDate = try isoDate("2026-07-10T09:00:00Z")
+        let calendar = utcCalendar()
+        viewModel.refreshDerivedReadModels(on: referenceDate, calendar: calendar)
+        XCTAssertEqual(
+            viewModel.derivedReadModels.todayWorkflowSnapshot.dailyPlanningReviewPreview?.recommendedTaskID,
+            task.id
+        )
+
+        viewModel.moveTask(id: task.id, to: .done)
+        XCTAssertNil(viewModel.derivedReadModels.todayWorkflowSnapshot.dailyPlanningReviewPreview?.recommendedTaskID)
+
+        viewModel.setShowsCompletedWorkflowTasks(true)
+        XCTAssertEqual(
+            viewModel.derivedReadModels.todayWorkflowSnapshot.dailyPlanningReviewPreview?.recommendedTaskID,
+            task.id
+        )
+    }
+
+    @MainActor
+    func testDailyReviewPreviewInvalidatesAcrossLocalDayDSTAndTimezoneBoundaries() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = try XCTUnwrap(viewModel.createTask(
+            title: "Observe day boundary",
+            projectID: launch.id,
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-03-08"
+        ))
+        var newYorkCalendar = Calendar(identifier: .gregorian)
+        newYorkCalendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let beforeDSTBoundary = try isoDate("2026-03-08T06:30:00Z")
+        let afterDSTBoundary = try isoDate("2026-03-09T05:30:00Z")
+
+        viewModel.refreshDerivedReadModels(on: beforeDSTBoundary, calendar: newYorkCalendar)
+        let beforeKey = viewModel.derivedReadModels.todayWorkflowSnapshot.planningDayKey
+        viewModel.refreshDerivedReadModels(on: afterDSTBoundary, calendar: newYorkCalendar)
+        let afterKey = viewModel.derivedReadModels.todayWorkflowSnapshot.planningDayKey
+
+        XCTAssertNotEqual(beforeKey, afterKey)
+        XCTAssertEqual(afterKey.timeZoneIdentifier, "America/New_York")
+
+        var tokyoCalendar = Calendar(identifier: .gregorian)
+        tokyoCalendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
+        viewModel.refreshDerivedReadModels(on: afterDSTBoundary, calendar: tokyoCalendar)
+        let tokyoKey = viewModel.derivedReadModels.todayWorkflowSnapshot.planningDayKey
+        XCTAssertNotEqual(afterKey, tokyoKey)
+        XCTAssertEqual(tokyoKey.timeZoneIdentifier, "Asia/Tokyo")
+    }
+
+    @MainActor
+    func testExplicitDailyPlanningReviewAlwaysWinsOverDerivedPreview() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = try XCTUnwrap(viewModel.createTask(
+            title: "Prepare readout",
+            projectID: launch.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-07-10"
+        ))
+        let referenceDate = try isoDate("2026-07-10T09:00:00Z")
+        let calendar = utcCalendar()
+        viewModel.refreshDerivedReadModels(on: referenceDate, calendar: calendar)
+        let preview = try XCTUnwrap(viewModel.derivedReadModels.todayWorkflowSnapshot.dailyPlanningReviewPreview)
+
+        let explicit = viewModel.prepareDailyPlanningReview(
+            transcript: "explicit voice review",
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        XCTAssertNotEqual(explicit, preview)
+        XCTAssertEqual(viewModel.currentDailyPlanningReview, explicit)
+        viewModel.refreshDerivedReadModels(on: referenceDate, calendar: calendar)
+        XCTAssertEqual(viewModel.currentDailyPlanningReview, explicit)
+    }
+
+    @MainActor
     func testProjectBoardViewModelBuildsTodayAssistantRailContextFromFocusedTask() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()

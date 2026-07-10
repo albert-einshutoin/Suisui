@@ -22,6 +22,7 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
     let emptyStateAction: WorkflowEmptyStateAction?
     @ObservedObject var viewModel: ProjectBoardViewModel
     let onSelectTask: ((ProjectBoardTask) -> Void)?
+    let fillsAvailableHeight: Bool
     let triageSummary: (ProjectBoardTask) -> InboxTriageSummary?
     @ViewBuilder var headerAccessory: () -> HeaderAccessory
     @ViewBuilder var footer: () -> Footer
@@ -36,6 +37,7 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
         emptyStateAction: WorkflowEmptyStateAction? = nil,
         viewModel: ProjectBoardViewModel,
         onSelectTask: ((ProjectBoardTask) -> Void)? = nil,
+        fillsAvailableHeight: Bool = true,
         triageSummary: @escaping (ProjectBoardTask) -> InboxTriageSummary? = { _ in nil },
         @ViewBuilder headerAccessory: @escaping () -> HeaderAccessory = { EmptyView() },
         @ViewBuilder footer: @escaping () -> Footer
@@ -49,6 +51,7 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
         self.emptyStateAction = emptyStateAction
         self.viewModel = viewModel
         self.onSelectTask = onSelectTask
+        self.fillsAvailableHeight = fillsAvailableHeight
         self.triageSummary = triageSummary
         self.headerAccessory = headerAccessory
         self.footer = footer
@@ -56,17 +59,13 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: 12) {
-                    WorkflowHeader(title: title, subtitle: subtitle, systemImage: systemImage)
-                    Spacer(minLength: 12)
-                    headerAccessory()
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    WorkflowHeader(title: title, subtitle: subtitle, systemImage: systemImage)
-                    headerAccessory()
-                }
+            // Header accessories can contain the Today command surface and
+            // several localized actions. A single vertical proposal avoids
+            // ViewThatFits recursively sizing both header branches while
+            // preserving the header-before-accessory reading/action order.
+            VStack(alignment: .leading, spacing: 10) {
+                WorkflowHeader(title: title, subtitle: subtitle, systemImage: systemImage)
+                headerAccessory()
             }
 
             if tasks.isEmpty {
@@ -107,7 +106,7 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
             footer()
         }
         .padding(18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: fillsAvailableHeight ? .infinity : nil, alignment: .topLeading)
     }
 
     private func selectTask(_ task: ProjectBoardTask) {

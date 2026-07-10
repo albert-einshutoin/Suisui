@@ -124,10 +124,19 @@ ax_wait_for_ax_identifier() {
   local timeout_seconds="$3"
   local root_dir="$4"
   local probe_file="$5"
+  # Optional arguments retain the established five-argument API for existing
+  # smoke scripts while allowing new launch-owned checks to prove their AX
+  # result belongs to the process they started.
+  local text_marker="${6:-}"
+  local app_pid="${7:-}"
+  local ax_arguments=("$app_name" "$identifier" "$text_marker")
+  if [[ -n "$app_pid" ]]; then
+    ax_arguments+=("$app_pid")
+  fi
   local deadline=$((SECONDS + timeout_seconds))
 
   while true; do
-    if /usr/bin/swift "$root_dir/script/ui_evidence_ax_marker_check.swift" "$app_name" "$identifier" "" \
+    if /usr/bin/swift "$root_dir/script/ui_evidence_ax_marker_check.swift" "${ax_arguments[@]}" \
       >"$probe_file" 2>"$probe_file.err"; then
       return 0
     fi

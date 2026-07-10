@@ -102,6 +102,42 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("createTask("))
     }
 
+    func testProjectBoardRefreshesTodayFromProductionDateAndLifecycleNotifications() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(source.contains("@Environment(\\.scenePhase) private var scenePhase"))
+        XCTAssertTrue(source.contains(".onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged))"))
+        XCTAssertTrue(source.contains(".onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange))"))
+        XCTAssertTrue(source.contains(".onReceive(NotificationCenter.default.publisher(for: .NSSystemClockDidChange))"))
+        XCTAssertTrue(source.contains(".onChange(of: scenePhase)"))
+        XCTAssertTrue(source.contains("@State private var boundaryRefreshTask: Task<Void, Never>?"))
+        XCTAssertTrue(source.contains("DailyPlanningReviewRefreshSchedule.nextStrictBoundary"))
+        XCTAssertTrue(source.contains("try await Task.sleep(nanoseconds:"))
+        XCTAssertTrue(source.contains(".onDisappear"))
+        XCTAssertTrue(source.contains("boundaryRefreshTask?.cancel()"))
+        XCTAssertFalse(source.contains("Timer.publish"))
+        XCTAssertTrue(source.contains("viewModel.refreshDerivedReadModels()"))
+    }
+
+    func testSelectionOnlyTodayRefreshReusesPlanPreviewAndRecommendationChips() throws {
+        let source = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let start = try XCTUnwrap(source.range(of: "private func refreshTodayDerivedReadModelForSelectionChange()"))
+        let end = try XCTUnwrap(source.range(of: "private func makeCachedDailyPlanningReviewPreview(", range: start.upperBound..<source.endIndex))
+        let selectionRefresh = String(source[start.lowerBound..<end.lowerBound])
+
+        XCTAssertTrue(selectionRefresh.contains("nextReadModels.todayWorkflowSnapshot.plan"))
+        XCTAssertTrue(selectionRefresh.contains("assistantContext"))
+        XCTAssertFalse(selectionRefresh.contains("todayPlan("))
+        XCTAssertFalse(selectionRefresh.contains("dailyWorkloadOverview("))
+        XCTAssertFalse(selectionRefresh.contains("makeCachedDailyPlanningReviewPreview("))
+    }
+
+    func testTodayWorkflowViewUsesExplicitReviewBeforeSnapshotPreview() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift")
+
+        XCTAssertTrue(source.contains("viewModel.dailyPlanningReview ?? snapshot.dailyPlanningReviewPreview"))
+    }
+
     func testProjectBoardRuntimeLoadsAssistantQueueReadModel() throws {
         let appSource = try readAppShellSource()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
@@ -801,6 +837,33 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(bridgeSource.contains("retrySynchronousProjectBoardToolbarLayoutPass(remainingAttempts:"))
         XCTAssertFalse(bridgeSource.contains("scheduleToolbarTrailingAlignment()"))
         XCTAssertFalse(bridgeSource.contains("scheduleToolbarLayoutRefreshIfDisplayModeChanged()"))
+    }
+
+    func testRuntimeDiagnosticsExposeOnlyStablePublicIntegerCounters() throws {
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let bridgeStart = try XCTUnwrap(boardSource.range(of: "private final class ProjectBoardToolbarLayoutBridgeView"))
+        let appKitEnd = try XCTUnwrap(boardSource.range(of: "#else", range: bridgeStart.upperBound..<boardSource.endIndex))
+        let bridgeSource = String(boardSource[bridgeStart.lowerBound..<appKitEnd.lowerBound])
+
+        XCTAssertTrue(coreSource.contains("Logger(subsystem: \"dev.solopm.app\""))
+        XCTAssertTrue(coreSource.contains("solopm.dailyPlanningPreview.buildCount="))
+        XCTAssertTrue(coreSource.contains("privacy: .public"))
+        XCTAssertTrue(coreSource.contains("projectBoardRuntimeDiagnosticLogger.notice"))
+        XCTAssertTrue(coreSource.contains("dailyPlanningReviewPreviewBuildCount += 1"))
+        XCTAssertTrue(coreSource.contains("dailyPlanningReviewPreviewCache.review(for: cacheKey) {"))
+
+        XCTAssertTrue(bridgeSource.contains("Logger(subsystem: \"dev.solopm.app\""))
+        XCTAssertTrue(bridgeSource.contains("solopm.toolbar.layout.maxDepth="))
+        XCTAssertTrue(bridgeSource.contains("privacy: .public"))
+        XCTAssertTrue(bridgeSource.contains("runtimeDiagnosticLogger.notice"))
+        XCTAssertTrue(bridgeSource.contains("private var toolbarLayoutReconcileDepth = 0"))
+        XCTAssertTrue(bridgeSource.contains("private var toolbarLayoutMaxDepth = 0"))
+        XCTAssertTrue(bridgeSource.contains("toolbarLayoutReconcileDepth += 1"))
+        XCTAssertTrue(bridgeSource.contains("toolbarLayoutMaxDepth = max(toolbarLayoutMaxDepth, toolbarLayoutReconcileDepth)"))
+        XCTAssertTrue(bridgeSource.contains("defer { toolbarLayoutReconcileDepth -= 1 }"))
+        XCTAssertTrue(bridgeSource.contains("guard isPerformingToolbarLayoutPass == false else"))
+        XCTAssertTrue(bridgeSource.contains("guard toolbarLayoutReconcileDepth == 1 else"))
     }
 
     func testSynchronousUIMutationPolicyADRDefinesLayoutSensitiveBoundaries() throws {
@@ -2279,6 +2342,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(boardSource.contains("AVSpeechSynthesizer"))
     }
 
+    func testTodayViewReadsPrecomputedDailyPlanningReviewWithoutRenderPathFallback() throws {
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift")
+        let panelStart = try XCTUnwrap(workflowSource.range(of: "private struct TodayDailyPlanningReviewPanel"))
+        let panelEnd = try XCTUnwrap(workflowSource.range(of: "private struct TodayCommandPanel"))
+        let panelSource = String(workflowSource[panelStart.lowerBound..<panelEnd.lowerBound])
+
+        XCTAssertFalse(panelSource.contains("makeDailyPlanningReview"))
+        XCTAssertFalse(panelSource.contains("dailyWorkloadOverview"))
+        XCTAssertTrue(workflowSource.contains("viewModel.dailyPlanningReview ?? snapshot.dailyPlanningReviewPreview"))
+    }
+
     func testVoiceInboxTriageBridgeUsesLocalProjectBoardInboxCommands() throws {
         let voiceSource = try readPackageFile("Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift")
         let appSource = try readAppShellSource()
@@ -2352,8 +2426,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("TodayAISuggestionCard(plan: plan, viewModel: viewModel)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-ai-suggestion-card\")"))
         XCTAssertTrue(todayWorkflowSource.contains("let snapshot = viewModel.derivedReadModels.todayWorkflowSnapshot"))
-        XCTAssertTrue(todayWorkflowSource.contains("mainSurface(snapshot: snapshot)"))
-        XCTAssertTrue(todayWorkflowSource.contains("TodayAssistantRail(\n                    commandTitle: $commandTitle,\n                    context: snapshot.assistantContext"))
+        XCTAssertTrue(todayWorkflowSource.contains("mainSurface(snapshot: snapshot, fillsAvailableHeight:"))
+        XCTAssertTrue(todayWorkflowSource.contains("TodayAssistantRail("))
+        XCTAssertTrue(todayWorkflowSource.contains("commandTitle: $commandTitle"))
+        XCTAssertTrue(todayWorkflowSource.contains("context: snapshot.assistantContext"))
         XCTAssertFalse(todayWorkflowSource.contains("viewModel.todayPlan()"))
         XCTAssertFalse(todayWorkflowSource.contains("viewModel.todayAssistantRailContext()"))
     }
@@ -2388,6 +2464,100 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("openInspectorForTodayRailTask: openInspectorForTodayRailTask"))
         XCTAssertTrue(boardSource.contains("openInspectorForTodayRailTask"))
         XCTAssertTrue(boardSource.contains("isInspectorPresented = true"))
+    }
+
+    func testTodayWorkflowUsesStableLayoutsForSizeFittingSensitiveScopes() throws {
+        let todaySource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift")
+        let sharedSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowSharedViews.swift")
+
+        let todayWorkflowStart = try XCTUnwrap(todaySource.range(of: "struct TodayWorkflowView"))
+        let todayWorkflowEnd = try XCTUnwrap(todaySource.range(of: "private struct TodayDailyPlanningReviewPanel"))
+        let todayWorkflowScope = String(todaySource[todayWorkflowStart.lowerBound..<todayWorkflowEnd.lowerBound])
+
+        let todayBriefingStart = try XCTUnwrap(todaySource.range(of: "private struct TodayBriefingPanel"))
+        let todayBriefingEnd = try XCTUnwrap(todaySource.range(of: "private struct TodaySuggestionPanel"))
+        let todayBriefingScope = String(todaySource[todayBriefingStart.lowerBound..<todayBriefingEnd.lowerBound])
+
+        let commonRailStart = try XCTUnwrap(todaySource.range(of: "private var commonActionRail"))
+        let commonButtonsStart = try XCTUnwrap(todaySource.range(of: "@ViewBuilder\n    private var commonActionButtons", range: commonRailStart.upperBound..<todaySource.endIndex))
+        let commonRailScope = String(todaySource[commonRailStart.lowerBound..<commonButtonsStart.lowerBound])
+        let suggestionRailStart = try XCTUnwrap(todaySource.range(of: "private var suggestionRail", range: commonButtonsStart.upperBound..<todaySource.endIndex))
+        let commonButtonsScope = String(todaySource[commonButtonsStart.lowerBound..<suggestionRailStart.lowerBound])
+
+        let planSummaryStart = try XCTUnwrap(todaySource.range(of: "private struct TodayPlanSummary"))
+        let countBadgeStart = try XCTUnwrap(todaySource.range(of: "private struct TodayCountBadge", range: planSummaryStart.upperBound..<todaySource.endIndex))
+        let planSummaryScope = String(todaySource[planSummaryStart.lowerBound..<countBadgeStart.lowerBound])
+
+        let taskSurfaceStart = try XCTUnwrap(sharedSource.range(of: "struct WorkflowTaskSurface"))
+        let taskSurfaceBodyStart = try XCTUnwrap(sharedSource.range(of: "\n    var body: some View {", range: taskSurfaceStart.upperBound..<sharedSource.endIndex))
+        let taskSurfaceContentStart = try XCTUnwrap(sharedSource.range(of: "\n            if tasks.isEmpty {", range: taskSurfaceBodyStart.upperBound..<sharedSource.endIndex))
+        let sharedHeaderScope = String(sharedSource[taskSurfaceBodyStart.upperBound..<taskSurfaceContentStart.lowerBound])
+
+        XCTAssertFalse(todayWorkflowScope.contains("ViewThatFits(in:"))
+        XCTAssertFalse(todayBriefingScope.contains("ViewThatFits(in:"))
+        XCTAssertFalse(commonRailScope.contains("ViewThatFits(in:"))
+        XCTAssertFalse(planSummaryScope.contains("ViewThatFits(in:"))
+        XCTAssertFalse(sharedHeaderScope.contains("ViewThatFits(in:"))
+
+        XCTAssertFalse(todayWorkflowScope.contains("LazyVGrid"))
+        XCTAssertFalse(todayWorkflowScope.contains("GridItem(.adaptive"))
+        XCTAssertTrue(todayWorkflowScope.contains("GeometryReader"))
+        XCTAssertTrue(todayWorkflowScope.contains("proxy.size.width >= TodayWorkflowLayoutMetrics.twoColumnMinimumWidth"))
+        XCTAssertTrue(todayWorkflowScope.contains("HStack(alignment: .top"))
+        XCTAssertTrue(todayWorkflowScope.contains("ScrollView(.vertical)"))
+        XCTAssertTrue(todayWorkflowScope.contains("fillsAvailableHeight: true"))
+        XCTAssertTrue(todayWorkflowScope.contains("fillsAvailableHeight: false"))
+        XCTAssertTrue(todayBriefingScope.contains("LazyVGrid"))
+        XCTAssertTrue(commonRailScope.contains("GridItem(.adaptive"))
+        XCTAssertTrue(planSummaryScope.contains("VStack(alignment: .leading"))
+        XCTAssertTrue(sharedHeaderScope.contains("VStack(alignment: .leading"))
+
+        XCTAssertLessThan(
+            try XCTUnwrap(sharedHeaderScope.range(of: "WorkflowHeader(")).lowerBound,
+            try XCTUnwrap(sharedHeaderScope.range(of: "headerAccessory()")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(todayBriefingScope.range(of: "WorkflowDoneToggle(viewModel: viewModel)")).lowerBound,
+            try XCTUnwrap(todayBriefingScope.range(of: "suggestionRail")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(todayBriefingScope.range(of: "suggestionRail")).lowerBound,
+            try XCTUnwrap(todayBriefingScope.range(of: "startFocusButton")).lowerBound
+        )
+
+        let commonActionIdentifiers = [
+            "today-common-chip-add-task",
+            "today-common-chip-plan-tomorrow",
+            "today-common-chip-prepare-meeting",
+            "today-common-chip-draft-reply"
+        ]
+        let commonActionOffsets = try commonActionIdentifiers.map { identifier in
+            try XCTUnwrap(commonButtonsScope.range(of: identifier)?.lowerBound)
+        }
+        for pair in zip(commonActionOffsets, commonActionOffsets.dropFirst()) {
+            XCTAssertLessThan(pair.0, pair.1)
+        }
+    }
+
+    func testTodayWorkflowKeepsTheRailReachableWithFiniteNarrowHeight() throws {
+        let todaySource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift")
+        let sharedSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowSharedViews.swift")
+        let workflowStart = try XCTUnwrap(todaySource.range(of: "struct TodayWorkflowView"))
+        let workflowEnd = try XCTUnwrap(todaySource.range(of: "private struct TodayDailyPlanningReviewPanel"))
+        let workflowScope = String(todaySource[workflowStart.lowerBound..<workflowEnd.lowerBound])
+
+        XCTAssertTrue(todaySource.contains("private enum TodayWorkflowLayoutMetrics"))
+        XCTAssertTrue(todaySource.contains("twoColumnMinimumWidth: CGFloat = 900"))
+        XCTAssertTrue(workflowScope.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
+        XCTAssertTrue(workflowScope.contains(".padding(.horizontal, 18)"))
+        XCTAssertTrue(workflowScope.contains(".padding(.bottom, 18)"))
+        XCTAssertTrue(workflowScope.contains("TodayAssistantRail("))
+        XCTAssertTrue(sharedSource.contains("let fillsAvailableHeight: Bool"))
+        XCTAssertTrue(sharedSource.contains("maxHeight: fillsAvailableHeight ? .infinity : nil"))
+
+        let mainSurfaceOffset = try XCTUnwrap(workflowScope.range(of: "mainSurface(snapshot:"))
+        let assistantRailOffset = try XCTUnwrap(workflowScope.range(of: "TodayAssistantRail("))
+        XCTAssertLessThan(mainSurfaceOffset.lowerBound, assistantRailOffset.lowerBound)
     }
 
     func testScheduleWorkflowIsReachableAndApprovalFirst() throws {

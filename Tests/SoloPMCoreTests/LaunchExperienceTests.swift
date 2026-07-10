@@ -236,6 +236,24 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(screenshotCapture.contains("args+=(\"SOLOPM_LAUNCH_RECOVERY_MODE=1\")"))
     }
 
+    func testTodayProductionRouteSmokeDoesNotUseLaunchRecoveryAndChecksRealBoardMarkers() throws {
+        let source = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
+
+        XCTAssertFalse(source.contains("SOLOPM_LAUNCH_RECOVERY_MODE="))
+        XCTAssertTrue(source.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"today\""))
+        // The marker waiter is deliberately generic: the production smoke must
+        // exercise both concrete markers through that helper, not duplicate it.
+        XCTAssertTrue(source.contains("wait_for_marker_until()"))
+        XCTAssertTrue(source.contains("wait_for_marker_until \"project-board-header-bar\" \"\" \"$case_deadline\""))
+        XCTAssertTrue(source.contains("wait_for_marker_until \"today-workflow\" \"$expected_today_label\" \"$case_deadline\""))
+        XCTAssertTrue(source.contains("RUNTIME_TIMEOUT_SECONDS=\"${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS:-10}\""))
+        XCTAssertTrue(source.contains("SOLOPM_LANGUAGE_PREFERENCE=\"$locale\""))
+        XCTAssertTrue(source.contains("LOCALES=(\"english\" \"japanese\")"))
+        XCTAssertTrue(source.contains("locale_label_for"))
+        XCTAssertTrue(source.contains("expected_today_label_for"))
+        XCTAssertTrue(source.contains("ax_wait_for_ax_identifier \"$APP_NAME\" \"$marker\" 1 \"$ROOT_DIR\" \"$probe_file\" \"$required_text\" \"$app_pid\""))
+    }
+
     func testDeadlineWatcherStaysOutOfEvidenceHarnessLaunches() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Composition/DeadlineWatcherRuntime.swift")
 

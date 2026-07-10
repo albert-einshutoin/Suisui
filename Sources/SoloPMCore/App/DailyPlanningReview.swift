@@ -79,6 +79,112 @@ public struct DailyPlanningReview: Codable, Equatable, Sendable {
     }
 }
 
+/// Defines the time boundaries shared by suggested work blocks and the daily
+/// planning preview. Using elapsed time from the local hour preserves the
+/// actual instant through daylight-saving folds and skips.
+public enum DailyPlanningReviewRefreshSchedule {
+    private static let slotDuration: TimeInterval = 30.0 * 60.0
+
+    public static func roundedTimeBlockStart(from referenceDate: Date, calendar: Calendar) -> Date {
+        guard let hourStart = calendar.dateInterval(of: .hour, for: referenceDate)?.start else {
+            return referenceDate
+        }
+
+        let elapsed = referenceDate.timeIntervalSince(hourStart)
+        let remainder = elapsed.truncatingRemainder(dividingBy: slotDuration)
+        let roundedElapsed = remainder == 0 ? elapsed : elapsed + (slotDuration - remainder)
+        return hourStart.addingTimeInterval(roundedElapsed)
+    }
+
+    /// Returns a future boundary even when `referenceDate` is already on one.
+    /// This prevents a completed refresh from immediately scheduling itself again.
+    public static func nextStrictBoundary(after referenceDate: Date, calendar: Calendar) -> Date {
+        let rounded = roundedTimeBlockStart(from: referenceDate, calendar: calendar)
+        return rounded > referenceDate
+            ? rounded
+            : rounded.addingTimeInterval(slotDuration)
+    }
+}
+
+struct DailyPlanningReviewTimeBlockKey: Equatable, Sendable {
+    let year: Int
+    let month: Int
+    let day: Int
+    let hour: Int
+    let minute: Int
+    let utcOffset: Int
+
+    init(referenceDate: Date, calendar: Calendar) {
+        let blockStart = DailyPlanningReviewRefreshSchedule.roundedTimeBlockStart(
+            from: referenceDate,
+            calendar: calendar
+        )
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: blockStart)
+        self.year = components.year ?? 0
+        self.month = components.month ?? 0
+        self.day = components.day ?? 0
+        self.hour = components.hour ?? 0
+        // Match the board's ceiling semantics: an exact boundary stays in its
+        // own slot, while the next second moves to the next 30-minute preview.
+        self.minute = components.minute ?? 0
+        // Local wall-clock components alone collapse the two 01:30 values in a
+        // fall-back fold. The offset keeps both instants distinct and also
+        // records which side of a spring-forward skip produced this key.
+        self.utcOffset = calendar.timeZone.secondsFromGMT(for: blockStart)
+    }
+}
+
+struct DailyPlanningReviewPreviewCacheKey: Equatable, Sendable {
+    let planningDayKey: PlanningDayKey
+    let sourceRevision: UInt64
+    let phase: DailyPlanningReviewPhase
+    let timeBlock: DailyPlanningReviewTimeBlockKey
+
+    init(
+        planningDayKey: PlanningDayKey,
+        sourceRevision: UInt64,
+        referenceDate: Date,
+        calendar: Calendar
+    ) {
+        self.planningDayKey = planningDayKey
+        self.sourceRevision = sourceRevision
+        self.phase = DailyPlanningReviewBuilder.phase(for: referenceDate, calendar: calendar)
+        self.timeBlock = DailyPlanningReviewTimeBlockKey(
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+    }
+}
+
+struct DailyPlanningReviewPreviewCache {
+    private var cachedKey: DailyPlanningReviewPreviewCacheKey?
+    private var cachedReview: DailyPlanningReview?
+
+    init() {
+        self.cachedKey = nil
+        self.cachedReview = nil
+    }
+
+    mutating func review(
+        for key: DailyPlanningReviewPreviewCacheKey,
+        build: () -> DailyPlanningReview
+    ) -> DailyPlanningReview {
+        if cachedKey == key, let cachedReview {
+            return cachedReview
+        }
+
+        let review = build()
+        cachedKey = key
+        cachedReview = review
+        return review
+    }
+
+    mutating func invalidate() {
+        cachedKey = nil
+        cachedReview = nil
+    }
+}
+
 public enum DailyPlanningReviewBuilder {
     public static func review(
         transcript: String,
@@ -126,7 +232,7 @@ public enum DailyPlanningReviewBuilder {
         )
     }
 
-    private static func phase(for date: Date, calendar: Calendar) -> DailyPlanningReviewPhase {
+    fileprivate static func phase(for date: Date, calendar: Calendar) -> DailyPlanningReviewPhase {
         let hour = calendar.component(.hour, from: date)
         switch hour {
         case 5..<12:
