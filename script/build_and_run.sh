@@ -51,11 +51,23 @@ BUILD_CONFIGURATION="${SOLOPM_BUILD_CONFIGURATION:-debug}"
 SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
 SPARKLE_PUBLIC_ED_KEY="${SOLOPM_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
 LOCAL_LICENSE_PUBLIC_KEY_BASE64="${SOLOPM_LOCAL_LICENSE_PUBLIC_KEY_BASE64:-${SOLOPM_LOCAL_LICENSE_PUBLIC_KEY:-}}"
-# SwiftUI cold launch plus fallback-window recovery can exceed 12s on release
-# evidence machines; keep the default aligned with runtime smoke waits while
+# SwiftUI cold launch can exceed 12s on release evidence machines; keep the
+# default aligned with runtime smoke waits while
 # preserving SOLOPM_VERIFY_TIMEOUT_SECONDS for faster local overrides.
 VERIFY_TIMEOUT_SECONDS="${SOLOPM_VERIFY_TIMEOUT_SECONDS:-30}"
 PROJECT_BOARD_WINDOW_NAME="${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}"
+AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
+VERIFY_ROOT="$BUILD_AND_RUN_TMPDIR/verify"
+VERIFY_HOME="$VERIFY_ROOT/home"
+VERIFY_CFFIXED_USER_HOME="$VERIFY_ROOT/cfixed-user-home"
+VERIFY_TMPDIR="$VERIFY_ROOT/tmp"
+VERIFY_DATABASE_PATH="$VERIFY_ROOT/solopm.sqlite3"
+VERIFY_SQLITE3="${SQLITE3:-sqlite3}"
+BOOTSTRAP_LAUNCH_PID=""
+BOOTSTRAP_APP_PID=""
+APP_LAUNCH_PID=""
+APP_PID=""
+VERIFY_LAUNCH_PID=""
 BUILD_AND_RUN_LOCK_DIR="$BUILD_AND_RUN_TMP_ROOT/build_and_run.lock"
 BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS="${SOLOPM_BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS:-120}"
 BUILD_AND_RUN_LOCK_ACQUIRED=0
@@ -69,6 +81,14 @@ APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_LOCALIZATION_SOURCE="$ROOT_DIR/Sources/SoloPMApp/Resources"
+
+if [[ ! -r "$AX_HELPERS" ]]; then
+  echo "missing accessibility helpers: $AX_HELPERS" >&2
+  exit 2
+fi
+
+# shellcheck source=/dev/null
+source "$AX_HELPERS"
 
 cd "$ROOT_DIR"
 
@@ -96,7 +116,50 @@ cleanup_build_and_run_tmpdir() {
   fi
 }
 
+terminate_verify_app() {
+  terminate_owned_verify_process "final" "${APP_LAUNCH_PID:-}" "${APP_PID:-}"
+  terminate_owned_verify_process "bootstrap" "${BOOTSTRAP_LAUNCH_PID:-}" "${BOOTSTRAP_APP_PID:-}"
+}
+
+terminate_owned_verify_process() {
+  local label="$1"
+  local launch_pid="$2"
+  local app_pid="$3"
+  local deadline
+
+  if [[ -z "$launch_pid" && -z "$app_pid" ]]; then
+    return 0
+  fi
+
+  if [[ -n "$app_pid" ]] && ax_pid_is_owned_process "$APP_NAME" "$app_pid" "$APP_BINARY"; then
+    kill "$app_pid" >/dev/null 2>&1 || true
+    deadline=$((SECONDS + 3))
+    while kill -0 "$app_pid" >/dev/null 2>&1 && [[ "$SECONDS" -lt "$deadline" ]]; do
+      sleep 0.1
+    done
+    kill -9 "$app_pid" >/dev/null 2>&1 || true
+  fi
+
+  # `$!` belongs to the env launcher, not necessarily the app. It is still an
+  # owned child of this shell, so reap it separately without using a global
+  # name-based kill that could touch another SoloPM process.
+  if [[ -n "$launch_pid" && "$launch_pid" != "$app_pid" ]] && kill -0 "$launch_pid" >/dev/null 2>&1; then
+    kill "$launch_pid" >/dev/null 2>&1 || true
+    deadline=$((SECONDS + 3))
+    while kill -0 "$launch_pid" >/dev/null 2>&1 && [[ "$SECONDS" -lt "$deadline" ]]; do
+      sleep 0.1
+    done
+    kill -9 "$launch_pid" >/dev/null 2>&1 || true
+  fi
+
+  if [[ -n "$launch_pid" ]]; then
+    wait "$launch_pid" >/dev/null 2>&1 || true
+  fi
+  printf "OK: SoloPM %s process cleanup complete (launch_pid=%s app_pid=%s)\n" "$label" "${launch_pid:-none}" "${app_pid:-none}"
+}
+
 cleanup_build_and_run() {
+  terminate_verify_app
   release_build_and_run_lock
   cleanup_build_and_run_tmpdir
 }
@@ -255,13 +318,7 @@ activate_app() {
 
 open_app() {
   if [[ "$MODE" == "--verify" || "$MODE" == "verify" ]]; then
-    # Verify mode must preserve launch-recovery env exactly so the fallback
-    # Project Board window is created even on hosts where LaunchServices drops
-    # or delays `open --env` values.
-    /usr/bin/env \
-      SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-      SOLOPM_LAUNCH_RECOVERY_MODE=1 \
-      "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
+    launch_verify_process "${1:-today}"
     return
   fi
   local open_args=(-n -F "$APP_BUNDLE")
@@ -269,49 +326,133 @@ open_app() {
   activate_app
 }
 
+launch_verify_process() {
+  local selected_destination="$1"
+  mkdir -p "$VERIFY_HOME" "$VERIFY_CFFIXED_USER_HOME" "$VERIFY_TMPDIR"
+  /usr/bin/env -i \
+    PATH="$PATH" \
+    HOME="$VERIFY_HOME" \
+    CFFIXED_USER_HOME="$VERIFY_CFFIXED_USER_HOME" \
+    TMPDIR="$VERIFY_TMPDIR" \
+    SOLOPM_DATABASE_PATH="$VERIFY_DATABASE_PATH" \
+    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="$selected_destination" \
+    "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
+  # `/usr/bin/env` may remain as the background job while the app is its child;
+  # the caller must resolve and own the actual executable PID before checking UI.
+  VERIFY_LAUNCH_PID="$!"
+}
+
+resolve_verify_app_pid() {
+  local launch_pid="$1"
+  local resolved_pid
+  if resolved_pid="$(ax_wait_for_owned_app_pid "$launch_pid" "$APP_BINARY" "$VERIFY_TIMEOUT_SECONDS")"; then
+    printf '%s\n' "$resolved_pid"
+    return 0
+  fi
+  ax_report_failure "launch" "app binary did not appear under launch pid=$launch_pid within ${VERIFY_TIMEOUT_SECONDS}s"
+  return 1
+}
+
 wait_for_app_process() {
+  if ax_wait_for_pid_owned_process "$APP_NAME" "$APP_PID" "$VERIFY_TIMEOUT_SECONDS" "$APP_BINARY"; then
+    printf "OK: SoloPM verify process launched (pid=%s)\n" "$APP_PID"
+    return 0
+  fi
+  ax_report_failure "launch" "process did not appear for pid=$APP_PID within ${VERIFY_TIMEOUT_SECONDS}s"
+  echo "BLOCKER: $APP_NAME process did not appear within ${VERIFY_TIMEOUT_SECONDS}s" >&2
+  return 1
+}
+
+wait_for_verify_database() {
   local deadline=$((SECONDS + VERIFY_TIMEOUT_SECONDS))
-  while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: $APP_NAME process did not appear within ${VERIFY_TIMEOUT_SECONDS}s" >&2
+  while true; do
+    if [[ -n "${BOOTSTRAP_APP_PID:-}" ]] && ! ax_pid_is_owned_process "$APP_NAME" "$BOOTSTRAP_APP_PID" "$APP_BINARY"; then
+      ax_report_failure "launch" "bootstrap app exited before isolated SQLite schema became ready (pid=$BOOTSTRAP_APP_PID)"
       return 1
     fi
-    sleep 1
+    if [[ -f "$VERIFY_DATABASE_PATH" ]] && [[ "$($VERIFY_SQLITE3 -batch -noheader "$VERIFY_DATABASE_PATH" \
+      "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('projects', 'tasks');" 2>/dev/null || true)" == "2" ]]; then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      ax_report_failure "launch" "isolated SQLite schema did not become ready at $VERIFY_DATABASE_PATH"
+      return 1
+    fi
+    sleep 0.2
   done
 }
 
-wait_for_project_board_window() {
-  local deadline=$((SECONDS + VERIFY_TIMEOUT_SECONDS))
-  local window_output=""
-  local window_status=1
-
-  while true; do
-    set +e
-    window_output="$(
-      SOLOPM_WINDOW_OWNER="$APP_NAME" \
-      SOLOPM_WINDOW_NAME="$PROJECT_BOARD_WINDOW_NAME" \
-      /usr/bin/swift "$ROOT_DIR/script/ui_evidence_window_metadata.swift" 2>&1
-    )"
-    window_status=$?
-    set -e
-
-    if [[ "$window_status" -eq 0 ]]; then
-      printf "OK: Project Board window visible (%s)\n" "$window_output"
-      return 0
-    fi
-
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      break
-    fi
-
-    sleep 1
-  done
-
-  if [[ -n "$window_output" ]]; then
-    printf "%s\n" "$window_output" >&2
+seed_verify_fixture() {
+  if ! command -v "$VERIFY_SQLITE3" >/dev/null 2>&1; then
+    ax_report_failure "launch" "sqlite3 is required to seed the deterministic verify fixture"
+    return 1
   fi
+
+  local due_at="2026-01-01T12:00:00+00:00"
+  if ! "$VERIFY_SQLITE3" "$VERIFY_DATABASE_PATH" <<SQL
+PRAGMA busy_timeout = 5000;
+INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command, created_at, updated_at)
+SELECT 'build-and-run-verify-fixture', 'active', 'high', NULL, NULL, '[]', 'build-and-run-verify', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM projects WHERE source_command = 'build-and-run-verify');
+INSERT INTO tasks (project_id, title, status, detail, due_at, completed_at, priority, source_command, created_at, updated_at)
+SELECT id, 'Verify Project Board launch', 'planned', 'Deterministic local smoke fixture', '$due_at', NULL, 'high', 'build-and-run-verify', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+FROM projects
+WHERE source_command = 'build-and-run-verify'
+  AND NOT EXISTS (SELECT 1 FROM tasks WHERE source_command = 'build-and-run-verify');
+SQL
+  then
+    ax_report_failure "launch" "deterministic verify fixture could not be written to $VERIFY_DATABASE_PATH"
+    return 1
+  fi
+}
+
+fetch_verify_project_id() {
+  local project_id
+  project_id="$($VERIFY_SQLITE3 -batch -noheader "$VERIFY_DATABASE_PATH" \
+    "SELECT p.id
+     FROM projects AS p
+     JOIN tasks AS t ON t.project_id = p.id
+     WHERE p.source_command = 'build-and-run-verify'
+       AND p.title = 'build-and-run-verify-fixture'
+       AND t.source_command = 'build-and-run-verify'
+       AND t.title = 'Verify Project Board launch'
+     ORDER BY p.id DESC LIMIT 1;" \
+    | tr -d '[:space:]')"
+  if [[ ! "$project_id" =~ ^[1-9][0-9]*$ ]]; then
+    ax_report_failure "launch" "deterministic verify project ID was not found"
+    return 1
+  fi
+  printf '%s\n' "$project_id"
+}
+
+wait_for_project_board_window() {
+  local window_output=""
+  local window_diagnostic_file="$VERIFY_ROOT/window.err"
+  if window_output="$(ax_wait_for_pid_owned_window "$APP_NAME" "$APP_PID" "$PROJECT_BOARD_WINDOW_NAME" "$VERIFY_TIMEOUT_SECONDS" "$window_diagnostic_file" "$APP_BINARY")"; then
+    printf "OK: Project Board window visible (%s)\n" "$window_output"
+    return 0
+  fi
+  local failure_category
+  failure_category="$(ax_classify_window_failure "$window_diagnostic_file" "$APP_PID")"
+  ax_report_failure "$failure_category" "pid-owned Project Board window was not visible for pid=$APP_PID"
   echo "BLOCKER: Project Board window was not visible within ${VERIFY_TIMEOUT_SECONDS}s" >&2
-  echo "NEXT: keep the main Project Board window visible and grant Screen Recording permission if window metadata is unavailable, then rerun ./script/build_and_run.sh --verify." >&2
+  echo "NEXT: grant Accessibility permission if the window exists but cannot be inspected, then rerun ./script/build_and_run.sh --verify." >&2
+  return 1
+}
+
+wait_for_project_board_marker() {
+  local marker="$1"
+  local probe_file="$VERIFY_ROOT/ax-${marker}.txt"
+  mkdir -p "$VERIFY_ROOT"
+  if ax_wait_for_ax_identifier "$APP_NAME" "$marker" "$VERIFY_TIMEOUT_SECONDS" "$ROOT_DIR" "$probe_file" "" "$APP_PID"; then
+    printf "OK: Project Board product marker present (%s)\n" "$marker"
+    return 0
+  fi
+
+  local failure_category
+  failure_category="$(ax_classify_marker_failure "$probe_file" "$APP_PID")"
+  ax_report_failure "$failure_category" "missing Project Board product marker=$marker"
   return 1
 }
 
@@ -338,9 +479,29 @@ case "$MODE" in
     /usr/bin/log stream --info --style compact --predicate "subsystem == \"$BUNDLE_IDENTIFIER\""
     ;;
   --verify|verify)
-    open_app
+    rm -f "$VERIFY_DATABASE_PATH" "$VERIFY_DATABASE_PATH-wal" "$VERIFY_DATABASE_PATH-shm"
+    launch_verify_process "today"
+    BOOTSTRAP_LAUNCH_PID="$VERIFY_LAUNCH_PID"
+    BOOTSTRAP_APP_PID="$(resolve_verify_app_pid "$BOOTSTRAP_LAUNCH_PID")"
+    if ! ax_wait_for_pid_owned_process "$APP_NAME" "$BOOTSTRAP_APP_PID" "$VERIFY_TIMEOUT_SECONDS" "$APP_BINARY"; then
+      ax_report_failure "launch" "bootstrap app process was not alive for pid=$BOOTSTRAP_APP_PID"
+      exit 1
+    fi
+    printf "OK: SoloPM bootstrap process launched (launch_pid=%s app_pid=%s)\n" "$BOOTSTRAP_LAUNCH_PID" "$BOOTSTRAP_APP_PID"
+    wait_for_verify_database
+    terminate_owned_verify_process "bootstrap" "$BOOTSTRAP_LAUNCH_PID" "$BOOTSTRAP_APP_PID"
+    BOOTSTRAP_LAUNCH_PID=""
+    BOOTSTRAP_APP_PID=""
+    seed_verify_fixture
+    VERIFY_PROJECT_ID="$(fetch_verify_project_id)"
+    launch_verify_process "project:$VERIFY_PROJECT_ID"
+    APP_LAUNCH_PID="$VERIFY_LAUNCH_PID"
+    APP_PID="$(resolve_verify_app_pid "$APP_LAUNCH_PID")"
     wait_for_app_process
     wait_for_project_board_window
+    wait_for_project_board_marker "project-board-header-bar"
+    wait_for_project_board_marker "project-board-sidebar"
+    wait_for_project_board_marker "project-board-detail"
     release_build_and_run_lock
     ;;
   *)

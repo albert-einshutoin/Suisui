@@ -26,6 +26,9 @@ VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1560x860}"
 SETTINGS_VISUAL_BASELINE_VIEWPORT="${SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT:-1200x720}"
 TARGET_TIMEOUT_SECONDS="${SOLOPM_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS:-30}"
 AX_MARKER_MAX_NODES="${SOLOPM_UI_EVIDENCE_AX_MAX_NODES:-6000}"
+EVIDENCE_LOCALE="${SOLOPM_UI_EVIDENCE_LOCALE:-english}"
+EVIDENCE_LOCALES=("english" "japanese")
+AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 mkdir -p "$EVIDENCE_TMPDIR"
 export TMPDIR="$EVIDENCE_TMPDIR/"
 AX_MARKER_CHECKER="$EVIDENCE_TMPDIR/ui-evidence-ax-marker-checker.$$"
@@ -88,6 +91,13 @@ if [[ ! "$AX_MARKER_MAX_NODES" =~ ^[0-9]+$ || "$AX_MARKER_MAX_NODES" -lt 1 ]]; t
   echo "SOLOPM_UI_EVIDENCE_AX_MAX_NODES must be a positive integer" >&2
   exit 2
 fi
+if [[ " ${EVIDENCE_LOCALES[*]} " != *" $EVIDENCE_LOCALE "* ]]; then
+  echo "SOLOPM_UI_EVIDENCE_LOCALE must be english or japanese" >&2
+  exit 2
+fi
+
+# shellcheck source=/dev/null
+source "$AX_HELPERS"
 
 cleanup() {
   if [[ "$DRY_RUN" != "1" && "$DOCTOR" != "1" ]]; then
@@ -132,23 +142,15 @@ ui_evidence_source_commit() {
 
 app_env_args() {
   local args=("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1")
-  if [[ "$SCHEDULE_COCKPIT" != "1" ]]; then
-    args+=("HOME=$EVIDENCE_HOME")
-    args+=("CFFIXED_USER_HOME=$EVIDENCE_HOME")
-  fi
-  args+=("SOLOPM_FORCE_PROJECT_BOARD_FALLBACK=1")
-  args+=("SOLOPM_UI_EVIDENCE_RECOVERY_MODE=1")
-  # Release screenshots are machine-checked by English AX markers; pin the
-  # evidence locale so an operator's system language cannot invalidate captures.
-  args+=("SOLOPM_LANGUAGE_PREFERENCE=english")
+  args+=("HOME=$EVIDENCE_HOME")
+  args+=("CFFIXED_USER_HOME=$EVIDENCE_HOME")
+  # Pin the locale so AX labels and pixels are reproducible across capture hosts.
+  args+=("SOLOPM_LANGUAGE_PREFERENCE=$EVIDENCE_LOCALE")
   if [[ -n "$DATABASE_PATH" ]]; then
     # Screenshot evidence must open the exact SQLite file seeded below; relying
     # on HOME-derived defaults can silently fall back to another database.
     args+=("SOLOPM_DATABASE_PATH=$DATABASE_PATH")
   fi
-  # UI screenshot evidence uses the product workflow views behind an explicit
-  # recovery launch so direct binary captures do not stall with no AX window.
-  args+=("SOLOPM_LAUNCH_RECOVERY_MODE=1")
   if [[ -n "$PROJECT_BOARD_SELECTION_OVERRIDE" ]]; then
     args+=("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$PROJECT_BOARD_SELECTION_OVERRIDE")
   fi
@@ -175,29 +177,22 @@ open_evidence_app() {
   while IFS= read -r -d '' env_arg; do
     env_args+=("$env_arg")
   done < <(app_env_args)
-  wait_for_app_process_exit
-  # Direct launch preserves the isolated database, appearance, fallback-window,
+  stop_evidence_app
+  # Direct launch preserves the isolated database, appearance, selected route,
   # Settings, and Voice Command env exactly. LaunchServices can drop or delay
   # those env values on some release hosts, which makes screenshot evidence
   # fail before the app exposes a real window.
-  /usr/bin/env "${env_args[@]}" "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
+  /usr/bin/env -i PATH="$PATH" TMPDIR="$EVIDENCE_TMPDIR" "${env_args[@]}" "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
   EVIDENCE_APP_PID=$!
 }
 
 wait_for_app_process_exit() {
-  for _ in {1..40}; do
-    if ! pgrep -x "$APP_NAME" >/dev/null; then
-      return
-    fi
-    sleep 0.25
-  done
-  echo "$APP_NAME did not terminate before next evidence capture." >&2
-  exit 1
+  [[ -z "${EVIDENCE_APP_PID:-}" ]]
 }
 
 stop_evidence_app() {
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
   if [[ -n "$EVIDENCE_APP_PID" ]]; then
+    kill "$EVIDENCE_APP_PID" >/dev/null 2>&1 || true
     wait "$EVIDENCE_APP_PID" >/dev/null 2>&1 || true
     EVIDENCE_APP_PID=""
   fi
@@ -238,23 +233,15 @@ APPLESCRIPT
 
 wait_for_process() {
   if [[ -n "$EVIDENCE_APP_PID" ]]; then
-    for _ in {1..40}; do
-      if kill -0 "$EVIDENCE_APP_PID" >/dev/null 2>&1; then
-        return 0
-      fi
-      sleep 0.25
-    done
-    echo "$APP_NAME did not launch as expected pid $EVIDENCE_APP_PID." >&2
-    exit 1
+    EVIDENCE_APP_PID="$(ax_wait_for_owned_app_pid "$EVIDENCE_APP_PID" "$APP_BINARY" "$TARGET_TIMEOUT_SECONDS")" || {
+      echo "$APP_NAME did not launch as expected pid $EVIDENCE_APP_PID." >&2
+      exit 1
+    }
+    ax_wait_for_pid_owned_process "$APP_NAME" "$EVIDENCE_APP_PID" "$TARGET_TIMEOUT_SECONDS" "$APP_BINARY"
+    ax_wait_for_pid_owned_window "$APP_NAME" "$EVIDENCE_APP_PID" "" "$TARGET_TIMEOUT_SECONDS" "" "$APP_BINARY"
+    return
   fi
-
-  for _ in {1..40}; do
-    if pgrep -x "$APP_NAME" >/dev/null; then
-      return 0
-    fi
-    sleep 0.25
-  done
-  echo "$APP_NAME did not launch." >&2
+  echo "$APP_NAME launch pid is missing." >&2
   exit 1
 }
 
@@ -312,7 +299,7 @@ target_marker_present() {
   # Compile the helper once; running it through `swift` for every marker leaves
   # swift-frontend children that a shell watchdog cannot reliably terminate.
   SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
-    "$AX_MARKER_CHECKER" "$APP_NAME" "$identifier" "$text" \
+    "$AX_MARKER_CHECKER" "$APP_NAME" "$identifier" "$text" "$EVIDENCE_APP_PID" \
     >/dev/null 2>"$error_file" &
   checker_pid=$!
   deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
@@ -994,7 +981,7 @@ write_evidence_file() {
     printf -- '- App bundle: `dist/%s.app`\n' "$APP_NAME"
     printf -- '- Visual baseline manifest: `%s`\n' "$(relative_path "$VISUAL_BASELINE_MANIFEST")"
     printf -- '- Viewport contract: `SOLOPM_VISUAL_BASELINE_VIEWPORT=%s`, `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT=%s`\n' "$VISUAL_BASELINE_VIEWPORT" "$SETTINGS_VISUAL_BASELINE_VIEWPORT"
-    printf '%s\n' '- Launch mode: explicit `SOLOPM_LAUNCH_RECOVERY_MODE=1` with `SOLOPM_UI_EVIDENCE_RECOVERY_MODE=1` so direct binary evidence captures expose deterministic product workflow surfaces.'
+    printf '%s\n' '- Launch mode: normal `ProjectBoardView` route with explicit selected destination; recovery flags are excluded from release evidence.'
     printf '%s\n' '- Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`'
     printf '%s\n' '- Seed data: local `Launch Readiness` project with planned, in-progress, blocked, Inbox voice, Schedule, Done analytics, milestone, completed project, and deterministic MCP registration rows'
     printf '%s\n' '- Scope: Project board sidebar, task cards, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Schedule workload dashboard, Done analytics, Settings integrations, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System'
@@ -1108,7 +1095,7 @@ write_p0_workflow_evidence_file() {
     printf '\n'
     printf '%s\n' '- API keys, provider tokens, OAuth tokens, calendar contents, and customer file contents are not captured.'
     printf '%s\n' '- The app runs with `SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1`, an isolated HOME, and a seeded SQLite database.'
-    printf '%s\n' '- The P0 workflow capture uses `SOLOPM_LAUNCH_RECOVERY_MODE=1` so evidence targets Today and Inbox workflow rails directly.'
+    printf '%s\n' '- The P0 workflow capture uses the normal `ProjectBoardView` route with explicit Today and Inbox selected destinations.'
   } >"$ROOT_DIR/docs/release/evidence/p0-workflow-screenshots.md"
 }
 
@@ -1342,18 +1329,42 @@ DONE_DARK_SCREENSHOT="$SCREENSHOT_DIR/done-dark.png"
 SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-integrations-light.png"
 SETTINGS_INTEGRATIONS_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-integrations-dark.png"
 
-INBOX_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Inbox"
-TODAY_TARGET_MARKERS="today-workflow=>Today|today-briefing-panel=>Today|today-assistant-rail=>Today"
-P0_INBOX_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Inbox"
-P0_TODAY_TARGET_MARKERS="today-workflow=>Today|today-briefing-panel=>Today|today-assistant-rail=>Today"
-P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-make-task=>Inbox classification actions"
-PROJECTS_TARGET_MARKERS="sidebar-destination-projects=>Projects|projects-portfolio-overview=>Projects"
-SCHEDULE_TARGET_MARKERS="schedule-workflow=>Schedule|schedule-week-grid=>Weekly schedule grid|schedule-week-time-axis-grid=>Schedule time axis grid"
-SCHEDULE_COCKPIT_TARGET_MARKERS="schedule-workflow=>Schedule|schedule-week-grid=>schedule-week-grid|schedule-week-time-axis-grid=>schedule-week-time-axis-grid"
-SCHEDULE_WORKLOAD_TARGET_MARKERS="schedule-workflow=>Schedule|schedule-workload-dashboard=>schedule-workload-dashboard|schedule-workload-attention-banner=>schedule-workload-attention-banner|schedule-workload-day-detail=>schedule-workload-day-detail"
-DONE_TARGET_MARKERS="done-workflow=>Done"
-DONE_ANALYTICS_TARGET_MARKERS="done-workflow=>Done|done-completion-heatmap=>done-completion-heatmap|done-productivity-insight=>done-productivity-insight|done-local-rule-insight=>done-local-rule-insight"
-VOICE_COMMAND_TARGET_MARKERS="voice-command-root=>Voice Command"
+case "$EVIDENCE_LOCALE" in
+  english)
+    INBOX_ROUTE_LABEL="Inbox"
+    TODAY_ROUTE_LABEL="Today"
+    PROJECTS_ROUTE_LABEL="Projects"
+    SCHEDULE_ROUTE_LABEL="Schedule"
+    WEEKLY_GRID_LABEL="Weekly schedule grid"
+    DONE_ROUTE_LABEL="Done"
+    VOICE_COMMAND_LABEL="Voice Command"
+    ;;
+  japanese)
+    INBOX_ROUTE_LABEL="インボックス"
+    TODAY_ROUTE_LABEL="今日"
+    PROJECTS_ROUTE_LABEL="プロジェクト"
+    SCHEDULE_ROUTE_LABEL="予定"
+    WEEKLY_GRID_LABEL="週間スケジュールグリッド"
+    DONE_ROUTE_LABEL="完了"
+    VOICE_COMMAND_LABEL="音声コマンド"
+    ;;
+esac
+
+# Every release capture proves both the normal-route identifier and localized
+# user-visible content. Seeded workflow captures additionally require stable
+# fixture text so a blank or wrong database cannot be accepted as evidence.
+INBOX_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-action-panel=>$INBOX_ROUTE_LABEL"
+TODAY_TARGET_MARKERS="today-workflow=>$TODAY_ROUTE_LABEL|today-briefing-panel=>$TODAY_ROUTE_LABEL|today-assistant-rail=>$TODAY_ROUTE_LABEL"
+P0_INBOX_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-action-panel=>$INBOX_ROUTE_LABEL"
+P0_TODAY_TARGET_MARKERS="today-workflow=>$TODAY_ROUTE_LABEL|today-briefing-panel=>$TODAY_ROUTE_LABEL|today-assistant-rail=>$TODAY_ROUTE_LABEL"
+P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-make-task=>"
+PROJECTS_TARGET_MARKERS="sidebar-destination-projects=>$PROJECTS_ROUTE_LABEL|projects-portfolio-overview=>$PROJECTS_ROUTE_LABEL"
+SCHEDULE_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-week-grid=>$WEEKLY_GRID_LABEL|schedule-week-time-axis-grid=>"
+SCHEDULE_COCKPIT_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-week-grid=>$WEEKLY_GRID_LABEL|schedule-week-time-axis-grid=>"
+SCHEDULE_WORKLOAD_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-workload-dashboard=>|schedule-workload-attention-banner=>|schedule-workload-day-detail=>"
+DONE_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL"
+DONE_ANALYTICS_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL|done-completion-heatmap=>|done-productivity-insight=>|done-local-rule-insight=>"
+VOICE_COMMAND_TARGET_MARKERS="voice-command-root=>$VOICE_COMMAND_LABEL"
 
 if [[ "$P0_WORKFLOWS" == "1" ]]; then
   capture_project_board_destination light inbox "$INBOX_LIGHT_SCREENSHOT" "Inbox" "$P0_INBOX_TARGET_MARKERS"

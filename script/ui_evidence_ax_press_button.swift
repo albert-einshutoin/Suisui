@@ -3,11 +3,11 @@ import AppKit
 import Foundation
 
 guard CommandLine.arguments.count == 3 else {
-    fputs("AX button press requires app name and button identifier/text marker.\n", stderr)
+    fputs("AX button press requires app pid/name and button identifier/text marker.\n", stderr)
     exit(2)
 }
 
-let appName = CommandLine.arguments[1]
+let appSelector = CommandLine.arguments[1]
 let marker = CommandLine.arguments[2]
 let environment = ProcessInfo.processInfo.environment
 let maxNodes = Int(environment["SOLOPM_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
@@ -17,10 +17,18 @@ guard AXIsProcessTrusted() else {
     exit(2)
 }
 
-guard let runningApp = NSWorkspace.shared.runningApplications.first(where: { app in
-    app.localizedName == appName || app.bundleIdentifier == "dev.solopm.app"
-}) else {
-    fputs("\(appName) process is not visible to Accessibility.\n", stderr)
+let runningApp: NSRunningApplication?
+if let rawPID = Int32(appSelector) {
+    let pid = pid_t(rawPID)
+    runningApp = NSRunningApplication(processIdentifier: pid)
+} else {
+    runningApp = NSWorkspace.shared.runningApplications.first(where: { app in
+        app.localizedName == appSelector || app.bundleIdentifier == "dev.solopm.app"
+    })
+}
+
+guard let runningApp, !runningApp.isTerminated else {
+    fputs("\(appSelector) process is not visible to Accessibility.\n", stderr)
     exit(2)
 }
 
@@ -93,13 +101,13 @@ let childAttributes = [
 ]
 
 guard let windowsValue = copyAttribute(appElement, kAXWindowsAttribute as CFString) else {
-    fputs("\(appName) has no visible AX windows.\n", stderr)
+    fputs("\(appSelector) has no visible AX windows.\n", stderr)
     exit(2)
 }
 
 let windows = elements(from: windowsValue)
 guard !windows.isEmpty else {
-    fputs("\(appName) has no visible AX windows.\n", stderr)
+    fputs("\(appSelector) has no visible AX windows.\n", stderr)
     exit(2)
 }
 

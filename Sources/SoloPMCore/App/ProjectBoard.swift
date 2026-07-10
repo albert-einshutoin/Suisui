@@ -5048,7 +5048,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             integrationStatusMessage = nil
             return
         }
-        guard assistantQueueExecutionCoordinator != nil else {
+        guard resolvedAssistantQueueExecutionCoordinator != nil else {
             _ = refreshAssistantQueueSnapshot()
             errorMessage = String(localized: "Assistant Queue execution is unavailable in this build.")
             integrationStatusMessage = nil

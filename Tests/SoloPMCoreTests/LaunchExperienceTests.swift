@@ -14,24 +14,108 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertFalse(script.contains("/usr/bin/osascript -e \"tell application \\\"$APP_NAME\\\" to activate\" >/dev/null 2>&1 || true"))
     }
 
-    func testVerifyModeRequiresVisibleProjectBoardWindow() throws {
+    func testVerifyModeUsesNormalProjectBoardWithoutRecoveryFlags() throws {
         let script = try readPackageFile("script/build_and_run.sh")
 
         XCTAssertTrue(script.contains("SOLOPM_VERIFY_TIMEOUT_SECONDS"))
         XCTAssertTrue(script.contains("PROJECT_BOARD_WINDOW_NAME=\"${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}\""))
+        XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
+        XCTAssertTrue(script.contains("/usr/bin/env -i"))
+        XCTAssertTrue(script.contains("HOME=\"$VERIFY_HOME\""))
+        XCTAssertTrue(script.contains("CFFIXED_USER_HOME=\"$VERIFY_CFFIXED_USER_HOME\""))
+        XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH=\"$VERIFY_DATABASE_PATH\""))
         XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
-        XCTAssertTrue(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
+        XCTAssertTrue(script.contains("launch_verify_process \"today\"\n    BOOTSTRAP_LAUNCH_PID=\"$VERIFY_LAUNCH_PID\""))
+        XCTAssertTrue(script.contains("terminate_owned_verify_process \"bootstrap\" \"$BOOTSTRAP_LAUNCH_PID\" \"$BOOTSTRAP_APP_PID\""))
+        XCTAssertTrue(script.contains("VERIFY_PROJECT_ID=\"$(fetch_verify_project_id)\""))
+        XCTAssertTrue(script.contains("launch_verify_process \"project:$VERIFY_PROJECT_ID\"\n    APP_LAUNCH_PID=\"$VERIFY_LAUNCH_PID\""))
+        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"$selected_destination\""))
+        XCTAssertTrue(script.contains("VERIFY_LAUNCH_PID=\"$!\""))
+        XCTAssertTrue(script.contains("ax_wait_for_owned_app_pid \"$launch_pid\" \"$APP_BINARY\""))
+        XCTAssertTrue(script.contains("source_command = 'build-and-run-verify'"))
+        XCTAssertTrue(script.contains("JOIN tasks AS t ON t.project_id = p.id"))
+        XCTAssertTrue(script.contains("INSERT INTO projects"))
+        XCTAssertTrue(script.contains("INSERT INTO tasks"))
+        XCTAssertTrue(script.contains("due_at=\"2026-01-01T12:00:00+00:00\""))
         XCTAssertTrue(script.contains("-ApplePersistenceIgnoreState YES"))
-        XCTAssertTrue(script.contains("LaunchServices drops"))
         XCTAssertTrue(script.contains("wait_for_project_board_window"))
-        XCTAssertTrue(script.contains("SOLOPM_WINDOW_OWNER=\"$APP_NAME\""))
-        XCTAssertTrue(script.contains("SOLOPM_WINDOW_NAME=\"$PROJECT_BOARD_WINDOW_NAME\""))
-        XCTAssertTrue(script.contains("script/ui_evidence_window_metadata.swift"))
+        XCTAssertTrue(script.contains("wait_for_project_board_marker"))
+        XCTAssertTrue(script.contains("project-board-header-bar"))
+        XCTAssertTrue(script.contains("project-board-sidebar"))
+        XCTAssertTrue(script.contains("project-board-detail"))
         XCTAssertTrue(script.contains("BLOCKER: Project Board window was not visible within"))
+        XCTAssertFalse(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
+        XCTAssertFalse(script.contains("SOLOPM_FORCE_PROJECT_BOARD_FALLBACK"))
+        XCTAssertFalse(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"today\""))
         XCTAssertFalse(script.contains("sleep 1\n    pgrep -x \"$APP_NAME\" >/dev/null\n    ;;"))
+
+        let bootstrapStart = try XCTUnwrap(script.range(of: "launch_verify_process \"today\"\n    BOOTSTRAP_LAUNCH_PID=\"$VERIFY_LAUNCH_PID\""))
+        let bootstrapStop = try XCTUnwrap(script.range(of: "terminate_owned_verify_process \"bootstrap\" \"$BOOTSTRAP_LAUNCH_PID\" \"$BOOTSTRAP_APP_PID\""))
+        let seedStart = try XCTUnwrap(script.range(of: "    seed_verify_fixture\n    VERIFY_PROJECT_ID"))
+        let projectIDFetch = try XCTUnwrap(script.range(of: "VERIFY_PROJECT_ID=\"$(fetch_verify_project_id)\""))
+        let finalLaunch = try XCTUnwrap(script.range(of: "launch_verify_process \"project:$VERIFY_PROJECT_ID\"\n    APP_LAUNCH_PID=\"$VERIFY_LAUNCH_PID\""))
+        XCTAssertLessThan(bootstrapStart.lowerBound, bootstrapStop.lowerBound)
+        XCTAssertLessThan(bootstrapStop.lowerBound, seedStart.lowerBound)
+        XCTAssertLessThan(seedStart.lowerBound, projectIDFetch.lowerBound)
+        XCTAssertLessThan(projectIDFetch.lowerBound, finalLaunch.lowerBound)
     }
 
-    func testVerifyModeDefaultTimeoutAllowsColdSwiftUILaunchWindowRecovery() throws {
+    func testVerifyModeUsesFixedMachineReadableFailureCategoriesAndPidOwnedChecks() throws {
+        let script = try readPackageFile("script/build_and_run.sh")
+        let helpers = try readPackageFile("script/ui_accessibility_smoke_helpers.sh")
+        let markerChecker = try readPackageFile("script/ui_evidence_ax_marker_check.swift")
+
+        XCTAssertTrue(helpers.contains("failure_category=%s"))
+        XCTAssertTrue(helpers.contains("launch|window|accessibility|product-marker"))
+        XCTAssertTrue(helpers.contains("failure_category=launch"))
+        XCTAssertTrue(helpers.contains("ax_wait_for_pid_owned_process()"))
+        XCTAssertTrue(helpers.contains("ax_process_matches_binary()"))
+        XCTAssertTrue(helpers.contains("ax_wait_for_owned_app_pid()"))
+        XCTAssertTrue(helpers.contains("ps -p \"$app_pid\" -o command="))
+        XCTAssertTrue(helpers.contains("pgrep -P \"$launch_pid\""))
+        XCTAssertFalse(helpers.contains("ps -p \"$app_pid\" -o comm="))
+        XCTAssertTrue(helpers.contains("ax_wait_for_pid_owned_window()"))
+        XCTAssertTrue(helpers.contains("ax_classify_marker_failure()"))
+        XCTAssertTrue(helpers.contains("ax_classify_ax_marker_failure()"))
+        XCTAssertTrue(helpers.contains("ax_classify_window_failure()"))
+        XCTAssertTrue(helpers.contains("no visible AX windows|has no visible windows|window missing|pid-owned window missing"))
+        XCTAssertTrue(helpers.contains("local app_pid=\"${2:-}\""))
+        XCTAssertTrue(helpers.contains("if [[ -n \"$app_pid\" ]] && ! kill -0 \"$app_pid\""))
+        XCTAssertTrue(helpers.contains("local marker_checker=\"${AX_MARKER_HELPER_EXECUTABLE:-}\""))
+        XCTAssertTrue(helpers.contains("if [[ -n \"$marker_checker\" && -x \"$marker_checker\" ]]"))
+        XCTAssertTrue(script.contains("ax_wait_for_pid_owned_process \"$APP_NAME\" \"$APP_PID\" \"$VERIFY_TIMEOUT_SECONDS\" \"$APP_BINARY\""))
+        XCTAssertTrue(script.contains("ax_wait_for_pid_owned_window \"$APP_NAME\" \"$APP_PID\" \"$PROJECT_BOARD_WINDOW_NAME\" \"$VERIFY_TIMEOUT_SECONDS\" \"$window_diagnostic_file\" \"$APP_BINARY\""))
+        XCTAssertTrue(script.contains("ax_classify_window_failure \"$window_diagnostic_file\" \"$APP_PID\""))
+        XCTAssertTrue(script.contains("APP_PID=\"$(resolve_verify_app_pid \"$APP_LAUNCH_PID\")\""))
+        XCTAssertTrue(script.contains("ax_wait_for_ax_identifier \"$APP_NAME\" \"$marker\""))
+        XCTAssertTrue(script.contains("ax_classify_marker_failure \"$probe_file\""))
+        XCTAssertTrue(markerChecker.contains("var foundText = textNeedle.isEmpty"))
+        XCTAssertTrue(markerChecker.contains("if textNeedle.isEmpty || signalParts(for: element).signal.contains(textNeedle)"))
+        XCTAssertTrue(markerChecker.contains("if !textNeedle.isEmpty && !foundText"))
+    }
+
+    func testRecoveryDiagnosticsAreExplicitlySeparateFromProductProof() throws {
+        let readme = try readPackageFile("README.md")
+        let contributing = try readPackageFile("CONTRIBUTING.md")
+        let documentation = readme + "\n" + contributing
+
+        XCTAssertTrue(documentation.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
+        XCTAssertTrue(documentation.contains("diagnostic"))
+        XCTAssertTrue(documentation.contains("release proof"))
+        XCTAssertTrue(documentation.contains("build_and_run.sh --verify"))
+        XCTAssertTrue(documentation.contains("product-marker"))
+    }
+
+    func testNonVerifyRunAndBuildOnlyModesRemainSeparate() throws {
+        let script = try readPackageFile("script/build_and_run.sh")
+
+        XCTAssertTrue(script.contains("--build-only|build)"))
+        XCTAssertTrue(script.contains("--build-only|build)\n    release_build_and_run_lock"))
+        XCTAssertTrue(script.contains("run)\n    open_app\n    release_build_and_run_lock"))
+        XCTAssertTrue(script.contains("local open_args=(-n -F \"$APP_BUNDLE\")"))
+    }
+
+    func testVerifyModeDefaultTimeoutAllowsColdSwiftUILaunchWindow() throws {
         let script = try readPackageFile("script/build_and_run.sh")
 
         XCTAssertTrue(script.contains("VERIFY_TIMEOUT_SECONDS=\"${SOLOPM_VERIFY_TIMEOUT_SECONDS:-30}\""))
@@ -217,23 +301,40 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("window.occlusionState.contains(.visible)"))
     }
 
-    func testRuntimeWorkflowSmokesOptIntoLaunchRecoveryExplicitly() throws {
+    func testRuntimeWorkflowSmokesUseNormalProjectBoardRoute() throws {
         let todaySmoke = try readPackageFile("script/check_runtime_today_complete_smoke.sh")
         let inboxSmoke = try readPackageFile("script/check_runtime_inbox_triage_smoke.sh")
         let runtimeCRUDSmoke = try readPackageFile("script/check_runtime_accessible_crud_smoke.sh")
         let screenshotCapture = try readPackageFile("script/capture_ui_evidence.sh")
 
-        XCTAssertTrue(todaySmoke.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
-        XCTAssertTrue(inboxSmoke.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
-        XCTAssertTrue(runtimeCRUDSmoke.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
-        XCTAssertTrue(runtimeCRUDSmoke.contains("SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1"))
+        XCTAssertFalse(todaySmoke.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
+        XCTAssertFalse(inboxSmoke.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
+        XCTAssertFalse(runtimeCRUDSmoke.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
+        XCTAssertFalse(runtimeCRUDSmoke.contains("SOLOPM_RUNTIME_CRUD_RECOVERY_MODE"))
+        XCTAssertFalse(screenshotCapture.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
+        XCTAssertFalse(screenshotCapture.contains("SOLOPM_FORCE_PROJECT_BOARD_FALLBACK"))
+        XCTAssertFalse(screenshotCapture.contains("SOLOPM_UI_EVIDENCE_RECOVERY_MODE"))
+        XCTAssertTrue(todaySmoke.contains("HOME=\"$runtime_home\""))
+        XCTAssertTrue(inboxSmoke.contains("HOME=\"$runtime_home\""))
+        XCTAssertTrue(runtimeCRUDSmoke.contains("HOME=\"$runtime_home\""))
+        XCTAssertTrue(todaySmoke.contains("/usr/bin/env -i"))
+        XCTAssertTrue(inboxSmoke.contains("/usr/bin/env -i"))
+        XCTAssertTrue(runtimeCRUDSmoke.contains("/usr/bin/env -i"))
+        XCTAssertTrue(screenshotCapture.contains("/usr/bin/env -i"))
+        XCTAssertTrue(screenshotCapture.contains("HOME=$EVIDENCE_HOME"))
+        XCTAssertTrue(screenshotCapture.contains("CFFIXED_USER_HOME=$EVIDENCE_HOME"))
+        XCTAssertTrue(todaySmoke.contains("ax_wait_for_owned_app_pid"))
+        XCTAssertTrue(inboxSmoke.contains("ax_wait_for_owned_app_pid"))
+        XCTAssertTrue(runtimeCRUDSmoke.contains("ax_wait_for_owned_app_pid"))
+        XCTAssertTrue(screenshotCapture.contains("ax_wait_for_owned_app_pid"))
         XCTAssertTrue(screenshotCapture.contains("--p0-workflows"))
         XCTAssertTrue(screenshotCapture.contains("--schedule-cockpit"))
         XCTAssertTrue(screenshotCapture.contains("--done-analytics"))
         XCTAssertTrue(screenshotCapture.contains("if [[ \"$P0_WORKFLOWS\" == \"1\" ]]"))
-        XCTAssertTrue(screenshotCapture.contains("SOLOPM_UI_EVIDENCE_RECOVERY_MODE=1"))
-        XCTAssertTrue(screenshotCapture.contains("SOLOPM_LANGUAGE_PREFERENCE=english"))
-        XCTAssertTrue(screenshotCapture.contains("args+=(\"SOLOPM_LAUNCH_RECOVERY_MODE=1\")"))
+        XCTAssertTrue(screenshotCapture.contains("EVIDENCE_LOCALES=(\"english\" \"japanese\")"))
+        XCTAssertTrue(screenshotCapture.contains("SOLOPM_LANGUAGE_PREFERENCE=$EVIDENCE_LOCALE"))
+        XCTAssertTrue(screenshotCapture.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION"))
+        XCTAssertTrue(screenshotCapture.contains("\"$AX_MARKER_CHECKER\" \"$APP_NAME\" \"$identifier\" \"$text\" \"$EVIDENCE_APP_PID\""))
     }
 
     func testTodayProductionRouteSmokeDoesNotUseLaunchRecoveryAndChecksRealBoardMarkers() throws {
@@ -246,7 +347,8 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("wait_for_marker_until()"))
         XCTAssertTrue(source.contains("wait_for_marker_until \"project-board-header-bar\" \"\" \"$case_deadline\""))
         XCTAssertTrue(source.contains("wait_for_marker_until \"today-workflow\" \"$expected_today_label\" \"$case_deadline\""))
-        XCTAssertTrue(source.contains("RUNTIME_TIMEOUT_SECONDS=\"${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS:-10}\""))
+        XCTAssertTrue(source.contains("RUNTIME_TIMEOUT_SECONDS=\"${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS:-30}\""))
+        XCTAssertFalse(source.contains("RUNTIME_TIMEOUT_SECONDS=\"${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS:-10}\""))
         XCTAssertTrue(source.contains("SOLOPM_LANGUAGE_PREFERENCE=\"$locale\""))
         XCTAssertTrue(source.contains("LOCALES=(\"english\" \"japanese\")"))
         XCTAssertTrue(source.contains("locale_label_for"))

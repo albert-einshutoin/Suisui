@@ -18,6 +18,7 @@ APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 TIMEOUT_SECONDS="${SOLOPM_RUNTIME_TODAY_COMPLETE_TIMEOUT_SECONDS:-30}"
 KEEP_DATABASE="${SOLOPM_RUNTIME_TODAY_COMPLETE_KEEP_DATABASE:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
+AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 WINDOW_WIDTH="${SOLOPM_RUNTIME_TODAY_COMPLETE_WINDOW_WIDTH:-1300}"
 WINDOW_HEIGHT="${SOLOPM_RUNTIME_TODAY_COMPLETE_WINDOW_HEIGHT:-860}"
 AX_MAX_NODES="${SOLOPM_RUNTIME_TODAY_COMPLETE_AX_MAX_NODES:-9000}"
@@ -36,14 +37,22 @@ cd "$ROOT_DIR"
 mkdir -p "$ROOT_DIR/.tmp"
 tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-today-complete.XXXXXX")"
 database_path="$tmp_dir/SoloPM-runtime-today-complete.sqlite"
+runtime_home="$tmp_dir/home"
+today_due_at="$(date '+%Y-%m-%dT09:00:00%z')"
+mkdir -p "$runtime_home"
 app_pid=""
+app_launch_pid=""
+
+# shellcheck source=/dev/null
+source "$AX_HELPERS"
 
 terminate_app() {
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
   if [[ -n "${app_pid:-}" ]]; then
+    kill "$app_pid" >/dev/null 2>&1 || true
     wait "$app_pid" >/dev/null 2>&1 || true
     app_pid=""
   fi
+  app_launch_pid=""
 }
 
 cleanup() {
@@ -57,25 +66,17 @@ cleanup() {
 trap cleanup EXIT
 
 wait_for_app_process() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: $APP_NAME process did not appear within ${TIMEOUT_SECONDS}s" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  app_pid="$(ax_wait_for_owned_app_pid "$app_launch_pid" "$APP_BINARY" "$TIMEOUT_SECONDS")" || {
+    echo "BLOCKER: $APP_NAME did not launch from pid $app_launch_pid" >&2
+    return 1
+  }
+  ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$TIMEOUT_SECONDS" "$APP_BINARY"
 }
 
 wait_for_no_app_process() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while pgrep -x "$APP_NAME" >/dev/null 2>&1; do
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-      return 0
-    fi
-    sleep 1
-  done
+  # The smoke owns only app_pid. Do not inspect or terminate another user's
+  # SoloPM process while resetting the isolated test database.
+  [[ -z "${app_pid:-}" ]]
 }
 
 activate_app() {
@@ -111,6 +112,10 @@ APPLESCRIPT
 }
 
 wait_for_visible_windows() {
+  ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "" "$TIMEOUT_SECONDS" "" "$APP_BINARY" || {
+    echo "BLOCKER: $APP_NAME did not expose a window for launched pid $app_pid" >&2
+    return 1
+  }
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   local window_count=""
   local osascript_status=1
@@ -173,13 +178,12 @@ APPLESCRIPT
 
 launch_app_for_today() {
   terminate_app
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_DATABASE_PATH="$database_path" \
-    SOLOPM_LAUNCH_RECOVERY_MODE=1 \
+  /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
+    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="today" \
     SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID="$today_task_id" \
-    "$APP_BINARY" &
-  app_pid=$!
+    "$APP_BINARY" -ApplePersistenceIgnoreState YES &
+  app_launch_pid=$!
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -188,10 +192,11 @@ launch_app_for_today() {
 
 launch_app_for_database_migration() {
   terminate_app
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_DATABASE_PATH="$database_path" \
-    "$APP_BINARY" &
-  app_pid=$!
+  /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
+    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
+    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="today" \
+    "$APP_BINARY" -ApplePersistenceIgnoreState YES &
+  app_launch_pid=$!
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -534,11 +539,11 @@ APPLESCRIPT
 }
 
 seed_today_task() {
-  "$SQLITE3" "$database_path" <<'SQL'
+  "$SQLITE3" "$database_path" <<SQL
 INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command, created_at, updated_at)
 VALUES ('AX Runtime Today Project', 'active', 'high', NULL, NULL, '[]', 'runtime-today-complete-smoke', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 INSERT INTO tasks (project_id, title, status, detail, due_at, completed_at, priority, source_command, created_at, updated_at)
-VALUES (last_insert_rowid(), 'AX Runtime Today Complete', 'planned', 'Complete this visible Today row through runtime AX smoke', '2026-01-01T09:00:00Z', NULL, 'high', 'runtime-today-complete-smoke', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+VALUES (last_insert_rowid(), 'AX Runtime Today Complete', 'planned', 'Complete this visible Today row through runtime AX smoke', '$today_due_at', NULL, 'high', 'runtime-today-complete-smoke', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 SQL
   wait_for_nonempty_value \
     "today task id" \
@@ -586,8 +591,11 @@ terminate_app
 wait_for_no_app_process
 launch_app_for_today
 wait_for_database_table "assistant_queue_items"
-verify_single_value "seeded today task is open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL AND due_at='2026-01-01T09:00:00Z' THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
-pressButtonContaining "workflow-task-row-$today_task_id"
+verify_single_value "seeded today task is open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL AND due_at='$today_due_at' THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
+# The isolated launch explicitly selects today_task_id. Re-pressing the row is
+# redundant and can be off-screen in the normal scrollable Today composition;
+# the actionable rail marker below proves the selected-task controls are ready.
+waitForAXElementContaining "today-rail-focus"
 pressButtonContaining "today-rail-focus"
 verify_single_value "focus kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
 pressButtonContaining "today-rail-schedule-block"
@@ -595,6 +603,7 @@ waitForAXElementContaining "today-rail-schedule-draft-status"
 verify_single_value "schedule draft kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
 pressButtonUntilSQLiteValue "queue Today rail reminder draft" "today-rail-reminder-draft" "SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END FROM assistant_queue_items WHERE id LIKE 'action-plan:today-reminder:%:task:$today_task_id' AND state='waitingReview' AND approval_json IS NULL;" "1"
 verify_single_value "rail actions kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
-pressButtonUntilSQLiteValue "complete today task" "workflow-task-completion-$today_task_id" "SELECT CASE WHEN status='completed' AND completed_at IS NOT NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
+pressButtonContainingBounded "workflow-task-completion-$today_task_id"
+verify_single_value "complete today task" "SELECT CASE WHEN status='completed' AND completed_at IS NOT NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
 
 printf "OK: runtime today complete smoke covered Today rail focus, schedule draft, edit inspector, subtask prefill, reminder draft, and visible row completion\n"

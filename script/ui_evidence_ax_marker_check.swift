@@ -120,7 +120,7 @@ func subtreeContainsText(startingAt root: AXUIElement, textNeedle: String) -> Bo
         cursor += 1
         visitedCount += 1
 
-        if signalParts(for: element).signal.contains(textNeedle) {
+        if textNeedle.isEmpty || signalParts(for: element).signal.contains(textNeedle) {
             return true
         }
 
@@ -150,7 +150,10 @@ guard !windows.isEmpty else {
 }
 
 var foundIdentifier = false
-var foundText = false
+// An empty text marker intentionally means identifier-only verification. This
+// keeps stable AX identifiers usable across locales without accepting a missing
+// identifier as product evidence.
+var foundText = textNeedle.isEmpty
 var visitedCount = 0
 var queue = windows
 var cursor = 0
@@ -196,7 +199,7 @@ if visitedCount >= maxNodes {
 if !foundIdentifier {
     fputs("missing AX identifier marker: \(identifierNeedle)\n", stderr)
 }
-if !foundText {
+if !textNeedle.isEmpty && !foundText {
     fputs("missing AX text marker: \(textNeedle)\n", stderr)
 }
 exit(1)

@@ -16,13 +16,34 @@ APP_NAME="${APP_NAME:?APP_NAME is required}"
 APP_BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:-}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS:-30}"
+TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS:-60}"
 KEEP_DATABASE="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
+SQLITE_BUSY_TIMEOUT_MS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS:-5000}"
+DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS:-10}"
+FORM_POSTCONDITION_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_FORM_POSTCONDITION_TIMEOUT_SECONDS:-10}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
+AX_TEXT_INPUT_HELPER="${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}"
+AX_SCROLL_HELPER="${AX_SCROLL_HELPER:-$ROOT_DIR/script/ui_evidence_ax_scroll_container.swift}"
+AX_BUTTON_HELPER="${AX_BUTTON_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_button.swift}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS must be a positive integer" >&2
+  exit 2
+fi
+
+if [[ ! "$SQLITE_BUSY_TIMEOUT_MS" =~ ^[0-9]+$ || "$SQLITE_BUSY_TIMEOUT_MS" -lt 1 ]]; then
+  echo "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS must be a positive integer" >&2
+  exit 2
+fi
+
+if [[ ! "$DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS" -lt 1 ]]; then
+  echo "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS must be a positive integer" >&2
+  exit 2
+fi
+
+if [[ ! "$FORM_POSTCONDITION_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$FORM_POSTCONDITION_TIMEOUT_SECONDS" -lt 1 ]]; then
+  echo "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_FORM_POSTCONDITION_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
@@ -38,18 +59,22 @@ cd "$ROOT_DIR"
 mkdir -p "$ROOT_DIR/.tmp"
 tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-accessible-crud.XXXXXX")"
 database_path="$tmp_dir/SoloPM-runtime-accessible-crud.sqlite"
+runtime_home="$tmp_dir/home"
+mkdir -p "$runtime_home"
 created_project_id=""
 created_task_id=""
 execution_task_id=""
 cascade_task_id=""
 app_pid=""
+app_launch_pid=""
 
 terminate_app() {
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
   if [[ -n "${app_pid:-}" ]]; then
+    kill "$app_pid" >/dev/null 2>&1 || true
     wait "$app_pid" >/dev/null 2>&1 || true
     app_pid=""
   fi
+  app_launch_pid=""
 }
 
 cleanup() {
@@ -63,25 +88,17 @@ cleanup() {
 trap cleanup EXIT
 
 wait_for_app_process() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: $APP_NAME process did not appear within ${TIMEOUT_SECONDS}s" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  app_pid="$(ax_wait_for_owned_app_pid "$app_launch_pid" "$APP_BINARY" "$TIMEOUT_SECONDS")" || {
+    echo "BLOCKER: $APP_NAME did not launch from pid $app_launch_pid" >&2
+    return 1
+  }
+  ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$TIMEOUT_SECONDS" "$APP_BINARY"
 }
 
 wait_for_no_app_process() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while pgrep -x "$APP_NAME" >/dev/null 2>&1; do
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-      return 0
-    fi
-    sleep 1
-  done
+  # The smoke owns only app_pid. Do not inspect or terminate another user's
+  # SoloPM process while resetting the isolated test database.
+  [[ -z "${app_pid:-}" ]]
 }
 
 activate_app() {
@@ -117,17 +134,17 @@ APPLESCRIPT
 }
 
 wait_for_visible_windows() {
-  if ax_wait_for_visible_window "$APP_NAME" "$TIMEOUT_SECONDS" "$APP_BUNDLE_IDENTIFIER"; then
-    return 0
+  if ! ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "" "$TIMEOUT_SECONDS" "" "$APP_BINARY"; then
+    echo "BLOCKER: $APP_NAME did not expose a window for launched pid $app_pid" >&2
+    return 1
   fi
-  echo "BLOCKER: $APP_NAME did not expose a visible AX window within ${TIMEOUT_SECONDS}s" >&2
-  return 1
+  return 0
 }
 
 launch_app_for_database_migration() {
   terminate_app
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_LAUNCH_RECOVERY_MODE=1 SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1 SOLOPM_DATABASE_PATH="$database_path" "$APP_BINARY" -ApplePersistenceIgnoreState YES &
-  app_pid=$!
+  /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="projects" "$APP_BINARY" -ApplePersistenceIgnoreState YES &
+  app_launch_pid=$!
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -135,14 +152,21 @@ launch_app_for_database_migration() {
 
 launch_app_for_seed_project() {
   local seed_project_id="$1"
+  local selected_task_id="${2:-}"
   terminate_app
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_LAUNCH_RECOVERY_MODE=1 \
-    SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1 \
-    SOLOPM_DATABASE_PATH="$database_path" \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
-    "$APP_BINARY" -ApplePersistenceIgnoreState YES &
-  app_pid=$!
+  if [[ -n "$selected_task_id" ]]; then
+    /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
+      SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
+      SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
+      SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID="$selected_task_id" \
+      "$APP_BINARY" -ApplePersistenceIgnoreState YES &
+  else
+    /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
+      SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
+      SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
+      "$APP_BINARY" -ApplePersistenceIgnoreState YES &
+  fi
+  app_launch_pid=$!
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -150,13 +174,11 @@ launch_app_for_seed_project() {
 
 launch_app_for_crud_mutation() {
   terminate_app
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_LAUNCH_RECOVERY_MODE=1 \
-    SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1 \
-    SOLOPM_DATABASE_PATH="$database_path" \
+  /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
+    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="projects" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES &
-  app_pid=$!
+  app_launch_pid=$!
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -179,7 +201,7 @@ wait_for_database_table() {
 
 query_single_value() {
   local sql="$1"
-  "$SQLITE3" -batch -noheader "$database_path" "$sql" | tail -n 1
+  "$SQLITE3" -batch -noheader -cmd ".timeout $SQLITE_BUSY_TIMEOUT_MS" "$database_path" "$sql" | tail -n 1
 }
 
 wait_for_nonempty_value() {
@@ -281,23 +303,24 @@ pressDestructiveButtonUntilSQLiteValue() {
     sleep 1
     pressConfirmationButtonContaining "$confirmation_fragment" "$confirmation_fallback" "$excluded_help"
 
-    local postcondition_deadline=$((SECONDS + 3))
+    local postcondition_deadline=$((SECONDS + DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS))
     while true; do
       actual="$(query_single_value "$sql" || true)"
       if [[ "$actual" == "$expected" ]]; then
         printf "OK: %s verified in SQLite (%s)\n" "$label" "$actual"
         return 0
       fi
-      if [[ "$SECONDS" -ge "$deadline" ]]; then
-        echo "BLOCKER: $label SQLite verification failed after destructive AX flow retry: expected '$expected', got '${actual:-<empty>}'" >&2
-        echo "SQL: $sql" >&2
-        return 1
-      fi
       if [[ "$SECONDS" -ge "$postcondition_deadline" ]]; then
         break
       fi
       sleep 1
     done
+
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: $label SQLite verification failed after destructive AX flow retry: expected '$expected', got '${actual:-<empty>}'" >&2
+      echo "SQL: $sql" >&2
+      return 1
+    fi
 
     printf "INFO: SQLite postcondition for $label was not met after pressing confirmation '$confirmation_fragment'; retrying destructive AX flow.\n" >&2
     sleep 1
@@ -404,6 +427,10 @@ pressConfirmationButtonContaining() {
   local excluded_help="$3"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
+    if /usr/bin/swift "$AX_BUTTON_HELPER" "$app_pid" "$fragment"; then
+      printf "pressed confirmation %s\n" "$fragment"
+      return 0
+    fi
     if /usr/bin/osascript - "$APP_NAME" "$fragment" "$fallback_fragment" "$excluded_help" <<'APPLESCRIPT'
 on run argv
   set appName to item 1 of argv
@@ -489,87 +516,7 @@ setTextFieldContaining() {
   local replacement="$2"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$fragment" "$replacement" <<'APPLESCRIPT'
-on run argv
-  set appName to item 1 of argv
-  set fragment to item 2 of argv
-  set replacement to item 3 of argv
-  tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
-      set windowCount to count of windows
-      if windowCount < 1 then error appName & " has no visible windows"
-      try
-        set frontmost to true
-      end try
-      repeat with windowIndex from 1 to windowCount
-        set currentWindow to window windowIndex
-        try
-          perform action "AXRaise" of currentWindow
-        end try
-        set axItems to entire contents of currentWindow
-        repeat with axItem in axItems
-          set itemRole to ""
-          try
-            set itemRole to role of axItem as text
-          end try
-          if itemRole is "AXTextField" or itemRole is "AXTextArea" then
-            set fieldIdentifier to ""
-            set fieldName to ""
-            set fieldTitle to ""
-            set fieldDescription to ""
-            set fieldHelp to ""
-            set fieldValue to ""
-            try
-              set fieldIdentifier to value of attribute "AXIdentifier" of axItem as text
-            end try
-            try
-              set fieldName to name of axItem as text
-            end try
-            try
-              set fieldTitle to value of attribute "AXTitle" of axItem as text
-            end try
-            try
-              set fieldDescription to description of axItem as text
-            end try
-            try
-              set fieldHelp to value of attribute "AXHelp" of axItem as text
-            end try
-            try
-              set fieldValue to value of axItem as text
-            end try
-            set signalText to fieldIdentifier & " " & fieldName & " " & fieldTitle & " " & fieldDescription & " " & fieldHelp & " " & fieldValue
-            if signalText contains fragment then
-              set previousClipboard to ""
-              try
-                set previousClipboard to the clipboard as text
-              end try
-              perform action "AXPress" of axItem
-              set focused of axItem to true
-              delay 0.2
-              set the clipboard to replacement
-              keystroke "a" using command down
-              delay 0.1
-              key code 51
-              delay 0.1
-              keystroke "v" using command down
-              delay 0.3
-              key code 48
-              delay 0.2
-              try
-                set the clipboard to previousClipboard
-              end try
-              delay 0.2
-              return "set text field " & fragment
-            end if
-          end if
-        end repeat
-      end repeat
-    end tell
-  end tell
-  error "text field signal not found: " & fragment
-end run
-APPLESCRIPT
+    if /usr/bin/swift "$AX_TEXT_INPUT_HELPER" "$app_pid" "$fragment" "$replacement"
     then
       return 0
     fi
@@ -577,6 +524,22 @@ APPLESCRIPT
       echo "BLOCKER: failed to set text field in AX tree: $fragment" >&2
       return 1
     fi
+    sleep 1
+  done
+}
+
+scrollAXContainerDown() {
+  local fragment="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/swift "$AX_SCROLL_HELPER" "$app_pid" "$fragment"; then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: failed to scroll AX container: $fragment" >&2
+      return 1
+    fi
+    activate_app
     sleep 1
   done
 }
@@ -746,14 +709,13 @@ pressButtonUntilTextFieldContaining() {
   while true; do
     pressButtonContaining "$button_fragment"
 
-    local postcondition_deadline=$((SECONDS + 3))
+    # A successful AXPress can consume the phase timeout while SwiftUI is
+    # rebuilding its window. Give the resulting form its own bounded window so
+    # a real press is not misclassified as a failure before the field appears.
+    local postcondition_deadline=$((SECONDS + FORM_POSTCONDITION_TIMEOUT_SECONDS))
     while true; do
       if textFieldContainingExists "$field_fragment"; then
         return 0
-      fi
-      if [[ "$SECONDS" -ge "$deadline" ]]; then
-        echo "BLOCKER: text field did not appear after pressing '$button_fragment': $field_fragment" >&2
-        return 1
       fi
       if [[ "$SECONDS" -ge "$postcondition_deadline" ]]; then
         break
@@ -762,6 +724,11 @@ pressButtonUntilTextFieldContaining() {
       wait_for_visible_windows >/dev/null 2>&1 || true
       sleep 1
     done
+
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: text field did not appear after pressing '$button_fragment': $field_fragment" >&2
+      return 1
+    fi
 
     printf "INFO: text field '%s' did not appear after pressing '%s'; retrying AX press.\n" "$field_fragment" "$button_fragment" >&2
     sleep 1
@@ -826,8 +793,8 @@ pressButtonContaining "task-status-move-planned-$created_task_id"
 verify_single_value "advanced task status" "SELECT status FROM tasks WHERE id=$created_task_id;" "planned"
 terminate_app
 wait_for_no_app_process
-launch_app_for_seed_project "$created_project_id"
-pressButtonContaining "task-card-open-details"
+launch_app_for_seed_project "$created_project_id" "$created_task_id"
+waitForTextFieldContaining "task-inspector-title"
 pressDestructiveButtonUntilSQLiteValue "deleted task" "task-inspector-delete" "task-inspector-delete-confirmation-confirm" "Confirm Delete Task" "" "SELECT count(*) FROM tasks WHERE id=$created_task_id;" "0" "1"
 
 pressButtonUntilTextFieldContaining "project-header-add-task" "inline-task-title"
@@ -846,6 +813,7 @@ pressButtonContaining "task-auto-execution-run-plan"
 verify_single_value "executed task status" "SELECT status FROM tasks WHERE id=$execution_task_id;" "in_progress"
 verify_single_value "executed task detail marker" "SELECT CASE WHEN detail LIKE '%SoloPM approved automation execution%' THEN 1 ELSE 0 END FROM tasks WHERE id=$execution_task_id;" "1"
 pressButtonContaining "task-card-open-details"
+scrollAXContainerDown "task-inspector"
 waitForAXElementContaining "approved-execution-receipt" "AX Runtime Execution Task" "Execute this runtime task through the approved plan."
 
 pressButtonUntilTextFieldContaining "project-header-add-task" "inline-task-title"

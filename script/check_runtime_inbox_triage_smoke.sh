@@ -18,6 +18,8 @@ APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 TIMEOUT_SECONDS="${SOLOPM_RUNTIME_INBOX_TRIAGE_TIMEOUT_SECONDS:-30}"
 KEEP_DATABASE="${SOLOPM_RUNTIME_INBOX_TRIAGE_KEEP_DATABASE:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
+AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
+AX_TEXT_INPUT_HELPER="${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}"
 WINDOW_WIDTH="${SOLOPM_RUNTIME_INBOX_TRIAGE_WINDOW_WIDTH:-1400}"
 WINDOW_HEIGHT="${SOLOPM_RUNTIME_INBOX_TRIAGE_WINDOW_HEIGHT:-920}"
 
@@ -35,14 +37,21 @@ cd "$ROOT_DIR"
 mkdir -p "$ROOT_DIR/.tmp"
 tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-inbox-triage.XXXXXX")"
 database_path="$tmp_dir/SoloPM-runtime-inbox-triage.sqlite"
+runtime_home="$tmp_dir/home"
+mkdir -p "$runtime_home"
 app_pid=""
+app_launch_pid=""
+
+# shellcheck source=/dev/null
+source "$AX_HELPERS"
 
 terminate_app() {
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
   if [[ -n "${app_pid:-}" ]]; then
+    kill "$app_pid" >/dev/null 2>&1 || true
     wait "$app_pid" >/dev/null 2>&1 || true
     app_pid=""
   fi
+  app_launch_pid=""
 }
 
 cleanup() {
@@ -56,25 +65,17 @@ cleanup() {
 trap cleanup EXIT
 
 wait_for_app_process() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: $APP_NAME process did not appear within ${TIMEOUT_SECONDS}s" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  app_pid="$(ax_wait_for_owned_app_pid "$app_launch_pid" "$APP_BINARY" "$TIMEOUT_SECONDS")" || {
+    echo "BLOCKER: $APP_NAME did not launch from pid $app_launch_pid" >&2
+    return 1
+  }
+  ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$TIMEOUT_SECONDS" "$APP_BINARY"
 }
 
 wait_for_no_app_process() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while pgrep -x "$APP_NAME" >/dev/null 2>&1; do
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-      return 0
-    fi
-    sleep 1
-  done
+  # The smoke owns only app_pid. Do not inspect or terminate another user's
+  # SoloPM process while resetting the isolated test database.
+  [[ -z "${app_pid:-}" ]]
 }
 
 activate_app() {
@@ -110,6 +111,10 @@ APPLESCRIPT
 }
 
 wait_for_visible_windows() {
+  ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "" "$TIMEOUT_SECONDS" "" "$APP_BINARY" || {
+    echo "BLOCKER: $APP_NAME did not expose a window for launched pid $app_pid" >&2
+    return 1
+  }
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   local window_count=""
   local osascript_status=1
@@ -173,12 +178,11 @@ APPLESCRIPT
 
 launch_app_for_inbox() {
   terminate_app
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_DATABASE_PATH="$database_path" \
-    SOLOPM_LAUNCH_RECOVERY_MODE=1 \
+  /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
+    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="inbox" \
-    "$APP_BINARY" &
-  app_pid=$!
+    "$APP_BINARY" -ApplePersistenceIgnoreState YES &
+  app_launch_pid=$!
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -362,87 +366,7 @@ setTextFieldContaining() {
   local replacement="$2"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$fragment" "$replacement" <<'APPLESCRIPT'
-on run argv
-  set appName to item 1 of argv
-  set fragment to item 2 of argv
-  set replacement to item 3 of argv
-  tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
-      set windowCount to count of windows
-      if windowCount < 1 then error appName & " has no visible windows"
-      try
-        set frontmost to true
-      end try
-      repeat with windowIndex from 1 to windowCount
-        set currentWindow to window windowIndex
-        try
-          perform action "AXRaise" of currentWindow
-        end try
-        set axItems to entire contents of currentWindow
-        repeat with axItem in axItems
-          set itemRole to ""
-          try
-            set itemRole to role of axItem as text
-          end try
-          if itemRole is "AXTextField" or itemRole is "AXTextArea" then
-            set fieldIdentifier to ""
-            set fieldName to ""
-            set fieldTitle to ""
-            set fieldDescription to ""
-            set fieldHelp to ""
-            set fieldValue to ""
-            try
-              set fieldIdentifier to value of attribute "AXIdentifier" of axItem as text
-            end try
-            try
-              set fieldName to name of axItem as text
-            end try
-            try
-              set fieldTitle to value of attribute "AXTitle" of axItem as text
-            end try
-            try
-              set fieldDescription to description of axItem as text
-            end try
-            try
-              set fieldHelp to value of attribute "AXHelp" of axItem as text
-            end try
-            try
-              set fieldValue to value of axItem as text
-            end try
-            set signalText to fieldIdentifier & " " & fieldName & " " & fieldTitle & " " & fieldDescription & " " & fieldHelp & " " & fieldValue
-            if signalText contains fragment then
-              set previousClipboard to ""
-              try
-                set previousClipboard to the clipboard as text
-              end try
-              perform action "AXPress" of axItem
-              set focused of axItem to true
-              delay 0.2
-              set the clipboard to replacement
-              keystroke "a" using command down
-              delay 0.1
-              key code 51
-              delay 0.1
-              keystroke "v" using command down
-              delay 0.3
-              key code 48
-              delay 0.2
-              try
-                set the clipboard to previousClipboard
-              end try
-              delay 0.2
-              return "set text field " & fragment
-            end if
-          end if
-        end repeat
-      end repeat
-    end tell
-  end tell
-  error "text field signal not found: " & fragment
-end run
-APPLESCRIPT
+    if /usr/bin/swift "$AX_TEXT_INPUT_HELPER" "$app_pid" "$fragment" "$replacement"
     then
       return 0
     fi

@@ -30,7 +30,10 @@ struct TodayWorkflowView: View {
                     // column while both columns have enough room to retain their
                     // existing controls and accessibility order.
                     HStack(alignment: .top, spacing: 0) {
-                        mainSurface(snapshot: snapshot, fillsAvailableHeight: true)
+                        ScrollView(.vertical) {
+                            mainSurface(snapshot: snapshot, fillsAvailableHeight: false)
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                        }
                         todayAssistantRail(context: snapshot.assistantContext)
                     }
                 } else {

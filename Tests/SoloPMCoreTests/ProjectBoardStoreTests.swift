@@ -2301,6 +2301,46 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testApprovedAutomationResolvesDeferredCoordinatorFactoryBeforeAvailabilityGate() throws {
+        let stores = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
+        let executionReceiptStore = VolatileExecutionReceiptStore()
+        let registry = try ToolRegistry(tools: [
+            TaskTool(name: .taskUpdate, store: stores.tasks, projectStore: stores.projects)
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: assistantQueueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: executionReceiptStore
+        )
+        var coordinatorFactoryCallCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: stores.board,
+            assistantQueueStore: assistantQueueStore,
+            assistantQueueExecutionCoordinatorFactory: {
+                coordinatorFactoryCallCount += 1
+                return coordinator
+            },
+            executionReceiptStore: executionReceiptStore
+        )
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Run deferred coordinator task",
+            detail: "Resolve the runtime factory only after approval.",
+            status: .planned,
+            priority: .high
+        ))
+        viewModel.prepareAutomationReviewForSelectedTask()
+
+        viewModel.runApprovedAutomationForSelectedTask()
+
+        XCTAssertEqual(coordinatorFactoryCallCount, 1)
+        let executedTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        XCTAssertEqual(executedTask.status, .inProgress)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
     func testApprovedAutomationRequiresExecutionReceiptStoreBeforeTaskMutation() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()

@@ -102,6 +102,37 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("createTask("))
     }
 
+    func testTodayProductionRouteSmokeCoversNormalBoardDestinationMatrix() throws {
+        let script = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(script.contains("run_route()"))
+        XCTAssertTrue(script.contains("routes=("))
+        XCTAssertTrue(script.contains("inbox|inbox|sidebar-destination-inbox|inbox-workflow"))
+        XCTAssertTrue(script.contains("today|today|sidebar-destination-today|today-workflow"))
+        XCTAssertTrue(script.contains("catch-up|catch-up|sidebar-destination-catch-up|catch-up-workflow"))
+        XCTAssertTrue(script.contains("projects|projects|sidebar-destination-projects|projects-portfolio-overview"))
+        XCTAssertTrue(script.contains("project|project:$seed_project_id|project-board-sidebar|project-board-detail"))
+        XCTAssertTrue(script.contains("inspector|project:$seed_project_id|project-board-sidebar|project-inspector"))
+        XCTAssertTrue(script.contains("IFS='|' read -r route_id route_destination_value route_sidebar_marker_value route_content_marker_value"))
+        XCTAssertTrue(script.contains("wait_for_marker_until \"$route_sidebar_marker\" \"\""))
+        XCTAssertTrue(script.contains("wait_for_marker_until \"$route_content_marker\" \"$route_text\""))
+        XCTAssertTrue(script.contains("seed_project_id="))
+        XCTAssertTrue(script.contains("fixture-catch-up-1"))
+        XCTAssertTrue(script.contains("route-evidence.tsv"))
+        XCTAssertTrue(script.contains("failure_category="))
+        XCTAssertTrue(script.contains("ax_wait_for_ax_identifier \"$APP_NAME\" \"$marker\" 1 \"$ROOT_DIR\" \"$probe_file\" \"$required_text\" \"$app_pid\""))
+        XCTAssertTrue(script.contains("/usr/bin/env -i"))
+        XCTAssertTrue(script.contains("HOME=\"$case_home\""))
+        XCTAssertTrue(script.contains("CFFIXED_USER_HOME=\"$case_cf_user_home\""))
+        XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH=\"$database_path\""))
+        XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
+        XCTAssertTrue(script.contains("ax_wait_for_owned_app_pid \"$app_launch_pid\" \"$APP_BINARY\""))
+        XCTAssertFalse(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE="))
+        XCTAssertFalse(script.contains("ProjectBoardLaunchRecoveryView"))
+        XCTAssertTrue(appSource.contains("else {\n            ProjectBoardView("))
+    }
+
     func testProjectBoardRefreshesTodayFromProductionDateAndLifecycleNotifications() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
@@ -1833,6 +1864,36 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] Inbox / Today workflowのrow、Quick Add、分類action、Today summary、time blockにsource-level accessibility identifiers / hints / keyboard anchorsを付ける。"))
     }
 
+    func testWorkflowTaskRowKeepsCompletionAndSelectionAsSeparateAccessibilityButtons() throws {
+        let workflowSource = try readProjectWorkflowSources()
+        let surfaceStart = try XCTUnwrap(workflowSource.range(of: "struct WorkflowTaskSurface"))
+        let surfaceEnd = try XCTUnwrap(workflowSource[surfaceStart.lowerBound...].range(of: "struct WorkflowDoneToggle"))
+        let surfaceSource = String(workflowSource[surfaceStart.lowerBound..<surfaceEnd.lowerBound])
+        let rowStart = try XCTUnwrap(workflowSource.range(of: "private struct WorkflowTaskRow: View"))
+        let rowEnd = try XCTUnwrap(workflowSource[rowStart.lowerBound...].range(of: "private var workflowAccessibilityValue"))
+        let rowSource = String(workflowSource[rowStart.lowerBound..<rowEnd.lowerBound])
+
+        XCTAssertFalse(
+            rowSource.contains(".accessibilityElement(children: .ignore)"),
+            "Ignoring a native Button's children changes its macOS accessibility role from AXButton to AXUnknown."
+        )
+        XCTAssertEqual(
+            rowSource.components(separatedBy: ".accessibilityElement(children: .combine)").count - 1,
+            1,
+            "Combine only the selection button's visible text while preserving the native button role."
+        )
+        XCTAssertTrue(rowSource.contains(".accessibilityIdentifier(\"workflow-task-completion-\\(task.id)\")"))
+        XCTAssertTrue(rowSource.contains(".accessibilityIdentifier(\"workflow-task-row-\\(task.id)\")"))
+        XCTAssertFalse(
+            surfaceSource.contains(".draggable(String(task.id))"),
+            "Do not wrap both sibling controls in a single drag source."
+        )
+        XCTAssertTrue(
+            rowSource.contains(".draggable(String(task.id))"),
+            "Keep drag-and-drop on the selection control so the sibling completion button remains accessible."
+        )
+    }
+
     func testProjectDetailOrganizesTasksArtifactsTimelineAndSuggestions() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
@@ -2505,8 +2566,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(todayWorkflowScope.contains("proxy.size.width >= TodayWorkflowLayoutMetrics.twoColumnMinimumWidth"))
         XCTAssertTrue(todayWorkflowScope.contains("HStack(alignment: .top"))
         XCTAssertTrue(todayWorkflowScope.contains("ScrollView(.vertical)"))
-        XCTAssertTrue(todayWorkflowScope.contains("fillsAvailableHeight: true"))
+        XCTAssertFalse(todayWorkflowScope.contains("fillsAvailableHeight: true"))
         XCTAssertTrue(todayWorkflowScope.contains("fillsAvailableHeight: false"))
+        XCTAssertTrue(todayWorkflowScope.contains("ScrollView(.vertical) {\n                            mainSurface(snapshot: snapshot, fillsAvailableHeight: false)"))
+        XCTAssertTrue(sharedSource.contains("else if fillsAvailableHeight {\n                ScrollView {\n                    taskRows"))
+        XCTAssertTrue(sharedSource.contains("} else {\n                taskRows"))
+        XCTAssertTrue(sharedSource.contains("private var taskRows: some View"))
         XCTAssertTrue(todayBriefingScope.contains("LazyVGrid"))
         XCTAssertTrue(commonRailScope.contains("GridItem(.adaptive"))
         XCTAssertTrue(planSummaryScope.contains("VStack(alignment: .leading"))
@@ -2683,9 +2748,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("--schedule-workload"))
         XCTAssertTrue(captureScript.contains("schedule-workload-light.png"))
         XCTAssertTrue(captureScript.contains("schedule-workload-dark.png"))
-        XCTAssertTrue(captureScript.contains("schedule-workload-dashboard=>schedule-workload-dashboard"))
-        XCTAssertTrue(captureScript.contains("schedule-workload-attention-banner=>schedule-workload-attention-banner"))
-        XCTAssertTrue(captureScript.contains("schedule-workload-day-detail=>schedule-workload-day-detail"))
+        XCTAssertTrue(captureScript.contains("schedule-workflow=>$SCHEDULE_ROUTE_LABEL"))
+        XCTAssertTrue(captureScript.contains("schedule-workload-dashboard=>"))
+        XCTAssertTrue(captureScript.contains("schedule-workload-attention-banner=>"))
+        XCTAssertTrue(captureScript.contains("schedule-workload-day-detail=>"))
         XCTAssertTrue(captureScript.contains("docs/release/evidence/schedule-workload-screenshots.md"))
         XCTAssertTrue(visualManifest.contains(#""id": "schedule-workload""#))
         XCTAssertTrue(visualManifest.contains("schedule-workload-light.png"))
@@ -3209,14 +3275,17 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testRuntimeExecutionRegistryIncludesDeveloperWorkflowToolsForAssistantQueue() throws {
         let appSource = try readAppShellSource()
-        let coordinatorFactoryStart = try XCTUnwrap(appSource.range(of: "private static func makeAssistantQueueExecutionCoordinator("))
-        let coordinatorFactoryEnd = try XCTUnwrap(appSource.range(of: "@MainActor\n    static func makeMenuBarSummaryController()", range: coordinatorFactoryStart.upperBound..<appSource.endIndex))
-        let coordinatorFactory = String(appSource[coordinatorFactoryStart.lowerBound..<coordinatorFactoryEnd.lowerBound])
+        let projectRuntimeSource = try readPackageFile("Sources/SoloPMApp/Composition/ProjectBoardRuntimeFactory.swift")
+        let coordinatorFactoryStart = try XCTUnwrap(projectRuntimeSource.range(of: "private static func makeAssistantQueueExecutionCoordinator("))
+        let coordinatorFactoryEnd = try XCTUnwrap(projectRuntimeSource.range(of: "\n}\n\nprivate struct UnavailableProjectBoardStore", range: coordinatorFactoryStart.upperBound..<projectRuntimeSource.endIndex))
+        let coordinatorFactory = String(projectRuntimeSource[coordinatorFactoryStart.lowerBound..<coordinatorFactoryEnd.lowerBound])
         let registryFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeRuntimeToolRegistry("))
-        let registryFactory = String(appSource[registryFactoryStart.lowerBound..<coordinatorFactoryEnd.lowerBound])
+        let registryFactory = String(appSource[registryFactoryStart.lowerBound...])
 
         XCTAssertTrue(appSource.contains("static func makeRuntimeToolRegistry("))
         XCTAssertTrue(coordinatorFactory.contains("makeRuntimeToolRegistry(connection: connection, auditLogger: auditLogger)"))
+        XCTAssertTrue(coordinatorFactory.contains("RedactingAuditLogger(base: SQLiteAuditLogger(connection: connection))"))
+        XCTAssertFalse(coordinatorFactory.contains("let auditLogger = try makeAuditLogger()"))
         XCTAssertTrue(registryFactory.contains("DevelopmentPullRequestCreationTool(\n                projectStore: projectStore,\n                bookmarkResolver: developmentBookmarkResolver"))
         XCTAssertTrue(registryFactory.contains("DevelopmentPullRequestReviewGateTool(\n                projectStore: projectStore,\n                bookmarkResolver: developmentBookmarkResolver"))
         XCTAssertTrue(registryFactory.contains("DevelopmentPullRequestMergeTool(\n                projectStore: projectStore,\n                bookmarkResolver: developmentBookmarkResolver"))
@@ -4209,7 +4278,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("SOLOPM_UI_EVIDENCE_TMPDIR"))
         XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH=$DATABASE_PATH"))
         XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
-        XCTAssertTrue(script.contains("SOLOPM_FORCE_PROJECT_BOARD_FALLBACK=1"))
+        XCTAssertFalse(script.contains("SOLOPM_FORCE_PROJECT_BOARD_FALLBACK"))
+        XCTAssertFalse(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
+        XCTAssertTrue(script.contains("normal `ProjectBoardView` route"))
         XCTAssertTrue(script.contains("solopm.appearancePreference"))
         XCTAssertTrue(script.contains("ui_evidence_window_metadata.swift"))
         XCTAssertTrue(windowMetadataScript.contains("CGWindowListCopyWindowInfo"))
@@ -4235,7 +4306,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("persist_project_board_selection"))
         XCTAssertTrue(script.contains("write_app_preference"))
         XCTAssertTrue(script.contains("HOME=\"$EVIDENCE_HOME\""))
-        XCTAssertTrue(script.contains("/usr/bin/env \"${env_args[@]}\" \"$APP_BINARY\" -ApplePersistenceIgnoreState YES"))
+        XCTAssertTrue(script.contains("/usr/bin/env -i PATH=\"$PATH\" TMPDIR=\"$EVIDENCE_TMPDIR\" \"${env_args[@]}\" \"$APP_BINARY\" -ApplePersistenceIgnoreState YES"))
         XCTAssertTrue(script.contains("Direct launch preserves the isolated database"))
         XCTAssertFalse(script.contains("open_args+=(--env \"$env_arg\")"))
         XCTAssertFalse(script.contains("/usr/bin/open \"${open_args[@]}\""))
@@ -4261,13 +4332,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("SCHEDULE_COCKPIT=1"))
         XCTAssertTrue(script.contains("write_schedule_cockpit_evidence_file"))
         XCTAssertTrue(script.contains("script/capture_ui_evidence.sh --schedule-cockpit"))
-        XCTAssertTrue(script.contains("schedule-week-time-axis-grid=>Schedule time axis grid"))
-        XCTAssertTrue(script.contains("SCHEDULE_COCKPIT_TARGET_MARKERS=\"schedule-workflow=>Schedule|schedule-week-grid=>schedule-week-grid|schedule-week-time-axis-grid=>schedule-week-time-axis-grid\""))
+        XCTAssertTrue(script.contains("schedule-week-time-axis-grid=>"))
+        XCTAssertTrue(script.contains("SCHEDULE_COCKPIT_TARGET_MARKERS=\"schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-week-grid=>$WEEKLY_GRID_LABEL|schedule-week-time-axis-grid=>\""))
         XCTAssertTrue(script.contains("capture_project_board_destination light schedule \"$SCHEDULE_LIGHT_SCREENSHOT\" \"Schedule cockpit\" \"$SCHEDULE_COCKPIT_TARGET_MARKERS\""))
         XCTAssertTrue(script.contains("capture_project_board_destination dark schedule \"$SCHEDULE_DARK_SCREENSHOT\" \"Schedule cockpit\" \"$SCHEDULE_COCKPIT_TARGET_MARKERS\""))
         XCTAssertTrue(script.contains("if [[ \"$SCHEDULE_COCKPIT\" == \"1\" ]]"))
-        XCTAssertTrue(script.contains("/usr/bin/env \"${env_args[@]}\" \"$APP_BINARY\" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &"))
-        XCTAssertTrue(script.contains("if [[ \"$SCHEDULE_COCKPIT\" != \"1\" ]]"))
+        XCTAssertTrue(script.contains("/usr/bin/env -i PATH=\"$PATH\" TMPDIR=\"$EVIDENCE_TMPDIR\" \"${env_args[@]}\" \"$APP_BINARY\" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &"))
+        XCTAssertFalse(script.contains("if [[ \"$SCHEDULE_COCKPIT\" != \"1\" ]]"))
         XCTAssertTrue(script.contains("open_settings_overview_tab"))
         XCTAssertTrue(script.contains("capture_settings_overview"))
         XCTAssertTrue(script.contains("open_settings_appearance_tab"))
@@ -4343,7 +4414,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("ui_evidence_ax_marker_check.swift"))
         XCTAssertTrue(script.contains("AX_MARKER_CHECKER="))
         XCTAssertTrue(script.contains("/usr/bin/swiftc \"$ROOT_DIR/script/ui_evidence_ax_marker_check.swift\" -o \"$AX_MARKER_CHECKER\""))
-        XCTAssertTrue(script.contains("\"$AX_MARKER_CHECKER\" \"$APP_NAME\" \"$identifier\" \"$text\""))
+        XCTAssertTrue(script.contains("\"$AX_MARKER_CHECKER\" \"$APP_NAME\" \"$identifier\" \"$text\" \"$EVIDENCE_APP_PID\""))
         XCTAssertTrue(script.contains("kill -9 \"$checker_pid\""))
         XCTAssertFalse(script.contains("/usr/bin/swift \"$ROOT_DIR/script/ui_evidence_ax_marker_check.swift\""))
         XCTAssertFalse(script.contains("watchdog_pid"))
@@ -4357,13 +4428,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(axMarkerScript.contains(#""AXContents""#))
         XCTAssertTrue(axMarkerScript.contains("missing AX identifier marker"))
         XCTAssertTrue(script.contains("project-board-detail=>Launch Readiness"))
-        XCTAssertTrue(script.contains("today-workflow=>Today"))
-        XCTAssertTrue(script.contains("today-assistant-rail=>Today"))
-        XCTAssertTrue(script.contains("schedule-workflow=>Schedule"))
+        XCTAssertTrue(script.contains("today-workflow=>$TODAY_ROUTE_LABEL"))
+        XCTAssertTrue(script.contains("today-assistant-rail=>$TODAY_ROUTE_LABEL"))
+        XCTAssertTrue(script.contains("schedule-workflow=>$SCHEDULE_ROUTE_LABEL"))
         XCTAssertTrue(script.contains("SCHEDULE_COCKPIT_TARGET_MARKERS"))
-        XCTAssertTrue(script.contains("done-workflow=>Done"))
+        XCTAssertTrue(script.contains("done-workflow=>$DONE_ROUTE_LABEL"))
         XCTAssertTrue(script.contains("VOICE_COMMAND_TARGET_MARKERS"))
-        XCTAssertTrue(script.contains("voice-command-root=>Voice Command"))
+        XCTAssertTrue(script.contains("voice-command-root=>$VOICE_COMMAND_LABEL"))
         XCTAssertTrue(script.contains("capture_project_board_destination light \"$PROJECT_BOARD_SELECTION_OVERRIDE\" \"$LIGHT_SCREENSHOT\" \"Project Board\" \"$PROJECT_BOARD_TARGET_MARKERS\""))
         XCTAssertTrue(script.contains("capture_project_board_destination light today \"$TODAY_LIGHT_SCREENSHOT\" \"Today\" \"$TODAY_TARGET_MARKERS\""))
         XCTAssertTrue(script.contains("capture_project_board_destination light schedule \"$SCHEDULE_LIGHT_SCREENSHOT\" \"Schedule cockpit\" \"$SCHEDULE_COCKPIT_TARGET_MARKERS\""))
@@ -4371,8 +4442,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("capture_project_board_destination light done \"$DONE_LIGHT_SCREENSHOT\" \"Done analytics\" \"$DONE_TARGET_MARKERS\""))
         XCTAssertTrue(script.contains("--done-analytics"))
         XCTAssertTrue(script.contains("DONE_ANALYTICS_TARGET_MARKERS"))
-        XCTAssertTrue(script.contains("SOLOPM_UI_EVIDENCE_RECOVERY_MODE=1"))
-        XCTAssertTrue(script.contains("args+=(\"SOLOPM_LAUNCH_RECOVERY_MODE=1\")"))
+        XCTAssertFalse(script.contains("SOLOPM_UI_EVIDENCE_RECOVERY_MODE"))
+        XCTAssertFalse(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
         XCTAssertTrue(script.contains("write_done_analytics_evidence_file"))
         XCTAssertTrue(script.contains("docs/release/evidence/done-analytics-screenshots.md"))
         XCTAssertTrue(script.contains("inbox-action-panel=>Voice capture metadata available for Scheduled manual capture"))
@@ -4405,9 +4476,10 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(script.contains("PROJECT_BOARD_SELECTED_TASK_OVERRIDE=\"\""))
         XCTAssertTrue(script.contains("wait_for_app_process_exit"))
-        XCTAssertTrue(script.contains("$APP_NAME did not terminate before next evidence capture."))
-        XCTAssertTrue(script.contains("wait_for_app_process_exit"))
-        XCTAssertTrue(script.contains("kill -0 \"$EVIDENCE_APP_PID\""))
+        XCTAssertTrue(script.contains("stop_evidence_app"))
+        XCTAssertTrue(script.contains("kill \"$EVIDENCE_APP_PID\""))
+        XCTAssertTrue(script.contains("wait \"$EVIDENCE_APP_PID\""))
+        XCTAssertTrue(script.contains("ax_wait_for_owned_app_pid \"$EVIDENCE_APP_PID\" \"$APP_BINARY\""))
         XCTAssertTrue(script.contains("$APP_NAME did not launch as expected pid $EVIDENCE_APP_PID."))
     }
 

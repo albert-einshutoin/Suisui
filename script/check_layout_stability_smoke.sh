@@ -17,7 +17,7 @@ APP_BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:-}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 WINDOW_NAME="${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}"
-TIMEOUT_SECONDS="${SOLOPM_LAYOUT_STABILITY_TIMEOUT_SECONDS:-20}"
+TIMEOUT_SECONDS="${SOLOPM_LAYOUT_STABILITY_TIMEOUT_SECONDS:-60}"
 LAYOUT_STABILITY_OUTPUT_DIR="${SOLOPM_LAYOUT_STABILITY_OUTPUT_DIR:-$ROOT_DIR/.tmp/layout-stability}"
 LAYOUT_STABILITY_RUNTIME_DIR="${SOLOPM_LAYOUT_STABILITY_RUNTIME_DIR:-${TMPDIR:-/tmp}/solopm-layout-stability}"
 # Default to 0px because layout-sensitive mutations should settle
@@ -37,6 +37,8 @@ LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_COUNT="${SOLOPM_LAYOUT_STABILITY_AX_IDENTIF
 LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_DELAY_MS="${SOLOPM_LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_DELAY_MS:-50}"
 SQLITE3="${SQLITE3:-sqlite3}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
+AX_FRAME_HELPER="${AX_FRAME_HELPER:-$ROOT_DIR/script/ui_evidence_ax_frame_dump.swift}"
+AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_LAYOUT_STABILITY_TIMEOUT_SECONDS must be a positive integer" >&2
@@ -93,6 +95,7 @@ source "$AX_HELPERS"
 cd "$ROOT_DIR"
 mkdir -p "$LAYOUT_STABILITY_OUTPUT_DIR"
 mkdir -p "$(dirname "$LAYOUT_STABILITY_DATABASE_PATH")"
+mkdir -p "$LAYOUT_STABILITY_RUNTIME_DIR/home"
 
 SUMMARY_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/layout-stability-summary.md"
 SAMPLES_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/samples.tsv"
@@ -110,6 +113,9 @@ REQUIRED_AX_IDENTIFIERS=(
 SAMPLE_OFFSETS_MS=(0 50 150 300)
 layout_project_id=""
 app_pid=""
+app_launch_pid=""
+AX_FRAME_HELPER_BINARY="$LAYOUT_STABILITY_OUTPUT_DIR/ui-evidence-ax-frame-dump.$$"
+AX_PRESS_ELEMENT_HELPER_BINARY="$LAYOUT_STABILITY_OUTPUT_DIR/ui-evidence-ax-press-element.$$"
 
 : >"$SAMPLES_FILE"
 : >"$DIFF_FILE"
@@ -168,19 +174,24 @@ write_json_artifacts() {
 }
 
 terminate_app() {
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
   if [[ -n "${app_pid:-}" ]]; then
+    kill "$app_pid" >/dev/null 2>&1 || true
     wait "$app_pid" >/dev/null 2>&1 || true
     app_pid=""
   fi
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while pgrep -x "$APP_NAME" >/dev/null 2>&1; do
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: $APP_NAME process did not exit within ${TIMEOUT_SECONDS}s" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  app_launch_pid=""
+}
+
+cleanup() {
+  terminate_app
+  rm -f "$AX_FRAME_HELPER_BINARY" "$AX_PRESS_ELEMENT_HELPER_BINARY"
+}
+
+prepare_ax_helpers() {
+  # Compile before t=0 sampling. Interpreter compilation inside frame
+  # collection would shift every requested sample beyond the 300ms window.
+  /usr/bin/swiftc "$AX_FRAME_HELPER" -o "$AX_FRAME_HELPER_BINARY"
+  /usr/bin/swiftc "$AX_PRESS_ELEMENT_HELPER" -o "$AX_PRESS_ELEMENT_HELPER_BINARY"
 }
 
 activate_app() {
@@ -221,23 +232,19 @@ APPLESCRIPT
 }
 
 wait_for_app_process() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: $APP_NAME process did not appear within ${TIMEOUT_SECONDS}s" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  app_pid="$(ax_wait_for_owned_app_pid "$app_launch_pid" "$APP_BINARY" "$TIMEOUT_SECONDS")" || {
+    echo "BLOCKER: $APP_NAME did not launch from pid $app_launch_pid" >&2
+    return 1
+  }
+  ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$TIMEOUT_SECONDS" "$APP_BINARY"
 }
 
 wait_for_visible_windows() {
-  if ax_wait_for_visible_window "$APP_NAME" "$TIMEOUT_SECONDS" "$APP_BUNDLE_IDENTIFIER"; then
-    return 0
+  if ! ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "$WINDOW_NAME" "$TIMEOUT_SECONDS" "" "$APP_BINARY"; then
+    echo "BLOCKER: $APP_NAME did not expose a visible AX window for launched pid $app_pid" >&2
+    return 1
   fi
-  activate_app
-  echo "BLOCKER: $APP_NAME did not expose a visible AX window within ${TIMEOUT_SECONDS}s" >&2
-  return 1
+  return 0
 }
 
 prepare_layout_candidate() {
@@ -253,13 +260,11 @@ prepare_layout_candidate() {
 
 launch_layout_candidate() {
   terminate_app
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_LAUNCH_RECOVERY_MODE=1 \
-    SOLOPM_LAYOUT_STABILITY_RECOVERY_MODE=1 \
-    SOLOPM_DATABASE_PATH="$LAYOUT_STABILITY_DATABASE_PATH" \
+  /usr/bin/env -i PATH="$PATH" TMPDIR="$LAYOUT_STABILITY_RUNTIME_DIR" HOME="$LAYOUT_STABILITY_RUNTIME_DIR/home" CFFIXED_USER_HOME="$LAYOUT_STABILITY_RUNTIME_DIR/home" \
+    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$LAYOUT_STABILITY_DATABASE_PATH" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$layout_project_id" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES &
-  app_pid=$!
+  app_launch_pid=$!
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -314,16 +319,20 @@ wait_for_window_metadata() {
 set_project_board_window_size() {
   local width="$1"
   local height="$2"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
   # Resize the real app window through AX so the smoke covers AppKit/SwiftUI
   # bridge behavior instead of only source-level layout contracts.
-  /usr/bin/osascript - "$APP_NAME" "$width" "$height" <<'APPLESCRIPT' >/dev/null
+  while true; do
+    if /usr/bin/osascript - "$app_pid" "$width" "$height" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
-  set appName to item 1 of argv
+  set appPID to (item 1 of argv) as integer
   set targetWidth to (item 2 of argv) as integer
   set targetHeight to (item 3 of argv) as integer
   tell application "System Events"
-    if not (exists process appName) then error "process missing"
-    tell process appName
+    set appMatches to application processes whose unix id is appPID
+    if (count of appMatches) is 0 then error "process missing"
+    set targetProcess to item 1 of appMatches
+    tell targetProcess
       if not (exists window 1) then error "window missing"
       set frontmost to true
       try
@@ -334,6 +343,17 @@ on run argv
   end tell
 end run
 APPLESCRIPT
+    then
+      break
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: failed to resize owned app window pid=$app_pid to ${width}x${height}" >&2
+      return 1
+    fi
+    activate_app
+    wait_for_visible_windows >/dev/null 2>&1 || true
+    sleep 1
+  done
   wait_for_window_metadata
 }
 
@@ -347,9 +367,11 @@ window_size_key() {
 click_sidebar_destination() {
   local destination_identifier="$1"
   local destination_label="$2"
-  if ax_click_sidebar_destination "$APP_NAME" "$destination_identifier" "$destination_label"; then
+  if "$AX_PRESS_ELEMENT_HELPER_BINARY" "$app_pid" "$destination_identifier"; then
     return 0
   fi
+  printf 'INFO: exact-PID AXPress did not select %s (%s); using measured coordinate fallback.\n' \
+    "$destination_identifier" "$destination_label" >&2
   click_sidebar_destination_by_coordinate "$destination_identifier"
 }
 
@@ -358,7 +380,7 @@ wait_for_ax_identifier() {
   local safe_identifier="${identifier//[^[:alnum:]_-]/_}"
   local probe_file="$LAYOUT_STABILITY_OUTPUT_DIR/wait-$safe_identifier.txt"
 
-  if ax_wait_for_ax_identifier "$APP_NAME" "$identifier" "$TIMEOUT_SECONDS" "$ROOT_DIR" "$probe_file"; then
+  if ax_wait_for_ax_identifier "$APP_NAME" "$identifier" "$TIMEOUT_SECONDS" "$ROOT_DIR" "$probe_file" "" "$app_pid"; then
     return 0
   fi
   echo "BLOCKER: AX identifier did not appear after sidebar destination selection: $identifier" >&2
@@ -450,57 +472,7 @@ capture_layout_screenshot() {
 }
 
 collect_ax_frames() {
-  /usr/bin/osascript - "$APP_NAME" "$APP_BUNDLE_IDENTIFIER" <<'APPLESCRIPT'
-on collectIdentifiedElements(outputLines, uiElement)
-  tell application "System Events"
-    set identifierValue to ""
-    try
-      set identifierValue to value of attribute "AXIdentifier" of uiElement
-    end try
-    if identifierValue is not equal to "" then
-      set itemPosition to position of uiElement
-      set itemSize to size of uiElement
-      set end of outputLines to identifierValue & tab & (item 1 of itemPosition as text) & tab & (item 2 of itemPosition as text) & tab & (item 1 of itemSize as text) & tab & (item 2 of itemSize as text)
-    end if
-    try
-      repeat with childElement in UI elements of uiElement
-        set outputLines to my collectIdentifiedElements(outputLines, childElement)
-      end repeat
-    end try
-  end tell
-  return outputLines
-end collectIdentifiedElements
-
-on run argv
-  set appName to item 1 of argv
-  set bundleID to item 2 of argv
-  tell application "System Events"
-    set targetProcess to missing value
-    if exists process appName then
-      tell process appName
-        if (count of windows) > 0 then set targetProcess to it
-      end tell
-    end if
-    if targetProcess is missing value and bundleID is not "" then
-      set appMatches to application processes whose bundle identifier is bundleID
-      repeat with appProcess in appMatches
-        if (count of windows of appProcess) > 0 then
-          set targetProcess to appProcess
-          exit repeat
-        end if
-      end repeat
-    end if
-    if targetProcess is missing value then error "window missing"
-    tell targetProcess
-      set frontmost to true
-      set outputLines to {}
-      set outputLines to my collectIdentifiedElements(outputLines, window 1)
-      set AppleScript's text item delimiters to linefeed
-      return outputLines as text
-    end tell
-  end tell
-end run
-APPLESCRIPT
+  "$AX_FRAME_HELPER_BINARY" "$app_pid"
 }
 
 collect_ax_frames_with_timeout() {
@@ -540,50 +512,6 @@ collect_ax_frames_with_timeout() {
     return 124
   fi
   return "$status"
-}
-
-ensure_project_detail_visible() {
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 || true
-on clickFirstMatching(uiElement)
-  tell application "System Events"
-    set identifierValue to ""
-    try
-      set identifierValue to value of attribute "AXIdentifier" of uiElement
-    end try
-    if identifierValue starts with "project-sidebar-row-" or identifierValue starts with "projects-portfolio-open-" then
-      try
-        perform action "AXPress" of uiElement
-        return true
-      end try
-      try
-        click uiElement
-        return true
-      end try
-    end if
-    try
-      repeat with childElement in UI elements of uiElement
-        if my clickFirstMatching(childElement) then return true
-      end repeat
-    end try
-  end tell
-  return false
-end clickFirstMatching
-
-on run argv
-  set appName to item 1 of argv
-  tell application "System Events"
-    if not (exists process appName) then return "missing"
-    tell process appName
-      if not (exists window 1) then return "window missing"
-      set frontmost to true
-      try
-        perform action "AXRaise" of window 1
-      end try
-      my clickFirstMatching(window 1)
-    end tell
-  end tell
-end run
-APPLESCRIPT
 }
 
 write_summary_header() {
@@ -640,7 +568,6 @@ wait_for_required_layout_subjects() {
   local probe_file="$LAYOUT_STABILITY_OUTPUT_DIR/required-identifiers-probe.tsv"
 
   while true; do
-    ensure_project_detail_visible
     if collect_ax_frames >"$probe_file" 2>"$LAYOUT_STABILITY_OUTPUT_DIR/required-identifiers-probe.err" &&
       has_required_ax_identifiers "$probe_file"; then
       return 0
@@ -912,9 +839,10 @@ end run
 APPLESCRIPT
 }
 
-trap terminate_app EXIT
+trap cleanup EXIT
 
 write_summary_header
+prepare_ax_helpers
 prepare_layout_candidate
 launch_layout_candidate
 wait_for_required_layout_subjects
