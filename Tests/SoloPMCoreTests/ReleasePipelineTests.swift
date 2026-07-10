@@ -6274,7 +6274,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("waitForAXElementContaining \"today-command-capture-field\""))
         XCTAssertTrue(script.contains("waitForAXElementContaining \"today-command-capture-field\" \"AX Runtime Today Complete\""))
         XCTAssertFalse(script.contains("pressButtonContaining \"workflow-task-row-$today_task_id\""))
-        XCTAssertTrue(script.contains("waitForAXElementContaining \"today-assistant-rail\" \"AX Runtime Today Complete\""))
+        XCTAssertTrue(script.contains("waitForAXElementContaining \"today-rail-focus\""))
         XCTAssertTrue(script.contains("pressButtonContaining \"today-rail-focus\""))
         XCTAssertTrue(script.contains("verify_single_value \"focus kept Today task open\""))
         XCTAssertTrue(script.contains("waitForAXElementContaining()"))
