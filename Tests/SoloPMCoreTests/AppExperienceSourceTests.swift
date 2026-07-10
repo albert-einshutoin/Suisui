@@ -112,8 +112,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("today|today|sidebar-destination-today|today-workflow"))
         XCTAssertTrue(script.contains("catch-up|catch-up|sidebar-destination-catch-up|catch-up-workflow"))
         XCTAssertTrue(script.contains("projects|projects|sidebar-destination-projects|projects-portfolio-overview"))
-        XCTAssertTrue(script.contains("project|project:$seed_project_id|project-board-sidebar|project-board-detail"))
-        XCTAssertTrue(script.contains("inspector|project:$seed_project_id|project-board-sidebar|project-inspector"))
+        XCTAssertTrue(script.contains("navigate_to_seed_project()"))
+        XCTAssertTrue(script.contains("project-sidebar-row-$seed_project_id"))
+        XCTAssertTrue(script.contains("route_content_marker=\"project-board-detail\""))
+        XCTAssertTrue(script.contains("route_content_marker=\"project-inspector\""))
         XCTAssertTrue(script.contains("IFS='|' read -r route_id route_destination_value route_sidebar_marker_value route_content_marker_value"))
         XCTAssertTrue(script.contains("wait_for_marker_until \"$route_sidebar_marker\" \"\""))
         XCTAssertTrue(script.contains("wait_for_marker_until \"$route_content_marker\" \"$route_text\""))
@@ -4489,7 +4491,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("ax_terminate_owned_process \"$launch_pid\" \"$APP_BINARY\" \"${EVIDENCE_APP_LAUNCH_IDENTITY:-}\""))
         XCTAssertFalse(script.contains("kill \"$EVIDENCE_APP_PID\""))
         XCTAssertTrue(script.contains("ax_wait_for_owned_app_pid \"$EVIDENCE_APP_PID\" \"$APP_BINARY\""))
-        XCTAssertTrue(script.contains("$APP_NAME did not launch as expected pid $EVIDENCE_APP_PID."))
+        XCTAssertTrue(script.contains("visual-owned-pid-unavailable"))
     }
 
     func testPhase12UIScreenshotEvidenceCoversNewCockpitScreens() throws {
@@ -4603,6 +4605,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("run_doctor"))
         XCTAssertTrue(script.contains("screen capture preflight"))
         XCTAssertTrue(script.contains("does not write release evidence"))
+        XCTAssertTrue(script.contains("EVIDENCE_WINDOW_ATTEMPTS=2"))
+        XCTAssertTrue(script.contains("resolve_evidence_process_and_window"))
+        XCTAssertTrue(script.contains("$EVIDENCE_WAIT_FAILURE_CATEGORY\" == \"window"))
+        XCTAssertTrue(script.contains("retrying normal UI capture after owned window publication timeout"))
+        XCTAssertTrue(script.contains("EVIDENCE_WAIT_FAILURE_REASON=\"visual-window-unavailable\""))
         XCTAssertTrue(script.contains("[[ \"$DRY_RUN\" != \"1\" && \"$DOCTOR\" != \"1\" ]]"))
         XCTAssertTrue(evidence.contains("System Settings > Privacy & Security > Screen Recording / Screen & System Audio Recording"))
         XCTAssertTrue(evidence.contains("SOLOPM_UI_EVIDENCE_KEEP_HOME=1"))

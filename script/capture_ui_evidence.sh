@@ -27,6 +27,7 @@ VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1420x860}"
 SETTINGS_VISUAL_BASELINE_VIEWPORT="${SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT:-720x712}"
 VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT="${SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT:-760x640}"
 TARGET_TIMEOUT_SECONDS="${SOLOPM_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS:-30}"
+EVIDENCE_WINDOW_ATTEMPTS=2
 AX_MARKER_MAX_NODES="${SOLOPM_UI_EVIDENCE_AX_MAX_NODES:-6000}"
 EVIDENCE_LOCALE="${SOLOPM_UI_EVIDENCE_LOCALE:-english}"
 EVIDENCE_LOCALES=("english" "japanese")
@@ -64,6 +65,8 @@ EVIDENCE_APP_LAUNCH_PID=""
 EVIDENCE_APP_IDENTITY=""
 EVIDENCE_APP_LAUNCH_IDENTITY=""
 EVIDENCE_APP_LOG="$EVIDENCE_TMPDIR/visual-evidence-app.$$.log"
+EVIDENCE_WAIT_FAILURE_CATEGORY="launch"
+EVIDENCE_WAIT_FAILURE_REASON="visual-launch-unavailable"
 DATABASE_PATH=""
 
 for arg in "$@"; do
@@ -354,25 +357,57 @@ APPLESCRIPT
   wait "$osascript_pid" >/dev/null 2>&1 || true
 }
 
-wait_for_process() {
-  if [[ -n "$EVIDENCE_APP_PID" ]]; then
-    EVIDENCE_APP_PID="$(ax_wait_for_owned_app_pid "$EVIDENCE_APP_PID" "$APP_BINARY" "$TARGET_TIMEOUT_SECONDS")" || {
-      echo "$APP_NAME did not launch as expected pid $EVIDENCE_APP_PID." >&2
-      emit_evidence_app_diagnostic
-      exit 1
-    }
-    EVIDENCE_APP_IDENTITY="$(ax_wait_for_owned_process_identity "$EVIDENCE_APP_PID" "$APP_BINARY" "$TARGET_TIMEOUT_SECONDS")" || {
-      echo "failure_category=launch" >&2
-      echo "failure_message=visual-owned-identity-unavailable" >&2
-      emit_evidence_app_diagnostic
-      return 1
-    }
-    ax_wait_for_pid_owned_process "$APP_NAME" "$EVIDENCE_APP_PID" "$TARGET_TIMEOUT_SECONDS" "$APP_BINARY"
-    ax_wait_for_pid_owned_window "$APP_NAME" "$EVIDENCE_APP_PID" "" "$TARGET_TIMEOUT_SECONDS" "" "$APP_BINARY"
-    return
+resolve_evidence_process_and_window() {
+  local resolved_pid
+  if ! resolved_pid="$(ax_wait_for_owned_app_pid "$EVIDENCE_APP_PID" "$APP_BINARY" "$TARGET_TIMEOUT_SECONDS")"; then
+    EVIDENCE_WAIT_FAILURE_CATEGORY="launch"
+    EVIDENCE_WAIT_FAILURE_REASON="visual-owned-pid-unavailable"
+    return 1
   fi
-  echo "$APP_NAME launch pid is missing." >&2
-  exit 1
+  EVIDENCE_APP_PID="$resolved_pid"
+  if ! EVIDENCE_APP_IDENTITY="$(ax_wait_for_owned_process_identity "$EVIDENCE_APP_PID" "$APP_BINARY" "$TARGET_TIMEOUT_SECONDS")"; then
+    EVIDENCE_WAIT_FAILURE_CATEGORY="launch"
+    EVIDENCE_WAIT_FAILURE_REASON="visual-owned-identity-unavailable"
+    return 1
+  fi
+  if ! ax_wait_for_pid_owned_process "$APP_NAME" "$EVIDENCE_APP_PID" "$TARGET_TIMEOUT_SECONDS" "$APP_BINARY"; then
+    EVIDENCE_WAIT_FAILURE_CATEGORY="launch"
+    EVIDENCE_WAIT_FAILURE_REASON="visual-owned-process-unavailable"
+    return 1
+  fi
+  if ! ax_wait_for_pid_owned_window "$APP_NAME" "$EVIDENCE_APP_PID" "" "$TARGET_TIMEOUT_SECONDS" "" "$APP_BINARY"; then
+    EVIDENCE_WAIT_FAILURE_CATEGORY="window"
+    EVIDENCE_WAIT_FAILURE_REASON="visual-window-unavailable"
+    return 1
+  fi
+}
+
+wait_for_process() {
+  local attempt
+  if [[ -z "$EVIDENCE_APP_PID" ]]; then
+    echo "$APP_NAME launch pid is missing." >&2
+    return 1
+  fi
+
+  for ((attempt = 1; attempt <= EVIDENCE_WINDOW_ATTEMPTS; attempt++)); do
+    if resolve_evidence_process_and_window; then
+      return 0
+    fi
+    if [[ "$attempt" -lt "$EVIDENCE_WINDOW_ATTEMPTS" && "$EVIDENCE_WAIT_FAILURE_CATEGORY" == "window" ]]; then
+      echo "INFO: retrying normal UI capture after owned window publication timeout" >&2
+      emit_evidence_app_diagnostic
+      stop_evidence_app
+      sleep 1
+      open_evidence_app || return 1
+    else
+      break
+    fi
+  done
+
+  echo "failure_category=$EVIDENCE_WAIT_FAILURE_CATEGORY" >&2
+  echo "failure_message=$EVIDENCE_WAIT_FAILURE_REASON" >&2
+  emit_evidence_app_diagnostic
+  return 1
 }
 
 wait_for_database() {
