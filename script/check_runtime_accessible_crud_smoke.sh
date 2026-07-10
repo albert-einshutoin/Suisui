@@ -19,11 +19,17 @@ APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS:-30}"
 KEEP_DATABASE="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
+SQLITE_BUSY_TIMEOUT_MS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS:-5000}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_TEXT_INPUT_HELPER="${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS must be a positive integer" >&2
+  exit 2
+fi
+
+if [[ ! "$SQLITE_BUSY_TIMEOUT_MS" =~ ^[0-9]+$ || "$SQLITE_BUSY_TIMEOUT_MS" -lt 1 ]]; then
+  echo "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS must be a positive integer" >&2
   exit 2
 fi
 
@@ -172,7 +178,7 @@ wait_for_database_table() {
 
 query_single_value() {
   local sql="$1"
-  "$SQLITE3" -batch -noheader "$database_path" "$sql" | tail -n 1
+  "$SQLITE3" -batch -noheader -cmd ".timeout $SQLITE_BUSY_TIMEOUT_MS" "$database_path" "$sql" | tail -n 1
 }
 
 wait_for_nonempty_value() {
