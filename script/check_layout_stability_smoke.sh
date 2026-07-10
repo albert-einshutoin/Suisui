@@ -534,50 +534,6 @@ collect_ax_frames_with_timeout() {
   return "$status"
 }
 
-ensure_project_detail_visible() {
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 || true
-on clickFirstMatching(uiElement)
-  tell application "System Events"
-    set identifierValue to ""
-    try
-      set identifierValue to value of attribute "AXIdentifier" of uiElement
-    end try
-    if identifierValue starts with "project-sidebar-row-" or identifierValue starts with "projects-portfolio-open-" then
-      try
-        perform action "AXPress" of uiElement
-        return true
-      end try
-      try
-        click uiElement
-        return true
-      end try
-    end if
-    try
-      repeat with childElement in UI elements of uiElement
-        if my clickFirstMatching(childElement) then return true
-      end repeat
-    end try
-  end tell
-  return false
-end clickFirstMatching
-
-on run argv
-  set appName to item 1 of argv
-  tell application "System Events"
-    if not (exists process appName) then return "missing"
-    tell process appName
-      if not (exists window 1) then return "window missing"
-      set frontmost to true
-      try
-        perform action "AXRaise" of window 1
-      end try
-      my clickFirstMatching(window 1)
-    end tell
-  end tell
-end run
-APPLESCRIPT
-}
-
 write_summary_header() {
   {
     printf '%s\n' '# Layout Stability Smoke'
@@ -636,11 +592,6 @@ wait_for_required_layout_subjects() {
       has_required_ax_identifiers "$probe_file"; then
       return 0
     fi
-
-    # The selected destination is already supplied at launch. Only press a
-    # project row after proving that its detail region is absent; pressing the
-    # selected row before every probe keeps SwiftUI rebuilding the AX subtree.
-    ensure_project_detail_visible
 
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       require_ax_identifiers "$probe_file"
