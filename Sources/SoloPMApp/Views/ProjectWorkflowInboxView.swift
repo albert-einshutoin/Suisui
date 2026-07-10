@@ -43,17 +43,22 @@ struct InboxWorkflowView: View {
                     .padding(.trailing, 18)
             }
 
-            VStack(alignment: .leading, spacing: 0) {
-                mainSurface
-                InboxTriageRail(
-                    task: viewModel.selectedTask,
-                    viewModel: viewModel,
-                    memoDraft: $voiceMemoDraft,
-                    memoCaptureID: $voiceMemoCaptureID
-                )
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 18)
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 0) {
+                    mainSurface
+                    InboxTriageRail(
+                        task: viewModel.selectedTask,
+                        viewModel: viewModel,
+                        memoDraft: $voiceMemoDraft,
+                        memoCaptureID: $voiceMemoCaptureID
+                    )
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 18)
+                }
             }
+            .defaultScrollAnchor(.top)
+            .scrollIndicators(.visible)
+            .accessibilityIdentifier("inbox-compact-workflow-scroll")
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-workflow")

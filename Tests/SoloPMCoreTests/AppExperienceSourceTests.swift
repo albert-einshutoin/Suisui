@@ -1718,6 +1718,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testInboxWorkflowSurfacesVoiceCaptureMetadataWithoutReplacingVoiceCommand() throws {
         let workflowSource = try readProjectWorkflowSources()
+        let inboxWorkflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift")
         let appSource = try readAppShellSource()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
@@ -1740,6 +1741,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-triage-filter\")"))
         XCTAssertTrue(workflowSource.contains("private var mainSurface: some View"))
         XCTAssertTrue(workflowSource.contains("InboxTriageRail("))
+        XCTAssertTrue(inboxWorkflowSource.contains(".accessibilityIdentifier(\"inbox-compact-workflow-scroll\")"))
+        XCTAssertTrue(inboxWorkflowSource.contains(".scrollIndicators(.visible)"))
+        let compactScrollStart = try XCTUnwrap(inboxWorkflowSource.range(of: "ScrollView(.vertical) {"))
+        let compactScrollEnd = try XCTUnwrap(
+            inboxWorkflowSource[compactScrollStart.lowerBound...]
+                .range(of: ".accessibilityIdentifier(\"inbox-compact-workflow-scroll\")")
+        )
+        let compactScrollScope = String(inboxWorkflowSource[compactScrollStart.lowerBound..<compactScrollEnd.upperBound])
+        XCTAssertTrue(compactScrollScope.contains("mainSurface"))
+        XCTAssertTrue(compactScrollScope.contains("InboxTriageRail("))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-workflow\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-triage-rail\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityLabel(\"Inbox triage station\")"))
