@@ -19,6 +19,7 @@ TIMEOUT_SECONDS="${SOLOPM_RUNTIME_INBOX_TRIAGE_TIMEOUT_SECONDS:-30}"
 KEEP_DATABASE="${SOLOPM_RUNTIME_INBOX_TRIAGE_KEEP_DATABASE:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
+AX_TEXT_INPUT_HELPER="${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}"
 WINDOW_WIDTH="${SOLOPM_RUNTIME_INBOX_TRIAGE_WINDOW_WIDTH:-1400}"
 WINDOW_HEIGHT="${SOLOPM_RUNTIME_INBOX_TRIAGE_WINDOW_HEIGHT:-920}"
 
@@ -365,70 +366,7 @@ setTextFieldContaining() {
   local replacement="$2"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$fragment" "$replacement" <<'APPLESCRIPT'
-on run argv
-  set appName to item 1 of argv
-  set fragment to item 2 of argv
-  set replacement to item 3 of argv
-  tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
-      set windowCount to count of windows
-      if windowCount < 1 then error appName & " has no visible windows"
-      try
-        set frontmost to true
-      end try
-      repeat with windowIndex from 1 to windowCount
-        set currentWindow to window windowIndex
-        try
-          perform action "AXRaise" of currentWindow
-        end try
-        set axItems to entire contents of currentWindow
-        repeat with axItem in axItems
-          set itemRole to ""
-          try
-            set itemRole to role of axItem as text
-          end try
-          if itemRole is "AXTextField" or itemRole is "AXTextArea" then
-            set fieldIdentifier to ""
-            set fieldName to ""
-            set fieldTitle to ""
-            set fieldDescription to ""
-            set fieldHelp to ""
-            set fieldValue to ""
-            try
-              set fieldIdentifier to value of attribute "AXIdentifier" of axItem as text
-            end try
-            try
-              set fieldName to name of axItem as text
-            end try
-            try
-              set fieldTitle to value of attribute "AXTitle" of axItem as text
-            end try
-            try
-              set fieldDescription to description of axItem as text
-            end try
-            try
-              set fieldHelp to value of attribute "AXHelp" of axItem as text
-            end try
-            try
-              set fieldValue to value of axItem as text
-            end try
-            set signalText to fieldIdentifier & " " & fieldName & " " & fieldTitle & " " & fieldDescription & " " & fieldHelp & " " & fieldValue
-            if signalText contains fragment then
-              set value of axItem to replacement
-              delay 0.2
-              set updatedValue to value of axItem as text
-              if updatedValue is replacement then return value of axItem as text
-            end if
-          end if
-        end repeat
-      end repeat
-    end tell
-  end tell
-  error "text field signal not found: " & fragment
-end run
-APPLESCRIPT
+    if /usr/bin/swift "$AX_TEXT_INPUT_HELPER" "$app_pid" "$fragment" "$replacement"
     then
       return 0
     fi
