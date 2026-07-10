@@ -54,7 +54,7 @@ struct TodayWorkflowView: View {
             title: "Today",
             subtitle: subtitle(for: snapshot),
             systemImage: "sun.max",
-                tasks: snapshot.plan.tasks,
+            tasks: snapshot.plan.tasks,
             emptyTitle: "No tasks due today",
             emptyDescription: "Captured work remains in Inbox until it is scheduled or moved to a project.",
             emptyStateAction: WorkflowEmptyStateAction(

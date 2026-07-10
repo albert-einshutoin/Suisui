@@ -46,7 +46,6 @@ struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel: ProjectBoardViewModel
     private let taskAutomationSettings: () -> TaskAutoExecutionSettings
     private let appSettings: () -> AppSettings
@@ -334,21 +333,9 @@ struct ProjectBoardView: View {
             consumePendingVoiceInboxTriageRequestIfNeeded()
             consumePendingAssistantQueueRequestIfNeeded()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+        .modifier(ProjectBoardTodayRefreshLifecycleModifier {
             viewModel.refreshDerivedReadModels()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
-            viewModel.refreshDerivedReadModels()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .NSCurrentLocaleDidChange)) { _ in
-            viewModel.refreshDerivedReadModels()
-        }
-        .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else {
-                return
-            }
-            viewModel.refreshDerivedReadModels()
-        }
+        })
         .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
             viewModel.load()
             viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
@@ -977,6 +964,33 @@ private struct ProjectBoardSynchronizedColumnBounds: ViewModifier {
 private extension View {
     func projectBoardSynchronizedColumnBounds() -> some View {
         modifier(ProjectBoardSynchronizedColumnBounds())
+    }
+}
+
+private struct ProjectBoardTodayRefreshLifecycleModifier: ViewModifier {
+    @Environment(\.scenePhase) private var scenePhase
+    let refresh: () -> Void
+
+    func body(content: Content) -> some View {
+        // Keep time-driven refreshes outside ProjectBoardView's already-large
+        // modifier chain so Swift can type-check the view while the live app
+        // still crosses day, timezone, locale, and activation boundaries.
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+                refresh()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
+                refresh()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .NSCurrentLocaleDidChange)) { _ in
+                refresh()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else {
+                    return
+                }
+                refresh()
+            }
     }
 }
 
