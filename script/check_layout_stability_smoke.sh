@@ -440,7 +440,7 @@ capture_layout_screenshot() {
 
 collect_ax_frames() {
   /usr/bin/osascript - "$APP_NAME" "$APP_BUNDLE_IDENTIFIER" <<'APPLESCRIPT'
-on collectIdentifiedElements(outputLines, uiElement)
+on appendIdentifiedElement(outputLines, uiElement)
   tell application "System Events"
     set identifierValue to ""
     try
@@ -451,14 +451,9 @@ on collectIdentifiedElements(outputLines, uiElement)
       set itemSize to size of uiElement
       set end of outputLines to identifierValue & tab & (item 1 of itemPosition as text) & tab & (item 2 of itemPosition as text) & tab & (item 1 of itemSize as text) & tab & (item 2 of itemSize as text)
     end if
-    try
-      repeat with childElement in UI elements of uiElement
-        set outputLines to my collectIdentifiedElements(outputLines, childElement)
-      end repeat
-    end try
   end tell
   return outputLines
-end collectIdentifiedElements
+end appendIdentifiedElement
 
 on run argv
   set appName to item 1 of argv
@@ -483,7 +478,15 @@ on run argv
     tell targetProcess
       set frontmost to true
       set outputLines to {}
-      set outputLines to my collectIdentifiedElements(outputLines, window 1)
+      set currentWindow to window 1
+      set outputLines to my appendIdentifiedElement(outputLines, currentWindow)
+      -- SwiftUI exposes some semantic containers through AXContents rather
+      -- than the recursive UI elements relation. `entire contents` follows
+      -- those relations and preserves the parent frames needed by this smoke.
+      set axItems to entire contents of currentWindow
+      repeat with axItem in axItems
+        set outputLines to my appendIdentifiedElement(outputLines, axItem)
+      end repeat
       set AppleScript's text item delimiters to linefeed
       return outputLines as text
     end tell
