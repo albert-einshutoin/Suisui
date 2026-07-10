@@ -4374,7 +4374,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("ui_evidence_ax_marker_check.swift"))
         XCTAssertTrue(script.contains("AX_MARKER_CHECKER="))
         XCTAssertTrue(script.contains("/usr/bin/swiftc \"$ROOT_DIR/script/ui_evidence_ax_marker_check.swift\" -o \"$AX_MARKER_CHECKER\""))
-        XCTAssertTrue(script.contains("\"$AX_MARKER_CHECKER\" \"$APP_NAME\" \"$identifier\" \"$text\""))
+        XCTAssertTrue(script.contains("\"$AX_MARKER_CHECKER\" \"$APP_NAME\" \"$identifier\" \"$text\" \"$EVIDENCE_APP_PID\""))
         XCTAssertTrue(script.contains("kill -9 \"$checker_pid\""))
         XCTAssertFalse(script.contains("/usr/bin/swift \"$ROOT_DIR/script/ui_evidence_ax_marker_check.swift\""))
         XCTAssertFalse(script.contains("watchdog_pid"))
