@@ -22,6 +22,7 @@ APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 SQLITE3="${SQLITE3:-sqlite3}"
 SQLITE_BUSY_TIMEOUT_MS="${SOLOPM_RUNTIME_TODAY_SQLITE_BUSY_TIMEOUT_MS:-5000}"
 RUNTIME_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS:-30}"
+RUNTIME_WINDOW_ATTEMPTS=2
 CPU_CONVERGENCE_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_TODAY_CPU_CONVERGENCE_TIMEOUT_SECONDS:-10}"
 CPU_SAMPLE_INTERVAL_SECONDS=1
 REQUIRED_CONSECUTIVE_CPU_SAMPLES=3
@@ -434,6 +435,8 @@ run_route() {
   route_content_marker="$4"
   route_text="$5"
   local keep_app_running="${6:-0}"
+  local window_attempt
+  local window_diagnostic
   route_artifact_dir="$case_artifact_dir/routes/$route_id"
   route_failure_category=""
   route_failure_reason=""
@@ -441,22 +444,40 @@ run_route() {
   mkdir -p "$route_artifact_dir/ax-probes"
 
   route_start_day_key="$(date '+%Y-%m-%d')"
-  launch_app "$locale" "$route_destination"
-  if ! resolve_app_pid; then
-    fail_route "launch"
-    return 1
-  fi
-  if ! ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$RUNTIME_TIMEOUT_SECONDS" "$APP_BINARY"; then
-    fail_route "launch"
-    return 1
-  fi
+  for ((window_attempt = 1; window_attempt <= RUNTIME_WINDOW_ATTEMPTS; window_attempt++)); do
+    if ! launch_app "$locale" "$route_destination"; then
+      fail_route "launch"
+      return 1
+    fi
+    if ! resolve_app_pid; then
+      fail_route "launch"
+      return 1
+    fi
+    if ! ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$RUNTIME_TIMEOUT_SECONDS" "$APP_BINARY"; then
+      fail_route "launch"
+      return 1
+    fi
 
-  local window_diagnostic="$route_artifact_dir/window.err"
-  if ! ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "" "$RUNTIME_TIMEOUT_SECONDS" "$window_diagnostic" "$APP_BINARY"; then
+    window_diagnostic="$route_artifact_dir/window-attempt-$window_attempt.err"
+    if ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "" "$RUNTIME_TIMEOUT_SECONDS" "$window_diagnostic" "$APP_BINARY"; then
+      break
+    fi
+
     route_failure_category="$(ax_classify_window_failure "$window_diagnostic" "$app_pid")"
+    if [[ "$window_attempt" -lt "$RUNTIME_WINDOW_ATTEMPTS" && "$route_failure_category" == "window" ]]; then
+      echo "INFO: retrying production route after owned window publication timeout" >&2
+      terminate_app
+      if ! wait_for_database_write_access; then
+        fail_route "harness" "database-write-lock-timeout"
+        return 1
+      fi
+      sleep 1
+      continue
+    fi
+
     fail_route "$route_failure_category"
     return 1
-  fi
+  done
 
   # PID resolution and cold window publication have independent bounded waits.
   # Start the marker budget only after the owned production window is ready so
