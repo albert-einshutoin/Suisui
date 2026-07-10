@@ -78,6 +78,8 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(helpers.contains("ax_classify_marker_failure()"))
         XCTAssertTrue(helpers.contains("ax_classify_ax_marker_failure()"))
         XCTAssertTrue(helpers.contains("ax_classify_window_failure()"))
+        XCTAssertTrue(helpers.contains("local marker_checker=\"${AX_MARKER_HELPER_EXECUTABLE:-}\""))
+        XCTAssertTrue(helpers.contains("if [[ -n \"$marker_checker\" && -x \"$marker_checker\" ]]"))
         XCTAssertTrue(script.contains("ax_wait_for_pid_owned_process \"$APP_NAME\" \"$APP_PID\" \"$VERIFY_TIMEOUT_SECONDS\" \"$APP_BINARY\""))
         XCTAssertTrue(script.contains("ax_wait_for_pid_owned_window \"$APP_NAME\" \"$APP_PID\" \"$PROJECT_BOARD_WINDOW_NAME\" \"$VERIFY_TIMEOUT_SECONDS\" \"$window_diagnostic_file\" \"$APP_BINARY\""))
         XCTAssertTrue(script.contains("APP_PID=\"$(resolve_verify_app_pid \"$APP_LAUNCH_PID\")\""))

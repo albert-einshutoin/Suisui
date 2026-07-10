@@ -340,12 +340,19 @@ ax_wait_for_ax_identifier() {
   if [[ -n "$app_pid" ]]; then
     ax_arguments+=("$app_pid")
   fi
+  local marker_checker="${AX_MARKER_HELPER_EXECUTABLE:-}"
   local deadline=$((SECONDS + timeout_seconds))
 
   while true; do
-    if /usr/bin/swift "$root_dir/script/ui_evidence_ax_marker_check.swift" "${ax_arguments[@]}" \
-      >"$probe_file" 2>"$probe_file.err"; then
-      return 0
+    if [[ -n "$marker_checker" && -x "$marker_checker" ]]; then
+      if "$marker_checker" "${ax_arguments[@]}" >"$probe_file" 2>"$probe_file.err"; then
+        return 0
+      fi
+    else
+      if /usr/bin/swift "$root_dir/script/ui_evidence_ax_marker_check.swift" "${ax_arguments[@]}" \
+        >"$probe_file" 2>"$probe_file.err"; then
+        return 0
+      fi
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       return 1

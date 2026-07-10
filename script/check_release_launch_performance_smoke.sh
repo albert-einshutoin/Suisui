@@ -24,6 +24,9 @@ SUMMARY_FILE="$OUTPUT_DIR/summary.md"
 SAMPLES_FILE="$OUTPUT_DIR/samples.tsv"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}"
+AX_MARKER_HELPER="${AX_MARKER_HELPER:-$ROOT_DIR/script/ui_evidence_ax_marker_check.swift}"
+AX_PRESS_ELEMENT_HELPER_EXECUTABLE="$OUTPUT_DIR/ui-evidence-ax-press-element.$$"
+AX_MARKER_HELPER_EXECUTABLE="$OUTPUT_DIR/ui-evidence-ax-marker-checker.$$"
 SOLOPM_PERFORMANCE_PROFILE="${SOLOPM_PERFORMANCE_PROFILE:-release}"
 
 case "$SOLOPM_PERFORMANCE_PROFILE" in
@@ -105,6 +108,18 @@ terminate_app() {
   APP_LAUNCH_PID=""
 }
 
+cleanup() {
+  terminate_app
+  rm -f "$AX_PRESS_ELEMENT_HELPER_EXECUTABLE" "$AX_MARKER_HELPER_EXECUTABLE"
+}
+
+prepare_ax_helpers() {
+  # Compilation is harness setup, not product latency. Reuse these executables
+  # so destination samples start with a ready AX selector and marker checker.
+  /usr/bin/swiftc "$AX_PRESS_ELEMENT_HELPER" -o "$AX_PRESS_ELEMENT_HELPER_EXECUTABLE"
+  /usr/bin/swiftc "$AX_MARKER_HELPER" -o "$AX_MARKER_HELPER_EXECUTABLE"
+}
+
 activate_app() {
   /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 &
   local osascript_pid=$!
@@ -146,7 +161,7 @@ wait_for_visible_window() {
 click_sidebar_destination() {
   local destination_identifier="$1"
   local destination_label="$2"
-  if ! /usr/bin/swift "$AX_PRESS_ELEMENT_HELPER" "$APP_PID" "$destination_identifier"; then
+  if ! "$AX_PRESS_ELEMENT_HELPER_EXECUTABLE" "$APP_PID" "$destination_identifier"; then
     echo "BLOCKER: performance smoke could not select $destination_label in owned app pid $APP_PID" >&2
     return 1
   fi
@@ -211,7 +226,7 @@ measure_destination() {
   record_sample "$label" "$start_ms" "$end_ms" "$MAX_DESTINATION_SWITCH_MS"
 }
 
-trap terminate_app EXIT
+trap cleanup EXIT
 
 {
   printf '%s\n' '# Release Launch Performance Smoke'
@@ -229,6 +244,7 @@ printf '%s\t%s\n' "label" "elapsed_ms" >"$SAMPLES_FILE"
 terminate_app
 APP_PID=""
 APP_LAUNCH_PID=""
+prepare_ax_helpers
 SOLOPM_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
 
 launch_start_ms="$(now_ms)"

@@ -114,6 +114,8 @@ SAMPLE_OFFSETS_MS=(0 50 150 300)
 layout_project_id=""
 app_pid=""
 app_launch_pid=""
+AX_FRAME_HELPER_BINARY="$LAYOUT_STABILITY_OUTPUT_DIR/ui-evidence-ax-frame-dump.$$"
+AX_PRESS_ELEMENT_HELPER_BINARY="$LAYOUT_STABILITY_OUTPUT_DIR/ui-evidence-ax-press-element.$$"
 
 : >"$SAMPLES_FILE"
 : >"$DIFF_FILE"
@@ -178,6 +180,18 @@ terminate_app() {
     app_pid=""
   fi
   app_launch_pid=""
+}
+
+cleanup() {
+  terminate_app
+  rm -f "$AX_FRAME_HELPER_BINARY" "$AX_PRESS_ELEMENT_HELPER_BINARY"
+}
+
+prepare_ax_helpers() {
+  # Compile before t=0 sampling. Interpreter compilation inside frame
+  # collection would shift every requested sample beyond the 300ms window.
+  /usr/bin/swiftc "$AX_FRAME_HELPER" -o "$AX_FRAME_HELPER_BINARY"
+  /usr/bin/swiftc "$AX_PRESS_ELEMENT_HELPER" -o "$AX_PRESS_ELEMENT_HELPER_BINARY"
 }
 
 activate_app() {
@@ -353,7 +367,7 @@ window_size_key() {
 click_sidebar_destination() {
   local destination_identifier="$1"
   local destination_label="$2"
-  if /usr/bin/swift "$AX_PRESS_ELEMENT_HELPER" "$app_pid" "$destination_identifier"; then
+  if "$AX_PRESS_ELEMENT_HELPER_BINARY" "$app_pid" "$destination_identifier"; then
     return 0
   fi
   printf 'INFO: exact-PID AXPress did not select %s (%s); using measured coordinate fallback.\n' \
@@ -458,7 +472,7 @@ capture_layout_screenshot() {
 }
 
 collect_ax_frames() {
-  /usr/bin/swift "$AX_FRAME_HELPER" "$app_pid"
+  "$AX_FRAME_HELPER_BINARY" "$app_pid"
 }
 
 collect_ax_frames_with_timeout() {
@@ -825,9 +839,10 @@ end run
 APPLESCRIPT
 }
 
-trap terminate_app EXIT
+trap cleanup EXIT
 
 write_summary_header
+prepare_ax_helpers
 prepare_layout_candidate
 launch_layout_candidate
 wait_for_required_layout_subjects
