@@ -43,6 +43,7 @@ export TMPDIR="$EVIDENCE_TMPDIR/"
 AX_MARKER_CHECKER="$EVIDENCE_TMPDIR/ui-evidence-ax-marker-checker.$$"
 AX_SCROLL_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-scroll-to.$$"
 AX_TARGET_FRAME_AUDITOR="$EVIDENCE_TMPDIR/ui-evidence-ax-target-frame-auditor.$$"
+AX_PRESS_ELEMENT_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-press-element.$$"
 AX_CAPTURE_RECEIPT_TSV="$EVIDENCE_TMPDIR/visual-ax-captures.$$.tsv"
 AX_RECEIPT_WRITER="$EVIDENCE_TMPDIR/write-visual-ax-audit-receipt.$$"
 EVIDENCE_HOME="${SOLOPM_UI_EVIDENCE_HOME:-$(mktemp -d "$EVIDENCE_TMPDIR/solopm-ui-evidence.XXXXXX")}"
@@ -161,6 +162,7 @@ cleanup() {
   rm -f "$AX_MARKER_CHECKER"
   rm -f "$AX_SCROLL_HELPER"
   rm -f "$AX_TARGET_FRAME_AUDITOR"
+  rm -f "$AX_PRESS_ELEMENT_HELPER"
   rm -f "$AX_CAPTURE_RECEIPT_TSV" "$AX_RECEIPT_WRITER"
   rm -f "$EVIDENCE_APP_LOG"
   if [[ "$KEEP_HOME" != "1" && -d "$EVIDENCE_HOME" && "${SOLOPM_UI_EVIDENCE_HOME:-}" == "" ]]; then
@@ -516,6 +518,24 @@ prepare_ax_target_frame_auditor() {
     return
   fi
   /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_target_frame_audit.swift" -o "$AX_TARGET_FRAME_AUDITOR"
+}
+
+prepare_ax_press_element_helper() {
+  if [[ -x "$AX_PRESS_ELEMENT_HELPER" ]]; then
+    return
+  fi
+  /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_press_element.swift" -o "$AX_PRESS_ELEMENT_HELPER"
+}
+
+press_project_sidebar_row() {
+  local project_id="$1"
+  if [[ ! "$project_id" =~ ^[1-9][0-9]*$ ]]; then
+    echo "invalid project id for visual destination navigation" >&2
+    return 2
+  fi
+  prepare_ax_press_element_helper
+  SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+    "$AX_PRESS_ELEMENT_HELPER" "$EVIDENCE_APP_PID" "project-sidebar-row-$project_id"
 }
 
 audit_ax_target_frame() {
@@ -1253,9 +1273,17 @@ capture_project_board_destination() {
   local target_audit_identifier="${8:-}"
   local route_attempt
   local marker_diagnostic
+  local launch_destination="$selected_destination"
+  local project_id=""
+  local destination_status
+
+  if [[ "$selected_destination" =~ ^project:([1-9][0-9]*)$ ]]; then
+    project_id="${BASH_REMATCH[1]}"
+    launch_destination="projects"
+  fi
 
   APPEARANCE_OVERRIDE="$appearance"
-  PROJECT_BOARD_SELECTION_OVERRIDE="$selected_destination"
+  PROJECT_BOARD_SELECTION_OVERRIDE="$launch_destination"
   PROJECT_BOARD_SELECTED_TASK_OVERRIDE="$selected_task_id"
   SETTINGS_WINDOW_OVERRIDE=""
   SETTINGS_TAB_OVERRIDE=""
@@ -1263,7 +1291,7 @@ capture_project_board_destination() {
   for ((route_attempt = 1; route_attempt <= EVIDENCE_ROUTE_ATTEMPTS; route_attempt++)); do
     stop_evidence_app
     write_appearance_preference "$appearance"
-    write_app_preference solopm.projectBoard.selectedDestination "$selected_destination"
+    write_app_preference solopm.projectBoard.selectedDestination "$launch_destination"
     open_evidence_app
     wait_for_process
     activate_evidence_app
@@ -1271,13 +1299,32 @@ capture_project_board_destination() {
     wait_for_window_capture_metadata >/dev/null
     # Dense workflow footers may not enter the AX visible subtree until the
     # evidence window is widened, so target validation uses the same bounds as
-    # the screenshot instead of checking a smaller launch-default window.
+    # the screenshot instead of a smaller launch-default window.
     position_window_for_capture
     sleep 0.25
 
     marker_diagnostic="$EVIDENCE_TMPDIR/project-board-destination.$$.attempt-$route_attempt.err"
-    if wait_for_project_board_destination "$label" "$target_markers" 2>"$marker_diagnostic"; then
+    : >"$marker_diagnostic"
+    destination_status=0
+    if [[ -n "$project_id" ]]; then
+      # The hosted macOS runner can publish a real Projects window while a
+      # direct project cold launch remains stuck before detail composition.
+      # Follow the production user path instead: prove Projects first, then
+      # select the exact seeded row through its PID-scoped AX identifier.
+      wait_for_project_board_destination \
+        "Projects overview before $label" \
+        "sidebar-destination-projects=>|projects-portfolio-overview=>" \
+        2>>"$marker_diagnostic" || destination_status=$?
+      if [[ "$destination_status" -eq 0 ]]; then
+        press_project_sidebar_row "$project_id" 2>>"$marker_diagnostic" || destination_status=$?
+      fi
+    fi
+    if [[ "$destination_status" -eq 0 ]]; then
+      wait_for_project_board_destination "$label" "$target_markers" 2>>"$marker_diagnostic" || destination_status=$?
+    fi
+    if [[ "$destination_status" -eq 0 ]]; then
       rm -f "$marker_diagnostic"
+      PROJECT_BOARD_SELECTION_OVERRIDE="$selected_destination"
       break
     fi
     if [[ "$route_attempt" -lt "$EVIDENCE_ROUTE_ATTEMPTS" ]]; then
@@ -1288,6 +1335,7 @@ capture_project_board_destination() {
     fi
     cat "$marker_diagnostic" >&2
     rm -f "$marker_diagnostic"
+    PROJECT_BOARD_SELECTION_OVERRIDE="$selected_destination"
     return 1
   done
 
