@@ -102,6 +102,35 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("createTask("))
     }
 
+    func testProjectBoardRefreshesTodayFromProductionDateAndLifecycleNotifications() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(source.contains("@Environment(\\.scenePhase) private var scenePhase"))
+        XCTAssertTrue(source.contains(".onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged))"))
+        XCTAssertTrue(source.contains(".onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange))"))
+        XCTAssertTrue(source.contains(".onChange(of: scenePhase)"))
+        XCTAssertTrue(source.contains("viewModel.refreshDerivedReadModels()"))
+    }
+
+    func testSelectionOnlyTodayRefreshReusesPlanPreviewAndRecommendationChips() throws {
+        let source = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let start = try XCTUnwrap(source.range(of: "private func refreshTodayDerivedReadModelForSelectionChange()"))
+        let end = try XCTUnwrap(source.range(of: "private func makeCachedDailyPlanningReviewPreview(", range: start.upperBound..<source.endIndex))
+        let selectionRefresh = String(source[start.lowerBound..<end.lowerBound])
+
+        XCTAssertTrue(selectionRefresh.contains("derivedReadModels.todayWorkflowSnapshot.plan"))
+        XCTAssertTrue(selectionRefresh.contains("assistantContext"))
+        XCTAssertFalse(selectionRefresh.contains("todayPlan("))
+        XCTAssertFalse(selectionRefresh.contains("dailyWorkloadOverview("))
+        XCTAssertFalse(selectionRefresh.contains("makeCachedDailyPlanningReviewPreview("))
+    }
+
+    func testTodayWorkflowViewUsesExplicitReviewBeforeSnapshotPreview() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift")
+
+        XCTAssertTrue(source.contains("viewModel.dailyPlanningReview ?? snapshot.dailyPlanningReviewPreview"))
+    }
+
     func testProjectBoardRuntimeLoadsAssistantQueueReadModel() throws {
         let appSource = try readAppShellSource()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")

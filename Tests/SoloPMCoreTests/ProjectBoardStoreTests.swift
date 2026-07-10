@@ -6671,6 +6671,8 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         viewModel.refreshDerivedReadModels(on: referenceDate, calendar: calendar)
         let firstPreview = try XCTUnwrap(viewModel.derivedReadModels.todayWorkflowSnapshot.dailyPlanningReviewPreview)
+        let firstPlan = viewModel.derivedReadModels.todayWorkflowSnapshot.plan
+        let firstChips = viewModel.derivedReadModels.todayWorkflowSnapshot.recommendationChips
 
         viewModel.selectedTaskID = nil
         viewModel.selectedTaskID = task.id
@@ -6679,10 +6681,38 @@ final class ProjectBoardStoreTests: XCTestCase {
             viewModel.derivedReadModels.todayWorkflowSnapshot.dailyPlanningReviewPreview,
             firstPreview
         )
+        XCTAssertEqual(viewModel.derivedReadModels.todayWorkflowSnapshot.plan, firstPlan)
+        XCTAssertEqual(viewModel.derivedReadModels.todayWorkflowSnapshot.recommendationChips, firstChips)
         XCTAssertEqual(
             viewModel.derivedReadModels.todayWorkflowSnapshot.planningDayKey,
             PlanningDayKey(referenceDate: referenceDate, calendar: calendar)
         )
+    }
+
+    @MainActor
+    func testRepeatedLoadOfTheSameSnapshotDoesNotAdvanceTodayPreviewRevision() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let firstRevision = viewModel.todaySnapshotSourceRevision
+
+        viewModel.load()
+
+        XCTAssertEqual(viewModel.todaySnapshotSourceRevision, firstRevision)
+    }
+
+    @MainActor
+    func testPublicTodayWorkflowSnapshotUsesItsRealPlanningDayKey() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        let referenceDate = try isoDate("2026-07-10T12:01:00Z")
+        let calendar = utcCalendar()
+
+        let snapshot = viewModel.todayWorkflowSnapshot(on: referenceDate, calendar: calendar)
+
+        XCTAssertEqual(
+            snapshot.planningDayKey,
+            PlanningDayKey(referenceDate: referenceDate, calendar: calendar)
+        )
+        XCTAssertNotEqual(snapshot.planningDayKey, .empty)
     }
 
     @MainActor
