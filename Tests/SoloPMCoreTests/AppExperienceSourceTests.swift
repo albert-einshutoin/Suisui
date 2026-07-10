@@ -1886,7 +1886,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(rowSource.contains(".accessibilityIdentifier(\"workflow-task-row-\\(task.id)\")"))
         XCTAssertFalse(
             surfaceSource.contains(".draggable(String(task.id))"),
-            "Wrapping WorkflowTaskRow in a drag source strips its child button metadata from the normal macOS AX tree."
+            "Do not wrap both sibling controls in a single drag source."
         )
         XCTAssertTrue(
             rowSource.contains(".draggable(String(task.id))"),
@@ -2566,8 +2566,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(todayWorkflowScope.contains("proxy.size.width >= TodayWorkflowLayoutMetrics.twoColumnMinimumWidth"))
         XCTAssertTrue(todayWorkflowScope.contains("HStack(alignment: .top"))
         XCTAssertTrue(todayWorkflowScope.contains("ScrollView(.vertical)"))
-        XCTAssertTrue(todayWorkflowScope.contains("fillsAvailableHeight: true"))
+        XCTAssertFalse(todayWorkflowScope.contains("fillsAvailableHeight: true"))
         XCTAssertTrue(todayWorkflowScope.contains("fillsAvailableHeight: false"))
+        XCTAssertTrue(todayWorkflowScope.contains("ScrollView(.vertical) {\n                            mainSurface(snapshot: snapshot, fillsAvailableHeight: false)"))
+        XCTAssertTrue(sharedSource.contains("if fillsAvailableHeight {\n                    ScrollView {\n                        taskRows"))
+        XCTAssertTrue(sharedSource.contains("} else {\n                    taskRows"))
+        XCTAssertTrue(sharedSource.contains("private var taskRows: some View"))
         XCTAssertTrue(todayBriefingScope.contains("LazyVGrid"))
         XCTAssertTrue(commonRailScope.contains("GridItem(.adaptive"))
         XCTAssertTrue(planSummaryScope.contains("VStack(alignment: .leading"))
