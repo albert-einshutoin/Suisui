@@ -1,5 +1,6 @@
 import SoloPMCore
 import Dispatch
+import os
 import SwiftUI
 import UniformTypeIdentifiers
 #if canImport(AppKit)
@@ -1021,11 +1022,14 @@ private struct ProjectBoardToolbarLayoutBridge: NSViewRepresentable {
 
 private final class ProjectBoardToolbarLayoutBridgeView: NSView {
     var onToolbarLayoutChanged: (() -> Void)?
+    private let runtimeDiagnosticLogger = Logger(subsystem: "dev.solopm.app", category: "runtime")
     private weak var observedToolbar: NSToolbar?
     private var toolbarDisplayModeObservation: NSKeyValueObservation?
     private var isToolbarDisplayModeMenuPruningInstalled = false
     private var observedToolbarDisplayMode: NSToolbar.DisplayMode?
     private var isPerformingToolbarLayoutPass = false
+    private var toolbarLayoutReconcileDepth = 0
+    private var toolbarLayoutMaxDepth = 0
     private var didScheduleInitialToolbarLayoutStabilization = false
 
     override func viewDidMoveToWindow() {
@@ -1199,7 +1203,20 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
         allowRetryIfToolbarMissing: Bool,
         notifyColumnsWhenToolbarAlreadyStable: Bool = false
     ) {
+        // Record re-entry before the existing boolean guard returns. This keeps
+        // nested attempts observable without allowing nested toolbar mutation.
+        toolbarLayoutReconcileDepth += 1
+        toolbarLayoutMaxDepth = max(toolbarLayoutMaxDepth, toolbarLayoutReconcileDepth)
+        runtimeDiagnosticLogger.notice(
+            "solopm.toolbar.layout.maxDepth=\(toolbarLayoutMaxDepth, privacy: .public)"
+        )
+        defer { toolbarLayoutReconcileDepth -= 1 }
+
         guard isPerformingToolbarLayoutPass == false else {
+            return
+        }
+
+        guard toolbarLayoutReconcileDepth == 1 else {
             return
         }
 

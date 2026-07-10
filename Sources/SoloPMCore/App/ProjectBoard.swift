@@ -1,6 +1,9 @@
 import Combine
 import CryptoKit
 import Foundation
+import os
+
+private let projectBoardRuntimeDiagnosticLogger = Logger(subsystem: "dev.solopm.app", category: "runtime")
 
 public struct ProjectDevelopmentAutomationReadiness: Equatable, Sendable {
     public var projectID: Int64
@@ -615,6 +618,9 @@ public final class ProjectBoardViewModel: ObservableObject {
     // second load of the same snapshot; otherwise one mutation invalidates the
     // preview twice before SwiftUI has a chance to consume the first result.
     private(set) var todaySnapshotSourceRevision: UInt64
+    // Keep this counter beside the cache so only real builder executions are
+    // counted; SwiftUI body re-evaluation must not create diagnostic work.
+    private(set) var dailyPlanningReviewPreviewBuildCount: Int
     private var taskAutomationSessionHistory: TaskAutoExecutionHistory
 
     public init(
@@ -685,6 +691,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.derivedReadModelCalendar = .current
         self.dailyPlanningReviewPreviewCache = DailyPlanningReviewPreviewCache()
         self.todaySnapshotSourceRevision = 0
+        self.dailyPlanningReviewPreviewBuildCount = 0
         self.taskAutomationSessionHistory = .empty
     }
 
@@ -3736,7 +3743,11 @@ public final class ProjectBoardViewModel: ObservableObject {
             // Cache at the derived-model boundary: task/project mutations and
             // date/calendar changes rebuild it, while rendering and selection
             // changes reuse the immutable value without doing board work.
-            DailyPlanningReviewBuilder.review(
+            self.dailyPlanningReviewPreviewBuildCount += 1
+            projectBoardRuntimeDiagnosticLogger.notice(
+                "solopm.dailyPlanningPreview.buildCount=\(self.dailyPlanningReviewPreviewBuildCount, privacy: .public)"
+            )
+            return DailyPlanningReviewBuilder.review(
                 transcript: "Today daily planning review",
                 plan: plan,
                 workload: workload,
