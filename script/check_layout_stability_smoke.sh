@@ -38,6 +38,7 @@ LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_DELAY_MS="${SOLOPM_LAYOUT_STABILITY_AX_IDEN
 SQLITE3="${SQLITE3:-sqlite3}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_FRAME_HELPER="${AX_FRAME_HELPER:-$ROOT_DIR/script/ui_evidence_ax_frame_dump.swift}"
+AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_LAYOUT_STABILITY_TIMEOUT_SECONDS must be a positive integer" >&2
@@ -337,9 +338,11 @@ window_size_key() {
 click_sidebar_destination() {
   local destination_identifier="$1"
   local destination_label="$2"
-  if ax_click_sidebar_destination "$APP_NAME" "$destination_identifier" "$destination_label"; then
+  if /usr/bin/swift "$AX_PRESS_ELEMENT_HELPER" "$app_pid" "$destination_identifier"; then
     return 0
   fi
+  printf 'INFO: exact-PID AXPress did not select %s (%s); using measured coordinate fallback.\n' \
+    "$destination_identifier" "$destination_label" >&2
   click_sidebar_destination_by_coordinate "$destination_identifier"
 }
 
