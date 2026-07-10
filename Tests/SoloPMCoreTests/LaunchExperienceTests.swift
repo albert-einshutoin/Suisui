@@ -63,6 +63,7 @@ final class LaunchExperienceTests: XCTestCase {
     func testVerifyModeUsesFixedMachineReadableFailureCategoriesAndPidOwnedChecks() throws {
         let script = try readPackageFile("script/build_and_run.sh")
         let helpers = try readPackageFile("script/ui_accessibility_smoke_helpers.sh")
+        let markerChecker = try readPackageFile("script/ui_evidence_ax_marker_check.swift")
 
         XCTAssertTrue(helpers.contains("failure_category=%s"))
         XCTAssertTrue(helpers.contains("launch|window|accessibility|product-marker"))
@@ -82,6 +83,9 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(script.contains("APP_PID=\"$(resolve_verify_app_pid \"$APP_LAUNCH_PID\")\""))
         XCTAssertTrue(script.contains("ax_wait_for_ax_identifier \"$APP_NAME\" \"$marker\""))
         XCTAssertTrue(script.contains("ax_classify_marker_failure \"$probe_file\""))
+        XCTAssertTrue(markerChecker.contains("var foundText = textNeedle.isEmpty"))
+        XCTAssertTrue(markerChecker.contains("if textNeedle.isEmpty || signalParts(for: element).signal.contains(textNeedle)"))
+        XCTAssertTrue(markerChecker.contains("if !textNeedle.isEmpty && !foundText"))
     }
 
     func testRecoveryDiagnosticsAreExplicitlySeparateFromProductProof() throws {
