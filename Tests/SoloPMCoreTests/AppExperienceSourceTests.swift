@@ -2457,6 +2457,72 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("isInspectorPresented = true"))
     }
 
+    func testTodayWorkflowUsesStableLayoutsForSizeFittingSensitiveScopes() throws {
+        let todaySource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift")
+        let sharedSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowSharedViews.swift")
+
+        let todayWorkflowStart = try XCTUnwrap(todaySource.range(of: "struct TodayWorkflowView"))
+        let todayWorkflowEnd = try XCTUnwrap(todaySource.range(of: "private struct TodayDailyPlanningReviewPanel"))
+        let todayWorkflowScope = String(todaySource[todayWorkflowStart.lowerBound..<todayWorkflowEnd.lowerBound])
+
+        let todayBriefingStart = try XCTUnwrap(todaySource.range(of: "private struct TodayBriefingPanel"))
+        let todayBriefingEnd = try XCTUnwrap(todaySource.range(of: "private struct TodaySuggestionPanel"))
+        let todayBriefingScope = String(todaySource[todayBriefingStart.lowerBound..<todayBriefingEnd.lowerBound])
+
+        let commonRailStart = try XCTUnwrap(todaySource.range(of: "private var commonActionRail"))
+        let commonButtonsStart = try XCTUnwrap(todaySource.range(of: "@ViewBuilder\n    private var commonActionButtons", range: commonRailStart.upperBound..<todaySource.endIndex))
+        let commonRailScope = String(todaySource[commonRailStart.lowerBound..<commonButtonsStart.lowerBound])
+        let suggestionRailStart = try XCTUnwrap(todaySource.range(of: "private var suggestionRail", range: commonButtonsStart.upperBound..<todaySource.endIndex))
+        let commonButtonsScope = String(todaySource[commonButtonsStart.lowerBound..<suggestionRailStart.lowerBound])
+
+        let planSummaryStart = try XCTUnwrap(todaySource.range(of: "private struct TodayPlanSummary"))
+        let countBadgeStart = try XCTUnwrap(todaySource.range(of: "private struct TodayCountBadge", range: planSummaryStart.upperBound..<todaySource.endIndex))
+        let planSummaryScope = String(todaySource[planSummaryStart.lowerBound..<countBadgeStart.lowerBound])
+
+        let taskSurfaceStart = try XCTUnwrap(sharedSource.range(of: "struct WorkflowTaskSurface"))
+        let taskSurfaceBodyStart = try XCTUnwrap(sharedSource.range(of: "\n    var body: some View {", range: taskSurfaceStart.upperBound..<sharedSource.endIndex))
+        let taskSurfaceContentStart = try XCTUnwrap(sharedSource.range(of: "\n            if tasks.isEmpty {", range: taskSurfaceBodyStart.upperBound..<sharedSource.endIndex))
+        let sharedHeaderScope = String(sharedSource[taskSurfaceBodyStart.upperBound..<taskSurfaceContentStart.lowerBound])
+
+        XCTAssertFalse(todayWorkflowScope.contains("ViewThatFits(in:"))
+        XCTAssertFalse(todayBriefingScope.contains("ViewThatFits(in:"))
+        XCTAssertFalse(commonRailScope.contains("ViewThatFits(in:"))
+        XCTAssertFalse(planSummaryScope.contains("ViewThatFits(in:"))
+        XCTAssertFalse(sharedHeaderScope.contains("ViewThatFits(in:"))
+
+        XCTAssertTrue(todayWorkflowScope.contains("LazyVGrid"))
+        XCTAssertTrue(todayBriefingScope.contains("LazyVGrid"))
+        XCTAssertTrue(commonRailScope.contains("GridItem(.adaptive"))
+        XCTAssertTrue(planSummaryScope.contains("VStack(alignment: .leading"))
+        XCTAssertTrue(sharedHeaderScope.contains("VStack(alignment: .leading"))
+
+        XCTAssertLessThan(
+            try XCTUnwrap(sharedHeaderScope.range(of: "WorkflowHeader(")).lowerBound,
+            try XCTUnwrap(sharedHeaderScope.range(of: "headerAccessory()")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(todayBriefingScope.range(of: "WorkflowDoneToggle(viewModel: viewModel)")).lowerBound,
+            try XCTUnwrap(todayBriefingScope.range(of: "suggestionRail")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(todayBriefingScope.range(of: "suggestionRail")).lowerBound,
+            try XCTUnwrap(todayBriefingScope.range(of: "startFocusButton")).lowerBound
+        )
+
+        let commonActionIdentifiers = [
+            "today-common-chip-add-task",
+            "today-common-chip-plan-tomorrow",
+            "today-common-chip-prepare-meeting",
+            "today-common-chip-draft-reply"
+        ]
+        let commonActionOffsets = try commonActionIdentifiers.map { identifier in
+            try XCTUnwrap(commonButtonsScope.range(of: identifier)?.lowerBound)
+        }
+        for pair in zip(commonActionOffsets, commonActionOffsets.dropFirst()) {
+            XCTAssertLessThan(pair.0, pair.1)
+        }
+    }
+
     func testScheduleWorkflowIsReachableAndApprovalFirst() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let workflowSource = try readProjectWorkflowSources()
