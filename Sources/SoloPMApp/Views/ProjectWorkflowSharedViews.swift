@@ -84,28 +84,34 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
+            } else if fillsAvailableHeight {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(tasks) { task in
-                            WorkflowTaskRow(
-                                task: task,
-                                projectTitle: viewModel.projectTitle(for: task),
-                                triageSummary: triageSummary(task),
-                                isSelected: viewModel.selectedTaskID == task.id,
-                                onSelect: { selectTask(task) },
-                                onToggleCompletion: { viewModel.toggleTaskCompletion(id: task.id) }
-                            )
-                        }
-                    }
-                    .padding(.vertical, 2)
+                    taskRows
                 }
+            } else {
+                taskRows
             }
 
             footer()
         }
         .padding(18)
         .frame(maxWidth: .infinity, maxHeight: fillsAvailableHeight ? .infinity : nil, alignment: .topLeading)
+    }
+
+    private var taskRows: some View {
+        LazyVStack(alignment: .leading, spacing: 8) {
+            ForEach(tasks) { task in
+                WorkflowTaskRow(
+                    task: task,
+                    projectTitle: viewModel.projectTitle(for: task),
+                    triageSummary: triageSummary(task),
+                    isSelected: viewModel.selectedTaskID == task.id,
+                    onSelect: { selectTask(task) },
+                    onToggleCompletion: { viewModel.toggleTaskCompletion(id: task.id) }
+                )
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     private func selectTask(_ task: ProjectBoardTask) {
