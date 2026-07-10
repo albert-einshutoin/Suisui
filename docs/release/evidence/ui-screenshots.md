@@ -2,13 +2,12 @@
 
 Generated with `script/capture_ui_evidence.sh`.
 
-- Generated at: `2026-07-04T08:30:08Z`
-- Source commit: `ebb1f171`
+- Generated at: `2026-07-10T08:10:34Z`
+- Source commit: `30281ed8`
 - App bundle: `dist/SoloPM.app`
 - Visual baseline manifest: `docs/quality/visual-baseline-manifest.json`
 - Viewport contract: `SOLOPM_VISUAL_BASELINE_VIEWPORT=1560x860`, `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT=1200x720`
-- Historical status: this tracked listing was produced through a recovery-only route and is retained only for diagnostics. It is not release proof and must not be regenerated or reported as current evidence without a successful normal `ProjectBoardView` capture.
-- Release-capture contract: `script/capture_ui_evidence.sh` uses an isolated HOME/CFFIXED_USER_HOME/SQLite database, explicit Project Board destination, deterministic `english` or `japanese` locale, and Light/Dark/System appearance. Recovery flags are excluded.
+- Launch mode: normal `ProjectBoardView` route with explicit selected destination; recovery flags are excluded from release evidence.
 - Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`
 - Seed data: local `Launch Readiness` project with planned, in-progress, blocked, Inbox voice, Schedule, Done analytics, milestone, completed project, and deterministic MCP registration rows
 - Scope: Project board sidebar, task cards, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Schedule workload dashboard, Done analytics, Settings integrations, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System
