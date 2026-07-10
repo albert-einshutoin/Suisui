@@ -126,6 +126,7 @@ VoiceOver candidate selected destination: $VOICEOVER_CANDIDATE_SELECTED_DESTINAT
 
 - Release CI: passed
 - Release launch performance smoke: passed
+- Real visual regression: passed
 - Local CRUD smoke: passed
 - Runtime accessible CRUD smoke: passed
 - Layout stability smoke: passed
@@ -175,28 +176,6 @@ capture_voiceover_candidate_context() {
   fi
 }
 
-terminate_app() {
-  local quit_pid=""
-
-  /usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 &
-  quit_pid=$!
-
-  for _ in {1..30}; do
-    if ! kill -0 "$quit_pid" >/dev/null 2>&1; then
-      wait "$quit_pid" >/dev/null 2>&1 || true
-      break
-    fi
-    sleep 0.1
-  done
-
-  if kill -0 "$quit_pid" >/dev/null 2>&1; then
-    kill "$quit_pid" >/dev/null 2>&1 || true
-    wait "$quit_pid" >/dev/null 2>&1 || true
-  fi
-
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-}
-
 run_xcodebuild_with_timeout() {
   local timeout_marker="$TMP_DIR/xcodebuild-timeout"
   rm -f "$timeout_marker"
@@ -243,7 +222,6 @@ run_xcodebuild_with_timeout() {
 }
 
 cleanup() {
-  terminate_app
   rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
@@ -261,11 +239,8 @@ SOLOPM_CI_RELEASE_GATES=1 ./scripts/ci.sh
 section "Local CRUD smoke"
 ./script/check_local_crud_smoke.sh
 
-section "Runtime accessible CRUD smoke"
-./script/check_runtime_accessible_crud_smoke.sh
-
-section "Layout stability smoke"
-./script/check_layout_stability_smoke.sh
+section "Production UI runtime gate"
+SOLOPM_CI_ARTIFACT_ROOT="$TMP_DIR/ui-gates" ./scripts/ci.sh ui-runtime
 
 section "Xcode build preflight"
 if ! command -v xcodebuild >/dev/null 2>&1; then
@@ -278,8 +253,8 @@ if [[ ! -d "$ROOT_DIR/$XCODE_WORKSPACE_RELATIVE" ]]; then
 fi
 run_xcodebuild_with_timeout
 
-section "Launch preflight"
-./script/build_and_run.sh --verify
+section "Real visual regression"
+SOLOPM_CI_ARTIFACT_ROOT="$TMP_DIR/ui-gates" ./scripts/ci.sh ui-visual
 
 section "Release launch performance smoke"
 # Release preflight should validate the same release-oriented launch budgets
@@ -289,7 +264,8 @@ SOLOPM_PERFORMANCE_PROFILE=release \
 SOLOPM_PERFORMANCE_BUILD_CONFIGURATION=release \
 SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS=15000 \
 SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS=3000 \
-  ./script/check_release_launch_performance_smoke.sh
+SOLOPM_CI_ARTIFACT_ROOT="$TMP_DIR/ui-gates" \
+  ./scripts/ci.sh ui-performance
 
 section "Runtime accessibility candidate"
 ./script/prepare_voiceover_review_candidate.sh --skip-build --no-launch

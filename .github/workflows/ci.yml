@@ -6,14 +6,21 @@ on:
     branches:
       - main
       - develop
+  merge_group:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   swiftpm:
     name: SwiftPM macOS
-    runs-on: macos-latest
+    runs-on: macos-26
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,4 +29,73 @@ jobs:
         run: swift --version
 
       - name: Verify
-        run: ./scripts/ci.sh
+        run: ./scripts/ci.sh swiftpm
+
+  ui-runtime:
+    name: UI Runtime (production route)
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify production runtime
+        env:
+          SOLOPM_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
+        run: ./scripts/ci.sh ui-runtime
+
+      - name: Upload sanitized runtime diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/ci-artifacts/ui-runtime
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+
+  ui-visual:
+    name: UI Visual (live baseline)
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Capture and compare live UI
+        env:
+          SOLOPM_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
+        run: ./scripts/ci.sh ui-visual
+
+      - name: Upload audited visual diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/ci-artifacts/ui-visual
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+
+  ui-performance:
+    name: UI Performance (production route)
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Measure production runtime
+        env:
+          SOLOPM_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
+        run: ./scripts/ci.sh ui-performance
+
+      - name: Upload sanitized performance diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-performance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/ci-artifacts/ui-performance
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7

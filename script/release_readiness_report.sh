@@ -244,6 +244,7 @@ MCP_REVIEW_REQUIRED_MARKERS=(
 AUTOMATED_PREFLIGHT_REQUIRED_GATES=(
   "Release CI"
   "Release launch performance smoke"
+  "Real visual regression"
   "Local CRUD smoke"
   "Runtime accessible CRUD smoke"
   "Layout stability smoke"
