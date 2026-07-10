@@ -4473,14 +4473,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] `capture_ui_evidence.sh` は撮影前にAX identifierとseed固有テキストで対象画面を検証し、Today等の誤画面スクショをrelease evidenceとして保存しない。"))
     }
 
-    func testUIScreenshotCaptureWaitsForPreviousSoloPMProcessBeforeRelaunching() throws {
+    func testUIScreenshotCaptureTerminatesOnlyTheOwnedSoloPMProcessBeforeRelaunching() throws {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
 
         XCTAssertTrue(script.contains("PROJECT_BOARD_SELECTED_TASK_OVERRIDE=\"\""))
         XCTAssertTrue(script.contains("wait_for_app_process_exit"))
         XCTAssertTrue(script.contains("stop_evidence_app"))
-        XCTAssertTrue(script.contains("kill \"$EVIDENCE_APP_PID\""))
-        XCTAssertTrue(script.contains("wait \"$EVIDENCE_APP_PID\""))
+        XCTAssertTrue(script.contains("EVIDENCE_APP_IDENTITY"))
+        XCTAssertTrue(script.contains("EVIDENCE_APP_LAUNCH_IDENTITY"))
+        XCTAssertTrue(script.contains("ax_terminate_owned_process \"$owned_pid\" \"$APP_BINARY\" \"${EVIDENCE_APP_IDENTITY:-}\""))
+        XCTAssertTrue(script.contains("ax_terminate_owned_process \"$launch_pid\" \"$APP_BINARY\" \"${EVIDENCE_APP_LAUNCH_IDENTITY:-}\""))
+        XCTAssertFalse(script.contains("kill \"$EVIDENCE_APP_PID\""))
         XCTAssertTrue(script.contains("ax_wait_for_owned_app_pid \"$EVIDENCE_APP_PID\" \"$APP_BINARY\""))
         XCTAssertTrue(script.contains("$APP_NAME did not launch as expected pid $EVIDENCE_APP_PID."))
     }
