@@ -56,17 +56,13 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: 12) {
-                    WorkflowHeader(title: title, subtitle: subtitle, systemImage: systemImage)
-                    Spacer(minLength: 12)
-                    headerAccessory()
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    WorkflowHeader(title: title, subtitle: subtitle, systemImage: systemImage)
-                    headerAccessory()
-                }
+            // Header accessories can contain the Today command surface and
+            // several localized actions. A single vertical proposal avoids
+            // ViewThatFits recursively sizing both header branches while
+            // preserving the header-before-accessory reading/action order.
+            VStack(alignment: .leading, spacing: 10) {
+                WorkflowHeader(title: title, subtitle: subtitle, systemImage: systemImage)
+                headerAccessory()
             }
 
             if tasks.isEmpty {

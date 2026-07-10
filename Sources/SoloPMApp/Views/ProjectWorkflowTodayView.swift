@@ -19,31 +19,26 @@ struct TodayWorkflowView: View {
 
     var body: some View {
         let snapshot = viewModel.derivedReadModels.todayWorkflowSnapshot
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 0) {
-                mainSurface(snapshot: snapshot)
-                TodayAssistantRail(
-                    commandTitle: $commandTitle,
-                    context: snapshot.assistantContext,
-                    viewModel: viewModel,
-                    openInspector: openInspectorForTodayRailTask
-                )
-                .frame(minWidth: 300, idealWidth: 320, maxWidth: 340)
-                .padding(.vertical, 18)
-                .padding(.trailing, 18)
-            }
-
-            VStack(alignment: .leading, spacing: 0) {
-                mainSurface(snapshot: snapshot)
-                TodayAssistantRail(
-                    commandTitle: $commandTitle,
-                    context: snapshot.assistantContext,
-                    viewModel: viewModel,
-                    openInspector: openInspectorForTodayRailTask
-                )
-                .padding(.horizontal, 18)
-                .padding(.bottom, 18)
-            }
+        // ViewThatFits repeatedly measures both branches while the detail
+        // column is still negotiating its width, which can keep the Today
+        // tree in a size-fitting loop. An adaptive grid makes the same
+        // wide/narrow decision with one stable layout proposal and keeps the
+        // rail below the surface when the detail column is narrow.
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 420, maximum: 620), spacing: 18, alignment: .top)],
+            alignment: .leading,
+            spacing: 0
+        ) {
+            mainSurface(snapshot: snapshot)
+            TodayAssistantRail(
+                commandTitle: $commandTitle,
+                context: snapshot.assistantContext,
+                viewModel: viewModel,
+                openInspector: openInspectorForTodayRailTask
+            )
+            .frame(minWidth: 300, idealWidth: 320, maxWidth: 340)
+            .padding(.vertical, 18)
+            .padding(.trailing, 18)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-workflow")
@@ -255,6 +250,14 @@ private struct TodayBriefingPanel: View {
     let recommendationChips: [TodayRecommendationChip]
     @ObservedObject var viewModel: ProjectBoardViewModel
 
+    private let actionRowColumns = [
+        GridItem(.adaptive(minimum: 180), spacing: 8, alignment: .leading)
+    ]
+
+    private let suggestionColumns = [
+        GridItem(.adaptive(minimum: 150), spacing: 6, alignment: .leading)
+    ]
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
@@ -285,18 +288,13 @@ private struct TodayBriefingPanel: View {
 
             commonActionRail
 
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: 8) {
-                    WorkflowDoneToggle(viewModel: viewModel)
-                    suggestionRail
-                    startFocusButton
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    WorkflowDoneToggle(viewModel: viewModel)
-                    suggestionRail
-                    startFocusButton
-                }
+            // Keep the action order in one deterministic container. The
+            // adaptive columns wrap controls instead of probing alternate
+            // ViewThatFits branches during every width negotiation.
+            LazyVGrid(columns: actionRowColumns, alignment: .leading, spacing: 8) {
+                WorkflowDoneToggle(viewModel: viewModel)
+                suggestionRail
+                startFocusButton
             }
 
             TodayFlowStrip(plan: plan, viewModel: viewModel)
@@ -309,14 +307,16 @@ private struct TodayBriefingPanel: View {
     }
 
     private var commonActionRail: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) {
-                commonActionButtons
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                commonActionButtons
-            }
+        // These four actions have stable order, but their labels vary by
+        // locale. An adaptive grid gives each button a bounded proposal and
+        // wraps the rail without the recursive branch measurement of
+        // ViewThatFits.
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 150), spacing: 6, alignment: .leading)],
+            alignment: .leading,
+            spacing: 6
+        ) {
+            commonActionButtons
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-common-action-rail")
@@ -367,7 +367,7 @@ private struct TodayBriefingPanel: View {
     }
 
     private var suggestionRail: some View {
-        HStack(spacing: 6) {
+        LazyVGrid(columns: suggestionColumns, alignment: .leading, spacing: 6) {
             ForEach(recommendationChips) { chip in
                 Button {
                     viewModel.startFocus(taskID: chip.taskID)
@@ -650,17 +650,12 @@ private struct TodayPlanSummary: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 12) {
-                recommendation
-                Spacer(minLength: 12)
-                dueCounts
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
-                recommendation
-                dueCounts
-            }
+        // The recommendation and counts remain readable at the minimum
+        // detail width when they own separate vertical rows. This avoids
+        // ViewThatFits measuring a wide and narrow tree on every update.
+        VStack(alignment: .leading, spacing: 10) {
+            recommendation
+            dueCounts
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-plan-summary")
