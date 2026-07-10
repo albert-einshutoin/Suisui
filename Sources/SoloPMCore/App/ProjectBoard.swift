@@ -8673,15 +8673,10 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     private func roundedTimeBlockStart(from referenceDate: Date, calendar: Calendar) -> Date {
-        guard let hourStart = calendar.dateInterval(of: .hour, for: referenceDate)?.start else {
-            return referenceDate
-        }
-
-        let slotSeconds = 30.0 * 60.0
-        let elapsed = referenceDate.timeIntervalSince(hourStart)
-        let remainder = elapsed.truncatingRemainder(dividingBy: slotSeconds)
-        let roundedElapsed = remainder == 0 ? elapsed : elapsed + (slotSeconds - remainder)
-        return hourStart.addingTimeInterval(roundedElapsed)
+        DailyPlanningReviewRefreshSchedule.roundedTimeBlockStart(
+            from: referenceDate,
+            calendar: calendar
+        )
     }
 }
 

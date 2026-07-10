@@ -79,6 +79,33 @@ public struct DailyPlanningReview: Codable, Equatable, Sendable {
     }
 }
 
+/// Defines the time boundaries shared by suggested work blocks and the daily
+/// planning preview. Using elapsed time from the local hour preserves the
+/// actual instant through daylight-saving folds and skips.
+public enum DailyPlanningReviewRefreshSchedule {
+    private static let slotDuration: TimeInterval = 30.0 * 60.0
+
+    public static func roundedTimeBlockStart(from referenceDate: Date, calendar: Calendar) -> Date {
+        guard let hourStart = calendar.dateInterval(of: .hour, for: referenceDate)?.start else {
+            return referenceDate
+        }
+
+        let elapsed = referenceDate.timeIntervalSince(hourStart)
+        let remainder = elapsed.truncatingRemainder(dividingBy: slotDuration)
+        let roundedElapsed = remainder == 0 ? elapsed : elapsed + (slotDuration - remainder)
+        return hourStart.addingTimeInterval(roundedElapsed)
+    }
+
+    /// Returns a future boundary even when `referenceDate` is already on one.
+    /// This prevents a completed refresh from immediately scheduling itself again.
+    public static func nextStrictBoundary(after referenceDate: Date, calendar: Calendar) -> Date {
+        let rounded = roundedTimeBlockStart(from: referenceDate, calendar: calendar)
+        return rounded > referenceDate
+            ? rounded
+            : rounded.addingTimeInterval(slotDuration)
+    }
+}
+
 struct DailyPlanningReviewTimeBlockKey: Equatable, Sendable {
     let year: Int
     let month: Int
@@ -88,19 +115,22 @@ struct DailyPlanningReviewTimeBlockKey: Equatable, Sendable {
     let utcOffset: Int
 
     init(referenceDate: Date, calendar: Calendar) {
-        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: referenceDate)
+        let blockStart = DailyPlanningReviewRefreshSchedule.roundedTimeBlockStart(
+            from: referenceDate,
+            calendar: calendar
+        )
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: blockStart)
         self.year = components.year ?? 0
         self.month = components.month ?? 0
         self.day = components.day ?? 0
         self.hour = components.hour ?? 0
-        // The review can change at half-hour boundaries even when the local day
-        // and source revision stay the same, so cache the normalized local
-        // boundary rather than only the PlanningDayKey.
-        self.minute = ((components.minute ?? 0) / 30) * 30
+        // Match the board's ceiling semantics: an exact boundary stays in its
+        // own slot, while the next second moves to the next 30-minute preview.
+        self.minute = components.minute ?? 0
         // Local wall-clock components alone collapse the two 01:30 values in a
         // fall-back fold. The offset keeps both instants distinct and also
         // records which side of a spring-forward skip produced this key.
-        self.utcOffset = calendar.timeZone.secondsFromGMT(for: referenceDate)
+        self.utcOffset = calendar.timeZone.secondsFromGMT(for: blockStart)
     }
 }
 

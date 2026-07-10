@@ -970,6 +970,7 @@ private extension View {
 
 private struct ProjectBoardTodayRefreshLifecycleModifier: ViewModifier {
     @Environment(\.scenePhase) private var scenePhase
+    @State private var boundaryRefreshTask: Task<Void, Never>?
     let refresh: () -> Void
 
     func body(content: Content) -> some View {
@@ -978,20 +979,69 @@ private struct ProjectBoardTodayRefreshLifecycleModifier: ViewModifier {
         // still crosses day, timezone, locale, and activation boundaries.
         content
             .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
-                refresh()
+                refreshAndRescheduleBoundary()
             }
             .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
-                refresh()
+                refreshAndRescheduleBoundary()
             }
             .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
-                refresh()
+                refreshAndRescheduleBoundary()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .NSSystemClockDidChange)) { _ in
+                refreshAndRescheduleBoundary()
+            }
+            .onAppear {
+                scheduleBoundaryRefreshIfActive()
+            }
+            .onDisappear {
+                cancelBoundaryRefresh()
             }
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else {
+                    cancelBoundaryRefresh()
                     return
                 }
-                refresh()
+                refreshAndRescheduleBoundary()
             }
+    }
+
+    private func refreshAndRescheduleBoundary() {
+        guard scenePhase == .active else {
+            return
+        }
+        refresh()
+        scheduleBoundaryRefreshIfActive()
+    }
+
+    private func scheduleBoundaryRefreshIfActive() {
+        cancelBoundaryRefresh()
+        guard scenePhase == .active else {
+            return
+        }
+
+        let boundary = DailyPlanningReviewRefreshSchedule.nextStrictBoundary(
+            after: Date(),
+            calendar: .current
+        )
+        let nanoseconds = UInt64(max(boundary.timeIntervalSinceNow, 0) * 1_000_000_000)
+        boundaryRefreshTask = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: nanoseconds)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, scenePhase == .active else {
+                return
+            }
+
+            refresh()
+            scheduleBoundaryRefreshIfActive()
+        }
+    }
+
+    private func cancelBoundaryRefresh() {
+        boundaryRefreshTask?.cancel()
+        boundaryRefreshTask = nil
     }
 }
 
