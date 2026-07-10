@@ -2492,7 +2492,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(planSummaryScope.contains("ViewThatFits(in:"))
         XCTAssertFalse(sharedHeaderScope.contains("ViewThatFits(in:"))
 
-        XCTAssertTrue(todayWorkflowScope.contains("LazyVGrid"))
+        XCTAssertFalse(todayWorkflowScope.contains("LazyVGrid"))
+        XCTAssertFalse(todayWorkflowScope.contains("GridItem(.adaptive"))
+        XCTAssertTrue(todayWorkflowScope.contains("GeometryReader"))
+        XCTAssertTrue(todayWorkflowScope.contains("proxy.size.width >= TodayWorkflowLayoutMetrics.twoColumnMinimumWidth"))
+        XCTAssertTrue(todayWorkflowScope.contains("HStack(alignment: .top"))
+        XCTAssertTrue(todayWorkflowScope.contains("ScrollView(.vertical)"))
+        XCTAssertTrue(todayWorkflowScope.contains("fillsAvailableHeight: true"))
+        XCTAssertTrue(todayWorkflowScope.contains("fillsAvailableHeight: false"))
         XCTAssertTrue(todayBriefingScope.contains("LazyVGrid"))
         XCTAssertTrue(commonRailScope.contains("GridItem(.adaptive"))
         XCTAssertTrue(planSummaryScope.contains("VStack(alignment: .leading"))
@@ -2523,6 +2530,27 @@ final class AppExperienceSourceTests: XCTestCase {
         for pair in zip(commonActionOffsets, commonActionOffsets.dropFirst()) {
             XCTAssertLessThan(pair.0, pair.1)
         }
+    }
+
+    func testTodayWorkflowKeepsTheRailReachableWithFiniteNarrowHeight() throws {
+        let todaySource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift")
+        let sharedSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowSharedViews.swift")
+        let workflowStart = try XCTUnwrap(todaySource.range(of: "struct TodayWorkflowView"))
+        let workflowEnd = try XCTUnwrap(todaySource.range(of: "private struct TodayDailyPlanningReviewPanel"))
+        let workflowScope = String(todaySource[workflowStart.lowerBound..<workflowEnd.lowerBound])
+
+        XCTAssertTrue(todaySource.contains("private enum TodayWorkflowLayoutMetrics"))
+        XCTAssertTrue(todaySource.contains("twoColumnMinimumWidth: CGFloat = 900"))
+        XCTAssertTrue(workflowScope.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
+        XCTAssertTrue(workflowScope.contains(".padding(.horizontal, 18)"))
+        XCTAssertTrue(workflowScope.contains(".padding(.bottom, 18)"))
+        XCTAssertTrue(workflowScope.contains("TodayAssistantRail("))
+        XCTAssertTrue(sharedSource.contains("let fillsAvailableHeight: Bool"))
+        XCTAssertTrue(sharedSource.contains("maxHeight: fillsAvailableHeight ? .infinity : nil"))
+
+        let mainSurfaceOffset = try XCTUnwrap(workflowScope.range(of: "mainSurface(snapshot:"))
+        let assistantRailOffset = try XCTUnwrap(workflowScope.range(of: "TodayAssistantRail("))
+        XCTAssertLessThan(mainSurfaceOffset.lowerBound, assistantRailOffset.lowerBound)
     }
 
     func testScheduleWorkflowIsReachableAndApprovalFirst() throws {
