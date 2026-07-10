@@ -32,6 +32,7 @@ LOCALES=("english" "japanese")
 KEEP_ARTIFACTS="${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_KEEP_ARTIFACTS:-0}"
 ARTIFACT_ROOT="${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_ARTIFACT_DIR:-$ROOT_DIR/.tmp/runtime-today-production-route}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
+AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}"
 
 if [[ ! "$RUNTIME_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$RUNTIME_TIMEOUT_SECONDS" -lt 3 ]]; then
   echo "SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS must be an integer of at least 3" >&2
@@ -432,6 +433,7 @@ run_route() {
   route_sidebar_marker="$3"
   route_content_marker="$4"
   route_text="$5"
+  local keep_app_running="${6:-0}"
   route_artifact_dir="$case_artifact_dir/routes/$route_id"
   route_failure_category=""
   route_failure_reason=""
@@ -494,9 +496,68 @@ run_route() {
   record_route_evidence "passed" "none" "none"
   printf 'OK: route=%s destination=%s sidebar=%s content=%s text=%s\n' \
     "$route_id" "$route_destination" "$route_sidebar_marker" "$route_content_marker" "$route_text"
+  if [[ "$keep_app_running" != "1" ]]; then
+    terminate_app
+    wait_for_database_write_access
+  fi
+  return 0
+}
+
+navigate_to_seed_project() {
+  local marker
+  local required_text
+  local project_row_identifier="project-sidebar-row-$seed_project_id"
+
+  route_id="project"
+  route_destination="project:$seed_project_id"
+  route_sidebar_marker="project-board-sidebar"
+  route_content_marker="project-board-detail"
+  route_text="$(route_text_for "$route_id")"
+  route_artifact_dir="$case_artifact_dir/routes/$route_id"
+  route_failure_category=""
+  route_failure_reason=""
+  rm -rf "$route_artifact_dir"
+  mkdir -p "$route_artifact_dir/ax-probes"
+
+  # Project cold-launch restoration belongs to the dedicated state-restoration
+  # gate. Prove the user path from the already-published Projects window here;
+  # the same CI lane separately verifies project cold launch, CRUD, and layout.
+  if ! /usr/bin/swift "$AX_PRESS_ELEMENT_HELPER" "$app_pid" "$project_row_identifier"; then
+    fail_route "product-marker" "route-project-selection"
+    return 1
+  fi
+
+  case_deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
+  for marker in "project-board-header-bar" "$route_sidebar_marker" "$route_content_marker"; do
+    required_text=""
+    [[ "$marker" == "$route_content_marker" ]] && required_text="$route_text"
+    if ! wait_for_marker_until "$marker" "$required_text" "$case_deadline"; then
+      route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
+      fail_route "$route_failure_category"
+      return 1
+    fi
+  done
+  record_route_evidence "passed" "none" "none"
+  printf 'OK: route=%s destination=%s sidebar=%s content=%s text=%s\n' \
+    "$route_id" "$route_destination" "$route_sidebar_marker" "$route_content_marker" "$route_text"
+
+  route_id="inspector"
+  route_content_marker="project-inspector"
+  route_text="$(route_text_for "$route_id")"
+  route_artifact_dir="$case_artifact_dir/routes/$route_id"
+  rm -rf "$route_artifact_dir"
+  mkdir -p "$route_artifact_dir/ax-probes"
+  if ! wait_for_marker_until "$route_content_marker" "$route_text" "$case_deadline"; then
+    route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
+    fail_route "$route_failure_category"
+    return 1
+  fi
+  record_route_evidence "passed" "none" "none"
+  printf 'OK: route=%s destination=%s sidebar=%s content=%s text=%s\n' \
+    "$route_id" "$route_destination" "$route_sidebar_marker" "$route_content_marker" "$route_text"
+
   terminate_app
   wait_for_database_write_access
-  return 0
 }
 
 run_normal_routes() {
@@ -504,22 +565,24 @@ run_normal_routes() {
   local route_destination_value
   local route_sidebar_marker_value
   local route_content_marker_value
+  local keep_app_running
   local routes=(
     "inbox|inbox|sidebar-destination-inbox|inbox-workflow"
     "today|today|sidebar-destination-today|today-workflow"
     "catch-up|catch-up|sidebar-destination-catch-up|catch-up-workflow"
     "projects|projects|sidebar-destination-projects|projects-portfolio-overview"
-    "project|project:$seed_project_id|project-board-sidebar|project-board-detail"
-    "inspector|project:$seed_project_id|project-board-sidebar|project-inspector"
   )
 
   for route_spec in "${routes[@]}"; do
     IFS='|' read -r route_id route_destination_value route_sidebar_marker_value route_content_marker_value <<<"$route_spec"
     route_text="$(route_text_for "$route_id")"
-    if ! run_route "$route_id" "$route_destination_value" "$route_sidebar_marker_value" "$route_content_marker_value" "$route_text"; then
+    keep_app_running=0
+    [[ "$route_id" == "projects" ]] && keep_app_running=1
+    if ! run_route "$route_id" "$route_destination_value" "$route_sidebar_marker_value" "$route_content_marker_value" "$route_text" "$keep_app_running"; then
       return 1
     fi
   done
+  navigate_to_seed_project
 }
 
 cpu_percent_for_app() {
