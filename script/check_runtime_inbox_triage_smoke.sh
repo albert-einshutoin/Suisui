@@ -416,27 +416,10 @@ on run argv
             end try
             set signalText to fieldIdentifier & " " & fieldName & " " & fieldTitle & " " & fieldDescription & " " & fieldHelp & " " & fieldValue
             if signalText contains fragment then
-              set previousClipboard to ""
-              try
-                set previousClipboard to the clipboard as text
-              end try
-              perform action "AXPress" of axItem
-              set focused of axItem to true
+              set value of axItem to replacement
               delay 0.2
-              set the clipboard to replacement
-              keystroke "a" using command down
-              delay 0.1
-              key code 51
-              delay 0.1
-              keystroke "v" using command down
-              delay 0.3
-              key code 48
-              delay 0.2
-              try
-                set the clipboard to previousClipboard
-              end try
-              delay 0.2
-              return "set text field " & fragment
+              set updatedValue to value of axItem as text
+              if updatedValue is replacement then return value of axItem as text
             end if
           end if
         end repeat
