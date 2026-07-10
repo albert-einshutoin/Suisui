@@ -6668,6 +6668,7 @@ final class ReleasePipelineTests: XCTestCase {
         let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
 
         XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
+        XCTAssertTrue(script.contains("AX_PRESS_ELEMENT_HELPER=\"${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}\""))
         XCTAssertTrue(script.contains("source \"$AX_HELPERS\""))
         XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_PROFILE=\"${SOLOPM_PERFORMANCE_PROFILE:-release}\""))
         XCTAssertTrue(script.contains("DEFAULT_BUILD_CONFIGURATION=release"))
@@ -6702,7 +6703,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("measure_destination \"destination-assistant-queue\" \"sidebar-destination-assistant-queue\" \"Assistant Queue\" \"assistant-queue-workflow\""))
         XCTAssertTrue(script.contains("measure_destination \"destination-today\" \"sidebar-destination-today\" \"Today\" \"today-workflow\""))
         XCTAssertFalse(script.contains("ax_wait_for_visible_window"))
-        XCTAssertTrue(script.contains("ax_click_sidebar_destination"))
+        XCTAssertTrue(script.contains("/usr/bin/swift \"$AX_PRESS_ELEMENT_HELPER\" \"$APP_PID\" \"$destination_identifier\""))
+        XCTAssertFalse(script.contains("ax_click_sidebar_destination"))
         XCTAssertTrue(script.contains("ax_wait_for_ax_identifier"))
         XCTAssertTrue(script.contains("samples.tsv"))
         XCTAssertTrue(script.contains("summary.md"))

@@ -23,6 +23,7 @@ PERFORMANCE_DATABASE_PATH="${SOLOPM_PERFORMANCE_DATABASE_PATH:-$PERFORMANCE_HOME
 SUMMARY_FILE="$OUTPUT_DIR/summary.md"
 SAMPLES_FILE="$OUTPUT_DIR/samples.tsv"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
+AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}"
 SOLOPM_PERFORMANCE_PROFILE="${SOLOPM_PERFORMANCE_PROFILE:-release}"
 
 case "$SOLOPM_PERFORMANCE_PROFILE" in
@@ -145,7 +146,10 @@ wait_for_visible_window() {
 click_sidebar_destination() {
   local destination_identifier="$1"
   local destination_label="$2"
-  ax_click_sidebar_destination "$APP_NAME" "$destination_identifier" "$destination_label"
+  if ! /usr/bin/swift "$AX_PRESS_ELEMENT_HELPER" "$APP_PID" "$destination_identifier"; then
+    echo "BLOCKER: performance smoke could not select $destination_label in owned app pid $APP_PID" >&2
+    return 1
+  fi
 }
 
 wait_for_marker() {
