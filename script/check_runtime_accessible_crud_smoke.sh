@@ -23,6 +23,7 @@ SQLITE_BUSY_TIMEOUT_MS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS:
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_TEXT_INPUT_HELPER="${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}"
 AX_SCROLL_HELPER="${AX_SCROLL_HELPER:-$ROOT_DIR/script/ui_evidence_ax_scroll_container.swift}"
+AX_BUTTON_HELPER="${AX_BUTTON_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_button.swift}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS must be a positive integer" >&2
@@ -404,6 +405,10 @@ pressConfirmationButtonContaining() {
   local excluded_help="$3"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
+    if /usr/bin/swift "$AX_BUTTON_HELPER" "$app_pid" "$fragment"; then
+      printf "pressed confirmation %s\n" "$fragment"
+      return 0
+    fi
     if /usr/bin/osascript - "$APP_NAME" "$fragment" "$fallback_fragment" "$excluded_help" <<'APPLESCRIPT'
 on run argv
   set appName to item 1 of argv

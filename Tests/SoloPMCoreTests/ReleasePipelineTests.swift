@@ -5794,7 +5794,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("BLOCKER: $label mutated before confirmation"))
         XCTAssertTrue(script.contains("local confirmation_fallback=\"$4\""))
         XCTAssertTrue(script.contains("pressConfirmationButtonContaining \"$confirmation_fragment\" \"$confirmation_fallback\" \"$excluded_help\""))
-        XCTAssertTrue(script.contains("/usr/bin/swift \"$AX_BUTTON_HELPER\" \"$app_pid\" \"$confirmation_fragment\""))
+        XCTAssertTrue(script.contains("/usr/bin/swift \"$AX_BUTTON_HELPER\" \"$app_pid\" \"$fragment\""))
         XCTAssertTrue(buttonHelper.contains("Int32(appSelector)"))
         XCTAssertTrue(buttonHelper.contains("NSRunningApplication(processIdentifier: pid)"))
         XCTAssertTrue(script.contains("set fallbackFragment to item 3 of argv"))
