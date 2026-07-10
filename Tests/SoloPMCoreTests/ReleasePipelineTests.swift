@@ -5750,7 +5750,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("-cmd \".timeout $SQLITE_BUSY_TIMEOUT_MS\""))
         XCTAssertTrue(script.contains("/usr/bin/env -i"))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
-        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID=\"$selected_task_id\""))
+        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID=$selected_task_id"))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"projects\""))
         XCTAssertTrue(script.contains("app_launch_pid=$!"))
         XCTAssertTrue(script.contains("wait \"$app_pid\" >/dev/null 2>&1 || true"))

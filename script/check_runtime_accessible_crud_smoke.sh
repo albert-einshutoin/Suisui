@@ -140,10 +140,16 @@ launch_app_for_database_migration() {
 
 launch_app_for_seed_project() {
   local seed_project_id="$1"
+  local selected_task_id="${2:-}"
+  local selected_task_environment=()
+  if [[ -n "$selected_task_id" ]]; then
+    selected_task_environment+=("SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID=$selected_task_id")
+  fi
   terminate_app
   /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
     SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
+    "${selected_task_environment[@]}" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_launch_pid=$!
   wait_for_app_process
@@ -767,8 +773,8 @@ pressButtonContaining "task-status-move-planned-$created_task_id"
 verify_single_value "advanced task status" "SELECT status FROM tasks WHERE id=$created_task_id;" "planned"
 terminate_app
 wait_for_no_app_process
-launch_app_for_seed_project "$created_project_id"
-pressButtonContaining "task-card-open-details"
+launch_app_for_seed_project "$created_project_id" "$created_task_id"
+waitForTextFieldContaining "task-inspector-title"
 pressDestructiveButtonUntilSQLiteValue "deleted task" "task-inspector-delete" "task-inspector-delete-confirmation-confirm" "Confirm Delete Task" "" "SELECT count(*) FROM tasks WHERE id=$created_task_id;" "0" "1"
 
 pressButtonUntilTextFieldContaining "project-header-add-task" "inline-task-title"
