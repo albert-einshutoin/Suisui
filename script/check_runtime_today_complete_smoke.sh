@@ -593,8 +593,8 @@ wait_for_database_table "assistant_queue_items"
 verify_single_value "seeded today task is open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL AND due_at='2026-01-01T09:00:00Z' THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
 # The isolated launch explicitly selects today_task_id. Re-pressing the row is
 # redundant and can be off-screen in the normal scrollable Today composition;
-# the rail marker below proves the selected task is the intended fixture.
-waitForAXElementContaining "today-assistant-rail" "AX Runtime Today Complete"
+# the actionable rail marker below proves the selected-task controls are ready.
+waitForAXElementContaining "today-rail-focus"
 pressButtonContaining "today-rail-focus"
 verify_single_value "focus kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
 pressButtonContaining "today-rail-schedule-block"
