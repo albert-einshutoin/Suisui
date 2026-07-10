@@ -4462,7 +4462,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("write_done_analytics_evidence_file"))
         XCTAssertTrue(script.contains("docs/release/evidence/done-analytics-screenshots.md"))
         XCTAssertTrue(script.contains("inbox-action-panel=>Voice capture metadata available for Scheduled manual capture"))
-        XCTAssertTrue(script.contains("capture_project_board_destination light inbox \"$INBOX_VOICE_LIGHT_SCREENSHOT\" \"Inbox voice detail\" \"$INBOX_VOICE_TARGET_MARKERS\" \"$INBOX_VOICE_TASK_OVERRIDE\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination light inbox \"$INBOX_VOICE_LIGHT_SCREENSHOT\" \"Inbox voice detail\" \"$INBOX_VOICE_ROUTE_MARKERS\" \"$INBOX_VOICE_TASK_OVERRIDE\" \"inbox-voice-intake-detail\" \"inbox-voice-intake-detail\" \"$INBOX_VOICE_TARGET_MARKERS\""))
         XCTAssertTrue(script.contains("capture_voice_command_appearance light \"$VOICE_COMMAND_LIGHT_SCREENSHOT\""))
         let captureDestinationStart = try XCTUnwrap(script.range(of: "capture_project_board_destination()"))
         let captureDestinationEnd = try XCTUnwrap(script.range(
