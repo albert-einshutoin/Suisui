@@ -6617,6 +6617,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("click_sidebar_destination()"))
         XCTAssertTrue(script.contains("window_size_key()"))
         XCTAssertTrue(script.contains("set_project_board_window_size()"))
+        XCTAssertTrue(script.contains("set appMatches to application processes whose unix id is appPID"))
+        XCTAssertTrue(script.contains("BLOCKER: failed to resize owned app window"))
         XCTAssertTrue(script.contains("assert_no_negative_or_overlapping_frames()"))
         XCTAssertTrue(script.contains("capture_layout_screenshot()"))
         XCTAssertTrue(script.contains("t=0ms"))

@@ -305,16 +305,20 @@ wait_for_window_metadata() {
 set_project_board_window_size() {
   local width="$1"
   local height="$2"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
   # Resize the real app window through AX so the smoke covers AppKit/SwiftUI
   # bridge behavior instead of only source-level layout contracts.
-  /usr/bin/osascript - "$APP_NAME" "$width" "$height" <<'APPLESCRIPT' >/dev/null
+  while true; do
+    if /usr/bin/osascript - "$app_pid" "$width" "$height" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
-  set appName to item 1 of argv
+  set appPID to (item 1 of argv) as integer
   set targetWidth to (item 2 of argv) as integer
   set targetHeight to (item 3 of argv) as integer
   tell application "System Events"
-    if not (exists process appName) then error "process missing"
-    tell process appName
+    set appMatches to application processes whose unix id is appPID
+    if (count of appMatches) is 0 then error "process missing"
+    set targetProcess to item 1 of appMatches
+    tell targetProcess
       if not (exists window 1) then error "window missing"
       set frontmost to true
       try
@@ -325,6 +329,17 @@ on run argv
   end tell
 end run
 APPLESCRIPT
+    then
+      break
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: failed to resize owned app window pid=$app_pid to ${width}x${height}" >&2
+      return 1
+    fi
+    activate_app
+    wait_for_visible_windows >/dev/null 2>&1 || true
+    sleep 1
+  done
   wait_for_window_metadata
 }
 
