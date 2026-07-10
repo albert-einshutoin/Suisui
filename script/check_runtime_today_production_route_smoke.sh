@@ -428,6 +428,29 @@ fail_case() {
   return 1
 }
 
+launch_route_process_and_window() {
+  local window_diagnostic="$1"
+  route_failure_category=""
+
+  if ! launch_app "$locale" "$route_destination"; then
+    route_failure_category="launch"
+    return 1
+  fi
+  if ! resolve_app_pid; then
+    route_failure_category="launch"
+    return 1
+  fi
+  if ! ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$RUNTIME_TIMEOUT_SECONDS" "$APP_BINARY"; then
+    route_failure_category="launch"
+    return 1
+  fi
+  if ! ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "" "$RUNTIME_TIMEOUT_SECONDS" "$window_diagnostic" "$APP_BINARY"; then
+    route_failure_category="$(ax_classify_window_failure "$window_diagnostic" "$app_pid")"
+    return 1
+  fi
+  return 0
+}
+
 run_route() {
   route_id="$1"
   route_destination="$2"
@@ -435,8 +458,6 @@ run_route() {
   route_content_marker="$4"
   route_text="$5"
   local keep_app_running="${6:-0}"
-  local window_attempt
-  local window_diagnostic
   route_artifact_dir="$case_artifact_dir/routes/$route_id"
   route_failure_category=""
   route_failure_reason=""
@@ -444,40 +465,31 @@ run_route() {
   mkdir -p "$route_artifact_dir/ax-probes"
 
   route_start_day_key="$(date '+%Y-%m-%d')"
-  for ((window_attempt = 1; window_attempt <= RUNTIME_WINDOW_ATTEMPTS; window_attempt++)); do
-    if ! launch_app "$locale" "$route_destination"; then
-      fail_route "launch"
+  if ! launch_route_process_and_window "$route_artifact_dir/window-attempt-1.err"; then
+    if [[ "$route_failure_category" != "window" ]]; then
+      fail_route "$route_failure_category"
       return 1
     fi
-    if ! resolve_app_pid; then
-      fail_route "launch"
+    echo "INFO: retrying production route after owned window publication timeout (attempt 2/$RUNTIME_WINDOW_ATTEMPTS)" >&2
+    terminate_app
+    if ! wait_for_database_write_access; then
+      fail_route "harness" "database-write-lock-timeout"
       return 1
     fi
-    if ! ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$RUNTIME_TIMEOUT_SECONDS" "$APP_BINARY"; then
-      fail_route "launch"
+    sleep 1
+    if ! launch_route_process_and_window "$route_artifact_dir/window-attempt-2.err"; then
+      # A second failure is evidence, not a reason to keep rerunning. Preserve
+      # its concrete launch/window/accessibility classification and fail closed.
+      fail_route "$route_failure_category"
       return 1
     fi
+  fi
 
-    window_diagnostic="$route_artifact_dir/window-attempt-$window_attempt.err"
-    if ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "" "$RUNTIME_TIMEOUT_SECONDS" "$window_diagnostic" "$APP_BINARY"; then
-      break
-    fi
-
-    route_failure_category="$(ax_classify_window_failure "$window_diagnostic" "$app_pid")"
-    if [[ "$window_attempt" -lt "$RUNTIME_WINDOW_ATTEMPTS" && "$route_failure_category" == "window" ]]; then
-      echo "INFO: retrying production route after owned window publication timeout" >&2
-      terminate_app
-      if ! wait_for_database_write_access; then
-        fail_route "harness" "database-write-lock-timeout"
-        return 1
-      fi
-      sleep 1
-      continue
-    fi
-
+  if [[ -z "$app_pid" ]]; then
+    route_failure_category="launch"
     fail_route "$route_failure_category"
     return 1
-  done
+  fi
 
   # PID resolution and cold window publication have independent bounded waits.
   # Start the marker budget only after the owned production window is ready so
