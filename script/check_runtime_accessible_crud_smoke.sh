@@ -141,16 +141,19 @@ launch_app_for_database_migration() {
 launch_app_for_seed_project() {
   local seed_project_id="$1"
   local selected_task_id="${2:-}"
-  local selected_task_environment=()
-  if [[ -n "$selected_task_id" ]]; then
-    selected_task_environment+=("SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID=$selected_task_id")
-  fi
   terminate_app
-  /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
-    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
-    "${selected_task_environment[@]}" \
-    "$APP_BINARY" -ApplePersistenceIgnoreState YES &
+  if [[ -n "$selected_task_id" ]]; then
+    /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
+      SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
+      SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
+      SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID="$selected_task_id" \
+      "$APP_BINARY" -ApplePersistenceIgnoreState YES &
+  else
+    /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
+      SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
+      SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
+      "$APP_BINARY" -ApplePersistenceIgnoreState YES &
+  fi
   app_launch_pid=$!
   wait_for_app_process
   activate_app
