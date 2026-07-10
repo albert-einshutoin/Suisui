@@ -28,6 +28,7 @@ SETTINGS_VISUAL_BASELINE_VIEWPORT="${SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT:-7
 VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT="${SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT:-760x640}"
 TARGET_TIMEOUT_SECONDS="${SOLOPM_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS:-30}"
 EVIDENCE_WINDOW_ATTEMPTS=2
+EVIDENCE_ROUTE_ATTEMPTS=2
 AX_MARKER_MAX_NODES="${SOLOPM_UI_EVIDENCE_AX_MAX_NODES:-6000}"
 EVIDENCE_LOCALE="${SOLOPM_UI_EVIDENCE_LOCALE:-english}"
 EVIDENCE_LOCALES=("english" "japanese")
@@ -1250,6 +1251,8 @@ capture_project_board_destination() {
   local selected_task_id="${6:-}"
   local scroll_target_identifier="${7:-}"
   local target_audit_identifier="${8:-}"
+  local route_attempt
+  local marker_diagnostic
 
   APPEARANCE_OVERRIDE="$appearance"
   PROJECT_BOARD_SELECTION_OVERRIDE="$selected_destination"
@@ -1257,20 +1260,37 @@ capture_project_board_destination() {
   SETTINGS_WINDOW_OVERRIDE=""
   SETTINGS_TAB_OVERRIDE=""
   VOICE_COMMAND_WINDOW_OVERRIDE=""
-  stop_evidence_app
-  write_appearance_preference "$appearance"
-  write_app_preference solopm.projectBoard.selectedDestination "$selected_destination"
-  open_evidence_app
-  wait_for_process
-  activate_evidence_app
-  sleep 1.5
-  wait_for_window_capture_metadata >/dev/null
-  # Dense workflow footers may not enter the AX visible subtree until the
-  # evidence window is widened, so target validation uses the same bounds as
-  # the screenshot instead of checking a smaller launch-default window.
-  position_window_for_capture
-  sleep 0.25
-  wait_for_project_board_destination "$label" "$target_markers"
+  for ((route_attempt = 1; route_attempt <= EVIDENCE_ROUTE_ATTEMPTS; route_attempt++)); do
+    stop_evidence_app
+    write_appearance_preference "$appearance"
+    write_app_preference solopm.projectBoard.selectedDestination "$selected_destination"
+    open_evidence_app
+    wait_for_process
+    activate_evidence_app
+    sleep 1.5
+    wait_for_window_capture_metadata >/dev/null
+    # Dense workflow footers may not enter the AX visible subtree until the
+    # evidence window is widened, so target validation uses the same bounds as
+    # the screenshot instead of checking a smaller launch-default window.
+    position_window_for_capture
+    sleep 0.25
+
+    marker_diagnostic="$EVIDENCE_TMPDIR/project-board-destination.$$.attempt-$route_attempt.err"
+    if wait_for_project_board_destination "$label" "$target_markers" 2>"$marker_diagnostic"; then
+      rm -f "$marker_diagnostic"
+      break
+    fi
+    if [[ "$route_attempt" -lt "$EVIDENCE_ROUTE_ATTEMPTS" ]]; then
+      echo "INFO: retrying exact production destination after required marker timeout" >&2
+      emit_evidence_app_diagnostic
+      rm -f "$marker_diagnostic"
+      continue
+    fi
+    cat "$marker_diagnostic" >&2
+    rm -f "$marker_diagnostic"
+    return 1
+  done
+
   # Route markers can exist outside the current ScrollView viewport. Scroll the
   # evidence-specific landmark into view so captures of the same route prove a
   # distinct visual state instead of producing duplicate raster baselines.
