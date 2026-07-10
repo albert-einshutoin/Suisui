@@ -96,7 +96,6 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
                                 onSelect: { selectTask(task) },
                                 onToggleCompletion: { viewModel.toggleTaskCompletion(id: task.id) }
                             )
-                            .draggable(String(task.id))
                         }
                     }
                     .padding(.vertical, 2)
@@ -233,6 +232,7 @@ private struct WorkflowTaskRow: View {
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .draggable(String(task.id))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Open task \(task.title)")
             .accessibilityValue(workflowAccessibilityValue)
