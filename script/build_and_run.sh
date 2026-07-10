@@ -434,7 +434,7 @@ wait_for_project_board_window() {
     return 0
   fi
   local failure_category
-  failure_category="$(ax_classify_window_failure "$window_diagnostic_file")"
+  failure_category="$(ax_classify_window_failure "$window_diagnostic_file" "$APP_PID")"
   ax_report_failure "$failure_category" "pid-owned Project Board window was not visible for pid=$APP_PID"
   echo "BLOCKER: Project Board window was not visible within ${VERIFY_TIMEOUT_SECONDS}s" >&2
   echo "NEXT: grant Accessibility permission if the window exists but cannot be inspected, then rerun ./script/build_and_run.sh --verify." >&2

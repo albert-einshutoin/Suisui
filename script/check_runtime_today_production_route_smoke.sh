@@ -85,6 +85,7 @@ route_sidebar_marker=""
 route_content_marker=""
 route_text=""
 route_failure_category=""
+route_failure_reason=""
 
 terminate_app() {
   # A PID-scoped shutdown avoids terminating a developer's separately running
@@ -184,8 +185,8 @@ capture_runtime_route_diagnostics() {
 capture_failure_artifact() {
   local reason="$1"
   mkdir -p "$case_artifact_dir/ax-probes"
-  printf 'status=failed\nreason=%s\nfailure_category=%s\nfixture=%s\nlocale=%s\nlanguage_preference=%s\nroute=%s\ndestination=%s\nsidebar_marker=%s\ncontent_marker=%s\n' \
-    "$reason" "${route_failure_category:-unknown}" "${fixture:-unknown}" "${locale_label:-unknown}" "${locale:-unknown}" \
+  printf 'status=failed\nreason=%s\nfailure_category=%s\nfailure_reason=%s\nfixture=%s\nlocale=%s\nlanguage_preference=%s\nroute=%s\ndestination=%s\nsidebar_marker=%s\ncontent_marker=%s\n' \
+    "$reason" "${route_failure_category:-unknown}" "${route_failure_reason:-$reason}" "${fixture:-unknown}" "${locale_label:-unknown}" "${locale:-unknown}" \
     "${route_id:-none}" "${route_destination:-none}" "${route_sidebar_marker:-none}" "${route_content_marker:-none}" >"$case_artifact_dir/summary.txt"
   capture_sanitized_processes
   capture_sanitized_windows
@@ -340,22 +341,34 @@ route_text_for() {
 record_route_evidence() {
   local status="$1"
   local category="$2"
+  local reason="$3"
   local evidence_file="$case_artifact_dir/route-evidence.tsv"
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$status" "$route_id" "$route_destination" "$route_sidebar_marker" "$route_content_marker" "$route_text" "$category" >>"$evidence_file"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$status" "$route_id" "$route_destination" "$route_sidebar_marker" "$route_content_marker" "$route_text" "$category" "$reason" >>"$evidence_file"
   {
-    printf 'status=%s\nroute=%s\ndestination=%s\nsidebar_marker=%s\ncontent_marker=%s\ntext=%s\nfailure_category=%s\n' \
-      "$status" "$route_id" "$route_destination" "$route_sidebar_marker" "$route_content_marker" "$route_text" "$category"
+    printf 'status=%s\nroute=%s\ndestination=%s\nsidebar_marker=%s\ncontent_marker=%s\ntext=%s\nfailure_category=%s\nfailure_reason=%s\n' \
+      "$status" "$route_id" "$route_destination" "$route_sidebar_marker" "$route_content_marker" "$route_text" "$category" "$reason"
   } >"$route_artifact_dir/summary.txt"
 }
 
 fail_route() {
   route_failure_category="$1"
   local reason="${2:-route-${route_id}-${route_failure_category}}"
-  printf 'failure_category=%s\nfailure_route=%s\nfailure_destination=%s\nfailure_sidebar_marker=%s\nfailure_content_marker=%s\n' \
-    "$route_failure_category" "$route_id" "$route_destination" "$route_sidebar_marker" "$route_content_marker" >&2
-  record_route_evidence "failed" "$route_failure_category"
+  route_failure_reason="$reason"
+  ax_emit_failure_category "$route_failure_category" "$reason"
+  printf 'failure_route=%s\nfailure_destination=%s\nfailure_sidebar_marker=%s\nfailure_content_marker=%s\n' \
+    "$route_id" "$route_destination" "$route_sidebar_marker" "$route_content_marker" >&2
+  record_route_evidence "failed" "$route_failure_category" "$reason"
   capture_failure_artifact "$reason"
+  terminate_app
+  return 1
+}
+
+fail_case() {
+  route_failure_category="$1"
+  route_failure_reason="$2"
+  ax_emit_failure_category "$route_failure_category" "$route_failure_reason"
+  capture_failure_artifact "$route_failure_reason"
   terminate_app
   return 1
 }
@@ -368,6 +381,7 @@ run_route() {
   route_text="$5"
   route_artifact_dir="$case_artifact_dir/routes/$route_id"
   route_failure_category=""
+  route_failure_reason=""
   rm -rf "$route_artifact_dir"
   mkdir -p "$route_artifact_dir/ax-probes"
 
@@ -383,7 +397,7 @@ run_route() {
 
   local window_diagnostic="$route_artifact_dir/window.err"
   if ! ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "" "$RUNTIME_TIMEOUT_SECONDS" "$window_diagnostic" "$APP_BINARY"; then
-    route_failure_category="$(ax_classify_window_failure "$window_diagnostic")"
+    route_failure_category="$(ax_classify_window_failure "$window_diagnostic" "$app_pid")"
     fail_route "$route_failure_category"
     return 1
   fi
@@ -414,16 +428,16 @@ run_route() {
     # diagnostics after AX readiness, for both empty and seeded databases.
     case_deadline=$((SECONDS + CPU_CONVERGENCE_TIMEOUT_SECONDS))
     if ! cpu_convergence_gate; then
-      fail_route "cpu" "cpu-convergence-timeout"
+      fail_route "product-marker" "cpu-convergence-timeout"
       return 1
     fi
     if ! capture_runtime_route_diagnostics; then
-      fail_route "diagnostics" "runtime-route-diagnostics-failed"
+      fail_route "product-marker" "runtime-route-diagnostics-failed"
       return 1
     fi
   fi
 
-  record_route_evidence "passed" "none"
+  record_route_evidence "passed" "none" "none"
   printf 'OK: route=%s destination=%s sidebar=%s content=%s text=%s\n' \
     "$route_id" "$route_destination" "$route_sidebar_marker" "$route_content_marker" "$route_text"
   terminate_app
@@ -500,6 +514,7 @@ run_case() {
   route_content_marker=""
   route_text=""
   route_failure_category=""
+  route_failure_reason=""
   seed_project_id=""
   rm -rf "$case_artifact_dir"
   mkdir -p "$case_home/Library/Preferences" "$case_cf_user_home" "$case_artifact_dir/ax-probes" "$case_artifact_dir/tmp"
@@ -508,37 +523,32 @@ run_case() {
   # database, and no-Keychain configuration as the measured launch.
   launch_app "$locale" "today"
   if ! resolve_app_pid || ! ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$RUNTIME_TIMEOUT_SECONDS" "$APP_BINARY"; then
-    route_failure_category="launch"
-    capture_failure_artifact "database-bootstrap-launch-failed"
+    fail_case "launch" "database-bootstrap-launch-failed"
     return 1
   fi
   if ! wait_for_database_table "projects" || ! wait_for_database_table "tasks"; then
-    route_failure_category="database"
-    capture_failure_artifact "database-schema-timeout"
+    fail_case "launch" "database-schema-timeout"
     return 1
   fi
   terminate_app
 
   if [[ "$fixture" == "small" ]]; then
     if ! seed_small_fixture; then
-      route_failure_category="fixture"
-      capture_failure_artifact "fixture-seed-failed"
+      fail_case "launch" "fixture-seed-failed"
       return 1
     fi
     if ! verify_small_fixture_today_data "$small_fixture_today_due_at"; then
-      route_failure_category="fixture"
-      capture_failure_artifact "fixture-today-data-missing"
+      fail_case "launch" "fixture-today-data-missing"
       return 1
     fi
     if ! verify_small_fixture_catch_up_data "$small_fixture_missed_due_at"; then
-      route_failure_category="fixture"
-      capture_failure_artifact "fixture-catch-up-data-missing"
+      fail_case "launch" "fixture-catch-up-data-missing"
       return 1
     fi
   fi
 
   : >"$case_artifact_dir/route-evidence.tsv"
-  printf 'status\troute\tdestination\tsidebar_marker\tcontent_marker\ttext\tfailure_category\n' >"$case_artifact_dir/route-evidence.tsv"
+  printf 'status\troute\tdestination\tsidebar_marker\tcontent_marker\ttext\tfailure_category\tfailure_reason\n' >"$case_artifact_dir/route-evidence.tsv"
   if [[ "$fixture" == "small" ]]; then
     run_normal_routes || return 1
   else

@@ -172,6 +172,12 @@ ax_classify_marker_failure() {
     printf '%s\n' "accessibility"
     return 0
   fi
+  if [[ -s "$probe_file" || -s "$diagnostic_file" ]] &&
+    grep -Eqi 'no visible AX windows|has no visible windows|window missing|pid-owned window missing' \
+      "$probe_file" "$diagnostic_file" 2>/dev/null; then
+    printf '%s\n' "window"
+    return 0
+  fi
   printf '%s\n' "product-marker"
 }
 
@@ -181,6 +187,11 @@ ax_classify_ax_marker_failure() {
 
 ax_classify_window_failure() {
   local diagnostic_file="$1"
+  local app_pid="${2:-}"
+  if [[ -n "$app_pid" ]] && ! kill -0 "$app_pid" >/dev/null 2>&1; then
+    printf '%s\n' "launch"
+    return 0
+  fi
   if [[ -s "$diagnostic_file" ]] &&
     grep -Eqi 'Accessibility|not authorized|permission|assistive devices' "$diagnostic_file" 2>/dev/null; then
     printf '%s\n' "accessibility"
