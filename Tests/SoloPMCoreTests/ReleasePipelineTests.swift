@@ -5734,6 +5734,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("source \"$AX_HELPERS\""))
         XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH"))
         XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
+        XCTAssertTrue(script.contains("TIMEOUT_SECONDS=\"${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS:-60}\""))
         XCTAssertFalse(script.contains("SOLOPM_RUNTIME_CRUD_RECOVERY_MODE"))
         XCTAssertFalse(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
         XCTAssertFalse(script.contains("SOLOPM_FORCE_PROJECT_BOARD_FALLBACK"))
