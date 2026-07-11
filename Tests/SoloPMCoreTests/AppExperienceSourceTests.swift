@@ -5149,6 +5149,23 @@ final class AppExperienceSourceTests: XCTestCase {
         )
     }
 
+    func testKeychainBackedReaderClassifiesReadErrorsAsUnavailable() throws {
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/AppSettings.swift")
+
+        XCTAssertTrue(
+            coreSource.contains("try secretStore.read(key)"),
+            "Reader must call SecretStore.read with try inside do/catch so a throw becomes `.unavailable`"
+        )
+        XCTAssertFalse(
+            coreSource.contains("classifyAPIKeyValue(try? secretStore.read"),
+            "Reader must not use try? — that collapses Keychain failures into `.missing`"
+        )
+        XCTAssertTrue(
+            coreSource.contains("public var failedProviders: Set<AIProvider>"),
+            "ProviderSecretReadinessReadResult must expose failedProviders so multiple read failures are preserved"
+        )
+    }
+
     private func parseMarkdownTables(in source: String) throws -> [(section: String, header: [String], rows: [[String]])] {
         let lines = source.components(separatedBy: "\n")
         var tables: [(String, [String], [[String]])] = []

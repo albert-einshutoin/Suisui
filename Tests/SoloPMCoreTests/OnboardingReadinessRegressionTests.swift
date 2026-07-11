@@ -627,6 +627,151 @@ final class OnboardingReadinessRegressionTests: XCTestCase {
         XCTAssertEqual(snapshot.gemini, .unavailable)
         XCTAssertEqual(snapshot.groq, .configured)
     }
+
+    // MARK: - Keychain read errors must surface as .unavailable (P2-Keychain)
+
+    @MainActor
+    func testKeychainBackedReaderClassifiesSecretStoreThrowingAsUnavailable() async {
+        let reader = KeychainBackedProviderSecretReadinessReader(
+            secretStore: AlwaysThrowingSecretStore()
+        )
+        let result = await reader.readSnapshot()
+        XCTAssertEqual(result.snapshot.openAI, .unavailable)
+        XCTAssertEqual(result.snapshot.openRouter, .unavailable)
+        XCTAssertEqual(result.snapshot.anthropic, .unavailable)
+        XCTAssertEqual(result.snapshot.gemini, .unavailable)
+        XCTAssertEqual(result.snapshot.groq, .unavailable)
+        XCTAssertEqual(
+            result.failedProviders,
+            Set<AIProvider>([
+                .openaiResponses,
+                .openRouterCompatible,
+                .claudeMessages,
+                .geminiDirect,
+                .groqOpenAICompatible
+            ])
+        )
+        XCTAssertTrue(result.hasReadFailure)
+    }
+
+    @MainActor
+    func testKeychainBackedReaderKeepsOtherProvidersValidWhenOneFails() async {
+        let secretStore = SelectiveThrowingSecretStore(
+            throwing: .openAIAPIKey,
+            values: [
+                .openRouterAPIKey: "sk-or-valid",
+                .anthropicAPIKey: "sk-ant-valid",
+                .geminiAPIKey: "gemini-valid",
+                .groqAPIKey: "gsk-valid"
+            ]
+        )
+        let reader = KeychainBackedProviderSecretReadinessReader(secretStore: secretStore)
+        let result = await reader.readSnapshot()
+
+        XCTAssertEqual(result.snapshot.openAI, .unavailable)
+        XCTAssertEqual(result.snapshot.openRouter, .configured)
+        XCTAssertEqual(result.snapshot.anthropic, .configured)
+        XCTAssertEqual(result.snapshot.gemini, .configured)
+        XCTAssertEqual(result.snapshot.groq, .configured)
+        XCTAssertEqual(result.failedProviders, [.openaiResponses])
+        XCTAssertTrue(result.hasReadFailure)
+    }
+
+    @MainActor
+    func testKeychainBackedReaderDoesNotLeakMissingWhenStoreThrows() async {
+        // Regression for the previous `try?` implementation: a throwing
+        // SecretStore must never collapse into `.missing` and silently look
+        // like "user just hasn't entered a key yet".
+        let reader = KeychainBackedProviderSecretReadinessReader(
+            secretStore: AlwaysThrowingSecretStore()
+        )
+        let result = await reader.readSnapshot()
+        for (provider, state) in result.snapshot.allProviders {
+            XCTAssertNotEqual(
+                state,
+                ProviderAPIKeyReadinessState.missing,
+                "\(provider) must be `.unavailable` (not `.missing`) when SecretStore.read throws."
+            )
+            XCTAssertEqual(
+                state,
+                ProviderAPIKeyReadinessState.unavailable
+            )
+        }
+    }
+
+    @MainActor
+    func testAsyncRefreshProviderReadinessMarksEveryProviderUnavailableOnKeychainFailure() async throws {
+        let suite = "SoloPM.KeychainAsyncUnavailable.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: AlwaysThrowingSecretStore(),
+            ollamaHealthChecker: StaticOllamaEndpointHealthChecker(result: .ready),
+            refreshProviderSecretStatusesOnInit: false
+        )
+
+        await viewModel.refreshProviderReadiness()
+
+        XCTAssertEqual(viewModel.openAIAPIKeyReadinessState, .unavailable)
+        XCTAssertEqual(viewModel.openRouterAPIKeyReadinessState, .unavailable)
+        XCTAssertEqual(viewModel.anthropicAPIKeyReadinessState, .unavailable)
+        XCTAssertEqual(viewModel.geminiAPIKeyReadinessState, .unavailable)
+        XCTAssertEqual(viewModel.groqAPIKeyReadinessState, .unavailable)
+        XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.anthropicAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.geminiAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.groqAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.errorMessage, "API key status could not be read from Keychain.")
+        XCTAssertNil(viewModel.successMessage)
+
+        // Planning readiness must follow the typed state, not the previous
+        // "missing" misclassification.
+        XCTAssertEqual(
+            viewModel.providerReadinessRow(for: .openaiResponses).readiness,
+            .unavailable(reason: "Keychain access is unavailable.")
+        )
+    }
+
+    @MainActor
+    func testAsyncAndSyncRefreshAgreeOnUnavailableForThrowingSecretStore() async throws {
+        let suite = "SoloPM.AsyncSyncParity.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let secretStore = AlwaysThrowingSecretStore()
+
+        let syncViewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: secretStore,
+            ollamaHealthChecker: StaticOllamaEndpointHealthChecker(result: .ready)
+        )
+        let asyncViewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: secretStore,
+            ollamaHealthChecker: StaticOllamaEndpointHealthChecker(result: .ready),
+            refreshProviderSecretStatusesOnInit: false
+        )
+
+        await asyncViewModel.refreshProviderReadiness()
+
+        // Both code paths must produce `.unavailable` for every provider.
+        for provider in AIProvider.allCases {
+            if let key = AppSettingsViewModel.secretKey(for: provider) {
+                let expected: ProviderAPIKeyReadinessState = .unavailable
+                XCTAssertEqual(
+                    syncViewModel.readinessStateForAPIKeyReadinessTest(key: key),
+                    expected,
+                    "sync path for \(key) must be `.unavailable`"
+                )
+                XCTAssertEqual(
+                    asyncViewModel.readinessStateForAPIKeyReadinessTest(key: key),
+                    expected,
+                    "async path for \(key) must be `.unavailable`"
+                )
+            }
+        }
+    }
 }
 
 // MARK: - Test doubles
@@ -709,5 +854,42 @@ private extension SecretKey {
             .geminiAPIKey,
             .groqAPIKey
         ]
+    }
+}
+
+/// `SecretStore` that throws on every read. Used to verify the async reader
+/// reports `.unavailable` for every provider rather than collapsing the
+/// failure into `.missing` via `try?`.
+private final class AlwaysThrowingSecretStore: SecretStore, @unchecked Sendable {
+    func save(_ value: String, for key: SecretKey) throws {}
+    func delete(_ key: SecretKey) throws {}
+    func read(_ key: SecretKey) throws -> String? {
+        throw SecretStoreError.unexpectedStatus(-25300)
+    }
+}
+
+/// `SecretStore` that throws for one configured key and returns the others
+/// from the in-memory map. Used to verify the async reader records the
+/// failure in `failedProviders` while still reading the other keys.
+private final class SelectiveThrowingSecretStore: SecretStore, @unchecked Sendable {
+    private let throwing: Set<SecretKey>
+    private let values: [SecretKey: String]
+    private let lock = NSLock()
+
+    init(throwing: SecretKey..., values: [SecretKey: String] = [:]) {
+        self.throwing = Set(throwing)
+        self.values = values
+    }
+
+    func save(_ value: String, for key: SecretKey) throws {}
+    func delete(_ key: SecretKey) throws {}
+
+    func read(_ key: SecretKey) throws -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        if throwing.contains(key) {
+            throw SecretStoreError.unexpectedStatus(-25300)
+        }
+        return values[key]
     }
 }

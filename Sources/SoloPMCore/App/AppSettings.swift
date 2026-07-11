@@ -798,19 +798,56 @@ public struct ProviderSecretReadinessSnapshot: Equatable, Sendable {
     }
 
     public static let empty = ProviderSecretReadinessSnapshot()
+
+    /// All provider states keyed by provider. Used by the regression tests
+    /// to iterate without naming each provider twice.
+    public var allProviders: [(provider: AIProvider, state: ProviderAPIKeyReadinessState)] {
+        [
+            (.openaiResponses, openAI),
+            (.openRouterCompatible, openRouter),
+            (.claudeMessages, anthropic),
+            (.geminiDirect, gemini),
+            (.groqOpenAICompatible, groq)
+        ]
+    }
+
+    public func state(for provider: AIProvider) -> ProviderAPIKeyReadinessState {
+        switch provider {
+        case .openaiResponses:
+            return openAI
+        case .openRouterCompatible:
+            return openRouter
+        case .claudeMessages:
+            return anthropic
+        case .geminiDirect:
+            return gemini
+        case .groqOpenAICompatible:
+            return groq
+        case .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
+            return .missing
+        }
+    }
 }
 
-/// Result of an off-MainActor Keychain read, including which provider had a
-/// transient read failure so the MainActor can surface the matching error
-/// message without re-running the read.
+/// Result of an off-MainActor Keychain read. The snapshot holds the typed
+/// state for every provider — including providers whose `SecretStore.read`
+/// threw. `failedProviders` lists every provider whose read raised, so the
+/// MainActor can surface the matching error message without re-running the
+/// read and so callers can distinguish Keychain-unavailable (.unavailable)
+/// from key-not-yet-set (.missing).
 public struct ProviderSecretReadinessReadResult: Equatable, Sendable {
     public var snapshot: ProviderSecretReadinessSnapshot
-    public var failedProvider: AIProvider?
+    public var failedProviders: Set<AIProvider>
 
-    public init(snapshot: ProviderSecretReadinessSnapshot, failedProvider: AIProvider? = nil) {
+    public init(
+        snapshot: ProviderSecretReadinessSnapshot,
+        failedProviders: Set<AIProvider> = []
+    ) {
         self.snapshot = snapshot
-        self.failedProvider = failedProvider
+        self.failedProviders = failedProviders
     }
+
+    public var hasReadFailure: Bool { !failedProviders.isEmpty }
 }
 
 /// Port for reading the provider secret readiness snapshot off the MainActor.
@@ -824,6 +861,11 @@ public protocol ProviderSecretReadinessReading: Sendable {
 /// `SecretStore.read` and `APIKeyValidator.normalize`. Because both inputs and
 /// the snapshot are `Sendable`, the read runs on a detached background task
 /// and never blocks the MainActor.
+///
+/// `try?` is **not** used: a `SecretStore.read` throw (Keychain access denied,
+/// entitlement missing, etc.) must surface as `.unavailable`, not as
+/// `.missing` from a `nil` value. Every per-provider read uses its own
+/// `do/catch` so one failed provider cannot abort the whole snapshot.
 public struct KeychainBackedProviderSecretReadinessReader: ProviderSecretReadinessReading, Sendable {
     public let secretStore: any SecretStore
 
@@ -833,21 +875,33 @@ public struct KeychainBackedProviderSecretReadinessReader: ProviderSecretReadine
 
     public func readSnapshot() async -> ProviderSecretReadinessReadResult {
         var snapshot = ProviderSecretReadinessSnapshot.empty
-        var failed: AIProvider?
+        var failed: Set<AIProvider> = []
 
-        snapshot.openAI = AppSettingsViewModel.classifyAPIKeyValue(try? secretStore.read(.openAIAPIKey))
-        snapshot.openRouter = AppSettingsViewModel.classifyAPIKeyValue(try? secretStore.read(.openRouterAPIKey))
-        snapshot.anthropic = AppSettingsViewModel.classifyAPIKeyValue(try? secretStore.read(.anthropicAPIKey))
-        snapshot.gemini = AppSettingsViewModel.classifyAPIKeyValue(try? secretStore.read(.geminiAPIKey))
-        snapshot.groq = AppSettingsViewModel.classifyAPIKeyValue(try? secretStore.read(.groqAPIKey))
+        snapshot.openAI = readState(for: .openaiResponses, key: .openAIAPIKey, into: &failed)
+        snapshot.openRouter = readState(for: .openRouterCompatible, key: .openRouterAPIKey, into: &failed)
+        snapshot.anthropic = readState(for: .claudeMessages, key: .anthropicAPIKey, into: &failed)
+        snapshot.gemini = readState(for: .geminiDirect, key: .geminiAPIKey, into: &failed)
+        snapshot.groq = readState(for: .groqOpenAICompatible, key: .groqAPIKey, into: &failed)
 
-        if snapshot.openAI == .unavailable { failed = .openaiResponses }
-        else if snapshot.anthropic == .unavailable { failed = .claudeMessages }
-        else if snapshot.gemini == .unavailable { failed = .geminiDirect }
-        else if snapshot.groq == .unavailable { failed = .groqOpenAICompatible }
-        else if snapshot.openRouter == .unavailable { failed = .openRouterCompatible }
+        return ProviderSecretReadinessReadResult(snapshot: snapshot, failedProviders: failed)
+    }
 
-        return ProviderSecretReadinessReadResult(snapshot: snapshot, failedProvider: failed)
+    /// Reads a single key, classifies the result, and records the provider in
+    /// `failed` when the underlying `SecretStore.read` throws. Returning
+    /// `.unavailable` here — never `.missing` — is what lets the MainActor
+    /// distinguish Keychain failure from key-not-set.
+    private func readState(
+        for provider: AIProvider,
+        key: SecretKey,
+        into failed: inout Set<AIProvider>
+    ) -> ProviderAPIKeyReadinessState {
+        do {
+            let value = try secretStore.read(key)
+            return AppSettingsViewModel.classifyAPIKeyValue(value)
+        } catch {
+            failed.insert(provider)
+            return .unavailable
+        }
     }
 }
 
@@ -1098,10 +1152,9 @@ public final class AppSettingsViewModel: ObservableObject {
         groqAPIKeyStatusLabel = Self.statusLabel(for: snapshot.groq)
         groqProviderSmokeStatusLabel = Self.providerSmokeStatusLabel(for: snapshot.groq)
 
-        if let failed = secretResult.failedProvider {
+        if secretResult.hasReadFailure {
             errorMessage = "API key status could not be read from Keychain."
             successMessage = nil
-            _ = failed
         }
     }
 
@@ -1117,7 +1170,11 @@ public final class AppSettingsViewModel: ObservableObject {
             return
         }
         let state = await Task.detached(priority: .userInitiated) { [secretStore = self.secretStore, key] in
-            AppSettingsViewModel.classifyAPIKeyValue(try? secretStore.read(key))
+            do {
+                return AppSettingsViewModel.classifyAPIKeyValue(try secretStore.read(key))
+            } catch {
+                return ProviderAPIKeyReadinessState.unavailable
+            }
         }.value
         applySelectedProviderState(state, for: selected)
     }
@@ -1161,6 +1218,29 @@ public final class AppSettingsViewModel: ObservableObject {
             return .groqAPIKey
         case .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
             return nil
+        }
+    }
+
+    /// Test-only accessor that maps a SecretKey back to the typed readiness
+    /// state for parity assertions between the sync and async refresh paths.
+    /// Exposed as `internal` so the regression tests can verify the async
+    /// reader no longer collapses a throwing Keychain into `.missing`.
+    func readinessStateForAPIKeyReadinessTest(key: SecretKey) -> ProviderAPIKeyReadinessState {
+        // `SecretKey` is an arbitrary-value struct, not an enum, so a
+        // `default` clause is required to cover non-provider raw values.
+        switch key {
+        case .openAIAPIKey:
+            return openAIAPIKeyReadinessState
+        case .openRouterAPIKey:
+            return openRouterAPIKeyReadinessState
+        case .anthropicAPIKey:
+            return anthropicAPIKeyReadinessState
+        case .geminiAPIKey:
+            return geminiAPIKeyReadinessState
+        case .groqAPIKey:
+            return groqAPIKeyReadinessState
+        default:
+            return .missing
         }
     }
 
