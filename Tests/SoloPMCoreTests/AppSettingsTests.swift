@@ -1140,19 +1140,28 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(openAIRow.detailLabel, "Smoke: Ready for manual smoke")
         XCTAssertEqual(openAIRow.nextActionLabel, "Generate a reviewed plan or run a manual smoke check.")
         XCTAssertFalse(openAIRow.isSelected)
+        XCTAssertEqual(openAIRow.readiness, .ready)
 
         let claudeRow = try XCTUnwrap(viewModel.providerReadinessRows.first { $0.provider == .claudeMessages })
         XCTAssertEqual(claudeRow.statusLabel, "Not configured")
         XCTAssertEqual(claudeRow.nextActionLabel, "Save the provider API key in Keychain.")
+        XCTAssertEqual(claudeRow.readiness, .needsAction(reason: "Save the provider API key in Keychain."))
 
         let openCodeRow = try XCTUnwrap(viewModel.providerReadinessRows.first { $0.provider == .opencodeLocal })
         XCTAssertEqual(openCodeRow.statusLabel, "Approved")
         XCTAssertEqual(openCodeRow.detailLabel, "Local execution is approved for the selected workspace.")
         XCTAssertTrue(openCodeRow.isSelected)
+        XCTAssertEqual(openCodeRow.readiness, .ready)
 
         let ollamaRow = try XCTUnwrap(viewModel.providerReadinessRows.first { $0.provider == .ollamaCompatible })
         XCTAssertEqual(ollamaRow.statusLabel, "Local")
         XCTAssertEqual(ollamaRow.detailLabel, "Local endpoint; API key is not required.")
+        XCTAssertEqual(ollamaRow.readiness, .needsAction(reason: "Start the local Ollama-compatible server before planning."))
+
+        let onboarding = viewModel.onboardingReadinessSnapshot(permissionSnapshot: .empty)
+        XCTAssertEqual(onboarding.selectedProvider, .opencodeLocal)
+        XCTAssertEqual(onboarding.planningState, .ready)
+        XCTAssertEqual(onboarding.items.count, 5)
 
         let renderedLabels = viewModel.providerReadinessRows
             .flatMap { [$0.provider.displayName, $0.statusLabel, $0.detailLabel, $0.nextActionLabel] }

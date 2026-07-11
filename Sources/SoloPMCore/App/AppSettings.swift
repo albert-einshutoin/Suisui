@@ -730,6 +730,7 @@ public struct AIProviderReadinessRow: Identifiable, Equatable, Sendable {
     public var detailLabel: String
     public var nextActionLabel: String
     public var isSelected: Bool
+    public var readiness: AIProviderReadiness
 
     public var id: AIProvider { provider }
 
@@ -738,14 +739,187 @@ public struct AIProviderReadinessRow: Identifiable, Equatable, Sendable {
         statusLabel: String,
         detailLabel: String,
         nextActionLabel: String,
-        isSelected: Bool
+        isSelected: Bool,
+        readiness: AIProviderReadiness = .unknown
     ) {
         self.provider = provider
         self.statusLabel = statusLabel
         self.detailLabel = detailLabel
         self.nextActionLabel = nextActionLabel
         self.isSelected = isSelected
+        self.readiness = readiness
     }
+}
+
+public enum AIProviderReadiness: Equatable, Sendable {
+    case unknown
+    case checking
+    case ready
+    case needsAction(reason: String)
+    case unavailable(reason: String)
+
+    public var isReady: Bool {
+        self == .ready
+    }
+}
+
+/// Typed state for an API-key-backed provider, derived from `SecretStore` reads.
+/// Display labels and the planning-readiness gate are both produced from this
+/// state so localized text changes cannot silently flip planning readiness.
+public enum ProviderAPIKeyReadinessState: Equatable, Sendable {
+    case missing
+    case configured
+    case invalid
+    case unavailable
+}
+
+/// `Sendable` snapshot of every provider key state, populated by a non-MainActor
+/// reader so the MainActor can apply the typed state, the display label, and
+/// the error message in one transaction once the read completes.
+public struct ProviderSecretReadinessSnapshot: Equatable, Sendable {
+    public var openAI: ProviderAPIKeyReadinessState
+    public var openRouter: ProviderAPIKeyReadinessState
+    public var anthropic: ProviderAPIKeyReadinessState
+    public var gemini: ProviderAPIKeyReadinessState
+    public var groq: ProviderAPIKeyReadinessState
+
+    public init(
+        openAI: ProviderAPIKeyReadinessState = .missing,
+        openRouter: ProviderAPIKeyReadinessState = .missing,
+        anthropic: ProviderAPIKeyReadinessState = .missing,
+        gemini: ProviderAPIKeyReadinessState = .missing,
+        groq: ProviderAPIKeyReadinessState = .missing
+    ) {
+        self.openAI = openAI
+        self.openRouter = openRouter
+        self.anthropic = anthropic
+        self.gemini = gemini
+        self.groq = groq
+    }
+
+    public static let empty = ProviderSecretReadinessSnapshot()
+
+    /// All provider states keyed by provider. Used by the regression tests
+    /// to iterate without naming each provider twice.
+    public var allProviders: [(provider: AIProvider, state: ProviderAPIKeyReadinessState)] {
+        [
+            (.openaiResponses, openAI),
+            (.openRouterCompatible, openRouter),
+            (.claudeMessages, anthropic),
+            (.geminiDirect, gemini),
+            (.groqOpenAICompatible, groq)
+        ]
+    }
+
+    public func state(for provider: AIProvider) -> ProviderAPIKeyReadinessState {
+        switch provider {
+        case .openaiResponses:
+            return openAI
+        case .openRouterCompatible:
+            return openRouter
+        case .claudeMessages:
+            return anthropic
+        case .geminiDirect:
+            return gemini
+        case .groqOpenAICompatible:
+            return groq
+        case .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
+            return .missing
+        }
+    }
+}
+
+/// Result of an off-MainActor Keychain read. The snapshot holds the typed
+/// state for every provider — including providers whose `SecretStore.read`
+/// threw. `failedProviders` lists every provider whose read raised, so the
+/// MainActor can surface the matching error message without re-running the
+/// read and so callers can distinguish Keychain-unavailable (.unavailable)
+/// from key-not-yet-set (.missing).
+public struct ProviderSecretReadinessReadResult: Equatable, Sendable {
+    public var snapshot: ProviderSecretReadinessSnapshot
+    public var failedProviders: Set<AIProvider>
+
+    public init(
+        snapshot: ProviderSecretReadinessSnapshot,
+        failedProviders: Set<AIProvider> = []
+    ) {
+        self.snapshot = snapshot
+        self.failedProviders = failedProviders
+    }
+
+    public var hasReadFailure: Bool { !failedProviders.isEmpty }
+}
+
+/// Port for reading the provider secret readiness snapshot off the MainActor.
+/// Production uses a `KeychainBackedProviderSecretReadinessReader`; tests
+/// substitute a blocking or scripted reader to exercise the async path.
+public protocol ProviderSecretReadinessReading: Sendable {
+    func readSnapshot() async -> ProviderSecretReadinessReadResult
+}
+
+/// Production reader that resolves every provider key by calling
+/// `SecretStore.read` and `APIKeyValidator.normalize`. Because both inputs and
+/// the snapshot are `Sendable`, the read runs on a detached background task
+/// and never blocks the MainActor.
+///
+/// `try?` is **not** used: a `SecretStore.read` throw (Keychain access denied,
+/// entitlement missing, etc.) must surface as `.unavailable`, not as
+/// `.missing` from a `nil` value. Every per-provider read uses its own
+/// `do/catch` so one failed provider cannot abort the whole snapshot.
+public struct KeychainBackedProviderSecretReadinessReader: ProviderSecretReadinessReading, Sendable {
+    public let secretStore: any SecretStore
+
+    public init(secretStore: any SecretStore) {
+        self.secretStore = secretStore
+    }
+
+    public func readSnapshot() async -> ProviderSecretReadinessReadResult {
+        var snapshot = ProviderSecretReadinessSnapshot.empty
+        var failed: Set<AIProvider> = []
+
+        snapshot.openAI = readState(for: .openaiResponses, key: .openAIAPIKey, into: &failed)
+        snapshot.openRouter = readState(for: .openRouterCompatible, key: .openRouterAPIKey, into: &failed)
+        snapshot.anthropic = readState(for: .claudeMessages, key: .anthropicAPIKey, into: &failed)
+        snapshot.gemini = readState(for: .geminiDirect, key: .geminiAPIKey, into: &failed)
+        snapshot.groq = readState(for: .groqOpenAICompatible, key: .groqAPIKey, into: &failed)
+
+        return ProviderSecretReadinessReadResult(snapshot: snapshot, failedProviders: failed)
+    }
+
+    /// Reads a single key, classifies the result, and records the provider in
+    /// `failed` when the underlying `SecretStore.read` throws. Returning
+    /// `.unavailable` here — never `.missing` — is what lets the MainActor
+    /// distinguish Keychain failure from key-not-set.
+    private func readState(
+        for provider: AIProvider,
+        key: SecretKey,
+        into failed: inout Set<AIProvider>
+    ) -> ProviderAPIKeyReadinessState {
+        do {
+            let value = try secretStore.read(key)
+            return AppSettingsViewModel.classifyAPIKeyValue(value)
+        } catch {
+            failed.insert(provider)
+            return .unavailable
+        }
+    }
+}
+
+/// Snapshot of the Ollama-compatible endpoint, derived from the injected health
+/// checker. The status is the only source of truth for Ollama planning
+/// readiness; display text is derived from it.
+public enum OllamaEndpointHealth: Equatable, Sendable {
+    case unknown
+    case checking
+    case ready
+    case failure(reason: String)
+}
+
+/// Port for probing the local Ollama-compatible endpoint. Production
+/// implementations issue an HTTP probe, tests substitute deterministic
+/// results so the readiness gate can be exercised without a live server.
+public protocol OllamaEndpointHealthChecking: Sendable {
+    func currentStatus() async -> OllamaEndpointHealth
 }
 
 public struct TTSProviderReadinessRow: Identifiable, Equatable, Sendable {
@@ -807,28 +981,37 @@ public final class AppSettingsViewModel: ObservableObject {
     @Published public private(set) var settings: AppSettings
     @Published public private(set) var openAIAPIKeyInput: String
     @Published public private(set) var openAIAPIKeyStatusLabel: String
+    @Published public private(set) var openAIAPIKeyReadinessState: ProviderAPIKeyReadinessState
     @Published public private(set) var openAIProviderSmokeStatusLabel: String
     @Published public private(set) var anthropicAPIKeyInput: String
     @Published public private(set) var anthropicAPIKeyStatusLabel: String
+    @Published public private(set) var anthropicAPIKeyReadinessState: ProviderAPIKeyReadinessState
     @Published public private(set) var geminiAPIKeyInput: String
     @Published public private(set) var geminiAPIKeyStatusLabel: String
+    @Published public private(set) var geminiAPIKeyReadinessState: ProviderAPIKeyReadinessState
     @Published public private(set) var geminiProviderSmokeStatusLabel: String
     @Published public private(set) var groqAPIKeyInput: String
     @Published public private(set) var groqAPIKeyStatusLabel: String
+    @Published public private(set) var groqAPIKeyReadinessState: ProviderAPIKeyReadinessState
     @Published public private(set) var groqProviderSmokeStatusLabel: String
     @Published public private(set) var openRouterAPIKeyInput: String
     @Published public private(set) var openRouterAPIKeyStatusLabel: String
+    @Published public private(set) var openRouterAPIKeyReadinessState: ProviderAPIKeyReadinessState
     @Published public private(set) var keychainSecretKeyInput: String
     @Published public private(set) var keychainSecretValueInput: String
     @Published public private(set) var keychainSecretStatusLabel: String
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var successMessage: String?
+    @Published public private(set) var ollamaEndpointHealth: OllamaEndpointHealth
+    @Published public private(set) var isRefreshingProviderReadiness: Bool
     @Published private var voiceModelStatusOverrides: [VoiceModelID: VoiceModelInstallStatus]
 
     private let settingsStore: any AppSettingsStore
     private let secretStore: any SecretStore
     private let voiceModelCatalog: VoiceModelCatalog
     private let voiceModelManager: any VoiceModelManaging
+    private let ollamaHealthChecker: any OllamaEndpointHealthChecking
+    private let secretReadinessReader: any ProviderSecretReadinessReading
     private var rejectedAIProvider: AIProvider?
     private static let settingsSaveFailureMessage = "App settings could not be saved."
     private static let apiKeySaveFailureMessage = "API key could not be saved to Keychain."
@@ -839,6 +1022,8 @@ public final class AppSettingsViewModel: ObservableObject {
         secretStore: any SecretStore,
         voiceModelCatalog: VoiceModelCatalog = .phase1Default,
         voiceModelManager: any VoiceModelManaging = VoiceModelManager(),
+        ollamaHealthChecker: any OllamaEndpointHealthChecking = UncheckedOllamaEndpointHealthChecker(),
+        secretReadinessReader: (any ProviderSecretReadinessReading)? = nil,
         refreshProviderSecretStatusesOnInit: Bool = true
     ) {
         let initialVoiceModelStatuses = Dictionary(
@@ -850,6 +1035,9 @@ public final class AppSettingsViewModel: ObservableObject {
         self.secretStore = secretStore
         self.voiceModelCatalog = voiceModelCatalog
         self.voiceModelManager = voiceModelManager
+        self.ollamaHealthChecker = ollamaHealthChecker
+        self.secretReadinessReader = secretReadinessReader
+            ?? KeychainBackedProviderSecretReadinessReader(secretStore: secretStore)
         let loadedSettings: AppSettings
         let initialErrorMessage: String?
         do {
@@ -866,22 +1054,29 @@ public final class AppSettingsViewModel: ObservableObject {
         )
         self.openAIAPIKeyInput = ""
         self.openAIAPIKeyStatusLabel = "Not configured"
+        self.openAIAPIKeyReadinessState = .missing
         self.openAIProviderSmokeStatusLabel = "notConfigured"
         self.anthropicAPIKeyInput = ""
         self.anthropicAPIKeyStatusLabel = "Not configured"
+        self.anthropicAPIKeyReadinessState = .missing
         self.geminiAPIKeyInput = ""
         self.geminiAPIKeyStatusLabel = "Not configured"
+        self.geminiAPIKeyReadinessState = .missing
         self.geminiProviderSmokeStatusLabel = "notConfigured"
         self.groqAPIKeyInput = ""
         self.groqAPIKeyStatusLabel = "Not configured"
+        self.groqAPIKeyReadinessState = .missing
         self.groqProviderSmokeStatusLabel = "notConfigured"
         self.openRouterAPIKeyInput = ""
         self.openRouterAPIKeyStatusLabel = "Not configured"
+        self.openRouterAPIKeyReadinessState = .missing
         self.keychainSecretKeyInput = ""
         self.keychainSecretValueInput = ""
         self.keychainSecretStatusLabel = "Enter a secret key"
         self.errorMessage = initialErrorMessage
         self.successMessage = nil
+        self.ollamaEndpointHealth = .unknown
+        self.isRefreshingProviderReadiness = false
         self.voiceModelStatusOverrides = initialVoiceModelStatuses
         self.rejectedAIProvider = nil
         if refreshProviderSecretStatusesOnInit {
@@ -904,6 +1099,149 @@ public final class AppSettingsViewModel: ObservableObject {
             && geminiStatus
             && groqStatus
             && openRouterStatus
+    }
+
+    /// Refreshes the Ollama probe off the MainActor and the provider Keychain
+    /// reads on a detached background task. Publishes `.checking` state on the
+    /// MainActor before any work so the onboarding sheet renders the spinner
+    /// instead of a stale readiness state. The detached read returns a
+    /// `Sendable` `ProviderSecretReadinessReadResult`; the MainActor applies
+    /// the typed states, derived display labels, and error message in one
+    /// transaction once the read finishes.
+    public func refreshProviderReadiness() async {
+        let previousOllama = ollamaEndpointHealth
+        ollamaEndpointHealth = .checking
+        isRefreshingProviderReadiness = true
+        defer {
+            if ollamaEndpointHealth == .checking {
+                ollamaEndpointHealth = previousOllama
+            }
+            isRefreshingProviderReadiness = false
+        }
+
+        // The Ollama probe is already nonisolated and returns a Sendable enum;
+        // awaiting it hands the MainActor off to other work, including the
+        // detached Keychain read below.
+        async let ollamaStatus: OllamaEndpointHealth = ollamaHealthChecker.currentStatus()
+        async let secretResult: ProviderSecretReadinessReadResult = Task.detached(priority: .userInitiated) { [secretReadinessReader] in
+            await secretReadinessReader.readSnapshot()
+        }.value
+
+        ollamaEndpointHealth = await ollamaStatus
+        let resolvedSecret = await secretResult
+        apply(secretResult: resolvedSecret)
+    }
+
+    /// Apply a `ProviderSecretReadinessReadResult` returned by the async read.
+    /// The state is the **only** source of truth for planning readiness; the
+    /// display label and smoke label are derived from the state so a copy
+    /// change cannot flip the planning gate.
+    private func apply(secretResult: ProviderSecretReadinessReadResult) {
+        let snapshot = secretResult.snapshot
+        openAIAPIKeyReadinessState = snapshot.openAI
+        openAIAPIKeyStatusLabel = Self.statusLabel(for: snapshot.openAI)
+        openAIProviderSmokeStatusLabel = Self.providerSmokeStatusLabel(for: snapshot.openAI)
+        openRouterAPIKeyReadinessState = snapshot.openRouter
+        openRouterAPIKeyStatusLabel = Self.statusLabel(for: snapshot.openRouter)
+        anthropicAPIKeyReadinessState = snapshot.anthropic
+        anthropicAPIKeyStatusLabel = Self.statusLabel(for: snapshot.anthropic)
+        geminiAPIKeyReadinessState = snapshot.gemini
+        geminiAPIKeyStatusLabel = Self.statusLabel(for: snapshot.gemini)
+        geminiProviderSmokeStatusLabel = Self.providerSmokeStatusLabel(for: snapshot.gemini)
+        groqAPIKeyReadinessState = snapshot.groq
+        groqAPIKeyStatusLabel = Self.statusLabel(for: snapshot.groq)
+        groqProviderSmokeStatusLabel = Self.providerSmokeStatusLabel(for: snapshot.groq)
+
+        if secretResult.hasReadFailure {
+            errorMessage = "API key status could not be read from Keychain."
+            successMessage = nil
+        }
+    }
+
+    /// Read the readiness state for the currently selected provider only. Used
+    /// by the onboarding path to keep the wait short when only one provider
+    /// is needed to decide whether to advance past the finish step.
+    public func refreshSelectedProviderReadiness() async {
+        isRefreshingProviderReadiness = true
+        defer { isRefreshingProviderReadiness = false }
+        let selected = settings.aiProvider
+        guard let key = Self.secretKey(for: selected) else {
+            // Non-API-key providers (OpenCode/Ollama) have no Keychain read.
+            return
+        }
+        let state = await Task.detached(priority: .userInitiated) { [secretStore = self.secretStore, key] in
+            do {
+                return AppSettingsViewModel.classifyAPIKeyValue(try secretStore.read(key))
+            } catch {
+                return ProviderAPIKeyReadinessState.unavailable
+            }
+        }.value
+        applySelectedProviderState(state, for: selected)
+    }
+
+    private func applySelectedProviderState(_ state: ProviderAPIKeyReadinessState, for provider: AIProvider) {
+        switch provider {
+        case .openaiResponses:
+            openAIAPIKeyReadinessState = state
+            openAIAPIKeyStatusLabel = Self.statusLabel(for: state)
+            openAIProviderSmokeStatusLabel = Self.providerSmokeStatusLabel(for: state)
+        case .openRouterCompatible:
+            openRouterAPIKeyReadinessState = state
+            openRouterAPIKeyStatusLabel = Self.statusLabel(for: state)
+        case .claudeMessages:
+            anthropicAPIKeyReadinessState = state
+            anthropicAPIKeyStatusLabel = Self.statusLabel(for: state)
+        case .geminiDirect:
+            geminiAPIKeyReadinessState = state
+            geminiAPIKeyStatusLabel = Self.statusLabel(for: state)
+            geminiProviderSmokeStatusLabel = Self.providerSmokeStatusLabel(for: state)
+        case .groqOpenAICompatible:
+            groqAPIKeyReadinessState = state
+            groqAPIKeyStatusLabel = Self.statusLabel(for: state)
+            groqProviderSmokeStatusLabel = Self.providerSmokeStatusLabel(for: state)
+        case .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
+            return
+        }
+    }
+
+    nonisolated static func secretKey(for provider: AIProvider) -> SecretKey? {
+        switch provider {
+        case .openaiResponses:
+            return .openAIAPIKey
+        case .openRouterCompatible:
+            return .openRouterAPIKey
+        case .claudeMessages:
+            return .anthropicAPIKey
+        case .geminiDirect:
+            return .geminiAPIKey
+        case .groqOpenAICompatible:
+            return .groqAPIKey
+        case .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
+            return nil
+        }
+    }
+
+    /// Test-only accessor that maps a SecretKey back to the typed readiness
+    /// state for parity assertions between the sync and async refresh paths.
+    /// Exposed as `internal` so the regression tests can verify the async
+    /// reader no longer collapses a throwing Keychain into `.missing`.
+    func readinessStateForAPIKeyReadinessTest(key: SecretKey) -> ProviderAPIKeyReadinessState {
+        // `SecretKey` is an arbitrary-value struct, not an enum, so a
+        // `default` clause is required to cover non-provider raw values.
+        switch key {
+        case .openAIAPIKey:
+            return openAIAPIKeyReadinessState
+        case .openRouterAPIKey:
+            return openRouterAPIKeyReadinessState
+        case .anthropicAPIKey:
+            return anthropicAPIKeyReadinessState
+        case .geminiAPIKey:
+            return geminiAPIKeyReadinessState
+        case .groqAPIKey:
+            return groqAPIKeyReadinessState
+        default:
+            return .missing
+        }
     }
 
     public var selectableAIProviders: [AIProvider] {
@@ -1001,7 +1339,18 @@ public final class AppSettingsViewModel: ObservableObject {
             statusLabel: providerReadinessStatusLabel(for: provider),
             detailLabel: providerReadinessDetailLabel(for: provider),
             nextActionLabel: providerReadinessNextActionLabel(for: provider),
-            isSelected: settings.aiProvider == provider
+            isSelected: settings.aiProvider == provider,
+            readiness: providerReadiness(for: provider)
+        )
+    }
+
+    public func onboardingReadinessSnapshot(
+        permissionSnapshot: PermissionSnapshot
+    ) -> OnboardingReadinessSnapshot {
+        OnboardingReadinessSnapshot.make(
+            selectedProvider: settings.aiProvider,
+            providerReadiness: providerReadiness(for: settings.aiProvider),
+            permissions: permissionSnapshot
         )
     }
 
@@ -1686,92 +2035,118 @@ public final class AppSettingsViewModel: ObservableObject {
 
     @discardableResult
     public func refreshOpenAIAPIKeyStatus() -> Bool {
-        do {
-            openAIAPIKeyStatusLabel = try apiKeyStatusLabel(for: .openAIAPIKey)
-            openAIProviderSmokeStatusLabel = providerSmokeStatusLabel(forAPIKeyStatusLabel: openAIAPIKeyStatusLabel)
-            if openAIAPIKeyStatusLabel == "Invalid" {
-                reportInvalidStoredAPIKey()
-                return false
-            }
-            return true
-        } catch {
-            openAIAPIKeyStatusLabel = "Unavailable"
-            openAIProviderSmokeStatusLabel = "unavailable"
-            errorMessage = "API key status could not be read from Keychain."
-            successMessage = nil
-            return false
-        }
+        let state = readAPIKeyReadinessStateSync(for: .openAIAPIKey)
+        openAIAPIKeyReadinessState = state
+        openAIAPIKeyStatusLabel = Self.statusLabel(for: state)
+        openAIProviderSmokeStatusLabel = Self.providerSmokeStatusLabel(for: state)
+        return finishApply(of: state, provider: .openaiResponses)
     }
 
     @discardableResult
     public func refreshOpenRouterAPIKeyStatus() -> Bool {
-        do {
-            openRouterAPIKeyStatusLabel = try apiKeyStatusLabel(for: .openRouterAPIKey)
-            if openRouterAPIKeyStatusLabel == "Invalid" {
-                reportInvalidStoredAPIKey()
-                return false
-            }
-            return true
-        } catch {
-            openRouterAPIKeyStatusLabel = "Unavailable"
-            errorMessage = "API key status could not be read from Keychain."
-            successMessage = nil
-            return false
-        }
+        let state = readAPIKeyReadinessStateSync(for: .openRouterAPIKey)
+        openRouterAPIKeyReadinessState = state
+        openRouterAPIKeyStatusLabel = Self.statusLabel(for: state)
+        return finishApply(of: state, provider: .openRouterCompatible)
     }
 
     @discardableResult
     public func refreshAnthropicAPIKeyStatus() -> Bool {
-        do {
-            anthropicAPIKeyStatusLabel = try apiKeyStatusLabel(for: .anthropicAPIKey)
-            if anthropicAPIKeyStatusLabel == "Invalid" {
-                reportInvalidStoredAPIKey()
-                return false
-            }
-            return true
-        } catch {
-            anthropicAPIKeyStatusLabel = "Unavailable"
-            errorMessage = "API key status could not be read from Keychain."
-            successMessage = nil
-            return false
-        }
+        let state = readAPIKeyReadinessStateSync(for: .anthropicAPIKey)
+        anthropicAPIKeyReadinessState = state
+        anthropicAPIKeyStatusLabel = Self.statusLabel(for: state)
+        return finishApply(of: state, provider: .claudeMessages)
     }
 
     @discardableResult
     public func refreshGeminiAPIKeyStatus() -> Bool {
-        do {
-            geminiAPIKeyStatusLabel = try apiKeyStatusLabel(for: .geminiAPIKey)
-            geminiProviderSmokeStatusLabel = providerSmokeStatusLabel(forAPIKeyStatusLabel: geminiAPIKeyStatusLabel)
-            if geminiAPIKeyStatusLabel == "Invalid" {
-                reportInvalidStoredAPIKey()
-                return false
-            }
-            return true
-        } catch {
-            geminiAPIKeyStatusLabel = "Unavailable"
-            geminiProviderSmokeStatusLabel = "unavailable"
-            errorMessage = "API key status could not be read from Keychain."
-            successMessage = nil
-            return false
-        }
+        let state = readAPIKeyReadinessStateSync(for: .geminiAPIKey)
+        geminiAPIKeyReadinessState = state
+        geminiAPIKeyStatusLabel = Self.statusLabel(for: state)
+        geminiProviderSmokeStatusLabel = Self.providerSmokeStatusLabel(for: state)
+        return finishApply(of: state, provider: .geminiDirect)
     }
 
     @discardableResult
     public func refreshGroqAPIKeyStatus() -> Bool {
-        do {
-            groqAPIKeyStatusLabel = try apiKeyStatusLabel(for: .groqAPIKey)
-            groqProviderSmokeStatusLabel = providerSmokeStatusLabel(forAPIKeyStatusLabel: groqAPIKeyStatusLabel)
-            if groqAPIKeyStatusLabel == "Invalid" {
-                reportInvalidStoredAPIKey()
-                return false
-            }
-            return true
-        } catch {
-            groqAPIKeyStatusLabel = "Unavailable"
-            groqProviderSmokeStatusLabel = "unavailable"
+        let state = readAPIKeyReadinessStateSync(for: .groqAPIKey)
+        groqAPIKeyReadinessState = state
+        groqAPIKeyStatusLabel = Self.statusLabel(for: state)
+        groqProviderSmokeStatusLabel = Self.providerSmokeStatusLabel(for: state)
+        return finishApply(of: state, provider: .groqOpenAICompatible)
+    }
+
+    /// Surface a per-provider error/success message based on the typed state.
+    /// The state itself is already the planning source of truth, so this
+    /// helper only updates the user-facing banners.
+    private func finishApply(of state: ProviderAPIKeyReadinessState, provider: AIProvider) -> Bool {
+        switch state {
+        case .unavailable:
             errorMessage = "API key status could not be read from Keychain."
             successMessage = nil
             return false
+        case .invalid:
+            reportInvalidStoredAPIKey()
+            return false
+        case .configured, .missing:
+            return true
+        }
+    }
+
+    /// Reads the SecretStore directly and returns the typed readiness state.
+    /// This is the **only** path that produces a `ProviderAPIKeyReadinessState`
+    /// value; display labels and `AIProviderReadiness` are derived from this
+    /// state so copy changes can never flip the planning gate.
+    ///
+    /// The read is synchronous for legacy callers (Settings view model init)
+    /// because `SecretStore.read` is sync. The onboarding path uses
+    /// `readProviderSecretReadiness` to perform the same reads off the
+    /// MainActor and apply the typed snapshot in one transaction.
+    private func readAPIKeyReadinessStateSync(for key: SecretKey) -> ProviderAPIKeyReadinessState {
+        do {
+            let value = try secretStore.read(key)
+            return Self.classifyAPIKeyValue(value)
+        } catch {
+            return .unavailable
+        }
+    }
+
+    nonisolated static func classifyAPIKeyValue(_ value: String?) -> ProviderAPIKeyReadinessState {
+        do {
+            _ = try APIKeyValidator.normalize(value)
+            return .configured
+        } catch APIKeyValidationError.empty {
+            return .missing
+        } catch APIKeyValidationError.containsWhitespace {
+            return .invalid
+        } catch {
+            return .unavailable
+        }
+    }
+
+    nonisolated static func statusLabel(for state: ProviderAPIKeyReadinessState) -> String {
+        switch state {
+        case .configured:
+            return "Configured"
+        case .missing:
+            return "Not configured"
+        case .invalid:
+            return "Invalid"
+        case .unavailable:
+            return "Unavailable"
+        }
+    }
+
+    nonisolated static func providerSmokeStatusLabel(for state: ProviderAPIKeyReadinessState) -> String {
+        switch state {
+        case .configured:
+            return "readyForManualSmoke"
+        case .invalid:
+            return "invalidConfiguration"
+        case .unavailable:
+            return "unavailable"
+        case .missing:
+            return "notConfigured"
         }
     }
 
@@ -1908,7 +2283,81 @@ public final class AppSettingsViewModel: ObservableObject {
         case .openRouterCompatible:
             return openRouterAPIKeyStatusLabel
         case .ollamaCompatible:
-            return "Local"
+            switch ollamaEndpointHealth {
+            case .ready:
+                return "Local server ready"
+            case .checking:
+                return "Checking server"
+            case .unknown:
+                return "Local"
+            case let .failure(reason):
+                return reason
+            }
+        }
+    }
+
+    private func providerReadiness(for provider: AIProvider) -> AIProviderReadiness {
+        guard LLMProviderCatalog.isAvailableInCurrentBuild(provider) else {
+            return .unavailable(reason: LLMProviderCatalog.entry(for: provider).unavailableReason ?? "Not available in this build.")
+        }
+
+        switch provider {
+        case .opencodeLocal:
+            if settings.openCodeExecutablePath == nil {
+                return .needsAction(reason: "Set the OpenCode executable path.")
+            }
+            if settings.openCodeWorkspacePath == nil {
+                return .needsAction(reason: "Set the workspace path.")
+            }
+            if let modelID = settings.openCodeModelID?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !modelID.isEmpty {
+                // Approval is the last required gate; model id is set above.
+                if !settings.isOpenCodeLocalExecutionApproved {
+                    return .needsAction(reason: "Review the local command and approve execution.")
+                }
+                return .ready
+            }
+            return .needsAction(reason: "Set the OpenCode model id.")
+        case .ollamaCompatible:
+            return ollamaReadiness()
+        case .geminiOpenAICompatible:
+            return .unavailable(reason: "Select an available provider.")
+        case .openaiResponses:
+            return apiKeyReadiness(for: openAIAPIKeyReadinessState)
+        case .claudeMessages:
+            return apiKeyReadiness(for: anthropicAPIKeyReadinessState)
+        case .geminiDirect:
+            return apiKeyReadiness(for: geminiAPIKeyReadinessState)
+        case .groqOpenAICompatible:
+            return apiKeyReadiness(for: groqAPIKeyReadinessState)
+        case .openRouterCompatible:
+            return apiKeyReadiness(for: openRouterAPIKeyReadinessState)
+        }
+    }
+
+    private func apiKeyReadiness(for state: ProviderAPIKeyReadinessState) -> AIProviderReadiness {
+        switch state {
+        case .configured:
+            return .ready
+        case .invalid:
+            return .needsAction(reason: "Re-enter the provider API key in Keychain.")
+        case .unavailable:
+            return .unavailable(reason: "Keychain access is unavailable.")
+        case .missing:
+            return .needsAction(reason: "Save the provider API key in Keychain.")
+        }
+    }
+
+    private func ollamaReadiness() -> AIProviderReadiness {
+        switch ollamaEndpointHealth {
+        case .ready:
+            return .ready
+        case .checking:
+            return .checking
+        case .unknown:
+            return .needsAction(reason: "Start the local Ollama-compatible server before planning.")
+        case let .failure(reason):
+            return .needsAction(reason: reason)
         }
     }
 
@@ -1950,31 +2399,68 @@ public final class AppSettingsViewModel: ObservableObject {
             if settings.openCodeWorkspacePath == nil {
                 return "Set the workspace path."
             }
+            if let modelID = settings.openCodeModelID?.trimmingCharacters(in: .whitespacesAndNewlines),
+               modelID.isEmpty {
+                return "Set the OpenCode model id."
+            }
             if !settings.isOpenCodeLocalExecutionApproved {
                 return "Review the local command and approve execution."
             }
             return "Generate a reviewed plan when you are ready."
         case .ollamaCompatible:
-            return "Start the local Ollama-compatible server before planning."
+            switch ollamaEndpointHealth {
+            case .ready:
+                return "Generate a reviewed plan or run a manual smoke check."
+            case .checking:
+                return "Checking the local Ollama-compatible server."
+            case .unknown:
+                return "Start the local Ollama-compatible server before planning."
+            case let .failure(reason):
+                return reason
+            }
         case .geminiOpenAICompatible:
             return "Select an available provider."
         default:
-            switch providerReadinessStatusLabel(for: provider) {
-            case "Configured":
+            switch apiKeyReadinessState(for: provider) {
+            case .configured:
                 return "Generate a reviewed plan or run a manual smoke check."
-            case "Invalid":
+            case .invalid:
                 return "Re-enter the provider API key in Keychain."
-            case "Unavailable":
+            case .unavailable:
                 return "Check Keychain access and reopen Settings."
-            default:
+            case .missing:
                 return "Save the provider API key in Keychain."
             }
+        }
+    }
+
+    private func apiKeyReadinessState(for provider: AIProvider) -> ProviderAPIKeyReadinessState {
+        switch provider {
+        case .openaiResponses:
+            return openAIAPIKeyReadinessState
+        case .claudeMessages:
+            return anthropicAPIKeyReadinessState
+        case .geminiDirect:
+            return geminiAPIKeyReadinessState
+        case .groqOpenAICompatible:
+            return groqAPIKeyReadinessState
+        case .openRouterCompatible:
+            return openRouterAPIKeyReadinessState
+        case .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
+            return .missing
         }
     }
 
     private var openCodeReadinessStatusLabel: String {
         if settings.openCodeExecutablePath == nil || settings.openCodeWorkspacePath == nil {
             return "Setup required"
+        }
+        if let modelID = settings.openCodeModelID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           modelID.isEmpty {
+            return "Model id required"
+        }
+        if settings.openCodeModelID == nil {
+            return "Model id required"
         }
         return settings.isOpenCodeLocalExecutionApproved ? "Approved" : "Approval required"
     }
@@ -1985,6 +2471,10 @@ public final class AppSettingsViewModel: ObservableObject {
         }
         if settings.openCodeWorkspacePath == nil {
             return "Workspace path is required."
+        }
+        if settings.openCodeModelID == nil
+            || settings.openCodeModelID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+            return "Model id is required."
         }
         if !settings.isOpenCodeLocalExecutionApproved {
             return "Local execution approval is required."
@@ -2004,19 +2494,6 @@ public final class AppSettingsViewModel: ObservableObject {
             return "Unavailable"
         default:
             return rawLabel
-        }
-    }
-
-    private func providerSmokeStatusLabel(forAPIKeyStatusLabel apiKeyStatusLabel: String) -> String {
-        switch apiKeyStatusLabel {
-        case "Configured":
-            "readyForManualSmoke"
-        case "Invalid":
-            "invalidConfiguration"
-        case "Unavailable":
-            "unavailable"
-        default:
-            "notConfigured"
         }
     }
 
@@ -2074,17 +2551,6 @@ public final class AppSettingsViewModel: ObservableObject {
         }
     }
 
-    private func apiKeyStatusLabel(for key: SecretKey) throws -> String {
-        do {
-            _ = try APIKeyValidator.normalize(try secretStore.read(key))
-            return "Configured"
-        } catch APIKeyValidationError.empty {
-            return "Not configured"
-        } catch APIKeyValidationError.containsWhitespace {
-            return "Invalid"
-        }
-    }
-
     private func reportInvalidStoredAPIKey() {
         errorMessage = "Stored API key is invalid. Re-enter it in Settings."
         successMessage = nil
@@ -2098,5 +2564,71 @@ public final class AppSettingsViewModel: ObservableObject {
         }
 
         return true
+    }
+}
+
+/// Default `OllamaEndpointHealthChecking` that reports `.unknown` until the
+/// app or tests inject a real probe. Keeping the default explicit prevents the
+/// onboarding sheet from accidentally treating an unprobed endpoint as ready.
+public struct UncheckedOllamaEndpointHealthChecker: OllamaEndpointHealthChecking, Sendable {
+    public init() {}
+
+    public func currentStatus() async -> OllamaEndpointHealth {
+        .unknown
+    }
+}
+
+/// Production `OllamaEndpointHealthChecking` that issues a HEAD-style probe to
+/// the Ollama root URL. The probe times out quickly so onboarding readiness
+/// never blocks the MainActor behind a slow local server.
+public struct URLSessionOllamaEndpointHealthChecker: OllamaEndpointHealthChecking, Sendable {
+    public let baseURL: URL?
+    public let session: any OllamaHealthProbing
+    public let timeout: TimeInterval
+
+    public init(
+        baseURL: URL? = LLMProviderCatalog.entry(for: .ollamaCompatible).baseURL,
+        session: any OllamaHealthProbing = URLSessionOllamaHealthProbe(),
+        timeout: TimeInterval = 1.5
+    ) {
+        self.baseURL = baseURL
+        self.session = session
+        self.timeout = timeout
+    }
+
+    public func currentStatus() async -> OllamaEndpointHealth {
+        guard let baseURL else {
+            return .unknown
+        }
+        do {
+            let success = try await session.probe(
+                url: baseURL,
+                timeout: timeout
+            )
+            return success ? .ready : .failure(reason: "Local Ollama-compatible server did not respond.")
+        } catch {
+            return .failure(reason: "Local Ollama-compatible server is unreachable.")
+        }
+    }
+}
+
+/// Sendable HTTP probe abstraction so tests can drive the health checker
+/// without standing up a real local server.
+public protocol OllamaHealthProbing: Sendable {
+    func probe(url: URL, timeout: TimeInterval) async throws -> Bool
+}
+
+public struct URLSessionOllamaHealthProbe: OllamaHealthProbing, Sendable {
+    public init() {}
+
+    public func probe(url: URL, timeout: TimeInterval) async throws -> Bool {
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = timeout
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            return false
+        }
+        return (200..<500).contains(http.statusCode)
     }
 }
