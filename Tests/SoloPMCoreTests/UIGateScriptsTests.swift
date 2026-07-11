@@ -54,6 +54,58 @@ final class UIGateScriptsTests: XCTestCase {
         }
     }
 
+    func testRuntimeRoutePropagatesPostRouteDatabaseWriteLockFailure() throws {
+        // Regression for the P2 review that allowed `run_route` and
+        // `navigate_to_seed_project` to swallow a `wait_for_database_write_access`
+        // failure. Both code paths are called under `|| return 1` which would
+        // otherwise turn the failed write-lock probe into a passed route.
+        let script = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
+        let databaseLockPropagationCount = script.components(separatedBy: "if ! wait_for_database_write_access; then")
+            .count - 1
+        XCTAssertGreaterThanOrEqual(
+            databaseLockPropagationCount,
+            2,
+            "run_route and navigate_to_seed_project must both propagate the post-route write-lock probe"
+        )
+        // The unconditional `wait_for_database_write_access` followed by
+        // `return 0` is the specific anti-pattern the review flagged.
+        XCTAssertFalse(
+            script.contains("wait_for_database_write_access\n  return 0"),
+            "An unwrapped `wait_for_database_write_access; return 0` would mask a write-lock failure as a passed route"
+        )
+    }
+
+    func testAccessibilitySmokeScopesAppleScriptToLaunchedPID() throws {
+        // Regression for the P2 review that allowed name-based
+        // `process appName` lookups to inspect a stale SoloPM window from a
+        // developer or prior step. The AX scans must prefer the launched PID
+        // and fall back to name only when the PID is unknown.
+        let script = try readPackageFile("script/check_accessibility_preflight.sh")
+
+        XCTAssertTrue(
+            script.contains("first process whose unix id is (appLaunchPidText as integer)"),
+            "All AX scans must select the launched PID via `first process whose unix id is`"
+        )
+        let pidLookupCount = script.components(separatedBy: "first process whose unix id is")
+            .count - 1
+        XCTAssertGreaterThanOrEqual(
+            pidLookupCount,
+            4,
+            "activate_app, open_task_inspector_for_runtime_focus_path, and the two scanners must each select the PID"
+        )
+        // Confirm the legacy name-only path is gone. A bare
+        // `tell process appName` immediately inside `tell application "System Events"`
+        // is the anti-pattern.
+        XCTAssertFalse(
+            script.contains("tell process appName"),
+            "AX scans must not address `process appName` directly; that lets a stray window satisfy the smoke"
+        )
+        XCTAssertTrue(
+            script.contains("APP_LAUNCH_PID:-"),
+            "Each AppleScript call must forward the launched PID (empty when the script did not launch the app)"
+        )
+    }
+
     func testFailureTaxonomySeparatesRunnerHarnessAndProductRegressions() throws {
         let helpers = try readPackageFile("script/ui_accessibility_smoke_helpers.sh")
         let performance = try readPackageFile("script/check_release_launch_performance_smoke.sh")

@@ -536,7 +536,13 @@ run_route() {
     "$route_id" "$route_destination" "$route_sidebar_marker" "$route_content_marker" "$route_text"
   if [[ "$keep_app_running" != "1" ]]; then
     terminate_app
-    wait_for_database_write_access
+    # Propagate the post-route write-lock probe. A swallowed failure here
+    # would let `run_normal_routes || return 1` report a passed route while
+    # the database is still held by the just-terminated app.
+    if ! wait_for_database_write_access; then
+      fail_route "harness" "database-write-lock-timeout"
+      return 1
+    fi
   fi
   return 0
 }
@@ -595,7 +601,13 @@ navigate_to_seed_project() {
     "$route_id" "$route_destination" "$route_sidebar_marker" "$route_content_marker" "$route_text"
 
   terminate_app
-  wait_for_database_write_access
+  # Same write-lock probe as `run_route`; its failure must reach the caller so
+  # the seeded `navigate_to_seed_project` is not declared passed against a
+  # still-locked database.
+  if ! wait_for_database_write_access; then
+    fail_route "harness" "database-write-lock-timeout"
+    return 1
+  fi
 }
 
 run_normal_routes() {

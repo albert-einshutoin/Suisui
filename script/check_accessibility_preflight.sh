@@ -323,12 +323,27 @@ fi
 activate_app() {
   # Keep activation inside System Events so LaunchServices does not start or
   # block on a second app instance outside the isolated launch environment.
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
+  # The AX scan must target the exact PID launched by this script, otherwise
+  # a stray SoloPM window owned by a developer or a prior step would be
+  # inspected in place of the release candidate.
+  /usr/bin/osascript - "$APP_NAME" "${APP_LAUNCH_PID:-}" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
   set appName to item 1 of argv
+  set appLaunchPidText to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then return "missing"
-    tell process appName
+    set targetProcess to missing value
+    if appLaunchPidText is not "" then
+      try
+        set targetProcess to first process whose unix id is (appLaunchPidText as integer)
+      end try
+    end if
+    if targetProcess is missing value then
+      try
+        set targetProcess to first process whose name is appName
+      end try
+    end if
+    if targetProcess is missing value then return "missing"
+    tell targetProcess
       set frontmost to true
       if (count of windows) > 0 then
         try
@@ -360,12 +375,24 @@ open_task_inspector_for_runtime_focus_path() {
   local output=""
   while true; do
     set +e
-    output="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>&1
+    output="$(/usr/bin/osascript - "$APP_NAME" "${APP_LAUNCH_PID:-}" <<'APPLESCRIPT' 2>&1
 on run argv
   set appName to item 1 of argv
+  set appLaunchPidText to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set targetProcess to missing value
+    if appLaunchPidText is not "" then
+      try
+        set targetProcess to first process whose unix id is (appLaunchPidText as integer)
+      end try
+    end if
+    if targetProcess is missing value then
+      try
+        set targetProcess to first process whose name is appName
+      end try
+    end if
+    if targetProcess is missing value then error appName & " process is not visible to System Events"
+    tell targetProcess
       set frontmost to true
       set windowCount to count of windows
       if windowCount < 1 then error appName & " has no visible windows"
@@ -468,11 +495,12 @@ open_task_delete_confirmation_for_runtime_focus_path() {
   local status=1
   while true; do
     set +e
-    output="$(/usr/bin/osascript - "$APP_NAME" "$required_runtime_destructive_cancel_markers_joined" "$required_runtime_destructive_cancel_marker_count" <<'APPLESCRIPT' 2>&1
+    output="$(/usr/bin/osascript - "$APP_NAME" "${APP_LAUNCH_PID:-}" "$required_runtime_destructive_cancel_markers_joined" "$required_runtime_destructive_cancel_marker_count" <<'APPLESCRIPT' 2>&1
 on run argv
   set appName to item 1 of argv
-  set requiredDestructiveCancelMarkersRaw to item 2 of argv
-  set requiredDestructiveCancelMarkerCount to (item 3 of argv) as integer
+  set appLaunchPidText to item 2 of argv
+  set requiredDestructiveCancelMarkersRaw to item 3 of argv
+  set requiredDestructiveCancelMarkerCount to (item 4 of argv) as integer
   set previousTextItemDelimiters to text item delimiters of AppleScript
   set text item delimiters of AppleScript to "|||"
   set requiredDestructiveCancelMarkers to text items of requiredDestructiveCancelMarkersRaw
@@ -481,8 +509,19 @@ on run argv
   set bestDestructiveCancelSignalCount to 0
   set bestMissingDestructiveCancelSignals to ""
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set targetProcess to missing value
+    if appLaunchPidText is not "" then
+      try
+        set targetProcess to first process whose unix id is (appLaunchPidText as integer)
+      end try
+    end if
+    if targetProcess is missing value then
+      try
+        set targetProcess to first process whose name is appName
+      end try
+    end if
+    if targetProcess is missing value then error appName & " process is not visible to System Events"
+    tell targetProcess
       set frontmost to true
       set windowCount to count of windows
       if windowCount < 1 then error appName & " has no visible windows"
@@ -688,20 +727,21 @@ done
 required_runtime_screen_marker_count="${#REQUIRED_RUNTIME_SCREEN_MARKERS[@]}"
 while true; do
   set +e
-  ax_output="$(/usr/bin/osascript - "$APP_NAME" "$MIN_AX_BUTTONS" "$MIN_AX_TEXT_FIELDS" "$MIN_AX_STATIC_TEXTS" "$required_runtime_crud_markers_joined" "$required_runtime_crud_marker_count" "$required_runtime_focus_markers_joined" "$required_runtime_focus_marker_count" "$required_runtime_button_a11y_markers_joined" "$required_runtime_button_a11y_marker_count" "$required_runtime_screen_markers_joined" "$required_runtime_screen_marker_count" <<APPLESCRIPT 2>&1
+  ax_output="$(/usr/bin/osascript - "$APP_NAME" "${APP_LAUNCH_PID:-}" "$MIN_AX_BUTTONS" "$MIN_AX_TEXT_FIELDS" "$MIN_AX_STATIC_TEXTS" "$required_runtime_crud_markers_joined" "$required_runtime_crud_marker_count" "$required_runtime_focus_markers_joined" "$required_runtime_focus_marker_count" "$required_runtime_button_a11y_markers_joined" "$required_runtime_button_a11y_marker_count" "$required_runtime_screen_markers_joined" "$required_runtime_screen_marker_count" <<APPLESCRIPT 2>&1
 on run argv
   set appName to item 1 of argv
-  set minButtons to (item 2 of argv) as integer
-  set minTextFields to (item 3 of argv) as integer
-  set minStaticTexts to (item 4 of argv) as integer
-  set requiredCRUDMarkersRaw to item 5 of argv
-  set requiredCRUDMarkerCount to (item 6 of argv) as integer
-  set requiredFocusMarkersRaw to item 7 of argv
-  set requiredFocusMarkerCount to (item 8 of argv) as integer
-  set requiredButtonA11yMarkersRaw to item 9 of argv
-  set requiredButtonA11yMarkerCount to (item 10 of argv) as integer
-  set requiredScreenMarkersRaw to item 11 of argv
-  set requiredScreenMarkerCount to (item 12 of argv) as integer
+  set appLaunchPidText to item 2 of argv
+  set minButtons to (item 3 of argv) as integer
+  set minTextFields to (item 4 of argv) as integer
+  set minStaticTexts to (item 5 of argv) as integer
+  set requiredCRUDMarkersRaw to item 6 of argv
+  set requiredCRUDMarkerCount to (item 7 of argv) as integer
+  set requiredFocusMarkersRaw to item 8 of argv
+  set requiredFocusMarkerCount to (item 9 of argv) as integer
+  set requiredButtonA11yMarkersRaw to item 10 of argv
+  set requiredButtonA11yMarkerCount to (item 11 of argv) as integer
+  set requiredScreenMarkersRaw to item 12 of argv
+  set requiredScreenMarkerCount to (item 13 of argv) as integer
   set previousTextItemDelimiters to text item delimiters of AppleScript
   set text item delimiters of AppleScript to "|||"
   set requiredCRUDMarkers to text items of requiredCRUDMarkersRaw
@@ -725,8 +765,19 @@ on run argv
   set bestScreenSignalCount to 0
   set bestMissingScreenSignals to ""
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set targetProcess to missing value
+    if appLaunchPidText is not "" then
+      try
+        set targetProcess to first process whose unix id is (appLaunchPidText as integer)
+      end try
+    end if
+    if targetProcess is missing value then
+      try
+        set targetProcess to first process whose name is appName
+      end try
+    end if
+    if targetProcess is missing value then error appName & " process is not visible to System Events"
+    tell targetProcess
       set windowCount to count of windows
       if windowCount < 1 then error appName & " has no visible windows"
       repeat with windowIndex from 1 to windowCount
