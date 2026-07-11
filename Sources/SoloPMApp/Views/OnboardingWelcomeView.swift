@@ -38,8 +38,8 @@ struct OnboardingWelcomeView: View {
         .frame(minWidth: 520, idealWidth: 560, minHeight: 460, idealHeight: 500)
         .accessibilityIdentifier("onboarding-welcome")
         .task {
-            // Let the sheet paint its static shell before Keychain/EventKit
-            // readiness reads, which may be slow on a first launch.
+            // Let the sheet paint its static shell before secure-store and
+            // permission readiness reads, which may be slow on a first launch.
             await Task.yield()
             refreshReadiness()
         }
