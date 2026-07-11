@@ -388,6 +388,245 @@ final class OnboardingReadinessRegressionTests: XCTestCase {
             )
         }
     }
+
+    // MARK: - Window-consume API (P2-New1: pending rerun must drain on registration)
+
+    @MainActor
+    func testConsumePendingRerunReturnsNilWhenNotPrimary() {
+        let coordinator = OnboardingRerunCoordinator()
+        let first = UUID()
+        let second = UUID()
+        _ = coordinator.register(windowID: first)
+        XCTAssertFalse(coordinator.register(windowID: second))
+        coordinator.requestRerun()
+
+        // Second window is not primary, so consume must refuse the token.
+        XCTAssertNil(coordinator.consumePendingRerun(for: second))
+        XCTAssertNil(coordinator.lastHandledToken)
+    }
+
+    @MainActor
+    func testConsumePendingRerunDrainsTokenOnPrimaryRegistration() {
+        let coordinator = OnboardingRerunCoordinator()
+        // 0-window case: Settings fires the rerun before any window exists.
+        coordinator.requestRerun()
+        let firstToken = coordinator.rerunRequestToken
+        XCTAssertNotNil(firstToken)
+
+        let first = UUID()
+        _ = coordinator.register(windowID: first)
+
+        // The newly registered primary must drain the pending token atomically
+        // so the onboarding sheet opens in this window.
+        XCTAssertEqual(coordinator.consumePendingRerun(for: first), firstToken)
+        XCTAssertEqual(coordinator.lastHandledToken, firstToken)
+        // A second consume call must not re-open the sheet.
+        XCTAssertNil(coordinator.consumePendingRerun(for: first))
+    }
+
+    @MainActor
+    func testConsumePendingRerunDrainsAcrossPrimaryPromotion() {
+        let coordinator = OnboardingRerunCoordinator()
+        let first = UUID()
+        let second = UUID()
+        _ = coordinator.register(windowID: first)
+        XCTAssertFalse(coordinator.register(windowID: second))
+
+        // Primary window goes away; the second window is promoted.
+        coordinator.unregister(windowID: first)
+        XCTAssertEqual(coordinator.snapshotForTests().primary, second)
+
+        // A new rerun must be consumable by the promoted primary.
+        coordinator.requestRerun()
+        let newToken = coordinator.rerunRequestToken
+        XCTAssertEqual(coordinator.consumePendingRerun(for: second), newToken)
+    }
+
+    @MainActor
+    func testConsumePendingRerunIgnoresStaleTokensAfterHandle() {
+        let coordinator = OnboardingRerunCoordinator()
+        let first = UUID()
+        _ = coordinator.register(windowID: first)
+
+        coordinator.requestRerun()
+        _ = coordinator.consumePendingRerun(for: first)
+
+        // A second window registers after the first primary already drained
+        // the token. It must not be allowed to re-open the sheet.
+        let second = UUID()
+        _ = coordinator.register(windowID: second)
+        XCTAssertNil(coordinator.consumePendingRerun(for: second))
+    }
+
+    // MARK: - Typed readiness direct from SecretStore (P2-New4)
+
+    @MainActor
+    func testClassifyAPIKeyValueMapsSecretStoreResultsDirectlyToTypedState() throws {
+        XCTAssertEqual(
+            AppSettingsViewModel.classifyAPIKeyValue("sk-valid-secret"),
+            .configured
+        )
+        XCTAssertEqual(AppSettingsViewModel.classifyAPIKeyValue(""), .missing)
+        XCTAssertEqual(AppSettingsViewModel.classifyAPIKeyValue(nil), .missing)
+        XCTAssertEqual(
+            AppSettingsViewModel.classifyAPIKeyValue("sk- has internal whitespace"),
+            .invalid
+        )
+    }
+
+    @MainActor
+    func testReadinessDecisionSurvivesLabelFormatterSwap() throws {
+        // The decision path must not depend on the display label. We verify
+        // the typed state for the SecretStore value, then the resulting
+        // `AIProviderReadiness` for that typed state. A different label
+        // formatter would not change either, because the formatter only runs
+        // on the existing typed state.
+        let suite = "SoloPM.ReadinessFormatterSwap.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        func expectedReadiness(for state: ProviderAPIKeyReadinessState) -> AIProviderReadiness {
+            switch state {
+            case .configured:
+                return .ready
+            case .invalid:
+                return .needsAction(reason: "Re-enter the provider API key in Keychain.")
+            case .missing:
+                return .needsAction(reason: "Save the provider API key in Keychain.")
+            case .unavailable:
+                return .unavailable(reason: "Keychain access is unavailable.")
+            }
+        }
+
+        for (secret, expectedState) in [
+            ("sk-valid", ProviderAPIKeyReadinessState.configured),
+            ("", ProviderAPIKeyReadinessState.missing),
+            ("sk- has whitespace", ProviderAPIKeyReadinessState.invalid)
+        ] {
+            let viewModel = AppSettingsViewModel(
+                settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+                secretStore: InMemorySecretStore(values: [.openAIAPIKey: secret])
+            )
+            XCTAssertEqual(
+                viewModel.openAIAPIKeyReadinessState,
+                expectedState,
+                "Readiness must classify the SecretStore value directly."
+            )
+            XCTAssertEqual(
+                viewModel.providerReadinessRow(for: .openaiResponses).readiness,
+                expectedReadiness(for: expectedState),
+                "Planning readiness must follow the typed state, not the display label."
+            )
+        }
+    }
+
+    @MainActor
+    func testReadinessDecisionMatchesTypedStateAcrossAllAPIKeyProviders() throws {
+        let suite = "SoloPM.AllProvidersTyped.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let secretStore = InMemorySecretStore(values: [
+            .openAIAPIKey: "sk-openai",
+            .openRouterAPIKey: "sk-or",
+            .anthropicAPIKey: "sk-ant",
+            .geminiAPIKey: "gemini-key",
+            .groqAPIKey: "gsk"
+        ])
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: secretStore
+        )
+        XCTAssertEqual(viewModel.openAIAPIKeyReadinessState, .configured)
+        XCTAssertEqual(viewModel.openRouterAPIKeyReadinessState, .configured)
+        XCTAssertEqual(viewModel.anthropicAPIKeyReadinessState, .configured)
+        XCTAssertEqual(viewModel.geminiAPIKeyReadinessState, .configured)
+        XCTAssertEqual(viewModel.groqAPIKeyReadinessState, .configured)
+    }
+
+    // MARK: - Keychain off MainActor (P2-New2)
+
+    @MainActor
+    func testRefreshProviderReadinessKeepsMainActorResponsiveDuringBlockingKeychainRead() async throws {
+        let suite = "SoloPM.BlockingKeychain.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let secretStore = BlockingSecretStore(
+            blockedKeys: Set(SecretKey.allProviderKeys)
+        )
+        // Use a fast Ollama checker so the test isolates the Keychain-read
+        // block rather than the probe block. The Keychain read is the part
+        // that the P2 review required to leave MainActor. Defer the init
+        // refresh so the BlockingSecretStore does not hang the constructor.
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: secretStore,
+            ollamaHealthChecker: StaticOllamaEndpointHealthChecker(result: .ready),
+            refreshProviderSecretStatusesOnInit: false
+        )
+
+        let refreshTask = Task<Void, Never> { @MainActor in
+            await viewModel.refreshProviderReadiness()
+        }
+
+        // Spin until `.checking` is published.
+        for _ in 0..<500 where !viewModel.isRefreshingProviderReadiness {
+            await Task.yield()
+        }
+        XCTAssertTrue(viewModel.isRefreshingProviderReadiness, "refresh must publish `.checking` before reading")
+        XCTAssertEqual(viewModel.ollamaEndpointHealth, .checking)
+
+        // While the Keychain read is blocked, the MainActor must remain
+        // responsive. The heartbeat ticks the MainActor until the refresh
+        // completes; if the Keychain read were running on MainActor the
+        // heartbeat would never advance.
+        let heartbeat = await Self.awaitHeartbeat(viewModel: viewModel)
+        XCTAssertGreaterThan(
+            heartbeat,
+            0,
+            "MainActor must process a heartbeat while Keychain reads are blocked on a background thread"
+        )
+
+        // Unblock the Keychain reads; refresh must complete and the typed
+        // state must become `.configured` for every provider.
+        secretStore.release()
+        await refreshTask.value
+        XCTAssertEqual(viewModel.openAIAPIKeyReadinessState, .configured)
+        XCTAssertEqual(viewModel.openRouterAPIKeyReadinessState, .configured)
+        XCTAssertEqual(viewModel.anthropicAPIKeyReadinessState, .configured)
+        XCTAssertEqual(viewModel.geminiAPIKeyReadinessState, .configured)
+        XCTAssertEqual(viewModel.groqAPIKeyReadinessState, .configured)
+        XCTAssertFalse(viewModel.isRefreshingProviderReadiness)
+    }
+
+    @MainActor
+    private static func awaitHeartbeat(viewModel: AppSettingsViewModel) async -> Int {
+        var ticks = 0
+        for _ in 0..<200 where viewModel.isRefreshingProviderReadiness {
+            ticks += 1
+            await Task.yield()
+        }
+        return ticks
+    }
+
+    @MainActor
+    func testProviderSecretReadinessSnapshotIsSendableAndRoundTrips() throws {
+        let snapshot = ProviderSecretReadinessSnapshot(
+            openAI: .configured,
+            openRouter: .missing,
+            anthropic: .invalid,
+            gemini: .unavailable,
+            groq: .configured
+        )
+        // Compile-time check: snapshot is Sendable, so a detached task can
+        // populate and the MainActor can apply it.
+        let sendable: any Sendable = snapshot
+        XCTAssertNotNil(sendable as? ProviderSecretReadinessSnapshot)
+        XCTAssertEqual(snapshot.openAI, .configured)
+        XCTAssertEqual(snapshot.openRouter, .missing)
+        XCTAssertEqual(snapshot.anthropic, .invalid)
+        XCTAssertEqual(snapshot.gemini, .unavailable)
+        XCTAssertEqual(snapshot.groq, .configured)
+    }
 }
 
 // MARK: - Test doubles
@@ -417,5 +656,58 @@ private final class DeferredOllamaEndpointHealthProbe: OllamaEndpointHealthCheck
             return current
         }
         cont?.resume(returning: status)
+    }
+}
+
+/// `SecretStore` that parks every `read` on a per-key semaphore so the test
+/// can deterministically observe the MainActor while a Keychain read is in
+/// flight. Releasing the semaphore unblocks all parked reads at once.
+private final class BlockingSecretStore: SecretStore, @unchecked Sendable {
+    private let blockedKeys: Set<SecretKey>
+    private let semaphore = DispatchSemaphore(value: 0)
+    private let releasedLock = OSAllocatedUnfairLock()
+    private var released: Bool = false
+    private let storage: [SecretKey: String] = [
+        .openAIAPIKey: "sk-openai",
+        .openRouterAPIKey: "sk-or",
+        .anthropicAPIKey: "sk-ant",
+        .geminiAPIKey: "gemini-key",
+        .groqAPIKey: "gsk"
+    ]
+
+    init(blockedKeys: Set<SecretKey>) {
+        self.blockedKeys = blockedKeys
+    }
+
+    func save(_ value: String, for key: SecretKey) throws {}
+    func delete(_ key: SecretKey) throws {}
+
+    func read(_ key: SecretKey) throws -> String? {
+        guard blockedKeys.contains(key) else {
+            return storage[key]
+        }
+        let alreadyReleased = releasedLock.withLock { self.released }
+        if alreadyReleased {
+            return storage[key]
+        }
+        semaphore.wait()
+        return storage[key]
+    }
+
+    func release() {
+        releasedLock.withLock { released = true }
+        semaphore.signal()
+    }
+}
+
+private extension SecretKey {
+    static var allProviderKeys: Set<SecretKey> {
+        [
+            .openAIAPIKey,
+            .openRouterAPIKey,
+            .anthropicAPIKey,
+            .geminiAPIKey,
+            .groqAPIKey
+        ]
     }
 }

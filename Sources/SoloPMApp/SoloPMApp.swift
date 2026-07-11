@@ -182,9 +182,16 @@ private struct ProjectBoardWindowRootView: View {
         .onAppear {
             isPrimaryOnboardingWindow = onboardingRerunCoordinator.register(windowID: windowID)
             migrateOnboardingStateIfNeeded()
-            isOnboardingPresented = FirstRunOnboardingGate.shouldPresent(
-                hasDismissedOnboarding: hasDismissedOnboarding
-            )
+            // Consume a pending rerun immediately so a Settings tap that
+            // arrived before the Project Board window mounted still opens the
+            // sheet in this newly-registered primary window.
+            if onboardingRerunCoordinator.consumePendingRerun(for: windowID) != nil {
+                isOnboardingPresented = true
+            } else {
+                isOnboardingPresented = FirstRunOnboardingGate.shouldPresent(
+                    hasDismissedOnboarding: hasDismissedOnboarding
+                )
+            }
         }
         .onDisappear {
             onboardingRerunCoordinator.unregister(windowID: windowID)
@@ -200,17 +207,13 @@ private struct ProjectBoardWindowRootView: View {
                 isOnboardingPresented = false
             }
         }
-        .onChange(of: onboardingRerunCoordinator.rerunRequestToken) { _, token in
-            // Only the primary window honors the rerun so the Settings button
-            // can never spawn multiple onboarding sheets across windows.
-            guard let token, isPrimaryOnboardingWindow else {
-                return
+        .onChange(of: onboardingRerunCoordinator.rerunRequestToken) { _, _ in
+            // Atomically check + mark the pending rerun so the same token can
+            // never be consumed by more than one window even if multiple
+            // Project Board windows are open when the Settings button is hit.
+            if onboardingRerunCoordinator.consumePendingRerun(for: windowID) != nil {
+                isOnboardingPresented = true
             }
-            guard onboardingRerunCoordinator.lastHandledToken != token else {
-                return
-            }
-            onboardingRerunCoordinator.markHandled(token: token)
-            isOnboardingPresented = true
         }
         .onChange(of: onboardingRerunCoordinator.primaryWindowID) { _, newPrimary in
             isPrimaryOnboardingWindow = newPrimary == windowID
@@ -271,6 +274,7 @@ private struct SettingsWindowRootView: View {
     @Binding var appearancePreference: SoloPMAppearancePreference
     @Binding var languagePreference: AppLanguagePreference
     @State private var didScheduleProviderSecretStatusRefresh = false
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         SettingsView(
@@ -288,7 +292,17 @@ private struct SettingsWindowRootView: View {
             textToSpeechPreviewerFactory: AppRuntimeFactory.makeTextToSpeechPreviewer,
             appearancePreference: $appearancePreference,
             languagePreference: $languagePreference,
-            onboardingRerunRequest: { onboardingRerunCoordinator.requestRerun() }
+            onboardingRerunRequest: {
+                // When no Project Board window is mounted we must open one
+                // before the coordinator publishes the token; otherwise the
+                // `onAppear` consumer would register too late and miss the
+                // rerun. If a primary already exists, just request the rerun
+                // and the existing window will consume it.
+                if onboardingRerunCoordinator.primaryWindowID == nil {
+                    openWindow(id: "project-board")
+                }
+                onboardingRerunCoordinator.requestRerun()
+            }
         )
         .task {
             guard !didScheduleProviderSecretStatusRefresh else {
@@ -296,8 +310,10 @@ private struct SettingsWindowRootView: View {
             }
             didScheduleProviderSecretStatusRefresh = true
             // Provider secret status reads are Settings-shell work and should
-            // not block the first paint of the Settings window.
-            settingsViewModel.refreshProviderSecretStatuses()
+            // not block the first paint of the Settings window. The async
+            // refresh runs the Ollama probe and the Keychain reads off the
+            // MainActor, then applies the typed state on the MainActor.
+            await settingsViewModel.refreshProviderReadiness()
         }
     }
 }

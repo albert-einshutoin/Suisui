@@ -7,6 +7,7 @@ extension AppRuntimeFactory {
         AppSettingsViewModel(
             settingsStore: UserDefaultsAppSettingsStore(),
             secretStore: makeSecretStore(),
+            ollamaHealthChecker: URLSessionOllamaEndpointHealthChecker(),
             refreshProviderSecretStatusesOnInit: refreshProviderSecretStatusesOnInit
         )
     }

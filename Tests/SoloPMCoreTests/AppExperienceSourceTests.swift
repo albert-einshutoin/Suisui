@@ -5055,11 +5055,11 @@ final class AppExperienceSourceTests: XCTestCase {
             "SettingsView must call the injected rerun closure"
         )
         XCTAssertTrue(
-            appSource.contains("onboardingRerunRequest: { onboardingRerunCoordinator.requestRerun() }"),
+            appSource.contains("onboardingRerunCoordinator.requestRerun()"),
             "SettingsWindowRootView must wire the rerun request to the coordinator"
         )
         XCTAssertTrue(
-            appSource.contains("onboardingRerunRequest: { OnboardingRerunCoordinator.shared.requestRerun() }"),
+            appSource.contains("OnboardingRerunCoordinator.shared.requestRerun()"),
             "Settings evidence window must also wire the rerun request to the coordinator"
         )
     }
@@ -5085,6 +5085,67 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(
             appSource.contains("permissionSnapshotProvider: AppRuntimeFactory.makeIntegrationPermissionSnapshotSendable"),
             "SoloPMApp must inject the Sendable snapshot factory so off-Main reads are safe"
+        )
+    }
+
+    func testProductionSettingsFactoryWiresURLSessionOllamaHealthChecker() throws {
+        let factorySource = try readPackageFile("Sources/SoloPMApp/Composition/SettingsRuntimeFactory.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/AppSettings.swift")
+
+        XCTAssertTrue(
+            factorySource.contains("ollamaHealthChecker: URLSessionOllamaEndpointHealthChecker()"),
+            "Production composition must inject URLSessionOllamaEndpointHealthChecker so Ollama can become ready"
+        )
+        XCTAssertFalse(
+            factorySource.contains("ollamaHealthChecker: UncheckedOllamaEndpointHealthChecker"),
+            "Production composition must not fall back to the Unchecked default"
+        )
+        XCTAssertTrue(
+            coreSource.contains("public struct URLSessionOllamaEndpointHealthChecker: OllamaEndpointHealthChecking"),
+            "Core must own the URLSession-backed checker so production can use it"
+        )
+    }
+
+    func testOnboardingRerunConsumesPendingTokenOnWindowRegistration() throws {
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/FirstRunOnboarding.swift")
+        let appSource = try readAppShellSource()
+
+        XCTAssertTrue(
+            coreSource.contains("public func consumePendingRerun(for windowID: UUID) -> UUID?"),
+            "Coordinator must expose an atomic consumePendingRerun API for window registration"
+        )
+        XCTAssertTrue(
+            appSource.contains("onboardingRerunCoordinator.consumePendingRerun(for: windowID)"),
+            "ProjectBoardWindowRootView must consume pending rerun on appear"
+        )
+        XCTAssertTrue(
+            appSource.contains("if onboardingRerunCoordinator.primaryWindowID == nil"),
+            "SettingsWindowRootView must open a Project Board window when no primary is mounted"
+        )
+        XCTAssertTrue(
+            appSource.contains("openWindow(id: \"project-board\")"),
+            "SettingsWindowRootView must call openWindow for the 0-window case"
+        )
+    }
+
+    func testProductionRefreshProviderReadinessRunsKeychainReadsOffMainActor() throws {
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/AppSettings.swift")
+
+        XCTAssertTrue(
+            coreSource.contains("public struct ProviderSecretReadinessSnapshot: Equatable, Sendable"),
+            "Core must define a Sendable ProviderSecretReadinessSnapshot for off-Main reads"
+        )
+        XCTAssertTrue(
+            coreSource.contains("public protocol ProviderSecretReadinessReading: Sendable"),
+            "Core must define a ProviderSecretReadinessReading port"
+        )
+        XCTAssertTrue(
+            coreSource.contains("Task.detached(priority: .userInitiated) { [secretReadinessReader] in"),
+            "refreshProviderReadiness must run Keychain reads on a detached background task"
+        )
+        XCTAssertFalse(
+            coreSource.contains("private func apiKeyReadinessState(forStatusLabel label: String)"),
+            "Typed readiness must not be derived from a display label"
         )
     }
 

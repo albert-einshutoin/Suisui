@@ -294,6 +294,28 @@ public final class OnboardingRerunCoordinator: ObservableObject {
         rerunRequestToken = UUID()
     }
 
+    /// Atomic check-and-mark: returns the pending rerun token only if the
+    /// caller is the current primary window, the token has not been handled
+    /// already, and one is currently pending. Using this single entry point
+    /// from both `onAppear` (after `register`) and the published-token
+    /// observer guarantees the Settings button always opens exactly one
+    /// onboarding sheet — even when no Project Board window is mounted yet at
+    /// the moment `requestRerun()` fires.
+    @discardableResult
+    public func consumePendingRerun(for windowID: UUID) -> UUID? {
+        guard primaryWindowID == windowID else {
+            return nil
+        }
+        guard let token = rerunRequestToken else {
+            return nil
+        }
+        guard token != lastHandledToken else {
+            return nil
+        }
+        lastHandledToken = token
+        return token
+    }
+
     public func markHandled(token: UUID) {
         lastHandledToken = token
     }
