@@ -730,6 +730,7 @@ public struct AIProviderReadinessRow: Identifiable, Equatable, Sendable {
     public var detailLabel: String
     public var nextActionLabel: String
     public var isSelected: Bool
+    public var readiness: AIProviderReadiness
 
     public var id: AIProvider { provider }
 
@@ -738,13 +739,26 @@ public struct AIProviderReadinessRow: Identifiable, Equatable, Sendable {
         statusLabel: String,
         detailLabel: String,
         nextActionLabel: String,
-        isSelected: Bool
+        isSelected: Bool,
+        readiness: AIProviderReadiness = .unknown
     ) {
         self.provider = provider
         self.statusLabel = statusLabel
         self.detailLabel = detailLabel
         self.nextActionLabel = nextActionLabel
         self.isSelected = isSelected
+        self.readiness = readiness
+    }
+}
+
+public enum AIProviderReadiness: Equatable, Sendable {
+    case unknown
+    case ready
+    case needsAction(reason: String)
+    case unavailable(reason: String)
+
+    public var isReady: Bool {
+        self == .ready
     }
 }
 
@@ -1001,7 +1015,18 @@ public final class AppSettingsViewModel: ObservableObject {
             statusLabel: providerReadinessStatusLabel(for: provider),
             detailLabel: providerReadinessDetailLabel(for: provider),
             nextActionLabel: providerReadinessNextActionLabel(for: provider),
-            isSelected: settings.aiProvider == provider
+            isSelected: settings.aiProvider == provider,
+            readiness: providerReadiness(for: provider)
+        )
+    }
+
+    public func onboardingReadinessSnapshot(
+        permissionSnapshot: PermissionSnapshot
+    ) -> OnboardingReadinessSnapshot {
+        OnboardingReadinessSnapshot.make(
+            selectedProvider: settings.aiProvider,
+            providerReadiness: providerReadiness(for: settings.aiProvider),
+            permissions: permissionSnapshot
         )
     }
 
@@ -1909,6 +1934,53 @@ public final class AppSettingsViewModel: ObservableObject {
             return openRouterAPIKeyStatusLabel
         case .ollamaCompatible:
             return "Local"
+        }
+    }
+
+    private func providerReadiness(for provider: AIProvider) -> AIProviderReadiness {
+        guard LLMProviderCatalog.isAvailableInCurrentBuild(provider) else {
+            return .unavailable(reason: LLMProviderCatalog.entry(for: provider).unavailableReason ?? "Not available in this build.")
+        }
+
+        switch provider {
+        case .opencodeLocal:
+            if settings.openCodeExecutablePath == nil {
+                return .needsAction(reason: "Set the OpenCode executable path.")
+            }
+            if settings.openCodeWorkspacePath == nil {
+                return .needsAction(reason: "Set the workspace path.")
+            }
+            if !settings.isOpenCodeLocalExecutionApproved {
+                return .needsAction(reason: "Review the local command and approve execution.")
+            }
+            return .ready
+        case .ollamaCompatible:
+            return .needsAction(reason: "Start the local Ollama-compatible server before planning.")
+        case .geminiOpenAICompatible:
+            return .unavailable(reason: "Select an available provider.")
+        case .openaiResponses:
+            return readiness(forAPIKeyStatus: openAIAPIKeyStatusLabel)
+        case .claudeMessages:
+            return readiness(forAPIKeyStatus: anthropicAPIKeyStatusLabel)
+        case .geminiDirect:
+            return readiness(forAPIKeyStatus: geminiAPIKeyStatusLabel)
+        case .groqOpenAICompatible:
+            return readiness(forAPIKeyStatus: groqAPIKeyStatusLabel)
+        case .openRouterCompatible:
+            return readiness(forAPIKeyStatus: openRouterAPIKeyStatusLabel)
+        }
+    }
+
+    private func readiness(forAPIKeyStatus status: String) -> AIProviderReadiness {
+        switch status {
+        case "Configured":
+            return .ready
+        case "Invalid":
+            return .needsAction(reason: "Re-enter the provider API key in Keychain.")
+        case "Unavailable":
+            return .unavailable(reason: "Keychain access is unavailable.")
+        default:
+            return .needsAction(reason: "Save the provider API key in Keychain.")
         }
     }
 
