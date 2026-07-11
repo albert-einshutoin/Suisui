@@ -181,6 +181,17 @@ run_visual_gates() {
 sanitize_gate_log() {
   local input="$1"
   local output="$2"
+  # When invoked with `-` as the input path, the sanitizer reads from
+  # stdin and writes to stdout so the caller can pipe the lane output
+  # through the sanitizer before `tee` exposes it to the Actions job
+  # log. The path- and secret-pattern redactions are shared with the
+  # file mode so the runtime/file pipelines stay equivalent.
+  if [[ "$input" == "-" ]]; then
+    sed -E \
+      -e 's#/(Users|Volumes)/[^[:space:]]+#<path>#g' \
+      -e 's#(token|secret|password|api[_-]?key)=[^[:space:]]+#\1=<redacted>#g'
+    return 0
+  fi
   sed -E \
     -e 's#/(Users|Volumes)/[^[:space:]]+#<path>#g' \
     -e 's#(token|secret|password|api[_-]?key)=[^[:space:]]+#\1=<redacted>#g' \
@@ -198,11 +209,15 @@ run_lane_with_artifacts() {
   mkdir -p "$lane_dir"
 
   set +e
-  (set -e; "$lane_function") 2>&1 | tee "$raw_log"
+  # Pipe the lane output through the sanitizer before `tee` so the Actions
+  # job log only ever sees redacted stdout/stderr. The sanitized stream is
+  # the single source of truth for both the captured artifact and the
+  # GitHub Actions log; the raw log never reaches the public surface.
+  (set -e; "$lane_function") 2>&1 | sanitize_gate_log - | tee "$raw_log"
   status=${PIPESTATUS[0]}
   set -e
 
-  sanitize_gate_log "$raw_log" "$lane_dir/output.log"
+  cp "$raw_log" "$lane_dir/output.log"
   rm -f "$raw_log"
   if [[ "$status" -ne 0 ]]; then
     category="$(sed -n 's/^failure_category=//p' "$lane_dir/output.log" | tail -n 1)"

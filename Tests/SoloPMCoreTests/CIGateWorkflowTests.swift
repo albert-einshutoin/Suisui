@@ -63,6 +63,27 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertFalse(layoutGate.contains("/usr/bin/osascript - \"$APP_NAME\""))
     }
 
+    func testCILaneLogSanitizesBeforeTeeExposesItToPublicLog() throws {
+        // Regression for the P2 review that let raw lane stdout/stderr reach
+        // the GitHub Actions job log before the post-tee sanitizer ran.
+        // The sanitizer must sit between the lane function and `tee` so
+        // secrets and runner-local paths never appear in the public log.
+        let script = try readRepositoryFile("scripts/ci.sh")
+
+        XCTAssertTrue(
+            script.contains("| sanitize_gate_log - | tee \"$raw_log\""),
+            "Lane output must be piped through the sanitizer before `tee` writes the public Actions log"
+        )
+        XCTAssertFalse(
+            script.contains("2>&1 | tee \"$raw_log\"\n  status=${PIPESTATUS[0]}"),
+            "Lane output must not be tee'd raw; the previous post-tee sanitization let secrets reach the job log"
+        )
+        XCTAssertTrue(
+            script.contains("[[ \"$input\" == \"-\" ]]"),
+            "sanitize_gate_log must support a stdin/stdout mode (`-`) so it can sit in the lane pipeline"
+        )
+    }
+
     func testAutomatedReleasePreflightRequiresTheSameProductionUIGates() throws {
         let preflight = try readRepositoryFile("script/check_automated_release_preflight.sh")
         let readiness = try readRepositoryFile("script/release_readiness_report.sh")

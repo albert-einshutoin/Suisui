@@ -665,7 +665,39 @@ if [[ "$LAUNCH_APP" -eq 1 ]]; then
     "$APP_BINARY" >/dev/null 2>&1 &
     APP_LAUNCH_PID=$!
   else
+    # `open -n -F` does not return a PID, so snapshot the existing
+    # $APP_BINARY processes first and resolve the just-opened instance
+    # by diff. Without this, the PID-scoped AppleScript lookups below
+    # would fall back to name-based selection and the cleanup trap
+    # would not be able to terminate the candidate the preflight just
+    # opened on a host with another stale SoloPM window running.
+    local pre_open_pids=""
+    local pre_open_pid
+    while read -r pre_open_pid; do
+      [[ -n "$pre_open_pid" ]] || continue
+      pre_open_pids="${pre_open_pids:+${pre_open_pids} }${pre_open_pid}"
+    done < <(/usr/bin/pgrep -f "$APP_BINARY/Contents/MacOS/" 2>/dev/null)
     /usr/bin/open -n -F "$APP_BUNDLE"
+    local open_deadline=$((SECONDS + TIMEOUT_SECONDS))
+    while true; do
+      local candidate_pid
+      for candidate_pid in $(/usr/bin/pgrep -f "$APP_BINARY/Contents/MacOS/" 2>/dev/null); do
+        [[ -n "$candidate_pid" ]] || continue
+        if [[ " ${pre_open_pids} " == *" ${candidate_pid} "* ]]; then
+          continue
+        fi
+        APP_LAUNCH_PID="$candidate_pid"
+        if launched_app_matches_binary; then
+          break 2
+        fi
+        APP_LAUNCH_PID=""
+      done
+      if [[ "$SECONDS" -ge "$open_deadline" ]]; then
+        echo "BLOCKER: $APP_BUNDLE did not produce a new matching process within ${TIMEOUT_SECONDS}s" >&2
+        exit 1
+      fi
+      sleep 1
+    done
   fi
   activate_app
 fi
