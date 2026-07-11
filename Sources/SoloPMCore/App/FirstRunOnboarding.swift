@@ -122,6 +122,8 @@ public struct OnboardingReadinessSnapshot: Equatable, Sendable {
         switch providerReadiness {
         case .unknown:
             planningState = .unknown
+        case .checking:
+            planningState = .checking
         case .ready:
             planningState = .ready
         case let .needsAction(reason):
@@ -201,7 +203,6 @@ public enum FirstRunOnboardingGate {
     public static let completionDefaultsKey = "solopm.onboarding.completed"
     public static let dismissedDefaultsKey = "solopm.onboarding.dismissed"
     public static let disableEnvironmentKey = "SOLOPM_DISABLE_ONBOARDING"
-    public static let rerunNotificationName = Notification.Name("soloPM.requestOnboardingRerun")
 
     // Evidence, smoke, and launch-verification harnesses drive the real app
     // and must never sit behind a first-run sheet.
@@ -247,5 +248,57 @@ public enum FirstRunOnboardingGate {
         // integrations were ready. Preserve that UX choice without making the
         // legacy completion bit the source of truth for current readiness.
         defaults.set(true, forKey: dismissedDefaultsKey)
+    }
+}
+
+/// App-level owner of the onboarding rerun request. Multiple Project Board
+/// windows can register themselves; only the primary window receives the
+/// rerun so the Settings button always opens exactly one setup flow even when
+/// no Project Board window is mounted yet.
+@MainActor
+public final class OnboardingRerunCoordinator: ObservableObject {
+    public static let shared = OnboardingRerunCoordinator()
+
+    @Published public private(set) var primaryWindowID: UUID?
+    @Published public private(set) var rerunRequestToken: UUID?
+    @Published public private(set) var lastHandledToken: UUID?
+
+    private var registrations: [UUID: Date] = [:]
+    private var insertionOrder: [UUID] = []
+
+    public init() {}
+
+    @discardableResult
+    public func register(windowID: UUID = UUID()) -> Bool {
+        if registrations[windowID] == nil {
+            registrations[windowID] = Date()
+            insertionOrder.append(windowID)
+            if primaryWindowID == nil {
+                primaryWindowID = windowID
+            }
+        }
+        return primaryWindowID == windowID
+    }
+
+    public func unregister(windowID: UUID) {
+        guard registrations.removeValue(forKey: windowID) != nil else {
+            return
+        }
+        insertionOrder.removeAll { $0 == windowID }
+        if primaryWindowID == windowID {
+            primaryWindowID = insertionOrder.first
+        }
+    }
+
+    public func requestRerun() {
+        rerunRequestToken = UUID()
+    }
+
+    public func markHandled(token: UUID) {
+        lastHandledToken = token
+    }
+
+    public func snapshotForTests() -> (primary: UUID?, registered: [UUID]) {
+        (primaryWindowID, insertionOrder)
     }
 }

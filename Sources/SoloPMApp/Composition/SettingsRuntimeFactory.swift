@@ -43,7 +43,22 @@ extension AppRuntimeFactory {
     }
 
     static func makeIntegrationPermissionSnapshot() -> PermissionSnapshot {
-        EventKitPermissionSnapshotReader.snapshot(base: UserNotificationsPermissionSnapshotReader.snapshot())
+        // The microphone reader must run after EventKit/Notification readers so
+        // it never clobbers their statuses; AVFoundation cannot appear in Core
+        // because the import-boundary test forbids it there.
+        AVFoundationMicrophonePermissionSnapshotReader.snapshot(
+            base: EventKitPermissionSnapshotReader.snapshot(
+                base: UserNotificationsPermissionSnapshotReader.snapshot()
+            )
+        )
+    }
+
+    /// `Sendable` wrapper that lets SwiftUI views call the snapshot factory
+    /// from a detached background queue. The underlying factory only reads
+    /// AVFoundation / EventKit / UserNotifications status, all of which are
+    /// safe to call from any thread.
+    static let makeIntegrationPermissionSnapshotSendable: @Sendable () -> PermissionSnapshot = {
+        makeIntegrationPermissionSnapshot()
     }
 
     static func makeWatcherDiagnosticsSnapshot() -> WatcherDiagnosticsSnapshot {

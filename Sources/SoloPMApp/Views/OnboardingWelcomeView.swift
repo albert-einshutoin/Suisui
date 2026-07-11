@@ -3,18 +3,19 @@ import SwiftUI
 
 struct OnboardingWelcomeView: View {
     @ObservedObject var settingsViewModel: AppSettingsViewModel
-    private let permissionSnapshotProvider: () -> PermissionSnapshot
+    private let permissionSnapshotProvider: @Sendable () -> PermissionSnapshot
     let onFinish: () -> Void
 
     @State private var flow = FirstRunOnboardingFlow()
     @State private var permissionSnapshot: PermissionSnapshot
+    @State private var isRefreshingReadiness: Bool = true
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
         settingsViewModel: AppSettingsViewModel,
         permissionSnapshot: PermissionSnapshot,
-        permissionSnapshotProvider: @escaping () -> PermissionSnapshot,
+        permissionSnapshotProvider: @escaping @Sendable () -> PermissionSnapshot,
         onFinish: @escaping () -> Void
     ) {
         self.settingsViewModel = settingsViewModel
@@ -38,10 +39,10 @@ struct OnboardingWelcomeView: View {
         .frame(minWidth: 520, idealWidth: 560, minHeight: 460, idealHeight: 500)
         .accessibilityIdentifier("onboarding-welcome")
         .task {
-            // Let the sheet paint its static shell before secure-store and
-            // permission readiness reads, which may be slow on a first launch.
-            await Task.yield()
-            refreshReadiness()
+            // Publish `.checking` immediately so the sheet renders the spinner
+            // before the first paint, then refresh off the MainActor and return
+            // the result to MainActor without blocking the sheet.
+            await refreshReadinessAsync()
         }
     }
 
@@ -158,11 +159,11 @@ struct OnboardingWelcomeView: View {
 
     private var finishStep: some View {
         onboardingStep(
-            systemImage: readinessSnapshot.planningState.isReady ? "checkmark.circle" : "exclamationmark.circle",
-            title: readinessSnapshot.planningState.isReady ? "You're ready" : "Setup needs attention"
+            systemImage: displayedPlanningState.isReady ? "checkmark.circle" : "exclamationmark.circle",
+            title: displayedPlanningState.isReady ? "You're ready" : "Setup needs attention"
         ) {
             Text(
-                readinessSnapshot.planningState.isReady
+                displayedPlanningState.isReady
                     ? "Try saying: \"Plan a release checklist due next Friday.\" Review the plan, then approve it."
                     : "SoloPM can open now, but planning is not ready yet. Review the required item below or finish setup later from Settings."
             )
@@ -172,7 +173,7 @@ struct OnboardingWelcomeView: View {
             readinessList
 
             Button {
-                if readinessSnapshot.planningState.isReady {
+                if displayedPlanningState.isReady {
                     completeOnboarding()
                     openWindow(id: "voice-capture")
                 } else {
@@ -180,13 +181,13 @@ struct OnboardingWelcomeView: View {
                 }
             } label: {
                 Label(
-                    readinessSnapshot.planningState.isReady ? "Open Voice Command" : "Finish Setup Later",
-                    systemImage: readinessSnapshot.planningState.isReady ? "mic.circle" : "arrow.right.circle"
+                    displayedPlanningState.isReady ? "Open Voice Command" : "Finish Setup Later",
+                    systemImage: displayedPlanningState.isReady ? "mic.circle" : "arrow.right.circle"
                 )
             }
             .accessibilityIdentifier("onboarding-open-voice-command")
             .accessibilityHint(
-                readinessSnapshot.planningState.isReady
+                displayedPlanningState.isReady
                     ? "Finishes setup and opens the Voice Command window."
                     : "Closes setup. You can run setup again from Settings."
             )
@@ -195,6 +196,14 @@ struct OnboardingWelcomeView: View {
 
     private var readinessSnapshot: OnboardingReadinessSnapshot {
         settingsViewModel.onboardingReadinessSnapshot(permissionSnapshot: permissionSnapshot)
+    }
+
+    /// While a refresh is in flight, force the displayed planning state to
+    /// `.checking` so the sheet never shows a stale "ready" answer before the
+    /// Keychain / endpoint / permission reads actually finish.
+    private var displayedPlanningState: OnboardingReadinessState {
+        if isRefreshingReadiness { return .checking }
+        return readinessSnapshot.planningState
     }
 
     private var readinessList: some View {
@@ -224,7 +233,9 @@ struct OnboardingWelcomeView: View {
             }
 
             Button("Refresh readiness") {
-                refreshReadiness()
+                Task { @MainActor in
+                    await refreshReadinessAsync()
+                }
             }
             .buttonStyle(.borderless)
             .accessibilityIdentifier("onboarding-refresh-readiness")
@@ -275,9 +286,22 @@ struct OnboardingWelcomeView: View {
         }
     }
 
-    private func refreshReadiness() {
-        permissionSnapshot = permissionSnapshotProvider()
-        settingsViewModel.refreshProviderSecretStatuses()
+    @MainActor
+    private func refreshReadinessAsync() async {
+        isRefreshingReadiness = true
+        defer { isRefreshingReadiness = false }
+
+        // Provider Keychain reads block on TCC/semaphore calls; resolve them
+        // off MainActor before we touch the published state.
+        let resolvedSnapshot: PermissionSnapshot = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: permissionSnapshotProvider())
+            }
+        }
+
+        await settingsViewModel.refreshProviderReadiness()
+
+        permissionSnapshot = resolvedSnapshot
     }
 
     private func onboardingStep(
@@ -346,7 +370,7 @@ struct OnboardingWelcomeView: View {
                 .keyboardShortcut(.defaultAction)
                 .accessibilityIdentifier("onboarding-finish")
                 .accessibilityHint(
-                    readinessSnapshot.planningState.isReady
+                    displayedPlanningState.isReady
                         ? "Closes setup and opens the Project Board."
                         : "Closes setup. You can run setup again from Settings."
                 )

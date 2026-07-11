@@ -214,7 +214,7 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("visibleProjectBoardWindows"))
         XCTAssertTrue(source.contains("fallbackProjectBoardWindow"))
         XCTAssertTrue(source.contains("rootView: ProjectBoardFallbackRootView("))
-        XCTAssertTrue(source.contains("ProjectBoardWindowRootView(settingsViewModel: settingsViewModel)"))
+        XCTAssertTrue(source.contains("ProjectBoardWindowRootView(\n                settingsViewModel: settingsViewModel,"))
         XCTAssertTrue(source.contains("makeAppSettingsViewModel(refreshProviderSecretStatusesOnInit: false)"))
         XCTAssertTrue(source.contains("settingsViewModel.refreshProviderSecretStatuses()"))
         XCTAssertTrue(source.contains("@State private var viewModel: ProjectBoardViewModel?"))

@@ -100,6 +100,7 @@ struct SettingsView: View {
     let googleCalendarOAuthDisconnecter: (any GoogleCalendarOAuthDisconnecting)?
     let googleCalendarListProviderFactory: () -> (any GoogleCalendarListProviding)?
     let textToSpeechPreviewerFactory: (AppSettings) -> any TextToSpeechPreviewing
+    let onboardingRerunRequest: () -> Void
     @StateObject private var settingsViewModel: AppSettingsViewModel
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
     @StateObject private var watcherDiagnosticsLoader: LazyDependencyLoader<WatcherDiagnosticsSnapshot>
@@ -141,7 +142,8 @@ struct SettingsView: View {
         textToSpeechPreviewerFactory: @escaping (AppSettings) -> any TextToSpeechPreviewing,
         appearancePreference: Binding<SoloPMAppearancePreference>,
         languagePreference: Binding<AppLanguagePreference>,
-        initialTab: SettingsTab = .overview
+        initialTab: SettingsTab = .overview,
+        onboardingRerunRequest: @escaping () -> Void = {}
     ) {
         self.watcherDiagnosticsSnapshot = watcherDiagnosticsSnapshot
         self.integrationPermissionSnapshot = integrationPermissionSnapshot
@@ -153,6 +155,7 @@ struct SettingsView: View {
         self.googleCalendarOAuthDisconnecter = googleCalendarOAuthDisconnecter
         self.googleCalendarListProviderFactory = googleCalendarListProviderFactory
         self.textToSpeechPreviewerFactory = textToSpeechPreviewerFactory
+        self.onboardingRerunRequest = onboardingRerunRequest
         _settingsViewModel = StateObject(wrappedValue: settingsViewModel)
         _launchAtLoginViewModel = StateObject(wrappedValue: launchAtLoginViewModel)
         _watcherDiagnosticsLoader = StateObject(
@@ -328,10 +331,10 @@ struct SettingsView: View {
                 )
 
                 Button {
-                    NotificationCenter.default.post(
-                        name: FirstRunOnboardingGate.rerunNotificationName,
-                        object: nil
-                    )
+                    // The rerun request is owned by the app-level coordinator so
+                    // it works even when no Project Board window is mounted and
+                    // never opens more than one onboarding sheet.
+                    onboardingRerunRequest()
                 } label: {
                     Label("Run Setup Again", systemImage: "arrow.clockwise.circle")
                 }
