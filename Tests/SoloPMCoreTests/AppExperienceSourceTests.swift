@@ -5008,6 +5008,164 @@ final class AppExperienceSourceTests: XCTestCase {
         )
     }
 
+    func testOnboardingRerunCoordinatorOwnsSingleWindowPresentation() throws {
+        let appSource = try readAppShellSource()
+        let factorySource = try readPackageFile("Sources/SoloPMApp/Composition/SettingsRuntimeFactory.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/FirstRunOnboarding.swift")
+        let settingsSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsView.swift")
+
+        XCTAssertTrue(
+            coreSource.contains("public final class OnboardingRerunCoordinator"),
+            "OnboardingRerunCoordinator must live in Core so it can be unit-tested"
+        )
+        XCTAssertTrue(
+            coreSource.contains("func register(windowID:") && coreSource.contains("func unregister(windowID:"),
+            "OnboardingRerunCoordinator must track registered Project Board windows"
+        )
+        XCTAssertTrue(
+            coreSource.contains("func requestRerun()"),
+            "OnboardingRerunCoordinator must expose a single request entry point"
+        )
+        XCTAssertTrue(
+            appSource.contains("OnboardingRerunCoordinator.shared"),
+            "SoloPMApp must adopt the shared OnboardingRerunCoordinator"
+        )
+        XCTAssertTrue(
+            appSource.contains("onboardingRerunCoordinator.register(windowID:"),
+            "ProjectBoardWindowRootView must register itself with the coordinator"
+        )
+        XCTAssertTrue(
+            appSource.contains("onboardingRerunCoordinator.unregister(windowID:"),
+            "ProjectBoardWindowRootView must unregister so a closed window frees the primary slot"
+        )
+        XCTAssertTrue(
+            appSource.contains("isPrimaryOnboardingWindow"),
+            "ProjectBoardWindowRootView must track the primary slot to deduplicate sheets"
+        )
+        XCTAssertFalse(
+            appSource.contains("NotificationCenter.default.publisher(for: FirstRunOnboardingGate.rerunNotificationName)"),
+            "SoloPMApp must stop broadcasting onboarding rerun through NotificationCenter"
+        )
+        XCTAssertFalse(
+            settingsSource.contains("NotificationCenter.default.post(\n                        name: FirstRunOnboardingGate.rerunNotificationName"),
+            "SettingsView must not post the legacy rerun notification"
+        )
+        XCTAssertTrue(
+            settingsSource.contains("onboardingRerunRequest()"),
+            "SettingsView must call the injected rerun closure"
+        )
+        XCTAssertTrue(
+            appSource.contains("onboardingRerunCoordinator.requestRerun()"),
+            "SettingsWindowRootView must wire the rerun request to the coordinator"
+        )
+        XCTAssertTrue(
+            appSource.contains("OnboardingRerunCoordinator.shared.requestRerun()"),
+            "Settings evidence window must also wire the rerun request to the coordinator"
+        )
+    }
+
+    func testOnboardingPermissionSnapshotIncludesMicrophone() throws {
+        let factorySource = try readPackageFile("Sources/SoloPMApp/Composition/SettingsRuntimeFactory.swift")
+        let adapterSource = try readPackageFile("Sources/SoloPMApp/Adapters/AVFoundationMicrophonePermissionSnapshotReader.swift")
+        let welcomeSource = try readPackageFile("Sources/SoloPMApp/Views/OnboardingWelcomeView.swift")
+        let appSource = try readAppShellSource()
+
+        XCTAssertTrue(
+            adapterSource.contains("AVCaptureDevice.authorizationStatus(for: .audio)"),
+            "Microphone adapter must read AVAuthorizationStatus from AVCaptureDevice"
+        )
+        XCTAssertTrue(
+            factorySource.contains("AVFoundationMicrophonePermissionSnapshotReader.snapshot"),
+            "Permission snapshot factory must compose the microphone reader"
+        )
+        XCTAssertTrue(
+            welcomeSource.contains("@Sendable () -> PermissionSnapshot"),
+            "OnboardingWelcomeView must type the snapshot provider as @Sendable for off-Main reads"
+        )
+        XCTAssertTrue(
+            appSource.contains("permissionSnapshotProvider: AppRuntimeFactory.makeIntegrationPermissionSnapshotSendable"),
+            "SoloPMApp must inject the Sendable snapshot factory so off-Main reads are safe"
+        )
+    }
+
+    func testProductionSettingsFactoryWiresURLSessionOllamaHealthChecker() throws {
+        let factorySource = try readPackageFile("Sources/SoloPMApp/Composition/SettingsRuntimeFactory.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/AppSettings.swift")
+
+        XCTAssertTrue(
+            factorySource.contains("ollamaHealthChecker: URLSessionOllamaEndpointHealthChecker()"),
+            "Production composition must inject URLSessionOllamaEndpointHealthChecker so Ollama can become ready"
+        )
+        XCTAssertFalse(
+            factorySource.contains("ollamaHealthChecker: UncheckedOllamaEndpointHealthChecker"),
+            "Production composition must not fall back to the Unchecked default"
+        )
+        XCTAssertTrue(
+            coreSource.contains("public struct URLSessionOllamaEndpointHealthChecker: OllamaEndpointHealthChecking"),
+            "Core must own the URLSession-backed checker so production can use it"
+        )
+    }
+
+    func testOnboardingRerunConsumesPendingTokenOnWindowRegistration() throws {
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/FirstRunOnboarding.swift")
+        let appSource = try readAppShellSource()
+
+        XCTAssertTrue(
+            coreSource.contains("public func consumePendingRerun(for windowID: UUID) -> UUID?"),
+            "Coordinator must expose an atomic consumePendingRerun API for window registration"
+        )
+        XCTAssertTrue(
+            appSource.contains("onboardingRerunCoordinator.consumePendingRerun(for: windowID)"),
+            "ProjectBoardWindowRootView must consume pending rerun on appear"
+        )
+        XCTAssertTrue(
+            appSource.contains("if onboardingRerunCoordinator.primaryWindowID == nil"),
+            "SettingsWindowRootView must open a Project Board window when no primary is mounted"
+        )
+        XCTAssertTrue(
+            appSource.contains("openWindow(id: \"project-board\")"),
+            "SettingsWindowRootView must call openWindow for the 0-window case"
+        )
+    }
+
+    func testProductionRefreshProviderReadinessRunsKeychainReadsOffMainActor() throws {
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/AppSettings.swift")
+
+        XCTAssertTrue(
+            coreSource.contains("public struct ProviderSecretReadinessSnapshot: Equatable, Sendable"),
+            "Core must define a Sendable ProviderSecretReadinessSnapshot for off-Main reads"
+        )
+        XCTAssertTrue(
+            coreSource.contains("public protocol ProviderSecretReadinessReading: Sendable"),
+            "Core must define a ProviderSecretReadinessReading port"
+        )
+        XCTAssertTrue(
+            coreSource.contains("Task.detached(priority: .userInitiated) { [secretReadinessReader] in"),
+            "refreshProviderReadiness must run Keychain reads on a detached background task"
+        )
+        XCTAssertFalse(
+            coreSource.contains("private func apiKeyReadinessState(forStatusLabel label: String)"),
+            "Typed readiness must not be derived from a display label"
+        )
+    }
+
+    func testKeychainBackedReaderClassifiesReadErrorsAsUnavailable() throws {
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/AppSettings.swift")
+
+        XCTAssertTrue(
+            coreSource.contains("try secretStore.read(key)"),
+            "Reader must call SecretStore.read with try inside do/catch so a throw becomes `.unavailable`"
+        )
+        XCTAssertFalse(
+            coreSource.contains("classifyAPIKeyValue(try? secretStore.read"),
+            "Reader must not use try? — that collapses Keychain failures into `.missing`"
+        )
+        XCTAssertTrue(
+            coreSource.contains("public var failedProviders: Set<AIProvider>"),
+            "ProviderSecretReadinessReadResult must expose failedProviders so multiple read failures are preserved"
+        )
+    }
+
     private func parseMarkdownTables(in source: String) throws -> [(section: String, header: [String], rows: [[String]])] {
         let lines = source.components(separatedBy: "\n")
         var tables: [(String, [String], [[String]])] = []

@@ -15,6 +15,7 @@ struct SoloPM: App {
     @StateObject private var menuBarController: MenuBarSummaryController
     @StateObject private var menuBarQuickCaptureController: MenuBarQuickCaptureController
     @StateObject private var settingsViewModel: AppSettingsViewModel
+    @StateObject private var onboardingRerunCoordinator: OnboardingRerunCoordinator
     @AppStorage(SoloPMAppearancePreference.storageKey) private var appearancePreference: SoloPMAppearancePreference = .system
     @AppStorage(AppLanguagePreference.storageKey) private var languagePreference: AppLanguagePreference = .system
 
@@ -25,6 +26,7 @@ struct SoloPM: App {
         _settingsViewModel = StateObject(
             wrappedValue: AppRuntimeFactory.makeAppSettingsViewModel(refreshProviderSecretStatusesOnInit: false)
         )
+        _onboardingRerunCoordinator = StateObject(wrappedValue: OnboardingRerunCoordinator.shared)
 #if canImport(AppKit)
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -35,7 +37,10 @@ struct SoloPM: App {
 
     var body: some Scene {
         WindowGroup("SoloPM", id: "project-board") {
-            ProjectBoardWindowRootView(settingsViewModel: settingsViewModel)
+            ProjectBoardWindowRootView(
+                settingsViewModel: settingsViewModel,
+                onboardingRerunCoordinator: onboardingRerunCoordinator
+            )
             .preferredColorScheme(effectiveAppearancePreference.colorScheme)
             .environment(\.locale, effectiveLanguagePreference.locale)
         }
@@ -69,6 +74,7 @@ struct SoloPM: App {
         Settings {
             SettingsWindowRootView(
                 settingsViewModel: settingsViewModel,
+                onboardingRerunCoordinator: onboardingRerunCoordinator,
                 appearancePreference: $appearancePreference,
                 languagePreference: $languagePreference
             )
@@ -157,9 +163,13 @@ private struct SoloPMWindowCommands: Commands {
 
 private struct ProjectBoardWindowRootView: View {
     @ObservedObject var settingsViewModel: AppSettingsViewModel
+    @ObservedObject var onboardingRerunCoordinator: OnboardingRerunCoordinator
     @State private var viewModel: ProjectBoardViewModel?
-    @AppStorage(FirstRunOnboardingGate.completionDefaultsKey) private var hasCompletedOnboarding = false
+    @State private var windowID = UUID()
+    @State private var isPrimaryOnboardingWindow = false
     @State private var isOnboardingPresented = false
+    @AppStorage(FirstRunOnboardingGate.dismissedDefaultsKey) private var hasDismissedOnboarding = false
+    @AppStorage(FirstRunOnboardingGate.completionDefaultsKey) private var legacyCompletionFlag = false
 
     var body: some View {
         Group {
@@ -170,15 +180,43 @@ private struct ProjectBoardWindowRootView: View {
             }
         }
         .onAppear {
-            isOnboardingPresented = FirstRunOnboardingGate.shouldPresent(
-                hasCompletedOnboarding: hasCompletedOnboarding
-            )
+            isPrimaryOnboardingWindow = onboardingRerunCoordinator.register(windowID: windowID)
+            migrateOnboardingStateIfNeeded()
+            // Consume a pending rerun immediately so a Settings tap that
+            // arrived before the Project Board window mounted still opens the
+            // sheet in this newly-registered primary window.
+            if onboardingRerunCoordinator.consumePendingRerun(for: windowID) != nil {
+                isOnboardingPresented = true
+            } else {
+                isOnboardingPresented = FirstRunOnboardingGate.shouldPresent(
+                    hasDismissedOnboarding: hasDismissedOnboarding
+                )
+            }
+        }
+        .onDisappear {
+            onboardingRerunCoordinator.unregister(windowID: windowID)
+            isPrimaryOnboardingWindow = false
         }
         .sheet(isPresented: $isOnboardingPresented) {
-            OnboardingWelcomeView(settingsViewModel: settingsViewModel) {
-                hasCompletedOnboarding = true
+            OnboardingWelcomeView(
+                settingsViewModel: settingsViewModel,
+                permissionSnapshot: .empty,
+                permissionSnapshotProvider: AppRuntimeFactory.makeIntegrationPermissionSnapshotSendable
+            ) {
+                hasDismissedOnboarding = true
                 isOnboardingPresented = false
             }
+        }
+        .onChange(of: onboardingRerunCoordinator.rerunRequestToken) { _, _ in
+            // Atomically check + mark the pending rerun so the same token can
+            // never be consumed by more than one window even if multiple
+            // Project Board windows are open when the Settings button is hit.
+            if onboardingRerunCoordinator.consumePendingRerun(for: windowID) != nil {
+                isOnboardingPresented = true
+            }
+        }
+        .onChange(of: onboardingRerunCoordinator.primaryWindowID) { _, newPrimary in
+            isPrimaryOnboardingWindow = newPrimary == windowID
         }
         .task {
             guard viewModel == nil else {
@@ -196,6 +234,14 @@ private struct ProjectBoardWindowRootView: View {
                 viewModel = AppRuntimeFactory.makeProjectBoardViewModel(runtime: runtime)
             }
         }
+    }
+
+    private func migrateOnboardingStateIfNeeded() {
+        guard legacyCompletionFlag, !hasDismissedOnboarding else {
+            return
+        }
+        FirstRunOnboardingGate.migrateLegacyCompletionIfNeeded(defaults: .standard)
+        hasDismissedOnboarding = true
     }
 
     @ViewBuilder
@@ -224,9 +270,11 @@ private enum ProjectBoardLaunchHydrationDelay {
 
 private struct SettingsWindowRootView: View {
     @ObservedObject var settingsViewModel: AppSettingsViewModel
+    @ObservedObject var onboardingRerunCoordinator: OnboardingRerunCoordinator
     @Binding var appearancePreference: SoloPMAppearancePreference
     @Binding var languagePreference: AppLanguagePreference
     @State private var didScheduleProviderSecretStatusRefresh = false
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         SettingsView(
@@ -243,7 +291,18 @@ private struct SettingsWindowRootView: View {
             googleCalendarListProviderFactory: AppRuntimeFactory.makeGoogleCalendarListProvider,
             textToSpeechPreviewerFactory: AppRuntimeFactory.makeTextToSpeechPreviewer,
             appearancePreference: $appearancePreference,
-            languagePreference: $languagePreference
+            languagePreference: $languagePreference,
+            onboardingRerunRequest: {
+                // When no Project Board window is mounted we must open one
+                // before the coordinator publishes the token; otherwise the
+                // `onAppear` consumer would register too late and miss the
+                // rerun. If a primary already exists, just request the rerun
+                // and the existing window will consume it.
+                if onboardingRerunCoordinator.primaryWindowID == nil {
+                    openWindow(id: "project-board")
+                }
+                onboardingRerunCoordinator.requestRerun()
+            }
         )
         .task {
             guard !didScheduleProviderSecretStatusRefresh else {
@@ -251,8 +310,10 @@ private struct SettingsWindowRootView: View {
             }
             didScheduleProviderSecretStatusRefresh = true
             // Provider secret status reads are Settings-shell work and should
-            // not block the first paint of the Settings window.
-            settingsViewModel.refreshProviderSecretStatuses()
+            // not block the first paint of the Settings window. The async
+            // refresh runs the Ollama probe and the Keychain reads off the
+            // MainActor, then applies the typed state on the MainActor.
+            await settingsViewModel.refreshProviderReadiness()
         }
     }
 }
@@ -584,7 +645,8 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
                     textToSpeechPreviewerFactory: AppRuntimeFactory.makeTextToSpeechPreviewer,
                     appearancePreference: .constant(SoloPMAppearancePreference.environmentOverride ?? .system),
                     languagePreference: .constant(AppLanguagePreference.environmentOverride ?? .system),
-                    initialTab: selectedTab
+                    initialTab: selectedTab,
+                    onboardingRerunRequest: { OnboardingRerunCoordinator.shared.requestRerun() }
                 )
                 .preferredColorScheme(SoloPMAppearancePreference.environmentOverride?.colorScheme)
                 .environment(\.locale, (AppLanguagePreference.environmentOverride ?? .system).locale)

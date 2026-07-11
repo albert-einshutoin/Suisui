@@ -66,4 +66,53 @@ final class FirstRunOnboardingTests: XCTestCase {
             )
         }
     }
+
+    func testReadinessSnapshotKeepsPlanningRequiredAndPermissionsOptional() {
+        let snapshot = OnboardingReadinessSnapshot.make(
+            selectedProvider: .openaiResponses,
+            providerReadiness: .needsAction(reason: "Save the provider API key in Keychain."),
+            permissions: .empty
+        )
+
+        XCTAssertEqual(snapshot.planningState, .needsAction(reason: "Save the provider API key in Keychain."))
+        XCTAssertTrue(snapshot.canStartUsing)
+        XCTAssertEqual(snapshot.items.first?.requirement, .required)
+        XCTAssertTrue(snapshot.items.dropFirst().allSatisfy { $0.requirement == .optional })
+        XCTAssertTrue(snapshot.items.dropFirst().allSatisfy { $0.state != .ready })
+    }
+
+    func testReadinessSnapshotMapsGrantedPermissionsAndReadyProvider() {
+        var permissions = PermissionSnapshot.empty
+        for permission in [AppPermission.microphone, .calendar, .reminders, .notifications] {
+            permissions.setStatus(.granted, for: permission)
+        }
+
+        let snapshot = OnboardingReadinessSnapshot.make(
+            selectedProvider: .ollamaCompatible,
+            providerReadiness: .ready,
+            permissions: permissions
+        )
+
+        XCTAssertEqual(snapshot.planningState, .ready)
+        XCTAssertTrue(snapshot.items.allSatisfy { $0.state == .ready })
+    }
+
+    func testLegacyCompletionMigratesToDismissedWithoutChangingReadinessSource() throws {
+        let suiteName = "FirstRunOnboardingTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set(true, forKey: FirstRunOnboardingGate.completionDefaultsKey)
+        XCTAssertNil(defaults.object(forKey: FirstRunOnboardingGate.dismissedDefaultsKey))
+
+        FirstRunOnboardingGate.migrateLegacyCompletionIfNeeded(defaults: defaults)
+
+        XCTAssertTrue(defaults.bool(forKey: FirstRunOnboardingGate.dismissedDefaultsKey))
+        XCTAssertFalse(
+            FirstRunOnboardingGate.shouldPresent(
+                hasDismissedOnboarding: defaults.bool(forKey: FirstRunOnboardingGate.dismissedDefaultsKey),
+                environment: [:]
+            )
+        )
+    }
 }
