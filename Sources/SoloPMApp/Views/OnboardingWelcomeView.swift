@@ -3,11 +3,25 @@ import SwiftUI
 
 struct OnboardingWelcomeView: View {
     @ObservedObject var settingsViewModel: AppSettingsViewModel
+    private let permissionSnapshotProvider: () -> PermissionSnapshot
     let onFinish: () -> Void
 
     @State private var flow = FirstRunOnboardingFlow()
+    @State private var permissionSnapshot: PermissionSnapshot
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(
+        settingsViewModel: AppSettingsViewModel,
+        permissionSnapshot: PermissionSnapshot,
+        permissionSnapshotProvider: @escaping () -> PermissionSnapshot,
+        onFinish: @escaping () -> Void
+    ) {
+        self.settingsViewModel = settingsViewModel
+        self.permissionSnapshotProvider = permissionSnapshotProvider
+        self.onFinish = onFinish
+        _permissionSnapshot = State(initialValue: permissionSnapshot)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,6 +37,12 @@ struct OnboardingWelcomeView: View {
         }
         .frame(minWidth: 520, idealWidth: 560, minHeight: 460, idealHeight: 500)
         .accessibilityIdentifier("onboarding-welcome")
+        .task {
+            // Let the sheet paint its static shell before Keychain/EventKit
+            // readiness reads, which may be slow on a first launch.
+            await Task.yield()
+            refreshReadiness()
+        }
     }
 
     @ViewBuilder
@@ -138,22 +158,126 @@ struct OnboardingWelcomeView: View {
 
     private var finishStep: some View {
         onboardingStep(
-            systemImage: "checkmark.circle",
-            title: "You're ready"
+            systemImage: readinessSnapshot.planningState.isReady ? "checkmark.circle" : "exclamationmark.circle",
+            title: readinessSnapshot.planningState.isReady ? "You're ready" : "Setup needs attention"
         ) {
-            Text("Try saying: \"Plan a release checklist due next Friday.\" Review the plan, then approve it.")
+            Text(
+                readinessSnapshot.planningState.isReady
+                    ? "Try saying: \"Plan a release checklist due next Friday.\" Review the plan, then approve it."
+                    : "SoloPM can open now, but planning is not ready yet. Review the required item below or finish setup later from Settings."
+            )
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 
+            readinessList
+
             Button {
-                completeOnboarding()
-                openWindow(id: "voice-capture")
+                if readinessSnapshot.planningState.isReady {
+                    completeOnboarding()
+                    openWindow(id: "voice-capture")
+                } else {
+                    completeOnboarding()
+                }
             } label: {
-                Label("Open Voice Command", systemImage: "mic.circle")
+                Label(
+                    readinessSnapshot.planningState.isReady ? "Open Voice Command" : "Finish Setup Later",
+                    systemImage: readinessSnapshot.planningState.isReady ? "mic.circle" : "arrow.right.circle"
+                )
             }
             .accessibilityIdentifier("onboarding-open-voice-command")
-            .accessibilityHint("Finishes setup and opens the Voice Command window.")
+            .accessibilityHint(
+                readinessSnapshot.planningState.isReady
+                    ? "Finishes setup and opens the Voice Command window."
+                    : "Closes setup. You can run setup again from Settings."
+            )
         }
+    }
+
+    private var readinessSnapshot: OnboardingReadinessSnapshot {
+        settingsViewModel.onboardingReadinessSnapshot(permissionSnapshot: permissionSnapshot)
+    }
+
+    private var readinessList: some View {
+        VStack(alignment: .leading, spacing: SoloPMSpacing.xs) {
+            ForEach(readinessSnapshot.items) { item in
+                HStack(alignment: .top, spacing: SoloPMSpacing.sm) {
+                    Image(systemName: readinessSystemImage(for: item.state))
+                        .foregroundStyle(readinessColor(for: item.state))
+                        .frame(width: 18)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: SoloPMSpacing.xs) {
+                            Text(localizedSettingsDisplay(item.title))
+                                .font(.subheadline.weight(.medium))
+                            Text(localizedSettingsDisplay(item.requirement == .required ? "Required" : "Optional"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(readinessLabel(for: item.state))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("onboarding-readiness-\(item.id)")
+            }
+
+            Button("Refresh readiness") {
+                refreshReadiness()
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("onboarding-refresh-readiness")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .soloCard()
+        .accessibilityIdentifier("onboarding-readiness-list")
+    }
+
+    private func readinessSystemImage(for state: OnboardingReadinessState) -> String {
+        switch state {
+        case .ready:
+            "checkmark.circle.fill"
+        case .needsAction:
+            "exclamationmark.triangle.fill"
+        case .unavailable:
+            "xmark.octagon.fill"
+        case .unknown, .checking:
+            "circle.dashed"
+        }
+    }
+
+    private func readinessColor(for state: OnboardingReadinessState) -> Color {
+        switch state {
+        case .ready:
+            .green
+        case .needsAction:
+            .orange
+        case .unavailable:
+            .red
+        case .unknown, .checking:
+            .secondary
+        }
+    }
+
+    private func readinessLabel(for state: OnboardingReadinessState) -> String {
+        switch state {
+        case .ready:
+            localizedSettingsDisplay("Ready")
+        case .checking:
+            localizedSettingsDisplay("Checking…")
+        case .unknown:
+            localizedSettingsDisplay("Status unknown")
+        case let .needsAction(reason):
+            localizedDisplay("Action needed: %@", localizedSettingsDisplay(reason))
+        case let .unavailable(reason):
+            localizedDisplay("Unavailable: %@", localizedSettingsDisplay(reason))
+        }
+    }
+
+    private func refreshReadiness() {
+        permissionSnapshot = permissionSnapshotProvider()
+        settingsViewModel.refreshProviderSecretStatuses()
     }
 
     private func onboardingStep(
@@ -215,12 +339,17 @@ struct OnboardingWelcomeView: View {
             }
 
             if flow.isLastStep {
-                Button("Start Using SoloPM") {
+                Button(readinessSnapshot.planningState.isReady ? "Start Using SoloPM" : "Finish Setup Later") {
                     completeOnboarding()
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .accessibilityIdentifier("onboarding-finish")
+                .accessibilityHint(
+                    readinessSnapshot.planningState.isReady
+                        ? "Closes setup and opens the Project Board."
+                        : "Closes setup. You can run setup again from Settings."
+                )
             } else {
                 Button("Continue") {
                     flow.advance()

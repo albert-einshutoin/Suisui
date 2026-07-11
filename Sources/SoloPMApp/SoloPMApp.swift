@@ -158,7 +158,8 @@ private struct SoloPMWindowCommands: Commands {
 private struct ProjectBoardWindowRootView: View {
     @ObservedObject var settingsViewModel: AppSettingsViewModel
     @State private var viewModel: ProjectBoardViewModel?
-    @AppStorage(FirstRunOnboardingGate.completionDefaultsKey) private var hasCompletedOnboarding = false
+    @AppStorage(FirstRunOnboardingGate.dismissedDefaultsKey) private var hasDismissedOnboarding = false
+    @AppStorage(FirstRunOnboardingGate.completionDefaultsKey) private var legacyCompletionFlag = false
     @State private var isOnboardingPresented = false
 
     var body: some View {
@@ -170,15 +171,23 @@ private struct ProjectBoardWindowRootView: View {
             }
         }
         .onAppear {
+            migrateOnboardingStateIfNeeded()
             isOnboardingPresented = FirstRunOnboardingGate.shouldPresent(
-                hasCompletedOnboarding: hasCompletedOnboarding
+                hasDismissedOnboarding: hasDismissedOnboarding
             )
         }
         .sheet(isPresented: $isOnboardingPresented) {
-            OnboardingWelcomeView(settingsViewModel: settingsViewModel) {
-                hasCompletedOnboarding = true
+            OnboardingWelcomeView(
+                settingsViewModel: settingsViewModel,
+                permissionSnapshot: .empty,
+                permissionSnapshotProvider: AppRuntimeFactory.makeIntegrationPermissionSnapshot
+            ) {
+                hasDismissedOnboarding = true
                 isOnboardingPresented = false
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: FirstRunOnboardingGate.rerunNotificationName)) { _ in
+            isOnboardingPresented = true
         }
         .task {
             guard viewModel == nil else {
@@ -196,6 +205,14 @@ private struct ProjectBoardWindowRootView: View {
                 viewModel = AppRuntimeFactory.makeProjectBoardViewModel(runtime: runtime)
             }
         }
+    }
+
+    private func migrateOnboardingStateIfNeeded() {
+        guard legacyCompletionFlag, !hasDismissedOnboarding else {
+            return
+        }
+        FirstRunOnboardingGate.migrateLegacyCompletionIfNeeded(defaults: .standard)
+        hasDismissedOnboarding = true
     }
 
     @ViewBuilder

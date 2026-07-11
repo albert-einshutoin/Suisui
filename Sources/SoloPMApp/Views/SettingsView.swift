@@ -326,6 +326,17 @@ struct SettingsView: View {
                     dataLocationDetailLabel: dataLocationOverviewDetailLabel,
                     dataLocationTone: dataLocationOverviewTone
                 )
+
+                Button {
+                    NotificationCenter.default.post(
+                        name: FirstRunOnboardingGate.rerunNotificationName,
+                        object: nil
+                    )
+                } label: {
+                    Label("Run Setup Again", systemImage: "arrow.clockwise.circle")
+                }
+                .accessibilityIdentifier("settings-run-onboarding")
+                .accessibilityHint("Reopens onboarding to review current provider and permission readiness.")
             }
 
             Section("Pro Value") {
