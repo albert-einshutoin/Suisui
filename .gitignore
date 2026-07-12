@@ -1,6 +1,7 @@
 .DS_Store
 /.build/
 /.tmp/
+/.devloop/
 /.codex/hooks.json
 /.opencode/
 /DerivedData/
@@ -29,3 +30,8 @@ Package.resolved
 
 /.claude/
 /.build-xcode/
+
+# TAKT personal automation runtime state
+.env.local
+.env.*.local
+task_planning/
