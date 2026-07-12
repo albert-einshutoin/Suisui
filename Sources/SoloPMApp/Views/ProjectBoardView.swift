@@ -51,6 +51,7 @@ struct ProjectBoardView: View {
     private let taskAutomationSettings: () -> TaskAutoExecutionSettings
     private let appSettings: () -> AppSettings
     private let smartListStore: (any SmartListStore)?
+    private let commandPaletteContentSearch: CommandPaletteContentSearch?
     private let developmentAutomationReviewSession: (ActionPlan) -> ReviewSessionViewModel
     @AppStorage(ProjectBoardSelectionPersistence.storageKey) private var persistedSelectedDestinationRawValue = ProjectBoardSelectionPersistence.defaultRawValue
     @State private var displayMode: ProjectBoardDisplayMode = .board
@@ -68,18 +69,23 @@ struct ProjectBoardView: View {
     @State private var selectedSmartListID: String?
     @State private var savedSmartLists: [SmartList] = []
     @State private var isPresentingSmartListEditor = false
+    // Palette content hits reveal their task after the destination switch
+    // settles, because applySelectedDestination clears task selection.
+    @State private var pendingCommandPaletteRevealTaskID: Int64?
 
     init(
         viewModel: ProjectBoardViewModel,
         taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings = { .default },
         appSettings: @escaping () -> AppSettings = { .default },
         smartListStore: (any SmartListStore)? = AppRuntimeFactory.makeSmartListStoreIfAvailable(),
+        commandPaletteContentSearch: CommandPaletteContentSearch? = CommandPaletteContentSearchFactory.makeIfAvailable(),
         developmentAutomationReviewSession: @escaping (ActionPlan) -> ReviewSessionViewModel
     ) {
         _viewModel = StateObject(wrappedValue: viewModel)
         self.taskAutomationSettings = taskAutomationSettings
         self.appSettings = appSettings
         self.smartListStore = smartListStore
+        self.commandPaletteContentSearch = commandPaletteContentSearch
         self.developmentAutomationReviewSession = developmentAutomationReviewSession
     }
 
@@ -368,6 +374,7 @@ struct ProjectBoardView: View {
             // env-only override is reapplied so deterministic release evidence
             // can open Inbox with a seeded capture selected.
             applySelectedTaskOverrideIfNeeded()
+            applyPendingCommandPaletteRevealIfNeeded()
         }
         .onChange(of: viewModel.selectedTaskID) { _, selectedTaskID in
             if selectedTaskID != nil && selectedDestination != .today && selectedDestination != .inbox {
@@ -445,6 +452,7 @@ struct ProjectBoardView: View {
                     CommandPaletteView(
                         projects: commandPaletteProjects,
                         smartLists: commandPaletteSmartLists,
+                        contentSearch: commandPaletteContentSearch,
                         onExecute: executeCommandPaletteAction,
                         onDismiss: { isCommandPaletteVisible = false }
                     )
@@ -486,8 +494,41 @@ struct ProjectBoardView: View {
             openWindow(id: "voice-capture")
         case .openSettingsWindow:
             openSettings()
+        case .revealTask(let taskID, let projectID, _):
+            revealTaskFromCommandPalette(taskID: taskID, projectID: projectID)
+        case .openKnowledgeFrame:
+            // Knowledge frames have no browsing surface (and no owning
+            // project) yet, so a knowledge hit only closes the palette after
+            // showing its matched snippet.
+            break
         }
         isCommandPaletteVisible = false
+    }
+
+    /// Switches to the destination that owns the task (its project, or Inbox
+    /// for unfiled tasks) and defers the actual selection until
+    /// applySelectedDestination has run, because that handler clears
+    /// `selectedTaskID` on every destination change.
+    private func revealTaskFromCommandPalette(taskID: Int64, projectID: Int64?) {
+        let target: ProjectBoardSidebarDestination = projectID.map { .project($0) } ?? .inbox
+        pendingCommandPaletteRevealTaskID = taskID
+        if selectedDestination == target {
+            // onChange(of: selectedDestination) will not fire again.
+            applyPendingCommandPaletteRevealIfNeeded()
+        } else {
+            selectedDestination = target
+        }
+    }
+
+    private func applyPendingCommandPaletteRevealIfNeeded() {
+        guard let taskID = pendingCommandPaletteRevealTaskID else {
+            return
+        }
+        pendingCommandPaletteRevealTaskID = nil
+        if case .project(let projectID) = selectedDestination {
+            viewModel.selectedProjectID = projectID
+        }
+        viewModel.selectedTaskID = taskID
     }
 
     private var allSmartLists: [SmartList] {
@@ -1462,7 +1503,8 @@ struct SoloPMProjectBoardUndoCommands: Commands {
 }
 
 extension Notification.Name {
-    static let soloPMProjectBoardDidChange = Notification.Name("dev.solopm.projectBoardDidChange")
+    // .soloPMProjectBoardDidChange moved to SoloPMCore (FirstRunOnboarding.swift)
+    // so core store writers can post it without duplicating the raw name.
     static let soloPMVoiceDailyPlanningReviewRequested = Notification.Name("dev.solopm.voiceDailyPlanningReviewRequested")
     static let soloPMVoiceInboxTriageRequested = Notification.Name("dev.solopm.voiceInboxTriageRequested")
     static let soloPMAssistantQueueRequested = Notification.Name("dev.solopm.assistantQueueRequested")

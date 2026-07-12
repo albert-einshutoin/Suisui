@@ -29,7 +29,7 @@ The suffix must be a stable internal ID or enum raw value. Do not encode user-pr
 - `project-board`: top-level board, toolbar, sidebar, and shared project board actions, including the board-operation undo surfaces (`project-board-undo-command` Edit-menu item and the transient `project-board-undo-feedback` header status).
 - `project-board-smart-list`: sidebar smart list rows (`project-board-smart-list-row-<id>`), the `project-board-smart-list-new` creation affordance, and `project-board-smart-list-delete-<id>` context actions. The `<id>` suffix is the stable smart list ID (a preset ID or saved UUID), never the user-provided name.
 - `smart-list`: smart list editor sheet fields (`smart-list-name`, `smart-list-status-<status>`, `smart-list-priority-<priority>`, `smart-list-due-within-toggle`, `smart-list-due-within-stepper`, `smart-list-overdue-toggle`, `smart-list-search`, `smart-list-save`, `smart-list-cancel`) and the `smart-list-workflow` filtered task surface.
-- `command-palette`: command palette overlay, its query input, and `command-palette-row-<itemID>` result rows.
+- `command-palette`: command palette overlay, its query input, and `command-palette-row-<itemID>` result rows. The content-match section uses the `command-palette-content-section` header plus `command-palette-fts-task-<id>` / `command-palette-fts-knowledge-<id>` rows, where `<id>` is the stable SQLite record ID, never user text.
 - `project-header`: selected project header and project-scoped actions.
 - `project-inspector`: project editing and destructive confirmation controls.
 - `task-inspector`: task editing, automation review, execution, and destructive confirmation controls.
@@ -38,7 +38,7 @@ The suffix must be a stable internal ID or enum raw value. Do not encode user-pr
 - `today`: today planning, recommendation, and time-block controls.
 - `settings`: settings tabs, fields, save controls, and task automation settings.
 - `menu-bar`: menu bar quick capture, settings links, and the `menu-bar-open-today` summary tap target that opens the Project Board on Today.
-- `onboarding`: first-run welcome sheet steps, navigation, and completion controls.
+- `onboarding`: first-run welcome sheet steps, navigation, and completion controls, including the `onboarding-create-sample` sample-project button and its `onboarding-create-sample-error` failure message.
 
 ## Required for new interactive components
 

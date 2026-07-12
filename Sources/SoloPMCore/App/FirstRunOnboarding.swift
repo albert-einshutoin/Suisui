@@ -251,6 +251,197 @@ public enum FirstRunOnboardingGate {
     }
 }
 
+public extension Notification.Name {
+    /// Posted after any write that changes Project Board content so open board
+    /// windows reload. Defined in core (Foundation-only) so store-level
+    /// writers like the onboarding sample creator can signal the board; the
+    /// app layer reuses this constant instead of redeclaring it.
+    static let soloPMProjectBoardDidChange = Notification.Name("dev.solopm.projectBoardDidChange")
+}
+
+// MARK: - Onboarding sample project
+
+/// Pure data description of one "Learn SoloPM" practice task. The English
+/// strings double as localization keys: the app passes `localizedDisplay`
+/// into `OnboardingSampleProjectCreator` so titles and details are localized
+/// at creation time (mirroring how smart list preset names route static
+/// known strings through the app localization table).
+public struct OnboardingSampleTaskDefinition: Equatable, Sendable {
+    public enum DueDate: Equatable, Sendable {
+        case none
+        case todayAt(hour: Int, minute: Int)
+        case tomorrowAt(hour: Int, minute: Int)
+    }
+
+    public let title: String
+    public let detail: String
+    public let priority: ProjectTaskPriority?
+    public let recurrence: String?
+    public let due: DueDate
+
+    public init(
+        title: String,
+        detail: String,
+        priority: ProjectTaskPriority? = nil,
+        recurrence: String? = nil,
+        due: DueDate = .none
+    ) {
+        self.title = title
+        self.detail = detail
+        self.priority = priority
+        self.recurrence = recurrence
+        self.due = due
+    }
+}
+
+public enum OnboardingSampleProjectDefinition {
+    public static let projectTitle = "Learn SoloPM"
+    /// Stable marker persisted in `projects.source_command` so the sample can
+    /// be recognized even if the defaults flag is lost.
+    public static let projectMarkerSourceCommand = "onboarding-sample"
+    /// Defaults flag that makes sample creation a one-shot action.
+    public static let createdDefaultsKey = "solopm.onboarding.sampleProjectCreated"
+
+    /// Six tasks that each teach a real SoloPM feature. The weekly task also
+    /// carries a due date because completion-driven recurrence needs one to
+    /// schedule the next occurrence (see `TaskRecurrence`).
+    public static let tasks: [OnboardingSampleTaskDefinition] = [
+        OnboardingSampleTaskDefinition(
+            title: "Press ⌘K and search for anything",
+            detail: "The command palette matches views, projects, smart lists, and even task content. Try typing part of this sentence.",
+            priority: .high,
+            due: .todayAt(hour: 18, minute: 0)
+        ),
+        OnboardingSampleTaskDefinition(
+            title: "Drag this task to another column",
+            detail: "Kanban columns map to task status. Dropping a card updates the task immediately.",
+            priority: .medium
+        ),
+        OnboardingSampleTaskDefinition(
+            title: "Press ⌘Z to undo your last change",
+            detail: "Board operations such as complete, move, and edit go onto an undo stack. ⌘Z reverts the latest one.",
+            priority: .low
+        ),
+        OnboardingSampleTaskDefinition(
+            title: "Say a task out loud in the Voice window",
+            detail: "Open Voice Command from the toolbar or the ⌘K palette, then speak. SoloPM drafts a plan you approve before anything is written.",
+            priority: .medium
+        ),
+        OnboardingSampleTaskDefinition(
+            title: "Set a due date by typing 'tomorrow' in Quick Add",
+            detail: "Quick Add understands natural-language dates such as 'tomorrow' or 'next Friday' and files the task with the right due date.",
+            due: .tomorrowAt(hour: 9, minute: 0)
+        ),
+        OnboardingSampleTaskDefinition(
+            title: "This task repeats weekly — complete it to see the next one appear",
+            detail: "Completing a recurring task automatically schedules the next occurrence one week later.",
+            recurrence: "weekly",
+            due: .todayAt(hour: 10, minute: 0)
+        )
+    ]
+}
+
+public struct OnboardingSampleProjectCreationResult: Equatable, Sendable {
+    public let project: ProjectRecord
+    public let tasks: [TaskRecord]
+
+    public init(project: ProjectRecord, tasks: [TaskRecord]) {
+        self.project = project
+        self.tasks = tasks
+    }
+}
+
+/// Creates the "Learn SoloPM" sample project through the normal store create
+/// paths. Stores, defaults, clock, and localization are injected
+/// (VoiceRuntimeFactory-style) so tests can drive it against a temporary
+/// SQLite database; the app wires it in `OnboardingSampleProjectFactory`.
+public final class OnboardingSampleProjectCreator: @unchecked Sendable {
+    private let projectStore: SQLiteProjectStore
+    private let taskStore: SQLiteTaskStore
+    private let defaults: UserDefaults
+    private let dateProvider: any DateProvider
+    private let timeZoneIdentifier: String
+    private let localize: @Sendable (String) -> String
+    private let notificationCenter: NotificationCenter
+
+    public init(
+        projectStore: SQLiteProjectStore,
+        taskStore: SQLiteTaskStore,
+        defaults: UserDefaults = .standard,
+        dateProvider: any DateProvider = SystemDateProvider(),
+        timeZoneIdentifier: String = TimeZone.current.identifier,
+        localize: @escaping @Sendable (String) -> String = { $0 },
+        notificationCenter: NotificationCenter = .default
+    ) {
+        self.projectStore = projectStore
+        self.taskStore = taskStore
+        self.defaults = defaults
+        self.dateProvider = dateProvider
+        self.timeZoneIdentifier = timeZoneIdentifier
+        self.localize = localize
+        self.notificationCenter = notificationCenter
+    }
+
+    /// Idempotent: returns nil without writing anything when the sample was
+    /// already created (defaults flag) or a marked project already exists in
+    /// the database (covers defaults resets while the database persists).
+    @discardableResult
+    public func createSampleProjectIfNeeded() throws -> OnboardingSampleProjectCreationResult? {
+        guard !defaults.bool(forKey: OnboardingSampleProjectDefinition.createdDefaultsKey) else {
+            return nil
+        }
+        if let projects = try? projectStore.list(includeArchived: true),
+           projects.contains(where: { $0.sourceCommand == OnboardingSampleProjectDefinition.projectMarkerSourceCommand }) {
+            defaults.set(true, forKey: OnboardingSampleProjectDefinition.createdDefaultsKey)
+            return nil
+        }
+
+        let project = try projectStore.create(
+            title: localize(OnboardingSampleProjectDefinition.projectTitle),
+            sourceCommand: OnboardingSampleProjectDefinition.projectMarkerSourceCommand
+        )
+        var tasks: [TaskRecord] = []
+        for definition in OnboardingSampleProjectDefinition.tasks {
+            tasks.append(
+                try taskStore.create(
+                    title: localize(definition.title),
+                    projectID: project.id,
+                    dueAt: dueAtString(for: definition.due),
+                    priority: definition.priority?.rawValue,
+                    sourceCommand: OnboardingSampleProjectDefinition.projectMarkerSourceCommand,
+                    detail: localize(definition.detail),
+                    recurrence: definition.recurrence
+                )
+            )
+        }
+        defaults.set(true, forKey: OnboardingSampleProjectDefinition.createdDefaultsKey)
+        notificationCenter.post(name: .soloPMProjectBoardDidChange, object: nil)
+        return OnboardingSampleProjectCreationResult(project: project, tasks: tasks)
+    }
+
+    private func dueAtString(for due: OnboardingSampleTaskDefinition.DueDate) -> String? {
+        switch due {
+        case .none:
+            return nil
+        case let .todayAt(hour, minute):
+            return isoDueString(daysFromToday: 0, hour: hour, minute: minute)
+        case let .tomorrowAt(hour, minute):
+            return isoDueString(daysFromToday: 1, hour: hour, minute: minute)
+        }
+    }
+
+    private func isoDueString(daysFromToday: Int, hour: Int, minute: Int) -> String? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: timeZoneIdentifier) ?? .current
+        let startOfDay = calendar.startOfDay(for: dateProvider.now)
+        guard let day = calendar.date(byAdding: .day, value: daysFromToday, to: startOfDay),
+              let dueDate = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: day) else {
+            return nil
+        }
+        return ISO8601DateFormatter().string(from: dueDate)
+    }
+}
+
 /// App-level owner of the onboarding rerun request. Multiple Project Board
 /// windows can register themselves; only the primary window receives the
 /// rerun so the Settings button always opens exactly one setup flow even when

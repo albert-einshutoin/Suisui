@@ -10,7 +10,40 @@ public enum CommandPaletteActionKind: Equatable, Sendable {
     case openSmartList(id: String, name: String)
     case openVoiceCommandWindow
     case openSettingsWindow
+    /// Content-search hit on a task title/detail. Reveals the task on the
+    /// board: the owning project when one exists, otherwise the Inbox.
+    case revealTask(id: Int64, projectID: Int64?, title: String)
+    /// Content-search hit on a knowledge frame. Knowledge frames have no
+    /// dedicated browsing surface (and no owning project) yet, so executing
+    /// this action currently only dismisses the palette; the matched snippet
+    /// in the row is the visible payload.
+    case openKnowledgeFrame(id: Int64, name: String)
 }
+
+/// A full-text/content hit produced by a palette content-search provider.
+/// `content` carries the raw matched text (task detail or knowledge body);
+/// `CommandPaletteComposer.contentItems` turns it into a one-line snippet.
+public struct CommandPaletteContentMatch: Equatable, Sendable {
+    public enum Source: Equatable, Sendable {
+        case task(id: Int64, projectID: Int64?)
+        case knowledge(id: Int64)
+    }
+
+    public let source: Source
+    public let title: String
+    public let content: String
+
+    public init(source: Source, title: String, content: String) {
+        self.source = source
+        self.title = title
+        self.content = content
+    }
+}
+
+/// Injected palette content-search closure. The UI debounces keystrokes and
+/// calls this off the main actor; tests substitute their own closure while
+/// the app wires the SQLite-backed `CommandPaletteContentSearchService`.
+public typealias CommandPaletteContentSearch = @Sendable (String) -> [CommandPaletteContentMatch]
 
 public struct CommandPaletteItem: Identifiable, Equatable, Sendable {
     public let id: String
@@ -39,6 +72,12 @@ public struct CommandPaletteItem: Identifiable, Equatable, Sendable {
 public enum CommandPaletteComposer {
     public static let maxItemCount = 12
     public static let maxEmptyQueryProjectCount = 5
+    /// Content matches only appear for queries of at least this many characters.
+    public static let minimumContentSearchQueryLength = 2
+    /// The "Content matches" section shows at most this many hits in total.
+    public static let maxContentItemCount = 5
+    /// Snippets are clamped to roughly this many characters on a single line.
+    public static let contentSnippetCharacterLimit = 60
 
     /// Sidebar destinations offered by the palette, in default display order.
     public static let defaultDestinations: [ProjectBoardSidebarDestination] = [
@@ -94,6 +133,84 @@ public enum CommandPaletteComposer {
         var items = [createInboxTaskItem(title: trimmedQuery)]
         items.append(contentsOf: matches.map(\.item))
         return Array(items.prefix(maxItemCount))
+    }
+
+    /// Items for the "Content matches" section rendered after the fuzzy
+    /// results. Empty until the query reaches
+    /// `minimumContentSearchQueryLength`; capped at `maxContentItemCount`.
+    /// Provider order is preserved so the SQLite service controls ranking.
+    public static func contentItems(
+        query: String,
+        matches: [CommandPaletteContentMatch]
+    ) -> [CommandPaletteItem] {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedQuery.count >= minimumContentSearchQueryLength else {
+            return []
+        }
+
+        return matches.prefix(maxContentItemCount).map { match in
+            let snippet = contentSnippet(from: match.content, query: trimmedQuery)
+            switch match.source {
+            case let .task(id, projectID):
+                return CommandPaletteItem(
+                    id: "fts-task-\(id)",
+                    title: match.title,
+                    subtitle: snippet.isEmpty ? nil : snippet,
+                    systemImage: "text.magnifyingglass",
+                    kind: .revealTask(id: id, projectID: projectID, title: match.title)
+                )
+            case let .knowledge(id):
+                return CommandPaletteItem(
+                    id: "fts-knowledge-\(id)",
+                    title: match.title,
+                    subtitle: snippet.isEmpty ? nil : snippet,
+                    systemImage: "book",
+                    kind: .openKnowledgeFrame(id: id, name: match.title)
+                )
+            }
+        }
+    }
+
+    /// Full visible row order for the palette: fuzzy results first, then the
+    /// content-match section. Kept in the composer so ordering is unit-tested
+    /// without SwiftUI.
+    public static func visibleItems(
+        primary: [CommandPaletteItem],
+        content: [CommandPaletteItem]
+    ) -> [CommandPaletteItem] {
+        primary + content
+    }
+
+    /// One-line matched fragment: newlines flattened, clamped to about
+    /// `contentSnippetCharacterLimit` characters around the first
+    /// case-insensitive occurrence of `query` (falling back to the prefix).
+    public static func contentSnippet(from content: String, query: String) -> String {
+        let flattened = content
+            .replacingOccurrences(of: "\r\n", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard flattened.count > contentSnippetCharacterLimit else {
+            return flattened
+        }
+
+        let characters = Array(flattened)
+        var matchStart = 0
+        if let range = flattened.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) {
+            matchStart = flattened.distance(from: flattened.startIndex, to: range.lowerBound)
+        }
+        // Keep a little leading context so the matched fragment reads naturally.
+        let leadingContext = 15
+        let start = max(0, min(matchStart - leadingContext, characters.count - contentSnippetCharacterLimit))
+        let end = min(characters.count, start + contentSnippetCharacterLimit)
+        var snippet = String(characters[start..<end]).trimmingCharacters(in: .whitespaces)
+        if start > 0 {
+            snippet = "…" + snippet
+        }
+        if end < characters.count {
+            snippet += "…"
+        }
+        return snippet
     }
 
     /// Case-insensitive subsequence match. Returns nil when `query` is not a

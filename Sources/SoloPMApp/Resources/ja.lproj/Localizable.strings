@@ -1688,3 +1688,27 @@
 "Open Today" = "今日を開く";
 "Open the Project Board on Today" = "プロジェクトボードを「今日」で開きます";
 "Opens the Project Board with the Today view selected." = "「今日」ビューを選択した状態でプロジェクトボードを開きます。";
+
+/* Command palette content search (T-15) */
+"Content matches" = "内容の一致";
+"Opens this task on the Project Board." = "プロジェクトボードでこのタスクを開きます。";
+"Closes the palette. Knowledge frames do not have a dedicated view yet." = "パレットを閉じます。ナレッジフレーム専用の表示画面はまだありません。";
+
+/* Onboarding sample project (T-09) */
+"Create sample project" = "サンプルプロジェクトを作成";
+"Sample project added" = "サンプルプロジェクトを追加しました";
+"Adds a Learn SoloPM practice project with sample tasks to the Project Board." = "練習用の「SoloPMを学ぶ」プロジェクトとサンプルタスクをプロジェクトボードに追加します。";
+"Could not create the sample project." = "サンプルプロジェクトを作成できませんでした。";
+"Learn SoloPM" = "SoloPMを学ぶ";
+"Press ⌘K and search for anything" = "⌘Kを押して何でも検索";
+"The command palette matches views, projects, smart lists, and even task content. Try typing part of this sentence." = "コマンドパレットはビュー、プロジェクト、スマートリスト、さらにタスクの内容まで検索できます。この文章の一部を入力してみてください。";
+"Drag this task to another column" = "このタスクを別の列にドラッグ";
+"Kanban columns map to task status. Dropping a card updates the task immediately." = "カンバンの列はタスクのステータスに対応しています。カードをドロップするとタスクが即座に更新されます。";
+"Press ⌘Z to undo your last change" = "⌘Zで直前の変更を元に戻す";
+"Board operations such as complete, move, and edit go onto an undo stack. ⌘Z reverts the latest one." = "完了・移動・編集などのボード操作は取り消しスタックに積まれます。⌘Zで最新の操作を元に戻せます。";
+"Say a task out loud in the Voice window" = "音声ウィンドウでタスクを声に出して伝える";
+"Open Voice Command from the toolbar or the ⌘K palette, then speak. SoloPM drafts a plan you approve before anything is written." = "ツールバーまたは⌘Kパレットから音声コマンドを開いて話してください。SoloPMがプランを下書きし、承認するまで何も書き込みません。";
+"Set a due date by typing 'tomorrow' in Quick Add" = "クイック追加に「tomorrow」と入力して期限を設定";
+"Quick Add understands natural-language dates such as 'tomorrow' or 'next Friday' and files the task with the right due date." = "クイック追加は「tomorrow」や「next Friday」のような自然言語の日付を理解し、正しい期限付きでタスクを登録します。";
+"This task repeats weekly — complete it to see the next one appear" = "このタスクは毎週繰り返します — 完了すると次の回が現れます";
+"Completing a recurring task automatically schedules the next occurrence one week later." = "繰り返しタスクを完了すると、1週間後の次の回が自動的にスケジュールされます。";

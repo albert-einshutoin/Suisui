@@ -1688,3 +1688,27 @@
 "Open Today" = "Open Today";
 "Open the Project Board on Today" = "Open the Project Board on Today";
 "Opens the Project Board with the Today view selected." = "Opens the Project Board with the Today view selected.";
+
+/* Command palette content search (T-15) */
+"Content matches" = "Content matches";
+"Opens this task on the Project Board." = "Opens this task on the Project Board.";
+"Closes the palette. Knowledge frames do not have a dedicated view yet." = "Closes the palette. Knowledge frames do not have a dedicated view yet.";
+
+/* Onboarding sample project (T-09) */
+"Create sample project" = "Create sample project";
+"Sample project added" = "Sample project added";
+"Adds a Learn SoloPM practice project with sample tasks to the Project Board." = "Adds a Learn SoloPM practice project with sample tasks to the Project Board.";
+"Could not create the sample project." = "Could not create the sample project.";
+"Learn SoloPM" = "Learn SoloPM";
+"Press ⌘K and search for anything" = "Press ⌘K and search for anything";
+"The command palette matches views, projects, smart lists, and even task content. Try typing part of this sentence." = "The command palette matches views, projects, smart lists, and even task content. Try typing part of this sentence.";
+"Drag this task to another column" = "Drag this task to another column";
+"Kanban columns map to task status. Dropping a card updates the task immediately." = "Kanban columns map to task status. Dropping a card updates the task immediately.";
+"Press ⌘Z to undo your last change" = "Press ⌘Z to undo your last change";
+"Board operations such as complete, move, and edit go onto an undo stack. ⌘Z reverts the latest one." = "Board operations such as complete, move, and edit go onto an undo stack. ⌘Z reverts the latest one.";
+"Say a task out loud in the Voice window" = "Say a task out loud in the Voice window";
+"Open Voice Command from the toolbar or the ⌘K palette, then speak. SoloPM drafts a plan you approve before anything is written." = "Open Voice Command from the toolbar or the ⌘K palette, then speak. SoloPM drafts a plan you approve before anything is written.";
+"Set a due date by typing 'tomorrow' in Quick Add" = "Set a due date by typing 'tomorrow' in Quick Add";
+"Quick Add understands natural-language dates such as 'tomorrow' or 'next Friday' and files the task with the right due date." = "Quick Add understands natural-language dates such as 'tomorrow' or 'next Friday' and files the task with the right due date.";
+"This task repeats weekly — complete it to see the next one appear" = "This task repeats weekly — complete it to see the next one appear";
+"Completing a recurring task automatically schedules the next occurrence one week later." = "Completing a recurring task automatically schedules the next occurrence one week later.";
