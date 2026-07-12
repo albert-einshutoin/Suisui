@@ -548,6 +548,12 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var integrationStatusMessage: String?
     @Published public private(set) var inboxClassificationFeedback: InboxClassificationFeedback?
+    // Board-operation undo is deliberately separate from the Inbox
+    // classification undo below: classification keeps its guided single-step
+    // flow while this stack owns general task mutations (complete, status
+    // move, edit, delete) for ⌘Z and the Edit-menu command.
+    @Published public private(set) var boardOperationUndo: BoardOperationUndoStack
+    @Published public private(set) var boardUndoFeedback: String?
     @Published public private(set) var inboxTriageFilter: InboxTriageFilter
     @Published public private(set) var todayCommandFeedback: String?
     @Published public private(set) var todayFocusTaskID: Int64? {
@@ -594,6 +600,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     private let googleCalendarSyncFactory: (() -> (any GoogleCalendarRuntimeSyncing)?)?
     private let onChange: () -> Void
     private var lastInboxClassificationUndo: InboxClassificationUndo?
+    private var boardUndoFeedbackClearTask: Task<Void, Never>?
     // Inbox rows render often during filtering and selection changes, so capture
     // metadata is cached at board load time instead of hitting SQLite from SwiftUI body rendering.
     private var inboxCaptureRecordsByTaskID: [Int64: [InboxCaptureRecord]]
@@ -664,6 +671,8 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.showsArchivedProjects = false
         self.showsCompletedWorkflowTasks = false
         self.inboxTriageFilter = .all
+        self.boardOperationUndo = BoardOperationUndoStack()
+        self.boardUndoFeedback = nil
         self.todayCommandFeedback = nil
         self.inboxCaptureRecordsByTaskID = [:]
         self.todayFocusTaskID = nil
@@ -4722,10 +4731,16 @@ public final class ProjectBoardViewModel: ObservableObject {
             return
         }
 
+        let taskIDsBeforeMutation = visibleTaskIDsForUndoDiff()
         do {
             _ = try store.moveTask(id: taskID, to: .done)
             try missedTaskReviewStateStore.markReviewed(taskID: taskID, at: referenceDate)
             load()
+            recordStatusMoveUndo(
+                previousTasks: [task],
+                to: .done,
+                taskIDsBeforeMutation: taskIDsBeforeMutation
+            )
             selectedProjectID = task.projectID
             selectedTaskID = taskID
             todayCommandFeedback = String(format: String(localized: "Completed \"%@\" from missed review."), task.title)
@@ -7228,20 +7243,30 @@ public final class ProjectBoardViewModel: ObservableObject {
             return
         }
 
+        let draft = ProjectBoardTaskDraft(
+            projectID: selectedTask.projectID,
+            title: title,
+            detail: detail,
+            status: status,
+            priority: priority,
+            dueAt: dueAt,
+            recurrence: recurrence
+        )
+        let isCompletionTransition = status == .done && selectedTask.status != .done
+        let taskIDsBeforeMutation = visibleTaskIDsForUndoDiff()
+
         do {
-            _ = try store.updateTask(
-                id: selectedTask.id,
-                ProjectBoardTaskDraft(
-                    projectID: selectedTask.projectID,
-                    title: title,
-                    detail: detail,
-                    status: status,
-                    priority: priority,
-                    dueAt: dueAt,
-                    recurrence: recurrence
-                )
-            )
+            _ = try store.updateTask(id: selectedTask.id, draft)
             load()
+            if isCompletionTransition {
+                // Inspector saves that flip a task to done are completions and
+                // must undo like one: reopen and remove an untouched
+                // regenerated occurrence in the same undo step.
+                let regenerated = regeneratedTasksAfterMutation(notIn: taskIDsBeforeMutation)
+                boardOperationUndo.push(.undoCompletion(snapshot: selectedTask, regenerated: regenerated.first))
+            } else if draft != selectedTask.classificationDraft {
+                boardOperationUndo.push(.revertFields(snapshot: selectedTask))
+            }
             selectedTaskID = selectedTask.id
             onChange()
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
@@ -7495,6 +7520,144 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    public var canUndoBoardOperation: Bool {
+        !boardOperationUndo.isEmpty
+    }
+
+    /// Applies the most recent board-operation undo entry (⌘Z / Edit menu).
+    ///
+    /// Undo only calls existing store APIs and never re-runs completion side
+    /// effects, so reverting a recurrence completion cannot regenerate another
+    /// occurrence. The applied entry is removed only on success; a failed undo
+    /// keeps the stack intact so the user can retry after fixing the cause.
+    public func undoLastBoardOperation() {
+        guard let entry = boardOperationUndo.last else {
+            return
+        }
+
+        do {
+            let feedbackMessage: String
+            var restoredSelection: (projectID: Int64, taskID: Int64)?
+            switch entry {
+            case .restoreTask(let snapshot):
+                let restored = try store.restoreTask(from: snapshot)
+                restoredSelection = (restored.projectID, restored.id)
+                feedbackMessage = String(localized: "Undo: restored the deleted task.")
+            case .revertStatus(let snapshot):
+                let reverted = try store.applyTaskUndoSnapshot(snapshot)
+                restoredSelection = (reverted.projectID, reverted.id)
+                feedbackMessage = String(localized: "Undo: moved the task back.")
+            case .revertFields(let snapshot):
+                let reverted = try store.applyTaskUndoSnapshot(snapshot)
+                restoredSelection = (reverted.projectID, reverted.id)
+                feedbackMessage = String(localized: "Undo: restored the task details.")
+            case .undoCompletion(let snapshot, let regenerated):
+                let reverted = try undoCompletionOperation(snapshot: snapshot, regenerated: regenerated)
+                restoredSelection = (reverted.projectID, reverted.id)
+                feedbackMessage = String(localized: "Undo: reopened the completed task.")
+            case .revertStatusBatch(let snapshots, let regenerated):
+                for regeneratedTask in regenerated where isRegeneratedTaskUntouched(regeneratedTask) {
+                    try store.deleteTask(id: regeneratedTask.id)
+                }
+                for snapshot in snapshots {
+                    _ = try store.applyTaskUndoSnapshot(snapshot)
+                }
+                restoredSelection = snapshots.last.map { ($0.projectID, $0.id) }
+                feedbackMessage = String(format: String(localized: "Undo: moved %d tasks back."), snapshots.count)
+            }
+            boardOperationUndo.pop()
+            load()
+            if let restoredSelection {
+                selectedProjectID = restoredSelection.projectID
+                selectedTaskID = restoredSelection.taskID
+            }
+            showBoardUndoFeedback(feedbackMessage)
+            errorMessage = nil
+            onChange()
+        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+            errorMessage = "Restore the project before undoing this change."
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
+    private func undoCompletionOperation(
+        snapshot: ProjectBoardTask,
+        regenerated: ProjectBoardTask?
+    ) throws -> ProjectBoardTask {
+        guard let regenerated, isRegeneratedTaskUntouched(regenerated) else {
+            // Rule: when the regenerated next occurrence was already edited,
+            // moved, or completed by the user (or no longer exists), keep it
+            // and only restore the original task's previous open state.
+            return try store.applyTaskUndoSnapshot(snapshot)
+        }
+        try store.deleteTask(id: regenerated.id)
+        do {
+            return try store.applyTaskUndoSnapshot(snapshot)
+        } catch {
+            // Keep the undo all-or-nothing in effect: if the original cannot
+            // be restored, put the regenerated occurrence back instead of
+            // leaving the recurrence chain half-applied.
+            _ = try? store.restoreTask(from: regenerated)
+            throw error
+        }
+    }
+
+    private func isRegeneratedTaskUntouched(_ regenerated: ProjectBoardTask) -> Bool {
+        snapshot.projects.flatMap(\.tasks).first { $0.id == regenerated.id } == regenerated
+    }
+
+    private func visibleTaskIDsForUndoDiff() -> Set<Int64> {
+        Set(snapshot.projects.flatMap(\.tasks).map(\.id))
+    }
+
+    /// Tasks that appeared during the last mutation. Completion-driven
+    /// recurrence is the only insert a status move can perform, so an ID diff
+    /// against the pre-mutation snapshot identifies regenerated occurrences
+    /// without changing the store's transactional completion entry points.
+    private func regeneratedTasksAfterMutation(notIn taskIDsBeforeMutation: Set<Int64>) -> [ProjectBoardTask] {
+        snapshot.projects.flatMap(\.tasks).filter { !taskIDsBeforeMutation.contains($0.id) }
+    }
+
+    /// Shared undo recording for every status-move path (keyboard, card
+    /// controls, Today completion toggle, and single or multi drag & drop).
+    /// Must run after `load()` so the regenerated-occurrence diff sees the
+    /// post-mutation snapshot.
+    private func recordStatusMoveUndo(
+        previousTasks: [ProjectBoardTask],
+        to status: ProjectTaskStatus,
+        taskIDsBeforeMutation: Set<Int64>
+    ) {
+        let changedTasks = previousTasks.filter { $0.status != status }
+        guard !changedTasks.isEmpty else {
+            return
+        }
+        let regenerated = regeneratedTasksAfterMutation(notIn: taskIDsBeforeMutation)
+        if changedTasks.count == 1, let original = changedTasks.first {
+            if status == .done {
+                boardOperationUndo.push(.undoCompletion(snapshot: original, regenerated: regenerated.first))
+            } else {
+                boardOperationUndo.push(.revertStatus(snapshot: original))
+            }
+        } else {
+            boardOperationUndo.push(.revertStatusBatch(snapshots: changedTasks, regenerated: regenerated))
+        }
+    }
+
+    private static let boardUndoFeedbackDismissDelay: Duration = .seconds(3)
+
+    private func showBoardUndoFeedback(_ message: String) {
+        boardUndoFeedbackClearTask?.cancel()
+        boardUndoFeedback = message
+        boardUndoFeedbackClearTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.boardUndoFeedbackDismissDelay)
+            guard !Task.isCancelled else {
+                return
+            }
+            self?.boardUndoFeedback = nil
+        }
+    }
+
     public func moveSelectedTask(to status: ProjectTaskStatus) {
         guard let selectedTask else {
             return
@@ -7504,10 +7667,19 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     public func moveTask(id: Int64, to status: ProjectTaskStatus) {
+        let previousTask = snapshot.projects.flatMap(\.tasks).first { $0.id == id }
+        let taskIDsBeforeMutation = visibleTaskIDsForUndoDiff()
         do {
             let task = try store.moveTask(id: id, to: status)
             selectedProjectID = task.projectID
             load()
+            if let previousTask {
+                recordStatusMoveUndo(
+                    previousTasks: [previousTask],
+                    to: status,
+                    taskIDsBeforeMutation: taskIDsBeforeMutation
+                )
+            }
             selectedProjectID = task.projectID
             selectedTaskID = id
             onChange()
@@ -7526,10 +7698,17 @@ public final class ProjectBoardViewModel: ObservableObject {
 
         let previousProjectID = selectedProjectID
         let previousTaskID = selectedTaskID
+        let targetStatus: ProjectTaskStatus = task.status == .done ? .planned : .done
+        let taskIDsBeforeMutation = visibleTaskIDsForUndoDiff()
 
         do {
-            _ = try store.moveTask(id: id, to: task.status == .done ? .planned : .done)
+            _ = try store.moveTask(id: id, to: targetStatus)
             load()
+            recordStatusMoveUndo(
+                previousTasks: [task],
+                to: targetStatus,
+                taskIDsBeforeMutation: taskIDsBeforeMutation
+            )
             selectedProjectID = previousProjectID
             selectedTaskID = previousTaskID
             errorMessage = nil
@@ -7569,15 +7748,23 @@ public final class ProjectBoardViewModel: ObservableObject {
             return false
         }
 
-        let visibleTaskIDs = Set(snapshot.projects.flatMap(\.tasks).map(\.id))
+        let visibleTasks = snapshot.projects.flatMap(\.tasks)
+        let visibleTaskIDs = Set(visibleTasks.map(\.id))
         guard taskIDs.allSatisfy({ visibleTaskIDs.contains($0) }) else {
             errorMessage = "Could not move task: task is no longer available."
             return false
         }
+        let tasksByID = Dictionary(uniqueKeysWithValues: visibleTasks.map { ($0.id, $0) })
+        let previousTasks = taskIDs.compactMap { tasksByID[$0] }
 
         do {
             let movedTasks = try store.moveTasks(ids: taskIDs, to: status)
             load()
+            recordStatusMoveUndo(
+                previousTasks: previousTasks,
+                to: status,
+                taskIDsBeforeMutation: visibleTaskIDs
+            )
             if let lastMovedTask = movedTasks.last {
                 selectedProjectID = lastMovedTask.projectID
                 selectedTaskID = lastMovedTask.id
@@ -7651,8 +7838,12 @@ public final class ProjectBoardViewModel: ObservableObject {
             return
         }
 
+        let deletedTask = selectedTask
         do {
             try store.deleteTask(id: selectedTaskID)
+            if let deletedTask {
+                boardOperationUndo.push(.restoreTask(snapshot: deletedTask))
+            }
             self.selectedTaskID = nil
             load()
             onChange()

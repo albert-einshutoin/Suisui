@@ -1632,7 +1632,7 @@
 "Saves this smart list to local app storage" = "Saves this smart list to local app storage";
 "Saves this smart list to local app storage." = "Saves this smart list to local app storage.";
 "Closes the sheet without saving a smart list." = "Closes the sheet without saving a smart list.";
-"Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority" = "Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority";
+"Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority, ⌘Z undoes" = "Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority, ⌘Z undoes";
 
 "Back Up All Data…" = "Back Up All Data…";
 "Restore from Backup…" = "Restore from Backup…";
@@ -1658,3 +1658,16 @@
 "Based on %d workspace items" = "Based on %d workspace items";
 "Answers a question from local workspace data using the configured AI provider." = "Answers a question from local workspace data using the configured AI provider.";
 "Speaks the workspace answer with the local text-to-speech voice." = "Speaks the workspace answer with the local text-to-speech voice.";
+
+/* Board operation undo (T-02) and Today navigation (T-21) */
+"Undo Board Operation" = "Undo Board Operation";
+"Undo the last board task change" = "Undo the last board task change";
+"Reverts the most recent task completion, move, edit, or delete on the Project Board." = "Reverts the most recent task completion, move, edit, or delete on the Project Board.";
+"Undo: restored the deleted task." = "Undo: restored the deleted task.";
+"Undo: moved the task back." = "Undo: moved the task back.";
+"Undo: restored the task details." = "Undo: restored the task details.";
+"Undo: reopened the completed task." = "Undo: reopened the completed task.";
+"Undo: moved %d tasks back." = "Undo: moved %d tasks back.";
+"Open Today" = "Open Today";
+"Open the Project Board on Today" = "Open the Project Board on Today";
+"Opens the Project Board with the Today view selected." = "Opens the Project Board with the Today view selected.";

@@ -117,6 +117,38 @@ final class ProjectBoardSelectionPersistenceTests: XCTestCase {
         XCTAssertNil(ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID)
     }
 
+    func testForceSelectTodayPersistsDestinationAndPostsOpenTodayNotification() throws {
+        let suiteName = "board-today-navigation-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set("project:42", forKey: ProjectBoardSelectionPersistence.storageKey)
+        let notificationCenter = NotificationCenter()
+        var receivedNotificationCount = 0
+        let observer = notificationCenter.addObserver(
+            forName: ProjectBoardTodayNavigation.openTodayNotification,
+            object: nil,
+            queue: nil
+        ) { _ in
+            receivedNotificationCount += 1
+        }
+        defer { notificationCenter.removeObserver(observer) }
+
+        ProjectBoardTodayNavigation.forceSelectToday(
+            defaults: defaults,
+            notificationCenter: notificationCenter
+        )
+
+        // The persisted destination flips so a freshly created Project Board
+        // window restores straight into Today, while the notification switches
+        // an already-open board immediately.
+        XCTAssertEqual(defaults.string(forKey: ProjectBoardSelectionPersistence.storageKey), "today")
+        XCTAssertEqual(receivedNotificationCount, 1)
+        XCTAssertEqual(
+            ProjectBoardTodayNavigation.openTodayNotification.rawValue,
+            "dev.solopm.projectBoardOpenTodayRequested"
+        )
+    }
+
     private func makeProject(id: Int64) -> ProjectBoardProject {
         ProjectBoardProject(
             id: id,

@@ -306,6 +306,10 @@ struct ProjectBoardView: View {
             alignment: .topLeading
         )
         .navigationTitle("SoloPM")
+        // The Edit-menu board undo command targets the key Project Board
+        // window through this focused scene value; text-field undo keeps the
+        // standard responder-chain Undo item.
+        .focusedSceneValue(\.projectBoardUndo, ProjectBoardUndoCommandAction(viewModel: viewModel))
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button {
@@ -341,6 +345,9 @@ struct ProjectBoardView: View {
             viewModel.load()
             viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
             restoreSelectedDestinationIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ProjectBoardTodayNavigation.openTodayNotification)) { _ in
+            forceSelectTodayDestination()
         }
         .onReceive(NotificationCenter.default.publisher(for: .soloPMVoiceDailyPlanningReviewRequested)) { notification in
             handleVoiceDailyPlanningReviewRequest(notification)
@@ -553,6 +560,23 @@ struct ProjectBoardView: View {
 
     private var projectBoardHeaderBar: some View {
         HStack(spacing: 8) {
+            if let boardUndoFeedback = viewModel.boardUndoFeedback {
+                // Transient undo confirmation; the view model clears it after a
+                // few seconds. The message is already localized in Core, so it
+                // renders verbatim instead of re-entering localization lookup.
+                Label {
+                    Text(verbatim: boardUndoFeedback)
+                } icon: {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("project-board-undo-feedback")
+            }
+
             Spacer(minLength: 16)
 
             Menu {
@@ -712,6 +736,17 @@ struct ProjectBoardView: View {
         persistSelectedDestination(destination)
         applySelectedDestination(destination)
         applySelectedTaskOverrideIfNeeded()
+    }
+
+    private func forceSelectTodayDestination() {
+        // Digest notification taps and the menu bar summary route here via
+        // ProjectBoardTodayNavigation. Unlike restoreSelectedDestinationIfNeeded
+        // this deliberately clears an active smart list: the user asked for
+        // Today explicitly.
+        selectedSmartListID = nil
+        selectedDestination = .today
+        persistSelectedDestination(.today)
+        applySelectedDestination(.today)
     }
 
     private func persistSelectedDestination(_ destination: ProjectBoardSidebarDestination?) {
@@ -1367,6 +1402,64 @@ private struct ProjectBoardToolbarLayoutBridge: View {
     }
 }
 #endif
+
+/// Focused-scene handle for the board-operation undo stack. Equality tracks the
+/// owning view model and undo availability so SwiftUI refreshes the Edit-menu
+/// item exactly when the stack flips between empty and undoable.
+struct ProjectBoardUndoCommandAction: Equatable {
+    let canUndo: Bool
+    private let viewModelID: ObjectIdentifier
+    private let perform: @MainActor () -> Void
+
+    @MainActor
+    init(viewModel: ProjectBoardViewModel) {
+        canUndo = viewModel.canUndoBoardOperation
+        viewModelID = ObjectIdentifier(viewModel)
+        perform = { viewModel.undoLastBoardOperation() }
+    }
+
+    @MainActor
+    func callAsFunction() {
+        perform()
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.viewModelID == rhs.viewModelID && lhs.canUndo == rhs.canUndo
+    }
+}
+
+private struct ProjectBoardUndoFocusedValueKey: FocusedValueKey {
+    typealias Value = ProjectBoardUndoCommandAction
+}
+
+extension FocusedValues {
+    var projectBoardUndo: ProjectBoardUndoCommandAction? {
+        get { self[ProjectBoardUndoFocusedValueKey.self] }
+        set { self[ProjectBoardUndoFocusedValueKey.self] = newValue }
+    }
+}
+
+/// Edit-menu entry for the board-operation undo stack. The ⌘Z key itself is
+/// handled by the focused Kanban container (so text fields keep the standard
+/// text Undo); this command adds the discoverable menu affordance and stays
+/// enabled only while the key Project Board window has an undoable operation.
+struct SoloPMProjectBoardUndoCommands: Commands {
+    @FocusedValue(\.projectBoardUndo) private var projectBoardUndo
+
+    var body: some Commands {
+        CommandGroup(after: .undoRedo) {
+            Button {
+                projectBoardUndo?()
+            } label: {
+                Label("Undo Board Operation", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(projectBoardUndo?.canUndo != true)
+            .help("Undo the last board task change")
+            .accessibilityIdentifier("project-board-undo-command")
+            .accessibilityHint("Reverts the most recent task completion, move, edit, or delete on the Project Board.")
+        }
+    }
+}
 
 extension Notification.Name {
     static let soloPMProjectBoardDidChange = Notification.Name("dev.solopm.projectBoardDidChange")
@@ -2856,7 +2949,7 @@ private struct ProjectKanbanBoard: View {
                 isBoardFocused = true
             }
         }
-        .help("Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority")
+        .help("Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority, ⌘Z undoes")
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project-kanban-board")
         .accessibilityLabel("Kanban board for \(project.title)")
@@ -2873,6 +2966,13 @@ private struct ProjectKanbanBoard: View {
         // character; ignoring here keeps typed letters out of board shortcuts.
         guard composingStatus == nil else {
             return .ignored
+        }
+        // ⌘Z board undo shares the container-focus guard with the letter
+        // shortcuts: the board only receives keys while the window is key and
+        // no text editor owns focus. When a text field is focused the standard
+        // Edit > Undo item consumes ⌘Z before it ever reaches this handler.
+        if keyPress.modifiers == [.command], keyPress.characters == "z" {
+            return undoLastBoardOperation()
         }
         guard keyPress.modifiers.isEmpty else {
             return .ignored
@@ -2923,6 +3023,14 @@ private struct ProjectKanbanBoard: View {
             return .ignored
         }
         onOpenTaskInspector()
+        return .handled
+    }
+
+    private func undoLastBoardOperation() -> KeyPress.Result {
+        guard viewModel.canUndoBoardOperation else {
+            return .ignored
+        }
+        viewModel.undoLastBoardOperation()
         return .handled
     }
 

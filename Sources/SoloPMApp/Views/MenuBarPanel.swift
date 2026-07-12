@@ -95,20 +95,43 @@ struct MenuBarPanel: View {
     }
 
     private var summarySection: some View {
-        VStack(alignment: .leading, spacing: SoloPMSpacing.sm) {
-            ForEach(viewModel.rows) { row in
-                SummaryRow(row: row)
-            }
+        // The whole summary card is one tap target: "N tasks today" and
+        // "N overdue" both resolve on the board's Today view, so tapping any
+        // row opens the Project Board pre-selected on Today.
+        Button(action: openBoardOnToday) {
+            VStack(alignment: .leading, spacing: SoloPMSpacing.sm) {
+                ForEach(viewModel.rows) { row in
+                    SummaryRow(row: row)
+                }
 
-            if let emptyStateLabel = controller.emptyStateLabel {
-                Text(emptyStateLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let emptyStateLabel = controller.emptyStateLabel {
+                    Text(emptyStateLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Label("Open Today", systemImage: "chevron.right.circle")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .buttonStyle(.plain)
         .soloCard()
+        .help("Open the Project Board on Today")
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("menu-bar-open-today")
+        .accessibilityLabel("Open Today")
+        .accessibilityHint("Opens the Project Board with the Today view selected.")
+    }
+
+    private func openBoardOnToday() {
+        // Shared routing with the digest notification path: persist the Today
+        // destination for a fresh window and notify an already-open board.
+        ProjectBoardTodayNavigation.forceSelectToday()
+        openWindow(id: "project-board")
     }
 
     private var windowShortcutsRow: some View {

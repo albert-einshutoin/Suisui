@@ -745,7 +745,9 @@ public final class SQLiteTaskStore: @unchecked Sendable {
 
     /// Backup restore inserts completed tasks with their original completion
     /// timestamp instead of stamping "now", so Done analytics survive a
-    /// restore. Only `WorkspaceBackupImporter` should use this entry point.
+    /// restore. Only `WorkspaceBackupImporter` and the Project Board undo
+    /// restore path (`SQLiteProjectBoardStore.restoreTask(from:)`) should use
+    /// this entry point.
     public func createForBackupRestore(_ draft: TaskCreateDraft, completedAt: String?) throws -> TaskRecord {
         lock.lock()
         defer { lock.unlock() }

@@ -242,6 +242,65 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     }
 
     @discardableResult
+    public func restoreTask(from snapshot: ProjectBoardTask) throws -> ProjectBoardTask {
+        let normalized = try normalizedDraft(ProjectBoardTaskDraft(
+            projectID: snapshot.projectID,
+            title: snapshot.title,
+            detail: snapshot.detail,
+            status: snapshot.status,
+            priority: snapshot.priority,
+            dueAt: snapshot.dueAt,
+            recurrence: snapshot.recurrence
+        ))
+        try prepareProjectForTaskMutation(projectID: normalized.projectID, taskStatus: normalized.status)
+        // Undo restores completion history too. Stamping "now" for a restored
+        // done task would corrupt Done analytics, so reuse the backup-restore
+        // insert that keeps the original completed_at value.
+        let record = try taskStore.createForBackupRestore(
+            TaskCreateDraft(
+                title: normalized.title,
+                projectID: normalized.projectID,
+                dueAt: normalized.dueAt,
+                priority: normalized.priority.rawValue,
+                sourceCommand: "app.project-board",
+                status: normalized.status.rawValue,
+                detail: normalized.detail,
+                recurrence: normalized.recurrence
+            ),
+            completedAt: snapshot.completedAt
+        )
+        return try makeBoardTask(record).requiredTask()
+    }
+
+    @discardableResult
+    public func applyTaskUndoSnapshot(_ snapshot: ProjectBoardTask) throws -> ProjectBoardTask {
+        let normalized = try normalizedDraft(ProjectBoardTaskDraft(
+            projectID: snapshot.projectID,
+            title: snapshot.title,
+            detail: snapshot.detail,
+            status: snapshot.status,
+            priority: snapshot.priority,
+            dueAt: snapshot.dueAt,
+            recurrence: snapshot.recurrence
+        ))
+        try prepareProjectForTaskMutation(projectID: normalized.projectID, taskStatus: normalized.status)
+        // Undo puts a previous state back verbatim. Routing a done transition
+        // through completeAndRegenerate here would spawn a duplicate next
+        // occurrence for recurring tasks whose completion was just undone.
+        let record = try taskStore.updateFields(
+            id: snapshot.id,
+            title: normalized.title,
+            status: normalized.status.rawValue,
+            detail: normalized.detail.isEmpty ? .clear : .set(normalized.detail),
+            dueAt: normalized.dueAt.map { .set($0) } ?? .clear,
+            priority: .set(normalized.priority.rawValue),
+            projectID: .set(normalized.projectID),
+            recurrence: normalized.recurrence.map { .set($0) } ?? .clear
+        )
+        return try makeBoardTask(record).requiredTask()
+    }
+
+    @discardableResult
     public func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact {
         let project = try projectStore.getForProjectBoard(id: projectID)
         if project.status == "archived" {

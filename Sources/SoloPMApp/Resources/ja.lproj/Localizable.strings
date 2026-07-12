@@ -1632,7 +1632,7 @@
 "Saves this smart list to local app storage" = "このスマートリストをローカルのアプリ保存領域に保存します";
 "Saves this smart list to local app storage." = "このスマートリストをローカルのアプリ保存領域に保存します。";
 "Closes the sheet without saving a smart list." = "スマートリストを保存せずにシートを閉じます。";
-"Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority" = "キーボード: J/Kまたは矢印キーでタスク選択、Eで詳細、Dで完了、1/2/3で優先度設定";
+"Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority, ⌘Z undoes" = "キーボード: J/Kまたは矢印キーでタスク選択、Eで詳細、Dで完了、1/2/3で優先度設定、⌘Zで元に戻す";
 
 "Back Up All Data…" = "すべてのデータをバックアップ…";
 "Restore from Backup…" = "バックアップから復元…";
@@ -1658,3 +1658,16 @@
 "Based on %d workspace items" = "ワークスペースの%d件に基づく回答";
 "Answers a question from local workspace data using the configured AI provider." = "設定済みのAIプロバイダを使い、ローカルのワークスペースデータから質問に回答します。";
 "Speaks the workspace answer with the local text-to-speech voice." = "ローカルの音声合成でワークスペースの回答を読み上げます。";
+
+/* Board operation undo (T-02) and Today navigation (T-21) */
+"Undo Board Operation" = "ボード操作を元に戻す";
+"Undo the last board task change" = "直前のボードのタスク変更を元に戻します";
+"Reverts the most recent task completion, move, edit, or delete on the Project Board." = "プロジェクトボードで直前に行ったタスクの完了・移動・編集・削除を元に戻します。";
+"Undo: restored the deleted task." = "元に戻す: 削除したタスクを復元しました。";
+"Undo: moved the task back." = "元に戻す: タスクを元のステータスに戻しました。";
+"Undo: restored the task details." = "元に戻す: タスクの内容を復元しました。";
+"Undo: reopened the completed task." = "元に戻す: 完了したタスクを再オープンしました。";
+"Undo: moved %d tasks back." = "元に戻す: %d件のタスクを元のステータスに戻しました。";
+"Open Today" = "今日を開く";
+"Open the Project Board on Today" = "プロジェクトボードを「今日」で開きます";
+"Opens the Project Board with the Today view selected." = "「今日」ビューを選択した状態でプロジェクトボードを開きます。";
