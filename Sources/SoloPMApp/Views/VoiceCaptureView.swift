@@ -125,6 +125,7 @@ struct VoiceCaptureView: View {
     private var captureZone: some View {
         VStack(alignment: .leading, spacing: SoloPMSpacing.md) {
             StatusRow(phase: viewModel.phase)
+            failureRecoveryRow
             if let message = viewModel.auditErrorMessage {
                 Label(message, systemImage: "exclamationmark.triangle")
                     .font(.caption)
@@ -240,6 +241,37 @@ struct VoiceCaptureView: View {
         .accessibilityIdentifier("voice-command-capture-zone")
     }
 
+    /// Next-step affordance next to a failed status: Open Settings when the
+    /// provider is unconfigured or unapproved, Try Again for transient
+    /// network-style provider failures. Derived from the typed error in the
+    /// view model, never from the failure message text.
+    @ViewBuilder
+    private var failureRecoveryRow: some View {
+        if case .failed = viewModel.phase {
+            switch viewModel.failureRecovery {
+            case .openSettings:
+                SettingsLink {
+                    Label("Open Settings", systemImage: "gearshape")
+                }
+                .help("Opens Settings to choose an AI provider and store its API key in Keychain.")
+                .accessibilityIdentifier("voice-error-open-settings")
+            case .retryPlanGeneration:
+                Button {
+                    Task {
+                        await viewModel.generatePlan()
+                    }
+                } label: {
+                    Label("Try Again", systemImage: "arrow.clockwise")
+                }
+                .help("Runs plan generation again with the current transcript.")
+                .accessibilityIdentifier("voice-error-retry")
+                .accessibilityHint("Generates the plan again using the same transcript.")
+            case nil:
+                EmptyView()
+            }
+        }
+    }
+
     /// Zone 2: transient interpretation state. Panels self-title, so the zone
     /// stays header-free and simply stacks whichever surface is active.
     @ViewBuilder
@@ -306,11 +338,23 @@ struct VoiceCaptureView: View {
                 viewModel.replayWorkspaceAnswer()
             }
         case .failed(let message):
-            Label(localizedSettingsDisplay(message), systemImage: "exclamationmark.triangle")
-                .font(.caption)
-                .foregroundStyle(SoloPMTone.attention.color)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("voice-answer-failed")
+            VStack(alignment: .leading, spacing: SoloPMSpacing.xs) {
+                Label(localizedSettingsDisplay(message), systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(SoloPMTone.attention.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("voice-answer-failed")
+                Button {
+                    Task {
+                        await viewModel.askWorkspaceQuestion()
+                    }
+                } label: {
+                    Label("Try Again", systemImage: "arrow.clockwise")
+                }
+                .help("Asks the workspace question again with the current text.")
+                .accessibilityIdentifier("voice-answer-retry")
+                .accessibilityHint("Retries the workspace question with the same text.")
+            }
         }
     }
 

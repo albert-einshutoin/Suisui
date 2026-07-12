@@ -1712,3 +1712,20 @@
 "Quick Add understands natural-language dates such as 'tomorrow' or 'next Friday' and files the task with the right due date." = "クイック追加は「tomorrow」や「next Friday」のような自然言語の日付を理解し、正しい期限付きでタスクを登録します。";
 "This task repeats weekly — complete it to see the next one appear" = "このタスクは毎週繰り返します — 完了すると次の回が現れます";
 "Completing a recurring task automatically schedules the next occurrence one week later." = "繰り返しタスクを完了すると、1週間後の次の回が自動的にスケジュールされます。";
+
+/* Diagnostics export (T-18) */
+"Export Diagnostics…" = "診断情報を書き出す…";
+"Save a metadata-only diagnostics report as a local text file" = "メタデータのみの診断レポートをローカルのテキストファイルとして保存します";
+"Writes a diagnostics text file with configuration metadata and counts only. No keys or content leave this Mac." = "設定メタデータと件数のみの診断テキストファイルを書き出します。キーや内容がこのMacの外に出ることはありません。";
+"The diagnostics file includes app and macOS versions, the selected AI provider kind, notification settings, task and project counts, and watcher check times. It never includes API keys, task, knowledge, or plan content, voice transcripts, or audit log entries." = "診断ファイルには、アプリとmacOSのバージョン、選択中のAIプロバイダーの種類、通知設定、タスクとプロジェクトの件数、ウォッチャーのチェック時刻が含まれます。APIキー、タスク・ナレッジ・プランの内容、音声の書き起こし、監査ログは一切含まれません。";
+"Export" = "書き出す";
+"Choose where to save the SoloPM diagnostics report" = "SoloPM診断レポートの保存先を選択してください";
+
+/* Voice error next steps (T-10) */
+"Try Again" = "再試行";
+"Runs plan generation again with the current transcript." = "現在の書き起こしでプラン生成をもう一度実行します。";
+"Generates the plan again using the same transcript." = "同じ書き起こしでプランを再生成します。";
+"Asks the workspace question again with the current text." = "現在のテキストでワークスペースへの質問をもう一度実行します。";
+"Retries the workspace question with the same text." = "同じテキストでワークスペースへの質問を再試行します。";
+"Could not write backup file %@: %@" = "バックアップファイル %@ を書き込めませんでした: %@";
+"Could not read backup file %@: %@" = "バックアップファイル %@ を読み込めませんでした: %@";

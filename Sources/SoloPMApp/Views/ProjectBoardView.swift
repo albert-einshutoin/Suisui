@@ -336,7 +336,9 @@ struct ProjectBoardView: View {
             )
         )
         .task {
-            viewModel.load()
+            LaunchPerformanceSignposts.measureFirstBoardLoadOnce {
+                viewModel.load()
+            }
             viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
             reloadSavedSmartLists()
             restoreSelectedDestinationIfNeeded()

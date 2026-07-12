@@ -11,6 +11,18 @@ public enum VoiceCapturePhase: Equatable, Sendable {
     case failed(String)
 }
 
+/// Next-step affordance for a `.failed` plan-generation phase, derived from
+/// the typed provider error so localized message text can never flip which
+/// recovery action the UI offers.
+public enum VoiceCaptureFailureRecovery: Equatable, Sendable {
+    /// The configured provider rejected or is missing its API key, or local
+    /// execution approval is required: Settings is the fix.
+    case openSettings
+    /// A transient provider problem (network, rate limit): rerunning plan
+    /// generation with the same transcript is a reasonable next step.
+    case retryPlanGeneration
+}
+
 public enum WorkspaceAnswerState: Equatable, Sendable {
     case idle
     case retrieving
@@ -101,6 +113,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
     public let inputLevelMeter = MicrophoneInputLevelMeter()
     @Published public private(set) var workspaceAnswer: WorkspaceAnswerState = .idle
     @Published public private(set) var autoCreatedTask: AutoCreatedTaskRecord?
+    /// Non-nil only while `phase` is `.failed` from plan generation and the
+    /// typed error has a known next step (Open Settings / Try Again).
+    @Published public private(set) var failureRecovery: VoiceCaptureFailureRecovery?
 
     private var audioRecorder: any AudioRecorder
     private let sttProvider: any SpeechToTextProvider
@@ -273,6 +288,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         inboxCaptureResult = nil
         developmentPullRequestAutomationRequest = nil
         autoCreatedTask = nil
+        failureRecovery = nil
         refreshRoutingResult()
         if shouldResetPhaseAfterDraftChange, runtimeValidationMessage == nil {
             phase = .idle
@@ -297,6 +313,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         savedInboxAudioURL = nil
         developmentPullRequestAutomationRequest = nil
         autoCreatedTask = nil
+        failureRecovery = nil
         workspaceAnswer = .idle
         recordingState = audioRecorder.state
         phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
@@ -430,6 +447,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         availableTools: [ActionTool] = ActionTool.defaultPlanningTools,
         knowledgeFrameCandidates: [KnowledgeFrameCandidate] = []
     ) async {
+        failureRecovery = nil
         guard draft.canGeneratePlan else {
             phase = .failed("Transcript is empty.")
             return
@@ -1444,6 +1462,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         planGenerationLiveText = ""
         workspaceAnswer = .idle
         auditErrorMessage = nil
+        failureRecovery = nil
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
@@ -1504,7 +1523,25 @@ public final class VoiceCaptureViewModel: ObservableObject {
             recordPlanningAudit {
                 try auditRecorder?.recordFailed(input: request.userInput, providerID: llmProvider.providerID, error: error)
             }
+            failureRecovery = Self.failureRecovery(for: error)
             phase = .failed(userMessage(for: error))
+        }
+    }
+
+    /// Maps a plan-generation error onto the next-step affordance shown next
+    /// to the failure message. Classification is on the typed error, never on
+    /// user-facing message text.
+    private static func failureRecovery(for error: Error) -> VoiceCaptureFailureRecovery? {
+        guard let llmError = error as? LLMProviderError else {
+            return nil
+        }
+        switch llmError {
+        case .authenticationFailed, .executionNotApproved:
+            return .openSettings
+        case .network, .rateLimited:
+            return .retryPlanGeneration
+        case .invalidResponse, .unknown:
+            return nil
         }
     }
 
@@ -1651,6 +1688,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
         developmentPullRequestAutomationRequest = nil
+        failureRecovery = nil
         refreshRoutingResult()
         if let routingResult, routingResult.needsClarification {
             beginClarification(for: routingResult)

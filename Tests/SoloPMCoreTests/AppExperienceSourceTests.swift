@@ -3609,6 +3609,44 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-execution-receipt-cost\")"))
     }
 
+    func testVoiceFailureSurfaceOffersTypedNextStepAffordances() throws {
+        let voiceViewSource = try readPackageFile("Sources/SoloPMApp/Views/VoiceCaptureView.swift")
+        let voiceModelSource = try readPackageFile("Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift")
+
+        // T-10: provider-readiness failures must surface an Open Settings
+        // affordance; transient network/rate-limit failures must surface a
+        // retry that reruns plan generation with the current transcript.
+        XCTAssertTrue(voiceViewSource.contains(".accessibilityIdentifier(\"voice-error-open-settings\")"))
+        XCTAssertTrue(voiceViewSource.contains(".accessibilityIdentifier(\"voice-error-retry\")"))
+        XCTAssertTrue(voiceViewSource.contains(".accessibilityIdentifier(\"voice-answer-retry\")"))
+        XCTAssertTrue(voiceViewSource.contains("case .openSettings:"))
+        XCTAssertTrue(voiceViewSource.contains("case .retryPlanGeneration:"))
+        XCTAssertTrue(voiceViewSource.contains("SettingsLink"))
+        XCTAssertTrue(voiceViewSource.contains("await viewModel.generatePlan()"))
+
+        // Classification is on the typed provider error, never on message text.
+        XCTAssertTrue(voiceModelSource.contains("public enum VoiceCaptureFailureRecovery"))
+        XCTAssertTrue(voiceModelSource.contains("case .authenticationFailed, .executionNotApproved:"))
+        XCTAssertTrue(voiceModelSource.contains("return .openSettings"))
+        XCTAssertTrue(voiceModelSource.contains("case .network, .rateLimited:"))
+        XCTAssertTrue(voiceModelSource.contains("return .retryPlanGeneration"))
+    }
+
+    func testSettingsPrivacyDiagnosticsExportIsMetadataOnlyWithInlineError() throws {
+        let appSource = try readAppShellSource()
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/DiagnosticsReport.swift")
+
+        // T-18: the export button lives in Settings > Privacy, writes through
+        // NSSavePanel, states inclusions/exclusions, and reports errors inline.
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-export-diagnostics\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-export-diagnostics-caption\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-export-diagnostics-error\")"))
+        XCTAssertTrue(appSource.contains("solopm-diagnostics-"))
+        XCTAssertTrue(appSource.contains("AppRuntimeFactory.makeDiagnosticsReportText()"))
+        XCTAssertTrue(coreSource.contains("static let privacyHeader"))
+        XCTAssertTrue(coreSource.contains("Audit log entries (the audit log stores plan content, so it is excluded entirely)"))
+    }
+
     func testSettingsSurfaceStartsWithStatusOverviewForCoreOperationalAreas() throws {
         let appSource = try readAppShellSource()
 

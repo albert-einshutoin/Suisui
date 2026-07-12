@@ -1712,3 +1712,20 @@
 "Quick Add understands natural-language dates such as 'tomorrow' or 'next Friday' and files the task with the right due date." = "Quick Add understands natural-language dates such as 'tomorrow' or 'next Friday' and files the task with the right due date.";
 "This task repeats weekly — complete it to see the next one appear" = "This task repeats weekly — complete it to see the next one appear";
 "Completing a recurring task automatically schedules the next occurrence one week later." = "Completing a recurring task automatically schedules the next occurrence one week later.";
+
+/* Diagnostics export (T-18) */
+"Export Diagnostics…" = "Export Diagnostics…";
+"Save a metadata-only diagnostics report as a local text file" = "Save a metadata-only diagnostics report as a local text file";
+"Writes a diagnostics text file with configuration metadata and counts only. No keys or content leave this Mac." = "Writes a diagnostics text file with configuration metadata and counts only. No keys or content leave this Mac.";
+"The diagnostics file includes app and macOS versions, the selected AI provider kind, notification settings, task and project counts, and watcher check times. It never includes API keys, task, knowledge, or plan content, voice transcripts, or audit log entries." = "The diagnostics file includes app and macOS versions, the selected AI provider kind, notification settings, task and project counts, and watcher check times. It never includes API keys, task, knowledge, or plan content, voice transcripts, or audit log entries.";
+"Export" = "Export";
+"Choose where to save the SoloPM diagnostics report" = "Choose where to save the SoloPM diagnostics report";
+
+/* Voice error next steps (T-10) */
+"Try Again" = "Try Again";
+"Runs plan generation again with the current transcript." = "Runs plan generation again with the current transcript.";
+"Generates the plan again using the same transcript." = "Generates the plan again using the same transcript.";
+"Asks the workspace question again with the current text." = "Asks the workspace question again with the current text.";
+"Retries the workspace question with the same text." = "Retries the workspace question with the same text.";
+"Could not write backup file %@: %@" = "Could not write backup file %@: %@";
+"Could not read backup file %@: %@" = "Could not read backup file %@: %@";
