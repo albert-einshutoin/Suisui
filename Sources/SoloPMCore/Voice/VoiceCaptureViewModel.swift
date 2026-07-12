@@ -88,8 +88,17 @@ public final class VoiceCaptureViewModel: ObservableObject {
     @Published public private(set) var inboxCaptureResult: InboxVoiceCaptureResult?
     @Published public private(set) var developmentPullRequestAutomationRequest: SyncAutomationRequestPayload?
     @Published public private(set) var lowLatencyVoiceAgentState: LowLatencyVoiceAgentState
-    @Published public private(set) var liveTranscript: String
+    /// Segments of the live transcript that streaming STT already finalized.
+    @Published public private(set) var finalizedTranscript: String = ""
+    /// Trailing partial segment that may still change before finalization.
+    @Published public private(set) var pendingTranscript: String = ""
     @Published public private(set) var liveIntentPreview: VoiceCommandRoutingResult?
+    /// True after the microphone level has stayed below the silence threshold
+    /// for a continuous stretch while recording (see MicrophoneSilenceDetector).
+    @Published public private(set) var isMicrophoneSilenceHintVisible = false
+    /// Observable slice for the ~10Hz microphone level so only the meter view
+    /// re-renders per sample; see `MicrophoneInputLevelMeter`.
+    public let inputLevelMeter = MicrophoneInputLevelMeter()
     @Published public private(set) var workspaceAnswer: WorkspaceAnswerState = .idle
     @Published public private(set) var autoCreatedTask: AutoCreatedTaskRecord?
 
@@ -119,6 +128,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private var savedInboxAudioURL: URL?
     private var lowLatencyStreamTask: Task<Void, Never>?
     private var lowLatencyStreamID: UUID
+    private var microphoneSilenceDetector: MicrophoneSilenceDetector
+    private var inputLevelMonitorTask: Task<Void, Never>?
+    /// ~10Hz keeps the meter lively without spamming the main actor.
+    private let inputLevelSampleInterval: TimeInterval = 0.1
 
     public init(
         draft: TranscriptDraft = TranscriptDraft(),
@@ -140,6 +153,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         taskAutomationSettingsProvider: (@Sendable () -> TaskAutoExecutionSettings)? = nil,
         lowRiskTaskAutoExecutor: (@Sendable (ActionPlan) async throws -> LowRiskAutoCreationOutcome)? = nil,
         taskDeleter: (@Sendable (Int64) throws -> Void)? = nil,
+        microphoneSilenceDetector: MicrophoneSilenceDetector = MicrophoneSilenceDetector(),
         lowLatencySegmentDuration: TimeInterval = 1.2,
         lowLatencySegmentOutputURLProvider: @escaping @Sendable () -> URL = {
             FileManager.default.temporaryDirectory
@@ -165,6 +179,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.taskAutomationSettingsProvider = taskAutomationSettingsProvider
         self.lowRiskTaskAutoExecutor = lowRiskTaskAutoExecutor
         self.taskDeleter = taskDeleter
+        self.microphoneSilenceDetector = microphoneSilenceDetector
         self.lowLatencySegmentDuration = lowLatencySegmentDuration
         self.lowLatencySegmentOutputURLProvider = lowLatencySegmentOutputURLProvider
         self.recordingState = audioRecorder.state
@@ -177,7 +192,6 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.inboxCaptureResult = nil
         self.developmentPullRequestAutomationRequest = nil
         self.lowLatencyVoiceAgentState = .idle
-        self.liveTranscript = ""
         self.liveIntentPreview = nil
         self.inboxTriageCommandParser = InboxVoiceTriageCommandParser()
         self.lastTranscribedAudioURL = nil
@@ -220,6 +234,24 @@ public final class VoiceCaptureViewModel: ObservableObject {
         return false
     }
 
+    /// Finalized and pending segments combined, for callers that only need the
+    /// full live transcript text.
+    public var liveTranscript: String {
+        guard !finalizedTranscript.isEmpty else {
+            return pendingTranscript
+        }
+        guard !pendingTranscript.isEmpty else {
+            return finalizedTranscript
+        }
+        return finalizedTranscript + " " + pendingTranscript
+    }
+
+    /// Latest normalized microphone input level (0...1). Live updates are
+    /// published through `inputLevelMeter` so the meter view alone re-renders.
+    public var inputLevel: Double {
+        inputLevelMeter.inputLevel
+    }
+
     public var isLowLatencyVoiceAgentListening: Bool {
         lowLatencyVoiceAgentState == .listening
     }
@@ -249,6 +281,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
     public func clear() {
         stopLowLatencyVoiceAgentMode()
+        stopInputLevelMonitoring()
         audioRecorder.reset()
         draft = TranscriptDraft()
         planningResponse = nil
@@ -352,6 +385,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             try await audioRecorder.start(at: date)
             recordingState = audioRecorder.state
             phase = .recording
+            startInputLevelMonitoring(at: date)
         } catch {
             recordingState = audioRecorder.state
             phase = .failed(userMessage(for: error))
@@ -359,6 +393,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     }
 
     public func stopRecording(outputURL: URL, at date: Date = Date()) async {
+        stopInputLevelMonitoring()
         do {
             phase = .transcribing
             let audio = try audioRecorder.stop(outputURL: outputURL, at: date)
@@ -698,6 +733,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             publishLiveTranscript(transcript.text)
             return true
         case .final(let transcript):
+            appendFinalizedLiveTranscript(transcript.text)
             await handleLowLatencyFinalTranscript(
                 transcript.text,
                 currentDate: currentDate,
@@ -798,12 +834,26 @@ public final class VoiceCaptureViewModel: ObservableObject {
     }
 
     private func publishLiveTranscript(_ text: String) {
-        liveTranscript = text
+        pendingTranscript = text
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         // Partial transcripts are intentionally local-only previews. Calling an
         // LLM or enqueueing work on unstable audio would waste provider budget
         // and could surface review items for words the user has not finished.
         liveIntentPreview = normalized.isEmpty ? nil : commandRouter.route(transcript: normalized)
+    }
+
+    /// Moves a just-finalized transcript segment out of the pending (partial)
+    /// slot so the UI can render finalized text in primary color while the
+    /// next partial segment streams in as secondary.
+    private func appendFinalizedLiveTranscript(_ text: String) {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        pendingTranscript = ""
+        guard !normalized.isEmpty else {
+            return
+        }
+        finalizedTranscript = finalizedTranscript.isEmpty
+            ? normalized
+            : finalizedTranscript + " " + normalized
     }
 
     private func handleLowLatencyFinalTranscript(
@@ -813,7 +863,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
         availableTools: [ActionTool],
         knowledgeFrameCandidates: [KnowledgeFrameCandidate]
     ) async {
-        clearLiveVoiceAgentState()
+        // Keep the finalized transcript visible while the command is handled;
+        // only the unstable partial tail and its intent preview are stale now.
+        pendingTranscript = ""
+        liveIntentPreview = nil
 
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else {
@@ -843,8 +896,40 @@ public final class VoiceCaptureViewModel: ObservableObject {
     }
 
     private func clearLiveVoiceAgentState() {
-        liveTranscript = ""
+        finalizedTranscript = ""
+        pendingTranscript = ""
         liveIntentPreview = nil
+    }
+
+    private func startInputLevelMonitoring(at date: Date) {
+        stopInputLevelMonitoring()
+        guard let levelReader = audioRecorder as? AudioInputLevelReading else {
+            return
+        }
+        microphoneSilenceDetector.beginRecording(at: date)
+        let sampleInterval = inputLevelSampleInterval
+        inputLevelMonitorTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, self.isRecording else {
+                    return
+                }
+                let level = levelReader.currentNormalizedInputLevel ?? 0
+                self.inputLevelMeter.update(level)
+                let isSilent = self.microphoneSilenceDetector.recordSample(level: level, at: Date())
+                if self.isMicrophoneSilenceHintVisible != isSilent {
+                    self.isMicrophoneSilenceHintVisible = isSilent
+                }
+                try? await Task.sleep(nanoseconds: UInt64(sampleInterval * 1_000_000_000))
+            }
+        }
+    }
+
+    private func stopInputLevelMonitoring() {
+        inputLevelMonitorTask?.cancel()
+        inputLevelMonitorTask = nil
+        microphoneSilenceDetector.reset()
+        inputLevelMeter.update(0)
+        isMicrophoneSilenceHintVisible = false
     }
 
     private func finishLowLatencyStreamIfCurrent(_ streamID: UUID) {

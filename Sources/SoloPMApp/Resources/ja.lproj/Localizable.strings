@@ -426,6 +426,7 @@
 "Make selected Inbox item a project" = "選択中のインボックス項目をプロジェクト化";
 "Make selected Inbox item a task" = "選択中のインボックス項目をタスク化";
 "Memo" = "メモ";
+"Microphone input level" = "マイク入力レベル";
 "Microphone permission denied." = "マイク権限が拒否されています。";
 "Missing" = "未設定";
 "Monthly" = "毎月";
@@ -444,6 +445,7 @@
 "No due date" = "期限なし";
 "No due dates yet" = "期限はまだありません";
 "No focus task" = "集中タスクなし";
+"No microphone input detected. Check your input device in System Settings." = "マイク入力が検出されません。システム設定で入力デバイスを確認してください。";
 "No open tasks" = "未完了タスクなし";
 "No open work needs attention." = "対応が必要な未完了作業はありません。";
 "No project-level suggestion is needed right now." = "現時点でプロジェクト単位の提案は不要です。";

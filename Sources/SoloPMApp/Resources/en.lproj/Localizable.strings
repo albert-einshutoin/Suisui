@@ -426,6 +426,7 @@
 "Make selected Inbox item a project" = "Make selected Inbox item a project";
 "Make selected Inbox item a task" = "Make selected Inbox item a task";
 "Memo" = "Memo";
+"Microphone input level" = "Microphone input level";
 "Microphone permission denied." = "Microphone permission denied.";
 "Missing" = "Missing";
 "Monthly" = "Monthly";
@@ -444,6 +445,7 @@
 "No due date" = "No due date";
 "No due dates yet" = "No due dates yet";
 "No focus task" = "No focus task";
+"No microphone input detected. Check your input device in System Settings." = "No microphone input detected. Check your input device in System Settings.";
 "No open tasks" = "No open tasks";
 "No open work needs attention." = "No open work needs attention.";
 "No project-level suggestion is needed right now." = "No project-level suggestion is needed right now.";

@@ -181,6 +181,10 @@ struct VoiceCaptureView: View {
                 .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .transcribing || viewModel.isLowLatencyVoiceAgentListening)
                 .accessibilityIdentifier("voice-command-record")
 
+                if viewModel.isRecording {
+                    VoiceInputLevelMeter(meter: viewModel.inputLevelMeter)
+                }
+
                 Button {
                     viewModel.saveDraftToInbox()
                     if viewModel.inboxCaptureResult != nil {
@@ -222,6 +226,14 @@ struct VoiceCaptureView: View {
                 .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .recording || viewModel.phase == .transcribing || viewModel.isLowLatencyVoiceAgentListening)
                 .accessibilityIdentifier("voice-command-generate-plan")
                 .accessibilityHint(localizedSettingsDisplay(actionReadinessMessage))
+            }
+
+            if viewModel.isMicrophoneSilenceHintVisible {
+                Label("No microphone input detected. Check your input device in System Settings.", systemImage: "mic.slash")
+                    .font(.caption)
+                    .foregroundStyle(SoloPMTone.attention.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("voice-silence-hint")
             }
         }
         .soloCard()
@@ -518,7 +530,7 @@ private struct LowLatencyVoiceAgentPanel: View {
                 .accessibilityIdentifier("voice-agent-status")
 
             if !viewModel.liveTranscript.isEmpty {
-                Text(viewModel.liveTranscript)
+                liveTranscriptText
                     .font(.caption)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -540,6 +552,22 @@ private struct LowLatencyVoiceAgentPanel: View {
                 .stroke(.quaternary)
         }
         .accessibilityIdentifier("voice-agent-panel")
+    }
+
+    /// Finalized speech renders in primary color; the trailing partial segment
+    /// that may still change renders secondary until STT finalizes it.
+    private var liveTranscriptText: Text {
+        let finalized = Text(verbatim: viewModel.finalizedTranscript)
+            .foregroundStyle(.primary)
+        let pending = Text(verbatim: viewModel.pendingTranscript)
+            .foregroundStyle(.secondary)
+        if viewModel.finalizedTranscript.isEmpty {
+            return pending
+        }
+        if viewModel.pendingTranscript.isEmpty {
+            return finalized
+        }
+        return finalized + Text(verbatim: " ") + pending
     }
 
     private var stateLabel: String {
@@ -575,6 +603,44 @@ private struct LowLatencyVoiceAgentPanel: View {
         case .idle, .listening:
             .primary
         }
+    }
+}
+
+/// Compact five-bar microphone level indicator shown while recording. It
+/// observes only the dedicated level slice so the ~10Hz samples re-render this
+/// small view instead of the whole voice capture window. With Reduce Motion
+/// enabled the animated bars become a static localized "Recording" chip.
+private struct VoiceInputLevelMeter: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject var meter: MicrophoneInputLevelMeter
+
+    /// Fill thresholds for each bar; the first lights up on faint input so a
+    /// live microphone is visibly distinct from silence.
+    private static let barThresholds: [Double] = [0.05, 0.2, 0.4, 0.6, 0.8]
+
+    var body: some View {
+        Group {
+            if reduceMotion {
+                Text("Recording")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tint)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(.quaternary, in: Capsule())
+            } else {
+                HStack(alignment: .bottom, spacing: 3) {
+                    ForEach(Array(Self.barThresholds.enumerated()), id: \.offset) { index, threshold in
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill(meter.inputLevel >= threshold ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary))
+                            .frame(width: 4, height: 8 + CGFloat(index) * 3)
+                    }
+                }
+                .animation(.linear(duration: 0.1), value: meter.inputLevel)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Microphone input level")
+        .accessibilityIdentifier("voice-input-level-meter")
     }
 }
 

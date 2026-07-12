@@ -18,6 +18,17 @@ public protocol AudioRecorder {
     mutating func reset()
 }
 
+/// Optional capability of an `AudioRecorder`: exposing the current microphone
+/// input level so the UI can render a live meter while recording. Recorders
+/// without metering simply do not conform and the meter stays hidden.
+@MainActor
+public protocol AudioInputLevelReading {
+    /// Latest normalized input level in 0...1 (see
+    /// `MicrophoneInputLevelNormalizer`), or nil while not recording or when
+    /// metering is unavailable.
+    var currentNormalizedInputLevel: Double? { get }
+}
+
 public enum AudioRecorderError: Error, Equatable, Sendable {
     case microphonePermissionDenied
     case alreadyRecording

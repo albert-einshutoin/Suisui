@@ -140,7 +140,9 @@ final class GeminiDirectStreamingTests: XCTestCase {
             recorder.append(delta)
         }
 
-        XCTAssertTrue(recorder.deltas.isEmpty)
+        // Function-call chunks synthesize exactly one progress line each so the
+        // live preview shows activity; full args stay out of the stream.
+        XCTAssertEqual(recorder.deltas, ["▸ task_create — \"Review MCP bridge\"\n"])
         XCTAssertEqual(response.providerID, "gemini.direct")
         XCTAssertTrue(response.validationResult.isValid)
         XCTAssertEqual(response.actionPlan?.id, "gemini-function-plan")
@@ -159,6 +161,62 @@ final class GeminiDirectStreamingTests: XCTestCase {
                 requiresUserConfirmation: false
             )
         ])
+    }
+
+    func testStreamingFunctionCallChunkEmitsSingleProgressLinePerCall() async throws {
+        let client = StubByteStreamClient(lines: [
+            """
+            data: {"candidates":[{"content":{"parts":[{"functionCall":{"id":"call-1","name":"task_create","args":{"title":"Buy milk","detail":"Also grab oat milk for the office"}}}]},"finishReason":"STOP"}]}
+            """
+        ])
+        let provider = makeProvider(client: client)
+        let recorder = DeltaRecorder()
+
+        _ = try await provider.generatePlanStream(
+            for: PlanningRequest(
+                userInput: "Buy milk",
+                availableTools: [.taskCreate]
+            )
+        ) { delta in
+            recorder.append(delta)
+        }
+
+        XCTAssertEqual(recorder.deltas.count, 1)
+        let line = try XCTUnwrap(recorder.deltas.first)
+        XCTAssertTrue(line.contains("task_create"))
+        XCTAssertTrue(line.contains("Buy milk"))
+        XCTAssertTrue(line.hasSuffix("\n"))
+        XCTAssertEqual(line.filter { $0 == "\n" }.count, 1)
+        // Only the title-like argument may surface, never the full payload.
+        XCTAssertFalse(line.contains("oat milk"))
+    }
+
+    func testStreamingFunctionCallProgressLineTruncatesLongTitles() async throws {
+        let longTitle = String(repeating: "long user content ", count: 20)
+        let client = StubByteStreamClient(lines: [
+            """
+            data: {"candidates":[{"content":{"parts":[{"functionCall":{"id":"call-1","name":"task_create","args":{"title":"\(longTitle)"}}}]},"finishReason":"STOP"}]}
+            """
+        ])
+        let provider = makeProvider(client: client)
+        let recorder = DeltaRecorder()
+
+        _ = try await provider.generatePlanStream(
+            for: PlanningRequest(
+                userInput: "Create the long task",
+                availableTools: [.taskCreate]
+            )
+        ) { delta in
+            recorder.append(delta)
+        }
+
+        XCTAssertEqual(recorder.deltas.count, 1)
+        let line = try XCTUnwrap(recorder.deltas.first)
+        XCTAssertTrue(line.contains("task_create"))
+        XCTAssertTrue(line.contains("…"))
+        XCTAssertFalse(line.contains(longTitle.trimmingCharacters(in: .whitespaces)))
+        // name + separator + quoted 40-char title + ellipsis + newline stays short.
+        XCTAssertLessThanOrEqual(line.count, 70)
     }
 
     func testStreamingIgnoresPromptFeedbackAndEmptyCandidateChunks() async throws {
