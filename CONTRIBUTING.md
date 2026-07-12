@@ -76,6 +76,21 @@ Every PR should include:
 
 Reviewers should prioritize correctness, security boundaries, secret handling, release reproducibility, and user-visible regressions. Do not mix unrelated UI, storage, external API, and packaging changes in one PR.
 
+## TAKT Automation
+
+The repository includes a subscription-only TAKT workflow in `.takt`. It uses
+Codex for planning and final arbitration, Cursor Agent for TDD implementation
+and scoped verification fixes, and agy for mergeability/security review.
+OpenCode is not part of the SoloPM route. Before starting automation, run:
+
+```sh
+./script/check_takt_configuration.sh
+devloopd doctor --subscription-only --repo "$PWD"
+```
+
+Generated devloop state stays under the ignored `.devloop/` directory. See
+`.takt/README.md` for one-shot and staged-loop commands and safety controls.
+
 ## Architecture Decisions
 
 Use [docs/adr](docs/adr) for important technical decisions. Do not leave durable decisions only in chat, issue comments, or PR comments.
