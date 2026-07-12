@@ -97,6 +97,45 @@ final class DeadlineNotificationActionTests: XCTestCase {
         XCTAssertEqual(try taskStore.get(id: task.id).status, "open")
     }
 
+    func testSnoozeLandingInsideQuietHoursIsDeferredToWindowEnd() throws {
+        let taskStore = try makeTaskStore()
+        let task = try taskStore.create(title: "Prepare demo")
+        let client = RecordingNotificationClient()
+        // 2026-07-07T21:30:00Z: a one-hour snooze lands at 22:30, inside the
+        // 22:00-08:00 quiet window, so the follow-up fires at 08:00 next day.
+        let now = Date(timeIntervalSince1970: 1_783_459_800)
+        let handler = DeadlineNotificationActionHandler(
+            taskStore: taskStore,
+            notificationClient: client,
+            dateProvider: FixedDateProvider(now: now),
+            settings: AppSettings(
+                notificationPreferences: NotificationPreferences(
+                    quietHours: NotificationQuietHoursSettings(
+                        enabled: true,
+                        startMinuteOfDay: 22 * 60,
+                        endMinuteOfDay: 8 * 60
+                    )
+                ),
+                timeZoneIdentifier: "UTC"
+            )
+        )
+
+        let outcome = handler.handle(
+            actionIdentifier: DeadlineNotificationInteraction.snoozeOneHourActionIdentifier,
+            notificationTitle: "Deadline: Prepare demo",
+            notificationBody: "1 unfinished.",
+            userInfo: [DeadlineNotificationInteraction.taskIDUserInfoKey: String(task.id)]
+        )
+
+        guard case let .snoozed(_, until) = outcome else {
+            XCTFail("Expected snoozed outcome, got \(outcome).")
+            return
+        }
+        XCTAssertEqual(DeadlineDateParser.string(from: until), "2026-07-08T08:00:00Z")
+        let draft = try XCTUnwrap(client.scheduledDrafts.first)
+        XCTAssertEqual(draft.scheduledAt, "2026-07-08T08:00:00Z")
+    }
+
     func testSnoozeActionForDeletedTaskDoesNotScheduleFollowUpNotification() throws {
         let taskStore = try makeTaskStore()
         let task = try taskStore.create(title: "Remove stale reminder")

@@ -53,12 +53,23 @@ public final class DeadlineNotificationScheduler: @unchecked Sendable {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: settings.timeZoneIdentifier) ?? .current
 
-        guard let notifyAt = notificationDate(rule: rule, item: item, calendar: calendar) else {
+        guard let proposedNotifyAt = notificationDate(rule: rule, item: item, calendar: calendar) else {
             return DeadlineNotificationScheduleResult(
                 status: .skippedMissingDate,
                 message: "Deadline rule does not have a notification date."
             )
         }
+
+        // Single choke point: pre-deadline reminders shift earlier by the
+        // configured lead time, then every deadline notification defers out of
+        // quiet hours. Overdue-daily alerts fire "now", so lead time does not
+        // apply to them.
+        let notifyAt = NotificationSchedulingPolicy.finalFireDate(
+            proposed: proposedNotifyAt,
+            kind: rule.kind == .overdueDaily ? .fixedTime : .preDeadlineReminder,
+            preferences: settings.notificationPreferences,
+            timeZone: calendar.timeZone
+        )
 
         guard notifyAt >= dateProvider.now else {
             return DeadlineNotificationScheduleResult(

@@ -163,11 +163,19 @@ public final class WeeklyReviewSummaryScheduler: @unchecked Sendable {
                 )
             }
 
+            // Quiet hours defer (never drop) the weekly review summary; it
+            // still counts as this week's summary but fires after the window.
+            let fireDate = NotificationSchedulingPolicy.finalFireDate(
+                proposed: now,
+                kind: .fixedTime,
+                preferences: settings.notificationPreferences,
+                timeZone: timeZone
+            )
             let record = try notificationClient.schedule(
                 NotificationDraft(
                     title: "SoloPM Weekly Review",
                     body: Self.makeBody(completedCount: completedCount, openCount: openCount),
-                    scheduledAt: DeadlineDateParser.string(from: now),
+                    scheduledAt: DeadlineDateParser.string(from: fireDate),
                     identifierHint: identifier
                 )
             )

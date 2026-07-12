@@ -159,6 +159,14 @@ public final class MorningDigestScheduler: @unchecked Sendable {
                 )
             }
 
+            // Quiet hours defer (never drop) the digest: it still counts as
+            // today's digest but fires at the first instant after the window.
+            let fireDate = NotificationSchedulingPolicy.finalFireDate(
+                proposed: now,
+                kind: .fixedTime,
+                preferences: settings.notificationPreferences,
+                timeZone: timeZone
+            )
             let record = try notificationClient.schedule(
                 NotificationDraft(
                     title: "SoloPM Daily Digest",
@@ -167,7 +175,7 @@ public final class MorningDigestScheduler: @unchecked Sendable {
                         dueTodayCount: dueTodayCount,
                         dueLaterThisWeekCount: dueLaterThisWeekCount
                     ),
-                    scheduledAt: DeadlineDateParser.string(from: now),
+                    scheduledAt: DeadlineDateParser.string(from: fireDate),
                     identifierHint: identifier
                 )
             )

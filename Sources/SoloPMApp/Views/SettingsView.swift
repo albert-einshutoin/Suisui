@@ -1188,6 +1188,56 @@ struct SettingsView: View {
                 )
                 Toggle(
                     isOn: Binding(
+                        get: { settingsViewModel.settings.notificationPreferences.quietHours.enabled },
+                        set: { settingsViewModel.setNotificationQuietHoursEnabled($0) }
+                    )
+                ) {
+                    Label("Quiet hours", systemImage: "moon.zzz")
+                }
+                .accessibilityIdentifier("settings-notification-quiet-hours-toggle")
+                .accessibilityHint("Defers notifications inside the quiet window until the window ends.")
+                DatePicker(
+                    "Quiet hours start",
+                    selection: quietHoursMinuteOfDayBinding(
+                        get: { settingsViewModel.settings.notificationPreferences.quietHours.startMinuteOfDay },
+                        set: { settingsViewModel.setNotificationQuietHoursStartMinuteOfDay($0) }
+                    ),
+                    displayedComponents: .hourAndMinute
+                )
+                .disabled(!settingsViewModel.settings.notificationPreferences.quietHours.enabled)
+                .accessibilityIdentifier("settings-notification-quiet-hours-start")
+                .accessibilityHint("Sets the local time when the notification quiet window begins.")
+                DatePicker(
+                    "Quiet hours end",
+                    selection: quietHoursMinuteOfDayBinding(
+                        get: { settingsViewModel.settings.notificationPreferences.quietHours.endMinuteOfDay },
+                        set: { settingsViewModel.setNotificationQuietHoursEndMinuteOfDay($0) }
+                    ),
+                    displayedComponents: .hourAndMinute
+                )
+                .disabled(!settingsViewModel.settings.notificationPreferences.quietHours.enabled)
+                .accessibilityIdentifier("settings-notification-quiet-hours-end")
+                .accessibilityHint("Sets the local time when deferred notifications are delivered.")
+                Picker(
+                    "Remind me",
+                    selection: Binding(
+                        get: { settingsViewModel.settings.notificationPreferences.deadlineReminderLeadTime },
+                        set: { settingsViewModel.setDeadlineReminderLeadTime($0) }
+                    )
+                ) {
+                    ForEach(DeadlineReminderLeadTime.allCases, id: \.self) { leadTime in
+                        Text(LocalizedStringKey(leadTime.label))
+                            .tag(leadTime)
+                    }
+                }
+                .accessibilityIdentifier("settings-notification-lead-time")
+                .accessibilityHint("Moves deadline task reminders earlier than the due time. Digest and weekly summaries are not affected.")
+                Text("Deadline reminders fire ahead of the due time by the selected lead. Notifications that land inside quiet hours are deferred to the end of the window, never dropped.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("settings-notification-quiet-hours-caption")
+                Toggle(
+                    isOn: Binding(
                         get: { settingsViewModel.settings.isDeveloperModeEnabled },
                         set: { settingsViewModel.setDeveloperModeEnabled($0) }
                     )
@@ -1700,6 +1750,26 @@ struct SettingsView: View {
         }
         .accessibilityIdentifier("settings-task-auto-execution-save")
         .accessibilityHint("Persists task automation settings to local UserDefaults.")
+    }
+
+    /// Bridges the persisted minutes-of-day quiet-hours bounds to the
+    /// hour-and-minute `DatePicker`, which needs a `Date` selection. Only the
+    /// wall-clock components matter; the reference day is discarded on set.
+    private func quietHoursMinuteOfDayBinding(
+        get minuteOfDay: @escaping () -> Int,
+        set: @escaping (Int) -> Void
+    ) -> Binding<Date> {
+        Binding(
+            get: {
+                let calendar = Calendar.current
+                let dayStart = calendar.startOfDay(for: Date())
+                return calendar.date(byAdding: .minute, value: minuteOfDay(), to: dayStart) ?? dayStart
+            },
+            set: { newValue in
+                let components = Calendar.current.dateComponents([.hour, .minute], from: newValue)
+                set((components.hour ?? 0) * 60 + (components.minute ?? 0))
+            }
+        )
     }
 
     private func billingCapValueLabel(_ cents: Int?) -> String {

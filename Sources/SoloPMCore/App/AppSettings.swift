@@ -6,6 +6,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var sttProvider: STTProvider
     public var ttsProvider: TTSProvider
     public var notificationsEnabled: Bool
+    public var notificationPreferences: NotificationPreferences
     public var isDeveloperModeEnabled: Bool
     public var defaultWorkspacePath: String?
     public var timeZoneIdentifier: String
@@ -32,6 +33,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case sttProvider
         case ttsProvider
         case notificationsEnabled
+        case notificationPreferences
         case isDeveloperModeEnabled
         case defaultWorkspacePath
         case timeZoneIdentifier
@@ -59,6 +61,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         sttProvider: STTProvider = .openAITranscribe,
         ttsProvider: TTSProvider = .localKokoro,
         notificationsEnabled: Bool = false,
+        notificationPreferences: NotificationPreferences = .default,
         isDeveloperModeEnabled: Bool = false,
         defaultWorkspacePath: String? = nil,
         timeZoneIdentifier: String = TimeZone.current.identifier,
@@ -86,6 +89,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.sttProvider = sttProvider
         self.ttsProvider = ttsProvider
         self.notificationsEnabled = notificationsEnabled
+        self.notificationPreferences = notificationPreferences
         self.isDeveloperModeEnabled = isDeveloperModeEnabled
         self.defaultWorkspacePath = defaultWorkspacePath
         self.timeZoneIdentifier = timeZoneIdentifier
@@ -114,6 +118,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.sttProvider = try container.decode(STTProvider.self, forKey: .sttProvider)
         self.ttsProvider = try container.decodeIfPresent(TTSProvider.self, forKey: .ttsProvider) ?? .localKokoro
         self.notificationsEnabled = try container.decode(Bool.self, forKey: .notificationsEnabled)
+        // Settings saved before quiet hours and lead-time preferences existed
+        // have no notificationPreferences key; decode to defaults.
+        self.notificationPreferences = try container.decodeIfPresent(
+            NotificationPreferences.self,
+            forKey: .notificationPreferences
+        ) ?? .default
         self.isDeveloperModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .isDeveloperModeEnabled) ?? false
         self.defaultWorkspacePath = try container.decodeIfPresent(String.self, forKey: .defaultWorkspacePath)
         self.timeZoneIdentifier = try container.decode(String.self, forKey: .timeZoneIdentifier)
@@ -142,6 +152,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(sttProvider, forKey: .sttProvider)
         try container.encode(ttsProvider, forKey: .ttsProvider)
         try container.encode(notificationsEnabled, forKey: .notificationsEnabled)
+        try container.encode(notificationPreferences, forKey: .notificationPreferences)
         try container.encode(isDeveloperModeEnabled, forKey: .isDeveloperModeEnabled)
         try container.encodeIfPresent(defaultWorkspacePath, forKey: .defaultWorkspacePath)
         try container.encode(timeZoneIdentifier, forKey: .timeZoneIdentifier)
@@ -209,6 +220,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
         copy.taskAutoExecution = copy.taskAutoExecution.normalized
         copy.managedAIBilling = copy.managedAIBilling.normalized
+        copy.notificationPreferences.quietHours = copy.notificationPreferences.quietHours.normalized
         return copy
     }
 
@@ -1484,6 +1496,28 @@ public final class AppSettingsViewModel: ObservableObject {
 
     public func setNotificationsEnabled(_ isEnabled: Bool) {
         settings.notificationsEnabled = isEnabled
+        clearMessages()
+    }
+
+    public func setNotificationQuietHoursEnabled(_ isEnabled: Bool) {
+        settings.notificationPreferences.quietHours.enabled = isEnabled
+        clearMessages()
+    }
+
+    public func setNotificationQuietHoursStartMinuteOfDay(_ minuteOfDay: Int) {
+        settings.notificationPreferences.quietHours.startMinuteOfDay = minuteOfDay
+        settings.notificationPreferences.quietHours = settings.notificationPreferences.quietHours.normalized
+        clearMessages()
+    }
+
+    public func setNotificationQuietHoursEndMinuteOfDay(_ minuteOfDay: Int) {
+        settings.notificationPreferences.quietHours.endMinuteOfDay = minuteOfDay
+        settings.notificationPreferences.quietHours = settings.notificationPreferences.quietHours.normalized
+        clearMessages()
+    }
+
+    public func setDeadlineReminderLeadTime(_ leadTime: DeadlineReminderLeadTime) {
+        settings.notificationPreferences.deadlineReminderLeadTime = leadTime
         clearMessages()
     }
 

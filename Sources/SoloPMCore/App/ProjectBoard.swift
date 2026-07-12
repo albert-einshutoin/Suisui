@@ -578,6 +578,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var assistantQueueViewFilter: AssistantQueueViewFilter
     @Published public private(set) var assistantQueueSort: AssistantQueueSort
     @Published public private(set) var assistantQueueSelectedItemIDs: Set<String>
+    @Published public private(set) var isApprovingAllRescheduleSuggestions = false
     @Published public private(set) var executionReceiptHistorySnapshot: ExecutionReceiptHistorySnapshot
     @Published public private(set) var executionReceiptHistorySearchText: String
     @Published public private(set) var executionReceiptHistoryStatusFilter: ExecutionReceiptStatus?
@@ -6556,6 +6557,48 @@ public final class ProjectBoardViewModel: ObservableObject {
         transitionAssistantQueueItem(id: id) { item in
             try AssistantQueueStateMachine.approve(item, reviewerID: "local-user")
         }
+    }
+
+    /// Missed-task reschedule suggestions still waiting for review in the
+    /// currently visible Assistant Queue rows, in display order.
+    public var openRescheduleSuggestionIDs: [String] {
+        assistantQueueSnapshot.rows
+            .filter { row in
+                row.id.hasPrefix(MissedTaskRescheduleSuggestionPlanner.itemIDPrefix)
+                    && row.state == .waitingReview
+            }
+            .map(\.id)
+    }
+
+    /// Approves every open reschedule suggestion through the same single-item
+    /// approval path so audit granularity stays per-item. Stops at the first
+    /// failure: the failed and remaining suggestions stay `waitingReview` and
+    /// the per-item error surface keeps the failure message.
+    @discardableResult
+    public func approveAllRescheduleSuggestions() -> Int {
+        let suggestionIDs = openRescheduleSuggestionIDs
+        guard !suggestionIDs.isEmpty, !isApprovingAllRescheduleSuggestions else {
+            return 0
+        }
+
+        isApprovingAllRescheduleSuggestions = true
+        defer { isApprovingAllRescheduleSuggestions = false }
+
+        var approvedCount = 0
+        for suggestionID in suggestionIDs {
+            guard approveAssistantQueueItem(id: suggestionID) else {
+                // approveAssistantQueueItem already refreshed the snapshot and
+                // published the per-item error message.
+                return approvedCount
+            }
+            approvedCount += 1
+        }
+
+        integrationStatusMessage = String(
+            format: String(localized: "Approved %d reschedule suggestions."),
+            approvedCount
+        )
+        return approvedCount
     }
 
     @discardableResult
