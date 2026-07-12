@@ -82,6 +82,10 @@ final class CIGateWorkflowTests: XCTestCase {
             script.contains("[[ \"$input\" == \"-\" ]]"),
             "sanitize_gate_log must support a stdin/stdout mode (`-`) so it can sit in the lane pipeline"
         )
+        XCTAssertTrue(
+            script.contains("local output=\"${2:-}\""),
+            "stdin mode passes only one argument, so the optional output path must be safe under `set -u`"
+        )
     }
 
     func testAutomatedReleasePreflightRequiresTheSameProductionUIGates() throws {

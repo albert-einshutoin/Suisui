@@ -104,44 +104,36 @@ final class UIGateScriptsTests: XCTestCase {
             script.contains("APP_LAUNCH_PID:-"),
             "Each AppleScript call must forward the launched PID (empty when the script did not launch the app)"
         )
-    }
-
-    func testAccessibilitySmokeCapturesPIDForOpenLaunchedInstance() throws {
-        // Regression for the P2 review that left the `open -n -F` branch
-        // without an `APP_LAUNCH_PID`. The cleanup trap and PID-scoped AX
-        // scans depend on the captured PID, so the open branch must
-        // resolve a fresh $APP_BINARY PID via pgrep + diff.
-        let script = try readPackageFile("script/check_accessibility_preflight.sh")
-
-        // Find the open branch by locating the `open -n -F` call and reading
-        // up to the closing `fi activate_app` boundary.
-        let openCallRange = try XCTUnwrap(
-            script.range(of: "/usr/bin/open -n -F \"$APP_BUNDLE\"")
-        )
-        let openBranchEnd = try XCTUnwrap(
-            script.range(of: "activate_app\nfi", range: openCallRange.upperBound..<script.endIndex)
-        )
-        let openBranch = String(script[openCallRange.lowerBound..<openBranchEnd.upperBound])
-
-        XCTAssertTrue(
-            openBranch.contains("pre_open_pids"),
-            "The `open` launch branch must snapshot existing $APP_BINARY PIDs so the diff identifies the new instance"
-        )
-        XCTAssertTrue(
-            openBranch.contains("/usr/bin/pgrep -f \"$APP_BINARY/Contents/MacOS/\""),
-            "The `open` launch branch must use pgrep to discover the just-opened instance"
-        )
-        XCTAssertTrue(
-            openBranch.contains("launched_app_matches_binary"),
-            "The `open` launch branch must validate the candidate PID against $APP_BINARY before assigning APP_LAUNCH_PID"
-        )
-        XCTAssertTrue(
-            openBranch.contains("APP_LAUNCH_PID=\"$candidate_pid\""),
-            "The `open` launch branch must assign APP_LAUNCH_PID from the validated candidate"
+        let nameFallbackCount = script.components(separatedBy: "if appLaunchPidText is \"\" then")
+            .count - 1
+        XCTAssertGreaterThanOrEqual(
+            nameFallbackCount,
+            4,
+            "Name-based lookup is allowed only when no launched PID was supplied"
         )
         XCTAssertFalse(
-            openBranch.contains("/usr/bin/open -n -F \"$APP_BUNDLE\"\n    activate_app"),
-            "The `open` launch branch must not return without assigning APP_LAUNCH_PID; that re-introduces the stale-window bug"
+            script.contains("if targetProcess is missing value then\n      try\n        set targetProcess to first process whose name is appName"),
+            "A missing PID-owned process must fail closed instead of selecting a stray process by name"
+        )
+    }
+
+    func testAccessibilitySmokeAlwaysDirectLaunchesOwnedCandidate() throws {
+        // Runtime mode prepares a deterministic launch environment before this
+        // branch, so LaunchServices is unnecessary. Direct launch gives the
+        // preflight an exact PID for AX selection and identity-safe cleanup.
+        let script = try readPackageFile("script/check_accessibility_preflight.sh")
+
+        XCTAssertTrue(
+            script.contains("if [[ \"$LAUNCH_APP\" -eq 1 && -z \"$LAUNCH_ENV_FILE\" ]]; then"),
+            "Runtime launch must prepare the deterministic candidate environment when none was supplied"
+        )
+        XCTAssertTrue(
+            script.contains("\"$APP_BINARY\" >/dev/null 2>&1 &\n  APP_LAUNCH_PID=$!"),
+            "Runtime launch must capture the exact direct-launch PID"
+        )
+        XCTAssertFalse(
+            script.contains("/usr/bin/open -n -F \"$APP_BUNDLE\""),
+            "LaunchServices cannot provide the exact owned PID required by this preflight"
         )
     }
 

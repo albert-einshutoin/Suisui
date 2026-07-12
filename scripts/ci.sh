@@ -180,7 +180,7 @@ run_visual_gates() {
 
 sanitize_gate_log() {
   local input="$1"
-  local output="$2"
+  local output="${2:-}"
   # When invoked with `-` as the input path, the sanitizer reads from
   # stdin and writes to stdout so the caller can pipe the lane output
   # through the sanitizer before `tee` exposes it to the Actions job
@@ -191,6 +191,10 @@ sanitize_gate_log() {
       -e 's#/(Users|Volumes)/[^[:space:]]+#<path>#g' \
       -e 's#(token|secret|password|api[_-]?key)=[^[:space:]]+#\1=<redacted>#g'
     return 0
+  fi
+  if [[ -z "$output" ]]; then
+    echo "BLOCKER: sanitize_gate_log output path is required in file mode" >&2
+    return 2
   fi
   sed -E \
     -e 's#/(Users|Volumes)/[^[:space:]]+#<path>#g' \
