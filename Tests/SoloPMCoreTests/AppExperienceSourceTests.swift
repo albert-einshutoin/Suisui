@@ -112,8 +112,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("today|today|sidebar-destination-today|today-workflow"))
         XCTAssertTrue(script.contains("catch-up|catch-up|sidebar-destination-catch-up|catch-up-workflow"))
         XCTAssertTrue(script.contains("projects|projects|sidebar-destination-projects|projects-portfolio-overview"))
-        XCTAssertTrue(script.contains("project|project:$seed_project_id|project-board-sidebar|project-board-detail"))
-        XCTAssertTrue(script.contains("inspector|project:$seed_project_id|project-board-sidebar|project-inspector"))
+        XCTAssertTrue(script.contains("navigate_to_seed_project()"))
+        XCTAssertTrue(script.contains("project-sidebar-row-$seed_project_id"))
+        XCTAssertTrue(script.contains("route_content_marker=\"project-board-detail\""))
+        XCTAssertTrue(script.contains("route_content_marker=\"project-inspector\""))
         XCTAssertTrue(script.contains("IFS='|' read -r route_id route_destination_value route_sidebar_marker_value route_content_marker_value"))
         XCTAssertTrue(script.contains("wait_for_marker_until \"$route_sidebar_marker\" \"\""))
         XCTAssertTrue(script.contains("wait_for_marker_until \"$route_content_marker\" \"$route_text\""))
@@ -1716,6 +1718,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testInboxWorkflowSurfacesVoiceCaptureMetadataWithoutReplacingVoiceCommand() throws {
         let workflowSource = try readProjectWorkflowSources()
+        let inboxWorkflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift")
         let appSource = try readAppShellSource()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
@@ -1738,6 +1741,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-triage-filter\")"))
         XCTAssertTrue(workflowSource.contains("private var mainSurface: some View"))
         XCTAssertTrue(workflowSource.contains("InboxTriageRail("))
+        XCTAssertTrue(inboxWorkflowSource.contains(".accessibilityIdentifier(\"inbox-compact-workflow-scroll\")"))
+        XCTAssertTrue(inboxWorkflowSource.contains(".scrollIndicators(.visible)"))
+        let compactScrollStart = try XCTUnwrap(inboxWorkflowSource.range(of: "ScrollView(.vertical) {"))
+        let compactScrollEnd = try XCTUnwrap(
+            inboxWorkflowSource[compactScrollStart.lowerBound...]
+                .range(of: ".accessibilityIdentifier(\"inbox-compact-workflow-scroll\")")
+        )
+        let compactScrollScope = String(inboxWorkflowSource[compactScrollStart.lowerBound..<compactScrollEnd.upperBound])
+        XCTAssertTrue(compactScrollScope.contains("mainSurface"))
+        XCTAssertTrue(compactScrollScope.contains("InboxTriageRail("))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-workflow\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-triage-rail\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityLabel(\"Inbox triage station\")"))
@@ -4449,7 +4462,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("write_done_analytics_evidence_file"))
         XCTAssertTrue(script.contains("docs/release/evidence/done-analytics-screenshots.md"))
         XCTAssertTrue(script.contains("inbox-action-panel=>Voice capture metadata available for Scheduled manual capture"))
-        XCTAssertTrue(script.contains("capture_project_board_destination light inbox \"$INBOX_VOICE_LIGHT_SCREENSHOT\" \"Inbox voice detail\" \"$INBOX_VOICE_TARGET_MARKERS\" \"$INBOX_VOICE_TASK_OVERRIDE\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination light inbox \"$INBOX_VOICE_LIGHT_SCREENSHOT\" \"Inbox voice detail\" \"$INBOX_VOICE_ROUTE_MARKERS\" \"$INBOX_VOICE_TASK_OVERRIDE\" \"inbox-voice-intake-detail\" \"inbox-voice-intake-detail\" \"$INBOX_VOICE_TARGET_MARKERS\""))
         XCTAssertTrue(script.contains("capture_voice_command_appearance light \"$VOICE_COMMAND_LIGHT_SCREENSHOT\""))
         let captureDestinationStart = try XCTUnwrap(script.range(of: "capture_project_board_destination()"))
         let captureDestinationEnd = try XCTUnwrap(script.range(
@@ -4457,6 +4470,9 @@ final class AppExperienceSourceTests: XCTestCase {
             range: captureDestinationStart.upperBound..<script.endIndex
         ))
         let captureDestinationSource = String(script[captureDestinationStart.lowerBound..<captureDestinationEnd.lowerBound])
+        XCTAssertTrue(captureDestinationSource.contains("launch_destination=\"projects\""))
+        XCTAssertTrue(script.contains("project-sidebar-row-$project_id"))
+        XCTAssertTrue(captureDestinationSource.contains("press_project_sidebar_row \"$project_id\""))
         let destinationPosition = try XCTUnwrap(captureDestinationSource.range(of: "position_window_for_capture"))
         let destinationMarkerWait = try XCTUnwrap(captureDestinationSource.range(of: "wait_for_project_board_destination"))
         XCTAssertLessThan(destinationPosition.lowerBound, destinationMarkerWait.lowerBound)
@@ -4473,16 +4489,23 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] `capture_ui_evidence.sh` は撮影前にAX identifierとseed固有テキストで対象画面を検証し、Today等の誤画面スクショをrelease evidenceとして保存しない。"))
     }
 
-    func testUIScreenshotCaptureWaitsForPreviousSoloPMProcessBeforeRelaunching() throws {
+    func testUIScreenshotCaptureTerminatesOnlyTheOwnedSoloPMProcessBeforeRelaunching() throws {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
 
         XCTAssertTrue(script.contains("PROJECT_BOARD_SELECTED_TASK_OVERRIDE=\"\""))
         XCTAssertTrue(script.contains("wait_for_app_process_exit"))
         XCTAssertTrue(script.contains("stop_evidence_app"))
-        XCTAssertTrue(script.contains("kill \"$EVIDENCE_APP_PID\""))
-        XCTAssertTrue(script.contains("wait \"$EVIDENCE_APP_PID\""))
+        XCTAssertTrue(script.contains("EVIDENCE_APP_IDENTITY"))
+        XCTAssertTrue(script.contains("EVIDENCE_APP_LAUNCH_IDENTITY"))
+        XCTAssertTrue(script.contains("EVIDENCE_APP_LOG"))
+        XCTAssertTrue(script.contains("emit_evidence_app_diagnostic"))
+        XCTAssertTrue(script.contains("visual-launch-identity-unavailable"))
+        XCTAssertTrue(script.contains("ax_wait_for_owned_process_identity \"$EVIDENCE_APP_LAUNCH_PID\" \"$APP_BINARY\" \"$TARGET_TIMEOUT_SECONDS\""))
+        XCTAssertTrue(script.contains("ax_terminate_owned_process \"$owned_pid\" \"$APP_BINARY\" \"${EVIDENCE_APP_IDENTITY:-}\""))
+        XCTAssertTrue(script.contains("ax_terminate_owned_process \"$launch_pid\" \"$APP_BINARY\" \"${EVIDENCE_APP_LAUNCH_IDENTITY:-}\""))
+        XCTAssertFalse(script.contains("kill \"$EVIDENCE_APP_PID\""))
         XCTAssertTrue(script.contains("ax_wait_for_owned_app_pid \"$EVIDENCE_APP_PID\" \"$APP_BINARY\""))
-        XCTAssertTrue(script.contains("$APP_NAME did not launch as expected pid $EVIDENCE_APP_PID."))
+        XCTAssertTrue(script.contains("visual-owned-pid-unavailable"))
     }
 
     func testPhase12UIScreenshotEvidenceCoversNewCockpitScreens() throws {
@@ -4596,6 +4619,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("run_doctor"))
         XCTAssertTrue(script.contains("screen capture preflight"))
         XCTAssertTrue(script.contains("does not write release evidence"))
+        XCTAssertTrue(script.contains("EVIDENCE_WINDOW_ATTEMPTS=2"))
+        XCTAssertTrue(script.contains("EVIDENCE_ROUTE_ATTEMPTS=2"))
+        XCTAssertTrue(script.contains("resolve_evidence_process_and_window"))
+        XCTAssertTrue(script.contains("$EVIDENCE_WAIT_FAILURE_CATEGORY\" == \"window"))
+        XCTAssertTrue(script.contains("retrying normal UI capture after owned window publication timeout"))
+        XCTAssertTrue(script.contains("retrying exact production destination after required marker timeout"))
+        XCTAssertTrue(script.contains("EVIDENCE_WAIT_FAILURE_REASON=\"visual-window-unavailable\""))
         XCTAssertTrue(script.contains("[[ \"$DRY_RUN\" != \"1\" && \"$DOCTOR\" != \"1\" ]]"))
         XCTAssertTrue(evidence.contains("System Settings > Privacy & Security > Screen Recording / Screen & System Audio Recording"))
         XCTAssertTrue(evidence.contains("SOLOPM_UI_EVIDENCE_KEEP_HOME=1"))

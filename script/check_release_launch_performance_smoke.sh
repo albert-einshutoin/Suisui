@@ -95,17 +95,28 @@ mkdir -p "$(dirname "$PERFORMANCE_DATABASE_PATH")"
 # shellcheck source=/dev/null
 source "$AX_HELPERS"
 
+APP_PID=""
+APP_LAUNCH_PID=""
+APP_IDENTITY=""
+APP_LAUNCH_IDENTITY=""
+
 now_ms() {
   /usr/bin/perl -MTime::HiRes=time -e 'printf "%d\n", time() * 1000'
 }
 
 terminate_app() {
-  if [[ -n "${APP_PID:-}" ]]; then
-    kill "$APP_PID" >/dev/null 2>&1 || true
-    wait "$APP_PID" >/dev/null 2>&1 || true
+  local owned_pid="${APP_PID:-}"
+  local launch_pid="${APP_LAUNCH_PID:-}"
+  if [[ -n "$owned_pid" ]]; then
+    ax_terminate_owned_process "$owned_pid" "$APP_BINARY" "${APP_IDENTITY:-}"
+  fi
+  if [[ -n "$launch_pid" && "$launch_pid" != "$owned_pid" ]]; then
+    ax_terminate_owned_process "$launch_pid" "$APP_BINARY" "${APP_LAUNCH_IDENTITY:-}"
   fi
   APP_PID=""
   APP_LAUNCH_PID=""
+  APP_IDENTITY=""
+  APP_LAUNCH_IDENTITY=""
 }
 
 cleanup() {
@@ -121,7 +132,29 @@ prepare_ax_helpers() {
 }
 
 activate_app() {
-  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 &
+  # Target the process we launched. Addressing the application by name can make
+  # LaunchServices start or activate a different SoloPM instance and invalidate
+  # both the isolated database and the performance sample.
+  /usr/bin/osascript - "$APP_PID" "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
+on run argv
+  set appPID to item 1 of argv as integer
+  set appName to item 2 of argv
+  tell application "System Events"
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then return "missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
+      set frontmost to true
+      if (count of windows) > 0 then
+        try
+          perform action "AXRaise" of window 1
+        end try
+      end if
+    end tell
+  end tell
+  return "activated " & appName
+end run
+APPLESCRIPT
   local osascript_pid=$!
   for _ in {1..20}; do
     if ! kill -0 "$osascript_pid" >/dev/null 2>&1; then
@@ -142,8 +175,17 @@ open_app() {
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="today" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
   APP_LAUNCH_PID=$!
+  APP_LAUNCH_IDENTITY="$(ax_wait_for_owned_process_identity "$APP_LAUNCH_PID" "$APP_BINARY" 3)" || {
+    ax_emit_failure_category "launch" "performance-launch-identity-unavailable"
+    return 1
+  }
   APP_PID="$(ax_wait_for_owned_app_pid "$APP_LAUNCH_PID" "$APP_BINARY" "$TIMEOUT_SECONDS")" || {
+    ax_emit_failure_category "launch" "performance-owned-pid-unavailable"
     echo "BLOCKER: performance app did not launch from pid $APP_LAUNCH_PID" >&2
+    return 1
+  }
+  APP_IDENTITY="$(ax_wait_for_owned_process_identity "$APP_PID" "$APP_BINARY" 3)" || {
+    ax_emit_failure_category "launch" "performance-owned-identity-unavailable"
     return 1
   }
   ax_wait_for_pid_owned_process "$APP_NAME" "$APP_PID" "$TIMEOUT_SECONDS" "$APP_BINARY"
@@ -152,16 +194,83 @@ open_app() {
 
 wait_for_visible_window() {
   if ! ax_wait_for_pid_owned_window "$APP_NAME" "$APP_PID" "" "$TIMEOUT_SECONDS" "" "$APP_BINARY"; then
+    ax_emit_failure_category "window" "performance-window-unavailable"
     echo "BLOCKER: $APP_NAME did not publish a visible window for launched pid $APP_PID within ${TIMEOUT_SECONDS}s" >&2
     return 1
   fi
   return 0
 }
 
+wait_for_database_schema() {
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if [[ -f "$PERFORMANCE_DATABASE_PATH" ]] &&
+      [[ "$(sqlite3 -batch -noheader "$PERFORMANCE_DATABASE_PATH" \
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('projects', 'tasks');" 2>/dev/null || true)" == "2" ]]; then
+      return 0
+    fi
+    if ! ax_process_matches_identity "$APP_PID" "$APP_BINARY" "$APP_IDENTITY"; then
+      ax_emit_failure_category "launch" "performance-bootstrap-exited"
+      echo "BLOCKER: performance bootstrap app exited before its database schema was ready" >&2
+      return 1
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      ax_emit_failure_category "launch" "performance-database-schema-unavailable"
+      echo "BLOCKER: performance database schema was not ready within ${TIMEOUT_SECONDS}s" >&2
+      return 1
+    fi
+    sleep 0.2
+  done
+}
+
+seed_production_fixture() {
+  # A fresh CI workspace otherwise opens the recovery route because it has no
+  # projects. Seed one deterministic local project before starting the measured
+  # launch so the sample can only pass through the production Project Board.
+  if ! sqlite3 "$PERFORMANCE_DATABASE_PATH" <<'SQL'
+.bail on
+.timeout 5000
+BEGIN IMMEDIATE;
+DELETE FROM tasks WHERE source_command = 'ui-performance';
+DELETE FROM projects WHERE source_command = 'ui-performance';
+INSERT INTO projects (
+  title, status, priority, deadline, workspace_path, tags_json, source_command,
+  created_at, updated_at
+) VALUES (
+  'UI performance fixture', 'active', 'high', NULL, NULL, '[]', 'ui-performance',
+  CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+);
+INSERT INTO tasks (
+  project_id, title, status, detail, due_at, completed_at, priority,
+  source_command, created_at, updated_at
+) VALUES (
+  (SELECT id FROM projects WHERE source_command = 'ui-performance' ORDER BY id DESC LIMIT 1),
+  'Measure production destinations', 'planned',
+  'Deterministic local task for production-route launch performance.',
+  NULL, NULL, 'high', 'ui-performance', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+);
+COMMIT;
+SQL
+  then
+    ax_emit_failure_category "harness" "performance-fixture-seed-failed"
+    echo "BLOCKER: performance production fixture could not be seeded" >&2
+    return 1
+  fi
+}
+
+prepare_production_fixture() {
+  rm -f "$PERFORMANCE_DATABASE_PATH" "$PERFORMANCE_DATABASE_PATH-wal" "$PERFORMANCE_DATABASE_PATH-shm"
+  open_app
+  wait_for_database_schema
+  terminate_app
+  seed_production_fixture
+}
+
 click_sidebar_destination() {
   local destination_identifier="$1"
   local destination_label="$2"
   if ! "$AX_PRESS_ELEMENT_HELPER_EXECUTABLE" "$APP_PID" "$destination_identifier"; then
+    ax_emit_failure_category "product-marker" "performance-destination-unavailable"
     echo "BLOCKER: performance smoke could not select $destination_label in owned app pid $APP_PID" >&2
     return 1
   fi
@@ -175,6 +284,7 @@ wait_for_marker() {
     return 0
   fi
   echo "BLOCKER: performance smoke could not inspect the AX marker: $identifier" >&2
+  ax_emit_failure_category "product-marker" "performance-marker-unavailable"
   sed -n '1,20p' "$probe_file.err" >&2 || true
   sed -n '1,20p' "$probe_file" >&2 || true
   return 1
@@ -192,6 +302,7 @@ assert_sample_within_budget() {
     return 1
   fi
   if (( elapsed_ms > budget_ms )); then
+    printf 'failure_category=performance-budget\n' >&2
     echo "BLOCKER: performance budget exceeded for $label: ${elapsed_ms}ms > ${budget_ms}ms" >&2
     return 1
   fi
@@ -242,15 +353,15 @@ trap cleanup EXIT
 printf '%s\t%s\n' "label" "elapsed_ms" >"$SAMPLES_FILE"
 
 terminate_app
-APP_PID=""
-APP_LAUNCH_PID=""
 prepare_ax_helpers
 SOLOPM_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
+prepare_production_fixture
 
 launch_start_ms="$(now_ms)"
 open_app
 wait_for_visible_window
 wait_for_marker "project-board-header-bar"
+wait_for_marker "today-workflow"
 launch_end_ms="$(now_ms)"
 record_sample "cold-launch-visible-window" "$launch_start_ms" "$launch_end_ms" "$MAX_COLD_LAUNCH_MS"
 

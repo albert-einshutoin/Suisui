@@ -23,10 +23,12 @@ DONE_ANALYTICS_EVIDENCE_FILE="${SOLOPM_DONE_ANALYTICS_EVIDENCE_FILE:-$ROOT_DIR/d
 EVIDENCE_TMPDIR="${SOLOPM_UI_EVIDENCE_TMPDIR:-$ROOT_DIR/.tmp}"
 VISUAL_BASELINE_MANIFEST="$ROOT_DIR/docs/quality/visual-baseline-manifest.json"
 SOLOPM_VISUAL_AX_AUDIT_RESULT="${SOLOPM_VISUAL_AX_AUDIT_RESULT:-$EVIDENCE_TMPDIR/visual-ax-audit-receipt.json}"
-VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1420x860}"
+VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1024x674}"
 SETTINGS_VISUAL_BASELINE_VIEWPORT="${SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT:-720x712}"
 VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT="${SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT:-760x640}"
 TARGET_TIMEOUT_SECONDS="${SOLOPM_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS:-30}"
+EVIDENCE_WINDOW_ATTEMPTS=2
+EVIDENCE_ROUTE_ATTEMPTS=2
 AX_MARKER_MAX_NODES="${SOLOPM_UI_EVIDENCE_AX_MAX_NODES:-6000}"
 EVIDENCE_LOCALE="${SOLOPM_UI_EVIDENCE_LOCALE:-english}"
 EVIDENCE_LOCALES=("english" "japanese")
@@ -41,6 +43,7 @@ export TMPDIR="$EVIDENCE_TMPDIR/"
 AX_MARKER_CHECKER="$EVIDENCE_TMPDIR/ui-evidence-ax-marker-checker.$$"
 AX_SCROLL_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-scroll-to.$$"
 AX_TARGET_FRAME_AUDITOR="$EVIDENCE_TMPDIR/ui-evidence-ax-target-frame-auditor.$$"
+AX_PRESS_ELEMENT_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-press-element.$$"
 AX_CAPTURE_RECEIPT_TSV="$EVIDENCE_TMPDIR/visual-ax-captures.$$.tsv"
 AX_RECEIPT_WRITER="$EVIDENCE_TMPDIR/write-visual-ax-audit-receipt.$$"
 EVIDENCE_HOME="${SOLOPM_UI_EVIDENCE_HOME:-$(mktemp -d "$EVIDENCE_TMPDIR/solopm-ui-evidence.XXXXXX")}"
@@ -60,6 +63,12 @@ SETTINGS_WINDOW_OVERRIDE=""
 SETTINGS_TAB_OVERRIDE=""
 VOICE_COMMAND_WINDOW_OVERRIDE=""
 EVIDENCE_APP_PID=""
+EVIDENCE_APP_LAUNCH_PID=""
+EVIDENCE_APP_IDENTITY=""
+EVIDENCE_APP_LAUNCH_IDENTITY=""
+EVIDENCE_APP_LOG="$EVIDENCE_TMPDIR/visual-evidence-app.$$.log"
+EVIDENCE_WAIT_FAILURE_CATEGORY="launch"
+EVIDENCE_WAIT_FAILURE_REASON="visual-launch-unavailable"
 DATABASE_PATH=""
 
 for arg in "$@"; do
@@ -153,7 +162,9 @@ cleanup() {
   rm -f "$AX_MARKER_CHECKER"
   rm -f "$AX_SCROLL_HELPER"
   rm -f "$AX_TARGET_FRAME_AUDITOR"
+  rm -f "$AX_PRESS_ELEMENT_HELPER"
   rm -f "$AX_CAPTURE_RECEIPT_TSV" "$AX_RECEIPT_WRITER"
+  rm -f "$EVIDENCE_APP_LOG"
   if [[ "$KEEP_HOME" != "1" && -d "$EVIDENCE_HOME" && "${SOLOPM_UI_EVIDENCE_HOME:-}" == "" ]]; then
     rm -rf "$EVIDENCE_HOME"
   fi
@@ -255,12 +266,24 @@ app_env_args() {
   printf '%s\0' "${args[@]}"
 }
 
+emit_evidence_app_diagnostic() {
+  [[ -s "$EVIDENCE_APP_LOG" ]] || return 0
+  echo "Sanitized SoloPM launch diagnostic:" >&2
+  /usr/bin/sed -E \
+    -e 's#/(Users|Volumes)/[^[:space:]]+#<path>#g' \
+    -e 's#/private/var/folders/[^[:space:]]+#<temp-path>#g' \
+    -e 's#(/var)?/tmp/[^[:space:]]+#<temp-path>#g' \
+    -e 's#(token|secret|password|api[_-]?key)[=:][^[:space:]]+#\1=<redacted>#g' \
+    "$EVIDENCE_APP_LOG" | /usr/bin/tail -n 80 >&2
+}
+
 open_evidence_app() {
   local env_args=()
   while IFS= read -r -d '' env_arg; do
     env_args+=("$env_arg")
   done < <(app_env_args)
   stop_evidence_app
+  : >"$EVIDENCE_APP_LOG"
   # Direct launch preserves the isolated database, appearance, selected route,
   # Settings, and Voice Command env exactly. LaunchServices can drop or delay
   # those env values on some release hosts, which makes screenshot evidence
@@ -270,32 +293,50 @@ open_evidence_app() {
     -ApplePersistenceIgnoreState YES \
     -AppleLanguages "$APPLE_LANGUAGES" \
     -AppleLocale "$APPLE_LOCALE" \
-    >/dev/null 2>&1 &
-  EVIDENCE_APP_PID=$!
+    >>"$EVIDENCE_APP_LOG" 2>&1 &
+  EVIDENCE_APP_LAUNCH_PID=$!
+  EVIDENCE_APP_PID="$EVIDENCE_APP_LAUNCH_PID"
+  EVIDENCE_APP_LAUNCH_IDENTITY="$(ax_wait_for_owned_process_identity "$EVIDENCE_APP_LAUNCH_PID" "$APP_BINARY" "$TARGET_TIMEOUT_SECONDS")" || {
+    echo "failure_category=launch" >&2
+    echo "failure_message=visual-launch-identity-unavailable" >&2
+    emit_evidence_app_diagnostic
+    return 1
+  }
+  EVIDENCE_APP_IDENTITY="$EVIDENCE_APP_LAUNCH_IDENTITY"
 }
 
 wait_for_app_process_exit() {
-  [[ -z "${EVIDENCE_APP_PID:-}" ]]
+  [[ -z "${EVIDENCE_APP_PID:-}" && -z "${EVIDENCE_APP_LAUNCH_PID:-}" ]]
 }
 
 stop_evidence_app() {
-  if [[ -n "$EVIDENCE_APP_PID" ]]; then
-    kill "$EVIDENCE_APP_PID" >/dev/null 2>&1 || true
-    wait "$EVIDENCE_APP_PID" >/dev/null 2>&1 || true
-    EVIDENCE_APP_PID=""
+  local owned_pid="${EVIDENCE_APP_PID:-}"
+  local launch_pid="${EVIDENCE_APP_LAUNCH_PID:-}"
+  if [[ -n "$owned_pid" ]]; then
+    ax_terminate_owned_process "$owned_pid" "$APP_BINARY" "${EVIDENCE_APP_IDENTITY:-}"
   fi
+  if [[ -n "$launch_pid" && "$launch_pid" != "$owned_pid" ]]; then
+    ax_terminate_owned_process "$launch_pid" "$APP_BINARY" "${EVIDENCE_APP_LAUNCH_IDENTITY:-}"
+  fi
+  EVIDENCE_APP_PID=""
+  EVIDENCE_APP_LAUNCH_PID=""
+  EVIDENCE_APP_IDENTITY=""
+  EVIDENCE_APP_LAUNCH_IDENTITY=""
   wait_for_app_process_exit
 }
 
 activate_evidence_app() {
   # Avoid LaunchServices activation; it can start a second app instance without
   # the isolated screenshot database, target selection, or appearance env.
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
+  /usr/bin/osascript - "$EVIDENCE_APP_PID" "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
-  set appName to item 1 of argv
+  set appPID to item 1 of argv as integer
+  set appName to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then return "missing"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then return "missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set frontmost to true
       if (count of windows) > 0 then
         try
@@ -319,18 +360,57 @@ APPLESCRIPT
   wait "$osascript_pid" >/dev/null 2>&1 || true
 }
 
-wait_for_process() {
-  if [[ -n "$EVIDENCE_APP_PID" ]]; then
-    EVIDENCE_APP_PID="$(ax_wait_for_owned_app_pid "$EVIDENCE_APP_PID" "$APP_BINARY" "$TARGET_TIMEOUT_SECONDS")" || {
-      echo "$APP_NAME did not launch as expected pid $EVIDENCE_APP_PID." >&2
-      exit 1
-    }
-    ax_wait_for_pid_owned_process "$APP_NAME" "$EVIDENCE_APP_PID" "$TARGET_TIMEOUT_SECONDS" "$APP_BINARY"
-    ax_wait_for_pid_owned_window "$APP_NAME" "$EVIDENCE_APP_PID" "" "$TARGET_TIMEOUT_SECONDS" "" "$APP_BINARY"
-    return
+resolve_evidence_process_and_window() {
+  local resolved_pid
+  if ! resolved_pid="$(ax_wait_for_owned_app_pid "$EVIDENCE_APP_PID" "$APP_BINARY" "$TARGET_TIMEOUT_SECONDS")"; then
+    EVIDENCE_WAIT_FAILURE_CATEGORY="launch"
+    EVIDENCE_WAIT_FAILURE_REASON="visual-owned-pid-unavailable"
+    return 1
   fi
-  echo "$APP_NAME launch pid is missing." >&2
-  exit 1
+  EVIDENCE_APP_PID="$resolved_pid"
+  if ! EVIDENCE_APP_IDENTITY="$(ax_wait_for_owned_process_identity "$EVIDENCE_APP_PID" "$APP_BINARY" "$TARGET_TIMEOUT_SECONDS")"; then
+    EVIDENCE_WAIT_FAILURE_CATEGORY="launch"
+    EVIDENCE_WAIT_FAILURE_REASON="visual-owned-identity-unavailable"
+    return 1
+  fi
+  if ! ax_wait_for_pid_owned_process "$APP_NAME" "$EVIDENCE_APP_PID" "$TARGET_TIMEOUT_SECONDS" "$APP_BINARY"; then
+    EVIDENCE_WAIT_FAILURE_CATEGORY="launch"
+    EVIDENCE_WAIT_FAILURE_REASON="visual-owned-process-unavailable"
+    return 1
+  fi
+  if ! ax_wait_for_pid_owned_window "$APP_NAME" "$EVIDENCE_APP_PID" "" "$TARGET_TIMEOUT_SECONDS" "" "$APP_BINARY"; then
+    EVIDENCE_WAIT_FAILURE_CATEGORY="window"
+    EVIDENCE_WAIT_FAILURE_REASON="visual-window-unavailable"
+    return 1
+  fi
+}
+
+wait_for_process() {
+  local attempt
+  if [[ -z "$EVIDENCE_APP_PID" ]]; then
+    echo "$APP_NAME launch pid is missing." >&2
+    return 1
+  fi
+
+  for ((attempt = 1; attempt <= EVIDENCE_WINDOW_ATTEMPTS; attempt++)); do
+    if resolve_evidence_process_and_window; then
+      return 0
+    fi
+    if [[ "$attempt" -lt "$EVIDENCE_WINDOW_ATTEMPTS" && "$EVIDENCE_WAIT_FAILURE_CATEGORY" == "window" ]]; then
+      echo "INFO: retrying normal UI capture after owned window publication timeout" >&2
+      emit_evidence_app_diagnostic
+      stop_evidence_app
+      sleep 1
+      open_evidence_app || return 1
+    else
+      break
+    fi
+  done
+
+  echo "failure_category=$EVIDENCE_WAIT_FAILURE_CATEGORY" >&2
+  echo "failure_message=$EVIDENCE_WAIT_FAILURE_REASON" >&2
+  emit_evidence_app_diagnostic
+  return 1
 }
 
 wait_for_database() {
@@ -348,6 +428,7 @@ wait_for_database() {
 find_window_capture_metadata() {
   local window_name="${1:-}"
   SOLOPM_WINDOW_OWNER="$APP_NAME" \
+    SOLOPM_WINDOW_OWNER_PID="$EVIDENCE_APP_PID" \
     SOLOPM_WINDOW_NAME="$window_name" \
     /usr/bin/swift "$ROOT_DIR/script/ui_evidence_window_metadata.swift"
 }
@@ -439,6 +520,24 @@ prepare_ax_target_frame_auditor() {
   /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_target_frame_audit.swift" -o "$AX_TARGET_FRAME_AUDITOR"
 }
 
+prepare_ax_press_element_helper() {
+  if [[ -x "$AX_PRESS_ELEMENT_HELPER" ]]; then
+    return
+  fi
+  /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_press_element.swift" -o "$AX_PRESS_ELEMENT_HELPER"
+}
+
+press_project_sidebar_row() {
+  local project_id="$1"
+  if [[ ! "$project_id" =~ ^[1-9][0-9]*$ ]]; then
+    echo "invalid project id for visual destination navigation" >&2
+    return 2
+  fi
+  prepare_ax_press_element_helper
+  SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+    "$AX_PRESS_ELEMENT_HELPER" "$EVIDENCE_APP_PID" "project-sidebar-row-$project_id"
+}
+
 audit_ax_target_frame() {
   local identifier="$1"
   local window_name="$2"
@@ -484,6 +583,36 @@ audit_ax_target_frame() {
   fi
   cat "$output_file"
   rm -f "$output_file" "$error_file"
+}
+
+wait_for_stable_ax_target_frame() {
+  local identifier="$1"
+  local window_name="$2"
+  local stable_samples_required=3
+  local stable_samples=0
+  local previous_sample=""
+  local current_sample
+  local deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
+
+  while [[ "$SECONDS" -lt "$deadline" ]]; do
+    if ! current_sample="$(audit_ax_target_frame "$identifier" "$window_name")"; then
+      return 1
+    fi
+    if [[ "$current_sample" == "$previous_sample" ]]; then
+      stable_samples=$((stable_samples + 1))
+    else
+      previous_sample="$current_sample"
+      stable_samples=1
+    fi
+    if [[ "$stable_samples" -ge "$stable_samples_required" ]]; then
+      printf '%s\n' "$current_sample"
+      return 0
+    fi
+    sleep 0.25
+  done
+
+  echo "AX target frame did not converge for screenshot evidence: $identifier" >&2
+  return 1
 }
 
 scroll_ax_target_into_view() {
@@ -583,50 +712,56 @@ wait_for_project_board_destination() {
   done
 }
 
-visual_baseline_bounds() {
-  local viewport="$1"
-  local origin_x="$2"
-  local origin_y="$3"
-  local width="${viewport%x*}"
-  local height="${viewport#*x}"
-
-  if [[ ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
-    echo "invalid viewport: $viewport" >&2
-    exit 2
-  fi
-
-  printf '{%s, %s, %s, %s}' "$origin_x" "$origin_y" "$((origin_x + width))" "$((origin_y + height))"
-}
-
 position_window_for_capture() {
   local window_name="${1:-}"
-  local bounds
+  local viewport="$VISUAL_BASELINE_VIEWPORT"
+  local origin_x=80
+  local origin_y=70
 
   if [[ "$window_name" == "Voice Command" ]]; then
-    bounds="$(visual_baseline_bounds "$VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT" 160 140)"
-    /usr/bin/osascript \
-      -e 'tell application "System Events"' \
-      -e "tell process \"$APP_NAME\"" \
-      -e "if exists window \"$window_name\" then set bounds of window \"$window_name\" to $bounds" \
-      -e 'end tell' \
-      -e 'end tell' >/dev/null 2>&1 || true
+    viewport="$VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT"
+    origin_x=160
+    origin_y=140
   elif [[ -n "$window_name" ]]; then
-    bounds="$(visual_baseline_bounds "$SETTINGS_VISUAL_BASELINE_VIEWPORT" 120 90)"
-    /usr/bin/osascript \
-      -e 'tell application "System Events"' \
-      -e "tell process \"$APP_NAME\"" \
-      -e "if exists window \"$window_name\" then set bounds of window \"$window_name\" to $bounds" \
-      -e 'end tell' \
-      -e 'end tell' >/dev/null 2>&1 || true
-  else
-    bounds="$(visual_baseline_bounds "$VISUAL_BASELINE_VIEWPORT" 80 70)"
-    /usr/bin/osascript \
-      -e 'tell application "System Events"' \
-      -e "tell process \"$APP_NAME\"" \
-      -e "if exists front window then set bounds of front window to $bounds" \
-      -e 'end tell' \
-      -e 'end tell' >/dev/null 2>&1 || true
+    viewport="$SETTINGS_VISUAL_BASELINE_VIEWPORT"
+    origin_x=120
+    origin_y=90
   fi
+
+  local width="${viewport%x*}"
+  local height="${viewport#*x}"
+  if [[ ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
+    echo "invalid viewport: $viewport" >&2
+    return 2
+  fi
+
+  /usr/bin/osascript - "$EVIDENCE_APP_PID" "$window_name" "$origin_x" "$origin_y" "$width" "$height" <<'APPLESCRIPT' >/dev/null
+on run argv
+  set appPID to item 1 of argv as integer
+  set windowName to item 2 of argv
+  set originX to item 3 of argv as integer
+  set originY to item 4 of argv as integer
+  set targetWidth to item 5 of argv as integer
+  set targetHeight to item 6 of argv as integer
+  tell application "System Events"
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then return "missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
+      set frontmost to true
+      if windowName is not "" then
+        if not (exists window windowName) then error "missing named evidence window: " & windowName
+        set targetWindow to window windowName
+      else
+        if not (exists front window) then error "missing front evidence window"
+        set targetWindow to front window
+      end if
+      set position of targetWindow to {originX, originY}
+      set size of targetWindow to {targetWidth, targetHeight}
+    end tell
+  end tell
+end run
+APPLESCRIPT
 }
 
 assert_screenshot_has_visible_content() {
@@ -957,7 +1092,7 @@ persist_project_board_selection() {
   PROJECT_BOARD_SELECTION_OVERRIDE="project:$project_id"
   PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details=>Capture launch screenshots"
   INBOX_VOICE_TASK_OVERRIDE="$inbox_voice_task_id"
-  INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-make-task=>Inbox classification actions"
+  INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>Inbox classification actions"
   write_app_preference solopm.projectBoard.selectedDestination "$PROJECT_BOARD_SELECTION_OVERRIDE"
 }
 
@@ -986,7 +1121,10 @@ capture_visible_window() {
   local window_context
   window_context="id=$window_id bounds=${window_width}x${window_height}+${window_x}+${window_y}"
   local target_frame_audit
-  target_frame_audit="$(audit_ax_target_frame "$target_identifier" "$window_name")"
+  # SwiftUI can publish the target before its wrapping text finishes layout.
+  # Bind the raster to a converged AX frame so repeated captures do not approve
+  # different subpixel layouts for the same product state.
+  target_frame_audit="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name")"
 
   if ! screencapture -x -l "$window_id" "$output_path"; then
     if ! screencapture -x -R "${window_x},${window_y},${window_width},${window_height}" "$output_path"; then
@@ -1169,32 +1307,83 @@ capture_project_board_destination() {
   local selected_task_id="${6:-}"
   local scroll_target_identifier="${7:-}"
   local target_audit_identifier="${8:-}"
+  local post_scroll_target_markers="${9:-}"
+  local route_attempt
+  local marker_diagnostic
+  local launch_destination="$selected_destination"
+  local project_id=""
+  local destination_status
+
+  if [[ "$selected_destination" =~ ^project:([1-9][0-9]*)$ ]]; then
+    project_id="${BASH_REMATCH[1]}"
+    launch_destination="projects"
+  fi
 
   APPEARANCE_OVERRIDE="$appearance"
-  PROJECT_BOARD_SELECTION_OVERRIDE="$selected_destination"
+  PROJECT_BOARD_SELECTION_OVERRIDE="$launch_destination"
   PROJECT_BOARD_SELECTED_TASK_OVERRIDE="$selected_task_id"
   SETTINGS_WINDOW_OVERRIDE=""
   SETTINGS_TAB_OVERRIDE=""
   VOICE_COMMAND_WINDOW_OVERRIDE=""
-  stop_evidence_app
-  write_appearance_preference "$appearance"
-  write_app_preference solopm.projectBoard.selectedDestination "$selected_destination"
-  open_evidence_app
-  wait_for_process
-  activate_evidence_app
-  sleep 1.5
-  wait_for_window_capture_metadata >/dev/null
-  # Dense workflow footers may not enter the AX visible subtree until the
-  # evidence window is widened, so target validation uses the same bounds as
-  # the screenshot instead of checking a smaller launch-default window.
-  position_window_for_capture
-  sleep 0.25
-  wait_for_project_board_destination "$label" "$target_markers"
+  for ((route_attempt = 1; route_attempt <= EVIDENCE_ROUTE_ATTEMPTS; route_attempt++)); do
+    stop_evidence_app
+    write_appearance_preference "$appearance"
+    write_app_preference solopm.projectBoard.selectedDestination "$launch_destination"
+    open_evidence_app
+    wait_for_process
+    activate_evidence_app
+    sleep 1.5
+    wait_for_window_capture_metadata >/dev/null
+    # Dense workflow footers may not enter the AX visible subtree until the
+    # evidence window is widened, so target validation uses the same bounds as
+    # the screenshot instead of a smaller launch-default window.
+    position_window_for_capture
+    sleep 0.25
+
+    marker_diagnostic="$EVIDENCE_TMPDIR/project-board-destination.$$.attempt-$route_attempt.err"
+    : >"$marker_diagnostic"
+    destination_status=0
+    if [[ -n "$project_id" ]]; then
+      # The hosted macOS runner can publish a real Projects window while a
+      # direct project cold launch remains stuck before detail composition.
+      # Follow the production user path instead: prove Projects first, then
+      # select the exact seeded row through its PID-scoped AX identifier.
+      wait_for_project_board_destination \
+        "Projects overview before $label" \
+        "sidebar-destination-projects=>|projects-portfolio-overview=>" \
+        2>>"$marker_diagnostic" || destination_status=$?
+      if [[ "$destination_status" -eq 0 ]]; then
+        press_project_sidebar_row "$project_id" 2>>"$marker_diagnostic" || destination_status=$?
+      fi
+    fi
+    if [[ "$destination_status" -eq 0 ]]; then
+      wait_for_project_board_destination "$label" "$target_markers" 2>>"$marker_diagnostic" || destination_status=$?
+    fi
+    if [[ "$destination_status" -eq 0 ]]; then
+      rm -f "$marker_diagnostic"
+      PROJECT_BOARD_SELECTION_OVERRIDE="$selected_destination"
+      break
+    fi
+    if [[ "$route_attempt" -lt "$EVIDENCE_ROUTE_ATTEMPTS" ]]; then
+      echo "INFO: retrying exact production destination after required marker timeout" >&2
+      emit_evidence_app_diagnostic
+      rm -f "$marker_diagnostic"
+      continue
+    fi
+    cat "$marker_diagnostic" >&2
+    rm -f "$marker_diagnostic"
+    PROJECT_BOARD_SELECTION_OVERRIDE="$selected_destination"
+    return 1
+  done
+
   # Route markers can exist outside the current ScrollView viewport. Scroll the
   # evidence-specific landmark into view so captures of the same route prove a
   # distinct visual state instead of producing duplicate raster baselines.
   scroll_ax_target_into_view "$scroll_target_identifier" "$label"
   sleep 0.5
+  if [[ -n "$post_scroll_target_markers" ]]; then
+    wait_for_project_board_destination "$label after scroll" "$post_scroll_target_markers"
+  fi
 
   capture_visible_window "$appearance $label" "$output_path" "" "$target_audit_identifier"
 }
@@ -1675,7 +1864,8 @@ INBOX_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-action-panel=>$IN
 TODAY_TARGET_MARKERS="today-workflow=>$TODAY_ROUTE_LABEL|today-briefing-panel=>$TODAY_ROUTE_LABEL|today-assistant-rail=>$TODAY_ROUTE_LABEL"
 P0_INBOX_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-action-panel=>$INBOX_ROUTE_LABEL"
 P0_TODAY_TARGET_MARKERS="today-workflow=>$TODAY_ROUTE_LABEL|today-briefing-panel=>$TODAY_ROUTE_LABEL|today-assistant-rail=>$TODAY_ROUTE_LABEL"
-P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-make-task=>"
+INBOX_VOICE_ROUTE_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL"
+P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>Inbox classification actions"
 PROJECTS_TARGET_MARKERS="sidebar-destination-projects=>$PROJECTS_ROUTE_LABEL|projects-portfolio-overview=>$PROJECTS_ROUTE_LABEL"
 SCHEDULE_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-week-grid=>$WEEKLY_GRID_LABEL|schedule-week-time-axis-grid=>"
 SCHEDULE_COCKPIT_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-week-grid=>$WEEKLY_GRID_LABEL|schedule-week-time-axis-grid=>"
@@ -1691,8 +1881,8 @@ if [[ "$P0_WORKFLOWS" == "1" ]]; then
   capture_project_board_destination light today "$TODAY_LIGHT_SCREENSHOT" "Today" "$P0_TODAY_TARGET_MARKERS" "" "" "today-workflow"
   capture_project_board_destination dark today "$TODAY_DARK_SCREENSHOT" "Today" "$P0_TODAY_TARGET_MARKERS" "" "" "today-workflow"
   capture_project_board_destination system today "$TODAY_SYSTEM_SCREENSHOT" "Today" "$P0_TODAY_TARGET_MARKERS" "" "" "today-workflow"
-  capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$P0_INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail"
-  capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$P0_INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail"
+  capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_ROUTE_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail" "$P0_INBOX_VOICE_TARGET_MARKERS"
+  capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_ROUTE_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail" "$P0_INBOX_VOICE_TARGET_MARKERS"
 
   GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   write_p0_workflow_evidence_file "$GENERATED_AT" "$INBOX_LIGHT_SCREENSHOT" "$INBOX_DARK_SCREENSHOT" "$INBOX_SYSTEM_SCREENSHOT" "$TODAY_LIGHT_SCREENSHOT" "$TODAY_DARK_SCREENSHOT" "$TODAY_SYSTEM_SCREENSHOT" "$INBOX_VOICE_LIGHT_SCREENSHOT" "$INBOX_VOICE_DARK_SCREENSHOT"
@@ -1754,8 +1944,8 @@ capture_project_board_destination system today "$TODAY_SYSTEM_SCREENSHOT" "Today
 capture_voice_command_appearance light "$VOICE_COMMAND_LIGHT_SCREENSHOT"
 capture_voice_command_appearance dark "$VOICE_COMMAND_DARK_SCREENSHOT"
 capture_voice_command_appearance system "$VOICE_COMMAND_SYSTEM_SCREENSHOT"
-capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail"
-capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail"
+capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_ROUTE_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail" "$INBOX_VOICE_TARGET_MARKERS"
+capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_ROUTE_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail" "$INBOX_VOICE_TARGET_MARKERS"
 capture_project_board_destination light projects "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS" "" "" "projects-portfolio-overview"
 capture_project_board_destination dark projects "$PROJECTS_OVERVIEW_DARK_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS" "" "" "projects-portfolio-overview"
 capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS" "" "schedule-week-grid" "schedule-week-grid"

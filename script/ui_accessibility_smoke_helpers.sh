@@ -19,6 +19,67 @@ ax_process_matches_binary() {
   return 1
 }
 
+ax_owned_process_identity() {
+  local app_pid="$1"
+  local app_binary="$2"
+  local process_start
+  local process_command
+
+  ax_process_matches_binary "$app_pid" "$app_binary" || return 1
+  process_start="$(ps -p "$app_pid" -o lstart= 2>/dev/null)" || return 1
+  process_start="${process_start#"${process_start%%[![:space:]]*}"}"
+  process_command="$(ps -p "$app_pid" -o command= 2>/dev/null)" || return 1
+  process_command="${process_command#"${process_command%%[![:space:]]*}"}"
+  [[ -n "$process_start" && -n "$process_command" ]] || return 1
+  printf '%s\t%s\n' "$process_start" "$process_command"
+}
+
+ax_wait_for_owned_process_identity() {
+  local app_pid="$1"
+  local app_binary="$2"
+  local timeout_seconds="${3:-3}"
+  local deadline=$((SECONDS + timeout_seconds))
+  local identity
+
+  while true; do
+    if identity="$(ax_owned_process_identity "$app_pid" "$app_binary")"; then
+      printf '%s\n' "$identity"
+      return 0
+    fi
+    [[ "$SECONDS" -ge "$deadline" ]] && return 1
+    sleep 0.1
+  done
+}
+
+ax_process_matches_identity() {
+  local app_pid="$1"
+  local app_binary="$2"
+  local expected_identity="$3"
+  local current_identity
+
+  [[ -n "$expected_identity" ]] || return 1
+  current_identity="$(ax_owned_process_identity "$app_pid" "$app_binary")" || return 1
+  [[ "$current_identity" == "$expected_identity" ]]
+}
+
+ax_terminate_owned_process() {
+  local app_pid="$1"
+  local app_binary="$2"
+  local expected_identity="$3"
+  local deadline
+
+  ax_process_matches_identity "$app_pid" "$app_binary" "$expected_identity" || return 0
+  kill -TERM "$app_pid" >/dev/null 2>&1 || true
+  deadline=$((SECONDS + 3))
+  while ax_process_matches_identity "$app_pid" "$app_binary" "$expected_identity" && [[ "$SECONDS" -lt "$deadline" ]]; do
+    sleep 0.1
+  done
+  if ax_process_matches_identity "$app_pid" "$app_binary" "$expected_identity"; then
+    kill -KILL "$app_pid" >/dev/null 2>&1 || true
+  fi
+  wait "$app_pid" >/dev/null 2>&1 || true
+}
+
 ax_pid_is_owned_process() {
   local app_name="$1"
   local app_pid="$2"
@@ -205,7 +266,7 @@ ax_emit_failure_category() {
   local message="${2:-}"
 
   case "$category" in
-    launch|window|accessibility|product-marker)
+    launch|window|accessibility|product-marker|harness|performance-budget|app-regression)
       printf 'failure_category=%s\n' "$category" >&2
       if [[ -n "$message" ]]; then
         printf 'failure_message=%s\n' "$message" >&2

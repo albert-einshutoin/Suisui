@@ -8,14 +8,14 @@ The source of truth is `docs/quality/visual-baseline-manifest.json`.
 
 | Screen | Required Themes | Viewport | Evidence |
 | --- | --- | --- | --- |
-| Project Board | Light / Dark / System | 1420x860 | sidebar, task cards, project header, inspector |
-| Inbox | Light / Dark / System | 1420x860 | inbox list and selected intake context |
-| Today | Light / Dark / System | 1420x860 | due work, schedule blocks, recommended next step |
-| Inbox Voice | Light / Dark | 1420x860 | voice capture metadata, transcript context, interpretation state |
-| Projects Overview | Light / Dark | 1420x860 | portfolio cards, progress, risk, next due, selected summary |
-| Schedule | Light / Dark | 1420x860 | schedule cockpit, unscheduled tasks, review-only calendar draft |
-| Schedule Workload | Light / Dark | 1420x860 | daily workload counts, attention banner, selected day detail |
-| Done | Light / Dark | 1420x860 | completion analytics, history, reopen affordance |
+| Project Board | Light / Dark / System | 1024x674 | sidebar, task cards, project header, inspector |
+| Inbox | Light / Dark / System | 1024x674 | inbox list and selected intake context |
+| Today | Light / Dark / System | 1024x674 | due work, schedule blocks, recommended next step |
+| Inbox Voice | Light / Dark | 1024x674 | voice capture metadata, transcript context, interpretation state |
+| Projects Overview | Light / Dark | 1024x674 | portfolio cards, progress, risk, next due, selected summary |
+| Schedule | Light / Dark | 1024x674 | schedule cockpit, unscheduled tasks, review-only calendar draft |
+| Schedule Workload | Light / Dark | 1024x674 | daily workload counts, attention banner, selected day detail |
+| Done | Light / Dark | 1024x674 | completion analytics, history, reopen affordance |
 | Settings Overview | Light / Dark / System | 720x712 | overview navigation and account-free local state |
 | Settings Integrations | Light / Dark | 720x712 | provider, TTS/STT, Calendar/Reminder, Sync, Privacy, Data Location status |
 | Settings Appearance | Light / Dark / System | 720x712 | theme picker and contrast controls |
@@ -35,6 +35,8 @@ The gate uses semantic tolerances:
 - AX frame checks remain required because image comparison alone cannot reliably prove controls are not overlapping.
 
 The manifest's `baselineContext` fixes the registered baseline source commit, `normalRoute`, locale, timezone, and reference instant. Its `sourceCommit` identifies the product source used to approve the stored baselines. A new normal capture may come from a later product commit, so its receipt records the current full product-source commit independently instead of copying the manifest's older baseline commit. Product source means the latest committed change anywhere under `Sources` or in `Package.swift`, including runtime modules that can affect visible UI; capture-script-only commits do not invalidate it or create a self-reference. Baseline sidecar metadata must match the full manifest context, appearance, and logical viewport. Logical viewport is the capture contract; it may differ from PNG raster dimensions, but current and baseline raster dimensions must exactly match each other.
+
+The main-window viewport is bounded to `1024x674`, the largest stable content window available on the GitHub-hosted macOS GUI session used by the required visual lane. This also makes compact-window layout behavior part of the canonical regression contract instead of approving a desktop-only viewport that CI cannot reproduce.
 
 ## AX audit receipt
 

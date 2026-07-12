@@ -22,6 +22,7 @@ SKIP_SOURCE_ANCHORS=0
 LAUNCH_ENV_FILE=""
 DEFAULT_VOICEOVER_LAUNCH_ENV_FILE="$ROOT_DIR/.tmp/voiceover-review/launch.env"
 TIMEOUT_SECONDS=12
+APP_LAUNCH_PID=""
 MIN_AX_BUTTONS=5
 MIN_AX_TEXT_FIELDS=1
 MIN_AX_STATIC_TEXTS=5
@@ -219,6 +220,33 @@ if [[ "$SKIP_SOURCE_ANCHORS" -eq 1 && "$RUN_RUNTIME" -ne 1 ]]; then
   exit 2
 fi
 
+launched_app_matches_binary() {
+  local process_command
+  [[ "$APP_LAUNCH_PID" =~ ^[1-9][0-9]*$ ]] || return 1
+  process_command="$(ps -p "$APP_LAUNCH_PID" -o command= 2>/dev/null)" || return 1
+  process_command="${process_command#"${process_command%%[![:space:]]*}"}"
+  case "$process_command" in
+    "$APP_BINARY"|"$APP_BINARY "*) return 0 ;;
+  esac
+  return 1
+}
+
+cleanup_launched_app() {
+  if launched_app_matches_binary; then
+    kill -TERM "$APP_LAUNCH_PID" >/dev/null 2>&1 || true
+    local deadline=$((SECONDS + 3))
+    while launched_app_matches_binary && [[ "$SECONDS" -lt "$deadline" ]]; do
+      sleep 0.1
+    done
+    if launched_app_matches_binary; then
+      kill -KILL "$APP_LAUNCH_PID" >/dev/null 2>&1 || true
+    fi
+    wait "$APP_LAUNCH_PID" >/dev/null 2>&1 || true
+  fi
+  APP_LAUNCH_PID=""
+}
+trap cleanup_launched_app EXIT INT TERM
+
 if [[ "$SKIP_SOURCE_ANCHORS" -ne 1 ]]; then
   missing_count=0
   for anchor in "${REQUIRED_SOURCE_ANCHORS[@]}"; do
@@ -295,12 +323,27 @@ fi
 activate_app() {
   # Keep activation inside System Events so LaunchServices does not start or
   # block on a second app instance outside the isolated launch environment.
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
+  # The AX scan must target the exact PID launched by this script, otherwise
+  # a stray SoloPM window owned by a developer or a prior step would be
+  # inspected in place of the release candidate.
+  /usr/bin/osascript - "$APP_NAME" "${APP_LAUNCH_PID:-}" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
   set appName to item 1 of argv
+  set appLaunchPidText to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then return "missing"
-    tell process appName
+    set targetProcess to missing value
+    if appLaunchPidText is not "" then
+      try
+        set targetProcess to first process whose unix id is (appLaunchPidText as integer)
+      end try
+    end if
+    if appLaunchPidText is "" then
+      try
+        set targetProcess to first process whose name is appName
+      end try
+    end if
+    if targetProcess is missing value then return "missing"
+    tell targetProcess
       set frontmost to true
       if (count of windows) > 0 then
         try
@@ -332,12 +375,24 @@ open_task_inspector_for_runtime_focus_path() {
   local output=""
   while true; do
     set +e
-    output="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>&1
+    output="$(/usr/bin/osascript - "$APP_NAME" "${APP_LAUNCH_PID:-}" <<'APPLESCRIPT' 2>&1
 on run argv
   set appName to item 1 of argv
+  set appLaunchPidText to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set targetProcess to missing value
+    if appLaunchPidText is not "" then
+      try
+        set targetProcess to first process whose unix id is (appLaunchPidText as integer)
+      end try
+    end if
+    if appLaunchPidText is "" then
+      try
+        set targetProcess to first process whose name is appName
+      end try
+    end if
+    if targetProcess is missing value then error appName & " process is not visible to System Events"
+    tell targetProcess
       set frontmost to true
       set windowCount to count of windows
       if windowCount < 1 then error appName & " has no visible windows"
@@ -440,11 +495,12 @@ open_task_delete_confirmation_for_runtime_focus_path() {
   local status=1
   while true; do
     set +e
-    output="$(/usr/bin/osascript - "$APP_NAME" "$required_runtime_destructive_cancel_markers_joined" "$required_runtime_destructive_cancel_marker_count" <<'APPLESCRIPT' 2>&1
+    output="$(/usr/bin/osascript - "$APP_NAME" "${APP_LAUNCH_PID:-}" "$required_runtime_destructive_cancel_markers_joined" "$required_runtime_destructive_cancel_marker_count" <<'APPLESCRIPT' 2>&1
 on run argv
   set appName to item 1 of argv
-  set requiredDestructiveCancelMarkersRaw to item 2 of argv
-  set requiredDestructiveCancelMarkerCount to (item 3 of argv) as integer
+  set appLaunchPidText to item 2 of argv
+  set requiredDestructiveCancelMarkersRaw to item 3 of argv
+  set requiredDestructiveCancelMarkerCount to (item 4 of argv) as integer
   set previousTextItemDelimiters to text item delimiters of AppleScript
   set text item delimiters of AppleScript to "|||"
   set requiredDestructiveCancelMarkers to text items of requiredDestructiveCancelMarkersRaw
@@ -453,8 +509,19 @@ on run argv
   set bestDestructiveCancelSignalCount to 0
   set bestMissingDestructiveCancelSignals to ""
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set targetProcess to missing value
+    if appLaunchPidText is not "" then
+      try
+        set targetProcess to first process whose unix id is (appLaunchPidText as integer)
+      end try
+    end if
+    if appLaunchPidText is "" then
+      try
+        set targetProcess to first process whose name is appName
+      end try
+    end if
+    if targetProcess is missing value then error appName & " process is not visible to System Events"
+    tell targetProcess
       set frontmost to true
       set windowCount to count of windows
       if windowCount < 1 then error appName & " has no visible windows"
@@ -585,26 +652,29 @@ APPLESCRIPT
 }
 
 if [[ "$LAUNCH_APP" -eq 1 ]]; then
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-  if [[ -n "$LAUNCH_ENV_FILE" ]]; then
-    # Launching the binary directly preserves the generated review database and selected project env.
-    set -a
-    # shellcheck source=/dev/null
-    source "$LAUNCH_ENV_FILE"
-    set +a
-    # Runtime AX preflight verifies task CRUD focus and destructive-cancel
-    # signals, so it must opt into the deterministic CRUD recovery surface
-    # instead of the development-automation project recovery view.
-    export SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1
-    "$APP_BINARY" >/dev/null 2>&1 &
-  else
-    /usr/bin/open -n -F "$APP_BUNDLE"
+  if [[ -z "$LAUNCH_ENV_FILE" ]]; then
+    echo "BLOCKER: runtime accessibility preflight launch environment was not prepared" >&2
+    exit 2
   fi
+  # Direct launch preserves the deterministic candidate environment and gives
+  # every AX operation and cleanup path one exact owned process identifier.
+  set -a
+  # shellcheck source=/dev/null
+  source "$LAUNCH_ENV_FILE"
+  set +a
+  export SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1
+  "$APP_BINARY" >/dev/null 2>&1 &
+  APP_LAUNCH_PID=$!
   activate_app
 fi
 
 deadline=$((SECONDS + TIMEOUT_SECONDS))
-while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
+while true; do
+  if [[ -n "$APP_LAUNCH_PID" ]]; then
+    launched_app_matches_binary && break
+  elif pgrep -x "$APP_NAME" >/dev/null 2>&1; then
+    break
+  fi
   if [[ "$SECONDS" -ge "$deadline" ]]; then
     echo "BLOCKER: $APP_NAME process did not appear within ${TIMEOUT_SECONDS}s" >&2
     exit 1
@@ -655,20 +725,21 @@ done
 required_runtime_screen_marker_count="${#REQUIRED_RUNTIME_SCREEN_MARKERS[@]}"
 while true; do
   set +e
-  ax_output="$(/usr/bin/osascript - "$APP_NAME" "$MIN_AX_BUTTONS" "$MIN_AX_TEXT_FIELDS" "$MIN_AX_STATIC_TEXTS" "$required_runtime_crud_markers_joined" "$required_runtime_crud_marker_count" "$required_runtime_focus_markers_joined" "$required_runtime_focus_marker_count" "$required_runtime_button_a11y_markers_joined" "$required_runtime_button_a11y_marker_count" "$required_runtime_screen_markers_joined" "$required_runtime_screen_marker_count" <<APPLESCRIPT 2>&1
+  ax_output="$(/usr/bin/osascript - "$APP_NAME" "${APP_LAUNCH_PID:-}" "$MIN_AX_BUTTONS" "$MIN_AX_TEXT_FIELDS" "$MIN_AX_STATIC_TEXTS" "$required_runtime_crud_markers_joined" "$required_runtime_crud_marker_count" "$required_runtime_focus_markers_joined" "$required_runtime_focus_marker_count" "$required_runtime_button_a11y_markers_joined" "$required_runtime_button_a11y_marker_count" "$required_runtime_screen_markers_joined" "$required_runtime_screen_marker_count" <<APPLESCRIPT 2>&1
 on run argv
   set appName to item 1 of argv
-  set minButtons to (item 2 of argv) as integer
-  set minTextFields to (item 3 of argv) as integer
-  set minStaticTexts to (item 4 of argv) as integer
-  set requiredCRUDMarkersRaw to item 5 of argv
-  set requiredCRUDMarkerCount to (item 6 of argv) as integer
-  set requiredFocusMarkersRaw to item 7 of argv
-  set requiredFocusMarkerCount to (item 8 of argv) as integer
-  set requiredButtonA11yMarkersRaw to item 9 of argv
-  set requiredButtonA11yMarkerCount to (item 10 of argv) as integer
-  set requiredScreenMarkersRaw to item 11 of argv
-  set requiredScreenMarkerCount to (item 12 of argv) as integer
+  set appLaunchPidText to item 2 of argv
+  set minButtons to (item 3 of argv) as integer
+  set minTextFields to (item 4 of argv) as integer
+  set minStaticTexts to (item 5 of argv) as integer
+  set requiredCRUDMarkersRaw to item 6 of argv
+  set requiredCRUDMarkerCount to (item 7 of argv) as integer
+  set requiredFocusMarkersRaw to item 8 of argv
+  set requiredFocusMarkerCount to (item 9 of argv) as integer
+  set requiredButtonA11yMarkersRaw to item 10 of argv
+  set requiredButtonA11yMarkerCount to (item 11 of argv) as integer
+  set requiredScreenMarkersRaw to item 12 of argv
+  set requiredScreenMarkerCount to (item 13 of argv) as integer
   set previousTextItemDelimiters to text item delimiters of AppleScript
   set text item delimiters of AppleScript to "|||"
   set requiredCRUDMarkers to text items of requiredCRUDMarkersRaw
@@ -692,8 +763,19 @@ on run argv
   set bestScreenSignalCount to 0
   set bestMissingScreenSignals to ""
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set targetProcess to missing value
+    if appLaunchPidText is not "" then
+      try
+        set targetProcess to first process whose unix id is (appLaunchPidText as integer)
+      end try
+    end if
+    if appLaunchPidText is "" then
+      try
+        set targetProcess to first process whose name is appName
+      end try
+    end if
+    if targetProcess is missing value then error appName & " process is not visible to System Events"
+    tell targetProcess
       set windowCount to count of windows
       if windowCount < 1 then error appName & " has no visible windows"
       repeat with windowIndex from 1 to windowCount
