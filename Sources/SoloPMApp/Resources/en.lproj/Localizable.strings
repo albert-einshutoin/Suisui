@@ -271,6 +271,10 @@
 "Voice Command" = "Voice Command";
 "Voice Capture" = "Voice Capture";
 "Try one of these commands" = "Try one of these commands";
+"Type a command, or tap the microphone above to dictate one." = "Type a command, or tap the microphone above to dictate one.";
+"Records audio, then transcribes it into the command field." = "Records audio, then transcribes it into the command field.";
+"Inserts the example into the command field without running it." = "Inserts the example into the command field without running it.";
+"Starts continuous hands-free recognition, separate from push-to-record." = "Starts continuous hands-free recognition, separate from push-to-record.";
 "Capture follow-up for launch review" = "Capture follow-up for launch review";
 "Plan tomorrow: review release risks" = "Plan tomorrow: review release risks";
 "Inbox captures stay local. Plans wait in Assistant Queue before execution." = "Inbox captures stay local. Plans wait in Assistant Queue before execution.";

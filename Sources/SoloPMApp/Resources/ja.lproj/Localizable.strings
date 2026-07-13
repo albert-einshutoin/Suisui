@@ -271,6 +271,10 @@
 "Voice Command" = "音声コマンド";
 "Voice Capture" = "音声キャプチャ";
 "Try one of these commands" = "次のコマンドを試す";
+"Type a command, or tap the microphone above to dictate one." = "コマンドを入力するか、上のマイクをタップして音声で入力してください。";
+"Records audio, then transcribes it into the command field." = "音声を録音し、コマンド欄に文字起こしします。";
+"Inserts the example into the command field without running it." = "実行せずに、この例文をコマンド欄に挿入します。";
+"Starts continuous hands-free recognition, separate from push-to-record." = "録音ボタンとは別に、ハンズフリーの連続音声認識を開始します。";
 "Capture follow-up for launch review" = "ローンチレビューのフォローアップを記録";
 "Plan tomorrow: review release risks" = "明日の計画: リリースリスクを確認";
 "Inbox captures stay local. Plans wait in Assistant Queue before execution." = "Inboxキャプチャはローカルに保存されます。プランは実行前にAssistant Queueで待機します。";

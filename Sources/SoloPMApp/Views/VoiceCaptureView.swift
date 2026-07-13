@@ -127,16 +127,85 @@ struct VoiceCaptureView: View {
         }
     }
 
+    /// Whether the tappable example commands render: only while the command
+    /// field is empty and no capture path (push-to-record or the hands-free
+    /// voice agent) is currently filling it.
+    private var isExampleCommandRowVisible: Bool {
+        isVoiceCommandInputEmpty
+            && !viewModel.isRecording
+            && !viewModel.isLowLatencyVoiceAgentListening
+    }
+
+    /// Recording gate for the hero microphone, unchanged from the previous
+    /// Record button: no new capture while a plan is generating, a
+    /// transcription is running, or the hands-free voice agent is listening.
+    private var isHeroRecordDisabled: Bool {
+        viewModel.phase == .generatingPlan || viewModel.phase == .transcribing || viewModel.isLowLatencyVoiceAgentListening
+    }
+
+    /// Hero capture affordance: a large circular microphone button centered
+    /// above the input, with the current phase word beneath it. While a
+    /// recording is live the glyph swaps to a stop square and the input level
+    /// meter renders directly under the status word.
+    private var heroCaptureControl: some View {
+        VStack(spacing: SoloPMSpacing.sm) {
+            Button {
+                if viewModel.isRecording {
+                    Task {
+                        await viewModel.stopRecording(
+                            outputURL: recordingOutputURL()
+                        )
+                    }
+                } else {
+                    Task {
+                        await viewModel.startRecording()
+                    }
+                }
+            } label: {
+                Image(systemName: viewModel.isRecording ? "stop.fill" : "mic.fill")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(viewModel.isRecording ? AnyShapeStyle(Color.white) : AnyShapeStyle(.tint))
+                    .frame(width: 64, height: 64)
+                    .background(
+                        Circle()
+                            .fill(viewModel.isRecording ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.accentColor.opacity(0.14)))
+                    )
+                    .contentShape(Circle())
+                    .opacity(isHeroRecordDisabled ? 0.45 : 1)
+            }
+            .buttonStyle(.plain)
+            .disabled(isHeroRecordDisabled)
+            .help("Records audio, then transcribes it into the command field.")
+            .accessibilityLabel(localizedSettingsDisplay(viewModel.isRecording ? "Stop" : "Record"))
+            .accessibilityIdentifier("voice-command-record")
+
+            StatusRow(phase: viewModel.phase)
+
+            if viewModel.isRecording {
+                VoiceInputLevelMeter(meter: viewModel.inputLevelMeter)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     /// Zone 1: everything needed to enter a command and start work, grouped in
     /// one card so it reads as a single surface above the working/review zones.
+    /// The microphone is the visual anchor; example commands sit between it and
+    /// the input so an empty window still reads as a guided capture surface.
     private var captureZone: some View {
         VStack(alignment: .leading, spacing: SoloPMSpacing.md) {
-            StatusRow(phase: viewModel.phase)
+            heroCaptureControl
             failureRecoveryRow
             if let message = viewModel.auditErrorMessage {
                 Label(message, systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(SoloPMTone.attention.color)
+            }
+
+            if isExampleCommandRowVisible {
+                VoiceCommandExampleChips { example in
+                    viewModel.updateDraftText(example)
+                }
             }
 
             TextField(
@@ -174,28 +243,6 @@ struct VoiceCaptureView: View {
             LowLatencyVoiceAgentPanel(viewModel: viewModel)
 
             HStack {
-                Button {
-                    if viewModel.isRecording {
-                        Task {
-                            await viewModel.stopRecording(
-                                outputURL: recordingOutputURL()
-                            )
-                        }
-                    } else {
-                        Task {
-                            await viewModel.startRecording()
-                        }
-                    }
-                } label: {
-                    Label(viewModel.isRecording ? "Stop" : "Record", systemImage: viewModel.isRecording ? "stop.circle" : "record.circle")
-                }
-                .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .transcribing || viewModel.isLowLatencyVoiceAgentListening)
-                .accessibilityIdentifier("voice-command-record")
-
-                if viewModel.isRecording {
-                    VoiceInputLevelMeter(meter: viewModel.inputLevelMeter)
-                }
-
                 Button {
                     viewModel.saveDraftToInbox()
                     if viewModel.inboxCaptureResult != nil {
@@ -552,18 +599,33 @@ private struct LowLatencyVoiceAgentPanel: View {
         }
     }
 
+    /// A single compact status line instead of the previous boxed card: the
+    /// hands-free recognition mode is secondary to the hero microphone, so it
+    /// reads as one caption row with its Start/Stop control trailing. Live
+    /// transcript and intent lines still appear beneath while listening.
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
+        VStack(alignment: .leading, spacing: SoloPMSpacing.xs) {
+            HStack(alignment: .firstTextBaseline, spacing: SoloPMSpacing.sm) {
                 Label("Voice recognition", systemImage: "waveform")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Label(stateLabel, systemImage: stateSystemImage)
+                    .font(.caption)
+                    .foregroundStyle(stateTone)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("voice-agent-status")
+
+                Spacer(minLength: SoloPMSpacing.sm)
+
                 if viewModel.isLowLatencyVoiceAgentListening {
                     Button {
                         viewModel.stopLowLatencyVoiceAgentMode()
                     } label: {
                         Label("Stop", systemImage: "stop.circle")
                     }
+                    .controlSize(.small)
                     .accessibilityIdentifier("voice-agent-stop")
                 } else {
                     Button {
@@ -573,15 +635,12 @@ private struct LowLatencyVoiceAgentPanel: View {
                     } label: {
                         Label("Start", systemImage: "play.circle")
                     }
+                    .controlSize(.small)
                     .disabled(isBusyOutsideVoiceAgent)
+                    .help("Starts continuous hands-free recognition, separate from push-to-record.")
                     .accessibilityIdentifier("voice-agent-start")
                 }
             }
-
-            Label(stateLabel, systemImage: stateSystemImage)
-                .font(.caption)
-                .foregroundStyle(stateTone)
-                .accessibilityIdentifier("voice-agent-status")
 
             if !viewModel.liveTranscript.isEmpty {
                 liveTranscriptText
@@ -599,11 +658,6 @@ private struct LowLatencyVoiceAgentPanel: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("voice-agent-live-intent")
             }
-        }
-        .padding(10)
-        .overlay {
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(.quaternary)
         }
         .accessibilityIdentifier("voice-agent-panel")
     }
@@ -705,12 +759,13 @@ private struct VoiceCommandInputPrompt: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Placeholder guidance stays at .secondary or stronger; .tertiary
-            // fails readable contrast against the card background.
-            Text("Try one of these commands")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.primary)
-            placeholderExample("Capture follow-up for launch review", systemImage: "tray")
-            placeholderExample("Plan tomorrow: review release risks", systemImage: "checklist")
+            // fails readable contrast against the card background. The example
+            // commands moved out of this passive overlay into the tappable
+            // VoiceCommandExampleChips row above the input.
+            Text("Type a command, or tap the microphone above to dictate one.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             Text("Inbox captures stay local. Plans wait in Assistant Queue before execution.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -720,12 +775,46 @@ private struct VoiceCommandInputPrompt: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("voice-command-input-prompt")
     }
+}
 
-    private func placeholderExample(_ text: LocalizedStringKey, systemImage: String) -> some View {
-        Label(text, systemImage: systemImage)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
+/// Tappable example commands shown while the command field is empty. Each chip
+/// inserts its localized text into the input for editing or running — tapping
+/// never executes anything by itself.
+private struct VoiceCommandExampleChips: View {
+    let onInsert: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SoloPMSpacing.xs) {
+            Text("Try one of these commands")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            HStack(spacing: SoloPMSpacing.sm) {
+                exampleChip(
+                    String(localized: "Capture follow-up for launch review"),
+                    systemImage: "tray",
+                    index: 1
+                )
+                exampleChip(
+                    String(localized: "Plan tomorrow: review release risks"),
+                    systemImage: "checklist",
+                    index: 2
+                )
+            }
+        }
+        .accessibilityIdentifier("voice-command-example-chips")
+    }
+
+    private func exampleChip(_ text: String, systemImage: String, index: Int) -> some View {
+        Button {
+            onInsert(text)
+        } label: {
+            Label(text, systemImage: systemImage)
+                .font(.caption)
+                .lineLimit(1)
+        }
+        .buttonStyle(.bordered)
+        .help("Inserts the example into the command field without running it.")
+        .accessibilityIdentifier("voice-example-\(index)")
     }
 }
 
