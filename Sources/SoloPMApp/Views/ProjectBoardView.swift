@@ -23,13 +23,22 @@ private enum ProjectBoardLayoutMetrics {
     // Keeping the numbers named makes UI review catch accidental magic values
     // without forcing a premature app-wide design system abstraction.
     static let headerHeight: CGFloat = 44
+    // Sidebar bounds keep every fixed destination label ("Assistant Queue" is
+    // the widest at ~105pt for 15 characters of 13pt SF Pro, plus ~24pt icon
+    // column, 8pt gap, and a ~16pt count badge ≈ 185pt with row insets)
+    // readable without truncation at the 1024pt canonical window width.
+    static let sidebarColumnMinWidth: CGFloat = 200
+    static let sidebarColumnIdealWidth: CGFloat = 220
     static let terminalPanelMinHeight: CGFloat = 220
     static let terminalPanelIdealHeight: CGFloat = 280
     static let terminalPanelMaxHeight: CGFloat = 360
     static let portfolioCardMinHeight: CGFloat = 230
     static let overviewPanelMinHeight: CGFloat = 170
     static let displayModePickerWidth: CGFloat = 252
-    static let boardColumnWidth: CGFloat = 244
+    // 204pt columns keep two full Kanban columns visible beside the 300pt
+    // inspector at the 1024pt canonical window width: 2 x (204 + 20 padding)
+    // + 12 spacing = 460pt fits the ~466pt board viewport there.
+    static let boardColumnWidth: CGFloat = 204
     static let emptyColumnMinHeight: CGFloat = 82
     static let inlinePriorityPickerWidth: CGFloat = 112
     static let taskMetadataChipMinWidth: CGFloat = 64
@@ -208,6 +217,7 @@ struct ProjectBoardView: View {
             }
             .id(toolbarLayoutRefreshToken)
             .projectBoardSynchronizedColumnBounds()
+            .navigationSplitViewColumnWidth(min: ProjectBoardLayoutMetrics.sidebarColumnMinWidth, ideal: ProjectBoardLayoutMetrics.sidebarColumnIdealWidth)
         } detail: {
             VStack(spacing: 0) {
                 projectBoardHeaderBar
@@ -303,7 +313,10 @@ struct ProjectBoardView: View {
                         EmptyView()
                     }
                 }
-                .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
+                // The 300pt ideal (down from 340) splits the 1024pt-width
+                // squeeze with the narrower board columns so two columns plus
+                // the inspector fit without horizontal clipping.
+                .inspectorColumnWidth(min: 300, ideal: 300, max: 420)
             }
         }
         .frame(
@@ -649,9 +662,9 @@ struct ProjectBoardView: View {
                 .accessibilityIdentifier("project-board-google-calendar-sync")
             } label: {
                 Label("Integrations", systemImage: "arrow.left.arrow.right")
-                    .labelStyle(.titleAndIcon)
+                    .labelStyle(.iconOnly)
             }
-            .help("Import, export, and sync task data")
+            .help("Integrations: import, export, and sync task data")
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Integrations")
             .accessibilityIdentifier("project-board-integrations-menu")
@@ -660,9 +673,9 @@ struct ProjectBoardView: View {
                 viewModel.prepareTaskAutomationReview(settings: taskAutomationSettings())
             } label: {
                 Label("Review Task Automation", systemImage: "sparkles")
-                    .labelStyle(.titleAndIcon)
+                    .labelStyle(.iconOnly)
             }
-            .help("Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings")
+            .help("Review Task Automation: prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings")
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Review Task Automation")
             .accessibilityIdentifier("project-board-task-auto-execution-review")
@@ -672,15 +685,16 @@ struct ProjectBoardView: View {
                 openWindow(id: "voice-capture")
             } label: {
                 Label("Voice Command", systemImage: "mic")
-                    .labelStyle(.titleAndIcon)
+                    .labelStyle(.iconOnly)
             }
+            .help("Voice Command")
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Voice Command")
             .accessibilityIdentifier("project-board-voice-command")
 
             SettingsLink {
                 Label("Settings", systemImage: "gearshape")
-                    .labelStyle(.titleAndIcon)
+                    .labelStyle(.iconOnly)
             }
             .help("Open Settings")
             .accessibilityElement(children: .ignore)
@@ -3576,19 +3590,13 @@ private struct TaskStatusMoveControls: View {
 private struct TaskCardMetadataStrip: View {
     let task: ProjectBoardTask
 
-    private var compactColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 72), spacing: 6)]
-    }
-
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) {
-                metadataChips
-            }
-
-            LazyVGrid(columns: compactColumns, alignment: .leading, spacing: 6) {
-                metadataChips
-            }
+        // Fixed rows wrap the chips instead of a single measured HStack, so
+        // long status/priority/due labels compress inside the card width and
+        // never clip mid-glyph at the trailing card edge.
+        VStack(alignment: .leading, spacing: 6) {
+            identityChipRow
+            scheduleChipRow
         }
         .font(.caption2)
         .accessibilityElement(children: .combine)
@@ -3597,32 +3605,45 @@ private struct TaskCardMetadataStrip: View {
         .accessibilityIdentifier("task-card-metadata-strip")
     }
 
-    @ViewBuilder
-    private var metadataChips: some View {
-        TaskMetadataChip(
-            value: task.status.title,
-            systemImage: task.status.systemImage,
-            tint: task.status.tint
-        )
-
-        TaskMetadataChip(
-            value: task.priority.label,
-            systemImage: "flag",
-            tint: task.priority.color
-        )
-
-        TaskMetadataChip(
-            value: dueValue,
-            systemImage: "calendar",
-            tint: task.dueLabel == nil ? .secondary : .blue
-        )
-
-        if let recurrenceValue {
+    private var identityChipRow: some View {
+        HStack(spacing: 6) {
             TaskMetadataChip(
-                value: recurrenceValue,
-                systemImage: "repeat",
-                tint: .purple
+                value: task.status.title,
+                systemImage: task.status.systemImage,
+                tint: task.status.tint
             )
+
+            TaskMetadataChip(
+                value: task.priority.label,
+                systemImage: "flag",
+                tint: task.priority.color
+            )
+        }
+    }
+
+    /// Due and recurrence chips render only when the task carries those
+    /// values; an unconditional placeholder chip reads as broken metadata.
+    /// The dateless case stays discoverable through the accessibility value.
+    @ViewBuilder
+    private var scheduleChipRow: some View {
+        if task.dueLabel != nil || recurrenceValue != nil {
+            HStack(spacing: 6) {
+                if let dueLabel = task.dueLabel {
+                    TaskMetadataChip(
+                        value: dueLabel,
+                        systemImage: "calendar",
+                        tint: .blue
+                    )
+                }
+
+                if let recurrenceValue {
+                    TaskMetadataChip(
+                        value: recurrenceValue,
+                        systemImage: "repeat",
+                        tint: .purple
+                    )
+                }
+            }
         }
     }
 
@@ -3662,9 +3683,10 @@ private struct TaskMetadataChip: View {
         .foregroundStyle(tint)
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
+        // Chips hug their content (no maxWidth: .infinity) so a row of chips
+        // compresses via truncation instead of stretching past the card edge.
         .frame(
             minWidth: ProjectBoardLayoutMetrics.taskMetadataChipMinWidth,
-            maxWidth: .infinity,
             minHeight: ProjectBoardLayoutMetrics.taskMetadataChipMinHeight,
             alignment: .leading
         )

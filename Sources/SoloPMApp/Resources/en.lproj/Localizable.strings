@@ -173,8 +173,8 @@
 "In Progress" = "In Progress";
 "Inbox" = "Inbox";
 "Import Tasks" = "Import Tasks";
-"Import, export, and sync task data" = "Import, export, and sync task data";
 "Integrations" = "Integrations";
+"Integrations: import, export, and sync task data" = "Integrations: import, export, and sync task data";
 "Japanese" = "Japanese";
 "Language" = "Language";
 "Launch at Login" = "Launch at Login";
@@ -968,6 +968,7 @@
 "Automation" = "Automation";
 "Review-only task automation" = "Review-only task automation";
 "Review Task Automation" = "Review Task Automation";
+"Review Task Automation: prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings" = "Review Task Automation: prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings";
 "Review automation plan" = "Review automation plan";
 "Run approved plan" = "Run approved plan";
 "Review draft is ready. Running it only starts local task execution." = "Review draft is ready. Running it only starts local task execution.";
@@ -982,7 +983,6 @@
 "Started approved automation for \"%@\"." = "Started approved automation for \"%@\".";
 "Prepares review-only local automation for the selected task" = "Prepares review-only local automation for the selected task";
 "Prepares review-only local automation for the selected task." = "Prepares review-only local automation for the selected task.";
-"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings" = "Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings";
 "Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings." = "Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings.";
 "Runs the reviewed local task step after explicit user approval" = "Runs the reviewed local task step after explicit user approval";
 "Runs the reviewed local task step after explicit user approval." = "Runs the reviewed local task step after explicit user approval.";

@@ -173,8 +173,8 @@
 "In Progress" = "進行中";
 "Inbox" = "インボックス";
 "Import Tasks" = "タスクをインポート";
-"Import, export, and sync task data" = "タスクデータのインポート、エクスポート、同期";
 "Integrations" = "連携";
+"Integrations: import, export, and sync task data" = "連携: タスクデータのインポート、エクスポート、同期";
 "Japanese" = "日本語";
 "Language" = "言語";
 "Launch at Login" = "ログイン時に起動";
@@ -968,6 +968,7 @@
 "Automation" = "自動化";
 "Review-only task automation" = "確認専用タスク自動化";
 "Review Task Automation" = "タスク自動化を確認";
+"Review Task Automation: prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings" = "タスク自動化を確認: 優先度、期日、頻度、日次予算設定から確認専用タスク自動化を準備します";
 "Review automation plan" = "自動化計画を確認";
 "Run approved plan" = "承認済み計画を実行";
 "Review draft is ready. Running it only starts local task execution." = "レビュードラフトを準備しました。実行しても開始するのはローカルのタスク手順のみです。";
@@ -982,7 +983,6 @@
 "Started approved automation for \"%@\"." = "「%@」の承認済み自動化を開始しました。";
 "Prepares review-only local automation for the selected task" = "選択中タスクの確認専用ローカル自動化を準備します";
 "Prepares review-only local automation for the selected task." = "選択中タスクの確認専用ローカル自動化を準備します。";
-"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings" = "優先度、期日、頻度、日次予算設定から確認専用タスク自動化を準備します";
 "Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings." = "優先度、期日、頻度、日次予算設定から確認専用タスク自動化を準備します。";
 "Runs the reviewed local task step after explicit user approval" = "明示的なユーザー承認後、確認済みのローカルタスク手順を実行します";
 "Runs the reviewed local task step after explicit user approval." = "明示的なユーザー承認後、確認済みのローカルタスク手順を実行します。";

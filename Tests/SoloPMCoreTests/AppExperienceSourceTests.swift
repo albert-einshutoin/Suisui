@@ -584,7 +584,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("appSettings: @escaping () -> AppSettings"))
         XCTAssertTrue(boardSource.contains("viewModel.prepareTaskAutomationReview(settings: taskAutomationSettings())"))
         XCTAssertTrue(boardSource.contains("viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())"))
-        XCTAssertTrue(boardSource.contains(".help(\"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings\")"))
+        XCTAssertTrue(boardSource.contains(".help(\"Review Task Automation: prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings.\")"))
         XCTAssertTrue(appSource.contains("@StateObject private var settingsViewModel: AppSettingsViewModel"))
         XCTAssertTrue(appSource.contains("AppRuntimeFactory.makeAppSettingsViewModel(refreshProviderSecretStatusesOnInit: false)"))
@@ -693,7 +693,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("static let portfolioCardMinHeight: CGFloat = 230"))
         XCTAssertTrue(source.contains("static let overviewPanelMinHeight: CGFloat = 170"))
         XCTAssertTrue(source.contains("static let displayModePickerWidth: CGFloat = 252"))
-        XCTAssertTrue(source.contains("static let boardColumnWidth: CGFloat = 244"))
+        XCTAssertTrue(source.contains("static let sidebarColumnMinWidth: CGFloat = 200"))
+        XCTAssertTrue(source.contains("static let sidebarColumnIdealWidth: CGFloat = 220"))
+        XCTAssertTrue(source.contains("static let boardColumnWidth: CGFloat = 204"))
         XCTAssertTrue(source.contains("static let emptyColumnMinHeight: CGFloat = 82"))
         XCTAssertTrue(source.contains("static let inlinePriorityPickerWidth: CGFloat = 112"))
         XCTAssertTrue(source.contains("static let taskMetadataChipMinWidth: CGFloat = 64"))
@@ -825,7 +827,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains(".defaultSize(width: ProjectBoardWindowMetrics.defaultWidth, height: ProjectBoardWindowMetrics.defaultHeight)"))
         XCTAssertEqual(boardSource.components(separatedBy: ".navigationTitle(\"SoloPM\")").count - 1, 1)
         XCTAssertEqual(boardSource.components(separatedBy: ".projectBoardSynchronizedColumnBounds()").count - 1, 2)
-        XCTAssertFalse(boardSource.contains(".navigationSplitViewColumnWidth("))
+        // The sidebar pins bounded (min/ideal) column widths so fixed
+        // destination labels render untruncated at the 1024pt canonical
+        // width; a hard-coded fixed width remains forbidden.
+        XCTAssertTrue(boardSource.contains(".navigationSplitViewColumnWidth(min: ProjectBoardLayoutMetrics.sidebarColumnMinWidth, ideal: ProjectBoardLayoutMetrics.sidebarColumnIdealWidth)"))
         XCTAssertFalse(boardSource.contains("ProjectBoardLayout.sidebarColumnWidth"))
         XCTAssertEqual(boardSource.components(separatedBy: ".id(toolbarLayoutRefreshToken)").count - 1, 2)
         XCTAssertTrue(boardSource.contains("@State private var toolbarLayoutRefreshToken = 0"))
@@ -1319,7 +1324,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("TaskCardMetadataStrip(task: task)"))
         XCTAssertTrue(source.contains("private struct TaskCardMetadataStrip"))
         XCTAssertTrue(source.contains("private struct TaskMetadataChip"))
-        XCTAssertTrue(source.contains("GridItem(.adaptive(minimum: 72), spacing: 6)"))
+        // The strip wraps chips into fixed rows (identity + schedule) so
+        // chips truncate inside the card instead of clipping at its edge,
+        // and the due chip renders only when the task has a due date.
+        XCTAssertTrue(source.contains("private var identityChipRow: some View"))
+        XCTAssertTrue(source.contains("private var scheduleChipRow: some View"))
+        XCTAssertTrue(source.contains("if task.dueLabel != nil || recurrenceValue != nil"))
+        XCTAssertTrue(source.contains("if let dueLabel = task.dueLabel"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"task-card-metadata-strip\")"))
         XCTAssertTrue(source.contains(".accessibilityValue(\"\\(task.status.title), \\(task.priority.label), \\(dueValue)\")"))
         XCTAssertTrue(source.contains("No due date"))
@@ -2850,7 +2861,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readAppShellSource()
 
         XCTAssertTrue(appSource.contains("ScrollView"))
-        XCTAssertTrue(appSource.contains(".frame(minHeight: 150, idealHeight: 180, maxHeight: 180)"))
+        XCTAssertTrue(appSource.contains(".frame(minHeight: 150, idealHeight: 180, maxHeight: .infinity, alignment: .topLeading)"))
         XCTAssertTrue(appSource.contains(".frame(maxWidth: .infinity, alignment: .leading)"))
         XCTAssertTrue(appSource.contains("ActionReviewHeader"))
         XCTAssertTrue(appSource.contains("ReviewActionTitleRow"))

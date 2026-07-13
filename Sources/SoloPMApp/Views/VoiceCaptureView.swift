@@ -101,7 +101,14 @@ struct VoiceCaptureView: View {
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: hasWorkingContent)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: hasReviewContent)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            // While idle there is no working/review content; collapsing the
+            // empty scroll region hands the window height to the capture zone
+            // above instead of rendering it as blank space.
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: hasWorkingContent || hasReviewContent ? .infinity : 0,
+                alignment: .topLeading
+            )
         }
         .padding(SoloPMSpacing.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -144,7 +151,10 @@ struct VoiceCaptureView: View {
             .font(.body)
             .lineLimit(5...8)
             .padding(8)
-            .frame(minHeight: 150, idealHeight: 180, maxHeight: 180)
+            // The input area absorbs leftover window height (content stays
+            // top-aligned) so the idle window reads as one intentional
+            // capture surface instead of leaving a dead lower half.
+            .frame(minHeight: 150, idealHeight: 180, maxHeight: .infinity, alignment: .topLeading)
             .overlay(alignment: .topLeading) {
                 if isVoiceCommandInputEmpty {
                     VoiceCommandInputPrompt()
@@ -691,14 +701,16 @@ private struct VoiceInputLevelMeter: View {
 private struct VoiceCommandInputPrompt: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Placeholder guidance stays at .secondary or stronger; .tertiary
+            // fails readable contrast against the card background.
             Text("Try one of these commands")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.primary)
             placeholderExample("Capture follow-up for launch review", systemImage: "tray")
             placeholderExample("Plan tomorrow: review release risks", systemImage: "checklist")
             Text("Inbox captures stay local. Plans wait in Assistant Queue before execution.")
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(8)
@@ -709,7 +721,7 @@ private struct VoiceCommandInputPrompt: View {
     private func placeholderExample(_ text: LocalizedStringKey, systemImage: String) -> some View {
         Label(text, systemImage: systemImage)
             .font(.caption)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.secondary)
             .lineLimit(1)
     }
 }
