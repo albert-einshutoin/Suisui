@@ -1521,6 +1521,11 @@ public final class AppSettingsViewModel: ObservableObject {
         clearMessages()
     }
 
+    public func setRescheduleAvoidsWeekends(_ avoidsWeekends: Bool) {
+        settings.notificationPreferences.avoidsWeekends = avoidsWeekends
+        clearMessages()
+    }
+
     public func setDeveloperModeEnabled(_ isEnabled: Bool) {
         settings.isDeveloperModeEnabled = isEnabled
         clearMessages()

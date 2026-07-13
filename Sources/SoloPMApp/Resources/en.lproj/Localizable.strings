@@ -477,6 +477,8 @@
 "Sets the local time when deferred notifications are delivered." = "Sets the local time when deferred notifications are delivered.";
 "Moves deadline task reminders earlier than the due time. Digest and weekly summaries are not affected." = "Moves deadline task reminders earlier than the due time. Digest and weekly summaries are not affected.";
 "Deadline reminders fire ahead of the due time by the selected lead. Notifications that land inside quiet hours are deferred to the end of the window, never dropped." = "Deadline reminders fire ahead of the due time by the selected lead. Notifications that land inside quiet hours are deferred to the end of the window, never dropped.";
+"Avoid weekends when rescheduling" = "Avoid weekends when rescheduling";
+"Moves missed-task reschedule suggestions that land on Saturday or Sunday to the following Monday." = "Moves missed-task reschedule suggestions that land on Saturday or Sunday to the following Monday.";
 "Approve all reschedules" = "Approve all reschedules";
 "Approve every open reschedule suggestion one by one" = "Approve every open reschedule suggestion one by one";
 "Approves each open reschedule suggestion through the same per-item review path. Nothing runs until each item passes the execution gate." = "Approves each open reschedule suggestion through the same per-item review path. Nothing runs until each item passes the execution gate.";

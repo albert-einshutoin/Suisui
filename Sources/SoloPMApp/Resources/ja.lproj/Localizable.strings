@@ -477,6 +477,8 @@
 "Sets the local time when deferred notifications are delivered." = "先送りされた通知が届くローカル時刻を設定します。";
 "Moves deadline task reminders earlier than the due time. Digest and weekly summaries are not affected." = "期限タスクのリマインドを期限より前倒しにします。デイリーダイジェストと週次レビューには影響しません。";
 "Deadline reminders fire ahead of the due time by the selected lead. Notifications that land inside quiet hours are deferred to the end of the window, never dropped." = "期限リマインドは選択したリードタイム分だけ期限より前に通知されます。休止時間に重なる通知は破棄されず、休止時間の終了後に届きます。";
+"Avoid weekends when rescheduling" = "リスケ時に週末を避ける";
+"Moves missed-task reschedule suggestions that land on Saturday or Sunday to the following Monday." = "期限切れタスクのリスケ提案が土曜・日曜になる場合、翌月曜日に移動します。";
 "Approve all reschedules" = "再スケジュールを一括承認";
 "Approve every open reschedule suggestion one by one" = "未処理の再スケジュール提案を1件ずつ承認します";
 "Approves each open reschedule suggestion through the same per-item review path. Nothing runs until each item passes the execution gate." = "未処理の再スケジュール提案を既存の1件ごとのレビュー経路で順番に承認します。各項目は実行ゲートを通るまで実行されません。";

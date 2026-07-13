@@ -1239,6 +1239,16 @@ struct SettingsView: View {
                     .accessibilityIdentifier("settings-notification-quiet-hours-caption")
                 Toggle(
                     isOn: Binding(
+                        get: { settingsViewModel.settings.notificationPreferences.avoidsWeekends },
+                        set: { settingsViewModel.setRescheduleAvoidsWeekends($0) }
+                    )
+                ) {
+                    Label("Avoid weekends when rescheduling", systemImage: "calendar.badge.exclamationmark")
+                }
+                .accessibilityIdentifier("settings-reschedule-avoid-weekends")
+                .accessibilityHint("Moves missed-task reschedule suggestions that land on Saturday or Sunday to the following Monday.")
+                Toggle(
+                    isOn: Binding(
                         get: { settingsViewModel.settings.isDeveloperModeEnabled },
                         set: { settingsViewModel.setDeveloperModeEnabled($0) }
                     )
