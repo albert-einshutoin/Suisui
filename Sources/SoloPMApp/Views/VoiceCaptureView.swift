@@ -555,7 +555,7 @@ private struct LowLatencyVoiceAgentPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Label("Low-latency agent", systemImage: "waveform")
+                Label("Voice recognition", systemImage: "waveform")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
                 if viewModel.isLowLatencyVoiceAgentListening {
@@ -627,7 +627,10 @@ private struct LowLatencyVoiceAgentPanel: View {
     private var stateLabel: String {
         switch viewModel.lowLatencyVoiceAgentState {
         case .idle:
-            String(localized: "Idle")
+            // Display-only mapping: the .idle state name stays internal while the
+            // status line speaks user language ("Ready", ja: 待機中). The key is
+            // distinct because "Ready" already exists with a different ja reading.
+            String(localized: "voice-agent-status-ready", defaultValue: "Ready")
         case .listening:
             String(localized: "Listening")
         case .disabled(let message), .unavailable(let message), .failed(let message):

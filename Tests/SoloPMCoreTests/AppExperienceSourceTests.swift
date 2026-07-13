@@ -622,7 +622,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"ai-usage-threshold-row-\\(row.scope.rawValue)\")"))
         XCTAssertTrue(workflowSource.contains("Latest Month"))
         XCTAssertTrue(workflowSource.contains("row.summary.costLabel"))
-        XCTAssertTrue(workflowSource.contains("Recent AI Receipts"))
+        XCTAssertTrue(workflowSource.contains("Recent AI Activity"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"recent-ai-receipts\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"execution-receipt-search-field\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"execution-receipt-export-button\")"))
@@ -648,8 +648,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let workflowSource = try readProjectWorkflowSources()
 
-        XCTAssertTrue(boardSource.contains("Section(\"Project AI Receipts\")"))
-        XCTAssertTrue(boardSource.contains("Section(\"Task AI Receipts\")"))
+        XCTAssertTrue(boardSource.contains("Section(\"Project AI Activity\")"))
+        XCTAssertTrue(boardSource.contains("Section(\"Task AI Activity\")"))
         XCTAssertTrue(boardSource.contains("viewModel.executionReceiptHistorySnapshot(forProjectID: project.id)"))
         XCTAssertTrue(boardSource.contains("viewModel.executionReceiptHistorySnapshot(forTaskID: task.id)"))
         XCTAssertTrue(boardSource.contains("accessibilityIdentifier: \"project-execution-receipts\""))
@@ -2317,6 +2317,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-draft-defer\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-draft-move-today\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-draft-split\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-draft-actions-menu\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-readout\")"))
         XCTAssertTrue(workflowSource.contains("playDailyPlanningReadout()"))
         XCTAssertTrue(workflowSource.contains("viewModel.enqueueDailyPlanningActionDraft(kind: .startRecommended)"))
@@ -2563,11 +2564,12 @@ final class AppExperienceSourceTests: XCTestCase {
         let todayBriefingEnd = try XCTUnwrap(todaySource.range(of: "private struct TodaySuggestionPanel"))
         let todayBriefingScope = String(todaySource[todayBriefingStart.lowerBound..<todayBriefingEnd.lowerBound])
 
-        let commonRailStart = try XCTUnwrap(todaySource.range(of: "private var commonActionRail"))
-        let commonButtonsStart = try XCTUnwrap(todaySource.range(of: "@ViewBuilder\n    private var commonActionButtons", range: commonRailStart.upperBound..<todaySource.endIndex))
-        let commonRailScope = String(todaySource[commonRailStart.lowerBound..<commonButtonsStart.lowerBound])
-        let suggestionRailStart = try XCTUnwrap(todaySource.range(of: "private var suggestionRail", range: commonButtonsStart.upperBound..<todaySource.endIndex))
-        let commonButtonsScope = String(todaySource[commonButtonsStart.lowerBound..<suggestionRailStart.lowerBound])
+        let actionToolbarStart = try XCTUnwrap(todaySource.range(of: "private var actionToolbar"))
+        let addTaskButtonStart = try XCTUnwrap(todaySource.range(of: "private var addTaskButton", range: actionToolbarStart.upperBound..<todaySource.endIndex))
+        let actionToolbarScope = String(todaySource[actionToolbarStart.lowerBound..<addTaskButtonStart.lowerBound])
+        let planMenuStart = try XCTUnwrap(todaySource.range(of: "private var planMenu", range: addTaskButtonStart.upperBound..<todaySource.endIndex))
+        let suggestionRailStart = try XCTUnwrap(todaySource.range(of: "private var suggestionRail", range: planMenuStart.upperBound..<todaySource.endIndex))
+        let planMenuScope = String(todaySource[planMenuStart.lowerBound..<suggestionRailStart.lowerBound])
 
         let planSummaryStart = try XCTUnwrap(todaySource.range(of: "private struct TodayPlanSummary"))
         let countBadgeStart = try XCTUnwrap(todaySource.range(of: "private struct TodayCountBadge", range: planSummaryStart.upperBound..<todaySource.endIndex))
@@ -2580,7 +2582,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertFalse(todayWorkflowScope.contains("ViewThatFits(in:"))
         XCTAssertFalse(todayBriefingScope.contains("ViewThatFits(in:"))
-        XCTAssertFalse(commonRailScope.contains("ViewThatFits(in:"))
+        XCTAssertFalse(actionToolbarScope.contains("ViewThatFits(in:"))
         XCTAssertFalse(planSummaryScope.contains("ViewThatFits(in:"))
         XCTAssertFalse(sharedHeaderScope.contains("ViewThatFits(in:"))
 
@@ -2596,8 +2598,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(sharedSource.contains("else if fillsAvailableHeight {\n                ScrollView {\n                    taskRows"))
         XCTAssertTrue(sharedSource.contains("} else {\n                taskRows"))
         XCTAssertTrue(sharedSource.contains("private var taskRows: some View"))
-        XCTAssertTrue(todayBriefingScope.contains("LazyVGrid"))
-        XCTAssertTrue(commonRailScope.contains("GridItem(.adaptive"))
+        // The action toolbar is a single non-wrapping HStack row: no grids,
+        // no ViewThatFits, so it stays one line at the canonical viewport.
+        XCTAssertTrue(actionToolbarScope.contains("HStack(spacing: 8)"))
+        XCTAssertFalse(actionToolbarScope.contains("LazyVGrid"))
+        XCTAssertFalse(actionToolbarScope.contains("GridItem(.adaptive"))
+        XCTAssertFalse(todayBriefingScope.contains("LazyVGrid"))
         XCTAssertTrue(planSummaryScope.contains("VStack(alignment: .leading"))
         XCTAssertTrue(sharedHeaderScope.contains("VStack(alignment: .leading"))
 
@@ -2605,25 +2611,38 @@ final class AppExperienceSourceTests: XCTestCase {
             try XCTUnwrap(sharedHeaderScope.range(of: "WorkflowHeader(")).lowerBound,
             try XCTUnwrap(sharedHeaderScope.range(of: "headerAccessory()")).lowerBound
         )
-        XCTAssertLessThan(
-            try XCTUnwrap(todayBriefingScope.range(of: "WorkflowDoneToggle(viewModel: viewModel)")).lowerBound,
-            try XCTUnwrap(todayBriefingScope.range(of: "suggestionRail")).lowerBound
-        )
-        XCTAssertLessThan(
-            try XCTUnwrap(todayBriefingScope.range(of: "suggestionRail")).lowerBound,
-            try XCTUnwrap(todayBriefingScope.range(of: "startFocusButton")).lowerBound
-        )
 
-        let commonActionIdentifiers = [
-            "today-common-chip-add-task",
+        // Deterministic toolbar order: primary Add Task first, then the Plan…
+        // menu and Start Focus, then the suggestion chips, with the display
+        // toggle pinned to the trailing edge.
+        let toolbarOrderNeedles = [
+            "addTaskButton",
+            "planMenu",
+            "startFocusButton",
+            "suggestionRail",
+            "WorkflowDoneToggle(viewModel: viewModel)"
+        ]
+        let toolbarOffsets = try toolbarOrderNeedles.map { needle in
+            try XCTUnwrap(actionToolbarScope.range(of: needle)?.lowerBound)
+        }
+        for pair in zip(toolbarOffsets, toolbarOffsets.dropFirst()) {
+            XCTAssertLessThan(pair.0, pair.1)
+        }
+
+        // Add Task is the visible primary action; the remaining capture
+        // shortcuts collapse into the Plan… menu in a stable order.
+        XCTAssertTrue(actionToolbarScope.contains("addTaskButton"))
+        XCTAssertTrue(todaySource.contains(".buttonStyle(.borderedProminent)"))
+        XCTAssertTrue(todaySource.contains(".accessibilityIdentifier(\"today-plan-menu\")"))
+        let planMenuIdentifiers = [
             "today-common-chip-plan-tomorrow",
             "today-common-chip-prepare-meeting",
             "today-common-chip-draft-reply"
         ]
-        let commonActionOffsets = try commonActionIdentifiers.map { identifier in
-            try XCTUnwrap(commonButtonsScope.range(of: identifier)?.lowerBound)
+        let planMenuOffsets = try planMenuIdentifiers.map { identifier in
+            try XCTUnwrap(planMenuScope.range(of: identifier)?.lowerBound)
         }
-        for pair in zip(commonActionOffsets, commonActionOffsets.dropFirst()) {
+        for pair in zip(planMenuOffsets, planMenuOffsets.dropFirst()) {
             XCTAssertLessThan(pair.0, pair.1)
         }
     }

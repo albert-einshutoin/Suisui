@@ -35,7 +35,7 @@ The suffix must be a stable internal ID or enum raw value. Do not encode user-pr
 - `task-inspector`: task editing, automation review, execution, and destructive confirmation controls.
 - `inline-task`: inline task creation fields and actions.
 - `inbox`: inbox capture, classification, and undo controls.
-- `today`: today planning, recommendation, and time-block controls.
+- `today`: today planning, recommendation, and time-block controls. Grouped menus keep their member item identifiers: `today-draft-actions-menu` wraps the recommended-task draft actions (`today-daily-planning-draft-defer`/`-move-today`/`-split`), and `today-plan-menu` wraps the capture shortcuts (`today-common-chip-plan-tomorrow`/`-prepare-meeting`/`-draft-reply`).
 - `settings`: settings tabs, fields, save controls, and task automation settings.
 - `menu-bar`: menu bar quick capture, settings links, and the `menu-bar-open-today` summary tap target that opens the Project Board on Today.
 - `onboarding`: first-run welcome sheet steps, navigation, and completion controls, including the `onboarding-create-sample` sample-project button and its `onboarding-create-sample-error` failure message.

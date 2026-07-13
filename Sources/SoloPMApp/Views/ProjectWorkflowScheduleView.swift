@@ -184,24 +184,29 @@ private struct ScheduleMiniCalendarPanel: View {
                     .accessibilityIdentifier("schedule-mini-calendar-selected-day")
             }
 
-            ScrollView(.horizontal, showsIndicators: true) {
-                HStack(spacing: 8) {
-                    ForEach(overview.days) { day in
-                        Button {
-                            selectDay(day)
-                        } label: {
-                            ScheduleMiniCalendarDayChip(day: day, isSelected: day.dateKey == selectedDay?.dateKey)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("schedule-mini-calendar-day-\(day.dateKey)")
-                        .accessibilityLabel(String(format: String(localized: "Workload for %@"), day.dateKey))
-                        .accessibilityValue(dayAccessibilityValue(day, isSelected: day.dateKey == selectedDay?.dateKey))
-                        .accessibilityHint("Selects this day as the Schedule agenda without writing Calendar.")
-                        .accessibilityAddTraits(day.dateKey == selectedDay?.dateKey ? .isSelected : [])
+            // Seven flexible chips share the row instead of scrolling
+            // horizontally, so the trailing day is never cut at the panel
+            // edge at the canonical 1024pt viewport (~744pt of panel width).
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 96), spacing: 8, alignment: .top)],
+                alignment: .leading,
+                spacing: 8
+            ) {
+                ForEach(overview.days) { day in
+                    Button {
+                        selectDay(day)
+                    } label: {
+                        ScheduleMiniCalendarDayChip(day: day, isSelected: day.dateKey == selectedDay?.dateKey)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("schedule-mini-calendar-day-\(day.dateKey)")
+                    .accessibilityLabel(String(format: String(localized: "Workload for %@"), day.dateKey))
+                    .accessibilityValue(dayAccessibilityValue(day, isSelected: day.dateKey == selectedDay?.dateKey))
+                    .accessibilityHint("Selects this day as the Schedule agenda without writing Calendar.")
+                    .accessibilityAddTraits(day.dateKey == selectedDay?.dateKey ? .isSelected : [])
                 }
-                .padding(.vertical, 1)
             }
+            .padding(.vertical, 1)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -257,13 +262,21 @@ private struct ScheduleMiniCalendarDayChip: View {
                 .font(.caption2)
                 .foregroundStyle(loadTint)
 
-            HStack(spacing: 6) {
-                miniMetric(String(format: String(localized: "%d open"), day.openTaskCount))
-                miniMetric(String(format: String(localized: "%d done"), day.doneTaskCount))
+            // Only non-zero counts earn a line; an open day shows just its
+            // load label instead of "0 open 0 done" noise.
+            if day.openTaskCount > 0 || day.doneTaskCount > 0 {
+                HStack(spacing: 6) {
+                    if day.openTaskCount > 0 {
+                        miniMetric(String(format: String(localized: "%d open"), day.openTaskCount))
+                    }
+                    if day.doneTaskCount > 0 {
+                        miniMetric(String(format: String(localized: "%d done"), day.doneTaskCount))
+                    }
+                }
             }
         }
         .padding(9)
-        .frame(minWidth: 112, maxWidth: 112, minHeight: 82, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 64, alignment: .topLeading)
         .background(background, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
@@ -337,7 +350,7 @@ private struct WeeklyScheduleCockpitPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 10) {
-                Label("Week Cockpit", systemImage: "calendar")
+                Label("Weekly workload", systemImage: "calendar")
                     .font(.headline)
                 Spacer(minLength: 8)
                 Label(focusForecastSummary, systemImage: "scope")
@@ -348,14 +361,21 @@ private struct WeeklyScheduleCockpitPanel: View {
                     .accessibilityIdentifier("schedule-focus-forecast")
             }
 
-            ScrollView(.horizontal, showsIndicators: true) {
-                HStack(alignment: .top, spacing: 8) {
-                    ForEach(cockpit.days) { day in
-                        WeeklyScheduleDayColumn(day: day)
-                    }
+            // The seven day columns share the panel width instead of scrolling
+            // horizontally: at the canonical 1024pt viewport the panel offers
+            // ~744pt, so adaptive 96pt-minimum columns render one row of seven
+            // (~99pt each) with no card cut at the trailing edge. Narrower
+            // windows wrap to a second row rather than clipping mid-card.
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 96), spacing: 8, alignment: .top)],
+                alignment: .leading,
+                spacing: 8
+            ) {
+                ForEach(cockpit.days) { day in
+                    WeeklyScheduleDayColumn(day: day)
                 }
-                .padding(.vertical, 1)
             }
+            .padding(.vertical, 1)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("schedule-week-grid")
             .accessibilityLabel("Weekly schedule grid")
@@ -376,7 +396,7 @@ private struct WeeklyScheduleCockpitPanel: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("schedule-week-cockpit")
-        .accessibilityLabel("Week schedule cockpit")
+        .accessibilityLabel("Weekly workload")
     }
 
     private var focusForecastSummary: String {
@@ -568,10 +588,14 @@ private struct WeeklyScheduleDayColumn: View {
                         .foregroundStyle(loadTint)
                 }
                 Spacer(minLength: 4)
-                Text("\(day.workload.openTaskCount)")
-                    .font(.caption.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Open task count")
+                // Capacity signal only when there is load; a zero here would
+                // just repeat what the "Open time" placeholder already says.
+                if day.workload.openTaskCount > 0 {
+                    Text("\(day.workload.openTaskCount)")
+                        .font(.caption.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Open task count")
+                }
             }
             if day.completionHistoryCount > 0 {
                 Label(
@@ -611,7 +635,7 @@ private struct WeeklyScheduleDayColumn: View {
             }
         }
         .padding(10)
-        .frame(width: 148, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(dayBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
@@ -887,7 +911,11 @@ private struct DailyWorkloadPanel: View {
 
             DailyWorkloadAttentionBanner(overview: overview)
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 8)], spacing: 8) {
+            // Adaptive 96pt-minimum columns keep all seven day cards on one
+            // row inside the ~744pt panel at the canonical 1024pt viewport
+            // (7 x ~99pt + 6 x 8pt spacing), so no card is cut at the right
+            // edge and no second row gets clipped mid-content.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8, alignment: .top)], spacing: 8) {
                 ForEach(overview.days) { day in
                     Button {
                         selectDay(day)
@@ -985,7 +1013,11 @@ private struct DailyWorkloadDayCell: View {
     let isSelected: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        // One headline number per day (open tasks) plus a status line that
+        // only names non-zero secondary metrics. A quiet day renders as
+        // "0 Open" — never a grid of six labeled zeros. The cell has no
+        // fixed maximum height, so content is never cut mid-line.
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Text(shortDateLabel)
                     .font(.caption.weight(.semibold))
@@ -997,35 +1029,64 @@ private struct DailyWorkloadDayCell: View {
                 }
             }
 
-            ProgressView(value: day.progress)
-                .accessibilityIdentifier("schedule-workload-progress-\(day.dateKey)")
-                .accessibilityLabel("Daily progress")
-                .accessibilityValue("\(Int((day.progress * 100).rounded()))%")
-
-            HStack(spacing: 6) {
-                metric("Total", value: day.totalTaskCount)
-                    .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-total")
-                metric("Open", value: day.openTaskCount)
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text("\(day.openTaskCount)")
+                    .font(.title3.monospacedDigit().weight(.semibold))
                     .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-open")
-                metric("Done", value: day.doneTaskCount)
-                    .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-done")
+                Text("Open")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                if day.totalTaskCount > 0 {
+                    Text(String(format: String(localized: "%d tasks"), day.totalTaskCount))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-total")
+                }
             }
-            HStack(spacing: 6) {
-                metric("Doing", value: day.inProgressTaskCount)
-                    .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-in-progress")
-                metric("Blocked", value: day.blockedTaskCount)
-                    .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-blocked")
-                metric("Missed", value: day.overdueTaskCount)
-                    .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-missed")
+
+            if day.totalTaskCount > 0 {
+                ProgressView(value: day.progress)
+                    .accessibilityIdentifier("schedule-workload-progress-\(day.dateKey)")
+                    .accessibilityLabel("Daily progress")
+                    .accessibilityValue("\(Int((day.progress * 100).rounded()))%")
+            }
+
+            if hasSecondaryMetrics {
+                HStack(spacing: 6) {
+                    if day.inProgressTaskCount > 0 {
+                        secondaryMetric(String(format: String(localized: "%d doing"), day.inProgressTaskCount), tint: .blue)
+                            .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-in-progress")
+                    }
+                    if day.blockedTaskCount > 0 {
+                        secondaryMetric(String(format: String(localized: "%d blocked"), day.blockedTaskCount), tint: .orange)
+                            .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-blocked")
+                    }
+                    if day.overdueTaskCount > 0 {
+                        secondaryMetric(String(format: String(localized: "%d missed"), day.overdueTaskCount), tint: .red)
+                            .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-missed")
+                    }
+                    if day.doneTaskCount > 0 {
+                        secondaryMetric(String(format: String(localized: "%d done"), day.doneTaskCount), tint: .secondary)
+                            .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-done")
+                    }
+                }
             }
         }
         .padding(10)
-        .frame(minHeight: 128, maxHeight: 148, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
         .background(isSelected ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(isSelected ? Color.accentColor.opacity(0.55) : Color.secondary.opacity(0.14))
         }
+    }
+
+    private var hasSecondaryMetrics: Bool {
+        day.inProgressTaskCount > 0
+            || day.blockedTaskCount > 0
+            || day.overdueTaskCount > 0
+            || day.doneTaskCount > 0
     }
 
     private var shortDateLabel: String {
@@ -1038,16 +1099,11 @@ private struct DailyWorkloadDayCell: View {
         return formatter.string(from: day.date)
     }
 
-    private func metric(_ title: LocalizedStringKey, value: Int) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text("\(value)")
-                .font(.caption.weight(.semibold))
-                .monospacedDigit()
-            Text(title)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .frame(minWidth: 34, alignment: .leading)
+    private func secondaryMetric(_ label: String, tint: Color) -> some View {
+        Text(label)
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(tint)
+            .lineLimit(1)
     }
 }
 

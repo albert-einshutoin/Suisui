@@ -3832,11 +3832,11 @@ private struct ProjectInspectorView: View {
                 ProjectInspectorMetadataSummary(project: project)
             }
 
-            Section("Project AI Receipts") {
+            Section("Project AI Activity") {
                 ExecutionReceiptHistoryInspectorSection(
                     snapshot: viewModel.executionReceiptHistorySnapshot(forProjectID: project.id),
-                    emptyTitle: "No project AI receipts yet",
-                    emptyDescription: "Receipts appear here after approved AI work references this project.",
+                    emptyTitle: "No AI activity for this project yet",
+                    emptyDescription: "AI activity appears here after approved AI work references this project.",
                     accessibilityIdentifier: "project-execution-receipts"
                 )
             }
@@ -4997,11 +4997,11 @@ private struct TaskInspectorView: View {
                 TaskInspectorAutomationSection(task: task, viewModel: viewModel)
             }
 
-            Section("Task AI Receipts") {
+            Section("Task AI Activity") {
                 ExecutionReceiptHistoryInspectorSection(
                     snapshot: viewModel.executionReceiptHistorySnapshot(forTaskID: task.id),
-                    emptyTitle: "No task AI receipts yet",
-                    emptyDescription: "Receipts appear here after approved AI work references this task.",
+                    emptyTitle: "No AI activity for this task yet",
+                    emptyDescription: "AI activity appears here after approved AI work references this task.",
                     accessibilityIdentifier: "task-execution-receipts"
                 )
             }
@@ -5165,7 +5165,7 @@ private struct ExecutionReceiptHistoryInspectorSection: View {
         VStack(alignment: .leading, spacing: 8) {
             if let unavailableMessage = snapshot.unavailableMessage {
                 ContentUnavailableView(
-                    "Execution receipts are unavailable",
+                    "AI activity is unavailable",
                     systemImage: "exclamationmark.triangle",
                     description: Text(unavailableMessage)
                 )

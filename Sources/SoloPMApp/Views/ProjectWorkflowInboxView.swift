@@ -172,7 +172,7 @@ private struct InboxTriageRail: View {
         VStack(alignment: .leading, spacing: 10) {
             Label {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Triage Station")
+                    Text("Classify")
                         .font(.headline)
                     Text("Review the selected Inbox capture and classify it without opening the task inspector.")
                         .font(.caption)

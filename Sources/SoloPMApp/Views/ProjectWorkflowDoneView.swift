@@ -77,11 +77,11 @@ struct DoneWorkflowView: View {
                 .accessibilityIdentifier("ai-usage-meter-summary")
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Label("Recent AI Receipts", systemImage: "doc.text.magnifyingglass")
+                    Label("Recent AI Activity", systemImage: "doc.text.magnifyingglass")
                         .font(.headline)
                     HStack(spacing: 8) {
                         TextField(
-                            "Search receipts",
+                            "Search AI activity",
                             text: Binding(
                                 get: { viewModel.executionReceiptHistorySearchText },
                                 set: { viewModel.setExecutionReceiptHistorySearchText($0) }
@@ -166,15 +166,15 @@ struct DoneWorkflowView: View {
                     }
                     if let unavailableMessage = viewModel.executionReceiptHistorySnapshot.unavailableMessage {
                         ContentUnavailableView(
-                            "Execution receipts are unavailable",
+                            "AI activity is unavailable",
                             systemImage: "exclamationmark.triangle",
                             description: Text(unavailableMessage)
                         )
                     } else if viewModel.executionReceiptHistorySnapshot.rows.isEmpty {
                         ContentUnavailableView(
-                            "No AI receipts yet",
+                            "No AI activity yet",
                             systemImage: "doc.text.magnifyingglass",
-                            description: Text("Receipts appear here after approved AI work runs.")
+                            description: Text("AI activity appears here after approved AI work runs.")
                         )
                     } else {
                         ForEach(viewModel.executionReceiptHistorySnapshot.rows) { row in
