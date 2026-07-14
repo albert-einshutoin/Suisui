@@ -99,10 +99,16 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testTaskInspectorRefreshesWhenSelectedTaskDataChanges() throws {
-        let source = try readProjectBoardSurfaceSources()
+        let surfaceSource = try readProjectBoardSurfaceSources()
+        let source = try sourceBlock(
+            in: surfaceSource,
+            from: "private struct TaskInspectorView: View",
+            to: "private struct InspectorDestructiveConfirmation: View"
+        )
 
         XCTAssertTrue(source.contains(".onChange(of: task)"))
         XCTAssertTrue(source.contains("refreshFields(from: task)"))
+        XCTAssertFalse(source.contains(".onChange(of: task.id)"))
     }
 
     func testProjectBoardUsesPersistentViewModelInsteadOfStaticSnapshot() throws {
