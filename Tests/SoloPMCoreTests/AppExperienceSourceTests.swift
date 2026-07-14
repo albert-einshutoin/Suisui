@@ -4417,6 +4417,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(script.contains("if [[ \"$bytes\" -lt 50000 ]]"))
         XCTAssertTrue(script.contains("local capture_attempts=3"))
         XCTAssertTrue(script.contains("for ((capture_attempt = 1; capture_attempt <= capture_attempts; capture_attempt++))"))
+        XCTAssertTrue(script.contains("local position_attempts=3"))
+        XCTAssertTrue(script.contains("for ((position_attempt = 1; position_attempt <= position_attempts; position_attempt++))"))
         XCTAssertTrue(script.contains("local system_appearance=\"Light\""))
         XCTAssertTrue(script.contains("if [[ \"$APPEARANCE_OVERRIDE\" == \"dark\" ]]"))
         XCTAssertTrue(script.contains("local appearance_args=(\"-AppleInterfaceStyle\" \"$system_appearance\")"))

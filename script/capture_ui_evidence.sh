@@ -743,12 +743,15 @@ position_window_for_capture() {
 
   local width="${viewport%x*}"
   local height="${viewport#*x}"
+  local position_attempts=3
+  local position_attempt
   if [[ ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
     echo "invalid viewport: $viewport" >&2
     return 2
   fi
 
-  /usr/bin/osascript - "$EVIDENCE_APP_PID" "$window_name" "$origin_x" "$origin_y" "$width" "$height" <<'APPLESCRIPT' >/dev/null
+  for ((position_attempt = 1; position_attempt <= position_attempts; position_attempt++)); do
+    if /usr/bin/osascript - "$EVIDENCE_APP_PID" "$window_name" "$origin_x" "$origin_y" "$width" "$height" <<'APPLESCRIPT' >/dev/null
 on run argv
   set appPID to item 1 of argv as integer
   set windowName to item 2 of argv
@@ -779,6 +782,21 @@ on run argv
   end tell
 end run
 APPLESCRIPT
+    then
+      return 0
+    fi
+    if [[ "$position_attempt" -lt "$position_attempts" ]]; then
+      # AX can transiently publish an empty process window collection while
+      # SwiftUI changes routes. Reactivate the same owned PID and retry only
+      # the positioning step so the audited route cannot switch underneath us.
+      activate_evidence_app
+      sleep 0.25
+    fi
+  done
+
+  echo "failure_category=window" >&2
+  echo "failure_message=visual-window-position-unavailable" >&2
+  return 1
 }
 
 assert_screenshot_has_visible_content() {
