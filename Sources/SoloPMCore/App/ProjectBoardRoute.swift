@@ -64,7 +64,7 @@ public enum ProjectBoardRouteCodec {
             // Smart List IDs are public opaque Strings. A versioned UTF-8
             // encoding preserves every value without delimiter or whitespace loss.
             let payload = Data(smartListID.utf8).base64EncodedString()
-            return "smart-list:v1:\(payload)"
+            return "smart-list-v1:\(payload)"
         case .review(let reviewRoute):
             switch reviewRoute {
             case .schedule:
@@ -99,10 +99,9 @@ public enum ProjectBoardRouteCodec {
                 return .primary(.today)
             }
             return .project(projectID)
+        case "smart-list-v1":
+            return canonicalSmartListRoute(from: identifier)
         case "smart-list":
-            if identifier.hasPrefix("v1:") {
-                return canonicalSmartListRoute(from: String(identifier.dropFirst(3)))
-            }
             guard LegacySmartListValidation.accepts(identifier) else {
                 return .primary(.today)
             }
@@ -122,7 +121,7 @@ public enum ProjectBoardRouteCodec {
     }
 
     /// Legacy values predate the total v1 encoding and remain intentionally
-    /// narrower. The `v1:` namespace is reserved for canonical values.
+    /// narrower. A separate canonical kind keeps every opaque legacy ID valid.
     private enum LegacySmartListValidation {
         static func accepts(_ identifier: String) -> Bool {
             guard let firstCharacter = identifier.first,

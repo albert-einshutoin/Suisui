@@ -115,12 +115,9 @@ public enum ProjectBoardSelectionPersistence {
         }
     }
 
-    /// Persists typed routes using the new stable codec while the existing
-    /// sidebar destination overload remains available during the UI migration.
-    /// Disfavoring this overload preserves legacy shorthand such as `.project(42)`;
-    /// explicit `BoardRoute` values still select this typed adapter.
-    @_disfavoredOverload
-    public static func rawValue(for route: BoardRoute) -> String {
+    /// Persists typed routes using the new stable codec while the explicitly
+    /// named adapter avoids ambiguity with legacy `.project(42)` shorthand.
+    public static func rawValue(forTypedRoute route: BoardRoute) -> String {
         ProjectBoardRouteCodec.rawValue(for: route)
     }
 

@@ -70,7 +70,7 @@ final class ProjectBoardRouteTests: XCTestCase {
             let route = BoardRoute.smartList(identifier)
             let rawValue = ProjectBoardRouteCodec.rawValue(for: route)
 
-            XCTAssertTrue(rawValue.hasPrefix("smart-list:v1:"))
+            XCTAssertTrue(rawValue.hasPrefix("smart-list-v1:"))
             XCTAssertEqual(
                 ProjectBoardRouteCodec.route(from: rawValue, availableProjectIDs: []),
                 route,
@@ -79,7 +79,7 @@ final class ProjectBoardRouteTests: XCTestCase {
         }
         XCTAssertEqual(
             ProjectBoardRouteCodec.rawValue(for: .smartList("priority:urgent")),
-            "smart-list:v1:cHJpb3JpdHk6dXJnZW50"
+            "smart-list-v1:cHJpb3JpdHk6dXJnZW50"
         )
     }
 
@@ -121,17 +121,22 @@ final class ProjectBoardRouteTests: XCTestCase {
         }
     }
 
-    func testLegacySmartListValueRemainsCompatibleOutsideReservedVersionNamespace() {
+    func testLegacySmartListValueIncludingV1PrefixRemainsCompatible() {
         XCTAssertEqual(
             route(from: "smart-list:priority:urgent"),
             .smartList("priority:urgent")
         )
-        // `v1:` is reserved for canonical values. Legacy IDs using that prefix
-        // must be re-encoded through `rawValue(for:)` before they can restore.
-        XCTAssertEqual(route(from: "smart-list:v1:not-base64"), .primary(.today))
+        XCTAssertEqual(
+            route(from: "smart-list:v1:not-base64"),
+            .smartList("v1:not-base64")
+        )
         XCTAssertEqual(
             route(from: ProjectBoardRouteCodec.rawValue(for: .smartList("v1:not-base64"))),
             .smartList("v1:not-base64")
+        )
+        XCTAssertTrue(
+            ProjectBoardRouteCodec.rawValue(for: .smartList("v1:not-base64"))
+                .hasPrefix("smart-list-v1:")
         )
     }
 
@@ -155,9 +160,9 @@ final class ProjectBoardRouteTests: XCTestCase {
             "smart-list: urgent ",
             "smart-list:urgent\u{0000}now",
             "smart-list:urgent\nnow",
-            "smart-list:v1:====",
-            "smart-list:v1:Zg",
-            "smart-list:v1:/w=="
+            "smart-list-v1:====",
+            "smart-list-v1:Zg",
+            "smart-list-v1:/w=="
         ]
 
         for rawValue in invalidRawValues {
