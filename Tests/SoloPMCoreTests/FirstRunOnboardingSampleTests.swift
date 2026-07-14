@@ -75,24 +75,31 @@ final class FirstRunOnboardingSampleTests: XCTestCase {
         XCTAssertEqual(try taskStore.listAll().count, 6)
     }
 
-    func testExistingMarkedProjectSkipsCreationEvenWithoutDefaultsFlag() throws {
+    func testExistingIncompleteMarkedProjectIsRebuiltBeforeRecordingCompletion() throws {
         let connection = try migratedConnection()
         let projectStore = SQLiteProjectStore(connection: connection)
         let taskStore = SQLiteTaskStore(connection: connection)
         let defaults = try makeIsolatedDefaults()
-        _ = try projectStore.create(
+        let interruptedProject = try projectStore.create(
             title: "Learn SoloPM",
+            sourceCommand: OnboardingSampleProjectDefinition.projectMarkerSourceCommand
+        )
+        _ = try taskStore.create(
+            title: OnboardingSampleProjectDefinition.tasks[0].title,
+            projectID: interruptedProject.id,
             sourceCommand: OnboardingSampleProjectDefinition.projectMarkerSourceCommand
         )
         let creator = makeCreator(projectStore: projectStore, taskStore: taskStore, defaults: defaults)
 
-        XCTAssertNil(try creator.createSampleProjectIfNeeded())
+        let result = try XCTUnwrap(creator.createSampleProjectIfNeeded())
 
         XCTAssertEqual(try projectStore.list().count, 1)
-        XCTAssertTrue(try taskStore.listAll().isEmpty)
+        XCTAssertNotEqual(result.project.id, interruptedProject.id)
+        XCTAssertEqual(result.tasks.count, OnboardingSampleProjectDefinition.tasks.count)
+        XCTAssertEqual(try taskStore.listAll().count, OnboardingSampleProjectDefinition.tasks.count)
         XCTAssertTrue(
             defaults.bool(forKey: OnboardingSampleProjectDefinition.createdDefaultsKey),
-            "detecting the marker records the flag so later launches skip the store scan"
+            "completion is recorded only after the full sample project exists"
         )
     }
 

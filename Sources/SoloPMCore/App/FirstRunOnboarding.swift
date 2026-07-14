@@ -382,37 +382,55 @@ public final class OnboardingSampleProjectCreator: @unchecked Sendable {
         self.notificationCenter = notificationCenter
     }
 
-    /// Idempotent: returns nil without writing anything when the sample was
-    /// already created (defaults flag) or a marked project already exists in
-    /// the database (covers defaults resets while the database persists).
+    /// Idempotent: returns nil without writing anything when the complete
+    /// sample already exists. An interrupted marked project is rebuilt before
+    /// the completion flag is recorded.
     @discardableResult
     public func createSampleProjectIfNeeded() throws -> OnboardingSampleProjectCreationResult? {
         guard !defaults.bool(forKey: OnboardingSampleProjectDefinition.createdDefaultsKey) else {
             return nil
         }
-        if let projects = try? projectStore.list(includeArchived: true),
-           projects.contains(where: { $0.sourceCommand == OnboardingSampleProjectDefinition.projectMarkerSourceCommand }) {
-            defaults.set(true, forKey: OnboardingSampleProjectDefinition.createdDefaultsKey)
-            return nil
+        if let markedProject = try projectStore.list(includeArchived: true).first(where: {
+            $0.sourceCommand == OnboardingSampleProjectDefinition.projectMarkerSourceCommand
+        }) {
+            let markedTaskCount = try taskStore.listAll().filter {
+                $0.projectID == markedProject.id
+                    && $0.sourceCommand == OnboardingSampleProjectDefinition.projectMarkerSourceCommand
+            }.count
+            if markedTaskCount == OnboardingSampleProjectDefinition.tasks.count {
+                defaults.set(true, forKey: OnboardingSampleProjectDefinition.createdDefaultsKey)
+                return nil
+            }
+
+            // A marker without the complete teaching set means an earlier
+            // creation was interrupted. Remove that private sample fixture and
+            // rebuild it instead of recording a permanently incomplete setup.
+            _ = try projectStore.delete(id: markedProject.id)
         }
 
         let project = try projectStore.create(
             title: localize(OnboardingSampleProjectDefinition.projectTitle),
             sourceCommand: OnboardingSampleProjectDefinition.projectMarkerSourceCommand
         )
-        var tasks: [TaskRecord] = []
-        for definition in OnboardingSampleProjectDefinition.tasks {
-            tasks.append(
-                try taskStore.create(
-                    title: localize(definition.title),
-                    projectID: project.id,
-                    dueAt: dueAtString(for: definition.due),
-                    priority: definition.priority?.rawValue,
-                    sourceCommand: OnboardingSampleProjectDefinition.projectMarkerSourceCommand,
-                    detail: localize(definition.detail),
-                    recurrence: definition.recurrence
-                )
+        let taskDrafts = OnboardingSampleProjectDefinition.tasks.map { definition in
+            TaskCreateDraft(
+                title: localize(definition.title),
+                projectID: project.id,
+                dueAt: dueAtString(for: definition.due),
+                priority: definition.priority?.rawValue,
+                sourceCommand: OnboardingSampleProjectDefinition.projectMarkerSourceCommand,
+                detail: localize(definition.detail),
+                recurrence: definition.recurrence
             )
+        }
+        let tasks: [TaskRecord]
+        do {
+            // The six teaching tasks commit as one unit. If the batch fails,
+            // remove the marker project so the next click can retry cleanly.
+            tasks = try taskStore.createMany(taskDrafts)
+        } catch {
+            _ = try? projectStore.delete(id: project.id)
+            throw error
         }
         defaults.set(true, forKey: OnboardingSampleProjectDefinition.createdDefaultsKey)
         notificationCenter.post(name: .soloPMProjectBoardDidChange, object: nil)
