@@ -16,7 +16,8 @@ extension AppRuntimeFactory {
         let connection = try migratedConnection()
         return DeadlineNotificationActionHandler(
             taskStore: SQLiteTaskStore(connection: connection),
-            notificationClient: UserNotificationsNotificationClient()
+            notificationClient: UserNotificationsNotificationClient(),
+            settings: loadRuntimeSettings().settings
         )
     }
 }

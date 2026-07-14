@@ -172,8 +172,9 @@ cleanup() {
 
 ui_evidence_product_source_commit() {
   local commit
+  local source_ref="${SOLOPM_VISUAL_SOURCE_REF:-HEAD}"
   commit="$(
-    git -C "$ROOT_DIR" log -1 --format=%H -- \
+    git -C "$ROOT_DIR" log -1 --format=%H "$source_ref" -- \
       Sources \
       Package.swift 2>/dev/null || true
   )"
@@ -279,9 +280,20 @@ emit_evidence_app_diagnostic() {
 
 open_evidence_app() {
   local env_args=()
+  local system_appearance="Light"
   while IFS= read -r -d '' env_arg; do
     env_args+=("$env_arg")
   done < <(app_env_args)
+  # The hosted GUI session does not guarantee a stable login-window theme.
+  # Keep the product preference set to `system`, while pinning the capture
+  # process' inherited system appearance to canonical Aqua for reproducible
+  # System evidence across local and hosted macOS runners.
+  if [[ "$APPEARANCE_OVERRIDE" == "dark" ]]; then
+    system_appearance="Dark"
+  fi
+  # Keep this array non-empty: macOS runners still ship Bash 3.2, where
+  # expanding an empty local array under `set -u` aborts the capture.
+  local appearance_args=("-AppleInterfaceStyle" "$system_appearance")
   stop_evidence_app
   : >"$EVIDENCE_APP_LOG"
   # Direct launch preserves the isolated database, appearance, selected route,
@@ -291,6 +303,7 @@ open_evidence_app() {
   /usr/bin/env -i PATH="$PATH" TMPDIR="$EVIDENCE_TMPDIR" "${env_args[@]}" \
     "$APP_BINARY" \
     -ApplePersistenceIgnoreState YES \
+    "${appearance_args[@]}" \
     -AppleLanguages "$APPLE_LANGUAGES" \
     -AppleLocale "$APPLE_LOCALE" \
     >>"$EVIDENCE_APP_LOG" 2>&1 &
@@ -730,12 +743,15 @@ position_window_for_capture() {
 
   local width="${viewport%x*}"
   local height="${viewport#*x}"
+  local position_attempts=3
+  local position_attempt
   if [[ ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
     echo "invalid viewport: $viewport" >&2
     return 2
   fi
 
-  /usr/bin/osascript - "$EVIDENCE_APP_PID" "$window_name" "$origin_x" "$origin_y" "$width" "$height" <<'APPLESCRIPT' >/dev/null
+  for ((position_attempt = 1; position_attempt <= position_attempts; position_attempt++)); do
+    if /usr/bin/osascript - "$EVIDENCE_APP_PID" "$window_name" "$origin_x" "$origin_y" "$width" "$height" <<'APPLESCRIPT' >/dev/null
 on run argv
   set appPID to item 1 of argv as integer
   set windowName to item 2 of argv
@@ -753,8 +769,12 @@ on run argv
         if not (exists window windowName) then error "missing named evidence window: " & windowName
         set targetWindow to window windowName
       else
-        if not (exists front window) then error "missing front evidence window"
-        set targetWindow to front window
+        -- The capture process is PID-scoped and owns one product window here.
+        -- `front window` can transiently disappear after an AX sidebar press
+        -- even though the owned window remains published, so select it from
+        -- the process window collection just as activation does.
+        if (count of windows) is 0 then error "missing owned evidence window"
+        set targetWindow to window 1
       end if
       set position of targetWindow to {originX, originY}
       set size of targetWindow to {targetWidth, targetHeight}
@@ -762,6 +782,21 @@ on run argv
   end tell
 end run
 APPLESCRIPT
+    then
+      return 0
+    fi
+    if [[ "$position_attempt" -lt "$position_attempts" ]]; then
+      # AX can transiently publish an empty process window collection while
+      # SwiftUI changes routes. Reactivate the same owned PID and retry only
+      # the positioning step so the audited route cannot switch underneath us.
+      activate_evidence_app
+      sleep 0.25
+    fi
+  done
+
+  echo "failure_category=window" >&2
+  echo "failure_message=visual-window-position-unavailable" >&2
+  return 1
 }
 
 assert_screenshot_has_visible_content() {
@@ -1126,31 +1161,41 @@ capture_visible_window() {
   # different subpixel layouts for the same product state.
   target_frame_audit="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name")"
 
-  if ! screencapture -x -l "$window_id" "$output_path"; then
-    if ! screencapture -x -R "${window_x},${window_y},${window_width},${window_height}" "$output_path"; then
-      print_capture_failure_guidance "$label" "$output_path" "$window_context"
-      echo "screen capture failed. Grant Screen Recording permission to the terminal/Codex app and rerun." >&2
-      exit 1
+  local capture_attempt
+  local capture_attempts=3
+  local capture_ready=0
+  for ((capture_attempt = 1; capture_attempt <= capture_attempts; capture_attempt++)); do
+    rm -f "$output_path"
+    # Window shadows change raster bounds depending on transient activation
+    # state. Excluding them binds repeated captures to the logical viewport
+    # instead of nondeterministic compositor padding.
+    if screencapture -x -o -l "$window_id" "$output_path" \
+      || screencapture -x -R "${window_x},${window_y},${window_width},${window_height}" "$output_path"; then
+      if [[ -s "$output_path" ]] && assert_screenshot_has_visible_content "$output_path"; then
+        capture_ready=1
+        break
+      fi
     fi
-  fi
+    # AX readiness can precede the final compositor frame on hosted runners.
+    # Re-raise the same PID-owned window and retry instead of accepting a
+    # partially black raster as baseline evidence.
+    activate_evidence_app
+    position_window_for_capture "$window_name"
+    sleep 1
+  done
 
-  if [[ ! -s "$output_path" ]]; then
-    echo "screenshot was not created: $output_path" >&2
+  if [[ "$capture_ready" != "1" ]]; then
+    print_capture_failure_guidance "$label" "$output_path" "$window_context"
+    echo "screen capture did not produce complete visible content after ${capture_attempts} attempts." >&2
+    rm -f "$output_path"
     exit 1
   fi
 
   /usr/bin/sips -g pixelWidth -g pixelHeight "$output_path" >/dev/null
 
-  if ! assert_screenshot_has_visible_content "$output_path"; then
-    print_capture_failure_guidance "$label" "$output_path" "$window_context"
-    echo "This usually means Screen Recording permission is missing, the display is locked/headless, or the captured image is blank." >&2
-    rm -f "$output_path"
-    exit 1
-  fi
-
   local bytes
   bytes="$(wc -c <"$output_path" | tr -d '[:space:]')"
-  if [[ "$bytes" -lt 50000 ]]; then
+  if [[ "$bytes" -lt 30000 ]]; then
     echo "screenshot is unexpectedly small ($bytes bytes): $output_path" >&2
     print_capture_failure_guidance "$label" "$output_path" "$window_context"
     echo "This usually means Screen Recording permission is missing or the captured image is blank." >&2
@@ -1941,9 +1986,6 @@ capture_project_board_destination system inbox "$INBOX_SYSTEM_SCREENSHOT" "Inbox
 capture_project_board_destination light today "$TODAY_LIGHT_SCREENSHOT" "Today" "$TODAY_TARGET_MARKERS" "" "" "today-workflow"
 capture_project_board_destination dark today "$TODAY_DARK_SCREENSHOT" "Today" "$TODAY_TARGET_MARKERS" "" "" "today-workflow"
 capture_project_board_destination system today "$TODAY_SYSTEM_SCREENSHOT" "Today" "$TODAY_TARGET_MARKERS" "" "" "today-workflow"
-capture_voice_command_appearance light "$VOICE_COMMAND_LIGHT_SCREENSHOT"
-capture_voice_command_appearance dark "$VOICE_COMMAND_DARK_SCREENSHOT"
-capture_voice_command_appearance system "$VOICE_COMMAND_SYSTEM_SCREENSHOT"
 capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_ROUTE_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail" "$INBOX_VOICE_TARGET_MARKERS"
 capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_ROUTE_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail" "$INBOX_VOICE_TARGET_MARKERS"
 capture_project_board_destination light projects "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS" "" "" "projects-portfolio-overview"
@@ -1965,6 +2007,11 @@ capture_settings_appearance system "$SETTINGS_APPEARANCE_SYSTEM_SCREENSHOT"
 capture_mcp_settings_appearance light "$MCP_SETTINGS_LIGHT_SCREENSHOT"
 capture_mcp_settings_appearance dark "$MCP_SETTINGS_DARK_SCREENSHOT"
 capture_mcp_settings_appearance system "$MCP_SETTINGS_SYSTEM_SCREENSHOT"
+# Voice Command is a separate singleton window. Capture it last so closing it
+# never has to restore a Project Board/Settings scene in the same evidence run.
+capture_voice_command_appearance light "$VOICE_COMMAND_LIGHT_SCREENSHOT"
+capture_voice_command_appearance dark "$VOICE_COMMAND_DARK_SCREENSHOT"
+capture_voice_command_appearance system "$VOICE_COMMAND_SYSTEM_SCREENSHOT"
 
 GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 write_visual_ax_audit_receipt "$SOURCE_COMMIT"

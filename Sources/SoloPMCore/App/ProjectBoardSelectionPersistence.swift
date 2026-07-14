@@ -150,6 +150,26 @@ public enum ProjectBoardSelectionPersistence {
     }
 }
 
+/// Single routing entry point that forces the Project Board onto the Today
+/// destination from outside the board window (digest notification taps and the
+/// menu bar summary). It persists the destination first so a Project Board
+/// window created afterwards restores straight into Today, then posts the
+/// notification so an already-open board switches immediately.
+public enum ProjectBoardTodayNavigation {
+    public static let openTodayNotification = Notification.Name("dev.solopm.projectBoardOpenTodayRequested")
+
+    public static func forceSelectToday(
+        defaults: UserDefaults = .standard,
+        notificationCenter: NotificationCenter = .default
+    ) {
+        defaults.set(
+            ProjectBoardSelectionPersistence.rawValue(for: .today),
+            forKey: ProjectBoardSelectionPersistence.storageKey
+        )
+        notificationCenter.post(name: openTodayNotification, object: nil)
+    }
+}
+
 public enum ProjectBoardTaskSelectionPersistence {
     public static let environmentOverrideKey = "SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID"
 

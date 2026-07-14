@@ -745,7 +745,9 @@ public final class SQLiteTaskStore: @unchecked Sendable {
 
     /// Backup restore inserts completed tasks with their original completion
     /// timestamp instead of stamping "now", so Done analytics survive a
-    /// restore. Only `WorkspaceBackupImporter` should use this entry point.
+    /// restore. Only `WorkspaceBackupImporter` and the Project Board undo
+    /// restore path (`SQLiteProjectBoardStore.restoreTask(from:)`) should use
+    /// this entry point.
     public func createForBackupRestore(_ draft: TaskCreateDraft, completedAt: String?) throws -> TaskRecord {
         lock.lock()
         defer { lock.unlock() }
@@ -772,6 +774,35 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         )
 
         return try getLocked(id: connection.lastInsertedRowID)
+    }
+
+    /// Command-palette content search over open task titles and details.
+    /// Tasks have no FTS table (only knowledge frames do), so this is the
+    /// documented fallback: a LIKE scan with bound parameters. The user text
+    /// is escaped with `SQL.escapeLike` so `%`/`_` wildcards and backslashes
+    /// match literally instead of acting as pattern syntax.
+    public func searchOpenTasksByContent(text: String, limit: Int) throws -> [TaskRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, limit > 0 else {
+            return []
+        }
+
+        let pattern = "%\(SQL.escapeLike(trimmed))%"
+        return try connection.queryRows(
+            """
+            SELECT tasks.* FROM tasks
+            LEFT JOIN projects ON projects.id = tasks.project_id
+            WHERE tasks.status != 'completed'
+              AND (tasks.project_id IS NULL OR projects.status != 'archived')
+              AND (tasks.title LIKE ? ESCAPE '\\' OR tasks.detail LIKE ? ESCAPE '\\')
+            ORDER BY tasks.id DESC
+            LIMIT ?;
+            """,
+            parameters: [.text(pattern), .text(pattern), .integer(Int64(limit))]
+        ).map(TaskRecord.init(row:))
     }
 
     public func createMany(_ drafts: [TaskCreateDraft]) throws -> [TaskRecord] {
@@ -1862,5 +1893,14 @@ private enum SQL {
 
     static func escapeFTS(_ value: String) -> String {
         value.replacingOccurrences(of: "\"", with: "\"\"")
+    }
+
+    /// Escapes LIKE pattern metacharacters so user-entered search text matches
+    /// literally. Pair with `ESCAPE '\'` in the query.
+    static func escapeLike(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
     }
 }

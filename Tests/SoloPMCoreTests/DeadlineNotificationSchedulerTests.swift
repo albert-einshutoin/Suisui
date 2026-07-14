@@ -28,6 +28,104 @@ final class DeadlineNotificationSchedulerTests: XCTestCase {
         XCTAssertEqual(scheduled.first?.body, "2 unfinished. Next: High task")
     }
 
+    func testSchedulerAppliesLeadTimeThenQuietHoursToDeadlineReminders() throws {
+        let client = InMemoryNotificationClient()
+        let preferences = NotificationPreferences(
+            quietHours: NotificationQuietHoursSettings(
+                enabled: true,
+                startMinuteOfDay: 22 * 60,
+                endMinuteOfDay: 8 * 60
+            ),
+            deadlineReminderLeadTime: .oneHourBefore
+        )
+        let scheduler = DeadlineNotificationScheduler(
+            notificationClient: client,
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T00:00:00Z")),
+            settings: AppSettings(notificationPreferences: preferences, timeZoneIdentifier: "UTC")
+        )
+        // Day-of reminder due at 23:30: one hour earlier is 22:30, inside the
+        // quiet window, so the reminder fires at 08:00 the next morning.
+        let rule = DeadlineRule(id: 11, target: .task(30), kind: .dayOf)
+        let item = DeadlineItem(id: 30, kind: .task, title: "Late task", dueAt: try Date.iso8601("2026-06-20T23:30:00Z"))
+
+        let result = scheduler.schedule(rule: rule, item: item)
+
+        XCTAssertEqual(result.status, .scheduled)
+        XCTAssertEqual(result.scheduledAt, try Date.iso8601("2026-06-21T08:00:00Z"))
+        XCTAssertEqual(try client.listScheduled().first?.scheduledAt, "2026-06-21T08:00:00Z")
+    }
+
+    func testSchedulerAppliesLeadTimeOutsideQuietHoursWithoutDeferral() throws {
+        let client = InMemoryNotificationClient()
+        let preferences = NotificationPreferences(deadlineReminderLeadTime: .oneDayBefore)
+        let scheduler = DeadlineNotificationScheduler(
+            notificationClient: client,
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T00:00:00Z")),
+            settings: AppSettings(notificationPreferences: preferences, timeZoneIdentifier: "UTC")
+        )
+        let rule = DeadlineRule(id: 12, target: .task(31), kind: .dayOf)
+        let item = DeadlineItem(id: 31, kind: .task, title: "Planned task", dueAt: try Date.iso8601("2026-06-20T12:00:00Z"))
+
+        let result = scheduler.schedule(rule: rule, item: item)
+
+        XCTAssertEqual(result.status, .scheduled)
+        XCTAssertEqual(result.scheduledAt, try Date.iso8601("2026-06-19T12:00:00Z"))
+    }
+
+    func testSchedulerDoesNotApplyGlobalLeadTimeOnTopOfRelativeRuleOffset() throws {
+        let client = InMemoryNotificationClient()
+        let scheduler = DeadlineNotificationScheduler(
+            notificationClient: client,
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T00:00:00Z")),
+            settings: AppSettings(
+                notificationPreferences: NotificationPreferences(deadlineReminderLeadTime: .oneDayBefore),
+                timeZoneIdentifier: "UTC"
+            )
+        )
+        let rule = DeadlineRule(id: 13, target: .task(32), kind: .tMinus1)
+        let item = DeadlineItem(
+            id: 32,
+            kind: .task,
+            title: "Relative reminder",
+            dueAt: try Date.iso8601("2026-06-20T12:00:00Z")
+        )
+
+        let result = scheduler.schedule(rule: rule, item: item)
+
+        XCTAssertEqual(result.status, .scheduled)
+        XCTAssertEqual(result.scheduledAt, try Date.iso8601("2026-06-19T12:00:00Z"))
+    }
+
+    func testSchedulerKeepsCustomReminderAtItsExplicitTime() throws {
+        let client = InMemoryNotificationClient()
+        let scheduler = DeadlineNotificationScheduler(
+            notificationClient: client,
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T00:00:00Z")),
+            settings: AppSettings(
+                notificationPreferences: NotificationPreferences(deadlineReminderLeadTime: .oneHourBefore),
+                timeZoneIdentifier: "UTC"
+            )
+        )
+        let customTime = try Date.iso8601("2026-06-18T09:30:00Z")
+        let rule = DeadlineRule(
+            id: 14,
+            target: .task(33),
+            kind: .custom,
+            customNotifyAt: customTime
+        )
+        let item = DeadlineItem(
+            id: 33,
+            kind: .task,
+            title: "Custom reminder",
+            dueAt: try Date.iso8601("2026-06-20T12:00:00Z")
+        )
+
+        let result = scheduler.schedule(rule: rule, item: item)
+
+        XCTAssertEqual(result.status, .scheduled)
+        XCTAssertEqual(result.scheduledAt, customTime)
+    }
+
     func testSchedulerSkipsPastNotificationDate() throws {
         let client = InMemoryNotificationClient()
         let scheduler = DeadlineNotificationScheduler(

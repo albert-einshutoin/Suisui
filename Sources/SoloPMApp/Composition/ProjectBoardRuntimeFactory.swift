@@ -18,13 +18,21 @@ extension AppRuntimeFactory {
             // SQLite open can block on external volumes and mounted app
             // launches. Build the runtime bundle off-main, then hand it to the
             // MainActor-only view model before any UI reads from the connection.
-            makeProjectBoardRuntimeBundle()
+            let signposter = LaunchPerformanceSignposts.signposter
+            let launchState = signposter.beginInterval("LaunchToRuntimeBundle")
+            defer {
+                signposter.endInterval("LaunchToRuntimeBundle", launchState)
+            }
+            return makeProjectBoardRuntimeBundle()
         }.value
     }
 
     static func makeProjectBoardRuntimeBundle() -> ProjectBoardRuntimeBundle {
+        let signposter = LaunchPerformanceSignposts.signposter
+        let migrateState = signposter.beginInterval("DatabaseOpenMigrate")
         do {
             let connection = try migratedConnection()
+            signposter.endInterval("DatabaseOpenMigrate", migrateState)
             return .available(
                 connection: connection,
                 projectBoardStore: SQLiteProjectBoardStore(connection: connection),
@@ -33,6 +41,7 @@ extension AppRuntimeFactory {
                 executionReceiptStore: try? makeExecutionReceiptStore()
             )
         } catch {
+            signposter.endInterval("DatabaseOpenMigrate", migrateState)
             return .unavailable(error)
         }
     }

@@ -231,6 +231,36 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("return false"))
     }
 
+    func testDigestNotificationOpenForcesTodayDestinationThroughSharedRouting() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let menuBarSource = try readPackageFile("Sources/SoloPMApp/Views/MenuBarPanel.swift")
+
+        // Digest taps must land on Today, not the last visited destination,
+        // and reuse the single ProjectBoardTodayNavigation routing entry point.
+        let observerStart = try XCTUnwrap(appSource.range(of: "forName: .soloPMDigestNotificationOpened"))
+        let observerEnd = try XCTUnwrap(appSource.range(
+            of: "openSettingsWindowForEvidenceIfRequested()",
+            range: observerStart.lowerBound..<appSource.endIndex
+        ))
+        let observerBlock = appSource[observerStart.lowerBound..<observerEnd.lowerBound]
+        XCTAssertTrue(observerBlock.contains("ProjectBoardTodayNavigation.forceSelectToday()"))
+        XCTAssertTrue(observerBlock.contains("ensureProjectBoardWindowIsVisible()"))
+
+        // An already-open board switches through the notification; a fresh
+        // window restores from the persisted destination.
+        XCTAssertTrue(boardSource.contains("ProjectBoardTodayNavigation.openTodayNotification"))
+        XCTAssertTrue(boardSource.contains("private func forceSelectTodayDestination()"))
+        XCTAssertTrue(boardSource.contains("selectedDestination = .today"))
+
+        // The menu bar summary shares the same routing function instead of a
+        // second implementation.
+        XCTAssertTrue(menuBarSource.contains("ProjectBoardTodayNavigation.forceSelectToday()"))
+        XCTAssertTrue(menuBarSource.contains("openWindow(id: \"project-board\")"))
+        XCTAssertTrue(menuBarSource.contains(".accessibilityIdentifier(\"menu-bar-open-today\")"))
+        XCTAssertTrue(menuBarSource.contains("Label(\"Open Today\", systemImage: \"chevron.right.circle\")"))
+    }
+
     func testFallbackProjectBoardWindowUsesTodayLaunchRecoveryView() throws {
         let source = try readLaunchRecoveryAppShellSource()
 

@@ -11,9 +11,14 @@ final class MorningDigestTests: XCTestCase {
         var taskStore: SQLiteTaskStore
         var client: InMemoryNotificationClient
 
-        func makeScheduler(now: Date, notificationsEnabled: Bool = true) -> MorningDigestScheduler {
+        func makeScheduler(
+            now: Date,
+            notificationsEnabled: Bool = true,
+            notificationPreferences: NotificationPreferences = .default
+        ) -> MorningDigestScheduler {
             let settings = AppSettings(
                 notificationsEnabled: notificationsEnabled,
+                notificationPreferences: notificationPreferences,
                 timeZoneIdentifier: "UTC"
             )
             return MorningDigestScheduler(
@@ -106,6 +111,28 @@ final class MorningDigestTests: XCTestCase {
         ).scheduleIfNeeded()
 
         XCTAssertEqual(laterResult.status, .scheduled)
+    }
+
+    func testQuietHoursDeferTheDigestFireDateWithoutDroppingIt() throws {
+        let fixture = try makeFixture()
+        _ = try fixture.taskStore.create(title: "Overdue item", dueAt: "2026-07-01T09:00:00Z")
+        // Quiet until 11:00: the 10:00 digest is deferred to 11:00, not dropped.
+        let preferences = NotificationPreferences(
+            quietHours: NotificationQuietHoursSettings(
+                enabled: true,
+                startMinuteOfDay: 22 * 60,
+                endMinuteOfDay: 11 * 60
+            )
+        )
+
+        let result = fixture.makeScheduler(
+            now: morningAfterDigestHour,
+            notificationPreferences: preferences
+        ).scheduleIfNeeded()
+
+        XCTAssertEqual(result.status, .scheduled)
+        let record = try XCTUnwrap(try fixture.client.listScheduled().first)
+        XCTAssertEqual(record.scheduledAt, "2026-07-07T11:00:00Z")
     }
 
     func testStateStoreRoundTripsDigestDay() throws {

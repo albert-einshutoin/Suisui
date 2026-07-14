@@ -61,10 +61,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # The visual receipt is bound to the PR head's latest product change.
+          # Full history is required because harness-only follow-up commits can
+          # place that product commit deeper than the merge checkout's parents.
+          fetch-depth: 0
 
       - name: Capture and compare live UI
         env:
           SOLOPM_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
+          # actions/checkout uses an ephemeral pull-request merge commit. Bind
+          # visual evidence to the stable head ref's latest product change.
+          SOLOPM_VISUAL_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}
         run: ./scripts/ci.sh ui-visual
 
       - name: Upload audited visual diagnostics

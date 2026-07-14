@@ -39,6 +39,19 @@ struct AssistantQueueWorkflowView: View {
             AssistantQueueTriageControls(viewModel: viewModel)
             AssistantQueueBatchToolbar(viewModel: viewModel)
 
+            if viewModel.openRescheduleSuggestionIDs.count >= 2 {
+                Button {
+                    _ = viewModel.approveAllRescheduleSuggestions()
+                } label: {
+                    Label("Approve all reschedules", systemImage: "checkmark.seal.fill")
+                }
+                .disabled(viewModel.isApprovingAllRescheduleSuggestions)
+                .controlSize(.small)
+                .help("Approve every open reschedule suggestion one by one")
+                .accessibilityIdentifier("assistant-queue-approve-all-reschedules")
+                .accessibilityHint("Approves each open reschedule suggestion through the same per-item review path. Nothing runs until each item passes the execution gate.")
+            }
+
             if snapshot.rows.isEmpty {
                 ContentUnavailableView(
                     "Assistant Queue is clear",

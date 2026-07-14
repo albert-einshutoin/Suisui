@@ -53,12 +53,24 @@ public final class DeadlineNotificationScheduler: @unchecked Sendable {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: settings.timeZoneIdentifier) ?? .current
 
-        guard let notifyAt = notificationDate(rule: rule, item: item, calendar: calendar) else {
+        guard let proposedNotifyAt = notificationDate(rule: rule, item: item, calendar: calendar) else {
             return DeadlineNotificationScheduleResult(
                 status: .skippedMissingDate,
                 message: "Deadline rule does not have a notification date."
             )
         }
+
+        // Single choke point: the global lead-time preference defines the
+        // day-of reminder only. Relative T-* rules and custom rules already
+        // encode their intended fire date, so shifting them again would turn
+        // T-1 into T-2 or silently move an explicitly chosen custom time.
+        // Every rule still passes through quiet-hours deferral.
+        let notifyAt = NotificationSchedulingPolicy.finalFireDate(
+            proposed: proposedNotifyAt,
+            kind: rule.kind == .dayOf ? .preDeadlineReminder : .fixedTime,
+            preferences: settings.notificationPreferences,
+            timeZone: calendar.timeZone
+        )
 
         guard notifyAt >= dateProvider.now else {
             return DeadlineNotificationScheduleResult(

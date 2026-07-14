@@ -173,8 +173,8 @@
 "In Progress" = "進行中";
 "Inbox" = "インボックス";
 "Import Tasks" = "タスクをインポート";
-"Import, export, and sync task data" = "タスクデータのインポート、エクスポート、同期";
 "Integrations" = "連携";
+"Integrations: import, export, and sync task data" = "連携: タスクデータのインポート、エクスポート、同期";
 "Japanese" = "日本語";
 "Language" = "言語";
 "Launch at Login" = "ログイン時に起動";
@@ -271,6 +271,10 @@
 "Voice Command" = "音声コマンド";
 "Voice Capture" = "音声キャプチャ";
 "Try one of these commands" = "次のコマンドを試す";
+"Type a command, or tap the microphone above to dictate one." = "コマンドを入力するか、上のマイクをタップして音声で入力してください。";
+"Records audio, then transcribes it into the command field." = "音声を録音し、コマンド欄に文字起こしします。";
+"Inserts the example into the command field without running it." = "実行せずに、この例文をコマンド欄に挿入します。";
+"Starts continuous hands-free recognition, separate from push-to-record." = "録音ボタンとは別に、ハンズフリーの連続音声認識を開始します。";
 "Capture follow-up for launch review" = "ローンチレビューのフォローアップを記録";
 "Plan tomorrow: review release risks" = "明日の計画: リリースリスクを確認";
 "Inbox captures stay local. Plans wait in Assistant Queue before execution." = "Inboxキャプチャはローカルに保存されます。プランは実行前にAssistant Queueで待機します。";
@@ -426,6 +430,7 @@
 "Make selected Inbox item a project" = "選択中のインボックス項目をプロジェクト化";
 "Make selected Inbox item a task" = "選択中のインボックス項目をタスク化";
 "Memo" = "メモ";
+"Microphone input level" = "マイク入力レベル";
 "Microphone permission denied." = "マイク権限が拒否されています。";
 "Missing" = "未設定";
 "Monthly" = "毎月";
@@ -444,6 +449,7 @@
 "No due date" = "期限なし";
 "No due dates yet" = "期限はまだありません";
 "No focus task" = "集中タスクなし";
+"No microphone input detected. Check your input device in System Settings." = "マイク入力が検出されません。システム設定で入力デバイスを確認してください。";
 "No open tasks" = "未完了タスクなし";
 "No open work needs attention." = "対応が必要な未完了作業はありません。";
 "No project-level suggestion is needed right now." = "現時点でプロジェクト単位の提案は不要です。";
@@ -462,6 +468,25 @@
 "Notifications" = "通知";
 "Notifications off" = "通知オフ";
 "Notifications on" = "通知オン";
+"Quiet hours" = "通知休止時間";
+"Quiet hours start" = "通知休止の開始";
+"Quiet hours end" = "通知休止の終了";
+"Remind me" = "リマインド時期";
+"At due time" = "期限時刻に通知";
+"30 minutes before" = "30分前";
+"1 hour before" = "1時間前";
+"1 day before" = "1日前";
+"Defers notifications inside the quiet window until the window ends." = "休止時間内の通知は休止時間の終了まで先送りされます。";
+"Sets the local time when the notification quiet window begins." = "通知休止時間が始まるローカル時刻を設定します。";
+"Sets the local time when deferred notifications are delivered." = "先送りされた通知が届くローカル時刻を設定します。";
+"Moves deadline task reminders earlier than the due time. Digest and weekly summaries are not affected." = "期限タスクのリマインドを期限より前倒しにします。デイリーダイジェストと週次レビューには影響しません。";
+"Deadline reminders fire ahead of the due time by the selected lead. Notifications that land inside quiet hours are deferred to the end of the window, never dropped." = "期限リマインドは選択したリードタイム分だけ期限より前に通知されます。休止時間に重なる通知は破棄されず、休止時間の終了後に届きます。";
+"Avoid weekends when rescheduling" = "リスケ時に週末を避ける";
+"Moves missed-task reschedule suggestions that land on Saturday or Sunday to the following Monday." = "期限切れタスクのリスケ提案が土曜・日曜になる場合、翌月曜日に移動します。";
+"Approve all reschedules" = "再スケジュールを一括承認";
+"Approve every open reschedule suggestion one by one" = "未処理の再スケジュール提案を1件ずつ承認します";
+"Approves each open reschedule suggestion through the same per-item review path. Nothing runs until each item passes the execution gate." = "未処理の再スケジュール提案を既存の1件ごとのレビュー経路で順番に承認します。各項目は実行ゲートを通るまで実行されません。";
+"Approved %d reschedule suggestions." = "%d件の再スケジュール提案を承認しました。";
 "Notion" = "Notion";
 "Off" = "オフ";
 "On" = "オン";
@@ -655,7 +680,7 @@
 "Inbox triage station" = "Inboxトリアージステーション";
 "Keeps selected Inbox item review and classification actions visible without opening the task inspector." = "タスクインスペクタを開かずに、選択中のInbox項目の確認と分類アクションを表示したままにします。";
 "Review the selected Inbox capture and classify it without opening the task inspector." = "選択中のInbox取り込みを確認し、タスクインスペクタを開かずに分類します。";
-"Triage Station" = "トリアージステーション";
+"Classify" = "仕分け";
 "What should move next?" = "次に何を進めますか?";
 "Today briefing" = "今日のブリーフィング";
 "Captures work into Inbox and offers the next reviewed Today action." = "作業をInboxへ取り込み、確認済みの次のTodayアクションを提示します。";
@@ -665,15 +690,12 @@
 "Prefills the Today command field for a local Inbox task." = "ローカルInboxタスク用にTodayコマンド欄を事前入力します。";
 "Plan Tomorrow" = "明日を計画";
 "Plan tomorrow: " = "明日を計画: ";
-"Prepare a tomorrow planning note" = "明日の計画メモを準備";
 "Prefills the Today command field without writing Calendar." = "Calendarへ書き込まずにTodayコマンド欄を事前入力します。";
 "Prepare Meeting" = "MTG準備";
 "Prepare meeting: " = "MTG準備: ";
-"Prepare a meeting task" = "MTG準備タスクを作成";
 "Prefills the Today command field for a meeting preparation task." = "MTG準備タスク用にTodayコマンド欄を事前入力します。";
 "Draft Reply" = "返信下書き";
 "Draft reply: " = "返信下書き: ";
-"Prepare a reply draft task" = "返信下書きタスクを準備";
 "Prefills the Today command field for a reply draft task." = "返信下書きタスク用にTodayコマンド欄を事前入力します。";
 "New task: " = "新規タスク: ";
 "Add work to Inbox" = "Inboxに作業を追加";
@@ -947,6 +969,7 @@
 "Automation" = "自動化";
 "Review-only task automation" = "確認専用タスク自動化";
 "Review Task Automation" = "タスク自動化を確認";
+"Review Task Automation: prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings" = "タスク自動化を確認: 優先度、期日、頻度、日次予算設定から確認専用タスク自動化を準備します";
 "Review automation plan" = "自動化計画を確認";
 "Run approved plan" = "承認済み計画を実行";
 "Review draft is ready. Running it only starts local task execution." = "レビュードラフトを準備しました。実行しても開始するのはローカルのタスク手順のみです。";
@@ -961,7 +984,6 @@
 "Started approved automation for \"%@\"." = "「%@」の承認済み自動化を開始しました。";
 "Prepares review-only local automation for the selected task" = "選択中タスクの確認専用ローカル自動化を準備します";
 "Prepares review-only local automation for the selected task." = "選択中タスクの確認専用ローカル自動化を準備します。";
-"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings" = "優先度、期日、頻度、日次予算設定から確認専用タスク自動化を準備します";
 "Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings." = "優先度、期日、頻度、日次予算設定から確認専用タスク自動化を準備します。";
 "Runs the reviewed local task step after explicit user approval" = "明示的なユーザー承認後、確認済みのローカルタスク手順を実行します";
 "Runs the reviewed local task step after explicit user approval." = "明示的なユーザー承認後、確認済みのローカルタスク手順を実行します。";
@@ -1168,7 +1190,7 @@
 "Overloaded" = "過負荷";
 "Previous Week" = "前週";
 "Prepared daily planning review." = "日次計画レビューを準備しました。";
-"Proposal only" = "提案のみ";
+"Suggestion only" = "提案のみ・未適用";
 "Queued Daily Planning Review action for approval." = "日次計画レビューのアクションを承認待ちとしてQueueに追加しました。";
 "Read Aloud" = "読み上げ";
 "Read daily planning review aloud." = "日次計画レビューを読み上げました。";
@@ -1188,7 +1210,7 @@
 "Smart reminder proposals" = "スマートリマインダー提案";
 "Schedule day %@" = "スケジュール日 %@";
 "Schedule draft" = "スケジュール下書き";
-"Week Cockpit" = "週間コックピット";
+"Weekly workload" = "週間ワークロード";
 "Week has no overloaded days." = "過負荷の日はありません。";
 "Week schedule cockpit" = "週間スケジュールコックピット";
 "Weekly schedule grid" = "週間スケジュールグリッド";
@@ -1245,17 +1267,17 @@
 "Shows receipt-derived token and cost usage without raw prompts, receipt identifiers, or provider secrets." = "レシート由来のトークンとコスト使用量を、rawプロンプト、レシートID、プロバイダー秘密情報なしで表示します。";
 "Recent audit receipts" = "最近の監査レシート";
 "Recent audit receipts (UTC buckets, up to %d receipts)" = "最近の監査レシート（UTC区切り、最大%d件）";
-"Recent AI Receipts" = "最近のAIレシート";
-"Execution receipts are unavailable" = "実行レシートを利用できません";
-"No AI receipts yet" = "AIレシートはまだありません";
-"Receipts appear here after approved AI work runs." = "承認済みのAI作業を実行すると、ここにレシートが表示されます。";
+"Recent AI Activity" = "最近のAIの実行履歴";
+"AI activity is unavailable" = "AIの実行履歴を利用できません";
+"No AI activity yet" = "AIの実行履歴はまだありません";
+"AI activity appears here after approved AI work runs." = "承認済みのAI作業を実行すると、ここにAIの実行履歴が表示されます。";
 "Shows the redacted outcome, usage state, references, sources, and receipt identifier for approved AI work." = "承認済みAI作業の秘匿済み結果、使用状況、参照、ソース、レシートIDを表示します。";
-"Project AI Receipts" = "プロジェクトAIレシート";
-"No project AI receipts yet" = "プロジェクトAIレシートはまだありません";
-"Receipts appear here after approved AI work references this project." = "承認済みのAI作業がこのプロジェクトを参照すると、ここにレシートが表示されます。";
-"Task AI Receipts" = "タスクAIレシート";
-"No task AI receipts yet" = "タスクAIレシートはまだありません";
-"Receipts appear here after approved AI work references this task." = "承認済みのAI作業がこのタスクを参照すると、ここにレシートが表示されます。";
+"Project AI Activity" = "プロジェクトのAIの実行履歴";
+"No AI activity for this project yet" = "このプロジェクトのAIの実行履歴はまだありません";
+"AI activity appears here after approved AI work references this project." = "承認済みのAI作業がこのプロジェクトを参照すると、ここにAIの実行履歴が表示されます。";
+"Task AI Activity" = "タスクのAIの実行履歴";
+"No AI activity for this task yet" = "このタスクのAIの実行履歴はまだありません";
+"AI activity appears here after approved AI work references this task." = "承認済みのAI作業がこのタスクを参照すると、ここにAIの実行履歴が表示されます。";
 "Action Plan" = "アクション計画";
 "AI work" = "AI作業";
 "Assistant Queue execution receipts are unavailable. Queue state is still shown." = "アシスタントキューの実行レシートを利用できません。キュー状態は表示しています。";
@@ -1289,7 +1311,7 @@
 "Receipt export could not be prepared." = "レシートエクスポートを準備できませんでした。";
 "Receipt export could not be saved." = "レシートエクスポートを保存できませんでした。";
 "Saved redacted receipt export JSON." = "秘匿済みレシートエクスポートJSONを保存しました。";
-"Search receipts" = "レシートを検索";
+"Search AI activity" = "AIの実行履歴を検索";
 "%@ input" = "入力 %@";
 "%@ output" = "出力 %@";
 "%@ %@ measured / %@ estimated" = "%@ 実測 %@ / 推定 %@";
@@ -1588,11 +1610,11 @@
 "Watcher diagnostics not loaded yet." = "監視診断はまだ読み込まれていません。";
 "Allow realtime cloud fallback" = "リアルタイムクラウドフォールバックを許可";
 "Enables explicit Start and Stop controls in the Voice Command window." = "音声コマンドウィンドウで明示的な開始/停止コントロールを有効にします。";
-"Low-latency agent" = "低レイテンシエージェント";
+"Voice recognition" = "音声認識";
 "Low-latency voice agent" = "低レイテンシ音声エージェント";
 "Show realtime cloud cost" = "リアルタイムクラウド費用を表示";
 "Start" = "開始";
-"Idle" = "待機中";
+"voice-agent-status-ready" = "待機中";
 "Listening" = "聞き取り中";
 "Finish the current voice operation before starting low-latency voice agent mode." = "低レイテンシ音声エージェントモードを開始する前に、現在の音声操作を完了してください。";
 "Low-latency voice agent mode is disabled in Settings." = "低レイテンシ音声エージェントモードは設定で無効です。";
@@ -1630,7 +1652,7 @@
 "Saves this smart list to local app storage" = "このスマートリストをローカルのアプリ保存領域に保存します";
 "Saves this smart list to local app storage." = "このスマートリストをローカルのアプリ保存領域に保存します。";
 "Closes the sheet without saving a smart list." = "スマートリストを保存せずにシートを閉じます。";
-"Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority" = "キーボード: J/Kまたは矢印キーでタスク選択、Eで詳細、Dで完了、1/2/3で優先度設定";
+"Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority, ⌘Z undoes" = "キーボード: J/Kまたは矢印キーでタスク選択、Eで詳細、Dで完了、1/2/3で優先度設定、⌘Zで元に戻す";
 
 "Back Up All Data…" = "すべてのデータをバックアップ…";
 "Restore from Backup…" = "バックアップから復元…";
@@ -1656,3 +1678,67 @@
 "Based on %d workspace items" = "ワークスペースの%d件に基づく回答";
 "Answers a question from local workspace data using the configured AI provider." = "設定済みのAIプロバイダを使い、ローカルのワークスペースデータから質問に回答します。";
 "Speaks the workspace answer with the local text-to-speech voice." = "ローカルの音声合成でワークスペースの回答を読み上げます。";
+
+/* Board operation undo (T-02) and Today navigation (T-21) */
+"Undo Board Operation" = "ボード操作を元に戻す";
+"Undo the last board task change" = "直前のボードのタスク変更を元に戻します";
+"Reverts the most recent task completion, move, edit, or delete on the Project Board." = "プロジェクトボードで直前に行ったタスクの完了・移動・編集・削除を元に戻します。";
+"Undo: restored the deleted task." = "元に戻す: 削除したタスクを復元しました。";
+"Undo: moved the task back." = "元に戻す: タスクを元のステータスに戻しました。";
+"Undo: restored the task details." = "元に戻す: タスクの内容を復元しました。";
+"Undo: reopened the completed task." = "元に戻す: 完了したタスクを再オープンしました。";
+"Undo: moved %d tasks back." = "元に戻す: %d件のタスクを元のステータスに戻しました。";
+"Open Today" = "今日を開く";
+"Open the Project Board on Today" = "プロジェクトボードを「今日」で開きます";
+"Opens the Project Board with the Today view selected." = "「今日」ビューを選択した状態でプロジェクトボードを開きます。";
+
+/* Command palette content search (T-15) */
+"Content matches" = "内容の一致";
+"Opens this task on the Project Board." = "プロジェクトボードでこのタスクを開きます。";
+"Closes the palette. Knowledge frames do not have a dedicated view yet." = "パレットを閉じます。ナレッジフレーム専用の表示画面はまだありません。";
+
+/* Onboarding sample project (T-09) */
+"Create sample project" = "サンプルプロジェクトを作成";
+"Sample project added" = "サンプルプロジェクトを追加しました";
+"Adds a Learn SoloPM practice project with sample tasks to the Project Board." = "練習用の「SoloPMを学ぶ」プロジェクトとサンプルタスクをプロジェクトボードに追加します。";
+"Could not create the sample project." = "サンプルプロジェクトを作成できませんでした。";
+"Learn SoloPM" = "SoloPMを学ぶ";
+"Press ⌘K and search for anything" = "⌘Kを押して何でも検索";
+"The command palette matches views, projects, smart lists, and even task content. Try typing part of this sentence." = "コマンドパレットはビュー、プロジェクト、スマートリスト、さらにタスクの内容まで検索できます。この文章の一部を入力してみてください。";
+"Drag this task to another column" = "このタスクを別の列にドラッグ";
+"Kanban columns map to task status. Dropping a card updates the task immediately." = "カンバンの列はタスクのステータスに対応しています。カードをドロップするとタスクが即座に更新されます。";
+"Press ⌘Z to undo your last change" = "⌘Zで直前の変更を元に戻す";
+"Board operations such as complete, move, and edit go onto an undo stack. ⌘Z reverts the latest one." = "完了・移動・編集などのボード操作は取り消しスタックに積まれます。⌘Zで最新の操作を元に戻せます。";
+"Say a task out loud in the Voice window" = "音声ウィンドウでタスクを声に出して伝える";
+"Open Voice Command from the toolbar or the ⌘K palette, then speak. SoloPM drafts a plan you approve before anything is written." = "ツールバーまたは⌘Kパレットから音声コマンドを開いて話してください。SoloPMがプランを下書きし、承認するまで何も書き込みません。";
+"Set a due date by typing 'tomorrow' in Quick Add" = "クイック追加に「tomorrow」と入力して期限を設定";
+"Quick Add understands natural-language dates such as 'tomorrow' or 'next Friday' and files the task with the right due date." = "クイック追加は「tomorrow」や「next Friday」のような自然言語の日付を理解し、正しい期限付きでタスクを登録します。";
+"This task repeats weekly — complete it to see the next one appear" = "このタスクは毎週繰り返します — 完了すると次の回が現れます";
+"Completing a recurring task automatically schedules the next occurrence one week later." = "繰り返しタスクを完了すると、1週間後の次の回が自動的にスケジュールされます。";
+
+/* Diagnostics export (T-18) */
+"Export Diagnostics…" = "診断情報を書き出す…";
+"Save a metadata-only diagnostics report as a local text file" = "メタデータのみの診断レポートをローカルのテキストファイルとして保存します";
+"Writes a diagnostics text file with configuration metadata and counts only. No keys or content leave this Mac." = "設定メタデータと件数のみの診断テキストファイルを書き出します。キーや内容がこのMacの外に出ることはありません。";
+"The diagnostics file includes app and macOS versions, the selected AI provider kind, notification settings, task and project counts, and watcher check times. It never includes API keys, task, knowledge, or plan content, voice transcripts, or audit log entries." = "診断ファイルには、アプリとmacOSのバージョン、選択中のAIプロバイダーの種類、通知設定、タスクとプロジェクトの件数、ウォッチャーのチェック時刻が含まれます。APIキー、タスク・ナレッジ・プランの内容、音声の書き起こし、監査ログは一切含まれません。";
+"Export" = "書き出す";
+"Choose where to save the SoloPM diagnostics report" = "SoloPM診断レポートの保存先を選択してください";
+
+/* Voice error next steps (T-10) */
+"Try Again" = "再試行";
+"Runs plan generation again with the current transcript." = "現在の書き起こしでプラン生成をもう一度実行します。";
+"Generates the plan again using the same transcript." = "同じ書き起こしでプランを再生成します。";
+"Asks the workspace question again with the current text." = "現在のテキストでワークスペースへの質問をもう一度実行します。";
+"Retries the workspace question with the same text." = "同じテキストでワークスペースへの質問を再試行します。";
+"Could not write backup file %@: %@" = "バックアップファイル %@ を書き込めませんでした: %@";
+"Could not read backup file %@: %@" = "バックアップファイル %@ を読み込めませんでした: %@";
+"Draft actions…" = "下書きアクション…";
+"Draft actions" = "下書きアクション";
+"Defer, move, or split the recommended task as reviewable drafts." = "推奨タスクの延期・今日へ移動・分割をレビュー可能な下書きとして作成します。";
+"Opens defer, move to today, and split draft actions for the recommended task." = "推奨タスクの延期・今日へ移動・分割の下書きアクションを開きます。";
+"Plan…" = "計画…";
+"Plan actions" = "計画アクション";
+"Plan tomorrow, prepare a meeting, or draft a reply." = "明日の計画、会議の準備、返信の下書きを準備します。";
+"Opens capture shortcuts that prefill the Today command field." = "Todayコマンド欄に前置テキストを入力する取り込みショートカットを開きます。";
+"%d doing" = "進行中 %d";
+"%d missed" = "期限超過 %d";

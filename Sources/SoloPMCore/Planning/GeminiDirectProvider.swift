@@ -288,6 +288,14 @@ public struct GeminiDirectProvider: StreamingLLMProvider {
                     accumulated += text
                     onTextDelta(text)
                 case .functionCalls(let calls):
+                    // With toolConfig mode ANY Gemini usually answers with
+                    // function calls instead of text, which would leave the
+                    // live plan preview empty. Surface a short synthesized
+                    // progress line per call; the collected calls still map to
+                    // the rawActionPlan at stream end unchanged.
+                    for call in calls {
+                        onTextDelta(GeminiDirectFunctionCallProgressSummarizer.line(for: call))
+                    }
                     functionCalls.append(contentsOf: calls)
                 case .error(let message):
                     throw LLMProviderError.invalidResponse(message)
@@ -689,6 +697,52 @@ private enum GeminiDirectFunctionDeclarationCatalog {
             "dueAt": GeminiDirectSchema(type: "string", description: "Optional ISO-8601 due date or timestamp."),
             "priority": GeminiDirectSchema(type: "string", description: "Optional priority label.")
         ]
+    }
+}
+
+/// Synthesizes one short progress line per streamed Gemini function call for
+/// the live plan preview. Only the function name and a title-like argument are
+/// surfaced — never the full argument payload, which may carry long user
+/// content — and the title is truncated to keep the line compact.
+private enum GeminiDirectFunctionCallProgressSummarizer {
+    private static let titleCharacterLimit = 40
+
+    static func line(for call: GeminiDirectFunctionCall) -> String {
+        guard let title = shortTitle(from: call.args) else {
+            return "▸ \(call.name)\n"
+        }
+        return "▸ \(call.name) — \"\(title)\"\n"
+    }
+
+    private static func shortTitle(from args: [String: JSONValue]?) -> String? {
+        guard let args else {
+            return nil
+        }
+        for key in ["title", "name", "summary"] {
+            if case .string(let value)? = args[key], let title = truncatedTitle(value) {
+                return title
+            }
+        }
+        // Bulk task creation nests titles one level down; the first one is
+        // enough to show the stream is making progress.
+        if case .array(let items)? = args["tasks"],
+           case .object(let firstTask)? = items.first,
+           case .string(let value)? = firstTask["title"],
+           let title = truncatedTitle(value) {
+            return title
+        }
+        return nil
+    }
+
+    private static func truncatedTitle(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+        guard trimmed.count > titleCharacterLimit else {
+            return trimmed
+        }
+        return String(trimmed.prefix(titleCharacterLimit)) + "…"
     }
 }
 

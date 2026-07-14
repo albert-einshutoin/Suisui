@@ -170,16 +170,24 @@ if [[ "$GATE_MODE" == "visual" ]]; then
   fi
 
   SCREENSHOT="$PRIVATE_DIR/visible-pixel-probe.png"
-  if ! screencapture -x "$SCREENSHOT" >/dev/null 2>&1 || [[ ! -s "$SCREENSHOT" ]]; then
-    SCREEN_RECORDING=0
-    VISIBLE_PIXELS=0
-    block "runner-capability" "screen-capture-unavailable"
-  fi
-  if ! /usr/bin/swift "$CONTENT_CHECK_SOURCE" "$SCREENSHOT" >/dev/null 2>&1; then
+  VISIBLE_PIXEL_PROBE_ATTEMPTS=3
+  visible_pixel_probe_attempt=1
+  while (( visible_pixel_probe_attempt <= VISIBLE_PIXEL_PROBE_ATTEMPTS )); do
+    rm -f "$SCREENSHOT"
+    if screencapture -x "$SCREENSHOT" >/dev/null 2>&1 &&
+      [[ -s "$SCREENSHOT" ]] &&
+      SOLOPM_UI_EVIDENCE_ALLOW_DESKTOP_BACKGROUND=1 \
+        /usr/bin/swift "$CONTENT_CHECK_SOURCE" "$SCREENSHOT" >/dev/null 2>&1; then
+      VISIBLE_PIXELS=1
+      break
+    fi
+    sleep 0.25
+    visible_pixel_probe_attempt=$((visible_pixel_probe_attempt + 1))
+  done
+  if [[ "$VISIBLE_PIXELS" != "1" ]]; then
     VISIBLE_PIXELS=0
     block "runner-capability" "visible-pixels-unavailable"
   fi
-  VISIBLE_PIXELS=1
 fi
 
 STATUS="passed"

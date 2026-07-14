@@ -12,6 +12,9 @@ struct ProjectBoardSidebarDestinationRow: View {
             HStack(spacing: 8) {
                 Text(LocalizedStringKey(destination.title))
                     .lineLimit(1)
+                    // The destination name wins layout negotiation so the
+                    // trailing count badge can never force it to truncate.
+                    .layoutPriority(1)
                 Spacer(minLength: 8)
                 Text("\(count)")
                     .font(.caption.weight(.semibold))

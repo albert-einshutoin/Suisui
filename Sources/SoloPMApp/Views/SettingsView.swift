@@ -115,6 +115,7 @@ struct SettingsView: View {
     @State private var isConfirmingBackupRestore = false
     @State private var backupStatusMessage: String?
     @State private var backupErrorMessage: String?
+    @State private var diagnosticsExportErrorMessage: String?
     @State private var selectedTab: SettingsTab
     @State private var googleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus?
     @State private var googleCalendarSetupMessage: String?
@@ -1188,6 +1189,66 @@ struct SettingsView: View {
                 )
                 Toggle(
                     isOn: Binding(
+                        get: { settingsViewModel.settings.notificationPreferences.quietHours.enabled },
+                        set: { settingsViewModel.setNotificationQuietHoursEnabled($0) }
+                    )
+                ) {
+                    Label("Quiet hours", systemImage: "moon.zzz")
+                }
+                .accessibilityIdentifier("settings-notification-quiet-hours-toggle")
+                .accessibilityHint("Defers notifications inside the quiet window until the window ends.")
+                DatePicker(
+                    "Quiet hours start",
+                    selection: quietHoursMinuteOfDayBinding(
+                        get: { settingsViewModel.settings.notificationPreferences.quietHours.startMinuteOfDay },
+                        set: { settingsViewModel.setNotificationQuietHoursStartMinuteOfDay($0) }
+                    ),
+                    displayedComponents: .hourAndMinute
+                )
+                .disabled(!settingsViewModel.settings.notificationPreferences.quietHours.enabled)
+                .accessibilityIdentifier("settings-notification-quiet-hours-start")
+                .accessibilityHint("Sets the local time when the notification quiet window begins.")
+                DatePicker(
+                    "Quiet hours end",
+                    selection: quietHoursMinuteOfDayBinding(
+                        get: { settingsViewModel.settings.notificationPreferences.quietHours.endMinuteOfDay },
+                        set: { settingsViewModel.setNotificationQuietHoursEndMinuteOfDay($0) }
+                    ),
+                    displayedComponents: .hourAndMinute
+                )
+                .disabled(!settingsViewModel.settings.notificationPreferences.quietHours.enabled)
+                .accessibilityIdentifier("settings-notification-quiet-hours-end")
+                .accessibilityHint("Sets the local time when deferred notifications are delivered.")
+                Picker(
+                    "Remind me",
+                    selection: Binding(
+                        get: { settingsViewModel.settings.notificationPreferences.deadlineReminderLeadTime },
+                        set: { settingsViewModel.setDeadlineReminderLeadTime($0) }
+                    )
+                ) {
+                    ForEach(DeadlineReminderLeadTime.allCases, id: \.self) { leadTime in
+                        Text(LocalizedStringKey(leadTime.label))
+                            .tag(leadTime)
+                    }
+                }
+                .accessibilityIdentifier("settings-notification-lead-time")
+                .accessibilityHint("Moves deadline task reminders earlier than the due time. Digest and weekly summaries are not affected.")
+                Text("Deadline reminders fire ahead of the due time by the selected lead. Notifications that land inside quiet hours are deferred to the end of the window, never dropped.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("settings-notification-quiet-hours-caption")
+                Toggle(
+                    isOn: Binding(
+                        get: { settingsViewModel.settings.notificationPreferences.avoidsWeekends },
+                        set: { settingsViewModel.setRescheduleAvoidsWeekends($0) }
+                    )
+                ) {
+                    Label("Avoid weekends when rescheduling", systemImage: "calendar.badge.exclamationmark")
+                }
+                .accessibilityIdentifier("settings-reschedule-avoid-weekends")
+                .accessibilityHint("Moves missed-task reschedule suggestions that land on Saturday or Sunday to the following Monday.")
+                Toggle(
+                    isOn: Binding(
                         get: { settingsViewModel.settings.isDeveloperModeEnabled },
                         set: { settingsViewModel.setDeveloperModeEnabled($0) }
                     )
@@ -1262,6 +1323,24 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                         .accessibilityIdentifier("settings-backup-error")
+                }
+                Button {
+                    presentDiagnosticsExportPanel()
+                } label: {
+                    Label("Export Diagnostics…", systemImage: "stethoscope")
+                }
+                .help("Save a metadata-only diagnostics report as a local text file")
+                .accessibilityIdentifier("settings-export-diagnostics")
+                .accessibilityHint("Writes a diagnostics text file with configuration metadata and counts only. No keys or content leave this Mac.")
+                Text("The diagnostics file includes app and macOS versions, the selected AI provider kind, notification settings, task and project counts, and watcher check times. It never includes API keys, task, knowledge, or plan content, voice transcripts, or audit log entries.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("settings-export-diagnostics-caption")
+                if let diagnosticsExportErrorMessage {
+                    Label(diagnosticsExportErrorMessage, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .accessibilityIdentifier("settings-export-diagnostics-error")
                 }
                 settingsSaveButton
                 if let errorMessage = settingsViewModel.errorMessage {
@@ -1388,7 +1467,50 @@ struct SettingsView: View {
             )
         } catch {
             backupStatusMessage = nil
-            backupErrorMessage = error.localizedDescription
+            // Name the file so the inline error is actionable; the buttons
+            // above stay in place for an immediate retry.
+            backupErrorMessage = localizedDisplay(
+                "Could not write backup file %@: %@",
+                url.lastPathComponent,
+                error.localizedDescription
+            )
+        }
+    }
+
+    private var defaultDiagnosticsFilename: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmm"
+        return "solopm-diagnostics-\(formatter.string(from: Date())).txt"
+    }
+
+    private func presentDiagnosticsExportPanel() {
+        #if canImport(AppKit)
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        panel.nameFieldStringValue = defaultDiagnosticsFilename
+        panel.prompt = String(localized: "Export")
+        panel.message = String(localized: "Choose where to save the SoloPM diagnostics report")
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else {
+                return
+            }
+            DispatchQueue.main.async {
+                exportDiagnostics(to: url)
+            }
+        }
+        #endif
+    }
+
+    private func exportDiagnostics(to url: URL) {
+        do {
+            let report = AppRuntimeFactory.makeDiagnosticsReportText()
+            try Data(report.utf8).write(to: url, options: [.atomic])
+            diagnosticsExportErrorMessage = nil
+        } catch {
+            diagnosticsExportErrorMessage = error.localizedDescription
         }
     }
 
@@ -1422,7 +1544,13 @@ struct SettingsView: View {
         } catch {
             pendingBackupRestoreDocument = nil
             backupStatusMessage = nil
-            backupErrorMessage = error.localizedDescription
+            // Decoding errors alone do not mention the chosen file; name it so
+            // the user knows which file failed and can retry in place.
+            backupErrorMessage = localizedDisplay(
+                "Could not read backup file %@: %@",
+                url.lastPathComponent,
+                error.localizedDescription
+            )
         }
     }
 
@@ -1700,6 +1828,26 @@ struct SettingsView: View {
         }
         .accessibilityIdentifier("settings-task-auto-execution-save")
         .accessibilityHint("Persists task automation settings to local UserDefaults.")
+    }
+
+    /// Bridges the persisted minutes-of-day quiet-hours bounds to the
+    /// hour-and-minute `DatePicker`, which needs a `Date` selection. Only the
+    /// wall-clock components matter; the reference day is discarded on set.
+    private func quietHoursMinuteOfDayBinding(
+        get minuteOfDay: @escaping () -> Int,
+        set: @escaping (Int) -> Void
+    ) -> Binding<Date> {
+        Binding(
+            get: {
+                let calendar = Calendar.current
+                let dayStart = calendar.startOfDay(for: Date())
+                return calendar.date(byAdding: .minute, value: minuteOfDay(), to: dayStart) ?? dayStart
+            },
+            set: { newValue in
+                let components = Calendar.current.dateComponents([.hour, .minute], from: newValue)
+                set((components.hour ?? 0) * 60 + (components.minute ?? 0))
+            }
+        )
     }
 
     private func billingCapValueLabel(_ cents: Int?) -> String {

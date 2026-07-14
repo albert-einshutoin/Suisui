@@ -23,13 +23,24 @@ private enum ProjectBoardLayoutMetrics {
     // Keeping the numbers named makes UI review catch accidental magic values
     // without forcing a premature app-wide design system abstraction.
     static let headerHeight: CGFloat = 44
+    // Sidebar bounds keep every fixed destination label ("Assistant Queue" is
+    // the widest at ~105pt for 15 characters of 13pt SF Pro, plus ~24pt icon
+    // column, 8pt gap, and a ~16pt count badge ≈ 185pt with row insets)
+    // readable without truncation at the 1024pt canonical window width. The
+    // native split chrome contributes another 20pt, so the ideal must stay at
+    // 200pt to keep the shared header and 300pt inspector inside that viewport.
+    static let sidebarColumnMinWidth: CGFloat = 180
+    static let sidebarColumnIdealWidth: CGFloat = 200
     static let terminalPanelMinHeight: CGFloat = 220
     static let terminalPanelIdealHeight: CGFloat = 280
     static let terminalPanelMaxHeight: CGFloat = 360
     static let portfolioCardMinHeight: CGFloat = 230
     static let overviewPanelMinHeight: CGFloat = 170
     static let displayModePickerWidth: CGFloat = 252
-    static let boardColumnWidth: CGFloat = 244
+    // 204pt columns keep two full Kanban columns visible beside the 300pt
+    // inspector at the 1024pt canonical window width: 2 x (204 + 20 padding)
+    // + 12 spacing = 460pt fits the ~466pt board viewport there.
+    static let boardColumnWidth: CGFloat = 204
     static let emptyColumnMinHeight: CGFloat = 82
     static let inlinePriorityPickerWidth: CGFloat = 112
     static let taskMetadataChipMinWidth: CGFloat = 64
@@ -51,6 +62,7 @@ struct ProjectBoardView: View {
     private let taskAutomationSettings: () -> TaskAutoExecutionSettings
     private let appSettings: () -> AppSettings
     private let smartListStore: (any SmartListStore)?
+    private let commandPaletteContentSearch: CommandPaletteContentSearch?
     private let developmentAutomationReviewSession: (ActionPlan) -> ReviewSessionViewModel
     @AppStorage(ProjectBoardSelectionPersistence.storageKey) private var persistedSelectedDestinationRawValue = ProjectBoardSelectionPersistence.defaultRawValue
     @State private var displayMode: ProjectBoardDisplayMode = .board
@@ -68,18 +80,23 @@ struct ProjectBoardView: View {
     @State private var selectedSmartListID: String?
     @State private var savedSmartLists: [SmartList] = []
     @State private var isPresentingSmartListEditor = false
+    // Palette content hits reveal their task after the destination switch
+    // settles, because applySelectedDestination clears task selection.
+    @State private var pendingCommandPaletteRevealTaskID: Int64?
 
     init(
         viewModel: ProjectBoardViewModel,
         taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings = { .default },
         appSettings: @escaping () -> AppSettings = { .default },
         smartListStore: (any SmartListStore)? = AppRuntimeFactory.makeSmartListStoreIfAvailable(),
+        commandPaletteContentSearch: CommandPaletteContentSearch? = CommandPaletteContentSearchFactory.makeIfAvailable(),
         developmentAutomationReviewSession: @escaping (ActionPlan) -> ReviewSessionViewModel
     ) {
         _viewModel = StateObject(wrappedValue: viewModel)
         self.taskAutomationSettings = taskAutomationSettings
         self.appSettings = appSettings
         self.smartListStore = smartListStore
+        self.commandPaletteContentSearch = commandPaletteContentSearch
         self.developmentAutomationReviewSession = developmentAutomationReviewSession
     }
 
@@ -202,6 +219,7 @@ struct ProjectBoardView: View {
             }
             .id(toolbarLayoutRefreshToken)
             .projectBoardSynchronizedColumnBounds()
+            .navigationSplitViewColumnWidth(min: ProjectBoardLayoutMetrics.sidebarColumnMinWidth, ideal: ProjectBoardLayoutMetrics.sidebarColumnIdealWidth)
         } detail: {
             VStack(spacing: 0) {
                 projectBoardHeaderBar
@@ -297,7 +315,11 @@ struct ProjectBoardView: View {
                         EmptyView()
                     }
                 }
-                .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
+                // Keep 300pt as the comfortable editing width, but allow the
+                // inspector to yield the native split view's 24pt squeeze at
+                // the hosted 980pt minimum window instead of clipping the
+                // header and inspector beyond the owned window.
+                .inspectorColumnWidth(min: 276, ideal: 300, max: 420)
             }
         }
         .frame(
@@ -306,6 +328,10 @@ struct ProjectBoardView: View {
             alignment: .topLeading
         )
         .navigationTitle("SoloPM")
+        // The Edit-menu board undo command targets the key Project Board
+        // window through this focused scene value; text-field undo keeps the
+        // standard responder-chain Undo item.
+        .focusedSceneValue(\.projectBoardUndo, ProjectBoardUndoCommandAction(viewModel: viewModel))
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button {
@@ -326,7 +352,9 @@ struct ProjectBoardView: View {
             )
         )
         .task {
-            viewModel.load()
+            LaunchPerformanceSignposts.measureFirstBoardLoadOnce {
+                viewModel.load()
+            }
             viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
             reloadSavedSmartLists()
             restoreSelectedDestinationIfNeeded()
@@ -341,6 +369,9 @@ struct ProjectBoardView: View {
             viewModel.load()
             viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
             restoreSelectedDestinationIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ProjectBoardTodayNavigation.openTodayNotification)) { _ in
+            forceSelectTodayDestination()
         }
         .onReceive(NotificationCenter.default.publisher(for: .soloPMVoiceDailyPlanningReviewRequested)) { notification in
             handleVoiceDailyPlanningReviewRequest(notification)
@@ -361,6 +392,7 @@ struct ProjectBoardView: View {
             // env-only override is reapplied so deterministic release evidence
             // can open Inbox with a seeded capture selected.
             applySelectedTaskOverrideIfNeeded()
+            applyPendingCommandPaletteRevealIfNeeded()
         }
         .onChange(of: viewModel.selectedTaskID) { _, selectedTaskID in
             if selectedTaskID != nil && selectedDestination != .today && selectedDestination != .inbox {
@@ -438,6 +470,7 @@ struct ProjectBoardView: View {
                     CommandPaletteView(
                         projects: commandPaletteProjects,
                         smartLists: commandPaletteSmartLists,
+                        contentSearch: commandPaletteContentSearch,
                         onExecute: executeCommandPaletteAction,
                         onDismiss: { isCommandPaletteVisible = false }
                     )
@@ -479,8 +512,41 @@ struct ProjectBoardView: View {
             openWindow(id: "voice-capture")
         case .openSettingsWindow:
             openSettings()
+        case .revealTask(let taskID, let projectID, _):
+            revealTaskFromCommandPalette(taskID: taskID, projectID: projectID)
+        case .openKnowledgeFrame:
+            // Knowledge frames have no browsing surface (and no owning
+            // project) yet, so a knowledge hit only closes the palette after
+            // showing its matched snippet.
+            break
         }
         isCommandPaletteVisible = false
+    }
+
+    /// Switches to the destination that owns the task (its project, or Inbox
+    /// for unfiled tasks) and defers the actual selection until
+    /// applySelectedDestination has run, because that handler clears
+    /// `selectedTaskID` on every destination change.
+    private func revealTaskFromCommandPalette(taskID: Int64, projectID: Int64?) {
+        let target: ProjectBoardSidebarDestination = projectID.map { .project($0) } ?? .inbox
+        pendingCommandPaletteRevealTaskID = taskID
+        if selectedDestination == target {
+            // onChange(of: selectedDestination) will not fire again.
+            applyPendingCommandPaletteRevealIfNeeded()
+        } else {
+            selectedDestination = target
+        }
+    }
+
+    private func applyPendingCommandPaletteRevealIfNeeded() {
+        guard let taskID = pendingCommandPaletteRevealTaskID else {
+            return
+        }
+        pendingCommandPaletteRevealTaskID = nil
+        if case .project(let projectID) = selectedDestination {
+            viewModel.selectedProjectID = projectID
+        }
+        viewModel.selectedTaskID = taskID
     }
 
     private var allSmartLists: [SmartList] {
@@ -553,6 +619,23 @@ struct ProjectBoardView: View {
 
     private var projectBoardHeaderBar: some View {
         HStack(spacing: 8) {
+            if let boardUndoFeedback = viewModel.boardUndoFeedback {
+                // Transient undo confirmation; the view model clears it after a
+                // few seconds. The message is already localized in Core, so it
+                // renders verbatim instead of re-entering localization lookup.
+                Label {
+                    Text(verbatim: boardUndoFeedback)
+                } icon: {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("project-board-undo-feedback")
+            }
+
             Spacer(minLength: 16)
 
             Menu {
@@ -582,9 +665,9 @@ struct ProjectBoardView: View {
                 .accessibilityIdentifier("project-board-google-calendar-sync")
             } label: {
                 Label("Integrations", systemImage: "arrow.left.arrow.right")
-                    .labelStyle(.titleAndIcon)
+                    .labelStyle(.iconOnly)
             }
-            .help("Import, export, and sync task data")
+            .help("Integrations: import, export, and sync task data")
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Integrations")
             .accessibilityIdentifier("project-board-integrations-menu")
@@ -593,9 +676,9 @@ struct ProjectBoardView: View {
                 viewModel.prepareTaskAutomationReview(settings: taskAutomationSettings())
             } label: {
                 Label("Review Task Automation", systemImage: "sparkles")
-                    .labelStyle(.titleAndIcon)
+                    .labelStyle(.iconOnly)
             }
-            .help("Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings")
+            .help("Review Task Automation: prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings")
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Review Task Automation")
             .accessibilityIdentifier("project-board-task-auto-execution-review")
@@ -605,15 +688,16 @@ struct ProjectBoardView: View {
                 openWindow(id: "voice-capture")
             } label: {
                 Label("Voice Command", systemImage: "mic")
-                    .labelStyle(.titleAndIcon)
+                    .labelStyle(.iconOnly)
             }
+            .help("Voice Command")
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Voice Command")
             .accessibilityIdentifier("project-board-voice-command")
 
             SettingsLink {
                 Label("Settings", systemImage: "gearshape")
-                    .labelStyle(.titleAndIcon)
+                    .labelStyle(.iconOnly)
             }
             .help("Open Settings")
             .accessibilityElement(children: .ignore)
@@ -712,6 +796,17 @@ struct ProjectBoardView: View {
         persistSelectedDestination(destination)
         applySelectedDestination(destination)
         applySelectedTaskOverrideIfNeeded()
+    }
+
+    private func forceSelectTodayDestination() {
+        // Digest notification taps and the menu bar summary route here via
+        // ProjectBoardTodayNavigation. Unlike restoreSelectedDestinationIfNeeded
+        // this deliberately clears an active smart list: the user asked for
+        // Today explicitly.
+        selectedSmartListID = nil
+        selectedDestination = .today
+        persistSelectedDestination(.today)
+        applySelectedDestination(.today)
     }
 
     private func persistSelectedDestination(_ destination: ProjectBoardSidebarDestination?) {
@@ -1368,8 +1463,67 @@ private struct ProjectBoardToolbarLayoutBridge: View {
 }
 #endif
 
+/// Focused-scene handle for the board-operation undo stack. Equality tracks the
+/// owning view model and undo availability so SwiftUI refreshes the Edit-menu
+/// item exactly when the stack flips between empty and undoable.
+struct ProjectBoardUndoCommandAction: Equatable {
+    let canUndo: Bool
+    private let viewModelID: ObjectIdentifier
+    private let perform: @MainActor () -> Void
+
+    @MainActor
+    init(viewModel: ProjectBoardViewModel) {
+        canUndo = viewModel.canUndoBoardOperation
+        viewModelID = ObjectIdentifier(viewModel)
+        perform = { viewModel.undoLastBoardOperation() }
+    }
+
+    @MainActor
+    func callAsFunction() {
+        perform()
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.viewModelID == rhs.viewModelID && lhs.canUndo == rhs.canUndo
+    }
+}
+
+private struct ProjectBoardUndoFocusedValueKey: FocusedValueKey {
+    typealias Value = ProjectBoardUndoCommandAction
+}
+
+extension FocusedValues {
+    var projectBoardUndo: ProjectBoardUndoCommandAction? {
+        get { self[ProjectBoardUndoFocusedValueKey.self] }
+        set { self[ProjectBoardUndoFocusedValueKey.self] = newValue }
+    }
+}
+
+/// Edit-menu entry for the board-operation undo stack. The ⌘Z key itself is
+/// handled by the focused Kanban container (so text fields keep the standard
+/// text Undo); this command adds the discoverable menu affordance and stays
+/// enabled only while the key Project Board window has an undoable operation.
+struct SoloPMProjectBoardUndoCommands: Commands {
+    @FocusedValue(\.projectBoardUndo) private var projectBoardUndo
+
+    var body: some Commands {
+        CommandGroup(after: .undoRedo) {
+            Button {
+                projectBoardUndo?()
+            } label: {
+                Label("Undo Board Operation", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(projectBoardUndo?.canUndo != true)
+            .help("Undo the last board task change")
+            .accessibilityIdentifier("project-board-undo-command")
+            .accessibilityHint("Reverts the most recent task completion, move, edit, or delete on the Project Board.")
+        }
+    }
+}
+
 extension Notification.Name {
-    static let soloPMProjectBoardDidChange = Notification.Name("dev.solopm.projectBoardDidChange")
+    // .soloPMProjectBoardDidChange moved to SoloPMCore (FirstRunOnboarding.swift)
+    // so core store writers can post it without duplicating the raw name.
     static let soloPMVoiceDailyPlanningReviewRequested = Notification.Name("dev.solopm.voiceDailyPlanningReviewRequested")
     static let soloPMVoiceInboxTriageRequested = Notification.Name("dev.solopm.voiceInboxTriageRequested")
     static let soloPMAssistantQueueRequested = Notification.Name("dev.solopm.assistantQueueRequested")
@@ -2856,7 +3010,7 @@ private struct ProjectKanbanBoard: View {
                 isBoardFocused = true
             }
         }
-        .help("Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority")
+        .help("Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority, ⌘Z undoes")
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project-kanban-board")
         .accessibilityLabel("Kanban board for \(project.title)")
@@ -2873,6 +3027,13 @@ private struct ProjectKanbanBoard: View {
         // character; ignoring here keeps typed letters out of board shortcuts.
         guard composingStatus == nil else {
             return .ignored
+        }
+        // ⌘Z board undo shares the container-focus guard with the letter
+        // shortcuts: the board only receives keys while the window is key and
+        // no text editor owns focus. When a text field is focused the standard
+        // Edit > Undo item consumes ⌘Z before it ever reaches this handler.
+        if keyPress.modifiers == [.command], keyPress.characters == "z" {
+            return undoLastBoardOperation()
         }
         guard keyPress.modifiers.isEmpty else {
             return .ignored
@@ -2923,6 +3084,14 @@ private struct ProjectKanbanBoard: View {
             return .ignored
         }
         onOpenTaskInspector()
+        return .handled
+    }
+
+    private func undoLastBoardOperation() -> KeyPress.Result {
+        guard viewModel.canUndoBoardOperation else {
+            return .ignored
+        }
+        viewModel.undoLastBoardOperation()
         return .handled
     }
 
@@ -3424,19 +3593,13 @@ private struct TaskStatusMoveControls: View {
 private struct TaskCardMetadataStrip: View {
     let task: ProjectBoardTask
 
-    private var compactColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 72), spacing: 6)]
-    }
-
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) {
-                metadataChips
-            }
-
-            LazyVGrid(columns: compactColumns, alignment: .leading, spacing: 6) {
-                metadataChips
-            }
+        // Fixed rows wrap the chips instead of a single measured HStack, so
+        // long status/priority/due labels compress inside the card width and
+        // never clip mid-glyph at the trailing card edge.
+        VStack(alignment: .leading, spacing: 6) {
+            identityChipRow
+            scheduleChipRow
         }
         .font(.caption2)
         .accessibilityElement(children: .combine)
@@ -3445,32 +3608,45 @@ private struct TaskCardMetadataStrip: View {
         .accessibilityIdentifier("task-card-metadata-strip")
     }
 
-    @ViewBuilder
-    private var metadataChips: some View {
-        TaskMetadataChip(
-            value: task.status.title,
-            systemImage: task.status.systemImage,
-            tint: task.status.tint
-        )
-
-        TaskMetadataChip(
-            value: task.priority.label,
-            systemImage: "flag",
-            tint: task.priority.color
-        )
-
-        TaskMetadataChip(
-            value: dueValue,
-            systemImage: "calendar",
-            tint: task.dueLabel == nil ? .secondary : .blue
-        )
-
-        if let recurrenceValue {
+    private var identityChipRow: some View {
+        HStack(spacing: 6) {
             TaskMetadataChip(
-                value: recurrenceValue,
-                systemImage: "repeat",
-                tint: .purple
+                value: task.status.title,
+                systemImage: task.status.systemImage,
+                tint: task.status.tint
             )
+
+            TaskMetadataChip(
+                value: task.priority.label,
+                systemImage: "flag",
+                tint: task.priority.color
+            )
+        }
+    }
+
+    /// Due and recurrence chips render only when the task carries those
+    /// values; an unconditional placeholder chip reads as broken metadata.
+    /// The dateless case stays discoverable through the accessibility value.
+    @ViewBuilder
+    private var scheduleChipRow: some View {
+        if task.dueLabel != nil || recurrenceValue != nil {
+            HStack(spacing: 6) {
+                if let dueLabel = task.dueLabel {
+                    TaskMetadataChip(
+                        value: dueLabel,
+                        systemImage: "calendar",
+                        tint: .blue
+                    )
+                }
+
+                if let recurrenceValue {
+                    TaskMetadataChip(
+                        value: recurrenceValue,
+                        systemImage: "repeat",
+                        tint: .purple
+                    )
+                }
+            }
         }
     }
 
@@ -3510,9 +3686,10 @@ private struct TaskMetadataChip: View {
         .foregroundStyle(tint)
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
+        // Chips hug their content (no maxWidth: .infinity) so a row of chips
+        // compresses via truncation instead of stretching past the card edge.
         .frame(
             minWidth: ProjectBoardLayoutMetrics.taskMetadataChipMinWidth,
-            maxWidth: .infinity,
             minHeight: ProjectBoardLayoutMetrics.taskMetadataChipMinHeight,
             alignment: .leading
         )
@@ -3658,11 +3835,11 @@ private struct ProjectInspectorView: View {
                 ProjectInspectorMetadataSummary(project: project)
             }
 
-            Section("Project AI Receipts") {
+            Section("Project AI Activity") {
                 ExecutionReceiptHistoryInspectorSection(
                     snapshot: viewModel.executionReceiptHistorySnapshot(forProjectID: project.id),
-                    emptyTitle: "No project AI receipts yet",
-                    emptyDescription: "Receipts appear here after approved AI work references this project.",
+                    emptyTitle: "No AI activity for this project yet",
+                    emptyDescription: "AI activity appears here after approved AI work references this project.",
                     accessibilityIdentifier: "project-execution-receipts"
                 )
             }
@@ -4823,11 +5000,11 @@ private struct TaskInspectorView: View {
                 TaskInspectorAutomationSection(task: task, viewModel: viewModel)
             }
 
-            Section("Task AI Receipts") {
+            Section("Task AI Activity") {
                 ExecutionReceiptHistoryInspectorSection(
                     snapshot: viewModel.executionReceiptHistorySnapshot(forTaskID: task.id),
-                    emptyTitle: "No task AI receipts yet",
-                    emptyDescription: "Receipts appear here after approved AI work references this task.",
+                    emptyTitle: "No AI activity for this task yet",
+                    emptyDescription: "AI activity appears here after approved AI work references this task.",
                     accessibilityIdentifier: "task-execution-receipts"
                 )
             }
@@ -4991,7 +5168,7 @@ private struct ExecutionReceiptHistoryInspectorSection: View {
         VStack(alignment: .leading, spacing: 8) {
             if let unavailableMessage = snapshot.unavailableMessage {
                 ContentUnavailableView(
-                    "Execution receipts are unavailable",
+                    "AI activity is unavailable",
                     systemImage: "exclamationmark.triangle",
                     description: Text(unavailableMessage)
                 )

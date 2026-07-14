@@ -115,9 +115,6 @@ private struct TodayDailyPlanningReviewPanel: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     let review: DailyPlanningReview?
     let playDailyPlanningReadout: () -> Void
-    private let actionButtonColumns = [
-        GridItem(.adaptive(minimum: 130), spacing: 8, alignment: .leading)
-    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -125,7 +122,7 @@ private struct TodayDailyPlanningReviewPanel: View {
                 Label("Daily Planning Review", systemImage: "sparkles")
                     .font(.subheadline.weight(.semibold))
                 Spacer(minLength: 8)
-                Text("Proposal only")
+                Text("Suggestion only")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 8)
@@ -170,14 +167,17 @@ private struct TodayDailyPlanningReviewPanel: View {
                     }
                 }
 
-                LazyVGrid(columns: actionButtonColumns, alignment: .leading, spacing: 8) {
+                // A secretary card surfaces two visible actions: hear the review
+                // and draft-start the recommended task. The remaining draft
+                // variants live in one menu so the card stops reading as a
+                // control panel. Every handler and identifier is unchanged.
+                HStack(spacing: 8) {
                     Button {
                         playDailyPlanningReadout()
                     } label: {
                         Label("Read Aloud", systemImage: "speaker.wave.2")
                     }
                     .controlSize(.small)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .help("Reads this daily planning review with the configured local TTS provider.")
                     .accessibilityIdentifier("today-daily-planning-readout")
                     .accessibilityHint("Uses local TTS to read the review without changing tasks or writing Calendar.")
@@ -188,47 +188,49 @@ private struct TodayDailyPlanningReviewPanel: View {
                         Label("Draft Start", systemImage: "play.circle")
                     }
                     .controlSize(.small)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .disabled(review.recommendedTaskID == nil)
                     .help("Queue the recommended task status update for review.")
                     .accessibilityIdentifier("today-daily-planning-draft-start")
                     .accessibilityHint("Creates an Assistant Queue approval item without changing the task.")
 
-                    Button {
-                        viewModel.enqueueDailyPlanningActionDraft(kind: .deferRecommendedToTomorrow)
-                    } label: {
-                        Label("Draft Defer", systemImage: "calendar.badge.clock")
-                    }
-                    .controlSize(.small)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .disabled(review.recommendedTaskID == nil)
-                    .help("Queue a tomorrow due-date update for review.")
-                    .accessibilityIdentifier("today-daily-planning-draft-defer")
-                    .accessibilityHint("Creates an Assistant Queue approval item without writing Calendar.")
+                    Spacer(minLength: 8)
 
-                    Button {
-                        viewModel.enqueueDailyPlanningActionDraft(kind: .moveRecommendedDueDateToToday)
-                    } label: {
-                        Label("Draft Move to Today", systemImage: "arrow.right.circle")
-                    }
-                    .controlSize(.small)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .disabled(review.recommendedTaskID == nil)
-                    .help("Queue a today due-date update for review without creating a Calendar event.")
-                    .accessibilityIdentifier("today-daily-planning-draft-move-today")
-                    .accessibilityHint("Creates an Assistant Queue approval item; task due date and Calendar stay unchanged until approval.")
+                    Menu {
+                        Button {
+                            viewModel.enqueueDailyPlanningActionDraft(kind: .deferRecommendedToTomorrow)
+                        } label: {
+                            Label("Draft Defer", systemImage: "calendar.badge.clock")
+                        }
+                        .disabled(review.recommendedTaskID == nil)
+                        .accessibilityIdentifier("today-daily-planning-draft-defer")
+                        .accessibilityHint("Creates an Assistant Queue approval item without writing Calendar.")
 
-                    Button {
-                        viewModel.enqueueDailyPlanningActionDraft(kind: .splitRecommendedTask)
+                        Button {
+                            viewModel.enqueueDailyPlanningActionDraft(kind: .moveRecommendedDueDateToToday)
+                        } label: {
+                            Label("Draft Move to Today", systemImage: "arrow.right.circle")
+                        }
+                        .disabled(review.recommendedTaskID == nil)
+                        .accessibilityIdentifier("today-daily-planning-draft-move-today")
+                        .accessibilityHint("Creates an Assistant Queue approval item; task due date and Calendar stay unchanged until approval.")
+
+                        Button {
+                            viewModel.enqueueDailyPlanningActionDraft(kind: .splitRecommendedTask)
+                        } label: {
+                            Label("Draft Split", systemImage: "square.split.2x1")
+                        }
+                        .disabled(review.recommendedTaskID == nil)
+                        .accessibilityIdentifier("today-daily-planning-draft-split")
+                        .accessibilityHint("Creates an Assistant Queue approval item; no tasks are created until approval.")
                     } label: {
-                        Label("Draft Split", systemImage: "square.split.2x1")
+                        Label("Draft actions…", systemImage: "ellipsis.circle")
                     }
                     .controlSize(.small)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .disabled(review.recommendedTaskID == nil)
-                    .help("Queue reviewable follow-up task drafts without changing the original task.")
-                    .accessibilityIdentifier("today-daily-planning-draft-split")
-                    .accessibilityHint("Creates an Assistant Queue approval item; no tasks are created until approval.")
+                    .help("Defer, move, or split the recommended task as reviewable drafts.")
+                    .accessibilityIdentifier("today-draft-actions-menu")
+                    .accessibilityLabel("Draft actions")
+                    .accessibilityHint("Opens defer, move to today, and split draft actions for the recommended task.")
                 }
             } else {
                 Text("Preparing Daily Planning Review…")
@@ -280,14 +282,6 @@ private struct TodayBriefingPanel: View {
     let recommendationChips: [TodayRecommendationChip]
     @ObservedObject var viewModel: ProjectBoardViewModel
 
-    private let actionRowColumns = [
-        GridItem(.adaptive(minimum: 180), spacing: 8, alignment: .leading)
-    ]
-
-    private let suggestionColumns = [
-        GridItem(.adaptive(minimum: 150), spacing: 6, alignment: .leading)
-    ]
-
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
@@ -316,93 +310,98 @@ private struct TodayBriefingPanel: View {
                     .stroke(Color.secondary.opacity(0.16), lineWidth: 1)
             }
 
-            commonActionRail
-
-            // Keep the action order in one deterministic container. The
-            // adaptive columns wrap controls instead of probing alternate
-            // ViewThatFits branches during every width negotiation.
-            LazyVGrid(columns: actionRowColumns, alignment: .leading, spacing: 8) {
-                WorkflowDoneToggle(viewModel: viewModel)
-                suggestionRail
-                startFocusButton
-            }
+            actionToolbar
 
             TodayFlowStrip(plan: plan, viewModel: viewModel)
         }
-        .frame(minWidth: 320, maxWidth: 540, alignment: .leading)
+        .frame(minWidth: 320, maxWidth: 640, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-briefing-panel")
         .accessibilityLabel("Today briefing")
         .accessibilityHint("Captures work into Inbox and offers the next reviewed Today action.")
     }
 
-    private var commonActionRail: some View {
-        // These four actions have stable order, but their labels vary by
-        // locale. An adaptive grid gives each button a bounded proposal and
-        // wraps the rail without the recursive branch measurement of
-        // ViewThatFits.
-        LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 150), spacing: 6, alignment: .leading)],
-            alignment: .leading,
-            spacing: 6
-        ) {
-            commonActionButtons
+    private var actionToolbar: some View {
+        // One fixed toolbar row instead of wrapping grids: an HStack never
+        // wraps, so the row stays a single line at the canonical 1024pt
+        // viewport. Width budget: Today's detail column is ~768pt there
+        // (1024 minus the ~220pt sidebar and 36pt horizontal padding), and
+        // this panel caps at 640pt. The visible controls — Add Task (~92),
+        // Plan… (~78), Start Focus (~102), one suggestion chip (~112), and
+        // Show Done (~96) plus 5 gaps (~44) — total ~524pt, leaving slack
+        // for the ja locale. In the rare case where several suggestion
+        // chips render at once, labels truncate on this line rather than
+        // stacking into new rows; full titles stay available via help text
+        // and accessibility labels.
+        HStack(spacing: 8) {
+            addTaskButton
+            planMenu
+            startFocusButton
+            Spacer(minLength: 12)
+            suggestionRail
+            WorkflowDoneToggle(viewModel: viewModel)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-common-action-rail")
         .accessibilityLabel("Common Today actions")
     }
 
-    @ViewBuilder
-    private var commonActionButtons: some View {
+    private var addTaskButton: some View {
         Button {
             commandTitle = String(localized: "New task: ")
         } label: {
             Label("Add Task", systemImage: "plus.circle")
         }
+        .buttonStyle(.borderedProminent)
         .controlSize(.small)
         .help("Prepare a new local Inbox task")
         .accessibilityIdentifier("today-common-chip-add-task")
         .accessibilityHint("Prefills the Today command field for a local Inbox task.")
+    }
 
-        Button {
-            commandTitle = String(localized: "Plan tomorrow: ")
+    private var planMenu: some View {
+        Menu {
+            Button {
+                commandTitle = String(localized: "Plan tomorrow: ")
+            } label: {
+                Label("Plan Tomorrow", systemImage: "calendar.badge.plus")
+            }
+            .accessibilityIdentifier("today-common-chip-plan-tomorrow")
+            .accessibilityHint("Prefills the Today command field without writing Calendar.")
+
+            Button {
+                commandTitle = String(localized: "Prepare meeting: ")
+            } label: {
+                Label("Prepare Meeting", systemImage: "person.2")
+            }
+            .accessibilityIdentifier("today-common-chip-prepare-meeting")
+            .accessibilityHint("Prefills the Today command field for a meeting preparation task.")
+
+            Button {
+                commandTitle = String(localized: "Draft reply: ")
+            } label: {
+                Label("Draft Reply", systemImage: "arrowshape.turn.up.left")
+            }
+            .accessibilityIdentifier("today-common-chip-draft-reply")
+            .accessibilityHint("Prefills the Today command field for a reply draft task.")
         } label: {
-            Label("Plan Tomorrow", systemImage: "calendar.badge.plus")
+            Label("Plan…", systemImage: "calendar.badge.plus")
         }
         .controlSize(.small)
-        .help("Prepare a tomorrow planning note")
-        .accessibilityIdentifier("today-common-chip-plan-tomorrow")
-        .accessibilityHint("Prefills the Today command field without writing Calendar.")
-
-        Button {
-            commandTitle = String(localized: "Prepare meeting: ")
-        } label: {
-            Label("Prepare Meeting", systemImage: "person.2")
-        }
-        .controlSize(.small)
-        .help("Prepare a meeting task")
-        .accessibilityIdentifier("today-common-chip-prepare-meeting")
-        .accessibilityHint("Prefills the Today command field for a meeting preparation task.")
-
-        Button {
-            commandTitle = String(localized: "Draft reply: ")
-        } label: {
-            Label("Draft Reply", systemImage: "arrowshape.turn.up.left")
-        }
-        .controlSize(.small)
-        .help("Prepare a reply draft task")
-        .accessibilityIdentifier("today-common-chip-draft-reply")
-        .accessibilityHint("Prefills the Today command field for a reply draft task.")
+        .help("Plan tomorrow, prepare a meeting, or draft a reply.")
+        .accessibilityIdentifier("today-plan-menu")
+        .accessibilityLabel("Plan actions")
+        .accessibilityHint("Opens capture shortcuts that prefill the Today command field.")
     }
 
     private var suggestionRail: some View {
-        LazyVGrid(columns: suggestionColumns, alignment: .leading, spacing: 6) {
+        HStack(spacing: 6) {
             ForEach(recommendationChips) { chip in
                 Button {
                     viewModel.startFocus(taskID: chip.taskID)
                 } label: {
                     Label(chip.title, systemImage: chip.systemImage)
+                        .lineLimit(1)
                 }
                 .controlSize(.small)
                 .help(chip.reason)

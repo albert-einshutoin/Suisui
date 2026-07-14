@@ -532,6 +532,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(headerSource.contains(".pickerStyle(.segmented)"))
     }
 
+    func testProjectBoardInspectorCanCompressInsideHostedMinimumWindow() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(
+            boardSource.contains(".inspectorColumnWidth(min: 276, ideal: 300, max: 420)"),
+            "The inspector must yield the 24pt native split-view squeeze at the hosted 980pt window width."
+        )
+    }
+
     func testProjectBoardHeaderKeepsActionsInSynchronousSwiftUILayout() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let headerStart = try XCTUnwrap(boardSource.range(of: "private var projectBoardHeaderBar: some View"))
@@ -584,7 +593,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("appSettings: @escaping () -> AppSettings"))
         XCTAssertTrue(boardSource.contains("viewModel.prepareTaskAutomationReview(settings: taskAutomationSettings())"))
         XCTAssertTrue(boardSource.contains("viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())"))
-        XCTAssertTrue(boardSource.contains(".help(\"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings\")"))
+        XCTAssertTrue(boardSource.contains(".help(\"Review Task Automation: prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings.\")"))
         XCTAssertTrue(appSource.contains("@StateObject private var settingsViewModel: AppSettingsViewModel"))
         XCTAssertTrue(appSource.contains("AppRuntimeFactory.makeAppSettingsViewModel(refreshProviderSecretStatusesOnInit: false)"))
@@ -622,7 +631,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"ai-usage-threshold-row-\\(row.scope.rawValue)\")"))
         XCTAssertTrue(workflowSource.contains("Latest Month"))
         XCTAssertTrue(workflowSource.contains("row.summary.costLabel"))
-        XCTAssertTrue(workflowSource.contains("Recent AI Receipts"))
+        XCTAssertTrue(workflowSource.contains("Recent AI Activity"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"recent-ai-receipts\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"execution-receipt-search-field\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"execution-receipt-export-button\")"))
@@ -648,8 +657,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let workflowSource = try readProjectWorkflowSources()
 
-        XCTAssertTrue(boardSource.contains("Section(\"Project AI Receipts\")"))
-        XCTAssertTrue(boardSource.contains("Section(\"Task AI Receipts\")"))
+        XCTAssertTrue(boardSource.contains("Section(\"Project AI Activity\")"))
+        XCTAssertTrue(boardSource.contains("Section(\"Task AI Activity\")"))
         XCTAssertTrue(boardSource.contains("viewModel.executionReceiptHistorySnapshot(forProjectID: project.id)"))
         XCTAssertTrue(boardSource.contains("viewModel.executionReceiptHistorySnapshot(forTaskID: task.id)"))
         XCTAssertTrue(boardSource.contains("accessibilityIdentifier: \"project-execution-receipts\""))
@@ -693,7 +702,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("static let portfolioCardMinHeight: CGFloat = 230"))
         XCTAssertTrue(source.contains("static let overviewPanelMinHeight: CGFloat = 170"))
         XCTAssertTrue(source.contains("static let displayModePickerWidth: CGFloat = 252"))
-        XCTAssertTrue(source.contains("static let boardColumnWidth: CGFloat = 244"))
+        XCTAssertTrue(source.contains("static let sidebarColumnMinWidth: CGFloat = 180"))
+        XCTAssertTrue(source.contains("static let sidebarColumnIdealWidth: CGFloat = 200"))
+        XCTAssertTrue(source.contains("static let boardColumnWidth: CGFloat = 204"))
         XCTAssertTrue(source.contains("static let emptyColumnMinHeight: CGFloat = 82"))
         XCTAssertTrue(source.contains("static let inlinePriorityPickerWidth: CGFloat = 112"))
         XCTAssertTrue(source.contains("static let taskMetadataChipMinWidth: CGFloat = 64"))
@@ -720,6 +731,37 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".minimumScaleFactor(0.82)"))
         XCTAssertTrue(source.contains(".help(task.title)"))
         XCTAssertTrue(source.contains(".help(task.detail)"))
+    }
+
+    func testCommandPaletteClearsStaleContentBeforeStartingAnotherDebouncedSearch() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/CommandPaletteView.swift")
+        let searchFunction = try sourceBlock(
+            in: source,
+            from: "private func scheduleContentSearch(for newQuery: String)",
+            to: "private func moveSelection("
+        )
+        let clearRange = try XCTUnwrap(searchFunction.range(of: "contentItems = []"))
+        let providerGuardRange = try XCTUnwrap(searchFunction.range(of: "guard let contentSearch"))
+        let taskRange = try XCTUnwrap(searchFunction.range(of: "contentSearchTask = Task"))
+
+        XCTAssertLessThan(clearRange.lowerBound, providerGuardRange.lowerBound)
+        XCTAssertLessThan(clearRange.lowerBound, taskRange.lowerBound)
+    }
+
+    func testFullVisualCaptureFinishesBoardAndSettingsRoutesBeforeVoiceWindows() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+        let fullCaptureStart = try XCTUnwrap(
+            script.range(of: "capture_project_board_destination light \"$PROJECT_BOARD_SELECTION_OVERRIDE\"")
+        )
+        let fullCapture = String(script[fullCaptureStart.lowerBound...])
+        let lastBoardRoute = try XCTUnwrap(
+            fullCapture.range(of: "capture_mcp_settings_appearance system")
+        )
+        let firstVoiceRoute = try XCTUnwrap(
+            fullCapture.range(of: "capture_voice_command_appearance light")
+        )
+
+        XCTAssertLessThan(lastBoardRoute.lowerBound, firstVoiceRoute.lowerBound)
     }
 
     func testProjectBoardLongContentFixtureMapsToResponsiveGuards() throws {
@@ -825,7 +867,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains(".defaultSize(width: ProjectBoardWindowMetrics.defaultWidth, height: ProjectBoardWindowMetrics.defaultHeight)"))
         XCTAssertEqual(boardSource.components(separatedBy: ".navigationTitle(\"SoloPM\")").count - 1, 1)
         XCTAssertEqual(boardSource.components(separatedBy: ".projectBoardSynchronizedColumnBounds()").count - 1, 2)
-        XCTAssertFalse(boardSource.contains(".navigationSplitViewColumnWidth("))
+        // The sidebar pins bounded (min/ideal) column widths so fixed
+        // destination labels render untruncated at the 1024pt canonical
+        // width; a hard-coded fixed width remains forbidden.
+        XCTAssertTrue(boardSource.contains(".navigationSplitViewColumnWidth(min: ProjectBoardLayoutMetrics.sidebarColumnMinWidth, ideal: ProjectBoardLayoutMetrics.sidebarColumnIdealWidth)"))
         XCTAssertFalse(boardSource.contains("ProjectBoardLayout.sidebarColumnWidth"))
         XCTAssertEqual(boardSource.components(separatedBy: ".id(toolbarLayoutRefreshToken)").count - 1, 2)
         XCTAssertTrue(boardSource.contains("@State private var toolbarLayoutRefreshToken = 0"))
@@ -1319,7 +1364,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("TaskCardMetadataStrip(task: task)"))
         XCTAssertTrue(source.contains("private struct TaskCardMetadataStrip"))
         XCTAssertTrue(source.contains("private struct TaskMetadataChip"))
-        XCTAssertTrue(source.contains("GridItem(.adaptive(minimum: 72), spacing: 6)"))
+        // The strip wraps chips into fixed rows (identity + schedule) so
+        // chips truncate inside the card instead of clipping at its edge,
+        // and the due chip renders only when the task has a due date.
+        XCTAssertTrue(source.contains("private var identityChipRow: some View"))
+        XCTAssertTrue(source.contains("private var scheduleChipRow: some View"))
+        XCTAssertTrue(source.contains("if task.dueLabel != nil || recurrenceValue != nil"))
+        XCTAssertTrue(source.contains("if let dueLabel = task.dueLabel"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"task-card-metadata-strip\")"))
         XCTAssertTrue(source.contains(".accessibilityValue(\"\\(task.status.title), \\(task.priority.label), \\(dueValue)\")"))
         XCTAssertTrue(source.contains("No due date"))
@@ -2306,6 +2357,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-draft-defer\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-draft-move-today\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-draft-split\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-draft-actions-menu\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-readout\")"))
         XCTAssertTrue(workflowSource.contains("playDailyPlanningReadout()"))
         XCTAssertTrue(workflowSource.contains("viewModel.enqueueDailyPlanningActionDraft(kind: .startRecommended)"))
@@ -2552,11 +2604,12 @@ final class AppExperienceSourceTests: XCTestCase {
         let todayBriefingEnd = try XCTUnwrap(todaySource.range(of: "private struct TodaySuggestionPanel"))
         let todayBriefingScope = String(todaySource[todayBriefingStart.lowerBound..<todayBriefingEnd.lowerBound])
 
-        let commonRailStart = try XCTUnwrap(todaySource.range(of: "private var commonActionRail"))
-        let commonButtonsStart = try XCTUnwrap(todaySource.range(of: "@ViewBuilder\n    private var commonActionButtons", range: commonRailStart.upperBound..<todaySource.endIndex))
-        let commonRailScope = String(todaySource[commonRailStart.lowerBound..<commonButtonsStart.lowerBound])
-        let suggestionRailStart = try XCTUnwrap(todaySource.range(of: "private var suggestionRail", range: commonButtonsStart.upperBound..<todaySource.endIndex))
-        let commonButtonsScope = String(todaySource[commonButtonsStart.lowerBound..<suggestionRailStart.lowerBound])
+        let actionToolbarStart = try XCTUnwrap(todaySource.range(of: "private var actionToolbar"))
+        let addTaskButtonStart = try XCTUnwrap(todaySource.range(of: "private var addTaskButton", range: actionToolbarStart.upperBound..<todaySource.endIndex))
+        let actionToolbarScope = String(todaySource[actionToolbarStart.lowerBound..<addTaskButtonStart.lowerBound])
+        let planMenuStart = try XCTUnwrap(todaySource.range(of: "private var planMenu", range: addTaskButtonStart.upperBound..<todaySource.endIndex))
+        let suggestionRailStart = try XCTUnwrap(todaySource.range(of: "private var suggestionRail", range: planMenuStart.upperBound..<todaySource.endIndex))
+        let planMenuScope = String(todaySource[planMenuStart.lowerBound..<suggestionRailStart.lowerBound])
 
         let planSummaryStart = try XCTUnwrap(todaySource.range(of: "private struct TodayPlanSummary"))
         let countBadgeStart = try XCTUnwrap(todaySource.range(of: "private struct TodayCountBadge", range: planSummaryStart.upperBound..<todaySource.endIndex))
@@ -2569,7 +2622,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertFalse(todayWorkflowScope.contains("ViewThatFits(in:"))
         XCTAssertFalse(todayBriefingScope.contains("ViewThatFits(in:"))
-        XCTAssertFalse(commonRailScope.contains("ViewThatFits(in:"))
+        XCTAssertFalse(actionToolbarScope.contains("ViewThatFits(in:"))
         XCTAssertFalse(planSummaryScope.contains("ViewThatFits(in:"))
         XCTAssertFalse(sharedHeaderScope.contains("ViewThatFits(in:"))
 
@@ -2585,8 +2638,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(sharedSource.contains("else if fillsAvailableHeight {\n                ScrollView {\n                    taskRows"))
         XCTAssertTrue(sharedSource.contains("} else {\n                taskRows"))
         XCTAssertTrue(sharedSource.contains("private var taskRows: some View"))
-        XCTAssertTrue(todayBriefingScope.contains("LazyVGrid"))
-        XCTAssertTrue(commonRailScope.contains("GridItem(.adaptive"))
+        // The action toolbar is a single non-wrapping HStack row: no grids,
+        // no ViewThatFits, so it stays one line at the canonical viewport.
+        XCTAssertTrue(actionToolbarScope.contains("HStack(spacing: 8)"))
+        XCTAssertFalse(actionToolbarScope.contains("LazyVGrid"))
+        XCTAssertFalse(actionToolbarScope.contains("GridItem(.adaptive"))
+        XCTAssertFalse(todayBriefingScope.contains("LazyVGrid"))
         XCTAssertTrue(planSummaryScope.contains("VStack(alignment: .leading"))
         XCTAssertTrue(sharedHeaderScope.contains("VStack(alignment: .leading"))
 
@@ -2594,25 +2651,38 @@ final class AppExperienceSourceTests: XCTestCase {
             try XCTUnwrap(sharedHeaderScope.range(of: "WorkflowHeader(")).lowerBound,
             try XCTUnwrap(sharedHeaderScope.range(of: "headerAccessory()")).lowerBound
         )
-        XCTAssertLessThan(
-            try XCTUnwrap(todayBriefingScope.range(of: "WorkflowDoneToggle(viewModel: viewModel)")).lowerBound,
-            try XCTUnwrap(todayBriefingScope.range(of: "suggestionRail")).lowerBound
-        )
-        XCTAssertLessThan(
-            try XCTUnwrap(todayBriefingScope.range(of: "suggestionRail")).lowerBound,
-            try XCTUnwrap(todayBriefingScope.range(of: "startFocusButton")).lowerBound
-        )
 
-        let commonActionIdentifiers = [
-            "today-common-chip-add-task",
+        // Deterministic toolbar order: primary Add Task first, then the Plan…
+        // menu and Start Focus, then the suggestion chips, with the display
+        // toggle pinned to the trailing edge.
+        let toolbarOrderNeedles = [
+            "addTaskButton",
+            "planMenu",
+            "startFocusButton",
+            "suggestionRail",
+            "WorkflowDoneToggle(viewModel: viewModel)"
+        ]
+        let toolbarOffsets = try toolbarOrderNeedles.map { needle in
+            try XCTUnwrap(actionToolbarScope.range(of: needle)?.lowerBound)
+        }
+        for pair in zip(toolbarOffsets, toolbarOffsets.dropFirst()) {
+            XCTAssertLessThan(pair.0, pair.1)
+        }
+
+        // Add Task is the visible primary action; the remaining capture
+        // shortcuts collapse into the Plan… menu in a stable order.
+        XCTAssertTrue(actionToolbarScope.contains("addTaskButton"))
+        XCTAssertTrue(todaySource.contains(".buttonStyle(.borderedProminent)"))
+        XCTAssertTrue(todaySource.contains(".accessibilityIdentifier(\"today-plan-menu\")"))
+        let planMenuIdentifiers = [
             "today-common-chip-plan-tomorrow",
             "today-common-chip-prepare-meeting",
             "today-common-chip-draft-reply"
         ]
-        let commonActionOffsets = try commonActionIdentifiers.map { identifier in
-            try XCTUnwrap(commonButtonsScope.range(of: identifier)?.lowerBound)
+        let planMenuOffsets = try planMenuIdentifiers.map { identifier in
+            try XCTUnwrap(planMenuScope.range(of: identifier)?.lowerBound)
         }
-        for pair in zip(commonActionOffsets, commonActionOffsets.dropFirst()) {
+        for pair in zip(planMenuOffsets, planMenuOffsets.dropFirst()) {
             XCTAssertLessThan(pair.0, pair.1)
         }
     }
@@ -2850,7 +2920,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readAppShellSource()
 
         XCTAssertTrue(appSource.contains("ScrollView"))
-        XCTAssertTrue(appSource.contains(".frame(minHeight: 150, idealHeight: 180, maxHeight: 180)"))
+        XCTAssertTrue(appSource.contains(".frame(minHeight: 150, idealHeight: 180, maxHeight: .infinity, alignment: .topLeading)"))
         XCTAssertTrue(appSource.contains(".frame(maxWidth: .infinity, alignment: .leading)"))
         XCTAssertTrue(appSource.contains("ActionReviewHeader"))
         XCTAssertTrue(appSource.contains("ReviewActionTitleRow"))
@@ -3609,6 +3679,44 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-execution-receipt-cost\")"))
     }
 
+    func testVoiceFailureSurfaceOffersTypedNextStepAffordances() throws {
+        let voiceViewSource = try readPackageFile("Sources/SoloPMApp/Views/VoiceCaptureView.swift")
+        let voiceModelSource = try readPackageFile("Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift")
+
+        // T-10: provider-readiness failures must surface an Open Settings
+        // affordance; transient network/rate-limit failures must surface a
+        // retry that reruns plan generation with the current transcript.
+        XCTAssertTrue(voiceViewSource.contains(".accessibilityIdentifier(\"voice-error-open-settings\")"))
+        XCTAssertTrue(voiceViewSource.contains(".accessibilityIdentifier(\"voice-error-retry\")"))
+        XCTAssertTrue(voiceViewSource.contains(".accessibilityIdentifier(\"voice-answer-retry\")"))
+        XCTAssertTrue(voiceViewSource.contains("case .openSettings:"))
+        XCTAssertTrue(voiceViewSource.contains("case .retryPlanGeneration:"))
+        XCTAssertTrue(voiceViewSource.contains("SettingsLink"))
+        XCTAssertTrue(voiceViewSource.contains("await viewModel.generatePlan()"))
+
+        // Classification is on the typed provider error, never on message text.
+        XCTAssertTrue(voiceModelSource.contains("public enum VoiceCaptureFailureRecovery"))
+        XCTAssertTrue(voiceModelSource.contains("case .authenticationFailed, .executionNotApproved:"))
+        XCTAssertTrue(voiceModelSource.contains("return .openSettings"))
+        XCTAssertTrue(voiceModelSource.contains("case .network, .rateLimited:"))
+        XCTAssertTrue(voiceModelSource.contains("return .retryPlanGeneration"))
+    }
+
+    func testSettingsPrivacyDiagnosticsExportIsMetadataOnlyWithInlineError() throws {
+        let appSource = try readAppShellSource()
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/DiagnosticsReport.swift")
+
+        // T-18: the export button lives in Settings > Privacy, writes through
+        // NSSavePanel, states inclusions/exclusions, and reports errors inline.
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-export-diagnostics\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-export-diagnostics-caption\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-export-diagnostics-error\")"))
+        XCTAssertTrue(appSource.contains("solopm-diagnostics-"))
+        XCTAssertTrue(appSource.contains("AppRuntimeFactory.makeDiagnosticsReportText()"))
+        XCTAssertTrue(coreSource.contains("static let privacyHeader"))
+        XCTAssertTrue(coreSource.contains("Audit log entries (the audit log stores plan content, so it is excluded entirely)"))
+    }
+
     func testSettingsSurfaceStartsWithStatusOverviewForCoreOperationalAreas() throws {
         let appSource = try readAppShellSource()
 
@@ -4302,14 +4410,30 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("Avoid LaunchServices activation"))
         XCTAssertTrue(script.contains("tell application \"System Events\""))
         XCTAssertFalse(script.contains(#"tell application \"$APP_NAME\" to activate"#))
-        XCTAssertTrue(script.contains("screencapture -x -l"))
+        XCTAssertTrue(script.contains("screencapture -x -o -l"))
+        XCTAssertFalse(script.contains("screencapture -x -l"))
         XCTAssertTrue(script.contains("screencapture -x -R"))
+        XCTAssertTrue(script.contains("if [[ \"$bytes\" -lt 30000 ]]"))
+        XCTAssertFalse(script.contains("if [[ \"$bytes\" -lt 50000 ]]"))
+        XCTAssertTrue(script.contains("local capture_attempts=3"))
+        XCTAssertTrue(script.contains("for ((capture_attempt = 1; capture_attempt <= capture_attempts; capture_attempt++))"))
+        XCTAssertTrue(script.contains("local position_attempts=3"))
+        XCTAssertTrue(script.contains("for ((position_attempt = 1; position_attempt <= position_attempts; position_attempt++))"))
+        XCTAssertTrue(script.contains("local system_appearance=\"Light\""))
+        XCTAssertTrue(script.contains("if [[ \"$APPEARANCE_OVERRIDE\" == \"dark\" ]]"))
+        XCTAssertTrue(script.contains("local appearance_args=(\"-AppleInterfaceStyle\" \"$system_appearance\")"))
         XCTAssertTrue(script.contains("assert_screenshot_has_visible_content"))
         XCTAssertTrue(script.contains("ui_evidence_content_check.swift"))
         XCTAssertTrue(script.contains("ui_evidence_source_commit()"))
+        XCTAssertTrue(script.contains("SOLOPM_VISUAL_SOURCE_REF"))
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" log -1 --format=%H \"$source_ref\""))
         XCTAssertTrue(script.contains("- Source commit: `%s`"))
         XCTAssertTrue(contentCheckScript.contains("CGImageSourceCreateWithURL"))
         XCTAssertTrue(contentCheckScript.contains("Screenshot appears blank or too low contrast"))
+        XCTAssertTrue(contentCheckScript.contains("opaqueBlackPixelCount"))
+        XCTAssertTrue(contentCheckScript.contains("transparentPixelCount"))
+        XCTAssertTrue(contentCheckScript.contains("Screenshot contains large opaque-black regions"))
+        XCTAssertTrue(contentCheckScript.contains("Screenshot contains large transparent regions"))
         XCTAssertTrue(script.contains("sqlite3"))
         XCTAssertTrue(script.contains("Launch Readiness"))
         XCTAssertTrue(script.contains("seed_mcp_registrations"))

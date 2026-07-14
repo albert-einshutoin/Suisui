@@ -4,11 +4,14 @@ import SwiftUI
 struct OnboardingWelcomeView: View {
     @ObservedObject var settingsViewModel: AppSettingsViewModel
     private let permissionSnapshotProvider: @Sendable () -> PermissionSnapshot
+    private let sampleProjectAction: OnboardingSampleProjectAction?
     let onFinish: () -> Void
 
     @State private var flow = FirstRunOnboardingFlow()
     @State private var permissionSnapshot: PermissionSnapshot
     @State private var isRefreshingReadiness: Bool = true
+    @State private var isSampleProjectCreated = false
+    @State private var sampleProjectErrorMessage: String?
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -16,10 +19,12 @@ struct OnboardingWelcomeView: View {
         settingsViewModel: AppSettingsViewModel,
         permissionSnapshot: PermissionSnapshot,
         permissionSnapshotProvider: @escaping @Sendable () -> PermissionSnapshot,
+        sampleProjectAction: OnboardingSampleProjectAction? = OnboardingSampleProjectFactory.makeAction(),
         onFinish: @escaping () -> Void
     ) {
         self.settingsViewModel = settingsViewModel
         self.permissionSnapshotProvider = permissionSnapshotProvider
+        self.sampleProjectAction = sampleProjectAction
         self.onFinish = onFinish
         _permissionSnapshot = State(initialValue: permissionSnapshot)
     }
@@ -171,6 +176,27 @@ struct OnboardingWelcomeView: View {
                 .foregroundStyle(.secondary)
 
             readinessList
+
+            if sampleProjectAction != nil {
+                Button {
+                    createSampleProject()
+                } label: {
+                    Label(
+                        isSampleProjectCreated ? "Sample project added" : "Create sample project",
+                        systemImage: isSampleProjectCreated ? "checkmark.circle" : "sparkles"
+                    )
+                }
+                .disabled(isSampleProjectCreated)
+                .accessibilityIdentifier("onboarding-create-sample")
+                .accessibilityHint("Adds a Learn SoloPM practice project with sample tasks to the Project Board.")
+
+                if let sampleProjectErrorMessage {
+                    Text(verbatim: sampleProjectErrorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .accessibilityIdentifier("onboarding-create-sample-error")
+                }
+            }
 
             Button {
                 if displayedPlanningState.isReady {
@@ -387,6 +413,22 @@ struct OnboardingWelcomeView: View {
 
     private var selectedProviderRow: AIProviderReadinessRow? {
         settingsViewModel.providerReadinessRows.first(where: { $0.isSelected })
+    }
+
+    /// Creates the sample project without closing onboarding; the button
+    /// swaps to a disabled confirmation state on success. The creator itself
+    /// is idempotent, so a repeat tap after a defaults reset stays safe.
+    private func createSampleProject() {
+        guard let sampleProjectAction, !isSampleProjectCreated else {
+            return
+        }
+        do {
+            try sampleProjectAction.run()
+            isSampleProjectCreated = true
+            sampleProjectErrorMessage = nil
+        } catch {
+            sampleProjectErrorMessage = localizedDisplay("Could not create the sample project.")
+        }
     }
 
     private func completeOnboarding() {

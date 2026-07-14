@@ -31,15 +31,18 @@ public struct DeadlineNotificationActionHandler {
     private let taskStore: SQLiteTaskStore
     private let notificationClient: any NotificationClient
     private let dateProvider: any DateProvider
+    private let settings: AppSettings
 
     public init(
         taskStore: SQLiteTaskStore,
         notificationClient: any NotificationClient,
-        dateProvider: any DateProvider = SystemDateProvider()
+        dateProvider: any DateProvider = SystemDateProvider(),
+        settings: AppSettings = .default
     ) {
         self.taskStore = taskStore
         self.notificationClient = notificationClient
         self.dateProvider = dateProvider
+        self.settings = settings
     }
 
     public func handle(
@@ -85,7 +88,14 @@ public struct DeadlineNotificationActionHandler {
         notificationBody: String?,
         userInfo: [String: String]
     ) -> DeadlineNotificationActionOutcome {
-        let notifyAt = dateProvider.now.addingTimeInterval(DeadlineNotificationInteraction.snoozeInterval)
+        // Snoozed reminders share the quiet-hours choke point: a snooze that
+        // would land inside the quiet window fires after the window instead.
+        let notifyAt = NotificationSchedulingPolicy.finalFireDate(
+            proposed: dateProvider.now.addingTimeInterval(DeadlineNotificationInteraction.snoozeInterval),
+            kind: .fixedTime,
+            preferences: settings.notificationPreferences,
+            timeZone: TimeZone(identifier: settings.timeZoneIdentifier) ?? .current
+        )
         let scheduledAt = DeadlineDateParser.string(from: notifyAt)
 
         do {

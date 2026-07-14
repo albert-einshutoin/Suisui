@@ -173,8 +173,8 @@
 "In Progress" = "In Progress";
 "Inbox" = "Inbox";
 "Import Tasks" = "Import Tasks";
-"Import, export, and sync task data" = "Import, export, and sync task data";
 "Integrations" = "Integrations";
+"Integrations: import, export, and sync task data" = "Integrations: import, export, and sync task data";
 "Japanese" = "Japanese";
 "Language" = "Language";
 "Launch at Login" = "Launch at Login";
@@ -271,6 +271,10 @@
 "Voice Command" = "Voice Command";
 "Voice Capture" = "Voice Capture";
 "Try one of these commands" = "Try one of these commands";
+"Type a command, or tap the microphone above to dictate one." = "Type a command, or tap the microphone above to dictate one.";
+"Records audio, then transcribes it into the command field." = "Records audio, then transcribes it into the command field.";
+"Inserts the example into the command field without running it." = "Inserts the example into the command field without running it.";
+"Starts continuous hands-free recognition, separate from push-to-record." = "Starts continuous hands-free recognition, separate from push-to-record.";
 "Capture follow-up for launch review" = "Capture follow-up for launch review";
 "Plan tomorrow: review release risks" = "Plan tomorrow: review release risks";
 "Inbox captures stay local. Plans wait in Assistant Queue before execution." = "Inbox captures stay local. Plans wait in Assistant Queue before execution.";
@@ -426,6 +430,7 @@
 "Make selected Inbox item a project" = "Make selected Inbox item a project";
 "Make selected Inbox item a task" = "Make selected Inbox item a task";
 "Memo" = "Memo";
+"Microphone input level" = "Microphone input level";
 "Microphone permission denied." = "Microphone permission denied.";
 "Missing" = "Missing";
 "Monthly" = "Monthly";
@@ -444,6 +449,7 @@
 "No due date" = "No due date";
 "No due dates yet" = "No due dates yet";
 "No focus task" = "No focus task";
+"No microphone input detected. Check your input device in System Settings." = "No microphone input detected. Check your input device in System Settings.";
 "No open tasks" = "No open tasks";
 "No open work needs attention." = "No open work needs attention.";
 "No project-level suggestion is needed right now." = "No project-level suggestion is needed right now.";
@@ -462,6 +468,25 @@
 "Notifications" = "Notifications";
 "Notifications off" = "Notifications off";
 "Notifications on" = "Notifications on";
+"Quiet hours" = "Quiet hours";
+"Quiet hours start" = "Quiet hours start";
+"Quiet hours end" = "Quiet hours end";
+"Remind me" = "Remind me";
+"At due time" = "At due time";
+"30 minutes before" = "30 minutes before";
+"1 hour before" = "1 hour before";
+"1 day before" = "1 day before";
+"Defers notifications inside the quiet window until the window ends." = "Defers notifications inside the quiet window until the window ends.";
+"Sets the local time when the notification quiet window begins." = "Sets the local time when the notification quiet window begins.";
+"Sets the local time when deferred notifications are delivered." = "Sets the local time when deferred notifications are delivered.";
+"Moves deadline task reminders earlier than the due time. Digest and weekly summaries are not affected." = "Moves deadline task reminders earlier than the due time. Digest and weekly summaries are not affected.";
+"Deadline reminders fire ahead of the due time by the selected lead. Notifications that land inside quiet hours are deferred to the end of the window, never dropped." = "Deadline reminders fire ahead of the due time by the selected lead. Notifications that land inside quiet hours are deferred to the end of the window, never dropped.";
+"Avoid weekends when rescheduling" = "Avoid weekends when rescheduling";
+"Moves missed-task reschedule suggestions that land on Saturday or Sunday to the following Monday." = "Moves missed-task reschedule suggestions that land on Saturday or Sunday to the following Monday.";
+"Approve all reschedules" = "Approve all reschedules";
+"Approve every open reschedule suggestion one by one" = "Approve every open reschedule suggestion one by one";
+"Approves each open reschedule suggestion through the same per-item review path. Nothing runs until each item passes the execution gate." = "Approves each open reschedule suggestion through the same per-item review path. Nothing runs until each item passes the execution gate.";
+"Approved %d reschedule suggestions." = "Approved %d reschedule suggestions.";
 "Notion" = "Notion";
 "Off" = "Off";
 "On" = "On";
@@ -655,7 +680,7 @@
 "Inbox triage station" = "Inbox triage station";
 "Keeps selected Inbox item review and classification actions visible without opening the task inspector." = "Keeps selected Inbox item review and classification actions visible without opening the task inspector.";
 "Review the selected Inbox capture and classify it without opening the task inspector." = "Review the selected Inbox capture and classify it without opening the task inspector.";
-"Triage Station" = "Triage Station";
+"Classify" = "Classify";
 "What should move next?" = "What should move next?";
 "Today briefing" = "Today briefing";
 "Captures work into Inbox and offers the next reviewed Today action." = "Captures work into Inbox and offers the next reviewed Today action.";
@@ -665,15 +690,12 @@
 "Prefills the Today command field for a local Inbox task." = "Prefills the Today command field for a local Inbox task.";
 "Plan Tomorrow" = "Plan Tomorrow";
 "Plan tomorrow: " = "Plan tomorrow: ";
-"Prepare a tomorrow planning note" = "Prepare a tomorrow planning note";
 "Prefills the Today command field without writing Calendar." = "Prefills the Today command field without writing Calendar.";
 "Prepare Meeting" = "Prepare Meeting";
 "Prepare meeting: " = "Prepare meeting: ";
-"Prepare a meeting task" = "Prepare a meeting task";
 "Prefills the Today command field for a meeting preparation task." = "Prefills the Today command field for a meeting preparation task.";
 "Draft Reply" = "Draft Reply";
 "Draft reply: " = "Draft reply: ";
-"Prepare a reply draft task" = "Prepare a reply draft task";
 "Prefills the Today command field for a reply draft task." = "Prefills the Today command field for a reply draft task.";
 "New task: " = "New task: ";
 "Add work to Inbox" = "Add work to Inbox";
@@ -947,6 +969,7 @@
 "Automation" = "Automation";
 "Review-only task automation" = "Review-only task automation";
 "Review Task Automation" = "Review Task Automation";
+"Review Task Automation: prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings" = "Review Task Automation: prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings";
 "Review automation plan" = "Review automation plan";
 "Run approved plan" = "Run approved plan";
 "Review draft is ready. Running it only starts local task execution." = "Review draft is ready. Running it only starts local task execution.";
@@ -961,7 +984,6 @@
 "Started approved automation for \"%@\"." = "Started approved automation for \"%@\".";
 "Prepares review-only local automation for the selected task" = "Prepares review-only local automation for the selected task";
 "Prepares review-only local automation for the selected task." = "Prepares review-only local automation for the selected task.";
-"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings" = "Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings";
 "Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings." = "Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings.";
 "Runs the reviewed local task step after explicit user approval" = "Runs the reviewed local task step after explicit user approval";
 "Runs the reviewed local task step after explicit user approval." = "Runs the reviewed local task step after explicit user approval.";
@@ -1168,7 +1190,7 @@
 "Overloaded" = "Overloaded";
 "Previous Week" = "Previous Week";
 "Prepared daily planning review." = "Prepared daily planning review.";
-"Proposal only" = "Proposal only";
+"Suggestion only" = "Suggestion only";
 "Queued Daily Planning Review action for approval." = "Queued Daily Planning Review action for approval.";
 "Read Aloud" = "Read Aloud";
 "Read daily planning review aloud." = "Read daily planning review aloud.";
@@ -1188,7 +1210,7 @@
 "Smart reminder proposals" = "Smart reminder proposals";
 "Schedule day %@" = "Schedule day %@";
 "Schedule draft" = "Schedule draft";
-"Week Cockpit" = "Week Cockpit";
+"Weekly workload" = "Weekly workload";
 "Week has no overloaded days." = "Week has no overloaded days.";
 "Week schedule cockpit" = "Week schedule cockpit";
 "Weekly schedule grid" = "Weekly schedule grid";
@@ -1245,17 +1267,17 @@
 "Shows receipt-derived token and cost usage without raw prompts, receipt identifiers, or provider secrets." = "Shows receipt-derived token and cost usage without raw prompts, receipt identifiers, or provider secrets.";
 "Recent audit receipts" = "Recent audit receipts";
 "Recent audit receipts (UTC buckets, up to %d receipts)" = "Recent audit receipts (UTC buckets, up to %d receipts)";
-"Recent AI Receipts" = "Recent AI Receipts";
-"Execution receipts are unavailable" = "Execution receipts are unavailable";
-"No AI receipts yet" = "No AI receipts yet";
-"Receipts appear here after approved AI work runs." = "Receipts appear here after approved AI work runs.";
+"Recent AI Activity" = "Recent AI Activity";
+"AI activity is unavailable" = "AI activity is unavailable";
+"No AI activity yet" = "No AI activity yet";
+"AI activity appears here after approved AI work runs." = "AI activity appears here after approved AI work runs.";
 "Shows the redacted outcome, usage state, references, sources, and receipt identifier for approved AI work." = "Shows the redacted outcome, usage state, references, sources, and receipt identifier for approved AI work.";
-"Project AI Receipts" = "Project AI Receipts";
-"No project AI receipts yet" = "No project AI receipts yet";
-"Receipts appear here after approved AI work references this project." = "Receipts appear here after approved AI work references this project.";
-"Task AI Receipts" = "Task AI Receipts";
-"No task AI receipts yet" = "No task AI receipts yet";
-"Receipts appear here after approved AI work references this task." = "Receipts appear here after approved AI work references this task.";
+"Project AI Activity" = "Project AI Activity";
+"No AI activity for this project yet" = "No AI activity for this project yet";
+"AI activity appears here after approved AI work references this project." = "AI activity appears here after approved AI work references this project.";
+"Task AI Activity" = "Task AI Activity";
+"No AI activity for this task yet" = "No AI activity for this task yet";
+"AI activity appears here after approved AI work references this task." = "AI activity appears here after approved AI work references this task.";
 "Action Plan" = "Action Plan";
 "AI work" = "AI work";
 "Assistant Queue execution receipts are unavailable. Queue state is still shown." = "Assistant Queue execution receipts are unavailable. Queue state is still shown.";
@@ -1289,7 +1311,7 @@
 "Receipt export could not be prepared." = "Receipt export could not be prepared.";
 "Receipt export could not be saved." = "Receipt export could not be saved.";
 "Saved redacted receipt export JSON." = "Saved redacted receipt export JSON.";
-"Search receipts" = "Search receipts";
+"Search AI activity" = "Search AI activity";
 "%@ input" = "%@ input";
 "%@ output" = "%@ output";
 "%@ %@ measured / %@ estimated" = "%@ %@ measured / %@ estimated";
@@ -1588,11 +1610,11 @@
 "Watcher diagnostics not loaded yet." = "Watcher diagnostics not loaded yet.";
 "Allow realtime cloud fallback" = "Allow realtime cloud fallback";
 "Enables explicit Start and Stop controls in the Voice Command window." = "Enables explicit Start and Stop controls in the Voice Command window.";
-"Low-latency agent" = "Low-latency agent";
+"Voice recognition" = "Voice recognition";
 "Low-latency voice agent" = "Low-latency voice agent";
 "Show realtime cloud cost" = "Show realtime cloud cost";
 "Start" = "Start";
-"Idle" = "Idle";
+"voice-agent-status-ready" = "Ready";
 "Listening" = "Listening";
 "Finish the current voice operation before starting low-latency voice agent mode." = "Finish the current voice operation before starting low-latency voice agent mode.";
 "Low-latency voice agent mode is disabled in Settings." = "Low-latency voice agent mode is disabled in Settings.";
@@ -1630,7 +1652,7 @@
 "Saves this smart list to local app storage" = "Saves this smart list to local app storage";
 "Saves this smart list to local app storage." = "Saves this smart list to local app storage.";
 "Closes the sheet without saving a smart list." = "Closes the sheet without saving a smart list.";
-"Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority" = "Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority";
+"Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority, ⌘Z undoes" = "Keyboard: J/K or arrows select tasks, E opens details, D completes, 1/2/3 set priority, ⌘Z undoes";
 
 "Back Up All Data…" = "Back Up All Data…";
 "Restore from Backup…" = "Restore from Backup…";
@@ -1656,3 +1678,67 @@
 "Based on %d workspace items" = "Based on %d workspace items";
 "Answers a question from local workspace data using the configured AI provider." = "Answers a question from local workspace data using the configured AI provider.";
 "Speaks the workspace answer with the local text-to-speech voice." = "Speaks the workspace answer with the local text-to-speech voice.";
+
+/* Board operation undo (T-02) and Today navigation (T-21) */
+"Undo Board Operation" = "Undo Board Operation";
+"Undo the last board task change" = "Undo the last board task change";
+"Reverts the most recent task completion, move, edit, or delete on the Project Board." = "Reverts the most recent task completion, move, edit, or delete on the Project Board.";
+"Undo: restored the deleted task." = "Undo: restored the deleted task.";
+"Undo: moved the task back." = "Undo: moved the task back.";
+"Undo: restored the task details." = "Undo: restored the task details.";
+"Undo: reopened the completed task." = "Undo: reopened the completed task.";
+"Undo: moved %d tasks back." = "Undo: moved %d tasks back.";
+"Open Today" = "Open Today";
+"Open the Project Board on Today" = "Open the Project Board on Today";
+"Opens the Project Board with the Today view selected." = "Opens the Project Board with the Today view selected.";
+
+/* Command palette content search (T-15) */
+"Content matches" = "Content matches";
+"Opens this task on the Project Board." = "Opens this task on the Project Board.";
+"Closes the palette. Knowledge frames do not have a dedicated view yet." = "Closes the palette. Knowledge frames do not have a dedicated view yet.";
+
+/* Onboarding sample project (T-09) */
+"Create sample project" = "Create sample project";
+"Sample project added" = "Sample project added";
+"Adds a Learn SoloPM practice project with sample tasks to the Project Board." = "Adds a Learn SoloPM practice project with sample tasks to the Project Board.";
+"Could not create the sample project." = "Could not create the sample project.";
+"Learn SoloPM" = "Learn SoloPM";
+"Press ⌘K and search for anything" = "Press ⌘K and search for anything";
+"The command palette matches views, projects, smart lists, and even task content. Try typing part of this sentence." = "The command palette matches views, projects, smart lists, and even task content. Try typing part of this sentence.";
+"Drag this task to another column" = "Drag this task to another column";
+"Kanban columns map to task status. Dropping a card updates the task immediately." = "Kanban columns map to task status. Dropping a card updates the task immediately.";
+"Press ⌘Z to undo your last change" = "Press ⌘Z to undo your last change";
+"Board operations such as complete, move, and edit go onto an undo stack. ⌘Z reverts the latest one." = "Board operations such as complete, move, and edit go onto an undo stack. ⌘Z reverts the latest one.";
+"Say a task out loud in the Voice window" = "Say a task out loud in the Voice window";
+"Open Voice Command from the toolbar or the ⌘K palette, then speak. SoloPM drafts a plan you approve before anything is written." = "Open Voice Command from the toolbar or the ⌘K palette, then speak. SoloPM drafts a plan you approve before anything is written.";
+"Set a due date by typing 'tomorrow' in Quick Add" = "Set a due date by typing 'tomorrow' in Quick Add";
+"Quick Add understands natural-language dates such as 'tomorrow' or 'next Friday' and files the task with the right due date." = "Quick Add understands natural-language dates such as 'tomorrow' or 'next Friday' and files the task with the right due date.";
+"This task repeats weekly — complete it to see the next one appear" = "This task repeats weekly — complete it to see the next one appear";
+"Completing a recurring task automatically schedules the next occurrence one week later." = "Completing a recurring task automatically schedules the next occurrence one week later.";
+
+/* Diagnostics export (T-18) */
+"Export Diagnostics…" = "Export Diagnostics…";
+"Save a metadata-only diagnostics report as a local text file" = "Save a metadata-only diagnostics report as a local text file";
+"Writes a diagnostics text file with configuration metadata and counts only. No keys or content leave this Mac." = "Writes a diagnostics text file with configuration metadata and counts only. No keys or content leave this Mac.";
+"The diagnostics file includes app and macOS versions, the selected AI provider kind, notification settings, task and project counts, and watcher check times. It never includes API keys, task, knowledge, or plan content, voice transcripts, or audit log entries." = "The diagnostics file includes app and macOS versions, the selected AI provider kind, notification settings, task and project counts, and watcher check times. It never includes API keys, task, knowledge, or plan content, voice transcripts, or audit log entries.";
+"Export" = "Export";
+"Choose where to save the SoloPM diagnostics report" = "Choose where to save the SoloPM diagnostics report";
+
+/* Voice error next steps (T-10) */
+"Try Again" = "Try Again";
+"Runs plan generation again with the current transcript." = "Runs plan generation again with the current transcript.";
+"Generates the plan again using the same transcript." = "Generates the plan again using the same transcript.";
+"Asks the workspace question again with the current text." = "Asks the workspace question again with the current text.";
+"Retries the workspace question with the same text." = "Retries the workspace question with the same text.";
+"Could not write backup file %@: %@" = "Could not write backup file %@: %@";
+"Could not read backup file %@: %@" = "Could not read backup file %@: %@";
+"Draft actions…" = "Draft actions…";
+"Draft actions" = "Draft actions";
+"Defer, move, or split the recommended task as reviewable drafts." = "Defer, move, or split the recommended task as reviewable drafts.";
+"Opens defer, move to today, and split draft actions for the recommended task." = "Opens defer, move to today, and split draft actions for the recommended task.";
+"Plan…" = "Plan…";
+"Plan actions" = "Plan actions";
+"Plan tomorrow, prepare a meeting, or draft a reply." = "Plan tomorrow, prepare a meeting, or draft a reply.";
+"Opens capture shortcuts that prefill the Today command field." = "Opens capture shortcuts that prefill the Today command field.";
+"%d doing" = "%d doing";
+"%d missed" = "%d missed";

@@ -27,6 +27,8 @@ public protocol ProjectBoardStore {
     func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask]
     func moveTasks(ids: [Int64], toProjectID projectID: Int64) throws -> [ProjectBoardTask]
     func deleteTask(id: Int64) throws
+    func restoreTask(from snapshot: ProjectBoardTask) throws -> ProjectBoardTask
+    func applyTaskUndoSnapshot(_ snapshot: ProjectBoardTask) throws -> ProjectBoardTask
     func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact
     func deleteProjectArtifact(id: Int64) throws
     func createProjectMilestone(projectID: Int64, title: String, dueAt: String?) throws -> ProjectBoardMilestone
@@ -41,6 +43,40 @@ public extension ProjectBoardStore {
 
     func setProjectWorkspacePath(id: Int64, path: String?) throws -> ProjectBoardProject {
         try setProjectWorkspacePath(id: id, path: path, bookmarkData: nil)
+    }
+
+    /// Board-operation undo restore for a deleted task. The default recreates
+    /// the task through the public create path (which stamps completion "now"
+    /// for done tasks); persistent stores override this to preserve the
+    /// original `completedAt` (see `SQLiteTaskStore.createForBackupRestore`).
+    @discardableResult
+    func restoreTask(from snapshot: ProjectBoardTask) throws -> ProjectBoardTask {
+        try createTask(ProjectBoardTaskDraft(
+            projectID: snapshot.projectID,
+            title: snapshot.title,
+            detail: snapshot.detail,
+            status: snapshot.status,
+            priority: snapshot.priority,
+            dueAt: snapshot.dueAt,
+            recurrence: snapshot.recurrence
+        ))
+    }
+
+    /// Board-operation undo revert: put a task's editable fields and status
+    /// back to a previous snapshot. The default routes through `updateTask`;
+    /// persistent stores override this to bypass completion-driven recurrence
+    /// so undoing a reopen never regenerates another occurrence.
+    @discardableResult
+    func applyTaskUndoSnapshot(_ snapshot: ProjectBoardTask) throws -> ProjectBoardTask {
+        try updateTask(id: snapshot.id, ProjectBoardTaskDraft(
+            projectID: snapshot.projectID,
+            title: snapshot.title,
+            detail: snapshot.detail,
+            status: snapshot.status,
+            priority: snapshot.priority,
+            dueAt: snapshot.dueAt,
+            recurrence: snapshot.recurrence
+        ))
     }
 
     @discardableResult

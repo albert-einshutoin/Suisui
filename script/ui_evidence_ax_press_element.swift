@@ -118,6 +118,56 @@ func pressElementOrAncestor(_ element: AXUIElement, windows: [AXUIElement]) -> B
     return false
 }
 
+func frame(of element: AXUIElement) -> CGRect? {
+    guard let positionValue = copyAttribute(element, kAXPositionAttribute as CFString),
+          let sizeValue = copyAttribute(element, kAXSizeAttribute as CFString),
+          CFGetTypeID(positionValue) == AXValueGetTypeID(),
+          CFGetTypeID(sizeValue) == AXValueGetTypeID() else {
+        return nil
+    }
+    var position = CGPoint.zero
+    var size = CGSize.zero
+    guard AXValueGetValue(unsafeBitCast(positionValue, to: AXValue.self), .cgPoint, &position),
+          AXValueGetValue(unsafeBitCast(sizeValue, to: AXValue.self), .cgSize, &size),
+          size.width > 1, size.height > 1 else {
+        return nil
+    }
+    return CGRect(origin: position, size: size)
+}
+
+// Some locally built SwiftUI rows expose neither AXPress nor a settable
+// AXSelected even though the same source presses fine on the hosted runner.
+// Fall back to a synthetic click at the matched element's own frame center;
+// the coordinates come from the PID-scoped AX element, so the click stays
+// bound to the launched evidence app, matching the AppleScript
+// "click at {center}" pattern already used by the header-layout gate.
+func clickElementCenter(_ element: AXUIElement, windows: [AXUIElement]) -> Bool {
+    guard let frame = frame(of: element), activateTarget() else {
+        return false
+    }
+    for window in windows {
+        _ = AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+    }
+    let center = CGPoint(x: frame.midX, y: frame.midY)
+    guard let mouseDown = CGEvent(
+        mouseEventSource: nil,
+        mouseType: .leftMouseDown,
+        mouseCursorPosition: center,
+        mouseButton: .left
+    ), let mouseUp = CGEvent(
+        mouseEventSource: nil,
+        mouseType: .leftMouseUp,
+        mouseCursorPosition: center,
+        mouseButton: .left
+    ) else {
+        return false
+    }
+    mouseDown.post(tap: .cghidEventTap)
+    Thread.sleep(forTimeInterval: 0.05)
+    mouseUp.post(tap: .cghidEventTap)
+    return true
+}
+
 let childAttributes = [
     kAXChildrenAttribute as String,
     "AXVisibleChildren",
@@ -152,6 +202,10 @@ while cursor < queue.count && visitedCount < maxNodes {
     if identifier.contains(marker) {
         if pressElementOrAncestor(element, windows: windows) {
             print("pressed AX element \(identifier)")
+            exit(0)
+        }
+        if clickElementCenter(element, windows: windows) {
+            print("clicked AX element center \(identifier)")
             exit(0)
         }
         foundUnpressableMatch = true

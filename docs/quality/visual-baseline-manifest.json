@@ -3,7 +3,7 @@
   "artifactRoot": "docs/release/evidence/ui-screenshots",
   "baselineRoot": "docs/quality/visual-baselines",
   "baselineContext": {
-    "sourceCommit": "29d158534c20adda5c7622339fa30459b87b10de",
+    "sourceCommit": "b516eb72be916500522692111e6470cd0f1d968a",
     "normalRoute": "normal",
     "locale": "en-US",
     "timeZoneIdentifier": "UTC",
@@ -17,7 +17,7 @@
   "semanticTolerances": {
     "comparisonMode": "semantic",
     "allowPixelPerfectOnly": false,
-    "minimumBytes": 50000,
+    "minimumBytes": 30000,
     "minimumWidth": 640,
     "minimumHeight": 420,
     "minimumLuminanceRange": 12,

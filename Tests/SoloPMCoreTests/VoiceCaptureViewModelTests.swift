@@ -2286,6 +2286,115 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         viewModel.stopLowLatencyVoiceAgentMode()
     }
 
+    func testLowLatencyAgentModeSplitsFinalizedAndPendingTranscriptSegments() async {
+        let sttProvider = StreamingSTTProviderFixture()
+        let llmProvider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "recording",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: sttProvider,
+            llmProvider: llmProvider,
+            appSettingsProvider: { Self.lowLatencyLocalVoiceAgentSettings() }
+        )
+
+        await viewModel.startLowLatencyVoiceAgentMode()
+        sttProvider.yield(.partial(STTTranscript(text: "Create a")))
+        let didPublishPending = await waitForVoiceCondition { viewModel.pendingTranscript == "Create a" }
+        XCTAssertTrue(didPublishPending)
+        XCTAssertEqual(viewModel.finalizedTranscript, "")
+        XCTAssertEqual(viewModel.liveTranscript, "Create a")
+
+        sttProvider.yield(.final(STTTranscript(text: "Create a release notes task")))
+        let didFinalize = await waitForVoiceCondition { viewModel.finalizedTranscript == "Create a release notes task" }
+        XCTAssertTrue(didFinalize)
+        XCTAssertEqual(viewModel.pendingTranscript, "")
+        XCTAssertEqual(viewModel.liveTranscript, "Create a release notes task")
+
+        viewModel.stopLowLatencyVoiceAgentMode()
+        XCTAssertEqual(viewModel.finalizedTranscript, "")
+        XCTAssertEqual(viewModel.pendingTranscript, "")
+        XCTAssertEqual(viewModel.liveTranscript, "")
+    }
+
+    func testRecordingPublishesNormalizedInputLevelFromMeteringRecorder() async {
+        let recorder = MeteringFakeAudioRecorder()
+        recorder.levelToReturn = 0.75
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: recorder,
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "hello")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            ))
+        )
+
+        await viewModel.startRecording()
+        let didPublishLevel = await waitForVoiceCondition { viewModel.inputLevel == 0.75 }
+        XCTAssertTrue(didPublishLevel)
+        XCTAssertEqual(viewModel.inputLevelMeter.inputLevel, 0.75)
+
+        await viewModel.stopRecording(
+            outputURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("solopm-metering-test-\(UUID().uuidString).m4a")
+        )
+        XCTAssertEqual(viewModel.inputLevel, 0)
+    }
+
+    func testSilenceHintAppearsAfterContinuousSilenceAndClearsWhenLevelRecovers() async {
+        let recorder = MeteringFakeAudioRecorder()
+        recorder.levelToReturn = 0.0
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: recorder,
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "hello")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            )),
+            microphoneSilenceDetector: MicrophoneSilenceDetector(threshold: 0.05, requiredSilenceDuration: 0.2)
+        )
+
+        await viewModel.startRecording()
+        XCTAssertFalse(viewModel.isMicrophoneSilenceHintVisible)
+        let didShowHint = await waitForVoiceCondition(timeout: 2) { viewModel.isMicrophoneSilenceHintVisible }
+        XCTAssertTrue(didShowHint)
+
+        recorder.levelToReturn = 0.6
+        let didClearHint = await waitForVoiceCondition { !viewModel.isMicrophoneSilenceHintVisible }
+        XCTAssertTrue(didClearHint)
+
+        viewModel.clear()
+        XCTAssertFalse(viewModel.isMicrophoneSilenceHintVisible)
+        XCTAssertEqual(viewModel.inputLevel, 0)
+    }
+
+    func testRecordingWithoutMeteringCapableRecorderKeepsLevelIdle() async {
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "hello")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            ))
+        )
+
+        await viewModel.startRecording()
+        try? await Task.sleep(nanoseconds: 250_000_000)
+
+        XCTAssertEqual(viewModel.inputLevel, 0)
+        XCTAssertFalse(viewModel.isMicrophoneSilenceHintVisible)
+        viewModel.clear()
+    }
+
     func testGeneratePlanRejectsEmptyDraft() async {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
@@ -2603,5 +2712,39 @@ private final class RecordingAssistantQueueStore: AssistantQueueStore {
     ) throws -> AssistantQueueItem {
         let item = try get(id: id)
         return try save(transform(item))
+    }
+}
+
+/// Class-based fake so the view model's `any AudioRecorder` storage and the
+/// test share one instance, letting tests steer the reported input level while
+/// the ~10Hz monitor task is polling.
+@MainActor
+private final class MeteringFakeAudioRecorder: AudioRecorder, AudioInputLevelReading {
+    private(set) var state: AudioRecordingState = .idle
+    var levelToReturn: Double?
+
+    func start(at date: Date) async throws {
+        state = .recording(startedAt: date)
+    }
+
+    func stop(outputURL: URL, at date: Date) throws -> RecordedAudio {
+        guard case .recording(let startedAt) = state else {
+            throw AudioRecorderError.notRecording
+        }
+        let audio = RecordedAudio(
+            fileURL: outputURL,
+            format: .m4a,
+            duration: max(0, date.timeIntervalSince(startedAt))
+        )
+        state = .completed(audio)
+        return audio
+    }
+
+    func reset() {
+        state = .idle
+    }
+
+    var currentNormalizedInputLevel: Double? {
+        levelToReturn
     }
 }

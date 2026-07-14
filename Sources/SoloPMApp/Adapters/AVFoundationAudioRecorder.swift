@@ -48,6 +48,9 @@ final class AVFoundationAudioRecorder: AudioRecorder {
 
         do {
             let recorder = try AVAudioRecorder(url: url, settings: settings)
+            // Metering feeds the live input-level meter and the silence hint
+            // in the voice capture window.
+            recorder.isMeteringEnabled = true
             recorder.prepareToRecord()
 
             guard recorder.record() else {
@@ -136,6 +139,20 @@ final class AVFoundationAudioRecorder: AudioRecorder {
         }
 
         try fileManager.moveItem(at: source, to: destination)
+    }
+}
+
+extension AVFoundationAudioRecorder: AudioInputLevelReading {
+    /// Average power of the current buffer converted to a normalized 0...1
+    /// level with a -50dB floor (see `MicrophoneInputLevelNormalizer`).
+    var currentNormalizedInputLevel: Double? {
+        guard case .recording = state, let recorder else {
+            return nil
+        }
+        recorder.updateMeters()
+        return MicrophoneInputLevelNormalizer.normalizedLevel(
+            fromAveragePowerDecibels: Double(recorder.averagePower(forChannel: 0))
+        )
     }
 }
 

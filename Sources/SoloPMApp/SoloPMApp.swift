@@ -53,6 +53,7 @@ struct SoloPM: App {
                 .keyboardShortcut(",", modifiers: [.command])
             }
             SoloPMWindowCommands()
+            SoloPMProjectBoardUndoCommands()
         }
 
         Window("Voice Command", id: "voice-capture") {
@@ -530,6 +531,9 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
+                // A digest is about today's work: land on Today, not the last
+                // visited destination, whether the window is reopened or reused.
+                ProjectBoardTodayNavigation.forceSelectToday()
                 self?.ensureProjectBoardWindowIsVisible()
             }
         }
