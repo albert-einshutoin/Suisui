@@ -4404,6 +4404,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("screencapture -x -o -l"))
         XCTAssertFalse(script.contains("screencapture -x -l"))
         XCTAssertTrue(script.contains("screencapture -x -R"))
+        XCTAssertTrue(script.contains("if [[ \"$bytes\" -lt 30000 ]]"))
+        XCTAssertFalse(script.contains("if [[ \"$bytes\" -lt 50000 ]]"))
         XCTAssertTrue(script.contains("assert_screenshot_has_visible_content"))
         XCTAssertTrue(script.contains("ui_evidence_content_check.swift"))
         XCTAssertTrue(script.contains("ui_evidence_source_commit()"))

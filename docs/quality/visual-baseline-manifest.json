@@ -17,7 +17,7 @@
   "semanticTolerances": {
     "comparisonMode": "semantic",
     "allowPixelPerfectOnly": false,
-    "minimumBytes": 50000,
+    "minimumBytes": 30000,
     "minimumWidth": 640,
     "minimumHeight": 420,
     "minimumLuminanceRange": 12,

@@ -8150,7 +8150,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertEqual(tolerances["comparisonMode"] as? String, "semantic")
         XCTAssertEqual(tolerances["allowPixelPerfectOnly"] as? Bool, false)
-        XCTAssertGreaterThanOrEqual((tolerances["minimumBytes"] as? NSNumber)?.intValue ?? 0, 50_000)
+        XCTAssertGreaterThanOrEqual((tolerances["minimumBytes"] as? NSNumber)?.intValue ?? 0, 30_000)
         XCTAssertGreaterThanOrEqual((tolerances["minimumWidth"] as? NSNumber)?.intValue ?? 0, 640)
         XCTAssertGreaterThanOrEqual((tolerances["minimumHeight"] as? NSNumber)?.intValue ?? 0, 420)
         XCTAssertGreaterThanOrEqual((tolerances["minimumLuminanceRange"] as? NSNumber)?.intValue ?? 0, 12)

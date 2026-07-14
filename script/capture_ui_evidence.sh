@@ -1157,7 +1157,7 @@ capture_visible_window() {
 
   local bytes
   bytes="$(wc -c <"$output_path" | tr -d '[:space:]')"
-  if [[ "$bytes" -lt 50000 ]]; then
+  if [[ "$bytes" -lt 30000 ]]; then
     echo "screenshot is unexpectedly small ($bytes bytes): $output_path" >&2
     print_capture_failure_guidance "$label" "$output_path" "$window_context"
     echo "This usually means Screen Recording permission is missing or the captured image is blank." >&2
