@@ -62,9 +62,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # The visual receipt is bound to the PR head's latest product change,
-          # so retain both parents of the ephemeral PR merge checkout.
-          fetch-depth: 2
+          # The visual receipt is bound to the PR head's latest product change.
+          # Full history is required because harness-only follow-up commits can
+          # place that product commit deeper than the merge checkout's parents.
+          fetch-depth: 0
 
       - name: Capture and compare live UI
         env:
