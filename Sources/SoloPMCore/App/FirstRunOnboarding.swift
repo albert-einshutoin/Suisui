@@ -403,7 +403,7 @@ public final class OnboardingSampleProjectCreator: @unchecked Sendable {
             }
 
             // A marker without the complete teaching set means an earlier
-            // creation was interrupted. Remove that private sample fixture and
+            // creation was interrupted. Remove that private teaching project and
             // rebuild it instead of recording a permanently incomplete setup.
             _ = try projectStore.delete(id: markedProject.id)
         }
