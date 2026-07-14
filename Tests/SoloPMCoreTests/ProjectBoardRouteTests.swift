@@ -43,21 +43,47 @@ final class ProjectBoardRouteTests: XCTestCase {
             ProjectBoardRouteCodec.route(from: "project:42", availableProjectIDs: [41]),
             .primary(.today)
         )
-    }
-
-    func testSmartListIdentifierRoundTripsWithoutLosingColonsOrUnicode() throws {
-        let route = BoardRoute.smartList("日本語:priority:🚀")
-
-        let rawValue = try XCTUnwrap(ProjectBoardRouteCodec.rawValue(for: route))
-
-        XCTAssertEqual(rawValue, "smart-list:日本語:priority:🚀")
         XCTAssertEqual(
-            ProjectBoardRouteCodec.route(from: rawValue, availableProjectIDs: []),
-            route
+            ProjectBoardRouteCodec.route(from: "project:0", availableProjectIDs: []),
+            .primary(.today)
+        )
+        XCTAssertEqual(
+            ProjectBoardRouteCodec.route(from: "project:-1", availableProjectIDs: []),
+            .primary(.today)
         )
     }
 
-    func testEveryPrimaryAndReviewCaseRoundTripsThroughStableRawValue() throws {
+    func testSmartListCanonicalEncodingPreservesEveryStringPayload() {
+        let identifiers = [
+            "",
+            " ",
+            " leading",
+            "trailing ",
+            "priority:urgent",
+            "日本語:🚀",
+            "line\nfeed",
+            "nul\u{0000}byte",
+            "v1:not-base64"
+        ]
+
+        for identifier in identifiers {
+            let route = BoardRoute.smartList(identifier)
+            let rawValue = ProjectBoardRouteCodec.rawValue(for: route)
+
+            XCTAssertTrue(rawValue.hasPrefix("smart-list:v1:"))
+            XCTAssertEqual(
+                ProjectBoardRouteCodec.route(from: rawValue, availableProjectIDs: []),
+                route,
+                "Expected \(identifier.debugDescription) to round-trip losslessly"
+            )
+        }
+        XCTAssertEqual(
+            ProjectBoardRouteCodec.rawValue(for: .smartList("priority:urgent")),
+            "smart-list:v1:cHJpb3JpdHk6dXJnZW50"
+        )
+    }
+
+    func testEveryPrimaryAndReviewCaseRoundTripsThroughStableRawValue() {
         let routeRawValues: [(BoardRoute, String)] = [
             (.primary(.today), "primary:today"),
             (.primary(.inbox), "primary:inbox"),
@@ -70,7 +96,7 @@ final class ProjectBoardRouteTests: XCTestCase {
         ]
 
         for (route, expectedRawValue) in routeRawValues {
-            let rawValue = try XCTUnwrap(ProjectBoardRouteCodec.rawValue(for: route))
+            let rawValue = ProjectBoardRouteCodec.rawValue(for: route)
             XCTAssertEqual(rawValue, expectedRawValue)
             XCTAssertEqual(
                 ProjectBoardRouteCodec.route(from: rawValue, availableProjectIDs: []),
@@ -80,35 +106,33 @@ final class ProjectBoardRouteTests: XCTestCase {
         }
     }
 
-    func testValidProjectRoundTripsThroughStableRawValue() throws {
-        let route = BoardRoute.project(42)
-        let rawValue = try XCTUnwrap(ProjectBoardRouteCodec.rawValue(for: route))
+    func testProjectIdentifiersRoundTripAcrossEntireInt64RangeWhenAvailable() {
+        let projectIDs = [Int64.min, -1, 0, 42, Int64.max]
 
-        XCTAssertEqual(rawValue, "project:42")
-        XCTAssertEqual(
-            ProjectBoardRouteCodec.route(from: rawValue, availableProjectIDs: [42]),
-            route
-        )
-    }
+        for projectID in projectIDs {
+            let route = BoardRoute.project(projectID)
+            let rawValue = ProjectBoardRouteCodec.rawValue(for: route)
 
-    func testInvalidTypedRoutesCannotBeEncoded() {
-        let invalidRoutes: [BoardRoute] = [
-            .project(0),
-            .project(-1),
-            .smartList(""),
-            .smartList(" "),
-            .smartList(" urgent"),
-            .smartList("urgent "),
-            .smartList("urgent\u{0000}now"),
-            .smartList("urgent\nnow")
-        ]
-
-        for route in invalidRoutes {
-            XCTAssertNil(
-                ProjectBoardRouteCodec.rawValue(for: route),
-                "Expected \(route) to be rejected by the encoder"
+            XCTAssertEqual(rawValue, "project:\(projectID)")
+            XCTAssertEqual(
+                ProjectBoardRouteCodec.route(from: rawValue, availableProjectIDs: [projectID]),
+                route
             )
         }
+    }
+
+    func testLegacySmartListValueRemainsCompatibleOutsideReservedVersionNamespace() {
+        XCTAssertEqual(
+            route(from: "smart-list:priority:urgent"),
+            .smartList("priority:urgent")
+        )
+        // `v1:` is reserved for canonical values. Legacy IDs using that prefix
+        // must be re-encoded through `rawValue(for:)` before they can restore.
+        XCTAssertEqual(route(from: "smart-list:v1:not-base64"), .primary(.today))
+        XCTAssertEqual(
+            route(from: ProjectBoardRouteCodec.rawValue(for: .smartList("v1:not-base64"))),
+            .smartList("v1:not-base64")
+        )
     }
 
     func testInvalidRawValuesSafelyFallBackToToday() {
@@ -125,14 +149,15 @@ final class ProjectBoardRouteTests: XCTestCase {
             "review:assistant-queue:extra",
             "project:",
             "project:not-a-number",
-            "project:0",
-            "project:-1",
             "project:9223372036854775808",
             "smart-list:",
             "smart-list: ",
             "smart-list: urgent ",
             "smart-list:urgent\u{0000}now",
-            "smart-list:urgent\nnow"
+            "smart-list:urgent\nnow",
+            "smart-list:v1:====",
+            "smart-list:v1:Zg",
+            "smart-list:v1:/w=="
         ]
 
         for rawValue in invalidRawValues {

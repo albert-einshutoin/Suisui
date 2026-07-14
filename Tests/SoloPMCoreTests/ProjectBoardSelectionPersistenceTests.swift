@@ -121,8 +121,8 @@ final class ProjectBoardSelectionPersistenceTests: XCTestCase {
             ProjectBoardSelectionPersistence.rawValue(for: BoardRoute.review(.automationActivity)),
             "review:automation"
         )
-        XCTAssertNil(ProjectBoardSelectionPersistence.rawValue(for: BoardRoute.project(0)))
-        XCTAssertNil(ProjectBoardSelectionPersistence.rawValue(for: BoardRoute.smartList(" invalid")))
+        XCTAssertEqual(ProjectBoardSelectionPersistence.rawValue(for: BoardRoute.project(0)), "project:0")
+        XCTAssertEqual(ProjectBoardSelectionPersistence.rawValue(for: BoardRoute.smartList("")), "smart-list:v1:")
     }
 
     func testEnvironmentOverrideTrimsWhitespaceAndIgnoresEmptyValues() {

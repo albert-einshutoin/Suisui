@@ -53,22 +53,18 @@ public enum ProjectBoardRouteCodec {
         }
     }
 
-    /// Encodes only valid routes in the new stable representation, returning
-    /// `nil` when an associated identifier cannot be decoded symmetrically.
-    public static func rawValue(for route: BoardRoute) -> String? {
+    /// Encodes every route in the new stable representation.
+    public static func rawValue(for route: BoardRoute) -> String {
         switch route {
         case .primary(let destination):
             return "primary:\(destination.rawValue)"
         case .project(let projectID):
-            guard Validation.accepts(projectID: projectID) else {
-                return nil
-            }
             return "project:\(projectID)"
         case .smartList(let smartListID):
-            guard Validation.accepts(smartListID: smartListID) else {
-                return nil
-            }
-            return "smart-list:\(smartListID)"
+            // Smart List IDs are public opaque Strings. A versioned UTF-8
+            // encoding preserves every value without delimiter or whitespace loss.
+            let payload = Data(smartListID.utf8).base64EncodedString()
+            return "smart-list:v1:\(payload)"
         case .review(let reviewRoute):
             switch reviewRoute {
             case .schedule:
@@ -99,13 +95,15 @@ public enum ProjectBoardRouteCodec {
             // Persisted selections can outlive their database rows. Falling
             // back avoids restoring a route whose project can no longer load.
             guard let projectID = Int64(identifier),
-                  Validation.accepts(projectID: projectID),
                   availableProjectIDs.contains(projectID) else {
                 return .primary(.today)
             }
             return .project(projectID)
         case "smart-list":
-            guard Validation.accepts(smartListID: identifier) else {
+            if identifier.hasPrefix("v1:") {
+                return canonicalSmartListRoute(from: String(identifier.dropFirst(3)))
+            }
+            guard LegacySmartListValidation.accepts(identifier) else {
                 return .primary(.today)
             }
             return .smartList(identifier)
@@ -114,22 +112,27 @@ public enum ProjectBoardRouteCodec {
         }
     }
 
-    /// Route payload validity belongs to the codec rather than callers so
-    /// decoding and encoding cannot silently drift into asymmetric behavior.
-    private enum Validation {
-        static func accepts(projectID: Int64) -> Bool {
-            projectID > 0
+    private static func canonicalSmartListRoute(from payload: String) -> BoardRoute {
+        guard let data = Data(base64Encoded: payload),
+              data.base64EncodedString() == payload,
+              let identifier = String(data: data, encoding: .utf8) else {
+            return .primary(.today)
         }
+        return .smartList(identifier)
+    }
 
-        static func accepts(smartListID: String) -> Bool {
-            guard let firstCharacter = smartListID.first,
-                  let lastCharacter = smartListID.last,
+    /// Legacy values predate the total v1 encoding and remain intentionally
+    /// narrower. The `v1:` namespace is reserved for canonical values.
+    private enum LegacySmartListValidation {
+        static func accepts(_ identifier: String) -> Bool {
+            guard let firstCharacter = identifier.first,
+                  let lastCharacter = identifier.last,
                   !firstCharacter.isWhitespace,
                   !lastCharacter.isWhitespace else {
                 return false
             }
 
-            return !smartListID.unicodeScalars.contains { scalar in
+            return !identifier.unicodeScalars.contains { scalar in
                 CharacterSet.controlCharacters.contains(scalar)
             }
         }
