@@ -1,6 +1,7 @@
 .DS_Store
 /.build/
 /.tmp/
+/.worktrees/
 /.devloop/
 /.codex/hooks.json
 /.opencode/
