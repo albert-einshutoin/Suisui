@@ -100,15 +100,38 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testTaskInspectorRefreshesWhenSelectedTaskDataChanges() throws {
         let surfaceSource = try readProjectBoardSurfaceSources()
-        let source = try sourceBlock(
-            in: surfaceSource,
-            from: "private struct TaskInspectorView: View",
-            to: "private struct InspectorDestructiveConfirmation: View"
-        )
+        let source = try taskInspectorRefreshContract(in: surfaceSource)
 
         XCTAssertTrue(source.contains(".onChange(of: task)"))
         XCTAssertTrue(source.contains("refreshFields(from: task)"))
         XCTAssertFalse(source.contains(".onChange(of: task.id)"))
+    }
+
+    func testTaskInspectorRefreshContractExtractionSurvivesOwnedFileRelocationOrder() throws {
+        let relocatedSurfaceSource = """
+        private struct InspectorDestructiveConfirmation: View {}
+
+        private struct TaskInspectorView: View {
+            var body: some View {
+                Text("Task")
+                    .onAppear {
+                        refreshFields(from: task)
+                    }
+                    .onChange(of: task) { _, newTask in
+                        refreshFields(from: newTask)
+                    }
+            }
+
+            private func refreshFields(from task: ProjectBoardTask) {}
+            private func deleteSelectedTaskAfterConfirmationDismissal() {}
+        }
+        """
+
+        let source = try taskInspectorRefreshContract(in: relocatedSurfaceSource)
+
+        XCTAssertTrue(source.contains(".onChange(of: task)"))
+        XCTAssertTrue(source.contains("refreshFields(from: task)"))
+        XCTAssertFalse(source.contains("InspectorDestructiveConfirmation"))
     }
 
     func testProjectBoardUsesPersistentViewModelInsteadOfStaticSnapshot() throws {
@@ -5453,6 +5476,19 @@ final class AppExperienceSourceTests: XCTestCase {
 
     private func readProjectBoardOwnerSource() throws -> String {
         try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+    }
+
+    private func taskInspectorRefreshContract(in surfaceSource: String) throws -> String {
+        let taskInspectorSource = try sourceBlock(
+            in: surfaceSource,
+            from: "private struct TaskInspectorView: View",
+            to: "private func deleteSelectedTaskAfterConfirmationDismissal()"
+        )
+        return try sourceBlock(
+            in: taskInspectorSource,
+            from: ".onAppear {",
+            to: "private func deleteSelectedTaskAfterConfirmationDismissal()"
+        )
     }
 
     private func sourceBlock(in source: String, from startNeedle: String, to endNeedle: String) throws -> String {
