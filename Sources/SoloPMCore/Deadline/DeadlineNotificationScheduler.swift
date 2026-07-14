@@ -60,13 +60,14 @@ public final class DeadlineNotificationScheduler: @unchecked Sendable {
             )
         }
 
-        // Single choke point: pre-deadline reminders shift earlier by the
-        // configured lead time, then every deadline notification defers out of
-        // quiet hours. Overdue-daily alerts fire "now", so lead time does not
-        // apply to them.
+        // Single choke point: the global lead-time preference defines the
+        // day-of reminder only. Relative T-* rules and custom rules already
+        // encode their intended fire date, so shifting them again would turn
+        // T-1 into T-2 or silently move an explicitly chosen custom time.
+        // Every rule still passes through quiet-hours deferral.
         let notifyAt = NotificationSchedulingPolicy.finalFireDate(
             proposed: proposedNotifyAt,
-            kind: rule.kind == .overdueDaily ? .fixedTime : .preDeadlineReminder,
+            kind: rule.kind == .dayOf ? .preDeadlineReminder : .fixedTime,
             preferences: settings.notificationPreferences,
             timeZone: calendar.timeZone
         )
