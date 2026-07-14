@@ -146,7 +146,7 @@ flowchart LR
     W[DeadlineWatcherRuntime tick\n8s after launch, every 30 min] --> D[MorningDigestScheduler\ncount-only notification, from 09:00]
     D --> N[User taps notification]
     N --> R[SoloPMNotificationResponder\nposts digest-opened]
-    R --> T[forceSelectToday + ensure board window visible]
+    R --> T[Scene coordinator requests Today + ensure board window visible]
     T --> B[Project Board on Today]
 ```
 
@@ -154,7 +154,7 @@ Verified in `Sources/SoloPMCore/Deadline/MorningDigest.swift` (one
 count-only digest per day, hour ≥ 9),
 `Sources/SoloPMApp/Composition/DeadlineWatcherRuntime.swift` and
 `NotificationInteractionRuntime.swift`, and the app delegate observer in
-`SoloPMApp.swift` (`ProjectBoardTodayNavigation.forceSelectToday()`).
+`SoloPMApp.swift` (`ProjectBoardSceneCoordinator.shared.requestOpen(route: .primary(.today))`).
 
 ### Weekly review (notification-only today)
 

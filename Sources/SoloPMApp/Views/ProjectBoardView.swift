@@ -966,12 +966,12 @@ struct ProjectBoardView: View {
         // ownership are consumed once here by the shared scene coordinator.
         switch route {
         case .primary(.inbox):
-            consumePendingVoiceInboxTriageRequestIfNeeded()
+            consumePendingVoiceInboxTriageRequestIfNeeded(id: request.id)
         case .primary(.today):
-            consumePendingVoiceDailyPlanningReviewRequestIfNeeded()
+            consumePendingVoiceDailyPlanningReviewRequestIfNeeded(id: request.id)
         case .review(.assistantQueue):
-            consumePendingVoiceDailyPlanningReviewRequestIfNeeded()
-            consumePendingAssistantQueueRequestIfNeeded()
+            consumePendingVoiceDailyPlanningReviewRequestIfNeeded(id: request.id)
+            consumePendingAssistantQueueRequestIfNeeded(id: request.id)
         case .primary, .project, .smartList, .review:
             break
         }
@@ -989,8 +989,8 @@ struct ProjectBoardView: View {
         }
     }
 
-    private func consumePendingVoiceDailyPlanningReviewRequestIfNeeded() {
-        guard let request = SoloPMVoiceDailyPlanningReviewBridge.consumePendingRequest() else {
+    private func consumePendingVoiceDailyPlanningReviewRequestIfNeeded(id: UUID) {
+        guard let request = SoloPMVoiceDailyPlanningReviewBridge.consumePendingRequest(id: id) else {
             return
         }
         handleVoiceDailyPlanningReviewRequest(
@@ -999,15 +999,15 @@ struct ProjectBoardView: View {
         )
     }
 
-    private func consumePendingVoiceInboxTriageRequestIfNeeded() {
-        guard let request = SoloPMVoiceInboxTriageBridge.consumePendingRequest() else {
+    private func consumePendingVoiceInboxTriageRequestIfNeeded(id: UUID) {
+        guard let request = SoloPMVoiceInboxTriageBridge.consumePendingRequest(id: id) else {
             return
         }
         handleVoiceInboxTriageRequest(request: request)
     }
 
-    private func consumePendingAssistantQueueRequestIfNeeded() {
-        guard let request = SoloPMAssistantQueueBridge.consumePendingOpen() else {
+    private func consumePendingAssistantQueueRequestIfNeeded(id: UUID) {
+        guard let request = SoloPMAssistantQueueBridge.consumePendingOpen(id: id) else {
             return
         }
         handleAssistantQueueOpenRequest(request: request)
@@ -1673,7 +1673,7 @@ enum SoloPMAssistantQueueBridge {
     }
 
     static let requestUserInfoKey = "request"
-    private static var pendingRequest: Request?
+    private static var pendingRequests = ProjectBoardRequestPayloadStore<Request>()
 
     static func storePendingOpen(itemID: String?) -> Request? {
         guard let itemID = itemID?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -1681,23 +1681,15 @@ enum SoloPMAssistantQueueBridge {
             return nil
         }
         let request = Request(id: UUID(), itemID: itemID)
-        pendingRequest = request
-        return request
+        return pendingRequests.store(request, id: request.id) ? request : nil
     }
 
-    static func consumePendingOpen() -> Request? {
-        guard let request = pendingRequest else {
-            return nil
-        }
-        pendingRequest = nil
-        return request
+    static func consumePendingOpen(id: UUID) -> Request? {
+        pendingRequests.consume(id: id)
     }
 
     static func discardPendingOpen(id: UUID) {
-        guard pendingRequest?.id == id else {
-            return
-        }
-        pendingRequest = nil
+        pendingRequests.discard(id: id)
     }
 }
 
@@ -1710,7 +1702,7 @@ enum SoloPMVoiceDailyPlanningReviewBridge {
     }
 
     static let requestUserInfoKey = "request"
-    private static var pendingRequest: Request?
+    private static var pendingRequests = ProjectBoardRequestPayloadStore<Request>()
 
     static func storePendingRequest(_ request: VoiceDailyPlanningReviewRequest) -> Request? {
         let bridgeRequest = Request(
@@ -1718,29 +1710,15 @@ enum SoloPMVoiceDailyPlanningReviewBridge {
             sourceTranscript: normalized(request.sourceTranscript),
             actionDraftKind: request.requestedActionDraftKind
         )
-        pendingRequest = bridgeRequest
-        return bridgeRequest
+        return pendingRequests.store(bridgeRequest, id: bridgeRequest.id) ? bridgeRequest : nil
     }
 
-    static func consumePendingRequest() -> Request? {
-        guard let request = pendingRequest else {
-            return nil
-        }
-        return consume(request)
+    static func consumePendingRequest(id: UUID) -> Request? {
+        pendingRequests.consume(id: id)
     }
 
     static func discardPendingRequest(id: UUID) {
-        guard pendingRequest?.id == id else {
-            return
-        }
-        pendingRequest = nil
-    }
-
-    private static func consume(_ request: Request) -> Request? {
-        if pendingRequest?.id == request.id {
-            pendingRequest = nil
-        }
-        return request
+        pendingRequests.discard(id: id)
     }
 
     private static func normalized(_ sourceTranscript: String) -> String {
@@ -1756,33 +1734,19 @@ enum SoloPMVoiceInboxTriageBridge {
     }
 
     static let requestUserInfoKey = "request"
-    private static var pendingRequest: Request?
+    private static var pendingRequests = ProjectBoardRequestPayloadStore<Request>()
 
     static func storePendingRequest(_ request: VoiceInboxTriageRequest) -> Request? {
         let bridgeRequest = Request(id: request.id, command: request.command)
-        pendingRequest = bridgeRequest
-        return bridgeRequest
+        return pendingRequests.store(bridgeRequest, id: bridgeRequest.id) ? bridgeRequest : nil
     }
 
-    static func consumePendingRequest() -> Request? {
-        guard let request = pendingRequest else {
-            return nil
-        }
-        return consume(request)
+    static func consumePendingRequest(id: UUID) -> Request? {
+        pendingRequests.consume(id: id)
     }
 
     static func discardPendingRequest(id: UUID) {
-        guard pendingRequest?.id == id else {
-            return
-        }
-        pendingRequest = nil
-    }
-
-    private static func consume(_ request: Request) -> Request? {
-        if pendingRequest?.id == request.id {
-            pendingRequest = nil
-        }
-        return request
+        pendingRequests.discard(id: id)
     }
 }
 

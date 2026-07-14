@@ -45,6 +45,33 @@ public struct ProjectBoardOpenRequest: Equatable, Sendable {
     }
 }
 
+/// Small ID-keyed payload buffer used by app bridges while a scene request is
+/// waiting to be claimed. Keeping it in Core makes consecutive/deduplicated
+/// payload lifetime testable without importing SwiftUI app types.
+public struct ProjectBoardRequestPayloadStore<Payload> {
+    private var payloads: [UUID: Payload] = [:]
+
+    public init() {}
+
+    /// Returns false without replacing the first payload for a duplicate ID.
+    @discardableResult
+    public mutating func store(_ payload: Payload, id: UUID) -> Bool {
+        guard payloads[id] == nil else {
+            return false
+        }
+        payloads[id] = payload
+        return true
+    }
+
+    public mutating func consume(id: UUID) -> Payload? {
+        payloads.removeValue(forKey: id)
+    }
+
+    public mutating func discard(id: UUID) {
+        payloads.removeValue(forKey: id)
+    }
+}
+
 /// Pure matching boundary shared by app composition and reducer tests.
 public enum ProjectBoardSceneNavigation {
     public static func route(
@@ -65,8 +92,13 @@ public struct ProjectBoardSceneNavigationState: Sendable {
     private var registeredSceneIDs: Set<UUID> = []
     private var pendingRequests: [ProjectBoardOpenRequest] = []
     private var terminalRequestIDs: Set<UUID> = []
+    private var terminalRequestOrder: [UUID] = []
+    private let terminalHistoryLimit: Int
 
-    public init() {}
+    public init(terminalHistoryLimit: Int = 512) {
+        precondition(terminalHistoryLimit > 0, "Terminal request history must be bounded above zero")
+        self.terminalHistoryLimit = terminalHistoryLimit
+    }
 
     public mutating func register(sceneID: UUID) {
         registeredSceneIDs.insert(sceneID)
@@ -83,7 +115,9 @@ public struct ProjectBoardSceneNavigationState: Sendable {
         let expiredIDs = pendingRequests.compactMap { request in
             request.targetSceneID == sceneID ? request.id : nil
         }
-        terminalRequestIDs.formUnion(expiredIDs)
+        for requestID in expiredIDs {
+            markTerminal(requestID)
+        }
         pendingRequests.removeAll { $0.targetSceneID == sceneID }
     }
 
@@ -92,6 +126,12 @@ public struct ProjectBoardSceneNavigationState: Sendable {
     public mutating func submit(_ request: ProjectBoardOpenRequest) -> Bool {
         guard !terminalRequestIDs.contains(request.id),
               !pendingRequests.contains(where: { $0.id == request.id }) else {
+            return false
+        }
+        if let targetSceneID = request.targetSceneID,
+           !registeredSceneIDs.contains(targetSceneID) {
+            // Unknown exact targets are not terminal: registration followed by
+            // retry is valid, while silently retaining a stale target is not.
             return false
         }
         pendingRequests.append(request)
@@ -110,7 +150,7 @@ public struct ProjectBoardSceneNavigationState: Sendable {
         }
 
         let request = pendingRequests.remove(at: index)
-        terminalRequestIDs.insert(request.id)
+        markTerminal(request.id)
         return request
     }
 
@@ -128,7 +168,22 @@ public struct ProjectBoardSceneNavigationState: Sendable {
         }
 
         let request = pendingRequests.remove(at: index)
-        terminalRequestIDs.insert(request.id)
+        markTerminal(request.id)
         return request
+    }
+
+    private mutating func markTerminal(_ requestID: UUID) {
+        guard terminalRequestIDs.insert(requestID).inserted else {
+            return
+        }
+        terminalRequestOrder.append(requestID)
+        guard terminalRequestOrder.count > terminalHistoryLimit else {
+            return
+        }
+        // Terminal IDs only protect this process from recent duplicate
+        // deliveries. Bounding the FIFO avoids turning a long-running app into
+        // an ever-growing request log while retaining deterministic eviction.
+        let prunedRequestID = terminalRequestOrder.removeFirst()
+        terminalRequestIDs.remove(prunedRequestID)
     }
 }

@@ -169,4 +169,86 @@ final class ProjectBoardSceneNavigationTests: XCTestCase {
         XCTAssertFalse(ProjectBoardScenePersistence.shouldUpdateInitialRoute(for: targeted))
         XCTAssertTrue(ProjectBoardScenePersistence.shouldUpdateInitialRoute(for: broadcast))
     }
+
+    func testPayloadStoreKeepsConsecutiveRequestsUntilTheirOwnIDIsConsumed() {
+        var store = ProjectBoardRequestPayloadStore<String>()
+        let firstID = UUID()
+        let secondID = UUID()
+
+        XCTAssertTrue(store.store("first", id: firstID))
+        XCTAssertTrue(store.store("second", id: secondID))
+        XCTAssertEqual(store.consume(id: secondID), "second")
+        XCTAssertEqual(store.consume(id: firstID), "first")
+        XCTAssertNil(store.consume(id: firstID))
+    }
+
+    func testPayloadStoreDuplicateIDPreservesOriginalPayloadAndScopedDiscard() {
+        var store = ProjectBoardRequestPayloadStore<String>()
+        let firstID = UUID()
+        let secondID = UUID()
+
+        XCTAssertTrue(store.store("original", id: firstID))
+        XCTAssertFalse(store.store("replacement", id: firstID))
+        XCTAssertTrue(store.store("other", id: secondID))
+        store.discard(id: secondID)
+
+        XCTAssertEqual(store.consume(id: firstID), "original")
+        XCTAssertNil(store.consume(id: secondID))
+    }
+
+    func testConsecutiveBroadcastPayloadsSurviveDelayedWindowRegistration() {
+        var state = ProjectBoardSceneNavigationState()
+        var payloads = ProjectBoardRequestPayloadStore<String>()
+        let first = ProjectBoardOpenRequest(route: .primary(.today))
+        let second = ProjectBoardOpenRequest(route: .primary(.inbox))
+
+        XCTAssertTrue(payloads.store("first", id: first.id))
+        XCTAssertTrue(state.submit(first))
+        XCTAssertTrue(payloads.store("second", id: second.id))
+        XCTAssertTrue(state.submit(second))
+
+        state.register(sceneID: firstSceneID)
+        XCTAssertEqual(state.consumeNext(for: firstSceneID), first)
+        XCTAssertEqual(payloads.consume(id: first.id), "first")
+        XCTAssertEqual(state.consumeNext(for: firstSceneID), second)
+        XCTAssertEqual(payloads.consume(id: second.id), "second")
+    }
+
+    func testTerminalHistoryPrunesOldestIDAndKeepsRecentDuplicateProtection() {
+        var state = ProjectBoardSceneNavigationState(terminalHistoryLimit: 2)
+        state.register(sceneID: firstSceneID)
+        let requests = (0..<3).map { index in
+            ProjectBoardOpenRequest(
+                id: UUID(),
+                targetSceneID: firstSceneID,
+                route: .project(Int64(index))
+            )
+        }
+
+        for request in requests {
+            XCTAssertTrue(state.submit(request))
+            XCTAssertEqual(state.consumeNext(for: firstSceneID), request)
+        }
+
+        // IDs older than the bounded process-local history may be reused;
+        // recent deliveries remain protected from duplicate handling.
+        XCTAssertTrue(state.submit(requests[0]))
+        XCTAssertFalse(state.submit(requests[1]))
+        XCTAssertFalse(state.submit(requests[2]))
+    }
+
+    func testUnknownTargetIsRejectedWithoutPendingAndCanRetryAfterRegistration() {
+        var state = ProjectBoardSceneNavigationState()
+        let request = ProjectBoardOpenRequest(
+            id: UUID(),
+            targetSceneID: secondSceneID,
+            route: .primary(.inbox)
+        )
+
+        XCTAssertFalse(state.submit(request))
+        state.register(sceneID: secondSceneID)
+        XCTAssertNil(state.consumeNext(for: secondSceneID))
+        XCTAssertTrue(state.submit(request))
+        XCTAssertEqual(state.consumeNext(for: secondSceneID), request)
+    }
 }
