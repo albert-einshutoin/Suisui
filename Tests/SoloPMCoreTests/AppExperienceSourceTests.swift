@@ -2504,13 +2504,83 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("AppTextToSpeechRuntimeFactory.makePreviewer("))
         XCTAssertTrue(boardSource.contains("temporaryDirectoryPrefix: \"solopm-daily-planning-readout\""))
         XCTAssertTrue(boardSource.contains("outputFilename: \"readout.wav\""))
-        XCTAssertTrue(boardSource.contains("selectedDestination = summary.newlyMissedCount > 0 ? .catchUp : .today"))
+        XCTAssertTrue(boardSource.contains("applyLegacyDestinationWithinScene(summary.newlyMissedCount > 0 ? .catchUp : .today)"))
         XCTAssertTrue(boardSource.contains("static let soloPMVoiceDailyPlanningReviewRequested"))
         XCTAssertTrue(boardSource.contains("guard let request = SoloPMVoiceDailyPlanningReviewBridge.consumePendingRequest()"))
         XCTAssertFalse(boardSource.contains("sourceTranscript(from: notification)"))
         XCTAssertFalse(appSource.contains("calendarClient.create"))
         XCTAssertFalse(appSource.contains("reminderClient.create"))
         XCTAssertFalse(boardSource.contains("AVSpeechSynthesizer"))
+    }
+
+    func testSceneRequestPayloadIsStoredBeforePublicationAndCannotRewriteInitialRoute() throws {
+        let voiceSource = try readPackageFile("Sources/SoloPMApp/Views/VoiceCaptureView.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        for (functionName, storeMarker, requestMarker, discardMarker, endMarker) in [
+            (
+                "postDailyPlanningReviewRequest",
+                "SoloPMVoiceDailyPlanningReviewBridge.storePendingRequest(request)",
+                "ProjectBoardSceneCoordinator.shared.requestOpen(id: request.id, route: route)",
+                "SoloPMVoiceDailyPlanningReviewBridge.discardPendingRequest(id: bridgeRequest.id)",
+                "private func postInboxTriageRequest"
+            ),
+            (
+                "postInboxTriageRequest",
+                "SoloPMVoiceInboxTriageBridge.storePendingRequest(request)",
+                "ProjectBoardSceneCoordinator.shared.requestOpen(",
+                "SoloPMVoiceInboxTriageBridge.discardPendingRequest(id: bridgeRequest.id)",
+                "private func postAssistantQueueOpenRequest"
+            ),
+            (
+                "postAssistantQueueOpenRequest",
+                "SoloPMAssistantQueueBridge.storePendingOpen",
+                "ProjectBoardSceneCoordinator.shared.requestOpen(",
+                "SoloPMAssistantQueueBridge.discardPendingOpen(id: bridgeRequest.id)",
+                "/// Tail of the provider"
+            )
+        ] {
+            let start = try XCTUnwrap(voiceSource.range(of: "private func \(functionName)"))
+            let end = try XCTUnwrap(voiceSource.range(
+                of: endMarker,
+                range: start.lowerBound..<voiceSource.endIndex
+            ))
+            let block = String(voiceSource[start.lowerBound..<end.lowerBound])
+            let store = try XCTUnwrap(block.range(of: storeMarker))
+            let request = try XCTUnwrap(block.range(of: requestMarker))
+            let notification = try XCTUnwrap(block.range(of: "NotificationCenter.default.post"))
+            XCTAssertLessThan(store.lowerBound, request.lowerBound)
+            XCTAssertLessThan(request.lowerBound, notification.lowerBound)
+            XCTAssertTrue(block.contains(discardMarker))
+        }
+
+        XCTAssertTrue(boardSource.contains("static func discardPendingRequest(id: UUID)"))
+        XCTAssertTrue(boardSource.contains("static func discardPendingOpen(id: UUID)"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardScenePersistence.shouldUpdateInitialRoute(for: request)"))
+        XCTAssertTrue(boardSource.contains("private func applyLegacyDestinationWithinScene("))
+
+        let dailyStart = try XCTUnwrap(boardSource.range(of: "private func handleVoiceDailyPlanningReviewRequest(\n        sourceTranscript:"))
+        let dailyEnd = try XCTUnwrap(boardSource.range(of: "private func playDailyPlanningReadoutFromSettings", range: dailyStart.lowerBound..<boardSource.endIndex))
+        let inboxStart = try XCTUnwrap(boardSource.range(of: "private func openInboxForVoiceTriage()"))
+        let inboxEnd = try XCTUnwrap(boardSource.range(of: "private func handleAssistantQueueOpenRequest(_ notification:", range: inboxStart.lowerBound..<boardSource.endIndex))
+        let assistantStart = try XCTUnwrap(boardSource.range(of: "private func handleAssistantQueueOpenRequest(request:"))
+        let assistantEnd = try XCTUnwrap(boardSource.range(of: "private func applySelectedTaskOverrideIfNeeded", range: assistantStart.lowerBound..<boardSource.endIndex))
+
+        for block in [
+            String(boardSource[dailyStart.lowerBound..<dailyEnd.lowerBound]),
+            String(boardSource[inboxStart.lowerBound..<inboxEnd.lowerBound]),
+            String(boardSource[assistantStart.lowerBound..<assistantEnd.lowerBound])
+        ] {
+            XCTAssertFalse(block.contains("persistSelectedDestination"))
+            XCTAssertTrue(block.contains("applyLegacyDestinationWithinScene"))
+        }
+
+        // The compatibility callback consumes suppression exactly once; the
+        // ordinary user path still persists after that callback is cleared.
+        XCTAssertTrue(boardSource.contains("if let suppression = pendingDestinationPersistenceSuppression"))
+        XCTAssertTrue(boardSource.contains("suppression.destination == destination"))
+        XCTAssertTrue(boardSource.contains("pendingDestinationPersistenceSuppression = nil"))
+        XCTAssertTrue(boardSource.contains("persistSelectedDestination(destination)"))
     }
 
     func testTodayViewReadsPrecomputedDailyPlanningReviewWithoutRenderPathFallback() throws {
@@ -2571,7 +2641,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("SoloPMAssistantQueueBridge.consumePendingOpen()"))
         XCTAssertTrue(appSource.contains("id: bridgeRequest.id"))
         XCTAssertTrue(boardSource.contains("sceneCoordinator.consume(requestID: request.id, for: sceneID)"))
-        XCTAssertTrue(boardSource.contains("selectedDestination = .assistantQueue"))
+        XCTAssertTrue(boardSource.contains("applyLegacyDestinationWithinScene(.assistantQueue)"))
         XCTAssertTrue(boardSource.contains("viewModel.focusAssistantQueueExecutionHandoff(id: request.itemID)"))
         XCTAssertTrue(englishStrings.contains("\"Open Assistant Queue\""))
         XCTAssertTrue(englishStrings.contains("\"Opens the Assistant Queue without running the item.\""))

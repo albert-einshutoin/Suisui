@@ -155,4 +155,18 @@ final class ProjectBoardSceneNavigationTests: XCTestCase {
             .primary(.today)
         )
     }
+
+    func testOnlyBroadcastRequestUpdatesNewWindowInitialRoute() {
+        let targeted = ProjectBoardOpenRequest(
+            targetSceneID: firstSceneID,
+            route: .primary(.inbox)
+        )
+        let broadcast = ProjectBoardOpenRequest(
+            targetSceneID: nil,
+            route: .review(.assistantQueue)
+        )
+
+        XCTAssertFalse(ProjectBoardScenePersistence.shouldUpdateInitialRoute(for: targeted))
+        XCTAssertTrue(ProjectBoardScenePersistence.shouldUpdateInitialRoute(for: broadcast))
+    }
 }

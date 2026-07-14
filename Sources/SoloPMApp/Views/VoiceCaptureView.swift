@@ -492,10 +492,11 @@ struct VoiceCaptureView: View {
         let route: BoardRoute = request.requestedActionDraftKind == nil
             ? .primary(.today)
             : .review(.assistantQueue)
-        guard ProjectBoardSceneCoordinator.shared.requestOpen(id: request.id, route: route) != nil else {
+        guard let bridgeRequest = SoloPMVoiceDailyPlanningReviewBridge.storePendingRequest(request) else {
             return
         }
-        guard let bridgeRequest = SoloPMVoiceDailyPlanningReviewBridge.storePendingRequest(request) else {
+        guard ProjectBoardSceneCoordinator.shared.requestOpen(id: request.id, route: route) != nil else {
+            SoloPMVoiceDailyPlanningReviewBridge.discardPendingRequest(id: bridgeRequest.id)
             return
         }
         NotificationCenter.default.post(
@@ -507,13 +508,14 @@ struct VoiceCaptureView: View {
 
     private func postInboxTriageRequest(_ request: VoiceInboxTriageRequest) {
         openWindow(id: "project-board")
+        guard let bridgeRequest = SoloPMVoiceInboxTriageBridge.storePendingRequest(request) else {
+            return
+        }
         guard ProjectBoardSceneCoordinator.shared.requestOpen(
             id: request.id,
             route: .primary(.inbox)
         ) != nil else {
-            return
-        }
-        guard let bridgeRequest = SoloPMVoiceInboxTriageBridge.storePendingRequest(request) else {
+            SoloPMVoiceInboxTriageBridge.discardPendingRequest(id: bridgeRequest.id)
             return
         }
         NotificationCenter.default.post(
@@ -531,6 +533,7 @@ struct VoiceCaptureView: View {
             id: bridgeRequest.id,
             route: .review(.assistantQueue)
         ) != nil else {
+            SoloPMAssistantQueueBridge.discardPendingOpen(id: bridgeRequest.id)
             return
         }
         openWindow(id: "project-board")

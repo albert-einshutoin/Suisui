@@ -18,6 +18,14 @@ public enum ProjectBoardScenePersistence {
             availableProjectIDs: availableProjectIDs
         )
     }
+
+    /// Only a broadcast expresses the default intent for future windows. An
+    /// exact request belongs exclusively to its target scene's stored route.
+    public static func shouldUpdateInitialRoute(
+        for request: ProjectBoardOpenRequest
+    ) -> Bool {
+        request.targetSceneID == nil
+    }
 }
 
 /// Immutable intent to route one Project Board scene to a typed destination.

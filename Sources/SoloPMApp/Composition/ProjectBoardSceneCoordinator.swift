@@ -43,7 +43,7 @@ final class ProjectBoardSceneCoordinator: ObservableObject {
         guard state.submit(request) else {
             return nil
         }
-        if targetSceneID == nil {
+        if ProjectBoardScenePersistence.shouldUpdateInitialRoute(for: request) {
             // Broadcast navigation also defines where a newly opened window
             // starts; exact-target requests must never leak into other scenes.
             defaults.set(

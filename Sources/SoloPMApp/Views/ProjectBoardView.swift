@@ -54,6 +54,10 @@ private struct DevelopmentAutomationReviewSheet: Identifiable {
     let viewModel: ReviewSessionViewModel
 }
 
+private struct ProjectBoardDestinationPersistenceSuppression: Equatable {
+    let destination: ProjectBoardSidebarDestination?
+}
+
 struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
@@ -83,7 +87,7 @@ struct ProjectBoardView: View {
     @State private var selectedSmartListID: String?
     @State private var savedSmartLists: [SmartList] = []
     @State private var isPresentingSmartListEditor = false
-    @State private var suppressNextDestinationPersistence = false
+    @State private var pendingDestinationPersistenceSuppression: ProjectBoardDestinationPersistenceSuppression?
     // Palette content hits reveal their task after the destination switch
     // settles, because applySelectedDestination clears task selection.
     @State private var pendingCommandPaletteRevealTaskID: Int64?
@@ -396,9 +400,14 @@ struct ProjectBoardView: View {
             if destination != nil {
                 selectedSmartListID = nil
             }
-            if suppressNextDestinationPersistence {
-                suppressNextDestinationPersistence = false
+            if let suppression = pendingDestinationPersistenceSuppression,
+               suppression.destination == destination {
+                pendingDestinationPersistenceSuppression = nil
             } else {
+                // A stale suppression can remain when programmatic A -> B -> A
+                // changes coalesce without onChange. A later user destination
+                // differs, clears it here, and persists normally.
+                pendingDestinationPersistenceSuppression = nil
                 persistSelectedDestination(destination)
             }
             applySelectedDestination(destination)
@@ -920,14 +929,22 @@ struct ProjectBoardView: View {
             destination = .assistantQueue
             smartListID = nil
         }
-        if selectedDestination != destination {
-            // Typed restore/request paths persist explicitly before adapting.
-            // Suppressing this one compatibility-binding callback prevents a
-            // targeted scene request from rewriting the new-window default.
-            suppressNextDestinationPersistence = true
-        }
         selectedSmartListID = smartListID
-        selectedDestination = destination
+        applyLegacyDestinationWithinScene(destination)
+    }
+
+    private func applyLegacyDestinationWithinScene(
+        _ destination: ProjectBoardSidebarDestination?
+    ) {
+        if selectedDestination != destination {
+            // SwiftUI invokes onChange after this mutation. Keep suppression
+            // pending until that callback consumes it; resetting here would
+            // let targeted payload routing overwrite the new-window default.
+            pendingDestinationPersistenceSuppression = ProjectBoardDestinationPersistenceSuppression(
+                destination: destination
+            )
+            selectedDestination = destination
+        }
         applySelectedDestination(destination)
     }
 
@@ -939,7 +956,10 @@ struct ProjectBoardView: View {
 
     private func applySceneOpenRequest(_ request: ProjectBoardOpenRequest) {
         let route = validatedRoute(request.route)
-        persistRoute(route, updateInitialRoute: request.targetSceneID == nil)
+        persistRoute(
+            route,
+            updateInitialRoute: ProjectBoardScenePersistence.shouldUpdateInitialRoute(for: request)
+        )
         applyRouteToLegacyUI(route)
 
         // Payload bridges retain only feature-specific data. Navigation and ID
@@ -1022,12 +1042,12 @@ struct ProjectBoardView: View {
                 kind: actionDraftKind,
                 transcript: sourceTranscript
             )
-            selectedDestination = queued ? .assistantQueue : (summary.newlyMissedCount > 0 ? .catchUp : .today)
+            applyLegacyDestinationWithinScene(
+                queued ? .assistantQueue : (summary.newlyMissedCount > 0 ? .catchUp : .today)
+            )
         } else {
-            selectedDestination = summary.newlyMissedCount > 0 ? .catchUp : .today
+            applyLegacyDestinationWithinScene(summary.newlyMissedCount > 0 ? .catchUp : .today)
         }
-        persistSelectedDestination(selectedDestination)
-        applySelectedDestination(selectedDestination)
         playDailyPlanningReadoutFromSettings()
     }
 
@@ -1063,9 +1083,7 @@ struct ProjectBoardView: View {
 
     private func openInboxForVoiceTriage() {
         if selectedDestination != .inbox {
-            selectedDestination = .inbox
-            persistSelectedDestination(selectedDestination)
-            applySelectedDestination(selectedDestination)
+            applyLegacyDestinationWithinScene(.inbox)
         }
         isInspectorPresented = false
     }
@@ -1081,9 +1099,7 @@ struct ProjectBoardView: View {
 
     private func handleAssistantQueueOpenRequest(request: SoloPMAssistantQueueBridge.Request) {
         viewModel.load()
-        selectedDestination = .assistantQueue
-        persistSelectedDestination(selectedDestination)
-        applySelectedDestination(selectedDestination)
+        applyLegacyDestinationWithinScene(.assistantQueue)
         _ = viewModel.focusAssistantQueueExecutionHandoff(id: request.itemID)
     }
 
@@ -1676,6 +1692,13 @@ enum SoloPMAssistantQueueBridge {
         pendingRequest = nil
         return request
     }
+
+    static func discardPendingOpen(id: UUID) {
+        guard pendingRequest?.id == id else {
+            return
+        }
+        pendingRequest = nil
+    }
 }
 
 @MainActor
@@ -1704,6 +1727,13 @@ enum SoloPMVoiceDailyPlanningReviewBridge {
             return nil
         }
         return consume(request)
+    }
+
+    static func discardPendingRequest(id: UUID) {
+        guard pendingRequest?.id == id else {
+            return
+        }
+        pendingRequest = nil
     }
 
     private static func consume(_ request: Request) -> Request? {
@@ -1739,6 +1769,13 @@ enum SoloPMVoiceInboxTriageBridge {
             return nil
         }
         return consume(request)
+    }
+
+    static func discardPendingRequest(id: UUID) {
+        guard pendingRequest?.id == id else {
+            return
+        }
+        pendingRequest = nil
     }
 
     private static func consume(_ request: Request) -> Request? {
