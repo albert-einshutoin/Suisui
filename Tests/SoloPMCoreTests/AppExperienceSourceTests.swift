@@ -2,6 +2,14 @@ import Foundation
 import XCTest
 
 final class AppExperienceSourceTests: XCTestCase {
+    func testProjectBoardSurfaceReaderFindsAnchorsAcrossOwnedFiles() throws {
+        let source = try readProjectBoardSurfaceSources()
+
+        XCTAssertTrue(source.contains("project-board-sidebar"))
+        XCTAssertTrue(source.contains("today-workflow"))
+        XCTAssertTrue(source.contains("task-inspector-save"))
+    }
+
     func testAppLaunchesProjectBoardBeforeVoiceCaptureWindow() throws {
         let source = try readAppShellSource()
 
@@ -42,7 +50,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardSurfaceUsesKanbanLayout() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
         let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
 
         XCTAssertTrue(source.contains("NavigationSplitView"))
@@ -69,7 +77,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardUsesResponsiveLongContentGuards() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(source.contains("ViewThatFits(in: .horizontal)"))
         XCTAssertTrue(source.contains("ProjectHeaderSummary"))
@@ -93,7 +101,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardUsesPersistentViewModelInsteadOfStaticSnapshot() throws {
         let appSource = try readAppShellSource()
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(appSource.contains("prepareProjectBoardRuntimeBundle()"))
         XCTAssertTrue(appSource.contains("makeProjectBoardViewModel(runtime: runtime)"))
@@ -136,7 +144,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardRefreshesTodayFromProductionDateAndLifecycleNotifications() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(source.contains("@Environment(\\.scenePhase) private var scenePhase"))
         XCTAssertTrue(source.contains(".onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged))"))
@@ -190,7 +198,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testAssistantQueueWorkflowIsReachableFromProjectBoardSidebar() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let workflowSource = try readProjectWorkflowSources()
         let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
@@ -266,7 +274,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardExposesPortableTaskImportExportFileActions() throws {
         let appSource = try readAppShellSource()
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(appSource.contains("SQLiteExternalTaskLinkStore(connection: connection)"))
         XCTAssertTrue(boardSource.contains("TaskInteropFileDocument"))
@@ -295,7 +303,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectsOverviewKeepsSidebarProjectSelectionAndDetailModesSeparate() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
 
         XCTAssertTrue(persistenceSource.contains("case projects"))
@@ -354,7 +362,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testLanguageSelectionSupportsJapaneseAndEnglishFromSettings() throws {
         let appSource = try readAppShellSource()
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let appearanceSectionSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsAppearanceSection.swift")
         let languagePreferenceSource = try readPackageFile("Sources/SoloPMApp/Views/AppLanguagePreference.swift")
         let buildScript = try readPackageFile("script/build_and_run.sh")
@@ -428,7 +436,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testDynamicAppStatusStringsUseLocalizationRouting() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let workflowSource = try readProjectWorkflowSources()
         let appSource = try readAppShellSource()
         let coreBoardSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
@@ -533,7 +541,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardInspectorCanCompressInsideHostedMinimumWindow() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(
             boardSource.contains(".inspectorColumnWidth(min: 276, ideal: 300, max: 420)"),
@@ -584,7 +592,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardHeaderPreparesConfiguredTaskAutomationReview() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let appSource = try readAppShellSource()
 
         XCTAssertTrue(boardSource.contains("let taskAutomationSettings: () -> TaskAutoExecutionSettings"))
@@ -602,7 +610,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testTaskInspectorApprovedExecutionReceiptIsAccessibleAndRedacted() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(boardSource.contains("private var latestApprovedExecutionReceipt: ApprovedAutomationExecutionReceipt?"))
         XCTAssertTrue(boardSource.contains("viewModel.approvedAutomationExecutionReceipts.last { $0.taskID == task.id }"))
@@ -654,7 +662,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testInspectorsShowScopedAIReceiptsWithoutRawReceiptFields() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let workflowSource = try readProjectWorkflowSources()
 
         XCTAssertTrue(boardSource.contains("Section(\"Project AI Activity\")"))
@@ -679,7 +687,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testTaskInspectorShowsDocumentSourceReviewForAutomationDrafts() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(boardSource.contains("viewModel.taskAutomationDocumentDeliverableReviews"))
         XCTAssertTrue(boardSource.contains("documentDeliverableReviewView"))
@@ -692,7 +700,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardLayoutMetricsGuardPrimaryDimensionsAndLongLabels() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(source.contains("private enum ProjectBoardLayoutMetrics"))
         XCTAssertTrue(source.contains("static let headerHeight: CGFloat = 44"))
@@ -766,7 +774,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardLongContentFixtureMapsToResponsiveGuards() throws {
         let fixture = try readPackageFile("Tests/SoloPMCoreTests/Fixtures/ProjectBoard/long-content-layout.json")
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(fixture.contains("\"longJapaneseProjectTitle\""))
         XCTAssertTrue(fixture.contains("長い日本語のプロジェクト名"))
@@ -793,7 +801,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardStateRestorationFixtureCoversLaunchMatrix() throws {
         let fixture = try readPackageFile("Tests/SoloPMCoreTests/Fixtures/ProjectBoard/state-restoration-matrix.json")
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
         let layoutSmoke = try readPackageFile("script/check_layout_stability_smoke.sh")
         let crudSmoke = try readPackageFile("script/check_runtime_accessible_crud_smoke.sh")
@@ -829,7 +837,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardToolbarDisplayModeOnlyAllowsIconAndTextOrIconOnly() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(boardSource.contains("projectBoardSupportedToolbarDisplayMode(for:"))
         XCTAssertTrue(boardSource.contains("enforceProjectBoardSupportedToolbarDisplayMode("))
@@ -1151,7 +1159,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardDropPayloadsAreValidatedByViewModel() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let storeSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementStore.swift")
 
@@ -1207,7 +1215,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardPerformanceReadModelsStayOutOfRenderPath() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let todayWorkflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift")
         let catchUpWorkflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowCatchUpView.swift")
         let scheduleWorkflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowScheduleView.swift")
@@ -1253,7 +1261,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardSupportsPersistentLightDarkAppearanceSelection() throws {
         let appSource = try readAppShellSource()
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let appearanceSource = try readPackageFile("Sources/SoloPMApp/Views/SoloPMAppearancePreference.swift")
 
         XCTAssertTrue(appearanceSource.contains("enum SoloPMAppearancePreference"))
@@ -1281,7 +1289,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testKanbanTaskCardsExposeMouseDrivenStatusMoveControls() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(source.contains("TaskStatusMoveControls"))
         XCTAssertTrue(source.contains("Move to previous status"))
@@ -1294,7 +1302,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testKanbanTaskCardsSeparateOpenDetailsFocusFromStatusMoveControls() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
         let cardStart = try XCTUnwrap(source.range(of: "private struct BoardTaskCard"))
         let cardEnd = try XCTUnwrap(source.range(of: "private struct TaskCardSelectableSummary"))
         let cardSource = String(source[cardStart.lowerBound..<cardEnd.lowerBound])
@@ -1316,7 +1324,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testKanbanDragAndDropHasVisibleDesktopAffordances() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(source.contains("Drag to another status column"))
         XCTAssertTrue(source.contains("arrow.up.and.down.and.arrow.left.and.right"))
@@ -1327,7 +1335,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testKanbanCardsUseTaskComponentDragPreview() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(source.contains("BoardTaskDragPreview"))
         XCTAssertTrue(source.contains(".draggable(String(task.id)) {"))
@@ -1335,7 +1343,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testKanbanBoardUsesAdaptiveSampleInspiredCardStyling() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(source.contains("StatusCountBadge"))
         XCTAssertTrue(source.contains("column.status.tint"))
@@ -1346,7 +1354,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testKanbanCardsExposePointerHoverAndStatusRailAffordance() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(source.contains("@State private var isPointerHovered = false"))
         XCTAssertTrue(source.contains("TaskStatusAccentRail(tint: task.status.tint)"))
@@ -1357,7 +1365,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testTaskCardsUseSampleInspiredNonOverlappingMetadataStrip() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
 
@@ -1384,7 +1392,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardExposesPrimaryCRUDKeyboardShortcuts() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
         let appSource = try readAppShellSource()
 
         XCTAssertTrue(source.contains(".keyboardShortcut(\"n\", modifiers: [.command])"))
@@ -1398,7 +1406,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardHostsEmbeddedTerminalAsApprovalGatedBottomPanel() throws {
         let packageSource = try readPackageFile("Package.swift")
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let terminalSource = try readPackageFile("Sources/SoloPMApp/Views/TerminalPanelView.swift")
 
         XCTAssertTrue(packageSource.contains(#".package(url: "https://github.com/migueldeicaza/SwiftTerm", from: "1.13.0")"#))
@@ -1433,7 +1441,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testInlineTaskComposerExposesKeyboardAndVoiceOverCreateAnchors() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let composerStart = try XCTUnwrap(source.range(of: "private struct InlineTaskComposer"))
@@ -1458,7 +1466,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testInspectorsExposeKeyboardOnlyCrudShortcuts() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
         let projectInspectorStart = try XCTUnwrap(source.range(of: "private struct ProjectInspectorView"))
         let taskInspectorStart = try XCTUnwrap(source.range(of: "private struct TaskInspectorView"))
         let projectSuggestionStart = try XCTUnwrap(source.range(of: "private struct ProjectInspectorSuggestionSection"))
@@ -1475,7 +1483,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testPrimaryKeyboardShortcutsAreAttachedToConcreteCommandsAndFocusedActions() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let workflowSource = try readProjectWorkflowSources()
         let appSource = try readAppShellSource()
         let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
@@ -1550,7 +1558,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testInspectorSaveControlsStayAdjacentToEditableFieldsBeforeLongSuggestionSections() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
 
         let projectInspector = try sourceBlock(
             in: boardSource,
@@ -1586,7 +1594,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testInspectorsExposeVisibleCloseButtonsThatDismissTheSidebar() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(source.contains("TaskInspectorView("))
         XCTAssertTrue(source.contains("onClose: { inspectorBinding.wrappedValue = false }"))
@@ -1608,7 +1616,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testInspectorDestructiveConfirmationActionsDeferSelectionMutations() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
         let projectInspectorStart = try XCTUnwrap(source.range(of: "private struct ProjectInspectorView"))
         let taskInspectorStart = try XCTUnwrap(source.range(of: "private struct TaskInspectorView"))
         let projectSuggestionStart = try XCTUnwrap(source.range(of: "private struct ProjectInspectorSuggestionSection"))
@@ -1637,7 +1645,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testInspectorsExposeCompactMetadataSummaries() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
 
@@ -1665,7 +1673,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardPromotesInboxAndTodayAsFirstClassDestinations() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
         let workflowSource = try readProjectWorkflowSources()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
 
@@ -1959,7 +1967,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectDetailOrganizesTasksArtifactsTimelineAndSuggestions() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
         let storeSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementStore.swift")
@@ -2093,7 +2101,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectDetailSurfacesMilestonesTimelineAndAssistantWithoutDroppingExistingSections() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
 
@@ -2114,7 +2122,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testTaskInspectorGroupsEditingDeletionAndSuggestionApplication() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(source.contains("TaskInspectorSuggestionSection"))
         XCTAssertTrue(source.contains("Apply Suggestion"))
@@ -2156,7 +2164,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testBoardAccessibilityLabelsHelpAndDestructiveConfirmations() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(source.contains(".accessibilityElement(children: .combine)"))
         XCTAssertTrue(source.contains(".accessibilityElement(children: .contain)"))
@@ -2198,7 +2206,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardVoiceOverFocusPathIsSourceAnchored() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let workflowSource = try readProjectWorkflowSources()
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
@@ -2256,7 +2264,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectOverviewActionsAreAccessibleCrudEntryPoints() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
 
@@ -2429,7 +2437,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testVoiceDailyPlanningReviewBridgeUsesLocalProjectBoardReview() throws {
         let voiceSource = try readPackageFile("Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift")
         let appSource = try readAppShellSource()
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(voiceSource.contains("public struct VoiceDailyPlanningReviewRequest"))
         XCTAssertTrue(voiceSource.contains("requestedActionDraftKind: DailyPlanningActionDraftKind?"))
@@ -2507,7 +2515,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testVoiceAssistantQueueApprovalHandoffsExecutionToProjectBoardQueue() throws {
         let voiceSource = try readPackageFile("Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift")
         let appSource = try readAppShellSource()
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let englishStrings = try readPackageFile("Sources/SoloPMApp/Resources/en.lproj/Localizable.strings")
         let japaneseStrings = try readPackageFile("Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings")
 
@@ -2562,7 +2570,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testTodayWorkflowProvidesCommonQuickActionChipsAndLocalRailActions() throws {
         let workflowSource = try readProjectWorkflowSources()
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-common-action-rail\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-common-chip-add-task\")"))
@@ -2709,7 +2717,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testScheduleWorkflowIsReachableAndApprovalFirst() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let workflowSource = try readProjectWorkflowSources()
         let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
@@ -5141,7 +5149,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testRegressionRiskMapUsesExistingInspectorAccessibilityIdentifier() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
 
         XCTAssertTrue(
@@ -5416,6 +5424,19 @@ final class AppExperienceSourceTests: XCTestCase {
             viewSources,
             runtimeCompositionSources
         ].joined(separator: "\n\n")
+    }
+
+    private func readProjectBoardSurfaceSources() throws -> String {
+        let ownedBasenamePrefixes = ["ProjectBoard", "ProjectWorkflow", "TaskInspector"]
+        let sourceFiles = try allSwiftFiles(under: "Sources/SoloPMApp/Views")
+            .filter { url in
+                ownedBasenamePrefixes.contains { url.lastPathComponent.hasPrefix($0) }
+            }
+            .sorted { relativePackagePath(for: $0) < relativePackagePath(for: $1) }
+
+        return try sourceFiles
+            .map { try String(contentsOf: $0, encoding: .utf8) }
+            .joined(separator: "\n\n")
     }
 
     private func sourceBlock(in source: String, from startNeedle: String, to endNeedle: String) throws -> String {
