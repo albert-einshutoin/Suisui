@@ -280,7 +280,7 @@ emit_evidence_app_diagnostic() {
 
 open_evidence_app() {
   local env_args=()
-  local appearance_args=()
+  local system_appearance="Light"
   while IFS= read -r -d '' env_arg; do
     env_args+=("$env_arg")
   done < <(app_env_args)
@@ -288,9 +288,12 @@ open_evidence_app() {
   # Keep the product preference set to `system`, while pinning the capture
   # process' inherited system appearance to canonical Aqua for reproducible
   # System evidence across local and hosted macOS runners.
-  if [[ "$APPEARANCE_OVERRIDE" == "system" ]]; then
-    appearance_args+=("-AppleInterfaceStyle" "Light")
+  if [[ "$APPEARANCE_OVERRIDE" == "dark" ]]; then
+    system_appearance="Dark"
   fi
+  # Keep this array non-empty: macOS runners still ship Bash 3.2, where
+  # expanding an empty local array under `set -u` aborts the capture.
+  local appearance_args=("-AppleInterfaceStyle" "$system_appearance")
   stop_evidence_app
   : >"$EVIDENCE_APP_LOG"
   # Direct launch preserves the isolated database, appearance, selected route,
