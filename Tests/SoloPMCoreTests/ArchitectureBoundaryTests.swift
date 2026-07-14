@@ -149,7 +149,8 @@ final class ArchitectureBoundaryTests: XCTestCase {
         for compositionMarker in [
             "WindowGroup(\"SoloPM\", id: \"project-board\")",
             "VoiceCaptureWindowRootView()",
-            "MenuBarPanel(controller: menuBarController, quickCaptureController: menuBarQuickCaptureController)",
+            "quickCaptureController: menuBarQuickCaptureController,",
+            "sceneCoordinator: projectBoardSceneCoordinator",
             "SettingsView(",
             "AppRuntimeFactory.prepareProjectBoardRuntimeBundle()"
         ] {

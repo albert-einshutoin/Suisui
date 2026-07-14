@@ -236,26 +236,25 @@ final class LaunchExperienceTests: XCTestCase {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let menuBarSource = try readPackageFile("Sources/SoloPMApp/Views/MenuBarPanel.swift")
 
-        // Digest taps must land on Today, not the last visited destination,
-        // and reuse the single ProjectBoardTodayNavigation routing entry point.
+        // Digest taps must land on Today through the one app-level coordinator
+        // before reopening a window if necessary.
         let observerStart = try XCTUnwrap(appSource.range(of: "forName: .soloPMDigestNotificationOpened"))
         let observerEnd = try XCTUnwrap(appSource.range(
             of: "openSettingsWindowForEvidenceIfRequested()",
             range: observerStart.lowerBound..<appSource.endIndex
         ))
         let observerBlock = appSource[observerStart.lowerBound..<observerEnd.lowerBound]
-        XCTAssertTrue(observerBlock.contains("ProjectBoardTodayNavigation.forceSelectToday()"))
+        XCTAssertTrue(observerBlock.contains("ProjectBoardSceneCoordinator.shared.requestOpen(route: .primary(.today))"))
         XCTAssertTrue(observerBlock.contains("ensureProjectBoardWindowIsVisible()"))
 
-        // An already-open board switches through the notification; a fresh
-        // window restores from the persisted destination.
-        XCTAssertTrue(boardSource.contains("ProjectBoardTodayNavigation.openTodayNotification"))
-        XCTAssertTrue(boardSource.contains("private func forceSelectTodayDestination()"))
-        XCTAssertTrue(boardSource.contains("selectedDestination = .today"))
+        // Every board observes publication, but the coordinator atomically
+        // returns the request to only one registered scene.
+        XCTAssertTrue(boardSource.contains("sceneCoordinator.consumeNext(for: sceneID)"))
+        XCTAssertTrue(boardSource.contains("applySceneOpenRequest(request)"))
 
-        // The menu bar summary shares the same routing function instead of a
-        // second implementation.
-        XCTAssertTrue(menuBarSource.contains("ProjectBoardTodayNavigation.forceSelectToday()"))
+        // The menu bar summary shares the coordinator instead of creating a
+        // second notification-driven routing implementation.
+        XCTAssertTrue(menuBarSource.contains("sceneCoordinator.requestOpen(route: .primary(.today))"))
         XCTAssertTrue(menuBarSource.contains("openWindow(id: \"project-board\")"))
         XCTAssertTrue(menuBarSource.contains(".accessibilityIdentifier(\"menu-bar-open-today\")"))
         XCTAssertTrue(menuBarSource.contains("Label(\"Open Today\", systemImage: \"chevron.right.circle\")"))
@@ -461,9 +460,10 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertLessThan(boardWindow.lowerBound, menuBar.lowerBound)
     }
 
-    func testProjectBoardMultiWindowBoundaryUsesIndependentViewModelsAndSharedSelectionPersistence() throws {
+    func testProjectBoardMultiWindowBoundaryUsesIndependentViewModelsAndSceneRoutePersistence() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let coordinatorSource = try readPackageFile("Sources/SoloPMApp/Composition/ProjectBoardSceneCoordinator.swift")
 
         XCTAssertTrue(appSource.contains("WindowGroup(\"SoloPM\", id: \"project-board\")"))
         XCTAssertTrue(appSource.contains("taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution }"))
@@ -473,8 +473,15 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("@StateObject private var viewModel: ProjectBoardViewModel"))
         XCTAssertTrue(boardSource.contains("let taskAutomationSettings: () -> TaskAutoExecutionSettings"))
         XCTAssertTrue(boardSource.contains("let appSettings: () -> AppSettings"))
+        XCTAssertTrue(appSource.contains("@SceneStorage(ProjectBoardScenePersistence.sceneIDStorageKey)"))
+        XCTAssertTrue(boardSource.contains("@SceneStorage(ProjectBoardScenePersistence.routeStorageKey)"))
         XCTAssertTrue(boardSource.contains("@AppStorage(ProjectBoardSelectionPersistence.storageKey)"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardRouteCodec.route("))
+        XCTAssertTrue(boardSource.contains("ProjectBoardRouteCodec.rawValue(for:"))
         XCTAssertTrue(boardSource.contains("@State private var selectedDestination: ProjectBoardSidebarDestination? = .today"))
+        XCTAssertTrue(coordinatorSource.contains("@MainActor"))
+        XCTAssertTrue(coordinatorSource.contains("ProjectBoardSceneNavigationState"))
+        XCTAssertTrue(coordinatorSource.contains("consumeNext(for: sceneID)"))
     }
 
     private func readPackageFile(_ relativePath: String) throws -> String {

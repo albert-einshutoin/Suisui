@@ -16,6 +16,7 @@ struct SoloPM: App {
     @StateObject private var menuBarQuickCaptureController: MenuBarQuickCaptureController
     @StateObject private var settingsViewModel: AppSettingsViewModel
     @StateObject private var onboardingRerunCoordinator: OnboardingRerunCoordinator
+    @StateObject private var projectBoardSceneCoordinator: ProjectBoardSceneCoordinator
     @AppStorage(SoloPMAppearancePreference.storageKey) private var appearancePreference: SoloPMAppearancePreference = .system
     @AppStorage(AppLanguagePreference.storageKey) private var languagePreference: AppLanguagePreference = .system
 
@@ -27,6 +28,7 @@ struct SoloPM: App {
             wrappedValue: AppRuntimeFactory.makeAppSettingsViewModel(refreshProviderSecretStatusesOnInit: false)
         )
         _onboardingRerunCoordinator = StateObject(wrappedValue: OnboardingRerunCoordinator.shared)
+        _projectBoardSceneCoordinator = StateObject(wrappedValue: ProjectBoardSceneCoordinator.shared)
 #if canImport(AppKit)
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -39,7 +41,8 @@ struct SoloPM: App {
         WindowGroup("SoloPM", id: "project-board") {
             ProjectBoardWindowRootView(
                 settingsViewModel: settingsViewModel,
-                onboardingRerunCoordinator: onboardingRerunCoordinator
+                onboardingRerunCoordinator: onboardingRerunCoordinator,
+                sceneCoordinator: projectBoardSceneCoordinator
             )
             .preferredColorScheme(effectiveAppearancePreference.colorScheme)
             .environment(\.locale, effectiveLanguagePreference.locale)
@@ -64,7 +67,11 @@ struct SoloPM: App {
         .defaultSize(width: 680, height: 640)
 
         MenuBarExtra {
-            MenuBarPanel(controller: menuBarController, quickCaptureController: menuBarQuickCaptureController)
+            MenuBarPanel(
+                controller: menuBarController,
+                quickCaptureController: menuBarQuickCaptureController,
+                sceneCoordinator: projectBoardSceneCoordinator
+            )
                 .preferredColorScheme(effectiveAppearancePreference.colorScheme)
                 .environment(\.locale, effectiveLanguagePreference.locale)
         } label: {
@@ -165,8 +172,10 @@ private struct SoloPMWindowCommands: Commands {
 private struct ProjectBoardWindowRootView: View {
     @ObservedObject var settingsViewModel: AppSettingsViewModel
     @ObservedObject var onboardingRerunCoordinator: OnboardingRerunCoordinator
+    @ObservedObject var sceneCoordinator: ProjectBoardSceneCoordinator
     @State private var viewModel: ProjectBoardViewModel?
-    @State private var windowID = UUID()
+    @State private var provisionalSceneID = UUID()
+    @SceneStorage(ProjectBoardScenePersistence.sceneIDStorageKey) private var storedSceneIDRawValue = ""
     @State private var isPrimaryOnboardingWindow = false
     @State private var isOnboardingPresented = false
     @AppStorage(FirstRunOnboardingGate.dismissedDefaultsKey) private var hasDismissedOnboarding = false
@@ -181,12 +190,13 @@ private struct ProjectBoardWindowRootView: View {
             }
         }
         .onAppear {
-            isPrimaryOnboardingWindow = onboardingRerunCoordinator.register(windowID: windowID)
+            persistSceneIdentityIfNeeded()
+            isPrimaryOnboardingWindow = onboardingRerunCoordinator.register(windowID: sceneID)
             migrateOnboardingStateIfNeeded()
             // Consume a pending rerun immediately so a Settings tap that
             // arrived before the Project Board window mounted still opens the
             // sheet in this newly-registered primary window.
-            if onboardingRerunCoordinator.consumePendingRerun(for: windowID) != nil {
+            if onboardingRerunCoordinator.consumePendingRerun(for: sceneID) != nil {
                 isOnboardingPresented = true
             } else {
                 isOnboardingPresented = FirstRunOnboardingGate.shouldPresent(
@@ -195,7 +205,7 @@ private struct ProjectBoardWindowRootView: View {
             }
         }
         .onDisappear {
-            onboardingRerunCoordinator.unregister(windowID: windowID)
+            onboardingRerunCoordinator.unregister(windowID: sceneID)
             isPrimaryOnboardingWindow = false
         }
         .sheet(isPresented: $isOnboardingPresented) {
@@ -212,12 +222,12 @@ private struct ProjectBoardWindowRootView: View {
             // Atomically check + mark the pending rerun so the same token can
             // never be consumed by more than one window even if multiple
             // Project Board windows are open when the Settings button is hit.
-            if onboardingRerunCoordinator.consumePendingRerun(for: windowID) != nil {
+            if onboardingRerunCoordinator.consumePendingRerun(for: sceneID) != nil {
                 isOnboardingPresented = true
             }
         }
         .onChange(of: onboardingRerunCoordinator.primaryWindowID) { _, newPrimary in
-            isPrimaryOnboardingWindow = newPrimary == windowID
+            isPrimaryOnboardingWindow = newPrimary == sceneID
         }
         .task {
             guard viewModel == nil else {
@@ -235,6 +245,19 @@ private struct ProjectBoardWindowRootView: View {
                 viewModel = AppRuntimeFactory.makeProjectBoardViewModel(runtime: runtime)
             }
         }
+    }
+
+    private var sceneID: UUID {
+        UUID(uuidString: storedSceneIDRawValue) ?? provisionalSceneID
+    }
+
+    private func persistSceneIdentityIfNeeded() {
+        guard UUID(uuidString: storedSceneIDRawValue) == nil else {
+            return
+        }
+        // SceneStorage makes the identity survive SwiftUI view reconstruction
+        // and state restoration without turning it into process-wide state.
+        storedSceneIDRawValue = provisionalSceneID.uuidString
     }
 
     private func migrateOnboardingStateIfNeeded() {
@@ -255,6 +278,8 @@ private struct ProjectBoardWindowRootView: View {
         } else {
             ProjectBoardView(
                 viewModel: viewModel,
+                sceneID: sceneID,
+                sceneCoordinator: sceneCoordinator,
                 taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution },
                 appSettings: { settingsViewModel.settings },
                 developmentAutomationReviewSession: AppRuntimeFactory.makeReviewSessionViewModel
@@ -381,6 +406,7 @@ private struct ProjectBoardFallbackRootView: View {
     private let appSettings: () -> AppSettings
     @State private var viewModel: ProjectBoardViewModel?
     @State private var isProjectBoardReady = false
+    @State private var sceneID = UUID()
 
     init(
         taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings = { .default },
@@ -400,6 +426,8 @@ private struct ProjectBoardFallbackRootView: View {
             } else if let viewModel, isProjectBoardReady {
                 ProjectBoardView(
                     viewModel: viewModel,
+                    sceneID: sceneID,
+                    sceneCoordinator: ProjectBoardSceneCoordinator.shared,
                     taskAutomationSettings: taskAutomationSettings,
                     appSettings: appSettings,
                     developmentAutomationReviewSession: AppRuntimeFactory.makeReviewSessionViewModel
@@ -533,7 +561,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 // A digest is about today's work: land on Today, not the last
                 // visited destination, whether the window is reopened or reused.
-                ProjectBoardTodayNavigation.forceSelectToday()
+                _ = ProjectBoardSceneCoordinator.shared.requestOpen(route: .primary(.today))
                 self?.ensureProjectBoardWindowIsVisible()
             }
         }

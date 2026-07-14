@@ -439,6 +439,7 @@ struct VoiceCaptureView: View {
 
             if let result = viewModel.inboxCaptureResult {
                 VoiceInboxCaptureSavedPanel(result: result) {
+                    _ = ProjectBoardSceneCoordinator.shared.requestOpen(route: .primary(.inbox))
                     openWindow(id: "project-board")
                 }
             }
@@ -488,6 +489,12 @@ struct VoiceCaptureView: View {
 
     private func postDailyPlanningReviewRequest(_ request: VoiceDailyPlanningReviewRequest) {
         openWindow(id: "project-board")
+        let route: BoardRoute = request.requestedActionDraftKind == nil
+            ? .primary(.today)
+            : .review(.assistantQueue)
+        guard ProjectBoardSceneCoordinator.shared.requestOpen(id: request.id, route: route) != nil else {
+            return
+        }
         guard let bridgeRequest = SoloPMVoiceDailyPlanningReviewBridge.storePendingRequest(request) else {
             return
         }
@@ -500,6 +507,12 @@ struct VoiceCaptureView: View {
 
     private func postInboxTriageRequest(_ request: VoiceInboxTriageRequest) {
         openWindow(id: "project-board")
+        guard ProjectBoardSceneCoordinator.shared.requestOpen(
+            id: request.id,
+            route: .primary(.inbox)
+        ) != nil else {
+            return
+        }
         guard let bridgeRequest = SoloPMVoiceInboxTriageBridge.storePendingRequest(request) else {
             return
         }
@@ -512,6 +525,12 @@ struct VoiceCaptureView: View {
 
     private func postAssistantQueueOpenRequest() {
         guard let bridgeRequest = SoloPMAssistantQueueBridge.storePendingOpen(itemID: viewModel.assistantQueueExecutionHandoffItemID) else {
+            return
+        }
+        guard ProjectBoardSceneCoordinator.shared.requestOpen(
+            id: bridgeRequest.id,
+            route: .review(.assistantQueue)
+        ) != nil else {
             return
         }
         openWindow(id: "project-board")

@@ -857,7 +857,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(fixture.contains("SOLOPM_LAYOUT_STABILITY_WINDOW_WIDE_WIDTH"))
 
         XCTAssertTrue(boardSource.contains("restoreSelectedDestinationIfNeeded()"))
-        XCTAssertTrue(boardSource.contains("ProjectBoardSelectionPersistence.destination("))
+        XCTAssertTrue(boardSource.contains("ProjectBoardScenePersistence.restoredRoute("))
+        XCTAssertTrue(boardSource.contains("ProjectBoardRouteCodec.route("))
         XCTAssertTrue(boardSource.contains("persistSelectedDestination(destination)"))
         XCTAssertTrue(boardSource.contains("applySelectedDestination(destination)"))
         XCTAssertTrue(persistenceSource.contains("Saved app state can outlive a project row"))
@@ -2490,8 +2491,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains(".onReceive(NotificationCenter.default.publisher(for: .soloPMVoiceDailyPlanningReviewRequested))"))
         XCTAssertTrue(boardSource.contains("consumePendingVoiceDailyPlanningReviewRequestIfNeeded"))
         XCTAssertTrue(boardSource.contains("SoloPMVoiceDailyPlanningReviewBridge.consumePendingRequest()"))
-        XCTAssertTrue(boardSource.contains("SoloPMVoiceDailyPlanningReviewBridge.hasRequestPayload(notification)"))
-        XCTAssertTrue(boardSource.contains("SoloPMVoiceDailyPlanningReviewBridge.consumeRequest(from: notification)"))
+        XCTAssertTrue(appSource.contains("ProjectBoardSceneCoordinator.shared.requestOpen(id: request.id, route: route)"))
+        XCTAssertTrue(boardSource.contains("sceneCoordinator.consume(requestID: request.id, for: sceneID)"))
+        XCTAssertFalse(boardSource.contains("consumedRequestIDs"))
         XCTAssertTrue(boardSource.contains("actionDraftKind: request.actionDraftKind"))
         XCTAssertTrue(boardSource.contains("handleVoiceDailyPlanningReviewRequest"))
         XCTAssertTrue(boardSource.contains("viewModel.prepareDailyPlanningReview(transcript:"))
@@ -2536,7 +2538,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains(".onReceive(NotificationCenter.default.publisher(for: .soloPMVoiceInboxTriageRequested))"))
         XCTAssertTrue(boardSource.contains("consumePendingVoiceInboxTriageRequestIfNeeded"))
         XCTAssertTrue(boardSource.contains("SoloPMVoiceInboxTriageBridge.consumePendingRequest()"))
-        XCTAssertTrue(boardSource.contains("consumedRequestIDs"))
+        XCTAssertTrue(appSource.contains("ProjectBoardSceneCoordinator.shared.requestOpen("))
+        XCTAssertTrue(boardSource.contains("sceneCoordinator.consume(requestID: request.id, for: sceneID)"))
+        XCTAssertFalse(boardSource.contains("consumedRequestIDs"))
         XCTAssertTrue(boardSource.contains("handleVoiceInboxTriageRequest"))
         XCTAssertTrue(boardSource.contains("viewModel.applyInboxVoiceTriageCommand(request.command)"))
         let openStart = try XCTUnwrap(boardSource.range(of: "private func openInboxForVoiceTriage()"))
@@ -2565,7 +2569,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains(".onReceive(NotificationCenter.default.publisher(for: .soloPMAssistantQueueRequested))"))
         XCTAssertTrue(boardSource.contains("consumePendingAssistantQueueRequestIfNeeded"))
         XCTAssertTrue(boardSource.contains("SoloPMAssistantQueueBridge.consumePendingOpen()"))
-        XCTAssertTrue(boardSource.contains("SoloPMAssistantQueueBridge.consumeRequest(from: notification)"))
+        XCTAssertTrue(appSource.contains("id: bridgeRequest.id"))
+        XCTAssertTrue(boardSource.contains("sceneCoordinator.consume(requestID: request.id, for: sceneID)"))
         XCTAssertTrue(boardSource.contains("selectedDestination = .assistantQueue"))
         XCTAssertTrue(boardSource.contains("viewModel.focusAssistantQueueExecutionHandoff(id: request.itemID)"))
         XCTAssertTrue(englishStrings.contains("\"Open Assistant Queue\""))
@@ -2913,7 +2918,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readAppShellSource()
 
         XCTAssertTrue(appSource.contains("@StateObject private var menuBarController: MenuBarSummaryController"))
-        XCTAssertTrue(appSource.contains("MenuBarPanel(controller: menuBarController, quickCaptureController: menuBarQuickCaptureController)"))
+        XCTAssertTrue(appSource.contains("quickCaptureController: menuBarQuickCaptureController,"))
+        XCTAssertTrue(appSource.contains("sceneCoordinator: projectBoardSceneCoordinator"))
         XCTAssertTrue(appSource.contains("makeMenuBarSummaryController()"))
         XCTAssertTrue(appSource.contains("MenuBarSummaryController {"))
         XCTAssertTrue(appSource.contains(".onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange))"))
@@ -2943,7 +2949,8 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(appSource.contains("@StateObject private var menuBarQuickCaptureController: MenuBarQuickCaptureController"))
         XCTAssertTrue(appSource.contains("_menuBarQuickCaptureController = StateObject(wrappedValue: AppRuntimeFactory.makeMenuBarQuickCaptureController())"))
-        XCTAssertTrue(appSource.contains("MenuBarPanel(controller: menuBarController, quickCaptureController: menuBarQuickCaptureController)"))
+        XCTAssertTrue(appSource.contains("quickCaptureController: menuBarQuickCaptureController,"))
+        XCTAssertTrue(appSource.contains("sceneCoordinator: projectBoardSceneCoordinator"))
         XCTAssertTrue(appSource.contains("@ObservedObject var quickCaptureController: MenuBarQuickCaptureController"))
         XCTAssertTrue(appSource.contains("@State private var quickCaptureTitle = \"\""))
         XCTAssertTrue(appSource.contains("TextField(\"Quick add to Inbox\", text: $quickCaptureTitle)"))
@@ -5312,7 +5319,7 @@ final class AppExperienceSourceTests: XCTestCase {
             "Coordinator must expose an atomic consumePendingRerun API for window registration"
         )
         XCTAssertTrue(
-            appSource.contains("onboardingRerunCoordinator.consumePendingRerun(for: windowID)"),
+            appSource.contains("onboardingRerunCoordinator.consumePendingRerun(for: sceneID)"),
             "ProjectBoardWindowRootView must consume pending rerun on appear"
         )
         XCTAssertTrue(

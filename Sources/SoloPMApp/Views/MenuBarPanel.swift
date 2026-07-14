@@ -6,6 +6,7 @@ struct MenuBarPanel: View {
 
     @ObservedObject var controller: MenuBarSummaryController
     @ObservedObject var quickCaptureController: MenuBarQuickCaptureController
+    @ObservedObject var sceneCoordinator: ProjectBoardSceneCoordinator
     @State private var quickCaptureTitle = ""
 
     private var viewModel: MenuBarSummaryViewModel {
@@ -128,9 +129,9 @@ struct MenuBarPanel: View {
     }
 
     private func openBoardOnToday() {
-        // Shared routing with the digest notification path: persist the Today
-        // destination for a fresh window and notify an already-open board.
-        ProjectBoardTodayNavigation.forceSelectToday()
+        // A broadcast is claimed atomically by one registered board. The
+        // persisted value remains only the initial route for a new window.
+        _ = sceneCoordinator.requestOpen(route: .primary(.today))
         openWindow(id: "project-board")
     }
 
