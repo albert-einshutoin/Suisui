@@ -793,10 +793,12 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         let pattern = "%\(SQL.escapeLike(trimmed))%"
         return try connection.queryRows(
             """
-            SELECT * FROM tasks
-            WHERE status != 'completed'
-              AND (title LIKE ? ESCAPE '\\' OR detail LIKE ? ESCAPE '\\')
-            ORDER BY id DESC
+            SELECT tasks.* FROM tasks
+            LEFT JOIN projects ON projects.id = tasks.project_id
+            WHERE tasks.status != 'completed'
+              AND (tasks.project_id IS NULL OR projects.status != 'archived')
+              AND (tasks.title LIKE ? ESCAPE '\\' OR tasks.detail LIKE ? ESCAPE '\\')
+            ORDER BY tasks.id DESC
             LIMIT ?;
             """,
             parameters: [.text(pattern), .text(pattern), .integer(Int64(limit))]

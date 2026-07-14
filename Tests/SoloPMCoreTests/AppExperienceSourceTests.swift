@@ -693,8 +693,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("static let portfolioCardMinHeight: CGFloat = 230"))
         XCTAssertTrue(source.contains("static let overviewPanelMinHeight: CGFloat = 170"))
         XCTAssertTrue(source.contains("static let displayModePickerWidth: CGFloat = 252"))
-        XCTAssertTrue(source.contains("static let sidebarColumnMinWidth: CGFloat = 200"))
-        XCTAssertTrue(source.contains("static let sidebarColumnIdealWidth: CGFloat = 220"))
+        XCTAssertTrue(source.contains("static let sidebarColumnMinWidth: CGFloat = 180"))
+        XCTAssertTrue(source.contains("static let sidebarColumnIdealWidth: CGFloat = 200"))
         XCTAssertTrue(source.contains("static let boardColumnWidth: CGFloat = 204"))
         XCTAssertTrue(source.contains("static let emptyColumnMinHeight: CGFloat = 82"))
         XCTAssertTrue(source.contains("static let inlinePriorityPickerWidth: CGFloat = 112"))
@@ -722,6 +722,37 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".minimumScaleFactor(0.82)"))
         XCTAssertTrue(source.contains(".help(task.title)"))
         XCTAssertTrue(source.contains(".help(task.detail)"))
+    }
+
+    func testCommandPaletteClearsStaleContentBeforeStartingAnotherDebouncedSearch() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/CommandPaletteView.swift")
+        let searchFunction = try sourceBlock(
+            in: source,
+            from: "private func scheduleContentSearch(for newQuery: String)",
+            to: "private func moveSelection("
+        )
+        let clearRange = try XCTUnwrap(searchFunction.range(of: "contentItems = []"))
+        let providerGuardRange = try XCTUnwrap(searchFunction.range(of: "guard let contentSearch"))
+        let taskRange = try XCTUnwrap(searchFunction.range(of: "contentSearchTask = Task"))
+
+        XCTAssertLessThan(clearRange.lowerBound, providerGuardRange.lowerBound)
+        XCTAssertLessThan(clearRange.lowerBound, taskRange.lowerBound)
+    }
+
+    func testFullVisualCaptureFinishesBoardAndSettingsRoutesBeforeVoiceWindows() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+        let fullCaptureStart = try XCTUnwrap(
+            script.range(of: "capture_project_board_destination light \"$PROJECT_BOARD_SELECTION_OVERRIDE\"")
+        )
+        let fullCapture = String(script[fullCaptureStart.lowerBound...])
+        let lastBoardRoute = try XCTUnwrap(
+            fullCapture.range(of: "capture_mcp_settings_appearance system")
+        )
+        let firstVoiceRoute = try XCTUnwrap(
+            fullCapture.range(of: "capture_voice_command_appearance light")
+        )
+
+        XCTAssertLessThan(lastBoardRoute.lowerBound, firstVoiceRoute.lowerBound)
     }
 
     func testProjectBoardLongContentFixtureMapsToResponsiveGuards() throws {

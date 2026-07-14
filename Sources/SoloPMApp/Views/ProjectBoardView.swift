@@ -26,9 +26,11 @@ private enum ProjectBoardLayoutMetrics {
     // Sidebar bounds keep every fixed destination label ("Assistant Queue" is
     // the widest at ~105pt for 15 characters of 13pt SF Pro, plus ~24pt icon
     // column, 8pt gap, and a ~16pt count badge ≈ 185pt with row insets)
-    // readable without truncation at the 1024pt canonical window width.
-    static let sidebarColumnMinWidth: CGFloat = 200
-    static let sidebarColumnIdealWidth: CGFloat = 220
+    // readable without truncation at the 1024pt canonical window width. The
+    // native split chrome contributes another 20pt, so the ideal must stay at
+    // 200pt to keep the shared header and 300pt inspector inside that viewport.
+    static let sidebarColumnMinWidth: CGFloat = 180
+    static let sidebarColumnIdealWidth: CGFloat = 200
     static let terminalPanelMinHeight: CGFloat = 220
     static let terminalPanelIdealHeight: CGFloat = 280
     static let terminalPanelMaxHeight: CGFloat = 360

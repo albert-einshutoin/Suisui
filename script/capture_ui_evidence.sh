@@ -1941,9 +1941,6 @@ capture_project_board_destination system inbox "$INBOX_SYSTEM_SCREENSHOT" "Inbox
 capture_project_board_destination light today "$TODAY_LIGHT_SCREENSHOT" "Today" "$TODAY_TARGET_MARKERS" "" "" "today-workflow"
 capture_project_board_destination dark today "$TODAY_DARK_SCREENSHOT" "Today" "$TODAY_TARGET_MARKERS" "" "" "today-workflow"
 capture_project_board_destination system today "$TODAY_SYSTEM_SCREENSHOT" "Today" "$TODAY_TARGET_MARKERS" "" "" "today-workflow"
-capture_voice_command_appearance light "$VOICE_COMMAND_LIGHT_SCREENSHOT"
-capture_voice_command_appearance dark "$VOICE_COMMAND_DARK_SCREENSHOT"
-capture_voice_command_appearance system "$VOICE_COMMAND_SYSTEM_SCREENSHOT"
 capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_ROUTE_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail" "$INBOX_VOICE_TARGET_MARKERS"
 capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_ROUTE_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail" "$INBOX_VOICE_TARGET_MARKERS"
 capture_project_board_destination light projects "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS" "" "" "projects-portfolio-overview"
@@ -1965,6 +1962,11 @@ capture_settings_appearance system "$SETTINGS_APPEARANCE_SYSTEM_SCREENSHOT"
 capture_mcp_settings_appearance light "$MCP_SETTINGS_LIGHT_SCREENSHOT"
 capture_mcp_settings_appearance dark "$MCP_SETTINGS_DARK_SCREENSHOT"
 capture_mcp_settings_appearance system "$MCP_SETTINGS_SYSTEM_SCREENSHOT"
+# Voice Command is a separate singleton window. Capture it last so closing it
+# never has to restore a Project Board/Settings scene in the same evidence run.
+capture_voice_command_appearance light "$VOICE_COMMAND_LIGHT_SCREENSHOT"
+capture_voice_command_appearance dark "$VOICE_COMMAND_DARK_SCREENSHOT"
+capture_voice_command_appearance system "$VOICE_COMMAND_SYSTEM_SCREENSHOT"
 
 GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 write_visual_ax_audit_receipt "$SOURCE_COMMIT"

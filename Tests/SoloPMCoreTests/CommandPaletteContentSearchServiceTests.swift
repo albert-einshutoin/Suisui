@@ -66,6 +66,30 @@ final class CommandPaletteContentSearchServiceTests: XCTestCase {
         )
     }
 
+    func testTasksInArchivedProjectsAreExcludedWhileInboxAndActiveTasksRemainSearchable() throws {
+        let connection = try migratedConnection()
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let service = CommandPaletteContentSearchService(
+            taskStore: taskStore,
+            knowledgeFrameStore: SQLiteKnowledgeFrameStore(connection: connection)
+        )
+        let activeProject = try projectStore.create(title: "Active")
+        let archivedProject = try projectStore.create(title: "Archived")
+        _ = try projectStore.archive(id: archivedProject.id)
+        let activeTask = try taskStore.create(title: "Review launch brief", projectID: activeProject.id)
+        _ = try taskStore.create(title: "Review archived brief", projectID: archivedProject.id)
+        let inboxTask = try taskStore.create(title: "Review inbox brief")
+
+        XCTAssertEqual(
+            service.search(query: "review").map(\.source),
+            [
+                .task(id: inboxTask.id, projectID: nil),
+                .task(id: activeTask.id, projectID: activeProject.id),
+            ]
+        )
+    }
+
     func testResultsAreCappedAtComposerLimit() throws {
         let connection = try migratedConnection()
         let taskStore = SQLiteTaskStore(connection: connection)

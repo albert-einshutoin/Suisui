@@ -230,9 +230,12 @@ struct CommandPaletteView: View {
     private func scheduleContentSearch(for newQuery: String) {
         contentSearchTask?.cancel()
         let trimmedQuery = newQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Content rows belong to the previous query. Clear them before the
+        // debounce so keyboard and pointer actions can never execute stale
+        // results while the next SQLite lookup is pending.
+        contentItems = []
         guard let contentSearch,
               trimmedQuery.count >= CommandPaletteComposer.minimumContentSearchQueryLength else {
-            contentItems = []
             return
         }
 
@@ -245,6 +248,9 @@ struct CommandPaletteView: View {
                 contentSearch(trimmedQuery)
             }.value
             guard !Task.isCancelled else {
+                return
+            }
+            guard query.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedQuery else {
                 return
             }
             contentItems = CommandPaletteComposer.contentItems(query: trimmedQuery, matches: matches)
