@@ -110,6 +110,24 @@ public enum ProjectBoardSelectionPersistence {
         }
     }
 
+    /// Persists typed routes using the new stable codec while the existing
+    /// sidebar destination overload remains available during the UI migration.
+    public static func rawValue(forTypedRoute route: BoardRoute) -> String {
+        ProjectBoardRouteCodec.rawValue(for: route)
+    }
+
+    /// Adapts the existing project model input to the typed route codec without
+    /// changing the legacy destination API still used by the current UI.
+    public static func route(
+        from rawValue: String,
+        availableProjects: [ProjectBoardProject]
+    ) -> BoardRoute {
+        ProjectBoardRouteCodec.route(
+            from: rawValue,
+            availableProjectIDs: Set(availableProjects.map(\.id))
+        )
+    }
+
     public static func destination(
         from rawValue: String,
         availableProjects: [ProjectBoardProject]

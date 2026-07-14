@@ -93,6 +93,36 @@ final class ProjectBoardSelectionPersistenceTests: XCTestCase {
         )
     }
 
+    func testTypedRouteAdapterAcceptsLegacyFixtureValuesWithoutChangingLegacyDestinationAPI() {
+        let projects = [makeProject(id: 42)]
+
+        XCTAssertEqual(
+            ProjectBoardSelectionPersistence.route(
+                from: "assistant-queue",
+                availableProjects: projects
+            ),
+            .review(.assistantQueue)
+        )
+        XCTAssertEqual(
+            ProjectBoardSelectionPersistence.destination(
+                from: "assistant-queue",
+                availableProjects: projects
+            ),
+            .assistantQueue
+        )
+    }
+
+    func testTypedRouteAdapterEmitsStableNewRawValues() {
+        XCTAssertEqual(
+            ProjectBoardSelectionPersistence.rawValue(forTypedRoute: .primary(.review)),
+            "primary:review"
+        )
+        XCTAssertEqual(
+            ProjectBoardSelectionPersistence.rawValue(forTypedRoute: .review(.automationActivity)),
+            "review:automation"
+        )
+    }
+
     func testEnvironmentOverrideTrimsWhitespaceAndIgnoresEmptyValues() {
         setenv(ProjectBoardSelectionPersistence.environmentOverrideKey, "  project:42  ", 1)
         XCTAssertEqual(ProjectBoardSelectionPersistence.environmentOverrideRawValue, "project:42")
