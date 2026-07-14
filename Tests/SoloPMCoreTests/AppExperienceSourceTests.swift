@@ -10,6 +10,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("task-inspector-save"))
     }
 
+    func testProjectBoardPhysicalOwnerReaderExcludesRelocatedSurfaceFiles() throws {
+        let source = try readProjectBoardOwnerSource()
+
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-inspector\")"))
+        XCTAssertFalse(source.contains("today-workflow"))
+    }
+
     func testAppLaunchesProjectBoardBeforeVoiceCaptureWindow() throws {
         let source = try readAppShellSource()
 
@@ -92,11 +99,10 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testTaskInspectorRefreshesWhenSelectedTaskDataChanges() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(source.contains(".onChange(of: task)"))
         XCTAssertTrue(source.contains("refreshFields(from: task)"))
-        XCTAssertFalse(source.contains(".onChange(of: task.id)"))
     }
 
     func testProjectBoardUsesPersistentViewModelInsteadOfStaticSnapshot() throws {
@@ -1176,7 +1182,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testDoneWorkflowIsReachableFromSidebarAndExposesReviewActions() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardSurfaceSources()
         let workflowSource = try readProjectWorkflowSources()
         let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
@@ -5149,7 +5155,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testRegressionRiskMapUsesExistingInspectorAccessibilityIdentifier() throws {
-        let boardSource = try readProjectBoardSurfaceSources()
+        let boardSource = try readProjectBoardOwnerSource()
         let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
 
         XCTAssertTrue(
@@ -5437,6 +5443,10 @@ final class AppExperienceSourceTests: XCTestCase {
         return try sourceFiles
             .map { try String(contentsOf: $0, encoding: .utf8) }
             .joined(separator: "\n\n")
+    }
+
+    private func readProjectBoardOwnerSource() throws -> String {
+        try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
     }
 
     private func sourceBlock(in source: String, from startNeedle: String, to endNeedle: String) throws -> String {

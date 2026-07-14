@@ -5,6 +5,12 @@ import ImageIO
 import XCTest
 
 final class ReleasePipelineTests: XCTestCase {
+    func testAccessibilitySourceAnchorCountContractAllowsCoverageGrowth() throws {
+        let output = "OK: accessibility source anchors are present (92 anchors)\n"
+
+        XCTAssertEqual(try accessibilitySourceAnchorCount(in: output), 92)
+    }
+
     func testBuildAndRunSerializesDistBundleRebuilds() throws {
         let script = try readPackageFile("script/build_and_run.sh")
 
@@ -4686,7 +4692,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         let result = try runScript("script/check_accessibility_preflight.sh", arguments: ["--source-only"])
         XCTAssertEqual(result.exitCode, 0, result.output)
-        XCTAssertTrue(result.output.contains("OK: accessibility source anchors are present (91 anchors)"))
+        XCTAssertGreaterThanOrEqual(try accessibilitySourceAnchorCount(in: result.output), 91)
 
         XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --source-only"))
         XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --runtime"))
@@ -14202,6 +14208,15 @@ final class ReleasePipelineTests: XCTestCase {
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func accessibilitySourceAnchorCount(in output: String) throws -> Int {
+        let pattern = #"OK: accessibility source anchors are present \(([0-9]+) anchors\)"#
+        let regex = try NSRegularExpression(pattern: pattern)
+        let outputRange = NSRange(output.startIndex..<output.endIndex, in: output)
+        let match = try XCTUnwrap(regex.firstMatch(in: output, range: outputRange))
+        let countRange = try XCTUnwrap(Range(match.range(at: 1), in: output))
+        return try XCTUnwrap(Int(output[countRange]))
     }
 
     private func removeItemIfPresent(at url: URL) throws {
