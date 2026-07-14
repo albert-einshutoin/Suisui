@@ -1130,7 +1130,10 @@ capture_visible_window() {
   # different subpixel layouts for the same product state.
   target_frame_audit="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name")"
 
-  if ! screencapture -x -l "$window_id" "$output_path"; then
+  # Window shadows change raster bounds depending on transient activation
+  # state. Excluding them binds repeated captures to the logical viewport
+  # instead of nondeterministic compositor padding.
+  if ! screencapture -x -o -l "$window_id" "$output_path"; then
     if ! screencapture -x -R "${window_x},${window_y},${window_width},${window_height}" "$output_path"; then
       print_capture_failure_guidance "$label" "$output_path" "$window_context"
       echo "screen capture failed. Grant Screen Recording permission to the terminal/Codex app and rerun." >&2
