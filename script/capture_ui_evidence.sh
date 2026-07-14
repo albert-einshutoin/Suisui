@@ -753,8 +753,12 @@ on run argv
         if not (exists window windowName) then error "missing named evidence window: " & windowName
         set targetWindow to window windowName
       else
-        if not (exists front window) then error "missing front evidence window"
-        set targetWindow to front window
+        -- The capture process is PID-scoped and owns one product window here.
+        -- `front window` can transiently disappear after an AX sidebar press
+        -- even though the owned window remains published, so select it from
+        -- the process window collection just as activation does.
+        if (count of windows) is 0 then error "missing owned evidence window"
+        set targetWindow to window 1
       end if
       set position of targetWindow to {originX, originY}
       set size of targetWindow to {targetWidth, targetHeight}
