@@ -532,6 +532,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(headerSource.contains(".pickerStyle(.segmented)"))
     }
 
+    func testProjectBoardInspectorCanCompressInsideHostedMinimumWindow() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(
+            boardSource.contains(".inspectorColumnWidth(min: 276, ideal: 300, max: 420)"),
+            "The inspector must yield the 24pt native split-view squeeze at the hosted 980pt window width."
+        )
+    }
+
     func testProjectBoardHeaderKeepsActionsInSynchronousSwiftUILayout() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let headerStart = try XCTUnwrap(boardSource.range(of: "private var projectBoardHeaderBar: some View"))

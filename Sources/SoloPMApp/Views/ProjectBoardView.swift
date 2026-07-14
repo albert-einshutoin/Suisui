@@ -315,10 +315,11 @@ struct ProjectBoardView: View {
                         EmptyView()
                     }
                 }
-                // The 300pt ideal (down from 340) splits the 1024pt-width
-                // squeeze with the narrower board columns so two columns plus
-                // the inspector fit without horizontal clipping.
-                .inspectorColumnWidth(min: 300, ideal: 300, max: 420)
+                // Keep 300pt as the comfortable editing width, but allow the
+                // inspector to yield the native split view's 24pt squeeze at
+                // the hosted 980pt minimum window instead of clipping the
+                // header and inspector beyond the owned window.
+                .inspectorColumnWidth(min: 276, ideal: 300, max: 420)
             }
         }
         .frame(
