@@ -77,21 +77,23 @@ guard visiblePixelCount >= minimumVisiblePixels else {
     exit(1)
 }
 
-// A shadowless window raster should be opaque across the logical viewport.
-// Large transparent holes render as black in common artifact viewers and mean
-// the compositor published only part of the window surface.
-if transparentPixelCount * 100 > sampleWidth * sampleHeight * 5 {
-    fputs("Screenshot contains large transparent regions: \(imagePath)\n", stderr)
-    exit(1)
-}
+if ProcessInfo.processInfo.environment["SOLOPM_UI_EVIDENCE_ALLOW_DESKTOP_BACKGROUND"] != "1" {
+    // These checks apply to owned, shadowless window evidence. The runner
+    // capability probe captures the whole desktop, where a black wallpaper is
+    // valid and must not be mistaken for an incompletely composed app window.
+    if transparentPixelCount * 100 > sampleWidth * sampleHeight * 5 {
+        fputs("Screenshot contains large transparent regions: \(imagePath)\n", stderr)
+        exit(1)
+    }
 
-// A headless macOS compositor can transiently publish an otherwise valid
-// window with large, opaque-black layer holes. Dark appearance uses tinted
-// surfaces rather than pure black, so this catches incomplete composition
-// without rejecting the intentional dark theme.
-if opaqueBlackPixelCount * 100 > visiblePixelCount * 15 {
-    fputs("Screenshot contains large opaque-black regions: \(imagePath)\n", stderr)
-    exit(1)
+    // A headless macOS compositor can transiently publish an otherwise valid
+    // window with large, opaque-black layer holes. Dark appearance uses tinted
+    // surfaces rather than pure black, so this catches incomplete composition
+    // without rejecting the intentional dark theme.
+    if opaqueBlackPixelCount * 100 > visiblePixelCount * 15 {
+        fputs("Screenshot contains large opaque-black regions: \(imagePath)\n", stderr)
+        exit(1)
+    }
 }
 
 let luminanceRange = maximumLuminance - minimumLuminance
