@@ -114,13 +114,15 @@ final class ProjectBoardSelectionPersistenceTests: XCTestCase {
 
     func testTypedRouteAdapterEmitsStableNewRawValues() {
         XCTAssertEqual(
-            ProjectBoardSelectionPersistence.rawValue(forTypedRoute: .primary(.review)),
+            ProjectBoardSelectionPersistence.rawValue(for: BoardRoute.primary(.review)),
             "primary:review"
         )
         XCTAssertEqual(
-            ProjectBoardSelectionPersistence.rawValue(forTypedRoute: .review(.automationActivity)),
+            ProjectBoardSelectionPersistence.rawValue(for: BoardRoute.review(.automationActivity)),
             "review:automation"
         )
+        XCTAssertNil(ProjectBoardSelectionPersistence.rawValue(for: BoardRoute.project(0)))
+        XCTAssertNil(ProjectBoardSelectionPersistence.rawValue(for: BoardRoute.smartList(" invalid")))
     }
 
     func testEnvironmentOverrideTrimsWhitespaceAndIgnoresEmptyValues() {

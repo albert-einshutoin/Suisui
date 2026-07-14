@@ -1,3 +1,5 @@
+import Foundation
+
 /// The four stable top-level areas of the Project Board.
 public enum BoardPrimaryDestination: String, CaseIterable, Hashable, Sendable {
     case today
@@ -51,15 +53,21 @@ public enum ProjectBoardRouteCodec {
         }
     }
 
-    /// Encodes only the new stable representation so newly saved state no
-    /// longer depends on labels from the legacy sidebar information architecture.
-    public static func rawValue(for route: BoardRoute) -> String {
+    /// Encodes only valid routes in the new stable representation, returning
+    /// `nil` when an associated identifier cannot be decoded symmetrically.
+    public static func rawValue(for route: BoardRoute) -> String? {
         switch route {
         case .primary(let destination):
             return "primary:\(destination.rawValue)"
         case .project(let projectID):
+            guard Validation.accepts(projectID: projectID) else {
+                return nil
+            }
             return "project:\(projectID)"
         case .smartList(let smartListID):
+            guard Validation.accepts(smartListID: smartListID) else {
+                return nil
+            }
             return "smart-list:\(smartListID)"
         case .review(let reviewRoute):
             switch reviewRoute {
@@ -91,21 +99,39 @@ public enum ProjectBoardRouteCodec {
             // Persisted selections can outlive their database rows. Falling
             // back avoids restoring a route whose project can no longer load.
             guard let projectID = Int64(identifier),
-                  projectID > 0,
+                  Validation.accepts(projectID: projectID),
                   availableProjectIDs.contains(projectID) else {
                 return .primary(.today)
             }
             return .project(projectID)
         case "smart-list":
-            guard let firstCharacter = identifier.first,
-                  let lastCharacter = identifier.last,
-                  !firstCharacter.isWhitespace,
-                  !lastCharacter.isWhitespace else {
+            guard Validation.accepts(smartListID: identifier) else {
                 return .primary(.today)
             }
             return .smartList(identifier)
         default:
             return .primary(.today)
+        }
+    }
+
+    /// Route payload validity belongs to the codec rather than callers so
+    /// decoding and encoding cannot silently drift into asymmetric behavior.
+    private enum Validation {
+        static func accepts(projectID: Int64) -> Bool {
+            projectID > 0
+        }
+
+        static func accepts(smartListID: String) -> Bool {
+            guard let firstCharacter = smartListID.first,
+                  let lastCharacter = smartListID.last,
+                  !firstCharacter.isWhitespace,
+                  !lastCharacter.isWhitespace else {
+                return false
+            }
+
+            return !smartListID.unicodeScalars.contains { scalar in
+                CharacterSet.controlCharacters.contains(scalar)
+            }
         }
     }
 }

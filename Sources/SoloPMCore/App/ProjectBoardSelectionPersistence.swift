@@ -89,6 +89,11 @@ public enum ProjectBoardSelectionPersistence {
         return rawValue?.isEmpty == false ? rawValue : nil
     }
 
+    /// Temporary compatibility encoder for the current sidebar UI. This cannot
+    /// delegate to the typed codec yet because `.catchUp` must remain a distinct
+    /// selection until the four-area UI migration removes the legacy binding.
+    /// Remove it with `ProjectBoardSidebarDestination`, after all UI and fixture
+    /// consumers persist `BoardRoute` values instead.
     public static func rawValue(for destination: ProjectBoardSidebarDestination) -> String {
         switch destination {
         case .inbox:
@@ -112,7 +117,7 @@ public enum ProjectBoardSelectionPersistence {
 
     /// Persists typed routes using the new stable codec while the existing
     /// sidebar destination overload remains available during the UI migration.
-    public static func rawValue(forTypedRoute route: BoardRoute) -> String {
+    public static func rawValue(for route: BoardRoute) -> String? {
         ProjectBoardRouteCodec.rawValue(for: route)
     }
 
@@ -128,6 +133,9 @@ public enum ProjectBoardSelectionPersistence {
         )
     }
 
+    /// Temporary compatibility decoder paired with the legacy encoder above.
+    /// It intentionally preserves `.catchUp`; consolidating it into Today now
+    /// would change production UI behavior before the typed sidebar migration.
     public static func destination(
         from rawValue: String,
         availableProjects: [ProjectBoardProject]
