@@ -172,8 +172,9 @@ cleanup() {
 
 ui_evidence_product_source_commit() {
   local commit
+  local source_ref="${SOLOPM_VISUAL_SOURCE_REF:-HEAD}"
   commit="$(
-    git -C "$ROOT_DIR" log -1 --format=%H -- \
+    git -C "$ROOT_DIR" log -1 --format=%H "$source_ref" -- \
       Sources \
       Package.swift 2>/dev/null || true
   )"
@@ -279,9 +280,17 @@ emit_evidence_app_diagnostic() {
 
 open_evidence_app() {
   local env_args=()
+  local appearance_args=()
   while IFS= read -r -d '' env_arg; do
     env_args+=("$env_arg")
   done < <(app_env_args)
+  # The hosted GUI session does not guarantee a stable login-window theme.
+  # Keep the product preference set to `system`, while pinning the capture
+  # process' inherited system appearance to canonical Aqua for reproducible
+  # System evidence across local and hosted macOS runners.
+  if [[ "$APPEARANCE_OVERRIDE" == "system" ]]; then
+    appearance_args+=("-AppleInterfaceStyle" "Light")
+  fi
   stop_evidence_app
   : >"$EVIDENCE_APP_LOG"
   # Direct launch preserves the isolated database, appearance, selected route,
@@ -291,6 +300,7 @@ open_evidence_app() {
   /usr/bin/env -i PATH="$PATH" TMPDIR="$EVIDENCE_TMPDIR" "${env_args[@]}" \
     "$APP_BINARY" \
     -ApplePersistenceIgnoreState YES \
+    "${appearance_args[@]}" \
     -AppleLanguages "$APPLE_LANGUAGES" \
     -AppleLocale "$APPLE_LOCALE" \
     >>"$EVIDENCE_APP_LOG" 2>&1 &
@@ -1130,30 +1140,37 @@ capture_visible_window() {
   # different subpixel layouts for the same product state.
   target_frame_audit="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name")"
 
-  # Window shadows change raster bounds depending on transient activation
-  # state. Excluding them binds repeated captures to the logical viewport
-  # instead of nondeterministic compositor padding.
-  if ! screencapture -x -o -l "$window_id" "$output_path"; then
-    if ! screencapture -x -R "${window_x},${window_y},${window_width},${window_height}" "$output_path"; then
-      print_capture_failure_guidance "$label" "$output_path" "$window_context"
-      echo "screen capture failed. Grant Screen Recording permission to the terminal/Codex app and rerun." >&2
-      exit 1
+  local capture_attempt
+  local capture_attempts=3
+  local capture_ready=0
+  for ((capture_attempt = 1; capture_attempt <= capture_attempts; capture_attempt++)); do
+    rm -f "$output_path"
+    # Window shadows change raster bounds depending on transient activation
+    # state. Excluding them binds repeated captures to the logical viewport
+    # instead of nondeterministic compositor padding.
+    if screencapture -x -o -l "$window_id" "$output_path" \
+      || screencapture -x -R "${window_x},${window_y},${window_width},${window_height}" "$output_path"; then
+      if [[ -s "$output_path" ]] && assert_screenshot_has_visible_content "$output_path"; then
+        capture_ready=1
+        break
+      fi
     fi
-  fi
+    # AX readiness can precede the final compositor frame on hosted runners.
+    # Re-raise the same PID-owned window and retry instead of accepting a
+    # partially black raster as baseline evidence.
+    activate_evidence_app
+    position_window_for_capture "$window_name"
+    sleep 1
+  done
 
-  if [[ ! -s "$output_path" ]]; then
-    echo "screenshot was not created: $output_path" >&2
+  if [[ "$capture_ready" != "1" ]]; then
+    print_capture_failure_guidance "$label" "$output_path" "$window_context"
+    echo "screen capture did not produce complete visible content after ${capture_attempts} attempts." >&2
+    rm -f "$output_path"
     exit 1
   fi
 
   /usr/bin/sips -g pixelWidth -g pixelHeight "$output_path" >/dev/null
-
-  if ! assert_screenshot_has_visible_content "$output_path"; then
-    print_capture_failure_guidance "$label" "$output_path" "$window_context"
-    echo "This usually means Screen Recording permission is missing, the display is locked/headless, or the captured image is blank." >&2
-    rm -f "$output_path"
-    exit 1
-  fi
 
   local bytes
   bytes="$(wc -c <"$output_path" | tr -d '[:space:]')"

@@ -20,6 +20,7 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(workflow.contains("./scripts/ci.sh swiftpm"))
         XCTAssertTrue(workflow.contains("./scripts/ci.sh ui-runtime"))
         XCTAssertTrue(workflow.contains("./scripts/ci.sh ui-visual"))
+        XCTAssertTrue(workflow.contains("SOLOPM_VISUAL_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}"))
         XCTAssertTrue(workflow.contains("./scripts/ci.sh ui-performance"))
         XCTAssertFalse(workflow.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
     }

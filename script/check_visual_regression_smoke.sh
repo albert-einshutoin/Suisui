@@ -27,7 +27,8 @@ while [[ $# -gt 0 ]]; do
 done
 if [[ "$UPDATE_BASELINES" == 1 && "$ALLOW_UPDATE" != 1 ]]; then echo "BLOCKER: baseline update requires --allow-update" >&2; exit 1; fi
 if [[ -z "$CURRENT_SOURCE_COMMIT" ]]; then
-  CURRENT_SOURCE_COMMIT="$(git -C "$ROOT_DIR" log -1 --format=%H -- Sources Package.swift 2>/dev/null || true)"
+  SOURCE_REF="${SOLOPM_VISUAL_SOURCE_REF:-HEAD}"
+  CURRENT_SOURCE_COMMIT="$(git -C "$ROOT_DIR" log -1 --format=%H "$SOURCE_REF" -- Sources Package.swift 2>/dev/null || true)"
 fi
 [[ -n "$CURRENT_SOURCE_COMMIT" ]] || { echo "BLOCKER: current product source commit is unavailable; pass --current-source-commit" >&2; exit 1; }
 command -v swiftc >/dev/null 2>&1 || { echo "BLOCKER: swiftc is required for visual regression smoke" >&2; exit 2; }
