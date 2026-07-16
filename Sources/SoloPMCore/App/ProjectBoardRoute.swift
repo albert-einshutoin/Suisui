@@ -26,7 +26,7 @@ public enum BoardRoute: Hashable, Sendable {
 
 /// Deterministic conversion between persisted route strings and typed routes.
 public enum ProjectBoardRouteCodec {
-    /// Decodes both current stable values and legacy fixture values.
+    /// Decodes both current stable values and historical persisted values.
     public static func route(
         from rawValue: String,
         availableProjectIDs: Set<Int64>

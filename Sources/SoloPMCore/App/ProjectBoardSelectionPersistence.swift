@@ -89,11 +89,11 @@ public enum ProjectBoardSelectionPersistence {
         return rawValue?.isEmpty == false ? rawValue : nil
     }
 
-    /// Temporary compatibility encoder for the current sidebar UI. This cannot
-    /// delegate to the typed codec yet because `.catchUp` must remain a distinct
-    /// selection until the four-area UI migration removes the legacy binding.
-    /// Remove it with `ProjectBoardSidebarDestination`, after all UI and fixture
-    /// consumers persist `BoardRoute` values instead.
+    /// Temporary encoder for command and payload adapters that still speak the
+    /// former destination type. It cannot delegate to the typed codec because
+    /// `.catchUp` remains a distinct compatibility signal while `BoardRoute`
+    /// renders it contextually inside Today. Remove this with
+    /// `ProjectBoardSidebarDestination` after every adapter uses `BoardRoute`.
     public static func rawValue(for destination: ProjectBoardSidebarDestination) -> String {
         switch destination {
         case .inbox:
