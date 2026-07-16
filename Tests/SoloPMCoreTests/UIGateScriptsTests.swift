@@ -244,6 +244,28 @@ final class UIGateScriptsTests: XCTestCase {
         XCTAssertFalse(summary.contains(NSHomeDirectory()))
     }
 
+    func testLayoutResizeReacquiresNamedOwnedWindowUntilRequestedWidthIsObserved() throws {
+        let script = try readPackageFile("script/check_layout_stability_smoke.sh")
+
+        XCTAssertTrue(script.contains("set targetWindow to missing value"))
+        XCTAssertTrue(script.contains("repeat with currentWindow in windows"))
+        XCTAssertTrue(script.contains("if currentName is requestedName then set targetWindow to currentWindow"))
+        XCTAssertTrue(script.contains("if targetWindow is missing value then error \"named pid-owned window missing\""))
+        XCTAssertTrue(script.contains("read_window_metadata >/dev/null 2>&1"))
+        XCTAssertTrue(script.contains("if [[ \"$window_width\" -eq \"$expected_width\" ]]; then"))
+        XCTAssertTrue(script.contains("INFO: reapplying owned window size"))
+    }
+
+    func testVisualPositioningRewaitsForOwnedWindowAfterRouteRecreation() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+
+        XCTAssertTrue(script.contains("wait_for_owned_evidence_window()"))
+        XCTAssertTrue(script.contains("ax_wait_for_pid_owned_window \"$APP_NAME\" \"$EVIDENCE_APP_PID\" \"$window_name\""))
+        XCTAssertTrue(script.contains("if ! wait_for_owned_evidence_window \"$window_name\"; then"))
+        XCTAssertTrue(script.contains("INFO: waiting for recreated owned evidence window before positioning"))
+        XCTAssertTrue(script.contains("wait_for_window_capture_metadata \"$window_name\""))
+    }
+
     private func packageRoot() -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

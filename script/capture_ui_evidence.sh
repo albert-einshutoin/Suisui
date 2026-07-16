@@ -465,6 +465,13 @@ wait_for_window_capture_metadata() {
   find_window_capture_metadata "$window_name"
 }
 
+wait_for_owned_evidence_window() {
+  local window_name="${1:-}"
+
+  ax_wait_for_pid_owned_window "$APP_NAME" "$EVIDENCE_APP_PID" "$window_name" \
+    "$TARGET_TIMEOUT_SECONDS" "" "$APP_BINARY"
+}
+
 target_marker_present() {
   local identifier="$1"
   local text="$2"
@@ -725,14 +732,21 @@ position_window_for_capture() {
 
   local width="${viewport%x*}"
   local height="${viewport#*x}"
-  local position_attempts=3
-  local position_attempt
+  local deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
+  local window_metadata
+  local window_id window_x window_y window_width window_height
   if [[ ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
     echo "invalid viewport: $viewport" >&2
     return 2
   fi
 
-  for ((position_attempt = 1; position_attempt <= position_attempts; position_attempt++)); do
+  while true; do
+    if ! wait_for_owned_evidence_window "$window_name"; then
+      echo "failure_category=window" >&2
+      echo "failure_message=visual-owned-window-unavailable" >&2
+      return 1
+    fi
+
     if /usr/bin/osascript - "$EVIDENCE_APP_PID" "$window_name" "$origin_x" "$origin_y" "$width" "$height" <<'APPLESCRIPT' >/dev/null
 on run argv
   set appPID to item 1 of argv as integer
@@ -765,15 +779,24 @@ on run argv
 end run
 APPLESCRIPT
     then
-      return 0
+      if window_metadata="$(wait_for_window_capture_metadata "$window_name" 2>/dev/null)"; then
+        read -r window_id window_x window_y window_width window_height <<<"$window_metadata"
+        if [[ "$window_width" -eq "$width" && "$window_height" -eq "$height" ]]; then
+          return 0
+        fi
+      fi
     fi
-    if [[ "$position_attempt" -lt "$position_attempts" ]]; then
-      # AX can transiently publish an empty process window collection while
-      # SwiftUI changes routes. Reactivate the same owned PID and retry only
-      # the positioning step so the audited route cannot switch underneath us.
-      activate_evidence_app
-      sleep 0.25
+
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      break
     fi
+
+    # SwiftUI can replace the route window after the initial AX wait. Reacquire
+    # the window from the same owned PID before retrying, instead of falling
+    # through to another process or accepting stale CG metadata.
+    echo "INFO: waiting for recreated owned evidence window before positioning" >&2
+    activate_evidence_app
+    sleep 0.25
   done
 
   echo "failure_category=window" >&2

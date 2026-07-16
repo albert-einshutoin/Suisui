@@ -413,43 +413,69 @@ set_project_board_window_size() {
   local height="$2"
   local expected_width="${3:-$width}"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local attempt=0
+  local window_id window_x window_y window_width window_height
   # Resize the real app window through AX so the smoke covers AppKit/SwiftUI
-  # bridge behavior instead of only source-level layout contracts.
+  # bridge behavior instead of only source-level layout contracts. Route and
+  # inspector transitions can recreate the SwiftUI window after AX accepted a
+  # resize, so reacquire the named PID-owned window and reapply until fresh CG
+  # metadata proves the requested width.
   while true; do
-    if /usr/bin/osascript - "$app_pid" "$width" "$height" <<'APPLESCRIPT' >/dev/null 2>&1
+    attempt=$((attempt + 1))
+    if wait_for_visible_windows >/dev/null 2>&1 &&
+      /usr/bin/osascript - "$app_pid" "$WINDOW_NAME" "$width" "$height" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
   set appPID to (item 1 of argv) as integer
-  set targetWidth to (item 2 of argv) as integer
-  set targetHeight to (item 3 of argv) as integer
+  set requestedName to item 2 of argv
+  set targetWidth to (item 3 of argv) as integer
+  set targetHeight to (item 4 of argv) as integer
   tell application "System Events"
     set appMatches to application processes whose unix id is appPID
     if (count of appMatches) is 0 then error "process missing"
     set targetProcess to item 1 of appMatches
     tell targetProcess
-      if not (exists window 1) then error "window missing"
+      set targetWindow to missing value
+      repeat with currentWindow in windows
+        set currentName to ""
+        try
+          set currentName to name of currentWindow as text
+        end try
+        if currentName is requestedName then set targetWindow to currentWindow
+      end repeat
+      if targetWindow is missing value then error "named pid-owned window missing"
       set frontmost to true
       try
-        perform action "AXRaise" of window 1
+        perform action "AXRaise" of targetWindow
       end try
-      set size of window 1 to {targetWidth, targetHeight}
+      set size of targetWindow to {targetWidth, targetHeight}
+      set actualSize to size of targetWindow
+      -- AppKit may clamp height to the window's current minimum. Width is the
+      -- layout contract exercised by this smoke and must be accepted exactly.
+      if item 1 of actualSize is not targetWidth then
+        error "pid-owned window rejected requested width"
+      end if
     end tell
   end tell
 end run
 APPLESCRIPT
     then
-      break
+      if read_window_metadata >/dev/null 2>&1 && window_metadata_has_positive_bounds; then
+        read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE"
+        if [[ "$window_width" -eq "$expected_width" ]]; then
+          return 0
+        fi
+      fi
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: failed to resize owned app window pid=$app_pid to ${width}x${height}" >&2
+      echo "BLOCKER: failed to resize named PID-owned app window pid=$app_pid to ${width}x${height} (observed=${window_width:-unknown}x${window_height:-unknown})" >&2
       return 1
     fi
+    if [[ "$attempt" -gt 1 ]]; then
+      echo "INFO: reapplying owned window size after route/window recreation (attempt=$attempt target=${width}x${height} observed=${window_width:-unknown}x${window_height:-unknown})" >&2
+    fi
     activate_app
-    wait_for_visible_windows >/dev/null 2>&1 || true
-    sleep 1
+    sleep 0.2
   done
-  # Wait for a freshly observed width so subsequent evidence cannot reuse
-  # metadata captured before SwiftUI/AppKit completed the resize.
-  wait_for_window_width "$expected_width"
 }
 
 assert_window_minimum_width() {
