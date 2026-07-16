@@ -1795,3 +1795,5 @@
 "Task actions…" = "Task actions…";
 "Opens edit, subtask, schedule, and reminder draft actions for this task." = "Opens edit, subtask, schedule, and reminder draft actions for this task.";
 "Starts this alternative local focus without changing task status." = "Starts this alternative local focus without changing task status.";
+"Alternative focus suggestions and schedule drafts remain available from More." = "Alternative focus suggestions and schedule drafts remain available from More.";
+"Creates a local Inbox item while keeping the recommended focus action primary." = "Creates a local Inbox item while keeping the recommended focus action primary.";

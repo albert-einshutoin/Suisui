@@ -8,7 +8,7 @@ private enum TodayWorkflowLayoutMetrics {
 }
 
 struct TodayWorkflowView: View {
-    @ObservedObject var viewModel: ProjectBoardViewModel
+    @StateObject private var viewModel: TodayFeatureViewModel
     var selectTodayTask: (ProjectBoardTask) -> Void = { _ in }
     var openInspectorForTodayRailTask: (Int64) -> Void = { _ in }
     var playDailyPlanningReadout: () -> Void = {}
@@ -28,7 +28,7 @@ struct TodayWorkflowView: View {
         catchUpFocusRevision: Int? = nil,
         onCatchUpFocusConsumed: @escaping (Int) -> Bool = { _ in true }
     ) {
-        self.viewModel = viewModel
+        _viewModel = StateObject(wrappedValue: TodayFeatureViewModel(board: viewModel))
         self.selectTodayTask = selectTodayTask
         self.openInspectorForTodayRailTask = openInspectorForTodayRailTask
         self.playDailyPlanningReadout = playDailyPlanningReadout
@@ -46,7 +46,7 @@ struct TodayWorkflowView: View {
     }
 
     var body: some View {
-        let snapshot = viewModel.derivedReadModels.todayWorkflowSnapshot
+        let snapshot = viewModel.snapshot
         GeometryReader { proxy in
             Group {
                 if proxy.size.width >= TodayWorkflowLayoutMetrics.twoColumnMinimumWidth {
@@ -109,9 +109,9 @@ struct TodayWorkflowView: View {
             footer: {
                 VStack(alignment: .leading, spacing: 12) {
                     TodaySuggestionPanel(plan: snapshot.plan, viewModel: viewModel)
-                    if viewModel.derivedReadModels.sidebarMetrics.catchUpCount > 0 {
+                    if viewModel.catchUpCount > 0 {
                         DisclosureGroup(isExpanded: $isCatchUpExpanded) {
-                            CatchUpWorkflowView(viewModel: viewModel)
+                    CatchUpWorkflowView(viewModel: viewModel)
                                 .frame(minHeight: 360)
                         } label: {
                             Label {
@@ -119,7 +119,7 @@ struct TodayWorkflowView: View {
                                     Text(
                                         String(
                                             format: String(localized: "Catch Up (%d)"),
-                                            viewModel.derivedReadModels.sidebarMetrics.catchUpCount
+                                            viewModel.catchUpCount
                                         )
                                     )
                                     Text("Review overdue work, then complete, reschedule, or defer one item.")
@@ -139,7 +139,7 @@ struct TodayWorkflowView: View {
         )
         .onAppear {
             if initiallyExpandsCatchUp,
-               viewModel.derivedReadModels.sidebarMetrics.catchUpCount > 0 {
+               viewModel.catchUpCount > 0 {
                 DispatchQueue.main.async {
                     isCatchUpFocused = true
                 }
@@ -151,7 +151,7 @@ struct TodayWorkflowView: View {
         }
         .onChange(of: initiallyExpandsCatchUp) { _, shouldExpand in
             guard shouldExpand,
-                  viewModel.derivedReadModels.sidebarMetrics.catchUpCount > 0 else {
+                  viewModel.catchUpCount > 0 else {
                 return
             }
             isCatchUpExpanded = true
@@ -159,7 +159,7 @@ struct TodayWorkflowView: View {
                 isCatchUpFocused = true
             }
         }
-        .onChange(of: viewModel.derivedReadModels.sidebarMetrics.catchUpCount) { _, _ in
+        .onChange(of: viewModel.catchUpCount) { _, _ in
             // Restoration can publish its one-shot focus before the first
             // derived read-model load finishes. Retrying on count publication
             // keeps the intent pending without showing an empty section.
@@ -169,7 +169,7 @@ struct TodayWorkflowView: View {
 
     private func applyCatchUpFocusIfNeeded(_ revision: Int?) {
         guard let revision,
-              viewModel.derivedReadModels.sidebarMetrics.catchUpCount > 0 else {
+              viewModel.catchUpCount > 0 else {
             return
         }
         isCatchUpExpanded = true
@@ -198,7 +198,7 @@ struct TodayWorkflowView: View {
 }
 
 private struct TodayDailyPlanningReviewPanel: View {
-    @ObservedObject var viewModel: ProjectBoardViewModel
+    @ObservedObject var viewModel: TodayFeatureViewModel
     let review: DailyPlanningReview?
     let playDailyPlanningReadout: () -> Void
 
@@ -328,7 +328,7 @@ private struct TodayCommandPanel: View {
     @Binding var commandTitle: String
     let plan: TodayWorkflowPlan
     let recommendationChips: [TodayRecommendationChip]
-    @ObservedObject var viewModel: ProjectBoardViewModel
+    @ObservedObject var viewModel: TodayFeatureViewModel
     let dailyPlanningReview: DailyPlanningReview?
     let playDailyPlanningReadout: () -> Void
 
@@ -353,7 +353,7 @@ private struct TodayBriefingPanel: View {
     @Binding var commandTitle: String
     let plan: TodayWorkflowPlan
     let recommendationChips: [TodayRecommendationChip]
-    @ObservedObject var viewModel: ProjectBoardViewModel
+    @ObservedObject var viewModel: TodayFeatureViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -372,6 +372,16 @@ private struct TodayBriefingPanel: View {
                     .accessibilityIdentifier("today-command-capture-field")
                     .accessibilityLabel("Today command title")
                     .accessibilityHint("Adds a local Inbox item without changing today's existing task statuses.")
+                Button(action: addInboxItem) {
+                    Label("Add to Inbox", systemImage: "plus.circle")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!canAddCommand)
+                .help("Add this command to Inbox")
+                .accessibilityIdentifier("today-command-add")
+                .accessibilityLabel("Add to Inbox")
+                .accessibilityHint("Creates a local Inbox item while keeping the recommended focus action primary.")
                 secondaryActionsMenu
             }
             .padding(.vertical, 8)
@@ -515,7 +525,7 @@ private struct TodayBriefingPanel: View {
         guard canAddCommand else {
             return
         }
-        _ = viewModel.submitTodayCommand(title)
+        _ = viewModel.submitCommand(title)
         commandTitle = ""
     }
 
@@ -533,19 +543,19 @@ private struct TodayBriefingPanel: View {
 
 private struct TodaySuggestionPanel: View {
     let plan: TodayWorkflowPlan
-    @ObservedObject var viewModel: ProjectBoardViewModel
+    @ObservedObject var viewModel: TodayFeatureViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TodayAISuggestionCard(plan: plan, viewModel: viewModel)
+            TodayAISuggestionCard()
             TodayTimeBlockList(plan: plan)
-            if let draft = viewModel.todayScheduleDraft {
+            if let draft = viewModel.scheduleDraft {
                 Text(String(format: String(localized: "%d blocks ready"), draft.timeBlocks.count))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("today-schedule-draft-status")
             }
-            if let feedback = viewModel.todayCommandFeedback {
+            if let feedback = viewModel.commandFeedback {
                 Label(feedback, systemImage: "checkmark.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -566,7 +576,7 @@ private struct TodaySuggestionPanel: View {
 private struct TodayAssistantRail: View {
     @Binding var commandTitle: String
     let context: TodayAssistantRailContext
-    @ObservedObject var viewModel: ProjectBoardViewModel
+    @ObservedObject var viewModel: TodayFeatureViewModel
     let openInspector: (Int64) -> Void
 
     var body: some View {
@@ -677,7 +687,7 @@ private struct TodayAssistantRail: View {
             .accessibilityIdentifier("today-rail-actions-menu")
             .accessibilityHint("Opens edit, subtask, schedule, and reminder draft actions for this task.")
 
-            if let draft = viewModel.todayScheduleDraft {
+            if let draft = viewModel.scheduleDraft {
                 Text(String(format: String(localized: "%d blocks ready"), draft.timeBlocks.count))
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -709,15 +719,14 @@ private struct TodayAssistantRail: View {
 }
 
 private struct TodayAISuggestionCard: View {
-    let plan: TodayWorkflowPlan
-    @ObservedObject var viewModel: ProjectBoardViewModel
-
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Label("AI suggestion", systemImage: "sparkles")
                 .font(.subheadline.weight(.semibold))
-
-            TodayPlanSummary(plan: plan, viewModel: viewModel)
+            Text("Alternative focus suggestions and schedule drafts remain available from More.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(10)
         .background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
@@ -728,7 +737,7 @@ private struct TodayAISuggestionCard: View {
 
 private struct TodayPlanSummary: View {
     let plan: TodayWorkflowPlan
-    @ObservedObject var viewModel: ProjectBoardViewModel
+    @ObservedObject var viewModel: TodayFeatureViewModel
 
     var body: some View {
         // The recommendation and counts remain readable at the minimum

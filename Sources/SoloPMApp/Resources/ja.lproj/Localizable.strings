@@ -1795,3 +1795,5 @@
 "Task actions…" = "タスク操作…";
 "Opens edit, subtask, schedule, and reminder draft actions for this task." = "このタスクの編集、サブタスク、予定、リマインダー下書き操作を開きます。";
 "Starts this alternative local focus without changing task status." = "タスク状態を変更せず、この代替候補へのローカル集中を開始します。";
+"Alternative focus suggestions and schedule drafts remain available from More." = "別のフォーカス候補やスケジュール下書きは「その他」から利用できます。";
+"Creates a local Inbox item while keeping the recommended focus action primary." = "推奨フォーカスを主操作のまま維持し、ローカルのInbox項目を作成します。";

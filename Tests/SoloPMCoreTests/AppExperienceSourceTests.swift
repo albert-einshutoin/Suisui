@@ -28,14 +28,14 @@ final class AppExperienceSourceTests: XCTestCase {
         let todaySource = try readPackageFile(
             "Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift"
         )
-        XCTAssertTrue(todaySource.contains("sidebarMetrics.catchUpCount > 0"))
+        XCTAssertTrue(todaySource.contains("viewModel.catchUpCount > 0"))
         XCTAssertTrue(todaySource.contains("today-catch-up-section"))
         XCTAssertTrue(todaySource.contains("@AccessibilityFocusState private var isCatchUpFocused"))
         XCTAssertTrue(todaySource.contains("catchUpFocusRevision"))
         XCTAssertTrue(todaySource.contains("_isCatchUpExpanded = State(initialValue: initiallyExpandsCatchUp)"))
         XCTAssertTrue(todaySource.contains("isCatchUpExpanded = true"))
         XCTAssertTrue(todaySource.contains(".accessibilityFocused($isCatchUpFocused)"))
-        XCTAssertTrue(todaySource.contains(".onChange(of: viewModel.derivedReadModels.sidebarMetrics.catchUpCount)"))
+        XCTAssertTrue(todaySource.contains(".onChange(of: viewModel.catchUpCount)"))
     }
 
     func testLegacyCatchUpFocusIsResolvedAndConsumedWithinOneBoardScene() throws {
@@ -1534,9 +1534,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(boardSource.contains("count: viewModel.doneAnalytics().completedTaskCount"))
         XCTAssertFalse(boardSource.contains("count: viewModel.projectPortfolioSummaries().count"))
 
-        XCTAssertTrue(todayWorkflowSource.contains("let snapshot = viewModel.derivedReadModels.todayWorkflowSnapshot"))
+        XCTAssertTrue(todayWorkflowSource.contains("let snapshot = viewModel.snapshot"))
         XCTAssertFalse(todayWorkflowSource.contains("viewModel.todayWorkflowSnapshot(on: referenceDate, calendar: calendar)"))
-        XCTAssertTrue(catchUpWorkflowSource.contains("viewModel.derivedReadModels.missedTaskReview"))
+        XCTAssertTrue(catchUpWorkflowSource.contains("viewModel.missedTaskReview"))
         XCTAssertFalse(catchUpWorkflowSource.contains("viewModel.missedTaskReview()"))
         XCTAssertTrue(scheduleWorkflowSource.contains("let scheduleReadModel = viewModel.derivedReadModels.schedule"))
         XCTAssertTrue(scheduleWorkflowSource.contains("viewModel.refreshScheduleReadModel(around: nextDate)"))
@@ -2685,7 +2685,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("viewModel.enqueueTodayReminderDraft(for: task.id)"))
         XCTAssertTrue(workflowSource.contains("plan.overdueCount"))
         XCTAssertTrue(workflowSource.contains("plan.dueTodayCount"))
-        XCTAssertTrue(workflowSource.contains("viewModel.derivedReadModels.missedTaskReview"))
+        XCTAssertTrue(workflowSource.contains("viewModel.missedTaskReview"))
         XCTAssertTrue(workflowSource.contains("CatchUpWorkflowView"))
         XCTAssertTrue(workflowSource.contains("CatchUpMissedTaskReviewPanel"))
         XCTAssertTrue(workflowSource.contains("summary.immediateQueue"))
@@ -2956,9 +2956,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-flow-strip\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-flow-chip-\\(block.id)\")"))
         XCTAssertFalse(workflowSource.contains(".accessibilityIdentifier(\"today-flow-optimize\")"))
-        XCTAssertTrue(workflowSource.contains("TodayAISuggestionCard(plan: plan, viewModel: viewModel)"))
+        XCTAssertTrue(workflowSource.contains("TodayAISuggestionCard()"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-ai-suggestion-card\")"))
-        XCTAssertTrue(todayWorkflowSource.contains("let snapshot = viewModel.derivedReadModels.todayWorkflowSnapshot"))
+        XCTAssertTrue(todayWorkflowSource.contains("let snapshot = viewModel.snapshot"))
         XCTAssertTrue(todayWorkflowSource.contains("mainSurface(snapshot: snapshot, fillsAvailableHeight:"))
         XCTAssertTrue(todayWorkflowSource.contains("TodayAssistantRail("))
         XCTAssertTrue(todayWorkflowSource.contains("commandTitle: $commandTitle"))
