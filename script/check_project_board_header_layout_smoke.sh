@@ -119,6 +119,64 @@ APPLESCRIPT
   done
 }
 
+restore_project_board_window() {
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1
+on containsIdentifier(uiElement, targetIdentifier, depth)
+  tell application "System Events"
+    try
+      if value of attribute "AXIdentifier" of uiElement is targetIdentifier then return true
+    end try
+    if depth < 8 then
+      try
+        repeat with childElement in UI elements of uiElement
+          if my containsIdentifier(childElement, targetIdentifier, depth + 1) then return true
+        end repeat
+      end try
+    end if
+  end tell
+  return false
+end containsIdentifier
+
+on run argv
+  set appName to item 1 of argv
+  set targetPID to (item 2 of argv) as integer
+  tell application "System Events"
+    set matchingProcesses to every process whose unix id is targetPID
+    if (count of matchingProcesses) is not 1 then error "owned process missing"
+    tell item 1 of matchingProcesses
+      set frontmost to true
+      repeat with candidateWindow in windows
+        if my containsIdentifier(candidateWindow, "project-board-command-palette", 0) and my containsIdentifier(candidateWindow, "project-board-sidebar", 0) and my containsIdentifier(candidateWindow, "project-board-detail", 0) then
+          try
+            perform action "AXRaise" of candidateWindow
+          end try
+          try
+            set value of attribute "AXMain" of candidateWindow to true
+          end try
+          return true
+        end if
+      end repeat
+    end tell
+  end tell
+  error "Project Board window not restored yet"
+end run
+APPLESCRIPT
+    then
+      wait_for_window_metadata
+      return 0
+    fi
+
+    activate_app
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: PID-owned Project Board window did not become visible and key within ${TIMEOUT_SECONDS}s" >&2
+      return 1
+    fi
+    sleep 0.2
+  done
+}
+
 prepare_header_layout_candidate() {
   ./script/build_and_run.sh --build-only
   # This smoke owns its isolated database. Reusing an interrupted zero-byte
@@ -309,7 +367,7 @@ assert_utility_menu_items_reachable() {
   local settings_title="$3"
   local localized_settings_title="$4"
   click_first_ax_identifier "project-board-integrations-menu"
-  /usr/bin/osascript - "$APP_NAME" "$automation_title" "$localized_automation_title" "$settings_title" "$localized_settings_title" <<'APPLESCRIPT' >/dev/null
+  /usr/bin/osascript - "$APP_NAME" "$app_pid" "$automation_title" "$localized_automation_title" "$settings_title" "$localized_settings_title" <<'APPLESCRIPT' >/dev/null
 on containsEitherNamedMenuItem(uiElement, primaryName, localizedName, depth)
   tell application "System Events"
     try
@@ -331,16 +389,22 @@ end containsEitherNamedMenuItem
 
 on run argv
   set appName to item 1 of argv
-  set automationTitle to item 2 of argv
-  set localizedAutomationTitle to item 3 of argv
-  set settingsTitle to item 4 of argv
-  set localizedSettingsTitle to item 5 of argv
+  set targetPID to (item 2 of argv) as integer
+  set automationTitle to item 3 of argv
+  set localizedAutomationTitle to item 4 of argv
+  set settingsTitle to item 5 of argv
+  set localizedSettingsTitle to item 6 of argv
   tell application "System Events"
-    tell process appName
-      set nativeToolbar to toolbar 1 of window 1
-      if not my containsEitherNamedMenuItem(nativeToolbar, automationTitle, localizedAutomationTitle, 0) then error "automation utility missing"
-      if not my containsEitherNamedMenuItem(nativeToolbar, settingsTitle, localizedSettingsTitle, 0) then error "settings utility missing"
-      key code 53
+    set matchingProcesses to every process whose unix id is targetPID
+    if (count of matchingProcesses) is not 1 then error "owned process missing"
+    tell item 1 of matchingProcesses
+      repeat with candidateWindow in windows
+        if my containsEitherNamedMenuItem(candidateWindow, automationTitle, localizedAutomationTitle, 0) and my containsEitherNamedMenuItem(candidateWindow, settingsTitle, localizedSettingsTitle, 0) then
+          key code 53
+          return true
+        end if
+      end repeat
+      error "owned Project Board utility menu missing"
     end tell
   end tell
 end run
@@ -356,19 +420,26 @@ wait_for_file_panel_and_cancel() {
   local label="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1
+    if /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
   set appName to item 1 of argv
+  set targetPID to (item 2 of argv) as integer
   tell application "System Events"
-    tell process appName
-      if (count of sheets of window 1) > 0 then
-        key code 53
-        return true
-      end if
-      if (count of windows) > 1 then
-        key code 53
-        return true
-      end if
+    set matchingProcesses to every process whose unix id is targetPID
+    if (count of matchingProcesses) is not 1 then error "owned process missing"
+    tell item 1 of matchingProcesses
+      repeat with candidateWindow in windows
+        if (count of sheets of candidateWindow) > 0 then
+          key code 53
+          return true
+        end if
+        try
+          if subrole of candidateWindow is "AXDialog" then
+            key code 53
+            return true
+          end if
+        end try
+      end repeat
     end tell
   end tell
   error "file panel not visible yet"
@@ -392,12 +463,12 @@ exercise_file_utility() {
   open_utilities_menu
   click_first_ax_identifier "$identifier"
   wait_for_file_panel_and_cancel "$label"
-  wait_for_visible_windows
+  restore_project_board_window
 }
 
 assert_google_calendar_utility_is_safely_disabled() {
   open_utilities_menu
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null
+  /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT' >/dev/null
 on findGoogleCalendarItem(uiElement, depth)
   tell application "System Events"
     try
@@ -422,10 +493,18 @@ end findGoogleCalendarItem
 
 on run argv
   set appName to item 1 of argv
+  set targetPID to (item 2 of argv) as integer
   tell application "System Events"
-    tell process appName
-      if not my findGoogleCalendarItem(toolbar 1 of window 1, 0) then error "Google Calendar utility missing"
-      key code 53
+    set matchingProcesses to every process whose unix id is targetPID
+    if (count of matchingProcesses) is not 1 then error "owned process missing"
+    tell item 1 of matchingProcesses
+      repeat with candidateWindow in windows
+        if my findGoogleCalendarItem(candidateWindow, 0) then
+          key code 53
+          return true
+        end if
+      end repeat
+      error "Google Calendar utility missing"
     end tell
   end tell
 end run
@@ -439,6 +518,7 @@ exercise_automation_utility() {
   wait_for_ax_identifier_present "task-inspector"
   click_first_ax_identifier "task-inspector-close"
   wait_for_ax_identifier_absent "task-inspector"
+  restore_project_board_window
   printf "OK: task automation utility opened and closed its review inspector\n"
 }
 
@@ -447,11 +527,14 @@ exercise_settings_utility() {
   click_first_ax_identifier "project-board-settings-link"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1
+    if /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
   set appName to item 1 of argv
+  set targetPID to (item 2 of argv) as integer
   tell application "System Events"
-    tell process appName
+    set matchingProcesses to every process whose unix id is targetPID
+    if (count of matchingProcesses) is not 1 then error "owned process missing"
+    tell item 1 of matchingProcesses
       if (count of windows) > 1 then
         set frontmost to true
         keystroke "w" using command down
@@ -463,7 +546,7 @@ on run argv
 end run
 APPLESCRIPT
     then
-      wait_for_visible_windows
+      restore_project_board_window
       printf "OK: Settings utility opened and closed the Settings window\n"
       return 0
     fi
@@ -481,6 +564,7 @@ exercise_terminal_utility() {
   wait_for_ax_identifier_present "embedded-terminal-close"
   click_first_ax_identifier "embedded-terminal-close"
   wait_for_ax_identifier_absent "embedded-terminal-close"
+  restore_project_board_window
   printf "OK: developer Terminal utility opened and closed the embedded panel\n"
 }
 
@@ -587,8 +671,8 @@ wait_for_project_detail_visible() {
 
 capture_window() {
   local label="$1"
-  wait_for_window_metadata
-  wait_for_visible_windows
+  restore_project_board_window
+  assert_primary_ax_frames_are_nonzero
   sleep 0.5
   local screenshot_path="$OUTPUT_DIR/project-board-${label}.png"
   /usr/sbin/screencapture -x -o -l "$window_id" "$screenshot_path"
@@ -596,8 +680,37 @@ capture_window() {
     echo "BLOCKER: screenshot was not written for $label at $screenshot_path" >&2
     return 1
   fi
+  assert_capture_dimensions "$screenshot_path"
   assert_screenshot_has_visible_pixels "$screenshot_path"
+  assert_semantic_regions_have_visible_variance "$screenshot_path"
   printf "OK: captured %s header layout screenshot (%s)\n" "$label" "$screenshot_path"
+}
+
+assert_primary_ax_frames_are_nonzero() {
+  local frame_file="$OUTPUT_DIR/screenshot-primary-frames.tsv"
+  toolbar_items_deduplicated >"$frame_file"
+  for identifier in project-board-command-palette project-board-sidebar project-board-detail; do
+    if ! awk -F $'\t' -v wanted="$identifier" '
+      $1 == wanted && $4 + 0 > 0 && $5 + 0 > 0 { found = 1 }
+      END { exit(found ? 0 : 1) }
+    ' "$frame_file"; then
+      echo "BLOCKER: screenshot prerequisite has a missing or zero-sized AX frame: $identifier" >&2
+      cat "$frame_file" >&2
+      return 1
+    fi
+  done
+}
+
+assert_capture_dimensions() {
+  local screenshot_path="$1"
+  local pixel_width pixel_height
+  pixel_width="$(/usr/bin/sips -g pixelWidth "$screenshot_path" | awk '/pixelWidth:/ { print $2 }')"
+  pixel_height="$(/usr/bin/sips -g pixelHeight "$screenshot_path" | awk '/pixelHeight:/ { print $2 }')"
+  if [[ ! "$pixel_width" =~ ^[0-9]+$ || ! "$pixel_height" =~ ^[0-9]+$ ||
+        "$pixel_width" -lt "$window_width" || "$pixel_height" -lt "$window_height" ]]; then
+    echo "BLOCKER: screenshot dimensions do not cover the Project Board window: capture=${pixel_width:-missing}x${pixel_height:-missing} window=${window_width}x${window_height}" >&2
+    return 1
+  fi
 }
 
 assert_screenshot_has_visible_pixels() {
@@ -608,8 +721,38 @@ assert_screenshot_has_visible_pixels() {
   fi
 }
 
+assert_ax_region_has_visible_variance() {
+  local screenshot_path="$1"
+  local identifier="$2"
+  local frame_file="$OUTPUT_DIR/screenshot-primary-frames.tsv"
+  local frame_x frame_y frame_width frame_height relative_x relative_y
+  IFS=$'\t' read -r _ frame_x frame_y frame_width frame_height < <(
+    awk -F $'\t' -v wanted="$identifier" '$1 == wanted { print; exit }' "$frame_file"
+  )
+  if [[ -z "${frame_x:-}" || -z "${frame_y:-}" || -z "${frame_width:-}" || -z "${frame_height:-}" ]]; then
+    echo "BLOCKER: semantic screenshot region is missing from AX evidence: $identifier" >&2
+    return 1
+  fi
+  relative_x=$((frame_x - window_x))
+  relative_y=$((frame_y - window_y))
+  if ! /usr/bin/swift "$ROOT_DIR/script/ui_evidence_content_check.swift" \
+    "$screenshot_path" "$relative_x" "$relative_y" "$frame_width" "$frame_height" >/dev/null; then
+    echo "BLOCKER: semantic screenshot region lacks visible composed content: $identifier" >&2
+    return 1
+  fi
+}
+
+assert_semantic_regions_have_visible_variance() {
+  local screenshot_path="$1"
+  # These regions are expected to contain visible controls or seeded task
+  # content even when the remainder of the dark board canvas is intentionally empty.
+  assert_ax_region_has_visible_variance "$screenshot_path" "project-board-command-palette"
+  assert_ax_region_has_visible_variance "$screenshot_path" "project-header-add-task"
+  assert_ax_region_has_visible_variance "$screenshot_path" "task-card-open-details"
+}
+
 toolbar_items() {
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT'
+  /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT'
 on appendIdentifiedElement(outputLines, uiElement, syntheticIdentifier)
   set identifierValue to syntheticIdentifier
   tell application "System Events"
@@ -654,34 +797,52 @@ on collectIdentifiedElements(outputLines, uiElement)
   return outputLines
 end collectIdentifiedElements
 
+on containsIdentifier(uiElement, targetIdentifier, depth)
+  tell application "System Events"
+    try
+      if value of attribute "AXIdentifier" of uiElement is targetIdentifier then return true
+    end try
+    if depth < 8 then
+      try
+        repeat with childElement in UI elements of uiElement
+          if my containsIdentifier(childElement, targetIdentifier, depth + 1) then return true
+        end repeat
+      end try
+    end if
+  end tell
+  return false
+end containsIdentifier
+
 on run argv
   set appName to item 1 of argv
+  set targetPID to (item 2 of argv) as integer
   tell application "System Events"
-    if not (exists process appName) then error "process missing"
-    tell process appName
-      if not (exists window 1) then error "window missing"
+    set matchingProcesses to every process whose unix id is targetPID
+    if (count of matchingProcesses) is not 1 then error "owned process missing"
+    tell item 1 of matchingProcesses
       set outputLines to {}
-      if (exists toolbar 1 of window 1) then
-        repeat with toolbarItem in UI elements of toolbar 1 of window 1
-          set identifierValue to ""
-          try
-            set identifierValue to value of attribute "AXIdentifier" of toolbarItem
-          end try
-          set roleValue to ""
-          try
-            set roleValue to role of toolbarItem
-          end try
-          -- SwiftUI toolbar Menu is exposed as an anonymous AXGroup on macOS;
-          -- treat that single group as the Integrations action so the smoke
-          -- verifies its real screen position instead of relying on source text.
-          if identifierValue is equal to "" and roleValue is "AXGroup" then
-            set identifierValue to "project-board-integrations-menu"
+      repeat with candidateWindow in windows
+        if my containsIdentifier(candidateWindow, "project-board-detail", 0) then
+          if (exists toolbar 1 of candidateWindow) then
+            repeat with toolbarItem in UI elements of toolbar 1 of candidateWindow
+              set identifierValue to ""
+              try
+                set identifierValue to value of attribute "AXIdentifier" of toolbarItem
+              end try
+              set roleValue to ""
+              try
+                set roleValue to role of toolbarItem
+              end try
+              -- SwiftUI toolbar Menu is exposed as an anonymous AXGroup on macOS.
+              if identifierValue is equal to "" and roleValue is "AXGroup" then
+                set identifierValue to "project-board-integrations-menu"
+              end if
+              set outputLines to my appendIdentifiedElement(outputLines, toolbarItem, identifierValue)
+            end repeat
           end if
-          set outputLines to my appendIdentifiedElement(outputLines, toolbarItem, identifierValue)
-        end repeat
-      end if
-      repeat with windowElement in UI elements of window 1
-        set outputLines to my collectIdentifiedElements(outputLines, windowElement)
+          set outputLines to my collectIdentifiedElements(outputLines, candidateWindow)
+          exit repeat
+        end if
       end repeat
       set AppleScript's text item delimiters to linefeed
       return outputLines as text
@@ -833,7 +994,7 @@ assert_toolbar_layout_is_stable() {
 
 click_first_ax_identifier() {
   local target_identifier="$1"
-  /usr/bin/osascript - "$APP_NAME" "$target_identifier" <<'APPLESCRIPT' >/dev/null
+  /usr/bin/osascript - "$APP_NAME" "$app_pid" "$target_identifier" <<'APPLESCRIPT' >/dev/null
 on clickMatchingIdentifier(uiElement, targetIdentifier)
   tell application "System Events"
     set identifierValue to ""
@@ -868,13 +1029,17 @@ end clickMatchingIdentifier
 
 on run argv
   set appName to item 1 of argv
-  set targetIdentifier to item 2 of argv
+  set targetPID to (item 2 of argv) as integer
+  set targetIdentifier to item 3 of argv
   tell application "System Events"
-    tell process appName
+    set matchingProcesses to every process whose unix id is targetPID
+    if (count of matchingProcesses) is not 1 then error "owned process missing"
+    tell item 1 of matchingProcesses
       set frontmost to true
-      if not my clickMatchingIdentifier(window 1, targetIdentifier) then
-        error "BLOCKER: AX identifier was not clickable: " & targetIdentifier
-      end if
+      repeat with candidateWindow in windows
+        if my clickMatchingIdentifier(candidateWindow, targetIdentifier) then return true
+      end repeat
+      error "BLOCKER: AX identifier was not clickable in owned process: " & targetIdentifier
     end tell
   end tell
 end run
