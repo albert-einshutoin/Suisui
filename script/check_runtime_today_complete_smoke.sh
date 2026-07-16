@@ -182,31 +182,6 @@ APPLESCRIPT
   sleep 1
 }
 
-scroll_today_to_contextual_rail() {
-  # The rail can move below the main surface when callers opt into a compact
-  # width. Moving owned scrollbars to the end keeps the same action path
-  # available without changing selection or touching another SoloPM process.
-  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null
-on run argv
-  set appPID to item 1 of argv as integer
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is appPID
-    if (count of matchingProcesses) is 0 then error "process missing"
-    set targetProcess to item 1 of matchingProcesses
-    set frontmost of targetProcess to true
-    tell targetProcess
-      repeat with axItem in entire contents of window 1
-        try
-          if role of axItem is "AXScrollBar" then set value of axItem to 1.0
-        end try
-      end repeat
-    end tell
-  end tell
-end run
-APPLESCRIPT
-  sleep 1
-}
-
 launch_app_for_today() {
   terminate_app
   /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
@@ -331,81 +306,10 @@ waitForAXElementContaining() {
   local identifier_fragment="$1"
   local required_text_one="${2:-}"
   local required_text_two="${3:-}"
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while true; do
-    if /usr/bin/osascript - "$app_pid" "$identifier_fragment" "$required_text_one" "$required_text_two" <<'APPLESCRIPT' >/dev/null 2>&1
-on run argv
-  set appPID to item 1 of argv as integer
-  set identifierFragment to item 2 of argv
-  set requiredTextOne to item 3 of argv
-  set requiredTextTwo to item 4 of argv
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is appPID
-    if (count of matchingProcesses) is 0 then error "owned process is not visible to System Events"
-    tell item 1 of matchingProcesses
-      set windowCount to count of windows
-      if windowCount < 1 then error "owned process has no visible windows"
-      try
-        set frontmost to true
-      end try
-      repeat with windowIndex from 1 to windowCount
-        set currentWindow to window windowIndex
-        try
-          perform action "AXRaise" of currentWindow
-        end try
-        set axItems to entire contents of currentWindow
-        repeat with axItem in axItems
-          set itemIdentifier to ""
-          set itemName to ""
-          set itemTitle to ""
-          set itemValue to ""
-          set itemDescription to ""
-          set itemHelp to ""
-          try
-            set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
-          end try
-          try
-            set itemName to name of axItem as text
-          end try
-          try
-            set itemTitle to value of attribute "AXTitle" of axItem as text
-          end try
-          try
-            set itemValue to value of axItem as text
-          end try
-          try
-            set itemValue to itemValue & " " & (value of attribute "AXValue" of axItem as text)
-          end try
-          try
-            set itemDescription to description of axItem as text
-          end try
-          try
-            set itemHelp to value of attribute "AXHelp" of axItem as text
-          end try
-          set signalText to itemIdentifier & " " & itemName & " " & itemTitle & " " & itemValue & " " & itemDescription & " " & itemHelp
-          set requiredOneMatches to requiredTextOne is "" or signalText contains requiredTextOne
-          set requiredTwoMatches to requiredTextTwo is "" or signalText contains requiredTextTwo
-          if signalText contains identifierFragment and requiredOneMatches and requiredTwoMatches then
-            return "found AX element " & identifierFragment
-          end if
-        end repeat
-      end repeat
-    end tell
-  end tell
-  error "AX element signal not found: " & identifierFragment
-end run
-APPLESCRIPT
-    then
-      return 0
-    fi
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: AX element did not expose required signal: $identifier_fragment" >&2
-      return 1
-    fi
-    activate_app
-    wait_for_visible_windows >/dev/null 2>&1 || true
-    sleep 1
-  done
+  waitForAXSubtreeMarkerContaining "$identifier_fragment" "$required_text_one"
+  if [[ -n "$required_text_two" ]]; then
+    waitForAXSubtreeMarkerContaining "$identifier_fragment" "$required_text_two"
+  fi
 }
 
 waitForAXSubtreeMarkerContaining() {
@@ -493,149 +397,54 @@ pressButtonContainingBounded() {
 }
 
 pressMenuItemContaining() {
-  local fragment="$1"
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while true; do
-    if /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT' >/dev/null 2>&1
-on run argv
-  set appPID to item 1 of argv as integer
-  set fragment to item 2 of argv
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is appPID
-    if (count of matchingProcesses) is 0 then error "owned process is not visible to System Events"
-    tell item 1 of matchingProcesses
-      set axItems to entire contents
-      repeat with axItem in axItems
-        set itemRole to ""
-        set signalText to ""
-        try
-          set itemRole to role of axItem as text
-        end try
-        if itemRole is "AXMenuItem" or itemRole is "AXButton" then
-          try
-            set signalText to signalText & " " & (name of axItem as text)
-          end try
-          try
-            set signalText to signalText & " " & (value of attribute "AXIdentifier" of axItem as text)
-          end try
-          try
-            set signalText to signalText & " " & (value of attribute "AXHelp" of axItem as text)
-          end try
-          if signalText contains fragment then
-            perform action "AXPress" of axItem
-            return "pressed " & fragment
-          end if
-        end if
-      end repeat
-    end tell
-  end tell
-  error "menu item signal not found: " & fragment
-end run
-APPLESCRIPT
-    then
-      return 0
-    fi
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: failed to press menu item in AX tree: $fragment" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  pressAXElementContainingBounded "$1"
 }
 
 pressMenuButtonContaining() {
-  local fragment="$1"
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while true; do
-    if SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
-      /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_element.swift" "$app_pid" "$fragment" \
-      >/dev/null 2>&1
-    then
-      return 0
-    fi
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: failed to press menu button in AX tree: $fragment" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  pressAXElementContainingBounded "$1"
 }
 
 pressButtonContaining() {
+  pressAXElementContainingBounded "$1"
+}
+
+pressAXElementContainingBounded() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local error_file
+  local helper_pid
+  local watchdog_pid
+  local status
+
   while true; do
-    if /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT'
-on run argv
-  set appPID to item 1 of argv as integer
-  set fragment to item 2 of argv
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is appPID
-    if (count of matchingProcesses) is 0 then error "owned process is not visible to System Events"
-    tell item 1 of matchingProcesses
-      set windowCount to count of windows
-      if windowCount < 1 then error "owned process has no visible windows"
-      try
-        set frontmost to true
-      end try
-      repeat with windowIndex from 1 to windowCount
-        set currentWindow to window windowIndex
-        try
-          perform action "AXRaise" of currentWindow
-        end try
-        set axItems to entire contents of currentWindow
-        repeat with axItem in axItems
-          set itemRole to ""
-          try
-            set itemRole to role of axItem as text
-          end try
-          if itemRole is "AXButton" then
-            set buttonName to ""
-            set buttonTitle to ""
-            set buttonDescription to ""
-            set buttonHelp to ""
-            set buttonIdentifier to ""
-            try
-              set buttonName to name of axItem as text
-            end try
-            try
-              set buttonTitle to value of attribute "AXTitle" of axItem as text
-            end try
-            try
-              set buttonDescription to description of axItem as text
-            end try
-            try
-              set buttonHelp to value of attribute "AXHelp" of axItem as text
-            end try
-            try
-              set buttonIdentifier to value of attribute "AXIdentifier" of axItem as text
-            end try
-            set signalText to buttonIdentifier & " " & buttonName & " " & buttonTitle & " " & buttonDescription & " " & buttonHelp
-            set isEnabled to true
-            try
-              set isEnabled to enabled of axItem as boolean
-            end try
-            if isEnabled and signalText contains fragment then
-              try
-                perform action "AXPress" of axItem
-                return "pressed " & fragment
-              end try
-            end if
-          end if
-        end repeat
-      end repeat
-    end tell
-  end tell
-  error "button signal not found: " & fragment
-end run
-APPLESCRIPT
-    then
+    error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-today-ax-element-error.XXXXXX")"
+    SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
+      /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_element.swift" "$app_pid" "$fragment" \
+      >/dev/null 2>"$error_file" &
+    helper_pid=$!
+    (
+      sleep "$TIMEOUT_SECONDS"
+      kill "$helper_pid" >/dev/null 2>&1 || true
+    ) &
+    watchdog_pid=$!
+    set +e
+    wait "$helper_pid"
+    status=$?
+    set -e
+    kill "$watchdog_pid" >/dev/null 2>&1 || true
+    wait "$watchdog_pid" >/dev/null 2>&1 || true
+    if [[ "$status" -eq 0 ]]; then
+      rm -f "$error_file"
       return 0
     fi
+    cat "$error_file" >&2
+    rm -f "$error_file"
     if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: failed to press button in AX tree: $fragment" >&2
+      echo "BLOCKER: failed to press bounded PID-scoped AX element: $fragment" >&2
       return 1
     fi
+    activate_app
+    wait_for_visible_windows >/dev/null 2>&1 || true
     sleep 1
   done
 }
@@ -675,7 +484,6 @@ today_task_id="$(seed_today_task)"
 launch_app_for_today
 wait_for_database_table "assistant_queue_items"
 waitForAXElementContaining "today-command-capture-field"
-scroll_today_to_contextual_rail
 pressMenuButtonContaining "today-rail-actions-menu"
 pressMenuItemContaining "today-rail-edit-task"
 waitForAXSubtreeMarkerContaining "task-inspector-title" "AX Runtime Today Complete"
@@ -688,7 +496,6 @@ waitForAXElementContaining "today-command-capture-field"
 # Keep the edit and subtask checks in separate launches. The subtask action
 # intentionally moves focus into the command field, and isolating the checks
 # keeps this runtime smoke about product behavior rather than AX focus residue.
-scroll_today_to_contextual_rail
 pressMenuButtonContaining "today-rail-actions-menu"
 pressMenuItemContaining "today-rail-add-subtask"
 waitForAXElementContaining "today-command-capture-field" "AX Runtime Today Complete"
@@ -704,12 +511,10 @@ verify_single_value "seeded today task is open" "SELECT CASE WHEN status='planne
 waitForAXElementContaining "today-primary-action" "AX Runtime Today Complete"
 pressButtonContaining "today-primary-action"
 verify_single_value "focus kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
-scroll_today_to_contextual_rail
 pressMenuButtonContaining "today-rail-actions-menu"
 pressMenuItemContaining "today-rail-schedule-block"
 waitForAXElementContaining "today-rail-schedule-draft-status"
 verify_single_value "schedule draft kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
-scroll_today_to_contextual_rail
 pressMenuButtonContaining "today-rail-actions-menu"
 pressMenuItemContaining "today-rail-reminder-draft"
 verify_single_value "queue Today rail reminder draft" "SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END FROM assistant_queue_items WHERE id LIKE 'action-plan:today-reminder:%:task:$today_task_id' AND state='waitingReview' AND approval_json IS NULL;" "1"

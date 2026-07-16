@@ -36,6 +36,7 @@ KEEP_ARTIFACTS="${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_KEEP_ARTIFACTS:-0}"
 ARTIFACT_ROOT="${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_ARTIFACT_DIR:-$ROOT_DIR/.tmp/runtime-today-production-route}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}"
+AX_IDENTIFIER_COUNT_HELPER="${AX_IDENTIFIER_COUNT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_identifier_count.swift}"
 
 if [[ ! "$RUNTIME_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$RUNTIME_TIMEOUT_SECONDS" -lt 3 ]]; then
   echo "SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS must be an integer of at least 3" >&2
@@ -64,6 +65,10 @@ fi
 
 if [[ ! -r "$AX_HELPERS" ]]; then
   echo "BLOCKER: AX helpers are unavailable: $AX_HELPERS" >&2
+  exit 2
+fi
+if [[ ! -r "$AX_IDENTIFIER_COUNT_HELPER" ]]; then
+  echo "BLOCKER: AX identifier count helper is unavailable: $AX_IDENTIFIER_COUNT_HELPER" >&2
   exit 2
 fi
 
@@ -377,6 +382,65 @@ wait_for_required_markers() {
   wait_for_marker_until "today-workflow" "$expected_today_label" "$case_deadline"
 }
 
+read_ax_identifier_counts() {
+  local identifier_marker="$1"
+  local output_file="$2"
+  local error_file="$3"
+  local helper_pid
+  local watchdog_pid
+  local status
+
+  SOLOPM_UI_EVIDENCE_AX_MAX_NODES=9000 \
+    /usr/bin/swift "$AX_IDENTIFIER_COUNT_HELPER" "$app_pid" "$identifier_marker" \
+    >"$output_file" 2>"$error_file" &
+  helper_pid=$!
+  (
+    sleep "$RUNTIME_TIMEOUT_SECONDS"
+    kill "$helper_pid" >/dev/null 2>&1 || true
+  ) &
+  watchdog_pid=$!
+  set +e
+  wait "$helper_pid"
+  status=$?
+  set -e
+  kill "$watchdog_pid" >/dev/null 2>&1 || true
+  wait "$watchdog_pid" >/dev/null 2>&1 || true
+  return "$status"
+}
+
+verify_today_action_contract() {
+  local expected_primary_enabled=1
+  local expected_catch_up_total=0
+  local primary_output="$route_artifact_dir/primary-action-count.txt"
+  local primary_error="$route_artifact_dir/primary-action-count.err"
+  local catch_up_output="$route_artifact_dir/catch-up-count.txt"
+  local catch_up_error="$route_artifact_dir/catch-up-count.err"
+
+  [[ "$fixture" == "small" ]] && expected_catch_up_total=1
+
+  if ! read_ax_identifier_counts "today-primary-action" "$primary_output" "$primary_error"; then
+    cat "$primary_error" >&2
+    return 1
+  fi
+  if ! grep -E "^total=[1-9][0-9]* enabled=[1-9][0-9]* actionable_enabled=${expected_primary_enabled}$" "$primary_output" >/dev/null; then
+    echo "BLOCKER: Today must expose exactly one enabled prominent primary action for fixture=$fixture; got $(cat "$primary_output")" >&2
+    return 1
+  fi
+
+  if ! read_ax_identifier_counts "today-catch-up-section" "$catch_up_output" "$catch_up_error"; then
+    cat "$catch_up_error" >&2
+    return 1
+  fi
+  local catch_up_pattern="^total=0 enabled=0 actionable_enabled=0$"
+  if [[ "$expected_catch_up_total" -gt 0 ]]; then
+    catch_up_pattern="^total=[1-9][0-9]* enabled=[1-9][0-9]* actionable_enabled=[0-9]+$"
+  fi
+  if ! grep -E "$catch_up_pattern" "$catch_up_output" >/dev/null; then
+    echo "BLOCKER: Catch Up presence did not match fixture=$fixture; got $(cat "$catch_up_output")" >&2
+    return 1
+  fi
+}
+
 route_text_for() {
   local route="$1"
   case "$route:$locale_label" in
@@ -563,6 +627,10 @@ run_route() {
   fi
 
   if [[ "$route_id" == "today" ]]; then
+    if ! verify_today_action_contract; then
+      fail_route "product-marker" "today-primary-or-catch-up-contract"
+      return 1
+    fi
     # Keep the existing Today acceptance contract: the production route must
     # settle below the CPU threshold and retain the toolbar/preview recursion
     # diagnostics after AX readiness, for both empty and seeded databases.
