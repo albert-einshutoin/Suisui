@@ -214,6 +214,86 @@ final class ProjectBoardSceneNavigationTests: XCTestCase {
         XCTAssertEqual(payloads.consume(id: second.id), "second")
     }
 
+    func testPendingRequestLimitRejectsNewestAndPreservesOldestDeliveryOrder() {
+        var state = ProjectBoardSceneNavigationState(pendingRequestLimit: 2)
+        let requests = [
+            ProjectBoardOpenRequest(route: .primary(.today)),
+            ProjectBoardOpenRequest(route: .primary(.inbox)),
+            ProjectBoardOpenRequest(route: .primary(.projects))
+        ]
+
+        XCTAssertTrue(state.submit(requests[0]))
+        XCTAssertTrue(state.submit(requests[1]))
+        XCTAssertFalse(state.submit(requests[2]))
+
+        state.register(sceneID: firstSceneID)
+        XCTAssertEqual(state.consumeNext(for: firstSceneID), requests[0])
+        XCTAssertEqual(state.consumeNext(for: firstSceneID), requests[1])
+        XCTAssertNil(state.consumeNext(for: firstSceneID))
+
+        // A capacity rejection is not terminal: the caller may retry after an
+        // older intent has been delivered without weakening duplicate safety.
+        XCTAssertTrue(state.submit(requests[2]))
+        XCTAssertEqual(state.consumeNext(for: firstSceneID), requests[2])
+        XCTAssertFalse(state.submit(requests[2]))
+    }
+
+    func testPayloadStoreLimitRejectsNewestAndReleasesCapacityOnConsumeOrDiscard() {
+        var store = ProjectBoardRequestPayloadStore<String>(limit: 2)
+        let firstID = UUID()
+        let secondID = UUID()
+        let thirdID = UUID()
+        let fourthID = UUID()
+
+        XCTAssertTrue(store.store("first", id: firstID))
+        XCTAssertTrue(store.store("second", id: secondID))
+        XCTAssertFalse(store.store("third", id: thirdID))
+        XCTAssertEqual(store.consume(id: firstID), "first")
+        XCTAssertTrue(store.store("third", id: thirdID))
+        store.discard(id: secondID)
+        XCTAssertTrue(store.store("fourth", id: fourthID))
+
+        XCTAssertEqual(store.consume(id: thirdID), "third")
+        XCTAssertEqual(store.consume(id: fourthID), "fourth")
+        XCTAssertNil(store.consume(id: secondID))
+    }
+
+    func testPayloadStoreDuplicateAtLimitPreservesOriginalWithoutUsingCapacity() {
+        var store = ProjectBoardRequestPayloadStore<String>(limit: 1)
+        let firstID = UUID()
+        let secondID = UUID()
+
+        XCTAssertTrue(store.store("original", id: firstID))
+        XCTAssertFalse(store.store("replacement", id: firstID))
+        XCTAssertFalse(store.store("second", id: secondID))
+        XCTAssertEqual(store.consume(id: firstID), "original")
+        XCTAssertTrue(store.store("second", id: secondID))
+    }
+
+    func testRouteOnlyRequestDoesNotMisalignBoundedPayloadCleanup() {
+        var state = ProjectBoardSceneNavigationState(pendingRequestLimit: 2)
+        var payloads = ProjectBoardRequestPayloadStore<String>(limit: 2)
+        let routeOnly = ProjectBoardOpenRequest(route: .primary(.today))
+        let payloadRequest = ProjectBoardOpenRequest(route: .primary(.inbox))
+        let rejectedRequest = ProjectBoardOpenRequest(route: .primary(.projects))
+
+        XCTAssertTrue(state.submit(routeOnly))
+        XCTAssertTrue(payloads.store("payload", id: payloadRequest.id))
+        XCTAssertTrue(state.submit(payloadRequest))
+
+        // App bridges store before publishing. When the shared request queue is
+        // full, the existing caller contract discards only the rejected ID.
+        XCTAssertTrue(payloads.store("rejected", id: rejectedRequest.id))
+        XCTAssertFalse(state.submit(rejectedRequest))
+        payloads.discard(id: rejectedRequest.id)
+
+        state.register(sceneID: firstSceneID)
+        XCTAssertEqual(state.consumeNext(for: firstSceneID), routeOnly)
+        XCTAssertNil(payloads.consume(id: routeOnly.id))
+        XCTAssertEqual(state.consumeNext(for: firstSceneID), payloadRequest)
+        XCTAssertEqual(payloads.consume(id: payloadRequest.id), "payload")
+    }
+
     func testTerminalHistoryPrunesOldestIDAndKeepsRecentDuplicateProtection() {
         var state = ProjectBoardSceneNavigationState(terminalHistoryLimit: 2)
         state.register(sceneID: firstSceneID)

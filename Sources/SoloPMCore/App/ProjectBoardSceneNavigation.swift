@@ -1,5 +1,14 @@
 import Foundation
 
+/// Shared capacity for request metadata and ID-keyed bridge payloads.
+///
+/// Keeping one default avoids configuration drift, while each store remains
+/// independently bounded because route-only requests intentionally have no
+/// corresponding payload.
+public enum ProjectBoardSceneRequestLimits {
+    public static let pending = 64
+}
+
 /// Storage keys and pure restore policy for one Project Board window.
 public enum ProjectBoardScenePersistence {
     public static let sceneIDStorageKey = "solopm.projectBoard.sceneID"
@@ -50,13 +59,17 @@ public struct ProjectBoardOpenRequest: Equatable, Sendable {
 /// payload lifetime testable without importing SwiftUI app types.
 public struct ProjectBoardRequestPayloadStore<Payload> {
     private var payloads: [UUID: Payload] = [:]
+    private let limit: Int
 
-    public init() {}
+    public init(limit: Int = ProjectBoardSceneRequestLimits.pending) {
+        precondition(limit > 0, "Pending request payload limit must be above zero")
+        self.limit = limit
+    }
 
     /// Returns false without replacing the first payload for a duplicate ID.
     @discardableResult
     public mutating func store(_ payload: Payload, id: UUID) -> Bool {
-        guard payloads[id] == nil else {
+        guard payloads[id] == nil, payloads.count < limit else {
             return false
         }
         payloads[id] = payload
@@ -93,10 +106,16 @@ public struct ProjectBoardSceneNavigationState: Sendable {
     private var pendingRequests: [ProjectBoardOpenRequest] = []
     private var terminalRequestIDs: Set<UUID> = []
     private var terminalRequestOrder: [UUID] = []
+    private let pendingRequestLimit: Int
     private let terminalHistoryLimit: Int
 
-    public init(terminalHistoryLimit: Int = 512) {
+    public init(
+        pendingRequestLimit: Int = ProjectBoardSceneRequestLimits.pending,
+        terminalHistoryLimit: Int = 512
+    ) {
+        precondition(pendingRequestLimit > 0, "Pending request limit must be above zero")
         precondition(terminalHistoryLimit > 0, "Terminal request history must be bounded above zero")
+        self.pendingRequestLimit = pendingRequestLimit
         self.terminalHistoryLimit = terminalHistoryLimit
     }
 
@@ -132,6 +151,12 @@ public struct ProjectBoardSceneNavigationState: Sendable {
            !registeredSceneIDs.contains(targetSceneID) {
             // Unknown exact targets are not terminal: registration followed by
             // retry is valid, while silently retaining a stale target is not.
+            return false
+        }
+        guard pendingRequests.count < pendingRequestLimit else {
+            // Preserve already accepted user intent instead of silently
+            // evicting it. Callers can discard a same-ID bridge payload and
+            // retry this non-terminal request after capacity becomes free.
             return false
         }
         pendingRequests.append(request)
