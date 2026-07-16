@@ -2,7 +2,17 @@ import Foundation
 import SwiftUI
 
 func localizedDisplay(_ key: String) -> String {
-    String(localized: String.LocalizationValue(key))
+    if let preference = AppLanguagePreference.environmentOverride
+        ?? AppLanguagePreference(rawValue: UserDefaults.standard.string(forKey: AppLanguagePreference.storageKey) ?? ""),
+       preference != .system,
+       let localizationPath = Bundle.main.path(forResource: preference.localeIdentifier, ofType: "lproj"),
+       let localizationBundle = Bundle(path: localizationPath) {
+        // Dynamic status strings do not inherit SwiftUI's environment locale.
+        // Resolve them from the same explicit app preference so visible text,
+        // help, and accessibility values cannot drift to the system language.
+        return localizationBundle.localizedString(forKey: key, value: key, table: nil)
+    }
+    return String(localized: String.LocalizationValue(key))
 }
 
 func localizedDisplay(_ formatKey: String, _ arguments: CVarArg...) -> String {

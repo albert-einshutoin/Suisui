@@ -614,6 +614,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readProjectBoardSurfaceSources()
         let appearanceSectionSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsAppearanceSection.swift")
         let languagePreferenceSource = try readPackageFile("Sources/SoloPMApp/Views/AppLanguagePreference.swift")
+        let localizedDisplaySource = try readPackageFile("Sources/SoloPMApp/LocalizedDisplay.swift")
         let buildScript = try readPackageFile("script/build_and_run.sh")
         let englishStrings = try readPackageFile("Sources/SoloPMApp/Resources/en.lproj/Localizable.strings")
         let japaneseStrings = try readPackageFile("Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings")
@@ -625,6 +626,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(languagePreferenceSource.contains("static let storageKey = \"solopm.languagePreference\""))
         XCTAssertTrue(languagePreferenceSource.contains("static let environmentOverrideKey = \"SOLOPM_LANGUAGE_PREFERENCE\""))
         XCTAssertTrue(languagePreferenceSource.contains("Locale(identifier: localeIdentifier)"))
+        XCTAssertTrue(localizedDisplaySource.contains("AppLanguagePreference.environmentOverride"))
+        XCTAssertTrue(localizedDisplaySource.contains("AppLanguagePreference.storageKey"))
+        XCTAssertTrue(localizedDisplaySource.contains("Bundle.main.path(forResource: preference.localeIdentifier, ofType: \"lproj\")"))
+        XCTAssertTrue(localizedDisplaySource.contains("localizedString(forKey: key, value: key, table: nil)"))
 
         XCTAssertTrue(appSource.contains("@AppStorage(AppLanguagePreference.storageKey) private var languagePreference: AppLanguagePreference = .system"))
         XCTAssertTrue(appSource.contains("private var effectiveLanguagePreference: AppLanguagePreference"))
@@ -4127,8 +4132,9 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testSettingsSurfaceStartsWithStatusOverviewForCoreOperationalAreas() throws {
         let appSource = try readAppShellSource()
+        let overviewSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsStatusOverviewView.swift")
 
-        let overviewRange = try XCTUnwrap(appSource.range(of: "SettingsStatusOverview("))
+        let overviewRange = try XCTUnwrap(appSource.range(of: "SettingsStatusOverviewView("))
         let overviewTabRange = try XCTUnwrap(appSource.range(of: "private var overviewSettingsTab: some View"))
         let appearanceTabRange = try XCTUnwrap(appSource.range(of: "private var appearanceSettingsTab: some View"))
 
@@ -4140,31 +4146,41 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("title: \"Sync\""))
         XCTAssertTrue(appSource.contains("title: \"Privacy\""))
         XCTAssertTrue(appSource.contains("settingsViewModel.settings.aiProvider.displayName"))
-        XCTAssertTrue(appSource.contains("let currentSyncStatusLabel = syncViewModel?.statusLabel ?? \"Unavailable\""))
-        XCTAssertTrue(appSource.contains("let currentMcpStatusLabel = externalMCPViewModel?.connectionCheckResultLabel ?? \"Unavailable\""))
-        XCTAssertTrue(appSource.contains("mcpStatusLabel: currentMcpStatusLabel"))
-        XCTAssertTrue(appSource.contains("syncStatusLabel: currentSyncStatusLabel"))
+        XCTAssertTrue(appSource.contains("let currentSyncStatusLabel = syncViewModel?.statusLabel ?? \"Set up when needed\""))
+        XCTAssertTrue(appSource.contains("let currentMcpStatusLabel = externalMCPViewModel?.connectionCheckResultLabel ?? \"Set up when needed\""))
+        XCTAssertTrue(appSource.contains("SettingsReadinessPresentation.grouped("))
+        XCTAssertTrue(appSource.contains("showsAdvanced: showAdvancedSettings"))
         XCTAssertTrue(appSource.contains("settingsViewModel.settings.notificationsEnabled"))
+        XCTAssertTrue(overviewSource.contains("case .readyNow: \"Ready\""))
+        XCTAssertTrue(overviewSource.contains("case .setUpWhenUsed: \"Set Up When Used\""))
+        XCTAssertTrue(overviewSource.contains("case .needsAttention: \"Needs Attention\""))
+        XCTAssertTrue(overviewSource.contains(".accessibilityLabel(localizedSettingsDisplay(group.group.title))"))
+        XCTAssertTrue(overviewSource.contains("settings-readiness-row-"))
+        XCTAssertTrue(overviewSource.contains("settings-readiness-action-"))
+        XCTAssertFalse(overviewSource.contains("LazyVGrid"))
     }
 
     func testSettingsOverviewSurfacesIntegrationStatusTilesForPhase12() throws {
         let appSource = try readAppShellSource()
+        let overviewSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsStatusOverviewView.swift")
 
         XCTAssertTrue(appSource.contains("integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot()"))
         XCTAssertTrue(appSource.contains("title: \"STT\""))
         XCTAssertTrue(appSource.contains("title: \"TTS\""))
         XCTAssertTrue(appSource.contains("title: \"Calendar\""))
         XCTAssertTrue(appSource.contains("title: \"Reminder\""))
+        XCTAssertTrue(appSource.contains("title: \"Notifications\""))
+        XCTAssertTrue(appSource.contains("title: \"Google Calendar\""))
         XCTAssertTrue(appSource.contains("title: \"Data Location\""))
-        XCTAssertTrue(appSource.contains("settingsViewModel.settings.sttProvider.displayName"))
         XCTAssertTrue(appSource.contains("Local whisper.cpp: %@"))
         XCTAssertTrue(appSource.contains("settingsViewModel.localSTTProviderReadinessRow.statusLabel"))
-        XCTAssertTrue(appSource.contains("settingsViewModel.settings.ttsProvider.displayName"))
         XCTAssertTrue(appSource.contains("settingsViewModel.ttsProviderReadinessRow.statusLabel"))
         XCTAssertTrue(appSource.contains("integrationPermissionSnapshot.status(for: .calendar)"))
         XCTAssertTrue(appSource.contains("integrationPermissionSnapshot.status(for: .reminders)"))
-        XCTAssertTrue(appSource.contains("dataLocationOverviewStatusLabel"))
-        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-status-overview\")"))
+        XCTAssertTrue(appSource.contains("dataLocationOverviewDetailLabel"))
+        XCTAssertTrue(appSource.contains("The app container is already a valid local-first data location."))
+        XCTAssertTrue(appSource.contains("notification permission has its own row"))
+        XCTAssertTrue(overviewSource.contains(".accessibilityIdentifier(\"settings-status-overview\")"))
     }
 
     func testSettingsExposesReadyGatedKokoroTTSProviderControls() throws {
@@ -4213,6 +4229,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let appearanceStart = try XCTUnwrap(appSource.range(of: "private var appearanceSettingsTab: some View"))
         let overviewSource = String(appSource[overviewStart.lowerBound..<appearanceStart.lowerBound])
 
+        XCTAssertTrue(overviewSource.contains("if showAdvancedSettings"))
         XCTAssertTrue(overviewSource.contains("Section(\"Pro Value\")"))
         XCTAssertTrue(overviewSource.contains("ProValueOverviewRow("))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-pro-value-overview-row\")"))
@@ -4221,7 +4238,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(overviewSource.contains("mcpValueLabel: mcpExecutionValueLabel"))
         XCTAssertTrue(overviewSource.contains("mcpBoundaryLabel: mcpExecutionSafetyBoundaryLabel"))
         XCTAssertLessThan(
-            try XCTUnwrap(overviewSource.range(of: "SettingsStatusOverview(")).lowerBound,
+            try XCTUnwrap(overviewSource.range(of: "SettingsStatusOverviewView(")).lowerBound,
             try XCTUnwrap(overviewSource.range(of: "ProValueOverviewRow(")).lowerBound
         )
         XCTAssertTrue(audit.contains("Settings Overview Pro Value row"))

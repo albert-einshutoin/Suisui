@@ -165,6 +165,8 @@ APPLESCRIPT
 
 launch_app_for_settings() {
   local settings_tab="${1:-AI}"
+  local language="${2:-english}"
+  local window_width="${3:-$WINDOW_WIDTH}"
   terminate_app
   mkdir -p "$settings_home/Library/Preferences"
   HOME="$settings_home" \
@@ -173,13 +175,13 @@ launch_app_for_settings() {
     SOLOPM_APP_SETTINGS_SUITE_NAME="$settings_suite_name" \
     SOLOPM_OPEN_SETTINGS_ON_LAUNCH=1 \
     SOLOPM_SETTINGS_EVIDENCE_TAB="$settings_tab" \
-    SOLOPM_LANGUAGE_PREFERENCE=english \
+    SOLOPM_LANGUAGE_PREFERENCE="$language" \
     "$APP_BINARY" &
   app_pid=$!
   wait_for_app_process
   activate_app
   wait_for_visible_windows
-  set_settings_window_size "$WINDOW_WIDTH" "$WINDOW_HEIGHT"
+  set_settings_window_size "$window_width" "$WINDOW_HEIGHT"
 }
 
 waitForAXElementContaining() {
@@ -635,6 +637,30 @@ verify_google_calendar_settings_controls() {
   waitForAXElementContaining "settings-google-calendar-oauth-setup-message" "OAuth"
 }
 
+verify_readiness_overview() {
+  local ready_label="$1"
+  local setup_label="$2"
+  local marker_helper="$ROOT_DIR/script/ui_evidence_ax_marker_check.swift"
+
+  for marker_and_text in \
+    "settings-status-overview|" \
+    "settings-readiness-group-ready|$ready_label" \
+    "settings-readiness-group-setup-when-used|$setup_label"; do
+    local marker="${marker_and_text%%|*}"
+    local required_text="${marker_and_text#*|}"
+    # Each marker gets the full launch budget. SwiftUI may publish the outer
+    # Settings container before disclosure-group semantics become queryable.
+    local deadline=$((SECONDS + TIMEOUT_SECONDS))
+    while ! /usr/bin/swift "$marker_helper" "$APP_NAME" "$marker" "$required_text" "$app_pid" >/dev/null 2>&1; do
+      if [[ "$SECONDS" -ge "$deadline" ]]; then
+        echo "BLOCKER: AX readiness marker did not appear: $marker" >&2
+        return 1
+      fi
+      sleep 1
+    done
+  done
+}
+
 printf "== Runtime settings save smoke ==\n"
 ./script/build_and_run.sh --build-only
 
@@ -648,6 +674,10 @@ if [[ ! -x "$APP_BINARY" ]]; then
   exit 2
 fi
 
+launch_app_for_settings "Overview" "english" "1024"
+verify_readiness_overview "Ready" "Set Up When Used"
+launch_app_for_settings "Overview" "japanese" "760"
+verify_readiness_overview "準備完了" "使うときに設定"
 launch_app_for_settings "AI"
 enableCheckboxContaining "settings-task-auto-execution-toggle"
 pressControlContaining "settings-task-auto-execution-save"

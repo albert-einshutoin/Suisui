@@ -1797,3 +1797,14 @@
 "Starts this alternative local focus without changing task status." = "Starts this alternative local focus without changing task status.";
 "Alternative focus suggestions and schedule drafts remain available from More." = "Alternative focus suggestions and schedule drafts remain available from More.";
 "Creates a local Inbox item while keeping the recommended focus action primary." = "Creates a local Inbox item while keeping the recommended focus action primary.";
+"No action needed now." = "No action needed now.";
+"Opens the relevant setting or retries this readiness check." = "Opens the relevant setting or retries this readiness check.";
+"Set Up When Used" = "Set Up When Used";
+"Open AI" = "Open AI";
+"Open Privacy" = "Open Privacy";
+"Show Advanced" = "Show Advanced";
+"Open MCP" = "Open MCP";
+"Open Sync" = "Open Sync";
+"Set up when needed" = "Set up when needed";
+"Not loaded until you open its settings." = "Not loaded until you open its settings.";
+"Set up only when you choose to use this feature." = "Set up only when you choose to use this feature.";

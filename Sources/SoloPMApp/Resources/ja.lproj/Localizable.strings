@@ -1797,3 +1797,14 @@
 "Starts this alternative local focus without changing task status." = "タスク状態を変更せず、この代替候補へのローカル集中を開始します。";
 "Alternative focus suggestions and schedule drafts remain available from More." = "別のフォーカス候補やスケジュール下書きは「その他」から利用できます。";
 "Creates a local Inbox item while keeping the recommended focus action primary." = "推奨フォーカスを主操作のまま維持し、ローカルのInbox項目を作成します。";
+"No action needed now." = "今は操作不要です。";
+"Opens the relevant setting or retries this readiness check." = "関連する設定を開くか、準備状況を再確認します。";
+"Set Up When Used" = "使うときに設定";
+"Open AI" = "AI設定を開く";
+"Open Privacy" = "プライバシー設定を開く";
+"Show Advanced" = "高度な設定を表示";
+"Open MCP" = "MCP設定を開く";
+"Open Sync" = "同期設定を開く";
+"Set up when needed" = "必要なときに設定";
+"Not loaded until you open its settings." = "設定を開くまで読み込みません。";
+"Set up only when you choose to use this feature." = "この機能を使うときだけ設定します。";

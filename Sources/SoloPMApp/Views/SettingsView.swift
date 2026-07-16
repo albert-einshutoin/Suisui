@@ -294,41 +294,20 @@ struct SettingsView: View {
     }
 
     private var overviewSettingsTab: some View {
-        let currentSyncStatusLabel = syncViewModel?.statusLabel ?? "Unavailable"
-        let currentSyncPlanLabel = syncViewModel?.planLabel ?? "Unavailable"
-        let currentMcpStatusLabel = externalMCPViewModel?.connectionCheckResultLabel ?? "Unavailable"
-        let currentMcpDetailLabel = externalMCPViewModel?.display.statusLabel ?? "Unavailable"
+        let currentSyncStatusLabel = syncViewModel?.statusLabel ?? "Set up when needed"
+        let currentMcpStatusLabel = externalMCPViewModel?.connectionCheckResultLabel ?? "Set up when needed"
 
         return Form {
             Section("Status Overview") {
-                SettingsStatusOverview(
-                    aiProviderLabel: settingsViewModel.settings.aiProvider.displayName,
-                    aiStatusLabel: activeAIProviderStatusLabel,
-                    aiTone: activeAIProviderTone,
-                    sttStatusLabel: settingsViewModel.settings.sttProvider.displayName,
-                    sttDetailLabel: sttOverviewDetailLabel,
-                    sttTone: sttOverviewTone,
-                    ttsStatusLabel: settingsViewModel.settings.ttsProvider.displayName,
-                    ttsDetailLabel: ttsOverviewDetailLabel,
-                    ttsTone: ttsOverviewTone,
-                    calendarStatusLabel: calendarOverviewStatusLabel,
-                    calendarDetailLabel: calendarOverviewDetailLabel,
-                    calendarTone: integrationTone(for: integrationPermissionSnapshot.status(for: .calendar)),
-                    reminderStatusLabel: reminderOverviewStatusLabel,
-                    reminderDetailLabel: reminderOverviewDetailLabel,
-                    reminderTone: integrationTone(for: integrationPermissionSnapshot.status(for: .reminders)),
-                    mcpStatusLabel: currentMcpStatusLabel,
-                    mcpDetailLabel: currentMcpDetailLabel,
-                    mcpTone: mcpOverviewTone,
-                    syncStatusLabel: currentSyncStatusLabel,
-                    syncDetailLabel: localizedDisplay("Plan: %@", currentSyncPlanLabel),
-                    syncTone: syncOverviewTone,
-                    privacyStatusLabel: privacyOverviewStatusLabel,
-                    privacyDetailLabel: localizedDisplay("Login Item: %@", localizedSettingsDisplay(launchAtLoginViewModel.statusLabel)),
-                    privacyTone: privacyOverviewTone,
-                    dataLocationStatusLabel: dataLocationOverviewStatusLabel,
-                    dataLocationDetailLabel: dataLocationOverviewDetailLabel,
-                    dataLocationTone: dataLocationOverviewTone
+                SettingsStatusOverviewView(
+                    groups: SettingsReadinessPresentation.grouped(
+                        rows: settingsReadinessRows(
+                            syncStatusLabel: currentSyncStatusLabel,
+                            mcpStatusLabel: currentMcpStatusLabel
+                        ),
+                        showsAdvanced: showAdvancedSettings
+                    ),
+                    performAction: performSettingsReadinessAction
                 )
 
                 Button {
@@ -343,17 +322,19 @@ struct SettingsView: View {
                 .accessibilityHint("Reopens onboarding to review current provider and permission readiness.")
             }
 
-            Section("Pro Value") {
-                ProValueOverviewRow(
-                    syncStatusLabel: currentSyncStatusLabel,
-                    syncValueLabel: syncPaidValueLabel,
-                    syncBoundaryLabel: syncSafetyBoundaryLabel,
-                    syncTone: syncOverviewTone,
-                    mcpStatusLabel: mcpExecutionStatusLabel,
-                    mcpValueLabel: mcpExecutionValueLabel,
-                    mcpBoundaryLabel: mcpExecutionSafetyBoundaryLabel,
-                    mcpTone: mcpExecutionTone
-                )
+            if showAdvancedSettings {
+                Section("Pro Value") {
+                    ProValueOverviewRow(
+                        syncStatusLabel: currentSyncStatusLabel,
+                        syncValueLabel: syncPaidValueLabel,
+                        syncBoundaryLabel: syncSafetyBoundaryLabel,
+                        syncTone: syncOverviewTone,
+                        mcpStatusLabel: mcpExecutionStatusLabel,
+                        mcpValueLabel: mcpExecutionValueLabel,
+                        mcpBoundaryLabel: mcpExecutionSafetyBoundaryLabel,
+                        mcpTone: mcpExecutionTone
+                    )
+                }
             }
 
             Section("Advanced") {
@@ -375,6 +356,269 @@ struct SettingsView: View {
             SettingsAppearanceSection(appearancePreference: $appearancePreference, languagePreference: $languagePreference)
         }
         .formStyle(.grouped)
+    }
+
+    private func settingsReadinessRows(
+        syncStatusLabel: String,
+        mcpStatusLabel: String
+    ) -> [SettingsReadinessRow] {
+        var rows = [
+            readinessRow(
+                id: "ai",
+                title: "AI Provider",
+                detail: localizedDisplay(
+                    "%@: %@",
+                    settingsViewModel.settings.aiProvider.displayName,
+                    activeAIProviderStatusLabel
+                ),
+                tone: activeAIProviderTone,
+                action: .openAI
+            ),
+            readinessRow(
+                id: "stt",
+                title: "STT",
+                detail: sttOverviewDetailLabel,
+                tone: sttOverviewTone,
+                action: .openAI
+            ),
+            readinessRow(
+                id: "tts",
+                title: "TTS",
+                detail: ttsOverviewDetailLabel,
+                tone: ttsOverviewTone,
+                action: .openAI
+            ),
+            permissionReadinessRow(
+                id: "calendar",
+                title: "Calendar",
+                status: integrationPermissionSnapshot.status(for: .calendar),
+                detail: calendarOverviewDetailLabel
+            ),
+            permissionReadinessRow(
+                id: "reminders",
+                title: "Reminder",
+                status: integrationPermissionSnapshot.status(for: .reminders),
+                detail: reminderOverviewDetailLabel
+            ),
+            permissionReadinessRow(
+                id: "notifications",
+                title: "Notifications",
+                status: integrationPermissionSnapshot.status(for: .notifications),
+                detail: PermissionDisplayPolicy.label(
+                    for: integrationPermissionSnapshot.status(for: .notifications)
+                )
+            ),
+            googleCalendarOverviewReadinessRow,
+            readinessRow(
+                id: "privacy",
+                title: "Privacy",
+                detail: localizedDisplay(
+                    "Login Item: %@",
+                    localizedSettingsDisplay(launchAtLoginViewModel.statusLabel)
+                ),
+                tone: privacyOverviewTone,
+                action: .openPrivacy
+            ),
+            readinessRow(
+                id: "data-location",
+                title: "Data Location",
+                detail: dataLocationOverviewDetailLabel,
+                tone: dataLocationOverviewTone,
+                action: .openPrivacy
+            )
+        ]
+
+        if showAdvancedSettings {
+            rows.append(advancedReadinessRow(
+                id: "mcp",
+                title: "MCP",
+                detail: mcpStatusLabel,
+                tone: mcpOverviewTone,
+                action: .openMCP
+            ))
+            rows.append(advancedReadinessRow(
+                id: "sync",
+                title: "Sync",
+                detail: syncStatusLabel,
+                tone: syncOverviewTone,
+                action: .openSync
+            ))
+        }
+        return rows
+    }
+
+    private func readinessRow(
+        id: String,
+        title: String,
+        detail: String,
+        tone: SettingsStatusTone,
+        action: SettingsReadinessAction
+    ) -> SettingsReadinessRow {
+        switch tone {
+        case .ready:
+            SettingsReadinessPresentation.readyCapability(
+                id: id,
+                title: title,
+                detail: detail,
+                action: action
+            )
+        case .danger:
+            SettingsReadinessPresentation.failedCapability(
+                id: id,
+                title: title,
+                redactedReason: detail
+            )
+        case .warning, .neutral:
+            SettingsReadinessPresentation.capability(
+                id: id,
+                title: title,
+                detail: detail,
+                state: .setupWhenNeeded,
+                action: action
+            )
+        }
+    }
+
+    private func permissionReadinessRow(
+        id: String,
+        title: String,
+        status: PermissionStatus,
+        detail: String
+    ) -> SettingsReadinessRow {
+        switch status {
+        case .granted:
+            SettingsReadinessPresentation.readyCapability(
+                id: id,
+                title: title,
+                detail: detail,
+                action: .openSync
+            )
+        case .notDetermined:
+            SettingsReadinessPresentation.capability(
+                id: id,
+                title: title,
+                detail: detail,
+                state: .setupWhenNeeded,
+                action: .openSync
+            )
+        case .denied:
+            SettingsReadinessPresentation.capability(
+                id: id,
+                title: title,
+                detail: detail,
+                state: .blocked,
+                action: .openSync
+            )
+        case .restricted:
+            SettingsReadinessPresentation.capability(
+                id: id,
+                title: title,
+                detail: detail,
+                state: .unsupported,
+                action: .openSync
+            )
+        }
+    }
+
+    private var googleCalendarOverviewReadinessRow: SettingsReadinessRow {
+        guard let status = googleCalendarSyncStatus else {
+            return SettingsReadinessPresentation.capability(
+                id: "google-calendar",
+                title: "Google Calendar",
+                detail: googleCalendarSettingsReadinessRow.detailLabel,
+                state: .checking,
+                action: .retry(featureID: "google-calendar")
+            )
+        }
+
+        switch status.state {
+        case .ready:
+            return SettingsReadinessPresentation.readyCapability(
+                id: "google-calendar",
+                title: "Google Calendar",
+                detail: status.detailLabel,
+                action: .openSync
+            )
+        case .calendarNotConfigured, .oauthDisconnected:
+            return SettingsReadinessPresentation.capability(
+                id: "google-calendar",
+                title: "Google Calendar",
+                detail: status.detailLabel,
+                state: .setupWhenNeeded,
+                action: .openSync
+            )
+        case .upgradeRequired, .runtimeNotConfigured:
+            return SettingsReadinessPresentation.capability(
+                id: "google-calendar",
+                title: "Google Calendar",
+                detail: status.detailLabel,
+                state: .unsupported,
+                action: .openSync
+            )
+        case .invalidCalendarID:
+            return SettingsReadinessPresentation.capability(
+                id: "google-calendar",
+                title: "Google Calendar",
+                detail: status.detailLabel,
+                state: .blocked,
+                action: .openSync
+            )
+        case .missingRequiredScope, .tokenExpiredWithoutRefresh, .failed:
+            return SettingsReadinessPresentation.failedCapability(
+                id: "google-calendar",
+                title: "Google Calendar",
+                redactedReason: status.detailLabel
+            )
+        }
+    }
+
+    private func advancedReadinessRow(
+        id: String,
+        title: String,
+        detail: String,
+        tone: SettingsStatusTone,
+        action: SettingsReadinessAction
+    ) -> SettingsReadinessRow {
+        let row = readinessRow(id: id, title: title, detail: detail, tone: tone, action: action)
+        return SettingsReadinessRow(
+            id: row.id,
+            title: row.title,
+            detail: row.detail,
+            state: row.state,
+            group: .advanced,
+            action: row.action
+        )
+    }
+
+    private func performSettingsReadinessAction(_ action: SettingsReadinessAction) {
+        switch action {
+        case .openAI:
+            selectedTab = .ai
+        case .openPrivacy:
+            selectedTab = .privacy
+        case .showAdvanced:
+            showAdvancedSettings = true
+        case .openMCP:
+            showAdvancedSettings = true
+            selectedTab = .mcp
+        case .openSync:
+            showAdvancedSettings = true
+            selectedTab = .sync
+        case .retry(let featureID):
+            if featureID == "google-calendar" {
+                refreshGoogleCalendarSettingsStatus()
+                showAdvancedSettings = true
+                selectedTab = .sync
+            } else if ["calendar", "reminders", "notifications", "sync"].contains(featureID) {
+                showAdvancedSettings = true
+                selectedTab = .sync
+            } else if featureID == "mcp" {
+                showAdvancedSettings = true
+                selectedTab = .mcp
+            } else {
+                selectedTab = featureID == "privacy" || featureID == "data-location" ? .privacy : .ai
+            }
+        }
     }
 
     private var aiSettingsTab: some View {
@@ -2143,7 +2387,10 @@ struct SettingsView: View {
         if settingsViewModel.settings.validate().contains(where: { $0.field == "defaultWorkspacePath" }) {
             return .danger
         }
-        return settingsViewModel.settings.defaultWorkspacePath == nil ? .neutral : .ready
+        // The app container is already a valid local-first data location. Treating
+        // the absence of a custom folder as incomplete would turn a safe default
+        // into setup work that the user never requested.
+        return .ready
     }
 
     private func tone(for row: AIProviderReadinessRow) -> SettingsStatusTone {
@@ -2273,7 +2520,9 @@ struct SettingsView: View {
     }
 
     private var privacyOverviewTone: SettingsStatusTone {
-        settingsViewModel.settings.notificationsEnabled ? .ready : .neutral
+        // Privacy readiness describes the local/Keychain boundary, while
+        // notification permission has its own row and must not redefine privacy.
+        .ready
     }
 
     private func diagnosticDateLabel(_ date: Date?) -> String {
@@ -3021,164 +3270,6 @@ private enum SettingsStatusTone {
             "xmark.octagon.fill"
         case .neutral:
             "circle.dashed"
-        }
-    }
-}
-
-private struct SettingsStatusOverview: View {
-    let aiProviderLabel: String
-    let aiStatusLabel: String
-    let aiTone: SettingsStatusTone
-    let sttStatusLabel: String
-    let sttDetailLabel: String
-    let sttTone: SettingsStatusTone
-    let ttsStatusLabel: String
-    let ttsDetailLabel: String
-    let ttsTone: SettingsStatusTone
-    let calendarStatusLabel: String
-    let calendarDetailLabel: String
-    let calendarTone: SettingsStatusTone
-    let reminderStatusLabel: String
-    let reminderDetailLabel: String
-    let reminderTone: SettingsStatusTone
-    let mcpStatusLabel: String
-    let mcpDetailLabel: String
-    let mcpTone: SettingsStatusTone
-    let syncStatusLabel: String
-    let syncDetailLabel: String
-    let syncTone: SettingsStatusTone
-    let privacyStatusLabel: String
-    let privacyDetailLabel: String
-    let privacyTone: SettingsStatusTone
-    let dataLocationStatusLabel: String
-    let dataLocationDetailLabel: String
-    let dataLocationTone: SettingsStatusTone
-
-    private let columns = [
-        GridItem(.flexible(), spacing: 10),
-        GridItem(.flexible(), spacing: 10)
-    ]
-
-    var body: some View {
-        LazyVGrid(columns: columns, spacing: 10) {
-            SettingsStatusTile(
-                title: "AI Provider",
-                value: aiProviderLabel,
-                detail: aiStatusLabel,
-                tone: aiTone,
-                systemImage: "sparkles"
-            )
-            SettingsStatusTile(
-                title: "STT",
-                value: sttStatusLabel,
-                detail: sttDetailLabel,
-                tone: sttTone,
-                systemImage: "waveform"
-            )
-            SettingsStatusTile(
-                title: "TTS",
-                value: ttsStatusLabel,
-                detail: ttsDetailLabel,
-                tone: ttsTone,
-                systemImage: "speaker.slash"
-            )
-            SettingsStatusTile(
-                title: "Calendar",
-                value: calendarStatusLabel,
-                detail: calendarDetailLabel,
-                tone: calendarTone,
-                systemImage: "calendar"
-            )
-            SettingsStatusTile(
-                title: "Reminder",
-                value: reminderStatusLabel,
-                detail: reminderDetailLabel,
-                tone: reminderTone,
-                systemImage: "checklist"
-            )
-            SettingsStatusTile(
-                title: "MCP",
-                value: mcpStatusLabel,
-                detail: mcpDetailLabel,
-                tone: mcpTone,
-                systemImage: "point.3.connected.trianglepath.dotted"
-            )
-            SettingsStatusTile(
-                title: "Sync",
-                value: syncStatusLabel,
-                detail: syncDetailLabel,
-                tone: syncTone,
-                systemImage: "arrow.triangle.2.circlepath"
-            )
-            SettingsStatusTile(
-                title: "Privacy",
-                value: privacyStatusLabel,
-                detail: privacyDetailLabel,
-                tone: privacyTone,
-                systemImage: "lock.shield"
-            )
-            SettingsStatusTile(
-                title: "Data Location",
-                value: dataLocationStatusLabel,
-                detail: dataLocationDetailLabel,
-                tone: dataLocationTone,
-                systemImage: "folder"
-            )
-        }
-        .padding(.vertical, 2)
-        .accessibilityIdentifier("settings-status-overview")
-    }
-}
-
-private struct SettingsStatusTile: View {
-    let title: String
-    let value: String
-    let detail: String
-    let tone: SettingsStatusTone
-    let systemImage: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: systemImage)
-                .font(.title3)
-                .foregroundStyle(tone.color)
-                .frame(width: 24, height: 24)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(localizedSettingsDisplay(title))
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-
-                    Image(systemName: tone.systemImage)
-                        .font(.caption)
-                        .foregroundStyle(tone.color)
-                        .accessibilityHidden(true)
-                }
-
-                Text(localizedSettingsDisplay(value))
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .help(localizedSettingsDisplay(value))
-
-                Text(localizedSettingsDisplay(detail))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .help(localizedSettingsDisplay(detail))
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, minHeight: 78, alignment: .topLeading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(tone.color.opacity(0.22))
         }
     }
 }
