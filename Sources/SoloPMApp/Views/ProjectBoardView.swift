@@ -192,7 +192,14 @@ struct ProjectBoardView: View {
                 onImportTasks: { isImportingTaskInterop = true },
                 onRequestGoogleCalendarSync: { isGoogleCalendarSyncApprovalPresented = true },
                 onReviewTaskAutomation: {
-                    viewModel.prepareTaskAutomationReview(settings: taskAutomationSettings())
+                    // Preparing the deterministic review decision does not
+                    // consume LLM budget; reveal the selected task inspector
+                    // so the toolbar action always lands on reviewable output.
+                    let decision = viewModel.prepareTaskAutomationReview(settings: taskAutomationSettings())
+                    if decision.status == .readyForReview,
+                       let taskID = decision.selectedTasks.first?.id {
+                        openTaskInspector(taskID)
+                    }
                 },
                 onToggleTerminal: { isTerminalPanelPresented.toggle() }
             )

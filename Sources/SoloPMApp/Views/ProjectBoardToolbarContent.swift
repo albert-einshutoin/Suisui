@@ -82,28 +82,24 @@ struct ProjectBoardToolbarContent: ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             Menu {
                 if context.showsIntegrations {
-                    Menu {
-                        Button(action: onExportTasks) {
-                            Label("Export Tasks", systemImage: "square.and.arrow.up")
-                        }
-                        .accessibilityIdentifier("project-board-export-tasks")
-
-                        Button(action: onImportTasks) {
-                            Label("Import Tasks", systemImage: "square.and.arrow.down")
-                        }
-                        .accessibilityIdentifier("project-board-import-tasks")
-
-                        Divider()
-
-                        Button(action: onRequestGoogleCalendarSync) {
-                            Label("Google Calendar Sync", systemImage: "calendar.badge.plus")
-                        }
-                        .disabled(!canSyncGoogleCalendar)
-                        .help(googleCalendarSyncHelp)
-                        .accessibilityIdentifier("project-board-google-calendar-sync")
-                    } label: {
-                        Label("Integrations", systemImage: "arrow.left.arrow.right")
+                    Button(action: onExportTasks) {
+                        Label("Export Tasks", systemImage: "square.and.arrow.up")
                     }
+                    .accessibilityIdentifier("project-board-export-tasks")
+
+                    Button(action: onImportTasks) {
+                        Label("Import Tasks", systemImage: "square.and.arrow.down")
+                    }
+                    .accessibilityIdentifier("project-board-import-tasks")
+
+                    Button(action: onRequestGoogleCalendarSync) {
+                        Label("Google Calendar Sync", systemImage: "calendar.badge.plus")
+                    }
+                    .disabled(!canSyncGoogleCalendar)
+                    .help(googleCalendarSyncHelp)
+                    .accessibilityIdentifier("project-board-google-calendar-sync")
+
+                    Divider()
                 }
 
                 if context.showsAutomation {

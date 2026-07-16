@@ -20,6 +20,7 @@ OUTPUT_DIR="${SOLOPM_HEADER_LAYOUT_SMOKE_OUTPUT_DIR:-$ROOT_DIR/.tmp/project-boar
 WINDOW_NAME="${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}"
 HEADER_LAYOUT_DATABASE_PATH="${SOLOPM_HEADER_LAYOUT_DATABASE_PATH:-$OUTPUT_DIR/SoloPM-header-layout.sqlite}"
 SQLITE3="${SQLITE3:-sqlite3}"
+SETTINGS_SUITE="dev.solopm.header-layout-smoke"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_HEADER_LAYOUT_SMOKE_TIMEOUT_SECONDS must be a positive integer" >&2
@@ -187,6 +188,12 @@ SQL
     echo "BLOCKER: header layout candidate project task was not seeded" >&2
     return 1
   fi
+
+  local settings_json settings_hex
+  settings_json='{"aiProvider":"openaiResponses","sttProvider":"openAITranscribe","notificationsEnabled":false,"isDeveloperModeEnabled":true,"timeZoneIdentifier":"UTC","taskAutoExecution":{"isEnabled":true,"mode":"reviewOnly","cadence":"manual","maxTasksPerRun":3,"dailyLLMCallLimit":6,"lookaheadHours":720,"urgentReviewCooldownMinutes":60}}'
+  settings_hex="$(printf '%s' "$settings_json" | /usr/bin/xxd -p | tr -d '\n')"
+  /usr/bin/defaults delete "$SETTINGS_SUITE" >/dev/null 2>&1 || true
+  /usr/bin/defaults write "$SETTINGS_SUITE" app.settings -data "$settings_hex"
 }
 
 seed_header_layout_selection_project() {
@@ -242,7 +249,7 @@ launch_header_layout_candidate() {
   local language="${1:-english}"
   terminate_app
   SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_APP_SETTINGS_SUITE_NAME="dev.solopm.header-layout-smoke" \
+    SOLOPM_APP_SETTINGS_SUITE_NAME="$SETTINGS_SUITE" \
     SOLOPM_LANGUAGE_PREFERENCE="$language" \
     SOLOPM_DATABASE_PATH="$HEADER_LAYOUT_DATABASE_PATH" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$header_layout_project_id" \
@@ -341,6 +348,151 @@ APPLESCRIPT
   printf "OK: automation and Settings are reachable from native toolbar overflow\n"
 }
 
+open_utilities_menu() {
+  click_first_ax_identifier "project-board-integrations-menu"
+}
+
+wait_for_file_panel_and_cancel() {
+  local label="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    tell process appName
+      if (count of sheets of window 1) > 0 then
+        key code 53
+        return true
+      end if
+      if (count of windows) > 1 then
+        key code 53
+        return true
+      end if
+    end tell
+  end tell
+  error "file panel not visible yet"
+end run
+APPLESCRIPT
+    then
+      printf "OK: %s opened a cancellable file panel\n" "$label"
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: $label did not open a cancellable file panel" >&2
+      return 1
+    fi
+    sleep 0.2
+  done
+}
+
+exercise_file_utility() {
+  local identifier="$1"
+  local label="$2"
+  open_utilities_menu
+  click_first_ax_identifier "$identifier"
+  wait_for_file_panel_and_cancel "$label"
+  wait_for_visible_windows
+}
+
+assert_google_calendar_utility_is_safely_disabled() {
+  open_utilities_menu
+  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null
+on findGoogleCalendarItem(uiElement, depth)
+  tell application "System Events"
+    try
+      if role of uiElement is "AXMenuItem" then
+        set itemName to name of uiElement
+        if itemName is "Google Calendar Sync" or itemName is "Googleカレンダー同期" then
+          if enabled of uiElement then error "Google Calendar utility unexpectedly enabled"
+          return true
+        end if
+      end if
+    end try
+    if depth < 4 then
+      try
+        repeat with childElement in UI elements of uiElement
+          if my findGoogleCalendarItem(childElement, depth + 1) then return true
+        end repeat
+      end try
+    end if
+  end tell
+  return false
+end findGoogleCalendarItem
+
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    tell process appName
+      if not my findGoogleCalendarItem(toolbar 1 of window 1, 0) then error "Google Calendar utility missing"
+      key code 53
+    end tell
+  end tell
+end run
+APPLESCRIPT
+  printf "OK: Google Calendar utility exposes the safe disabled readiness state\n"
+}
+
+exercise_automation_utility() {
+  open_utilities_menu
+  click_first_ax_identifier "project-board-task-auto-execution-review"
+  wait_for_ax_identifier_present "task-inspector"
+  click_first_ax_identifier "task-inspector-close"
+  wait_for_ax_identifier_absent "task-inspector"
+  printf "OK: task automation utility opened and closed its review inspector\n"
+}
+
+exercise_settings_utility() {
+  open_utilities_menu
+  click_first_ax_identifier "project-board-settings-link"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    tell process appName
+      if (count of windows) > 1 then
+        set frontmost to true
+        keystroke "w" using command down
+        return true
+      end if
+    end tell
+  end tell
+  error "Settings window not visible yet"
+end run
+APPLESCRIPT
+    then
+      wait_for_visible_windows
+      printf "OK: Settings utility opened and closed the Settings window\n"
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: Settings utility did not open a second window" >&2
+      return 1
+    fi
+    sleep 0.2
+  done
+}
+
+exercise_terminal_utility() {
+  open_utilities_menu
+  click_first_ax_identifier "project-board-terminal-toggle"
+  wait_for_ax_identifier_present "embedded-terminal-close"
+  click_first_ax_identifier "embedded-terminal-close"
+  wait_for_ax_identifier_absent "embedded-terminal-close"
+  printf "OK: developer Terminal utility opened and closed the embedded panel\n"
+}
+
+exercise_toolbar_utilities() {
+  exercise_file_utility "project-board-export-tasks" "Export Tasks"
+  exercise_file_utility "project-board-import-tasks" "Import Tasks"
+  assert_google_calendar_utility_is_safely_disabled
+  exercise_automation_utility
+  exercise_settings_utility
+  exercise_terminal_utility
+}
+
 read_window_metadata() {
   local output
   output="$(
@@ -436,13 +588,24 @@ wait_for_project_detail_visible() {
 capture_window() {
   local label="$1"
   wait_for_window_metadata
+  wait_for_visible_windows
+  sleep 0.5
   local screenshot_path="$OUTPUT_DIR/project-board-${label}.png"
-  /usr/sbin/screencapture -x -l "$window_id" "$screenshot_path"
+  /usr/sbin/screencapture -x -o -l "$window_id" "$screenshot_path"
   if [[ ! -s "$screenshot_path" ]]; then
     echo "BLOCKER: screenshot was not written for $label at $screenshot_path" >&2
     return 1
   fi
+  assert_screenshot_has_visible_pixels "$screenshot_path"
   printf "OK: captured %s header layout screenshot (%s)\n" "$label" "$screenshot_path"
+}
+
+assert_screenshot_has_visible_pixels() {
+  local screenshot_path="$1"
+  if ! /usr/bin/swift "$ROOT_DIR/script/ui_evidence_content_check.swift" "$screenshot_path" >/dev/null; then
+    echo "BLOCKER: native toolbar screenshot is blank, black, or incomplete: $screenshot_path" >&2
+    return 1
+  fi
 }
 
 toolbar_items() {
@@ -1013,6 +1176,7 @@ assert_window_respects_minimum
 assert_action_buttons_are_trailing "minimum-window"
 capture_window "minimum-window"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認" "Settings" "設定"
+exercise_toolbar_utilities
 
 launch_header_layout_candidate "japanese"
 wait_for_project_detail_visible
@@ -1023,5 +1187,6 @@ assert_window_respects_minimum
 assert_action_buttons_are_trailing "minimum-window-japanese"
 capture_window "minimum-window-japanese"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認" "Settings" "設定"
+exercise_toolbar_utilities
 
 printf "OK: Project Board header layout smoke passed\n"
