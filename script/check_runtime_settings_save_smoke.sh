@@ -676,6 +676,8 @@ fi
 
 launch_app_for_settings "Overview" "english" "1024"
 verify_readiness_overview "Ready" "Set Up When Used"
+launch_app_for_settings "Overview" "japanese" "1024"
+verify_readiness_overview "準備完了" "使うときに設定"
 launch_app_for_settings "Overview" "japanese" "760"
 verify_readiness_overview "準備完了" "使うときに設定"
 launch_app_for_settings "AI"

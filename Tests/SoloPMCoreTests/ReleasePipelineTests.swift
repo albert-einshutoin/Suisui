@@ -6515,6 +6515,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("launch_app_for_settings \"AI\""))
         XCTAssertTrue(script.contains("launch_app_for_settings \"Sync\""))
         XCTAssertTrue(script.contains("launch_app_for_settings \"Overview\" \"english\" \"1024\""))
+        XCTAssertTrue(script.contains("launch_app_for_settings \"Overview\" \"japanese\" \"1024\""))
         XCTAssertTrue(script.contains("launch_app_for_settings \"Overview\" \"japanese\" \"760\""))
         XCTAssertTrue(script.contains("verify_readiness_overview \"Ready\" \"Set Up When Used\""))
         XCTAssertTrue(script.contains("verify_readiness_overview \"準備完了\" \"使うときに設定\""))
