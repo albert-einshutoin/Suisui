@@ -4115,6 +4115,78 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceModelSource.contains("return .retryPlanGeneration"))
     }
 
+    func testVoiceCaptureMakesReadinessAndCaptureModesTruthful() throws {
+        let voiceSource = try readPackageFile("Sources/SoloPMApp/Views/VoiceCaptureView.swift")
+        let english = try readPackageFile("Sources/SoloPMApp/Resources/en.lproj/Localizable.strings")
+        let japanese = try readPackageFile("Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings")
+        let runtimeSmoke = try readPackageFile("script/check_runtime_voice_review_smoke.sh")
+
+        XCTAssertTrue(voiceSource.contains(".disabled(!viewModel.canGeneratePlan ||"))
+        XCTAssertTrue(voiceSource.contains("Label(\"Record once\", systemImage:"))
+        XCTAssertTrue(voiceSource.contains("Label(\"Hands-free mode\", systemImage:"))
+        XCTAssertTrue(voiceSource.contains(".accessibilityIdentifier(\"voice-hands-free-provider-privacy\")"))
+        XCTAssertTrue(voiceSource.contains("viewModel.handsFreeModeProviderName"))
+        XCTAssertTrue(voiceSource.contains("Audio is processed by the selected speech-to-text provider only while Hands-free mode is listening."))
+        XCTAssertTrue(voiceSource.contains(".help(localizedSettingsDisplay(actionReadinessMessage))"))
+        XCTAssertTrue(voiceSource.contains(".accessibilityLabel(\"Start Hands-free mode\")"))
+        XCTAssertTrue(voiceSource.contains(".accessibilityLabel(\"Stop Hands-free mode\")"))
+        XCTAssertTrue(
+            voiceSource.contains(
+                "Label(\"Voice Command\", systemImage: \"mic\")\n                    .font(.headline)\n                    .accessibilityIdentifier(\"voice-command-root\")"
+            )
+        )
+        XCTAssertEqual(
+            voiceSource.components(separatedBy: ".accessibilityIdentifier(\"voice-command-root\")").count - 1,
+            1
+        )
+        XCTAssertTrue(
+            voiceSource.contains(
+                "Label(\"Record once\", systemImage: \"waveform.badge.mic\")\n                .font(.subheadline.weight(.semibold))\n                .accessibilityIdentifier(\"voice-command-capture-zone\")"
+            )
+        )
+        XCTAssertTrue(
+            voiceSource.contains(
+                "Label(\"Hands-free mode\", systemImage: \"waveform\")\n                    .font(.caption.weight(.semibold))\n                    .foregroundStyle(.secondary)\n                    .accessibilityIdentifier(\"voice-agent-panel\")"
+            )
+        )
+        XCTAssertEqual(
+            voiceSource.components(separatedBy: ".accessibilityIdentifier(\"voice-command-capture-zone\")").count - 1,
+            1
+        )
+        XCTAssertEqual(
+            voiceSource.components(separatedBy: ".accessibilityIdentifier(\"voice-agent-panel\")").count - 1,
+            1
+        )
+
+        let examplesStart = try XCTUnwrap(voiceSource.range(of: "private struct VoiceCommandExampleChips"))
+        let readinessStart = try XCTUnwrap(
+            voiceSource.range(of: "private struct VoiceCommandActionReadinessRow", range: examplesStart.upperBound..<voiceSource.endIndex)
+        )
+        let examplesSource = String(voiceSource[examplesStart.lowerBound..<readinessStart.lowerBound])
+        XCTAssertTrue(examplesSource.contains("onInsert(text)"))
+        XCTAssertFalse(examplesSource.contains("generatePlan"))
+        XCTAssertFalse(examplesSource.contains("saveDraftToInbox"))
+        XCTAssertFalse(examplesSource.contains("Task {"))
+
+        for localization in [english, japanese] {
+            XCTAssertTrue(localization.contains("\"Record once\" = "))
+            XCTAssertTrue(localization.contains("\"Hands-free mode\" = "))
+            XCTAssertTrue(localization.contains("\"Speech provider: %@\" = "))
+            XCTAssertTrue(localization.contains("\"Audio is processed by the selected speech-to-text provider only while Hands-free mode is listening.\" = "))
+        }
+
+        XCTAssertTrue(runtimeSmoke.contains("setTextAreaContaining \"voice-command-input\" \"   \""))
+        XCTAssertTrue(runtimeSmoke.contains("waitForControlEnabledState \"voice-command-generate-plan\" \"false\""))
+        XCTAssertTrue(runtimeSmoke.contains("waitForControlEnabledState \"voice-command-generate-plan\" \"true\""))
+        XCTAssertTrue(runtimeSmoke.contains("OK: Generate Plan stayed disabled for whitespace and enabled for a valid draft"))
+        XCTAssertGreaterThanOrEqual(
+            runtimeSmoke.components(
+                separatedBy: "SELECT count(*) FROM assistant_queue_items WHERE id LIKE 'action-plan:daily-planning:%';"
+            ).count - 1,
+            4
+        )
+    }
+
     func testSettingsPrivacyDiagnosticsExportIsMetadataOnlyWithInlineError() throws {
         let appSource = try readAppShellSource()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/DiagnosticsReport.swift")

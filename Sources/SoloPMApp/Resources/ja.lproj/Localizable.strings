@@ -52,6 +52,12 @@
 "Export Tasks" = "タスクをエクスポート";
 "Finishes setup and opens the Voice Command window." = "セットアップを完了し、音声コマンドウィンドウを開きます。";
 "Generate Plan" = "計画生成";
+"Hands-free mode" = "ハンズフリーモード";
+"Record once" = "1回録音";
+"Speech provider: %@" = "音声認識プロバイダー: %@";
+"Start Hands-free mode" = "ハンズフリーモードを開始";
+"Stop Hands-free mode" = "ハンズフリーモードを停止";
+"Audio is processed by the selected speech-to-text provider only while Hands-free mode is listening." = "音声はハンズフリーモードで待ち受けている間だけ、選択中の音声認識プロバイダーで処理されます。";
 "Invalid configuration" = "設定が無効";
 "invalidConfiguration" = "設定が無効";
 "Mark as Done" = "完了にする";

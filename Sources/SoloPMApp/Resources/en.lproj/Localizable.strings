@@ -52,6 +52,12 @@
 "Export Tasks" = "Export Tasks";
 "Finishes setup and opens the Voice Command window." = "Finishes setup and opens the Voice Command window.";
 "Generate Plan" = "Generate Plan";
+"Hands-free mode" = "Hands-free mode";
+"Record once" = "Record once";
+"Speech provider: %@" = "Speech provider: %@";
+"Start Hands-free mode" = "Start Hands-free mode";
+"Stop Hands-free mode" = "Stop Hands-free mode";
+"Audio is processed by the selected speech-to-text provider only while Hands-free mode is listening." = "Audio is processed by the selected speech-to-text provider only while Hands-free mode is listening.";
 "Invalid configuration" = "Invalid configuration";
 "invalidConfiguration" = "Invalid configuration";
 "Mark as Done" = "Mark as Done";

@@ -341,6 +341,64 @@ APPLESCRIPT
   done
 }
 
+waitForControlEnabledState() {
+  local fragment="$1"
+  local expected_enabled="$2"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/osascript - "$APP_NAME" "$fragment" "$expected_enabled" <<'APPLESCRIPT' >/dev/null 2>&1
+on run argv
+  set appName to item 1 of argv
+  set fragment to item 2 of argv
+  set expectedEnabled to item 3 of argv
+  tell application "System Events"
+    if not (exists process appName) then error appName & " process is not visible to System Events"
+    tell process appName
+      repeat with windowIndex from 1 to count of windows
+        set currentWindow to window windowIndex
+        set windowName to ""
+        try
+          set windowName to name of currentWindow as text
+        end try
+        if windowName is "Voice Command" then
+          set axItems to entire contents of currentWindow
+          repeat with axItem in axItems
+            set itemRole to ""
+            try
+              set itemRole to role of axItem as text
+            end try
+            if itemRole is "AXButton" then
+              set itemIdentifier to ""
+              try
+                set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
+              end try
+              if itemIdentifier contains fragment then
+                set isEnabled to enabled of axItem as boolean
+                if (expectedEnabled is "true" and isEnabled) or (expectedEnabled is "false" and not isEnabled) then
+                  return "matched"
+                end if
+                error "control enabled state did not match"
+              end if
+            end if
+          end repeat
+        end if
+      end repeat
+    end tell
+  end tell
+  error "control signal not found: " & fragment
+end run
+APPLESCRIPT
+    then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: control '$fragment' did not reach enabled=$expected_enabled" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
 waitForTextContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
@@ -479,7 +537,11 @@ if [[ -z "$planning_initial_project_count" ]]; then
   echo "BLOCKER: initial project count before planning was not readable" >&2
   exit 2
 fi
+setTextAreaContaining "voice-command-input" "   "
+waitForControlEnabledState "voice-command-generate-plan" "false"
 setTextAreaContaining "voice-command-input" "Create a task called Runtime Voice Review Smoke."
+waitForControlEnabledState "voice-command-generate-plan" "true"
+printf "OK: Generate Plan stayed disabled for whitespace and enabled for a valid draft\n"
 pressControlContaining "voice-command-generate-plan"
 waitForTextContaining "The AI provider rejected the configured API key."
 
@@ -518,7 +580,7 @@ verify_sql_value \
 verify_sql_value \
   "1" \
   "only one daily planning queue draft before approval" \
-  "SELECT count(*) FROM assistant_queue_items;"
+  "SELECT count(*) FROM assistant_queue_items WHERE id LIKE 'action-plan:daily-planning:%';"
 verify_sql_value \
   "0" \
   "daily planning review execution before approval" \
@@ -561,7 +623,7 @@ verify_sql_value \
 verify_sql_value \
   "2" \
   "two daily planning queue drafts before approval" \
-  "SELECT count(*) FROM assistant_queue_items;"
+  "SELECT count(*) FROM assistant_queue_items WHERE id LIKE 'action-plan:daily-planning:%';"
 verify_sql_value \
   "0" \
   "move-to-today review execution before approval" \
@@ -599,7 +661,7 @@ verify_sql_value \
 verify_sql_value \
   "3" \
   "three daily planning queue drafts before approval" \
-  "SELECT count(*) FROM assistant_queue_items;"
+  "SELECT count(*) FROM assistant_queue_items WHERE id LIKE 'action-plan:daily-planning:%';"
 verify_sql_value \
   "0" \
   "defer review execution before approval" \
@@ -638,7 +700,7 @@ verify_sql_value \
 verify_sql_value \
   "4" \
   "four daily planning queue drafts before approval" \
-  "SELECT count(*) FROM assistant_queue_items;"
+  "SELECT count(*) FROM assistant_queue_items WHERE id LIKE 'action-plan:daily-planning:%';"
 verify_sql_value \
   "0" \
   "split review execution before approval" \

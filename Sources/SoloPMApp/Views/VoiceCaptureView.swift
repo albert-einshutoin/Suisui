@@ -68,8 +68,12 @@ struct VoiceCaptureView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: SoloPMSpacing.md) {
             HStack {
+                // Structural identifiers stay on leaf headings. SwiftUI
+                // propagates container identifiers into descendants, which
+                // would hide action and mode-control identifiers from AX.
                 Label("Voice Command", systemImage: "mic")
                     .font(.headline)
+                    .accessibilityIdentifier("voice-command-root")
                 Spacer()
                 Button {
                     viewModel.clear()
@@ -112,7 +116,6 @@ struct VoiceCaptureView: View {
         }
         .padding(SoloPMSpacing.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .accessibilityIdentifier("voice-command-root")
         .onChange(of: viewModel.dailyPlanningReviewRequest) { _, request in
             guard let request else {
                 return
@@ -176,8 +179,12 @@ struct VoiceCaptureView: View {
             .buttonStyle(.plain)
             .disabled(isHeroRecordDisabled)
             .help("Records audio, then transcribes it into the command field.")
-            .accessibilityLabel(localizedSettingsDisplay(viewModel.isRecording ? "Stop" : "Record"))
+            .accessibilityLabel(localizedSettingsDisplay(viewModel.isRecording ? "Stop recording" : "Record once"))
             .accessibilityIdentifier("voice-command-record")
+
+            Label("Record once", systemImage: "waveform.badge.mic")
+                .font(.subheadline.weight(.semibold))
+                .accessibilityIdentifier("voice-command-capture-zone")
 
             StatusRow(phase: viewModel.phase)
 
@@ -281,7 +288,8 @@ struct VoiceCaptureView: View {
                     Label("Generate Plan", systemImage: "wand.and.stars")
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .recording || viewModel.phase == .transcribing || viewModel.isLowLatencyVoiceAgentListening)
+                .disabled(!viewModel.canGeneratePlan || viewModel.phase == .generatingPlan || viewModel.phase == .recording || viewModel.phase == .transcribing || viewModel.isLowLatencyVoiceAgentListening)
+                .help(localizedSettingsDisplay(actionReadinessMessage))
                 .accessibilityIdentifier("voice-command-generate-plan")
                 .accessibilityHint(localizedSettingsDisplay(actionReadinessMessage))
             }
@@ -295,7 +303,6 @@ struct VoiceCaptureView: View {
             }
         }
         .soloCard()
-        .accessibilityIdentifier("voice-command-capture-zone")
     }
 
     /// Next-step affordance next to a failed status: Open Settings when the
@@ -628,9 +635,10 @@ private struct LowLatencyVoiceAgentPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: SoloPMSpacing.xs) {
             HStack(alignment: .firstTextBaseline, spacing: SoloPMSpacing.sm) {
-                Label("Voice recognition", systemImage: "waveform")
+                Label("Hands-free mode", systemImage: "waveform")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("voice-agent-panel")
 
                 Label(stateLabel, systemImage: stateSystemImage)
                     .font(.caption)
@@ -648,6 +656,7 @@ private struct LowLatencyVoiceAgentPanel: View {
                         Label("Stop", systemImage: "stop.circle")
                     }
                     .controlSize(.small)
+                    .accessibilityLabel("Stop Hands-free mode")
                     .accessibilityIdentifier("voice-agent-stop")
                 } else {
                     Button {
@@ -660,9 +669,25 @@ private struct LowLatencyVoiceAgentPanel: View {
                     .controlSize(.small)
                     .disabled(isBusyOutsideVoiceAgent)
                     .help("Starts continuous hands-free recognition, separate from push-to-record.")
+                    .accessibilityLabel("Start Hands-free mode")
                     .accessibilityIdentifier("voice-agent-start")
                 }
             }
+
+            Text(
+                String(
+                    format: String(localized: "Speech provider: %@"),
+                    viewModel.handsFreeModeProviderName
+                )
+            )
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+
+            Text("Audio is processed by the selected speech-to-text provider only while Hands-free mode is listening.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("voice-hands-free-provider-privacy")
 
             if !viewModel.liveTranscript.isEmpty {
                 liveTranscriptText
@@ -681,7 +706,6 @@ private struct LowLatencyVoiceAgentPanel: View {
                     .accessibilityIdentifier("voice-agent-live-intent")
             }
         }
-        .accessibilityIdentifier("voice-agent-panel")
     }
 
     /// Finalized speech renders in primary color; the trailing partial segment
@@ -810,6 +834,7 @@ private struct VoiceCommandExampleChips: View {
             Text("Try one of these commands")
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
+                .accessibilityIdentifier("voice-command-example-chips")
             HStack(spacing: SoloPMSpacing.sm) {
                 exampleChip(
                     String(localized: "Capture follow-up for launch review"),
@@ -823,7 +848,6 @@ private struct VoiceCommandExampleChips: View {
                 )
             }
         }
-        .accessibilityIdentifier("voice-command-example-chips")
     }
 
     private func exampleChip(_ text: String, systemImage: String, index: Int) -> some View {

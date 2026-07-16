@@ -3,6 +3,25 @@ import XCTest
 
 @MainActor
 final class VoiceCaptureViewModelTests: XCTestCase {
+    func testGeneratePlanRequiresAValidDraftInEveryIdleState() {
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            ))
+        )
+
+        viewModel.updateDraftText("   \n")
+        XCTAssertFalse(viewModel.canGeneratePlan)
+
+        viewModel.updateDraftText("Plan the release")
+        XCTAssertTrue(viewModel.canGeneratePlan)
+    }
+
     func testGeneratePlanUsesDraftTextAndMovesToReviewReady() async {
         let logger = InMemoryAuditLogger()
         let response = PlanningResponse(

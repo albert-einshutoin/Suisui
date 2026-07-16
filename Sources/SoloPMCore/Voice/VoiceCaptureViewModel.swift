@@ -271,6 +271,13 @@ public final class VoiceCaptureViewModel: ObservableObject {
         lowLatencyVoiceAgentState == .listening
     }
 
+    public var handsFreeModeProviderName: String {
+        // Read the normalized Settings value at display time so the privacy
+        // boundary names the provider the user selected, even when a Voice
+        // window has kept its injected runtime provider alive across a change.
+        appSettingsProvider().normalizedForRuntime.sttProvider.displayName
+    }
+
     public var clarificationQuestion: ClarificationQuestion? {
         clarificationSession?.currentQuestion
     }
