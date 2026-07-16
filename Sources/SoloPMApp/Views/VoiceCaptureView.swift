@@ -674,12 +674,7 @@ private struct LowLatencyVoiceAgentPanel: View {
                 }
             }
 
-            Text(
-                String(
-                    format: String(localized: "Speech provider: %@"),
-                    viewModel.handsFreeModeProviderName
-                )
-            )
+            Text(localizedDisplay("Speech provider: %@", viewModel.handsFreeModeProviderName))
             .font(.caption2)
             .foregroundStyle(.secondary)
 

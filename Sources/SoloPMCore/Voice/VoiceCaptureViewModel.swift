@@ -272,10 +272,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
     }
 
     public var handsFreeModeProviderName: String {
-        // Read the normalized Settings value at display time so the privacy
-        // boundary names the provider the user selected, even when a Voice
-        // window has kept its injected runtime provider alive across a change.
-        appSettingsProvider().normalizedForRuntime.sttProvider.displayName
+        // A Voice window owns its injected provider for its lifetime. Naming
+        // that exact provider prevents the privacy surface from drifting when
+        // Settings changes underneath an already-open window.
+        sttProvider.id.displayName
     }
 
     public var clarificationQuestion: ClarificationQuestion? {

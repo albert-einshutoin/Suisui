@@ -22,6 +22,30 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.canGeneratePlan)
     }
 
+    func testHandsFreeProviderIdentityDoesNotDriftWhenSettingsChange() {
+        let settings = MutableVoiceSettings(AppSettings(sttProvider: .openAITranscribe))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(
+                id: .openAITranscribe,
+                transcript: STTTranscript(text: "")
+            ),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            )),
+            appSettingsProvider: { settings.value }
+        )
+
+        XCTAssertEqual(viewModel.handsFreeModeProviderName, "OpenAI Transcribe")
+
+        settings.value = AppSettings(sttProvider: .localWhisperCpp)
+
+        XCTAssertEqual(viewModel.handsFreeModeProviderName, "OpenAI Transcribe")
+    }
+
     func testGeneratePlanUsesDraftTextAndMovesToReviewReady() async {
         let logger = InMemoryAuditLogger()
         let response = PlanningResponse(
@@ -2765,5 +2789,27 @@ private final class MeteringFakeAudioRecorder: AudioRecorder, AudioInputLevelRea
 
     var currentNormalizedInputLevel: Double? {
         levelToReturn
+    }
+}
+
+private final class MutableVoiceSettings: @unchecked Sendable {
+    private let lock = NSLock()
+    private var settings: AppSettings
+
+    init(_ settings: AppSettings) {
+        self.settings = settings
+    }
+
+    var value: AppSettings {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return settings
+        }
+        set {
+            lock.lock()
+            settings = newValue
+            lock.unlock()
+        }
     }
 }
