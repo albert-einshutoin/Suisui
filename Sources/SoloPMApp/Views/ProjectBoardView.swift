@@ -432,7 +432,10 @@ struct ProjectBoardView: View {
         )
     }
 
-    private func navigateWithinScene(to route: BoardRoute) {
+    private func navigateWithinScene(
+        to route: BoardRoute,
+        focus: BoardRouteFocus? = nil
+    ) {
         let route = validatedRoute(route)
         if ProjectBoardSelectionPersistence.environmentOverrideRawValue == nil {
             persistRoute(route)
@@ -442,6 +445,7 @@ struct ProjectBoardView: View {
             // the next-window AppStorage preference.
             transientBoardRoute = route
         }
+        applyRouteFocus(focus)
         applyRouteToLegacyUI(route)
     }
 
@@ -582,11 +586,15 @@ struct ProjectBoardView: View {
         switch kind {
         case .createInboxTask(let title):
             viewModel.createInboxTask(title: title)
-            selectedDestination = .inbox
+            navigateWithinScene(to: .primary(.inbox))
         case .openDestination(let destination):
-            selectedDestination = destination
+            if destination == .catchUp {
+                navigateWithinScene(to: .primary(.today), focus: .catchUp)
+            } else {
+                navigateWithinScene(to: typedRoute(for: destination))
+            }
         case .openProject(let projectID, _):
-            selectedDestination = .project(projectID)
+            navigateWithinScene(to: .project(projectID))
         case .openSmartList(let smartListID, _):
             if let smartList = allSmartLists.first(where: { $0.id == smartListID }) {
                 selectSmartList(smartList)

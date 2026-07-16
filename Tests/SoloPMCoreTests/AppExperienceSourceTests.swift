@@ -54,6 +54,32 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("|| currentBoardRouteResolution.focus == .catchUp"))
     }
 
+    func testCommandPaletteUsesTypedSceneNavigationAndPreservesCatchUpFocus() throws {
+        let boardSource = try readPackageFile(
+            "Sources/SoloPMApp/Views/ProjectBoardView.swift"
+        )
+        let start = try XCTUnwrap(
+            boardSource.range(of: "private func executeCommandPaletteAction")
+        )
+        let end = try XCTUnwrap(
+            boardSource.range(
+                of: "private func revealTaskFromCommandPalette",
+                range: start.lowerBound..<boardSource.endIndex
+            )
+        )
+        let block = String(boardSource[start.lowerBound..<end.lowerBound])
+
+        XCTAssertTrue(
+            block.contains(
+                "navigateWithinScene(to: .primary(.today), focus: .catchUp)"
+            )
+        )
+        XCTAssertTrue(block.contains("navigateWithinScene(to: typedRoute(for: destination))"))
+        XCTAssertTrue(block.contains("navigateWithinScene(to: .project(projectID))"))
+        XCTAssertFalse(block.contains("selectedDestination = destination"))
+        XCTAssertFalse(block.contains("selectedDestination = .project(projectID)"))
+    }
+
     func testProjectsAndReviewHubsExposeRelocatedDestinations() throws {
         let projectsSource = try readPackageFile(
             "Sources/SoloPMApp/Views/ProjectBoardProjectsHubView.swift"
