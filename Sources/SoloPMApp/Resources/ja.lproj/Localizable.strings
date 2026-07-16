@@ -1769,3 +1769,5 @@
 "Edit Project" = "プロジェクトを編集";
 "Open project details" = "プロジェクト詳細を開く";
 "Opens this project's editable details in the inspector." = "このプロジェクトの編集可能な詳細をインスペクタで開きます。";
+"Open task details" = "タスク詳細を開く";
+"Opens the selected task in the inspector." = "選択したタスクをインスペクタで開きます。";

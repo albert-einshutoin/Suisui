@@ -47,7 +47,6 @@ private enum ProjectBoardLayoutMetrics {
     static let taskMetadataChipMinHeight: CGFloat = 24
     static let taskStatusRailWidth: CGFloat = 4
     static let taskStatusRailHeight: CGFloat = 44
-    static let inspectorOverlayWidth: CGFloat = 300
 }
 
 private struct DevelopmentAutomationReviewSheet: Identifiable {
@@ -172,13 +171,9 @@ struct ProjectBoardView: View {
             minHeight: ProjectBoardWindowMetrics.minHeight,
             alignment: .topLeading
         )
-        .overlay(alignment: .trailing) {
-            if isInspectorEffectivelyPresented {
-                inspectorOverlayContent
-                    // Keep Inspector content outside the fitting width while
-                    // WindowGroup uses the explicit content minimum contract.
-                    .frame(width: 0, alignment: .trailing)
-            }
+        .inspector(isPresented: inspectorBinding) {
+            inspectorContent
+                .inspectorColumnWidth(min: 276, ideal: 300, max: 420)
         }
         .navigationTitle("SoloPM")
         // The Edit-menu board undo command targets the key Project Board
@@ -505,8 +500,8 @@ struct ProjectBoardView: View {
                     project: project,
                     displayMode: $displayMode,
                     viewModel: viewModel,
-                    onOpenProjectInspector: requestInspectorPresentation,
-                    onOpenTaskInspector: requestInspectorPresentation
+                    onOpenProjectInspector: openProjectInspector,
+                    onOpenTaskInspector: openTaskInspector
                 )
             } else if viewModel.isEmptyProjectStateVisible {
                 ContentUnavailableView("No Projects", systemImage: "folder")
@@ -679,8 +674,21 @@ struct ProjectBoardView: View {
         )
     }
 
+    private var inspectorBinding: Binding<Bool> {
+        Binding(
+            get: { isInspectorEffectivelyPresented },
+            set: { isPresented in
+                if isPresented {
+                    requestInspectorPresentation()
+                } else {
+                    dismissInspector()
+                }
+            }
+        )
+    }
+
     @ViewBuilder
-    private var inspectorOverlayContent: some View {
+    private var inspectorContent: some View {
         Group {
             if let task = viewModel.selectedTask {
                 TaskInspectorView(
@@ -699,13 +707,6 @@ struct ProjectBoardView: View {
                 EmptyView()
             }
         }
-        .frame(width: ProjectBoardLayoutMetrics.inspectorOverlayWidth)
-        .frame(maxHeight: .infinity)
-        .background(.regularMaterial)
-        .overlay(alignment: .leading) {
-            Divider()
-        }
-        .shadow(color: .black.opacity(0.12), radius: 12, x: -3, y: 0)
     }
 
     private var inspectorSelectionContext: InspectorSelectionContext {
@@ -723,14 +724,28 @@ struct ProjectBoardView: View {
         allowsCompactInspectorPresentation = true
     }
 
+    private func openProjectInspector() {
+        viewModel.selectedTaskID = nil
+        requestInspectorPresentation()
+    }
+
+    private func openTaskInspector(_ taskID: Int64) {
+        viewModel.selectedTaskID = taskID
+        requestInspectorPresentation()
+    }
+
     private func updateProjectBoardWindowWidth(_ width: CGFloat) {
-        let wasWide = Double(projectBoardWindowWidth) >= InspectorPresentationPolicy.wideMinimumWidth
+        let intent = InspectorPresentationPolicy.intentAfterResize(
+            previousWindowWidth: Double(projectBoardWindowWidth),
+            currentWindowWidth: Double(width),
+            intent: InspectorPresentationIntent(
+                userRequested: userRequestedInspector,
+                allowsCompactPresentation: allowsCompactInspectorPresentation
+            )
+        )
         projectBoardWindowWidth = width
-        if wasWide && Double(width) < InspectorPresentationPolicy.wideMinimumWidth {
-            // Resize hides only the effective presentation. The scene-local
-            // request remains available when this route becomes wide again.
-            allowsCompactInspectorPresentation = false
-        }
+        userRequestedInspector = intent.userRequested
+        allowsCompactInspectorPresentation = intent.allowsCompactPresentation
     }
 
     private func dismissInspector() {
@@ -2360,7 +2375,7 @@ private struct ProjectBoardDetail: View {
     @Binding var displayMode: ProjectBoardDisplayMode
     @ObservedObject var viewModel: ProjectBoardViewModel
     var onOpenProjectInspector: () -> Void = {}
-    var onOpenTaskInspector: () -> Void = {}
+    var onOpenTaskInspector: (Int64) -> Void = { _ in }
     @State private var composingStatus: ProjectTaskStatus?
 
     var body: some View {
@@ -2412,7 +2427,8 @@ private struct ProjectBoardDetail: View {
                     ProjectDetailOverview(
                         project: project,
                         viewModel: viewModel,
-                        onAddTask: { startComposingTask() }
+                        onAddTask: { startComposingTask() },
+                        onOpenTaskInspector: onOpenTaskInspector
                     )
                 case .board:
                     ProjectKanbanBoard(
@@ -2422,7 +2438,11 @@ private struct ProjectBoardDetail: View {
                         onOpenTaskInspector: onOpenTaskInspector
                     )
                 case .list:
-                    ProjectTaskList(project: project, viewModel: viewModel)
+                    ProjectTaskList(
+                        project: project,
+                        viewModel: viewModel,
+                        onOpenTaskInspector: onOpenTaskInspector
+                    )
                 }
             }
         }
@@ -2461,6 +2481,7 @@ private struct ProjectDetailOverview: View {
     let project: ProjectBoardProject
     @ObservedObject var viewModel: ProjectBoardViewModel
     let onAddTask: () -> Void
+    let onOpenTaskInspector: (Int64) -> Void
 
     private let columns = [
         GridItem(.adaptive(minimum: 280), spacing: 12)
@@ -2472,12 +2493,20 @@ private struct ProjectDetailOverview: View {
                 ProjectProgressOverview(project: project)
 
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
-                    ProjectTaskSnapshotSection(project: project, viewModel: viewModel, onAddTask: onAddTask)
+                    ProjectTaskSnapshotSection(
+                        project: project,
+                        onAddTask: onAddTask,
+                        onOpenTaskInspector: onOpenTaskInspector
+                    )
                     ProjectMilestoneSection(project: project, viewModel: viewModel)
                     ProjectArtifactSection(project: project, viewModel: viewModel)
                     ProjectTimelineSection(project: project)
                     ProjectAssistantPanel(project: project, viewModel: viewModel)
-                    ProjectLocalSuggestionPanel(project: project, viewModel: viewModel)
+                    ProjectLocalSuggestionPanel(
+                        project: project,
+                        viewModel: viewModel,
+                        onOpenTaskInspector: onOpenTaskInspector
+                    )
                 }
             }
             .padding(.bottom, 4)
@@ -2568,8 +2597,8 @@ private struct ProjectMetricBadge: View {
 
 private struct ProjectTaskSnapshotSection: View {
     let project: ProjectBoardProject
-    @ObservedObject var viewModel: ProjectBoardViewModel
     let onAddTask: () -> Void
+    let onOpenTaskInspector: (Int64) -> Void
 
     private var openTasks: [ProjectBoardTask] {
         project.tasks
@@ -2597,7 +2626,7 @@ private struct ProjectTaskSnapshotSection: View {
             } else {
                 ForEach(openTasks.prefix(5)) { task in
                     Button {
-                        viewModel.selectedTaskID = task.id
+                        onOpenTaskInspector(task.id)
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: task.status.systemImage)
@@ -3028,6 +3057,7 @@ private struct ProjectAssistantPanel: View {
 private struct ProjectLocalSuggestionPanel: View {
     let project: ProjectBoardProject
     @ObservedObject var viewModel: ProjectBoardViewModel
+    let onOpenTaskInspector: (Int64) -> Void
 
     private var suggestedTask: ProjectBoardTask? {
         project.tasks.first { $0.status == .blocked }
@@ -3045,7 +3075,7 @@ private struct ProjectLocalSuggestionPanel: View {
 
                 HStack(spacing: 8) {
                     Button {
-                        viewModel.selectedTaskID = suggestedTask.id
+                        onOpenTaskInspector(suggestedTask.id)
                     } label: {
                         Label("Open Task", systemImage: "sidebar.right")
                     }
@@ -3220,7 +3250,7 @@ private struct ProjectKanbanBoard: View {
     let project: ProjectBoardProject
     @Binding var composingStatus: ProjectTaskStatus?
     @ObservedObject var viewModel: ProjectBoardViewModel
-    var onOpenTaskInspector: () -> Void = {}
+    var onOpenTaskInspector: (Int64) -> Void = { _ in }
     @FocusState private var isBoardFocused: Bool
 
     var body: some View {
@@ -3244,11 +3274,7 @@ private struct ProjectKanbanBoard: View {
                             )
                             composingStatus = nil
                         },
-                        onSelectTask: { viewModel.selectedTaskID = $0 },
-                        onOpenTaskDetails: {
-                            viewModel.selectedTaskID = $0
-                            onOpenTaskInspector()
-                        },
+                        onOpenTaskDetails: onOpenTaskInspector,
                         onMoveTask: { taskID, status in
                             viewModel.moveTask(id: taskID, to: status)
                         },
@@ -3350,10 +3376,10 @@ private struct ProjectKanbanBoard: View {
     }
 
     private func openInspectorForSelectedTask() -> KeyPress.Result {
-        guard selectedBoardTask != nil else {
+        guard let selectedBoardTask else {
             return .ignored
         }
-        onOpenTaskInspector()
+        onOpenTaskInspector(selectedBoardTask.id)
         return .handled
     }
 
@@ -3410,7 +3436,6 @@ private struct BoardColumnView: View {
     let onStartComposing: () -> Void
     let onCancelComposing: () -> Void
     let onCreateTask: (String, String, ProjectTaskPriority, String?) -> Void
-    let onSelectTask: (Int64) -> Void
     let onOpenTaskDetails: (Int64) -> Void
     let onMoveTask: (Int64, ProjectTaskStatus) -> Void
     let onMoveDroppedTasks: ([String], ProjectTaskStatus) -> Bool
@@ -3503,7 +3528,7 @@ private struct BoardColumnView: View {
         BoardTaskCard(
             task: task,
             isSelected: selectedTaskID == task.id,
-            onSelect: { onSelectTask(task.id) },
+            onOpenDetails: { onOpenTaskDetails(task.id) },
             onMoveStatus: { status in onMoveTask(task.id, status) }
         )
         .draggable(String(task.id)) {
@@ -3651,13 +3676,13 @@ private struct InlineTaskComposer: View {
 private struct BoardTaskCard: View {
     let task: ProjectBoardTask
     let isSelected: Bool
-    let onSelect: () -> Void
+    let onOpenDetails: () -> Void
     let onMoveStatus: (ProjectTaskStatus) -> Void
     @State private var isPointerHovered = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button(action: onSelect) {
+            Button(action: onOpenDetails) {
                 TaskCardSelectableSummary(task: task, isPointerHovered: isPointerHovered)
             }
             .buttonStyle(.plain)
@@ -3972,6 +3997,7 @@ private struct TaskMetadataChip: View {
 private struct ProjectTaskList: View {
     let project: ProjectBoardProject
     @ObservedObject var viewModel: ProjectBoardViewModel
+    let onOpenTaskInspector: (Int64) -> Void
 
     var body: some View {
         Table(project.tasks, selection: $viewModel.selectedTaskID) {
@@ -4013,6 +4039,21 @@ private struct ProjectTaskList: View {
                 Text(task.dueLabel ?? "")
                     .foregroundStyle(.secondary)
             }
+
+            TableColumn("Details") { task in
+                Button {
+                    onOpenTaskInspector(task.id)
+                } label: {
+                    Label("Open Details", systemImage: "sidebar.right")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .help("Open task details")
+                .accessibilityIdentifier("task-list-open-details-\(task.id)")
+                .accessibilityLabel("Open details for \(task.title)")
+                .accessibilityHint("Opens the selected task in the inspector.")
+            }
+            .width(54)
         }
         .accessibilityIdentifier("project-task-list")
         .accessibilityLabel("Project task list")

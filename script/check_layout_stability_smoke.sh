@@ -768,9 +768,10 @@ assert_no_negative_or_overlapping_frames() {
       function right(id) { return x[id] + w[id] }
       function bottom(id) { return y[id] + h[id] }
       function isBodyRegion(id) {
-        # The adaptive Inspector is intentionally a temporary trailing overlay;
-        # only persistent sidebar/detail siblings must never overlap.
-        return id == "project-board-sidebar" || id == "project-board-detail"
+        return id == "project-board-sidebar" ||
+          id == "project-board-detail" ||
+          id == "project-inspector" ||
+          id == "task-inspector"
       }
       function overlaps(a, b) {
         return right(a) > x[b] + threshold &&
@@ -907,7 +908,8 @@ sample_layout_frames() {
       $1 == "project-board-header-bar" ||
       $1 == "project-board-detail" ||
       $1 == "project-board-sidebar" ||
-      $1 == "project-inspector" {
+      $1 == "project-inspector" ||
+      $1 == "task-inspector" {
         print label "\t" sample "\t" offset "\t" $1 "\t" $2 "\t" $3 "\t" $4 "\t" $5
       }
     ' "$frame_file" >>"$SAMPLES_FILE"
@@ -1051,6 +1053,14 @@ click_ax_identifier "project-inspector-close"
 wait_for_ax_identifier_absent "project-inspector"
 assert_layout_stable "inspector-explicit-close"
 
+click_ax_identifier "task-card-open-details"
+wait_for_ax_identifier "task-inspector"
+wait_for_ax_identifier_absent "project-inspector"
+assert_layout_stable "task-inspector-explicit-open" "project-board-header-bar" "project-board-detail" "project-board-sidebar" "task-inspector"
+click_ax_identifier "task-inspector-close"
+wait_for_ax_identifier_absent "task-inspector"
+assert_layout_stable "task-inspector-explicit-close"
+
 set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH" "$LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT"
 assert_layout_stable "inspector-wide-closed"
 click_ax_identifier "project-header-open-inspector"
@@ -1062,8 +1072,8 @@ wait_for_ax_identifier_absent "project-inspector"
 assert_layout_stable "inspector-resize-hidden"
 
 set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH" "$LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT"
-wait_for_ax_identifier "project-inspector"
-assert_layout_stable "inspector-wide-restored" "project-board-header-bar" "project-board-detail" "project-board-sidebar" "project-inspector"
+wait_for_ax_identifier_absent "project-inspector"
+assert_layout_stable "inspector-wide-stays-closed"
 
 set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_WIDE_WIDTH" "$LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT"
 assert_layout_stable "window-wide"

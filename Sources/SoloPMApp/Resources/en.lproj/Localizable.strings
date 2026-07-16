@@ -1769,3 +1769,5 @@
 "Edit Project" = "Edit Project";
 "Open project details" = "Open project details";
 "Opens this project's editable details in the inspector." = "Opens this project's editable details in the inspector.";
+"Open task details" = "Open task details";
+"Opens the selected task in the inspector." = "Opens the selected task in the inspector.";

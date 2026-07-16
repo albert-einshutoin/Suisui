@@ -777,14 +777,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(headerSource.contains(".pickerStyle(.segmented)"))
     }
 
-    func testProjectBoardInspectorCanCompressInsideHostedMinimumWindow() throws {
+    func testProjectBoardInspectorUsesNativeSwiftUIPresentation() throws {
         let boardSource = try readProjectBoardSurfaceSources()
 
-        XCTAssertTrue(
-            boardSource.contains(".frame(width: ProjectBoardLayoutMetrics.inspectorOverlayWidth)"),
-            "The inspector overlay must not increase the hosted minimum window width."
-        )
-        XCTAssertTrue(boardSource.contains(".frame(width: 0, alignment: .trailing)"))
+        XCTAssertTrue(boardSource.contains(".inspector(isPresented: inspectorBinding)"))
+        XCTAssertTrue(boardSource.contains(".inspectorColumnWidth(min: 276, ideal: 300, max: 420)"))
+        XCTAssertFalse(boardSource.contains("inspectorOverlayContent"))
+        XCTAssertFalse(boardSource.contains(".overlay(alignment: .trailing)"))
     }
 
     func testProjectBoardInspectorUsesSceneLocalIntentAndStableWidthPolicy() throws {
@@ -795,6 +794,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("onWindowWidthChanged: updateProjectBoardWindowWidth"))
         XCTAssertTrue(boardSource.contains("private func reportWindowWidthIfChanged()"))
         XCTAssertTrue(boardSource.contains("requestInspectorPresentation()"))
+        XCTAssertTrue(boardSource.contains("private func openProjectInspector()"))
+        XCTAssertTrue(boardSource.contains("viewModel.selectedTaskID = nil"))
+        XCTAssertTrue(boardSource.contains("InspectorPresentationPolicy.intentAfterResize("))
         XCTAssertTrue(boardSource.contains("dismissInspector()"))
         XCTAssertFalse(boardSource.contains("@State private var isInspectorPresented = true"))
         XCTAssertFalse(boardSource.contains("if selectedTaskID != nil && selectedDestination != .today && selectedDestination != .inbox"))
@@ -815,7 +817,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("window-minimum-closed"))
         XCTAssertTrue(script.contains("window-minimum-open"))
         XCTAssertTrue(script.contains("inspector-explicit-open"))
+        XCTAssertTrue(script.contains("task-inspector-explicit-open"))
         XCTAssertTrue(script.contains("inspector-explicit-close"))
+        XCTAssertTrue(script.contains("inspector-wide-stays-closed"))
+        XCTAssertFalse(script.contains("inspector-wide-restored"))
         XCTAssertTrue(script.contains("\"sidebar-destination-review\" \"Review\" \"review-hub\""))
         XCTAssertTrue(script.contains("\"review-destination-assistant-queue\" \"assistant-queue-workflow\""))
         XCTAssertTrue(script.contains("LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX:-0"))
@@ -1146,7 +1151,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let detailStart = try XCTUnwrap(boardSource.range(of: "} detail: {"))
-        let inspectorStart = try XCTUnwrap(boardSource.range(of: ".overlay(alignment: .trailing)"))
+        let inspectorStart = try XCTUnwrap(boardSource.range(of: ".inspector(isPresented: inspectorBinding)"))
         let toolbarStart = try XCTUnwrap(boardSource.range(of: ".toolbar {"))
 
         XCTAssertGreaterThan(toolbarStart.lowerBound, inspectorStart.lowerBound)
@@ -1594,7 +1599,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(source.contains("TaskCardSelectableSummary"))
         XCTAssertTrue(source.contains("TaskDragAffordance"))
-        XCTAssertTrue(cardSource.contains("Button(action: onSelect)"))
+        XCTAssertTrue(cardSource.contains("Button(action: onOpenDetails)"))
         XCTAssertTrue(cardSource.contains(".buttonStyle(.plain)"))
         XCTAssertTrue(cardSource.contains(".accessibilityIdentifier(\"task-card-open-details\")"))
         XCTAssertTrue(cardSource.contains(".accessibilityIdentifier(\"task-status-move-controls\")"))
@@ -2397,7 +2402,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("ProjectMilestoneSection(project: project, viewModel: viewModel)"))
         XCTAssertTrue(source.contains("ProjectAssistantPanel(project: project, viewModel: viewModel)"))
         XCTAssertTrue(source.contains("ProjectArtifactSection(project: project, viewModel: viewModel)"))
-        XCTAssertTrue(source.contains("ProjectLocalSuggestionPanel(project: project, viewModel: viewModel)"))
+        XCTAssertTrue(source.contains("ProjectLocalSuggestionPanel("))
+        XCTAssertTrue(source.contains("onOpenTaskInspector: onOpenTaskInspector"))
         XCTAssertTrue(source.contains("project.milestones"))
         XCTAssertTrue(source.contains("case .milestone"))
         XCTAssertTrue(source.contains("viewModel.createProjectMilestone"))
@@ -2558,6 +2564,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-overview-add-task\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-local-suggestion-open-task\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Opens the suggested task in the inspector.\")"))
+        XCTAssertTrue(boardSource.contains("onOpenTaskInspector(task.id)"))
+        XCTAssertTrue(boardSource.contains("onOpenTaskInspector(suggestedTask.id)"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"task-list-open-details-\\(task.id)\")"))
+        XCTAssertTrue(boardSource.contains("private func openTaskInspector(_ taskID: Int64)"))
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-local-suggestion-review-action\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Prepares the suggested blocked task action for review without writing task status.\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Project timeline item \\(item.title)\")"))
