@@ -20,11 +20,19 @@ TIMEOUT_SECONDS="${SOLOPM_RUNTIME_SETTINGS_SAVE_TIMEOUT_SECONDS:-60}"
 KEEP_HOME="${SOLOPM_RUNTIME_SETTINGS_SAVE_KEEP_HOME:-0}"
 WINDOW_WIDTH="${SOLOPM_RUNTIME_SETTINGS_SAVE_WINDOW_WIDTH:-760}"
 WINDOW_HEIGHT="${SOLOPM_RUNTIME_SETTINGS_SAVE_WINDOW_HEIGHT:-900}"
+AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_RUNTIME_SETTINGS_SAVE_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
+if [[ ! -r "$AX_HELPERS" ]]; then
+  echo "BLOCKER: AX helpers are unavailable: $AX_HELPERS" >&2
+  exit 2
+fi
+
+# shellcheck source=/dev/null
+source "$AX_HELPERS"
 
 cd "$ROOT_DIR"
 mkdir -p "$ROOT_DIR/.tmp"
@@ -34,13 +42,25 @@ database_path="$tmp_dir/SoloPM-runtime-settings-save.sqlite"
 settings_suite_name="$BUNDLE_IDENTIFIER.runtime-settings-save.$(/usr/bin/uuidgen | tr '[:upper:]' '[:lower:]')"
 runtime_google_calendar_id="runtime-settings-smoke@group.calendar.google.com"
 app_pid=""
+app_launch_pid=""
+app_identity=""
+app_launch_identity=""
 
 terminate_app() {
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-  if [[ -n "${app_pid:-}" ]]; then
-    wait "$app_pid" >/dev/null 2>&1 || true
-    app_pid=""
+  # Cleanup is intentionally identity-scoped so a separately running SoloPM
+  # PID survives every Overview, AI, and Sync smoke relaunch.
+  local owned_pid="${app_pid:-}"
+  local launch_pid="${app_launch_pid:-}"
+  if [[ -n "$owned_pid" ]]; then
+    ax_terminate_owned_process "$owned_pid" "$APP_BINARY" "${app_identity:-}"
   fi
+  if [[ -n "$launch_pid" && "$launch_pid" != "$owned_pid" ]]; then
+    ax_terminate_owned_process "$launch_pid" "$APP_BINARY" "${app_launch_identity:-}"
+  fi
+  app_pid=""
+  app_launch_pid=""
+  app_identity=""
+  app_launch_identity=""
 }
 
 cleanup() {
@@ -58,29 +78,32 @@ cleanup() {
 trap cleanup EXIT
 
 wait_for_app_process() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: $APP_NAME process did not appear within ${TIMEOUT_SECONDS}s" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  app_pid="$(ax_wait_for_owned_app_pid "$app_launch_pid" "$APP_BINARY" "$TIMEOUT_SECONDS")" || {
+    echo "BLOCKER: $APP_NAME did not launch from pid $app_launch_pid" >&2
+    return 1
+  }
+  app_identity="$(ax_wait_for_owned_process_identity "$app_pid" "$APP_BINARY" "$TIMEOUT_SECONDS")" || {
+    echo "BLOCKER: $APP_NAME identity was unavailable for pid $app_pid" >&2
+    return 1
+  }
+  ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$TIMEOUT_SECONDS" "$APP_BINARY"
 }
 
 activate_app() {
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
+  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
-  set appName to item 1 of argv
+  set appPID to item 1 of argv as integer
   tell application "System Events"
-    if not (exists process appName) then return "missing"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then return "missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set frontmost to true
-      if (count of windows) > 0 then
+      repeat with currentWindow in windows
         try
-          perform action "AXRaise" of window 1
+          perform action "AXRaise" of currentWindow
         end try
-      end if
+      end repeat
     end tell
   end tell
   return "activated"
@@ -99,38 +122,10 @@ APPLESCRIPT
 }
 
 wait_for_visible_windows() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  local window_count=""
-  local osascript_status=1
-
-  while true; do
-    set +e
-    window_count="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>/dev/null
-on run argv
-  set appName to item 1 of argv
-  tell application "System Events"
-    if not (exists process appName) then return "0"
-    tell process appName
-      return (count of windows) as text
-    end tell
-  end tell
-end run
-APPLESCRIPT
-)"
-    osascript_status=$?
-    set -e
-
-    if [[ "$osascript_status" -eq 0 && "${window_count:-0}" =~ ^[0-9]+$ && "$window_count" -ge 1 ]]; then
-      return 0
-    fi
-
-    activate_app
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: $APP_NAME did not expose a visible AX window within ${TIMEOUT_SECONDS}s" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  if ! ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "" "$TIMEOUT_SECONDS" "" "$APP_BINARY"; then
+    echo "BLOCKER: $APP_NAME did not expose a visible AX window for launched pid $app_pid" >&2
+    return 1
+  fi
 }
 
 set_settings_window_size() {
@@ -138,14 +133,16 @@ set_settings_window_size() {
   local height="$2"
   # The settings evidence window starts compact. Resize it through AX so the
   # Task Automation controls and Save button are visible without scrolling.
-  /usr/bin/osascript - "$APP_NAME" "$width" "$height" <<'APPLESCRIPT' >/dev/null
+  /usr/bin/osascript - "$app_pid" "$width" "$height" <<'APPLESCRIPT' >/dev/null
 on run argv
-  set appName to item 1 of argv
+  set appPID to item 1 of argv as integer
   set targetWidth to (item 2 of argv) as integer
   set targetHeight to (item 3 of argv) as integer
   tell application "System Events"
-    if not (exists process appName) then error "process missing"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "process missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set frontmost to true
       repeat with windowIndex from 1 to count of windows
         set currentWindow to window windowIndex
@@ -177,7 +174,8 @@ launch_app_for_settings() {
     SOLOPM_SETTINGS_EVIDENCE_TAB="$settings_tab" \
     SOLOPM_LANGUAGE_PREFERENCE="$language" \
     "$APP_BINARY" &
-  app_pid=$!
+  app_launch_pid=$!
+  app_launch_identity="$(ax_wait_for_owned_process_identity "$app_launch_pid" "$APP_BINARY" 3)" || return 1
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -196,17 +194,19 @@ waitForAXElementContaining() {
   fi
 
   while true; do
-    /usr/bin/osascript - "$APP_NAME" "$identifier_fragment" "$required_text_one" "$required_text_two" <<'APPLESCRIPT' >/dev/null 2>&1 &
+    /usr/bin/osascript - "$app_pid" "$identifier_fragment" "$required_text_one" "$required_text_two" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
-  set appName to item 1 of argv
+  set appPID to item 1 of argv as integer
   set identifierFragment to item 2 of argv
   set requiredTextOne to item 3 of argv
   set requiredTextTwo to item 4 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "owned process is not visible to System Events"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set windowCount to count of windows
-      if windowCount < 1 then error appName & " has no visible windows"
+      if windowCount < 1 then error "owned process has no visible windows"
       try
         set frontmost to true
       end try
@@ -300,15 +300,17 @@ pressControlContaining() {
   fi
 
   while true; do
-    /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT' >/dev/null 2>&1 &
+    /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
-  set appName to item 1 of argv
+  set appPID to item 1 of argv as integer
   set fragment to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "owned process is not visible to System Events"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set windowCount to count of windows
-      if windowCount < 1 then error appName & " has no visible windows"
+      if windowCount < 1 then error "owned process has no visible windows"
       try
         set frontmost to true
       end try
@@ -407,16 +409,18 @@ setTextFieldContaining() {
   fi
 
   while true; do
-    /usr/bin/osascript - "$APP_NAME" "$fragment" "$replacement" <<'APPLESCRIPT' >/dev/null 2>&1 &
+    /usr/bin/osascript - "$app_pid" "$fragment" "$replacement" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
-  set appName to item 1 of argv
+  set appPID to item 1 of argv as integer
   set fragment to item 2 of argv
   set replacement to item 3 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "owned process is not visible to System Events"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set windowCount to count of windows
-      if windowCount < 1 then error appName & " has no visible windows"
+      if windowCount < 1 then error "owned process has no visible windows"
       try
         set frontmost to true
       end try
@@ -528,15 +532,17 @@ enableCheckboxContaining() {
 
   while true; do
     set +e
-    output="$(/usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT' 2>/dev/null
+    output="$(/usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT' 2>/dev/null
 on run argv
-  set appName to item 1 of argv
+  set appPID to item 1 of argv as integer
   set fragment to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "owned process is not visible to System Events"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set windowCount to count of windows
-      if windowCount < 1 then error appName & " has no visible windows"
+      if windowCount < 1 then error "owned process has no visible windows"
       try
         set frontmost to true
       end try
