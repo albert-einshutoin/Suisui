@@ -116,25 +116,21 @@ public enum SoloPMHarnessTodayCockpitOperation: String, Codable, CaseIterable, E
             ]
         case .captureCommand:
             [
+                "today-primary-action",
                 "today-briefing-panel",
-                "today-command-capture-field",
-                "today-command-add"
+                "today-command-capture-field"
             ]
         case .commonActions:
             [
-                "today-common-action-rail",
-                "today-common-chip-add-task",
-                "today-common-chip-plan-tomorrow",
-                "today-common-chip-prepare-meeting",
-                "today-common-chip-draft-reply"
+                "today-secondary-actions-menu"
             ]
         case .focusSuggestions:
             [
-                "today-suggestion-rail"
+                "today-focus-recommendation"
             ]
         case .localFocusAndPlanning:
             [
-                "today-start-focus",
+                "today-primary-action",
                 "today-flow-strip"
             ]
         case .railContext:
@@ -145,11 +141,7 @@ public enum SoloPMHarnessTodayCockpitOperation: String, Codable, CaseIterable, E
             ]
         case .railActions:
             [
-                "today-rail-focus",
-                "today-rail-schedule-block",
-                "today-rail-edit-task",
-                "today-rail-add-subtask",
-                "today-rail-reminder-draft"
+                "today-rail-actions-menu"
             ]
         }
     }

@@ -93,16 +93,6 @@ struct TodayWorkflowView: View {
             tasks: snapshot.plan.tasks,
             emptyTitle: "No tasks due today",
             emptyDescription: "Captured work remains in Inbox until it is scheduled or moved to a project.",
-            emptyStateAction: WorkflowEmptyStateAction(
-                title: "Add a task for today",
-                systemImage: "plus.circle",
-                accessibilityIdentifier: "today-empty-add-task",
-                handler: {
-                    // Mirrors the Add Task chip: prefill the Today capture
-                    // field so the next keystroke creates a local Inbox item.
-                    commandTitle = String(localized: "New task: ")
-                }
-            ),
             viewModel: viewModel,
             onSelectTask: selectTodayTask,
             fillsAvailableHeight: fillsAvailableHeight,
@@ -124,13 +114,21 @@ struct TodayWorkflowView: View {
                             CatchUpWorkflowView(viewModel: viewModel)
                                 .frame(minHeight: 360)
                         } label: {
-                            Label(
-                                String(
-                                    format: String(localized: "Catch Up (%d)"),
-                                    viewModel.derivedReadModels.sidebarMetrics.catchUpCount
-                                ),
-                                systemImage: "clock.badge.exclamationmark"
-                            )
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(
+                                        String(
+                                            format: String(localized: "Catch Up (%d)"),
+                                            viewModel.derivedReadModels.sidebarMetrics.catchUpCount
+                                        )
+                                    )
+                                    Text("Review overdue work, then complete, reschedule, or defer one item.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } icon: {
+                                Image(systemName: "clock.badge.exclamationmark")
+                            }
                         }
                         .accessibilityIdentifier("today-catch-up-section")
                         .accessibilityHint("Expands overdue and missed work actions without leaving Today.")
@@ -255,18 +253,12 @@ private struct TodayDailyPlanningReviewPanel: View {
                     }
                 }
 
-                // A secretary card surfaces two visible actions: hear the review
-                // and draft-start the recommended task. The remaining draft
-                // variants live in one menu so the card stops reading as a
-                // control panel. Every handler and identifier is unchanged.
-                HStack(spacing: 8) {
+                Menu {
                     Button {
                         playDailyPlanningReadout()
                     } label: {
                         Label("Read Aloud", systemImage: "speaker.wave.2")
                     }
-                    .controlSize(.small)
-                    .help("Reads this daily planning review with the configured local TTS provider.")
                     .accessibilityIdentifier("today-daily-planning-readout")
                     .accessibilityHint("Uses local TTS to read the review without changing tasks or writing Calendar.")
 
@@ -275,51 +267,44 @@ private struct TodayDailyPlanningReviewPanel: View {
                     } label: {
                         Label("Draft Start", systemImage: "play.circle")
                     }
-                    .controlSize(.small)
                     .disabled(review.recommendedTaskID == nil)
-                    .help("Queue the recommended task status update for review.")
                     .accessibilityIdentifier("today-daily-planning-draft-start")
                     .accessibilityHint("Creates an Assistant Queue approval item without changing the task.")
 
-                    Spacer(minLength: 8)
-
-                    Menu {
-                        Button {
-                            viewModel.enqueueDailyPlanningActionDraft(kind: .deferRecommendedToTomorrow)
-                        } label: {
-                            Label("Draft Defer", systemImage: "calendar.badge.clock")
-                        }
-                        .disabled(review.recommendedTaskID == nil)
-                        .accessibilityIdentifier("today-daily-planning-draft-defer")
-                        .accessibilityHint("Creates an Assistant Queue approval item without writing Calendar.")
-
-                        Button {
-                            viewModel.enqueueDailyPlanningActionDraft(kind: .moveRecommendedDueDateToToday)
-                        } label: {
-                            Label("Draft Move to Today", systemImage: "arrow.right.circle")
-                        }
-                        .disabled(review.recommendedTaskID == nil)
-                        .accessibilityIdentifier("today-daily-planning-draft-move-today")
-                        .accessibilityHint("Creates an Assistant Queue approval item; task due date and Calendar stay unchanged until approval.")
-
-                        Button {
-                            viewModel.enqueueDailyPlanningActionDraft(kind: .splitRecommendedTask)
-                        } label: {
-                            Label("Draft Split", systemImage: "square.split.2x1")
-                        }
-                        .disabled(review.recommendedTaskID == nil)
-                        .accessibilityIdentifier("today-daily-planning-draft-split")
-                        .accessibilityHint("Creates an Assistant Queue approval item; no tasks are created until approval.")
+                    Button {
+                        viewModel.enqueueDailyPlanningActionDraft(kind: .deferRecommendedToTomorrow)
                     } label: {
-                        Label("Draft actions…", systemImage: "ellipsis.circle")
+                        Label("Draft Defer", systemImage: "calendar.badge.clock")
                     }
-                    .controlSize(.small)
                     .disabled(review.recommendedTaskID == nil)
-                    .help("Defer, move, or split the recommended task as reviewable drafts.")
-                    .accessibilityIdentifier("today-draft-actions-menu")
-                    .accessibilityLabel("Draft actions")
-                    .accessibilityHint("Opens defer, move to today, and split draft actions for the recommended task.")
+                    .accessibilityIdentifier("today-daily-planning-draft-defer")
+                    .accessibilityHint("Creates an Assistant Queue approval item without writing Calendar.")
+
+                    Button {
+                        viewModel.enqueueDailyPlanningActionDraft(kind: .moveRecommendedDueDateToToday)
+                    } label: {
+                        Label("Draft Move to Today", systemImage: "arrow.right.circle")
+                    }
+                    .disabled(review.recommendedTaskID == nil)
+                    .accessibilityIdentifier("today-daily-planning-draft-move-today")
+                    .accessibilityHint("Creates an Assistant Queue approval item; task due date and Calendar stay unchanged until approval.")
+
+                    Button {
+                        viewModel.enqueueDailyPlanningActionDraft(kind: .splitRecommendedTask)
+                    } label: {
+                        Label("Draft Split", systemImage: "square.split.2x1")
+                    }
+                    .disabled(review.recommendedTaskID == nil)
+                    .accessibilityIdentifier("today-daily-planning-draft-split")
+                    .accessibilityHint("Creates an Assistant Queue approval item; no tasks are created until approval.")
+                } label: {
+                    Label("Review actions…", systemImage: "ellipsis.circle")
                 }
+                .controlSize(.small)
+                .help("Read the review or prepare a reviewable task draft.")
+                .accessibilityIdentifier("today-daily-planning-actions-menu")
+                .accessibilityLabel("Daily planning review actions")
+                .accessibilityHint("Opens read aloud and draft actions without changing tasks, Calendar, or Reminders.")
             } else {
                 Text("Preparing Daily Planning Review…")
                     .font(.caption)
@@ -349,16 +334,16 @@ private struct TodayCommandPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TodayDailyPlanningReviewPanel(
-                viewModel: viewModel,
-                review: dailyPlanningReview,
-                playDailyPlanningReadout: playDailyPlanningReadout
-            )
             TodayBriefingPanel(
                 commandTitle: $commandTitle,
                 plan: plan,
                 recommendationChips: recommendationChips,
                 viewModel: viewModel
+            )
+            TodayDailyPlanningReviewPanel(
+                viewModel: viewModel,
+                review: dailyPlanningReview,
+                playDailyPlanningReadout: playDailyPlanningReadout
             )
         }
     }
@@ -372,6 +357,11 @@ private struct TodayBriefingPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            TodayPlanSummary(plan: plan, viewModel: viewModel)
+
+            primaryAction
+                .buttonStyle(.borderedProminent)
+
             HStack(spacing: 8) {
                 Image(systemName: "mic.circle")
                     .foregroundStyle(.secondary)
@@ -382,13 +372,7 @@ private struct TodayBriefingPanel: View {
                     .accessibilityIdentifier("today-command-capture-field")
                     .accessibilityLabel("Today command title")
                     .accessibilityHint("Adds a local Inbox item without changing today's existing task statuses.")
-                Button(action: addInboxItem) {
-                    Label("Add to Inbox", systemImage: "plus.circle.fill")
-                }
-                .disabled(!canAddCommand)
-                .help("Add this command to Inbox")
-                .accessibilityIdentifier("today-command-add")
-                .accessibilityHint("Creates a local Inbox item from the command text.")
+                secondaryActionsMenu
             }
             .padding(.vertical, 8)
             .padding(.horizontal, 10)
@@ -398,9 +382,7 @@ private struct TodayBriefingPanel: View {
                     .stroke(Color.secondary.opacity(0.16), lineWidth: 1)
             }
 
-            actionToolbar
-
-            TodayFlowStrip(plan: plan, viewModel: viewModel)
+            TodayFlowStrip(plan: plan)
         }
         .frame(minWidth: 320, maxWidth: 640, alignment: .leading)
         .accessibilityElement(children: .contain)
@@ -409,46 +391,59 @@ private struct TodayBriefingPanel: View {
         .accessibilityHint("Captures work into Inbox and offers the next reviewed Today action.")
     }
 
-    private var actionToolbar: some View {
-        // One fixed toolbar row instead of wrapping grids: an HStack never
-        // wraps, so the row stays a single line at the canonical 1024pt
-        // viewport. Width budget: Today's detail column is ~768pt there
-        // (1024 minus the ~220pt sidebar and 36pt horizontal padding), and
-        // this panel caps at 640pt. The visible controls — Add Task (~92),
-        // Plan… (~78), Start Focus (~102), one suggestion chip (~112), and
-        // Show Done (~96) plus 5 gaps (~44) — total ~524pt, leaving slack
-        // for the ja locale. In the rare case where several suggestion
-        // chips render at once, labels truncate on this line rather than
-        // stacking into new rows; full titles stay available via help text
-        // and accessibility labels.
-        HStack(spacing: 8) {
-            addTaskButton
-            planMenu
-            startFocusButton
-            Spacer(minLength: 12)
-            suggestionRail
-            WorkflowDoneToggle(viewModel: viewModel)
+    @ViewBuilder
+    private var primaryAction: some View {
+        switch primaryActionPresentation {
+        case let .startFocus(taskID, title):
+            Button {
+                viewModel.startFocus(taskID: taskID)
+            } label: {
+                Label("Start Focus", systemImage: "play.circle.fill")
+            }
+            .help(String(format: String(localized: "Start focusing on %@"), title))
+            .accessibilityIdentifier("today-primary-action")
+            .accessibilityLabel("Start Focus")
+            .accessibilityValue(title)
+            .accessibilityHint("Starts local focus without changing task status, Calendar, or Reminders.")
+        case let .addToInbox(text):
+            Button(action: addInboxItem) {
+                Label("Add to Inbox", systemImage: "plus.circle.fill")
+            }
+            .help(String(format: String(localized: "Add \"%@\" to Inbox"), text))
+            .accessibilityIdentifier("today-primary-action")
+            .accessibilityHint("Creates a local Inbox item without changing today's existing tasks.")
+        case .addTaskForToday:
+            Button {
+                commandTitle = String(localized: "New task: ")
+            } label: {
+                Label("Add a task for today", systemImage: "plus.circle.fill")
+            }
+            .help("Prepare a new local Inbox task")
+            .accessibilityIdentifier("today-primary-action")
+            .accessibilityHint("Prefills the capture field so you can describe a task before adding it to Inbox.")
+        case let .unavailable(reason):
+            Label(LocalizedStringKey(reason), systemImage: "info.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("today-primary-action-unavailable-reason")
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("today-common-action-rail")
-        .accessibilityLabel("Common Today actions")
     }
 
-    private var addTaskButton: some View {
-        Button {
-            commandTitle = String(localized: "New task: ")
-        } label: {
-            Label("Add Task", systemImage: "plus.circle")
-        }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.small)
-        .help("Prepare a new local Inbox task")
-        .accessibilityIdentifier("today-common-chip-add-task")
-        .accessibilityHint("Prefills the Today command field for a local Inbox task.")
+    private var primaryActionPresentation: TodayPrimaryActionPresentation {
+        plan.primaryActionPresentation(commandText: commandTitle)
     }
 
-    private var planMenu: some View {
+    private var secondaryActionsMenu: some View {
         Menu {
+            Button {
+                commandTitle = String(localized: "New task: ")
+            } label: {
+                Label("Add Task", systemImage: "plus.circle")
+            }
+            .accessibilityIdentifier("today-secondary-add-task")
+
+            Divider()
+
             Button {
                 commandTitle = String(localized: "Plan tomorrow: ")
             } label: {
@@ -472,50 +467,47 @@ private struct TodayBriefingPanel: View {
             }
             .accessibilityIdentifier("today-common-chip-draft-reply")
             .accessibilityHint("Prefills the Today command field for a reply draft task.")
-        } label: {
-            Label("Plan…", systemImage: "calendar.badge.plus")
-        }
-        .controlSize(.small)
-        .help("Plan tomorrow, prepare a meeting, or draft a reply.")
-        .accessibilityIdentifier("today-plan-menu")
-        .accessibilityLabel("Plan actions")
-        .accessibilityHint("Opens capture shortcuts that prefill the Today command field.")
-    }
 
-    private var suggestionRail: some View {
-        HStack(spacing: 6) {
-            ForEach(recommendationChips) { chip in
-                Button {
-                    viewModel.startFocus(taskID: chip.taskID)
-                } label: {
-                    Label(chip.title, systemImage: chip.systemImage)
-                        .lineLimit(1)
+            if !recommendationChips.isEmpty {
+                Divider()
+                ForEach(recommendationChips) { chip in
+                    Button {
+                        viewModel.startFocus(taskID: chip.taskID)
+                    } label: {
+                        Label(chip.title, systemImage: chip.systemImage)
+                    }
+                    .help(chip.reason)
+                    .accessibilityIdentifier("today-suggestion-chip-\(chip.kind.rawValue)")
+                    .accessibilityHint("Starts this alternative local focus without changing task status.")
                 }
-                .controlSize(.small)
-                .help(chip.reason)
-                .accessibilityIdentifier("today-suggestion-chip-\(chip.kind.rawValue)")
-                .accessibilityLabel(chip.title)
-                .accessibilityHint("Starts this recommended task as local focus without changing task status.")
             }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("today-suggestion-rail")
-        .accessibilityLabel("Quick focus suggestions")
-    }
 
-    private var startFocusButton: some View {
-        Button {
-            if let task = plan.recommendedTask {
-                viewModel.startFocus(taskID: task.id)
+            Divider()
+
+            Button {
+                _ = viewModel.prepareTodayScheduleDraft()
+            } label: {
+                Label("Schedule Draft", systemImage: "calendar.badge.clock")
             }
+            .disabled(plan.timeBlocks.isEmpty)
+            .accessibilityIdentifier("today-schedule-draft-button")
+            .accessibilityHint("Creates a local schedule draft without writing Calendar.")
+
+            Toggle(isOn: Binding(
+                get: { viewModel.showsCompletedWorkflowTasks },
+                set: { viewModel.setShowsCompletedWorkflowTasks($0) }
+            )) {
+                Label("Show Done", systemImage: viewModel.showsCompletedWorkflowTasks ? "checkmark.square" : "square")
+            }
+            .accessibilityIdentifier("workflow-show-completed-toggle")
         } label: {
-            Label("Start Focus", systemImage: "play.circle")
+            Label("More", systemImage: "ellipsis.circle")
         }
         .controlSize(.small)
-        .disabled(plan.recommendedTask == nil)
-        .help("Start focusing without changing task status")
-        .accessibilityIdentifier("today-start-focus")
-        .accessibilityHint("Marks the recommended task as the current local focus without writing Calendar or task status changes.")
+        .help("Open Today capture, planning, and display actions.")
+        .accessibilityIdentifier("today-secondary-actions-menu")
+        .accessibilityLabel("More Today actions")
+        .accessibilityHint("Opens secondary actions after the recommended task and primary action.")
     }
 
     private func addInboxItem() {
@@ -532,8 +524,9 @@ private struct TodayBriefingPanel: View {
     }
 
     private var canAddCommand: Bool {
-        // Quick chips intentionally prefill incomplete drafts; require the user
-        // to add concrete content after the prefix before creating an Inbox item.
+        // Quick actions intentionally prefill incomplete drafts. A trailing
+        // prefix marker keeps the primary action on safe capture preparation
+        // until the user provides concrete content.
         !trimmedCommandTitle.isEmpty && !trimmedCommandTitle.hasSuffix(":")
     }
 }
@@ -546,23 +539,11 @@ private struct TodaySuggestionPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             TodayAISuggestionCard(plan: plan, viewModel: viewModel)
             TodayTimeBlockList(plan: plan)
-            HStack(spacing: 8) {
-                Button {
-                    _ = viewModel.prepareTodayScheduleDraft()
-                } label: {
-                    Label("Schedule Draft", systemImage: "calendar.badge.clock")
-                }
-                .disabled(plan.timeBlocks.isEmpty)
-                .help("Prepare local time blocks for schedule review")
-                .accessibilityIdentifier("today-schedule-draft-button")
-                .accessibilityHint("Creates a local schedule draft without writing to an external calendar.")
-
-                if let draft = viewModel.todayScheduleDraft {
-                    Text(String(format: String(localized: "%d blocks ready"), draft.timeBlocks.count))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("today-schedule-draft-status")
-                }
+            if let draft = viewModel.todayScheduleDraft {
+                Text(String(format: String(localized: "%d blocks ready"), draft.timeBlocks.count))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("today-schedule-draft-status")
             }
             if let feedback = viewModel.todayCommandFeedback {
                 Label(feedback, systemImage: "checkmark.circle")
@@ -658,21 +639,43 @@ private struct TodayAssistantRail: View {
 
     private func railActions(_ task: ProjectBoardTask) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button {
-                viewModel.startFocus(taskID: task.id)
-            } label: {
-                Label("Focus", systemImage: "play.circle")
-            }
-            .accessibilityIdentifier("today-rail-focus")
-            .accessibilityHint("Starts local focus without changing task status.")
+            Menu {
+                Button {
+                    _ = viewModel.prepareTodayScheduleDraft(prioritizing: task.id)
+                } label: {
+                    Label("Schedule Block", systemImage: "calendar.badge.clock")
+                }
+                .accessibilityIdentifier("today-rail-schedule-block")
+                .accessibilityHint("Creates a local schedule draft without writing Calendar.")
 
-            Button {
-                _ = viewModel.prepareTodayScheduleDraft(prioritizing: task.id)
+                Button {
+                    openInspector(task.id)
+                } label: {
+                    Label("Edit", systemImage: "square.and.pencil")
+                }
+                .accessibilityIdentifier("today-rail-edit-task")
+                .accessibilityHint("Opens the selected task in the inspector for manual edits.")
+
+                Button {
+                    commandTitle = String(format: String(localized: "Subtask for %@: "), task.title)
+                } label: {
+                    Label("Add Subtask", systemImage: "checklist")
+                }
+                .accessibilityIdentifier("today-rail-add-subtask")
+                .accessibilityHint("Prefills the Today command field for a local subtask draft.")
+
+                Button {
+                    viewModel.enqueueTodayReminderDraft(for: task.id)
+                } label: {
+                    Label("Add Reminder Draft", systemImage: "bell.badge")
+                }
+                .accessibilityIdentifier("today-rail-reminder-draft")
+                .accessibilityHint("Queues a Reminders draft for approval before any external write.")
             } label: {
-                Label("Schedule Block", systemImage: "calendar.badge.clock")
+                Label("Task actions…", systemImage: "ellipsis.circle")
             }
-            .accessibilityIdentifier("today-rail-schedule-block")
-            .accessibilityHint("Creates a local schedule draft without writing Calendar.")
+            .accessibilityIdentifier("today-rail-actions-menu")
+            .accessibilityHint("Opens edit, subtask, schedule, and reminder draft actions for this task.")
 
             if let draft = viewModel.todayScheduleDraft {
                 Text(String(format: String(localized: "%d blocks ready"), draft.timeBlocks.count))
@@ -681,30 +684,6 @@ private struct TodayAssistantRail: View {
                     .accessibilityElement(children: .ignore)
                     .accessibilityIdentifier("today-rail-schedule-draft-status")
             }
-
-            Button {
-                openInspector(task.id)
-            } label: {
-                Label("Edit", systemImage: "square.and.pencil")
-            }
-            .accessibilityIdentifier("today-rail-edit-task")
-            .accessibilityHint("Opens the selected task in the inspector for manual edits.")
-
-            Button {
-                commandTitle = String(format: String(localized: "Subtask for %@: "), task.title)
-            } label: {
-                Label("Add Subtask", systemImage: "checklist")
-            }
-            .accessibilityIdentifier("today-rail-add-subtask")
-            .accessibilityHint("Prefills the Today command field for a local subtask draft.")
-
-            Button {
-                viewModel.enqueueTodayReminderDraft(for: task.id)
-            } label: {
-                Label("Add Reminder Draft", systemImage: "bell.badge")
-            }
-            .accessibilityIdentifier("today-rail-reminder-draft")
-            .accessibilityHint("Queues a Reminders draft for approval before any external write.")
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
@@ -735,23 +714,8 @@ private struct TodayAISuggestionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Label("AI suggestion", systemImage: "sparkles")
-                    .font(.subheadline.weight(.semibold))
-                Spacer(minLength: 8)
-                Button {
-                    if let task = plan.recommendedTask {
-                        viewModel.startFocus(taskID: task.id)
-                    }
-                } label: {
-                    Label("Start Focus", systemImage: "play.circle")
-                }
-                .controlSize(.small)
-                .disabled(plan.recommendedTask == nil)
-                .help("Start focus from recommendation")
-                .accessibilityIdentifier("today-ai-suggestion-start-focus")
-                .accessibilityHint("Marks the recommended task as the current local focus without writing Calendar or task status changes.")
-            }
+            Label("AI suggestion", systemImage: "sparkles")
+                .font(.subheadline.weight(.semibold))
 
             TodayPlanSummary(plan: plan, viewModel: viewModel)
         }
@@ -847,7 +811,6 @@ private struct TodayCountBadge: View {
 
 private struct TodayFlowStrip: View {
     let plan: TodayWorkflowPlan
-    @ObservedObject var viewModel: ProjectBoardViewModel
 
     private var visibleBlocks: [TodayTimeBlock] {
         Array(plan.timeBlocks.prefix(3))
@@ -855,20 +818,8 @@ private struct TodayFlowStrip: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 8) {
-                Label("Today Flow", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
-                    .font(.caption.weight(.semibold))
-                Spacer(minLength: 8)
-                Button {
-                    _ = viewModel.prepareTodayScheduleDraft()
-                } label: {
-                    Label("Optimize Flow", systemImage: "wand.and.stars")
-                }
-                .controlSize(.small)
-                .disabled(plan.timeBlocks.isEmpty)
-                .accessibilityIdentifier("today-flow-optimize")
-                .accessibilityHint("Generates a local schedule draft from the visible Today flow without writing Calendar.")
-            }
+            Label("Today Flow", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+                .font(.caption.weight(.semibold))
 
             if visibleBlocks.isEmpty {
                 Text("No flow blocks yet")
@@ -877,21 +828,16 @@ private struct TodayFlowStrip: View {
             } else {
                 HStack(spacing: 6) {
                     ForEach(visibleBlocks) { block in
-                        Button {
-                            viewModel.startFocus(taskID: block.task.id)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(block.label)
-                                    .font(.caption2.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                                Text(block.task.title)
-                                    .font(.caption.weight(.medium))
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(block.label)
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                            Text(block.task.title)
+                                .font(.caption.weight(.medium))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
                         }
-                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 6)
                         .padding(.horizontal, 8)
                         .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))

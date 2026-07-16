@@ -481,6 +481,17 @@ public struct ProjectBoardDerivedReadModels: Equatable, Sendable {
     )
 }
 
+public extension TodayWorkflowPlan {
+    func primaryActionPresentation(commandText: String) -> TodayPrimaryActionPresentation {
+        TodayPrimaryActionPresentation.make(
+            recommendedTaskID: recommendedTask?.id,
+            recommendedTaskTitle: recommendedTask?.title,
+            commandText: commandText,
+            taskCount: tasks.count
+        )
+    }
+}
+
 private struct ProjectBoardDerivedReadModelInputs {
     var nonArchivedProjects: [ProjectBoardProject]
     var committedActiveProjects: [ProjectBoardProject]

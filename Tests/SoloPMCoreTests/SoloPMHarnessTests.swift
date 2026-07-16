@@ -123,13 +123,7 @@ final class SoloPMHarnessTests: XCTestCase {
         )
         XCTAssertEqual(
             SoloPMHarnessTodayCockpitOperation.railActions.requiredFocusNodeIDs,
-            [
-                "today-rail-focus",
-                "today-rail-schedule-block",
-                "today-rail-edit-task",
-                "today-rail-add-subtask",
-                "today-rail-reminder-draft"
-            ]
+            ["today-rail-actions-menu"]
         )
     }
 
