@@ -385,6 +385,7 @@ private struct VoiceCaptureWindowRootView: View {
                     .accessibilityIdentifier("voice-capture-loading")
             }
         }
+        .background(VoiceWindowIdentifierInstaller())
         .task {
             guard viewModel == nil else {
                 return
@@ -755,6 +756,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
                 defer: false
             )
             window.title = "Voice Command"
+            window.identifier = NSUserInterfaceItemIdentifier(VoiceWindowIdentity.identifierRawValue)
             window.contentViewController = hostingController
             window.isReleasedWhenClosed = false
             window.setFrame(NSRect(x: 160, y: 140, width: 760, height: 640), display: true)

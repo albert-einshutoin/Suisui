@@ -1,6 +1,26 @@
 import AppKit
 import Carbon.HIToolbox
 import SoloPMCore
+import SwiftUI
+
+struct VoiceWindowIdentifierInstaller: NSViewRepresentable {
+    private static let identifier = NSUserInterfaceItemIdentifier(VoiceWindowIdentity.identifierRawValue)
+
+    func makeNSView(context: Context) -> NSView {
+        WindowIdentifierView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        nsView.window?.identifier = Self.identifier
+    }
+
+    private final class WindowIdentifierView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.identifier = VoiceWindowIdentifierInstaller.identifier
+        }
+    }
+}
 
 final class SystemShortcutClient: ShortcutClient, @unchecked Sendable {
     private static let voiceHotKeyID = EventHotKeyID(
@@ -28,7 +48,7 @@ final class SystemShortcutClient: ShortcutClient, @unchecked Sendable {
         }
     }
 
-    func registerVoiceCaptureShortcut(_ shortcut: KeyboardShortcut) throws -> ShortcutRegistrationState {
+    func registerVoiceCaptureShortcut(_ shortcut: SoloPMCore.KeyboardShortcut) throws -> ShortcutRegistrationState {
         lock.withLock {
             guard hotKeyRef == nil else {
                 return registrationState
@@ -135,7 +155,7 @@ final class SystemShortcutClient: ShortcutClient, @unchecked Sendable {
         }
     }
 
-    private func unavailableState(shortcut: KeyboardShortcut, detail: String) -> ShortcutRegistrationState {
+    private func unavailableState(shortcut: SoloPMCore.KeyboardShortcut, detail: String) -> ShortcutRegistrationState {
         ShortcutRegistrationState(
             voiceCaptureShortcut: shortcut,
             status: .unavailable,
@@ -207,9 +227,11 @@ final class VoiceWindowActivationCoordinator {
 
     private var visibleVoiceWindow: NSWindow? {
         NSApplication.shared.windows.first { window in
-            window.isVisible
-                && !window.isMiniaturized
-                && window.title == "Voice Command"
+            VoiceWindowIdentity.matches(
+                identifierRawValue: window.identifier?.rawValue,
+                title: window.title
+            )
+                && (window.isVisible || window.isMiniaturized)
         }
     }
 

@@ -129,6 +129,79 @@ final class ShortcutRegistrationTests: XCTestCase {
         XCTAssertEqual(openRequestCount, 2)
     }
 
+    func testVoiceOpenRequestGateAllowsRetryAfterPendingRequestTimesOut() async {
+        let gate = VoiceShortcutOpenRequestGate(
+            pendingTimeoutNanoseconds: 1,
+            sleep: { _ in }
+        )
+        var openRequestCount = 0
+
+        gate.handle(
+            isWindowVisible: false,
+            activateExisting: { XCTFail("No window is visible.") },
+            requestOpen: {
+                openRequestCount += 1
+                return true
+            }
+        )
+        await Task.yield()
+        await Task.yield()
+        gate.handle(
+            isWindowVisible: false,
+            activateExisting: { XCTFail("No window is visible.") },
+            requestOpen: {
+                openRequestCount += 1
+                return true
+            }
+        )
+
+        XCTAssertEqual(openRequestCount, 2)
+    }
+
+    func testVoiceOpenRequestGateCancelsPendingTimeoutWhenWindowAppears() async {
+        let gate = VoiceShortcutOpenRequestGate(
+            pendingTimeoutNanoseconds: 1,
+            sleep: { _ in }
+        )
+        var openRequestCount = 0
+        var activationCount = 0
+
+        gate.handle(
+            isWindowVisible: false,
+            activateExisting: { XCTFail("No window is visible.") },
+            requestOpen: {
+                openRequestCount += 1
+                return true
+            }
+        )
+        gate.markWindowVisible()
+        await Task.yield()
+        await Task.yield()
+        gate.handle(
+            isWindowVisible: true,
+            activateExisting: { activationCount += 1 },
+            requestOpen: { XCTFail("The existing window must be activated."); return false }
+        )
+
+        XCTAssertEqual(openRequestCount, 1)
+        XCTAssertEqual(activationCount, 1)
+    }
+
+    func testVoiceWindowIdentityMatchesJapaneseTitleByStructuralIdentifier() {
+        XCTAssertTrue(
+            VoiceWindowIdentity.matches(
+                identifierRawValue: "voice-capture",
+                title: "音声コマンド"
+            )
+        )
+        XCTAssertFalse(
+            VoiceWindowIdentity.matches(
+                identifierRawValue: nil,
+                title: "Voice Command"
+            )
+        )
+    }
+
     func testShortcutRegistrationErrorsAreRedactedBeforeUserDisplay() {
         let viewModel = ShortcutSettingsViewModel(client: ThrowingShortcutClient())
 

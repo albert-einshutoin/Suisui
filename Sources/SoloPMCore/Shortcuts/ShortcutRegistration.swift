@@ -50,11 +50,37 @@ public protocol ShortcutClient: Sendable {
     func unregisterVoiceCaptureShortcut() throws -> ShortcutRegistrationState
 }
 
+public enum VoiceWindowIdentity {
+    public static let identifierRawValue = "voice-capture"
+
+    public static func matches(identifierRawValue: String?, title _: String) -> Bool {
+        identifierRawValue == self.identifierRawValue
+    }
+}
+
 @MainActor
 public final class VoiceShortcutOpenRequestGate {
-    private var isOpenRequestPending = false
+    public typealias Sleep = @Sendable (UInt64) async -> Void
 
-    public init() {}
+    private var isOpenRequestPending = false
+    private var pendingResetTask: Task<Void, Never>?
+    private var pendingGeneration: UInt64 = 0
+    private let pendingTimeoutNanoseconds: UInt64
+    private let sleep: Sleep
+
+    public init(
+        pendingTimeoutNanoseconds: UInt64 = 2_000_000_000,
+        sleep: @escaping Sleep = { nanoseconds in
+            try? await Task.sleep(nanoseconds: nanoseconds)
+        }
+    ) {
+        self.pendingTimeoutNanoseconds = pendingTimeoutNanoseconds
+        self.sleep = sleep
+    }
+
+    deinit {
+        pendingResetTask?.cancel()
+    }
 
     public func handle(
         isWindowVisible: Bool,
@@ -62,7 +88,7 @@ public final class VoiceShortcutOpenRequestGate {
         requestOpen: () -> Bool
     ) {
         if isWindowVisible {
-            isOpenRequestPending = false
+            clearPendingRequest()
             activateExisting()
             return
         }
@@ -71,15 +97,45 @@ public final class VoiceShortcutOpenRequestGate {
         }
         isOpenRequestPending = true
         if !requestOpen() {
-            isOpenRequestPending = false
+            clearPendingRequest()
+        } else {
+            schedulePendingReset()
         }
     }
 
     public func markWindowVisible() {
-        isOpenRequestPending = false
+        clearPendingRequest()
     }
 
     public func markWindowClosed() {
+        clearPendingRequest()
+    }
+
+    private func schedulePendingReset() {
+        pendingResetTask?.cancel()
+        pendingGeneration &+= 1
+        let generation = pendingGeneration
+        let timeout = pendingTimeoutNanoseconds
+        let sleep = sleep
+
+        // The request can be accepted by SwiftUI without ever creating a
+        // window. A bounded reset keeps the global shortcut recoverable while
+        // the generation check prevents an older timeout from clearing a newer
+        // request.
+        pendingResetTask = Task { @MainActor [weak self] in
+            await sleep(timeout)
+            guard !Task.isCancelled, self?.pendingGeneration == generation else {
+                return
+            }
+            self?.isOpenRequestPending = false
+            self?.pendingResetTask = nil
+        }
+    }
+
+    private func clearPendingRequest() {
+        pendingGeneration &+= 1
+        pendingResetTask?.cancel()
+        pendingResetTask = nil
         isOpenRequestPending = false
     }
 }
