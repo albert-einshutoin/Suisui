@@ -1515,6 +1515,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readProjectBoardSurfaceSources()
         let todayWorkflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift")
         let catchUpWorkflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowCatchUpView.swift")
+        let todayFeatureSource = try readPackageFile("Sources/SoloPMCore/App/TodayFeatureViewModel.swift")
         let scheduleWorkflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowScheduleView.swift")
         let doneWorkflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowDoneView.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
@@ -1536,6 +1537,9 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(todayWorkflowSource.contains("let snapshot = viewModel.snapshot"))
         XCTAssertFalse(todayWorkflowSource.contains("viewModel.todayWorkflowSnapshot(on: referenceDate, calendar: calendar)"))
+        XCTAssertTrue(todayFeatureSource.contains("projectTitlesByTaskID"))
+        XCTAssertTrue(todayFeatureSource.contains("projectTitlesByTaskID[task.id]"))
+        XCTAssertFalse(todayFeatureSource.contains("board.projectTitle(for: task)"))
         XCTAssertTrue(catchUpWorkflowSource.contains("viewModel.missedTaskReview"))
         XCTAssertFalse(catchUpWorkflowSource.contains("viewModel.missedTaskReview()"))
         XCTAssertTrue(scheduleWorkflowSource.contains("let scheduleReadModel = viewModel.derivedReadModels.schedule"))
