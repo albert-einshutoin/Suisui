@@ -1627,6 +1627,18 @@
 
 /* Smart lists and board keyboard shortcuts */
 "Smart Lists" = "スマートリスト";
+"Automation Activity" = "自動化アクティビティ";
+"Choose Schedule, Completed, Automation Activity, or Assistant Queue." = "予定、完了済み、自動化アクティビティ、またはアシスタントキューを選択してください。";
+"Portfolio" = "ポートフォリオ";
+"Projects navigation" = "プロジェクトナビゲーション";
+"Review navigation" = "確認ナビゲーション";
+"Review receipt-derived AI usage and redacted execution history. This audit activity does not change completed task or project state." = "レシートに基づくAI使用量と編集済みの実行履歴を確認します。この監査アクティビティは、タスクやプロジェクトの完了状態を変更しません。";
+"Select Today, Inbox, Projects, or Review." = "今日、インボックス、プロジェクト、または確認を選択します。";
+"Work" = "作業";
+"Reviews workload and approval-ready schedule drafts from Review." = "確認から作業量と承認準備ができた予定ドラフトを確認します。";
+"Reviews completed tasks, completed projects, and local recap." = "完了したタスク、完了したプロジェクト、ローカルの振り返りを確認します。";
+"Catch Up (%d)" = "キャッチアップ（%d）";
+"Expands overdue and missed work actions without leaving Today." = "今日から離れずに、期限超過や未処理作業の操作を展開します。";
 "Smart List" = "スマートリスト";
 "New Smart List…" = "新規スマートリスト…";
 "New Smart List" = "新規スマートリスト";

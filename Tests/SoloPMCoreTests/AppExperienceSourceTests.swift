@@ -2,6 +2,69 @@ import Foundation
 import XCTest
 
 final class AppExperienceSourceTests: XCTestCase {
+    func testProjectBoardPrimaryNavigationUsesExactlyFourTopLevelRows() throws {
+        let sidebarSource = try readPackageFile(
+            "Sources/SoloPMApp/Views/ProjectBoardSidebarView.swift"
+        )
+        let requiredMarkers = [
+            "sidebar-destination-today",
+            "sidebar-destination-inbox",
+            "sidebar-destination-projects",
+            "sidebar-destination-review"
+        ]
+
+        for marker in requiredMarkers {
+            XCTAssertEqual(
+                sidebarSource.components(separatedBy: marker).count - 1,
+                1,
+                "Expected exactly one top-level marker for \(marker)"
+            )
+        }
+        XCTAssertFalse(sidebarSource.contains("sidebar-destination-catch-up"))
+        XCTAssertFalse(sidebarSource.contains("sidebar-destination-schedule"))
+        XCTAssertFalse(sidebarSource.contains("sidebar-destination-done"))
+        XCTAssertFalse(sidebarSource.contains("sidebar-destination-assistant-queue"))
+
+        let todaySource = try readPackageFile(
+            "Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift"
+        )
+        XCTAssertTrue(todaySource.contains("sidebarMetrics.catchUpCount > 0"))
+        XCTAssertTrue(todaySource.contains("today-catch-up-section"))
+    }
+
+    func testProjectsAndReviewHubsExposeRelocatedDestinations() throws {
+        let projectsSource = try readPackageFile(
+            "Sources/SoloPMApp/Views/ProjectBoardProjectsHubView.swift"
+        )
+        let reviewSource = try readPackageFile(
+            "Sources/SoloPMApp/Views/ProjectBoardReviewHubView.swift"
+        )
+
+        XCTAssertTrue(projectsSource.contains("projects-hub-portfolio"))
+        XCTAssertTrue(projectsSource.contains("projects-hub-smart-lists"))
+        XCTAssertTrue(projectsSource.contains("projects-hub-active"))
+        XCTAssertTrue(projectsSource.contains("projects-hub-completed"))
+        XCTAssertTrue(projectsSource.contains("projects-hub-archived"))
+
+        XCTAssertTrue(reviewSource.contains("review-hub"))
+        XCTAssertTrue(reviewSource.contains("review-destination-schedule"))
+        XCTAssertTrue(reviewSource.contains("review-destination-completed"))
+        XCTAssertTrue(reviewSource.contains("review-destination-automation-activity"))
+        XCTAssertTrue(reviewSource.contains("review-destination-assistant-queue"))
+    }
+
+    func testEvidenceRouteOverrideRemainsProcessLocalWhileNavigationStaysTyped() throws {
+        let boardSource = try readPackageFile(
+            "Sources/SoloPMApp/Views/ProjectBoardView.swift"
+        )
+
+        XCTAssertTrue(boardSource.contains("@State private var transientBoardRoute: BoardRoute?"))
+        XCTAssertTrue(boardSource.contains("private var boardRouteBinding: Binding<BoardRoute>"))
+        XCTAssertTrue(boardSource.contains("guard ProjectBoardSelectionPersistence.environmentOverrideRawValue == nil else"))
+        XCTAssertTrue(boardSource.contains("transientBoardRoute = route"))
+        XCTAssertTrue(boardSource.contains("never rewrite SceneStorage"))
+    }
+
     func testProjectBoardSurfaceReaderFindsAnchorsAcrossOwnedFiles() throws {
         let source = try readProjectBoardSurfaceSources()
 
@@ -153,9 +216,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("routes=("))
         XCTAssertTrue(script.contains("inbox|inbox|sidebar-destination-inbox|inbox-workflow"))
         XCTAssertTrue(script.contains("today|today|sidebar-destination-today|today-workflow"))
-        XCTAssertTrue(script.contains("catch-up|catch-up|sidebar-destination-catch-up|catch-up-workflow"))
         XCTAssertTrue(script.contains("projects|projects|sidebar-destination-projects|projects-portfolio-overview"))
+        XCTAssertTrue(script.contains("review|primary:review|sidebar-destination-review|review-hub"))
+        XCTAssertTrue(script.contains("review-schedule|review:schedule|sidebar-destination-review|schedule-workflow"))
         XCTAssertTrue(script.contains("navigate_to_seed_project()"))
+        XCTAssertTrue(script.contains("\"project:$seed_project_id\""))
+        XCTAssertTrue(script.contains("\"sidebar-destination-projects\""))
         XCTAssertTrue(script.contains("project-sidebar-row-$seed_project_id"))
         XCTAssertTrue(script.contains("route_content_marker=\"project-board-detail\""))
         XCTAssertTrue(script.contains("route_content_marker=\"project-inspector\""))
@@ -240,7 +306,8 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(persistenceSource.contains("case assistantQueue"))
         XCTAssertTrue(persistenceSource.contains("return \"assistant-queue\""))
-        XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(destination: .assistantQueue, count: viewModel.assistantQueueSnapshot.needsAttentionCount)"))
+        XCTAssertTrue(boardSource.contains("review-destination-assistant-queue"))
+        XCTAssertTrue(boardSource.contains("case .review(.assistantQueue):"))
         XCTAssertTrue(boardSource.contains("AssistantQueueWorkflowView(viewModel: viewModel)"))
         XCTAssertTrue(workflowSource.contains("struct AssistantQueueWorkflowView"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-workflow\")"))
@@ -344,10 +411,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(persistenceSource.contains("case projects"))
         XCTAssertTrue(persistenceSource.contains("case .projects:"))
         XCTAssertTrue(persistenceSource.contains("return \"projects\""))
-        XCTAssertTrue(boardSource.contains("destination: .projects"))
-        XCTAssertTrue(boardSource.contains(".tag(ProjectBoardSidebarDestination.projects)"))
+        XCTAssertTrue(boardSource.contains("sidebar-destination-projects"))
+        XCTAssertTrue(boardSource.contains(".tag(BoardRoute.primary(.projects))"))
         XCTAssertTrue(boardSource.contains("ProjectsPortfolioOverview("))
-        XCTAssertTrue(boardSource.contains(".tag(ProjectBoardSidebarDestination.project(project.id))"))
+        XCTAssertTrue(boardSource.contains(".tag(BoardRoute.project(project.id))"))
         XCTAssertTrue(boardSource.contains("case .project(let projectID):"))
         XCTAssertTrue(boardSource.contains("ProjectBoardDetail("))
         XCTAssertTrue(boardSource.contains("case .overview:"))
@@ -526,10 +593,12 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardHeaderHostsSettingsLinkWithoutThemeControls() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let sidebarStart = try XCTUnwrap(boardSource.range(of: "NavigationSplitView(columnVisibility: $columnVisibility) {"))
-        let detailStart = try XCTUnwrap(boardSource.range(of: "} detail: {"))
-        let sidebarSource = String(boardSource[sidebarStart.upperBound..<detailStart.lowerBound])
+        let boardSource = try readPackageFile(
+            "Sources/SoloPMApp/Views/ProjectBoardView.swift"
+        )
+        let sidebarSource = try readPackageFile(
+            "Sources/SoloPMApp/Views/ProjectBoardProjectsHubView.swift"
+        )
 
         XCTAssertTrue(sidebarSource.contains("Show Archived"))
         XCTAssertTrue(sidebarSource.contains("Add Project"))
@@ -661,9 +730,18 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testDoneWorkflowShowsRecentAIReceiptsWithoutRawReceiptFields() throws {
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowDoneView.swift")
+        let automationSource = try readPackageFile(
+            "Sources/SoloPMApp/Views/ProjectWorkflowAutomationActivityView.swift"
+        )
+        let sharedReceiptSource = try readPackageFile(
+            "Sources/SoloPMApp/Views/ProjectWorkflowDoneView.swift"
+        )
+        let workflowSource = automationSource + sharedReceiptSource
         let historySource = try readPackageFile("Sources/SoloPMCore/App/ExecutionReceiptHistory.swift")
 
+        XCTAssertFalse(sharedReceiptSource.contains("viewModel.executionReceiptHistorySnapshot"))
+        XCTAssertFalse(sharedReceiptSource.contains("Recent AI Activity"))
+        XCTAssertTrue(automationSource.contains(".accessibilityIdentifier(\"automation-activity-workflow\")"))
         XCTAssertTrue(workflowSource.contains("viewModel.executionReceiptHistorySnapshot"))
         XCTAssertTrue(workflowSource.contains("viewModel.executionUsageMeterSnapshot"))
         XCTAssertTrue(workflowSource.contains("AI Usage Meter"))
@@ -1219,7 +1297,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
 
         XCTAssertTrue(persistenceSource.contains("case done"))
-        XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(destination: .done"))
+        XCTAssertTrue(boardSource.contains("review-destination-completed"))
+        XCTAssertTrue(boardSource.contains("case .review(.completed):"))
         XCTAssertTrue(boardSource.contains("DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-workflow\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-reopen-task-\\(task.id)\")"))
@@ -1264,10 +1343,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("private func rebuildDerivedReadModels("))
         XCTAssertTrue(coreSource.contains("public func refreshScheduleReadModel("))
         XCTAssertTrue(boardSource.contains("let sidebarMetrics = viewModel.derivedReadModels.sidebarMetrics"))
-        XCTAssertTrue(boardSource.contains("count: sidebarMetrics.todayCount"))
-        XCTAssertTrue(boardSource.contains("count: sidebarMetrics.catchUpCount"))
-        XCTAssertTrue(boardSource.contains("count: sidebarMetrics.scheduleCount"))
-        XCTAssertTrue(boardSource.contains("count: sidebarMetrics.doneCount"))
+        XCTAssertTrue(boardSource.contains("today: sidebarMetrics.todayCount"))
+        XCTAssertTrue(boardSource.contains("review: viewModel.assistantQueueSnapshot.needsAttentionCount"))
         XCTAssertTrue(boardSource.contains("viewModel.derivedReadModels.projectPortfolioSummaries"))
         XCTAssertFalse(boardSource.contains("count: viewModel.todayTasks().count"))
         XCTAssertFalse(boardSource.contains("count: viewModel.missedTaskReview().newlyMissedCount"))
@@ -1534,7 +1611,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         let addProjectButton = try sourceBlock(
             in: boardSource,
-            from: "if let project = viewModel.createProject()",
+            from: "Button(action: onCreateProject)",
             to: ".accessibilityIdentifier(\"project-board-add-project\")"
         )
         XCTAssertTrue(addProjectButton.contains(".keyboardShortcut(\"n\", modifiers: [.command, .shift])"))
@@ -1713,13 +1790,18 @@ final class AppExperienceSourceTests: XCTestCase {
         let workflowSource = try readProjectWorkflowSources()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
 
-        XCTAssertTrue(source.contains("ProjectBoardSidebarDestination"))
-        XCTAssertTrue(source.contains("ProjectBoardSidebarDestinationRow(destination: .inbox"))
-        XCTAssertTrue(source.contains("ProjectBoardSidebarDestinationRow(destination: .today"))
-        XCTAssertTrue(source.contains("ProjectBoardSidebarDestinationRow(destination: .catchUp"))
+        XCTAssertTrue(source.contains("ProjectBoardSidebarView("))
+        XCTAssertTrue(source.contains("sidebar-destination-inbox"))
+        XCTAssertTrue(source.contains("sidebar-destination-today"))
+        XCTAssertTrue(source.contains("sidebar-destination-projects"))
+        XCTAssertTrue(source.contains("sidebar-destination-review"))
+        XCTAssertFalse(
+            try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardSidebarView.swift")
+                .contains("sidebar-destination-catch-up")
+        )
         XCTAssertTrue(source.contains("InboxWorkflowView("))
         XCTAssertTrue(source.contains("TodayWorkflowView("))
-        XCTAssertTrue(source.contains("CatchUpWorkflowView("))
+        XCTAssertTrue(source.contains("ProjectBoardReviewHubView("))
         XCTAssertTrue(workflowSource.contains("InboxActionPanel("))
         XCTAssertTrue(workflowSource.contains("viewModel.convertSelectedTaskToProject()"))
         XCTAssertTrue(workflowSource.contains("viewModel.scheduleSelectedTaskForToday()"))
@@ -1752,27 +1834,26 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testPhase12SidebarShowsWorkflowDestinationsBeforeProjectRows() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let sidebarSource = try readPackageFile(
+            "Sources/SoloPMApp/Views/ProjectBoardSidebarView.swift"
+        )
 
-        let inboxRow = try XCTUnwrap(boardSource.range(of: "ProjectBoardSidebarDestinationRow(destination: .inbox"))
-        let todayRow = try XCTUnwrap(boardSource.range(of: "ProjectBoardSidebarDestinationRow(destination: .today"))
-        let catchUpRow = try XCTUnwrap(boardSource.range(of: "ProjectBoardSidebarDestinationRow(destination: .catchUp"))
-        let scheduleRow = try XCTUnwrap(boardSource.range(of: "ProjectBoardSidebarDestinationRow(destination: .schedule"))
-        let doneRow = try XCTUnwrap(boardSource.range(of: "ProjectBoardSidebarDestinationRow(destination: .done"))
-        let projectsSection = try XCTUnwrap(boardSource.range(of: "Section(\"Projects\")"))
+        let todayRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-today"))
+        let inboxRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-inbox"))
+        let projectsRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-projects"))
+        let reviewRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-review"))
 
-        XCTAssertLessThan(inboxRow.lowerBound, projectsSection.lowerBound)
-        XCTAssertLessThan(todayRow.lowerBound, projectsSection.lowerBound)
-        XCTAssertLessThan(todayRow.lowerBound, catchUpRow.lowerBound)
-        XCTAssertLessThan(catchUpRow.lowerBound, scheduleRow.lowerBound)
-        XCTAssertLessThan(catchUpRow.lowerBound, projectsSection.lowerBound)
-        XCTAssertLessThan(scheduleRow.lowerBound, projectsSection.lowerBound)
-        XCTAssertLessThan(doneRow.lowerBound, projectsSection.lowerBound)
-        XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(\n                            destination: .projects"))
-        XCTAssertTrue(boardSource.contains(".tag(ProjectBoardSidebarDestination.projects)"))
-        XCTAssertTrue(boardSource.contains(".tag(ProjectBoardSidebarDestination.project(project.id))"))
-        XCTAssertTrue(boardSource.contains("Label(\"Add Project\", systemImage: \"folder.badge.plus\")"))
-        XCTAssertTrue(boardSource.contains("Label(\n                        \"Show Archived\""))
+        XCTAssertLessThan(todayRow.lowerBound, inboxRow.lowerBound)
+        XCTAssertLessThan(inboxRow.lowerBound, projectsRow.lowerBound)
+        XCTAssertLessThan(projectsRow.lowerBound, reviewRow.lowerBound)
+        XCTAssertFalse(sidebarSource.contains("project-sidebar-row-"))
+        let projectsSource = try readPackageFile(
+            "Sources/SoloPMApp/Views/ProjectBoardProjectsHubView.swift"
+        )
+        XCTAssertTrue(projectsSource.contains(".tag(BoardRoute.primary(.projects))"))
+        XCTAssertTrue(projectsSource.contains(".tag(BoardRoute.project(project.id))"))
+        XCTAssertTrue(projectsSource.contains("Label(\"Add Project\", systemImage: \"folder.badge.plus\")"))
+        XCTAssertTrue(projectsSource.contains("\"Show Archived\""))
     }
 
     func testPhase12SidebarDoesNotStealInboxCommandNumberShortcuts() throws {
@@ -2218,7 +2299,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".help(\"Show archived projects\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-board-show-archived\")"))
         XCTAssertTrue(source.contains(".accessibilityLabel(\"Show archived projects\")"))
-        XCTAssertTrue(source.contains(".accessibilityValue(viewModel.showsArchivedProjects ? \"On\" : \"Off\")"))
+        XCTAssertTrue(source.contains(".accessibilityValue(showsArchivedProjects ? \"On\" : \"Off\")"))
         XCTAssertTrue(source.contains(".accessibilityHint(\"Shows archived projects in the sidebar without deleting local data.\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-board-add-project\")"))
         XCTAssertTrue(source.contains(".accessibilityLabel(\"Add Project\")"))
@@ -2243,22 +2324,17 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardVoiceOverFocusPathIsSourceAnchored() throws {
         let boardSource = try readProjectBoardSurfaceSources()
-        let workflowSource = try readProjectWorkflowSources()
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
 
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-sidebar\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Project navigation\")"))
-        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Select Inbox, Today, or a project before moving to the board detail.\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"sidebar-destination-\\(destination.accessibilityIdentifierSuffix)\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityLabel(destination.accessibilityLabel(count: count))"))
+        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Select Today, Inbox, Projects, or Review.\")"))
+        XCTAssertTrue(boardSource.contains("sidebar-destination-today"))
+        XCTAssertTrue(boardSource.contains("sidebar-destination-review"))
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-sidebar-row-\\(project.id)\")"))
-        XCTAssertTrue(boardSource.contains(".accessibilityLabel(project.accessibilitySidebarLabel)"))
-        XCTAssertTrue(boardSource.contains("let onSelect: () -> Void"))
-        XCTAssertTrue(boardSource.contains("onSelect: { selectedDestination = .project(project.id) }"))
-        XCTAssertTrue(boardSource.contains(".contentShape(Rectangle())"))
-        XCTAssertTrue(boardSource.contains(".onTapGesture(perform: onSelect)"))
-        XCTAssertTrue(boardSource.contains(".accessibilityAction(.default, onSelect)"))
+        XCTAssertTrue(boardSource.contains(".accessibilityLabel(project.accessibilityProjectsHubLabel)"))
+        XCTAssertTrue(boardSource.contains(".tag(BoardRoute.project(project.id))"))
 
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-detail\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Project board for \\(project.title)\")"))
@@ -2504,7 +2580,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("AppTextToSpeechRuntimeFactory.makePreviewer("))
         XCTAssertTrue(boardSource.contains("temporaryDirectoryPrefix: \"solopm-daily-planning-readout\""))
         XCTAssertTrue(boardSource.contains("outputFilename: \"readout.wav\""))
-        XCTAssertTrue(boardSource.contains("applyLegacyDestinationWithinScene(summary.newlyMissedCount > 0 ? .catchUp : .today)"))
+        XCTAssertTrue(
+            boardSource.contains("applyPayloadResolvedRouteWithinScene(")
+        )
+        XCTAssertTrue(
+            boardSource.contains("queued ? .review(.assistantQueue) : .primary(.today)")
+        )
+        XCTAssertTrue(
+            boardSource.contains(
+                "applyLegacyDestinationWithinScene(summary.newlyMissedCount > 0 ? .catchUp : .today)"
+            )
+        )
         XCTAssertTrue(boardSource.contains("static let soloPMVoiceDailyPlanningReviewRequested"))
         XCTAssertTrue(boardSource.contains("guard let request = SoloPMVoiceDailyPlanningReviewBridge.consumePendingRequest(id: id)"))
         XCTAssertFalse(boardSource.contains("sourceTranscript(from: notification)"))
@@ -2581,6 +2667,11 @@ final class AppExperienceSourceTests: XCTestCase {
             XCTAssertFalse(block.contains("persistSelectedDestination"))
             XCTAssertTrue(block.contains("applyLegacyDestinationWithinScene"))
         }
+        XCTAssertTrue(
+            String(boardSource[dailyStart.lowerBound..<dailyEnd.lowerBound])
+                .contains("applyPayloadResolvedRouteWithinScene")
+        )
+        XCTAssertTrue(boardSource.contains("persistRoute(route, updateInitialRoute: false)"))
 
         // The compatibility callback consumes suppression exactly once; the
         // ordinary user path still persists after that callback is cleared.
@@ -2840,8 +2931,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let modelSource = try readPackageFile("Sources/SoloPMCore/WorkManagement/WorkManagementModels.swift")
 
-        XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(destination: .schedule"))
-        XCTAssertTrue(boardSource.contains("case .schedule:"))
+        XCTAssertTrue(boardSource.contains("review-destination-schedule"))
+        XCTAssertTrue(boardSource.contains("case .review(.schedule):"))
         XCTAssertTrue(boardSource.contains("ScheduleWorkflowView(viewModel: viewModel)"))
         XCTAssertTrue(persistenceSource.contains("case schedule"))
         XCTAssertTrue(workflowSource.contains("ScheduleWorkflowView"))

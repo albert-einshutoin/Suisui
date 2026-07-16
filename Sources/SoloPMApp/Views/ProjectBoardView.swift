@@ -87,6 +87,7 @@ struct ProjectBoardView: View {
     @State private var selectedSmartListID: String?
     @State private var savedSmartLists: [SmartList] = []
     @State private var isPresentingSmartListEditor = false
+    @State private var transientBoardRoute: BoardRoute?
     @State private var pendingDestinationPersistenceSuppression: ProjectBoardDestinationPersistenceSuppression?
     // Palette content hits reveal their task after the destination switch
     // settles, because applySelectedDestination clears task selection.
@@ -115,120 +116,15 @@ struct ProjectBoardView: View {
     var body: some View {
         let sidebarMetrics = viewModel.derivedReadModels.sidebarMetrics
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            VStack(spacing: 0) {
-                List(selection: $selectedDestination) {
-                    Section {
-                        ProjectBoardSidebarDestinationRow(destination: .inbox, count: sidebarMetrics.inboxCount)
-                            .tag(ProjectBoardSidebarDestination.inbox)
-                        ProjectBoardSidebarDestinationRow(destination: .assistantQueue, count: viewModel.assistantQueueSnapshot.needsAttentionCount)
-                            .tag(ProjectBoardSidebarDestination.assistantQueue)
-                        ProjectBoardSidebarDestinationRow(destination: .today, count: sidebarMetrics.todayCount)
-                            .tag(ProjectBoardSidebarDestination.today)
-                        ProjectBoardSidebarDestinationRow(destination: .catchUp, count: sidebarMetrics.catchUpCount)
-                            .tag(ProjectBoardSidebarDestination.catchUp)
-                        ProjectBoardSidebarDestinationRow(destination: .schedule, count: sidebarMetrics.scheduleCount)
-                            .tag(ProjectBoardSidebarDestination.schedule)
-                        ProjectBoardSidebarDestinationRow(destination: .done, count: sidebarMetrics.doneCount)
-                            .tag(ProjectBoardSidebarDestination.done)
-                    }
-
-                    SmartListSidebarSection(
-                        smartLists: allSmartLists,
-                        selectedSmartListID: selectedSmartListID,
-                        onSelect: selectSmartList,
-                        onCreate: { isPresentingSmartListEditor = true },
-                        onDelete: deleteSmartList
-                    )
-
-                    Section("Projects") {
-                        ProjectBoardSidebarDestinationRow(
-                            destination: .projects,
-                            count: sidebarMetrics.projectsCount
-                        )
-                        .tag(ProjectBoardSidebarDestination.projects)
-
-                        ForEach(activeSidebarProjects) { project in
-                            ProjectSidebarRow(
-                                project: project,
-                                onSelect: { selectedDestination = .project(project.id) },
-                                onMoveDroppedTasks: { rawIDs in
-                                    viewModel.moveDroppedTasks(ids: rawIDs, toProjectID: project.id)
-                                }
-                            )
-                            .tag(ProjectBoardSidebarDestination.project(project.id))
-                        }
-                    }
-
-                    if !completedSidebarProjects.isEmpty {
-                        Section("Completed") {
-                            ForEach(completedSidebarProjects) { project in
-                                ProjectSidebarRow(
-                                    project: project,
-                                    onSelect: { selectedDestination = .project(project.id) },
-                                    onMoveDroppedTasks: { rawIDs in
-                                        viewModel.moveDroppedTasks(ids: rawIDs, toProjectID: project.id)
-                                    }
-                                )
-                                .tag(ProjectBoardSidebarDestination.project(project.id))
-                            }
-                        }
-                    }
-
-                    if viewModel.showsArchivedProjects {
-                        Section("Archived") {
-                            ForEach(archivedSidebarProjects) { project in
-                                ProjectSidebarRow(
-                                    project: project,
-                                    onSelect: { selectedDestination = .project(project.id) },
-                                    onMoveDroppedTasks: { rawIDs in
-                                        viewModel.moveDroppedTasks(ids: rawIDs, toProjectID: project.id)
-                                    }
-                                )
-                                .tag(ProjectBoardSidebarDestination.project(project.id))
-                            }
-                        }
-                    }
-                }
-                .listStyle(.sidebar)
-                .accessibilityIdentifier("project-board-sidebar")
-                .accessibilityLabel("Project navigation")
-                .accessibilityHint("Select Inbox, Today, or a project before moving to the board detail.")
-
-                Divider()
-
-                Button {
-                    viewModel.setShowsArchivedProjects(!viewModel.showsArchivedProjects)
-                } label: {
-                    Label(
-                        "Show Archived",
-                        systemImage: viewModel.showsArchivedProjects ? "checkmark.square" : "square"
-                    )
-                }
-                .buttonStyle(.borderless)
-                .help("Show archived projects")
-                .accessibilityIdentifier("project-board-show-archived")
-                .accessibilityLabel("Show archived projects")
-                .accessibilityValue(viewModel.showsArchivedProjects ? "On" : "Off")
-                .accessibilityHint("Shows archived projects in the sidebar without deleting local data.")
-                .padding(.horizontal, 10)
-                .padding(.top, 8)
-
-                Button {
-                    if let project = viewModel.createProject() {
-                        selectedDestination = .project(project.id)
-                    }
-                } label: {
-                    Label("Add Project", systemImage: "folder.badge.plus")
-                }
-                .buttonStyle(.borderless)
-                .keyboardShortcut("n", modifiers: [.command, .shift])
-                .help("Add a project")
-                .accessibilityIdentifier("project-board-add-project")
-                .accessibilityLabel("Add Project")
-                .accessibilityHint("Creates a new local project and selects it.")
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
-            }
+            ProjectBoardSidebarView(
+                route: boardRouteBinding,
+                counts: ProjectBoardSidebarCounts(
+                    today: sidebarMetrics.todayCount,
+                    inbox: sidebarMetrics.inboxCount,
+                    projects: sidebarMetrics.projectsCount,
+                    review: viewModel.assistantQueueSnapshot.needsAttentionCount
+                )
+            )
             .id(toolbarLayoutRefreshToken)
             .projectBoardSynchronizedColumnBounds()
             .navigationSplitViewColumnWidth(min: ProjectBoardLayoutMetrics.sidebarColumnMinWidth, ideal: ProjectBoardLayoutMetrics.sidebarColumnIdealWidth)
@@ -244,51 +140,8 @@ struct ProjectBoardView: View {
                             systemImage: "exclamationmark.triangle",
                             description: Text(errorMessage)
                         )
-                    } else if let smartList = selectedSmartList {
-                        SmartListWorkflowView(
-                            smartList: smartList,
-                            viewModel: viewModel,
-                            timeZoneIdentifier: appSettings().timeZoneIdentifier
-                        )
                     } else {
-                        switch selectedDestination ?? .today {
-                        case .inbox:
-                            InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectInboxTask)
-                        case .assistantQueue:
-                            AssistantQueueWorkflowView(viewModel: viewModel)
-                        case .today:
-                            TodayWorkflowView(
-                                viewModel: viewModel,
-                                selectTodayTask: selectTodayTask,
-                                openInspectorForTodayRailTask: openInspectorForTodayRailTask,
-                                playDailyPlanningReadout: playDailyPlanningReadoutFromSettings
-                            )
-                        case .catchUp:
-                            CatchUpWorkflowView(viewModel: viewModel)
-                        case .schedule:
-                            ScheduleWorkflowView(viewModel: viewModel)
-                        case .done:
-                            DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())
-                        case .projects:
-                            ProjectsPortfolioOverview(viewModel: viewModel) { projectID in
-                                if viewModel.openProjectFromPortfolioCard(projectID: projectID) {
-                                    selectedDestination = .project(projectID)
-                                }
-                            }
-                        case .project(let projectID):
-                            if let project = viewModel.snapshot.projects.first(where: { $0.id == projectID }) {
-                                ProjectBoardDetail(
-                                    project: project,
-                                    displayMode: $displayMode,
-                                    viewModel: viewModel,
-                                    onOpenTaskInspector: { isInspectorPresented = true }
-                                )
-                            } else if viewModel.isEmptyProjectStateVisible {
-                                ContentUnavailableView("No Projects", systemImage: "folder")
-                            } else {
-                                ContentUnavailableView("Project Not Found", systemImage: "folder.badge.questionmark")
-                            }
-                        }
+                        routedProjectBoardContent
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -408,7 +261,12 @@ struct ProjectBoardView: View {
                 // changes coalesce without onChange. A later user destination
                 // differs, clears it here, and persists normally.
                 pendingDestinationPersistenceSuppression = nil
-                persistSelectedDestination(destination)
+                if let destination,
+                   ProjectBoardSelectionPersistence.environmentOverrideRawValue != nil {
+                    transientBoardRoute = validatedRoute(typedRoute(for: destination))
+                } else {
+                    persistSelectedDestination(destination)
+                }
             }
             applySelectedDestination(destination)
             // Destination changes intentionally clear normal user selection; the
@@ -518,6 +376,183 @@ struct ProjectBoardView: View {
         }
     }
 
+    /// Typed scene state is the rendering source of truth. The legacy
+    /// destination remains only as a compatibility facade for commands and
+    /// feature bridges that have not migrated to `BoardRoute` yet.
+    private var currentBoardRoute: BoardRoute {
+        if let transientBoardRoute {
+            return validatedRoute(transientBoardRoute)
+        }
+        let availableProjectIDs = Set(viewModel.snapshot.projects.map(\.id))
+        if !currentSceneRouteRawValue.isEmpty {
+            return validatedRoute(
+                ProjectBoardRouteCodec.route(
+                    from: currentSceneRouteRawValue,
+                    availableProjectIDs: availableProjectIDs
+                )
+            )
+        }
+        if let override = ProjectBoardSelectionPersistence.environmentOverrideRawValue {
+            return validatedRoute(
+                ProjectBoardRouteCodec.route(
+                    from: override,
+                    availableProjectIDs: availableProjectIDs
+                )
+            )
+        }
+        return validatedRoute(
+            ProjectBoardScenePersistence.restoredRoute(
+                sceneRawValue: currentSceneRouteRawValue,
+                initialRawValue: initialRouteRawValue,
+                availableProjectIDs: availableProjectIDs
+            )
+        )
+    }
+
+    private var boardRouteBinding: Binding<BoardRoute> {
+        Binding(
+            get: { currentBoardRoute },
+            set: { navigateWithinScene(to: $0) }
+        )
+    }
+
+    private func navigateWithinScene(to route: BoardRoute) {
+        let route = validatedRoute(route)
+        if ProjectBoardSelectionPersistence.environmentOverrideRawValue == nil {
+            persistRoute(route)
+        } else {
+            // Deterministic evidence overrides must remain process-local: they
+            // may still exercise navigation, but never rewrite SceneStorage or
+            // the next-window AppStorage preference.
+            transientBoardRoute = route
+        }
+        applyRouteToLegacyUI(route)
+    }
+
+    /// Payload handling may refine the route chosen before asynchronous work
+    /// finishes. Keep that correction scoped to this window so a failed queue
+    /// draft cannot strand the current scene in Review or rewrite the default
+    /// route used by future windows.
+    private func applyPayloadResolvedRouteWithinScene(_ route: BoardRoute) {
+        let route = validatedRoute(route)
+        if ProjectBoardSelectionPersistence.environmentOverrideRawValue == nil {
+            persistRoute(route, updateInitialRoute: false)
+        } else {
+            transientBoardRoute = route
+        }
+        applyRouteToLegacyUI(route)
+    }
+
+    @ViewBuilder
+    private var routedProjectBoardContent: some View {
+        switch currentBoardRoute {
+        case .primary(.today):
+            TodayWorkflowView(
+                viewModel: viewModel,
+                selectTodayTask: selectTodayTask,
+                openInspectorForTodayRailTask: openInspectorForTodayRailTask,
+                playDailyPlanningReadout: playDailyPlanningReadoutFromSettings
+            )
+        case .primary(.inbox):
+            InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectInboxTask)
+        case .primary(.projects), .project, .smartList:
+            ProjectBoardProjectsHubView(
+                route: boardRouteBinding,
+                projects: sidebarProjects,
+                smartLists: allSmartLists,
+                showsArchivedProjects: viewModel.showsArchivedProjects,
+                onCreateProject: createAndOpenProject,
+                onCreateSmartList: { isPresentingSmartListEditor = true },
+                onDeleteSmartList: deleteSmartList,
+                onToggleArchivedProjects: {
+                    viewModel.setShowsArchivedProjects(!viewModel.showsArchivedProjects)
+                },
+                onMoveDroppedTasks: { rawIDs, projectID in
+                    viewModel.moveDroppedTasks(ids: rawIDs, toProjectID: projectID)
+                }
+            ) {
+                projectsHubContent
+            }
+        case .primary(.review), .review:
+            ProjectBoardReviewHubView(
+                route: boardRouteBinding,
+                assistantQueueCount: viewModel.assistantQueueSnapshot.needsAttentionCount
+            ) {
+                reviewHubContent
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var projectsHubContent: some View {
+        switch currentBoardRoute {
+        case .primary(.projects):
+            ProjectsPortfolioOverview(viewModel: viewModel) { projectID in
+                if viewModel.openProjectFromPortfolioCard(projectID: projectID) {
+                    navigateWithinScene(to: .project(projectID))
+                }
+            }
+        case .project(let projectID):
+            if let project = viewModel.snapshot.projects.first(where: { $0.id == projectID }) {
+                ProjectBoardDetail(
+                    project: project,
+                    displayMode: $displayMode,
+                    viewModel: viewModel,
+                    onOpenTaskInspector: { isInspectorPresented = true }
+                )
+            } else if viewModel.isEmptyProjectStateVisible {
+                ContentUnavailableView("No Projects", systemImage: "folder")
+            } else {
+                ContentUnavailableView("Project Not Found", systemImage: "folder.badge.questionmark")
+            }
+        case .smartList(let smartListID):
+            if let smartList = allSmartLists.first(where: { $0.id == smartListID }) {
+                SmartListWorkflowView(
+                    smartList: smartList,
+                    viewModel: viewModel,
+                    timeZoneIdentifier: appSettings().timeZoneIdentifier
+                )
+            } else {
+                ContentUnavailableView("Smart List Not Found", systemImage: "line.3.horizontal.decrease.circle")
+            }
+        case .primary, .review:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var reviewHubContent: some View {
+        switch currentBoardRoute {
+        case .primary(.review):
+            ContentUnavailableView(
+                "Review",
+                systemImage: "checklist",
+                description: Text("Choose Schedule, Completed, Automation Activity, or Assistant Queue.")
+            )
+            .accessibilityIdentifier("review-hub-overview")
+        case .review(.schedule):
+            ScheduleWorkflowView(viewModel: viewModel)
+        case .review(.completed):
+            DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())
+        case .review(.automationActivity):
+            ProjectWorkflowAutomationActivityView(
+                viewModel: viewModel,
+                appSettings: appSettings()
+            )
+        case .review(.assistantQueue):
+            AssistantQueueWorkflowView(viewModel: viewModel)
+        case .primary, .project, .smartList:
+            EmptyView()
+        }
+    }
+
+    private func createAndOpenProject() {
+        guard let project = viewModel.createProject() else {
+            return
+        }
+        navigateWithinScene(to: .project(project.id))
+    }
+
     private func executeCommandPaletteAction(_ kind: CommandPaletteActionKind) {
         switch kind {
         case .createInboxTask(let title):
@@ -591,7 +626,11 @@ struct ProjectBoardView: View {
         // destination enum; clearing the destination keeps exactly one of the
         // two selection sources active at a time.
         selectedDestination = nil
-        persistRoute(.smartList(smartList.id))
+        if ProjectBoardSelectionPersistence.environmentOverrideRawValue == nil {
+            persistRoute(.smartList(smartList.id))
+        } else {
+            transientBoardRoute = .smartList(smartList.id)
+        }
     }
 
     private func reloadSavedSmartLists() {
@@ -825,6 +864,10 @@ struct ProjectBoardView: View {
                 from: override,
                 availableProjectIDs: availableProjectIDs
             )
+            transientBoardRoute = validatedRoute(route)
+            applyRouteToLegacyUI(validatedRoute(route))
+            applySelectedTaskOverrideIfNeeded()
+            return
         } else {
             route = ProjectBoardScenePersistence.restoredRoute(
                 sceneRawValue: currentSceneRouteRawValue,
@@ -909,8 +952,9 @@ struct ProjectBoardView: View {
             destination = .projects
             smartListID = nil
         case .primary(.review):
-            // Review becomes a first-class destination in Task 4. Until then,
-            // Assistant Queue is the existing Review-compatible surface.
+            // The compatibility facade has no Review overview case. Assistant
+            // Queue preserves the legacy non-project selection semantics while
+            // the typed route remains the rendering source of truth.
             destination = .assistantQueue
             smartListID = nil
         case .project(let projectID):
@@ -956,10 +1000,14 @@ struct ProjectBoardView: View {
 
     private func applySceneOpenRequest(_ request: ProjectBoardOpenRequest) {
         let route = validatedRoute(request.route)
-        persistRoute(
-            route,
-            updateInitialRoute: ProjectBoardScenePersistence.shouldUpdateInitialRoute(for: request)
-        )
+        if ProjectBoardSelectionPersistence.environmentOverrideRawValue == nil {
+            persistRoute(
+                route,
+                updateInitialRoute: ProjectBoardScenePersistence.shouldUpdateInitialRoute(for: request)
+            )
+        } else {
+            transientBoardRoute = route
+        }
         applyRouteToLegacyUI(route)
 
         // Payload bridges retain only feature-specific data. Navigation and ID
@@ -1042,8 +1090,8 @@ struct ProjectBoardView: View {
                 kind: actionDraftKind,
                 transcript: sourceTranscript
             )
-            applyLegacyDestinationWithinScene(
-                queued ? .assistantQueue : (summary.newlyMissedCount > 0 ? .catchUp : .today)
+            applyPayloadResolvedRouteWithinScene(
+                queued ? .review(.assistantQueue) : .primary(.today)
             )
         } else {
             applyLegacyDestinationWithinScene(summary.newlyMissedCount > 0 ? .catchUp : .today)

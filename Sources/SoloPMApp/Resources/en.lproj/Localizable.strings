@@ -1627,6 +1627,18 @@
 
 /* Smart lists and board keyboard shortcuts */
 "Smart Lists" = "Smart Lists";
+"Automation Activity" = "Automation Activity";
+"Choose Schedule, Completed, Automation Activity, or Assistant Queue." = "Choose Schedule, Completed, Automation Activity, or Assistant Queue.";
+"Portfolio" = "Portfolio";
+"Projects navigation" = "Projects navigation";
+"Review navigation" = "Review navigation";
+"Review receipt-derived AI usage and redacted execution history. This audit activity does not change completed task or project state." = "Review receipt-derived AI usage and redacted execution history. This audit activity does not change completed task or project state.";
+"Select Today, Inbox, Projects, or Review." = "Select Today, Inbox, Projects, or Review.";
+"Work" = "Work";
+"Reviews workload and approval-ready schedule drafts from Review." = "Reviews workload and approval-ready schedule drafts from Review.";
+"Reviews completed tasks, completed projects, and local recap." = "Reviews completed tasks, completed projects, and local recap.";
+"Catch Up (%d)" = "Catch Up (%d)";
+"Expands overdue and missed work actions without leaving Today." = "Expands overdue and missed work actions without leaving Today.";
 "Smart List" = "Smart List";
 "New Smart List…" = "New Smart List…";
 "New Smart List" = "New Smart List";

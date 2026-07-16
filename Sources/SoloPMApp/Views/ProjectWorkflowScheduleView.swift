@@ -88,6 +88,8 @@ struct ScheduleWorkflowView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("schedule-workflow")
+        .accessibilityLabel("Schedule")
+        .accessibilityHint("Reviews workload and approval-ready schedule drafts from Review.")
     }
 
     private func moveWorkloadToPreviousWeek() {

@@ -382,10 +382,12 @@ route_text_for() {
     inbox:ja) printf '%s' "インボックス" ;;
     today:en) printf '%s' "Today" ;;
     today:ja) printf '%s' "今日" ;;
-    catch-up:en) printf '%s' "Catch Up" ;;
-    catch-up:ja) printf '%s' "キャッチアップ" ;;
     projects:en) printf '%s' "Projects" ;;
     projects:ja) printf '%s' "プロジェクト" ;;
+    review:en) printf '%s' "Review" ;;
+    review:ja) printf '%s' "確認" ;;
+    review-schedule:en) printf '%s' "Schedule" ;;
+    review-schedule:ja) printf '%s' "予定" ;;
     project:*|inspector:*) printf '%s' "fixture-project-1" ;;
     *) return 1 ;;
   esac
@@ -619,7 +621,8 @@ run_normal_routes() {
   local routes=(
     "inbox|inbox|sidebar-destination-inbox|inbox-workflow"
     "today|today|sidebar-destination-today|today-workflow"
-    "catch-up|catch-up|sidebar-destination-catch-up|catch-up-workflow"
+    "review|primary:review|sidebar-destination-review|review-hub"
+    "review-schedule|review:schedule|sidebar-destination-review|schedule-workflow"
     "projects|projects|sidebar-destination-projects|projects-portfolio-overview"
   )
 
@@ -632,7 +635,15 @@ run_normal_routes() {
       return 1
     fi
   done
-  navigate_to_seed_project
+  # The state-restoration lane owns AX row pressing and Inspector drill-down.
+  # This route smoke verifies that the typed project deep link still resolves
+  # through the Projects top-level selection to the real project detail.
+  run_route \
+    "project" \
+    "project:$seed_project_id" \
+    "sidebar-destination-projects" \
+    "project-board-detail" \
+    "$(route_text_for "project")"
 }
 
 cpu_percent_for_app() {

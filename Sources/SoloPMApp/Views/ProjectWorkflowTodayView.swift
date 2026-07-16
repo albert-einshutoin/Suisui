@@ -13,6 +13,7 @@ struct TodayWorkflowView: View {
     var openInspectorForTodayRailTask: (Int64) -> Void = { _ in }
     var playDailyPlanningReadout: () -> Void = {}
     @State private var commandTitle = ""
+    @State private var isCatchUpExpanded = false
 
     private func subtitle(for snapshot: TodayWorkflowSnapshot) -> String {
         if viewModel.showsCompletedWorkflowTasks {
@@ -93,7 +94,25 @@ struct TodayWorkflowView: View {
                 )
             },
             footer: {
-                TodaySuggestionPanel(plan: snapshot.plan, viewModel: viewModel)
+                VStack(alignment: .leading, spacing: 12) {
+                    TodaySuggestionPanel(plan: snapshot.plan, viewModel: viewModel)
+                    if viewModel.derivedReadModels.sidebarMetrics.catchUpCount > 0 {
+                        DisclosureGroup(isExpanded: $isCatchUpExpanded) {
+                            CatchUpWorkflowView(viewModel: viewModel)
+                                .frame(minHeight: 360)
+                        } label: {
+                            Label(
+                                String(
+                                    format: String(localized: "Catch Up (%d)"),
+                                    viewModel.derivedReadModels.sidebarMetrics.catchUpCount
+                                ),
+                                systemImage: "clock.badge.exclamationmark"
+                            )
+                        }
+                        .accessibilityIdentifier("today-catch-up-section")
+                        .accessibilityHint("Expands overdue and missed work actions without leaving Today.")
+                    }
+                }
             }
         )
     }
