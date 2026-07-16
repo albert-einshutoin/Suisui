@@ -366,7 +366,11 @@ launch_end_ms="$(now_ms)"
 record_sample "cold-launch-visible-window" "$launch_start_ms" "$launch_end_ms" "$MAX_COLD_LAUNCH_MS"
 
 measure_destination "destination-inbox" "sidebar-destination-inbox" "Inbox" "inbox-workflow"
-measure_destination "destination-assistant-queue" "sidebar-destination-assistant-queue" "Assistant Queue" "assistant-queue-workflow"
+# Assistant Queue is intentionally nested under Review in the four-area IA.
+# Measure both real user transitions so this gate cannot silently restore the
+# removed top-level destination just to satisfy an old performance fixture.
+measure_destination "destination-review" "sidebar-destination-review" "Review" "review-hub"
+measure_destination "destination-assistant-queue" "review-destination-assistant-queue" "Assistant Queue" "assistant-queue-workflow"
 measure_destination "destination-today" "sidebar-destination-today" "Today" "today-workflow"
 
 printf '\nStatus: passed\n' >>"$SUMMARY_FILE"

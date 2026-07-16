@@ -533,24 +533,6 @@ prepare_ax_target_frame_auditor() {
   /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_target_frame_audit.swift" -o "$AX_TARGET_FRAME_AUDITOR"
 }
 
-prepare_ax_press_element_helper() {
-  if [[ -x "$AX_PRESS_ELEMENT_HELPER" ]]; then
-    return
-  fi
-  /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_press_element.swift" -o "$AX_PRESS_ELEMENT_HELPER"
-}
-
-press_project_sidebar_row() {
-  local project_id="$1"
-  if [[ ! "$project_id" =~ ^[1-9][0-9]*$ ]]; then
-    echo "invalid project id for visual destination navigation" >&2
-    return 2
-  fi
-  prepare_ax_press_element_helper
-  SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
-    "$AX_PRESS_ELEMENT_HELPER" "$EVIDENCE_APP_PID" "project-sidebar-row-$project_id"
-}
-
 audit_ax_target_frame() {
   local identifier="$1"
   local window_name="$2"
@@ -1356,13 +1338,7 @@ capture_project_board_destination() {
   local route_attempt
   local marker_diagnostic
   local launch_destination="$selected_destination"
-  local project_id=""
   local destination_status
-
-  if [[ "$selected_destination" =~ ^project:([1-9][0-9]*)$ ]]; then
-    project_id="${BASH_REMATCH[1]}"
-    launch_destination="projects"
-  fi
 
   APPEARANCE_OVERRIDE="$appearance"
   PROJECT_BOARD_SELECTION_OVERRIDE="$launch_destination"
@@ -1388,22 +1364,10 @@ capture_project_board_destination() {
     marker_diagnostic="$EVIDENCE_TMPDIR/project-board-destination.$$.attempt-$route_attempt.err"
     : >"$marker_diagnostic"
     destination_status=0
-    if [[ -n "$project_id" ]]; then
-      # The hosted macOS runner can publish a real Projects window while a
-      # direct project cold launch remains stuck before detail composition.
-      # Follow the production user path instead: prove Projects first, then
-      # select the exact seeded row through its PID-scoped AX identifier.
-      wait_for_project_board_destination \
-        "Projects overview before $label" \
-        "sidebar-destination-projects=>|projects-portfolio-overview=>" \
-        2>>"$marker_diagnostic" || destination_status=$?
-      if [[ "$destination_status" -eq 0 ]]; then
-        press_project_sidebar_row "$project_id" 2>>"$marker_diagnostic" || destination_status=$?
-      fi
-    fi
-    if [[ "$destination_status" -eq 0 ]]; then
-      wait_for_project_board_destination "$label" "$target_markers" 2>>"$marker_diagnostic" || destination_status=$?
-    fi
+    # Typed route overrides are the production deep-link contract. Launching
+    # the exact route avoids depending on whether a SwiftUI List has published
+    # an off-screen project row into the hosted runner's AX tree.
+    wait_for_project_board_destination "$label" "$target_markers" 2>>"$marker_diagnostic" || destination_status=$?
     if [[ "$destination_status" -eq 0 ]]; then
       rm -f "$marker_diagnostic"
       PROJECT_BOARD_SELECTION_OVERRIDE="$selected_destination"

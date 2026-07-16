@@ -5005,9 +5005,9 @@ final class AppExperienceSourceTests: XCTestCase {
             range: captureDestinationStart.upperBound..<script.endIndex
         ))
         let captureDestinationSource = String(script[captureDestinationStart.lowerBound..<captureDestinationEnd.lowerBound])
-        XCTAssertTrue(captureDestinationSource.contains("launch_destination=\"projects\""))
-        XCTAssertTrue(script.contains("project-sidebar-row-$project_id"))
-        XCTAssertTrue(captureDestinationSource.contains("press_project_sidebar_row \"$project_id\""))
+        XCTAssertTrue(captureDestinationSource.contains("launch_destination=\"$selected_destination\""))
+        XCTAssertFalse(script.contains("press_project_sidebar_row"))
+        XCTAssertFalse(script.contains("project-sidebar-row-$project_id"))
         let destinationPosition = try XCTUnwrap(captureDestinationSource.range(of: "position_window_for_capture"))
         let destinationMarkerWait = try XCTUnwrap(captureDestinationSource.range(of: "wait_for_project_board_destination"))
         XCTAssertLessThan(destinationPosition.lowerBound, destinationMarkerWait.lowerBound)

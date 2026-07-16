@@ -199,6 +199,10 @@ launch_app_for_seed_project() {
   wait_for_app_process
   activate_app
   wait_for_visible_windows
+  # Inspectors are intentionally explicit after the adaptive-inspector renewal.
+  # Exercise the visible Details command instead of reviving the removed
+  # selection-implies-open behavior in either the product or this harness.
+  pressButtonContaining "project-board-inspector-toggle"
 }
 
 launch_app_for_crud_mutation() {
@@ -277,13 +281,14 @@ verify_single_value() {
 pressButtonUntilSQLiteValue() {
   local label="$1"
   local fragment="$2"
-  local sql="$3"
-  local expected="$4"
+  local fallback_fragment="${3:-}"
+  local sql="$4"
+  local expected="$5"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   local actual=""
 
   while true; do
-    pressButtonContaining "$fragment"
+    pressButtonContaining "$fragment" "$fallback_fragment"
 
     local postcondition_deadline=$((SECONDS + 3))
     while true; do
@@ -369,13 +374,15 @@ SQL
 
 pressButtonContaining() {
   local fragment="$1"
+  local fallback_fragment="${2:-}"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$app_pid" "$APP_NAME" "$fragment" <<'APPLESCRIPT'
+    if /usr/bin/osascript - "$app_pid" "$APP_NAME" "$fragment" "$fallback_fragment" <<'APPLESCRIPT'
 on run argv
   set appPID to item 1 of argv as integer
   set appName to item 2 of argv
   set fragment to item 3 of argv
+  set fallbackFragment to item 4 of argv
   tell application "System Events"
     set matchingProcesses to application processes whose unix id is appPID
     if (count of matchingProcesses) is 0 then error appName & " pid " & appPID & " is not visible to System Events"
@@ -424,7 +431,10 @@ on run argv
             try
               set isEnabled to enabled of axItem as boolean
             end try
-            if isEnabled and signalText contains fragment then
+            set matchesPrimary to signalText contains fragment
+            set matchesFallback to false
+            if fallbackFragment is not "" and signalText contains fallbackFragment then set matchesFallback to true
+            if isEnabled and (matchesPrimary or matchesFallback) then
               try
                 perform action "AXPress" of axItem
                 return "pressed " & fragment
@@ -806,7 +816,7 @@ terminate_app
 wait_for_no_app_process
 launch_app_for_crud_mutation
 
-pressButtonUntilSQLiteValue "created project" "project-board-add-project" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM projects WHERE title='Untitled Project' AND source_command='app.project-board';" "1"
+pressButtonUntilSQLiteValue "created project" "project-board-add-project" "projects-hub-compact-add-project" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM projects WHERE title='Untitled Project' AND source_command='app.project-board';" "1"
 created_project_id="$(wait_for_nonempty_value "created project id" "SELECT id FROM projects WHERE title='Untitled Project' AND source_command='app.project-board' ORDER BY id DESC LIMIT 1;")"
 terminate_app
 wait_for_no_app_process
@@ -822,7 +832,7 @@ pressButtonUntilTextFieldContaining "project-header-add-task" "inline-task-title
 waitForTextFieldContaining "inline-task-title"
 setTextFieldContaining "inline-task-title" "AX Runtime CRUD Task"
 waitForTextFieldContaining "AX Runtime CRUD Task"
-pressButtonUntilSQLiteValue "created task" "inline-task-create" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' AND status='backlog' AND source_command='app.project-board';" "1"
+pressButtonUntilSQLiteValue "created task" "inline-task-create" "" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' AND status='backlog' AND source_command='app.project-board';" "1"
 created_task_id="$(wait_for_nonempty_value "created task id" "SELECT id FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' ORDER BY id DESC LIMIT 1;")"
 
 pressButtonContaining "task-card-open-details"
@@ -846,7 +856,7 @@ waitForTextFieldContaining "AX Runtime Execution Task"
 waitForTextFieldContaining "inline-task-detail"
 setTextFieldContaining "inline-task-detail" "Execute this runtime task through the approved plan."
 waitForTextFieldContaining "Execute this runtime task through the approved plan."
-pressButtonUntilSQLiteValue "created execution task" "inline-task-create" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Execution Task' AND detail='Execute this runtime task through the approved plan.' AND status='backlog' AND source_command='app.project-board';" "1"
+pressButtonUntilSQLiteValue "created execution task" "inline-task-create" "" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Execution Task' AND detail='Execute this runtime task through the approved plan.' AND status='backlog' AND source_command='app.project-board';" "1"
 execution_task_id="$(wait_for_nonempty_value "execution task id" "SELECT id FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Execution Task' ORDER BY id DESC LIMIT 1;")"
 pressButtonContaining "task-card-open-details"
 waitForTextFieldContaining "task-inspector-title"
@@ -862,14 +872,14 @@ pressButtonUntilTextFieldContaining "project-header-add-task" "inline-task-title
 waitForTextFieldContaining "inline-task-title"
 setTextFieldContaining "inline-task-title" "AX Runtime Cascade Task"
 waitForTextFieldContaining "AX Runtime Cascade Task"
-pressButtonUntilSQLiteValue "created cascade task" "inline-task-create" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' AND status='backlog' AND source_command='app.project-board';" "1"
+pressButtonUntilSQLiteValue "created cascade task" "inline-task-create" "" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' AND status='backlog' AND source_command='app.project-board';" "1"
 cascade_task_id="$(wait_for_nonempty_value "cascade task id" "SELECT id FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' ORDER BY id DESC LIMIT 1;")"
 terminate_app
 wait_for_no_app_process
 launch_app_for_seed_project "$created_project_id"
 waitForTextFieldContaining "project-inspector-title"
 
-pressButtonUntilSQLiteValue "completed project" "project-inspector-complete" "SELECT status FROM projects WHERE id=$created_project_id;" "completed"
+pressButtonUntilSQLiteValue "completed project" "project-inspector-complete" "" "SELECT status FROM projects WHERE id=$created_project_id;" "completed"
 
 pressDestructiveButtonUntilSQLiteValue "deleted project" "project-inspector-delete" "project-inspector-delete-confirmation-confirm" "Confirm Delete Project" "" "SELECT count(*) FROM projects WHERE id=$created_project_id;" "0" "1"
 verify_single_value "deleted task cascade" "SELECT count(*) FROM tasks WHERE id=$cascade_task_id OR project_id=$created_project_id;" "0"
