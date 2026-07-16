@@ -725,9 +725,9 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
-    func testProjectBoardHeaderHostsSettingsLinkWithoutThemeControls() throws {
-        let boardSource = try readPackageFile(
-            "Sources/SoloPMApp/Views/ProjectBoardView.swift"
+    func testProjectBoardToolbarHostsSettingsLinkWithoutThemeControls() throws {
+        let toolbarSource = try readPackageFile(
+            "Sources/SoloPMApp/Views/ProjectBoardToolbarContent.swift"
         )
         let sidebarSource = try readPackageFile(
             "Sources/SoloPMApp/Views/ProjectBoardProjectsHubView.swift"
@@ -752,29 +752,25 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(sidebarSource.contains("appearancePreference"))
         XCTAssertFalse(sidebarSource.contains(".pickerStyle(.segmented)"))
 
-        let headerStart = try XCTUnwrap(boardSource.range(of: "private var projectBoardHeaderBar: some View"))
-        let toggleStart = try XCTUnwrap(boardSource.range(of: "private func toggleSidebarVisibility()"))
-        let headerSource = String(boardSource[headerStart.lowerBound..<toggleStart.lowerBound])
-
-        XCTAssertTrue(headerSource.contains("SettingsLink"))
-        XCTAssertTrue(headerSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
-        XCTAssertTrue(headerSource.contains(".help(\"Open Settings\")"))
-        XCTAssertTrue(headerSource.contains(".accessibilityIdentifier(\"project-board-settings-link\")"))
-        XCTAssertFalse(headerSource.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
-        XCTAssertFalse(headerSource.contains("Theme"))
-        XCTAssertFalse(headerSource.contains("Appearance"))
-        XCTAssertFalse(headerSource.contains("SoloPMAppearancePreference"))
-        XCTAssertFalse(headerSource.contains("Picker(\"Theme\""))
-        XCTAssertFalse(headerSource.contains("Picker(\"Appearance\""))
-        XCTAssertFalse(headerSource.contains("Light"))
-        XCTAssertFalse(headerSource.contains("Dark"))
-        XCTAssertFalse(headerSource.contains("System"))
-        XCTAssertFalse(headerSource.contains("sun.max"))
-        XCTAssertFalse(headerSource.contains("moon"))
-        XCTAssertFalse(headerSource.contains("circle.lefthalf.filled"))
-        XCTAssertFalse(headerSource.contains("settings-theme-picker"))
-        XCTAssertFalse(headerSource.contains("appearancePreference"))
-        XCTAssertFalse(headerSource.contains(".pickerStyle(.segmented)"))
+        XCTAssertTrue(toolbarSource.contains("SettingsLink"))
+        XCTAssertTrue(toolbarSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
+        XCTAssertTrue(toolbarSource.contains(".help(\"Open Settings\")"))
+        XCTAssertTrue(toolbarSource.contains(".accessibilityIdentifier(\"project-board-settings-link\")"))
+        XCTAssertFalse(toolbarSource.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
+        XCTAssertFalse(toolbarSource.contains("Theme"))
+        XCTAssertFalse(toolbarSource.contains("Appearance"))
+        XCTAssertFalse(toolbarSource.contains("SoloPMAppearancePreference"))
+        XCTAssertFalse(toolbarSource.contains("Picker(\"Theme\""))
+        XCTAssertFalse(toolbarSource.contains("Picker(\"Appearance\""))
+        XCTAssertFalse(toolbarSource.contains("Light"))
+        XCTAssertFalse(toolbarSource.contains("Dark"))
+        XCTAssertFalse(toolbarSource.contains("System"))
+        XCTAssertFalse(toolbarSource.contains("sun.max"))
+        XCTAssertFalse(toolbarSource.contains("moon"))
+        XCTAssertFalse(toolbarSource.contains("circle.lefthalf.filled"))
+        XCTAssertFalse(toolbarSource.contains("settings-theme-picker"))
+        XCTAssertFalse(toolbarSource.contains("appearancePreference"))
+        XCTAssertFalse(toolbarSource.contains(".pickerStyle(.segmented)"))
     }
 
     func testProjectBoardInspectorUsesNativeSwiftUIPresentation() throws {
@@ -831,40 +827,32 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX:-0"))
     }
 
-    func testProjectBoardHeaderKeepsActionsInSynchronousSwiftUILayout() throws {
+    func testProjectBoardUsesOneNativeContextualToolbarLayer() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let headerStart = try XCTUnwrap(boardSource.range(of: "private var projectBoardHeaderBar: some View"))
-        let toggleStart = try XCTUnwrap(boardSource.range(of: "private func toggleSidebarVisibility()"))
-        let headerSource = String(boardSource[headerStart.lowerBound..<toggleStart.lowerBound])
-        let toolbarStart = try XCTUnwrap(boardSource.range(of: ".toolbar {"))
-        let toolbarRemovalStart = try XCTUnwrap(boardSource.range(of: ".toolbar(removing: .sidebarToggle)"))
-        let toolbarSource = String(boardSource[toolbarStart.lowerBound..<toolbarRemovalStart.lowerBound])
+        let toolbarSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardToolbarContent.swift")
 
-        XCTAssertTrue(boardSource.contains("projectBoardHeaderBar"))
-        XCTAssertTrue(headerSource.contains("HStack(spacing: 8)"))
-        XCTAssertTrue(headerSource.contains("Spacer(minLength: 16)"))
-        XCTAssertTrue(headerSource.contains("Label(\"Integrations\", systemImage: \"arrow.left.arrow.right\")"))
-        XCTAssertTrue(headerSource.contains("Label(\"Review Task Automation\", systemImage: \"sparkles\")"))
-        XCTAssertTrue(headerSource.contains("Label(\"Voice Command\", systemImage: \"mic\")"))
-        XCTAssertTrue(headerSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
-        XCTAssertTrue(headerSource.contains("Label(\"Terminal\", systemImage: \"terminal\")"))
-        XCTAssertTrue(headerSource.contains(".accessibilityIdentifier(\"project-board-header-bar\")"))
-        XCTAssertTrue(headerSource.contains(".buttonStyle(.bordered)"))
-        XCTAssertTrue(headerSource.contains(".controlSize(.small)"))
-        XCTAssertTrue(headerSource.contains("minHeight: ProjectBoardLayoutMetrics.headerHeight"))
-        XCTAssertTrue(headerSource.contains("maxHeight: ProjectBoardLayoutMetrics.headerHeight"))
-        XCTAssertEqual(toolbarSource.components(separatedBy: "ToolbarItem(placement: .primaryAction)").count - 1, 0)
-        XCTAssertFalse(toolbarSource.contains("ToolbarItemGroup(placement:"))
-        XCTAssertFalse(toolbarSource.contains("project-board-integrations-menu"))
-        XCTAssertFalse(toolbarSource.contains("project-board-voice-command"))
-        XCTAssertFalse(toolbarSource.contains("project-board-settings-link"))
-        XCTAssertFalse(toolbarSource.contains("project-board-terminal-toggle"))
+        XCTAssertFalse(boardSource.contains("projectBoardHeaderBar"))
+        XCTAssertFalse(boardSource.contains(".frame(height: 44)"))
+        XCTAssertFalse(boardSource.contains(".background(.bar)"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardToolbarContent("))
+        XCTAssertTrue(toolbarSource.contains("struct ProjectBoardToolbarContent: ToolbarContent"))
+        XCTAssertTrue(toolbarSource.contains("ToolbarItem(placement: .primaryAction)"))
+        XCTAssertTrue(toolbarSource.contains("ToolbarItemGroup(placement: .primaryAction)"))
+        XCTAssertTrue(toolbarSource.contains("Label(\"Search\", systemImage: \"magnifyingglass\")"))
+        XCTAssertTrue(toolbarSource.contains("Label(\"Voice Command\", systemImage: \"mic\")"))
+        XCTAssertTrue(toolbarSource.contains("Label(\"Utilities\", systemImage: \"ellipsis.circle\")"))
+        XCTAssertTrue(toolbarSource.contains("Label(\"Integrations\", systemImage: \"arrow.left.arrow.right\")"))
+        XCTAssertTrue(toolbarSource.contains("Label(\"Review Task Automation\", systemImage: \"sparkles\")"))
+        XCTAssertTrue(toolbarSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
+        XCTAssertTrue(toolbarSource.contains("Label(\"Terminal\", systemImage: \"terminal\")"))
+        XCTAssertTrue(toolbarSource.contains("Label(\"Details\", systemImage: \"sidebar.trailing\")"))
         XCTAssertTrue(boardSource.contains("reconcileProjectBoardToolbarLayout(allowRetryIfToolbarMissing:"))
-        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-integrations-menu\")"))
-        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-task-auto-execution-review\")"))
-        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-voice-command\")"))
-        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-settings-link\")"))
-        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-terminal-toggle\")"))
+        XCTAssertTrue(toolbarSource.contains(".accessibilityIdentifier(\"project-board-integrations-menu\")"))
+        XCTAssertTrue(toolbarSource.contains(".accessibilityIdentifier(\"project-board-task-auto-execution-review\")"))
+        XCTAssertTrue(toolbarSource.contains(".accessibilityIdentifier(\"project-board-voice-command\")"))
+        XCTAssertTrue(toolbarSource.contains(".accessibilityIdentifier(\"project-board-settings-link\")"))
+        XCTAssertTrue(toolbarSource.contains(".accessibilityIdentifier(\"project-board-terminal-toggle\")"))
+        XCTAssertTrue(toolbarSource.contains(".accessibilityIdentifier(\"project-board-inspector-toggle\")"))
         XCTAssertTrue(boardSource.contains("private extension NSToolbar"))
         XCTAssertTrue(boardSource.contains("var projectBoardLayoutItems: [ProjectBoardToolbarLayoutPolicy.Item]"))
         XCTAssertTrue(boardSource.contains("accessibilityIdentifier: view?.accessibilityIdentifier()"))
@@ -992,9 +980,10 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardLayoutMetricsGuardPrimaryDimensionsAndLongLabels() throws {
         let source = try readProjectBoardSurfaceSources()
+        let boardSource = try readProjectBoardOwnerSource()
 
         XCTAssertTrue(source.contains("private enum ProjectBoardLayoutMetrics"))
-        XCTAssertTrue(source.contains("static let headerHeight: CGFloat = 44"))
+        XCTAssertFalse(source.contains("static let headerHeight: CGFloat = 44"))
         XCTAssertTrue(source.contains("static let terminalPanelMinHeight: CGFloat = 220"))
         XCTAssertTrue(source.contains("static let terminalPanelIdealHeight: CGFloat = 280"))
         XCTAssertTrue(source.contains("static let terminalPanelMaxHeight: CGFloat = 360"))
@@ -1012,8 +1001,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("static let taskStatusRailHeight: CGFloat = 44"))
         XCTAssertTrue(source.contains("Project Board keeps these metrics local"))
 
-        XCTAssertTrue(source.contains("minHeight: ProjectBoardLayoutMetrics.headerHeight"))
-        XCTAssertTrue(source.contains("maxHeight: ProjectBoardLayoutMetrics.headerHeight"))
+        XCTAssertFalse(source.contains("ProjectBoardLayoutMetrics.headerHeight"))
+        XCTAssertFalse(boardSource.contains(".background(.bar)"))
         XCTAssertTrue(source.contains("minHeight: ProjectBoardLayoutMetrics.terminalPanelMinHeight"))
         XCTAssertTrue(source.contains("idealHeight: ProjectBoardLayoutMetrics.terminalPanelIdealHeight"))
         XCTAssertTrue(source.contains("maxHeight: ProjectBoardLayoutMetrics.terminalPanelMaxHeight"))
@@ -1334,15 +1323,16 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardReplacesDefaultSidebarToggleWithShortAdaptiveToolbarItem() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let toolbarSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardToolbarContent.swift")
         let toggleStart = try XCTUnwrap(boardSource.range(of: "private func toggleSidebarVisibility()"))
         let toolbarBridgeStart = try XCTUnwrap(boardSource.range(of: "private func refreshProjectBoardColumnsAfterToolbarDisplayModeChange()"))
         let toggleSource = String(boardSource[toggleStart.lowerBound..<toolbarBridgeStart.lowerBound])
 
         XCTAssertTrue(boardSource.contains("@State private var columnVisibility: NavigationSplitViewVisibility = .all"))
         XCTAssertTrue(boardSource.contains("NavigationSplitView(columnVisibility: $columnVisibility)"))
-        XCTAssertTrue(boardSource.contains("ToolbarItem(placement: .navigation)"))
-        XCTAssertFalse(boardSource.contains("ToolbarItem(placement: .primaryAction)"))
-        XCTAssertTrue(boardSource.contains("Label(\"Sidebar\", systemImage: \"sidebar.left\")"))
+        XCTAssertTrue(toolbarSource.contains("ToolbarItem(placement: .navigation)"))
+        XCTAssertTrue(toolbarSource.contains("ToolbarItem(placement: .primaryAction)"))
+        XCTAssertTrue(toolbarSource.contains("Label(\"Sidebar\", systemImage: \"sidebar.left\")"))
         XCTAssertTrue(boardSource.contains(".toolbar(removing: .sidebarToggle)"))
         XCTAssertTrue(boardSource.contains("ProjectBoardToolbarLayoutBridge("))
         XCTAssertTrue(boardSource.contains("columnVisibility: columnVisibility"))
@@ -1362,83 +1352,40 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(boardSource.contains("toolbar.allowsUserCustomization = false"))
     }
 
-    func testProjectBoardHeaderLayoutRuntimeSmokeCoversSidebarToggleAndActionPositions() throws {
+    func testProjectBoardHeaderLayoutRuntimeSmokeCoversNativeChromeMinimumWidthAndUtilities() throws {
         let script = try readPackageFile("script/check_project_board_header_layout_smoke.sh")
 
         XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
-        XCTAssertTrue(script.contains("./script/prepare_voiceover_review_candidate.sh --database \"$HEADER_LAYOUT_DATABASE_PATH\" --no-launch --skip-build"))
+        XCTAssertTrue(script.contains("Project Board schema was not initialized for native toolbar smoke"))
+        XCTAssertTrue(script.contains("header-layout-native-toolbar-seed"))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$header_layout_project_id\""))
         XCTAssertTrue(script.contains("SOLOPM_HEADER_LAYOUT_DATABASE_PATH"))
         XCTAssertTrue(script.contains("project-board-sidebar-toggle"))
+        XCTAssertTrue(script.contains("project-board-command-palette"))
         XCTAssertTrue(script.contains("project-board-integrations-menu"))
         XCTAssertTrue(script.contains("project-board-voice-command"))
-        XCTAssertTrue(script.contains("project-board-settings-link"))
-        XCTAssertTrue(script.contains("project-board-terminal-toggle"))
-        XCTAssertTrue(script.contains("project-display-mode-overview"))
-        XCTAssertTrue(script.contains("project-display-mode-board"))
-        XCTAssertTrue(script.contains("project-display-mode-list"))
+        XCTAssertTrue(script.contains("project-board-inspector-toggle"))
         XCTAssertTrue(script.contains("ensure_project_detail_visible"))
         XCTAssertTrue(script.contains("wait_for_project_detail_visible"))
+        XCTAssertTrue(script.contains("assert_single_native_toolbar"))
         XCTAssertTrue(script.contains("assert_action_buttons_are_trailing"))
-        XCTAssertTrue(script.contains("click_sidebar_toggle"))
-        XCTAssertTrue(script.contains("set_toolbar_display_mode"))
-        XCTAssertTrue(script.contains("click_project_display_mode"))
-        XCTAssertTrue(script.contains("click_inspector_close"))
-        XCTAssertTrue(script.contains("click_task_card_open_details"))
-        XCTAssertTrue(script.contains("click_terminal_toggle"))
-        XCTAssertTrue(script.contains("click_terminal_close"))
-        XCTAssertTrue(script.contains("seed_header_layout_selection_project"))
-        XCTAssertTrue(script.contains("click_project_sidebar_row"))
-        XCTAssertTrue(script.contains("click_ax_identifier_center \"project-sidebar-row-$project_id\""))
-        XCTAssertTrue(script.contains("Header Layout Selection Project"))
-        XCTAssertTrue(script.contains("wait_for_ax_identifier_present \"task-inspector\""))
-        XCTAssertTrue(script.contains("wait_for_ax_identifier_absent \"project-inspector\""))
-        XCTAssertTrue(script.contains("wait_for_ax_identifier_present \"embedded-terminal-close\""))
-        XCTAssertTrue(script.contains("wait_for_ax_identifier_absent \"embedded-terminal-close\""))
-        XCTAssertTrue(script.contains("wait_for_ax_identifier_present \"task-status-move-in_progress-$header_layout_alternate_task_id\""))
-        XCTAssertTrue(script.contains("wait_for_ax_identifier_present \"task-status-move-in_progress-$header_layout_project_task_id\""))
+        XCTAssertTrue(script.contains("assert_utility_menu_items_reachable"))
+        XCTAssertTrue(script.contains("resize_window_below_minimum"))
+        XCTAssertTrue(script.contains("assert_window_respects_minimum"))
+        XCTAssertTrue(script.contains("window_width < 960 || window_height < 620"))
+        XCTAssertTrue(script.contains("SOLOPM_LANGUAGE_PREFERENCE=\"$language\""))
+        XCTAssertTrue(script.contains("launch_header_layout_candidate \"japanese\""))
+        XCTAssertTrue(script.contains("Review Task Automation"))
+        XCTAssertTrue(script.contains("タスク自動化を確認"))
+        XCTAssertTrue(script.contains("Settings"))
+        XCTAssertTrue(script.contains("設定"))
         XCTAssertTrue(script.contains("capture_window \"sidebar-visible\""))
-        XCTAssertTrue(script.contains("capture_window \"sidebar-hidden\""))
-        XCTAssertTrue(script.contains("capture_window \"sidebar-restored\""))
-        XCTAssertTrue(script.contains("capture_window \"toolbar-icon-only\""))
-        XCTAssertTrue(script.contains("capture_window \"toolbar-icon-and-label\""))
-        XCTAssertTrue(script.contains("capture_window \"display-mode-list\""))
-        XCTAssertTrue(script.contains("capture_window \"display-mode-overview\""))
-        XCTAssertTrue(script.contains("capture_window \"display-mode-board\""))
-        XCTAssertTrue(script.contains("capture_window \"inspector-closed\""))
-        XCTAssertTrue(script.contains("capture_window \"inspector-reopened\""))
-        XCTAssertTrue(script.contains("capture_window \"terminal-open\""))
-        XCTAssertTrue(script.contains("capture_window \"terminal-closed\""))
-        XCTAssertTrue(script.contains("capture_window \"project-selection-alternate\""))
-        XCTAssertTrue(script.contains("capture_window \"project-selection-original\""))
-        XCTAssertTrue(script.contains("assert_toolbar_layout_is_stable"))
-        XCTAssertTrue(script.contains("toolbar_items_deduplicated >\"$baseline_file\""))
-        XCTAssertTrue(script.contains("perform action \"AXPress\" of uiElement\n        return true"))
-        XCTAssertTrue(script.contains("sidebar-hidden-immediate"))
-        XCTAssertTrue(script.contains("sidebar-restored-immediate"))
-        XCTAssertTrue(script.contains("toolbar-icon-only-immediate"))
-        XCTAssertTrue(script.contains("toolbar-icon-and-label-immediate"))
-        XCTAssertTrue(script.contains("display-mode-list-immediate"))
-        XCTAssertTrue(script.contains("display-mode-overview-immediate"))
-        XCTAssertTrue(script.contains("display-mode-board-immediate"))
-        XCTAssertTrue(script.contains("inspector-closed-immediate"))
-        XCTAssertTrue(script.contains("inspector-reopened-immediate"))
-        XCTAssertTrue(script.contains("terminal-open-immediate"))
-        XCTAssertTrue(script.contains("terminal-closed-immediate"))
-        XCTAssertTrue(script.contains("project-selection-alternate-immediate"))
-        XCTAssertTrue(script.contains("project-selection-original-immediate"))
-        XCTAssertTrue(script.contains("Icon Only"))
-        XCTAssertTrue(script.contains("Icon and Text"))
-        XCTAssertTrue(script.contains("アイコンのみ"))
-        XCTAssertTrue(script.contains("アイコンとテキスト"))
-        XCTAssertTrue(script.contains("BLOCKER: header layout shifted after"))
+        XCTAssertTrue(script.contains("capture_window \"minimum-window\""))
+        XCTAssertTrue(script.contains("capture_window \"minimum-window-japanese\""))
         XCTAssertTrue(script.contains("SOLOPM_HEADER_LAYOUT_SMOKE_TIMEOUT_SECONDS"))
         XCTAssertTrue(script.contains("script/ui_evidence_window_metadata.swift"))
-        XCTAssertTrue(script.contains("BLOCKER: header action controls are not trailing"))
-        XCTAssertTrue(script.contains("BLOCKER: toolbar display mode menu item was not available"))
-        XCTAssertTrue(script.contains("BLOCKER: Project display mode control was not available"))
-        XCTAssertTrue(script.contains("BLOCKER: AX identifier stayed visible"))
-        XCTAssertTrue(script.contains("BLOCKER: AX identifier was not visible"))
+        XCTAssertTrue(script.contains("BLOCKER: native toolbar controls overlap or clip"))
+        XCTAssertTrue(script.contains("BLOCKER: expected one native Project Board toolbar"))
     }
 
     func testMenuBarPanelHostsSettingsLinkWithoutThemeControls() throws {
@@ -1709,6 +1656,8 @@ final class AppExperienceSourceTests: XCTestCase {
     func testProjectBoardHostsEmbeddedTerminalAsApprovalGatedBottomPanel() throws {
         let packageSource = try readPackageFile("Package.swift")
         let boardSource = try readProjectBoardSurfaceSources()
+        let toolbarSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardToolbarContent.swift")
+        let policySource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardToolbarLayoutPolicy.swift")
         let terminalSource = try readPackageFile("Sources/SoloPMApp/Views/TerminalPanelView.swift")
 
         XCTAssertTrue(packageSource.contains(#".package(url: "https://github.com/migueldeicaza/SwiftTerm", from: "1.13.0")"#))
@@ -1717,15 +1666,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("private var isDeveloperModeEnabled: Bool"))
         XCTAssertTrue(boardSource.contains("appSettings().isDeveloperModeEnabled"))
         XCTAssertTrue(boardSource.contains("EmbeddedTerminalPanel("))
-        XCTAssertTrue(boardSource.contains("if isTerminalPanelPresented && isDeveloperModeEnabled"))
+        XCTAssertTrue(boardSource.contains("if isTerminalPanelPresented && projectBoardToolbarContext.showsDeveloperTerminal"))
         XCTAssertTrue(boardSource.contains("workingDirectory: terminalWorkingDirectory"))
-        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-terminal-toggle\")"))
-        XCTAssertTrue(boardSource.contains("if isDeveloperModeEnabled {\n                Button {"))
-        XCTAssertTrue(boardSource.contains(".keyboardShortcut(\"`\", modifiers: [.control])"))
+        XCTAssertTrue(toolbarSource.contains(".accessibilityIdentifier(\"project-board-terminal-toggle\")"))
+        XCTAssertTrue(toolbarSource.contains("if context.showsDeveloperTerminal"))
+        XCTAssertTrue(toolbarSource.contains(".keyboardShortcut(\"`\", modifiers: [.control])"))
+        XCTAssertTrue(policySource.contains("isDeveloperModeEnabled && routeKind == .project"))
         XCTAssertTrue(boardSource.contains("appSettings().defaultWorkspacePath?.trimmingCharacters(in: .whitespacesAndNewlines)"))
-        let terminalButtonStart = try XCTUnwrap(boardSource.range(of: "if isDeveloperModeEnabled {\n                Button {"))
-        let terminalIdentifierEnd = try XCTUnwrap(boardSource[terminalButtonStart.lowerBound...].range(of: ".accessibilityIdentifier(\"project-board-terminal-toggle\")"))
-        let terminalButtonSource = boardSource[terminalButtonStart.lowerBound...terminalIdentifierEnd.upperBound]
+        let terminalButtonStart = try XCTUnwrap(toolbarSource.range(of: "if context.showsDeveloperTerminal"))
+        let terminalIdentifierEnd = try XCTUnwrap(toolbarSource[terminalButtonStart.lowerBound...].range(of: ".accessibilityIdentifier(\"project-board-terminal-toggle\")"))
+        let terminalButtonSource = toolbarSource[terminalButtonStart.lowerBound...terminalIdentifierEnd.upperBound]
         XCTAssertFalse(terminalButtonSource.contains(".accessibilityElement(children: .ignore)"))
         XCTAssertTrue(terminalSource.contains("struct EmbeddedTerminalPanel"))
         XCTAssertTrue(terminalSource.contains("@State private var isExecutionApproved = false"))
@@ -4680,14 +4630,15 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardGoogleCalendarSyncMenuUsesRuntimeReadinessInsteadOfHardcodedDisabled() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let menuStart = try XCTUnwrap(boardSource.range(of: "Button {\n                    isGoogleCalendarSyncApprovalPresented = true"))
-        let menuEnd = try XCTUnwrap(boardSource.range(of: "} label: {\n                Label(\"Integrations\"", range: menuStart.lowerBound..<boardSource.endIndex))
-        let googleCalendarMenuSource = String(boardSource[menuStart.lowerBound..<menuEnd.lowerBound])
+        let toolbarSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardToolbarContent.swift")
+        let menuStart = try XCTUnwrap(toolbarSource.range(of: "Button(action: onRequestGoogleCalendarSync)"))
+        let menuEnd = try XCTUnwrap(toolbarSource.range(of: "} label: {\n                        Label(\"Integrations\"", range: menuStart.lowerBound..<toolbarSource.endIndex))
+        let googleCalendarMenuSource = String(toolbarSource[menuStart.lowerBound..<menuEnd.lowerBound])
 
         XCTAssertTrue(boardSource.contains("@State private var isGoogleCalendarSyncApprovalPresented = false"))
-        XCTAssertTrue(googleCalendarMenuSource.contains("isGoogleCalendarSyncApprovalPresented = true"))
-        XCTAssertTrue(googleCalendarMenuSource.contains(".disabled(!viewModel.canSyncGoogleCalendar)"))
-        XCTAssertTrue(googleCalendarMenuSource.contains(".help(viewModel.googleCalendarSyncHelp)"))
+        XCTAssertTrue(boardSource.contains("onRequestGoogleCalendarSync: { isGoogleCalendarSyncApprovalPresented = true }"))
+        XCTAssertTrue(googleCalendarMenuSource.contains(".disabled(!canSyncGoogleCalendar)"))
+        XCTAssertTrue(googleCalendarMenuSource.contains(".help(googleCalendarSyncHelp)"))
         XCTAssertFalse(googleCalendarMenuSource.contains(".disabled(true)"))
         XCTAssertFalse(boardSource.contains("syncDueTasksToGoogleCalendar(approvalToken: nil)"))
         XCTAssertFalse(boardSource.contains("ProjectBoardIntegrationUnavailableError.googleCalendarOAuthNotConfigured"))
@@ -5350,7 +5301,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testRegressionRiskMapDocumentsProjectBoardLayoutStability() throws {
         let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
 
-        for region in ["header", "sidebar", "detail", "inspector"] {
+        for region in ["toolbar", "sidebar", "detail", "inspector"] {
             XCTAssertTrue(
                 riskMap.contains(region),
                 "Risk map must cover Project Board layout stability for \(region)"
@@ -5358,7 +5309,7 @@ final class AppExperienceSourceTests: XCTestCase {
         }
 
         let invariants = [
-            "Header action group is detail-right aligned",
+            "Native toolbar keeps Voice, Search, selection details, and semantic utility overflow reachable",
             "Sidebar toggle mutates synchronously",
             "Toolbar display mode preserves primary action position",
             "Light / Dark / System switch does not collapse or overlap",
@@ -5373,8 +5324,8 @@ final class AppExperienceSourceTests: XCTestCase {
         }
 
         XCTAssertTrue(
-            riskMap.contains("project-board-header-bar"),
-            "Risk map must reference the canonical AX identifier for header"
+            riskMap.contains("project-board-command-palette"),
+            "Risk map must reference the canonical AX identifier for native toolbar"
         )
         XCTAssertTrue(
             riskMap.contains("project-board-sidebar"),

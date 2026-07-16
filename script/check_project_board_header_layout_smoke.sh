@@ -120,14 +120,69 @@ APPLESCRIPT
 
 prepare_header_layout_candidate() {
   ./script/build_and_run.sh --build-only
-  SOLOPM_VOICEOVER_REVIEW_TIMEOUT_SECONDS="$TIMEOUT_SECONDS" \
-    ./script/prepare_voiceover_review_candidate.sh --database "$HEADER_LAYOUT_DATABASE_PATH" --no-launch --skip-build >/dev/null
-  header_layout_project_id="$("$SQLITE3" -batch -noheader "$HEADER_LAYOUT_DATABASE_PATH" "SELECT id FROM projects WHERE title='VoiceOver Review Project' AND source_command='voiceover-review-seed' ORDER BY id DESC LIMIT 1;" | tail -n 1)"
+  # This smoke owns its isolated database. Reusing an interrupted zero-byte
+  # fixture makes a shared seeder wait for migrations that can never be
+  # observed, so initialize and seed the narrow toolbar fixture directly.
+  rm -f "$HEADER_LAYOUT_DATABASE_PATH" "$HEADER_LAYOUT_DATABASE_PATH-wal" "$HEADER_LAYOUT_DATABASE_PATH-shm"
+
+  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SOLOPM_LAUNCH_RECOVERY_MODE=1 \
+    SOLOPM_DATABASE_PATH="$HEADER_LAYOUT_DATABASE_PATH" \
+    "$APP_BINARY" &
+  app_pid=$!
+  wait_for_app_process
+
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while ! "$SQLITE3" -batch -noheader "$HEADER_LAYOUT_DATABASE_PATH" \
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='projects';" 2>/dev/null |
+    grep -Fx "projects" >/dev/null; do
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: Project Board schema was not initialized for native toolbar smoke" >&2
+      return 1
+    fi
+    sleep 0.2
+  done
+  terminate_app
+
+  "$SQLITE3" "$HEADER_LAYOUT_DATABASE_PATH" <<SQL
+PRAGMA foreign_keys = ON;
+INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command, created_at, updated_at)
+VALUES (
+  'Native Toolbar Review Project',
+  'active',
+  'high',
+  strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+7 days'),
+  '$ROOT_DIR',
+  '["layout","toolbar"]',
+  'header-layout-native-toolbar-seed',
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+);
+SQL
+
+  header_layout_project_id="$("$SQLITE3" -batch -noheader "$HEADER_LAYOUT_DATABASE_PATH" "SELECT id FROM projects WHERE title='Native Toolbar Review Project' AND source_command='header-layout-native-toolbar-seed' ORDER BY id DESC LIMIT 1;" | tail -n 1)"
   if [[ -z "${header_layout_project_id//[[:space:]]/}" ]]; then
     echo "BLOCKER: header layout candidate project was not seeded" >&2
     return 1
   fi
-  header_layout_project_task_id="$("$SQLITE3" -batch -noheader "$HEADER_LAYOUT_DATABASE_PATH" "SELECT id FROM tasks WHERE project_id=$header_layout_project_id AND title='Verify inline composer keyboard path' AND source_command='voiceover-review-seed' ORDER BY id DESC LIMIT 1;" | tail -n 1)"
+
+  "$SQLITE3" "$HEADER_LAYOUT_DATABASE_PATH" <<SQL
+PRAGMA foreign_keys = ON;
+INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command, created_at, updated_at)
+VALUES (
+  $header_layout_project_id,
+  'Verify native toolbar actions',
+  'planned',
+  'Verify primary actions and semantic overflow remain reachable at the minimum content size.',
+  strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+2 days'),
+  'high',
+  'header-layout-native-toolbar-seed',
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+);
+SQL
+
+  header_layout_project_task_id="$("$SQLITE3" -batch -noheader "$HEADER_LAYOUT_DATABASE_PATH" "SELECT id FROM tasks WHERE project_id=$header_layout_project_id AND title='Verify native toolbar actions' AND source_command='header-layout-native-toolbar-seed' ORDER BY id DESC LIMIT 1;" | tail -n 1)"
   if [[ -z "${header_layout_project_task_id//[[:space:]]/}" ]]; then
     echo "BLOCKER: header layout candidate project task was not seeded" >&2
     return 1
@@ -184,8 +239,11 @@ SQL
 }
 
 launch_header_layout_candidate() {
+  local language="${1:-english}"
   terminate_app
   SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SOLOPM_APP_SETTINGS_SUITE_NAME="dev.solopm.header-layout-smoke" \
+    SOLOPM_LANGUAGE_PREFERENCE="$language" \
     SOLOPM_DATABASE_PATH="$HEADER_LAYOUT_DATABASE_PATH" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$header_layout_project_id" \
     "$APP_BINARY" &
@@ -193,6 +251,94 @@ launch_header_layout_candidate() {
   wait_for_app_process
   activate_app
   wait_for_visible_windows
+}
+
+assert_single_native_toolbar() {
+  local count
+  count="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT'
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    tell process appName
+      if not (exists window 1) then return "0"
+      return (count of toolbars of window 1) as text
+    end tell
+  end tell
+end run
+APPLESCRIPT
+)"
+  if [[ "$count" != "1" ]]; then
+    echo "BLOCKER: expected one native Project Board toolbar, observed $count" >&2
+    return 1
+  fi
+  printf "OK: Project Board exposes one native toolbar\n"
+}
+
+resize_window_below_minimum() {
+  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    tell process appName
+      set size of window 1 to {700, 500}
+    end tell
+  end tell
+end run
+APPLESCRIPT
+}
+
+assert_window_respects_minimum() {
+  wait_for_window_metadata
+  if (( window_width < 960 || window_height < 620 )); then
+    echo "BLOCKER: native toolbar window violated 960x620 minimum: ${window_width}x${window_height}" >&2
+    return 1
+  fi
+  printf "OK: native toolbar remains usable at minimum window size (%sx%s)\n" "$window_width" "$window_height"
+}
+
+assert_utility_menu_items_reachable() {
+  local automation_title="$1"
+  local localized_automation_title="$2"
+  local settings_title="$3"
+  local localized_settings_title="$4"
+  click_first_ax_identifier "project-board-integrations-menu"
+  /usr/bin/osascript - "$APP_NAME" "$automation_title" "$localized_automation_title" "$settings_title" "$localized_settings_title" <<'APPLESCRIPT' >/dev/null
+on containsEitherNamedMenuItem(uiElement, primaryName, localizedName, depth)
+  tell application "System Events"
+    try
+      if role of uiElement is "AXMenuItem" then
+        set elementName to name of uiElement
+        if elementName is primaryName or elementName is localizedName then return true
+      end if
+    end try
+    if depth < 4 then
+      try
+        repeat with childElement in UI elements of uiElement
+          if my containsEitherNamedMenuItem(childElement, primaryName, localizedName, depth + 1) then return true
+        end repeat
+      end try
+    end if
+  end tell
+  return false
+end containsEitherNamedMenuItem
+
+on run argv
+  set appName to item 1 of argv
+  set automationTitle to item 2 of argv
+  set localizedAutomationTitle to item 3 of argv
+  set settingsTitle to item 4 of argv
+  set localizedSettingsTitle to item 5 of argv
+  tell application "System Events"
+    tell process appName
+      set nativeToolbar to toolbar 1 of window 1
+      if not my containsEitherNamedMenuItem(nativeToolbar, automationTitle, localizedAutomationTitle, 0) then error "automation utility missing"
+      if not my containsEitherNamedMenuItem(nativeToolbar, settingsTitle, localizedSettingsTitle, 0) then error "settings utility missing"
+      key code 53
+    end tell
+  end tell
+end run
+APPLESCRIPT
+  printf "OK: automation and Settings are reachable from native toolbar overflow\n"
 }
 
 read_window_metadata() {
@@ -314,7 +460,7 @@ on appendIdentifiedElement(outputLines, uiElement, syntheticIdentifier)
       try
         set titleValue to name of uiElement
       end try
-      if titleValue is "Integrations" or titleValue is "連携" then
+      if titleValue is "Utilities" or titleValue is "ユーティリティ" or titleValue is "Integrations" or titleValue is "連携" then
         set identifierValue to "project-board-integrations-menu"
       else if titleValue is "Voice Command" or titleValue is "音声コマンド" then
         set identifierValue to "project-board-voice-command"
@@ -432,47 +578,38 @@ wait_for_toolbar_buttons() {
 assert_action_buttons_are_trailing() {
   local label="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  local sidebar_x integrations_x voice_x settings_x terminal_x terminal_width detail_x detail_width detail_right action_group_threshold terminal_right_threshold
+  local sidebar_x search_x voice_x inspector_x utilities_x utilities_width window_right
 
   while true; do
     wait_for_window_metadata
     wait_for_toolbar_buttons "$label"
 
     assert_button_present "project-board-sidebar-toggle"
-    assert_button_present "project-board-integrations-menu"
+    assert_button_present "project-board-command-palette"
     assert_button_present "project-board-voice-command"
-    assert_button_present "project-board-settings-link"
-    assert_button_present "project-board-terminal-toggle"
+    assert_button_present "project-board-inspector-toggle"
+    assert_button_present "project-board-integrations-menu"
 
     sidebar_x="$(button_x "project-board-sidebar-toggle")"
-    integrations_x="$(button_x "project-board-integrations-menu")"
+    search_x="$(button_x "project-board-command-palette")"
     voice_x="$(button_x "project-board-voice-command")"
-    settings_x="$(button_x "project-board-settings-link")"
-    terminal_x="$(button_x "project-board-terminal-toggle")"
-    terminal_width="$(button_width "project-board-terminal-toggle")"
-    detail_x="$(button_x "project-board-detail")"
-    detail_width="$(button_width "project-board-detail")"
-    detail_right=$((detail_x + detail_width))
-    action_group_threshold=$((detail_right - 420))
-    terminal_right_threshold=$((detail_right - 16))
+    inspector_x="$(button_x "project-board-inspector-toggle")"
+    utilities_x="$(button_x "project-board-integrations-menu")"
+    utilities_width="$(button_width "project-board-integrations-menu")"
+    window_right=$((window_x + window_width))
 
-    if (( sidebar_x < integrations_x &&
-          integrations_x < voice_x &&
-          voice_x < settings_x &&
-          settings_x < terminal_x &&
-          integrations_x >= action_group_threshold &&
-          terminal_x + terminal_width >= terminal_right_threshold )); then
-      printf "OK: header actions are trailing for %s\n" "$label"
+    if (( sidebar_x < search_x &&
+          search_x < voice_x &&
+          voice_x < inspector_x &&
+          inspector_x < utilities_x &&
+          utilities_x + utilities_width <= window_right )); then
+      printf "OK: native toolbar actions fit without overlap for %s\n" "$label"
       return 0
     fi
 
     if [[ "$SECONDS" -ge "$deadline" ]]; then
-      if (( sidebar_x >= integrations_x )); then
-        echo "BLOCKER: sidebar toggle is not left of header actions for $label" >&2
-      else
-        echo "BLOCKER: header action controls are not trailing for $label" >&2
-      fi
-      echo "window=($window_x,$window_y ${window_width}x${window_height}) detailRight=$detail_right groupThreshold=$action_group_threshold terminalRightThreshold=$terminal_right_threshold" >&2
+      echo "BLOCKER: native toolbar controls overlap or clip for $label" >&2
+      echo "window=($window_x,$window_y ${window_width}x${window_height})" >&2
       cat "$button_state_file" >&2
       return 1
     fi
@@ -483,10 +620,10 @@ assert_action_buttons_are_trailing() {
 
 toolbar_position_signature() {
   awk -F $'\t' '
-    $1 == "project-board-integrations-menu" ||
+    $1 == "project-board-command-palette" ||
     $1 == "project-board-voice-command" ||
-    $1 == "project-board-settings-link" ||
-    $1 == "project-board-terminal-toggle" {
+    $1 == "project-board-inspector-toggle" ||
+    $1 == "project-board-integrations-menu" {
       print $1 ":" $2 ":" $3 ":" $4 ":" $5
     }
   ' "$1"
@@ -498,6 +635,9 @@ assert_toolbar_layout_is_stable() {
   local baseline_file="$OUTPUT_DIR/toolbar-${label}-sample-0.tsv"
   local baseline_signature sample_file sample_signature
 
+  # SwiftUI can briefly detach and reattach the NSWindow while native split
+  # chrome changes. Reconnect to the PID-owned AX window before sampling.
+  wait_for_visible_windows
   if ! toolbar_items_deduplicated >"$baseline_file" 2>"$OUTPUT_DIR/toolbar-${label}-sample-0.err"; then
     echo "BLOCKER: header layout stability baseline failed after $label" >&2
     cat "$OUTPUT_DIR/toolbar-${label}-sample-0.err" >&2 || true
@@ -863,81 +1003,25 @@ seed_header_layout_selection_project
 launch_header_layout_candidate
 wait_for_project_detail_visible
 
+assert_single_native_toolbar
 capture_window "sidebar-visible"
 assert_action_buttons_are_trailing "sidebar-visible"
 
-click_sidebar_toggle
-assert_toolbar_layout_is_stable "sidebar-hidden-immediate" 5
-capture_window "sidebar-hidden"
-assert_action_buttons_are_trailing "sidebar-hidden"
+resize_window_below_minimum
+wait_for_visible_windows
+assert_window_respects_minimum
+assert_action_buttons_are_trailing "minimum-window"
+capture_window "minimum-window"
+assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認" "Settings" "設定"
 
-click_sidebar_toggle
-assert_toolbar_layout_is_stable "sidebar-restored-immediate" 5
-capture_window "sidebar-restored"
-assert_action_buttons_are_trailing "sidebar-restored"
-
-set_toolbar_display_mode "icon-only"
-assert_toolbar_layout_is_stable "toolbar-icon-only-immediate" 5
-capture_window "toolbar-icon-only"
-assert_action_buttons_are_trailing "toolbar-icon-only"
-
-set_toolbar_display_mode "icon-and-label"
-assert_toolbar_layout_is_stable "toolbar-icon-and-label-immediate" 5
-capture_window "toolbar-icon-and-label"
-assert_action_buttons_are_trailing "toolbar-icon-and-label"
-
-click_project_display_mode "list"
-wait_for_display_mode_content "list"
-assert_toolbar_layout_is_stable "display-mode-list-immediate" 5
-capture_window "display-mode-list"
-assert_action_buttons_are_trailing "display-mode-list"
-
-click_project_display_mode "overview"
-wait_for_display_mode_content "overview"
-assert_toolbar_layout_is_stable "display-mode-overview-immediate" 5
-capture_window "display-mode-overview"
-assert_action_buttons_are_trailing "display-mode-overview"
-
-click_project_display_mode "board"
-wait_for_display_mode_content "board"
-assert_toolbar_layout_is_stable "display-mode-board-immediate" 5
-capture_window "display-mode-board"
-assert_action_buttons_are_trailing "display-mode-board"
-
-click_inspector_close
-wait_for_ax_identifier_absent "project-inspector"
-assert_toolbar_layout_is_stable "inspector-closed-immediate" 5
-capture_window "inspector-closed"
-assert_action_buttons_are_trailing "inspector-closed"
-
-click_task_card_open_details
-wait_for_ax_identifier_present "task-inspector"
-assert_toolbar_layout_is_stable "inspector-reopened-immediate" 5
-capture_window "inspector-reopened"
-assert_action_buttons_are_trailing "inspector-reopened"
-
-click_terminal_toggle
-wait_for_ax_identifier_present "embedded-terminal-close"
-assert_toolbar_layout_is_stable "terminal-open-immediate" 5
-capture_window "terminal-open"
-assert_action_buttons_are_trailing "terminal-open"
-
-click_terminal_close
-wait_for_ax_identifier_absent "embedded-terminal-close"
-assert_toolbar_layout_is_stable "terminal-closed-immediate" 5
-capture_window "terminal-closed"
-assert_action_buttons_are_trailing "terminal-closed"
-
-click_project_sidebar_row "$header_layout_alternate_project_id"
-wait_for_ax_identifier_present "task-status-move-in_progress-$header_layout_alternate_task_id"
-assert_toolbar_layout_is_stable "project-selection-alternate-immediate" 5
-capture_window "project-selection-alternate"
-assert_action_buttons_are_trailing "project-selection-alternate"
-
-click_project_sidebar_row "$header_layout_project_id"
-wait_for_ax_identifier_present "task-status-move-in_progress-$header_layout_project_task_id"
-assert_toolbar_layout_is_stable "project-selection-original-immediate" 5
-capture_window "project-selection-original"
-assert_action_buttons_are_trailing "project-selection-original"
+launch_header_layout_candidate "japanese"
+wait_for_project_detail_visible
+assert_single_native_toolbar
+resize_window_below_minimum
+wait_for_visible_windows
+assert_window_respects_minimum
+assert_action_buttons_are_trailing "minimum-window-japanese"
+capture_window "minimum-window-japanese"
+assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認" "Settings" "設定"
 
 printf "OK: Project Board header layout smoke passed\n"

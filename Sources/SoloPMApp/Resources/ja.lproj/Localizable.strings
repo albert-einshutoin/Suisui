@@ -1771,3 +1771,7 @@
 "Opens this project's editable details in the inspector." = "このプロジェクトの編集可能な詳細をインスペクタで開きます。";
 "Open task details" = "タスク詳細を開く";
 "Opens the selected task in the inspector." = "選択したタスクをインスペクタで開きます。";
+"Details" = "詳細";
+"Utilities" = "ユーティリティ";
+"Search and commands" = "検索とコマンド";
+"Integrations, automation, settings, and developer tools" = "連携、自動化、設定、開発者ツール";

@@ -360,7 +360,7 @@ prepare_production_fixture
 launch_start_ms="$(now_ms)"
 open_app
 wait_for_visible_window
-wait_for_marker "project-board-header-bar"
+wait_for_marker "project-board-command-palette"
 wait_for_marker "today-workflow"
 launch_end_ms="$(now_ms)"
 record_sample "cold-launch-visible-window" "$launch_start_ms" "$launch_end_ms" "$MAX_COLD_LAUNCH_MS"

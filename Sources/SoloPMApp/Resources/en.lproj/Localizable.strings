@@ -1771,3 +1771,7 @@
 "Opens this project's editable details in the inspector." = "Opens this project's editable details in the inspector.";
 "Open task details" = "Open task details";
 "Opens the selected task in the inspector." = "Opens the selected task in the inspector.";
+"Details" = "Details";
+"Utilities" = "Utilities";
+"Search and commands" = "Search and commands";
+"Integrations, automation, settings, and developer tools" = "Integrations, automation, settings, and developer tools";

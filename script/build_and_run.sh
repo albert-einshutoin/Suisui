@@ -567,7 +567,7 @@ case "$MODE" in
     APP_PID="$(resolve_verify_app_pid "$APP_LAUNCH_PID")"
     wait_for_app_process
     wait_for_project_board_window
-    wait_for_project_board_marker "project-board-header-bar"
+    wait_for_project_board_marker "project-board-command-palette"
     wait_for_project_board_marker "project-board-sidebar"
     wait_for_project_board_marker "project-board-detail"
     release_build_and_run_lock

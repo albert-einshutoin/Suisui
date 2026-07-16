@@ -22,7 +22,6 @@ private enum ProjectBoardLayoutMetrics {
     // Kanban columns, inspector, and inline composer are tuned as one surface.
     // Keeping the numbers named makes UI review catch accidental magic values
     // without forcing a premature app-wide design system abstraction.
-    static let headerHeight: CGFloat = 44
     // Sidebar bounds keep every fixed destination label ("Assistant Queue" is
     // the widest at ~105pt for 15 characters of 13pt SF Pro, plus ~24pt icon
     // column, 8pt gap, and a ~16pt count badge ≈ 185pt with row insets)
@@ -135,9 +134,6 @@ struct ProjectBoardView: View {
             .navigationSplitViewColumnWidth(min: ProjectBoardLayoutMetrics.sidebarColumnMinWidth, ideal: ProjectBoardLayoutMetrics.sidebarColumnIdealWidth)
         } detail: {
             VStack(spacing: 0) {
-                projectBoardHeaderBar
-                Divider()
-
                 Group {
                     if let errorMessage = viewModel.errorMessage {
                         ContentUnavailableView(
@@ -151,7 +147,7 @@ struct ProjectBoardView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                if isTerminalPanelPresented && isDeveloperModeEnabled {
+                if isTerminalPanelPresented && projectBoardToolbarContext.showsDeveloperTerminal {
                     Divider()
                     EmbeddedTerminalPanel(
                         workingDirectory: terminalWorkingDirectory,
@@ -181,16 +177,25 @@ struct ProjectBoardView: View {
         // standard responder-chain Undo item.
         .focusedSceneValue(\.projectBoardUndo, ProjectBoardUndoCommandAction(viewModel: viewModel))
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    toggleSidebarVisibility()
-                } label: {
-                    Label("Sidebar", systemImage: "sidebar.left")
-                }
-                .help(sidebarToggleHelp)
-                .accessibilityIdentifier("project-board-sidebar-toggle")
-                .accessibilityLabel(sidebarToggleHelp)
-            }
+            ProjectBoardToolbarContent(
+                context: projectBoardToolbarContext,
+                sidebarToggleHelp: sidebarToggleHelp,
+                undoFeedback: viewModel.boardUndoFeedback,
+                isInspectorPresented: isInspectorEffectivelyPresented,
+                canSyncGoogleCalendar: viewModel.canSyncGoogleCalendar,
+                googleCalendarSyncHelp: viewModel.googleCalendarSyncHelp,
+                onToggleSidebar: toggleSidebarVisibility,
+                onOpenSearch: { isCommandPaletteVisible = true },
+                onOpenVoiceCommand: { openWindow(id: "voice-capture") },
+                onToggleInspector: toggleInspectorPresentation,
+                onExportTasks: beginTaskInteropExport,
+                onImportTasks: { isImportingTaskInterop = true },
+                onRequestGoogleCalendarSync: { isGoogleCalendarSyncApprovalPresented = true },
+                onReviewTaskAutomation: {
+                    viewModel.prepareTaskAutomationReview(settings: taskAutomationSettings())
+                },
+                onToggleTerminal: { isTerminalPanelPresented.toggle() }
+            )
         }
         .toolbar(removing: .sidebarToggle)
         .background(
@@ -764,120 +769,6 @@ struct ProjectBoardView: View {
         )
     }
 
-    private var projectBoardHeaderBar: some View {
-        HStack(spacing: 8) {
-            if let boardUndoFeedback = viewModel.boardUndoFeedback {
-                // Transient undo confirmation; the view model clears it after a
-                // few seconds. The message is already localized in Core, so it
-                // renders verbatim instead of re-entering localization lookup.
-                Label {
-                    Text(verbatim: boardUndoFeedback)
-                } icon: {
-                    Image(systemName: "arrow.uturn.backward")
-                }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("project-board-undo-feedback")
-            }
-
-            Spacer(minLength: 16)
-
-            Menu {
-                Button {
-                    beginTaskInteropExport()
-                } label: {
-                    Label("Export Tasks", systemImage: "square.and.arrow.up")
-                }
-                .accessibilityIdentifier("project-board-export-tasks")
-
-                Button {
-                    isImportingTaskInterop = true
-                } label: {
-                    Label("Import Tasks", systemImage: "square.and.arrow.down")
-                }
-                .accessibilityIdentifier("project-board-import-tasks")
-
-                Divider()
-
-                Button {
-                    isGoogleCalendarSyncApprovalPresented = true
-                } label: {
-                    Label("Google Calendar Sync", systemImage: "calendar.badge.plus")
-                }
-                .disabled(!viewModel.canSyncGoogleCalendar)
-                .help(viewModel.googleCalendarSyncHelp)
-                .accessibilityIdentifier("project-board-google-calendar-sync")
-            } label: {
-                Label("Integrations", systemImage: "arrow.left.arrow.right")
-                    .labelStyle(.iconOnly)
-            }
-            .help("Integrations: import, export, and sync task data")
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Integrations")
-            .accessibilityIdentifier("project-board-integrations-menu")
-
-            Button {
-                viewModel.prepareTaskAutomationReview(settings: taskAutomationSettings())
-            } label: {
-                Label("Review Task Automation", systemImage: "sparkles")
-                    .labelStyle(.iconOnly)
-            }
-            .help("Review Task Automation: prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings")
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Review Task Automation")
-            .accessibilityIdentifier("project-board-task-auto-execution-review")
-            .accessibilityHint("Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings.")
-
-            Button {
-                openWindow(id: "voice-capture")
-            } label: {
-                Label("Voice Command", systemImage: "mic")
-                    .labelStyle(.iconOnly)
-            }
-            .help("Voice Command")
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Voice Command")
-            .accessibilityIdentifier("project-board-voice-command")
-
-            SettingsLink {
-                Label("Settings", systemImage: "gearshape")
-                    .labelStyle(.iconOnly)
-            }
-            .help("Open Settings")
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Settings")
-            .accessibilityIdentifier("project-board-settings-link")
-
-            if isDeveloperModeEnabled {
-                Button {
-                    isTerminalPanelPresented.toggle()
-                } label: {
-                    Label("Terminal", systemImage: "terminal")
-                        .labelStyle(.titleAndIcon)
-                }
-                .keyboardShortcut("`", modifiers: [.control])
-                .help("Terminal")
-                .accessibilityLabel("Terminal")
-                .accessibilityIdentifier("project-board-terminal-toggle")
-            }
-        }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .padding(.horizontal, 12)
-        .frame(
-            maxWidth: .infinity,
-            minHeight: ProjectBoardLayoutMetrics.headerHeight,
-            maxHeight: ProjectBoardLayoutMetrics.headerHeight,
-            alignment: .trailing
-        )
-        .background(.bar)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("project-board-header-bar")
-    }
-
     private func toggleSidebarVisibility() {
         var transaction = Transaction()
         transaction.disablesAnimations = true
@@ -916,6 +807,39 @@ struct ProjectBoardView: View {
 
     private var isDeveloperModeEnabled: Bool {
         appSettings().isDeveloperModeEnabled
+    }
+
+    private var projectBoardToolbarContext: ProjectBoardToolbarContext {
+        ProjectBoardToolbarContext(
+            routeKind: projectBoardToolbarRouteKind,
+            isDeveloperModeEnabled: isDeveloperModeEnabled,
+            hasInspectorSelection: inspectorSelectionContext != .none
+        )
+    }
+
+    private var projectBoardToolbarRouteKind: ProjectBoardToolbarContext.RouteKind {
+        switch currentBoardRoute {
+        case .primary(.today):
+            .today
+        case .primary(.inbox):
+            .inbox
+        case .primary(.projects):
+            .projects
+        case .primary(.review), .review:
+            .review
+        case .project:
+            .project
+        case .smartList:
+            .smartList
+        }
+    }
+
+    private func toggleInspectorPresentation() {
+        if isInspectorEffectivelyPresented {
+            dismissInspector()
+        } else {
+            requestInspectorPresentation()
+        }
     }
 
     private var terminalWorkingDirectory: URL {
