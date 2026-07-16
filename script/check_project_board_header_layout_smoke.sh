@@ -320,13 +320,36 @@ launch_header_layout_candidate() {
 
 assert_single_native_toolbar() {
   local count
-  count="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT'
+  count="$(/usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT'
+on containsIdentifier(uiElement, targetIdentifier, depth)
+  tell application "System Events"
+    try
+      if value of attribute "AXIdentifier" of uiElement is targetIdentifier then return true
+    end try
+    if depth < 8 then
+      try
+        repeat with childElement in UI elements of uiElement
+          if my containsIdentifier(childElement, targetIdentifier, depth + 1) then return true
+        end repeat
+      end try
+    end if
+  end tell
+  return false
+end containsIdentifier
+
 on run argv
   set appName to item 1 of argv
+  set targetPID to (item 2 of argv) as integer
   tell application "System Events"
-    tell process appName
-      if not (exists window 1) then return "0"
-      return (count of toolbars of window 1) as text
+    set matchingProcesses to every process whose unix id is targetPID
+    if (count of matchingProcesses) is not 1 then return "0"
+    tell item 1 of matchingProcesses
+      repeat with candidateWindow in windows
+        if my containsIdentifier(candidateWindow, "project-board-detail", 0) then
+          return (count of toolbars of candidateWindow) as text
+        end if
+      end repeat
+      return "0"
     end tell
   end tell
 end run
@@ -340,12 +363,37 @@ APPLESCRIPT
 }
 
 resize_window_below_minimum() {
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null
+  /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT' >/dev/null
+on containsIdentifier(uiElement, targetIdentifier, depth)
+  tell application "System Events"
+    try
+      if value of attribute "AXIdentifier" of uiElement is targetIdentifier then return true
+    end try
+    if depth < 8 then
+      try
+        repeat with childElement in UI elements of uiElement
+          if my containsIdentifier(childElement, targetIdentifier, depth + 1) then return true
+        end repeat
+      end try
+    end if
+  end tell
+  return false
+end containsIdentifier
+
 on run argv
   set appName to item 1 of argv
+  set targetPID to (item 2 of argv) as integer
   tell application "System Events"
-    tell process appName
-      set size of window 1 to {700, 500}
+    set matchingProcesses to every process whose unix id is targetPID
+    if (count of matchingProcesses) is not 1 then error "owned process missing"
+    tell item 1 of matchingProcesses
+      repeat with candidateWindow in windows
+        if my containsIdentifier(candidateWindow, "project-board-detail", 0) then
+          set size of candidateWindow to {700, 500}
+          return true
+        end if
+      end repeat
+      error "owned Project Board window missing"
     end tell
   end tell
 end run
@@ -581,6 +629,7 @@ read_window_metadata() {
   local output
   output="$(
     SOLOPM_WINDOW_OWNER="$APP_NAME" \
+    SOLOPM_WINDOW_OWNER_PID="$app_pid" \
     SOLOPM_WINDOW_NAME="$WINDOW_NAME" \
     /usr/bin/swift "$ROOT_DIR/script/ui_evidence_window_metadata.swift"
   )"
@@ -726,6 +775,7 @@ assert_ax_region_has_visible_variance() {
   local identifier="$2"
   local frame_file="$OUTPUT_DIR/screenshot-primary-frames.tsv"
   local frame_x frame_y frame_width frame_height relative_x relative_y
+  local pixel_width pixel_height scale_x scale_y pixel_x pixel_y pixel_region_width pixel_region_height
   IFS=$'\t' read -r _ frame_x frame_y frame_width frame_height < <(
     awk -F $'\t' -v wanted="$identifier" '$1 == wanted { print; exit }' "$frame_file"
   )
@@ -735,11 +785,43 @@ assert_ax_region_has_visible_variance() {
   fi
   relative_x=$((frame_x - window_x))
   relative_y=$((frame_y - window_y))
+  pixel_width="$(/usr/bin/sips -g pixelWidth "$screenshot_path" | awk '/pixelWidth:/ { print $2 }')"
+  pixel_height="$(/usr/bin/sips -g pixelHeight "$screenshot_path" | awk '/pixelHeight:/ { print $2 }')"
+  scale_x="$(awk -v pixels="$pixel_width" -v points="$window_width" 'BEGIN { printf "%.8f", pixels / points }')"
+  scale_y="$(awk -v pixels="$pixel_height" -v points="$window_height" 'BEGIN { printf "%.8f", pixels / points }')"
+  pixel_x="$(scaled_region_component "$relative_x" "$scale_x" "$pixel_width" 0)"
+  pixel_y="$(scaled_region_component "$relative_y" "$scale_y" "$pixel_height" 0)"
+  pixel_region_width="$(scaled_region_component "$frame_width" "$scale_x" "$((pixel_width - pixel_x))" 1)"
+  pixel_region_height="$(scaled_region_component "$frame_height" "$scale_y" "$((pixel_height - pixel_y))" 1)"
   if ! /usr/bin/swift "$ROOT_DIR/script/ui_evidence_content_check.swift" \
-    "$screenshot_path" "$relative_x" "$relative_y" "$frame_width" "$frame_height" >/dev/null; then
+    "$screenshot_path" "$pixel_x" "$pixel_y" "$pixel_region_width" "$pixel_region_height" >/dev/null; then
     echo "BLOCKER: semantic screenshot region lacks visible composed content: $identifier" >&2
     return 1
   fi
+}
+
+scaled_region_component() {
+  local point_value="$1"
+  local scale="$2"
+  local maximum="$3"
+  local minimum="${4:-0}"
+  awk -v points="$point_value" -v scale="$scale" -v maximum="$maximum" -v minimum="$minimum" '
+    BEGIN {
+      value = int(points * scale + 0.5)
+      if (value < minimum) value = minimum
+      if (value > maximum) value = maximum
+      print value
+    }
+  '
+}
+
+assert_scaled_region_component_contract() {
+  [[ "$(scaled_region_component 24 1 100 0)" == "24" ]] ||
+    { echo "BLOCKER: 1x AX point-to-image pixel conversion regressed" >&2; return 1; }
+  [[ "$(scaled_region_component 24 2 100 0)" == "48" ]] ||
+    { echo "BLOCKER: 2x AX point-to-image pixel conversion regressed" >&2; return 1; }
+  [[ "$(scaled_region_component 80 2 100 0)" == "100" ]] ||
+    { echo "BLOCKER: AX point-to-image pixel conversion no longer clamps" >&2; return 1; }
 }
 
 assert_semantic_regions_have_visible_variance() {
@@ -1327,6 +1409,7 @@ APPLESCRIPT
 trap terminate_app EXIT
 
 prepare_header_layout_candidate
+assert_scaled_region_component_contract
 seed_header_layout_selection_project
 launch_header_layout_candidate
 wait_for_project_detail_visible

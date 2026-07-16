@@ -524,6 +524,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("viewModel.exportTaskInteropJSON()"))
     }
 
+    func testNativeToolbarInspectorHelpIsLocalizedInEnglishAndJapanese() throws {
+        let toolbarSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardToolbarContent.swift")
+        let english = try readPackageFile("Sources/SoloPMApp/Resources/en.lproj/Localizable.strings")
+        let japanese = try readPackageFile("Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings")
+
+        XCTAssertTrue(toolbarSource.contains(".help(isInspectorPresented ? \"Hide Details\" : \"Show Details\")"))
+        XCTAssertTrue(english.contains("\"Show Details\" = \"Show Details\";"))
+        XCTAssertTrue(english.contains("\"Hide Details\" = \"Hide Details\";"))
+        XCTAssertTrue(japanese.contains("\"Show Details\" = \"詳細を表示\";"))
+        XCTAssertTrue(japanese.contains("\"Hide Details\" = \"詳細を非表示\";"))
+    }
+
     func testProjectAddTaskFromOverviewOpensVisibleBoardComposer() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let detailStart = try XCTUnwrap(source.range(of: "private struct ProjectBoardDetail"))
@@ -1394,6 +1406,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("assert_primary_ax_frames_are_nonzero"))
         XCTAssertTrue(script.contains("assert_capture_dimensions"))
         XCTAssertTrue(script.contains("assert_semantic_regions_have_visible_variance"))
+        XCTAssertTrue(script.contains("scale_x="))
+        XCTAssertTrue(script.contains("scaled_region_component"))
+        XCTAssertTrue(script.contains("assert_scaled_region_component_contract"))
+        XCTAssertTrue(script.contains("1x AX point-to-image pixel conversion regressed"))
+        XCTAssertTrue(script.contains("2x AX point-to-image pixel conversion regressed"))
+        XCTAssertTrue(script.contains("SOLOPM_WINDOW_OWNER_PID=\"$app_pid\""))
         XCTAssertTrue(script.contains("project-header-add-task"))
         XCTAssertTrue(script.contains("task-card-open-details"))
         XCTAssertTrue(script.contains("resize_window_below_minimum"))

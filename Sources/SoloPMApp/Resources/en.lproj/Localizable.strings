@@ -229,10 +229,12 @@
 "Settings..." = "Settings...";
 "Sets the absolute path to the local Kokoro TTS executable." = "Sets the absolute path to the local Kokoro TTS executable.";
 "Hide Sidebar" = "Hide Sidebar";
+"Hide Details" = "Hide Details";
 "Sidebar" = "Sidebar";
 "Show advanced settings" = "Show advanced settings";
 "Show Archived" = "Show Archived";
 "Show Sidebar" = "Show Sidebar";
+"Show Details" = "Show Details";
 "Shell Ended" = "Shell Ended";
 "Shell Exit %@" = "Shell Exit %@";
 "Source documents" = "Source documents";
