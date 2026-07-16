@@ -1762,3 +1762,7 @@
 "%d missed" = "%d missed";
 "Choose Project View" = "Choose Project View";
 "Choose Review View" = "Choose Review View";
+"Project Actions" = "Project Actions";
+"Deletes only the currently selected custom smart list." = "Deletes only the currently selected custom smart list.";
+"Hide Archived" = "Hide Archived";
+"Delete Selected Smart List" = "Delete Selected Smart List";

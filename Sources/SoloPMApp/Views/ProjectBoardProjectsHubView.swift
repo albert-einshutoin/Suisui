@@ -150,19 +150,33 @@ struct ProjectBoardProjectsHubView<Content: View>: View {
     private var compactNavigation: some View {
         HStack(spacing: 10) {
             Menu {
-                Button("Portfolio") { route = .primary(.projects) }
-                if !smartLists.isEmpty {
-                    Divider()
+                Section {
+                    Button("Portfolio") { route = .primary(.projects) }
+                }
+                Section("Smart Lists") {
                     ForEach(smartLists) { smartList in
                         Button(smartList.isPreset ? localizedDisplay(smartList.name) : smartList.name) {
                             route = .smartList(smartList.id)
                         }
                     }
                 }
-                if !activeProjects.isEmpty {
-                    Divider()
+                Section("Active") {
                     ForEach(activeProjects) { project in
                         Button(project.title) { route = .project(project.id) }
+                    }
+                }
+                if !completedProjects.isEmpty {
+                    Section("Completed") {
+                        ForEach(completedProjects) { project in
+                            Button(project.title) { route = .project(project.id) }
+                        }
+                    }
+                }
+                if showsArchivedProjects, !archivedProjects.isEmpty {
+                    Section("Archived") {
+                        ForEach(archivedProjects) { project in
+                            Button(project.title) { route = .project(project.id) }
+                        }
                     }
                 }
             } label: {
@@ -171,12 +185,53 @@ struct ProjectBoardProjectsHubView<Content: View>: View {
             .accessibilityIdentifier("projects-hub-compact-navigation")
 
             Spacer()
+
+            Menu {
+                Button(action: onCreateSmartList) {
+                    Label("New Smart List…", systemImage: "plus.circle")
+                }
+                .accessibilityIdentifier("projects-hub-compact-new-smart-list")
+
+                Button(action: onToggleArchivedProjects) {
+                    Label(
+                        showsArchivedProjects ? "Hide Archived" : "Show Archived",
+                        systemImage: showsArchivedProjects ? "checkmark.square" : "square"
+                    )
+                }
+                .accessibilityIdentifier("projects-hub-compact-toggle-archived")
+
+                if let selectedCustomSmartList {
+                    Divider()
+                    Button(role: .destructive) {
+                        onDeleteSmartList(selectedCustomSmartList)
+                    } label: {
+                        Label("Delete Selected Smart List", systemImage: "trash")
+                    }
+                    .accessibilityIdentifier("projects-hub-compact-delete-smart-list")
+                    .accessibilityHint(
+                        "Deletes only the currently selected custom smart list."
+                    )
+                }
+            } label: {
+                Label("Project Actions", systemImage: "ellipsis.circle")
+            }
+            .accessibilityIdentifier("projects-hub-compact-actions")
+
             Button(action: onCreateProject) {
                 Label("Add Project", systemImage: "folder.badge.plus")
             }
             .accessibilityIdentifier("projects-hub-compact-add-project")
         }
         .padding(10)
+    }
+
+    private var selectedCustomSmartList: SmartList? {
+        guard case let .smartList(selectedID) = route else {
+            return nil
+        }
+        // Destructive compact actions are scoped to the visible selection so
+        // a stale or merely adjacent custom list cannot be deleted by mistake.
+        return smartLists.first { $0.id == selectedID && !$0.isPreset }
     }
 
     private var projectSelection: Binding<BoardRoute?> {

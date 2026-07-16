@@ -128,6 +128,40 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(review.contains("review-hub-compact-navigation"))
     }
 
+    func testCompactProjectsHubPreservesWideNavigationAndActionParity() throws {
+        let source = try readPackageFile(
+            "Sources/SoloPMApp/Views/ProjectBoardProjectsHubView.swift"
+        )
+        let start = try XCTUnwrap(source.range(of: "private var compactNavigation: some View"))
+        let end = try XCTUnwrap(
+            source.range(
+                of: "private var selectedCustomSmartList:",
+                range: start.lowerBound..<source.endIndex
+            )
+        )
+        let block = String(source[start.lowerBound..<end.lowerBound])
+
+        XCTAssertTrue(block.contains("route = .primary(.projects)"))
+        XCTAssertTrue(block.contains("ForEach(smartLists)"))
+        XCTAssertTrue(block.contains("route = .smartList(smartList.id)"))
+        XCTAssertTrue(block.contains("ForEach(activeProjects)"))
+        XCTAssertTrue(block.contains("ForEach(completedProjects)"))
+        XCTAssertTrue(block.contains("if showsArchivedProjects,"))
+        XCTAssertTrue(block.contains("ForEach(archivedProjects)"))
+        XCTAssertTrue(block.contains("onCreateSmartList"))
+        XCTAssertTrue(block.contains("onToggleArchivedProjects"))
+        XCTAssertTrue(block.contains("\"Hide Archived\" : \"Show Archived\""))
+        XCTAssertTrue(block.contains("onCreateProject"))
+        XCTAssertTrue(block.contains("if let selectedCustomSmartList"))
+        XCTAssertTrue(block.contains("onDeleteSmartList(selectedCustomSmartList)"))
+        XCTAssertTrue(block.contains("role: .destructive"))
+        XCTAssertTrue(block.contains("Delete Selected Smart List"))
+        XCTAssertTrue(block.contains("projects-hub-compact-new-smart-list"))
+        XCTAssertTrue(block.contains("projects-hub-compact-toggle-archived"))
+        XCTAssertTrue(block.contains("projects-hub-compact-delete-smart-list"))
+        XCTAssertTrue(block.contains("projects-hub-compact-add-project"))
+    }
+
     func testProjectsAndReviewHubsExposeRelocatedDestinations() throws {
         let projectsSource = try readPackageFile(
             "Sources/SoloPMApp/Views/ProjectBoardProjectsHubView.swift"
