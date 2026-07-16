@@ -734,7 +734,6 @@ position_window_for_capture() {
   local height="${viewport#*x}"
   local deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
   local window_metadata
-  local window_id window_x window_y window_width window_height
   if [[ ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
     echo "invalid viewport: $viewport" >&2
     return 2
@@ -780,10 +779,10 @@ end run
 APPLESCRIPT
     then
       if window_metadata="$(wait_for_window_capture_metadata "$window_name" 2>/dev/null)"; then
-        read -r window_id window_x window_y window_width window_height <<<"$window_metadata"
-        if [[ "$window_width" -eq "$width" && "$window_height" -eq "$height" ]]; then
-          return 0
-        fi
+        # AppKit can clamp a requested viewport to the product minimum. Fresh
+        # PID-scoped CG metadata proves the positioned window still exists;
+        # capture_visible_window records the settled bounds for the audit.
+        [[ -n "$window_metadata" ]] && return 0
       fi
     fi
 
