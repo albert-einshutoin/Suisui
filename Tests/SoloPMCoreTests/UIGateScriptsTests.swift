@@ -266,6 +266,25 @@ final class UIGateScriptsTests: XCTestCase {
         XCTAssertTrue(script.contains("wait_for_window_capture_metadata \"$window_name\""))
     }
 
+    func testVisualCaptureRefreshesWindowAndAXEvidenceForEveryRetryAttempt() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+        let captureStart = try XCTUnwrap(script.range(of: "capture_visible_window() {"))
+        let nextFunction = try XCTUnwrap(
+            script.range(of: "\nopen_mcp_settings_tab() {", range: captureStart.upperBound..<script.endIndex)
+        )
+        let captureSource = String(script[captureStart.lowerBound..<nextFunction.lowerBound])
+        let retryStart = try XCTUnwrap(captureSource.range(of: "for ((capture_attempt = 1;"))
+        let retrySource = String(captureSource[retryStart.lowerBound...])
+
+        XCTAssertTrue(retrySource.contains("position_window_for_capture \"$window_name\""))
+        XCTAssertTrue(retrySource.contains("window_metadata=\"$(wait_for_window_capture_metadata \"$window_name\")\""))
+        XCTAssertTrue(retrySource.contains("target_frame_audit=\"$(wait_for_stable_ax_target_frame \"$target_identifier\" \"$window_name\")\""))
+        XCTAssertTrue(retrySource.contains("successful_window_width=\"$window_width\""))
+        XCTAssertTrue(retrySource.contains("successful_target_frame_audit=\"$target_frame_audit\""))
+        XCTAssertTrue(captureSource.contains("\"$successful_window_width\" \"$successful_window_height\" \"$successful_target_frame_audit\""))
+        XCTAssertFalse(captureSource.contains("target_frame_audit=\"$(wait_for_stable_ax_target_frame \"$target_identifier\" \"$window_name\")\"\n\n  local capture_attempt"))
+    }
+
     private func packageRoot() -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

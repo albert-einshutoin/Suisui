@@ -1146,29 +1146,33 @@ capture_visible_window() {
     exit 2
   fi
 
-  position_window_for_capture "$window_name"
-  sleep 0.25
-
-  local window_metadata
-  window_metadata="$(wait_for_window_capture_metadata "$window_name")"
-  set -- $window_metadata
-  local window_id="$1"
-  local window_x="$2"
-  local window_y="$3"
-  local window_width="$4"
-  local window_height="$5"
-  local window_context
-  window_context="id=$window_id bounds=${window_width}x${window_height}+${window_x}+${window_y}"
-  local target_frame_audit
-  # SwiftUI can publish the target before its wrapping text finishes layout.
-  # Bind the raster to a converged AX frame so repeated captures do not approve
-  # different subpixel layouts for the same product state.
-  target_frame_audit="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name")"
-
   local capture_attempt
   local capture_attempts=3
   local capture_ready=0
+  local window_metadata
+  local window_id window_x window_y window_width window_height
+  local window_context=""
+  local target_frame_audit
+  local successful_window_width=""
+  local successful_window_height=""
+  local successful_target_frame_audit=""
   for ((capture_attempt = 1; capture_attempt <= capture_attempts; capture_attempt++)); do
+    # A route transition can recreate the window between attempts. Reposition
+    # first, then bind this exact attempt to fresh PID-owned CG bounds and a
+    # converged AX target frame. Only a successful attempt is written to the
+    # receipt, so stale window IDs or frames cannot authenticate the raster.
+    position_window_for_capture "$window_name"
+    sleep 0.25
+    window_metadata="$(wait_for_window_capture_metadata "$window_name")"
+    set -- $window_metadata
+    window_id="$1"
+    window_x="$2"
+    window_y="$3"
+    window_width="$4"
+    window_height="$5"
+    window_context="id=$window_id bounds=${window_width}x${window_height}+${window_x}+${window_y}"
+    target_frame_audit="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name")"
+
     rm -f "$output_path"
     # Window shadows change raster bounds depending on transient activation
     # state. Excluding them binds repeated captures to the logical viewport
@@ -1176,6 +1180,9 @@ capture_visible_window() {
     if screencapture -x -o -l "$window_id" "$output_path" \
       || screencapture -x -R "${window_x},${window_y},${window_width},${window_height}" "$output_path"; then
       if [[ -s "$output_path" ]] && assert_screenshot_has_visible_content "$output_path"; then
+        successful_window_width="$window_width"
+        successful_window_height="$window_height"
+        successful_target_frame_audit="$target_frame_audit"
         capture_ready=1
         break
       fi
@@ -1184,7 +1191,6 @@ capture_visible_window() {
     # Re-raise the same PID-owned window and retry instead of accepting a
     # partially black raster as baseline evidence.
     activate_evidence_app
-    position_window_for_capture "$window_name"
     sleep 1
   done
 
@@ -1219,7 +1225,7 @@ capture_visible_window() {
   # health checks. The receipt is intentionally end-of-run so partial captures
   # can never be mistaken for complete runtime AX evidence.
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$(basename "$output_path")" "$label" "$window_width" "$window_height" "$target_frame_audit" "$sha256" \
+    "$(basename "$output_path")" "$label" "$successful_window_width" "$successful_window_height" "$successful_target_frame_audit" "$sha256" \
     >>"$AX_CAPTURE_RECEIPT_TSV"
 }
 
