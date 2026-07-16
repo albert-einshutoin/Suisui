@@ -3648,6 +3648,31 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
+    func testGlobalVoiceShortcutUsesTypedCarbonLifecycleAndTruthfulFallback() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let adapterSource = try readPackageFile("Sources/SoloPMApp/Adapters/SystemShortcutClient.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/Shortcuts/ShortcutRegistration.swift")
+        let settingsSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsView.swift")
+        let menuBarSource = try readPackageFile("Sources/SoloPMApp/Views/MenuBarPanel.swift")
+        let entitlements = try readPackageFile("packaging/SoloPM.entitlements")
+
+        for status in ["registered", "notRegistered", "conflict", "unavailable"] {
+            XCTAssertTrue(coreSource.contains("case \(status)"))
+        }
+        XCTAssertTrue(adapterSource.contains("RegisterEventHotKey"))
+        XCTAssertTrue(adapterSource.contains("UnregisterEventHotKey"))
+        XCTAssertTrue(adapterSource.contains("kVK_Space"))
+        XCTAssertTrue(adapterSource.contains("optionKey"))
+        XCTAssertTrue(appSource.contains("GlobalShortcutRuntime.shared.settingsViewModel"))
+        XCTAssertTrue(settingsSource.contains("Global Shortcut"))
+        XCTAssertTrue(settingsSource.contains("fallbackShortcutLabel"))
+        XCTAssertTrue(settingsSource.contains("Register Global Shortcut"))
+        XCTAssertTrue(settingsSource.contains("Disable Global Shortcut"))
+        XCTAssertFalse(menuBarSource.contains(".keyboardShortcut(.space, modifiers: [.option])"))
+        XCTAssertFalse(entitlements.contains("listen-event"))
+        XCTAssertFalse(entitlements.contains("input-monitoring"))
+    }
+
     func testRuntimeSourcesDoNotShipKnowledgeTestDoubles() throws {
         let sourceFiles = try allSwiftFiles(under: "Sources")
         let forbiddenTypeDeclarations = [

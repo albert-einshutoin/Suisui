@@ -13,19 +13,34 @@ public struct KeyboardShortcut: Equatable, Sendable {
     public static let defaultVoiceCapture = KeyboardShortcut(key: "space", modifiers: ["option"])
 }
 
+public enum ShortcutRegistrationStatus: String, Equatable, Sendable {
+    case registered
+    case notRegistered
+    case conflict
+    case unavailable
+}
+
 public struct ShortcutRegistrationState: Equatable, Sendable {
     public var voiceCaptureShortcut: KeyboardShortcut
-    public var isRegistered: Bool
-    public var conflictDescription: String?
+    public var status: ShortcutRegistrationStatus
+    public var detail: String?
 
     public init(
         voiceCaptureShortcut: KeyboardShortcut = .defaultVoiceCapture,
-        isRegistered: Bool = false,
-        conflictDescription: String? = nil
+        status: ShortcutRegistrationStatus = .notRegistered,
+        detail: String? = nil
     ) {
         self.voiceCaptureShortcut = voiceCaptureShortcut
-        self.isRegistered = isRegistered
-        self.conflictDescription = conflictDescription
+        self.status = status
+        self.detail = detail
+    }
+
+    public var isRegistered: Bool {
+        status == .registered
+    }
+
+    public var conflictDescription: String? {
+        status == .conflict ? detail : nil
     }
 }
 
@@ -33,6 +48,40 @@ public protocol ShortcutClient: Sendable {
     func state() -> ShortcutRegistrationState
     func registerVoiceCaptureShortcut(_ shortcut: KeyboardShortcut) throws -> ShortcutRegistrationState
     func unregisterVoiceCaptureShortcut() throws -> ShortcutRegistrationState
+}
+
+@MainActor
+public final class VoiceShortcutOpenRequestGate {
+    private var isOpenRequestPending = false
+
+    public init() {}
+
+    public func handle(
+        isWindowVisible: Bool,
+        activateExisting: () -> Void,
+        requestOpen: () -> Bool
+    ) {
+        if isWindowVisible {
+            isOpenRequestPending = false
+            activateExisting()
+            return
+        }
+        guard !isOpenRequestPending else {
+            return
+        }
+        isOpenRequestPending = true
+        if !requestOpen() {
+            isOpenRequestPending = false
+        }
+    }
+
+    public func markWindowVisible() {
+        isOpenRequestPending = false
+    }
+
+    public func markWindowClosed() {
+        isOpenRequestPending = false
+    }
 }
 
 @MainActor
@@ -56,10 +105,38 @@ public final class ShortcutSettingsViewModel: ObservableObject {
     }
 
     public var canRegister: Bool {
-        state.conflictDescription == nil
+        state.status == .notRegistered
+    }
+
+    public var canUnregister: Bool {
+        state.status == .registered
+    }
+
+    public var statusLabel: String {
+        switch state.status {
+        case .registered:
+            "Registered"
+        case .notRegistered:
+            "Not registered"
+        case .conflict:
+            "Conflict"
+        case .unavailable:
+            "Unavailable"
+        }
+    }
+
+    public var fallbackShortcutLabel: String {
+        "Shift + Command + V"
+    }
+
+    public var showsInAppFallback: Bool {
+        state.status != .registered
     }
 
     public func registerDefaultVoiceCaptureShortcut() {
+        guard canRegister else {
+            return
+        }
         do {
             state = try client.registerVoiceCaptureShortcut(.defaultVoiceCapture)
             errorMessage = nil
@@ -69,6 +146,9 @@ public final class ShortcutSettingsViewModel: ObservableObject {
     }
 
     public func unregisterVoiceCaptureShortcut() {
+        guard canUnregister else {
+            return
+        }
         do {
             state = try client.unregisterVoiceCaptureShortcut()
             errorMessage = nil

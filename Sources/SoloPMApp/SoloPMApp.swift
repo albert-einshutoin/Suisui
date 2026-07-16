@@ -17,6 +17,7 @@ struct SoloPM: App {
     @StateObject private var settingsViewModel: AppSettingsViewModel
     @StateObject private var onboardingRerunCoordinator: OnboardingRerunCoordinator
     @StateObject private var projectBoardSceneCoordinator: ProjectBoardSceneCoordinator
+    @StateObject private var shortcutSettingsViewModel: ShortcutSettingsViewModel
     @AppStorage(SoloPMAppearancePreference.storageKey) private var appearancePreference: SoloPMAppearancePreference = .system
     @AppStorage(AppLanguagePreference.storageKey) private var languagePreference: AppLanguagePreference = .system
 
@@ -29,6 +30,7 @@ struct SoloPM: App {
         )
         _onboardingRerunCoordinator = StateObject(wrappedValue: OnboardingRerunCoordinator.shared)
         _projectBoardSceneCoordinator = StateObject(wrappedValue: ProjectBoardSceneCoordinator.shared)
+        _shortcutSettingsViewModel = StateObject(wrappedValue: GlobalShortcutRuntime.shared.settingsViewModel)
 #if canImport(AppKit)
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -44,6 +46,7 @@ struct SoloPM: App {
                 onboardingRerunCoordinator: onboardingRerunCoordinator,
                 sceneCoordinator: projectBoardSceneCoordinator
             )
+            .background(GlobalVoiceShortcutBridge())
             .preferredColorScheme(effectiveAppearancePreference.colorScheme)
             .environment(\.locale, effectiveLanguagePreference.locale)
         }
@@ -83,6 +86,7 @@ struct SoloPM: App {
         Settings {
             SettingsWindowRootView(
                 settingsViewModel: settingsViewModel,
+                shortcutSettingsViewModel: shortcutSettingsViewModel,
                 onboardingRerunCoordinator: onboardingRerunCoordinator,
                 appearancePreference: $appearancePreference,
                 languagePreference: $languagePreference
@@ -101,6 +105,21 @@ struct SoloPM: App {
     }
 }
 
+private struct GlobalVoiceShortcutBridge: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .onAppear {
+                VoiceWindowActivationCoordinator.shared.installOpenRequest {
+                    openWindow(id: "voice-capture")
+                }
+            }
+    }
+}
+
 /// Menu bar status item label that surfaces overdue deadline debt at a glance.
 /// This lives in its own view (not inline in the App body) because the
 /// MenuBarExtra label closure does not re-render for @StateObject changes
@@ -111,9 +130,15 @@ struct SoloPM: App {
 /// the menu bar extra.
 private struct MenuBarExtraLabel: View {
     @ObservedObject var controller: MenuBarSummaryController
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         labelContent
+            .onAppear {
+                VoiceWindowActivationCoordinator.shared.installOpenRequest {
+                    openWindow(id: "voice-capture")
+                }
+            }
             .task {
                 controller.refresh()
             }
@@ -297,6 +322,7 @@ private enum ProjectBoardLaunchHydrationDelay {
 
 private struct SettingsWindowRootView: View {
     @ObservedObject var settingsViewModel: AppSettingsViewModel
+    @ObservedObject var shortcutSettingsViewModel: ShortcutSettingsViewModel
     @ObservedObject var onboardingRerunCoordinator: OnboardingRerunCoordinator
     @Binding var appearancePreference: SoloPMAppearancePreference
     @Binding var languagePreference: AppLanguagePreference
@@ -306,6 +332,7 @@ private struct SettingsWindowRootView: View {
     var body: some View {
         SettingsView(
             settingsViewModel: settingsViewModel,
+            shortcutSettingsViewModel: shortcutSettingsViewModel,
             launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
             watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot(),
             integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
@@ -366,6 +393,12 @@ private struct VoiceCaptureWindowRootView: View {
             // logging, and local stores. Defer it until this secondary window is
             // opened so primary Project Board launch is not blocked.
             viewModel = AppRuntimeFactory.makeVoiceCaptureViewModel()
+        }
+        .onAppear {
+            VoiceWindowActivationCoordinator.shared.markVoiceWindowVisible()
+        }
+        .onDisappear {
+            VoiceWindowActivationCoordinator.shared.markVoiceWindowClosed()
         }
     }
 }
@@ -665,6 +698,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
             let hostingController = NSHostingController(
                 rootView: SettingsView(
                     settingsViewModel: AppRuntimeFactory.makeAppSettingsViewModel(),
+                    shortcutSettingsViewModel: GlobalShortcutRuntime.shared.settingsViewModel,
                     launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
                     watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot(),
                     integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),

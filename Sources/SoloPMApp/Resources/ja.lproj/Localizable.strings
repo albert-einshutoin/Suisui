@@ -1814,3 +1814,15 @@
 "Set up when needed" = "必要なときに設定";
 "Not loaded until you open its settings." = "設定を開くまで読み込みません。";
 "Set up only when you choose to use this feature." = "この機能を使うときだけ設定します。";
+"Register Global Shortcut" = "グローバルショートカットを登録";
+"Disable Global Shortcut" = "グローバルショートカットを無効化";
+"Opens Voice Command from this menu. Global Option + Space status is shown in Settings." = "このメニューからVoice Commandを開きます。グローバルなOption + Spaceの状態は設定に表示されます。";
+"Global Shortcut" = "グローバルショートカット";
+"Registered" = "登録済み";
+"Not registered" = "未登録";
+"Conflict" = "競合";
+"In-app fallback: %@" = "アプリ内の代替操作: %@";
+"SoloPM currently supports only Option + Space." = "現在SoloPMが対応するグローバルショートカットはOption + Spaceのみです。";
+"The global shortcut event handler is unavailable." = "グローバルショートカットのイベント処理を利用できません。";
+"Option + Space is already used by another app." = "Option + Spaceは別のアプリで使用されています。";
+"Option + Space could not be registered on this Mac." = "このMacではOption + Spaceを登録できませんでした。";

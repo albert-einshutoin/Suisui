@@ -102,6 +102,7 @@ struct SettingsView: View {
     let textToSpeechPreviewerFactory: (AppSettings) -> any TextToSpeechPreviewing
     let onboardingRerunRequest: () -> Void
     @StateObject private var settingsViewModel: AppSettingsViewModel
+    @ObservedObject private var shortcutSettingsViewModel: ShortcutSettingsViewModel
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
     @StateObject private var watcherDiagnosticsLoader: LazyDependencyLoader<WatcherDiagnosticsSnapshot>
     @StateObject private var externalMCPSettingsViewModelLoader: LazyObservableObjectLoader<ExternalMCPSettingsViewModel>
@@ -130,6 +131,7 @@ struct SettingsView: View {
 
     init(
         settingsViewModel: AppSettingsViewModel,
+        shortcutSettingsViewModel: ShortcutSettingsViewModel,
         launchAtLoginViewModel: LaunchAtLoginSettingsViewModel,
         watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot,
         integrationPermissionSnapshot: PermissionSnapshot,
@@ -158,6 +160,7 @@ struct SettingsView: View {
         self.textToSpeechPreviewerFactory = textToSpeechPreviewerFactory
         self.onboardingRerunRequest = onboardingRerunRequest
         _settingsViewModel = StateObject(wrappedValue: settingsViewModel)
+        _shortcutSettingsViewModel = ObservedObject(wrappedValue: shortcutSettingsViewModel)
         _launchAtLoginViewModel = StateObject(wrappedValue: launchAtLoginViewModel)
         _watcherDiagnosticsLoader = StateObject(
             wrappedValue: LazyDependencyLoader(loadValue: watcherDiagnosticsSnapshotFactory)
@@ -884,7 +887,39 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("settings-low-latency-voice-agent-boundary")
 
-                LabeledContent("Shortcut", value: "Option + Space")
+                VStack(alignment: .leading, spacing: SoloPMSpacing.xs) {
+                    LocalizedValueLabeledContent("Global Shortcut", value: shortcutSettingsViewModel.statusLabel)
+                    LabeledContent("Voice Command", value: shortcutSettingsViewModel.displayShortcut)
+
+                    if let detail = shortcutSettingsViewModel.state.detail {
+                        Label(localizedSettingsDisplay(detail), systemImage: "info.circle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Label(
+                        localizedDisplay(
+                            "In-app fallback: %@",
+                            shortcutSettingsViewModel.fallbackShortcutLabel
+                        ),
+                        systemImage: "keyboard"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                    HStack {
+                        Button("Register Global Shortcut") {
+                            shortcutSettingsViewModel.registerDefaultVoiceCaptureShortcut()
+                        }
+                        .disabled(!shortcutSettingsViewModel.canRegister)
+
+                        Button("Disable Global Shortcut") {
+                            shortcutSettingsViewModel.unregisterVoiceCaptureShortcut()
+                        }
+                        .disabled(!shortcutSettingsViewModel.canUnregister)
+                    }
+                }
+                .accessibilityIdentifier("settings-global-voice-shortcut")
                 Picker(
                     "Text to Speech",
                     selection: Binding(

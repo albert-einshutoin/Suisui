@@ -1814,3 +1814,15 @@
 "Set up when needed" = "Set up when needed";
 "Not loaded until you open its settings." = "Not loaded until you open its settings.";
 "Set up only when you choose to use this feature." = "Set up only when you choose to use this feature.";
+"Register Global Shortcut" = "Register Global Shortcut";
+"Disable Global Shortcut" = "Disable Global Shortcut";
+"Opens Voice Command from this menu. Global Option + Space status is shown in Settings." = "Opens Voice Command from this menu. Global Option + Space status is shown in Settings.";
+"Global Shortcut" = "Global Shortcut";
+"Registered" = "Registered";
+"Not registered" = "Not registered";
+"Conflict" = "Conflict";
+"In-app fallback: %@" = "In-app fallback: %@";
+"SoloPM currently supports only Option + Space." = "SoloPM currently supports only Option + Space.";
+"The global shortcut event handler is unavailable." = "The global shortcut event handler is unavailable.";
+"Option + Space is already used by another app." = "Option + Space is already used by another app.";
+"Option + Space could not be registered on this Mac." = "Option + Space could not be registered on this Mac.";

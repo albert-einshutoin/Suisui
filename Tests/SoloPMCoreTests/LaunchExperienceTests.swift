@@ -165,6 +165,45 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("NSApplication.shared.activate(ignoringOtherApps: true)"))
     }
 
+    func testGlobalVoiceShortcutIsProcessOwnedAndReusesExistingVoiceWindow() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let adapterSource = try readPackageFile("Sources/SoloPMApp/Adapters/SystemShortcutClient.swift")
+
+        XCTAssertTrue(appSource.contains("@StateObject private var shortcutSettingsViewModel"))
+        XCTAssertTrue(adapterSource.contains("SystemShortcutClient"))
+        XCTAssertTrue(adapterSource.contains("registerDefaultVoiceCaptureShortcut()"))
+        XCTAssertTrue(appSource.contains("VoiceWindowActivationCoordinator.shared"))
+        XCTAssertTrue(adapterSource.contains("activateExistingWindowOrRequestOpen"))
+        XCTAssertTrue(appSource.contains(".background(GlobalVoiceShortcutBridge())"))
+        XCTAssertTrue(appSource.contains("installOpenRequest"))
+        XCTAssertTrue(appSource.contains("openWindow(id: \"voice-capture\")"))
+        XCTAssertTrue(appSource.contains("private struct MenuBarExtraLabel: View"))
+        XCTAssertTrue(adapterSource.contains("performVoiceCommandShortcutMenuItem"))
+        XCTAssertTrue(adapterSource.contains("item.keyEquivalent == \"V\""))
+        XCTAssertTrue(adapterSource.contains("modifiers.contains(.shift)"))
+        XCTAssertFalse(adapterSource.contains("item.title == \"Voice Command\""))
+        XCTAssertTrue(appSource.contains("openWindow(id: \"voice-capture\")"))
+        XCTAssertTrue(appSource.contains("markVoiceWindowVisible"))
+        XCTAssertTrue(appSource.contains("markVoiceWindowClosed"))
+        XCTAssertTrue(adapterSource.contains("RegisterEventHotKey"))
+        XCTAssertTrue(adapterSource.contains("UnregisterEventHotKey"))
+        XCTAssertTrue(adapterSource.contains("InstallEventHandler"))
+        XCTAssertTrue(adapterSource.contains("kVK_Space"))
+        XCTAssertTrue(adapterSource.contains("optionKey"))
+        XCTAssertTrue(adapterSource.contains("Task { @MainActor"))
+        XCTAssertFalse(adapterSource.contains("NSEvent.addGlobalMonitorForEvents"))
+        XCTAssertFalse(adapterSource.contains("CGEvent.tapCreate"))
+    }
+
+    func testGlobalShortcutDoesNotRequireInputMonitoringEntitlement() throws {
+        let entitlements = try readPackageFile("packaging/SoloPM.entitlements")
+        let adapterSource = try readPackageFile("Sources/SoloPMApp/Adapters/SystemShortcutClient.swift")
+
+        XCTAssertFalse(entitlements.contains("listen-event"))
+        XCTAssertFalse(entitlements.contains("input-monitoring"))
+        XCTAssertFalse(adapterSource.contains("AXIsProcessTrusted"))
+    }
+
     func testAppInitActivatesButDefersFallbackWindowCreationToDelegate() throws {
         let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 

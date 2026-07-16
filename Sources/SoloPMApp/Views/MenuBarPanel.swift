@@ -150,7 +150,7 @@ struct MenuBarPanel: View {
                 Label("Voice Command", systemImage: "mic")
                     .frame(maxWidth: .infinity)
             }
-            .keyboardShortcut(.space, modifiers: [.option])
+            .help("Opens Voice Command from this menu. Global Option + Space status is shown in Settings.")
         }
         .controlSize(.large)
     }
