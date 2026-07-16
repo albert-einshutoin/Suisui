@@ -26,108 +26,157 @@ struct ProjectBoardProjectsHubView<Content: View>: View {
     }
 
     var body: some View {
-        HSplitView {
-            VStack(spacing: 0) {
-                List(selection: projectSelection) {
-                    Section {
-                        Label("Portfolio", systemImage: "rectangle.grid.2x2")
-                            .tag(BoardRoute.primary(.projects))
-                            .accessibilityIdentifier("projects-hub-portfolio")
-                    }
-
-                    Section("Smart Lists") {
-                        ForEach(smartLists) { smartList in
-                            Label {
-                                smartListTitle(smartList)
-                                    .lineLimit(1)
-                                    .help(
-                                        smartList.isPreset
-                                            ? localizedDisplay(smartList.name)
-                                            : smartList.name
-                                    )
-                            } icon: {
-                                Image(systemName: "line.3.horizontal.decrease.circle")
-                            }
-                            .tag(BoardRoute.smartList(smartList.id))
-                            .contextMenu {
-                                if !smartList.isPreset {
-                                    Button(role: .destructive) {
-                                        onDeleteSmartList(smartList)
-                                    } label: {
-                                        Label("Delete Smart List", systemImage: "trash")
-                                    }
-                                }
-                            }
-                            .accessibilityIdentifier("project-board-smart-list-row-\(smartList.id)")
-                        }
-
-                        Button(action: onCreateSmartList) {
-                            Label("New Smart List…", systemImage: "plus.circle")
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityIdentifier("project-board-smart-list-new")
-                    }
-                    .accessibilityIdentifier("projects-hub-smart-lists")
-
-                    Section("Active") {
-                        projectRows(activeProjects)
-                    }
-                    .accessibilityIdentifier("projects-hub-active")
-
-                    if !completedProjects.isEmpty {
-                        Section("Completed") {
-                            projectRows(completedProjects)
-                        }
-                        .accessibilityIdentifier("projects-hub-completed")
-                    }
-
-                    if showsArchivedProjects {
-                        Section("Archived") {
-                            projectRows(archivedProjects)
-                        }
-                        .accessibilityIdentifier("projects-hub-archived")
-                    }
+        GeometryReader { proxy in
+            switch ProjectBoardHubPresentationPolicy.presentation(
+                for: Double(proxy.size.width)
+            ) {
+            case .wide:
+                HSplitView {
+                    projectsNavigation
+                        .frame(minWidth: 190, idealWidth: 220, maxWidth: 300)
+                    content()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .listStyle(.sidebar)
-                .accessibilityIdentifier("projects-hub-navigation")
-                .accessibilityLabel("Projects navigation")
-
-                Divider()
-
-                Button(action: onToggleArchivedProjects) {
-                    Label(
-                        "Show Archived",
-                        systemImage: showsArchivedProjects ? "checkmark.square" : "square"
-                    )
+            case .compact:
+                VStack(spacing: 0) {
+                    compactNavigation
+                    Divider()
+                    content()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .buttonStyle(.borderless)
-                .help("Show archived projects")
-                .accessibilityIdentifier("project-board-show-archived")
-                .accessibilityLabel("Show archived projects")
-                .accessibilityValue(showsArchivedProjects ? "On" : "Off")
-                .accessibilityHint("Shows archived projects in the sidebar without deleting local data.")
-                .padding(.horizontal, 10)
-                .padding(.top, 8)
-
-                Button(action: onCreateProject) {
-                    Label("Add Project", systemImage: "folder.badge.plus")
-                }
-                .buttonStyle(.borderless)
-                .keyboardShortcut("n", modifiers: [.command, .shift])
-                .help("Add a project")
-                .accessibilityIdentifier("project-board-add-project")
-                .accessibilityLabel("Add Project")
-                .accessibilityHint("Creates a new local project and selects it.")
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
             }
-            .frame(minWidth: 190, idealWidth: 220, maxWidth: 300)
-
-            content()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("projects-hub")
+    }
+
+    private var projectsNavigation: some View {
+        VStack(spacing: 0) {
+            List(selection: projectSelection) {
+                Section {
+                    Label("Portfolio", systemImage: "rectangle.grid.2x2")
+                        .tag(BoardRoute.primary(.projects))
+                        .accessibilityIdentifier("projects-hub-portfolio")
+                }
+
+                Section("Smart Lists") {
+                    ForEach(smartLists) { smartList in
+                        Label {
+                            smartListTitle(smartList)
+                                .lineLimit(1)
+                                .help(
+                                    smartList.isPreset
+                                        ? localizedDisplay(smartList.name)
+                                        : smartList.name
+                                )
+                        } icon: {
+                            Image(systemName: "line.3.horizontal.decrease.circle")
+                        }
+                        .tag(BoardRoute.smartList(smartList.id))
+                        .contextMenu {
+                            if !smartList.isPreset {
+                                Button(role: .destructive) {
+                                    onDeleteSmartList(smartList)
+                                } label: {
+                                    Label("Delete Smart List", systemImage: "trash")
+                                }
+                            }
+                        }
+                        .accessibilityIdentifier("project-board-smart-list-row-\(smartList.id)")
+                    }
+
+                    Button(action: onCreateSmartList) {
+                        Label("New Smart List…", systemImage: "plus.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityIdentifier("project-board-smart-list-new")
+                }
+                .accessibilityIdentifier("projects-hub-smart-lists")
+
+                Section("Active") {
+                    projectRows(activeProjects)
+                }
+                .accessibilityIdentifier("projects-hub-active")
+
+                if !completedProjects.isEmpty {
+                    Section("Completed") {
+                        projectRows(completedProjects)
+                    }
+                    .accessibilityIdentifier("projects-hub-completed")
+                }
+
+                if showsArchivedProjects {
+                    Section("Archived") {
+                        projectRows(archivedProjects)
+                    }
+                    .accessibilityIdentifier("projects-hub-archived")
+                }
+            }
+            .listStyle(.sidebar)
+            .accessibilityIdentifier("projects-hub-navigation")
+            .accessibilityLabel("Projects navigation")
+
+            Divider()
+
+            Button(action: onToggleArchivedProjects) {
+                Label(
+                    "Show Archived",
+                    systemImage: showsArchivedProjects ? "checkmark.square" : "square"
+                )
+            }
+            .buttonStyle(.borderless)
+            .help("Show archived projects")
+            .accessibilityIdentifier("project-board-show-archived")
+            .accessibilityLabel("Show archived projects")
+            .accessibilityValue(showsArchivedProjects ? "On" : "Off")
+            .accessibilityHint("Shows archived projects in the sidebar without deleting local data.")
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+
+            Button(action: onCreateProject) {
+                Label("Add Project", systemImage: "folder.badge.plus")
+            }
+            .buttonStyle(.borderless)
+            .keyboardShortcut("n", modifiers: [.command, .shift])
+            .help("Add a project")
+            .accessibilityIdentifier("project-board-add-project")
+            .accessibilityLabel("Add Project")
+            .accessibilityHint("Creates a new local project and selects it.")
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+        }
+    }
+
+    private var compactNavigation: some View {
+        HStack(spacing: 10) {
+            Menu {
+                Button("Portfolio") { route = .primary(.projects) }
+                if !smartLists.isEmpty {
+                    Divider()
+                    ForEach(smartLists) { smartList in
+                        Button(smartList.isPreset ? localizedDisplay(smartList.name) : smartList.name) {
+                            route = .smartList(smartList.id)
+                        }
+                    }
+                }
+                if !activeProjects.isEmpty {
+                    Divider()
+                    ForEach(activeProjects) { project in
+                        Button(project.title) { route = .project(project.id) }
+                    }
+                }
+            } label: {
+                Label("Choose Project View", systemImage: "sidebar.left")
+            }
+            .accessibilityIdentifier("projects-hub-compact-navigation")
+
+            Spacer()
+            Button(action: onCreateProject) {
+                Label("Add Project", systemImage: "folder.badge.plus")
+            }
+            .accessibilityIdentifier("projects-hub-compact-add-project")
+        }
+        .padding(10)
     }
 
     private var projectSelection: Binding<BoardRoute?> {

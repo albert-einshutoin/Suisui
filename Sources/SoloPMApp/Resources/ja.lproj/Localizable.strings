@@ -1760,3 +1760,5 @@
 "Opens capture shortcuts that prefill the Today command field." = "Todayコマンド欄に前置テキストを入力する取り込みショートカットを開きます。";
 "%d doing" = "進行中 %d";
 "%d missed" = "期限超過 %d";
+"Choose Project View" = "プロジェクト表示を選択";
+"Choose Review View" = "確認項目を選択";

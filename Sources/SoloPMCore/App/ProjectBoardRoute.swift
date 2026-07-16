@@ -42,6 +42,22 @@ public struct ProjectBoardRouteResolution: Equatable, Sendable {
     }
 }
 
+public enum ProjectBoardHubPresentation: Equatable, Sendable {
+    case compact
+    case wide
+}
+
+/// Nested hub navigation yields its column before the primary content becomes
+/// cramped. Keeping the threshold pure makes the 960-point product contract
+/// testable without coupling Core to SwiftUI geometry.
+public enum ProjectBoardHubPresentationPolicy {
+    public static let wideMinimumWidth = 1_100.0
+
+    public static func presentation(for availableWidth: Double) -> ProjectBoardHubPresentation {
+        availableWidth >= wideMinimumWidth ? .wide : .compact
+    }
+}
+
 /// Deterministic conversion between persisted route strings and typed routes.
 public enum ProjectBoardRouteCodec {
     /// Decodes both current stable values and historical persisted values.

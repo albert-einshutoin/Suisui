@@ -390,21 +390,21 @@ struct ProjectBoardView: View {
             )
         }
         let availableProjectIDs = Set(viewModel.snapshot.projects.map(\.id))
-        if !currentSceneRouteRawValue.isEmpty {
+        if let override = ProjectBoardSelectionPersistence.environmentOverrideRawValue {
             let resolution = ProjectBoardRouteCodec.resolution(
-                    from: currentSceneRouteRawValue,
-                    availableProjectIDs: availableProjectIDs
-                )
+                from: override,
+                availableProjectIDs: availableProjectIDs
+            )
             return ProjectBoardRouteResolution(
                 route: validatedRoute(resolution.route),
                 focus: resolution.focus
             )
         }
-        if let override = ProjectBoardSelectionPersistence.environmentOverrideRawValue {
+        if !currentSceneRouteRawValue.isEmpty {
             let resolution = ProjectBoardRouteCodec.resolution(
-                    from: override,
-                    availableProjectIDs: availableProjectIDs
-                )
+                from: currentSceneRouteRawValue,
+                availableProjectIDs: availableProjectIDs
+            )
             return ProjectBoardRouteResolution(
                 route: validatedRoute(resolution.route),
                 focus: resolution.focus
@@ -434,31 +434,22 @@ struct ProjectBoardView: View {
 
     private func navigateWithinScene(
         to route: BoardRoute,
-        focus: BoardRouteFocus? = nil
+        focus: BoardRouteFocus? = nil,
+        updateInitialRoute: Bool = true
     ) {
         let route = validatedRoute(route)
         if ProjectBoardSelectionPersistence.environmentOverrideRawValue == nil {
-            persistRoute(route)
+            persistRoute(route, updateInitialRoute: updateInitialRoute)
         } else {
             // Deterministic evidence overrides must remain process-local: they
             // may still exercise navigation, but never rewrite SceneStorage or
             // the next-window AppStorage preference.
             transientBoardRoute = route
         }
-        applyRouteFocus(focus)
-        applyRouteToLegacyUI(route)
-    }
-
-    /// Payload handling may refine the route chosen before asynchronous work
-    /// finishes. Keep that correction scoped to this window so a failed queue
-    /// draft cannot strand the current scene in Review or rewrite the default
-    /// route used by future windows.
-    private func applyPayloadResolvedRouteWithinScene(_ route: BoardRoute) {
-        let route = validatedRoute(route)
-        if ProjectBoardSelectionPersistence.environmentOverrideRawValue == nil {
-            persistRoute(route, updateInitialRoute: false)
+        if let focus {
+            applyRouteFocus(focus)
         } else {
-            transientBoardRoute = route
+            cancelRouteFocus()
         }
         applyRouteToLegacyUI(route)
     }
@@ -478,8 +469,13 @@ struct ProjectBoardView: View {
                     ? catchUpFocusRevision
                     : nil,
                 onCatchUpFocusConsumed: { revision in
-                    consumedCatchUpFocusRevision = max(consumedCatchUpFocusRevision, revision)
+                    guard activeBoardRouteFocus == .catchUp,
+                          catchUpFocusRevision == revision else {
+                        return false
+                    }
+                    consumedCatchUpFocusRevision = revision
                     activeBoardRouteFocus = nil
+                    return true
                 }
             )
         case .primary(.inbox):
@@ -920,6 +916,11 @@ struct ProjectBoardView: View {
         catchUpFocusRevision += 1
     }
 
+    private func cancelRouteFocus() {
+        activeBoardRouteFocus = nil
+        consumedCatchUpFocusRevision = catchUpFocusRevision
+    }
+
     private func persistSelectedDestination(_ destination: ProjectBoardSidebarDestination?) {
         guard ProjectBoardSelectionPersistence.environmentOverrideRawValue == nil else {
             return
@@ -1129,13 +1130,26 @@ struct ProjectBoardView: View {
                 kind: actionDraftKind,
                 transcript: sourceTranscript
             )
-            applyPayloadResolvedRouteWithinScene(
-                queued ? .review(.assistantQueue) : .primary(.today)
-            )
+            if queued {
+                navigateWithinScene(
+                    to: .review(.assistantQueue),
+                    updateInitialRoute: false
+                )
+            } else {
+                navigateToTodayForDailyPlanning(summary: summary)
+            }
         } else {
-            applyLegacyDestinationWithinScene(summary.newlyMissedCount > 0 ? .catchUp : .today)
+            navigateToTodayForDailyPlanning(summary: summary)
         }
         playDailyPlanningReadoutFromSettings()
+    }
+
+    private func navigateToTodayForDailyPlanning(summary: MissedTaskReviewSummary) {
+        navigateWithinScene(
+            to: .primary(.today),
+            focus: summary.newlyMissedCount > 0 ? .catchUp : nil,
+            updateInitialRoute: false
+        )
     }
 
     private func playDailyPlanningReadoutFromSettings() {

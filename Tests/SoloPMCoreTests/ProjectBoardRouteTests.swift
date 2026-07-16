@@ -13,6 +13,12 @@ final class ProjectBoardRouteTests: XCTestCase {
         )
     }
 
+    func testHubPresentationProtectsContentAtCompactWidths() {
+        XCTAssertEqual(ProjectBoardHubPresentationPolicy.presentation(for: 960), .compact)
+        XCTAssertEqual(ProjectBoardHubPresentationPolicy.presentation(for: 1_099), .compact)
+        XCTAssertEqual(ProjectBoardHubPresentationPolicy.presentation(for: 1_100), .wide)
+    }
+
     func testLegacyWorkflowDestinationsMigrateIntoFourPrimaryAreas() {
         XCTAssertEqual(route(from: "today"), .primary(.today))
         XCTAssertEqual(route(from: "inbox"), .primary(.inbox))

@@ -14,7 +14,7 @@ struct TodayWorkflowView: View {
     var playDailyPlanningReadout: () -> Void = {}
     let initiallyExpandsCatchUp: Bool
     var catchUpFocusRevision: Int? = nil
-    var onCatchUpFocusConsumed: (Int) -> Void = { _ in }
+    var onCatchUpFocusConsumed: (Int) -> Bool = { _ in true }
     @State private var commandTitle = ""
     @State private var isCatchUpExpanded = false
     @AccessibilityFocusState private var isCatchUpFocused: Bool
@@ -26,7 +26,7 @@ struct TodayWorkflowView: View {
         playDailyPlanningReadout: @escaping () -> Void = {},
         initiallyExpandsCatchUp: Bool = false,
         catchUpFocusRevision: Int? = nil,
-        onCatchUpFocusConsumed: @escaping (Int) -> Void = { _ in }
+        onCatchUpFocusConsumed: @escaping (Int) -> Bool = { _ in true }
     ) {
         self.viewModel = viewModel
         self.selectTodayTask = selectTodayTask
@@ -179,8 +179,10 @@ struct TodayWorkflowView: View {
         // Moving AX focus then also scrolls the containing workflow surface to
         // the disclosure without adding persistent layout state.
         DispatchQueue.main.async {
+            guard onCatchUpFocusConsumed(revision) else {
+                return
+            }
             isCatchUpFocused = true
-            onCatchUpFocusConsumed(revision)
         }
     }
 

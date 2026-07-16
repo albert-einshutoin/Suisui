@@ -80,6 +80,54 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(block.contains("selectedDestination = .project(projectID)"))
     }
 
+    func testBoardRoutePriorityAndFocusCancellationAreDeterministic() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let transient = try XCTUnwrap(source.range(of: "if let transientBoardRoute"))
+        let environment = try XCTUnwrap(
+            source.range(
+                of: "ProjectBoardSelectionPersistence.environmentOverrideRawValue",
+                range: transient.lowerBound..<source.endIndex
+            )
+        )
+        let scene = try XCTUnwrap(
+            source.range(
+                of: "if !currentSceneRouteRawValue.isEmpty",
+                range: transient.lowerBound..<source.endIndex
+            )
+        )
+        XCTAssertLessThan(transient.lowerBound, environment.lowerBound)
+        XCTAssertLessThan(environment.lowerBound, scene.lowerBound)
+        XCTAssertTrue(source.contains("cancelRouteFocus()"))
+        XCTAssertTrue(source.contains("activeBoardRouteFocus == .catchUp"))
+        XCTAssertTrue(source.contains("catchUpFocusRevision == revision"))
+    }
+
+    func testVoiceDailyPlanningUsesTypedRouteForCatchUpAndQueueOutcomes() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let start = try XCTUnwrap(source.range(of: "private func handleVoiceDailyPlanningReviewRequest(\n        sourceTranscript:"))
+        let end = try XCTUnwrap(source.range(of: "private func playDailyPlanningReadoutFromSettings", range: start.lowerBound..<source.endIndex))
+        let block = String(source[start.lowerBound..<end.lowerBound])
+
+        XCTAssertTrue(block.contains("to: .review(.assistantQueue),"))
+        XCTAssertTrue(block.contains("navigateToTodayForDailyPlanning(summary: summary)"))
+        XCTAssertTrue(block.contains("focus: summary.newlyMissedCount > 0 ? .catchUp : nil"))
+        XCTAssertFalse(block.contains("applyLegacyDestinationWithinScene"))
+    }
+
+    func testNestedHubsUseCompactPresentationPolicyAtNarrowWidths() throws {
+        let projects = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardProjectsHubView.swift")
+        let review = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardReviewHubView.swift")
+
+        for source in [projects, review] {
+            XCTAssertTrue(source.contains("GeometryReader"))
+            XCTAssertTrue(source.contains("ProjectBoardHubPresentationPolicy.presentation"))
+            XCTAssertTrue(source.contains("case .compact:"))
+            XCTAssertTrue(source.contains("case .wide:"))
+        }
+        XCTAssertTrue(projects.contains("projects-hub-compact-navigation"))
+        XCTAssertTrue(review.contains("review-hub-compact-navigation"))
+    }
+
     func testProjectsAndReviewHubsExposeRelocatedDestinations() throws {
         let projectsSource = try readPackageFile(
             "Sources/SoloPMApp/Views/ProjectBoardProjectsHubView.swift"
@@ -2631,17 +2679,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("AppTextToSpeechRuntimeFactory.makePreviewer("))
         XCTAssertTrue(boardSource.contains("temporaryDirectoryPrefix: \"solopm-daily-planning-readout\""))
         XCTAssertTrue(boardSource.contains("outputFilename: \"readout.wav\""))
-        XCTAssertTrue(
-            boardSource.contains("applyPayloadResolvedRouteWithinScene(")
-        )
-        XCTAssertTrue(
-            boardSource.contains("queued ? .review(.assistantQueue) : .primary(.today)")
-        )
+        XCTAssertTrue(boardSource.contains("to: .review(.assistantQueue),"))
+        XCTAssertTrue(boardSource.contains("navigateToTodayForDailyPlanning(summary: summary)"))
         XCTAssertTrue(
             boardSource.contains(
-                "applyLegacyDestinationWithinScene(summary.newlyMissedCount > 0 ? .catchUp : .today)"
+                "focus: summary.newlyMissedCount > 0 ? .catchUp : nil"
             )
         )
+        XCTAssertTrue(boardSource.contains("updateInitialRoute: false"))
         XCTAssertTrue(boardSource.contains("static let soloPMVoiceDailyPlanningReviewRequested"))
         XCTAssertTrue(boardSource.contains("guard let request = SoloPMVoiceDailyPlanningReviewBridge.consumePendingRequest(id: id)"))
         XCTAssertFalse(boardSource.contains("sourceTranscript(from: notification)"))
@@ -2710,19 +2755,23 @@ final class AppExperienceSourceTests: XCTestCase {
         let assistantStart = try XCTUnwrap(boardSource.range(of: "private func handleAssistantQueueOpenRequest(request:"))
         let assistantEnd = try XCTUnwrap(boardSource.range(of: "private func applySelectedTaskOverrideIfNeeded", range: assistantStart.lowerBound..<boardSource.endIndex))
 
-        for block in [
-            String(boardSource[dailyStart.lowerBound..<dailyEnd.lowerBound]),
+        let dailyBlock = String(boardSource[dailyStart.lowerBound..<dailyEnd.lowerBound])
+        let compatibilityBlocks = [
             String(boardSource[inboxStart.lowerBound..<inboxEnd.lowerBound]),
             String(boardSource[assistantStart.lowerBound..<assistantEnd.lowerBound])
-        ] {
+        ]
+        for block in [dailyBlock] + compatibilityBlocks {
             XCTAssertFalse(block.contains("persistSelectedDestination"))
+        }
+        XCTAssertTrue(dailyBlock.contains("navigateWithinScene("))
+        XCTAssertTrue(dailyBlock.contains("updateInitialRoute: false"))
+        XCTAssertFalse(dailyBlock.contains("applyLegacyDestinationWithinScene"))
+        for block in compatibilityBlocks {
             XCTAssertTrue(block.contains("applyLegacyDestinationWithinScene"))
         }
         XCTAssertTrue(
-            String(boardSource[dailyStart.lowerBound..<dailyEnd.lowerBound])
-                .contains("applyPayloadResolvedRouteWithinScene")
+            boardSource.contains("persistRoute(route, updateInitialRoute: updateInitialRoute)")
         )
-        XCTAssertTrue(boardSource.contains("persistRoute(route, updateInitialRoute: false)"))
 
         // The compatibility callback consumes suppression exactly once; the
         // ordinary user path still persists after that callback is cleared.
