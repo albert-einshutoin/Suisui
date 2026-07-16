@@ -48,6 +48,7 @@ struct SoloPM: App {
             .environment(\.locale, effectiveLanguagePreference.locale)
         }
         .defaultSize(width: ProjectBoardWindowMetrics.defaultWidth, height: ProjectBoardWindowMetrics.defaultHeight)
+        .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .appSettings) {
                 SettingsLink {

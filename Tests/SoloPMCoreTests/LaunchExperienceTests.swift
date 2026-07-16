@@ -476,7 +476,7 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("@SceneStorage(ProjectBoardScenePersistence.sceneIDStorageKey)"))
         XCTAssertTrue(boardSource.contains("@SceneStorage(ProjectBoardScenePersistence.routeStorageKey)"))
         XCTAssertTrue(boardSource.contains("@AppStorage(ProjectBoardSelectionPersistence.storageKey)"))
-        XCTAssertTrue(boardSource.contains("ProjectBoardRouteCodec.route("))
+        XCTAssertTrue(boardSource.contains("ProjectBoardRouteCodec.resolution("))
         XCTAssertTrue(boardSource.contains("ProjectBoardRouteCodec.rawValue(for:"))
         XCTAssertTrue(boardSource.contains("@State private var selectedDestination: ProjectBoardSidebarDestination? = .today"))
         XCTAssertTrue(coordinatorSource.contains("@MainActor"))

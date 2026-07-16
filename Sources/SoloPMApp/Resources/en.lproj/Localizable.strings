@@ -1766,3 +1766,6 @@
 "Deletes only the currently selected custom smart list." = "Deletes only the currently selected custom smart list.";
 "Hide Archived" = "Hide Archived";
 "Delete Selected Smart List" = "Delete Selected Smart List";
+"Edit Project" = "Edit Project";
+"Open project details" = "Open project details";
+"Opens this project's editable details in the inspector." = "Opens this project's editable details in the inspector.";

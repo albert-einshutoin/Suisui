@@ -1766,3 +1766,6 @@
 "Deletes only the currently selected custom smart list." = "現在選択中のカスタムスマートリストのみ削除します。";
 "Hide Archived" = "アーカイブを非表示";
 "Delete Selected Smart List" = "選択中のスマートリストを削除";
+"Edit Project" = "プロジェクトを編集";
+"Open project details" = "プロジェクト詳細を開く";
+"Opens this project's editable details in the inspector." = "このプロジェクトの編集可能な詳細をインスペクタで開きます。";

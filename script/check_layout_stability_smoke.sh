@@ -25,7 +25,10 @@ LAYOUT_STABILITY_RUNTIME_DIR="${SOLOPM_LAYOUT_STABILITY_RUNTIME_DIR:-${TMPDIR:-/
 LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX="${SOLOPM_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX:-0}"
 LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX="${SOLOPM_LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX:-1}"
 LAYOUT_STABILITY_DATABASE_PATH="${SOLOPM_LAYOUT_STABILITY_DATABASE_PATH:-$LAYOUT_STABILITY_RUNTIME_DIR/SoloPM-layout-stability.sqlite}"
-LAYOUT_STABILITY_WINDOW_MIN_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_MIN_WIDTH:-980}"
+LAYOUT_STABILITY_WINDOW_BELOW_MIN_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_BELOW_MIN_WIDTH:-900}"
+LAYOUT_STABILITY_WINDOW_COMPACT_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_COMPACT_WIDTH:-960}"
+LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH:-1024}"
+LAYOUT_STABILITY_WINDOW_MIN_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_MIN_WIDTH:-960}"
 LAYOUT_STABILITY_WINDOW_MIN_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_MIN_HEIGHT:-720}"
 LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH:-1180}"
 LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT:-760}"
@@ -70,7 +73,10 @@ if [[ ! "$LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_DELAY_MS" =~ ^[0-9]+$ ]]; then
 fi
 
 for dimension_name in \
+  LAYOUT_STABILITY_WINDOW_BELOW_MIN_WIDTH \
   LAYOUT_STABILITY_WINDOW_MIN_WIDTH \
+  LAYOUT_STABILITY_WINDOW_COMPACT_WIDTH \
+  LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH \
   LAYOUT_STABILITY_WINDOW_MIN_HEIGHT \
   LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH \
   LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT \
@@ -106,7 +112,6 @@ REQUIRED_AX_IDENTIFIERS=(
   "project-board-header-bar"
   "project-board-detail"
   "project-board-sidebar"
-  "project-inspector"
 )
 # Sampling schedule: t=0ms, t=50ms, t=150ms, t=300ms.
 SAMPLE_OFFSETS_MS=(0 50 150 300)
@@ -307,6 +312,8 @@ SQL
 }
 
 prepare_layout_candidate() {
+  rm -rf "$LAYOUT_STABILITY_RUNTIME_DIR/home"
+  mkdir -p "$LAYOUT_STABILITY_RUNTIME_DIR/home"
   ./script/build_and_run.sh --build-only
   migrate_layout_database
   seed_layout_candidate
@@ -372,9 +379,29 @@ wait_for_window_metadata() {
   done
 }
 
+wait_for_window_width() {
+  local expected_width="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local window_id window_x window_y window_width window_height
+  while true; do
+    if read_window_metadata >/dev/null 2>&1 && window_metadata_has_positive_bounds; then
+      read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE"
+      if [[ "$window_width" -eq "$expected_width" ]]; then
+        return 0
+      fi
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: Project Board window width did not settle at ${expected_width}px within ${TIMEOUT_SECONDS}s (actual=${window_width:-unknown})" >&2
+      return 1
+    fi
+    sleep 0.1
+  done
+}
+
 set_project_board_window_size() {
   local width="$1"
   local height="$2"
+  local expected_width="${3:-$width}"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   # Resize the real app window through AX so the smoke covers AppKit/SwiftUI
   # bridge behavior instead of only source-level layout contracts.
@@ -410,7 +437,21 @@ APPLESCRIPT
     wait_for_visible_windows >/dev/null 2>&1 || true
     sleep 1
   done
+  # Wait for a freshly observed width so subsequent evidence cannot reuse
+  # metadata captured before SwiftUI/AppKit completed the resize.
+  wait_for_window_width "$expected_width"
+}
+
+assert_window_minimum_width() {
+  local state="$1"
+  local window_id window_x window_y window_width window_height
   wait_for_window_metadata
+  read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE"
+  if [[ "$window_width" -lt "$LAYOUT_STABILITY_WINDOW_MIN_WIDTH" ]]; then
+    echo "BLOCKER: Project Board window shrank below ${LAYOUT_STABILITY_WINDOW_MIN_WIDTH}px while inspector was ${state} (actual=${window_width}px)" >&2
+    return 1
+  fi
+  printf 'OK: Project Board minimum width held at %spx while inspector was %s\n' "$window_width" "$state"
 }
 
 window_size_key() {
@@ -443,6 +484,42 @@ wait_for_ax_identifier() {
   sed -n '1,20p' "$probe_file.err" >&2 || true
   return 1
 }
+
+wait_for_ax_identifier_absent() {
+  local identifier="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local probe_file="$LAYOUT_STABILITY_OUTPUT_DIR/wait-absent-${identifier//[^[:alnum:]_-]/_}.tsv"
+
+  while true; do
+    if collect_ax_frames >"$probe_file" 2>"$probe_file.err" &&
+      ! awk -F $'\t' -v wanted="$identifier" '$1 == wanted { found = 1 } END { exit(found ? 0 : 1) }' "$probe_file"; then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: AX identifier stayed visible: $identifier" >&2
+      return 1
+    fi
+    sleep 0.2
+  done
+}
+
+click_ax_identifier() {
+  local identifier="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+
+  while true; do
+    if wait_for_visible_windows >/dev/null 2>&1 &&
+      "$AX_PRESS_ELEMENT_HELPER_BINARY" "$app_pid" "$identifier"; then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: AXPress failed for identifier: $identifier" >&2
+      return 1
+    fi
+    activate_app
+    sleep 0.2
+  done
+}
 click_sidebar_destination_by_coordinate() {
   local destination_identifier="$1"
   local window_id window_x window_y window_width window_height destination_offset target_x target_y
@@ -451,14 +528,17 @@ click_sidebar_destination_by_coordinate() {
   read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE"
 
   case "$destination_identifier" in
-    sidebar-destination-inbox)
+    sidebar-destination-today)
       destination_offset=76
       ;;
-    sidebar-destination-assistant-queue)
+    sidebar-destination-inbox)
       destination_offset=108
       ;;
-    sidebar-destination-today)
+    sidebar-destination-projects)
       destination_offset=140
+      ;;
+    sidebar-destination-review)
+      destination_offset=172
       ;;
     *)
       echo "BLOCKER: no coordinate fallback for sidebar destination: $destination_identifier" >&2
@@ -503,6 +583,26 @@ assert_sidebar_destination_window_size_stable() {
 
   before_size="$(window_size_key)"
   click_sidebar_destination "$destination_identifier" "$destination_label"
+  wait_for_ax_identifier "$workflow_identifier"
+  after_size="$(window_size_key)"
+
+  if [[ "$after_size" != "$before_size" ]]; then
+    echo "BLOCKER: Project Board window size changed after selecting $destination_identifier: before=$before_size after=$after_size" >&2
+    return 1
+  fi
+
+  printf "OK: Project Board window size stayed %s after selecting %s\n" "$after_size" "$destination_identifier"
+  printf -- '- `%s` kept window size `%s` after `%s`\n' "$label" "$after_size" "$destination_identifier" >>"$SUMMARY_FILE"
+}
+
+assert_ax_destination_window_size_stable() {
+  local label="$1"
+  local destination_identifier="$2"
+  local workflow_identifier="$3"
+  local before_size after_size
+
+  before_size="$(window_size_key)"
+  click_ax_identifier "$destination_identifier"
   wait_for_ax_identifier "$workflow_identifier"
   after_size="$(window_size_key)"
 
@@ -668,7 +768,9 @@ assert_no_negative_or_overlapping_frames() {
       function right(id) { return x[id] + w[id] }
       function bottom(id) { return y[id] + h[id] }
       function isBodyRegion(id) {
-        return id == "project-board-sidebar" || id == "project-board-detail" || id == "project-inspector"
+        # The adaptive Inspector is intentionally a temporary trailing overlay;
+        # only persistent sidebar/detail siblings must never overlap.
+        return id == "project-board-sidebar" || id == "project-board-detail"
       }
       function overlaps(a, b) {
         return right(a) > x[b] + threshold &&
@@ -911,22 +1013,64 @@ wait_for_required_layout_subjects
 assert_layout_stable "initial"
 
 click_sidebar_toggle
-assert_layout_stable "sidebar-hidden" "project-board-header-bar" "project-board-detail" "project-inspector"
+assert_layout_stable "sidebar-hidden" "project-board-header-bar" "project-board-detail"
 
 click_sidebar_toggle
 assert_layout_stable "sidebar-restored"
 
-set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_MIN_WIDTH" "$LAYOUT_STABILITY_WINDOW_MIN_HEIGHT"
-assert_layout_stable "window-min"
+set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_COMPACT_WIDTH" "$LAYOUT_STABILITY_WINDOW_MIN_HEIGHT"
+wait_for_ax_identifier_absent "project-inspector"
+assert_layout_stable "inspector-compact-closed"
+
+set_project_board_window_size \
+  "$LAYOUT_STABILITY_WINDOW_BELOW_MIN_WIDTH" \
+  "$LAYOUT_STABILITY_WINDOW_MIN_HEIGHT" \
+  "$LAYOUT_STABILITY_WINDOW_MIN_WIDTH"
+wait_for_ax_identifier_absent "project-inspector"
+assert_layout_stable "window-minimum-closed"
+assert_window_minimum_width "closed"
+
+set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH" "$LAYOUT_STABILITY_WINDOW_MIN_HEIGHT"
+wait_for_ax_identifier_absent "project-inspector"
+assert_layout_stable "inspector-canonical-closed"
+
+click_ax_identifier "project-header-open-inspector"
+wait_for_ax_identifier "project-inspector"
+assert_layout_stable "inspector-explicit-open" "project-board-header-bar" "project-board-detail" "project-board-sidebar" "project-inspector"
+
+set_project_board_window_size \
+  "$LAYOUT_STABILITY_WINDOW_BELOW_MIN_WIDTH" \
+  "$LAYOUT_STABILITY_WINDOW_MIN_HEIGHT" \
+  "$LAYOUT_STABILITY_WINDOW_MIN_WIDTH"
+wait_for_ax_identifier "project-inspector"
+assert_layout_stable "window-minimum-open" "project-board-header-bar" "project-board-detail" "project-board-sidebar" "project-inspector"
+assert_window_minimum_width "open"
+
+set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH" "$LAYOUT_STABILITY_WINDOW_MIN_HEIGHT"
+click_ax_identifier "project-inspector-close"
+wait_for_ax_identifier_absent "project-inspector"
+assert_layout_stable "inspector-explicit-close"
 
 set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH" "$LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT"
-assert_layout_stable "window-standard"
+assert_layout_stable "inspector-wide-closed"
+click_ax_identifier "project-header-open-inspector"
+wait_for_ax_identifier "project-inspector"
+assert_layout_stable "inspector-wide-open" "project-board-header-bar" "project-board-detail" "project-board-sidebar" "project-inspector"
+
+set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH" "$LAYOUT_STABILITY_WINDOW_MIN_HEIGHT"
+wait_for_ax_identifier_absent "project-inspector"
+assert_layout_stable "inspector-resize-hidden"
+
+set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH" "$LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT"
+wait_for_ax_identifier "project-inspector"
+assert_layout_stable "inspector-wide-restored" "project-board-header-bar" "project-board-detail" "project-board-sidebar" "project-inspector"
 
 set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_WIDE_WIDTH" "$LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT"
 assert_layout_stable "window-wide"
 
 assert_sidebar_destination_window_size_stable "destination-inbox" "sidebar-destination-inbox" "Inbox" "inbox-workflow"
-assert_sidebar_destination_window_size_stable "destination-assistant-queue" "sidebar-destination-assistant-queue" "Assistant Queue" "assistant-queue-workflow"
+assert_sidebar_destination_window_size_stable "destination-review" "sidebar-destination-review" "Review" "review-hub"
+assert_ax_destination_window_size_stable "destination-review-assistant-queue" "review-destination-assistant-queue" "assistant-queue-workflow"
 assert_sidebar_destination_window_size_stable "destination-today" "sidebar-destination-today" "Today" "today-workflow"
 
 write_json_artifacts

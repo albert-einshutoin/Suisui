@@ -47,6 +47,7 @@ private enum ProjectBoardLayoutMetrics {
     static let taskMetadataChipMinHeight: CGFloat = 24
     static let taskStatusRailWidth: CGFloat = 4
     static let taskStatusRailHeight: CGFloat = 44
+    static let inspectorOverlayWidth: CGFloat = 300
 }
 
 private struct DevelopmentAutomationReviewSheet: Identifiable {
@@ -72,9 +73,11 @@ struct ProjectBoardView: View {
     private let developmentAutomationReviewSession: (ActionPlan) -> ReviewSessionViewModel
     @AppStorage(ProjectBoardSelectionPersistence.storageKey) private var initialRouteRawValue = ProjectBoardSelectionPersistence.defaultRawValue
     @SceneStorage(ProjectBoardScenePersistence.routeStorageKey) private var currentSceneRouteRawValue = ""
+    @SceneStorage("projectBoard.userRequestedInspector") private var userRequestedInspector = false
     @State private var displayMode: ProjectBoardDisplayMode = .board
     @State private var selectedDestination: ProjectBoardSidebarDestination? = .today
-    @State private var isInspectorPresented = true
+    @State private var projectBoardWindowWidth: CGFloat = 0
+    @State private var allowsCompactInspectorPresentation = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var toolbarLayoutRefreshToken = 0
     @State private var isTerminalPanelPresented = false
@@ -164,37 +167,19 @@ struct ProjectBoardView: View {
             }
             .id(toolbarLayoutRefreshToken)
             .projectBoardSynchronizedColumnBounds()
-            .inspector(isPresented: inspectorBinding) {
-                Group {
-                    if let task = viewModel.selectedTask {
-                        TaskInspectorView(
-                            task: task,
-                            viewModel: viewModel,
-                            onClose: { inspectorBinding.wrappedValue = false }
-                        )
-                    } else if let project = selectedProjectForInspector {
-                        ProjectInspectorView(
-                            project: project,
-                            viewModel: viewModel,
-                            onReviewDevelopmentAutomation: presentDevelopmentAutomationReview,
-                            onClose: { inspectorBinding.wrappedValue = false }
-                        )
-                    } else {
-                        EmptyView()
-                    }
-                }
-                // Keep 300pt as the comfortable editing width, but allow the
-                // inspector to yield the native split view's 24pt squeeze at
-                // the hosted 980pt minimum window instead of clipping the
-                // header and inspector beyond the owned window.
-                .inspectorColumnWidth(min: 276, ideal: 300, max: 420)
-            }
         }
         .frame(
-            minWidth: ProjectBoardWindowMetrics.minWidth,
             minHeight: ProjectBoardWindowMetrics.minHeight,
             alignment: .topLeading
         )
+        .overlay(alignment: .trailing) {
+            if isInspectorEffectivelyPresented {
+                inspectorOverlayContent
+                    // Keep Inspector content outside the fitting width while
+                    // WindowGroup uses the explicit content minimum contract.
+                    .frame(width: 0, alignment: .trailing)
+            }
+        }
         .navigationTitle("SoloPM")
         // The Edit-menu board undo command targets the key Project Board
         // window through this focused scene value; text-field undo keeps the
@@ -216,7 +201,8 @@ struct ProjectBoardView: View {
         .background(
             ProjectBoardToolbarLayoutBridge(
                 columnVisibility: columnVisibility,
-                onToolbarLayoutChanged: refreshProjectBoardColumnsAfterToolbarDisplayModeChange
+                onToolbarLayoutChanged: refreshProjectBoardColumnsAfterToolbarDisplayModeChange,
+                onWindowWidthChanged: updateProjectBoardWindowWidth
             )
         )
         .task {
@@ -253,6 +239,7 @@ struct ProjectBoardView: View {
             consumePendingSceneOpenRequests()
         }
         .onChange(of: selectedDestination) { _, destination in
+            allowsCompactInspectorPresentation = false
             if destination != nil {
                 selectedSmartListID = nil
             }
@@ -277,11 +264,6 @@ struct ProjectBoardView: View {
             // can open Inbox with a seeded capture selected.
             applySelectedTaskOverrideIfNeeded()
             applyPendingCommandPaletteRevealIfNeeded()
-        }
-        .onChange(of: viewModel.selectedTaskID) { _, selectedTaskID in
-            if selectedTaskID != nil && selectedDestination != .today && selectedDestination != .inbox {
-                isInspectorPresented = true
-            }
         }
         .fileExporter(
             isPresented: $isExportingTaskInterop,
@@ -523,7 +505,8 @@ struct ProjectBoardView: View {
                     project: project,
                     displayMode: $displayMode,
                     viewModel: viewModel,
-                    onOpenTaskInspector: { isInspectorPresented = true }
+                    onOpenProjectInspector: requestInspectorPresentation,
+                    onOpenTaskInspector: requestInspectorPresentation
                 )
             } else if viewModel.isEmptyProjectStateVisible {
                 ContentUnavailableView("No Projects", systemImage: "folder")
@@ -650,7 +633,7 @@ struct ProjectBoardView: View {
     private func selectSmartList(_ smartList: SmartList) {
         selectedSmartListID = smartList.id
         viewModel.selectedTaskID = nil
-        isInspectorPresented = false
+        allowsCompactInspectorPresentation = false
         // Smart lists overlay the detail without extending the contract-pinned
         // destination enum; clearing the destination keeps exactly one of the
         // two selection sources active at a time.
@@ -686,16 +669,73 @@ struct ProjectBoardView: View {
         }
     }
 
-    private var inspectorBinding: Binding<Bool> {
-        Binding(
-            get: { isInspectorPresented && (viewModel.selectedTask != nil || selectedProjectForInspector != nil) },
-            set: { isPresented in
-                isInspectorPresented = isPresented
-                if !isPresented {
-                    viewModel.selectedTaskID = nil
-                }
-            }
+    private var isInspectorEffectivelyPresented: Bool {
+        InspectorPresentationPolicy.shouldPresent(
+            windowWidth: Double(projectBoardWindowWidth),
+            route: currentBoardRoute,
+            selection: inspectorSelectionContext,
+            userRequested: userRequestedInspector,
+            allowsCompactPresentation: allowsCompactInspectorPresentation
         )
+    }
+
+    @ViewBuilder
+    private var inspectorOverlayContent: some View {
+        Group {
+            if let task = viewModel.selectedTask {
+                TaskInspectorView(
+                    task: task,
+                    viewModel: viewModel,
+                    onClose: dismissInspector
+                )
+            } else if let project = selectedProjectForInspector {
+                ProjectInspectorView(
+                    project: project,
+                    viewModel: viewModel,
+                    onReviewDevelopmentAutomation: presentDevelopmentAutomationReview,
+                    onClose: dismissInspector
+                )
+            } else {
+                EmptyView()
+            }
+        }
+        .frame(width: ProjectBoardLayoutMetrics.inspectorOverlayWidth)
+        .frame(maxHeight: .infinity)
+        .background(.regularMaterial)
+        .overlay(alignment: .leading) {
+            Divider()
+        }
+        .shadow(color: .black.opacity(0.12), radius: 12, x: -3, y: 0)
+    }
+
+    private var inspectorSelectionContext: InspectorSelectionContext {
+        if viewModel.selectedTask != nil {
+            return .task
+        }
+        if selectedProjectForInspector != nil {
+            return .project
+        }
+        return .none
+    }
+
+    private func requestInspectorPresentation() {
+        userRequestedInspector = true
+        allowsCompactInspectorPresentation = true
+    }
+
+    private func updateProjectBoardWindowWidth(_ width: CGFloat) {
+        let wasWide = Double(projectBoardWindowWidth) >= InspectorPresentationPolicy.wideMinimumWidth
+        projectBoardWindowWidth = width
+        if wasWide && Double(width) < InspectorPresentationPolicy.wideMinimumWidth {
+            // Resize hides only the effective presentation. The scene-local
+            // request remains available when this route becomes wide again.
+            allowsCompactInspectorPresentation = false
+        }
+    }
+
+    private func dismissInspector() {
+        userRequestedInspector = false
+        allowsCompactInspectorPresentation = false
     }
 
     private var sidebarToggleHelp: String {
@@ -1070,10 +1110,8 @@ struct ProjectBoardView: View {
         case .project(let projectID):
             viewModel.selectedProjectID = projectID
             viewModel.selectedTaskID = nil
-            isInspectorPresented = true
         case .inbox, .assistantQueue, .today, .catchUp, .schedule, .done, .projects, .none:
             viewModel.selectedTaskID = nil
-            isInspectorPresented = false
         }
     }
 
@@ -1186,7 +1224,7 @@ struct ProjectBoardView: View {
         if selectedDestination != .inbox {
             applyLegacyDestinationWithinScene(.inbox)
         }
-        isInspectorPresented = false
+        allowsCompactInspectorPresentation = false
     }
 
     private func handleAssistantQueueOpenRequest(_ notification: Notification) {
@@ -1215,21 +1253,19 @@ struct ProjectBoardView: View {
         viewModel.selectedTaskID = task.id
         // Inbox and Today own their review details in persistent workflow rails;
         // opening the broader inspector here would hide the seeded evidence state.
-        isInspectorPresented = selectedDestination != .today && selectedDestination != .inbox
+        allowsCompactInspectorPresentation = false
     }
 
     private func selectTodayTask(_ task: ProjectBoardTask) {
         // Today row selection feeds the persistent assistant rail first. The
         // inspector still opens explicitly from the rail Edit action.
         viewModel.selectedTaskID = task.id
-        isInspectorPresented = false
     }
 
     private func selectInboxTask(_ task: ProjectBoardTask) {
         // Inbox triage keeps consecutive voice captures in the workflow rail so
         // users can classify them without the broader edit inspector taking focus.
         viewModel.selectedTaskID = task.id
-        isInspectorPresented = false
     }
 
     private func openInspectorForTodayRailTask(_ taskID: Int64) {
@@ -1238,7 +1274,7 @@ struct ProjectBoardView: View {
             return
         }
 
-        isInspectorPresented = true
+        requestInspectorPresentation()
     }
 
     private var taskInteropDefaultExportFilename: String {
@@ -1381,10 +1417,12 @@ private struct ProjectBoardTodayRefreshLifecycleModifier: ViewModifier {
 private struct ProjectBoardToolbarLayoutBridge: NSViewRepresentable {
     let columnVisibility: NavigationSplitViewVisibility
     let onToolbarLayoutChanged: () -> Void
+    let onWindowWidthChanged: (CGFloat) -> Void
 
     func makeNSView(context: Context) -> NSView {
         let view = ProjectBoardToolbarLayoutBridgeView(frame: .zero)
         view.onToolbarLayoutChanged = onToolbarLayoutChanged
+        view.onWindowWidthChanged = onWindowWidthChanged
         view.reconcileProjectBoardToolbarLayout(allowRetryIfToolbarMissing: true)
         return view
     }
@@ -1396,6 +1434,7 @@ private struct ProjectBoardToolbarLayoutBridge: NSViewRepresentable {
         }
 
         view.onToolbarLayoutChanged = onToolbarLayoutChanged
+        view.onWindowWidthChanged = onWindowWidthChanged
         view.installToolbarDisplayModeObservationIfNeeded()
         view.installToolbarDisplayModeMenuPruningIfNeeded()
         view.reconcileProjectBoardToolbarLayout(allowRetryIfToolbarMissing: true)
@@ -1404,6 +1443,7 @@ private struct ProjectBoardToolbarLayoutBridge: NSViewRepresentable {
 
 private final class ProjectBoardToolbarLayoutBridgeView: NSView {
     var onToolbarLayoutChanged: (() -> Void)?
+    var onWindowWidthChanged: ((CGFloat) -> Void)?
     private let runtimeDiagnosticLogger = Logger(subsystem: "dev.solopm.app", category: "runtime")
     private weak var observedToolbar: NSToolbar?
     private var toolbarDisplayModeObservation: NSKeyValueObservation?
@@ -1413,9 +1453,12 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
     private var toolbarLayoutReconcileDepth = 0
     private var toolbarLayoutMaxDepth = 0
     private var didScheduleInitialToolbarLayoutStabilization = false
+    private var observedWindowWidth: CGFloat?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        enforceProjectBoardWindowMinimumSize()
+        reportWindowWidthIfChanged()
         installToolbarDisplayModeObservationIfNeeded()
         installToolbarDisplayModeMenuPruningIfNeeded()
         reconcileProjectBoardToolbarLayout(allowRetryIfToolbarMissing: true)
@@ -1424,7 +1467,42 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
 
     override func layout() {
         super.layout()
+        enforceProjectBoardWindowMinimumSize()
+        reportWindowWidthIfChanged()
         reconcileProjectBoardToolbarLayout(allowRetryIfToolbarMissing: false)
+    }
+
+    private func reportWindowWidthIfChanged() {
+        guard let width = window?.frame.width, width != observedWindowWidth else {
+            return
+        }
+        observedWindowWidth = width
+        onWindowWidthChanged?(width)
+    }
+
+    private func enforceProjectBoardWindowMinimumSize() {
+        guard let window else {
+            return
+        }
+
+        // AX-driven resizes can bypass SwiftUI's content fitting constraint.
+        // Keep the frame-level minimum authoritative and repair an already
+        // undersized frame once so compact Inspector presentation cannot make
+        // the board narrower than the product's usable 960pt contract.
+        let minimumSize = NSSize(
+            width: ProjectBoardWindowMetrics.minWidth,
+            height: ProjectBoardWindowMetrics.minHeight
+        )
+        if window.minSize != minimumSize {
+            window.minSize = minimumSize
+        }
+
+        var constrainedFrame = window.frame
+        constrainedFrame.size.width = max(constrainedFrame.width, minimumSize.width)
+        constrainedFrame.size.height = max(constrainedFrame.height, minimumSize.height)
+        if constrainedFrame.size != window.frame.size {
+            window.setFrame(constrainedFrame, display: true)
+        }
     }
 
     @discardableResult
@@ -1585,6 +1663,7 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
         allowRetryIfToolbarMissing: Bool,
         notifyColumnsWhenToolbarAlreadyStable: Bool = false
     ) {
+        enforceProjectBoardWindowMinimumSize()
         // Record re-entry before the existing boolean guard returns. This keeps
         // nested attempts observable without allowing nested toolbar mutation.
         toolbarLayoutReconcileDepth += 1
@@ -1693,6 +1772,7 @@ private extension NSToolbarItem {
 private struct ProjectBoardToolbarLayoutBridge: View {
     let columnVisibility: NavigationSplitViewVisibility
     let onToolbarLayoutChanged: () -> Void
+    let onWindowWidthChanged: (CGFloat) -> Void
 
     var body: some View {
         EmptyView()
@@ -2279,6 +2359,7 @@ private struct ProjectBoardDetail: View {
     let project: ProjectBoardProject
     @Binding var displayMode: ProjectBoardDisplayMode
     @ObservedObject var viewModel: ProjectBoardViewModel
+    var onOpenProjectInspector: () -> Void = {}
     var onOpenTaskInspector: () -> Void = {}
     @State private var composingStatus: ProjectTaskStatus?
 
@@ -2293,6 +2374,7 @@ private struct ProjectBoardDetail: View {
                     ProjectHeaderActions(
                         project: project,
                         displayMode: $displayMode,
+                        onEditProject: onOpenProjectInspector,
                         onAddTask: { startComposingTask() }
                     )
                 }
@@ -2303,6 +2385,7 @@ private struct ProjectBoardDetail: View {
                     ProjectHeaderActions(
                         project: project,
                         displayMode: $displayMode,
+                        onEditProject: onOpenProjectInspector,
                         onAddTask: { startComposingTask() }
                     )
                 }
@@ -3068,18 +3151,23 @@ private struct ProjectHeaderSummary: View {
 private struct ProjectHeaderActions: View {
     let project: ProjectBoardProject
     @Binding var displayMode: ProjectBoardDisplayMode
+    let onEditProject: () -> Void
     let onAddTask: () -> Void
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 8) {
                 viewPicker
+                editProjectButton
                 addTaskButton
             }
 
             VStack(alignment: .leading, spacing: 8) {
                 viewPicker
-                addTaskButton
+                HStack(spacing: 8) {
+                    editProjectButton
+                    addTaskButton
+                }
             }
         }
         .accessibilityElement(children: .contain)
@@ -3116,6 +3204,16 @@ private struct ProjectHeaderActions: View {
         .accessibilityLabel("Add task to \(project.title)")
         .accessibilityHint("Opens the inline composer for a new local task.")
     }
+
+    private var editProjectButton: some View {
+        Button(action: onEditProject) {
+            Label("Edit Project", systemImage: "slider.horizontal.3")
+        }
+        .buttonStyle(.bordered)
+        .help("Open project details")
+        .accessibilityIdentifier("project-header-open-inspector")
+        .accessibilityHint("Opens this project's editable details in the inspector.")
+    }
 }
 
 private struct ProjectKanbanBoard: View {
@@ -3147,6 +3245,10 @@ private struct ProjectKanbanBoard: View {
                             composingStatus = nil
                         },
                         onSelectTask: { viewModel.selectedTaskID = $0 },
+                        onOpenTaskDetails: {
+                            viewModel.selectedTaskID = $0
+                            onOpenTaskInspector()
+                        },
                         onMoveTask: { taskID, status in
                             viewModel.moveTask(id: taskID, to: status)
                         },
@@ -3309,6 +3411,7 @@ private struct BoardColumnView: View {
     let onCancelComposing: () -> Void
     let onCreateTask: (String, String, ProjectTaskPriority, String?) -> Void
     let onSelectTask: (Int64) -> Void
+    let onOpenTaskDetails: (Int64) -> Void
     let onMoveTask: (Int64, ProjectTaskStatus) -> Void
     let onMoveDroppedTasks: ([String], ProjectTaskStatus) -> Bool
 
@@ -3417,7 +3520,7 @@ private struct BoardColumnView: View {
     @ViewBuilder
     private func taskContextMenu(for task: ProjectBoardTask) -> some View {
         Button {
-            onSelectTask(task.id)
+            onOpenTaskDetails(task.id)
         } label: {
             Label("Open Details", systemImage: "sidebar.right")
         }

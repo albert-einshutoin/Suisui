@@ -781,9 +781,44 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(
-            boardSource.contains(".inspectorColumnWidth(min: 276, ideal: 300, max: 420)"),
-            "The inspector must yield the 24pt native split-view squeeze at the hosted 980pt window width."
+            boardSource.contains(".frame(width: ProjectBoardLayoutMetrics.inspectorOverlayWidth)"),
+            "The inspector overlay must not increase the hosted minimum window width."
         )
+        XCTAssertTrue(boardSource.contains(".frame(width: 0, alignment: .trailing)"))
+    }
+
+    func testProjectBoardInspectorUsesSceneLocalIntentAndStableWidthPolicy() throws {
+        let boardSource = try readProjectBoardSurfaceSources()
+
+        XCTAssertTrue(boardSource.contains("@SceneStorage(\"projectBoard.userRequestedInspector\")"))
+        XCTAssertTrue(boardSource.contains("InspectorPresentationPolicy.shouldPresent("))
+        XCTAssertTrue(boardSource.contains("onWindowWidthChanged: updateProjectBoardWindowWidth"))
+        XCTAssertTrue(boardSource.contains("private func reportWindowWidthIfChanged()"))
+        XCTAssertTrue(boardSource.contains("requestInspectorPresentation()"))
+        XCTAssertTrue(boardSource.contains("dismissInspector()"))
+        XCTAssertFalse(boardSource.contains("@State private var isInspectorPresented = true"))
+        XCTAssertFalse(boardSource.contains("if selectedTaskID != nil && selectedDestination != .today && selectedDestination != .inbox"))
+    }
+
+    func testLayoutStabilitySmokeCoversAdaptiveInspectorWidthsAndIntentMarkers() throws {
+        let script = try readPackageFile("script/check_layout_stability_smoke.sh")
+
+        XCTAssertTrue(script.contains("LAYOUT_STABILITY_WINDOW_COMPACT_WIDTH"))
+        XCTAssertTrue(script.contains("960"))
+        XCTAssertTrue(script.contains("LAYOUT_STABILITY_WINDOW_BELOW_MIN_WIDTH"))
+        XCTAssertTrue(script.contains("900"))
+        XCTAssertTrue(script.contains("LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH"))
+        XCTAssertTrue(script.contains("1024"))
+        XCTAssertTrue(script.contains("LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH"))
+        XCTAssertTrue(script.contains("1180"))
+        XCTAssertTrue(script.contains("inspector-compact-closed"))
+        XCTAssertTrue(script.contains("window-minimum-closed"))
+        XCTAssertTrue(script.contains("window-minimum-open"))
+        XCTAssertTrue(script.contains("inspector-explicit-open"))
+        XCTAssertTrue(script.contains("inspector-explicit-close"))
+        XCTAssertTrue(script.contains("\"sidebar-destination-review\" \"Review\" \"review-hub\""))
+        XCTAssertTrue(script.contains("\"review-destination-assistant-queue\" \"assistant-queue-workflow\""))
+        XCTAssertTrue(script.contains("LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX:-0"))
     }
 
     func testProjectBoardHeaderKeepsActionsInSynchronousSwiftUILayout() throws {
@@ -1111,15 +1146,19 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let detailStart = try XCTUnwrap(boardSource.range(of: "} detail: {"))
-        let inspectorStart = try XCTUnwrap(boardSource.range(of: ".inspector(isPresented: inspectorBinding)"))
+        let inspectorStart = try XCTUnwrap(boardSource.range(of: ".overlay(alignment: .trailing)"))
         let toolbarStart = try XCTUnwrap(boardSource.range(of: ".toolbar {"))
 
         XCTAssertGreaterThan(toolbarStart.lowerBound, inspectorStart.lowerBound)
         XCTAssertTrue(boardSource.contains("enum ProjectBoardWindowMetrics"))
         XCTAssertTrue(boardSource.contains("static let defaultWidth: CGFloat = 1_180"))
         XCTAssertTrue(boardSource.contains("static let minWidth: CGFloat = 960"))
-        XCTAssertTrue(boardSource.contains(".frame(\n            minWidth: ProjectBoardWindowMetrics.minWidth,\n            minHeight: ProjectBoardWindowMetrics.minHeight"))
+        XCTAssertTrue(boardSource.contains(".frame(\n            minHeight: ProjectBoardWindowMetrics.minHeight"))
+        XCTAssertTrue(boardSource.contains("private func enforceProjectBoardWindowMinimumSize()"))
+        XCTAssertTrue(boardSource.contains("window.minSize = minimumSize"))
+        XCTAssertTrue(boardSource.contains("window.setFrame(constrainedFrame, display: true)"))
         XCTAssertTrue(appSource.contains(".defaultSize(width: ProjectBoardWindowMetrics.defaultWidth, height: ProjectBoardWindowMetrics.defaultHeight)"))
+        XCTAssertTrue(appSource.contains(".windowResizability(.contentMinSize)"))
         XCTAssertEqual(boardSource.components(separatedBy: ".navigationTitle(\"SoloPM\")").count - 1, 1)
         XCTAssertEqual(boardSource.components(separatedBy: ".projectBoardSynchronizedColumnBounds()").count - 1, 2)
         // The sidebar pins bounded (min/ideal) column widths so fixed
@@ -1843,7 +1882,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let source = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(source.contains("TaskInspectorView("))
-        XCTAssertTrue(source.contains("onClose: { inspectorBinding.wrappedValue = false }"))
+        XCTAssertTrue(source.contains("onClose: dismissInspector"))
         XCTAssertTrue(source.contains("ProjectInspectorView("))
         XCTAssertTrue(source.contains("private struct InspectorCloseHeader"))
         XCTAssertTrue(source.contains("private struct InspectorCloseButton"))
@@ -2118,10 +2157,10 @@ final class AppExperienceSourceTests: XCTestCase {
         let workflowSource = try readProjectWorkflowSources()
 
         XCTAssertTrue(boardSource.contains("InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectInboxTask)"))
-        XCTAssertTrue(boardSource.contains("selectedDestination != .today && selectedDestination != .inbox"))
+        XCTAssertTrue(boardSource.contains("route: currentBoardRoute"))
         XCTAssertTrue(boardSource.contains("private func selectInboxTask(_ task: ProjectBoardTask)"))
-        XCTAssertTrue(boardSource.contains("isInspectorPresented = false"))
-        XCTAssertTrue(boardSource.contains("isInspectorPresented = selectedDestination != .today && selectedDestination != .inbox"))
+        XCTAssertTrue(boardSource.contains("allowsCompactInspectorPresentation = false"))
+        XCTAssertTrue(boardSource.contains("InspectorPresentationPolicy.shouldPresent("))
         XCTAssertTrue(workflowSource.contains("var selectInboxTask: (ProjectBoardTask) -> Void = { _ in }"))
         XCTAssertTrue(workflowSource.contains("onSelectTask: selectInboxTask"))
         XCTAssertTrue(workflowSource.contains("memoDraft: $voiceMemoDraft"))
@@ -2131,8 +2170,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let overrideStart = try XCTUnwrap(boardSource.range(of: "private func applySelectedTaskOverrideIfNeeded()"))
         let overrideEnd = try XCTUnwrap(boardSource[overrideStart.lowerBound...].range(of: "private func selectTodayTask"))
         let overrideBlock = String(boardSource[overrideStart.lowerBound..<overrideEnd.lowerBound])
-        XCTAssertTrue(overrideBlock.contains("isInspectorPresented = selectedDestination != .today && selectedDestination != .inbox"))
-        XCTAssertFalse(overrideBlock.contains("isInspectorPresented = true"))
+        XCTAssertTrue(overrideBlock.contains("allowsCompactInspectorPresentation = false"))
+        XCTAssertFalse(overrideBlock.contains("requestInspectorPresentation()"))
     }
 
     func testInboxAndTodayWorkflowsExposeKeyboardAndVoiceOverAnchors() throws {
@@ -2391,11 +2430,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("ProjectInspectorView("))
         XCTAssertTrue(source.contains("project: project,"))
         XCTAssertTrue(source.contains("viewModel: viewModel,"))
-        XCTAssertTrue(source.contains("onClose: { inspectorBinding.wrappedValue = false }"))
+        XCTAssertTrue(source.contains("onClose: dismissInspector"))
         XCTAssertTrue(source.contains("ProjectInspectorSuggestionSection"))
-        XCTAssertTrue(source.contains("@State private var isInspectorPresented = true"))
+        XCTAssertTrue(source.contains("@SceneStorage(\"projectBoard.userRequestedInspector\")"))
         XCTAssertTrue(source.contains("selectedProjectForInspector"))
-        XCTAssertTrue(source.contains("isInspectorPresented = false"))
+        XCTAssertTrue(source.contains("private func dismissInspector()"))
         XCTAssertTrue(source.contains("viewModel.updateSelectedProject(title: title)"))
         XCTAssertTrue(source.contains("viewModel.deleteSelectedProject()"))
         XCTAssertTrue(source.contains("viewModel.archiveSelectedProject()"))
@@ -4635,7 +4674,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testProjectBoardGoogleCalendarSyncRequiresDialogApprovalToken() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let dialogStart = try XCTUnwrap(boardSource.range(of: ".confirmationDialog(\n            \"Sync due tasks to Google Calendar?\""))
-        let dialogEnd = try XCTUnwrap(boardSource.range(of: "private var inspectorBinding", range: dialogStart.lowerBound..<boardSource.endIndex))
+        let dialogEnd = try XCTUnwrap(boardSource.range(of: "private var isInspectorEffectivelyPresented", range: dialogStart.lowerBound..<boardSource.endIndex))
         let dialogSource = String(boardSource[dialogStart.lowerBound..<dialogEnd.lowerBound])
 
         XCTAssertTrue(dialogSource.contains("isPresented: $isGoogleCalendarSyncApprovalPresented"))
