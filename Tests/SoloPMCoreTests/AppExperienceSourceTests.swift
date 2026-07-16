@@ -744,6 +744,20 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
+    func testCalmSignalDeskTokensStayOutOfNativeContainerRoots() throws {
+        let designSource = try readPackageFile("Sources/SoloPMApp/Views/SoloPMDesignSystem.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let settingsSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsView.swift")
+
+        XCTAssertTrue(designSource.contains("func soloAssistantSignal() -> some View"))
+        XCTAssertFalse(designSource.contains("NavigationSplitView"))
+        XCTAssertFalse(designSource.contains("Form {"))
+        XCTAssertFalse(designSource.contains(".inspector"))
+        XCTAssertFalse(boardSource.contains(".background(SoloPMSurface.canvas)"))
+        XCTAssertFalse(boardSource.contains(".background(SoloPMSurface.groupedContent)"))
+        XCTAssertFalse(settingsSource.contains("TabView(selection: $selectedTab) {\n            overviewSettingsTab\n                .background(SoloPMSurface"))
+    }
+
     func testProjectBoardToolbarHostsSettingsLinkWithoutThemeControls() throws {
         let toolbarSource = try readPackageFile(
             "Sources/SoloPMApp/Views/ProjectBoardToolbarContent.swift"
