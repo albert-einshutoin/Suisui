@@ -79,10 +79,26 @@ struct ProjectBoardReviewHubView<Content: View>: View {
     private var compactNavigation: some View {
         HStack {
             Menu {
-                compactDestination(.schedule, "Schedule")
-                compactDestination(.completed, "Completed")
-                compactDestination(.automationActivity, "Automation Activity")
-                compactDestination(.assistantQueue, "Assistant Queue")
+                compactDestination(
+                    .schedule,
+                    "Schedule",
+                    accessibilityIdentifier: "review-hub-compact-destination-schedule"
+                )
+                compactDestination(
+                    .completed,
+                    "Completed",
+                    accessibilityIdentifier: "review-hub-compact-destination-completed"
+                )
+                compactDestination(
+                    .automationActivity,
+                    "Automation Activity",
+                    accessibilityIdentifier: "review-hub-compact-destination-automation-activity"
+                )
+                compactDestination(
+                    .assistantQueue,
+                    "Assistant Queue",
+                    accessibilityIdentifier: "review-hub-compact-destination-assistant-queue"
+                )
             } label: {
                 Label("Choose Review View", systemImage: "sidebar.left")
             }
@@ -94,13 +110,15 @@ struct ProjectBoardReviewHubView<Content: View>: View {
 
     private func compactDestination(
         _ destination: ReviewRoute,
-        _ title: LocalizedStringKey
+        _ title: LocalizedStringKey,
+        accessibilityIdentifier: String
     ) -> some View {
         Button {
             route = .review(destination)
         } label: {
             Text(title)
         }
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 
     private var reviewSelection: Binding<ReviewRoute?> {

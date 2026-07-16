@@ -266,6 +266,11 @@ prepare_production_fixture() {
   seed_production_fixture
 }
 
+try_click_destination() {
+  local destination_identifier="$1"
+  "$AX_PRESS_ELEMENT_HELPER_EXECUTABLE" "$APP_PID" "$destination_identifier" >/dev/null 2>&1
+}
+
 click_sidebar_destination() {
   local destination_identifier="$1"
   local destination_label="$2"
@@ -274,6 +279,24 @@ click_sidebar_destination() {
     echo "BLOCKER: performance smoke could not select $destination_label in owned app pid $APP_PID" >&2
     return 1
   fi
+}
+
+click_destination_until_available() {
+  local destination_identifier="$1"
+  local destination_label="$2"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if "$AX_PRESS_ELEMENT_HELPER_EXECUTABLE" "$APP_PID" "$destination_identifier"; then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      ax_emit_failure_category "product-marker" "performance-destination-unavailable"
+      echo "BLOCKER: performance smoke could not select $destination_label in owned app pid $APP_PID" >&2
+      return 1
+    fi
+    activate_app
+    sleep 0.2
+  done
 }
 
 wait_for_marker() {
@@ -337,6 +360,23 @@ measure_destination() {
   record_sample "$label" "$start_ms" "$end_ms" "$MAX_DESTINATION_SWITCH_MS"
 }
 
+measure_review_assistant_queue() {
+  local start_ms end_ms
+  start_ms="$(now_ms)"
+  if try_click_destination "review-destination-assistant-queue"; then
+    printf "OK: selected Assistant Queue from wide Review navigation\n"
+  else
+    # The default CI window can render Review in compact mode. Open the visible
+    # chooser and press its stable menu-item identifier without changing the
+    # product's adaptive breakpoint solely for performance evidence.
+    click_sidebar_destination "review-hub-compact-navigation" "Review view chooser"
+    click_destination_until_available "review-hub-compact-destination-assistant-queue" "Assistant Queue"
+  fi
+  wait_for_marker "assistant-queue-workflow"
+  end_ms="$(now_ms)"
+  record_sample "destination-assistant-queue" "$start_ms" "$end_ms" "$MAX_DESTINATION_SWITCH_MS"
+}
+
 trap cleanup EXIT
 
 {
@@ -370,7 +410,7 @@ measure_destination "destination-inbox" "sidebar-destination-inbox" "Inbox" "inb
 # Measure both real user transitions so this gate cannot silently restore the
 # removed top-level destination just to satisfy an old performance fixture.
 measure_destination "destination-review" "sidebar-destination-review" "Review" "review-hub"
-measure_destination "destination-assistant-queue" "review-destination-assistant-queue" "Assistant Queue" "assistant-queue-workflow"
+measure_review_assistant_queue
 measure_destination "destination-today" "sidebar-destination-today" "Today" "today-workflow"
 
 printf '\nStatus: passed\n' >>"$SUMMARY_FILE"

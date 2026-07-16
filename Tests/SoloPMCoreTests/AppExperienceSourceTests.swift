@@ -126,6 +126,7 @@ final class AppExperienceSourceTests: XCTestCase {
         }
         XCTAssertTrue(projects.contains("projects-hub-compact-navigation"))
         XCTAssertTrue(review.contains("review-hub-compact-navigation"))
+        XCTAssertTrue(review.contains("review-hub-compact-destination-assistant-queue"))
     }
 
     func testCompactProjectsHubPreservesWideNavigationAndActionParity() throws {
@@ -181,6 +182,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(reviewSource.contains("review-destination-completed"))
         XCTAssertTrue(reviewSource.contains("review-destination-automation-activity"))
         XCTAssertTrue(reviewSource.contains("review-destination-assistant-queue"))
+        XCTAssertTrue(reviewSource.contains("review-hub-compact-destination-assistant-queue"))
     }
 
     func testEvidenceRouteOverrideRemainsProcessLocalWhileNavigationStaysTyped() throws {
