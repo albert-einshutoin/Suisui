@@ -29,6 +29,8 @@ LAYOUT_STABILITY_WINDOW_BELOW_MIN_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_BELOW_
 LAYOUT_STABILITY_WINDOW_COMPACT_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_COMPACT_WIDTH:-960}"
 LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH:-1024}"
 LAYOUT_STABILITY_WINDOW_MIN_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_MIN_WIDTH:-960}"
+LAYOUT_STABILITY_WINDOW_BELOW_MIN_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_BELOW_MIN_HEIGHT:-580}"
+LAYOUT_STABILITY_CONTENT_MIN_HEIGHT="${SOLOPM_LAYOUT_STABILITY_CONTENT_MIN_HEIGHT:-620}"
 LAYOUT_STABILITY_WINDOW_MIN_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_MIN_HEIGHT:-720}"
 LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH:-1180}"
 LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT:-760}"
@@ -41,6 +43,7 @@ SQLITE3="${SQLITE3:-sqlite3}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_FRAME_HELPER="${AX_FRAME_HELPER:-$ROOT_DIR/script/ui_evidence_ax_frame_dump.swift}"
 AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}"
+WINDOW_CONTENT_SIZE_HELPER="${WINDOW_CONTENT_SIZE_HELPER:-$ROOT_DIR/script/ui_evidence_window_content_size.swift}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_LAYOUT_STABILITY_TIMEOUT_SECONDS must be a positive integer" >&2
@@ -77,6 +80,8 @@ for dimension_name in \
   LAYOUT_STABILITY_WINDOW_MIN_WIDTH \
   LAYOUT_STABILITY_WINDOW_COMPACT_WIDTH \
   LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH \
+  LAYOUT_STABILITY_WINDOW_BELOW_MIN_HEIGHT \
+  LAYOUT_STABILITY_CONTENT_MIN_HEIGHT \
   LAYOUT_STABILITY_WINDOW_MIN_HEIGHT \
   LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH \
   LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT \
@@ -108,6 +113,7 @@ DIFF_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/diff.tsv"
 SAMPLES_JSON_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/samples.json"
 DIFF_JSON_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/diff.json"
 WINDOW_METADATA_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/window.tsv"
+WINDOW_CONTENT_SIZE_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/window-content-size.tsv"
 REQUIRED_AX_IDENTIFIERS=(
   "project-board-header-bar"
   "project-board-detail"
@@ -122,6 +128,7 @@ app_identity=""
 app_launch_identity=""
 AX_FRAME_HELPER_BINARY="$LAYOUT_STABILITY_OUTPUT_DIR/ui-evidence-ax-frame-dump.$$"
 AX_PRESS_ELEMENT_HELPER_BINARY="$LAYOUT_STABILITY_OUTPUT_DIR/ui-evidence-ax-press-element.$$"
+WINDOW_CONTENT_SIZE_HELPER_BINARY="$LAYOUT_STABILITY_OUTPUT_DIR/ui-evidence-window-content-size.$$"
 
 : >"$SAMPLES_FILE"
 : >"$DIFF_FILE"
@@ -196,7 +203,7 @@ terminate_app() {
 
 cleanup() {
   terminate_app
-  rm -f "$AX_FRAME_HELPER_BINARY" "$AX_PRESS_ELEMENT_HELPER_BINARY"
+  rm -f "$AX_FRAME_HELPER_BINARY" "$AX_PRESS_ELEMENT_HELPER_BINARY" "$WINDOW_CONTENT_SIZE_HELPER_BINARY"
 }
 
 prepare_ax_helpers() {
@@ -204,6 +211,7 @@ prepare_ax_helpers() {
   # collection would shift every requested sample beyond the 300ms window.
   /usr/bin/swiftc "$AX_FRAME_HELPER" -o "$AX_FRAME_HELPER_BINARY"
   /usr/bin/swiftc "$AX_PRESS_ELEMENT_HELPER" -o "$AX_PRESS_ELEMENT_HELPER_BINARY"
+  /usr/bin/swiftc "$WINDOW_CONTENT_SIZE_HELPER" -o "$WINDOW_CONTENT_SIZE_HELPER_BINARY"
 }
 
 activate_app() {
@@ -314,6 +322,7 @@ SQL
 prepare_layout_candidate() {
   rm -rf "$LAYOUT_STABILITY_RUNTIME_DIR/home"
   mkdir -p "$LAYOUT_STABILITY_RUNTIME_DIR/home"
+  rm -f "$WINDOW_CONTENT_SIZE_FILE"
   ./script/build_and_run.sh --build-only
   migrate_layout_database
   seed_layout_candidate
@@ -323,6 +332,7 @@ launch_layout_candidate() {
   terminate_app
   /usr/bin/env -i PATH="$PATH" TMPDIR="$LAYOUT_STABILITY_RUNTIME_DIR" HOME="$LAYOUT_STABILITY_RUNTIME_DIR/home" CFFIXED_USER_HOME="$LAYOUT_STABILITY_RUNTIME_DIR/home" \
     SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$LAYOUT_STABILITY_DATABASE_PATH" \
+    SOLOPM_LAYOUT_STABILITY_WINDOW_CONTENT_SIZE_PATH="$WINDOW_CONTENT_SIZE_FILE" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$layout_project_id" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_launch_pid=$!
@@ -452,6 +462,28 @@ assert_window_minimum_width() {
     return 1
   fi
   printf 'OK: Project Board minimum width held at %spx while inspector was %s\n' "$window_width" "$state"
+}
+
+assert_window_content_minimum() {
+  local state="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local content_width content_height
+  while true; do
+    if read -r content_width content_height < <("$WINDOW_CONTENT_SIZE_HELPER_BINARY" "$WINDOW_CONTENT_SIZE_FILE" 2>/dev/null) &&
+      [[ "$content_width" =~ ^[0-9]+$ ]] &&
+      [[ "$content_height" =~ ^[0-9]+$ ]] &&
+      [[ "$content_width" -ge "$LAYOUT_STABILITY_WINDOW_MIN_WIDTH" ]] &&
+      [[ "$content_height" -ge "$LAYOUT_STABILITY_CONTENT_MIN_HEIGHT" ]]; then
+      printf 'OK: Project Board content minimum held at %sx%s while inspector was %s\n' \
+        "$content_width" "$content_height" "$state"
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: Project Board content size fell below ${LAYOUT_STABILITY_WINDOW_MIN_WIDTH}x${LAYOUT_STABILITY_CONTENT_MIN_HEIGHT} while inspector was ${state} (actual=${content_width:-unknown}x${content_height:-unknown})" >&2
+      return 1
+    fi
+    sleep 0.1
+  done
 }
 
 window_size_key() {
@@ -1036,9 +1068,19 @@ set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH" "$LAYOU
 wait_for_ax_identifier_absent "project-inspector"
 assert_layout_stable "inspector-canonical-closed"
 
+set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH" "$LAYOUT_STABILITY_WINDOW_BELOW_MIN_HEIGHT"
+wait_for_ax_identifier_absent "project-inspector"
+assert_window_content_minimum "closed"
+assert_layout_stable "content-minimum-closed"
+
 click_ax_identifier "project-header-open-inspector"
 wait_for_ax_identifier "project-inspector"
 assert_layout_stable "inspector-explicit-open" "project-board-header-bar" "project-board-detail" "project-board-sidebar" "project-inspector"
+
+set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH" "$LAYOUT_STABILITY_WINDOW_BELOW_MIN_HEIGHT"
+wait_for_ax_identifier "project-inspector"
+assert_window_content_minimum "open"
+assert_layout_stable "content-minimum-open" "project-board-header-bar" "project-board-detail" "project-board-sidebar" "project-inspector"
 
 set_project_board_window_size \
   "$LAYOUT_STABILITY_WINDOW_BELOW_MIN_WIDTH" \

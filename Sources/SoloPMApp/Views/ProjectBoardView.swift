@@ -1469,6 +1469,7 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
     private var toolbarLayoutMaxDepth = 0
     private var didScheduleInitialToolbarLayoutStabilization = false
     private var observedWindowWidth: CGFloat?
+    private var reportedContentLayoutSize: NSSize?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -1501,23 +1502,67 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
         }
 
         // AX-driven resizes can bypass SwiftUI's content fitting constraint.
-        // Keep the frame-level minimum authoritative and repair an already
-        // undersized frame once so compact Inspector presentation cannot make
-        // the board narrower than the product's usable 960pt contract.
-        let minimumSize = NSSize(
+        // The product contract is expressed in content coordinates; titlebar
+        // and toolbar height vary per window and must not consume the usable
+        // 960x620 board area.
+        let minimumContentSize = NSSize(
             width: ProjectBoardWindowMetrics.minWidth,
             height: ProjectBoardWindowMetrics.minHeight
         )
-        if window.minSize != minimumSize {
-            window.minSize = minimumSize
+        if window.contentMinSize != minimumContentSize {
+            window.contentMinSize = minimumContentSize
         }
 
-        var constrainedFrame = window.frame
-        constrainedFrame.size.width = max(constrainedFrame.width, minimumSize.width)
-        constrainedFrame.size.height = max(constrainedFrame.height, minimumSize.height)
-        if constrainedFrame.size != window.frame.size {
-            window.setFrame(constrainedFrame, display: true)
+        let minimumFrameSize = window.frameRect(
+            forContentRect: NSRect(origin: .zero, size: minimumContentSize)
+        ).size
+        if window.minSize != minimumFrameSize {
+            window.minSize = minimumFrameSize
         }
+
+        let currentContentRect = window.contentRect(forFrameRect: window.frame)
+        let constrainedContentSize = NSSize(
+            width: max(currentContentRect.width, minimumContentSize.width),
+            height: max(currentContentRect.height, minimumContentSize.height)
+        )
+        guard constrainedContentSize != currentContentRect.size else {
+            reportContentLayoutSizeIfRequested(window)
+            return
+        }
+
+        var constrainedFrame = window.frameRect(
+            forContentRect: NSRect(origin: currentContentRect.origin, size: constrainedContentSize)
+        )
+        // Growing upward preserves the titlebar position and avoids moving a
+        // window under the pointer while toolbar reconciliation is re-entered.
+        constrainedFrame.origin.x = window.frame.minX
+        constrainedFrame.origin.y = window.frame.maxY - constrainedFrame.height
+        window.setFrame(constrainedFrame, display: true)
+        reportContentLayoutSizeIfRequested(window)
+    }
+
+    private func reportContentLayoutSizeIfRequested(_ window: NSWindow) {
+        guard let rawPath = ProcessInfo.processInfo.environment[
+            "SOLOPM_LAYOUT_STABILITY_WINDOW_CONTENT_SIZE_PATH"
+        ], rawPath.isEmpty == false else {
+            return
+        }
+
+        let contentLayoutSize = window.contentLayoutRect.size
+        guard contentLayoutSize != reportedContentLayoutSize else {
+            return
+        }
+        reportedContentLayoutSize = contentLayoutSize
+
+        // Runtime layout evidence needs the usable content size after titlebar
+        // and toolbar subtraction. Production runs do no file I/O because the
+        // opt-in evidence path is absent.
+        let payload = "\(Int(contentLayoutSize.width.rounded())) \(Int(contentLayoutSize.height.rounded()))\n"
+        try? payload.write(
+            toFile: rawPath,
+            atomically: true,
+            encoding: .utf8
+        )
     }
 
     @discardableResult
