@@ -363,7 +363,7 @@ struct SettingsView: View {
         mcpStatusLabel: String
     ) -> [SettingsReadinessRow] {
         var rows = [
-            readinessRow(
+            SettingsReadinessPresentation.aiProviderCapability(
                 id: "ai",
                 title: "AI Provider",
                 detail: localizedDisplay(
@@ -371,22 +371,20 @@ struct SettingsView: View {
                     settingsViewModel.settings.aiProvider.displayName,
                     activeAIProviderStatusLabel
                 ),
-                tone: activeAIProviderTone,
-                action: .openAI
+                statusLabel: activeAIProviderStatusLabel,
+                readiness: activeAIProviderReadinessRow.readiness
             ),
-            readinessRow(
+            SettingsReadinessPresentation.voiceProviderCapability(
                 id: "stt",
                 title: "STT",
                 detail: sttOverviewDetailLabel,
-                tone: sttOverviewTone,
-                action: .openAI
+                statusLabel: settingsViewModel.localSTTProviderReadinessRow.statusLabel
             ),
-            readinessRow(
+            SettingsReadinessPresentation.voiceProviderCapability(
                 id: "tts",
                 title: "TTS",
                 detail: ttsOverviewDetailLabel,
-                tone: ttsOverviewTone,
-                action: .openAI
+                statusLabel: settingsViewModel.ttsProviderReadinessRow.statusLabel
             ),
             permissionReadinessRow(
                 id: "calendar",
@@ -466,7 +464,8 @@ struct SettingsView: View {
             SettingsReadinessPresentation.failedCapability(
                 id: id,
                 title: title,
-                redactedReason: detail
+                redactedReason: detail,
+                action: action
             )
         case .warning, .neutral:
             SettingsReadinessPresentation.capability(
@@ -567,7 +566,8 @@ struct SettingsView: View {
             return SettingsReadinessPresentation.failedCapability(
                 id: "google-calendar",
                 title: "Google Calendar",
-                redactedReason: status.detailLabel
+                redactedReason: status.detailLabel,
+                action: .retry(featureID: "google-calendar")
             )
         }
     }
@@ -2141,16 +2141,8 @@ struct SettingsView: View {
         )
     }
 
-    private var sttOverviewTone: SettingsStatusTone {
-        settingsViewModel.localSTTProviderReadinessRow.isReady ? .ready : .warning
-    }
-
     private var ttsOverviewDetailLabel: String {
         settingsViewModel.ttsProviderReadinessRow.statusLabel
-    }
-
-    private var ttsOverviewTone: SettingsStatusTone {
-        settingsViewModel.ttsProviderReadinessRow.isReady ? .ready : .warning
     }
 
     private var googleCalendarSettingsReadinessRow: GoogleCalendarSettingsReadinessRow {

@@ -87,7 +87,13 @@ public enum SettingsReadinessPresentation {
         action: SettingsReadinessAction? = nil
     ) -> SettingsReadinessRow {
         if let failure, !failure.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return failedCapability(id: id, title: title, redactedReason: failure)
+            return capability(
+                id: id,
+                title: title,
+                detail: failure,
+                state: .needsAction,
+                action: action ?? defaultAction(for: id)
+            )
         }
         return SettingsReadinessRow(
             id: id,
@@ -102,14 +108,79 @@ public enum SettingsReadinessPresentation {
     public static func failedCapability(
         id: String,
         title: String,
-        redactedReason: String
+        redactedReason: String,
+        action: SettingsReadinessAction
     ) -> SettingsReadinessRow {
         capability(
             id: id,
             title: title,
             detail: redactedReason,
             state: .needsAction,
-            action: .retry(featureID: id)
+            action: action
+        )
+    }
+
+    public static func aiProviderCapability(
+        id: String,
+        title: String,
+        detail: String,
+        statusLabel: String,
+        readiness: AIProviderReadiness
+    ) -> SettingsReadinessRow {
+        let state: SettingsReadinessState
+        switch readiness {
+        case .ready:
+            state = .ready
+        case .unknown, .checking:
+            state = .checking
+        case .unavailable:
+            state = .unsupported
+        case .needsAction:
+            switch statusLabel {
+            case "Invalid":
+                state = .blocked
+            case "Not configured", "Setup required", "Model id required", "Approval required", "Local":
+                state = .setupWhenNeeded
+            default:
+                state = .needsAction
+            }
+        }
+
+        return capability(
+            id: id,
+            title: title,
+            detail: detail,
+            state: state,
+            action: .openAI
+        )
+    }
+
+    public static func voiceProviderCapability(
+        id: String,
+        title: String,
+        detail: String,
+        statusLabel: String
+    ) -> SettingsReadinessRow {
+        let state: SettingsReadinessState
+        switch statusLabel {
+        case "Ready":
+            state = .ready
+        case "Downloading":
+            state = .checking
+        case "Unsupported", "Model unavailable", "Not available":
+            state = .unsupported
+        case "Download failed", "Needs reinstall", "Failed":
+            state = .needsAction
+        default:
+            state = .setupWhenNeeded
+        }
+
+        return capability(
+            id: id,
+            title: title,
+            detail: detail,
+            state: state,
+            action: .openAI
         )
     }
 
@@ -154,9 +225,9 @@ public enum SettingsReadinessPresentation {
         switch state {
         case .ready:
             .readyNow
-        case .setupWhenNeeded, .checking:
+        case .setupWhenNeeded, .checking, .unsupported:
             .setUpWhenUsed
-        case .needsAction, .blocked, .unsupported:
+        case .needsAction, .blocked:
             .needsAttention
         }
     }

@@ -19,7 +19,8 @@ final class SettingsReadinessPresentationTests: XCTestCase {
         let row = SettingsReadinessPresentation.failedCapability(
             id: "calendar",
             title: "Calendar",
-            redactedReason: "Authorization expired"
+            redactedReason: "Authorization expired",
+            action: .retry(featureID: "calendar")
         )
 
         XCTAssertEqual(row.state, .needsAction)
@@ -45,7 +46,8 @@ final class SettingsReadinessPresentationTests: XCTestCase {
             SettingsReadinessPresentation.failedCapability(
                 id: "calendar",
                 title: "Calendar",
-                redactedReason: "Authorization expired"
+                redactedReason: "Authorization expired",
+                action: .retry(featureID: "calendar")
             ),
             SettingsReadinessPresentation.optionalCapability(
                 id: "mcp",
@@ -107,6 +109,121 @@ final class SettingsReadinessPresentationTests: XCTestCase {
         XCTAssertEqual(blocked.state, .blocked)
         XCTAssertEqual(blocked.group, .needsAttention)
         XCTAssertEqual(unsupported.state, .unsupported)
-        XCTAssertEqual(unsupported.group, .needsAttention)
+        XCTAssertEqual(unsupported.group, .setUpWhenUsed)
+    }
+
+    func testAIInvalidAndUnavailableRemainDistinctAndOpenAISettings() {
+        let invalid = SettingsReadinessPresentation.aiProviderCapability(
+            id: "ai",
+            title: "AI Provider",
+            detail: "OpenAI: Invalid",
+            statusLabel: "Invalid",
+            readiness: .needsAction(reason: "Re-enter the provider API key in Keychain.")
+        )
+        let unavailable = SettingsReadinessPresentation.aiProviderCapability(
+            id: "ai",
+            title: "AI Provider",
+            detail: "OpenAI: Unavailable",
+            statusLabel: "Unavailable",
+            readiness: .unavailable(reason: "Keychain access is unavailable.")
+        )
+
+        XCTAssertEqual(invalid.state, .blocked)
+        XCTAssertEqual(invalid.group, .needsAttention)
+        XCTAssertEqual(invalid.action, .openAI)
+        XCTAssertEqual(unavailable.state, .unsupported)
+        XCTAssertEqual(unavailable.group, .setUpWhenUsed)
+        XCTAssertEqual(unavailable.action, .openAI)
+    }
+
+    func testAICheckingAndOptionalSetupDoNotBecomeFailures() {
+        let checking = SettingsReadinessPresentation.aiProviderCapability(
+            id: "ai",
+            title: "AI Provider",
+            detail: "Checking the local server.",
+            statusLabel: "Checking server",
+            readiness: .checking
+        )
+        let setup = SettingsReadinessPresentation.aiProviderCapability(
+            id: "ai",
+            title: "AI Provider",
+            detail: "Save the provider API key in Keychain.",
+            statusLabel: "Not configured",
+            readiness: .needsAction(reason: "Save the provider API key in Keychain.")
+        )
+
+        XCTAssertEqual(checking.state, .checking)
+        XCTAssertEqual(checking.group, .setUpWhenUsed)
+        XCTAssertEqual(setup.state, .setupWhenNeeded)
+        XCTAssertEqual(setup.group, .setUpWhenUsed)
+    }
+
+    func testAIEndpointFailureNeedsAttentionButStillOpensSettings() {
+        let row = SettingsReadinessPresentation.aiProviderCapability(
+            id: "ai",
+            title: "AI Provider",
+            detail: "The local endpoint refused the connection.",
+            statusLabel: "The local endpoint refused the connection.",
+            readiness: .needsAction(reason: "The local endpoint refused the connection.")
+        )
+
+        XCTAssertEqual(row.state, .needsAction)
+        XCTAssertEqual(row.group, .needsAttention)
+        XCTAssertEqual(row.action, .openAI)
+    }
+
+    func testVoiceReadinessDistinguishesInstallUnsupportedCheckingAndFailure() {
+        let notInstalled = SettingsReadinessPresentation.voiceProviderCapability(
+            id: "stt",
+            title: "STT",
+            detail: "Model not installed",
+            statusLabel: "Model not installed"
+        )
+        let unsupported = SettingsReadinessPresentation.voiceProviderCapability(
+            id: "tts",
+            title: "TTS",
+            detail: "Provider is unavailable in this build.",
+            statusLabel: "Unsupported"
+        )
+        let checking = SettingsReadinessPresentation.voiceProviderCapability(
+            id: "stt",
+            title: "STT",
+            detail: "Downloading model",
+            statusLabel: "Downloading"
+        )
+        let failure = SettingsReadinessPresentation.voiceProviderCapability(
+            id: "tts",
+            title: "TTS",
+            detail: "Download failed",
+            statusLabel: "Download failed"
+        )
+
+        XCTAssertEqual(notInstalled.state, .setupWhenNeeded)
+        XCTAssertEqual(notInstalled.group, .setUpWhenUsed)
+        XCTAssertEqual(unsupported.state, .unsupported)
+        XCTAssertEqual(unsupported.group, .setUpWhenUsed)
+        XCTAssertEqual(checking.state, .checking)
+        XCTAssertEqual(checking.group, .setUpWhenUsed)
+        XCTAssertEqual(failure.state, .needsAction)
+        XCTAssertEqual(failure.group, .needsAttention)
+        XCTAssertEqual(failure.action, .openAI)
+    }
+
+    func testFailureActionMatchesAvailableBehavior() {
+        let settingsFailure = SettingsReadinessPresentation.failedCapability(
+            id: "sync",
+            title: "Sync",
+            redactedReason: "Backend check failed.",
+            action: .openSync
+        )
+        let retryableFailure = SettingsReadinessPresentation.failedCapability(
+            id: "google-calendar",
+            title: "Google Calendar",
+            redactedReason: "Status check failed.",
+            action: .retry(featureID: "google-calendar")
+        )
+
+        XCTAssertEqual(settingsFailure.action, .openSync)
+        XCTAssertEqual(retryableFailure.action, .retry(featureID: "google-calendar"))
     }
 }

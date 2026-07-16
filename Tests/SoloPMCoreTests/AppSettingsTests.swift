@@ -1296,6 +1296,24 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testAppSettingsViewModelPreservesKokoroDownloadFailureForActionableReadiness() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelTTSFailure.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [
+                .kokoro82M: .failed("Network request failed.")
+            ])
+        )
+
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.statusLabel, "Download failed")
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.nextActionLabel, "Retry Kokoro model")
+        XCTAssertFalse(viewModel.ttsProviderReadinessRow.isReady)
+    }
+
+    @MainActor
     func testAppSettingsViewModelMarksKokoroTTSReadyWithInstalledModelAndExecutable() throws {
         let suiteName = "SoloPM.AppSettingsViewModelTTSReady.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

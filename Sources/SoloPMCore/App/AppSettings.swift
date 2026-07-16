@@ -1393,9 +1393,9 @@ public final class AppSettingsViewModel: ObservableObject {
         guard status == .installed else {
             return TTSProviderReadinessRow(
                 provider: provider,
-                statusLabel: "Model not installed",
+                statusLabel: ttsModelStatusLabel(for: status),
                 detailLabel: "\(model.displayName) - \(model.licenseName) - \(model.sourceURL.host ?? "unknown source")",
-                nextActionLabel: "Download Kokoro model",
+                nextActionLabel: ttsModelNextActionLabel(for: status),
                 isReady: false,
                 isSelected: settings.ttsProvider == provider
             )
@@ -1420,6 +1420,30 @@ public final class AppSettingsViewModel: ObservableObject {
             isReady: true,
             isSelected: settings.ttsProvider == provider
         )
+    }
+
+    private func ttsModelStatusLabel(for status: VoiceModelInstallStatus) -> String {
+        switch status {
+        case .downloading:
+            "Downloading"
+        case .failed:
+            "Download failed"
+        case .corrupted:
+            "Needs reinstall"
+        case .notInstalled, .installed:
+            "Model not installed"
+        }
+    }
+
+    private func ttsModelNextActionLabel(for status: VoiceModelInstallStatus) -> String {
+        switch status {
+        case .downloading:
+            "Wait for download"
+        case .failed, .corrupted:
+            "Retry Kokoro model"
+        case .notInstalled, .installed:
+            "Download Kokoro model"
+        }
     }
 
     private func makeLocalSTTProviderReadinessRow() -> STTProviderReadinessRow {
