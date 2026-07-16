@@ -528,11 +528,15 @@ APPLESCRIPT
 enableCheckboxContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  local output=""
+  local checkboxAttemptSeconds="${SOLOPM_RUNTIME_SETTINGS_AX_CHECKBOX_ATTEMPT_SECONDS:-30}"
+  local checkbox_verified=0
+  if [[ ! "$checkboxAttemptSeconds" =~ ^[0-9]+$ || "$checkboxAttemptSeconds" -lt 1 ]]; then
+    echo "SOLOPM_RUNTIME_SETTINGS_AX_CHECKBOX_ATTEMPT_SECONDS must be a positive integer" >&2
+    return 2
+  fi
 
   while true; do
-    set +e
-    output="$(/usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT' 2>/dev/null
+    /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
   set appPID to item 1 of argv as integer
   set fragment to item 2 of argv
@@ -604,21 +608,41 @@ on run argv
   error "checkbox signal not found: " & fragment
 end run
 APPLESCRIPT
-)"
-    local osascript_status=$?
-    set -e
+    local osascript_pid=$!
+    local attempt_deadline=$((SECONDS + checkboxAttemptSeconds))
+    local osascript_finished=0
 
-    if [[ "$osascript_status" -eq 0 && "$output" == enabled* ]]; then
-      printf '%s\n' "$output"
-      return 0
+    while true; do
+      if ! kill -0 "$osascript_pid" >/dev/null 2>&1; then
+        osascript_finished=1
+        if wait "$osascript_pid" >/dev/null 2>&1; then
+          # Whether the control was already enabled or was pressed, a second
+          # bounded pass proves its final enabled state before returning.
+          if [[ "$checkbox_verified" == "1" ]]; then
+            return 0
+          fi
+          checkbox_verified=1
+          sleep 1
+        fi
+        break
+      fi
+      if [[ "$SECONDS" -ge "$attempt_deadline" || "$SECONDS" -ge "$deadline" ]]; then
+        break
+      fi
+      sleep 0.2
+    done
+
+    if [[ "$osascript_finished" -eq 0 ]]; then
+      kill "$osascript_pid" >/dev/null 2>&1 || true
+      wait "$osascript_pid" >/dev/null 2>&1 || true
     fi
-    if [[ "$osascript_status" -eq 0 && "$output" == pressed* ]]; then
-      sleep 1
-    fi
+
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: failed to enable AX checkbox: $fragment" >&2
       return 1
     fi
+    activate_app
+    wait_for_visible_windows >/dev/null 2>&1 || true
     sleep 0.2
   done
 }
