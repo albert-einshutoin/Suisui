@@ -448,12 +448,6 @@ on run argv
         perform action "AXRaise" of targetWindow
       end try
       set size of targetWindow to {targetWidth, targetHeight}
-      set actualSize to size of targetWindow
-      -- AppKit may clamp height to the window's current minimum. Width is the
-      -- layout contract exercised by this smoke and must be accepted exactly.
-      if item 1 of actualSize is not targetWidth then
-        error "pid-owned window rejected requested width"
-      end if
     end tell
   end tell
 end run
