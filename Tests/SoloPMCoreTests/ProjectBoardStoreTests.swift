@@ -7628,6 +7628,38 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testUnrelatedAutomationAndReceiptStateDoesNotRepublishTodayDerivedModels() throws {
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: VolatileExecutionReceiptStore()
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = try XCTUnwrap(viewModel.createTask(
+            title: "Ship release",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-22T18:00:00Z"
+        ))
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        viewModel.refreshDerivedReadModels(on: referenceDate, calendar: utcCalendar())
+        let initialModels = viewModel.derivedReadModels
+        let initialPreviewBuildCount = viewModel.dailyPlanningReviewPreviewBuildCount
+
+        _ = viewModel.prepareTaskAutomationReview(
+            settings: TaskAutoExecutionSettings(isEnabled: true, mode: .reviewOnly, cadence: .manual),
+            trigger: .manual,
+            referenceDate: referenceDate,
+            calendar: utcCalendar()
+        )
+        viewModel.setExecutionReceiptHistorySearchText("reviewed")
+
+        XCTAssertEqual(viewModel.derivedReadModels, initialModels)
+        XCTAssertEqual(viewModel.dailyPlanningReviewPreviewBuildCount, initialPreviewBuildCount)
+    }
+
+    @MainActor
     func testProjectBoardViewModelPreparesScheduleDraftWithoutMutatingTasks() throws {
         let store = try makeStore()
         let viewModel = ProjectBoardViewModel(store: store)

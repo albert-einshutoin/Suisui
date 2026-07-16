@@ -38,7 +38,10 @@ mkdir -p "$ROOT_DIR/.tmp"
 tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-today-complete.XXXXXX")"
 database_path="$tmp_dir/SoloPM-runtime-today-complete.sqlite"
 runtime_home="$tmp_dir/home"
-today_due_at="$(date '+%Y-%m-%dT09:00:00%z')"
+# ISO8601DateFormatter accepts the UTC form consistently across locale and
+# midnight boundaries. One hour ahead keeps the seeded task executable even
+# when the smoke starts near the end of the local day.
+today_due_at="$(date -u -v+1H '+%Y-%m-%dT%H:%M:%SZ')"
 mkdir -p "$runtime_home"
 app_pid=""
 app_launch_pid=""
@@ -82,12 +85,13 @@ wait_for_no_app_process() {
 activate_app() {
   # Use System Events activation to preserve the exact isolated environment
   # passed to the binary instead of asking LaunchServices to open a second app.
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
+  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
-  set appName to item 1 of argv
+  set appPID to item 1 of argv as integer
   tell application "System Events"
-    if not (exists process appName) then return "missing"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then return "missing"
+    tell item 1 of matchingProcesses
       set frontmost to true
       if (count of windows) > 0 then
         try
@@ -122,12 +126,13 @@ wait_for_visible_windows() {
 
   while true; do
     set +e
-    window_count="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>/dev/null
+    window_count="$(/usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' 2>/dev/null
 on run argv
-  set appName to item 1 of argv
+  set appPID to item 1 of argv as integer
   tell application "System Events"
-    if not (exists process appName) then return "0"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then return "0"
+    tell item 1 of matchingProcesses
       return (count of windows) as text
     end tell
   end tell
@@ -155,20 +160,46 @@ set_today_window_size() {
   local height="$2"
   # Fix the window so the completion control remains visible regardless of
   # previously saved user window state.
-  /usr/bin/osascript - "$APP_NAME" "$width" "$height" <<'APPLESCRIPT' >/dev/null
+  /usr/bin/osascript - "$app_pid" "$width" "$height" <<'APPLESCRIPT' >/dev/null
 on run argv
-  set appName to item 1 of argv
+  set appPID to item 1 of argv as integer
   set targetWidth to (item 2 of argv) as integer
   set targetHeight to (item 3 of argv) as integer
   tell application "System Events"
-    if not (exists process appName) then error "process missing"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "process missing"
+    tell item 1 of matchingProcesses
       if not (exists window 1) then error "window missing"
       set frontmost to true
       try
         perform action "AXRaise" of window 1
       end try
       set size of window 1 to {targetWidth, targetHeight}
+    end tell
+  end tell
+end run
+APPLESCRIPT
+  sleep 1
+}
+
+scroll_today_to_contextual_rail() {
+  # The rail can move below the main surface when callers opt into a compact
+  # width. Moving owned scrollbars to the end keeps the same action path
+  # available without changing selection or touching another SoloPM process.
+  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null
+on run argv
+  set appPID to item 1 of argv as integer
+  tell application "System Events"
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "process missing"
+    set targetProcess to item 1 of matchingProcesses
+    set frontmost of targetProcess to true
+    tell targetProcess
+      repeat with axItem in entire contents of window 1
+        try
+          if role of axItem is "AXScrollBar" then set value of axItem to 1.0
+        end try
+      end repeat
     end tell
   end tell
 end run
@@ -302,17 +333,18 @@ waitForAXElementContaining() {
   local required_text_two="${3:-}"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$identifier_fragment" "$required_text_one" "$required_text_two" <<'APPLESCRIPT' >/dev/null 2>&1
+    if /usr/bin/osascript - "$app_pid" "$identifier_fragment" "$required_text_one" "$required_text_two" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
-  set appName to item 1 of argv
+  set appPID to item 1 of argv as integer
   set identifierFragment to item 2 of argv
   set requiredTextOne to item 3 of argv
   set requiredTextTwo to item 4 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "owned process is not visible to System Events"
+    tell item 1 of matchingProcesses
       set windowCount to count of windows
-      if windowCount < 1 then error appName & " has no visible windows"
+      if windowCount < 1 then error "owned process has no visible windows"
       try
         set frontmost to true
       end try
@@ -389,7 +421,7 @@ waitForAXSubtreeMarkerContaining() {
     error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-today-ax-marker-error.XXXXXX")"
     SOLOPM_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
       SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
-      /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" "$APP_NAME" "$identifier_fragment" "$required_text" \
+      /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" "$APP_NAME" "$identifier_fragment" "$required_text" "$app_pid" \
       >/dev/null 2>"$error_file" &
     checker_pid=$!
     (
@@ -430,7 +462,7 @@ pressButtonContainingBounded() {
   while true; do
     error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-today-ax-button-error.XXXXXX")"
     SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
-      /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" "$APP_NAME" "$fragment" \
+      /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" "$app_pid" "$fragment" \
       >/dev/null 2>"$error_file" &
     checker_pid=$!
     (
@@ -460,19 +492,89 @@ pressButtonContainingBounded() {
   done
 }
 
+pressMenuItemContaining() {
+  local fragment="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT' >/dev/null 2>&1
+on run argv
+  set appPID to item 1 of argv as integer
+  set fragment to item 2 of argv
+  tell application "System Events"
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "owned process is not visible to System Events"
+    tell item 1 of matchingProcesses
+      set axItems to entire contents
+      repeat with axItem in axItems
+        set itemRole to ""
+        set signalText to ""
+        try
+          set itemRole to role of axItem as text
+        end try
+        if itemRole is "AXMenuItem" or itemRole is "AXButton" then
+          try
+            set signalText to signalText & " " & (name of axItem as text)
+          end try
+          try
+            set signalText to signalText & " " & (value of attribute "AXIdentifier" of axItem as text)
+          end try
+          try
+            set signalText to signalText & " " & (value of attribute "AXHelp" of axItem as text)
+          end try
+          if signalText contains fragment then
+            perform action "AXPress" of axItem
+            return "pressed " & fragment
+          end if
+        end if
+      end repeat
+    end tell
+  end tell
+  error "menu item signal not found: " & fragment
+end run
+APPLESCRIPT
+    then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: failed to press menu item in AX tree: $fragment" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+pressMenuButtonContaining() {
+  local fragment="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
+      /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_element.swift" "$app_pid" "$fragment" \
+      >/dev/null 2>&1
+    then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: failed to press menu button in AX tree: $fragment" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
 pressButtonContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT'
+    if /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT'
 on run argv
-  set appName to item 1 of argv
+  set appPID to item 1 of argv as integer
   set fragment to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "owned process is not visible to System Events"
+    tell item 1 of matchingProcesses
       set windowCount to count of windows
-      if windowCount < 1 then error appName & " has no visible windows"
+      if windowCount < 1 then error "owned process has no visible windows"
       try
         set frontmost to true
       end try
@@ -573,7 +675,9 @@ today_task_id="$(seed_today_task)"
 launch_app_for_today
 wait_for_database_table "assistant_queue_items"
 waitForAXElementContaining "today-command-capture-field"
-pressButtonContainingBounded "today-rail-edit-task"
+scroll_today_to_contextual_rail
+pressMenuButtonContaining "today-rail-actions-menu"
+pressMenuItemContaining "today-rail-edit-task"
 waitForAXSubtreeMarkerContaining "task-inspector-title" "AX Runtime Today Complete"
 verify_single_value "edit inspector kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
 terminate_app
@@ -584,7 +688,9 @@ waitForAXElementContaining "today-command-capture-field"
 # Keep the edit and subtask checks in separate launches. The subtask action
 # intentionally moves focus into the command field, and isolating the checks
 # keeps this runtime smoke about product behavior rather than AX focus residue.
-pressButtonContainingBounded "today-rail-add-subtask"
+scroll_today_to_contextual_rail
+pressMenuButtonContaining "today-rail-actions-menu"
+pressMenuItemContaining "today-rail-add-subtask"
 waitForAXElementContaining "today-command-capture-field" "AX Runtime Today Complete"
 verify_single_value "subtask prefill kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
 terminate_app
@@ -594,16 +700,21 @@ wait_for_database_table "assistant_queue_items"
 verify_single_value "seeded today task is open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL AND due_at='$today_due_at' THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
 # The isolated launch explicitly selects today_task_id. Re-pressing the row is
 # redundant and can be off-screen in the normal scrollable Today composition;
-# the actionable rail marker below proves the selected-task controls are ready.
-waitForAXElementContaining "today-rail-focus"
-pressButtonContaining "today-rail-focus"
+# the primary marker below proves the recommended task and action are ready.
+waitForAXElementContaining "today-primary-action" "AX Runtime Today Complete"
+pressButtonContaining "today-primary-action"
 verify_single_value "focus kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
-pressButtonContaining "today-rail-schedule-block"
+scroll_today_to_contextual_rail
+pressMenuButtonContaining "today-rail-actions-menu"
+pressMenuItemContaining "today-rail-schedule-block"
 waitForAXElementContaining "today-rail-schedule-draft-status"
 verify_single_value "schedule draft kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
-pressButtonUntilSQLiteValue "queue Today rail reminder draft" "today-rail-reminder-draft" "SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END FROM assistant_queue_items WHERE id LIKE 'action-plan:today-reminder:%:task:$today_task_id' AND state='waitingReview' AND approval_json IS NULL;" "1"
+scroll_today_to_contextual_rail
+pressMenuButtonContaining "today-rail-actions-menu"
+pressMenuItemContaining "today-rail-reminder-draft"
+verify_single_value "queue Today rail reminder draft" "SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END FROM assistant_queue_items WHERE id LIKE 'action-plan:today-reminder:%:task:$today_task_id' AND state='waitingReview' AND approval_json IS NULL;" "1"
 verify_single_value "rail actions kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
 pressButtonContainingBounded "workflow-task-completion-$today_task_id"
 verify_single_value "complete today task" "SELECT CASE WHEN status='completed' AND completed_at IS NOT NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
 
-printf "OK: runtime today complete smoke covered Today rail focus, schedule draft, edit inspector, subtask prefill, reminder draft, and visible row completion\n"
+printf "OK: runtime today complete smoke covered the single primary focus action, contextual rail menu, schedule draft, edit inspector, subtask prefill, reminder draft, and visible row completion\n"

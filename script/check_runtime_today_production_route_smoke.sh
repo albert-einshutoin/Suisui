@@ -28,6 +28,8 @@ CPU_SAMPLE_INTERVAL_SECONDS=1
 REQUIRED_CONSECUTIVE_CPU_SAMPLES=3
 MAX_CPU_PERCENT=20
 MAX_TOOLBAR_LAYOUT_DEPTH="${SOLOPM_RUNTIME_TODAY_MAX_TOOLBAR_LAYOUT_DEPTH:-1}"
+WINDOW_WIDTH="${SOLOPM_RUNTIME_TODAY_WINDOW_WIDTH:-1024}"
+WINDOW_HEIGHT="${SOLOPM_RUNTIME_TODAY_WINDOW_HEIGHT:-760}"
 FIXTURES=("empty" "small")
 LOCALES=("english" "japanese")
 KEEP_ARTIFACTS="${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_KEEP_ARTIFACTS:-0}"
@@ -436,6 +438,38 @@ fail_case() {
   return 1
 }
 
+set_owned_window_size() {
+  local deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/osascript - "$app_pid" "$WINDOW_WIDTH" "$WINDOW_HEIGHT" <<'APPLESCRIPT' >/dev/null 2>&1
+on run argv
+  set appPID to item 1 of argv as integer
+  set targetWidth to item 2 of argv as integer
+  set targetHeight to item 3 of argv as integer
+  tell application "System Events"
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "pid-owned process missing"
+    tell item 1 of matchingProcesses
+      if not (exists window 1) then error "pid-owned window missing"
+      set size of window 1 to {targetWidth, targetHeight}
+      set actualSize to size of window 1
+      if item 1 of actualSize is not targetWidth or item 2 of actualSize is not targetHeight then
+        error "pid-owned window size mismatch"
+      end if
+    end tell
+  end tell
+end run
+APPLESCRIPT
+    then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      return 1
+    fi
+    sleep 1
+  done
+}
+
 launch_route_process_and_window() {
   local window_diagnostic="$1"
   route_failure_category=""
@@ -454,6 +488,10 @@ launch_route_process_and_window() {
   fi
   if ! ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "" "$RUNTIME_TIMEOUT_SECONDS" "$window_diagnostic" "$APP_BINARY"; then
     route_failure_category="$(ax_classify_window_failure "$window_diagnostic" "$app_pid")"
+    return 1
+  fi
+  if ! set_owned_window_size; then
+    route_failure_category="window"
     return 1
   fi
   return 0
