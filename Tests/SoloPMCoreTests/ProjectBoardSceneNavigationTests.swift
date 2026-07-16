@@ -137,6 +137,25 @@ final class ProjectBoardSceneNavigationTests: XCTestCase {
         )
     }
 
+    func testSceneRestorePreservesCatchUpFocusFromAuthoritativeRawValue() {
+        XCTAssertEqual(
+            ProjectBoardScenePersistence.restoredResolution(
+                sceneRawValue: "catch-up",
+                initialRawValue: "primary:inbox",
+                availableProjectIDs: []
+            ),
+            ProjectBoardRouteResolution(route: .primary(.today), focus: .catchUp)
+        )
+        XCTAssertEqual(
+            ProjectBoardScenePersistence.restoredResolution(
+                sceneRawValue: "",
+                initialRawValue: "catch-up",
+                availableProjectIDs: []
+            ),
+            ProjectBoardRouteResolution(route: .primary(.today), focus: .catchUp)
+        )
+    }
+
     func testNewWindowUsesInitialRouteAndMissingProjectFallsBackToToday() {
         XCTAssertEqual(
             ProjectBoardScenePersistence.restoredRoute(

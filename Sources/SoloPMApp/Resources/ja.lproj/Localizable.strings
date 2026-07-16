@@ -1639,6 +1639,12 @@
 "Reviews completed tasks, completed projects, and local recap." = "完了したタスク、完了したプロジェクト、ローカルの振り返りを確認します。";
 "Catch Up (%d)" = "キャッチアップ（%d）";
 "Expands overdue and missed work actions without leaving Today." = "今日から離れずに、期限超過や未処理作業の操作を展開します。";
+"Review workload and approval-ready drafts" = "作業量と承認待ちの予定を確認";
+"See completed work and local recap" = "完了した作業と振り返りを確認";
+"Inspect AI usage, receipts, and execution history" = "AI使用量と実行履歴を確認";
+"Approve, defer, reject, or run reviewed work" = "提案を承認・保留・却下・実行";
+"No pending items" = "未処理項目なし";
+"%d items need attention" = "要確認 %d件";
 "Smart List" = "スマートリスト";
 "New Smart List…" = "新規スマートリスト…";
 "New Smart List" = "新規スマートリスト";

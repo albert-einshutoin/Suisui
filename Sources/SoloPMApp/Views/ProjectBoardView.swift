@@ -88,6 +88,9 @@ struct ProjectBoardView: View {
     @State private var savedSmartLists: [SmartList] = []
     @State private var isPresentingSmartListEditor = false
     @State private var transientBoardRoute: BoardRoute?
+    @State private var catchUpFocusRevision = 0
+    @State private var consumedCatchUpFocusRevision = 0
+    @State private var activeBoardRouteFocus: BoardRouteFocus?
     @State private var pendingDestinationPersistenceSuppression: ProjectBoardDestinationPersistenceSuppression?
     // Palette content hits reveal their task after the destination switch
     // settles, because applySelectedDestination clears task selection.
@@ -379,34 +382,47 @@ struct ProjectBoardView: View {
     /// Typed scene state is the rendering source of truth. The legacy
     /// destination remains only as a compatibility facade for commands and
     /// feature bridges that have not migrated to `BoardRoute` yet.
-    private var currentBoardRoute: BoardRoute {
+    private var currentBoardRouteResolution: ProjectBoardRouteResolution {
         if let transientBoardRoute {
-            return validatedRoute(transientBoardRoute)
+            return ProjectBoardRouteResolution(
+                route: validatedRoute(transientBoardRoute),
+                focus: nil
+            )
         }
         let availableProjectIDs = Set(viewModel.snapshot.projects.map(\.id))
         if !currentSceneRouteRawValue.isEmpty {
-            return validatedRoute(
-                ProjectBoardRouteCodec.route(
+            let resolution = ProjectBoardRouteCodec.resolution(
                     from: currentSceneRouteRawValue,
                     availableProjectIDs: availableProjectIDs
                 )
+            return ProjectBoardRouteResolution(
+                route: validatedRoute(resolution.route),
+                focus: resolution.focus
             )
         }
         if let override = ProjectBoardSelectionPersistence.environmentOverrideRawValue {
-            return validatedRoute(
-                ProjectBoardRouteCodec.route(
+            let resolution = ProjectBoardRouteCodec.resolution(
                     from: override,
                     availableProjectIDs: availableProjectIDs
                 )
+            return ProjectBoardRouteResolution(
+                route: validatedRoute(resolution.route),
+                focus: resolution.focus
             )
         }
-        return validatedRoute(
-            ProjectBoardScenePersistence.restoredRoute(
+        let resolution = ProjectBoardScenePersistence.restoredResolution(
                 sceneRawValue: currentSceneRouteRawValue,
                 initialRawValue: initialRouteRawValue,
                 availableProjectIDs: availableProjectIDs
             )
+        return ProjectBoardRouteResolution(
+            route: validatedRoute(resolution.route),
+            focus: resolution.focus
         )
+    }
+
+    private var currentBoardRoute: BoardRoute {
+        currentBoardRouteResolution.route
     }
 
     private var boardRouteBinding: Binding<BoardRoute> {
@@ -451,7 +467,16 @@ struct ProjectBoardView: View {
                 viewModel: viewModel,
                 selectTodayTask: selectTodayTask,
                 openInspectorForTodayRailTask: openInspectorForTodayRailTask,
-                playDailyPlanningReadout: playDailyPlanningReadoutFromSettings
+                playDailyPlanningReadout: playDailyPlanningReadoutFromSettings,
+                initiallyExpandsCatchUp: activeBoardRouteFocus == .catchUp
+                    || currentBoardRouteResolution.focus == .catchUp,
+                catchUpFocusRevision: catchUpFocusRevision > consumedCatchUpFocusRevision
+                    ? catchUpFocusRevision
+                    : nil,
+                onCatchUpFocusConsumed: { revision in
+                    consumedCatchUpFocusRevision = max(consumedCatchUpFocusRevision, revision)
+                    activeBoardRouteFocus = nil
+                }
             )
         case .primary(.inbox):
             InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectInboxTask)
@@ -849,36 +874,42 @@ struct ProjectBoardView: View {
         guard selectedSmartListID == nil else {
             return
         }
-        // Catch Up remains a distinct legacy surface until Task 4. Its typed
-        // migration route is Today, so a routine data refresh must not collapse
-        // an actively visible Catch Up screen within the current window.
-        if selectedDestination == .catchUp,
-           currentSceneRouteRawValue == ProjectBoardRouteCodec.rawValue(for: .primary(.today)) {
-            applySelectedTaskOverrideIfNeeded()
-            return
-        }
         let availableProjectIDs = Set(viewModel.snapshot.projects.map(\.id))
-        let route: BoardRoute
+        let resolution: ProjectBoardRouteResolution
         if let override = ProjectBoardSelectionPersistence.environmentOverrideRawValue {
-            route = ProjectBoardRouteCodec.route(
+            resolution = ProjectBoardRouteCodec.resolution(
                 from: override,
                 availableProjectIDs: availableProjectIDs
             )
-            transientBoardRoute = validatedRoute(route)
-            applyRouteToLegacyUI(validatedRoute(route))
+            let route = validatedRoute(resolution.route)
+            transientBoardRoute = route
+            applyRouteFocus(resolution.focus)
+            applyRouteToLegacyUI(route)
             applySelectedTaskOverrideIfNeeded()
             return
         } else {
-            route = ProjectBoardScenePersistence.restoredRoute(
+            resolution = ProjectBoardScenePersistence.restoredResolution(
                 sceneRawValue: currentSceneRouteRawValue,
                 initialRawValue: initialRouteRawValue,
                 availableProjectIDs: availableProjectIDs
             )
         }
-        let validatedRoute = validatedRoute(route)
+        let validatedRoute = validatedRoute(resolution.route)
+        applyRouteFocus(resolution.focus)
         persistRoute(validatedRoute, updateInitialRoute: false)
         applyRouteToLegacyUI(validatedRoute)
         applySelectedTaskOverrideIfNeeded()
+    }
+
+    private func applyRouteFocus(_ focus: BoardRouteFocus?) {
+        guard focus == .catchUp else {
+            return
+        }
+        // The revision is view-local state, so a migrated deep link can expand
+        // Catch Up exactly once without leaking presentation state to another
+        // Project Board window.
+        activeBoardRouteFocus = focus
+        catchUpFocusRevision += 1
     }
 
     private func persistSelectedDestination(_ destination: ProjectBoardSidebarDestination?) {

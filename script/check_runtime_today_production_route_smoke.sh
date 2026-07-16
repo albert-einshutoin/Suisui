@@ -388,6 +388,12 @@ route_text_for() {
     review:ja) printf '%s' "確認" ;;
     review-schedule:en) printf '%s' "Schedule" ;;
     review-schedule:ja) printf '%s' "予定" ;;
+    review-completed:en) printf '%s' "Completed" ;;
+    review-completed:ja) printf '%s' "完了" ;;
+    review-automation:en) printf '%s' "Automation Activity" ;;
+    review-automation:ja) printf '%s' "自動化アクティビティ" ;;
+    review-assistant-queue:en) printf '%s' "Assistant Queue" ;;
+    review-assistant-queue:ja) printf '%s' "アシスタントキュー" ;;
     project:*|inspector:*) printf '%s' "fixture-project-1" ;;
     *) return 1 ;;
   esac
@@ -623,6 +629,9 @@ run_normal_routes() {
     "today|today|sidebar-destination-today|today-workflow"
     "review|primary:review|sidebar-destination-review|review-hub"
     "review-schedule|review:schedule|sidebar-destination-review|schedule-workflow"
+    "review-completed|review:completed|sidebar-destination-review|done-workflow"
+    "review-automation|review:automation|sidebar-destination-review|automation-activity-workflow"
+    "review-assistant-queue|review:assistant-queue|sidebar-destination-review|assistant-queue-workflow"
     "projects|projects|sidebar-destination-projects|projects-portfolio-overview"
   )
 

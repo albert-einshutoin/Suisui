@@ -23,6 +23,23 @@ final class ProjectBoardRouteTests: XCTestCase {
         XCTAssertEqual(route(from: "catch-up"), .primary(.today))
     }
 
+    func testLegacyCatchUpResolutionPreservesOneShotTodayFocusIntent() {
+        XCTAssertEqual(
+            ProjectBoardRouteCodec.resolution(
+                from: "catch-up",
+                availableProjectIDs: []
+            ),
+            ProjectBoardRouteResolution(route: .primary(.today), focus: .catchUp)
+        )
+        XCTAssertEqual(
+            ProjectBoardRouteCodec.resolution(
+                from: "primary:today",
+                availableProjectIDs: []
+            ),
+            ProjectBoardRouteResolution(route: .primary(.today), focus: nil)
+        )
+    }
+
     func testStableTypedRawValuesDecode() {
         XCTAssertEqual(route(from: "primary:today"), .primary(.today))
         XCTAssertEqual(route(from: "primary:inbox"), .primary(.inbox))

@@ -1639,6 +1639,12 @@
 "Reviews completed tasks, completed projects, and local recap." = "Reviews completed tasks, completed projects, and local recap.";
 "Catch Up (%d)" = "Catch Up (%d)";
 "Expands overdue and missed work actions without leaving Today." = "Expands overdue and missed work actions without leaving Today.";
+"Review workload and approval-ready drafts" = "Review workload and approval-ready drafts";
+"See completed work and local recap" = "See completed work and local recap";
+"Inspect AI usage, receipts, and execution history" = "Inspect AI usage, receipts, and execution history";
+"Approve, defer, reject, or run reviewed work" = "Approve, defer, reject, or run reviewed work";
+"No pending items" = "No pending items";
+"%d items need attention" = "%d items need attention";
 "Smart List" = "Smart List";
 "New Smart List…" = "New Smart List…";
 "New Smart List" = "New Smart List";

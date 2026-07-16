@@ -30,6 +30,28 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertTrue(todaySource.contains("sidebarMetrics.catchUpCount > 0"))
         XCTAssertTrue(todaySource.contains("today-catch-up-section"))
+        XCTAssertTrue(todaySource.contains("@AccessibilityFocusState private var isCatchUpFocused"))
+        XCTAssertTrue(todaySource.contains("catchUpFocusRevision"))
+        XCTAssertTrue(todaySource.contains("_isCatchUpExpanded = State(initialValue: initiallyExpandsCatchUp)"))
+        XCTAssertTrue(todaySource.contains("isCatchUpExpanded = true"))
+        XCTAssertTrue(todaySource.contains(".accessibilityFocused($isCatchUpFocused)"))
+        XCTAssertTrue(todaySource.contains(".onChange(of: viewModel.derivedReadModels.sidebarMetrics.catchUpCount)"))
+    }
+
+    func testLegacyCatchUpFocusIsResolvedAndConsumedWithinOneBoardScene() throws {
+        let boardSource = try readPackageFile(
+            "Sources/SoloPMApp/Views/ProjectBoardView.swift"
+        )
+
+        XCTAssertTrue(boardSource.contains("@State private var catchUpFocusRevision = 0"))
+        XCTAssertTrue(boardSource.contains("@State private var activeBoardRouteFocus: BoardRouteFocus?"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardRouteCodec.resolution("))
+        XCTAssertTrue(boardSource.contains("ProjectBoardScenePersistence.restoredResolution("))
+        XCTAssertTrue(boardSource.contains("applyRouteFocus(resolution.focus)"))
+        XCTAssertTrue(boardSource.contains("catchUpFocusRevision += 1"))
+        XCTAssertTrue(boardSource.contains("catchUpFocusRevision: catchUpFocusRevision"))
+        XCTAssertTrue(boardSource.contains("initiallyExpandsCatchUp: activeBoardRouteFocus == .catchUp"))
+        XCTAssertTrue(boardSource.contains("|| currentBoardRouteResolution.focus == .catchUp"))
     }
 
     func testProjectsAndReviewHubsExposeRelocatedDestinations() throws {
@@ -219,6 +241,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("projects|projects|sidebar-destination-projects|projects-portfolio-overview"))
         XCTAssertTrue(script.contains("review|primary:review|sidebar-destination-review|review-hub"))
         XCTAssertTrue(script.contains("review-schedule|review:schedule|sidebar-destination-review|schedule-workflow"))
+        XCTAssertTrue(script.contains("review-completed|review:completed|sidebar-destination-review|done-workflow"))
+        XCTAssertTrue(script.contains("review-automation|review:automation|sidebar-destination-review|automation-activity-workflow"))
+        XCTAssertTrue(script.contains("review-assistant-queue|review:assistant-queue|sidebar-destination-review|assistant-queue-workflow"))
         XCTAssertTrue(script.contains("navigate_to_seed_project()"))
         XCTAssertTrue(script.contains("\"project:$seed_project_id\""))
         XCTAssertTrue(script.contains("\"sidebar-destination-projects\""))
@@ -935,8 +960,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(fixture.contains("SOLOPM_LAYOUT_STABILITY_WINDOW_WIDE_WIDTH"))
 
         XCTAssertTrue(boardSource.contains("restoreSelectedDestinationIfNeeded()"))
-        XCTAssertTrue(boardSource.contains("ProjectBoardScenePersistence.restoredRoute("))
-        XCTAssertTrue(boardSource.contains("ProjectBoardRouteCodec.route("))
+        XCTAssertTrue(boardSource.contains("ProjectBoardScenePersistence.restoredResolution("))
+        XCTAssertTrue(boardSource.contains("ProjectBoardRouteCodec.resolution("))
         XCTAssertTrue(boardSource.contains("persistSelectedDestination(destination)"))
         XCTAssertTrue(boardSource.contains("applySelectedDestination(destination)"))
         XCTAssertTrue(persistenceSource.contains("Saved app state can outlive a project row"))

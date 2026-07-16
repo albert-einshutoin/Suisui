@@ -12,8 +12,31 @@ struct TodayWorkflowView: View {
     var selectTodayTask: (ProjectBoardTask) -> Void = { _ in }
     var openInspectorForTodayRailTask: (Int64) -> Void = { _ in }
     var playDailyPlanningReadout: () -> Void = {}
+    let initiallyExpandsCatchUp: Bool
+    var catchUpFocusRevision: Int? = nil
+    var onCatchUpFocusConsumed: (Int) -> Void = { _ in }
     @State private var commandTitle = ""
     @State private var isCatchUpExpanded = false
+    @AccessibilityFocusState private var isCatchUpFocused: Bool
+
+    init(
+        viewModel: ProjectBoardViewModel,
+        selectTodayTask: @escaping (ProjectBoardTask) -> Void = { _ in },
+        openInspectorForTodayRailTask: @escaping (Int64) -> Void = { _ in },
+        playDailyPlanningReadout: @escaping () -> Void = {},
+        initiallyExpandsCatchUp: Bool = false,
+        catchUpFocusRevision: Int? = nil,
+        onCatchUpFocusConsumed: @escaping (Int) -> Void = { _ in }
+    ) {
+        self.viewModel = viewModel
+        self.selectTodayTask = selectTodayTask
+        self.openInspectorForTodayRailTask = openInspectorForTodayRailTask
+        self.playDailyPlanningReadout = playDailyPlanningReadout
+        self.initiallyExpandsCatchUp = initiallyExpandsCatchUp
+        self.catchUpFocusRevision = catchUpFocusRevision
+        self.onCatchUpFocusConsumed = onCatchUpFocusConsumed
+        _isCatchUpExpanded = State(initialValue: initiallyExpandsCatchUp)
+    }
 
     private func subtitle(for snapshot: TodayWorkflowSnapshot) -> String {
         if viewModel.showsCompletedWorkflowTasks {
@@ -111,10 +134,54 @@ struct TodayWorkflowView: View {
                         }
                         .accessibilityIdentifier("today-catch-up-section")
                         .accessibilityHint("Expands overdue and missed work actions without leaving Today.")
+                        .accessibilityFocused($isCatchUpFocused)
                     }
                 }
             }
         )
+        .onAppear {
+            if initiallyExpandsCatchUp,
+               viewModel.derivedReadModels.sidebarMetrics.catchUpCount > 0 {
+                DispatchQueue.main.async {
+                    isCatchUpFocused = true
+                }
+            }
+            applyCatchUpFocusIfNeeded(catchUpFocusRevision)
+        }
+        .onChange(of: catchUpFocusRevision) { _, revision in
+            applyCatchUpFocusIfNeeded(revision)
+        }
+        .onChange(of: initiallyExpandsCatchUp) { _, shouldExpand in
+            guard shouldExpand,
+                  viewModel.derivedReadModels.sidebarMetrics.catchUpCount > 0 else {
+                return
+            }
+            isCatchUpExpanded = true
+            DispatchQueue.main.async {
+                isCatchUpFocused = true
+            }
+        }
+        .onChange(of: viewModel.derivedReadModels.sidebarMetrics.catchUpCount) { _, _ in
+            // Restoration can publish its one-shot focus before the first
+            // derived read-model load finishes. Retrying on count publication
+            // keeps the intent pending without showing an empty section.
+            applyCatchUpFocusIfNeeded(catchUpFocusRevision)
+        }
+    }
+
+    private func applyCatchUpFocusIfNeeded(_ revision: Int?) {
+        guard let revision,
+              viewModel.derivedReadModels.sidebarMetrics.catchUpCount > 0 else {
+            return
+        }
+        isCatchUpExpanded = true
+        // SwiftUI needs one layout pass to publish the expanded AX subtree.
+        // Moving AX focus then also scrolls the containing workflow surface to
+        // the disclosure without adding persistent layout state.
+        DispatchQueue.main.async {
+            isCatchUpFocused = true
+            onCatchUpFocusConsumed(revision)
+        }
     }
 
     private func todayAssistantRail(context: TodayAssistantRailContext) -> some View {

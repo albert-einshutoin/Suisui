@@ -24,6 +24,24 @@ public enum BoardRoute: Hashable, Sendable {
     case review(ReviewRoute)
 }
 
+/// A contextual focus preserved while an older route is migrated into the
+/// stable four-area information architecture.
+public enum BoardRouteFocus: Hashable, Sendable {
+    case catchUp
+}
+
+/// Pure decoding result. `route` remains safe to persist while `focus` is a
+/// one-shot presentation intent owned by the window that decoded it.
+public struct ProjectBoardRouteResolution: Equatable, Sendable {
+    public let route: BoardRoute
+    public let focus: BoardRouteFocus?
+
+    public init(route: BoardRoute, focus: BoardRouteFocus?) {
+        self.route = route
+        self.focus = focus
+    }
+}
+
 /// Deterministic conversion between persisted route strings and typed routes.
 public enum ProjectBoardRouteCodec {
     /// Decodes both current stable values and historical persisted values.
@@ -31,26 +49,53 @@ public enum ProjectBoardRouteCodec {
         from rawValue: String,
         availableProjectIDs: Set<Int64>
     ) -> BoardRoute {
+        resolution(
+            from: rawValue,
+            availableProjectIDs: availableProjectIDs
+        ).route
+    }
+
+    /// Preserves contextual migration intent without expanding the stable
+    /// `BoardRoute` model with presentation-only destinations.
+    public static func resolution(
+        from rawValue: String,
+        availableProjectIDs: Set<Int64>
+    ) -> ProjectBoardRouteResolution {
+        let route: BoardRoute
+        let focus: BoardRouteFocus?
         switch rawValue {
-        case "today", "catch-up", "primary:today":
-            return .primary(.today)
+        case "catch-up":
+            route = .primary(.today)
+            focus = .catchUp
+        case "today", "primary:today":
+            route = .primary(.today)
+            focus = nil
         case "inbox", "primary:inbox":
-            return .primary(.inbox)
+            route = .primary(.inbox)
+            focus = nil
         case "projects", "primary:projects":
-            return .primary(.projects)
+            route = .primary(.projects)
+            focus = nil
         case "primary:review":
-            return .primary(.review)
+            route = .primary(.review)
+            focus = nil
         case "schedule", "review:schedule":
-            return .review(.schedule)
+            route = .review(.schedule)
+            focus = nil
         case "done", "review:completed":
-            return .review(.completed)
+            route = .review(.completed)
+            focus = nil
         case "review:automation":
-            return .review(.automationActivity)
+            route = .review(.automationActivity)
+            focus = nil
         case "assistant-queue", "review:assistant-queue":
-            return .review(.assistantQueue)
+            route = .review(.assistantQueue)
+            focus = nil
         default:
-            return dynamicRoute(from: rawValue, availableProjectIDs: availableProjectIDs)
+            route = dynamicRoute(from: rawValue, availableProjectIDs: availableProjectIDs)
+            focus = nil
         }
+        return ProjectBoardRouteResolution(route: route, focus: focus)
     }
 
     /// Encodes every route in the new stable representation.

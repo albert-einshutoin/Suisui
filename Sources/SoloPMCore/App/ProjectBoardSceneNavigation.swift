@@ -19,10 +19,22 @@ public enum ProjectBoardScenePersistence {
         initialRawValue: String,
         availableProjectIDs: Set<Int64>
     ) -> BoardRoute {
+        restoredResolution(
+            sceneRawValue: sceneRawValue,
+            initialRawValue: initialRawValue,
+            availableProjectIDs: availableProjectIDs
+        ).route
+    }
+
+    public static func restoredResolution(
+        sceneRawValue: String,
+        initialRawValue: String,
+        availableProjectIDs: Set<Int64>
+    ) -> ProjectBoardRouteResolution {
         // Scene storage is authoritative after a window has navigated. The
         // app preference is intentionally consulted only for a new window.
         let rawValue = sceneRawValue.isEmpty ? initialRawValue : sceneRawValue
-        return ProjectBoardRouteCodec.route(
+        return ProjectBoardRouteCodec.resolution(
             from: rawValue,
             availableProjectIDs: availableProjectIDs
         )
