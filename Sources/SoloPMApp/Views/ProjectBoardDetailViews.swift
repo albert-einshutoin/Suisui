@@ -1619,7 +1619,9 @@ private struct BoardTaskCard: View {
             .accessibilityLabel("Open task \(task.title)")
             .accessibilityValue(accessibilityValueText)
             .accessibilityHint("Opens task details in the inspector. Task inspector fields can then be edited without dragging.")
-            .accessibilityIdentifier("task-card-open-details")
+            // The selectable summary combines its children in the runtime AX
+            // tree, so the parent button is the stable task-scoped audit node.
+            .accessibilityIdentifier("task-card-open-details-\(task.id)")
             .accessibilitySortPriority(2)
 
             TaskStatusMoveControls(task: task, onMove: onMoveStatus)
@@ -1642,14 +1644,19 @@ private struct BoardTaskCard: View {
     }
 
     private var accessibilityValueText: String {
-        var values = [
-            "Status: \(task.status.title)",
-            "Priority: \(task.priority.label)"
-        ]
-        if let dueLabel = task.dueLabel {
-            values.append("Due: \(dueLabel)")
-        }
-        return values.joined(separator: ", ")
+        "\(localizedStatusValue), \(localizedPriorityValue), \(localizedDueValue)"
+    }
+
+    private var localizedStatusValue: String {
+        localizedDisplay(task.status.title)
+    }
+
+    private var localizedPriorityValue: String {
+        localizedDisplay(task.priority.label)
+    }
+
+    private var localizedDueValue: String {
+        task.dueLabel.map(localizedDisplay) ?? localizedDisplay("No due date")
     }
 }
 

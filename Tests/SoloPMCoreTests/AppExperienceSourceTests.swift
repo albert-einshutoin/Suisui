@@ -1901,7 +1901,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("TaskDragAffordance"))
         XCTAssertTrue(cardSource.contains("Button(action: onOpenDetails)"))
         XCTAssertTrue(cardSource.contains(".buttonStyle(.plain)"))
-        XCTAssertTrue(cardSource.contains(".accessibilityIdentifier(\"task-card-open-details\")"))
+        XCTAssertTrue(cardSource.contains(".accessibilityIdentifier(\"task-card-open-details-\\(task.id)\")"))
         XCTAssertTrue(cardSource.contains(".accessibilityIdentifier(\"task-status-move-controls\")"))
         XCTAssertTrue(cardSource.contains(".accessibilityElement(children: .contain)"))
         XCTAssertTrue(cardSource.contains(".accessibilitySortPriority(2)"))

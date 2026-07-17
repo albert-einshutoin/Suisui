@@ -2,6 +2,26 @@ import Foundation
 import XCTest
 
 final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
+    func testTaskCardButtonPublishesTaskSpecificLocalizedMetadataForRuntimeAX() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
+        let cardStart = try XCTUnwrap(source.range(of: "private struct BoardTaskCard: View"))
+        let cardEnd = try XCTUnwrap(
+            source.range(of: "private struct TaskCardSelectableSummary: View", range: cardStart.upperBound..<source.endIndex)
+        )
+        let cardSource = String(source[cardStart.lowerBound..<cardEnd.lowerBound])
+
+        XCTAssertTrue(cardSource.contains(".accessibilityIdentifier(\"task-card-open-details-\\(task.id)\")"))
+        XCTAssertFalse(cardSource.contains(".accessibilityIdentifier(\"task-card-open-details\")"))
+        XCTAssertTrue(
+            cardSource.contains("\"\\(localizedStatusValue), \\(localizedPriorityValue), \\(localizedDueValue)\"")
+        )
+        XCTAssertTrue(cardSource.contains("localizedDisplay(task.status.title)"))
+        XCTAssertTrue(cardSource.contains("localizedDisplay(task.priority.label)"))
+        XCTAssertTrue(cardSource.contains("task.dueLabel.map(localizedDisplay) ?? localizedDisplay(\"No due date\")"))
+        XCTAssertTrue(cardSource.contains(".accessibilityElement(children: .combine)"))
+        XCTAssertTrue(cardSource.contains(".accessibilityLabel(\"Open task \\(task.title)\")"))
+    }
+
     func testMetadataChipReservesTextWidthWhenPersistentScrollbarsNarrowTheCard() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
         let chipStart = try XCTUnwrap(source.range(of: "private struct TaskMetadataChip: View"))
