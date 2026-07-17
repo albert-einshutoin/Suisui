@@ -106,6 +106,37 @@ final class VisualCaptureStabilityTests: XCTestCase {
         XCTAssertTrue(frame.contains("replacingOccurrences(of: \"\\n\", with: \" \")"))
     }
 
+    func testDestinationPositionFailureRelaunchesFreshOwnedProcessAndFailsClosedWhenExhausted() throws {
+        let source = try readPackageFile("script/capture_ui_evidence.sh")
+        let functionStart = try XCTUnwrap(source.range(of: "capture_project_board_destination() {"))
+        let functionEnd = try XCTUnwrap(
+            source.range(of: "\ncapture_voice_command_appearance() {", range: functionStart.upperBound..<source.endIndex)
+        )
+        let functionSource = String(source[functionStart.lowerBound..<functionEnd.lowerBound])
+
+        XCTAssertTrue(functionSource.contains("if ! position_window_for_capture \"\" \"$marker_diagnostic\""))
+        XCTAssertTrue(functionSource.contains("retrying exact production destination after owned window positioning failure"))
+        XCTAssertTrue(functionSource.contains("continue"))
+        XCTAssertTrue(functionSource.contains("return 1"))
+        let position = try XCTUnwrap(functionSource.range(of: "if ! position_window_for_capture"))
+        let markers = try XCTUnwrap(functionSource.range(of: "wait_for_project_board_destination \"$label\" \"$target_markers\""))
+        XCTAssertLessThan(position.lowerBound, markers.lowerBound)
+
+        let succeedsOnFreshPID = try runDestinationFixture(functionSource: functionSource, alwaysFailPosition: false)
+        XCTAssertEqual(succeedsOnFreshPID.status, 0, succeedsOnFreshPID.output)
+        XCTAssertTrue(succeedsOnFreshPID.output.contains("marker:pid2:identity2"), succeedsOnFreshPID.output)
+        XCTAssertTrue(succeedsOnFreshPID.output.contains("scroll:pid2:identity2"), succeedsOnFreshPID.output)
+        XCTAssertTrue(succeedsOnFreshPID.output.contains("capture:pid2:identity2"), succeedsOnFreshPID.output)
+        XCTAssertFalse(succeedsOnFreshPID.output.contains("marker:pid1"), succeedsOnFreshPID.output)
+        XCTAssertFalse(succeedsOnFreshPID.output.contains("capture:pid1"), succeedsOnFreshPID.output)
+
+        let exhausted = try runDestinationFixture(functionSource: functionSource, alwaysFailPosition: true)
+        XCTAssertNotEqual(exhausted.status, 0, exhausted.output)
+        XCTAssertFalse(exhausted.output.contains("marker:"), exhausted.output)
+        XCTAssertFalse(exhausted.output.contains("scroll:"), exhausted.output)
+        XCTAssertFalse(exhausted.output.contains("capture:"), exhausted.output)
+    }
+
     func testRasterStabilityHelperAcceptsCompositorNoiseAndRejectsMaterialChange() throws {
         let root = packageRoot()
         let fixture = root.appendingPathComponent(".build/visual-stability-\(UUID().uuidString)", isDirectory: true)
@@ -238,6 +269,46 @@ final class VisualCaptureStabilityTests: XCTestCase {
         try process.run()
         process.waitUntilExit()
         return (process.terminationStatus, String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self))
+    }
+
+    private func runDestinationFixture(
+        functionSource: String,
+        alwaysFailPosition: Bool
+    ) throws -> (status: Int32, output: String) {
+        let positionBody = alwaysFailPosition
+            ? #"echo "position-failed:$EVIDENCE_APP_PID" >&2; return 1"#
+            : #"position_attempts=$((position_attempts + 1)); if [[ "$position_attempts" -eq 1 ]]; then echo "position-failed:$EVIDENCE_APP_PID" >&2; return 1; fi"#
+        let fixture = """
+        set -euo pipefail
+        \(functionSource)
+        EVIDENCE_ROUTE_ATTEMPTS=2
+        EVIDENCE_TMPDIR="${TMPDIR:-/tmp}"
+        APPEARANCE_OVERRIDE=""
+        PROJECT_BOARD_SELECTION_OVERRIDE=""
+        PROJECT_BOARD_SELECTED_TASK_OVERRIDE=""
+        SETTINGS_WINDOW_OVERRIDE=""
+        SETTINGS_TAB_OVERRIDE=""
+        VOICE_COMMAND_WINDOW_OVERRIDE=""
+        EVIDENCE_APP_PID=""
+        EVIDENCE_APP_IDENTITY=""
+        launch_count=0
+        position_attempts=0
+        stop_evidence_app() { :; }
+        write_appearance_preference() { :; }
+        write_app_preference() { :; }
+        open_evidence_app() { launch_count=$((launch_count + 1)); EVIDENCE_APP_PID="pid$launch_count"; EVIDENCE_APP_IDENTITY="identity$launch_count"; }
+        wait_for_process() { :; }
+        activate_evidence_app() { :; }
+        sleep() { :; }
+        wait_for_window_capture_metadata() { printf '1 0 0 1024 724\\n'; }
+        position_window_for_capture() { \(positionBody); }
+        wait_for_project_board_destination() { echo "marker:$EVIDENCE_APP_PID:$EVIDENCE_APP_IDENTITY"; }
+        emit_evidence_app_diagnostic() { :; }
+        scroll_ax_target_into_view() { echo "scroll:$EVIDENCE_APP_PID:$EVIDENCE_APP_IDENTITY"; }
+        capture_visible_window() { echo "capture:$EVIDENCE_APP_PID:$EVIDENCE_APP_IDENTITY"; }
+        capture_project_board_destination light schedule /tmp/output.png fixture 'target=>ready' '' '' target
+        """
+        return try run(["/bin/bash", "-c", fixture])
     }
 
     private func readPackageFile(_ relativePath: String) throws -> String {

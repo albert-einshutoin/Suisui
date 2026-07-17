@@ -474,9 +474,10 @@ wait_for_window_capture_metadata() {
 
 wait_for_owned_evidence_window() {
   local window_name="${1:-}"
+  local diagnostic_file="${2:-}"
 
   ax_wait_for_pid_owned_window "$APP_NAME" "$EVIDENCE_APP_PID" "$window_name" \
-    "$TARGET_TIMEOUT_SECONDS" "" "$APP_BINARY"
+    "$TARGET_TIMEOUT_SECONDS" "$diagnostic_file" "$APP_BINARY"
 }
 
 target_marker_present() {
@@ -773,6 +774,7 @@ wait_for_project_board_destination() {
 
 position_window_for_capture() {
   local window_name="${1:-}"
+  local diagnostic_file="${2:-}"
   local viewport="$VISUAL_BASELINE_VIEWPORT"
   local origin_x=80
   local origin_y=70
@@ -799,7 +801,7 @@ position_window_for_capture() {
   fi
 
   while true; do
-    if ! wait_for_owned_evidence_window "$window_name"; then
+    if ! wait_for_owned_evidence_window "$window_name" "$diagnostic_file"; then
       echo "failure_category=window" >&2
       echo "failure_message=visual-owned-window-unavailable" >&2
       return 1
@@ -1508,6 +1510,8 @@ capture_project_board_destination() {
   SETTINGS_TAB_OVERRIDE=""
   VOICE_COMMAND_WINDOW_OVERRIDE=""
   for ((route_attempt = 1; route_attempt <= EVIDENCE_ROUTE_ATTEMPTS; route_attempt++)); do
+    marker_diagnostic="$EVIDENCE_TMPDIR/project-board-destination.$$.attempt-$route_attempt.err"
+    : >"$marker_diagnostic"
     stop_evidence_app
     write_appearance_preference "$appearance"
     write_app_preference solopm.projectBoard.selectedDestination "$launch_destination"
@@ -1519,11 +1523,21 @@ capture_project_board_destination() {
     # Dense workflow footers may not enter the AX visible subtree until the
     # evidence window is widened, so target validation uses the same bounds as
     # the screenshot instead of a smaller launch-default window.
-    position_window_for_capture
+    if ! position_window_for_capture "" "$marker_diagnostic" 2>>"$marker_diagnostic"; then
+      if [[ "$route_attempt" -lt "$EVIDENCE_ROUTE_ATTEMPTS" ]]; then
+        echo "INFO: retrying exact production destination after owned window positioning failure" >&2
+        emit_evidence_app_diagnostic
+        rm -f "$marker_diagnostic"
+        continue
+      fi
+      cat "$marker_diagnostic" >&2
+      emit_evidence_app_diagnostic
+      rm -f "$marker_diagnostic"
+      PROJECT_BOARD_SELECTION_OVERRIDE="$selected_destination"
+      return 1
+    fi
     sleep 0.25
 
-    marker_diagnostic="$EVIDENCE_TMPDIR/project-board-destination.$$.attempt-$route_attempt.err"
-    : >"$marker_diagnostic"
     destination_status=0
     # Typed route overrides are the production deep-link contract. Launching
     # the exact route avoids depending on whether a SwiftUI List has published

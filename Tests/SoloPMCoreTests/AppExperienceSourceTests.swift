@@ -5289,7 +5289,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("for ((capture_attempt = 1; capture_attempt <= capture_attempts; capture_attempt++))"))
         XCTAssertTrue(script.contains("local deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))"))
         XCTAssertTrue(script.contains("while true; do"))
-        XCTAssertTrue(script.contains("if ! wait_for_owned_evidence_window \"$window_name\"; then"))
+        XCTAssertTrue(script.contains("if ! wait_for_owned_evidence_window \"$window_name\" \"$diagnostic_file\"; then"))
         XCTAssertTrue(script.contains("wait_for_window_capture_metadata \"$window_name\""))
         XCTAssertTrue(script.contains("if [[ \"$SECONDS\" -ge \"$deadline\" ]]; then"))
         XCTAssertTrue(script.contains("INFO: waiting for recreated owned evidence window before positioning"))
