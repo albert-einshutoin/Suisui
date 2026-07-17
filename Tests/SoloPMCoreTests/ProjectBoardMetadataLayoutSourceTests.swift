@@ -36,6 +36,27 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(lineSource.contains(".lineLimit(1)"))
         XCTAssertTrue(lineSource.contains(".minimumScaleFactor(0.82)"))
         XCTAssertTrue(lineSource.contains("maxWidth: .infinity"))
+        XCTAssertTrue(lineSource.contains(".foregroundColor(tint)"))
+        XCTAssertFalse(lineSource.contains(".foregroundStyle(tint)"))
+    }
+
+    func testSelectedTaskCardUsesConcreteTextColorsOnHostedMacOS14() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
+        let summaryStart = try XCTUnwrap(source.range(of: "private struct TaskCardSelectableSummary: View"))
+        let summaryEnd = try XCTUnwrap(
+            source.range(of: "private struct TaskDragAffordance: View", range: summaryStart.upperBound..<source.endIndex)
+        )
+        let summarySource = String(source[summaryStart.lowerBound..<summaryEnd.lowerBound])
+        let controlsStart = try XCTUnwrap(source.range(of: "private struct TaskStatusMoveControls: View"))
+        let controlsEnd = try XCTUnwrap(
+            source.range(of: "private struct TaskCardMetadataStrip: View", range: controlsStart.upperBound..<source.endIndex)
+        )
+        let controlsSource = String(source[controlsStart.lowerBound..<controlsEnd.lowerBound])
+
+        XCTAssertTrue(summarySource.contains(".foregroundColor(.secondary)"))
+        XCTAssertFalse(summarySource.contains(".foregroundStyle(.secondary)"))
+        XCTAssertTrue(controlsSource.contains(".foregroundColor(.secondary)"))
+        XCTAssertFalse(controlsSource.contains(".foregroundStyle(.secondary)"))
     }
 
     func testMetadataStripComposesStatusPriorityDueAndRecurrenceIntoOneReadableValue() throws {

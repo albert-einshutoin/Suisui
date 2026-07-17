@@ -1696,7 +1696,10 @@ private struct TaskCardSelectableSummary: View {
                 if !task.detail.isEmpty {
                     Text(task.detail)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        // A concrete text color avoids a macOS 14 SwiftUI bug
+                        // where hierarchical foreground styles become clear in
+                        // the currently selected material-backed task card.
+                        .foregroundColor(.secondary)
                         .lineLimit(3)
                         .truncationMode(.tail)
                         .help(task.detail)
@@ -1792,7 +1795,9 @@ private struct TaskStatusMoveControls: View {
 
             Text(LocalizedStringKey(task.status.title))
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+                // Keep selected-card text rasterized on the hosted macOS 14
+                // runner; the hierarchical secondary style can resolve clear.
+                .foregroundColor(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(minWidth: 76)
@@ -1911,7 +1916,9 @@ private struct TaskMetadataLine: View {
             .truncationMode(.tail)
             .minimumScaleFactor(0.82)
             .layoutPriority(1)
-            .foregroundStyle(tint)
+            // Unlike ShapeStyle resolution, a concrete Color remains visible
+            // inside the selected material-backed card on macOS 14.
+            .foregroundColor(tint)
             .padding(.horizontal, 7)
             .padding(.vertical, 4)
             .frame(
