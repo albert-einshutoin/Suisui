@@ -1230,13 +1230,7 @@ private struct ProjectKanbanBoard: View {
         .onChange(of: viewModel.selectedTaskID) { _, selectedTaskID in
             // Clicking a card should let J/K/E/D/1-3 work immediately, but the
             // board never steals focus while the inline composer is editing.
-            if selectedTaskID != nil,
-               composingStatus == nil,
-               ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID == nil {
-                // The evidence override restores deterministic initial state,
-                // not a user gesture. Focusing during that restoration makes
-                // macOS 14 recompose focused card labels while they are being
-                // captured; real click and keyboard selections still focus.
+            if selectedTaskID != nil && composingStatus == nil {
                 isBoardFocused = true
             }
         }
@@ -1464,6 +1458,7 @@ private struct BoardColumnView: View {
                 Label("Selected", systemImage: "checkmark.circle.fill")
                     .font(.caption2.weight(.semibold))
                     .foregroundColor(Color(nsColor: .labelColor))
+                    .accessibilityLabel("Selected task: \(task.title)")
                     .accessibilityIdentifier("selected-task-indicator-\(task.id)")
             }
 
@@ -1721,6 +1716,10 @@ private struct TaskCardSelectableSummary: View {
                         // nodes inside a focused card can rasterize as clear.
                         .lineLimit(3)
                         .truncationMode(.tail)
+                        // Flatten glyphs into one rendered layer. The hosted
+                        // macOS 14 compositor can otherwise clear subordinate
+                        // Text layers while keeping their background shapes.
+                        .drawingGroup()
                         .help(task.detail)
                 }
 
@@ -1818,6 +1817,7 @@ private struct TaskStatusMoveControls: View {
                 // explicit foreground color that can disappear on macOS 14.
                 .lineLimit(1)
                 .truncationMode(.tail)
+                .drawingGroup()
                 .frame(minWidth: 76)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
@@ -1944,6 +1944,7 @@ private struct TaskMetadataLine: View {
                 minHeight: ProjectBoardLayoutMetrics.taskMetadataChipMinHeight,
                 alignment: .leading
             )
+            .drawingGroup()
             .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .help(value)
     }

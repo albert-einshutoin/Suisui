@@ -2,18 +2,6 @@ import Foundation
 import XCTest
 
 final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
-    func testEvidenceSelectionDoesNotForceBoardFocusBeforeHostedCapture() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
-        let changeStart = try XCTUnwrap(source.range(of: ".onChange(of: viewModel.selectedTaskID)"))
-        let changeEnd = try XCTUnwrap(
-            source.range(of: ".help(\"Keyboard:", range: changeStart.upperBound..<source.endIndex)
-        )
-        let changeSource = String(source[changeStart.lowerBound..<changeEnd.lowerBound])
-
-        XCTAssertTrue(changeSource.contains("ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID == nil"))
-        XCTAssertTrue(changeSource.contains("isBoardFocused = true"))
-    }
-
     func testTaskCardButtonPublishesTaskSpecificLocalizedMetadataForRuntimeAX() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
         let cardStart = try XCTUnwrap(source.range(of: "private struct BoardTaskCard: View"))
@@ -49,6 +37,7 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertFalse(lineSource.contains(".foregroundColor(tint)"))
         XCTAssertTrue(lineSource.contains(".lineLimit(1)"))
         XCTAssertTrue(lineSource.contains(".minimumScaleFactor(0.82)"))
+        XCTAssertTrue(lineSource.contains(".drawingGroup()"))
         XCTAssertTrue(lineSource.contains("maxWidth: .infinity"))
         XCTAssertFalse(lineSource.contains(".foregroundStyle(tint)"))
     }
@@ -72,9 +61,11 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         let controlsSource = String(source[controlsStart.lowerBound..<controlsEnd.lowerBound])
 
         XCTAssertTrue(summarySource.contains("Text(task.detail)"))
+        XCTAssertTrue(summarySource.contains(".drawingGroup()"))
         XCTAssertFalse(summarySource.contains(".foregroundColor("))
         XCTAssertFalse(summarySource.contains(".foregroundStyle(.secondary)"))
         XCTAssertTrue(controlsSource.contains("Text(LocalizedStringKey(task.status.title))"))
+        XCTAssertTrue(controlsSource.contains(".drawingGroup()"))
         XCTAssertFalse(controlsSource.contains(".foregroundColor("))
         XCTAssertFalse(controlsSource.contains(".foregroundStyle(.secondary)"))
         XCTAssertTrue(cardSource.contains(".fill(Color(nsColor: .controlBackgroundColor))"))
@@ -85,6 +76,7 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("if selectedTaskID == task.id"))
         XCTAssertTrue(source.contains("Label(\"Selected\", systemImage: \"checkmark.circle.fill\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"selected-task-indicator-\\(task.id)\")"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Selected task: \\(task.title)\")"))
         XCTAssertFalse(cardSource.contains(".stroke(isSelected"))
         XCTAssertTrue(cardSource.contains(".stroke(isPointerHovered"))
         XCTAssertFalse(cardSource.contains(".overlay {"))
