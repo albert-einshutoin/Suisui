@@ -192,11 +192,14 @@
 "MCP" = "MCP";
 "MCP Audit" = "MCP Audit";
 "MCP Tool Permissions" = "MCP Tool Permissions";
+"Low" = "Low";
+"Medium" = "Medium";
 "Missed" = "Missed";
 "No Projects" = "No Projects";
 "No external calls recorded" = "No external calls recorded";
 "No tools discovered" = "No tools discovered";
 "Overview" = "Overview";
+"High" = "High";
 "Planned" = "Planned";
 "Pro unlocks external sync; import/export JSON stays local." = "Pro unlocks external sync; import/export JSON stays local.";
 "Privacy" = "Privacy";

@@ -192,11 +192,14 @@
 "MCP" = "MCP";
 "MCP Audit" = "MCP監査";
 "MCP Tool Permissions" = "MCPツール権限";
+"Low" = "低";
+"Medium" = "中";
 "Missed" = "見逃し";
 "No Projects" = "プロジェクトがありません";
 "No external calls recorded" = "外部呼び出しはありません";
 "No tools discovered" = "ツールが見つかりません";
 "Overview" = "概要";
+"High" = "高";
 "Planned" = "予定";
 "Pro unlocks external sync; import/export JSON stays local." = "Proで外部同期を利用できます。JSONのインポート/エクスポートはローカルで完結します。";
 "Privacy" = "プライバシー";

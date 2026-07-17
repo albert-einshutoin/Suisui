@@ -1828,8 +1828,10 @@ private struct TaskCardMetadataStrip: View {
         .font(.caption2)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Task metadata")
-        .accessibilityValue("\(task.status.title), \(task.priority.label), \(dueValue)")
-        .accessibilityIdentifier("task-card-metadata-strip")
+        .accessibilityValue("\(localizedStatusValue), \(localizedPriorityValue), \(localizedDueValue)")
+        // Keep the stable prefix while binding visual evidence to the exact
+        // database task whose metadata value is audited in this subtree.
+        .accessibilityIdentifier("task-card-metadata-strip-\(task.id)")
     }
 
     private var identityChipRow: some View {
@@ -1874,8 +1876,18 @@ private struct TaskCardMetadataStrip: View {
         }
     }
 
-    private var dueValue: String {
-        task.dueLabel ?? "No due date"
+    private var localizedStatusValue: String {
+        localizedDisplay(task.status.title)
+    }
+
+    private var localizedPriorityValue: String {
+        localizedDisplay(task.priority.label)
+    }
+
+    private var localizedDueValue: String {
+        // Formatted dates normally fall through unchanged, while semantic
+        // values such as "No due date" use the same locale as the chip text.
+        task.dueLabel.map(localizedDisplay) ?? localizedDisplay("No due date")
     }
 
     private var recurrenceValue: String? {
@@ -1893,19 +1905,33 @@ private struct TaskCardMetadataStrip: View {
 }
 
 private struct TaskMetadataChip: View {
+    /// Keeps at least a short, recognizable text run beside the icon even when
+    /// persistent scrollbars take width from an already narrow Kanban card.
+    /// Twenty-four points still lets two minimum-width chips fit the card.
+    private static let minimumTextWidth: CGFloat = 24
+
     let value: String
     let systemImage: String
     let tint: Color
 
     var body: some View {
-        Label {
-            Text(value)
+        HStack(spacing: 4) {
+            Image(systemName: systemImage)
+                .frame(width: 12)
+                // SF Symbols must not borrow the text's last usable points
+                // during HStack compression; the text owns the flexible space.
+                .fixedSize(horizontal: true, vertical: false)
+
+            Text(localizedDisplay(value))
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .minimumScaleFactor(0.82)
-        } icon: {
-            Image(systemName: systemImage)
-                .frame(width: 12)
+                // Label's default compression can reduce its title to zero
+                // width on hosted CI with always-visible scrollbars. A small
+                // floor plus priority preserves status/priority/due text while
+                // still allowing long localized values to truncate in-card.
+                .frame(minWidth: Self.minimumTextWidth, alignment: .leading)
+                .layoutPriority(1)
         }
         .foregroundStyle(tint)
         .padding(.horizontal, 6)
