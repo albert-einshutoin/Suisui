@@ -21,7 +21,7 @@ struct SettingsStatusOverviewView: View {
                     } icon: {
                         Image(systemName: group.group.systemImage)
                     }
-                    .font(.headline)
+                    .font(SoloPMTypography.sectionTitle)
                 }
                 .accessibilityLabel(localizedSettingsDisplay(group.group.title))
                 .accessibilityIdentifier("settings-readiness-group-\(group.group.identifierSuffix)")
@@ -71,10 +71,10 @@ private struct SettingsReadinessRowView: View {
             }
         }
         .padding(10)
-        .background(row.state.color.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(row.state.color.opacity(0.18))
+            RoundedRectangle(cornerRadius: SoloPMRadius.card)
+                .stroke(row.state.borderColor)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings-readiness-row-\(row.id)")
@@ -113,11 +113,11 @@ private extension SettingsReadinessGroup {
 private extension SettingsReadinessState {
     var color: Color {
         switch self {
-        case .ready: .green
+        case .ready: SoloPMTone.positive.color
         case .setupWhenNeeded, .checking: .secondary
-        case .needsAction: .orange
-        case .blocked: .red
-        case .unsupported: .gray
+        case .needsAction: SoloPMTone.neutral.color
+        case .blocked: SoloPMTone.danger.color
+        case .unsupported: SoloPMTone.neutral.color
         }
     }
 
@@ -129,6 +129,15 @@ private extension SettingsReadinessState {
         case .needsAction: "exclamationmark.triangle.fill"
         case .blocked: "xmark.octagon.fill"
         case .unsupported: "nosign"
+        }
+    }
+
+    var borderColor: Color {
+        switch self {
+        case .blocked:
+            SoloPMBorder.danger
+        case .ready, .setupWhenNeeded, .checking, .needsAction, .unsupported:
+            SoloPMBorder.subtle
         }
     }
 }

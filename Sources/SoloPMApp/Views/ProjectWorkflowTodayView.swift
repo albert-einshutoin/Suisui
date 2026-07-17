@@ -206,14 +206,14 @@ private struct TodayDailyPlanningReviewPanel: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 8) {
                 Label("Daily Planning Review", systemImage: "sparkles")
-                    .font(.subheadline.weight(.semibold))
+                    .font(SoloPMTypography.sectionTitle)
                 Spacer(minLength: 8)
                 Text("Suggestion only")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(Color.secondary.opacity(0.08), in: Capsule())
+                    .background(SoloPMSurface.groupedContent, in: Capsule())
             }
 
             if let review {
@@ -234,7 +234,7 @@ private struct TodayDailyPlanningReviewPanel: View {
                             HStack(spacing: 7) {
                                 Image(systemName: "target")
                                     .font(.caption)
-                                    .foregroundStyle(.blue)
+                                    .foregroundStyle(SoloPMBrand.soloBlue)
                                     .accessibilityHidden(true)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(item.title)
@@ -311,12 +311,7 @@ private struct TodayDailyPlanningReviewPanel: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(10)
-        .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.secondary.opacity(0.14), lineWidth: 1)
-        }
+        .soloAssistantSignal()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-daily-planning-review")
         .accessibilityLabel("Daily Planning Review")
@@ -386,10 +381,10 @@ private struct TodayBriefingPanel: View {
             }
             .padding(.vertical, 8)
             .padding(.horizontal, 10)
-            .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.secondary.opacity(0.16), lineWidth: 1)
+                RoundedRectangle(cornerRadius: SoloPMRadius.card)
+                    .stroke(SoloPMBorder.subtle, lineWidth: 1)
             }
 
             TodayFlowStrip(plan: plan)
@@ -604,9 +599,8 @@ private struct TodayAssistantRail: View {
                 emptyDetail
             }
         }
-        .padding(12)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .soloAssistantSignal()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-assistant-rail")
         .accessibilityLabel("Today assistant rail")
@@ -728,8 +722,7 @@ private struct TodayAISuggestionCard: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(10)
-        .background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+        .soloAssistantSignal()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-ai-suggestion-card")
     }
@@ -766,7 +759,7 @@ private struct TodayPlanSummary: View {
             }
         } icon: {
             Image(systemName: "sparkles")
-                .foregroundStyle(.blue)
+                .foregroundStyle(SoloPMBrand.soloBlue)
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("today-focus-recommendation")
@@ -776,8 +769,18 @@ private struct TodayPlanSummary: View {
 
     private var dueCounts: some View {
         HStack(spacing: 8) {
-            TodayCountBadge(label: "Overdue", value: plan.overdueCount, tint: .red)
-            TodayCountBadge(label: "Today", value: plan.dueTodayCount, tint: .blue)
+            TodayCountBadge(
+                label: "Overdue",
+                value: plan.overdueCount,
+                systemImage: "clock.badge.exclamationmark",
+                tint: SoloPMTone.danger.color
+            )
+            TodayCountBadge(
+                label: "Today",
+                value: plan.dueTodayCount,
+                systemImage: "calendar",
+                tint: SoloPMBrand.soloBlue
+            )
         }
     }
 
@@ -796,6 +799,7 @@ private struct TodayPlanSummary: View {
 private struct TodayCountBadge: View {
     let label: String
     let value: Int
+    let systemImage: String
     let tint: Color
 
     var body: some View {
@@ -803,14 +807,14 @@ private struct TodayCountBadge: View {
             Text("\(value)")
                 .font(.headline.monospacedDigit())
                 .foregroundStyle(tint)
-            Text(LocalizedStringKey(label))
-                .font(.caption)
+            Label(LocalizedStringKey(label), systemImage: systemImage)
+                .font(SoloPMTypography.metadata)
                 .foregroundStyle(.secondary)
         }
         .frame(minWidth: 68, alignment: .leading)
         .padding(.vertical, 6)
         .padding(.horizontal, 8)
-        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("today-count-badge-\(label.lowercased())")
         .accessibilityLabel("\(label) tasks")
@@ -849,7 +853,7 @@ private struct TodayFlowStrip: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 6)
                         .padding(.horizontal, 8)
-                        .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+                        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
                         .help(block.task.title)
                         .accessibilityElement(children: .combine)
                         .accessibilityIdentifier("today-flow-chip-\(block.id)")
@@ -860,7 +864,7 @@ private struct TodayFlowStrip: View {
             }
         }
         .padding(10)
-        .background(Color.secondary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-flow-strip")
         .accessibilityLabel("Today Flow")

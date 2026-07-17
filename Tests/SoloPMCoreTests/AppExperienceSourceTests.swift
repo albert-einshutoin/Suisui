@@ -758,6 +758,84 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(settingsSource.contains("TabView(selection: $selectedTab) {\n            overviewSettingsTab\n                .background(SoloPMSurface"))
     }
 
+    func testCalmSignalDeskOwnedSurfacesUseSemanticStyleContracts() throws {
+        let ownedSurfaces = [
+            "Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift",
+            "Sources/SoloPMApp/Views/ProjectWorkflowScheduleView.swift",
+            "Sources/SoloPMApp/Views/ProjectWorkflowDoneView.swift",
+            "Sources/SoloPMApp/Views/ProjectBoardReviewHubView.swift",
+            "Sources/SoloPMApp/Views/SettingsStatusOverviewView.swift",
+            "Sources/SoloPMApp/Views/VoiceCaptureView.swift"
+        ]
+        // Keep this allowlist explicit. A future exception must name the file
+        // and exact source line so legacy styling cannot silently spread.
+        let legacyAllowlist: [String: Set<String>] = [:]
+
+        for path in ownedSurfaces {
+            let source = try readPackageFile(path)
+            let allowedLines = legacyAllowlist[path, default: []]
+
+            for line in source.components(separatedBy: .newlines) where !allowedLines.contains(line) {
+                XCTAssertNil(
+                    line.range(of: #"\.(red|orange|green)\b"#, options: .regularExpression),
+                    "\(path) must route status color through SoloPMTone: \(line)"
+                )
+
+                if line.contains("cornerRadius:") {
+                    XCTAssertTrue(
+                        line.contains("SoloPMRadius."),
+                        "\(path) uses an anonymous radius: \(line)"
+                    )
+                }
+
+                if line.contains(".background(") || line.contains(".fill(") {
+                    for anonymousFill in [
+                        ".regularMaterial",
+                        ".quaternary",
+                        "Color.secondary.opacity",
+                        "Color.primary.opacity",
+                        "Color.accentColor.opacity"
+                    ] {
+                        XCTAssertFalse(
+                            line.contains(anonymousFill),
+                            "\(path) uses an anonymous grouped fill: \(line)"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    func testCalmSignalDeskStatusAndMotionKeepNonColorAccessibilityCues() throws {
+        let settingsSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsStatusOverviewView.swift")
+        let todaySource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift")
+        let scheduleSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowScheduleView.swift")
+        let doneSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowDoneView.swift")
+        let voiceSource = try readPackageFile("Sources/SoloPMApp/Views/VoiceCaptureView.swift")
+
+        XCTAssertTrue(settingsSource.contains("Image(systemName: row.state.systemImage)"))
+        XCTAssertTrue(settingsSource.contains("Text(localizedSettingsDisplay(row.title))"))
+        XCTAssertTrue(todaySource.contains("Label(LocalizedStringKey(label), systemImage: systemImage)"))
+        XCTAssertTrue(scheduleSource.contains("Image(systemName: \"clock.badge.exclamationmark\")"))
+        XCTAssertTrue(scheduleSource.contains("Text(day.loadLabel)"))
+        XCTAssertTrue(scheduleSource.contains("Label(label, systemImage: systemImage)"))
+        XCTAssertTrue(doneSource.contains("Label(row.statusLabel, systemImage: statusSystemImage)"))
+        XCTAssertTrue(voiceSource.contains("@Environment(\\.accessibilityReduceMotion)"))
+        XCTAssertTrue(voiceSource.contains("SoloPMMotion.animation"))
+        XCTAssertTrue(voiceSource.contains("Image(systemName: stateSystemImage)"))
+
+        for nonAssistantSource in [settingsSource, todaySource, scheduleSource, doneSource] {
+            XCTAssertFalse(
+                nonAssistantSource.contains("SoloPMBrand.signalAmber"),
+                "Signal Amber is reserved for assistant attention, not selection or decoration."
+            )
+            XCTAssertFalse(
+                nonAssistantSource.contains("SoloPMTone.attention"),
+                "Signal Amber is reserved for assistant attention, not general status."
+            )
+        }
+    }
+
     func testProjectBoardToolbarHostsSettingsLinkWithoutThemeControls() throws {
         let toolbarSource = try readPackageFile(
             "Sources/SoloPMApp/Views/ProjectBoardToolbarContent.swift"

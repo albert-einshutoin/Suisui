@@ -102,8 +102,14 @@ struct VoiceCaptureView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 // Zones fade/slide in briefly as they appear; Reduce Motion
                 // disables the animation so state changes apply instantly.
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: hasWorkingContent)
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: hasReviewContent)
+                .animation(
+                    SoloPMMotion.animation(duration: SoloPMMotion.standard, reduceMotion: reduceMotion),
+                    value: hasWorkingContent
+                )
+                .animation(
+                    SoloPMMotion.animation(duration: SoloPMMotion.standard, reduceMotion: reduceMotion),
+                    value: hasReviewContent
+                )
             }
             // While idle there is no working/review content; collapsing the
             // empty scroll region hands the window height to the capture zone
@@ -171,7 +177,7 @@ struct VoiceCaptureView: View {
                     .frame(width: 64, height: 64)
                     .background(
                         Circle()
-                            .fill(viewModel.isRecording ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.accentColor.opacity(0.14)))
+                            .fill(viewModel.isRecording ? AnyShapeStyle(.tint) : AnyShapeStyle(SoloPMBrand.soloBlue.opacity(0.14)))
                     )
                     .contentShape(Circle())
                     .opacity(isHeroRecordDisabled ? 0.45 : 1)
@@ -240,7 +246,7 @@ struct VoiceCaptureView: View {
                 }
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: SoloPMRadius.control)
                     .stroke(.quaternary)
             }
             .accessibilityIdentifier("voice-command-input")
@@ -778,16 +784,19 @@ private struct VoiceInputLevelMeter: View {
                     .foregroundStyle(.tint)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(.quaternary, in: Capsule())
+                    .background(SoloPMSurface.groupedContent, in: Capsule())
             } else {
                 HStack(alignment: .bottom, spacing: 3) {
                     ForEach(Array(Self.barThresholds.enumerated()), id: \.offset) { index, threshold in
-                        RoundedRectangle(cornerRadius: 1.5)
-                            .fill(meter.inputLevel >= threshold ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary))
+                        Capsule()
+                            .fill(meter.inputLevel >= threshold ? AnyShapeStyle(.tint) : SoloPMSurface.groupedContent)
                             .frame(width: 4, height: 8 + CGFloat(index) * 3)
                     }
                 }
-                .animation(.linear(duration: 0.1), value: meter.inputLevel)
+                .animation(
+                    SoloPMMotion.animation(duration: SoloPMMotion.quick, reduceMotion: reduceMotion),
+                    value: meter.inputLevel
+                )
             }
         }
         .accessibilityElement(children: .ignore)
@@ -903,7 +912,7 @@ private struct VoiceInboxCaptureSavedPanel: View {
             .accessibilityIdentifier("voice-inbox-capture-open-board")
         }
         .padding(10)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.control))
         .accessibilityIdentifier("voice-inbox-capture-saved")
     }
 }
@@ -945,8 +954,7 @@ private struct VoiceDailyPlanningReviewRequestPanel: View {
             }
             .accessibilityIdentifier("voice-daily-planning-open-board")
         }
-        .padding(10)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        .soloAssistantSignal()
         .accessibilityIdentifier("voice-daily-planning-request")
     }
 
@@ -1000,7 +1008,7 @@ private struct VoiceInboxTriageRequestPanel: View {
             .accessibilityIdentifier("voice-inbox-triage-open-board")
         }
         .padding(10)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.control))
         .accessibilityIdentifier("voice-inbox-triage-request")
     }
 }
@@ -1103,15 +1111,17 @@ private struct AssistantQueuePanel: View {
                 .accessibilityHint(localizedSettingsDisplay("Opens the Assistant Queue without running the item."))
             }
         }
-        .padding(10)
-        .background(Color.secondary.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .soloAssistantSignal()
         .accessibilityIdentifier("voice-assistant-queue-panel")
     }
 
     private var queueStateLabel: some View {
-        Text(localizedSettingsDisplay(stateLabel))
-            .font(.caption)
+        Label {
+            Text(localizedSettingsDisplay(stateLabel))
+        } icon: {
+            Image(systemName: stateSystemImage)
+        }
+            .font(SoloPMTypography.metadata)
             .foregroundStyle(stateColor)
             .lineLimit(1)
             .accessibilityIdentifier("voice-assistant-queue-state")
@@ -1166,6 +1176,27 @@ private struct AssistantQueuePanel: View {
             SoloPMTone.attention.color
         case .captured, .interpreted, .drafted, .waitingReview, .running:
             .secondary
+        }
+    }
+
+    private var stateSystemImage: String {
+        switch item.state {
+        case .captured, .interpreted, .drafted:
+            "pencil.circle"
+        case .waitingReview:
+            "person.crop.circle.badge.questionmark"
+        case .approved:
+            "checkmark.seal"
+        case .running:
+            "arrow.triangle.2.circlepath"
+        case .blocked, .failed:
+            "exclamationmark.octagon.fill"
+        case .done:
+            "checkmark.circle.fill"
+        case .rejected:
+            "xmark.circle.fill"
+        case .deferred:
+            "clock"
         }
     }
 
@@ -1240,9 +1271,7 @@ private struct ClarificationPanel: View {
                 .accessibilityIdentifier("voice-command-clarification-cancel")
             }
         }
-        .padding(10)
-        .background(Color.secondary.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .soloAssistantSignal()
         .accessibilityIdentifier("voice-command-clarification-panel")
     }
 }
@@ -1334,9 +1363,7 @@ private struct VoiceIntentPreview: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(10)
-        .background(Color.secondary.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .soloAssistantSignal()
         .accessibilityIdentifier("voice-command-intent-preview")
     }
 

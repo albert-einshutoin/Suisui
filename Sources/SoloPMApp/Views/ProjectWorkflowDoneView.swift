@@ -150,7 +150,7 @@ struct ExecutionUsageMeterSummaryView: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
         .accessibilityValue(value)
@@ -172,14 +172,18 @@ private struct ManagedAIUsageThresholdRowView: View {
             Text(row.capLabel)
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
-            Text(row.statusLabel)
-                .font(.caption2.weight(.semibold).monospacedDigit())
-                .foregroundStyle(row.status == .exceeded ? .red : .green)
+            Label(row.statusLabel, systemImage: statusSystemImage)
+                .font(SoloPMTypography.compactLabel.monospacedDigit())
+                .foregroundStyle(row.status == .exceeded ? SoloPMTone.danger.color : SoloPMTone.positive.color)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.title)
         .accessibilityValue(row.accessibilityValue)
         .accessibilityIdentifier("ai-usage-threshold-row-\(row.scope.rawValue)")
+    }
+
+    private var statusSystemImage: String {
+        row.status == .exceeded ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
     }
 }
 
@@ -246,7 +250,7 @@ private struct DoneStatTile: View {
         }
         .frame(minWidth: 112, maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
     }
 }
 
@@ -273,11 +277,11 @@ private struct DoneCompletionHeatmapView: View {
 
             LazyVGrid(columns: columns, alignment: .leading, spacing: 4) {
                 ForEach(buckets, id: \.dayKey) { bucket in
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: SoloPMRadius.control)
                         .fill(heatmapColor(for: bucket.completedCount))
                         .frame(width: 18, height: 18)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: SoloPMRadius.control)
                                 .stroke(Color.secondary.opacity(0.18), lineWidth: 0.5)
                         )
                         .accessibilityIdentifier("done-heatmap-day-\(bucket.dayKey)")
@@ -300,7 +304,7 @@ private struct DoneCompletionHeatmapView: View {
             return Color.secondary.opacity(0.10)
         }
         let normalized = min(Double(count) / Double(maxCompletedCount), 1.0)
-        return Color.green.opacity(0.25 + normalized * 0.55)
+        return SoloPMTone.positive.color.opacity(0.25 + normalized * 0.55)
     }
 }
 
@@ -430,7 +434,7 @@ private struct DoneInsightTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
     }
 }
 
@@ -441,7 +445,7 @@ private struct DoneTaskHistoryRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: task.status == .done ? "checkmark.circle.fill" : "arrow.uturn.backward.circle")
-                .foregroundStyle(task.status == .done ? .green : .secondary)
+                .foregroundStyle(task.status == .done ? SoloPMTone.positive.color : .secondary)
             VStack(alignment: .leading, spacing: 2) {
                 Text(task.title)
                     .font(.callout.weight(.medium))
@@ -566,11 +570,11 @@ struct ExecutionReceiptHistoryRowView: View {
         case .notStarted, .skipped, .canceled:
             return .secondary
         case .running:
-            return .blue
+            return SoloPMBrand.soloBlue
         case .succeeded:
-            return .green
+            return SoloPMTone.positive.color
         case .failed:
-            return .red
+            return SoloPMTone.danger.color
         }
     }
 }
