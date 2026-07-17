@@ -23,6 +23,7 @@ SQLITE3="${SQLITE3:-sqlite3}"
 SQLITE_BUSY_TIMEOUT_MS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS:-5000}"
 DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS:-10}"
 FORM_POSTCONDITION_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_FORM_POSTCONDITION_TIMEOUT_SECONDS:-10}"
+RECOVERABLE_ONLY="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY:-0}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_TEXT_INPUT_HELPER="${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}"
 AX_SCROLL_HELPER="${AX_SCROLL_HELPER:-$ROOT_DIR/script/ui_evidence_ax_scroll_container.swift}"
@@ -811,6 +812,23 @@ if [[ -z "$seed_project_id" ]]; then
   exit 1
 fi
 
+if [[ "$RECOVERABLE_ONLY" == "1" ]]; then
+  created_project_id="$seed_project_id"
+  created_task_id="$(wait_for_nonempty_value "seed task id" "SELECT id FROM tasks WHERE project_id=$created_project_id ORDER BY id DESC LIMIT 1;")"
+  launch_app_for_seed_project "$created_project_id" "$created_task_id"
+  waitForTextFieldContaining "task-inspector-title"
+  "$SQLITE3" "$database_path" "CREATE TRIGGER runtime_crud_fail_task_update BEFORE UPDATE ON tasks WHEN OLD.id=$created_task_id BEGIN SELECT RAISE(FAIL, 'injected recoverable task save failure'); END;"
+  setTextFieldContaining "task-inspector-title" "AX Runtime CRUD Task Retried"
+  pressButtonContaining "task-inspector-save"
+  verify_single_value "failed save did not mutate task" "SELECT title FROM tasks WHERE id=$created_task_id;" "AX seed task"
+  "$SQLITE3" "$database_path" "DROP TRIGGER runtime_crud_fail_task_update;"
+  pressButtonContaining "task-inspector-save-retry" "Retry"
+  verify_single_value "recoverable task save retry" "SELECT title FROM tasks WHERE id=$created_task_id;" "AX Runtime CRUD Task Retried"
+  CRUD_STATUS="passed"
+  printf "OK: runtime recoverable save smoke passed\n"
+  exit 0
+fi
+
 launch_app_for_seed_project "$seed_project_id"
 terminate_app
 wait_for_no_app_process
@@ -839,8 +857,37 @@ pressButtonContaining "task-card-open-details"
 waitForTextFieldContaining "task-inspector-title"
 setTextFieldContaining "task-inspector-title" "AX Runtime CRUD Task Updated"
 waitForTextFieldContaining "AX Runtime CRUD Task Updated"
+
+# Structured inspector dates must only write a real date or NULL. Merely
+# opening/closing the date controls without Save must not mutate SQLite.
+pressButtonContaining "task-inspector-due"
+pressButtonContaining "task-inspector-due-clear"
+verify_single_value "cancelled due date edit" "SELECT CASE WHEN due_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$created_task_id;" "1"
+pressButtonContaining "task-inspector-due"
 pressButtonContaining "task-inspector-save"
 verify_single_value "renamed task" "SELECT title FROM tasks WHERE id=$created_task_id;" "AX Runtime CRUD Task Updated"
+verify_single_value "set native task due date" "SELECT CASE WHEN due_at IS NOT NULL AND datetime(due_at) IS NOT NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$created_task_id;" "1"
+terminate_app
+wait_for_no_app_process
+launch_app_for_seed_project "$created_project_id" "$created_task_id"
+waitForTextFieldContaining "task-inspector-title"
+pressButtonContaining "task-inspector-due-clear"
+pressButtonContaining "task-inspector-save"
+verify_single_value "cleared native task due date" "SELECT CASE WHEN due_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$created_task_id;" "1"
+terminate_app
+wait_for_no_app_process
+launch_app_for_seed_project "$created_project_id" "$created_task_id"
+waitForTextFieldContaining "task-inspector-title"
+
+# A real SQLite write failure proves the recoverable path without adding a
+# product-only fault flag. The inspector and draft stay visible for Retry.
+"$SQLITE3" "$database_path" "CREATE TRIGGER runtime_crud_fail_task_update BEFORE UPDATE ON tasks WHEN OLD.id=$created_task_id BEGIN SELECT RAISE(FAIL, 'injected recoverable task save failure'); END;"
+setTextFieldContaining "task-inspector-title" "AX Runtime CRUD Task Retried"
+pressButtonContaining "task-inspector-save"
+verify_single_value "failed save did not mutate task" "SELECT title FROM tasks WHERE id=$created_task_id;" "AX Runtime CRUD Task Updated"
+"$SQLITE3" "$database_path" "DROP TRIGGER runtime_crud_fail_task_update;"
+pressButtonContaining "task-inspector-save-retry" "Retry"
+verify_single_value "recoverable task save retry" "SELECT title FROM tasks WHERE id=$created_task_id;" "AX Runtime CRUD Task Retried"
 pressButtonContaining "task-status-move-planned-$created_task_id"
 verify_single_value "advanced task status" "SELECT status FROM tasks WHERE id=$created_task_id;" "planned"
 terminate_app
