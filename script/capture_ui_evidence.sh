@@ -44,6 +44,7 @@ AX_MARKER_CHECKER="$EVIDENCE_TMPDIR/ui-evidence-ax-marker-checker.$$"
 AX_SCROLL_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-scroll-to.$$"
 AX_TARGET_FRAME_AUDITOR="$EVIDENCE_TMPDIR/ui-evidence-ax-target-frame-auditor.$$"
 AX_PRESS_ELEMENT_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-press-element.$$"
+POINTER_PARKER="$EVIDENCE_TMPDIR/ui-evidence-pointer-park.$$"
 AX_CAPTURE_RECEIPT_TSV="$EVIDENCE_TMPDIR/visual-ax-captures.$$.tsv"
 AX_RECEIPT_WRITER="$EVIDENCE_TMPDIR/write-visual-ax-audit-receipt.$$"
 VISUAL_RASTER_STABILITY_CHECKER="$EVIDENCE_TMPDIR/visual-raster-stability-checker.$$"
@@ -165,6 +166,7 @@ cleanup() {
   rm -f "$AX_SCROLL_HELPER"
   rm -f "$AX_TARGET_FRAME_AUDITOR"
   rm -f "$AX_PRESS_ELEMENT_HELPER"
+  rm -f "$POINTER_PARKER"
   rm -f "$AX_CAPTURE_RECEIPT_TSV" "$AX_RECEIPT_WRITER" "$VISUAL_RASTER_STABILITY_CHECKER"
   rm -f "$VISUAL_FIRST_RASTER"
   rm -f "$EVIDENCE_APP_LOG"
@@ -567,6 +569,20 @@ prepare_ax_target_frame_auditor() {
   /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_target_frame_audit.swift" -o "$AX_TARGET_FRAME_AUDITOR"
 }
 
+prepare_pointer_parker() {
+  if [[ -x "$POINTER_PARKER" ]]; then
+    return
+  fi
+  /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_pointer_park.swift" -o "$POINTER_PARKER"
+}
+
+park_pointer_outside_evidence_window() {
+  prepare_pointer_parker
+  # Canonical evidence windows start at x >= 80 and y >= 70, so the screen's
+  # top-left corner is outside product content for every capture viewport.
+  "$POINTER_PARKER" 8 8
+}
+
 audit_ax_target_frame() {
   local identifier="$1"
   local window_name="$2"
@@ -845,6 +861,7 @@ APPLESCRIPT
         # Reject that state here so a wrong viewport never reaches capture or
         # masquerades as a valid artifact until the final receipt audit.
         if [[ "$observed_width" == "$width" && "$observed_height" == "$height" ]]; then
+          park_pointer_outside_evidence_window
           return 0
         fi
       fi
