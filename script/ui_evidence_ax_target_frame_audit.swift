@@ -178,6 +178,44 @@ struct VisibleCandidate {
     let visibleFrame: CGRect
 }
 
+// Keep identity values in one TSV line. AX labels and values can contain user
+// newlines or tabs, so capture comparison must normalize transport characters
+// before exact fingerprint comparison.
+func tsvSafe(_ value: String?) -> String {
+    (value ?? "")
+        .replacingOccurrences(of: "\t", with: " ")
+        .replacingOccurrences(of: "\n", with: " ")
+        .replacingOccurrences(of: "\r", with: " ")
+}
+
+let identityAttributes: [CFString] = [
+    kAXRoleAttribute as CFString,
+    kAXSubroleAttribute as CFString,
+    kAXTitleAttribute as CFString,
+    kAXDescriptionAttribute as CFString,
+    kAXHelpAttribute as CFString,
+    kAXValueAttribute as CFString,
+    "AXLabel" as CFString
+]
+
+func candidateIdentityFingerprint(_ candidate: VisibleCandidate) -> String {
+    let geometryFields = String(
+        format: "%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f",
+        candidate.targetFrame.minX,
+        candidate.targetFrame.minY,
+        candidate.targetFrame.width,
+        candidate.targetFrame.height,
+        candidate.visibleFrame.minX,
+        candidate.visibleFrame.minY,
+        candidate.visibleFrame.width,
+        candidate.visibleFrame.height
+    )
+    let identityFields = identityAttributes.map { attribute in
+        tsvSafe(stringValue(copyAttribute(candidate.element, attribute)))
+    }
+    return ([geometryFields] + identityFields).joined(separator: "\t")
+}
+
 func visibleCandidate(for target: AXUIElement) -> VisibleCandidate? {
     guard let targetFrame = frame(of: target) else { return nil }
 
@@ -214,9 +252,18 @@ func visibleCandidate(for target: AXUIElement) -> VisibleCandidate? {
 }
 
 let candidates = matches.compactMap(visibleCandidate)
-if identityFingerprintEnabled && candidates.count != 1 {
-    fputs("Identity fingerprint requires exactly one visible AX target for identifier \(targetIdentifier); found \(candidates.count) visible candidate(s) from \(matches.count) exact match(es).\n", stderr)
-    exit(1)
+if identityFingerprintEnabled {
+    guard !candidates.isEmpty else {
+        fputs("Identity fingerprint requires a visible AX target for identifier \(targetIdentifier); found none from \(matches.count) exact match(es).\n", stderr)
+        exit(1)
+    }
+    let candidateFingerprints = Set(candidates.map(candidateIdentityFingerprint))
+    // Identical visible AX duplicates are a SwiftUI publication detail, not a
+    // second product target. Distinct identities remain ambiguous and fail.
+    if candidateFingerprints.count != 1 {
+        fputs("Identity fingerprint found \(candidateFingerprints.count) distinct visible candidate fingerprint(s) for identifier \(targetIdentifier) across \(candidates.count) visible candidate(s).\n", stderr)
+        exit(1)
+    }
 }
 guard let selectedCandidate = candidates.sorted(by: { lhs, rhs in
     let lhsVisibleArea = lhs.visibleFrame.width * lhs.visibleFrame.height
@@ -256,34 +303,4 @@ if !identityFingerprintEnabled {
     print(receiptFields)
     exit(0)
 }
-
-// Keep identity values in one TSV line. AX labels and values can contain user
-// newlines or tabs, so capture comparison must normalize transport characters
-// before exact fingerprint comparison.
-func tsvSafe(_ value: String?) -> String {
-    (value ?? "")
-        .replacingOccurrences(of: "\t", with: " ")
-        .replacingOccurrences(of: "\n", with: " ")
-        .replacingOccurrences(of: "\r", with: " ")
-}
-
-let identityAttributes: [CFString] = [
-    kAXRoleAttribute as CFString,
-    kAXSubroleAttribute as CFString,
-    kAXTitleAttribute as CFString,
-    kAXDescriptionAttribute as CFString,
-    kAXHelpAttribute as CFString,
-    kAXValueAttribute as CFString,
-    "AXLabel" as CFString
-]
-let identityFields = identityAttributes.map { attribute in
-    tsvSafe(stringValue(copyAttribute(selectedCandidate.element, attribute)))
-}
-let geometryFields = String(
-    format: "%.3f\t%.3f\t%.3f\t%.3f",
-    targetFrame.minX,
-    targetFrame.minY,
-    visibleFrame.minX,
-    visibleFrame.minY
-)
-print(([receiptFields, geometryFields] + identityFields).joined(separator: "\t"))
+print([receiptFields, candidateIdentityFingerprint(selectedCandidate)].joined(separator: "\t"))
