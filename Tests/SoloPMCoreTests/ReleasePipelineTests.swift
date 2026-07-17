@@ -5987,7 +5987,14 @@ final class ReleasePipelineTests: XCTestCase {
     func testRuntimeDevelopmentPRSmokeScriptRunsApprovedDirectoryFixtureFlow() throws {
         let script = try readPackageFile("script/check_runtime_development_pr_smoke.sh")
         let workflow = try readPackageFile("script/check_runtime_workflow_smoke.sh")
-        let projectBoardViewSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        // The runtime contract belongs to the composed Project Board surface,
+        // not to one physical file. Keep this regression gate stable when
+        // leaf inspectors are extracted from the scene-owning root view.
+        let projectBoardViewSource = try [
+            "Sources/SoloPMApp/Views/ProjectBoardView.swift",
+            "Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift",
+            "Sources/SoloPMApp/Views/ProjectBoardInspectors.swift"
+        ].map(readPackageFile).joined(separator: "\n\n")
         let gitRunnerSource = try readPackageFile("Sources/SoloPMCore/DeveloperMode/GitReadOnlyTools.swift")
 
         XCTAssertTrue(script.contains("swift test --filter DevelopmentAutomationRuntimeSmokeTests/testApprovedProjectDirectoryCanEditVerifyCommitAndPreparePullRequestBranch --quiet"))
