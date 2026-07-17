@@ -1519,13 +1519,16 @@ capture_project_board_destination() {
     wait_for_process
     activate_evidence_app
     sleep 1.5
-    wait_for_window_capture_metadata >/dev/null
     # Dense workflow footers may not enter the AX visible subtree until the
     # evidence window is widened, so target validation uses the same bounds as
     # the screenshot instead of a smaller launch-default window.
-    if ! position_window_for_capture "" "$marker_diagnostic" 2>>"$marker_diagnostic"; then
+    # Treat CG metadata publication and AX positioning as one readiness unit.
+    # SwiftUI can remove the first window between process readiness and either
+    # probe, so both failures must consume the same bounded fresh-process retry.
+    if ! wait_for_window_capture_metadata > /dev/null 2>>"$marker_diagnostic" ||
+      ! position_window_for_capture "" "$marker_diagnostic" 2>>"$marker_diagnostic"; then
       if [[ "$route_attempt" -lt "$EVIDENCE_ROUTE_ATTEMPTS" ]]; then
-        echo "INFO: retrying exact production destination after owned window positioning failure" >&2
+        echo "INFO: retrying exact production destination after owned window readiness failure" >&2
         emit_evidence_app_diagnostic
         rm -f "$marker_diagnostic"
         continue

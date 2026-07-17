@@ -114,11 +114,12 @@ final class VisualCaptureStabilityTests: XCTestCase {
         )
         let functionSource = String(source[functionStart.lowerBound..<functionEnd.lowerBound])
 
-        XCTAssertTrue(functionSource.contains("if ! position_window_for_capture \"\" \"$marker_diagnostic\""))
-        XCTAssertTrue(functionSource.contains("retrying exact production destination after owned window positioning failure"))
+        XCTAssertTrue(functionSource.contains("! position_window_for_capture \"\" \"$marker_diagnostic\""))
+        XCTAssertTrue(functionSource.contains("retrying exact production destination after owned window readiness failure"))
+        XCTAssertTrue(functionSource.contains("if ! wait_for_window_capture_metadata > /dev/null 2>>\"$marker_diagnostic\""))
         XCTAssertTrue(functionSource.contains("continue"))
         XCTAssertTrue(functionSource.contains("return 1"))
-        let position = try XCTUnwrap(functionSource.range(of: "if ! position_window_for_capture"))
+        let position = try XCTUnwrap(functionSource.range(of: "! position_window_for_capture"))
         let markers = try XCTUnwrap(functionSource.range(of: "wait_for_project_board_destination \"$label\" \"$target_markers\""))
         XCTAssertLessThan(position.lowerBound, markers.lowerBound)
 
@@ -129,6 +130,20 @@ final class VisualCaptureStabilityTests: XCTestCase {
         XCTAssertTrue(succeedsOnFreshPID.output.contains("capture:pid2:identity2"), succeedsOnFreshPID.output)
         XCTAssertFalse(succeedsOnFreshPID.output.contains("marker:pid1"), succeedsOnFreshPID.output)
         XCTAssertFalse(succeedsOnFreshPID.output.contains("capture:pid1"), succeedsOnFreshPID.output)
+
+        let metadataRecoversOnFreshPID = try runDestinationFixture(
+            functionSource: functionSource,
+            alwaysFailPosition: false,
+            failFirstPosition: false,
+            failFirstMetadataWait: true
+        )
+        XCTAssertEqual(metadataRecoversOnFreshPID.status, 0, metadataRecoversOnFreshPID.output)
+        XCTAssertTrue(metadataRecoversOnFreshPID.output.contains("diagnostic:metadata:pid1:identity1"), metadataRecoversOnFreshPID.output)
+        XCTAssertTrue(metadataRecoversOnFreshPID.output.contains("marker:pid2:identity2"), metadataRecoversOnFreshPID.output)
+        XCTAssertTrue(metadataRecoversOnFreshPID.output.contains("scroll:pid2:identity2"), metadataRecoversOnFreshPID.output)
+        XCTAssertTrue(metadataRecoversOnFreshPID.output.contains("capture:pid2:identity2"), metadataRecoversOnFreshPID.output)
+        XCTAssertFalse(metadataRecoversOnFreshPID.output.contains("marker:pid1"), metadataRecoversOnFreshPID.output)
+        XCTAssertFalse(metadataRecoversOnFreshPID.output.contains("capture:pid1"), metadataRecoversOnFreshPID.output)
 
         let exhausted = try runDestinationFixture(functionSource: functionSource, alwaysFailPosition: true)
         XCTAssertNotEqual(exhausted.status, 0, exhausted.output)
@@ -273,11 +288,19 @@ final class VisualCaptureStabilityTests: XCTestCase {
 
     private func runDestinationFixture(
         functionSource: String,
-        alwaysFailPosition: Bool
+        alwaysFailPosition: Bool,
+        failFirstPosition: Bool = true,
+        failFirstMetadataWait: Bool = false
     ) throws -> (status: Int32, output: String) {
-        let positionBody = alwaysFailPosition
-            ? #"echo "position-failed:$EVIDENCE_APP_PID" >&2; return 1"#
-            : #"position_attempts=$((position_attempts + 1)); if [[ "$position_attempts" -eq 1 ]]; then echo "position-failed:$EVIDENCE_APP_PID" >&2; return 1; fi"#
+        let positionBody: String
+        if alwaysFailPosition {
+            positionBody = #"readiness_failure=position; echo "position-failed:$EVIDENCE_APP_PID" >&2; return 1"#
+        } else if failFirstPosition {
+            positionBody = #"position_attempts=$((position_attempts + 1)); if [[ "$position_attempts" -eq 1 ]]; then readiness_failure=position; echo "position-failed:$EVIDENCE_APP_PID" >&2; return 1; fi"#
+        } else {
+            positionBody = ":"
+        }
+        let metadataFailureEnabled = failFirstMetadataWait ? "1" : "0"
         let fixture = """
         set -euo pipefail
         \(functionSource)
@@ -293,6 +316,8 @@ final class VisualCaptureStabilityTests: XCTestCase {
         EVIDENCE_APP_IDENTITY=""
         launch_count=0
         position_attempts=0
+        metadata_attempts=0
+        readiness_failure=none
         stop_evidence_app() { :; }
         write_appearance_preference() { :; }
         write_app_preference() { :; }
@@ -300,10 +325,10 @@ final class VisualCaptureStabilityTests: XCTestCase {
         wait_for_process() { :; }
         activate_evidence_app() { :; }
         sleep() { :; }
-        wait_for_window_capture_metadata() { printf '1 0 0 1024 724\\n'; }
+        wait_for_window_capture_metadata() { metadata_attempts=$((metadata_attempts + 1)); if [[ "\(metadataFailureEnabled)" == "1" && "$metadata_attempts" -eq 1 ]]; then readiness_failure=metadata; echo "metadata-failed:$EVIDENCE_APP_PID:$EVIDENCE_APP_IDENTITY" >&2; return 1; fi; printf '1 0 0 1024 724\\n'; }
         position_window_for_capture() { \(positionBody); }
         wait_for_project_board_destination() { echo "marker:$EVIDENCE_APP_PID:$EVIDENCE_APP_IDENTITY"; }
-        emit_evidence_app_diagnostic() { :; }
+        emit_evidence_app_diagnostic() { echo "diagnostic:$readiness_failure:$EVIDENCE_APP_PID:$EVIDENCE_APP_IDENTITY"; }
         scroll_ax_target_into_view() { echo "scroll:$EVIDENCE_APP_PID:$EVIDENCE_APP_IDENTITY"; }
         capture_visible_window() { echo "capture:$EVIDENCE_APP_PID:$EVIDENCE_APP_IDENTITY"; }
         capture_project_board_destination light schedule /tmp/output.png fixture 'target=>ready' '' '' target
