@@ -42,8 +42,6 @@ enum ProjectBoardLayoutMetrics {
     static let boardColumnWidth: CGFloat = 204
     static let emptyColumnMinHeight: CGFloat = 82
     static let inlinePriorityPickerWidth: CGFloat = 112
-    static let taskMetadataChipMinWidth: CGFloat = 64
-    static let taskMetadataChipMinHeight: CGFloat = 24
     static let taskStatusRailWidth: CGFloat = 4
     static let taskStatusRailHeight: CGFloat = 44
 }
