@@ -1606,7 +1606,6 @@ private struct BoardTaskCard: View {
     let isSelected: Bool
     let onOpenDetails: () -> Void
     let onMoveStatus: (ProjectTaskStatus) -> Void
-    @State private var isPointerHovered = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1641,15 +1640,13 @@ private struct BoardTaskCard: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-        .background(task.status.tint.opacity(isSelected || isPointerHovered ? 0.14 : 0.05), in: RoundedRectangle(cornerRadius: 8))
+        .background(task.status.tint.opacity(isSelected ? 0.14 : 0.05), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected || isPointerHovered ? task.status.tint.opacity(0.7) : Color.secondary.opacity(0.16))
+                .stroke(isSelected ? task.status.tint.opacity(0.7) : Color.secondary.opacity(0.16))
         }
-        .shadow(color: Color.black.opacity(isPointerHovered ? 0.10 : 0.04), radius: isPointerHovered ? 12 : 8, x: 0, y: isPointerHovered ? 4 : 2)
+        .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
         .contentShape(RoundedRectangle(cornerRadius: 8))
-        .onHover { isPointerHovered = $0 }
-        .animation(.snappy(duration: 0.16), value: isPointerHovered)
         .accessibilityElement(children: .contain)
     }
 

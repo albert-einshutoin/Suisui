@@ -1950,15 +1950,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".shadow(color: Color.black.opacity(0.04)"))
     }
 
-    func testKanbanCardsExposePointerHoverAndStatusRailAffordance() throws {
+    func testKanbanCardsKeepStableStatusRailWithoutHoverRebuildingContent() throws {
         let source = try readProjectBoardSurfaceSources()
 
-        XCTAssertTrue(source.contains("@State private var isPointerHovered = false"))
         XCTAssertTrue(source.contains("TaskStatusAccentRail(tint: task.status.tint)"))
         XCTAssertTrue(source.contains("struct TaskStatusAccentRail"))
-        XCTAssertTrue(source.contains(".onHover { isPointerHovered = $0 }"))
-        XCTAssertTrue(source.contains(".shadow(color: Color.black.opacity(isPointerHovered ? 0.10 : 0.04)"))
-        XCTAssertTrue(source.contains(".animation(.snappy(duration: 0.16), value: isPointerHovered)"))
+        XCTAssertTrue(source.contains(".background(task.status.tint.opacity(isSelected ? 0.14 : 0.05)"))
+        XCTAssertFalse(source.contains("@State private var isPointerHovered = false"))
+        XCTAssertFalse(source.contains(".onHover { isPointerHovered = $0 }"))
+        XCTAssertFalse(source.contains(".animation(.snappy(duration: 0.16), value: isPointerHovered)"))
     }
 
     func testTaskCardsUseSampleInspiredNonOverlappingMetadataStrip() throws {
