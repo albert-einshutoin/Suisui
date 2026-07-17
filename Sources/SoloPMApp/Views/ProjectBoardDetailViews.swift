@@ -1628,11 +1628,17 @@ private struct BoardTaskCard: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-        // Keep the fill independent from selection. On the hosted renderer, a
-        // stronger selection-dependent material fill can composite above the
-        // card's secondary text. The border remains the non-color selection cue.
-        .background(task.status.tint.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(task.status.tint.opacity(0.05))
+            }
+        }
+        // Hosted AppKit vibrancy can clear secondary labels inside a selected
+        // nested material. This opaque semantic surface keeps theme support and
+        // status tinting while the border remains the non-color selection cue.
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(isSelected || isPointerHovered ? task.status.tint.opacity(0.7) : Color.secondary.opacity(0.16))

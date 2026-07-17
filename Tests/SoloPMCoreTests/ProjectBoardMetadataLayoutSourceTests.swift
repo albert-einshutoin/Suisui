@@ -39,7 +39,7 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertFalse(lineSource.contains(".foregroundStyle(tint)"))
     }
 
-    func testSelectedMaterialTaskCardUsesConcreteTextColorsOnHostedRunner() throws {
+    func testSelectedTaskCardUsesOpaqueHostStableSurfaceAndConcreteTextColors() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
         let cardStart = try XCTUnwrap(source.range(of: "private struct BoardTaskCard: View"))
         let cardEnd = try XCTUnwrap(
@@ -63,8 +63,10 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(controlsSource.contains("Text(LocalizedStringKey(task.status.title))"))
         XCTAssertTrue(controlsSource.contains(".foregroundColor(.secondary)"))
         XCTAssertFalse(controlsSource.contains(".foregroundStyle(.secondary)"))
-        XCTAssertTrue(cardSource.contains(".background(task.status.tint.opacity(0.05)"))
-        XCTAssertFalse(cardSource.contains(".background(task.status.tint.opacity(isSelected"))
+        XCTAssertTrue(cardSource.contains(".fill(Color(nsColor: .controlBackgroundColor))"))
+        XCTAssertFalse(cardSource.contains(".background(.regularMaterial"))
+        XCTAssertTrue(cardSource.contains(".fill(task.status.tint.opacity(0.05))"))
+        XCTAssertFalse(cardSource.contains("task.status.tint.opacity(isSelected"))
         XCTAssertTrue(cardSource.contains(".stroke(isSelected || isPointerHovered"))
     }
 
