@@ -172,11 +172,6 @@ guard !matches.isEmpty else {
     fputs("No exact AX identifier \(targetIdentifier) was found in the selected window.\n", stderr)
     exit(1)
 }
-if identityFingerprintEnabled && matches.count != 1 {
-    fputs("Identity fingerprint requires exactly one AX target for identifier \(targetIdentifier); found \(matches.count).\n", stderr)
-    exit(1)
-}
-
 struct VisibleCandidate {
     let element: AXUIElement
     let targetFrame: CGRect
@@ -219,6 +214,10 @@ func visibleCandidate(for target: AXUIElement) -> VisibleCandidate? {
 }
 
 let candidates = matches.compactMap(visibleCandidate)
+if identityFingerprintEnabled && candidates.count != 1 {
+    fputs("Identity fingerprint requires exactly one visible AX target for identifier \(targetIdentifier); found \(candidates.count) visible candidate(s) from \(matches.count) exact match(es).\n", stderr)
+    exit(1)
+}
 guard let selectedCandidate = candidates.sorted(by: { lhs, rhs in
     let lhsVisibleArea = lhs.visibleFrame.width * lhs.visibleFrame.height
     let rhsVisibleArea = rhs.visibleFrame.width * rhs.visibleFrame.height

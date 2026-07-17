@@ -85,7 +85,9 @@ final class VisualCaptureStabilityTests: XCTestCase {
 
         let frame = try readPackageFile("script/ui_evidence_ax_target_frame_audit.swift")
         XCTAssertTrue(frame.contains("SOLOPM_UI_EVIDENCE_AX_IDENTITY_FINGERPRINT"))
-        XCTAssertTrue(frame.contains("matches.count != 1"))
+        XCTAssertTrue(frame.contains("candidates.count != 1"))
+        XCTAssertTrue(frame.contains("visible AX target"))
+        XCTAssertFalse(frame.contains("identityFingerprintEnabled && matches.count != 1"))
         XCTAssertTrue(frame.contains("if !identityFingerprintEnabled"))
         XCTAssertTrue(frame.contains("print(receiptFields)"))
         XCTAssertTrue(frame.contains("targetFrame.minX"))
