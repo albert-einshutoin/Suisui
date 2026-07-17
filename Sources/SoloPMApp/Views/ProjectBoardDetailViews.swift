@@ -1230,7 +1230,13 @@ private struct ProjectKanbanBoard: View {
         .onChange(of: viewModel.selectedTaskID) { _, selectedTaskID in
             // Clicking a card should let J/K/E/D/1-3 work immediately, but the
             // board never steals focus while the inline composer is editing.
-            if selectedTaskID != nil && composingStatus == nil {
+            if selectedTaskID != nil,
+               composingStatus == nil,
+               ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID == nil {
+                // The evidence override restores deterministic initial state,
+                // not a user gesture. Focusing during that restoration makes
+                // macOS 14 recompose focused card labels while they are being
+                // captured; real click and keyboard selections still focus.
                 isBoardFocused = true
             }
         }

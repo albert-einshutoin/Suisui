@@ -2,6 +2,18 @@ import Foundation
 import XCTest
 
 final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
+    func testEvidenceSelectionDoesNotForceBoardFocusBeforeHostedCapture() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
+        let changeStart = try XCTUnwrap(source.range(of: ".onChange(of: viewModel.selectedTaskID)"))
+        let changeEnd = try XCTUnwrap(
+            source.range(of: ".help(\"Keyboard:", range: changeStart.upperBound..<source.endIndex)
+        )
+        let changeSource = String(source[changeStart.lowerBound..<changeEnd.lowerBound])
+
+        XCTAssertTrue(changeSource.contains("ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID == nil"))
+        XCTAssertTrue(changeSource.contains("isBoardFocused = true"))
+    }
+
     func testTaskCardButtonPublishesTaskSpecificLocalizedMetadataForRuntimeAX() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
         let cardStart = try XCTUnwrap(source.range(of: "private struct BoardTaskCard: View"))
