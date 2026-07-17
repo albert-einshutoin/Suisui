@@ -1611,7 +1611,7 @@ private struct BoardTaskCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button(action: onOpenDetails) {
-                TaskCardSelectableSummary(task: task, isPointerHovered: isPointerHovered)
+                TaskCardSelectableSummary(task: task, isSelected: isSelected, isPointerHovered: isPointerHovered)
             }
             .buttonStyle(.plain)
             .contentShape(RoundedRectangle(cornerRadius: 6))
@@ -1635,7 +1635,7 @@ private struct BoardTaskCard: View {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(task.status.tint.opacity(0.05))
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected || isPointerHovered ? task.status.tint.opacity(0.7) : Color.secondary.opacity(0.16))
+                    .stroke(isPointerHovered ? task.status.tint.opacity(0.7) : Color.secondary.opacity(0.16))
             }
         }
         // Keep every selection decoration behind the card content. Some hosted
@@ -1649,7 +1649,9 @@ private struct BoardTaskCard: View {
     }
 
     private var accessibilityValueText: String {
-        accessibilityMetadataValue
+        isSelected
+            ? "\(localizedDisplay("Selected")), \(accessibilityMetadataValue)"
+            : accessibilityMetadataValue
     }
 
     private var accessibilityMetadataValue: String {
@@ -1681,6 +1683,7 @@ private struct BoardTaskCard: View {
 
 private struct TaskCardSelectableSummary: View {
     let task: ProjectBoardTask
+    let isSelected: Bool
     let isPointerHovered: Bool
 
     var body: some View {
@@ -1694,6 +1697,14 @@ private struct TaskCardSelectableSummary: View {
                         .lineLimit(2)
                         .truncationMode(.tail)
                         .help(task.title)
+
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(Color(nsColor: .labelColor))
+                            .help("Selected task")
+                            .accessibilityHidden(true)
+                    }
 
                     Spacer(minLength: 6)
 

@@ -17,7 +17,7 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(cardSource.contains("localizedDisplay(task.status.title)"))
         XCTAssertTrue(cardSource.contains("localizedDisplay(task.priority.label)"))
         XCTAssertTrue(cardSource.contains("task.dueLabel.map(localizedDisplay) ?? localizedDisplay(\"No due date\")"))
-        XCTAssertTrue(cardSource.contains("Button(action: onOpenDetails) {\n                TaskCardSelectableSummary(task: task, isPointerHovered: isPointerHovered)"))
+        XCTAssertTrue(cardSource.contains("Button(action: onOpenDetails) {\n                TaskCardSelectableSummary(task: task, isSelected: isSelected, isPointerHovered: isPointerHovered)"))
         XCTAssertTrue(cardSource.contains(".accessibilityElement(children: .combine)"))
         XCTAssertTrue(cardSource.contains(".accessibilityLabel(\"Open task \\(task.title)\")"))
     }
@@ -69,7 +69,12 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertFalse(cardSource.contains(".background(.regularMaterial"))
         XCTAssertTrue(cardSource.contains(".fill(task.status.tint.opacity(0.05))"))
         XCTAssertFalse(cardSource.contains("task.status.tint.opacity(isSelected"))
-        XCTAssertTrue(cardSource.contains(".stroke(isSelected || isPointerHovered"))
+        XCTAssertTrue(summarySource.contains("if isSelected"))
+        XCTAssertTrue(summarySource.contains("Image(systemName: \"checkmark.circle.fill\")"))
+        XCTAssertTrue(summarySource.contains(".help(\"Selected task\")"))
+        XCTAssertTrue(cardSource.contains("localizedDisplay(\"Selected\")"))
+        XCTAssertFalse(cardSource.contains(".stroke(isSelected"))
+        XCTAssertTrue(cardSource.contains(".stroke(isPointerHovered"))
         XCTAssertFalse(cardSource.contains(".overlay {"))
     }
 
