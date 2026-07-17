@@ -33,7 +33,7 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(lineSource.contains("Text(verbatim: value)"))
         XCTAssertFalse(lineSource.contains("Image(systemName:"))
         XCTAssertFalse(lineSource.contains("HStack"))
-        XCTAssertTrue(lineSource.contains(".foregroundColor(Color(nsColor: .labelColor))"))
+        XCTAssertFalse(lineSource.contains(".foregroundColor("))
         XCTAssertFalse(lineSource.contains(".foregroundColor(tint)"))
         XCTAssertTrue(lineSource.contains(".lineLimit(1)"))
         XCTAssertTrue(lineSource.contains(".minimumScaleFactor(0.82)"))
@@ -41,7 +41,7 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertFalse(lineSource.contains(".foregroundStyle(tint)"))
     }
 
-    func testSelectedTaskCardUsesOpaqueHostStableSurfaceAndConcreteTextColors() throws {
+    func testSelectedTaskCardUsesOpaqueHostStableSurfaceAndInheritedPrimaryText() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
         let cardStart = try XCTUnwrap(source.range(of: "private struct BoardTaskCard: View"))
         let cardEnd = try XCTUnwrap(
@@ -60,10 +60,10 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         let controlsSource = String(source[controlsStart.lowerBound..<controlsEnd.lowerBound])
 
         XCTAssertTrue(summarySource.contains("Text(task.detail)"))
-        XCTAssertTrue(summarySource.contains(".foregroundColor(Color(nsColor: .labelColor))"))
+        XCTAssertFalse(summarySource.contains(".foregroundColor("))
         XCTAssertFalse(summarySource.contains(".foregroundStyle(.secondary)"))
         XCTAssertTrue(controlsSource.contains("Text(LocalizedStringKey(task.status.title))"))
-        XCTAssertTrue(controlsSource.contains(".foregroundColor(Color(nsColor: .labelColor))"))
+        XCTAssertFalse(controlsSource.contains(".foregroundColor("))
         XCTAssertFalse(controlsSource.contains(".foregroundStyle(.secondary)"))
         XCTAssertTrue(cardSource.contains(".fill(Color(nsColor: .controlBackgroundColor))"))
         XCTAssertFalse(cardSource.contains(".background(.regularMaterial"))

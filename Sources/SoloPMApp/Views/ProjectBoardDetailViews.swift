@@ -1710,7 +1710,9 @@ private struct TaskCardSelectableSummary: View {
                 if !task.detail.isEmpty {
                     Text(task.detail)
                         .font(.caption)
-                        .foregroundColor(Color(nsColor: .labelColor))
+                        // Inherit the same primary style as the title. On the
+                        // hosted macOS 14 renderer, explicitly colored Text
+                        // nodes inside a focused card can rasterize as clear.
                         .lineLimit(3)
                         .truncationMode(.tail)
                         .help(task.detail)
@@ -1806,7 +1808,8 @@ private struct TaskStatusMoveControls: View {
 
             Text(LocalizedStringKey(task.status.title))
                 .font(.caption2.weight(.semibold))
-                .foregroundColor(Color(nsColor: .labelColor))
+                // The surrounding capsule carries hierarchy without an
+                // explicit foreground color that can disappear on macOS 14.
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(minWidth: 76)
@@ -1925,7 +1928,8 @@ private struct TaskMetadataLine: View {
             .truncationMode(.tail)
             .minimumScaleFactor(0.82)
             .layoutPriority(1)
-            .foregroundColor(Color(nsColor: .labelColor))
+            // The tinted chip background preserves status meaning while the
+            // label follows the host-stable inherited primary text path.
             .padding(.horizontal, 7)
             .padding(.vertical, 4)
             .frame(
