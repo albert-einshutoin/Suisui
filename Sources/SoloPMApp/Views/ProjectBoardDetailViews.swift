@@ -1610,23 +1610,27 @@ private struct BoardTaskCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button(action: onOpenDetails) {
+            ZStack {
+                // Keep rendered labels outside the actionable AX subtree. On
+                // hosted macOS 14, rebuilding a selected Button's combined AX
+                // children can also drop those children from the raster tree.
+                // The clear native Button below preserves one familiar click
+                // target while owning all spoken metadata explicitly.
                 TaskCardSelectableSummary(task: task, isPointerHovered: isPointerHovered)
+                    .accessibilityHidden(true)
+                    .allowsHitTesting(false)
+
+                Button(action: onOpenDetails) {
+                    Color.clear
+                        .contentShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open task \(task.title)")
+                .accessibilityValue(accessibilityValueText)
+                .accessibilityHint("Opens task details in the inspector. Task inspector fields can then be edited without dragging.")
+                .accessibilityIdentifier("task-card-open-details-\(task.id)")
+                .accessibilitySortPriority(2)
             }
-            .buttonStyle(.plain)
-            .contentShape(RoundedRectangle(cornerRadius: 6))
-            // macOS 14 publishes this Button's explicit metadata value only
-            // when its visual label is combined. The inner metadata Text is AX
-            // hidden below, so this is one combination boundary rather than
-            // the nested combine tree that destabilized hosted rendering.
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Open task \(task.title)")
-            .accessibilityValue(accessibilityValueText)
-            .accessibilityHint("Opens task details in the inspector. Task inspector fields can then be edited without dragging.")
-            // The selectable summary combines its children in the runtime AX
-            // tree, so the parent button is the stable task-scoped audit node.
-            .accessibilityIdentifier("task-card-open-details-\(task.id)")
-            .accessibilitySortPriority(2)
 
             TaskStatusMoveControls(task: task, onMove: onMoveStatus)
                 .accessibilityIdentifier("task-status-move-controls")
