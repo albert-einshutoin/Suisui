@@ -22,7 +22,7 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(cardSource.contains(".accessibilityLabel(\"Open task \\(task.title)\")"))
     }
 
-    func testMetadataLineUsesOneVerbatimTextNodeSoHostedRenderingCannotDropChildLabels() throws {
+    func testMetadataLineUsesStableAppKitLabelSoHostedRenderingCannotDropChildLabels() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
         let lineStart = try XCTUnwrap(source.range(of: "private struct TaskMetadataLine: View"))
         let lineEnd = try XCTUnwrap(
@@ -30,13 +30,12 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         )
         let lineSource = String(source[lineStart.lowerBound..<lineEnd.lowerBound])
 
-        XCTAssertTrue(lineSource.contains("Text(verbatim: value)"))
+        XCTAssertTrue(lineSource.contains("StableTaskCardText("))
+        XCTAssertTrue(lineSource.contains("color: NSColor(tint)"))
         XCTAssertFalse(lineSource.contains("Image(systemName:"))
         XCTAssertFalse(lineSource.contains("HStack"))
-        XCTAssertTrue(lineSource.contains(".lineLimit(1)"))
-        XCTAssertTrue(lineSource.contains(".minimumScaleFactor(0.82)"))
+        XCTAssertTrue(lineSource.contains("lineLimit: 1"))
         XCTAssertTrue(lineSource.contains("maxWidth: .infinity"))
-        XCTAssertTrue(lineSource.contains(".foregroundColor(tint)"))
         XCTAssertFalse(lineSource.contains(".foregroundStyle(tint)"))
     }
 
@@ -53,9 +52,11 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         )
         let controlsSource = String(source[controlsStart.lowerBound..<controlsEnd.lowerBound])
 
-        XCTAssertTrue(summarySource.contains(".foregroundColor(.secondary)"))
+        XCTAssertTrue(summarySource.contains("StableTaskCardText("))
+        XCTAssertTrue(summarySource.contains("color: .secondaryLabelColor"))
         XCTAssertFalse(summarySource.contains(".foregroundStyle(.secondary)"))
-        XCTAssertTrue(controlsSource.contains(".foregroundColor(.secondary)"))
+        XCTAssertTrue(controlsSource.contains("StableTaskCardText("))
+        XCTAssertTrue(controlsSource.contains("color: .secondaryLabelColor"))
         XCTAssertFalse(controlsSource.contains(".foregroundStyle(.secondary)"))
     }
 
@@ -90,7 +91,8 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("localizedDisplay(task.priority.label)"))
         XCTAssertTrue(source.contains("private var localizedDueValue: String"))
         XCTAssertTrue(source.contains("task.dueLabel.map(localizedDisplay) ?? localizedDisplay(\"No due date\")"))
-        XCTAssertTrue(source.contains("Text(verbatim: value)"))
+        XCTAssertTrue(source.contains("private struct StableTaskCardText: NSViewRepresentable"))
+        XCTAssertTrue(source.contains("label.setAccessibilityElement(false)"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"task-card-metadata-strip-\\(task.id)\")"))
     }
 
