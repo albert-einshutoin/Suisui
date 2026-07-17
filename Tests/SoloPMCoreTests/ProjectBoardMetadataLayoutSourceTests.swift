@@ -40,7 +40,7 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertFalse(lineSource.contains(".foregroundStyle(tint)"))
     }
 
-    func testSelectedTaskCardUsesConcreteTextColorsOnHostedMacOS14() throws {
+    func testSelectedMaterialTaskCardUsesConcreteTextColorsOnHostedRunner() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
         let summaryStart = try XCTUnwrap(source.range(of: "private struct TaskCardSelectableSummary: View"))
         let summaryEnd = try XCTUnwrap(

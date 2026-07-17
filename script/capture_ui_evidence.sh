@@ -1220,14 +1220,16 @@ persist_project_board_selection() {
     exit 1
   fi
   capture_task_id="$(sqlite3 "$database_path" "SELECT id FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Capture launch screenshots' ORDER BY id DESC LIMIT 1;")"
+  review_task_id="$(sqlite3 "$database_path" "SELECT id FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Review VoiceOver focus path' ORDER BY id DESC LIMIT 1;")"
   unscheduled_task_id="$(sqlite3 "$database_path" "SELECT id FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Unscheduled schedule draft input' ORDER BY id DESC LIMIT 1;")"
-  if [[ ! "$capture_task_id" =~ ^[0-9]+$ || ! "$unscheduled_task_id" =~ ^[0-9]+$ ]]; then
+  if [[ ! "$capture_task_id" =~ ^[0-9]+$ || ! "$review_task_id" =~ ^[0-9]+$ || ! "$unscheduled_task_id" =~ ^[0-9]+$ ]]; then
     echo "seeded project-board metadata tasks were not found." >&2
     exit 1
   fi
   capture_due_date="$(sqlite3 "$database_path" "SELECT substr(due_at, 1, 10) FROM tasks WHERE id = $capture_task_id;")"
-  if [[ ! "$capture_due_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
-    echo "seeded Capture launch screenshots task has no canonical due date." >&2
+  review_due_date="$(sqlite3 "$database_path" "SELECT substr(due_at, 1, 10) FROM tasks WHERE id = $review_task_id;")"
+  if [[ ! "$capture_due_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ || ! "$review_due_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    echo "seeded project-board evidence tasks have no canonical due date." >&2
     exit 1
   fi
 
@@ -1236,12 +1238,14 @@ persist_project_board_selection() {
   case "$EVIDENCE_LOCALE" in
     english)
       planned_label="Planned"
+      in_progress_label="In Progress"
       medium_label="Medium"
       high_label="High"
       no_due_date_label="No due date"
       ;;
     japanese)
       planned_label="予定"
+      in_progress_label="進行中"
       medium_label="中"
       high_label="高"
       no_due_date_label="期限なし"
@@ -1252,7 +1256,8 @@ persist_project_board_selection() {
   # SwiftUI combines each card into its parent button in the runtime AX tree.
   # Bind title and metadata proof to that exact task button so a hidden child
   # identifier or another card's text cannot authenticate the screenshot.
-  PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details-$capture_task_id=>Capture launch screenshots|task-card-open-details-$capture_task_id=>$planned_label, $high_label, $capture_due_date|task-card-open-details-$unscheduled_task_id=>$planned_label, $medium_label, $no_due_date_label"
+  PROJECT_BOARD_SELECTED_TASK_OVERRIDE="$review_task_id"
+  PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details-$capture_task_id=>Capture launch screenshots|task-card-open-details-$capture_task_id=>$planned_label, $high_label, $capture_due_date|task-card-open-details-$review_task_id=>Review VoiceOver focus path|task-card-open-details-$review_task_id=>$in_progress_label, $high_label, $review_due_date|task-card-open-details-$unscheduled_task_id=>$planned_label, $medium_label, $no_due_date_label"
   INBOX_VOICE_TASK_OVERRIDE="$inbox_voice_task_id"
   INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>Inbox classification actions"
   write_app_preference solopm.projectBoard.selectedDestination "$PROJECT_BOARD_SELECTION_OVERRIDE"
@@ -2137,9 +2142,9 @@ if [[ "$DONE_ANALYTICS" == "1" ]]; then
   exit 0
 fi
 
-capture_project_board_destination light "$PROJECT_BOARD_SELECTION_OVERRIDE" "$LIGHT_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS" "" "" "project-board-detail"
-capture_project_board_destination dark "$PROJECT_BOARD_SELECTION_OVERRIDE" "$DARK_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS" "" "" "project-board-detail"
-capture_project_board_destination system "$PROJECT_BOARD_SELECTION_OVERRIDE" "$SYSTEM_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS" "" "" "project-board-detail"
+capture_project_board_destination light "$PROJECT_BOARD_SELECTION_OVERRIDE" "$LIGHT_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS" "$PROJECT_BOARD_SELECTED_TASK_OVERRIDE" "" "project-board-detail"
+capture_project_board_destination dark "$PROJECT_BOARD_SELECTION_OVERRIDE" "$DARK_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS" "$PROJECT_BOARD_SELECTED_TASK_OVERRIDE" "" "project-board-detail"
+capture_project_board_destination system "$PROJECT_BOARD_SELECTION_OVERRIDE" "$SYSTEM_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS" "$PROJECT_BOARD_SELECTED_TASK_OVERRIDE" "" "project-board-detail"
 capture_project_board_destination light inbox "$INBOX_LIGHT_SCREENSHOT" "Inbox" "$INBOX_TARGET_MARKERS" "" "" "inbox-workflow"
 capture_project_board_destination dark inbox "$INBOX_DARK_SCREENSHOT" "Inbox" "$INBOX_TARGET_MARKERS" "" "" "inbox-workflow"
 capture_project_board_destination system inbox "$INBOX_SYSTEM_SCREENSHOT" "Inbox" "$INBOX_TARGET_MARKERS" "" "" "inbox-workflow"

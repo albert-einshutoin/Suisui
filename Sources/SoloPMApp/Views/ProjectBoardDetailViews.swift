@@ -1696,9 +1696,8 @@ private struct TaskCardSelectableSummary: View {
                 if !task.detail.isEmpty {
                     Text(task.detail)
                         .font(.caption)
-                        // A concrete text color avoids a macOS 14 SwiftUI bug
-                        // where hierarchical foreground styles become clear in
-                        // the currently selected material-backed task card.
+                        // A concrete text color avoids hosted SwiftUI resolving
+                        // hierarchical styles as clear in a selected material card.
                         .foregroundColor(.secondary)
                         .lineLimit(3)
                         .truncationMode(.tail)
@@ -1795,8 +1794,8 @@ private struct TaskStatusMoveControls: View {
 
             Text(LocalizedStringKey(task.status.title))
                 .font(.caption2.weight(.semibold))
-                // Keep selected-card text rasterized on the hosted macOS 14
-                // runner; the hierarchical secondary style can resolve clear.
+                // Keep selected-card text rasterized on the hosted runner; the
+                // hierarchical secondary style can resolve as clear here.
                 .foregroundColor(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -1843,7 +1842,7 @@ private struct TaskCardMetadataStrip: View {
 
     var body: some View {
         // This two-row structure is retained because it is the card metadata
-        // layout proven to render on the hosted macOS 14 visual runner. Each
+        // layout proven to render on the hosted visual runner. Each
         // semantic row owns one Text node, avoiding icon-only chip failures.
         VStack(alignment: .leading, spacing: 6) {
             TaskMetadataLine(value: identityLineValue, tint: task.status.tint)
@@ -1917,7 +1916,7 @@ private struct TaskMetadataLine: View {
             .minimumScaleFactor(0.82)
             .layoutPriority(1)
             // Unlike ShapeStyle resolution, a concrete Color remains visible
-            // inside the selected material-backed card on macOS 14.
+            // inside the selected material-backed card on the hosted runner.
             .foregroundColor(tint)
             .padding(.horizontal, 7)
             .padding(.vertical, 4)
