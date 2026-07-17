@@ -246,14 +246,17 @@ final class UIGateScriptsTests: XCTestCase {
 
     func testLayoutResizeReacquiresNamedOwnedWindowUntilRequestedWidthIsObserved() throws {
         let script = try readPackageFile("script/check_layout_stability_smoke.sh")
+        let metadataHelper = try readPackageFile("script/ui_evidence_window_metadata.swift")
 
-        XCTAssertTrue(script.contains("set targetWindow to missing value"))
-        XCTAssertTrue(script.contains("repeat with currentWindow in windows"))
-        XCTAssertTrue(script.contains("if currentName is requestedName then set targetWindow to currentWindow"))
-        XCTAssertTrue(script.contains("if targetWindow is missing value then error \"named pid-owned window missing\""))
-        XCTAssertTrue(script.contains("read_window_metadata >/dev/null 2>&1"))
+        XCTAssertTrue(script.contains("set currentMain to value of attribute \"AXMain\" of currentWindow as boolean"))
+        XCTAssertTrue(script.contains("if currentName is requestedName and currentMain then"))
+        XCTAssertTrue(script.contains("if candidateCount is not 1 then error \"main named pid-owned window is not unique\""))
+        XCTAssertTrue(script.contains("SOLOPM_REQUIRE_SINGLE_WINDOW=\"$require_single_window\""))
+        XCTAssertTrue(script.contains("read_window_metadata 1"), "a recreated successor is valid only when it is the sole visible PID/name match")
         XCTAssertTrue(script.contains("if [[ \"$window_width\" -eq \"$expected_width\" ]]; then"))
         XCTAssertTrue(script.contains("INFO: reapplying owned window size"))
+        XCTAssertTrue(metadataHelper.contains("environment[\"SOLOPM_REQUIRE_SINGLE_WINDOW\"] == \"1\""))
+        XCTAssertTrue(metadataHelper.contains("guard candidates.count == 1"))
     }
 
     func testVisualPositioningRewaitsForOwnedWindowAfterRouteRecreation() throws {

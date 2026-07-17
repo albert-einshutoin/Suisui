@@ -343,6 +343,7 @@ launch_layout_candidate() {
 }
 
 read_window_metadata() {
+  local require_single_window="${1:-0}"
   local output
   local metadata_status
   set +e
@@ -350,6 +351,7 @@ read_window_metadata() {
     SOLOPM_WINDOW_OWNER="$APP_NAME" \
     SOLOPM_WINDOW_OWNER_PID="$app_pid" \
     SOLOPM_WINDOW_NAME="$WINDOW_NAME" \
+    SOLOPM_REQUIRE_SINGLE_WINDOW="$require_single_window" \
     /usr/bin/swift "$ROOT_DIR/script/ui_evidence_window_metadata.swift"
   )"
   metadata_status=$?
@@ -418,8 +420,9 @@ set_project_board_window_size() {
   # Resize the real app window through AX so the smoke covers AppKit/SwiftUI
   # bridge behavior instead of only source-level layout contracts. Route and
   # inspector transitions can recreate the SwiftUI window after AX accepted a
-  # resize, so reacquire the named PID-owned window and reapply until fresh CG
-  # metadata proves the requested width.
+  # resize, so reacquire the unique main named AX window and reapply until the
+  # sole visible PID/name CG candidate proves the expected width. Both sides
+  # fail closed on ambiguity so a stale same-title window cannot pass the gate.
   while true; do
     attempt=$((attempt + 1))
     if wait_for_visible_windows >/dev/null 2>&1 &&
@@ -435,14 +438,22 @@ on run argv
     set targetProcess to item 1 of appMatches
     tell targetProcess
       set targetWindow to missing value
+      set candidateCount to 0
       repeat with currentWindow in windows
         set currentName to ""
+        set currentMain to false
         try
           set currentName to name of currentWindow as text
         end try
-        if currentName is requestedName then set targetWindow to currentWindow
+        try
+          set currentMain to value of attribute "AXMain" of currentWindow as boolean
+        end try
+        if currentName is requestedName and currentMain then
+          set candidateCount to candidateCount + 1
+          set targetWindow to currentWindow
+        end if
       end repeat
-      if targetWindow is missing value then error "named pid-owned window missing"
+      if candidateCount is not 1 then error "main named pid-owned window is not unique"
       set frontmost to true
       try
         perform action "AXRaise" of targetWindow
@@ -452,14 +463,14 @@ on run argv
   end tell
 end run
 APPLESCRIPT
-    then
-      if read_window_metadata >/dev/null 2>&1 && window_metadata_has_positive_bounds; then
-        read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE"
-        if [[ "$window_width" -eq "$expected_width" ]]; then
-          return 0
+      then
+        if read_window_metadata 1 >/dev/null 2>&1 && window_metadata_has_positive_bounds; then
+          read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE"
+          if [[ "$window_width" -eq "$expected_width" ]]; then
+            return 0
+          fi
         fi
       fi
-    fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: failed to resize named PID-owned app window pid=$app_pid to ${width}x${height} (observed=${window_width:-unknown}x${window_height:-unknown})" >&2
       return 1

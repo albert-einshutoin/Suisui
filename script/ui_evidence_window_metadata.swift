@@ -5,6 +5,7 @@ let environment = ProcessInfo.processInfo.environment
 let ownerName = environment["SOLOPM_WINDOW_OWNER"] ?? "SoloPM"
 let ownerPID = environment["SOLOPM_WINDOW_OWNER_PID"].flatMap(Int.init)
 let requiredWindowName = environment["SOLOPM_WINDOW_NAME"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+let requireSingleWindow = environment["SOLOPM_REQUIRE_SINGLE_WINDOW"] == "1"
 let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
 
 guard let windowInfo = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
@@ -48,6 +49,13 @@ let candidates = windowInfo.compactMap { window -> Candidate? in
         area: width * height
     )
 }.sorted { $0.area > $1.area }
+
+if requireSingleWindow {
+    guard candidates.count == 1 else {
+        fputs("Expected exactly one visible PID-owned named window, found \(candidates.count).\n", stderr)
+        exit(1)
+    }
+}
 
 guard let candidate = candidates.first else {
     let windowDescription = requiredWindowName?.isEmpty == false ? " named \(requiredWindowName!)" : ""
