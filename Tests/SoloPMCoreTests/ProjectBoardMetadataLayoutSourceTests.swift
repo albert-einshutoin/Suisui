@@ -70,6 +70,7 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(cardSource.contains(".fill(task.status.tint.opacity(0.05))"))
         XCTAssertFalse(cardSource.contains("task.status.tint.opacity(isSelected"))
         XCTAssertTrue(cardSource.contains(".stroke(isSelected || isPointerHovered"))
+        XCTAssertFalse(cardSource.contains(".overlay {"))
     }
 
     func testMetadataStripComposesStatusPriorityDueAndRecurrenceIntoOneReadableValue() throws {

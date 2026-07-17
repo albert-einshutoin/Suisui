@@ -1634,15 +1634,13 @@ private struct BoardTaskCard: View {
                     .fill(Color(nsColor: .controlBackgroundColor))
                 RoundedRectangle(cornerRadius: 8)
                     .fill(task.status.tint.opacity(0.05))
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected || isPointerHovered ? task.status.tint.opacity(0.7) : Color.secondary.opacity(0.16))
             }
         }
-        // Hosted AppKit vibrancy can clear secondary labels inside a selected
-        // nested material. This opaque semantic surface keeps theme support and
-        // status tinting while the border remains the non-color selection cue.
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected || isPointerHovered ? task.status.tint.opacity(0.7) : Color.secondary.opacity(0.16))
-        }
+        // Keep every selection decoration behind the card content. Some hosted
+        // SwiftUI renderers clear label sublayers beneath a transparent overlay;
+        // the background stroke preserves the same non-color selection cue.
         .shadow(color: Color.black.opacity(isPointerHovered ? 0.10 : 0.04), radius: isPointerHovered ? 12 : 8, x: 0, y: isPointerHovered ? 4 : 2)
         .contentShape(RoundedRectangle(cornerRadius: 8))
         .onHover { isPointerHovered = $0 }
