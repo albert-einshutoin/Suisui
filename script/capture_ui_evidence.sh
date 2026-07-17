@@ -482,6 +482,7 @@ wait_for_owned_evidence_window() {
 target_marker_present() {
   local identifier="$1"
   local text="$2"
+  local marker_mode="${3:-legacy}"
   local error_file
   local checker_pid
   local deadline
@@ -494,11 +495,27 @@ target_marker_present() {
   # accessibility tree can make AppleScript recursion stall on detail-heavy screens.
   # Compile the helper once; running it through `swift` for every marker leaves
   # swift-frontend children that a shell watchdog cannot reliably terminate.
-  SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
-    SOLOPM_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
-    SOLOPM_UI_EVIDENCE_AX_REQUIRE_EXACT_IDENTIFIER=1 \
-    "$AX_MARKER_CHECKER" "$APP_NAME" "$identifier" "$text" "$EVIDENCE_APP_PID" \
-    >/dev/null 2>"$error_file" &
+  case "$marker_mode" in
+    strict-task-card)
+      SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+        SOLOPM_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
+        SOLOPM_UI_EVIDENCE_AX_REQUIRE_EXACT_IDENTIFIER=1 \
+        "$AX_MARKER_CHECKER" "$APP_NAME" "$identifier" "$text" "$EVIDENCE_APP_PID" \
+        >/dev/null 2>"$error_file" &
+      ;;
+    legacy)
+      # Existing workflow markers intentionally allow identifier and text to
+      # live in different runtime AX elements (for example Inbox Voice).
+      SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+        "$AX_MARKER_CHECKER" "$APP_NAME" "$identifier" "$text" "$EVIDENCE_APP_PID" \
+        >/dev/null 2>"$error_file" &
+      ;;
+    *)
+      echo "invalid AX target marker mode: $marker_mode" >&2
+      rm -f "$error_file"
+      return 2
+      ;;
+  esac
   checker_pid=$!
   deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
   while kill -0 "$checker_pid" >/dev/null 2>&1; do
@@ -698,6 +715,7 @@ assert_project_board_destination_ready() {
   local marker
   local identifier
   local text
+  local marker_mode
   local missing=()
 
   if [[ -z "$marker_spec" ]]; then
@@ -713,7 +731,17 @@ assert_project_board_destination_ready() {
     fi
     identifier="${marker%%=>*}"
     text="${marker#*=>}"
-    if ! target_marker_present "$identifier" "$text"; then
+    if [[ "$identifier" == task-card-open-details-* ]]; then
+      if [[ "$identifier" =~ ^task-card-open-details-[0-9]+$ ]]; then
+        marker_mode="strict-task-card"
+      else
+        echo "invalid task-card UI evidence identifier for $label: $identifier" >&2
+        return 2
+      fi
+    else
+      marker_mode="legacy"
+    fi
+    if ! target_marker_present "$identifier" "$text" "$marker_mode"; then
       missing+=("$marker")
     fi
   done
