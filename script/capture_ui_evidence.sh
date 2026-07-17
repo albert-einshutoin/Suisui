@@ -23,7 +23,7 @@ DONE_ANALYTICS_EVIDENCE_FILE="${SOLOPM_DONE_ANALYTICS_EVIDENCE_FILE:-$ROOT_DIR/d
 EVIDENCE_TMPDIR="${SOLOPM_UI_EVIDENCE_TMPDIR:-$ROOT_DIR/.tmp}"
 VISUAL_BASELINE_MANIFEST="$ROOT_DIR/docs/quality/visual-baseline-manifest.json"
 SOLOPM_VISUAL_AX_AUDIT_RESULT="${SOLOPM_VISUAL_AX_AUDIT_RESULT:-$EVIDENCE_TMPDIR/visual-ax-audit-receipt.json}"
-VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1024x674}"
+VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1024x724}"
 SETTINGS_VISUAL_BASELINE_VIEWPORT="${SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT:-720x712}"
 VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT="${SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT:-760x640}"
 TARGET_TIMEOUT_SECONDS="${SOLOPM_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS:-30}"
@@ -734,6 +734,8 @@ position_window_for_capture() {
   local height="${viewport#*x}"
   local deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
   local window_metadata
+  local observed_width=""
+  local observed_height=""
   if [[ ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
     echo "invalid viewport: $viewport" >&2
     return 2
@@ -779,10 +781,13 @@ end run
 APPLESCRIPT
     then
       if window_metadata="$(wait_for_window_capture_metadata "$window_name" 2>/dev/null)"; then
-        # AppKit can clamp a requested viewport to the product minimum. Fresh
-        # PID-scoped CG metadata proves the positioned window still exists;
-        # capture_visible_window records the settled bounds for the audit.
-        [[ -n "$window_metadata" ]] && return 0
+        read -r _ _ _ observed_width observed_height <<<"$window_metadata"
+        # AppKit may clamp AX resize requests to a content-derived minimum.
+        # Reject that state here so a wrong viewport never reaches capture or
+        # masquerades as a valid artifact until the final receipt audit.
+        if [[ "$observed_width" == "$width" && "$observed_height" == "$height" ]]; then
+          return 0
+        fi
       fi
     fi
 
@@ -799,7 +804,11 @@ APPLESCRIPT
   done
 
   echo "failure_category=window" >&2
-  echo "failure_message=visual-window-position-unavailable" >&2
+  if [[ -n "$observed_width" && -n "$observed_height" ]]; then
+    echo "failure_message=visual-window-viewport-mismatch requested=${width}x${height} observed=${observed_width}x${observed_height}" >&2
+  else
+    echo "failure_message=visual-window-position-unavailable" >&2
+  fi
   return 1
 }
 

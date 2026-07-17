@@ -444,6 +444,21 @@ final class UIGateScriptsTests: XCTestCase {
         XCTAssertTrue(script.contains("wait_for_window_capture_metadata \"$window_name\""))
     }
 
+    func testVisualPositioningRejectsAppKitViewportClampingBeforeCapture() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+        let positioningStart = try XCTUnwrap(script.range(of: "position_window_for_capture()"))
+        let nextFunction = try XCTUnwrap(
+            script.range(of: "\nassert_screenshot_has_visible_content()", range: positioningStart.upperBound..<script.endIndex)
+        )
+        let positioningSource = String(script[positioningStart.lowerBound..<nextFunction.lowerBound])
+
+        XCTAssertTrue(positioningSource.contains("read -r _ _ _ observed_width observed_height <<<\"$window_metadata\""))
+        XCTAssertTrue(positioningSource.contains("[[ \"$observed_width\" == \"$width\" && \"$observed_height\" == \"$height\" ]]"))
+        XCTAssertTrue(positioningSource.contains("failure_message=visual-window-viewport-mismatch"))
+        XCTAssertTrue(positioningSource.contains("requested=${width}x${height}"))
+        XCTAssertTrue(positioningSource.contains("observed=${observed_width}x${observed_height}"))
+    }
+
     func testVisualCaptureRefreshesWindowAndAXEvidenceForEveryRetryAttempt() throws {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
         let captureStart = try XCTUnwrap(script.range(of: "capture_visible_window() {"))

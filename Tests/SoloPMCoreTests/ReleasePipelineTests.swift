@@ -8187,14 +8187,14 @@ final class ReleasePipelineTests: XCTestCase {
         ]
         XCTAssertEqual(screenIDs, coreSystemScreens.union(sampleDerivedScreens))
         let expectedViewports: [String: (width: Int, height: Int)] = [
-            "project-board": (1_024, 674),
-            "inbox": (1_024, 674),
-            "today": (1_024, 674),
-            "inbox-voice": (1_024, 674),
-            "projects-overview": (1_024, 674),
-            "schedule": (1_024, 674),
-            "schedule-workload": (1_024, 674),
-            "done": (1_024, 674),
+            "project-board": (1_024, 724),
+            "inbox": (1_024, 724),
+            "today": (1_024, 724),
+            "inbox-voice": (1_024, 724),
+            "projects-overview": (1_024, 724),
+            "schedule": (1_024, 724),
+            "schedule-workload": (1_024, 724),
+            "done": (1_024, 724),
             "settings-overview": (720, 712),
             "settings-integrations": (720, 712),
             "settings-appearance": (720, 712),
