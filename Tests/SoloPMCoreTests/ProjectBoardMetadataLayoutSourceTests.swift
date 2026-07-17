@@ -39,6 +39,29 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(chipSource.contains(".truncationMode(.tail)"))
         XCTAssertTrue(chipSource.contains(".minimumScaleFactor(0.82)"))
         XCTAssertTrue(chipSource.contains("minWidth: ProjectBoardLayoutMetrics.taskMetadataChipMinWidth"))
+        XCTAssertTrue(chipSource.contains("maxWidth: .infinity"))
+    }
+
+    func testMetadataStripFallsBackToFullWidthPillsInsteadOfCompressingTitlesOut() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
+        let stripStart = try XCTUnwrap(source.range(of: "private struct TaskCardMetadataStrip: View"))
+        let stripEnd = try XCTUnwrap(
+            source.range(of: "private struct TaskMetadataChip: View", range: stripStart.upperBound..<source.endIndex)
+        )
+        let stripSource = String(source[stripStart.lowerBound..<stripEnd.lowerBound])
+
+        XCTAssertTrue(stripSource.contains("ViewThatFits(in: .horizontal)"))
+        XCTAssertTrue(stripSource.contains("private var statusChip: some View"))
+        XCTAssertTrue(stripSource.contains("private var priorityChip: some View"))
+        XCTAssertTrue(
+            stripSource.contains("statusChip\n                    .fixedSize(horizontal: true, vertical: false)")
+        )
+        XCTAssertTrue(
+            stripSource.contains("priorityChip\n                    .fixedSize(horizontal: true, vertical: false)")
+        )
+        XCTAssertTrue(stripSource.contains("VStack(alignment: .leading, spacing: 6)"))
+        XCTAssertTrue(stripSource.contains(".frame(maxWidth: .infinity, alignment: .leading)"))
+        XCTAssertFalse(stripSource.contains("private var scheduleChipRow: some View {\n        if task.dueLabel != nil || recurrenceValue != nil {\n            HStack"))
     }
 
     func testMetadataStripKeepsCompleteAccessibilityValueIndependentOfVisualTruncation() throws {

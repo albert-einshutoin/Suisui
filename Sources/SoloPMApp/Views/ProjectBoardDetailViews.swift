@@ -1825,13 +1825,14 @@ private struct TaskCardMetadataStrip: View {
     let task: ProjectBoardTask
 
     var body: some View {
-        // Fixed rows wrap the chips instead of a single measured HStack, so
-        // long status/priority/due labels compress inside the card width and
-        // never clip mid-glyph at the trailing card edge.
+        // Hosted macOS can reserve extra width for persistent scrollbars. Use
+        // compact pills only when their complete titles fit; otherwise the
+        // approachable full-width fallback keeps every meaning visible.
         VStack(alignment: .leading, spacing: 6) {
             identityChipRow
             scheduleChipRow
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .font(.caption2)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Task metadata")
@@ -1842,19 +1843,35 @@ private struct TaskCardMetadataStrip: View {
     }
 
     private var identityChipRow: some View {
-        HStack(spacing: 6) {
-            TaskMetadataChip(
-                value: task.status.title,
-                systemImage: task.status.systemImage,
-                tint: task.status.tint
-            )
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                statusChip
+                    .fixedSize(horizontal: true, vertical: false)
+                priorityChip
+                    .fixedSize(horizontal: true, vertical: false)
+            }
 
-            TaskMetadataChip(
-                value: task.priority.label,
-                systemImage: "flag",
-                tint: task.priority.color
-            )
+            VStack(alignment: .leading, spacing: 6) {
+                statusChip
+                priorityChip
+            }
         }
+    }
+
+    private var statusChip: some View {
+        TaskMetadataChip(
+            value: task.status.title,
+            systemImage: task.status.systemImage,
+            tint: task.status.tint
+        )
+    }
+
+    private var priorityChip: some View {
+        TaskMetadataChip(
+            value: task.priority.label,
+            systemImage: "flag",
+            tint: task.priority.color
+        )
     }
 
     /// Due and recurrence chips render only when the task carries those
@@ -1863,7 +1880,9 @@ private struct TaskCardMetadataStrip: View {
     @ViewBuilder
     private var scheduleChipRow: some View {
         if task.dueLabel != nil || recurrenceValue != nil {
-            HStack(spacing: 6) {
+            // Dates and recurrence labels are least tolerant of compression,
+            // so each receives the card's full readable width.
+            VStack(alignment: .leading, spacing: 6) {
                 if let dueLabel = task.dueLabel {
                     TaskMetadataChip(
                         value: dueLabel,
@@ -1943,10 +1962,12 @@ private struct TaskMetadataChip: View {
         .foregroundStyle(tint)
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
-        // Chips hug their content (no maxWidth: .infinity) so a row of chips
-        // compresses via truncation instead of stretching past the card edge.
+        // Full-width pills make the fallback easy to scan and keep the text's
+        // usable width deterministic. The preferred compact row explicitly
+        // opts into each pill's intrinsic width with fixedSize.
         .frame(
             minWidth: ProjectBoardLayoutMetrics.taskMetadataChipMinWidth,
+            maxWidth: .infinity,
             minHeight: ProjectBoardLayoutMetrics.taskMetadataChipMinHeight,
             alignment: .leading
         )
