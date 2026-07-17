@@ -7,7 +7,14 @@ final class QualitySourceContractTests: XCTestCase {
         let script = try readPackageFile("script/check_pseudo_voiceover_paths.sh")
         let preflight = try readPackageFile("script/check_accessibility_preflight.sh")
         let projectBoard = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
-        let projectBoardView = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        // Accessibility receipts are rendered by the composed board surface;
+        // leaf extraction must not make this quality contract file-location
+        // dependent.
+        let projectBoardView = try [
+            "Sources/SoloPMApp/Views/ProjectBoardView.swift",
+            "Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift",
+            "Sources/SoloPMApp/Views/ProjectBoardInspectors.swift"
+        ].map(readPackageFile).joined(separator: "\n\n")
 
         for marker in AccessibilityFocusPathRequirement.taskLifecycleAndExecution.requiredNodeIDs {
             XCTAssertTrue(docs.contains(marker), "docs must cover \(marker)")

@@ -1094,7 +1094,12 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
     }
 
     func testTaskAutomationFrequencyControlDocumentsManualScheduledBoundary() throws {
-        let settingsSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsView.swift")
+        // The frequency explanation belongs to the composed Settings surface,
+        // while its leaf view may live outside the scene-owning root file.
+        let settingsSource = try [
+            "Sources/SoloPMApp/Views/SettingsView.swift",
+            "Sources/SoloPMApp/Views/SettingsFeatureViews.swift"
+        ].map(readPackageFile).joined(separator: "\n\n")
         let productDoc = try readPackageFile("docs/product/role-and-strengths.md")
 
         XCTAssertTrue(settingsSource.contains("Manual frequency only prepares reviews after a user action"))
