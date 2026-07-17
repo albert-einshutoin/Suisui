@@ -21,6 +21,7 @@ let appPID = pid_t(rawPID)
 let selectedWindowTitle = CommandLine.arguments[4]
 let environment = ProcessInfo.processInfo.environment
 let maxNodes = Int(environment["SOLOPM_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
+let identityFingerprintEnabled = environment["SOLOPM_UI_EVIDENCE_AX_IDENTITY_FINGERPRINT"] == "1"
 
 guard maxNodes > 0 else {
     fputs("SOLOPM_UI_EVIDENCE_AX_MAX_NODES must be a positive integer.\n", stderr)
@@ -171,8 +172,13 @@ guard !matches.isEmpty else {
     fputs("No exact AX identifier \(targetIdentifier) was found in the selected window.\n", stderr)
     exit(1)
 }
+if identityFingerprintEnabled && matches.count != 1 {
+    fputs("Identity fingerprint requires exactly one AX target for identifier \(targetIdentifier); found \(matches.count).\n", stderr)
+    exit(1)
+}
 
 struct VisibleCandidate {
+    let element: AXUIElement
     let targetFrame: CGRect
     let visibleFrame: CGRect
 }
@@ -209,7 +215,7 @@ func visibleCandidate(for target: AXUIElement) -> VisibleCandidate? {
           visibleFrame.height >= min(44, targetFrame.height) else {
         return nil
     }
-    return VisibleCandidate(targetFrame: targetFrame, visibleFrame: visibleFrame)
+    return VisibleCandidate(element: target, targetFrame: targetFrame, visibleFrame: visibleFrame)
 }
 
 let candidates = matches.compactMap(visibleCandidate)
@@ -239,4 +245,46 @@ let visibleFrame = selectedCandidate.visibleFrame
 // TSV keeps the shell transport deterministic while retaining sub-point AX
 // geometry. The receipt writer validates these values again before signing the
 // complete capture set.
-print(String(format: "%@\t%.3f\t%.3f\t%.3f\t%.3f", targetIdentifier, targetFrame.width, targetFrame.height, visibleFrame.width, visibleFrame.height))
+let receiptFields = String(
+    format: "%@\t%.3f\t%.3f\t%.3f\t%.3f",
+    targetIdentifier,
+    targetFrame.width,
+    targetFrame.height,
+    visibleFrame.width,
+    visibleFrame.height
+)
+if !identityFingerprintEnabled {
+    print(receiptFields)
+    exit(0)
+}
+
+// Keep identity values in one TSV line. AX labels and values can contain user
+// newlines or tabs, so capture comparison must normalize transport characters
+// before exact fingerprint comparison.
+func tsvSafe(_ value: String?) -> String {
+    (value ?? "")
+        .replacingOccurrences(of: "\t", with: " ")
+        .replacingOccurrences(of: "\n", with: " ")
+        .replacingOccurrences(of: "\r", with: " ")
+}
+
+let identityAttributes: [CFString] = [
+    kAXRoleAttribute as CFString,
+    kAXSubroleAttribute as CFString,
+    kAXTitleAttribute as CFString,
+    kAXDescriptionAttribute as CFString,
+    kAXHelpAttribute as CFString,
+    kAXValueAttribute as CFString,
+    "AXLabel" as CFString
+]
+let identityFields = identityAttributes.map { attribute in
+    tsvSafe(stringValue(copyAttribute(selectedCandidate.element, attribute)))
+}
+let geometryFields = String(
+    format: "%.3f\t%.3f\t%.3f\t%.3f",
+    targetFrame.minX,
+    targetFrame.minY,
+    visibleFrame.minX,
+    visibleFrame.minY
+)
+print(([receiptFields, geometryFields] + identityFields).joined(separator: "\t"))

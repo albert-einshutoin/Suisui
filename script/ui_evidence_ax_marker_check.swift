@@ -23,6 +23,7 @@ if CommandLine.arguments.count == 5 {
 let environment = ProcessInfo.processInfo.environment
 let maxNodes = Int(environment["SOLOPM_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
 let requireIdentifierSubtree = environment["SOLOPM_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE"] == "1"
+let requireExactIdentifier = environment["SOLOPM_UI_EVIDENCE_AX_REQUIRE_EXACT_IDENTIFIER"] == "1"
 
 guard AXIsProcessTrusted() else {
     fputs("Accessibility permission is required to inspect SoloPM UI evidence markers.\n", stderr)
@@ -158,6 +159,12 @@ var visitedCount = 0
 var queue = windows
 var cursor = 0
 
+func identifierMatches(_ identifier: String) -> Bool {
+    requireExactIdentifier
+        ? identifier == identifierNeedle
+        : identifier.contains(identifierNeedle)
+}
+
 while cursor < queue.count && visitedCount < maxNodes {
     let element = queue[cursor]
     cursor += 1
@@ -165,7 +172,7 @@ while cursor < queue.count && visitedCount < maxNodes {
 
     let signal = signalParts(for: element)
     if requireIdentifierSubtree {
-        if signal.identifier.contains(identifierNeedle) {
+        if identifierMatches(signal.identifier) {
             foundIdentifier = true
             if subtreeContainsText(startingAt: element, textNeedle: textNeedle) {
                 print("present")
@@ -173,7 +180,7 @@ while cursor < queue.count && visitedCount < maxNodes {
             }
         }
     } else {
-        if signal.identifier.contains(identifierNeedle) {
+        if identifierMatches(signal.identifier) {
             foundIdentifier = true
         }
         if signal.signal.contains(textNeedle) {

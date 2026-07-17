@@ -5266,7 +5266,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(script.contains(#"tell application \"$APP_NAME\" to activate"#))
         XCTAssertTrue(script.contains("screencapture -x -o -l"))
         XCTAssertFalse(script.contains("screencapture -x -l"))
-        XCTAssertTrue(script.contains("screencapture -x -R"))
+        let captureStart = try XCTUnwrap(script.range(of: "capture_visible_window() {"))
+        let captureEnd = try XCTUnwrap(
+            script.range(of: "\nopen_mcp_settings_tab() {", range: captureStart.upperBound..<script.endIndex)
+        )
+        let captureFunction = script[captureStart.lowerBound..<captureEnd.lowerBound]
+        XCTAssertFalse(captureFunction.contains("screencapture -x -R"))
         XCTAssertTrue(script.contains("if [[ \"$bytes\" -lt 30000 ]]"))
         XCTAssertFalse(script.contains("if [[ \"$bytes\" -lt 50000 ]]"))
         XCTAssertTrue(script.contains("local capture_attempts=3"))
