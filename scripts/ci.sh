@@ -159,15 +159,55 @@ run_build_and_run_verify() {
   return "$verify_status"
 }
 
+read_capability_positive_dimension() {
+  local summary_file="$1"
+  local key="$2"
+  awk -F= -v key="$key" '
+    $1 == key {
+      count += 1
+      if (NF != 2 || $2 !~ /^[1-9][0-9]*$/) invalid = 1
+      value = $2
+    }
+    END {
+      if (count != 1 || invalid) exit 1
+      print value
+    }
+  ' "$summary_file"
+}
+
+read_layout_visible_frame_dimensions() {
+  local capability_summary="$1"
+  local visible_frame_width
+  local visible_frame_height
+  if ! visible_frame_width="$(read_capability_positive_dimension "$capability_summary" display_visible_frame_width)" ||
+    ! visible_frame_height="$(read_capability_positive_dimension "$capability_summary" display_visible_frame_height)"; then
+    printf 'failure_category=runner-capability\n' >&2
+    printf 'failure_reason=invalid-display-geometry-summary\n' >&2
+    printf 'BLOCKER: UI runner capability summary must contain exactly one positive integer visible-frame width and height.\n' >&2
+    return 1
+  fi
+  printf '%s %s\n' "$visible_frame_width" "$visible_frame_height"
+}
+
 run_runtime_gates() {
   local artifact_dir="$CI_ARTIFACT_ROOT/ui-runtime"
+  local capability_summary="$artifact_dir/runner-capability/ui-runner-capability-summary.env"
+  local visible_frame_dimensions
+  local visible_frame_width
+  local visible_frame_height
   SOLOPM_UI_RUNNER_CAPABILITY_ARTIFACT_DIR="$artifact_dir/runner-capability" \
     ./script/check_macos_ui_runner_capabilities.sh runtime
+  if ! visible_frame_dimensions="$(read_layout_visible_frame_dimensions "$capability_summary")"; then
+    return 1
+  fi
+  read -r visible_frame_width visible_frame_height <<<"$visible_frame_dimensions"
   run_build_and_run_verify "$artifact_dir"
   SOLOPM_RUNTIME_ACCESSIBLE_CRUD_ARTIFACT_DIR="$artifact_dir/runtime-accessible-crud" \
     ./script/check_runtime_accessible_crud_smoke.sh
   SOLOPM_LAYOUT_STABILITY_OUTPUT_DIR="$artifact_dir/layout-stability" \
   SOLOPM_LAYOUT_STABILITY_RUNTIME_DIR="$CI_TMPDIR/layout-stability-runtime" \
+  SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH="$visible_frame_width" \
+  SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT="$visible_frame_height" \
     ./script/check_layout_stability_smoke.sh
   SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_ARTIFACT_DIR="$artifact_dir/today-production-route" \
     ./script/check_runtime_today_production_route_smoke.sh

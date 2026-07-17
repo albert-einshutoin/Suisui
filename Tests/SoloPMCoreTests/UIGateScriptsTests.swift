@@ -37,6 +37,162 @@ final class UIGateScriptsTests: XCTestCase {
         XCTAssertTrue(probe.contains("screen_recording="))
     }
 
+    func testRunnerCapabilityGateRecordsSanitizedDisplayFrameAndVisibleFrameGeometry() throws {
+        let script = try readPackageFile("script/check_macos_ui_runner_capabilities.sh")
+        let probe = try readPackageFile("script/macos_ui_runner_capability_probe.swift")
+        let ci = try readPackageFile("scripts/ci.sh")
+
+        for key in [
+            "display_frame_x",
+            "display_frame_y",
+            "display_frame_width",
+            "display_frame_height",
+            "display_visible_frame_x",
+            "display_visible_frame_y",
+            "display_visible_frame_width",
+            "display_visible_frame_height"
+        ] {
+            XCTAssertTrue(probe.contains("\(key)="), "probe must emit \(key)")
+            XCTAssertTrue(script.contains("\(key)="), "summary must retain \(key)")
+        }
+        XCTAssertTrue(probe.contains("NSScreen.screens"))
+        XCTAssertTrue(script.contains("probe_integer_value()"))
+        XCTAssertTrue(script.contains("probe_positive_integer_value()"))
+        XCTAssertTrue(ci.contains("read_capability_positive_dimension()"))
+        XCTAssertTrue(ci.contains("display_visible_frame_width"))
+        XCTAssertTrue(ci.contains("display_visible_frame_height"))
+        XCTAssertTrue(ci.contains("SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH"))
+        XCTAssertTrue(ci.contains("SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT"))
+        XCTAssertFalse(probe.contains("hostName"))
+        XCTAssertFalse(probe.contains("userName"))
+    }
+
+    func testLayoutDisplayCapacityFailureKeepsStandardAndWideContractsAndUsesRunnerCapabilityTaxonomy() throws {
+        let result = try runTool(
+            [
+                "/bin/bash",
+                packageRoot().appendingPathComponent("script/check_layout_stability_smoke.sh").path,
+                "--check-display-capacity"
+            ],
+            environment: [
+                "SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH": "1024",
+                "SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT": "724"
+            ]
+        )
+
+        XCTAssertEqual(result.exitCode, 1, result.output)
+        XCTAssertTrue(result.output.contains("failure_category=runner-capability"), result.output)
+        XCTAssertTrue(result.output.contains("failure_reason=layout-visible-frame-too-small"), result.output)
+        XCTAssertTrue(result.output.contains("standard=1180x760"), result.output)
+        XCTAssertTrue(result.output.contains("wide=1420x860"), result.output)
+        XCTAssertTrue(result.output.contains("product contract was not downgraded"), result.output)
+    }
+
+    func testLayoutDisplayCapacityAcceptsSufficientVisibleFrame() throws {
+        let result = try runTool(
+            [
+                "/bin/bash",
+                packageRoot().appendingPathComponent("script/check_layout_stability_smoke.sh").path,
+                "--check-display-capacity"
+            ],
+            environment: [
+                "SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH": "1512",
+                "SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT": "900"
+            ]
+        )
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("visible frame 1512x900 can exercise required layout windows"), result.output)
+    }
+
+    func testLayoutDisplayCapacityRejectsWindowContractOverridesBelowImmutableProductFloor() throws {
+        let baseEnvironment = [
+            "SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH": "1512",
+            "SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT": "900"
+        ]
+        for (override, belowFloor) in [
+            ("SOLOPM_LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH", "1179"),
+            ("SOLOPM_LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT", "759"),
+            ("SOLOPM_LAYOUT_STABILITY_WINDOW_WIDE_WIDTH", "1419"),
+            ("SOLOPM_LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT", "859")
+        ] {
+            let result = try runTool(
+                [
+                    "/bin/bash",
+                    packageRoot().appendingPathComponent("script/check_layout_stability_smoke.sh").path,
+                    "--check-display-capacity"
+                ],
+                environment: baseEnvironment.merging([override: belowFloor]) { _, new in new }
+            )
+
+            XCTAssertEqual(result.exitCode, 2, "\(override): \(result.output)")
+            XCTAssertTrue(result.output.contains("failure_category=configuration"), result.output)
+            XCTAssertTrue(result.output.contains("failure_reason=layout-window-contract-below-product-floor"), result.output)
+            XCTAssertTrue(result.output.contains("standard floor=1180x760"), result.output)
+            XCTAssertTrue(result.output.contains("wide floor=1420x860"), result.output)
+        }
+    }
+
+    func testCICapabilityDimensionParserFailsClosedForMalformedDuplicateOrNonPositiveValues() throws {
+        let valid = try runCapabilityDimensionParser(summary: "display_visible_frame_width=1024\n")
+        XCTAssertEqual(valid.exitCode, 0, valid.output)
+        XCTAssertEqual(valid.output.trimmingCharacters(in: .whitespacesAndNewlines), "1024")
+
+        for invalidSummary in [
+            "",
+            "display_visible_frame_height=724\n",
+            "display_visible_frame_width=1024\ndisplay_visible_frame_width=1024\n",
+            "display_visible_frame_width=1024=unexpected\n",
+            "display_visible_frame_width=0\n",
+            "display_visible_frame_width=-1\n",
+            "display_visible_frame_width= 1024\n",
+            "display_visible_frame_width=1024 \n"
+        ] {
+            let result = try runCapabilityDimensionParser(summary: invalidSummary)
+            XCTAssertNotEqual(result.exitCode, 0, "fixture must fail closed: \(invalidSummary.debugDescription)")
+        }
+
+        let classifiedFailure = try runCapabilityGeometryReader(summary: "display_visible_frame_width=1024\n")
+        XCTAssertNotEqual(classifiedFailure.exitCode, 0)
+        XCTAssertTrue(classifiedFailure.output.contains("failure_category=runner-capability"), classifiedFailure.output)
+        XCTAssertTrue(classifiedFailure.output.contains("failure_reason=invalid-display-geometry-summary"), classifiedFailure.output)
+    }
+
+    func testRunnerCapabilityProbeParserRequiresExactlyOneExactKeyValue() throws {
+        let valid = try runCapabilityProbeParser(
+            probeOutput: "display_frame_width=1420\n",
+            function: "probe_positive_integer_value",
+            key: "display_frame_width"
+        )
+        XCTAssertEqual(valid.exitCode, 0, valid.output)
+        XCTAssertEqual(valid.output.trimmingCharacters(in: .whitespacesAndNewlines), "1420")
+
+        for invalidProbeOutput in [
+            "",
+            "display_frame_height=1420\n",
+            "display_frame_width=1420=garbage\n",
+            "display_frame_width=1420\ndisplay_frame_width=garbage\n",
+            "display_frame_width=0\n",
+            "display_frame_width=-1\n",
+            "display_frame_width= 1420\n",
+            "display_frame_width=1420 \n"
+        ] {
+            let result = try runCapabilityProbeParser(
+                probeOutput: invalidProbeOutput,
+                function: "probe_positive_integer_value",
+                key: "display_frame_width"
+            )
+            XCTAssertNotEqual(result.exitCode, 0, "fixture must fail closed: \(invalidProbeOutput.debugDescription)")
+        }
+
+        let duplicateBoolean = try runCapabilityProbeParser(
+            probeOutput: "active_display=1\nactive_display=0\n",
+            function: "probe_value",
+            key: "active_display"
+        )
+        XCTAssertNotEqual(duplicateBoolean.exitCode, 0, duplicateBoolean.output)
+    }
+
     func testRequiredUIGatesKeepStableLaunchAndResolvedProcessIdentitiesForCleanup() throws {
         let helpers = try readPackageFile("script/ui_accessibility_smoke_helpers.sh")
         XCTAssertTrue(helpers.contains("ax_owned_process_identity()"))
@@ -266,6 +422,18 @@ final class UIGateScriptsTests: XCTestCase {
         XCTAssertTrue(metadataHelper.contains("guard candidates.count == 1"))
     }
 
+    func testLayoutResizeTraceRecordsRequestedExpectedAndBeforeAfterWindowIdentity() throws {
+        let script = try readPackageFile("script/check_layout_stability_smoke.sh")
+
+        XCTAssertTrue(script.contains("window-resize-attempts.tsv"))
+        XCTAssertTrue(script.contains("requested_width\\trequested_height\\texpected_width"))
+        XCTAssertTrue(script.contains("before_window_id\\tbefore_x\\tbefore_y\\tbefore_width\\tbefore_height"))
+        XCTAssertTrue(script.contains("ax_status\\tafter_window_id\\tafter_x\\tafter_y\\tafter_width\\tafter_height"))
+        XCTAssertTrue(script.contains("$before_window_id"))
+        XCTAssertTrue(script.contains("$after_window_id"))
+        XCTAssertTrue(script.contains("$ax_status"))
+    }
+
     func testVisualPositioningRewaitsForOwnedWindowAfterRouteRecreation() throws {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
 
@@ -304,6 +472,81 @@ final class UIGateScriptsTests: XCTestCase {
 
     private func readPackageFile(_ relativePath: String) throws -> String {
         try String(contentsOf: packageRoot().appendingPathComponent(relativePath), encoding: .utf8)
+    }
+
+    private func runCapabilityDimensionParser(summary: String) throws -> (exitCode: Int32, output: String) {
+        let ci = try readPackageFile("scripts/ci.sh")
+        let functionStart = try XCTUnwrap(ci.range(of: "read_capability_positive_dimension() {"))
+        let functionEnd = try XCTUnwrap(
+            ci.range(of: "\n}\n", range: functionStart.upperBound..<ci.endIndex)
+        )
+        let functionSource = String(ci[functionStart.lowerBound..<functionEnd.upperBound])
+        let fixtureDirectory = packageRoot().appendingPathComponent(".build/test-capability-summary-parser", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        let fixtureID = UUID().uuidString
+        let summaryURL = fixtureDirectory.appendingPathComponent("\(fixtureID).env")
+        let harnessURL = fixtureDirectory.appendingPathComponent("\(fixtureID).sh")
+        defer {
+            try? FileManager.default.removeItem(at: summaryURL)
+            try? FileManager.default.removeItem(at: harnessURL)
+        }
+        try summary.write(to: summaryURL, atomically: true, encoding: .utf8)
+        try "set -euo pipefail\n\(functionSource)\nread_capability_positive_dimension \"$1\" display_visible_frame_width\n"
+            .write(to: harnessURL, atomically: true, encoding: .utf8)
+        return try runTool(["/bin/bash", harnessURL.path, summaryURL.path])
+    }
+
+    private func runCapabilityGeometryReader(summary: String) throws -> (exitCode: Int32, output: String) {
+        let ci = try readPackageFile("scripts/ci.sh")
+        let functionStart = try XCTUnwrap(ci.range(of: "read_capability_positive_dimension() {"))
+        let functionEnd = try XCTUnwrap(
+            ci.range(of: "\n\nrun_runtime_gates() {", range: functionStart.upperBound..<ci.endIndex)
+        )
+        let functionSource = String(ci[functionStart.lowerBound..<functionEnd.lowerBound])
+        let fixtureDirectory = packageRoot().appendingPathComponent(".build/test-capability-geometry-reader", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        let fixtureID = UUID().uuidString
+        let summaryURL = fixtureDirectory.appendingPathComponent("\(fixtureID).env")
+        let harnessURL = fixtureDirectory.appendingPathComponent("\(fixtureID).sh")
+        defer {
+            try? FileManager.default.removeItem(at: summaryURL)
+            try? FileManager.default.removeItem(at: harnessURL)
+        }
+        try summary.write(to: summaryURL, atomically: true, encoding: .utf8)
+        try "set -euo pipefail\n\(functionSource)\nread_layout_visible_frame_dimensions \"$1\"\n"
+            .write(to: harnessURL, atomically: true, encoding: .utf8)
+        return try runTool(["/bin/bash", harnessURL.path, summaryURL.path])
+    }
+
+    private func runCapabilityProbeParser(
+        probeOutput: String,
+        function: String,
+        key: String
+    ) throws -> (exitCode: Int32, output: String) {
+        let capability = try readPackageFile("script/check_macos_ui_runner_capabilities.sh")
+        let functionStart = try XCTUnwrap(capability.range(of: "probe_exact_value() {"))
+        let functionEnd = try XCTUnwrap(
+            capability.range(of: "\n\nif ! ACTIVE_DISPLAY=", range: functionStart.upperBound..<capability.endIndex)
+        )
+        let functionSource = String(capability[functionStart.lowerBound..<functionEnd.lowerBound])
+        let fixtureDirectory = packageRoot().appendingPathComponent(".build/test-capability-probe-parser", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        let fixtureID = UUID().uuidString
+        let probeURL = fixtureDirectory.appendingPathComponent("\(fixtureID).env")
+        let harnessURL = fixtureDirectory.appendingPathComponent("\(fixtureID).sh")
+        defer {
+            try? FileManager.default.removeItem(at: probeURL)
+            try? FileManager.default.removeItem(at: harnessURL)
+        }
+        try probeOutput.write(to: probeURL, atomically: true, encoding: .utf8)
+        let harness = """
+        set -euo pipefail
+        PROBE_OUTPUT="$(cat "$1")"
+        \(functionSource)
+        \(function) "\(key)"
+        """
+        try harness.write(to: harnessURL, atomically: true, encoding: .utf8)
+        return try runTool(["/bin/bash", harnessURL.path, probeURL.path])
     }
 
     private func runTool(
