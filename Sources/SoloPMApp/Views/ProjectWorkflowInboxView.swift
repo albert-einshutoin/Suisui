@@ -401,8 +401,8 @@ private struct InboxVoiceIntakeDetail: View {
             }
             .padding(8)
             .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-            .accessibilityIdentifier("inbox-voice-intake-detail")
             .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("inbox-voice-intake-detail")
             .accessibilityLabel("Voice intake detail for \(taskTitle)")
             .accessibilityValue(captureAccessibilityValue(capture))
             .accessibilityHint("Summarizes the selected Inbox capture metadata for review.")

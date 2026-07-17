@@ -2431,6 +2431,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("LazyVGrid(columns: actionGridColumns"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-grid\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-intake-detail\")"))
+        let voiceDetailStart = try XCTUnwrap(workflowSource.range(of: "private struct InboxVoiceIntakeDetail"))
+        let voiceDetailSource = String(workflowSource[voiceDetailStart.lowerBound...])
+        XCTAssertEqual(
+            voiceDetailSource.components(separatedBy: ".accessibilityIdentifier(\"inbox-voice-intake-detail\")").count - 1,
+            1
+        )
+        let voiceDetailTarget = try XCTUnwrap(voiceDetailSource.range(
+            of: ".accessibilityIdentifier(\"inbox-voice-intake-detail\")"
+        ))
+        let containedChildren = try XCTUnwrap(voiceDetailSource.range(of: ".accessibilityElement(children: .contain)"))
+        XCTAssertLessThan(containedChildren.lowerBound, voiceDetailTarget.lowerBound)
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-transcript-preview\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-waveform\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-transcript\")"))
