@@ -545,6 +545,21 @@ public enum TodaySnapshotInvalidationReason: String, Sendable {
 public final class ProjectBoardViewModel: ObservableObject {
     private static let doneAnalyticsHeatmapWindowDays = 28
 
+    private enum ProjectBoardFailureRetryAction {
+        case load
+        case saveTask(taskID: Int64, draft: ProjectBoardTaskDraft)
+        case createTask(ProjectBoardTaskDraft)
+        case createProject(title: String)
+        case updateProject(id: Int64, title: String)
+        case completeProject(id: Int64)
+        case archiveProject(id: Int64)
+        case restoreProject(id: Int64)
+        case deleteProject(id: Int64)
+        case deleteTask(id: Int64)
+        case moveTask(id: Int64, status: ProjectTaskStatus)
+        case syncGoogleCalendar(approvalToken: String?)
+    }
+
     @Published public private(set) var snapshot: ProjectBoardSnapshot
     @Published public private(set) var derivedReadModels: ProjectBoardDerivedReadModels
     @Published public var selectedProjectID: Int64?
@@ -556,7 +571,35 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
     @Published public private(set) var showsArchivedProjects: Bool
     @Published public private(set) var showsCompletedWorkflowTasks: Bool
-    @Published public private(set) var errorMessage: String?
+    @Published public private(set) var errorMessage: String? {
+        didSet {
+            guard !isSynchronizingFailure else { return }
+            if let errorMessage {
+                // Legacy operation sites still publish through errorMessage.
+                // Classify them as recoverable saves and offer a safe reload;
+                // origin-specific paths replace this immediately with richer context.
+                let redactedMessage = LocalPathRedactor.redact(
+                    UserFacingErrorMessageSanitizer.message(
+                        from: errorMessage,
+                        fallback: String(localized: "Project board unavailable")
+                    )
+                )
+                if redactedMessage != errorMessage {
+                    isSynchronizingFailure = true
+                    self.errorMessage = redactedMessage
+                    isSynchronizingFailure = false
+                }
+                failure = .saveFailed(redactedMessage)
+                failureTaskID = nil
+                failureRetryAction = .load
+            } else {
+                failure = nil
+                failureTaskID = nil
+                failureRetryAction = nil
+            }
+        }
+    }
+    @Published public private(set) var failure: ProjectBoardFailure?
     @Published public private(set) var integrationStatusMessage: String?
     @Published public private(set) var inboxClassificationFeedback: InboxClassificationFeedback?
     // Board-operation undo is deliberately separate from the Inbox
@@ -643,6 +686,10 @@ public final class ProjectBoardViewModel: ObservableObject {
     // counted; SwiftUI body re-evaluation must not create diagnostic work.
     private(set) var dailyPlanningReviewPreviewBuildCount: Int
     private var taskAutomationSessionHistory: TaskAutoExecutionHistory
+    private var hasLoadedBoardSnapshot: Bool
+    private var failureRetryAction: ProjectBoardFailureRetryAction?
+    private var failureTaskID: Int64?
+    private var isSynchronizingFailure: Bool
 
     public init(
         store: any ProjectBoardStore,
@@ -720,6 +767,166 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.todaySnapshotSourceRevision = 0
         self.dailyPlanningReviewPreviewBuildCount = 0
         self.taskAutomationSessionHistory = .empty
+        self.failure = nil
+        self.hasLoadedBoardSnapshot = !snapshot.projects.isEmpty
+        self.failureRetryAction = nil
+        self.failureTaskID = nil
+        self.isSynchronizingFailure = false
+    }
+
+    public var fatalFailure: ProjectBoardFailure? {
+        guard case .initialLoadFailed = failure else { return nil }
+        return failure
+    }
+
+    public var errorPresentation: ProjectBoardErrorPresentation? {
+        guard let failure else { return nil }
+        let canRetry = canRetryCurrentFailure
+        switch ProjectBoardErrorPresentation.classify(failure) {
+        case .fatal(let message, _):
+            return .fatal(message: message, canRetry: canRetry)
+        case .inline(let message, _):
+            return .inline(message: message, canRetry: canRetry)
+        }
+    }
+
+    public var rootErrorPresentation: ProjectBoardErrorPresentation? {
+        // The view model cannot prove that an inspector is effectively visible:
+        // users can close it or compact resizing can hide it while selection remains.
+        // Keep the route-wide fallback even when the inspector also shows its sticky error.
+        return errorPresentation
+    }
+
+    public var failureActionLabel: String? {
+        guard canRetryCurrentFailure else { return nil }
+        switch failureRetryAction {
+        case .load:
+            return String(localized: "Reload")
+        case .saveTask, .createTask, .createProject, .updateProject,
+             .completeProject, .archiveProject, .restoreProject, .deleteProject,
+             .deleteTask, .moveTask, .syncGoogleCalendar:
+            return String(localized: "Retry")
+        case nil:
+            return nil
+        }
+    }
+
+    public func taskSaveFailure(taskID: Int64) -> ProjectBoardFailure? {
+        guard case .saveFailed = failure,
+              case .saveTask(let failedTaskID, _) = failureRetryAction,
+              failedTaskID == taskID,
+              failureTaskID == taskID else {
+            return nil
+        }
+        return failure
+    }
+
+    public func retryCurrentFailure() {
+        guard canRetryCurrentFailure, let failureRetryAction else { return }
+        // Clear only at an explicit retry boundary. Incidental store-change
+        // reloads must not erase the recoverable context before the user sees it.
+        clearFailure()
+        switch failureRetryAction {
+        case .load:
+            load()
+        case .saveTask(let taskID, let draft):
+            selectedProjectID = draft.projectID
+            selectedTaskID = taskID
+            updateSelectedTask(
+                title: draft.title,
+                detail: draft.detail,
+                status: draft.status,
+                priority: draft.priority,
+                dueAt: draft.dueAt,
+                recurrence: draft.recurrence
+            )
+        case .createTask(let draft):
+            _ = createTask(
+                title: draft.title,
+                detail: draft.detail,
+                projectID: draft.projectID,
+                status: draft.status,
+                priority: draft.priority,
+                dueAt: draft.dueAt
+            )
+        case .createProject(let title):
+            _ = createProject(title: title)
+        case .updateProject(let id, let title):
+            selectedProjectID = id
+            updateSelectedProject(title: title)
+        case .completeProject(let id):
+            selectedProjectID = id
+            completeSelectedProject()
+        case .archiveProject(let id):
+            selectedProjectID = id
+            archiveSelectedProject()
+        case .restoreProject(let id):
+            selectedProjectID = id
+            restoreSelectedProject()
+        case .deleteProject(let id):
+            selectedProjectID = id
+            deleteSelectedProject()
+        case .deleteTask(let id):
+            selectedTaskID = id
+            deleteSelectedTask()
+        case .moveTask(let id, let status):
+            moveTask(id: id, to: status)
+        case .syncGoogleCalendar(let approvalToken):
+            _ = syncDueTasksToGoogleCalendar(approvalToken: approvalToken)
+        }
+    }
+
+    private var canRetryCurrentFailure: Bool {
+        guard let failureRetryAction else { return false }
+        if case .saveTask(let taskID, _) = failureRetryAction {
+            return snapshot.projects.flatMap(\.tasks).contains { $0.id == taskID }
+        }
+        return true
+    }
+
+    private func recordFailure(
+        _ failure: ProjectBoardFailure,
+        taskID: Int64? = nil,
+        retryAction: ProjectBoardFailureRetryAction?
+    ) {
+        let redactedMessage = LocalPathRedactor.redact(
+            UserFacingErrorMessageSanitizer.message(
+                from: failure.message,
+                fallback: String(localized: "Project board unavailable")
+            )
+        )
+        // Context must exist before either @Published property emits. SwiftUI
+        // derives banner placement and Retry from these non-published values.
+        failureTaskID = taskID
+        failureRetryAction = retryAction
+        isSynchronizingFailure = true
+        errorMessage = redactedMessage
+        isSynchronizingFailure = false
+        switch failure {
+        case .initialLoadFailed:
+            self.failure = .initialLoadFailed(redactedMessage)
+        case .saveFailed:
+            self.failure = .saveFailed(redactedMessage)
+        case .providerFailed:
+            self.failure = .providerFailed(redactedMessage)
+        case .readinessCheckFailed:
+            self.failure = .readinessCheckFailed(redactedMessage)
+        }
+    }
+
+    private func clearFailure() {
+        isSynchronizingFailure = true
+        errorMessage = nil
+        isSynchronizingFailure = false
+        failure = nil
+        failureTaskID = nil
+        failureRetryAction = nil
+    }
+
+    private func beginRecoverableOperation(taskID: Int64? = nil) {
+        guard failure != nil else { return }
+        guard failureTaskID == nil || failureTaskID == taskID else { return }
+        clearFailure()
     }
 
     public var selectedProject: ProjectBoardProject? {
@@ -5916,27 +6123,42 @@ public final class ProjectBoardViewModel: ObservableObject {
         do {
             googleCalendarSyncStatus = try googleCalendarSync.status(now: now)
         } catch {
+            let message = Self.userFacingMessage(
+                for: error,
+                fallback: String(localized: "Google Calendar sync status is unavailable.")
+            )
             googleCalendarSyncStatus = GoogleCalendarRuntimeSyncStatus(
                 plan: googleCalendarSyncStatus.plan,
-                state: .failed(message: Self.userFacingMessage(for: error, fallback: "Google Calendar sync status is unavailable."))
+                state: .failed(message: message)
             )
+            recordFailure(.readinessCheckFailed(message), retryAction: .load)
         }
     }
 
     @discardableResult
     public func syncDueTasksToGoogleCalendar(approvalToken: String?) -> GoogleCalendarTaskSyncResult? {
+        beginRecoverableOperation()
         refreshGoogleCalendarSyncStatus()
         guard let googleCalendarSync = resolvedGoogleCalendarSync else {
-            errorMessage = GoogleCalendarRuntimeSyncStatus.runtimeNotConfigured.detailLabel
+            recordFailure(
+                .providerFailed(GoogleCalendarRuntimeSyncStatus.runtimeNotConfigured.detailLabel),
+                retryAction: .syncGoogleCalendar(approvalToken: approvalToken)
+            )
             return nil
         }
         guard googleCalendarSyncStatus.canSync else {
-            errorMessage = googleCalendarSyncStatus.detailLabel
+            recordFailure(
+                .readinessCheckFailed(googleCalendarSyncStatus.detailLabel),
+                retryAction: .syncGoogleCalendar(approvalToken: approvalToken)
+            )
             return nil
         }
         guard let approvalToken,
               !approvalToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = "Google Calendar sync requires approval before writing events."
+            recordFailure(
+                .readinessCheckFailed(String(localized: "Google Calendar sync requires approval before writing events.")),
+                retryAction: nil
+            )
             return nil
         }
 
@@ -5952,26 +6174,41 @@ public final class ProjectBoardViewModel: ObservableObject {
             onChange()
             return result
         } catch GoogleCalendarRuntimeSyncError.approvalRequired {
-            errorMessage = "Google Calendar sync requires approval before writing events."
+            recordFailure(
+                .readinessCheckFailed(String(localized: "Google Calendar sync requires approval before writing events.")),
+                retryAction: nil
+            )
             return nil
         } catch GoogleCalendarRuntimeSyncError.notReady(let state) {
             googleCalendarSyncStatus = GoogleCalendarRuntimeSyncStatus(plan: googleCalendarSyncStatus.plan, state: state)
-            errorMessage = googleCalendarSyncStatus.detailLabel
+            recordFailure(
+                .readinessCheckFailed(googleCalendarSyncStatus.detailLabel),
+                retryAction: .syncGoogleCalendar(approvalToken: approvalToken)
+            )
             return nil
         } catch SyncServiceError.upgradeRequired(let requiredPlan) {
             googleCalendarSyncStatus = GoogleCalendarRuntimeSyncStatus(
                 plan: googleCalendarSyncStatus.plan,
                 state: .upgradeRequired(requiredPlan: requiredPlan)
             )
-            errorMessage = googleCalendarSyncStatus.detailLabel
+            recordFailure(
+                .readinessCheckFailed(googleCalendarSyncStatus.detailLabel),
+                retryAction: .syncGoogleCalendar(approvalToken: approvalToken)
+            )
             return nil
         } catch {
-            let message = Self.userFacingMessage(for: error, fallback: "Google Calendar sync failed.")
+            let message = Self.userFacingMessage(
+                for: error,
+                fallback: String(localized: "Google Calendar sync failed.")
+            )
             googleCalendarSyncStatus = GoogleCalendarRuntimeSyncStatus(
                 plan: googleCalendarSyncStatus.plan,
                 state: .failed(message: message)
             )
-            errorMessage = message
+            recordFailure(
+                .providerFailed(message),
+                retryAction: .syncGoogleCalendar(approvalToken: approvalToken)
+            )
             return nil
         }
     }
@@ -6119,7 +6356,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     public var isEmptyProjectStateVisible: Bool {
-        errorMessage == nil && selectedProject == nil
+        fatalFailure == nil && selectedProject == nil
     }
 
     public func load() {
@@ -6127,6 +6364,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     private func load(invalidationReason: TodaySnapshotInvalidationReason?) {
+        let failureAtLoadStart = failure
         do {
             let loadedSnapshot = try store.loadSnapshot(includeArchived: showsArchivedProjects)
             let snapshotChanged = loadedSnapshot != snapshot
@@ -6155,9 +6393,19 @@ public final class ProjectBoardViewModel: ObservableObject {
                     rebuildDerivedReadModels(on: readModelNow(), calendar: readModelCalendarProvider())
                 }
             }
-            errorMessage = assistantQueueErrorMessage ?? captureCacheErrorMessage
+            hasLoadedBoardSnapshot = true
+            if let recoverableMessage = assistantQueueErrorMessage ?? captureCacheErrorMessage {
+                recordFailure(.providerFailed(recoverableMessage), retryAction: .load)
+            } else if failure == nil && failureAtLoadStart == nil {
+                clearFailure()
+            }
         } catch {
-            errorMessage = Self.userFacingMessage(for: error)
+            let message = Self.userFacingMessage(for: error)
+            if hasLoadedBoardSnapshot {
+                recordFailure(.saveFailed(message), retryAction: .load)
+            } else {
+                recordFailure(.initialLoadFailed(message), retryAction: .load)
+            }
         }
     }
 
@@ -6858,10 +7106,22 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     private static func userFacingMessage(for error: Error) -> String {
-        userFacingMessage(for: error, fallback: "Project board unavailable")
+        userFacingMessage(for: error, fallback: String(localized: "Project board unavailable"))
     }
 
     private static func userFacingMessage(for error: Error, fallback: String) -> String {
+        if let databaseError = error as? DatabaseError {
+            let message: String
+            switch databaseError {
+            case .openFailed(let detail), .executeFailed(let detail),
+                 .prepareFailed(let detail), .stepFailed(let detail),
+                 .missingColumn(let detail):
+                message = detail
+            case .invalidColumnValue(let column, let value):
+                message = "\(column) contains invalid value \(value)."
+            }
+            return UserFacingErrorMessageSanitizer.message(from: message, fallback: fallback)
+        }
         guard let decodingError = error as? LocalStoreDecodingError else {
             return UserFacingErrorMessageSanitizer.message(
                 from: error,
@@ -7046,20 +7306,22 @@ public final class ProjectBoardViewModel: ObservableObject {
         priority: ProjectTaskPriority = .medium,
         dueAt: String? = nil
     ) -> ProjectBoardTask? {
+        beginRecoverableOperation()
         guard let targetProjectID = projectID ?? selectedProject?.id else {
             errorMessage = "Project is required."
             return nil
         }
 
+        let draft = ProjectBoardTaskDraft(
+            projectID: targetProjectID,
+            title: title,
+            detail: detail,
+            status: status,
+            priority: priority,
+            dueAt: dueAt
+        )
         do {
-            let task = try store.createTask(ProjectBoardTaskDraft(
-                projectID: targetProjectID,
-                title: title,
-                detail: detail,
-                status: status,
-                priority: priority,
-                dueAt: dueAt
-            ))
+            let task = try store.createTask(draft)
             selectedProjectID = targetProjectID
             selectedTaskID = task.id
             load()
@@ -7067,13 +7329,16 @@ public final class ProjectBoardViewModel: ObservableObject {
             onChange()
             return task
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
-            errorMessage = "Restore the project before adding tasks."
+            recordFailure(
+                .saveFailed(String(localized: "Restore the project before adding tasks.")),
+                retryAction: .createTask(draft)
+            )
             return nil
         } catch ProjectBoardStoreError.emptyTitle {
-            errorMessage = "Task title is required."
+            recordFailure(.saveFailed(String(localized: "Task title is required.")), retryAction: .createTask(draft))
             return nil
         } catch {
-            errorMessage = Self.userFacingMessage(for: error)
+            recordFailure(.saveFailed(Self.userFacingMessage(for: error)), retryAction: .createTask(draft))
             return nil
         }
     }
@@ -7138,6 +7403,7 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     @discardableResult
     public func createProject(title: String = "Untitled Project") -> ProjectBoardProject? {
+        beginRecoverableOperation()
         do {
             let project = try store.createProject(title: title)
             load()
@@ -7146,10 +7412,13 @@ public final class ProjectBoardViewModel: ObservableObject {
             onChange()
             return project
         } catch ProjectBoardStoreError.emptyProjectTitle {
-            errorMessage = "Project title is required."
+            recordFailure(
+                .saveFailed(String(localized: "Project title is required.")),
+                retryAction: .createProject(title: title)
+            )
             return nil
         } catch {
-            errorMessage = Self.userFacingMessage(for: error)
+            recordFailure(.saveFailed(Self.userFacingMessage(for: error)), retryAction: .createProject(title: title))
             return nil
         }
     }
@@ -7158,6 +7427,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         guard let selectedProjectID else {
             return
         }
+        beginRecoverableOperation()
 
         do {
             _ = try store.updateProject(id: selectedProjectID, title: title)
@@ -7165,9 +7435,15 @@ public final class ProjectBoardViewModel: ObservableObject {
             self.selectedProjectID = selectedProjectID
             onChange()
         } catch ProjectBoardStoreError.emptyProjectTitle {
-            errorMessage = "Project title is required."
+            recordFailure(
+                .saveFailed(String(localized: "Project title is required.")),
+                retryAction: .updateProject(id: selectedProjectID, title: title)
+            )
         } catch {
-            errorMessage = Self.userFacingMessage(for: error)
+            recordFailure(
+                .saveFailed(Self.userFacingMessage(for: error)),
+                retryAction: .updateProject(id: selectedProjectID, title: title)
+            )
         }
     }
 
@@ -7227,6 +7503,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         guard let selectedProjectID else {
             return
         }
+        beginRecoverableOperation()
 
         do {
             _ = try store.completeProject(id: selectedProjectID)
@@ -7234,7 +7511,10 @@ public final class ProjectBoardViewModel: ObservableObject {
             self.selectedProjectID = selectedProjectID
             onChange()
         } catch {
-            errorMessage = Self.userFacingMessage(for: error)
+            recordFailure(
+                .saveFailed(Self.userFacingMessage(for: error)),
+                retryAction: .completeProject(id: selectedProjectID)
+            )
         }
     }
 
@@ -7242,6 +7522,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         guard let selectedProjectID else {
             return
         }
+        beginRecoverableOperation()
 
         do {
             _ = try store.archiveProject(id: selectedProjectID)
@@ -7250,7 +7531,10 @@ public final class ProjectBoardViewModel: ObservableObject {
             load()
             onChange()
         } catch {
-            errorMessage = Self.userFacingMessage(for: error)
+            recordFailure(
+                .saveFailed(Self.userFacingMessage(for: error)),
+                retryAction: .archiveProject(id: selectedProjectID)
+            )
         }
     }
 
@@ -7258,6 +7542,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         guard let selectedProjectID else {
             return
         }
+        beginRecoverableOperation()
 
         do {
             _ = try store.restoreProject(id: selectedProjectID)
@@ -7265,7 +7550,10 @@ public final class ProjectBoardViewModel: ObservableObject {
             self.selectedProjectID = selectedProjectID
             onChange()
         } catch {
-            errorMessage = Self.userFacingMessage(for: error)
+            recordFailure(
+                .saveFailed(Self.userFacingMessage(for: error)),
+                retryAction: .restoreProject(id: selectedProjectID)
+            )
         }
     }
 
@@ -7273,6 +7561,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         guard let selectedProjectID else {
             return
         }
+        beginRecoverableOperation()
 
         do {
             try store.deleteProject(id: selectedProjectID)
@@ -7281,7 +7570,10 @@ public final class ProjectBoardViewModel: ObservableObject {
             load()
             onChange()
         } catch {
-            errorMessage = Self.userFacingMessage(for: error)
+            recordFailure(
+                .saveFailed(Self.userFacingMessage(for: error)),
+                retryAction: .deleteProject(id: selectedProjectID)
+            )
         }
     }
 
@@ -7296,6 +7588,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         guard let selectedTask else {
             return
         }
+        beginRecoverableOperation(taskID: selectedTask.id)
 
         let draft = ProjectBoardTaskDraft(
             projectID: selectedTask.projectID,
@@ -7324,12 +7617,42 @@ public final class ProjectBoardViewModel: ObservableObject {
             selectedTaskID = selectedTask.id
             onChange()
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
-            errorMessage = "Restore the project before editing tasks."
+            recordFailure(
+                .saveFailed(String(localized: "Restore the project before editing tasks.")),
+                taskID: selectedTask.id,
+                retryAction: .saveTask(taskID: selectedTask.id, draft: draft)
+            )
         } catch ProjectBoardStoreError.emptyTitle {
-            errorMessage = "Task title is required."
+            recordFailure(
+                .saveFailed(String(localized: "Task title is required.")),
+                taskID: selectedTask.id,
+                retryAction: .saveTask(taskID: selectedTask.id, draft: draft)
+            )
         } catch {
-            errorMessage = Self.userFacingMessage(for: error)
+            recordFailure(
+                .saveFailed(Self.userFacingMessage(for: error)),
+                taskID: selectedTask.id,
+                retryAction: .saveTask(taskID: selectedTask.id, draft: draft)
+            )
         }
+    }
+
+    public func updateSelectedTask(
+        title: String,
+        detail: String,
+        status: ProjectTaskStatus,
+        priority: ProjectTaskPriority,
+        dueDate: Date?,
+        recurrence: String? = nil
+    ) {
+        updateSelectedTask(
+            title: title,
+            detail: detail,
+            status: status,
+            priority: priority,
+            dueAt: dueDate.map(DeadlineDateParser.string(from:)),
+            recurrence: recurrence
+        )
     }
 
     public func markSelectedTaskAsTask() {
@@ -7721,6 +8044,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     public func moveTask(id: Int64, to status: ProjectTaskStatus) {
+        beginRecoverableOperation(taskID: id)
         let previousTask = snapshot.projects.flatMap(\.tasks).first { $0.id == id }
         let taskIDsBeforeMutation = visibleTaskIDsForUndoDiff()
         do {
@@ -7738,9 +8062,17 @@ public final class ProjectBoardViewModel: ObservableObject {
             selectedTaskID = id
             onChange()
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
-            errorMessage = "Restore the project before moving tasks."
+            recordFailure(
+                .saveFailed(String(localized: "Restore the project before moving tasks.")),
+                taskID: id,
+                retryAction: .moveTask(id: id, status: status)
+            )
         } catch {
-            errorMessage = Self.userFacingMessage(for: error)
+            recordFailure(
+                .saveFailed(Self.userFacingMessage(for: error)),
+                taskID: id,
+                retryAction: .moveTask(id: id, status: status)
+            )
         }
     }
 
@@ -7891,6 +8223,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         guard let selectedTaskID else {
             return
         }
+        beginRecoverableOperation(taskID: selectedTaskID)
 
         let deletedTask = selectedTask
         do {
@@ -7902,7 +8235,11 @@ public final class ProjectBoardViewModel: ObservableObject {
             load()
             onChange()
         } catch {
-            errorMessage = Self.userFacingMessage(for: error)
+            recordFailure(
+                .saveFailed(Self.userFacingMessage(for: error)),
+                taskID: selectedTaskID,
+                retryAction: .deleteTask(id: selectedTaskID)
+            )
         }
     }
 

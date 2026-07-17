@@ -272,10 +272,88 @@ final class AppExperienceSourceTests: XCTestCase {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
         XCTAssertTrue(source.contains("Project Board Unavailable"))
+        XCTAssertTrue(source.contains("case .fatal(let message, let canRetry) = viewModel.errorPresentation"))
+        XCTAssertFalse(source.contains("if let errorMessage = viewModel.errorMessage {\n                        ContentUnavailableView"))
         XCTAssertTrue(source.contains("isEmptyProjectStateVisible"))
         let unavailableRange = try XCTUnwrap(source.range(of: "Project Board Unavailable"))
         let noProjectsRange = try XCTUnwrap(source.range(of: "No Projects"))
         XCTAssertLessThan(unavailableRange.lowerBound, noProjectsRange.lowerBound)
+    }
+
+    func testTaskInspectorUsesNativeOptionalDateEditingAndRecoverableSaveFeedback() throws {
+        let source = try readProjectBoardSurfaceSources()
+        let modelSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let taskInspector = try sourceBlock(
+            in: source,
+            from: "private struct TaskInspectorView: View",
+            to: "private struct TaskInspectorSuggestionSection"
+        )
+
+        XCTAssertTrue(taskInspector.contains("TaskDueDateFieldState"))
+        XCTAssertTrue(taskInspector.contains("DatePicker("))
+        XCTAssertTrue(taskInspector.contains("task-inspector-due-clear"))
+        XCTAssertTrue(taskInspector.contains("task-inspector-save-error"))
+        XCTAssertTrue(taskInspector.contains("task-inspector-save-retry"))
+        XCTAssertFalse(taskInspector.contains("TextField(\"Due\""))
+        XCTAssertFalse(taskInspector.contains("QuickAddDueDateParser"))
+        XCTAssertTrue(taskInspector.contains("TaskDueDateFieldState.parsePersisted"))
+        XCTAssertFalse(taskInspector.contains("ISO8601DateFormatter"))
+        XCTAssertTrue(taskInspector.contains("dueDate: dueDate.persistedDate"))
+        XCTAssertTrue(modelSource.contains("UserFacingErrorMessageSanitizer.message("))
+        XCTAssertTrue(modelSource.contains("failure = .saveFailed(redactedMessage)"))
+        XCTAssertTrue(source.contains("project-board-inline-error-retry"))
+        XCTAssertTrue(source.contains("viewModel.rootErrorPresentation"))
+        XCTAssertTrue(source.contains("viewModel.failureActionLabel"))
+        XCTAssertTrue(taskInspector.contains("VStack(spacing: 0)"))
+        XCTAssertTrue(taskInspector.contains(".accessibilityIdentifier(\"task-inspector-save-error\")"))
+        XCTAssertFalse(taskInspector.contains(".accessibilityElement(children: .contain)\n                .accessibilityIdentifier(\"task-inspector-save-error\")"))
+        XCTAssertFalse(taskInspector.contains(".safeAreaInset(edge: .top"))
+    }
+
+    func testProjectBoardRetryContextsMapBackToTheirOriginalOperations() throws {
+        let source = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+
+        let expectedMappings = [
+            "case .createTask(let draft):": "_ = createTask(",
+            "case .createProject(let title):": "_ = createProject(title: title)",
+            "case .updateProject(let id, let title):": "updateSelectedProject(title: title)",
+            "case .completeProject(let id):": "completeSelectedProject()",
+            "case .archiveProject(let id):": "archiveSelectedProject()",
+            "case .restoreProject(let id):": "restoreSelectedProject()",
+            "case .deleteProject(let id):": "deleteSelectedProject()",
+            "case .deleteTask(let id):": "deleteSelectedTask()",
+            "case .moveTask(let id, let status):": "moveTask(id: id, to: status)",
+            "case .syncGoogleCalendar(let approvalToken):": "syncDueTasksToGoogleCalendar(approvalToken: approvalToken)"
+        ]
+
+        for (retryCase, originalOperation) in expectedMappings {
+            let caseRange = try XCTUnwrap(source.range(of: retryCase))
+            let operationRange = try XCTUnwrap(source.range(of: originalOperation, range: caseRange.lowerBound..<source.endIndex))
+            XCTAssertLessThan(source.distance(from: caseRange.lowerBound, to: operationRange.lowerBound), 500)
+        }
+        XCTAssertFalse(source.contains("undoLastInboxClassification") && source.contains("retryAction: .deleteTask(id: selectedTaskID)\n            )\n        }\n    }\n\n    public var canUndoBoardOperation"))
+    }
+
+    func testProjectBoardRecoverableMessagesHaveEnglishAndJapaneseLocalizations() throws {
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let english = try readPackageFile("Sources/SoloPMApp/Resources/en.lproj/Localizable.strings")
+        let japanese = try readPackageFile("Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings")
+        let messages = [
+            "Restore the project before adding tasks.",
+            "Restore the project before editing tasks.",
+            "Restore the project before moving tasks.",
+            "Task title is required.",
+            "Project title is required.",
+            "Google Calendar sync requires approval before writing events.",
+            "Google Calendar sync status is unavailable.",
+            "Google Calendar sync failed."
+        ]
+
+        for message in messages {
+            XCTAssertTrue(coreSource.contains("String(localized: \"\(message)\")"), "Core must localize \(message)")
+            XCTAssertTrue(english.contains("\"\(message)\" = "), "English is missing \(message)")
+            XCTAssertTrue(japanese.contains("\"\(message)\" = "), "Japanese is missing \(message)")
+        }
     }
 
     func testProjectBoardUsesResponsiveLongContentGuards() throws {
@@ -1310,7 +1388,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".help(task.title)"))
         XCTAssertTrue(source.contains("Text(task.detail)"))
         XCTAssertTrue(source.contains(".help(task.detail)"))
-        XCTAssertTrue(source.contains("ContentUnavailableView(\n                            \"Project Board Unavailable\""))
+        XCTAssertTrue(source.contains("ContentUnavailableView("))
+        XCTAssertTrue(source.contains("\"Project Board Unavailable\""))
         XCTAssertTrue(source.contains("ContentUnavailableView(\"No Projects\""))
         XCTAssertTrue(source.contains("Text(\"No tasks\")"))
         XCTAssertTrue(source.contains("ProjectBoardLayoutMetrics.emptyColumnMinHeight"))
@@ -2161,7 +2240,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
 
-        XCTAssertTrue(source.contains("TaskInspectorMetadataSummary(task: task, projectTitle: viewModel.projectTitle(for: task))"))
+        XCTAssertTrue(source.contains("TaskInspectorMetadataSummary("))
+        XCTAssertTrue(source.contains("task: task, projectTitle: viewModel.projectTitle(for: task)"))
         XCTAssertTrue(source.contains("ProjectInspectorMetadataSummary(project: project)"))
         XCTAssertTrue(source.contains("private struct InspectorMetadataPill"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"task-inspector-metadata-summary\")"))

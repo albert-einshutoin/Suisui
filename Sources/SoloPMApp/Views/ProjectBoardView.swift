@@ -135,17 +135,45 @@ struct ProjectBoardView: View {
         } detail: {
             VStack(spacing: 0) {
                 Group {
-                    if let errorMessage = viewModel.errorMessage {
-                        ContentUnavailableView(
-                            "Project Board Unavailable",
-                            systemImage: "exclamationmark.triangle",
-                            description: Text(errorMessage)
-                        )
+                    if case .fatal(let message, let canRetry) = viewModel.errorPresentation {
+                        VStack(spacing: 12) {
+                            ContentUnavailableView(
+                                "Project Board Unavailable",
+                                systemImage: "exclamationmark.triangle",
+                                description: Text(message)
+                            )
+                            if canRetry {
+                                Button("Retry") {
+                                    viewModel.retryCurrentFailure()
+                                }
+                                .accessibilityIdentifier("project-board-load-retry")
+                            }
+                        }
                     } else {
                         routedProjectBoardContent
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if case .inline(let message, _) = viewModel.rootErrorPresentation {
+                    Divider()
+                    HStack(spacing: 10) {
+                        Label(message, systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(SoloPMTone.danger.color)
+                            .accessibilityIdentifier("project-board-inline-error")
+                        Spacer(minLength: 8)
+                        if let actionLabel = viewModel.failureActionLabel {
+                            Button(actionLabel, systemImage: "arrow.clockwise") {
+                                viewModel.retryCurrentFailure()
+                            }
+                            .controlSize(.small)
+                            .accessibilityIdentifier("project-board-inline-error-retry")
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                }
 
                 if isTerminalPanelPresented && projectBoardToolbarContext.showsDeveloperTerminal {
                     Divider()
@@ -2380,12 +2408,6 @@ private struct ProjectBoardDetail: View {
                         onAddTask: { startComposingTask() }
                     )
                 }
-            }
-
-            if let errorMessage = viewModel.errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .font(.caption)
-                    .foregroundStyle(.red)
             }
 
             if let integrationStatusMessage = viewModel.integrationStatusMessage {
@@ -5184,7 +5206,8 @@ private struct TaskInspectorView: View {
     @State private var detail: String
     @State private var status: ProjectTaskStatus
     @State private var priority: ProjectTaskPriority
-    @State private var dueAt: String
+    @State private var dueDate: TaskDueDateFieldState
+    @State private var hasInvalidPersistedDueDate: Bool
     @State private var recurrence: String
     @State private var isConfirmingDelete = false
 
@@ -5196,139 +5219,195 @@ private struct TaskInspectorView: View {
         _detail = State(initialValue: task.detail)
         _status = State(initialValue: task.status)
         _priority = State(initialValue: task.priority)
-        _dueAt = State(initialValue: task.dueAt ?? "")
+        let parsedDueDate = TaskDueDateFieldState.parsePersisted(task.dueAt)
+        _dueDate = State(initialValue: parsedDueDate.state)
+        _hasInvalidPersistedDueDate = State(initialValue: parsedDueDate.isInvalid)
         _recurrence = State(initialValue: task.recurrence ?? "")
     }
 
     var body: some View {
-        Form {
-            Section {
-                InspectorCloseHeader(
-                    title: "Task Details",
-                    systemImage: "checklist",
-                    closeTitle: "Close Task Details",
-                    closeHelp: String(localized: "Close Task Details"),
-                    closeAccessibilityIdentifier: "task-inspector-close",
-                    onClose: onClose
-                )
+        VStack(spacing: 0) {
+            if let failure = viewModel.taskSaveFailure(taskID: task.id) {
+                HStack(spacing: 8) {
+                    Label(failure.message, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(SoloPMTone.danger.color)
+                        .accessibilityIdentifier("task-inspector-save-error")
+                    Spacer(minLength: 8)
+                    Button("Retry", systemImage: "arrow.clockwise") {
+                        viewModel.retryCurrentFailure()
+                    }
+                    .accessibilityIdentifier("task-inspector-save-retry")
+                    .accessibilityHint("Retries saving the current task edits.")
+                }
+                .padding(10)
             }
 
-            Section("Summary") {
-                TaskInspectorMetadataSummary(task: task, projectTitle: viewModel.projectTitle(for: task))
-            }
+            Form {
+                Section {
+                    InspectorCloseHeader(
+                        title: "Task Details",
+                        systemImage: "checklist",
+                        closeTitle: "Close Task Details",
+                        closeHelp: String(localized: "Close Task Details"),
+                        closeAccessibilityIdentifier: "task-inspector-close",
+                        onClose: onClose
+                    )
+                }
 
-            Section("Edit") {
-                TextField("Title", text: $title)
-                    .accessibilityIdentifier("task-inspector-title")
-                TextField("Detail", text: $detail, axis: .vertical)
-                    .lineLimit(4...8)
-                    .accessibilityIdentifier("task-inspector-detail")
-            }
+                Section("Summary") {
+                    TaskInspectorMetadataSummary(
+                        task: task, projectTitle: viewModel.projectTitle(for: task))
+                }
 
-            Section("Fields") {
-                Picker("Status", selection: $status) {
-                    ForEach(ProjectTaskStatus.allCases) { status in
-                        Label {
-                            Text(LocalizedStringKey(status.title))
-                        } icon: {
-                            Image(systemName: status.systemImage)
-                        }
+                Section("Edit") {
+                    TextField("Title", text: $title)
+                        .accessibilityIdentifier("task-inspector-title")
+                    TextField("Detail", text: $detail, axis: .vertical)
+                        .lineLimit(4...8)
+                        .accessibilityIdentifier("task-inspector-detail")
+                }
+
+                Section("Fields") {
+                    Picker("Status", selection: $status) {
+                        ForEach(ProjectTaskStatus.allCases) { status in
+                            Label {
+                                Text(LocalizedStringKey(status.title))
+                            } icon: {
+                                Image(systemName: status.systemImage)
+                            }
                             .tag(status)
+                        }
                     }
-                }
-                .accessibilityIdentifier("task-inspector-status")
+                    .accessibilityIdentifier("task-inspector-status")
 
-                Picker("Priority", selection: $priority) {
-                    ForEach(ProjectTaskPriority.allCases) { priority in
-                        Text(LocalizedStringKey(priority.label))
-                            .tag(priority)
+                    Picker("Priority", selection: $priority) {
+                        ForEach(ProjectTaskPriority.allCases) { priority in
+                            Text(LocalizedStringKey(priority.label))
+                                .tag(priority)
+                        }
                     }
+                    .accessibilityIdentifier("task-inspector-priority")
+
+                    if let persistedDate = dueDate.persistedDate {
+                        DatePicker(
+                            "Due",
+                            selection: Binding(
+                                get: { persistedDate },
+                                set: {
+                                    dueDate = .value($0)
+                                    hasInvalidPersistedDueDate = false
+                                }
+                            ),
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                        .accessibilityIdentifier("task-inspector-due")
+
+                        Button("Clear Due Date", systemImage: "xmark.circle") {
+                            dueDate = .empty
+                            hasInvalidPersistedDueDate = false
+                        }
+                        .accessibilityIdentifier("task-inspector-due-clear")
+                        .accessibilityHint("Removes the due date after Save Changes is pressed.")
+                    } else {
+                        Button("Set Due Date", systemImage: "calendar.badge.plus") {
+                            dueDate = .value(Date())
+                            hasInvalidPersistedDueDate = false
+                        }
+                        .accessibilityIdentifier("task-inspector-due")
+                        .accessibilityHint(
+                            "Adds a due date that can be adjusted with the native date picker.")
+                    }
+
+                    if hasInvalidPersistedDueDate {
+                        Label(
+                            "The saved due date is invalid. Set or clear it before saving.",
+                            systemImage: "exclamationmark.triangle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(SoloPMTone.attention.color)
+                        .accessibilityIdentifier("task-inspector-due-error")
+                    }
+
+                    Picker("Repeat", selection: $recurrence) {
+                        Text("None").tag("")
+                        Text("Daily").tag("daily")
+                        Text("Weekly").tag("weekly")
+                        Text("Monthly").tag("monthly")
+                    }
+                    .help("Repeats the task by creating the next occurrence when it is completed")
+                    .accessibilityIdentifier("task-inspector-recurrence-picker")
                 }
-                .accessibilityIdentifier("task-inspector-priority")
 
-                TextField("Due", text: $dueAt)
-                    .accessibilityIdentifier("task-inspector-due")
-
-                Picker("Repeat", selection: $recurrence) {
-                    Text("None").tag("")
-                    Text("Daily").tag("daily")
-                    Text("Weekly").tag("weekly")
-                    Text("Monthly").tag("monthly")
-                }
-                .help("Repeats the task by creating the next occurrence when it is completed")
-                .accessibilityIdentifier("task-inspector-recurrence-picker")
-            }
-
-            Section("Save") {
-                Button {
-                    viewModel.updateSelectedTask(
-                        title: title,
-                        detail: detail,
-                        status: status,
-                        priority: priority,
-                        dueAt: dueAt.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank,
-                        recurrence: recurrence.nilIfBlank
-                    )
-                } label: {
-                    Label("Save Changes", systemImage: "checkmark.circle")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .keyboardShortcut("s", modifiers: [.command])
-                .help("Saves edits to the selected task in the local SoloPM database")
-                .accessibilityIdentifier("task-inspector-save")
-                .accessibilityHint("Saves edits to the selected task in the local SoloPM database.")
-            }
-
-            Section("Suggestion") {
-                TaskInspectorSuggestionSection(task: task, viewModel: viewModel)
-            }
-
-            Section("Automation") {
-                TaskInspectorAutomationSection(task: task, viewModel: viewModel)
-            }
-
-            Section("Task AI Activity") {
-                ExecutionReceiptHistoryInspectorSection(
-                    snapshot: viewModel.executionReceiptHistorySnapshot(forTaskID: task.id),
-                    emptyTitle: "No AI activity for this task yet",
-                    emptyDescription: "AI activity appears here after approved AI work references this task.",
-                    accessibilityIdentifier: "task-execution-receipts"
-                )
-            }
-
-            Section("Danger Zone") {
-                if isConfirmingDelete {
-                    InspectorDestructiveConfirmation(
-                        title: "Delete this task?",
-                        message: "This removes the task from the local SoloPM database.",
-                        confirmTitle: "Delete Task",
-                        confirmSystemImage: "trash",
-                        // The runtime AX preflight tracks this generated cancel
-                        // identifier after opening the destructive confirmation:
-                        // task-inspector-delete-confirmation-cancel.
-                        accessibilityIdentifier: "task-inspector-delete-confirmation",
-                        confirmAction: deleteSelectedTaskAfterConfirmationDismissal,
-                        cancelAction: { isConfirmingDelete = false }
-                    )
-                } else {
-                    Button(role: .destructive) {
-                        isConfirmingDelete = true
+                Section("Save") {
+                    Button {
+                        saveChanges()
                     } label: {
-                        Label("Delete Task", systemImage: "trash")
+                        Label("Save Changes", systemImage: "checkmark.circle")
                     }
-                    .keyboardShortcut(.delete, modifiers: [.command])
-                    .help("Deletes the selected task after confirmation")
-                    .accessibilityIdentifier("task-inspector-delete")
-                    .accessibilityHint("Deletes the selected task after confirmation.")
+                    .buttonStyle(.borderedProminent)
+                    .disabled(
+                        title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || hasInvalidPersistedDueDate
+                    )
+                    .keyboardShortcut("s", modifiers: [.command])
+                    .help("Saves edits to the selected task in the local SoloPM database")
+                    .accessibilityIdentifier("task-inspector-save")
+                    .accessibilityHint(
+                        "Saves edits to the selected task in the local SoloPM database.")
+
+                }
+
+                Section("Suggestion") {
+                    TaskInspectorSuggestionSection(task: task, viewModel: viewModel)
+                }
+
+                Section("Automation") {
+                    TaskInspectorAutomationSection(task: task, viewModel: viewModel)
+                }
+
+                Section("Task AI Activity") {
+                    ExecutionReceiptHistoryInspectorSection(
+                        snapshot: viewModel.executionReceiptHistorySnapshot(forTaskID: task.id),
+                        emptyTitle: "No AI activity for this task yet",
+                        emptyDescription:
+                            "AI activity appears here after approved AI work references this task.",
+                        accessibilityIdentifier: "task-execution-receipts"
+                    )
+                }
+
+                Section("Danger Zone") {
+                    if isConfirmingDelete {
+                        InspectorDestructiveConfirmation(
+                            title: "Delete this task?",
+                            message: "This removes the task from the local SoloPM database.",
+                            confirmTitle: "Delete Task",
+                            confirmSystemImage: "trash",
+                            // The runtime AX preflight tracks this generated cancel
+                            // identifier after opening the destructive confirmation:
+                            // task-inspector-delete-confirmation-cancel.
+                            accessibilityIdentifier: "task-inspector-delete-confirmation",
+                            confirmAction: deleteSelectedTaskAfterConfirmationDismissal,
+                            cancelAction: { isConfirmingDelete = false }
+                        )
+                    } else {
+                        Button(role: .destructive) {
+                            isConfirmingDelete = true
+                        } label: {
+                            Label("Delete Task", systemImage: "trash")
+                        }
+                        .keyboardShortcut(.delete, modifiers: [.command])
+                        .help("Deletes the selected task after confirmation")
+                        .accessibilityIdentifier("task-inspector-delete")
+                        .accessibilityHint("Deletes the selected task after confirmation.")
+                    }
                 }
             }
+            .formStyle(.grouped)
+            .accessibilityIdentifier("task-inspector")
+            .accessibilityLabel("Task inspector for \(task.title)")
+            .accessibilityHint("Edit, save, move, or delete the selected task.")
         }
-        .formStyle(.grouped)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("task-inspector")
-        .accessibilityLabel("Task inspector for \(task.title)")
-        .accessibilityHint("Edit, save, move, or delete the selected task.")
         .onAppear {
             refreshFields(from: task)
         }
@@ -5342,8 +5421,22 @@ private struct TaskInspectorView: View {
         detail = task.detail
         status = task.status
         priority = task.priority
-        dueAt = task.dueAt ?? ""
+        let parsedDueDate = TaskDueDateFieldState.parsePersisted(task.dueAt)
+        dueDate = parsedDueDate.state
+        hasInvalidPersistedDueDate = parsedDueDate.isInvalid
         recurrence = task.recurrence ?? ""
+    }
+
+    private func saveChanges() {
+        guard !hasInvalidPersistedDueDate else { return }
+        viewModel.updateSelectedTask(
+            title: title,
+            detail: detail,
+            status: status,
+            priority: priority,
+            dueDate: dueDate.persistedDate,
+            recurrence: recurrence.nilIfBlank
+        )
     }
 
     private func deleteSelectedTaskAfterConfirmationDismissal() {
@@ -5406,7 +5499,9 @@ private struct TaskInspectorMetadataSummary: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Task summary")
-        .accessibilityValue("\(task.status.title), \(task.priority.label), \(dueValue), \(projectTitle)")
+        .accessibilityValue(
+            "\(task.status.title), \(task.priority.label), \(dueValue), \(projectTitle)"
+        )
         .accessibilityIdentifier("task-inspector-metadata-summary")
     }
 
