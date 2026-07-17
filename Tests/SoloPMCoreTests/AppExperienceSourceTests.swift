@@ -1961,22 +1961,22 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(source.contains("TaskCardMetadataStrip(task: task)"))
         XCTAssertTrue(source.contains("private struct TaskCardMetadataStrip"))
-        XCTAssertTrue(source.contains("private struct TaskMetadataLine"))
-        // Hosted SwiftUI dropped child Text nodes from repeated chip rows.
-        // Each metadata row is therefore one precomposed verbatim Text node.
-        XCTAssertTrue(source.contains("private var identityLineValue: String"))
-        XCTAssertTrue(source.contains("private var scheduleLineValue: String?"))
-        XCTAssertTrue(source.contains("Text(verbatim: value)"))
+        XCTAssertFalse(source.contains("private struct TaskMetadataLine"))
+        // Hosted SwiftUI dropped even separate semantic rows from the selected
+        // repeated card, so one primary Text owns the complete visible value.
+        XCTAssertTrue(source.contains("private var displayValue: String"))
+        XCTAssertTrue(source.contains("Text(verbatim: displayValue)"))
         XCTAssertTrue(source.contains("components.joined(separator: \" · \")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"task-card-metadata-strip-\\(task.id)\")"))
-        XCTAssertTrue(source.contains(".accessibilityValue(\"\\(localizedStatusValue), \\(localizedPriorityValue), \\(localizedDueValue)\")"))
+        XCTAssertTrue(source.contains(".accessibilityValue(accessibilityMetadataValue)"))
+        XCTAssertTrue(source.contains("recurrenceValue.map"))
         XCTAssertTrue(source.contains("No due date"))
-        XCTAssertTrue(source.contains(".minimumScaleFactor(0.82)"))
-        XCTAssertTrue(source.contains("minHeight: ProjectBoardLayoutMetrics.taskMetadataChipMinHeight"))
+        XCTAssertTrue(source.contains(".foregroundStyle(.primary)"))
+        XCTAssertTrue(source.contains(".fixedSize(horizontal: false, vertical: true)"))
         XCTAssertTrue(phase.contains("[x] `ui-samples/01.png`、`03.png`、`04.png` を基準に、左サイドバー、中央ボード/リスト、右インスペクタの情報密度を見直す。"))
-        XCTAssertTrue(phase.contains("[x] Task card metadata strip はstatus / priority / dueを固定寸法chipに分離し、狭いKanban列ではadaptive gridへ逃がす。"))
+        XCTAssertTrue(phase.contains("status / priority / due / recurrenceを単一の意味的なTextへ統合"))
         XCTAssertTrue(audit.contains("Task card metadata strip"))
-        XCTAssertTrue(audit.contains("status / priority / dueを固定寸法chip"))
+        XCTAssertTrue(audit.contains("status / priority / due / recurrenceを単一の意味的なText"))
     }
 
     func testProjectBoardExposesPrimaryCRUDKeyboardShortcuts() throws {

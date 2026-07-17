@@ -1644,7 +1644,12 @@ private struct BoardTaskCard: View {
     }
 
     private var accessibilityValueText: String {
-        "\(localizedStatusValue), \(localizedPriorityValue), \(localizedDueValue)"
+        accessibilityMetadataValue
+    }
+
+    private var accessibilityMetadataValue: String {
+        ([localizedStatusValue, localizedPriorityValue, localizedDueValue] + (recurrenceValue.map { [$0] } ?? []))
+            .joined(separator: ", ")
     }
 
     private var localizedStatusValue: String {
@@ -1657,6 +1662,15 @@ private struct BoardTaskCard: View {
 
     private var localizedDueValue: String {
         task.dueLabel.map(localizedDisplay) ?? localizedDisplay("No due date")
+    }
+
+    private var recurrenceValue: String? {
+        switch task.recurrence {
+        case "daily": localizedDisplay("Daily")
+        case "weekly": localizedDisplay("Weekly")
+        case "monthly": localizedDisplay("Monthly")
+        default: nil
+        }
     }
 }
 
@@ -1825,42 +1839,42 @@ private struct TaskCardMetadataStrip: View {
     let task: ProjectBoardTask
 
     var body: some View {
-        // Hosted SwiftUI can lose child Text nodes when repeated cards render
-        // several icon-and-label pills. Compose each semantic row into one
-        // verbatim Text node so metadata never becomes icon-only decoration.
-        VStack(alignment: .leading, spacing: 6) {
-            TaskMetadataLine(value: identityLineValue, tint: task.status.tint)
-
-            if let scheduleLineValue {
-                TaskMetadataLine(value: scheduleLineValue, tint: .blue)
-            }
-        }
+        // Hosted SwiftUI dropped labels from the selected repeated card even
+        // when each row owned a Text node. Keep the complete visible metadata
+        // in one primary-colored render node; the rail and calm background
+        // carry status color without making legibility depend on tint state.
+        Text(verbatim: displayValue)
+            .lineLimit(2)
+            .truncationMode(.tail)
+            .fixedSize(horizontal: false, vertical: true)
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 5)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .font(.caption2)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Task metadata")
-        .accessibilityValue("\(localizedStatusValue), \(localizedPriorityValue), \(localizedDueValue)")
+        .accessibilityValue(accessibilityMetadataValue)
         // Keep the stable prefix while binding visual evidence to the exact
         // database task whose metadata value is audited in this subtree.
         .accessibilityIdentifier("task-card-metadata-strip-\(task.id)")
     }
 
-    private var identityLineValue: String {
-        "\(localizedStatusValue) · \(localizedPriorityValue)"
-    }
-
-    /// Schedule text renders only when the task carries a due or recurrence
-    /// value; an unconditional placeholder line reads as broken metadata.
-    /// The dateless case stays discoverable through the accessibility value.
-    private var scheduleLineValue: String? {
-        var components: [String] = []
+    private var displayValue: String {
+        var components = [localizedStatusValue, localizedPriorityValue]
         if let dueLabel = task.dueLabel {
             components.append(localizedDisplay(dueLabel))
         }
         if let recurrenceValue {
             components.append(recurrenceValue)
         }
-        return components.isEmpty ? nil : components.joined(separator: " · ")
+        return components.joined(separator: " · ")
+    }
+
+    private var accessibilityMetadataValue: String {
+        ([localizedStatusValue, localizedPriorityValue, localizedDueValue] + (recurrenceValue.map { [$0] } ?? []))
+            .joined(separator: ", ")
     }
 
     private var localizedStatusValue: String {
@@ -1888,32 +1902,6 @@ private struct TaskCardMetadataStrip: View {
         default:
             nil
         }
-    }
-}
-
-private struct TaskMetadataLine: View {
-    let value: String
-    let tint: Color
-
-    var body: some View {
-        Text(verbatim: value)
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .minimumScaleFactor(0.82)
-            .layoutPriority(1)
-            .foregroundStyle(tint)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            // A calm full-width label is easier to scan than several small
-            // pills and keeps all meaning in the one render node above.
-            .frame(
-                minWidth: ProjectBoardLayoutMetrics.taskMetadataChipMinWidth,
-                maxWidth: .infinity,
-                minHeight: ProjectBoardLayoutMetrics.taskMetadataChipMinHeight,
-                alignment: .leading
-            )
-            .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .help(value)
     }
 }
 
