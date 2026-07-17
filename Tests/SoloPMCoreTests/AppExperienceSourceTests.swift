@@ -753,9 +753,26 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(designSource.contains("NavigationSplitView"))
         XCTAssertFalse(designSource.contains("Form {"))
         XCTAssertFalse(designSource.contains(".inspector"))
-        XCTAssertFalse(boardSource.contains(".background(SoloPMSurface.canvas)"))
-        XCTAssertFalse(boardSource.contains(".background(SoloPMSurface.groupedContent)"))
-        XCTAssertFalse(settingsSource.contains("TabView(selection: $selectedTab) {\n            overviewSettingsTab\n                .background(SoloPMSurface"))
+        XCTAssertEqual(
+            SwiftUISourceStyleContractAnalyzer.nativeRootStyleViolations(
+                in: boardSource,
+                rootType: "NavigationSplitView",
+                // These backgrounds inject non-rendering AppKit layout and
+                // keyboard-command bridges; neither paints a ShapeStyle.
+                allowedNonvisualBackgroundMarkers: [
+                    "ProjectBoardToolbarLayoutBridge(",
+                    ".background(Button("
+                ]
+            ),
+            []
+        )
+        XCTAssertEqual(
+            SwiftUISourceStyleContractAnalyzer.nativeRootStyleViolations(
+                in: settingsSource,
+                rootType: "TabView"
+            ),
+            []
+        )
     }
 
     func testCalmSignalDeskOwnedSurfacesUseSemanticStyleContracts() throws {
@@ -767,43 +784,109 @@ final class AppExperienceSourceTests: XCTestCase {
             "Sources/SoloPMApp/Views/SettingsStatusOverviewView.swift",
             "Sources/SoloPMApp/Views/VoiceCaptureView.swift"
         ]
-        // Keep this allowlist explicit. A future exception must name the file
-        // and exact source line so legacy styling cannot silently spread.
-        let legacyAllowlist: [String: Set<String>] = [:]
+        // Computed styles are allowed only where their defining property is
+        // already constrained to semantic tokens in the same owned source.
+        let allowedSemanticExpressions = [
+            "SoloPMSurface.",
+            "SoloPMTone.",
+            "SoloPMBrand.",
+            ".background(tint.opacity(",
+            ".background(background,",
+            ".background(dayBackground,",
+            ".fill(heatmapColor(",
+            "AnyShapeStyle(.tint)"
+        ]
 
         for path in ownedSurfaces {
             let source = try readPackageFile(path)
-            let allowedLines = legacyAllowlist[path, default: []]
-
-            for line in source.components(separatedBy: .newlines) where !allowedLines.contains(line) {
-                XCTAssertNil(
-                    line.range(of: #"\.(red|orange|green)\b"#, options: .regularExpression),
-                    "\(path) must route status color through SoloPMTone: \(line)"
-                )
-
-                if line.contains("cornerRadius:") {
-                    XCTAssertTrue(
-                        line.contains("SoloPMRadius."),
-                        "\(path) uses an anonymous radius: \(line)"
-                    )
-                }
-
-                if line.contains(".background(") || line.contains(".fill(") {
-                    for anonymousFill in [
-                        ".regularMaterial",
-                        ".quaternary",
-                        "Color.secondary.opacity",
-                        "Color.primary.opacity",
-                        "Color.accentColor.opacity"
-                    ] {
-                        XCTAssertFalse(
-                            line.contains(anonymousFill),
-                            "\(path) uses an anonymous grouped fill: \(line)"
-                        )
-                    }
-                }
-            }
+            XCTAssertEqual(
+                SwiftUISourceStyleContractAnalyzer.disallowedSurfaceModifiers(
+                    in: source,
+                    allowedExpressionMarkers: allowedSemanticExpressions
+                ),
+                [],
+                "\(path) must use an explicitly allowed semantic surface expression."
+            )
+            XCTAssertEqual(
+                SwiftUISourceStyleContractAnalyzer.rawStyleViolations(in: source),
+                [],
+                "\(path) must route status colors and radii through semantic tokens."
+            )
         }
+    }
+
+    func testSwiftUIStyleContractAnalyzerRejectsMultilineAndNativeRootFixtures() {
+        let multilineSecondaryOpacity = """
+        Text("Example")
+            .background(
+                Color.secondary
+                    .opacity(0.08),
+                in: RoundedRectangle(cornerRadius: SoloPMRadius.card)
+            )
+        """
+        let thinMaterial = """
+        Text("Example")
+            .fill(
+                .thinMaterial
+            )
+        """
+        let gradient = """
+        Text("Example")
+            .background(
+                LinearGradient(
+                    colors: [SoloPMSurface.canvas, .black],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+        """
+        let nativeRootBackground = """
+        struct Fixture: View {
+          var body: some View {
+            TabView {
+              Text("Overview")
+            }
+            .frame(width: 400)
+            .background(
+              SoloPMSurface.canvas
+            )
+          }
+        }
+        """
+        let similarlyNamedTypeBeforeNativeRoot = """
+        struct Fixture: View {
+          let visibility: NavigationSplitViewVisibility
+          var body: some View {
+            NavigationSplitView {
+              Text("Sidebar")
+            } detail: {
+              Text("Detail")
+            }
+            .background(.thinMaterial)
+          }
+        }
+        """
+
+        for fixture in [multilineSecondaryOpacity, thinMaterial, gradient] {
+            XCTAssertFalse(
+                SwiftUISourceStyleContractAnalyzer.disallowedSurfaceModifiers(
+                    in: fixture,
+                    allowedExpressionMarkers: ["SoloPMSurface."]
+                ).isEmpty
+            )
+        }
+        XCTAssertFalse(
+            SwiftUISourceStyleContractAnalyzer.nativeRootStyleViolations(
+                in: nativeRootBackground,
+                rootType: "TabView"
+            ).isEmpty
+        )
+        XCTAssertFalse(
+            SwiftUISourceStyleContractAnalyzer.nativeRootStyleViolations(
+                in: similarlyNamedTypeBeforeNativeRoot,
+                rootType: "NavigationSplitView"
+            ).isEmpty
+        )
     }
 
     func testCalmSignalDeskStatusAndMotionKeepNonColorAccessibilityCues() throws {
