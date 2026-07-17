@@ -1,4 +1,3 @@
-import AppKit
 import Foundation
 import SoloPMCore
 import SwiftUI
@@ -1630,7 +1629,10 @@ private struct BoardTaskCard: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-        .background(task.status.tint.opacity(isSelected || isPointerHovered ? 0.14 : 0.05), in: RoundedRectangle(cornerRadius: 8))
+        // Keep the fill independent from selection. On the hosted renderer, a
+        // stronger selection-dependent material fill can composite above the
+        // card's secondary text. The border remains the non-color selection cue.
+        .background(task.status.tint.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(isSelected || isPointerHovered ? task.status.tint.opacity(0.7) : Color.secondary.opacity(0.16))
@@ -1695,13 +1697,11 @@ private struct TaskCardSelectableSummary: View {
                 }
 
                 if !task.detail.isEmpty {
-                    StableTaskCardText(
-                        value: task.detail,
-                        font: .systemFont(ofSize: NSFont.smallSystemFontSize),
-                        color: .secondaryLabelColor,
-                        lineLimit: 3
-                    )
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(task.detail)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(3)
+                        .truncationMode(.tail)
                         .help(task.detail)
                 }
 
@@ -1793,12 +1793,11 @@ private struct TaskStatusMoveControls: View {
                 targetStatus: task.status.previousStatus
             )
 
-            StableTaskCardText(
-                value: localizedDisplay(task.status.title),
-                font: .systemFont(ofSize: NSFont.smallSystemFontSize - 1, weight: .semibold),
-                color: .secondaryLabelColor,
-                lineLimit: 1
-            )
+            Text(LocalizedStringKey(task.status.title))
+                .font(.caption2.weight(.semibold))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
                 .frame(minWidth: 76)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
@@ -1910,13 +1909,12 @@ private struct TaskMetadataLine: View {
     let tint: Color
 
     var body: some View {
-        StableTaskCardText(
-            value: value,
-            font: .systemFont(ofSize: NSFont.smallSystemFontSize - 1),
-            color: NSColor(tint),
-            lineLimit: 1
-        )
+        Text(verbatim: value)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .minimumScaleFactor(0.82)
             .layoutPriority(1)
+            .foregroundColor(tint)
             .padding(.horizontal, 7)
             .padding(.vertical, 4)
             .frame(
@@ -1927,51 +1925,6 @@ private struct TaskMetadataLine: View {
             )
             .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .help(value)
-    }
-}
-
-private struct StableTaskCardText: NSViewRepresentable {
-    let value: String
-    let font: NSFont
-    let color: NSColor
-    let lineLimit: Int
-
-    func makeNSView(context: Context) -> NSTextField {
-        let label = NSTextField(labelWithString: value)
-        configure(label)
-        return label
-    }
-
-    func updateNSView(_ label: NSTextField, context: Context) {
-        label.stringValue = value
-        configure(label)
-    }
-
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView label: NSTextField, context: Context) -> CGSize? {
-        guard let width = proposal.width, width.isFinite, width > 0 else {
-            return nil
-        }
-        let bounds = NSRect(x: 0, y: 0, width: width, height: .greatestFiniteMagnitude)
-        let height = label.cell?.cellSize(forBounds: bounds).height ?? label.intrinsicContentSize.height
-        return CGSize(width: width, height: ceil(height))
-    }
-
-    private func configure(_ label: NSTextField) {
-        label.font = font
-        label.textColor = color
-        label.maximumNumberOfLines = lineLimit
-        label.lineBreakMode = .byTruncatingTail
-        label.cell?.wraps = lineLimit > 1
-        label.cell?.truncatesLastVisibleLine = true
-        label.drawsBackground = false
-        label.isBordered = false
-        label.isEditable = false
-        label.isSelectable = false
-        // The parent card publishes the full label/value/action. Keeping this
-        // raster-only leaf out of AX avoids duplicate VoiceOver focus stops.
-        label.setAccessibilityElement(false)
-        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        label.setContentHuggingPriority(.defaultLow, for: .horizontal)
     }
 }
 

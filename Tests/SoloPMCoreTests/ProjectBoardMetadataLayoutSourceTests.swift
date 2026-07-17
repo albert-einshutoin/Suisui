@@ -22,7 +22,7 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(cardSource.contains(".accessibilityLabel(\"Open task \\(task.title)\")"))
     }
 
-    func testMetadataLineUsesStableAppKitLabelSoHostedRenderingCannotDropChildLabels() throws {
+    func testMetadataLineUsesOneVerbatimTextNodeSoHostedRenderingCannotDropChildLabels() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
         let lineStart = try XCTUnwrap(source.range(of: "private struct TaskMetadataLine: View"))
         let lineEnd = try XCTUnwrap(
@@ -30,17 +30,22 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         )
         let lineSource = String(source[lineStart.lowerBound..<lineEnd.lowerBound])
 
-        XCTAssertTrue(lineSource.contains("StableTaskCardText("))
-        XCTAssertTrue(lineSource.contains("color: NSColor(tint)"))
+        XCTAssertTrue(lineSource.contains("Text(verbatim: value)"))
         XCTAssertFalse(lineSource.contains("Image(systemName:"))
         XCTAssertFalse(lineSource.contains("HStack"))
-        XCTAssertTrue(lineSource.contains("lineLimit: 1"))
+        XCTAssertTrue(lineSource.contains(".lineLimit(1)"))
+        XCTAssertTrue(lineSource.contains(".minimumScaleFactor(0.82)"))
         XCTAssertTrue(lineSource.contains("maxWidth: .infinity"))
         XCTAssertFalse(lineSource.contains(".foregroundStyle(tint)"))
     }
 
     func testSelectedMaterialTaskCardUsesConcreteTextColorsOnHostedRunner() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
+        let cardStart = try XCTUnwrap(source.range(of: "private struct BoardTaskCard: View"))
+        let cardEnd = try XCTUnwrap(
+            source.range(of: "private struct TaskCardSelectableSummary: View", range: cardStart.upperBound..<source.endIndex)
+        )
+        let cardSource = String(source[cardStart.lowerBound..<cardEnd.lowerBound])
         let summaryStart = try XCTUnwrap(source.range(of: "private struct TaskCardSelectableSummary: View"))
         let summaryEnd = try XCTUnwrap(
             source.range(of: "private struct TaskDragAffordance: View", range: summaryStart.upperBound..<source.endIndex)
@@ -52,12 +57,15 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         )
         let controlsSource = String(source[controlsStart.lowerBound..<controlsEnd.lowerBound])
 
-        XCTAssertTrue(summarySource.contains("StableTaskCardText("))
-        XCTAssertTrue(summarySource.contains("color: .secondaryLabelColor"))
+        XCTAssertTrue(summarySource.contains("Text(task.detail)"))
+        XCTAssertTrue(summarySource.contains(".foregroundColor(.secondary)"))
         XCTAssertFalse(summarySource.contains(".foregroundStyle(.secondary)"))
-        XCTAssertTrue(controlsSource.contains("StableTaskCardText("))
-        XCTAssertTrue(controlsSource.contains("color: .secondaryLabelColor"))
+        XCTAssertTrue(controlsSource.contains("Text(LocalizedStringKey(task.status.title))"))
+        XCTAssertTrue(controlsSource.contains(".foregroundColor(.secondary)"))
         XCTAssertFalse(controlsSource.contains(".foregroundStyle(.secondary)"))
+        XCTAssertTrue(cardSource.contains(".background(task.status.tint.opacity(0.05)"))
+        XCTAssertFalse(cardSource.contains(".background(task.status.tint.opacity(isSelected"))
+        XCTAssertTrue(cardSource.contains(".stroke(isSelected || isPointerHovered"))
     }
 
     func testMetadataStripComposesStatusPriorityDueAndRecurrenceIntoOneReadableValue() throws {
@@ -91,8 +99,7 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("localizedDisplay(task.priority.label)"))
         XCTAssertTrue(source.contains("private var localizedDueValue: String"))
         XCTAssertTrue(source.contains("task.dueLabel.map(localizedDisplay) ?? localizedDisplay(\"No due date\")"))
-        XCTAssertTrue(source.contains("private struct StableTaskCardText: NSViewRepresentable"))
-        XCTAssertTrue(source.contains("label.setAccessibilityElement(false)"))
+        XCTAssertTrue(source.contains("Text(verbatim: value)"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"task-card-metadata-strip-\\(task.id)\")"))
     }
 
