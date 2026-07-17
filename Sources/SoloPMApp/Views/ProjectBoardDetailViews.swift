@@ -1705,7 +1705,7 @@ private struct TaskCardSelectableSummary: View {
                 if !task.detail.isEmpty {
                     Text(task.detail)
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Color(nsColor: .labelColor))
                         .lineLimit(3)
                         .truncationMode(.tail)
                         .help(task.detail)
@@ -1801,7 +1801,7 @@ private struct TaskStatusMoveControls: View {
 
             Text(LocalizedStringKey(task.status.title))
                 .font(.caption2.weight(.semibold))
-                .foregroundColor(.secondary)
+                .foregroundColor(Color(nsColor: .labelColor))
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(minWidth: 76)
@@ -1920,7 +1920,7 @@ private struct TaskMetadataLine: View {
             .truncationMode(.tail)
             .minimumScaleFactor(0.82)
             .layoutPriority(1)
-            .foregroundColor(tint)
+            .foregroundColor(Color(nsColor: .labelColor))
             .padding(.horizontal, 7)
             .padding(.vertical, 4)
             .frame(
