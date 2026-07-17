@@ -8,94 +8,98 @@ private struct TodayFeatureReadState: Equatable {
     let projectTitlesByTaskID: [Int64: String]
 }
 
+public struct TodayFeatureState: Equatable {
+    public var snapshot: TodayWorkflowSnapshot
+    public var catchUpCount: Int
+    public var missedTaskReview: MissedTaskReviewSummary
+    public var projectTitlesByTaskID: [Int64: String]
+    public var showsCompletedWorkflowTasks: Bool
+    public var selectedTaskID: Int64?
+    public var commandFeedback: String?
+    public var scheduleDraft: TodayScheduleDraft?
+    public var dailyPlanningReview: DailyPlanningReview?
+}
+
 @MainActor
 public final class TodayFeatureViewModel: ObservableObject {
-    @Published public private(set) var snapshot: TodayWorkflowSnapshot
-    @Published public private(set) var catchUpCount: Int
-    @Published public private(set) var missedTaskReview: MissedTaskReviewSummary
-    @Published public private(set) var projectTitlesByTaskID: [Int64: String]
-    @Published public private(set) var showsCompletedWorkflowTasks: Bool
-    @Published public private(set) var selectedTaskID: Int64?
-    @Published public private(set) var commandFeedback: String?
-    @Published public private(set) var scheduleDraft: TodayScheduleDraft?
-    @Published public private(set) var dailyPlanningReview: DailyPlanningReview?
+    @Published public private(set) var state: TodayFeatureState
+
+    public var snapshot: TodayWorkflowSnapshot { state.snapshot }
+    public var catchUpCount: Int { state.catchUpCount }
+    public var missedTaskReview: MissedTaskReviewSummary { state.missedTaskReview }
+    public var projectTitlesByTaskID: [Int64: String] { state.projectTitlesByTaskID }
+    public var showsCompletedWorkflowTasks: Bool { state.showsCompletedWorkflowTasks }
+    public var selectedTaskID: Int64? { state.selectedTaskID }
+    public var commandFeedback: String? { state.commandFeedback }
+    public var scheduleDraft: TodayScheduleDraft? { state.scheduleDraft }
+    public var dailyPlanningReview: DailyPlanningReview? { state.dailyPlanningReview }
 
     private let board: ProjectBoardViewModel
     private var observations: Set<AnyCancellable> = []
+    private var featureActionDepth = 0
+    private var hasScheduledSynchronization = false
 
     public init(board: ProjectBoardViewModel) {
         self.board = board
-        self.snapshot = board.derivedReadModels.todayWorkflowSnapshot
-        self.catchUpCount = board.derivedReadModels.sidebarMetrics.catchUpCount
-        self.missedTaskReview = board.derivedReadModels.missedTaskReview
-        self.projectTitlesByTaskID = Self.projectTitlesByTaskID(
-            todayTasks: board.derivedReadModels.todayWorkflowSnapshot.plan.tasks,
-            projects: board.snapshot.projects
-        )
-        self.showsCompletedWorkflowTasks = board.showsCompletedWorkflowTasks
-        self.selectedTaskID = board.selectedTaskID
-        self.commandFeedback = board.todayCommandFeedback
-        self.scheduleDraft = board.todayScheduleDraft
-        self.dailyPlanningReview = board.dailyPlanningReview
+        self.state = Self.makeState(from: board)
 
         // Today subscribes only to the state it renders. Automation, receipt,
         // MCP, and integration publications remain on the compatibility board
         // facade and cannot invalidate the Today root.
         board.$derivedReadModels
-            .combineLatest(board.$snapshot)
-            .map { readModels, boardSnapshot in
+            .map { [weak board] readModels in
                 TodayFeatureReadState(
                     snapshot: readModels.todayWorkflowSnapshot,
                     catchUpCount: readModels.sidebarMetrics.catchUpCount,
                     missedTaskReview: readModels.missedTaskReview,
                     projectTitlesByTaskID: Self.projectTitlesByTaskID(
                         todayTasks: readModels.todayWorkflowSnapshot.plan.tasks,
-                        projects: boardSnapshot.projects
+                        // ProjectBoard publishes the snapshot before rebuilding
+                        // derived models. Reading it at this transaction boundary
+                        // avoids publishing the intermediate old-model/new-snapshot pair.
+                        projects: board?.snapshot.projects ?? []
                     )
                 )
             }
             .removeDuplicates()
             .dropFirst()
-            .sink { [weak self] value in
-                self?.snapshot = value.snapshot
-                self?.catchUpCount = value.catchUpCount
-                self?.missedTaskReview = value.missedTaskReview
-                self?.projectTitlesByTaskID = value.projectTitlesByTaskID
+            .sink { [weak self] _ in
+                self?.scheduleSynchronization()
             }
             .store(in: &observations)
         board.$showsCompletedWorkflowTasks
             .removeDuplicates()
             .dropFirst()
-            .sink { [weak self] value in
-                self?.showsCompletedWorkflowTasks = value
+            .sink { [weak self] _ in
+                self?.scheduleSynchronization()
             }
             .store(in: &observations)
         board.$selectedTaskID
             .removeDuplicates()
             .dropFirst()
-            .sink { [weak self] value in
-                self?.selectedTaskID = value
+            .sink { [weak self] _ in
+                self?.scheduleSynchronization()
             }
             .store(in: &observations)
         board.$todayCommandFeedback
             .removeDuplicates()
             .dropFirst()
-            .sink { [weak self] value in
-                self?.commandFeedback = value
+            .sink { [weak self] _ in
+                self?.scheduleSynchronization()
             }
             .store(in: &observations)
         board.$todayScheduleDraft
             .removeDuplicates()
             .dropFirst()
-            .sink { [weak self] value in
-                self?.scheduleDraft = value
+            .sink { [weak self] _ in
+                self?.scheduleSynchronization()
             }
             .store(in: &observations)
         board.$dailyPlanningReview
             .removeDuplicates()
             .dropFirst()
-            .sink { [weak self] value in
-                self?.dailyPlanningReview = value
+            .sink { [weak self] _ in
+                self?.scheduleSynchronization()
             }
             .store(in: &observations)
     }
@@ -105,49 +109,98 @@ public final class TodayFeatureViewModel: ObservableObject {
     }
 
     public func startFocus(taskID: Int64) {
-        board.startFocus(taskID: taskID)
+        performFeatureAction { board.startFocus(taskID: taskID) }
     }
 
     public func toggleTaskCompletion(id: Int64) {
-        board.toggleTaskCompletion(id: id)
+        performFeatureAction { board.toggleTaskCompletion(id: id) }
     }
 
     public func selectTask(id: Int64) {
-        board.selectedTaskID = id
+        performFeatureAction { board.selectedTaskID = id }
     }
 
     @discardableResult
     public func submitCommand(_ title: String) -> ProjectBoardTask? {
-        board.submitTodayCommand(title)
+        performFeatureAction { board.submitTodayCommand(title) }
     }
 
     public func setShowsCompletedWorkflowTasks(_ isShown: Bool) {
-        board.setShowsCompletedWorkflowTasks(isShown)
+        performFeatureAction { board.setShowsCompletedWorkflowTasks(isShown) }
     }
 
     @discardableResult
     public func prepareTodayScheduleDraft(prioritizing taskID: Int64? = nil) -> TodayScheduleDraft? {
-        board.prepareTodayScheduleDraft(prioritizing: taskID)
+        performFeatureAction { board.prepareTodayScheduleDraft(prioritizing: taskID) }
     }
 
     public func enqueueTodayReminderDraft(for taskID: Int64) {
-        board.enqueueTodayReminderDraft(for: taskID)
+        _ = performFeatureAction { board.enqueueTodayReminderDraft(for: taskID) }
     }
 
     public func enqueueDailyPlanningActionDraft(kind: DailyPlanningActionDraftKind) {
-        board.enqueueDailyPlanningActionDraft(kind: kind)
+        _ = performFeatureAction { board.enqueueDailyPlanningActionDraft(kind: kind) }
     }
 
     public func completeMissedTask(id: Int64) {
-        board.completeMissedTask(id: id)
+        performFeatureAction { board.completeMissedTask(id: id) }
     }
 
     public func rescheduleMissedTaskForToday(id: Int64) {
-        board.rescheduleMissedTaskForToday(id: id)
+        performFeatureAction { board.rescheduleMissedTaskForToday(id: id) }
     }
 
     public func deferMissedTaskForLater(id: Int64) {
-        board.deferMissedTaskForLater(id: id)
+        performFeatureAction { board.deferMissedTaskForLater(id: id) }
+    }
+
+    private func performFeatureAction<Result>(_ action: () -> Result) -> Result {
+        featureActionDepth += 1
+        defer {
+            featureActionDepth -= 1
+            if featureActionDepth == 0 {
+                applyStateIfChanged(Self.makeState(from: board))
+            }
+        }
+        return action()
+    }
+
+    private func scheduleSynchronization() {
+        guard featureActionDepth == 0, !hasScheduledSynchronization else { return }
+        hasScheduledSynchronization = true
+        // ProjectBoard may publish several fields inside one synchronous
+        // mutation. Read the facade once on the next main-queue turn so Today
+        // never exposes an intermediate selection/read-model combination.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.hasScheduledSynchronization = false
+            self.applyStateIfChanged(Self.makeState(from: self.board))
+        }
+    }
+
+    private func applyStateIfChanged(_ nextState: TodayFeatureState) {
+        guard nextState != state else { return }
+        // One aggregate assignment gives SwiftUI one invalidation for one
+        // logical Today change, even when several rendered fields changed.
+        state = nextState
+    }
+
+    private static func makeState(from board: ProjectBoardViewModel) -> TodayFeatureState {
+        let snapshot = board.derivedReadModels.todayWorkflowSnapshot
+        return TodayFeatureState(
+            snapshot: snapshot,
+            catchUpCount: board.derivedReadModels.sidebarMetrics.catchUpCount,
+            missedTaskReview: board.derivedReadModels.missedTaskReview,
+            projectTitlesByTaskID: projectTitlesByTaskID(
+                todayTasks: snapshot.plan.tasks,
+                projects: board.snapshot.projects
+            ),
+            showsCompletedWorkflowTasks: board.showsCompletedWorkflowTasks,
+            selectedTaskID: board.selectedTaskID,
+            commandFeedback: board.todayCommandFeedback,
+            scheduleDraft: board.todayScheduleDraft,
+            dailyPlanningReview: board.dailyPlanningReview
+        )
     }
 
     private static func projectTitlesByTaskID(

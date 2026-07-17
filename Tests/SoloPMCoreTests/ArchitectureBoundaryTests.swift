@@ -243,6 +243,22 @@ final class ArchitectureBoundaryTests: XCTestCase {
         XCTAssertTrue(sharedSource.contains("struct WorkflowDoneToggle"))
     }
 
+    func testTodayFeaturePublishesOneAggregateStateWithoutObservingBoardAtTheViewRoot() throws {
+        let todayViewSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift")
+        let featureSource = try readPackageFile("Sources/SoloPMCore/App/TodayFeatureViewModel.swift")
+
+        XCTAssertTrue(todayViewSource.contains("@StateObject private var viewModel: TodayFeatureViewModel"))
+        XCTAssertFalse(todayViewSource.contains("@ObservedObject private var viewModel: ProjectBoardViewModel"))
+        XCTAssertTrue(featureSource.contains("public struct TodayFeatureState: Equatable"))
+        XCTAssertEqual(
+            featureSource.components(separatedBy: "@Published public private(set)").count - 1,
+            1,
+            "Today should invalidate SwiftUI once through one aggregate published state"
+        )
+        XCTAssertTrue(featureSource.contains("applyStateIfChanged"))
+        XCTAssertFalse(featureSource.contains(".combineLatest(board.$snapshot)"))
+    }
+
     func testProjectBoardAndSettingsRetainRootOwnershipWhileLeafViewsAreSplit() throws {
         let boardRoot = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let inspectors = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardInspectors.swift")
