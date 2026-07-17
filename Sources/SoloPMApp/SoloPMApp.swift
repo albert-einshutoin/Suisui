@@ -226,7 +226,8 @@ private struct ProjectBoardWindowRootView: View {
                 isOnboardingPresented = true
             } else {
                 isOnboardingPresented = FirstRunOnboardingGate.shouldPresent(
-                    hasDismissedOnboarding: hasDismissedOnboarding
+                    hasDismissedOnboarding: hasDismissedOnboarding,
+                    isPrimaryWindow: isPrimaryOnboardingWindow
                 )
             }
         }
@@ -238,7 +239,77 @@ private struct ProjectBoardWindowRootView: View {
             OnboardingWelcomeView(
                 settingsViewModel: settingsViewModel,
                 permissionSnapshot: .empty,
-                permissionSnapshotProvider: AppRuntimeFactory.makeIntegrationPermissionSnapshotSendable
+                permissionSnapshotProvider: AppRuntimeFactory.makeIntegrationPermissionSnapshotSendable,
+                onTrySoloPM: { outcome in
+                    hasDismissedOnboarding = true
+                    isOnboardingPresented = false
+                    guard let firstLessonTaskID = outcome.firstLessonTaskID else {
+                        return
+                    }
+                    Task { @MainActor in
+                        let retryPolicy = OnboardingTargetedRouteRetryPolicy()
+                        var routeRequest: ProjectBoardOpenRequest?
+                        for attempt in 1...retryPolicy.maximumAttempts {
+                            // Keep routing and lesson focus on the window that owned onboarding.
+                            // During a fast first-launch click, its model or scene registration can
+                            // still be pending; requestOpen then returns nil and must be retried.
+                            if viewModel != nil {
+                                routeRequest = sceneCoordinator.requestOpen(
+                                    targetSceneID: sceneID,
+                                    route: OnboardingExperience.learnProjectTargetRoute
+                                )
+                            }
+                            switch retryPolicy.decision(
+                                afterAttempt: attempt,
+                                requestWasAccepted: routeRequest != nil
+                            ) {
+                            case .retry:
+                                try? await Task.sleep(for: .milliseconds(50))
+                            case .awaitApplication:
+                                break
+                            case .exhausted:
+                                return
+                            }
+                            if routeRequest != nil {
+                                break
+                            }
+                        }
+                        guard let routeRequest else {
+                            return
+                        }
+                        var routeWasApplied = false
+                        for _ in 0..<100 {
+                            if sceneCoordinator.hasApplied(requestID: routeRequest.id) {
+                                routeWasApplied = true
+                                break
+                            }
+                            try? await Task.sleep(for: .milliseconds(50))
+                        }
+                        guard routeWasApplied else {
+                            return
+                        }
+                        var focusIntent = OnboardingLessonFocusIntent(taskID: firstLessonTaskID)
+                        for _ in 0..<100 {
+                            if let viewModel {
+                                let visibleTaskIDs = Set(
+                                    viewModel.snapshot.projects.flatMap(\.tasks).map(\.id)
+                                )
+                                switch focusIntent.nextAction(
+                                    visibleTaskIDs: visibleTaskIDs,
+                                    selectedTaskID: viewModel.selectedTaskID
+                                ) {
+                                case let .select(taskID):
+                                    viewModel.selectedTaskID = taskID
+                                case .completed:
+                                    return
+                                case nil:
+                                    break
+                                }
+                            }
+                            try? await Task.sleep(for: .milliseconds(50))
+                        }
+                    }
+                }
             ) {
                 hasDismissedOnboarding = true
                 isOnboardingPresented = false
@@ -254,6 +325,13 @@ private struct ProjectBoardWindowRootView: View {
         }
         .onChange(of: onboardingRerunCoordinator.primaryWindowID) { _, newPrimary in
             isPrimaryOnboardingWindow = newPrimary == sceneID
+            if isPrimaryOnboardingWindow,
+               FirstRunOnboardingGate.shouldPresent(
+                   hasDismissedOnboarding: hasDismissedOnboarding,
+                   isPrimaryWindow: true
+               ) {
+                isOnboardingPresented = true
+            }
         }
         .task {
             guard viewModel == nil else {

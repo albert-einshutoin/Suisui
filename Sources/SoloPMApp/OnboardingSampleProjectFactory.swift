@@ -6,7 +6,7 @@ import SoloPMCore
 /// `OnboardingWelcomeView` init parameter from ever capturing the existing
 /// trailing `onFinish:` closure at the pinned SoloPMApp.swift call site.
 struct OnboardingSampleProjectAction {
-    let run: @Sendable () throws -> Void
+    let run: @Sendable () throws -> OnboardingSampleProjectEnsureResult
 }
 
 /// Wires the real SQLite-backed sample creator into onboarding. The database
@@ -20,7 +20,7 @@ enum OnboardingSampleProjectFactory {
                 taskStore: SQLiteTaskStore(connection: connection),
                 localize: { localizedDisplay($0) }
             )
-            _ = try creator.createSampleProjectIfNeeded()
+            return try creator.ensureSampleProject()
         }
     }
 }

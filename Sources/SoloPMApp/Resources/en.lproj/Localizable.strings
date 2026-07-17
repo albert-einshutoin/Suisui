@@ -1745,6 +1745,11 @@
 "Adds a Learn SoloPM practice project with sample tasks to the Project Board." = "Adds a Learn SoloPM practice project with sample tasks to the Project Board.";
 "Could not create the sample project." = "Could not create the sample project.";
 "Learn SoloPM" = "Learn SoloPM";
+"Start with a private practice project. No AI account or Mac permissions are needed." = "Start with a private practice project. No AI account or Mac permissions are needed.";
+"Capture" = "Capture";
+"Set up AI first" = "Set up AI first";
+"Try SoloPM now" = "Try SoloPM now";
+"Creates or reuses Learn SoloPM, opens Today, and selects the first lesson." = "Creates or reuses Learn SoloPM, opens Today, and selects the first lesson.";
 "Press ⌘K and search for anything" = "Press ⌘K and search for anything";
 "The command palette matches views, projects, smart lists, and even task content. Try typing part of this sentence." = "The command palette matches views, projects, smart lists, and even task content. Try typing part of this sentence.";
 "Drag this task to another column" = "Drag this task to another column";

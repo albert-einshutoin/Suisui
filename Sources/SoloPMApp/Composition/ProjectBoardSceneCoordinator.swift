@@ -12,8 +12,10 @@ final class ProjectBoardSceneCoordinator: ObservableObject {
     static let shared = ProjectBoardSceneCoordinator()
 
     @Published private(set) var deliveryRevision = 0
+    @Published private(set) var lastAppliedRequestID: UUID?
 
     private var state = ProjectBoardSceneNavigationState()
+    private var applicationAcknowledgements = ProjectBoardSceneApplicationAcknowledgements()
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -61,6 +63,17 @@ final class ProjectBoardSceneCoordinator: ObservableObject {
 
     func consume(requestID: UUID, for sceneID: UUID) -> ProjectBoardOpenRequest? {
         state.consume(requestID: requestID, for: sceneID)
+    }
+
+    func acknowledgeApplied(requestID: UUID) {
+        guard applicationAcknowledgements.acknowledge(requestID) else {
+            return
+        }
+        lastAppliedRequestID = requestID
+    }
+
+    func hasApplied(requestID: UUID) -> Bool {
+        applicationAcknowledgements.contains(requestID)
     }
 
     private func publishDeliveryOpportunity() {

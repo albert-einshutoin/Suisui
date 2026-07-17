@@ -97,6 +97,36 @@ public struct ProjectBoardRequestPayloadStore<Payload> {
     }
 }
 
+/// Bounded acknowledgement history for app-level scene coordinators. A route
+/// consumer records only after applying the request, letting follow-up UI work
+/// wait for the exact navigation instead of guessing with render delays.
+public struct ProjectBoardSceneApplicationAcknowledgements: Sendable {
+    private var appliedRequestIDs: Set<UUID> = []
+    private var appliedRequestOrder: [UUID] = []
+    private let limit: Int
+
+    public init(limit: Int = ProjectBoardSceneRequestLimits.pending) {
+        precondition(limit > 0, "Applied request history limit must be above zero")
+        self.limit = limit
+    }
+
+    @discardableResult
+    public mutating func acknowledge(_ requestID: UUID) -> Bool {
+        guard appliedRequestIDs.insert(requestID).inserted else {
+            return false
+        }
+        appliedRequestOrder.append(requestID)
+        if appliedRequestOrder.count > limit {
+            appliedRequestIDs.remove(appliedRequestOrder.removeFirst())
+        }
+        return true
+    }
+
+    public func contains(_ requestID: UUID) -> Bool {
+        appliedRequestIDs.contains(requestID)
+    }
+}
+
 /// Pure matching boundary shared by app composition and reducer tests.
 public enum ProjectBoardSceneNavigation {
     public static func route(

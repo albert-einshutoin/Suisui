@@ -1745,6 +1745,11 @@
 "Adds a Learn SoloPM practice project with sample tasks to the Project Board." = "練習用の「SoloPMを学ぶ」プロジェクトとサンプルタスクをプロジェクトボードに追加します。";
 "Could not create the sample project." = "サンプルプロジェクトを作成できませんでした。";
 "Learn SoloPM" = "SoloPMを学ぶ";
+"Start with a private practice project. No AI account or Mac permissions are needed." = "非公開の練習プロジェクトから始めましょう。AIアカウントもMacの権限も必要ありません。";
+"Capture" = "取り込む";
+"Set up AI first" = "先にAIを設定";
+"Try SoloPM now" = "今すぐSoloPMを試す";
+"Creates or reuses Learn SoloPM, opens Today, and selects the first lesson." = "「SoloPMを学ぶ」を作成または再利用し、Todayを開いて最初のレッスンを選択します。";
 "Press ⌘K and search for anything" = "⌘Kを押して何でも検索";
 "The command palette matches views, projects, smart lists, and even task content. Try typing part of this sentence." = "コマンドパレットはビュー、プロジェクト、スマートリスト、さらにタスクの内容まで検索できます。この文章の一部を入力してみてください。";
 "Drag this task to another column" = "このタスクを別の列にドラッグ";

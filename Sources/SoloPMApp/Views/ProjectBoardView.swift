@@ -1077,6 +1077,9 @@ struct ProjectBoardView: View {
         case .primary, .project, .smartList, .review:
             break
         }
+        // Acknowledge only after route state and any feature payload are
+        // applied. Follow-up focus work can now wait on this exact request ID.
+        sceneCoordinator.acknowledgeApplied(requestID: request.id)
     }
 
     private func applySelectedDestination(_ destination: ProjectBoardSidebarDestination?) {

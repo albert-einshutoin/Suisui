@@ -19,6 +19,25 @@ final class ProjectBoardSceneNavigationTests: XCTestCase {
         )
     }
 
+    func testOnboardingTodayRequestCannotBeClaimedByAnotherWindow() {
+        let onboardingSceneID = UUID()
+        let otherSceneID = UUID()
+        var state = ProjectBoardSceneNavigationState()
+        state.register(sceneID: onboardingSceneID)
+        state.register(sceneID: otherSceneID)
+        let request = ProjectBoardOpenRequest(
+            targetSceneID: onboardingSceneID,
+            route: OnboardingExperience.learnProjectTargetRoute
+        )
+
+        XCTAssertTrue(state.submit(request))
+        XCTAssertNil(state.consume(requestID: request.id, for: otherSceneID))
+        XCTAssertEqual(
+            state.consume(requestID: request.id, for: onboardingSceneID),
+            request
+        )
+    }
+
     func testUntargetedRequestMatchesEverySceneAtPureRoutingBoundary() {
         let request = ProjectBoardOpenRequest(
             id: UUID(),
@@ -349,5 +368,30 @@ final class ProjectBoardSceneNavigationTests: XCTestCase {
         XCTAssertNil(state.consumeNext(for: secondSceneID))
         XCTAssertTrue(state.submit(request))
         XCTAssertEqual(state.consumeNext(for: secondSceneID), request)
+    }
+
+    func testApplicationAcknowledgementAppearsOnlyAfterExplicitApplyAck() {
+        var acknowledgements = ProjectBoardSceneApplicationAcknowledgements()
+        let requestID = UUID()
+
+        XCTAssertFalse(acknowledgements.contains(requestID))
+        XCTAssertTrue(acknowledgements.acknowledge(requestID))
+        XCTAssertTrue(acknowledgements.contains(requestID))
+        XCTAssertFalse(acknowledgements.acknowledge(requestID))
+    }
+
+    func testApplicationAcknowledgementHistoryIsBounded() {
+        var acknowledgements = ProjectBoardSceneApplicationAcknowledgements(limit: 2)
+        let firstID = UUID()
+        let secondID = UUID()
+        let thirdID = UUID()
+
+        acknowledgements.acknowledge(firstID)
+        acknowledgements.acknowledge(secondID)
+        acknowledgements.acknowledge(thirdID)
+
+        XCTAssertFalse(acknowledgements.contains(firstID))
+        XCTAssertTrue(acknowledgements.contains(secondID))
+        XCTAssertTrue(acknowledgements.contains(thirdID))
     }
 }

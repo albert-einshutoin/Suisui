@@ -5,26 +5,28 @@ struct OnboardingWelcomeView: View {
     @ObservedObject var settingsViewModel: AppSettingsViewModel
     private let permissionSnapshotProvider: @Sendable () -> PermissionSnapshot
     private let sampleProjectAction: OnboardingSampleProjectAction?
+    let onTrySoloPM: (OnboardingSampleProjectEnsureResult) -> Void
     let onFinish: () -> Void
 
     @State private var flow = FirstRunOnboardingFlow()
     @State private var permissionSnapshot: PermissionSnapshot
-    @State private var isRefreshingReadiness: Bool = true
-    @State private var isSampleProjectCreated = false
+    @State private var isRefreshingReadiness: Bool = false
+    @State private var isCreatingSampleProject = false
     @State private var sampleProjectErrorMessage: String?
     @Environment(\.openWindow) private var openWindow
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
         settingsViewModel: AppSettingsViewModel,
         permissionSnapshot: PermissionSnapshot,
         permissionSnapshotProvider: @escaping @Sendable () -> PermissionSnapshot,
         sampleProjectAction: OnboardingSampleProjectAction? = OnboardingSampleProjectFactory.makeAction(),
+        onTrySoloPM: @escaping (OnboardingSampleProjectEnsureResult) -> Void,
         onFinish: @escaping () -> Void
     ) {
         self.settingsViewModel = settingsViewModel
         self.permissionSnapshotProvider = permissionSnapshotProvider
         self.sampleProjectAction = sampleProjectAction
+        self.onTrySoloPM = onTrySoloPM
         self.onFinish = onFinish
         _permissionSnapshot = State(initialValue: permissionSnapshot)
     }
@@ -43,12 +45,6 @@ struct OnboardingWelcomeView: View {
         }
         .frame(minWidth: 520, idealWidth: 560, minHeight: 460, idealHeight: 500)
         .accessibilityIdentifier("onboarding-welcome")
-        .task {
-            // Publish `.checking` immediately so the sheet renders the spinner
-            // before the first paint, then refresh off the MainActor and return
-            // the result to MainActor without blocking the sheet.
-            await refreshReadinessAsync()
-        }
     }
 
     @ViewBuilder
@@ -58,8 +54,6 @@ struct OnboardingWelcomeView: View {
             welcomeStep
         case .aiProvider:
             aiProviderStep
-        case .permissions:
-            permissionsStep
         case .finish:
             finishStep
         }
@@ -70,20 +64,27 @@ struct OnboardingWelcomeView: View {
             systemImage: "waveform.badge.mic",
             title: "Welcome to SoloPM"
         ) {
-            Text("Speak or type what you need to do. SoloPM drafts the tasks, events, and reminders for you, and writes nothing until you approve it.")
+            Text("Start with a private practice project. No AI account or Mac permissions are needed.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 
             HStack(spacing: SoloPMSpacing.sm) {
-                onboardingFlowPill(systemImage: "mic.fill", title: "Speak")
+                onboardingFlowPill(systemImage: "tray.fill", title: "Capture")
                 flowArrow
-                onboardingFlowPill(systemImage: "list.bullet.clipboard", title: "Review")
+                onboardingFlowPill(systemImage: "sun.max.fill", title: "Today")
                 flowArrow
-                onboardingFlowPill(systemImage: "checkmark.seal", title: "Approve")
+                onboardingFlowPill(systemImage: "checkmark.seal", title: "Complete")
             }
             .padding(.top, SoloPMSpacing.sm)
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("onboarding-flow-pills")
+
+            if let sampleProjectErrorMessage {
+                Text(verbatim: sampleProjectErrorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("onboarding-create-sample-error")
+            }
         }
     }
 
@@ -140,28 +141,6 @@ struct OnboardingWelcomeView: View {
         }
     }
 
-    private var permissionsStep: some View {
-        onboardingStep(
-            systemImage: "checkmark.shield",
-            title: "Connect your Mac"
-        ) {
-            Text("SoloPM works with your microphone, Calendar, Reminders, and Notifications. macOS asks for each permission the first time it is needed.")
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-
-            VStack(alignment: .leading, spacing: SoloPMSpacing.sm) {
-                Label("Microphone", systemImage: "mic")
-                Label("Calendar", systemImage: "calendar")
-                Label("Reminders", systemImage: "checklist")
-                Label("Notifications", systemImage: "bell")
-            }
-            .font(.subheadline)
-            .frame(minWidth: 200, alignment: .leading)
-            .soloCard()
-            .accessibilityIdentifier("onboarding-permission-list")
-        }
-    }
-
     private var finishStep: some View {
         onboardingStep(
             systemImage: displayedPlanningState.isReady ? "checkmark.circle" : "exclamationmark.circle",
@@ -176,27 +155,6 @@ struct OnboardingWelcomeView: View {
                 .foregroundStyle(.secondary)
 
             readinessList
-
-            if sampleProjectAction != nil {
-                Button {
-                    createSampleProject()
-                } label: {
-                    Label(
-                        isSampleProjectCreated ? "Sample project added" : "Create sample project",
-                        systemImage: isSampleProjectCreated ? "checkmark.circle" : "sparkles"
-                    )
-                }
-                .disabled(isSampleProjectCreated)
-                .accessibilityIdentifier("onboarding-create-sample")
-                .accessibilityHint("Adds a Learn SoloPM practice project with sample tasks to the Project Board.")
-
-                if let sampleProjectErrorMessage {
-                    Text(verbatim: sampleProjectErrorMessage)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .accessibilityIdentifier("onboarding-create-sample-error")
-                }
-            }
 
             Button {
                 if displayedPlanningState.isReady {
@@ -234,7 +192,7 @@ struct OnboardingWelcomeView: View {
 
     private var readinessList: some View {
         VStack(alignment: .leading, spacing: SoloPMSpacing.xs) {
-            ForEach(readinessSnapshot.items) { item in
+            ForEach(Array(readinessSnapshot.items.prefix(1))) { item in
                 HStack(alignment: .top, spacing: SoloPMSpacing.sm) {
                     Image(systemName: readinessSystemImage(for: item.state))
                         .foregroundStyle(readinessColor(for: item.state))
@@ -367,46 +325,44 @@ struct OnboardingWelcomeView: View {
 
             Spacer()
 
-            HStack(spacing: SoloPMSpacing.xs + 2) {
-                ForEach(0..<flow.stepCount, id: \.self) { index in
-                    Capsule(style: .continuous)
-                        .fill(index == flow.stepIndex ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary))
-                        .frame(width: index == flow.stepIndex ? 18 : 6, height: 6)
-                        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: flow.stepIndex)
+            if flow.step == .welcome {
+                Button("Set up AI first") {
+                    flow.advance()
+                    Task { @MainActor in
+                        await refreshReadinessAsync()
+                    }
                 }
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(localizedDisplay("Step %d of %d", flow.stepIndex + 1, flow.stepCount))
-            .accessibilityIdentifier("onboarding-step-indicator")
+                .accessibilityIdentifier("onboarding-set-up-ai")
 
-            Spacer()
-
-            if !flow.isFirstStep {
+                Button("Try SoloPM now") {
+                    createSampleProject()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(isCreatingSampleProject || sampleProjectAction == nil)
+                .accessibilityIdentifier("onboarding-try-solopm")
+                .accessibilityHint("Creates or reuses Learn SoloPM, opens Today, and selects the first lesson.")
+            } else {
                 Button("Back") {
                     flow.goBack()
                 }
                 .accessibilityIdentifier("onboarding-back")
-            }
 
-            if flow.isLastStep {
-                Button(readinessSnapshot.planningState.isReady ? "Start Using SoloPM" : "Finish Setup Later") {
-                    completeOnboarding()
+                if flow.isLastStep {
+                    Button(readinessSnapshot.planningState.isReady ? "Start Using SoloPM" : "Finish Setup Later") {
+                        completeOnboarding()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .accessibilityIdentifier("onboarding-finish")
+                } else {
+                    Button("Continue") {
+                        flow.advance()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .accessibilityIdentifier("onboarding-continue")
                 }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .accessibilityIdentifier("onboarding-finish")
-                .accessibilityHint(
-                    displayedPlanningState.isReady
-                        ? "Closes setup and opens the Project Board."
-                        : "Closes setup. You can run setup again from Settings."
-                )
-            } else {
-                Button("Continue") {
-                    flow.advance()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .accessibilityIdentifier("onboarding-continue")
             }
         }
     }
@@ -415,17 +371,16 @@ struct OnboardingWelcomeView: View {
         settingsViewModel.providerReadinessRows.first(where: { $0.isSelected })
     }
 
-    /// Creates the sample project without closing onboarding; the button
-    /// swaps to a disabled confirmation state on success. The creator itself
-    /// is idempotent, so a repeat tap after a defaults reset stays safe.
     private func createSampleProject() {
-        guard let sampleProjectAction, !isSampleProjectCreated else {
+        guard let sampleProjectAction, !isCreatingSampleProject else {
             return
         }
+        isCreatingSampleProject = true
+        defer { isCreatingSampleProject = false }
         do {
-            try sampleProjectAction.run()
-            isSampleProjectCreated = true
+            let outcome = try sampleProjectAction.run()
             sampleProjectErrorMessage = nil
+            onTrySoloPM(outcome)
         } catch {
             sampleProjectErrorMessage = localizedDisplay("Could not create the sample project.")
         }

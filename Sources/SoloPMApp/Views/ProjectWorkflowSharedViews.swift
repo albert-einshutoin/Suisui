@@ -271,6 +271,7 @@ private struct WorkflowTaskRow: View {
 
     private var workflowAccessibilityValue: String {
         var values = [
+            String(localized: isSelected ? "Selected" : "Not selected"),
             "Project: \(projectTitle)",
             "\(String(localized: "Status")): \(String(localized: String.LocalizationValue(task.status.title)))",
             "\(String(localized: "Priority")): \(String(localized: String.LocalizationValue(task.priority.label)))"
