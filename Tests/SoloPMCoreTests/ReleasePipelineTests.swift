@@ -6384,6 +6384,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("FIXTURES=(\"empty\" \"small\")"))
         XCTAssertTrue(script.contains("LOCALES=(\"english\" \"japanese\")"))
         XCTAssertTrue(script.contains("WINDOW_WIDTH=\"${SOLOPM_RUNTIME_TODAY_WINDOW_WIDTH:-1024}\""))
+        XCTAssertTrue(script.contains("WINDOW_HEIGHT=\"${SOLOPM_RUNTIME_TODAY_WINDOW_HEIGHT:-724}\""))
         XCTAssertTrue(script.contains("set size of window 1 to {targetWidth, targetHeight}"))
         XCTAssertTrue(script.contains("locale_label_for"))
         XCTAssertTrue(script.contains("english) printf '%s' \"en\""))
@@ -6487,6 +6488,71 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("\"$app_pid\""))
         XCTAssertFalse(script.contains(":memory:"))
         XCTAssertFalse(script.contains("set -x"))
+    }
+
+    func testRuntimeTodayWindowSizeMatchesVisualManifestAndRecordsSafeMismatchDiagnostics() throws {
+        let script = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
+        let manifestData = try Data(
+            contentsOf: packageRoot().appendingPathComponent("docs/quality/visual-baseline-manifest.json")
+        )
+        let manifest = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
+        )
+        let screens = try XCTUnwrap(manifest["screens"] as? [[String: Any]])
+        let today = try XCTUnwrap(screens.first { $0["id"] as? String == "today" })
+        let viewport = try XCTUnwrap(today["viewport"] as? [String: Any])
+        let width = try XCTUnwrap(viewport["width"] as? Int)
+        let height = try XCTUnwrap(viewport["height"] as? Int)
+
+        XCTAssertEqual(width, 1_024)
+        XCTAssertEqual(height, 724)
+        XCTAssertTrue(script.contains("WINDOW_WIDTH=\"${SOLOPM_RUNTIME_TODAY_WINDOW_WIDTH:-\(width)}\""))
+        XCTAssertTrue(script.contains("WINDOW_HEIGHT=\"${SOLOPM_RUNTIME_TODAY_WINDOW_HEIGHT:-\(height)}\""))
+        XCTAssertTrue(script.contains("local window_size_diagnostic=\"${window_diagnostic%.err}-size.env\""))
+        XCTAssertTrue(script.contains("set_owned_window_size \"$window_size_diagnostic\""))
+        XCTAssertTrue(script.contains("record_owned_window_size_result \"$diagnostic_file\""))
+
+        let invalidRequestedSize = try runScript(
+            "script/check_runtime_today_production_route_smoke.sh",
+            environment: ["SOLOPM_RUNTIME_TODAY_WINDOW_WIDTH": "/Users/private/secret"]
+        )
+        XCTAssertEqual(invalidRequestedSize.exitCode, 2, invalidRequestedSize.output)
+        XCTAssertTrue(invalidRequestedSize.output.contains("SOLOPM_RUNTIME_TODAY_WINDOW_WIDTH must be a positive integer"))
+        XCTAssertFalse(invalidRequestedSize.output.contains("/Users/"), invalidRequestedSize.output)
+
+        let matched = try runTodayWindowSizeResultFixture(
+            requestedWidth: width,
+            requestedHeight: height,
+            observedOutput: "1024 724"
+        )
+        XCTAssertEqual(matched.exitCode, 0, matched.output)
+        XCTAssertTrue(matched.output.contains("status=passed"), matched.output)
+        XCTAssertTrue(matched.output.contains("requested_width=1024"), matched.output)
+        XCTAssertTrue(matched.output.contains("requested_height=724"), matched.output)
+        XCTAssertTrue(matched.output.contains("observed_width=1024"), matched.output)
+        XCTAssertTrue(matched.output.contains("observed_height=724"), matched.output)
+
+        let clamped = try runTodayWindowSizeResultFixture(
+            requestedWidth: 1_024,
+            requestedHeight: 760,
+            observedOutput: "1024 724"
+        )
+        XCTAssertEqual(clamped.exitCode, 1, clamped.output)
+        XCTAssertTrue(clamped.output.contains("status=failed"), clamped.output)
+        XCTAssertTrue(clamped.output.contains("failure_category=window"), clamped.output)
+        XCTAssertTrue(clamped.output.contains("failure_reason=window-size-mismatch"), clamped.output)
+        XCTAssertTrue(clamped.output.contains("requested_height=760"), clamped.output)
+        XCTAssertTrue(clamped.output.contains("observed_height=724"), clamped.output)
+
+        let malformed = try runTodayWindowSizeResultFixture(
+            requestedWidth: width,
+            requestedHeight: height,
+            observedOutput: "1024 724 /Users/private/secret"
+        )
+        XCTAssertEqual(malformed.exitCode, 1, malformed.output)
+        XCTAssertTrue(malformed.output.contains("failure_reason=window-size-unavailable"), malformed.output)
+        XCTAssertTrue(malformed.output.contains("observed_width=unavailable"), malformed.output)
+        XCTAssertFalse(malformed.output.contains("/Users/"), malformed.output)
     }
 
     func testRuntimeTodayProductionRouteSmokeUsesPIDScopedAXAndOptInRuntimeGate() throws {
@@ -14335,6 +14401,51 @@ final class ReleasePipelineTests: XCTestCase {
         environment: [String: String] = [:]
     ) throws -> (exitCode: Int32, output: String) {
         try runProcess(arguments: arguments, environment: environment)
+    }
+
+    private func runTodayWindowSizeResultFixture(
+        requestedWidth: Int,
+        requestedHeight: Int,
+        observedOutput: String,
+        osascriptStatus: Int32 = 0
+    ) throws -> (exitCode: Int32, output: String) {
+        let script = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
+        let functionStart = try XCTUnwrap(script.range(of: "record_owned_window_size_result() {"))
+        let functionEnd = try XCTUnwrap(
+            script.range(of: "\n\nset_owned_window_size() {", range: functionStart.upperBound..<script.endIndex)
+        )
+        let functionSource = String(script[functionStart.lowerBound..<functionEnd.lowerBound])
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-today-window-size-\(UUID().uuidString)", isDirectory: true)
+        let diagnosticURL = fixtureDirectory.appendingPathComponent("window-size.env")
+        let harnessURL = fixtureDirectory.appendingPathComponent("harness.sh")
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let harness = """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        WINDOW_WIDTH="$1"
+        WINDOW_HEIGHT="$2"
+        \(functionSource)
+        if record_owned_window_size_result "$3" "$4" "$5"; then
+          result_status=0
+        else
+          result_status=$?
+        fi
+        cat "$3"
+        exit "$result_status"
+        """
+        try harness.write(to: harnessURL, atomically: true, encoding: .utf8)
+        return try runTool([
+            "bash",
+            harnessURL.path,
+            String(requestedWidth),
+            String(requestedHeight),
+            diagnosticURL.path,
+            String(osascriptStatus),
+            observedOutput
+        ])
     }
 
     private func runProcess(

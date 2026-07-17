@@ -29,7 +29,7 @@ REQUIRED_CONSECUTIVE_CPU_SAMPLES=3
 MAX_CPU_PERCENT=20
 MAX_TOOLBAR_LAYOUT_DEPTH="${SOLOPM_RUNTIME_TODAY_MAX_TOOLBAR_LAYOUT_DEPTH:-1}"
 WINDOW_WIDTH="${SOLOPM_RUNTIME_TODAY_WINDOW_WIDTH:-1024}"
-WINDOW_HEIGHT="${SOLOPM_RUNTIME_TODAY_WINDOW_HEIGHT:-760}"
+WINDOW_HEIGHT="${SOLOPM_RUNTIME_TODAY_WINDOW_HEIGHT:-724}"
 FIXTURES=("empty" "small")
 LOCALES=("english" "japanese")
 KEEP_ARTIFACTS="${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_KEEP_ARTIFACTS:-0}"
@@ -50,6 +50,16 @@ fi
 
 if [[ ! "$MAX_TOOLBAR_LAYOUT_DEPTH" =~ ^[0-9]+$ ]]; then
   echo "SOLOPM_RUNTIME_TODAY_MAX_TOOLBAR_LAYOUT_DEPTH must be a non-negative integer" >&2
+  exit 2
+fi
+
+if [[ ! "$WINDOW_WIDTH" =~ ^[1-9][0-9]*$ ]]; then
+  echo "SOLOPM_RUNTIME_TODAY_WINDOW_WIDTH must be a positive integer" >&2
+  exit 2
+fi
+
+if [[ ! "$WINDOW_HEIGHT" =~ ^[1-9][0-9]*$ ]]; then
+  echo "SOLOPM_RUNTIME_TODAY_WINDOW_HEIGHT must be a positive integer" >&2
   exit 2
 fi
 
@@ -502,10 +512,48 @@ fail_case() {
   return 1
 }
 
+record_owned_window_size_result() {
+  local diagnostic_file="$1"
+  local osascript_status="$2"
+  local observed_output="$3"
+  local observed_width="unavailable"
+  local observed_height="unavailable"
+  local unexpected=""
+  local status="failed"
+  local reason="window-size-unavailable"
+
+  if [[ "$osascript_status" -eq 0 ]]; then
+    read -r observed_width observed_height unexpected <<<"$observed_output"
+    # Persist only an exact pair of positive integers. Raw AppleScript output
+    # can contain host paths or localized diagnostics and must not enter the
+    # public CI artifact when the response is malformed.
+    if [[ ! "$observed_width" =~ ^[1-9][0-9]*$ ||
+      ! "$observed_height" =~ ^[1-9][0-9]*$ || -n "$unexpected" ]]; then
+      observed_width="unavailable"
+      observed_height="unavailable"
+    elif [[ "$observed_width" -eq "$WINDOW_WIDTH" && "$observed_height" -eq "$WINDOW_HEIGHT" ]]; then
+      status="passed"
+      reason="none"
+    else
+      reason="window-size-mismatch"
+    fi
+  fi
+
+  printf 'status=%s\nfailure_category=%s\nfailure_reason=%s\nrequested_width=%s\nrequested_height=%s\nobserved_width=%s\nobserved_height=%s\n' \
+    "$status" "$([[ "$status" == "passed" ]] && printf none || printf window)" "$reason" \
+    "$WINDOW_WIDTH" "$WINDOW_HEIGHT" "$observed_width" "$observed_height" \
+    >"$diagnostic_file"
+  [[ "$status" == "passed" ]]
+}
+
 set_owned_window_size() {
+  local diagnostic_file="$1"
   local deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
+  local observed_output=""
+  local osascript_status=0
   while true; do
-    if /usr/bin/osascript - "$app_pid" "$WINDOW_WIDTH" "$WINDOW_HEIGHT" <<'APPLESCRIPT' >/dev/null 2>&1
+    set +e
+    observed_output="$(/usr/bin/osascript - "$app_pid" "$WINDOW_WIDTH" "$WINDOW_HEIGHT" <<'APPLESCRIPT' 2>/dev/null
 on run argv
   set appPID to item 1 of argv as integer
   set targetWidth to item 2 of argv as integer
@@ -517,14 +565,15 @@ on run argv
       if not (exists window 1) then error "pid-owned window missing"
       set size of window 1 to {targetWidth, targetHeight}
       set actualSize to size of window 1
-      if item 1 of actualSize is not targetWidth or item 2 of actualSize is not targetHeight then
-        error "pid-owned window size mismatch"
-      end if
+      return (item 1 of actualSize as text) & " " & (item 2 of actualSize as text)
     end tell
   end tell
 end run
 APPLESCRIPT
-    then
+    )"
+    osascript_status=$?
+    set -e
+    if record_owned_window_size_result "$diagnostic_file" "$osascript_status" "$observed_output"; then
       return 0
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
@@ -536,6 +585,7 @@ APPLESCRIPT
 
 launch_route_process_and_window() {
   local window_diagnostic="$1"
+  local window_size_diagnostic="${window_diagnostic%.err}-size.env"
   route_failure_category=""
 
   if ! launch_app "$locale" "$route_destination"; then
@@ -554,7 +604,7 @@ launch_route_process_and_window() {
     route_failure_category="$(ax_classify_window_failure "$window_diagnostic" "$app_pid")"
     return 1
   fi
-  if ! set_owned_window_size; then
+  if ! set_owned_window_size "$window_size_diagnostic"; then
     route_failure_category="window"
     return 1
   fi
