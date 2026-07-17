@@ -657,6 +657,20 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
     private var voiceCommandEvidenceWindow: NSWindow?
     private var digestNotificationOpenedObserver: (any NSObjectProtocol)?
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["SOLOPM_VISUAL_EVIDENCE_SYSTEM_APPEARANCE"] == "dark",
+              SoloPMAppearancePreference.environmentOverride == .system else {
+            return
+        }
+
+        // System evidence must keep the product preference on `system`, while
+        // rendering against one canonical host appearance. GitHub-hosted GUI
+        // sessions do not honor `-AppleInterfaceStyle` consistently, so set
+        // the process appearance before any evidence window is materialized.
+        NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)

@@ -36,6 +36,11 @@
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "project-board-detail",
+      "requiredVisibleTextLines": [
+        "Confirm project board to task",
+        "In Progress High",
+        "2026-07-10"
+      ],
       "artifacts": {
         "light": "project-board-light.png",
         "dark": "project-board-dark.png",

@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import CoreText
 import CryptoKit
 import ImageIO
 import XCTest
@@ -8365,6 +8366,20 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(baselineContext["referenceInstant"] as? String, "2026-07-10T12:00:00Z")
     }
 
+    func testVisualBaselineManifestRequiresSelectedCardRasterTextProof() throws {
+        let manifestData = try Data(
+            contentsOf: packageRoot().appendingPathComponent("docs/quality/visual-baseline-manifest.json")
+        )
+        let manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: manifestData) as? [String: Any])
+        let screens = try XCTUnwrap(manifest["screens"] as? [[String: Any]])
+        let projectBoard = try XCTUnwrap(screens.first { $0["id"] as? String == "project-board" })
+
+        XCTAssertEqual(
+            projectBoard["requiredVisibleTextLines"] as? [String],
+            ["Confirm project board to task", "In Progress High", "2026-07-10"]
+        )
+    }
+
     func testVisualBaselineDocumentationAndCaptureScriptDescribeReviewableUpdates() throws {
         let documentation = try readPackageFile("docs/quality/visual-baselines.md")
         let captureScript = try readPackageFile("script/capture_ui_evidence.sh")
@@ -9479,6 +9494,38 @@ final class ReleasePipelineTests: XCTestCase {
         let update = try runVisualRegressionFixture(fixture, updateBaselines: true)
         XCTAssertNotEqual(update.exitCode, 0)
         XCTAssertTrue(update.output.localizedCaseInsensitiveContains("decoded raster"), update.output)
+    }
+
+    func testVisualRegressionSmokeRequiresVisibleTextLinesBeforeNormalOrBaselineUpdate() throws {
+        let requiredLines = [
+            "Confirm project board to task",
+            "In Progress High",
+            "2026-07-10"
+        ]
+        let visible = try makeVisualRegressionFixture(
+            requiredVisibleTextLines: requiredLines,
+            currentVisibleTextLines: [
+                "Confirm project board to task",
+                "In Progress • High",
+                "2026-07-10"
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: visible.root) }
+
+        let visibleResult = try runVisualRegressionFixture(visible)
+        XCTAssertEqual(visibleResult.exitCode, 0, visibleResult.output)
+
+        let blank = try makeVisualRegressionFixture(requiredVisibleTextLines: requiredLines)
+        defer { try? FileManager.default.removeItem(at: blank.root) }
+        let baselineURL = blank.baseline.appendingPathComponent("project-board-light.png")
+        let originalBaseline = try Data(contentsOf: baselineURL)
+
+        for updateBaselines in [false, true] {
+            let result = try runVisualRegressionFixture(blank, updateBaselines: updateBaselines)
+            XCTAssertNotEqual(result.exitCode, 0, result.output)
+            XCTAssertTrue(result.output.contains("required visible text line is missing"), result.output)
+            XCTAssertEqual(try Data(contentsOf: baselineURL), originalBaseline)
+        }
     }
 
     func testReleaseReadinessReportCanWriteOperatorActionSummaryWithoutPassingManualGates() throws {
@@ -14035,7 +14082,9 @@ final class ReleasePipelineTests: XCTestCase {
         includeAudit: Bool = true,
         includeBaselineMetadata: Bool = true,
         auditSourceCommit: String = "fixture-commit",
-        auditCreatedAt: String = ISO8601DateFormatter().string(from: Date())
+        auditCreatedAt: String = ISO8601DateFormatter().string(from: Date()),
+        requiredVisibleTextLines: [String]? = nil,
+        currentVisibleTextLines: [String]? = nil
     ) throws -> VisualRegressionFixture {
         let root = packageRoot().appendingPathComponent(
             ".build/test-visual-regression-contract-\(UUID().uuidString)", isDirectory: true
@@ -14050,11 +14099,31 @@ final class ReleasePipelineTests: XCTestCase {
         try FileManager.default.createDirectory(at: artifacts, withIntermediateDirectories: true)
 
         let currentPNG = current.appendingPathComponent("project-board-light.png")
-        try writeVisiblePNG(to: currentPNG, width: 800, height: 600, trailingBytes: 60_000)
+        if let currentVisibleTextLines {
+            try writeVisibleTextPNG(
+                to: currentPNG,
+                width: 800,
+                height: 600,
+                lines: currentVisibleTextLines,
+                trailingBytes: 60_000
+            )
+        } else {
+            try writeVisiblePNG(to: currentPNG, width: 800, height: 600, trailingBytes: 60_000)
+        }
         let currentSHA256 = try sha256Hex(of: currentPNG)
         if includeBaseline {
             let baselinePNG = baseline.appendingPathComponent("project-board-light.png")
-            try writeVisiblePNG(to: baselinePNG, width: 800, height: 600, trailingBytes: 60_000)
+            if let currentVisibleTextLines {
+                try writeVisibleTextPNG(
+                    to: baselinePNG,
+                    width: 800,
+                    height: 600,
+                    lines: currentVisibleTextLines,
+                    trailingBytes: 60_000
+                )
+            } else {
+                try writeVisiblePNG(to: baselinePNG, width: 800, height: 600, trailingBytes: 60_000)
+            }
             if includeBaselineMetadata {
                 try """
                 {
@@ -14073,7 +14142,10 @@ final class ReleasePipelineTests: XCTestCase {
             }
         }
 
-        try visualBaselineManifestFixture(artifacts: ["light": "project-board-light.png"])
+        try visualBaselineManifestFixture(
+            artifacts: ["light": "project-board-light.png"],
+            requiredVisibleTextLines: requiredVisibleTextLines
+        )
             .write(to: manifest, atomically: true, encoding: .utf8)
         if includeAudit {
             try """
@@ -14221,6 +14293,61 @@ final class ReleasePipelineTests: XCTestCase {
         }
     }
 
+    private func writeVisibleTextPNG(
+        to url: URL,
+        width: Int,
+        height: Int,
+        lines: [String],
+        trailingBytes: Int = 0
+    ) throws {
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        guard let context = CGContext(
+            data: &pixels,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            XCTFail("Could not create visible text PNG fixture context.")
+            return
+        }
+        context.setFillColor(CGColor(gray: 0.94, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(CGColor(red: 0.12, green: 0.32, blue: 0.58, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width / 3, height: height))
+
+        let font = CTFontCreateWithName("Helvetica" as CFString, 32, nil)
+        for (index, line) in lines.enumerated() {
+            let attributed = NSAttributedString(
+                string: line,
+                attributes: [
+                    kCTFontAttributeName as NSAttributedString.Key: font,
+                    kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(gray: 0.05, alpha: 1)
+                ]
+            )
+            let textLine = CTLineCreateWithAttributedString(attributed)
+            context.textPosition = CGPoint(x: 300, y: CGFloat(height - 100 - (index * 70)))
+            CTLineDraw(textLine, context)
+        }
+
+        guard let image = context.makeImage(),
+              let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
+            XCTFail("Could not create visible text PNG fixture destination.")
+            return
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+
+        if trailingBytes > 0 {
+            let handle = try FileHandle(forWritingTo: url)
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data(repeating: 0, count: trailingBytes))
+            try handle.close()
+        }
+    }
+
     private func writeChangedVisiblePNG(
         to url: URL,
         width: Int,
@@ -14320,7 +14447,10 @@ final class ReleasePipelineTests: XCTestCase {
         }
     }
 
-    private func visualBaselineManifestFixture(artifacts: [String: String]) -> String {
+    private func visualBaselineManifestFixture(
+        artifacts: [String: String],
+        requiredVisibleTextLines: [String]? = nil
+    ) throws -> String {
         let artifactLines = artifacts
             .sorted { $0.key < $1.key }
             .map { "          \"\($0.key)\": \"\($0.value)\"" }
@@ -14329,6 +14459,16 @@ final class ReleasePipelineTests: XCTestCase {
             .sorted()
             .map { "\"\($0)\"" }
             .joined(separator: ", ")
+        let visibleTextLines: String
+        if let requiredVisibleTextLines {
+            let encoded = try requiredVisibleTextLines.map { line in
+                let data = try JSONSerialization.data(withJSONObject: line, options: [.fragmentsAllowed])
+                return String(decoding: data, as: UTF8.self)
+            }.joined(separator: ", ")
+            visibleTextLines = "\n              \"requiredVisibleTextLines\": [\(encoded)],"
+        } else {
+            visibleTextLines = ""
+        }
 
         return """
         {
@@ -14373,6 +14513,7 @@ final class ReleasePipelineTests: XCTestCase {
               "appearances": [\(themeLines)],
               "axFrameAudit": true,
               "axTargetIdentifier": "project-board-root",
+        \(visibleTextLines)
               "artifacts": {
         \(artifactLines)
               }

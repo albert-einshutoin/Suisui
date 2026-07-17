@@ -48,6 +48,7 @@ POINTER_PARKER="$EVIDENCE_TMPDIR/ui-evidence-pointer-park.$$"
 AX_CAPTURE_RECEIPT_TSV="$EVIDENCE_TMPDIR/visual-ax-captures.$$.tsv"
 AX_RECEIPT_WRITER="$EVIDENCE_TMPDIR/write-visual-ax-audit-receipt.$$"
 VISUAL_RASTER_STABILITY_CHECKER="$EVIDENCE_TMPDIR/visual-raster-stability-checker.$$"
+VISUAL_APPEARANCE_CHECKER="$EVIDENCE_TMPDIR/visual-appearance-checker.$$"
 VISUAL_FIRST_RASTER="$EVIDENCE_TMPDIR/visual-first-raster.$$.png"
 EVIDENCE_HOME="${SOLOPM_UI_EVIDENCE_HOME:-$(mktemp -d "$EVIDENCE_TMPDIR/solopm-ui-evidence.XXXXXX")}"
 KEEP_HOME="${SOLOPM_UI_EVIDENCE_KEEP_HOME:-0}"
@@ -167,7 +168,7 @@ cleanup() {
   rm -f "$AX_TARGET_FRAME_AUDITOR"
   rm -f "$AX_PRESS_ELEMENT_HELPER"
   rm -f "$POINTER_PARKER"
-  rm -f "$AX_CAPTURE_RECEIPT_TSV" "$AX_RECEIPT_WRITER" "$VISUAL_RASTER_STABILITY_CHECKER"
+  rm -f "$AX_CAPTURE_RECEIPT_TSV" "$AX_RECEIPT_WRITER" "$VISUAL_RASTER_STABILITY_CHECKER" "$VISUAL_APPEARANCE_CHECKER"
   rm -f "$VISUAL_FIRST_RASTER"
   rm -f "$EVIDENCE_APP_LOG"
   if [[ "$KEEP_HOME" != "1" && -d "$EVIDENCE_HOME" && "${SOLOPM_UI_EVIDENCE_HOME:-}" == "" ]]; then
@@ -260,6 +261,11 @@ app_env_args() {
   if [[ -n "$APPEARANCE_OVERRIDE" ]]; then
     args+=("SOLOPM_APPEARANCE_PREFERENCE=$APPEARANCE_OVERRIDE")
   fi
+  if [[ "$APPEARANCE_OVERRIDE" == "system" ]]; then
+    # Keep the product preference truthful while giving hosted GUI sessions a
+    # deterministic system appearance that does not depend on the login user.
+    args+=("SOLOPM_VISUAL_EVIDENCE_SYSTEM_APPEARANCE=dark")
+  fi
   if [[ "$SETTINGS_WINDOW_OVERRIDE" == "1" ]]; then
     args+=("SOLOPM_OPEN_SETTINGS_ON_LAUNCH=1")
   fi
@@ -285,21 +291,9 @@ emit_evidence_app_diagnostic() {
 
 open_evidence_app() {
   local env_args=()
-  local system_appearance="Light"
   while IFS= read -r -d '' env_arg; do
     env_args+=("$env_arg")
   done < <(app_env_args)
-  # The hosted GUI session does not guarantee a stable login-window theme.
-  # Keep the product preference set to `system`, while pinning the capture
-  # process to a canonical Dark system environment. This keeps System evidence
-  # distinct from explicit Light and reproducible across local and hosted
-  # macOS runners.
-  if [[ "$APPEARANCE_OVERRIDE" == "dark" || "$APPEARANCE_OVERRIDE" == "system" ]]; then
-    system_appearance="Dark"
-  fi
-  # Keep this array non-empty: macOS runners still ship Bash 3.2, where
-  # expanding an empty local array under `set -u` aborts the capture.
-  local appearance_args=("-AppleInterfaceStyle" "$system_appearance")
   stop_evidence_app
   : >"$EVIDENCE_APP_LOG"
   # Direct launch preserves the isolated database, appearance, selected route,
@@ -312,7 +306,6 @@ open_evidence_app() {
     "$APP_BINARY" \
     -ApplePersistenceIgnoreState YES \
     -AppleShowScrollBars Always \
-    "${appearance_args[@]}" \
     -AppleLanguages "$APPLE_LANGUAGES" \
     -AppleLocale "$APPLE_LOCALE" \
     >>"$EVIDENCE_APP_LOG" 2>&1 &
@@ -1268,6 +1261,10 @@ capture_visible_window() {
   local output_path="$2"
   local window_name="${3:-}"
   local target_identifier="${4:-}"
+  local expected_appearance="${label%% *}"
+  if [[ "$expected_appearance" == "system" ]]; then
+    expected_appearance="dark"
+  fi
 
   if [[ -z "$target_identifier" ]]; then
     echo "missing AX target frame audit identifier for $label" >&2
@@ -1329,6 +1326,7 @@ capture_visible_window() {
           && screencapture -x -o -l "$window_id" "$second_raster" \
           && [[ -s "$second_raster" ]] \
           && assert_screenshot_has_visible_content "$second_raster" \
+          && "$VISUAL_APPEARANCE_CHECKER" "$second_raster" "$expected_appearance" \
           && "$VISUAL_RASTER_STABILITY_CHECKER" \
             --manifest "$VISUAL_BASELINE_MANIFEST" \
             --first "$first_raster" \
@@ -2001,6 +1999,7 @@ assert_visual_product_source_is_committed
 
 "$ROOT_DIR/script/build_and_run.sh" --build-only
 /usr/bin/swiftc "$ROOT_DIR/script/visual_raster_stability_check.swift" -o "$VISUAL_RASTER_STABILITY_CHECKER"
+/usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_appearance_check.swift" -o "$VISUAL_APPEARANCE_CHECKER"
 
 SOURCE_COMMIT="$(ui_evidence_product_source_commit)"
 

@@ -5,6 +5,43 @@ import UniformTypeIdentifiers
 import XCTest
 
 final class VisualCaptureStabilityTests: XCTestCase {
+    func testSystemEvidencePinsDarkAppAppearanceAndRejectsWrongRasterAppearance() throws {
+        let capture = try readPackageFile("script/capture_ui_evidence.sh")
+        let app = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(capture.contains("SOLOPM_VISUAL_EVIDENCE_SYSTEM_APPEARANCE=dark"))
+        XCTAssertTrue(capture.contains("ui_evidence_appearance_check.swift"))
+        XCTAssertTrue(capture.contains("VISUAL_APPEARANCE_CHECKER"))
+        XCTAssertFalse(capture.contains("-AppleInterfaceStyle"))
+        XCTAssertTrue(app.contains("SOLOPM_VISUAL_EVIDENCE_SYSTEM_APPEARANCE"))
+        XCTAssertTrue(app.contains("NSAppearance(named: .darkAqua)"))
+        XCTAssertTrue(app.contains("SoloPMAppearancePreference.environmentOverride == .system"))
+
+        let root = packageRoot()
+        let fixture = root.appendingPathComponent(".build/visual-appearance-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixture) }
+
+        let executable = fixture.appendingPathComponent("visual-appearance-check")
+        let compile = try run([
+            "/usr/bin/swiftc",
+            root.appendingPathComponent("script/ui_evidence_appearance_check.swift").path,
+            "-o", executable.path
+        ])
+        XCTAssertEqual(compile.status, 0, compile.output)
+
+        let light = fixture.appendingPathComponent("light.png")
+        let dark = fixture.appendingPathComponent("dark.png")
+        try writePNG(to: light, changedPixels: 0, channelDelta: 0, baseValue: 230)
+        try writePNG(to: dark, changedPixels: 0, channelDelta: 0, baseValue: 25)
+
+        XCTAssertEqual(try run([executable.path, light.path, "light"]).status, 0)
+        XCTAssertEqual(try run([executable.path, dark.path, "dark"]).status, 0)
+        let wrongSystem = try run([executable.path, light.path, "dark"])
+        XCTAssertEqual(wrongSystem.status, 1, wrongSystem.output)
+        XCTAssertTrue(wrongSystem.output.contains("appearance mismatch"), wrongSystem.output)
+    }
+
     func testCaptureRequiresSeedMetadataAndConvergedConsecutiveRasters() throws {
         let source = try readPackageFile("script/capture_ui_evidence.sh")
         let english = try readPackageFile("Sources/SoloPMApp/Resources/en.lproj/Localizable.strings")
@@ -291,12 +328,13 @@ final class VisualCaptureStabilityTests: XCTestCase {
         width: Int = 20,
         height: Int = 20,
         changedPixels: Int,
-        channelDelta: UInt8
+        channelDelta: UInt8,
+        baseValue: UInt8 = 120
     ) throws {
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
         for pixel in 0..<(width * height) {
             let offset = pixel * 4
-            let value: UInt8 = pixel < changedPixels ? 120 &+ channelDelta : 120
+            let value: UInt8 = pixel < changedPixels ? baseValue &+ channelDelta : baseValue
             pixels[offset] = value
             pixels[offset + 1] = value
             pixels[offset + 2] = value
