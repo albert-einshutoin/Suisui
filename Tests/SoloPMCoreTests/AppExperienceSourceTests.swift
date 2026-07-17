@@ -830,6 +830,29 @@ final class AppExperienceSourceTests: XCTestCase {
                 .thinMaterial
             )
         """
+        let regularMaterialBackgroundStyle = """
+        Text("Example")
+            .backgroundStyle(
+                .regularMaterial
+            )
+        """
+        let thinContainerBackground = """
+        Text("Example")
+            .containerBackground(
+                .thinMaterial,
+                for: .window
+            )
+        """
+        let presentationGradient = """
+        Text("Example")
+            .presentationBackground(
+                LinearGradient(
+                    colors: [SoloPMSurface.canvas, .black],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+        """
         let gradient = """
         Text("Example")
             .background(
@@ -867,7 +890,14 @@ final class AppExperienceSourceTests: XCTestCase {
         }
         """
 
-        for fixture in [multilineSecondaryOpacity, thinMaterial, gradient] {
+        for fixture in [
+            multilineSecondaryOpacity,
+            thinMaterial,
+            regularMaterialBackgroundStyle,
+            thinContainerBackground,
+            presentationGradient,
+            gradient
+        ] {
             XCTAssertFalse(
                 SwiftUISourceStyleContractAnalyzer.disallowedSurfaceModifiers(
                     in: fixture,

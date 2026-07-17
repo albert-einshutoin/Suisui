@@ -4,13 +4,21 @@ import Foundation
 /// It balances delimiters and skips comments/string literals so formatting or
 /// multiline modifier arguments cannot bypass Calm Signal Desk guardrails.
 enum SwiftUISourceStyleContractAnalyzer {
+    private static let surfaceModifierNames: Set<String> = [
+        "background",
+        "fill",
+        "backgroundStyle",
+        "containerBackground",
+        "presentationBackground"
+    ]
+
     static func disallowedSurfaceModifiers(
         in source: String,
         allowedExpressionMarkers: [String]
     ) -> [String] {
         let allowed = allowedExpressionMarkers.map(normalize)
 
-        return modifierCalls(in: source, names: ["background", "fill"])
+        return modifierCalls(in: source, names: surfaceModifierNames)
             .map(\.expression)
             .filter { expression in
                 let normalized = normalize(expression)
@@ -64,7 +72,7 @@ enum SwiftUISourceStyleContractAnalyzer {
         let bodyEnd = enclosingBodyEnd(after: rootEnd, rootIndent: rootIndent, in: characters)
         let suffix = String(characters[rootEnd..<bodyEnd])
         let suffixCharacters = Array(suffix)
-        let calls = modifierCalls(in: suffix, names: nil)
+        let calls = modifierCalls(in: suffix, names: surfaceModifierNames)
         let allowedBackgrounds = allowedNonvisualBackgroundMarkers.map(normalize)
 
         return calls.compactMap { call in
@@ -72,25 +80,15 @@ enum SwiftUISourceStyleContractAnalyzer {
                 return nil
             }
             let normalized = normalize(call.expression)
-            let backgroundModifier = [
-                ".background(",
-                ".background{",
-                ".backgroundStyle(",
-                ".containerBackground(",
-                ".presentationBackground("
-            ].contains { normalized.hasPrefix($0) }
-            let explicitlyNonvisual = allowedBackgrounds.contains { normalized.contains($0) }
-            let customMaterial = normalized.contains("Material")
-                || normalized.contains(".thinMaterial")
-                || normalized.contains(".regularMaterial")
-                || normalized.contains(".ultraThinMaterial")
-                || normalized.contains("Gradient(")
-            return (backgroundModifier && !explicitlyNonvisual) || customMaterial ? call.expression : nil
+            let explicitlyNonvisual = call.name == "background"
+                && allowedBackgrounds.contains { normalized.contains($0) }
+            return explicitlyNonvisual ? nil : call.expression
         }
     }
 
     private struct ModifierCall {
         let offset: Int
+        let name: String
         let expression: String
     }
 
@@ -128,7 +126,13 @@ enum SwiftUISourceStyleContractAnalyzer {
                 continue
             }
 
-            calls.append(ModifierCall(offset: index, expression: String(characters[index..<end])))
+            calls.append(
+                ModifierCall(
+                    offset: index,
+                    name: name,
+                    expression: String(characters[index..<end])
+                )
+            )
             index = end
         }
         return calls
