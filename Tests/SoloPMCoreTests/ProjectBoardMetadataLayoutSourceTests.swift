@@ -71,7 +71,7 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertFalse(cardSource.contains("task.status.tint.opacity(isSelected"))
         XCTAssertTrue(summarySource.contains("if isSelected"))
         XCTAssertTrue(summarySource.contains("Image(systemName: \"checkmark.circle.fill\")"))
-        XCTAssertTrue(summarySource.contains(".help(\"Selected task\")"))
+        XCTAssertTrue(summarySource.contains(".help(\"Selected\")"))
         XCTAssertTrue(cardSource.contains("localizedDisplay(\"Selected\")"))
         XCTAssertFalse(cardSource.contains(".stroke(isSelected"))
         XCTAssertTrue(cardSource.contains(".stroke(isPointerHovered"))

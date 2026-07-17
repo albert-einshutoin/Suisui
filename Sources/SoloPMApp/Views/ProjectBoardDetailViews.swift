@@ -1702,7 +1702,7 @@ private struct TaskCardSelectableSummary: View {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.caption.weight(.semibold))
                             .foregroundColor(Color(nsColor: .labelColor))
-                            .help("Selected task")
+                            .help("Selected")
                             .accessibilityHidden(true)
                     }
 
