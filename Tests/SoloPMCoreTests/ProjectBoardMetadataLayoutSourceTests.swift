@@ -17,7 +17,7 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(cardSource.contains("localizedDisplay(task.status.title)"))
         XCTAssertTrue(cardSource.contains("localizedDisplay(task.priority.label)"))
         XCTAssertTrue(cardSource.contains("task.dueLabel.map(localizedDisplay) ?? localizedDisplay(\"No due date\")"))
-        XCTAssertTrue(cardSource.contains(".accessibilityElement(children: .combine)"))
+        XCTAssertTrue(cardSource.contains(".accessibilityElement(children: .ignore)"))
         XCTAssertTrue(cardSource.contains(".accessibilityLabel(\"Open task \\(task.title)\")"))
     }
 
@@ -59,9 +59,8 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
     func testMetadataStripKeepsCompleteAccessibilityValueIndependentOfVisualTruncation() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
 
-        XCTAssertTrue(
-            source.contains(".accessibilityValue(accessibilityMetadataValue)")
-        )
+        XCTAssertEqual(source.components(separatedBy: ".accessibilityValue(accessibilityValueText)").count - 1, 1)
+        XCTAssertTrue(source.contains("private var accessibilityMetadataValue: String"))
         XCTAssertTrue(source.contains("recurrenceValue.map"))
         XCTAssertTrue(source.contains("private var localizedStatusValue: String"))
         XCTAssertTrue(source.contains("localizedDisplay(task.status.title)"))
@@ -70,10 +69,8 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("private var localizedDueValue: String"))
         XCTAssertTrue(source.contains("task.dueLabel.map(localizedDisplay) ?? localizedDisplay(\"No due date\")"))
         XCTAssertTrue(source.contains("Text(verbatim: displayValue)"))
-        XCTAssertTrue(
-            source.contains(".accessibilityIdentifier(\"task-card-metadata-strip-\\(task.id)\")")
-        )
-        XCTAssertFalse(source.contains(".accessibilityIdentifier(\"task-card-metadata-strip\")"))
+        XCTAssertTrue(source.contains(".accessibilityHidden(true)"))
+        XCTAssertFalse(source.contains("task-card-metadata-strip-"))
     }
 
     func testMetadataLocalizationCatalogCoversStatusPriorityAndDatelessValues() throws {

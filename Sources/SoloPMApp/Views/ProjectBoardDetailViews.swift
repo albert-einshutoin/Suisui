@@ -1615,7 +1615,11 @@ private struct BoardTaskCard: View {
             }
             .buttonStyle(.plain)
             .contentShape(RoundedRectangle(cornerRadius: 6))
-            .accessibilityElement(children: .combine)
+            // The button already publishes a complete label, value, and hint.
+            // Ignoring descendants avoids nested AX combination in repeated
+            // selected cards, which can suppress their Text rendering on the
+            // GitHub-hosted SwiftUI runtime.
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel("Open task \(task.title)")
             .accessibilityValue(accessibilityValueText)
             .accessibilityHint("Opens task details in the inspector. Task inspector fields can then be edited without dragging.")
@@ -1853,12 +1857,10 @@ private struct TaskCardMetadataStrip: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .font(.caption2)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Task metadata")
-        .accessibilityValue(accessibilityMetadataValue)
-        // Keep the stable prefix while binding visual evidence to the exact
-        // database task whose metadata value is audited in this subtree.
-        .accessibilityIdentifier("task-card-metadata-strip-\(task.id)")
+        // BoardTaskCard exposes this same complete value on its one actionable
+        // Button, so a second nested AX node is redundant and destabilizes the
+        // hosted selected-card render tree.
+        .accessibilityHidden(true)
     }
 
     private var displayValue: String {
@@ -1872,23 +1874,12 @@ private struct TaskCardMetadataStrip: View {
         return components.joined(separator: " · ")
     }
 
-    private var accessibilityMetadataValue: String {
-        ([localizedStatusValue, localizedPriorityValue, localizedDueValue] + (recurrenceValue.map { [$0] } ?? []))
-            .joined(separator: ", ")
-    }
-
     private var localizedStatusValue: String {
         localizedDisplay(task.status.title)
     }
 
     private var localizedPriorityValue: String {
         localizedDisplay(task.priority.label)
-    }
-
-    private var localizedDueValue: String {
-        // Formatted dates normally fall through unchanged, while semantic
-        // values such as "No due date" use the same locale as the chip text.
-        task.dueLabel.map(localizedDisplay) ?? localizedDisplay("No due date")
     }
 
     private var recurrenceValue: String? {
