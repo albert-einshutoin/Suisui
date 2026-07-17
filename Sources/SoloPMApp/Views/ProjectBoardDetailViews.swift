@@ -1615,9 +1615,11 @@ private struct BoardTaskCard: View {
                 // hosted macOS 14, rebuilding a selected Button's combined AX
                 // children can also drop those children from the raster tree.
                 // The clear native Button below preserves one familiar click
-                // target while owning all spoken metadata explicitly.
+                // target while owning all spoken metadata explicitly. Ignoring
+                // the visual subtree's AX children avoids duplicate focus
+                // stops without asking hosted SwiftUI to hide render nodes.
                 TaskCardSelectableSummary(task: task, isPointerHovered: isPointerHovered)
-                    .accessibilityHidden(true)
+                    .accessibilityElement(children: .ignore)
                     .allowsHitTesting(false)
 
                 Button(action: onOpenDetails) {

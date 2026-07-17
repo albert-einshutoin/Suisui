@@ -20,10 +20,10 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(cardSource.contains("ZStack"))
         XCTAssertTrue(cardSource.contains("TaskCardSelectableSummary(task: task, isPointerHovered: isPointerHovered)"))
         XCTAssertTrue(cardSource.contains("Color.clear"))
-        XCTAssertTrue(cardSource.contains(".accessibilityHidden(true)"))
+        XCTAssertTrue(cardSource.contains(".accessibilityElement(children: .ignore)"))
         XCTAssertTrue(cardSource.contains(".allowsHitTesting(false)"))
         XCTAssertFalse(cardSource.contains(".accessibilityElement(children: .combine)"))
-        XCTAssertFalse(cardSource.contains(".accessibilityElement(children: .ignore)"))
+        XCTAssertFalse(cardSource.contains(".accessibilityHidden(true)"))
         XCTAssertTrue(cardSource.contains(".accessibilityLabel(\"Open task \\(task.title)\")"))
     }
 
