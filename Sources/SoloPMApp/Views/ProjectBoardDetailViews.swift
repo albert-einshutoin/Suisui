@@ -1464,9 +1464,17 @@ private struct BoardColumnView: View {
 
             BoardTaskCard(
                 task: task,
+                showsSupplementaryContent: selectedTaskID != task.id,
                 onOpenDetails: { onOpenTaskDetails(task.id) },
                 onMoveStatus: { status in onMoveTask(task.id, status) }
             )
+
+            if selectedTaskID == task.id {
+                SelectedTaskContextPanel(
+                    task: task,
+                    onMoveStatus: { status in onMoveTask(task.id, status) }
+                )
+            }
         }
         .draggable(String(task.id)) {
             BoardTaskDragPreview(task: task)
@@ -1612,6 +1620,7 @@ private struct InlineTaskComposer: View {
 
 private struct BoardTaskCard: View {
     let task: ProjectBoardTask
+    let showsSupplementaryContent: Bool
     let onOpenDetails: () -> Void
     let onMoveStatus: (ProjectTaskStatus) -> Void
     @State private var isPointerHovered = false
@@ -1619,7 +1628,11 @@ private struct BoardTaskCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button(action: onOpenDetails) {
-                TaskCardSelectableSummary(task: task, isPointerHovered: isPointerHovered)
+                TaskCardSelectableSummary(
+                    task: task,
+                    isPointerHovered: isPointerHovered,
+                    showsSupplementaryContent: showsSupplementaryContent
+                )
             }
             .buttonStyle(.plain)
             .contentShape(RoundedRectangle(cornerRadius: 6))
@@ -1630,9 +1643,11 @@ private struct BoardTaskCard: View {
             .accessibilityIdentifier("task-card-open-details-\(task.id)")
             .accessibilitySortPriority(2)
 
-            TaskStatusMoveControls(task: task, onMove: onMoveStatus)
-                .accessibilityIdentifier("task-status-move-controls")
-                .accessibilitySortPriority(1)
+            if showsSupplementaryContent {
+                TaskStatusMoveControls(task: task, onMove: onMoveStatus)
+                    .accessibilityIdentifier("task-status-move-controls")
+                    .accessibilitySortPriority(1)
+            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1690,6 +1705,7 @@ private struct BoardTaskCard: View {
 private struct TaskCardSelectableSummary: View {
     let task: ProjectBoardTask
     let isPointerHovered: Bool
+    let showsSupplementaryContent: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -1708,24 +1724,56 @@ private struct TaskCardSelectableSummary: View {
                     TaskDragAffordance(tint: task.status.tint, isPointerHovered: isPointerHovered)
                 }
 
-                if !task.detail.isEmpty {
-                    Text(task.detail)
-                        .font(.caption)
-                        // Inherit the same primary style as the title. On the
-                        // hosted macOS 14 renderer, explicitly colored Text
-                        // nodes inside a focused card can rasterize as clear.
-                        .lineLimit(3)
-                        .truncationMode(.tail)
-                        // Flatten glyphs into one rendered layer. The hosted
-                        // macOS 14 compositor can otherwise clear subordinate
-                        // Text layers while keeping their background shapes.
-                        .drawingGroup()
-                        .help(task.detail)
-                }
+                if showsSupplementaryContent {
+                    if !task.detail.isEmpty {
+                        Text(task.detail)
+                            .font(.caption)
+                            .lineLimit(3)
+                            .truncationMode(.tail)
+                            .help(task.detail)
+                    }
 
-                TaskCardMetadataStrip(task: task)
+                    TaskCardMetadataStrip(task: task)
+                }
             }
         }
+    }
+}
+
+private struct SelectedTaskContextPanel: View {
+    let task: ProjectBoardTask
+    let onMoveStatus: (ProjectTaskStatus) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !task.detail.isEmpty {
+                Text(task.detail)
+                    .font(.caption)
+                    .lineLimit(3)
+                    .truncationMode(.tail)
+                    .help(task.detail)
+            }
+
+            TaskCardMetadataStrip(task: task)
+
+            TaskStatusMoveControls(task: task, onMove: onMoveStatus)
+                .accessibilityIdentifier("task-status-move-controls")
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(task.status.tint.opacity(0.08))
+            }
+        }
+        // Keep selected details in a sibling render subtree. Hosted macOS 14
+        // can omit subordinate labels from the selected interactive card even
+        // though the same labels and their AX values render elsewhere.
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("selected-task-context-\(task.id)")
     }
 }
 
@@ -1817,7 +1865,6 @@ private struct TaskStatusMoveControls: View {
                 // explicit foreground color that can disappear on macOS 14.
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .drawingGroup()
                 .frame(minWidth: 76)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
@@ -1944,7 +1991,6 @@ private struct TaskMetadataLine: View {
                 minHeight: ProjectBoardLayoutMetrics.taskMetadataChipMinHeight,
                 alignment: .leading
             )
-            .drawingGroup()
             .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .help(value)
     }

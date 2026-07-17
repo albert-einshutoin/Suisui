@@ -17,7 +17,7 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(cardSource.contains("localizedDisplay(task.status.title)"))
         XCTAssertTrue(cardSource.contains("localizedDisplay(task.priority.label)"))
         XCTAssertTrue(cardSource.contains("task.dueLabel.map(localizedDisplay) ?? localizedDisplay(\"No due date\")"))
-        XCTAssertTrue(cardSource.contains("Button(action: onOpenDetails) {\n                TaskCardSelectableSummary(task: task, isPointerHovered: isPointerHovered)"))
+        XCTAssertTrue(cardSource.contains("Button(action: onOpenDetails) {\n                TaskCardSelectableSummary("))
         XCTAssertTrue(cardSource.contains(".accessibilityElement(children: .combine)"))
         XCTAssertTrue(cardSource.contains(".accessibilityLabel(\"Open task \\(task.title)\")"))
     }
@@ -37,7 +37,6 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertFalse(lineSource.contains(".foregroundColor(tint)"))
         XCTAssertTrue(lineSource.contains(".lineLimit(1)"))
         XCTAssertTrue(lineSource.contains(".minimumScaleFactor(0.82)"))
-        XCTAssertTrue(lineSource.contains(".drawingGroup()"))
         XCTAssertTrue(lineSource.contains("maxWidth: .infinity"))
         XCTAssertFalse(lineSource.contains(".foregroundStyle(tint)"))
     }
@@ -61,11 +60,9 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         let controlsSource = String(source[controlsStart.lowerBound..<controlsEnd.lowerBound])
 
         XCTAssertTrue(summarySource.contains("Text(task.detail)"))
-        XCTAssertTrue(summarySource.contains(".drawingGroup()"))
         XCTAssertFalse(summarySource.contains(".foregroundColor("))
         XCTAssertFalse(summarySource.contains(".foregroundStyle(.secondary)"))
         XCTAssertTrue(controlsSource.contains("Text(LocalizedStringKey(task.status.title))"))
-        XCTAssertTrue(controlsSource.contains(".drawingGroup()"))
         XCTAssertFalse(controlsSource.contains(".foregroundColor("))
         XCTAssertFalse(controlsSource.contains(".foregroundStyle(.secondary)"))
         XCTAssertTrue(cardSource.contains(".fill(Color(nsColor: .controlBackgroundColor))"))
@@ -77,6 +74,8 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("Label(\"Selected\", systemImage: \"checkmark.circle.fill\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"selected-task-indicator-\\(task.id)\")"))
         XCTAssertTrue(source.contains(".accessibilityLabel(\"Selected task: \\(task.title)\")"))
+        XCTAssertTrue(source.contains("SelectedTaskContextPanel("))
+        XCTAssertTrue(source.contains("showsSupplementaryContent: selectedTaskID != task.id"))
         XCTAssertFalse(cardSource.contains(".stroke(isSelected"))
         XCTAssertTrue(cardSource.contains(".stroke(isPointerHovered"))
         XCTAssertFalse(cardSource.contains(".overlay {"))
