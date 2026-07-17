@@ -420,18 +420,28 @@ set_project_board_window_size() {
   # Resize the real app window through AX so the smoke covers AppKit/SwiftUI
   # bridge behavior instead of only source-level layout contracts. Route and
   # inspector transitions can recreate the SwiftUI window after AX accepted a
-  # resize, so reacquire the unique main named AX window and reapply until the
-  # sole visible PID/name CG candidate proves the expected width. Both sides
-  # fail closed on ambiguity so a stale same-title window cannot pass the gate.
+  # resize, so bind the unique main named AX window to the sole visible CG
+  # frame before mutation, then reapply until fresh CG metadata proves the
+  # expected width. Both sides fail closed on ambiguity so a stale same-title
+  # window cannot pass the gate.
   while true; do
     attempt=$((attempt + 1))
     if wait_for_visible_windows >/dev/null 2>&1 &&
-      /usr/bin/osascript - "$app_pid" "$WINDOW_NAME" "$width" "$height" <<'APPLESCRIPT' >/dev/null 2>&1
+      read_window_metadata 1 >/dev/null 2>&1 && window_metadata_has_positive_bounds
+    then
+      read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE"
+      if /usr/bin/osascript - \
+        "$app_pid" "$WINDOW_NAME" "$width" "$height" \
+        "$window_x" "$window_y" "$window_width" "$window_height" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
   set appPID to (item 1 of argv) as integer
   set requestedName to item 2 of argv
   set targetWidth to (item 3 of argv) as integer
   set targetHeight to (item 4 of argv) as integer
+  set expectedX to (item 5 of argv) as integer
+  set expectedY to (item 6 of argv) as integer
+  set expectedWidth to (item 7 of argv) as integer
+  set expectedHeight to (item 8 of argv) as integer
   tell application "System Events"
     set appMatches to application processes whose unix id is appPID
     if (count of appMatches) is 0 then error "process missing"
@@ -442,18 +452,24 @@ on run argv
       repeat with currentWindow in windows
         set currentName to ""
         set currentMain to false
+        set currentPosition to missing value
+        set currentSize to missing value
         try
           set currentName to name of currentWindow as text
         end try
         try
           set currentMain to value of attribute "AXMain" of currentWindow as boolean
         end try
-        if currentName is requestedName and currentMain then
+        try
+          set currentPosition to position of currentWindow
+          set currentSize to size of currentWindow
+        end try
+        if currentName is requestedName and currentMain and currentPosition is {expectedX, expectedY} and currentSize is {expectedWidth, expectedHeight} then
           set candidateCount to candidateCount + 1
           set targetWindow to currentWindow
         end if
       end repeat
-      if candidateCount is not 1 then error "main named pid-owned window is not unique"
+      if candidateCount is not 1 then error "main named pid-owned window matching visible CG frame is not unique"
       set frontmost to true
       try
         perform action "AXRaise" of targetWindow
@@ -471,6 +487,7 @@ APPLESCRIPT
           fi
         fi
       fi
+    fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: failed to resize named PID-owned app window pid=$app_pid to ${width}x${height} (observed=${window_width:-unknown}x${window_height:-unknown})" >&2
       return 1
