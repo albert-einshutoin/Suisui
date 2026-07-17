@@ -1967,7 +1967,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("private var displayValue: String"))
         XCTAssertTrue(source.contains("Text(verbatim: displayValue)"))
         XCTAssertTrue(source.contains("components.joined(separator: \" · \")"))
-        XCTAssertTrue(source.contains(".accessibilityElement(children: .ignore)"))
+        XCTAssertTrue(source.contains(".accessibilityElement(children: .contain)"))
         XCTAssertTrue(source.contains(".accessibilityHidden(true)"))
         XCTAssertFalse(source.contains("task-card-metadata-strip-"))
         XCTAssertTrue(source.contains("recurrenceValue.map"))

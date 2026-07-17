@@ -1615,11 +1615,11 @@ private struct BoardTaskCard: View {
             }
             .buttonStyle(.plain)
             .contentShape(RoundedRectangle(cornerRadius: 6))
-            // The button already publishes a complete label, value, and hint.
-            // Ignoring descendants avoids nested AX combination in repeated
-            // selected cards, which can suppress their Text rendering on the
-            // GitHub-hosted SwiftUI runtime.
-            .accessibilityElement(children: .ignore)
+            // The button publishes a complete label, value, and hint while its
+            // visual descendants remain in one contained subtree. `.ignore`
+            // drops the explicit value on macOS 14; `.contain` preserves the
+            // parent marker without reintroducing nested `.combine` rendering.
+            .accessibilityElement(children: .contain)
             .accessibilityLabel("Open task \(task.title)")
             .accessibilityValue(accessibilityValueText)
             .accessibilityHint("Opens task details in the inspector. Task inspector fields can then be edited without dragging.")
