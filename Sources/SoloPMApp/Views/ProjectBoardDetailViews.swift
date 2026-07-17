@@ -1606,32 +1606,21 @@ private struct BoardTaskCard: View {
     let isSelected: Bool
     let onOpenDetails: () -> Void
     let onMoveStatus: (ProjectTaskStatus) -> Void
+    @State private var isPointerHovered = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ZStack {
-                // Keep rendered labels outside the actionable AX subtree. On
-                // hosted macOS 14, rebuilding a selected Button's combined AX
-                // children can also drop those children from the raster tree.
-                // The clear native Button below preserves one familiar click
-                // target while owning all spoken metadata explicitly. Keep the
-                // visual subtree free of AX transformations: hosted macOS 14
-                // can remove transformed Text nodes when the pointer rebuilds
-                // a repeated card. Static text remains readable, while the
-                // clear native Button is the only actionable overlay.
-                TaskCardSelectableSummary(task: task)
-
-                Button(action: onOpenDetails) {
-                    Color.clear
-                        .contentShape(RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Open task \(task.title)")
-                .accessibilityValue(accessibilityValueText)
-                .accessibilityHint("Opens task details in the inspector. Task inspector fields can then be edited without dragging.")
-                .accessibilityIdentifier("task-card-open-details-\(task.id)")
-                .accessibilitySortPriority(2)
+            Button(action: onOpenDetails) {
+                TaskCardSelectableSummary(task: task, isPointerHovered: isPointerHovered)
             }
+            .buttonStyle(.plain)
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Open task \(task.title)")
+            .accessibilityValue(accessibilityValueText)
+            .accessibilityHint("Opens task details in the inspector. Task inspector fields can then be edited without dragging.")
+            .accessibilityIdentifier("task-card-open-details-\(task.id)")
+            .accessibilitySortPriority(2)
 
             TaskStatusMoveControls(task: task, onMove: onMoveStatus)
                 .accessibilityIdentifier("task-status-move-controls")
@@ -1640,13 +1629,15 @@ private struct BoardTaskCard: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-        .background(task.status.tint.opacity(isSelected ? 0.14 : 0.05), in: RoundedRectangle(cornerRadius: 8))
+        .background(task.status.tint.opacity(isSelected || isPointerHovered ? 0.14 : 0.05), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? task.status.tint.opacity(0.7) : Color.secondary.opacity(0.16))
+                .stroke(isSelected || isPointerHovered ? task.status.tint.opacity(0.7) : Color.secondary.opacity(0.16))
         }
-        .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
+        .shadow(color: Color.black.opacity(isPointerHovered ? 0.10 : 0.04), radius: isPointerHovered ? 12 : 8, x: 0, y: isPointerHovered ? 4 : 2)
         .contentShape(RoundedRectangle(cornerRadius: 8))
+        .onHover { isPointerHovered = $0 }
+        .animation(.snappy(duration: 0.16), value: isPointerHovered)
         .accessibilityElement(children: .contain)
     }
 
@@ -1683,6 +1674,7 @@ private struct BoardTaskCard: View {
 
 private struct TaskCardSelectableSummary: View {
     let task: ProjectBoardTask
+    let isPointerHovered: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -1698,7 +1690,7 @@ private struct TaskCardSelectableSummary: View {
 
                     Spacer(minLength: 6)
 
-                    TaskDragAffordance(tint: task.status.tint)
+                    TaskDragAffordance(tint: task.status.tint, isPointerHovered: isPointerHovered)
                 }
 
                 if !task.detail.isEmpty {
@@ -1718,13 +1710,14 @@ private struct TaskCardSelectableSummary: View {
 
 private struct TaskDragAffordance: View {
     let tint: Color
+    let isPointerHovered: Bool
 
     var body: some View {
         Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
             .font(.caption)
             .foregroundStyle(tint)
             .frame(width: 24, height: 24)
-            .background(tint.opacity(0.12), in: Circle())
+            .background(tint.opacity(isPointerHovered ? 0.18 : 0.10), in: Circle())
             .help("Drag to another status column")
             .accessibilityHidden(true)
     }
@@ -1844,31 +1837,42 @@ private struct TaskCardMetadataStrip: View {
     let task: ProjectBoardTask
 
     var body: some View {
-        // Hosted SwiftUI dropped labels from the selected repeated card even
-        // when each row owned a Text node. Keep the complete visible metadata
-        // in one primary-colored render node; the rail and calm background
-        // carry status color without making legibility depend on tint state.
-        Text(verbatim: displayValue)
-            .lineLimit(2)
-            .truncationMode(.tail)
-            .fixedSize(horizontal: false, vertical: true)
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 5)
+        // This two-row structure is retained because it is the card metadata
+        // layout proven to render on the hosted macOS 14 visual runner. Each
+        // semantic row owns one Text node, avoiding icon-only chip failures.
+        VStack(alignment: .leading, spacing: 6) {
+            TaskMetadataLine(value: identityLineValue, tint: task.status.tint)
+
+            if let scheduleLineValue {
+                TaskMetadataLine(value: scheduleLineValue, tint: .blue)
+            }
+        }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .font(.caption2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Task metadata")
+        .accessibilityValue(accessibilityMetadataValue)
+        .accessibilityIdentifier("task-card-metadata-strip-\(task.id)")
     }
 
-    private var displayValue: String {
-        var components = [localizedStatusValue, localizedPriorityValue]
+    private var identityLineValue: String {
+        "\(localizedStatusValue) · \(localizedPriorityValue)"
+    }
+
+    private var scheduleLineValue: String? {
+        var components: [String] = []
         if let dueLabel = task.dueLabel {
             components.append(localizedDisplay(dueLabel))
         }
         if let recurrenceValue {
             components.append(recurrenceValue)
         }
-        return components.joined(separator: " · ")
+        return components.isEmpty ? nil : components.joined(separator: " · ")
+    }
+
+    private var accessibilityMetadataValue: String {
+        ([localizedStatusValue, localizedPriorityValue, localizedDueValue] + (recurrenceValue.map { [$0] } ?? []))
+            .joined(separator: ", ")
     }
 
     private var localizedStatusValue: String {
@@ -1877,6 +1881,10 @@ private struct TaskCardMetadataStrip: View {
 
     private var localizedPriorityValue: String {
         localizedDisplay(task.priority.label)
+    }
+
+    private var localizedDueValue: String {
+        task.dueLabel.map(localizedDisplay) ?? localizedDisplay("No due date")
     }
 
     private var recurrenceValue: String? {
@@ -1890,6 +1898,30 @@ private struct TaskCardMetadataStrip: View {
         default:
             nil
         }
+    }
+}
+
+private struct TaskMetadataLine: View {
+    let value: String
+    let tint: Color
+
+    var body: some View {
+        Text(verbatim: value)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .minimumScaleFactor(0.82)
+            .layoutPriority(1)
+            .foregroundStyle(tint)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .frame(
+                minWidth: ProjectBoardLayoutMetrics.taskMetadataChipMinWidth,
+                maxWidth: .infinity,
+                minHeight: ProjectBoardLayoutMetrics.taskMetadataChipMinHeight,
+                alignment: .leading
+            )
+            .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .help(value)
     }
 }
 

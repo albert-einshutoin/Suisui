@@ -1312,8 +1312,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("static let boardColumnWidth: CGFloat = 204"))
         XCTAssertTrue(source.contains("static let emptyColumnMinHeight: CGFloat = 82"))
         XCTAssertTrue(source.contains("static let inlinePriorityPickerWidth: CGFloat = 112"))
-        XCTAssertFalse(source.contains("taskMetadataChipMinWidth"))
-        XCTAssertFalse(source.contains("taskMetadataChipMinHeight"))
+        XCTAssertTrue(source.contains("static let taskMetadataChipMinWidth: CGFloat = 64"))
+        XCTAssertTrue(source.contains("static let taskMetadataChipMinHeight: CGFloat = 24"))
         XCTAssertTrue(source.contains("static let taskStatusRailWidth: CGFloat = 4"))
         XCTAssertTrue(source.contains("static let taskStatusRailHeight: CGFloat = 44"))
         XCTAssertTrue(source.contains("Project Board keeps these metrics local"))
@@ -1331,9 +1331,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".frame(width: ProjectBoardLayoutMetrics.inlinePriorityPickerWidth)"))
         XCTAssertTrue(source.contains(".frame(width: ProjectBoardLayoutMetrics.taskStatusRailWidth)"))
         XCTAssertTrue(source.contains(".frame(height: ProjectBoardLayoutMetrics.taskStatusRailHeight)"))
-        XCTAssertTrue(source.contains("Text(verbatim: displayValue)"))
-        XCTAssertTrue(source.contains(".fixedSize(horizontal: false, vertical: true)"))
-        XCTAssertTrue(source.contains(".foregroundStyle(.primary)"))
+        XCTAssertTrue(source.contains("Text(verbatim: value)"))
+        XCTAssertTrue(source.contains(".minimumScaleFactor(0.82)"))
+        XCTAssertTrue(source.contains("minHeight: ProjectBoardLayoutMetrics.taskMetadataChipMinHeight"))
         XCTAssertTrue(source.contains(".help(task.title)"))
         XCTAssertTrue(source.contains(".help(task.detail)"))
     }
@@ -1900,13 +1900,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("TaskCardSelectableSummary"))
         XCTAssertTrue(source.contains("TaskDragAffordance"))
         XCTAssertTrue(cardSource.contains("Button(action: onOpenDetails)"))
-        XCTAssertTrue(cardSource.contains("ZStack"))
-        XCTAssertTrue(cardSource.contains("Color.clear"))
-        XCTAssertTrue(cardSource.contains("TaskCardSelectableSummary(task: task)"))
-        XCTAssertFalse(cardSource.contains("TaskCardSelectableSummary(task: task, isPointerHovered:"))
-        XCTAssertFalse(cardSource.contains(".accessibilityElement(children: .combine)"))
-        XCTAssertFalse(cardSource.contains(".accessibilityElement(children: .ignore)"))
-        XCTAssertFalse(cardSource.contains(".accessibilityHidden(true)"))
+        XCTAssertTrue(cardSource.contains("TaskCardSelectableSummary(task: task, isPointerHovered: isPointerHovered)"))
+        XCTAssertTrue(cardSource.contains(".accessibilityElement(children: .combine)"))
         XCTAssertTrue(cardSource.contains(".buttonStyle(.plain)"))
         XCTAssertTrue(cardSource.contains(".accessibilityIdentifier(\"task-card-open-details-\\(task.id)\")"))
         XCTAssertTrue(cardSource.contains(".accessibilityIdentifier(\"task-status-move-controls\")"))
@@ -1950,15 +1945,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".shadow(color: Color.black.opacity(0.04)"))
     }
 
-    func testKanbanCardsKeepStableStatusRailWithoutHoverRebuildingContent() throws {
+    func testKanbanCardsExposePointerHoverAndStatusRailAffordance() throws {
         let source = try readProjectBoardSurfaceSources()
 
+        XCTAssertTrue(source.contains("@State private var isPointerHovered = false"))
         XCTAssertTrue(source.contains("TaskStatusAccentRail(tint: task.status.tint)"))
         XCTAssertTrue(source.contains("struct TaskStatusAccentRail"))
-        XCTAssertTrue(source.contains(".background(task.status.tint.opacity(isSelected ? 0.14 : 0.05)"))
-        XCTAssertFalse(source.contains("@State private var isPointerHovered = false"))
-        XCTAssertFalse(source.contains(".onHover { isPointerHovered = $0 }"))
-        XCTAssertFalse(source.contains(".animation(.snappy(duration: 0.16), value: isPointerHovered)"))
+        XCTAssertTrue(source.contains(".onHover { isPointerHovered = $0 }"))
+        XCTAssertTrue(source.contains(".shadow(color: Color.black.opacity(isPointerHovered ? 0.10 : 0.04)"))
+        XCTAssertTrue(source.contains(".animation(.snappy(duration: 0.16), value: isPointerHovered)"))
     }
 
     func testTaskCardsUseSampleInspiredNonOverlappingMetadataStrip() throws {
@@ -1968,23 +1963,19 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(source.contains("TaskCardMetadataStrip(task: task)"))
         XCTAssertTrue(source.contains("private struct TaskCardMetadataStrip"))
-        XCTAssertFalse(source.contains("private struct TaskMetadataLine"))
-        // Hosted SwiftUI dropped even separate semantic rows from the selected
-        // repeated card, so one primary Text owns the complete visible value.
-        XCTAssertTrue(source.contains("private var displayValue: String"))
-        XCTAssertTrue(source.contains("Text(verbatim: displayValue)"))
+        XCTAssertTrue(source.contains("private struct TaskMetadataLine"))
+        XCTAssertTrue(source.contains("private var identityLineValue: String"))
+        XCTAssertTrue(source.contains("private var scheduleLineValue: String?"))
+        XCTAssertTrue(source.contains("Text(verbatim: value)"))
         XCTAssertTrue(source.contains("components.joined(separator: \" · \")"))
-        XCTAssertTrue(source.contains(".accessibilityElement(children: .combine)"))
-        XCTAssertFalse(source.contains("TaskCardMetadataStrip(task: task)\n                    .accessibilityHidden(true)"))
-        XCTAssertFalse(source.contains("task-card-metadata-strip-"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"task-card-metadata-strip-\\(task.id)\")"))
         XCTAssertTrue(source.contains("recurrenceValue.map"))
         XCTAssertTrue(source.contains("No due date"))
-        XCTAssertTrue(source.contains(".foregroundStyle(.primary)"))
-        XCTAssertTrue(source.contains(".fixedSize(horizontal: false, vertical: true)"))
+        XCTAssertTrue(source.contains(".minimumScaleFactor(0.82)"))
         XCTAssertTrue(phase.contains("[x] `ui-samples/01.png`、`03.png`、`04.png` を基準に、左サイドバー、中央ボード/リスト、右インスペクタの情報密度を見直す。"))
-        XCTAssertTrue(phase.contains("status / priority / due / recurrenceを単一の意味的なTextへ統合"))
+        XCTAssertTrue(phase.contains("status / priorityとdue / recurrenceを最大2行の意味的なTextへ統合"))
         XCTAssertTrue(audit.contains("Task card metadata strip"))
-        XCTAssertTrue(audit.contains("status / priority / due / recurrenceを単一の意味的なText"))
+        XCTAssertTrue(audit.contains("status / priorityとdue / recurrenceを最大2行の意味的なText"))
     }
 
     func testProjectBoardExposesPrimaryCRUDKeyboardShortcuts() throws {

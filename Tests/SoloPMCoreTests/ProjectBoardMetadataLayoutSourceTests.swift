@@ -17,31 +17,25 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(cardSource.contains("localizedDisplay(task.status.title)"))
         XCTAssertTrue(cardSource.contains("localizedDisplay(task.priority.label)"))
         XCTAssertTrue(cardSource.contains("task.dueLabel.map(localizedDisplay) ?? localizedDisplay(\"No due date\")"))
-        XCTAssertTrue(cardSource.contains("ZStack"))
-        XCTAssertTrue(cardSource.contains("TaskCardSelectableSummary(task: task)"))
-        XCTAssertTrue(cardSource.contains("Color.clear"))
-        XCTAssertFalse(cardSource.contains("TaskCardSelectableSummary(task: task, isPointerHovered:"))
-        XCTAssertFalse(cardSource.contains(".accessibilityElement(children: .combine)"))
-        XCTAssertFalse(cardSource.contains(".accessibilityElement(children: .ignore)"))
-        XCTAssertFalse(cardSource.contains(".accessibilityHidden(true)"))
+        XCTAssertTrue(cardSource.contains("Button(action: onOpenDetails) {\n                TaskCardSelectableSummary(task: task, isPointerHovered: isPointerHovered)"))
+        XCTAssertTrue(cardSource.contains(".accessibilityElement(children: .combine)"))
         XCTAssertTrue(cardSource.contains(".accessibilityLabel(\"Open task \\(task.title)\")"))
     }
 
-    func testMetadataStripUsesOnePrimaryVerbatimTextNodeSoHostedRenderingCannotDropSelectedCardLabels() throws {
+    func testMetadataLineUsesOneVerbatimTextNodeSoHostedRenderingCannotDropChildLabels() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
-        let stripStart = try XCTUnwrap(source.range(of: "private struct TaskCardMetadataStrip: View"))
-        let stripEnd = try XCTUnwrap(
-            source.range(of: "private struct ProjectTaskList: View", range: stripStart.upperBound..<source.endIndex)
+        let lineStart = try XCTUnwrap(source.range(of: "private struct TaskMetadataLine: View"))
+        let lineEnd = try XCTUnwrap(
+            source.range(of: "private struct ProjectTaskList: View", range: lineStart.upperBound..<source.endIndex)
         )
-        let stripSource = String(source[stripStart.lowerBound..<stripEnd.lowerBound])
+        let lineSource = String(source[lineStart.lowerBound..<lineEnd.lowerBound])
 
-        XCTAssertEqual(stripSource.components(separatedBy: "Text(verbatim:").count - 1, 1)
-        XCTAssertTrue(stripSource.contains("Text(verbatim: displayValue)"))
-        XCTAssertTrue(stripSource.contains(".foregroundStyle(.primary)"))
-        XCTAssertTrue(stripSource.contains(".lineLimit(2)"))
-        XCTAssertTrue(stripSource.contains(".fixedSize(horizontal: false, vertical: true)"))
-        XCTAssertFalse(stripSource.contains("TaskMetadataLine"))
-        XCTAssertFalse(stripSource.contains("minimumScaleFactor"))
+        XCTAssertTrue(lineSource.contains("Text(verbatim: value)"))
+        XCTAssertFalse(lineSource.contains("Image(systemName:"))
+        XCTAssertFalse(lineSource.contains("HStack"))
+        XCTAssertTrue(lineSource.contains(".lineLimit(1)"))
+        XCTAssertTrue(lineSource.contains(".minimumScaleFactor(0.82)"))
+        XCTAssertTrue(lineSource.contains("maxWidth: .infinity"))
     }
 
     func testMetadataStripComposesStatusPriorityDueAndRecurrenceIntoOneReadableValue() throws {
@@ -52,10 +46,11 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         )
         let stripSource = String(source[stripStart.lowerBound..<stripEnd.lowerBound])
 
-        XCTAssertTrue(stripSource.contains("private var displayValue: String"))
-        XCTAssertTrue(stripSource.contains("var components = [localizedStatusValue, localizedPriorityValue]"))
-        XCTAssertTrue(stripSource.contains("if let dueLabel = task.dueLabel"))
-        XCTAssertTrue(stripSource.contains("if let recurrenceValue"))
+        XCTAssertTrue(stripSource.contains("TaskMetadataLine(value: identityLineValue"))
+        XCTAssertTrue(stripSource.contains("if let scheduleLineValue"))
+        XCTAssertTrue(stripSource.contains("TaskMetadataLine(value: scheduleLineValue"))
+        XCTAssertTrue(stripSource.contains("private var identityLineValue: String"))
+        XCTAssertTrue(stripSource.contains("private var scheduleLineValue: String?"))
         XCTAssertTrue(stripSource.contains("components.joined(separator: \" · \")"))
         XCTAssertTrue(stripSource.contains(".frame(maxWidth: .infinity, alignment: .leading)"))
         XCTAssertFalse(stripSource.contains("TaskMetadataChip"))
@@ -74,14 +69,8 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("localizedDisplay(task.priority.label)"))
         XCTAssertTrue(source.contains("private var localizedDueValue: String"))
         XCTAssertTrue(source.contains("task.dueLabel.map(localizedDisplay) ?? localizedDisplay(\"No due date\")"))
-        XCTAssertTrue(source.contains("Text(verbatim: displayValue)"))
-        let stripStart = try XCTUnwrap(source.range(of: "private struct TaskCardMetadataStrip: View"))
-        let stripEnd = try XCTUnwrap(
-            source.range(of: "private struct ProjectTaskList: View", range: stripStart.upperBound..<source.endIndex)
-        )
-        let stripSource = String(source[stripStart.lowerBound..<stripEnd.lowerBound])
-        XCTAssertFalse(stripSource.contains(".accessibilityHidden(true)"))
-        XCTAssertFalse(source.contains("task-card-metadata-strip-"))
+        XCTAssertTrue(source.contains("Text(verbatim: value)"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"task-card-metadata-strip-\\(task.id)\")"))
     }
 
     func testMetadataLocalizationCatalogCoversStatusPriorityAndDatelessValues() throws {
