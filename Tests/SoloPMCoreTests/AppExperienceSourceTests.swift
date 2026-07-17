@@ -208,7 +208,9 @@ final class AppExperienceSourceTests: XCTestCase {
     func testProjectBoardPhysicalOwnerReaderExcludesRelocatedSurfaceFiles() throws {
         let source = try readProjectBoardOwnerSource()
 
-        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-inspector\")"))
+        XCTAssertFalse(source.contains(".accessibilityIdentifier(\"project-inspector\")"))
+        XCTAssertTrue(source.contains("@SceneStorage(\"projectBoard.userRequestedInspector\") private var userRequestedInspector"))
+        XCTAssertTrue(source.contains("private var inspectorBinding: Binding<Bool>"))
         XCTAssertFalse(source.contains("today-workflow"))
     }
 
@@ -285,7 +287,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let modelSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let taskInspector = try sourceBlock(
             in: source,
-            from: "private struct TaskInspectorView: View",
+            from: "struct TaskInspectorView: View",
             to: "private struct TaskInspectorSuggestionSection"
         )
 
@@ -384,7 +386,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let relocatedSurfaceSource = """
         private struct InspectorDestructiveConfirmation: View {}
 
-        private struct TaskInspectorView: View {
+        struct TaskInspectorView: View {
             var body: some View {
                 Text("Task")
                     .onAppear {
@@ -617,8 +619,8 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectAddTaskFromOverviewOpensVisibleBoardComposer() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let detailStart = try XCTUnwrap(source.range(of: "private struct ProjectBoardDetail"))
+        let source = try readProjectBoardDetailSource()
+        let detailStart = try XCTUnwrap(source.range(of: "struct ProjectBoardDetail"))
         let archivedStart = try XCTUnwrap(source.range(of: "private struct ArchivedProjectReadOnlyState"))
         let detailSource = String(source[detailStart.lowerBound..<archivedStart.lowerBound])
 
@@ -655,17 +657,17 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let appearanceSectionSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsAppearanceSection.swift")
 
-        XCTAssertTrue(appSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference, languagePreference: $languagePreference)"))
-        XCTAssertEqual(appSource.components(separatedBy: "SettingsAppearanceSection(appearancePreference: $appearancePreference, languagePreference: $languagePreference)").count - 1, 1)
+        XCTAssertTrue(appSource.contains("SettingsAppearanceSection(appearancePreference: context.$appearancePreference, languagePreference: context.$languagePreference)"))
+        XCTAssertEqual(appSource.components(separatedBy: "SettingsAppearanceSection(appearancePreference: context.$appearancePreference, languagePreference: context.$languagePreference)").count - 1, 1)
         XCTAssertTrue(appearanceSectionSource.contains("Section(\"Appearance\")"))
         XCTAssertTrue(appearanceSectionSource.contains("Picker(\"Theme\", selection: $appearancePreference)"))
         XCTAssertTrue(appearanceSectionSource.contains(".accessibilityIdentifier(\"settings-theme-picker\")"))
         XCTAssertEqual(appearanceSectionSource.components(separatedBy: "settings-theme-picker").count - 1, 1)
         XCTAssertEqual(appearanceSectionSource.components(separatedBy: "Section(\"Appearance\")").count - 1, 1)
         XCTAssertEqual(appearanceSectionSource.components(separatedBy: "Picker(\"Theme\"").count - 1, 1)
-        let settingsRange = try XCTUnwrap(appSource.range(of: "Settings {"))
-        let appearanceTabRange = try XCTUnwrap(appSource.range(of: "private var appearanceSettingsTab: some View"))
-        let appearanceRange = try XCTUnwrap(appSource.range(of: "SettingsAppearanceSection(appearancePreference: $appearancePreference, languagePreference: $languagePreference)"))
+        let settingsRange = try XCTUnwrap(appSource.range(of: "struct SettingsView: View"))
+        let appearanceTabRange = try XCTUnwrap(appSource.range(of: "struct SettingsAppearanceFeatureView: View"))
+        let appearanceRange = try XCTUnwrap(appSource.range(of: "SettingsAppearanceSection(appearancePreference: context.$appearancePreference, languagePreference: context.$languagePreference)"))
         XCTAssertLessThan(settingsRange.lowerBound, appearanceRange.lowerBound)
         XCTAssertLessThan(appearanceTabRange.lowerBound, appearanceRange.lowerBound)
         XCTAssertTrue(appSource.contains("Label(\"Appearance\", systemImage: \"circle.lefthalf.filled\")"))
@@ -825,7 +827,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testCalmSignalDeskTokensStayOutOfNativeContainerRoots() throws {
         let designSource = try readPackageFile("Sources/SoloPMApp/Views/SoloPMDesignSystem.swift")
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let settingsSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsView.swift")
+        let settingsSource = try readSettingsSurfaceSources()
 
         XCTAssertTrue(designSource.contains("func soloAssistantSignal() -> some View"))
         XCTAssertFalse(designSource.contains("NavigationSplitView"))
@@ -1297,7 +1299,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let source = try readProjectBoardSurfaceSources()
         let boardSource = try readProjectBoardOwnerSource()
 
-        XCTAssertTrue(source.contains("private enum ProjectBoardLayoutMetrics"))
+        XCTAssertTrue(source.contains("enum ProjectBoardLayoutMetrics"))
         XCTAssertFalse(source.contains("static let headerHeight: CGFloat = 44"))
         XCTAssertTrue(source.contains("static let terminalPanelMinHeight: CGFloat = 220"))
         XCTAssertTrue(source.contains("static let terminalPanelIdealHeight: CGFloat = 280"))
@@ -1869,9 +1871,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("SoloPMAppearancePreference.environmentOverride ?? persistedAppearancePreference"))
         XCTAssertTrue(appSource.contains(".preferredColorScheme(Self.effectiveAppearancePreference.colorScheme)"))
         XCTAssertTrue(appSource.contains("SettingsView("))
-        XCTAssertTrue(appSource.contains("appearancePreference: $appearancePreference, languagePreference: $languagePreference"))
+        XCTAssertTrue(appSource.contains("appearancePreference: $appearancePreference,"))
         XCTAssertTrue(appSource.contains("@Binding private var appearancePreference: SoloPMAppearancePreference"))
-        XCTAssertTrue(appSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference, languagePreference: $languagePreference)"))
+        XCTAssertTrue(appSource.contains("SettingsAppearanceSection(appearancePreference: context.$appearancePreference, languagePreference: context.$languagePreference)"))
         XCTAssertFalse(boardSource.contains("@AppStorage(SoloPMAppearancePreference.storageKey)"))
         XCTAssertFalse(boardSource.contains(".preferredColorScheme(appearancePreference.colorScheme)"))
     }
@@ -2057,9 +2059,9 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testInspectorsExposeKeyboardOnlyCrudShortcuts() throws {
-        let source = try readProjectBoardSurfaceSources()
-        let projectInspectorStart = try XCTUnwrap(source.range(of: "private struct ProjectInspectorView"))
-        let taskInspectorStart = try XCTUnwrap(source.range(of: "private struct TaskInspectorView"))
+        let source = try readProjectBoardInspectorSource()
+        let projectInspectorStart = try XCTUnwrap(source.range(of: "struct ProjectInspectorView"))
+        let taskInspectorStart = try XCTUnwrap(source.range(of: "struct TaskInspectorView"))
         let projectSuggestionStart = try XCTUnwrap(source.range(of: "private struct ProjectInspectorSuggestionSection"))
         let taskSuggestionStart = try XCTUnwrap(source.range(of: "private struct TaskInspectorSuggestionSection"))
         let projectInspectorSource = String(source[projectInspectorStart.lowerBound..<projectSuggestionStart.lowerBound])
@@ -2113,8 +2115,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(inlineComposer.contains(".keyboardShortcut(.escape, modifiers: [])"))
 
         let projectInspector = try sourceBlock(
-            in: boardSource,
-            from: "private struct ProjectInspectorView",
+            in: try readProjectBoardInspectorSource(),
+            from: "struct ProjectInspectorView",
             to: "private struct ProjectInspectorSuggestionSection"
         )
         XCTAssertTrue(projectInspector.contains(".accessibilityIdentifier(\"project-inspector-save\")"))
@@ -2123,8 +2125,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(projectInspector.contains(".keyboardShortcut(.delete, modifiers: [.command])"))
 
         let taskInspector = try sourceBlock(
-            in: boardSource,
-            from: "private struct TaskInspectorView",
+            in: try readProjectBoardInspectorSource(),
+            from: "struct TaskInspectorView",
             to: "private struct TaskInspectorSuggestionSection"
         )
         XCTAssertTrue(taskInspector.contains(".accessibilityIdentifier(\"task-inspector-save\")"))
@@ -2149,11 +2151,11 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testInspectorSaveControlsStayAdjacentToEditableFieldsBeforeLongSuggestionSections() throws {
-        let boardSource = try readProjectBoardSurfaceSources()
+        let boardSource = try readProjectBoardInspectorSource()
 
         let projectInspector = try sourceBlock(
             in: boardSource,
-            from: "private struct ProjectInspectorView",
+            from: "struct ProjectInspectorView",
             to: "private struct ProjectInspectorSuggestionSection"
         )
         let projectEdit = try XCTUnwrap(projectInspector.range(of: "Section(\"Edit\")"))
@@ -2168,7 +2170,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         let taskInspector = try sourceBlock(
             in: boardSource,
-            from: "private struct TaskInspectorView",
+            from: "struct TaskInspectorView",
             to: "private struct TaskInspectorSuggestionSection"
         )
         let taskFields = try XCTUnwrap(taskInspector.range(of: "Section(\"Fields\")"))
@@ -2207,9 +2209,9 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testInspectorDestructiveConfirmationActionsDeferSelectionMutations() throws {
-        let source = try readProjectBoardSurfaceSources()
-        let projectInspectorStart = try XCTUnwrap(source.range(of: "private struct ProjectInspectorView"))
-        let taskInspectorStart = try XCTUnwrap(source.range(of: "private struct TaskInspectorView"))
+        let source = try readProjectBoardInspectorSource()
+        let projectInspectorStart = try XCTUnwrap(source.range(of: "struct ProjectInspectorView"))
+        let taskInspectorStart = try XCTUnwrap(source.range(of: "struct TaskInspectorView"))
         let projectSuggestionStart = try XCTUnwrap(source.range(of: "private struct ProjectInspectorSuggestionSection"))
         let taskSummaryStart = try XCTUnwrap(source.range(of: "private struct TaskInspectorMetadataSummary"))
         let projectInspectorSource = String(source[projectInspectorStart.lowerBound..<projectSuggestionStart.lowerBound])
@@ -2730,10 +2732,11 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectInspectorGroupsEditingDeletionAndSuggestionApplication() throws {
-        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let headerStart = try XCTUnwrap(source.range(of: "private struct ProjectHeaderActions"))
-        let boardStart = try XCTUnwrap(source.range(of: "private struct ProjectKanbanBoard"))
-        let headerSource = String(source[headerStart.lowerBound..<boardStart.lowerBound])
+        let source = try readProjectBoardSurfaceSources()
+        let detailSource = try readProjectBoardDetailSource()
+        let headerStart = try XCTUnwrap(detailSource.range(of: "private struct ProjectHeaderActions"))
+        let boardStart = try XCTUnwrap(detailSource.range(of: "private struct ProjectKanbanBoard"))
+        let headerSource = String(detailSource[headerStart.lowerBound..<boardStart.lowerBound])
 
         XCTAssertTrue(source.contains("ProjectInspectorView("))
         XCTAssertTrue(source.contains("project: project,"))
@@ -3812,12 +3815,12 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(appSource.contains("SQLiteMCPServerRegistrationStore(connection:"))
         XCTAssertFalse(appSource.contains("Picker(\"Server\""))
-        XCTAssertTrue(appSource.contains("private final class LazyObservableObjectLoader<Value: ObservableObject>: ObservableObject"))
+        XCTAssertTrue(appSource.contains("final class LazyObservableObjectLoader<Value: ObservableObject>: ObservableObject"))
         XCTAssertTrue(appSource.contains("loadedValue.objectWillChange.sink"))
         XCTAssertTrue(appSource.contains("MCPServerSettingsRow("))
         XCTAssertTrue(appSource.contains("@StateObject private var externalMCPSettingsViewModelLoader: LazyObservableObjectLoader<ExternalMCPSettingsViewModel>"))
-        XCTAssertTrue(appSource.contains("let loadedExternalMCPViewModel = externalMCPSettingsViewModelLoader.value"))
-        XCTAssertTrue(appSource.contains("if let loadedExternalMCPViewModel"))
+        XCTAssertTrue(appSource.contains("loadState = .loaded(viewModel)"))
+        XCTAssertTrue(appSource.contains("if case .loaded(let loadedExternalMCPViewModel) = context.loadState"))
         XCTAssertTrue(appSource.contains("loadedExternalMCPViewModel.registrationRows"))
         XCTAssertTrue(appSource.contains("loadedExternalMCPViewModel.selectRegistration(id: row.id)"))
         XCTAssertTrue(appSource.contains("await loadedExternalMCPViewModel.checkConnection(id: row.id)"))
@@ -3937,7 +3940,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let adapterSource = try readPackageFile("Sources/SoloPMApp/Adapters/SystemShortcutClient.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/Shortcuts/ShortcutRegistration.swift")
-        let settingsSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsView.swift")
+        let settingsSource = try readSettingsSurfaceSources()
         let menuBarSource = try readPackageFile("Sources/SoloPMApp/Views/MenuBarPanel.swift")
         let entitlements = try readPackageFile("packaging/SoloPM.entitlements")
 
@@ -4534,8 +4537,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let overviewSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsStatusOverviewView.swift")
 
         let overviewRange = try XCTUnwrap(appSource.range(of: "SettingsStatusOverviewView("))
-        let overviewTabRange = try XCTUnwrap(appSource.range(of: "private var overviewSettingsTab: some View"))
-        let appearanceTabRange = try XCTUnwrap(appSource.range(of: "private var appearanceSettingsTab: some View"))
+        let overviewTabRange = try XCTUnwrap(appSource.range(of: "struct SettingsOverviewFeatureView: View"))
+        let appearanceTabRange = try XCTUnwrap(appSource.range(of: "struct SettingsAppearanceFeatureView: View"))
 
         XCTAssertLessThan(overviewTabRange.lowerBound, overviewRange.lowerBound)
         XCTAssertLessThan(overviewRange.lowerBound, appearanceTabRange.lowerBound)
@@ -4545,8 +4548,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("title: \"Sync\""))
         XCTAssertTrue(appSource.contains("title: \"Privacy\""))
         XCTAssertTrue(appSource.contains("settingsViewModel.settings.aiProvider.displayName"))
-        XCTAssertTrue(appSource.contains("let currentSyncStatusLabel = syncViewModel?.statusLabel ?? \"Set up when needed\""))
-        XCTAssertTrue(appSource.contains("let currentMcpStatusLabel = externalMCPViewModel?.connectionCheckResultLabel ?? \"Set up when needed\""))
+        XCTAssertTrue(appSource.contains("let syncStatusLabel = builder.syncViewModel?.statusLabel ?? \"Set up when needed\""))
+        XCTAssertTrue(appSource.contains("let mcpStatusLabel = builder.externalMCPViewModel?.connectionCheckResultLabel ?? \"Set up when needed\""))
         XCTAssertTrue(appSource.contains("SettingsReadinessPresentation.grouped("))
         XCTAssertTrue(appSource.contains("showsAdvanced: showAdvancedSettings"))
         XCTAssertTrue(appSource.contains("SettingsReadinessPresentation.aiProviderCapability("))
@@ -4588,8 +4591,8 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testSettingsExposesReadyGatedKokoroTTSProviderControls() throws {
         let appSource = try readAppShellSource()
-        let aiTabStart = try XCTUnwrap(appSource.range(of: "private var aiSettingsTab: some View"))
-        let syncTabStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
+        let aiTabStart = try XCTUnwrap(appSource.range(of: "struct SettingsAIFeatureView: View"))
+        let syncTabStart = try XCTUnwrap(appSource.range(of: "struct SettingsSyncFeatureView: View"))
         let aiTabSource = String(appSource[aiTabStart.lowerBound..<syncTabStart.lowerBound])
 
         XCTAssertTrue(aiTabSource.contains("Picker(\n                    \"Text to Speech\""))
@@ -4601,7 +4604,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-voice-id\")"))
         XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-test-play\")"))
         XCTAssertTrue(aiTabSource.contains("Task {\n                        await settingsViewModel.testTTSPlayback("))
-        XCTAssertTrue(aiTabSource.contains("textToSpeechPreviewerFactory(settingsViewModel.settings)"))
+        XCTAssertTrue(aiTabSource.contains("context.makeTextToSpeechPreviewer()"))
         XCTAssertTrue(appSource.contains("textToSpeechPreviewerFactory: AppRuntimeFactory.makeTextToSpeechPreviewer"))
         XCTAssertFalse(aiTabSource.contains("TTS playback adapter is not connected in this slice."))
         XCTAssertFalse(aiTabSource.contains("TTSProvider.systemSpeech.unavailableReason"))
@@ -4611,14 +4614,14 @@ final class AppExperienceSourceTests: XCTestCase {
     func testSettingsExposesLocalSTTReadinessBeforeRuntimeSelection() throws {
         let appSource = try readAppShellSource()
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/AppSettings.swift")
-        let aiTabStart = try XCTUnwrap(appSource.range(of: "private var aiSettingsTab: some View"))
-        let syncTabStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
+        let aiTabStart = try XCTUnwrap(appSource.range(of: "struct SettingsAIFeatureView: View"))
+        let syncTabStart = try XCTUnwrap(appSource.range(of: "struct SettingsSyncFeatureView: View"))
         let aiTabSource = String(appSource[aiTabStart.lowerBound..<syncTabStart.lowerBound])
 
         XCTAssertTrue(aiTabSource.contains("LocalSTTProviderStatusRow(row: settingsViewModel.localSTTProviderReadinessRow)"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-local-stt-readiness-row\")"))
         XCTAssertTrue(appSource.contains("Text(localizedSettingsDisplay(row.statusLabel))"))
-        XCTAssertTrue(appSource.contains("private struct LocalSTTProviderStatusRow"))
+        XCTAssertTrue(appSource.contains("struct LocalSTTProviderStatusRow"))
         XCTAssertTrue(appSource.contains("STT provider readiness"))
         XCTAssertTrue(coreSource.contains("run the local voice runtime smoke"))
     }
@@ -4628,18 +4631,18 @@ final class AppExperienceSourceTests: XCTestCase {
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let investorReview = try readPackageFile("docs/product/investor-review.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
-        let overviewStart = try XCTUnwrap(appSource.range(of: "private var overviewSettingsTab: some View"))
-        let appearanceStart = try XCTUnwrap(appSource.range(of: "private var appearanceSettingsTab: some View"))
+        let overviewStart = try XCTUnwrap(appSource.range(of: "struct SettingsOverviewFeatureView: View"))
+        let appearanceStart = try XCTUnwrap(appSource.range(of: "struct SettingsAppearanceFeatureView: View"))
         let overviewSource = String(appSource[overviewStart.lowerBound..<appearanceStart.lowerBound])
 
-        XCTAssertTrue(overviewSource.contains("if showAdvancedSettings"))
+        XCTAssertTrue(overviewSource.contains("if dependencies.showAdvanced"))
         XCTAssertTrue(overviewSource.contains("Section(\"Pro Value\")"))
         XCTAssertTrue(overviewSource.contains("ProValueOverviewRow("))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-pro-value-overview-row\")"))
-        XCTAssertTrue(overviewSource.contains("syncValueLabel: syncPaidValueLabel"))
-        XCTAssertTrue(overviewSource.contains("syncBoundaryLabel: syncSafetyBoundaryLabel"))
-        XCTAssertTrue(overviewSource.contains("mcpValueLabel: mcpExecutionValueLabel"))
-        XCTAssertTrue(overviewSource.contains("mcpBoundaryLabel: mcpExecutionSafetyBoundaryLabel"))
+        XCTAssertTrue(overviewSource.contains("syncValueLabel: dependencies.syncValueLabel"))
+        XCTAssertTrue(overviewSource.contains("syncBoundaryLabel: dependencies.syncBoundaryLabel"))
+        XCTAssertTrue(overviewSource.contains("mcpValueLabel: dependencies.mcpValueLabel"))
+        XCTAssertTrue(overviewSource.contains("mcpBoundaryLabel: dependencies.mcpBoundaryLabel"))
         XCTAssertLessThan(
             try XCTUnwrap(overviewSource.range(of: "SettingsStatusOverviewView(")).lowerBound,
             try XCTUnwrap(overviewSource.range(of: "ProValueOverviewRow(")).lowerBound
@@ -4658,12 +4661,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("TabView(selection: $selectedTab) {"))
         XCTAssertTrue(appSource.contains("enum SettingsTab: String"))
         XCTAssertTrue(appSource.contains("@State private var selectedTab: SettingsTab"))
-        XCTAssertTrue(appSource.contains("private var overviewSettingsTab: some View"))
-        XCTAssertTrue(appSource.contains("private var appearanceSettingsTab: some View"))
-        XCTAssertTrue(appSource.contains("private var aiSettingsTab: some View"))
-        XCTAssertTrue(appSource.contains("private var mcpSettingsTab: some View"))
-        XCTAssertTrue(appSource.contains("private var syncSettingsTab: some View"))
-        XCTAssertTrue(appSource.contains("private var privacySettingsTab: some View"))
+        XCTAssertTrue(appSource.contains("struct SettingsOverviewFeatureView: View"))
+        XCTAssertTrue(appSource.contains("struct SettingsAppearanceFeatureView: View"))
+        XCTAssertTrue(appSource.contains("struct SettingsAIFeatureView: View"))
+        XCTAssertTrue(appSource.contains("struct SettingsMCPFeatureView: View"))
+        XCTAssertTrue(appSource.contains("struct SettingsSyncFeatureView: View"))
+        XCTAssertTrue(appSource.contains("struct SettingsPrivacyFeatureView: View"))
         XCTAssertTrue(appSource.contains("Label(\"Overview\", systemImage: \"gauge.with.dots.needle.bottom.50percent\")"))
         XCTAssertTrue(appSource.contains("Label(\"Appearance\", systemImage: \"circle.lefthalf.filled\")"))
         XCTAssertTrue(appSource.contains("Label(\"AI\", systemImage: \"brain.head.profile\")"))
@@ -4671,12 +4674,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("Label(\"Sync\", systemImage: \"arrow.triangle.2.circlepath\")"))
         XCTAssertTrue(appSource.contains("Label(\"Privacy\", systemImage: \"lock.shield\")"))
 
-        let overviewStart = try XCTUnwrap(appSource.range(of: "private var overviewSettingsTab"))
-        let appearanceStart = try XCTUnwrap(appSource.range(of: "private var appearanceSettingsTab"))
-        let aiStart = try XCTUnwrap(appSource.range(of: "private var aiSettingsTab"))
-        let syncStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab"))
-        let privacyStart = try XCTUnwrap(appSource.range(of: "private var privacySettingsTab"))
-        let mcpStart = try XCTUnwrap(appSource.range(of: "private var mcpSettingsTab"))
+        let overviewStart = try XCTUnwrap(appSource.range(of: "struct SettingsOverviewFeatureView"))
+        let appearanceStart = try XCTUnwrap(appSource.range(of: "struct SettingsAppearanceFeatureView"))
+        let aiStart = try XCTUnwrap(appSource.range(of: "struct SettingsAIFeatureView"))
+        let syncStart = try XCTUnwrap(appSource.range(of: "struct SettingsSyncFeatureView"))
+        let privacyStart = try XCTUnwrap(appSource.range(of: "struct SettingsPrivacyFeatureView"))
+        let mcpStart = try XCTUnwrap(appSource.range(of: "struct SettingsMCPFeatureView"))
 
         let overviewSource = String(appSource[overviewStart.lowerBound..<appearanceStart.lowerBound])
         let appearanceSource = String(appSource[appearanceStart.lowerBound..<aiStart.lowerBound])
@@ -4687,7 +4690,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(overviewSource.contains("Section(\"Status Overview\")"))
         XCTAssertFalse(overviewSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference, languagePreference: $languagePreference)"))
-        XCTAssertTrue(appearanceSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference, languagePreference: $languagePreference)"))
+        XCTAssertTrue(appearanceSource.contains("SettingsAppearanceSection(appearancePreference: context.$appearancePreference, languagePreference: context.$languagePreference)"))
         XCTAssertTrue(appearanceSectionSource.contains("Section(\"Appearance\")"))
         XCTAssertTrue(appearanceSectionSource.contains("Section(\"Language\")"))
         XCTAssertTrue(aiSource.contains("Section(\"AI\")"))
@@ -4711,8 +4714,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readAppShellSource()
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
-        let selectedFieldsStart = try XCTUnwrap(appSource.range(of: "private var selectedProviderConfigurationFields: some View"))
-        let nextFieldStart = try XCTUnwrap(appSource.range(of: "private var openAIProviderSettingsFields: some View"))
+        let selectedFieldsStart = try XCTUnwrap(appSource.range(of: "var selectedProviderConfigurationFields: some View"))
+        let nextFieldStart = try XCTUnwrap(appSource.range(of: "var openAIProviderSettingsFields: some View"))
         let selectedFieldsSource = String(appSource[selectedFieldsStart.lowerBound..<nextFieldStart.lowerBound])
 
         XCTAssertTrue(appSource.contains("selectedProviderConfigurationFields"))
@@ -4728,16 +4731,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(selectedFieldsSource.contains("case .opencodeLocal:"))
         XCTAssertTrue(selectedFieldsSource.contains("case .openRouterCompatible:"))
         XCTAssertTrue(selectedFieldsSource.contains("case .ollamaCompatible:"))
-        XCTAssertTrue(appSource.contains("private var openAIProviderSettingsFields: some View"))
-        XCTAssertTrue(appSource.contains("private var claudeProviderSettingsFields: some View"))
-        XCTAssertTrue(appSource.contains("private var geminiProviderSettingsFields: some View"))
-        XCTAssertTrue(appSource.contains("private var groqProviderSettingsFields: some View"))
-        XCTAssertTrue(appSource.contains("private var openCodeProviderSettingsFields: some View"))
-        XCTAssertTrue(appSource.contains("private var openRouterProviderSettingsFields: some View"))
-        XCTAssertTrue(appSource.contains("private var ollamaProviderSettingsFields: some View"))
+        XCTAssertTrue(appSource.contains("var openAIProviderSettingsFields: some View"))
+        XCTAssertTrue(appSource.contains("var claudeProviderSettingsFields: some View"))
+        XCTAssertTrue(appSource.contains("var geminiProviderSettingsFields: some View"))
+        XCTAssertTrue(appSource.contains("var groqProviderSettingsFields: some View"))
+        XCTAssertTrue(appSource.contains("var openCodeProviderSettingsFields: some View"))
+        XCTAssertTrue(appSource.contains("var openRouterProviderSettingsFields: some View"))
+        XCTAssertTrue(appSource.contains("var ollamaProviderSettingsFields: some View"))
 
-        let aiStart = try XCTUnwrap(appSource.range(of: "private var aiSettingsTab"))
-        let syncStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab"))
+        let aiStart = try XCTUnwrap(appSource.range(of: "struct SettingsAIFeatureView"))
+        let syncStart = try XCTUnwrap(appSource.range(of: "struct SettingsSyncFeatureView"))
         let aiSource = String(appSource[aiStart.lowerBound..<syncStart.lowerBound])
 
         XCTAssertTrue(aiSource.contains("selectedProviderConfigurationFields"))
@@ -4751,8 +4754,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readAppShellSource()
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
-        let aiStart = try XCTUnwrap(appSource.range(of: "private var aiSettingsTab: some View"))
-        let syncStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
+        let aiStart = try XCTUnwrap(appSource.range(of: "struct SettingsAIFeatureView: View"))
+        let syncStart = try XCTUnwrap(appSource.range(of: "struct SettingsSyncFeatureView: View"))
         let aiSource = String(appSource[aiStart.lowerBound..<syncStart.lowerBound])
 
         XCTAssertTrue(appSource.contains("SelectedAIProviderStatusRow("))
@@ -4760,8 +4763,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("settingsViewModel.providerReadinessRows"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"ai-provider-readiness-row\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"ai-provider-readiness-summary\")"))
-        XCTAssertTrue(appSource.contains("private var providerReadinessDetailLabel: String"))
-        XCTAssertTrue(appSource.contains("private var activeAIProviderNextActionLabel: String"))
+        XCTAssertTrue(appSource.contains("var providerReadinessDetailLabel: String"))
+        XCTAssertTrue(appSource.contains("var activeAIProviderNextActionLabel: String"))
         XCTAssertLessThan(
             try XCTUnwrap(aiSource.range(of: "Picker(")).lowerBound,
             try XCTUnwrap(aiSource.range(of: "SelectedAIProviderStatusRow(")).lowerBound
@@ -4900,8 +4903,8 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(appSource.contains("@StateObject private var syncSettingsViewModelLoader: LazyObservableObjectLoader<SyncSettingsViewModel>"))
         XCTAssertTrue(appSource.contains("loadedValue.objectWillChange.sink"))
-        XCTAssertTrue(appSource.contains("let loadedSyncViewModel = syncSettingsViewModelLoader.value"))
-        XCTAssertTrue(appSource.contains("if let loadedSyncViewModel"))
+        XCTAssertTrue(appSource.contains("loadState = .loaded(viewModel)"))
+        XCTAssertTrue(appSource.contains("if case .loaded(let loadedSyncViewModel) = context.loadState"))
         XCTAssertTrue(appSource.contains("Section(\"Sync\")"))
         XCTAssertTrue(appSource.contains("loadedSyncViewModel.startSync()"))
         XCTAssertTrue(appSource.contains("makeEntitlementStore(secretStore: secretStore)"))
@@ -4922,9 +4925,12 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testSettingsGoogleCalendarRowUsesRuntimeReadinessAndOAuthActions() throws {
         let appSource = try readAppShellSource()
-        let syncStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
-        let providerStart = try XCTUnwrap(appSource.range(of: "private var selectedProviderConfigurationFields: some View"))
-        let syncSource = String(appSource[syncStart.lowerBound..<providerStart.lowerBound])
+        let syncStart = try XCTUnwrap(appSource.range(of: "struct SettingsSyncFeatureView: View"))
+        let privacyStart = try XCTUnwrap(appSource.range(of: "struct SettingsPrivacyFeatureView: View"))
+        let syncSource = String(appSource[syncStart.lowerBound..<privacyStart.lowerBound])
+        let controlsStart = try XCTUnwrap(appSource.range(of: "struct GoogleCalendarSettingsSaveControls: View"))
+        let controlsEnd = try XCTUnwrap(appSource.range(of: "func settingsLazyLoadUnavailableHint", range: controlsStart.lowerBound..<appSource.endIndex))
+        let controlsSource = String(appSource[controlsStart.lowerBound..<controlsEnd.lowerBound])
 
         XCTAssertTrue(appSource.contains("let googleCalendarStatusProvider: () -> GoogleCalendarRuntimeSyncStatus"))
         XCTAssertTrue(appSource.contains("let googleCalendarOAuthConnector: (any GoogleCalendarOAuthConnecting)?"))
@@ -4938,34 +4944,34 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("@State private var googleCalendarListOptions: [GoogleCalendarRuntimeCalendarListEntry] = []"))
         XCTAssertTrue(appSource.contains("@State private var googleCalendarListLoadGeneration = 0"))
         XCTAssertTrue(appSource.contains("_googleCalendarSyncStatus = State(initialValue: nil)"))
-        XCTAssertTrue(appSource.contains("private var googleCalendarSettingsReadinessRow: GoogleCalendarSettingsReadinessRow"))
+        XCTAssertTrue(appSource.contains("var googleCalendarSettingsReadinessRow: GoogleCalendarSettingsReadinessRow"))
         XCTAssertTrue(appSource.contains("GoogleCalendarSettingsReadinessRow(status: googleCalendarSyncStatus)"))
-        XCTAssertTrue(syncSource.contains("status: googleCalendarSettingsReadinessRow.statusLabel"))
-        XCTAssertTrue(syncSource.contains("detail: googleCalendarSettingsReadinessRow.detailLabel"))
-        XCTAssertTrue(syncSource.contains("nextAction: googleCalendarSettingsReadinessRow.nextActionLabel"))
-        XCTAssertTrue(syncSource.contains("privacyBoundary: googleCalendarSettingsReadinessRow.privacyBoundaryLabel"))
-        XCTAssertTrue(syncSource.contains("statusActionLabel: googleCalendarSettingsReadinessRow.statusCheckActionLabel"))
-        XCTAssertTrue(syncSource.contains("onStatusAction: refreshGoogleCalendarSettingsStatus"))
+        XCTAssertTrue(syncSource.contains("status: context.googleCalendarSettingsReadinessRow.statusLabel"))
+        XCTAssertTrue(syncSource.contains("detail: context.googleCalendarSettingsReadinessRow.detailLabel"))
+        XCTAssertTrue(syncSource.contains("nextAction: context.googleCalendarSettingsReadinessRow.nextActionLabel"))
+        XCTAssertTrue(syncSource.contains("privacyBoundary: context.googleCalendarSettingsReadinessRow.privacyBoundaryLabel"))
+        XCTAssertTrue(syncSource.contains("statusActionLabel: context.googleCalendarSettingsReadinessRow.statusCheckActionLabel"))
+        XCTAssertTrue(syncSource.contains("onStatusAction: context.refreshGoogleCalendarSettingsStatus"))
         XCTAssertTrue(appSource.contains("settings-google-calendar-readiness-check"))
         XCTAssertTrue(appSource.contains("settings-google-calendar-readiness-status"))
         XCTAssertTrue(appSource.contains("settings-google-calendar-readiness-detail"))
-        XCTAssertTrue(syncSource.contains("\"Google Calendar ID\""))
+        XCTAssertTrue(controlsSource.contains("\"Google Calendar ID\""))
         XCTAssertTrue(syncSource.contains("settingsViewModel.settings.googleCalendarID"))
         XCTAssertTrue(syncSource.contains("settingsViewModel.setGoogleCalendarID($0)"))
         XCTAssertTrue(syncSource.contains("GoogleCalendarSettingsSaveControls("))
-        XCTAssertTrue(syncSource.contains("settings-google-calendar-id-save-flow"))
-        XCTAssertTrue(syncSource.contains("settings-google-calendar-id"))
-        XCTAssertTrue(syncSource.contains("saveCalendarID: saveGoogleCalendarIDSetting"))
-        XCTAssertTrue(appSource.contains("private func saveGoogleCalendarIDSetting()"))
-        XCTAssertTrue(syncSource.contains("Picker(\"Available Calendar\""))
-        XCTAssertTrue(syncSource.contains("ForEach(calendarListOptions)"))
-        XCTAssertTrue(syncSource.contains("settings-google-calendar-picker"))
-        XCTAssertTrue(syncSource.contains("loadCalendarList: loadGoogleCalendarList"))
-        XCTAssertTrue(syncSource.contains("settings-google-calendar-list-load"))
-        XCTAssertTrue(syncSource.contains("isCalendarListLoadDisabled: isLoadingGoogleCalendarList || isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarListProvider == nil"))
-        XCTAssertTrue(appSource.contains("private func loadGoogleCalendarList()"))
+        XCTAssertTrue(controlsSource.contains("settings-google-calendar-id-save-flow"))
+        XCTAssertTrue(controlsSource.contains("settings-google-calendar-id"))
+        XCTAssertTrue(syncSource.contains("saveCalendarID: context.saveGoogleCalendarIDSetting"))
+        XCTAssertTrue(appSource.contains("func saveGoogleCalendarIDSetting()"))
+        XCTAssertTrue(controlsSource.contains("Picker(\"Available Calendar\""))
+        XCTAssertTrue(controlsSource.contains("ForEach(calendarListOptions)"))
+        XCTAssertTrue(controlsSource.contains("settings-google-calendar-picker"))
+        XCTAssertTrue(syncSource.contains("loadCalendarList: context.loadGoogleCalendarList"))
+        XCTAssertTrue(controlsSource.contains("settings-google-calendar-list-load"))
+        XCTAssertTrue(syncSource.contains("isCalendarListLoadDisabled: !context.canLoadGoogleCalendarList"))
+        XCTAssertTrue(appSource.contains("func loadGoogleCalendarList()"))
         XCTAssertTrue(appSource.contains("guard !isGoogleCalendarOAuthAuthorizationInProgress else"))
-        XCTAssertTrue(appSource.contains("private func invalidateGoogleCalendarListOptions()"))
+        XCTAssertTrue(appSource.contains("func invalidateGoogleCalendarListOptions()"))
         XCTAssertTrue(appSource.contains("generation == googleCalendarListLoadGeneration"))
         XCTAssertTrue(appSource.contains("invalidateGoogleCalendarListOptions()"))
         XCTAssertTrue(appSource.contains("googleCalendarListProvider.listWritableCalendars()"))
@@ -4974,17 +4980,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("Reconnect Google Calendar with OAuth before loading calendars."))
         XCTAssertTrue(appSource.contains("Wait for Google Calendar OAuth authorization to finish before loading calendars."))
         XCTAssertTrue(appSource.contains("Connect with OAuth authorization"))
-        XCTAssertTrue(syncSource.contains("Button(localizedSettingsDisplay(googleCalendarOAuthActionLabel))"))
-        XCTAssertTrue(syncSource.contains("startGoogleCalendarOAuthAuthorization()"))
-        XCTAssertTrue(appSource.contains("isConfirmingGoogleCalendarOAuthDisconnect = true"))
+        XCTAssertTrue(syncSource.contains("Button(localizedSettingsDisplay(context.googleCalendarOAuthActionLabel))"))
+        XCTAssertTrue(syncSource.contains("context.startGoogleCalendarOAuthAuthorization()"))
+        XCTAssertTrue(appSource.contains("context.isConfirmingGoogleCalendarOAuthDisconnect = true"))
         XCTAssertTrue(appSource.contains("disconnectGoogleCalendarOAuthAuthorization()"))
         XCTAssertTrue(appSource.contains("settings-google-calendar-oauth-disconnect-confirm"))
         XCTAssertTrue(appSource.contains("This removes local Google Calendar OAuth tokens from Keychain. Tasks and saved calendar ID stay unchanged."))
         XCTAssertTrue(syncSource.contains("settings-google-calendar-oauth-disconnect"))
         XCTAssertTrue(syncSource.contains("role: .destructive"))
         XCTAssertLessThan(
-            try XCTUnwrap(syncSource.range(of: "settings-google-calendar-id-save")).lowerBound,
-            try XCTUnwrap(syncSource.range(of: "settings-google-calendar-list-load")).lowerBound
+            try XCTUnwrap(controlsSource.range(of: "settings-google-calendar-id-save")).lowerBound,
+            try XCTUnwrap(controlsSource.range(of: "settings-google-calendar-list-load")).lowerBound
         )
         XCTAssertLessThan(
             try XCTUnwrap(syncSource.range(of: "GoogleCalendarSettingsSaveControls(")).lowerBound,
@@ -5016,14 +5022,14 @@ final class AppExperienceSourceTests: XCTestCase {
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let investorReview = try readPackageFile("docs/product/investor-review.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
-        let syncStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
-        let providerStart = try XCTUnwrap(appSource.range(of: "@ViewBuilder\n    private var selectedProviderConfigurationFields"))
-        let syncSource = String(appSource[syncStart.lowerBound..<providerStart.lowerBound])
+        let syncStart = try XCTUnwrap(appSource.range(of: "struct SettingsSyncFeatureView: View"))
+        let privacyStart = try XCTUnwrap(appSource.range(of: "struct SettingsPrivacyFeatureView: View"))
+        let syncSource = String(appSource[syncStart.lowerBound..<privacyStart.lowerBound])
 
         XCTAssertTrue(appSource.contains("SyncValueStatusRow("))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"sync-paid-value-row\")"))
-        XCTAssertTrue(appSource.contains("private var syncPaidValueLabel: String"))
-        XCTAssertTrue(appSource.contains("private var syncSafetyBoundaryLabel: String"))
+        XCTAssertTrue(appSource.contains("var syncPaidValueLabel: String"))
+        XCTAssertTrue(appSource.contains("var syncSafetyBoundaryLabel: String"))
         XCTAssertLessThan(
             try XCTUnwrap(syncSource.range(of: "SyncValueStatusRow(")).lowerBound,
             try XCTUnwrap(syncSource.range(of: "Toggle(")).lowerBound
@@ -5035,9 +5041,9 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testSyncSettingsTabNamesExternalConnectorScopeWithoutLinkingConnectorTarget() throws {
         let appSource = try readAppShellSource()
-        let syncStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
-        let providerStart = try XCTUnwrap(appSource.range(of: "@ViewBuilder\n    private var selectedProviderConfigurationFields"))
-        let syncSource = String(appSource[syncStart.lowerBound..<providerStart.lowerBound])
+        let syncStart = try XCTUnwrap(appSource.range(of: "struct SettingsSyncFeatureView: View"))
+        let privacyStart = try XCTUnwrap(appSource.range(of: "struct SettingsPrivacyFeatureView: View"))
+        let syncSource = String(appSource[syncStart.lowerBound..<privacyStart.lowerBound])
 
         XCTAssertTrue(syncSource.contains("Section(\"External Task Tools\")"))
         XCTAssertTrue(syncSource.contains("name: \"Google Calendar\""))
@@ -5131,7 +5137,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
 
         XCTAssertTrue(appSource.contains("MCPServerSettingsRow("))
-        XCTAssertTrue(appSource.contains("if let loadedExternalMCPViewModel"))
+        XCTAssertTrue(appSource.contains("if case .loaded(let loadedExternalMCPViewModel) = context.loadState"))
         XCTAssertTrue(appSource.contains("ForEach(loadedExternalMCPViewModel.registrationRows) { row in"))
         XCTAssertTrue(appSource.contains("await loadedExternalMCPViewModel.checkConnection(id: row.id)"))
         XCTAssertTrue(appSource.contains("row.connectionCheckResultLabel"))
@@ -5152,14 +5158,14 @@ final class AppExperienceSourceTests: XCTestCase {
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let investorReview = try readPackageFile("docs/product/investor-review.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
-        let mcpStart = try XCTUnwrap(appSource.range(of: "private var mcpSettingsTab: some View"))
-        let statusStart = try XCTUnwrap(appSource.range(of: "private var activeAIProviderStatusLabel"))
-        let mcpTabSource = String(appSource[mcpStart.lowerBound..<statusStart.lowerBound])
+        let mcpStart = try XCTUnwrap(appSource.range(of: "struct SettingsMCPFeatureView: View"))
+        let dependenciesStart = try XCTUnwrap(appSource.range(of: "struct SettingsOverviewDependencies"))
+        let mcpTabSource = String(appSource[mcpStart.lowerBound..<dependenciesStart.lowerBound])
 
         XCTAssertTrue(appSource.contains("MCPPaidExecutionBoundaryRow("))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"mcp-paid-execution-boundary-row\")"))
-        XCTAssertTrue(appSource.contains("private var mcpExecutionValueLabel: String"))
-        XCTAssertTrue(appSource.contains("private var mcpExecutionSafetyBoundaryLabel: String"))
+        XCTAssertTrue(appSource.contains("let mcpExecutionValueLabel: String"))
+        XCTAssertTrue(appSource.contains("let mcpExecutionSafetyBoundaryLabel: String"))
         XCTAssertTrue(appSource.contains("FeatureGate.advancedMCPExecution.requiredPlan.displayName"))
         XCTAssertTrue(executionSource.contains("entitlementChecker.require(.advancedMCPExecution)"))
         XCTAssertLessThan(
@@ -5977,7 +5983,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testRegressionRiskMapUsesExistingInspectorAccessibilityIdentifier() throws {
-        let boardSource = try readProjectBoardOwnerSource()
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardInspectors.swift")
         let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
 
         XCTAssertTrue(
@@ -5998,11 +6004,28 @@ final class AppExperienceSourceTests: XCTestCase {
         )
     }
 
+    func testExtractedBoardAndSettingsLeafViewsKeepAccessibilityAndActionClosures() throws {
+        let inspectorSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardInspectors.swift")
+        let detailSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
+        let settingsSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsFeatureViews.swift")
+
+        XCTAssertTrue(inspectorSource.contains("accessibilityIdentifier(\"project-inspector\")"))
+        XCTAssertTrue(inspectorSource.contains("let onClose: () -> Void"))
+        XCTAssertTrue(detailSource.contains("@Binding var displayMode: ProjectBoardDisplayMode"))
+        XCTAssertTrue(detailSource.contains("var onOpenTaskInspector: (Int64) -> Void"))
+        XCTAssertTrue(detailSource.contains("let onOpenProject: (Int64) -> Void"))
+        XCTAssertTrue(settingsSource.contains("let onSelect: () -> Void"))
+        XCTAssertTrue(settingsSource.contains("let onCheck: () -> Void"))
+        XCTAssertFalse(inspectorSource.contains("SQLiteConnection("))
+        XCTAssertFalse(detailSource.contains("SQLiteConnection("))
+        XCTAssertFalse(settingsSource.contains("SQLiteConnection("))
+    }
+
     func testOnboardingRerunCoordinatorOwnsSingleWindowPresentation() throws {
         let appSource = try readAppShellSource()
         let factorySource = try readPackageFile("Sources/SoloPMApp/Composition/SettingsRuntimeFactory.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/FirstRunOnboarding.swift")
-        let settingsSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsView.swift")
+        let settingsSource = try readSettingsSurfaceSources()
 
         XCTAssertTrue(
             coreSource.contains("public final class OnboardingRerunCoordinator"),
@@ -6041,7 +6064,7 @@ final class AppExperienceSourceTests: XCTestCase {
             "SettingsView must not post the legacy rerun notification"
         )
         XCTAssertTrue(
-            settingsSource.contains("onboardingRerunRequest()"),
+            settingsSource.contains("dependencies.rerunOnboarding()"),
             "SettingsView must call the injected rerun closure"
         )
         XCTAssertTrue(
@@ -6235,7 +6258,8 @@ final class AppExperienceSourceTests: XCTestCase {
             "Sources/SoloPMApp/Views/MenuBarPanel.swift",
             "Sources/SoloPMApp/Views/VoiceCaptureView.swift",
             "Sources/SoloPMApp/Views/ActionReviewPanel.swift",
-            "Sources/SoloPMApp/Views/SettingsView.swift"
+            "Sources/SoloPMApp/Views/SettingsView.swift",
+            "Sources/SoloPMApp/Views/SettingsFeatureViews.swift"
         ].map(readPackageFile).joined(separator: "\n\n")
         let runtimeCompositionSources = try [
             "Sources/SoloPMApp/Composition/AppRuntimeFactory.swift",
@@ -6271,10 +6295,25 @@ final class AppExperienceSourceTests: XCTestCase {
         try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
     }
 
+    private func readProjectBoardDetailSource() throws -> String {
+        try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
+    }
+
+    private func readProjectBoardInspectorSource() throws -> String {
+        try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardInspectors.swift")
+    }
+
+    private func readSettingsSurfaceSources() throws -> String {
+        try [
+            "Sources/SoloPMApp/Views/SettingsView.swift",
+            "Sources/SoloPMApp/Views/SettingsFeatureViews.swift"
+        ].map(readPackageFile).joined(separator: "\n\n")
+    }
+
     private func taskInspectorRefreshContract(in surfaceSource: String) throws -> String {
         let taskInspectorSource = try sourceBlock(
             in: surfaceSource,
-            from: "private struct TaskInspectorView: View",
+            from: "struct TaskInspectorView: View",
             to: "private func deleteSelectedTaskAfterConfirmationDismissal()"
         )
         return try sourceBlock(
