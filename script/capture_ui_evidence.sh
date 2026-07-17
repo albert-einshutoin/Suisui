@@ -286,9 +286,10 @@ open_evidence_app() {
   done < <(app_env_args)
   # The hosted GUI session does not guarantee a stable login-window theme.
   # Keep the product preference set to `system`, while pinning the capture
-  # process' inherited system appearance to canonical Aqua for reproducible
-  # System evidence across local and hosted macOS runners.
-  if [[ "$APPEARANCE_OVERRIDE" == "dark" ]]; then
+  # process to a canonical Dark system environment. This keeps System evidence
+  # distinct from explicit Light and reproducible across local and hosted
+  # macOS runners.
+  if [[ "$APPEARANCE_OVERRIDE" == "dark" || "$APPEARANCE_OVERRIDE" == "system" ]]; then
     system_appearance="Dark"
   fi
   # Keep this array non-empty: macOS runners still ship Bash 3.2, where
