@@ -5281,6 +5281,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("if [[ \"$APPEARANCE_OVERRIDE\" == \"dark\" || \"$APPEARANCE_OVERRIDE\" == \"system\" ]]"))
         XCTAssertTrue(script.contains("canonical Dark system environment"))
         XCTAssertTrue(script.contains("local appearance_args=(\"-AppleInterfaceStyle\" \"$system_appearance\")"))
+        XCTAssertTrue(script.contains("-AppleShowScrollBars Always"))
+        XCTAssertTrue(script.contains("most constrained persistent-scrollbar setting"))
         XCTAssertTrue(script.contains("assert_screenshot_has_visible_content"))
         XCTAssertTrue(script.contains("ui_evidence_content_check.swift"))
         XCTAssertTrue(script.contains("ui_evidence_source_commit()"))

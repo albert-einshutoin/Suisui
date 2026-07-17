@@ -301,9 +301,12 @@ open_evidence_app() {
   # Settings, and Voice Command env exactly. LaunchServices can drop or delay
   # those env values on some release hosts, which makes screenshot evidence
   # fail before the app exposes a real window.
+  # Use the most constrained persistent-scrollbar setting so layout does not
+  # inherit a local or hosted runner preference.
   /usr/bin/env -i PATH="$PATH" TMPDIR="$EVIDENCE_TMPDIR" "${env_args[@]}" \
     "$APP_BINARY" \
     -ApplePersistenceIgnoreState YES \
+    -AppleShowScrollBars Always \
     "${appearance_args[@]}" \
     -AppleLanguages "$APPLE_LANGUAGES" \
     -AppleLocale "$APPLE_LOCALE" \
