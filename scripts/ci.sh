@@ -189,6 +189,75 @@ read_layout_visible_frame_dimensions() {
   printf '%s %s\n' "$visible_frame_width" "$visible_frame_height"
 }
 
+layout_capacity_is_known_limitation() {
+  local capacity_log="$1"
+  awk '
+    /^failure_category=/ {
+      category_count += 1
+      if ($0 != "failure_category=runner-capability") invalid = 1
+    }
+    /^failure_reason=/ {
+      reason_count += 1
+      if ($0 != "failure_reason=layout-visible-frame-too-small") invalid = 1
+    }
+    END {
+      if (category_count != 1 || reason_count != 1 || invalid) exit 1
+    }
+  ' "$capacity_log"
+}
+
+run_layout_stability_gate() {
+  local artifact_dir="$1"
+  local visible_frame_width="$2"
+  local visible_frame_height="$3"
+  local layout_dir="$artifact_dir/layout-stability"
+  local capacity_log="$layout_dir/layout-capacity.log"
+  local capacity_summary="$layout_dir/layout-capacity-summary.env"
+  local capacity_status=0
+  local runtime_status=0
+  mkdir -p "$layout_dir"
+
+  set +e
+  SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH="$visible_frame_width" \
+  SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT="$visible_frame_height" \
+    ./script/check_layout_stability_smoke.sh --check-display-capacity \
+    >"$capacity_log" 2>&1
+  capacity_status=$?
+  set -e
+
+  if [[ "$capacity_status" -eq 0 ]]; then
+    cat "$capacity_log"
+    printf 'status=capable\nproduct_contract=unchanged\n' >"$capacity_summary"
+    set +e
+    SOLOPM_LAYOUT_STABILITY_OUTPUT_DIR="$layout_dir" \
+    SOLOPM_LAYOUT_STABILITY_RUNTIME_DIR="$CI_TMPDIR/layout-stability-runtime" \
+    SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH="$visible_frame_width" \
+    SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT="$visible_frame_height" \
+      ./script/check_layout_stability_smoke.sh
+    runtime_status=$?
+    set -e
+    return "$runtime_status"
+  fi
+
+  if [[ "$capacity_status" -eq 1 ]] && layout_capacity_is_known_limitation "$capacity_log"; then
+    # Hosted macOS runners can be smaller than the immutable product window
+    # contract. Record an explicit non-execution instead of weakening the
+    # product floor or reporting a fake layout pass; capable local/release
+    # runners remain responsible for the wide-window evidence.
+    printf 'status=not-exercised\nfailure_category=runner-capability\nfailure_reason=layout-visible-frame-too-small\nproduct_contract=unchanged\n' \
+      >"$capacity_summary"
+    printf 'gate_notice_category=runner-capability\n'
+    printf 'NOTICE: layout stability was not exercised because this runner is smaller than the immutable product contract.\n'
+    return 0
+  fi
+
+  # Unexpected probe output remains lane-visible so its own exact failure
+  # category can classify the failed gate. The known limitation above uses a
+  # notice-only marker, preventing it from contaminating a later gate failure.
+  cat "$capacity_log"
+  return "$capacity_status"
+}
+
 run_runtime_gates() {
   local artifact_dir="$CI_ARTIFACT_ROOT/ui-runtime"
   local capability_summary="$artifact_dir/runner-capability/ui-runner-capability-summary.env"
@@ -204,11 +273,7 @@ run_runtime_gates() {
   run_build_and_run_verify "$artifact_dir"
   SOLOPM_RUNTIME_ACCESSIBLE_CRUD_ARTIFACT_DIR="$artifact_dir/runtime-accessible-crud" \
     ./script/check_runtime_accessible_crud_smoke.sh
-  SOLOPM_LAYOUT_STABILITY_OUTPUT_DIR="$artifact_dir/layout-stability" \
-  SOLOPM_LAYOUT_STABILITY_RUNTIME_DIR="$CI_TMPDIR/layout-stability-runtime" \
-  SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH="$visible_frame_width" \
-  SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT="$visible_frame_height" \
-    ./script/check_layout_stability_smoke.sh
+  run_layout_stability_gate "$artifact_dir" "$visible_frame_width" "$visible_frame_height"
   SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_ARTIFACT_DIR="$artifact_dir/today-production-route" \
     ./script/check_runtime_today_production_route_smoke.sh
 }
@@ -248,7 +313,9 @@ run_lane_with_artifacts() {
   local lane_dir="$CI_ARTIFACT_ROOT/$lane"
   local raw_log="$CI_TMPDIR/$lane.raw.log"
   local status=0
+  local status_label="passed"
   local category="passed"
+  local notice_category=""
   rm -rf "$lane_dir"
   mkdir -p "$lane_dir"
 
@@ -272,9 +339,16 @@ run_lane_with_artifacts() {
         *) category="harness" ;;
       esac
     fi
+    status_label="failed"
+  else
+    notice_category="$(sed -n 's/^gate_notice_category=//p' "$lane_dir/output.log" | tail -n 1)"
+    if [[ -n "$notice_category" ]]; then
+      category="$notice_category"
+      status_label="passed-with-limitation"
+    fi
   fi
   printf 'lane=%s\nstatus=%s\nfailure_category=%s\n' \
-    "$lane" "$([[ "$status" -eq 0 ]] && printf passed || printf failed)" "$category" \
+    "$lane" "$status_label" "$category" \
     >"$lane_dir/gate-summary.txt"
   return "$status"
 }

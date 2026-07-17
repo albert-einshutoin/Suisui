@@ -88,6 +88,83 @@ final class UIGateScriptsTests: XCTestCase {
         XCTAssertTrue(result.output.contains("product contract was not downgraded"), result.output)
     }
 
+    func testCIRuntimeTreatsOnlyKnownDisplayCapacityLimitsAsTruthfulNonExecution() throws {
+        let ci = try readPackageFile("scripts/ci.sh")
+        let runtimeStart = try XCTUnwrap(ci.range(of: "run_layout_stability_gate()"))
+        let runtimeEnd = try XCTUnwrap(
+            ci.range(of: "\nrun_runtime_gates()", range: runtimeStart.upperBound..<ci.endIndex)
+        )
+        let source = String(ci[runtimeStart.lowerBound..<runtimeEnd.lowerBound])
+
+        XCTAssertTrue(source.contains("--check-display-capacity"))
+        XCTAssertTrue(source.contains("failure_category=runner-capability"))
+        XCTAssertTrue(source.contains("failure_reason=layout-visible-frame-too-small"))
+        XCTAssertTrue(source.contains("status=not-exercised"))
+        XCTAssertTrue(source.contains("product_contract=unchanged"))
+        XCTAssertTrue(source.contains("gate_notice_category=runner-capability"))
+        XCTAssertTrue(source.contains("layout_capacity_is_known_limitation"))
+        XCTAssertTrue(source.contains("return 0"))
+        XCTAssertTrue(source.contains("return \"$capacity_status\""))
+        XCTAssertFalse(source.contains("SOLOPM_LAYOUT_STABILITY_WINDOW_WIDE_WIDTH="))
+
+        XCTAssertTrue(ci.contains("run_layout_stability_gate \"$artifact_dir\" \"$visible_frame_width\" \"$visible_frame_height\""))
+        XCTAssertTrue(ci.contains("status_label=\"passed-with-limitation\""))
+        XCTAssertTrue(ci.contains("failure_category=runner-capability"))
+    }
+
+    func testCILayoutCapacityNoticeCannotClassifyLaterRuntimeFailures() throws {
+        let knownLimitation = """
+        failure_category=runner-capability
+        failure_reason=layout-visible-frame-too-small
+        """
+
+        let limitationOnly = try runCILayoutLaneFixture(
+            capacityOutput: knownLimitation,
+            capacityStatus: 1
+        )
+        XCTAssertEqual(limitationOnly.exitCode, 0, limitationOnly.output)
+        XCTAssertTrue(limitationOnly.output.contains("status=passed-with-limitation"), limitationOnly.output)
+        XCTAssertTrue(limitationOnly.output.contains("failure_category=runner-capability"), limitationOnly.output)
+
+        let laterUnclassifiedFailure = try runCILayoutLaneFixture(
+            capacityOutput: knownLimitation,
+            capacityStatus: 1,
+            postLayoutStatus: 1
+        )
+        XCTAssertEqual(laterUnclassifiedFailure.exitCode, 1, laterUnclassifiedFailure.output)
+        XCTAssertTrue(laterUnclassifiedFailure.output.contains("status=failed"), laterUnclassifiedFailure.output)
+        XCTAssertTrue(laterUnclassifiedFailure.output.contains("failure_category=app-regression"), laterUnclassifiedFailure.output)
+
+        let invalidCapacityConfiguration = try runCILayoutLaneFixture(
+            capacityOutput: "failure_category=configuration\nfailure_reason=invalid-capacity-fixture\n",
+            capacityStatus: 2
+        )
+        XCTAssertEqual(invalidCapacityConfiguration.exitCode, 2, invalidCapacityConfiguration.output)
+        XCTAssertTrue(invalidCapacityConfiguration.output.contains("status=failed"), invalidCapacityConfiguration.output)
+        XCTAssertTrue(invalidCapacityConfiguration.output.contains("failure_category=configuration"), invalidCapacityConfiguration.output)
+
+        let capableRuntimeFailure = try runCILayoutLaneFixture(
+            capacityOutput: "display capacity is sufficient\n",
+            capacityStatus: 0,
+            runtimeStatus: 1
+        )
+        XCTAssertEqual(capableRuntimeFailure.exitCode, 1, capableRuntimeFailure.output)
+        XCTAssertTrue(capableRuntimeFailure.output.contains("status=failed"), capableRuntimeFailure.output)
+        XCTAssertTrue(capableRuntimeFailure.output.contains("failure_category=app-regression"), capableRuntimeFailure.output)
+
+        let mixedClassification = try runCILayoutLaneFixture(
+            capacityOutput: """
+            failure_category=runner-capability
+            failure_category=configuration
+            failure_reason=layout-visible-frame-too-small
+            """,
+            capacityStatus: 1
+        )
+        XCTAssertEqual(mixedClassification.exitCode, 1, mixedClassification.output)
+        XCTAssertTrue(mixedClassification.output.contains("status=failed"), mixedClassification.output)
+        XCTAssertFalse(mixedClassification.output.contains("status=passed-with-limitation"), mixedClassification.output)
+    }
+
     func testLayoutDisplayCapacityAcceptsSufficientVisibleFrame() throws {
         let result = try runTool(
             [
@@ -562,6 +639,88 @@ final class UIGateScriptsTests: XCTestCase {
         """
         try harness.write(to: harnessURL, atomically: true, encoding: .utf8)
         return try runTool(["/bin/bash", harnessURL.path, probeURL.path])
+    }
+
+    private func runCILayoutLaneFixture(
+        capacityOutput: String,
+        capacityStatus: Int32,
+        runtimeStatus: Int32 = 0,
+        postLayoutStatus: Int32 = 0
+    ) throws -> (exitCode: Int32, output: String) {
+        let ci = try readPackageFile("scripts/ci.sh")
+        let layoutStart = try XCTUnwrap(ci.range(of: "layout_capacity_is_known_limitation() {"))
+        let layoutEnd = try XCTUnwrap(
+            ci.range(of: "\n\nrun_runtime_gates() {", range: layoutStart.upperBound..<ci.endIndex)
+        )
+        let sanitizerStart = try XCTUnwrap(ci.range(of: "sanitize_gate_log() {"))
+        let laneEnd = try XCTUnwrap(
+            ci.range(of: "\n\nvalidate_ci_flag ", range: sanitizerStart.upperBound..<ci.endIndex)
+        )
+        let functionSource = String(ci[layoutStart.lowerBound..<layoutEnd.lowerBound]) + "\n\n" +
+            String(ci[sanitizerStart.lowerBound..<laneEnd.lowerBound])
+
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-ci-layout-lane-\(UUID().uuidString)", isDirectory: true)
+        let scriptDirectory = fixtureDirectory.appendingPathComponent("script", isDirectory: true)
+        let outputURL = fixtureDirectory.appendingPathComponent("capacity-output.txt")
+        let smokeURL = scriptDirectory.appendingPathComponent("check_layout_stability_smoke.sh")
+        let harnessURL = fixtureDirectory.appendingPathComponent("harness.sh")
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let normalizedCapacityOutput = capacityOutput.hasSuffix("\n") ? capacityOutput : capacityOutput + "\n"
+        try normalizedCapacityOutput.write(to: outputURL, atomically: true, encoding: .utf8)
+        let smoke = """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        if [[ "${1:-}" == "--check-display-capacity" ]]; then
+          cat "$SOLOPM_TEST_CAPACITY_OUTPUT"
+          exit "$SOLOPM_TEST_CAPACITY_STATUS"
+        fi
+        printf 'runtime layout fixture\n'
+        exit "$SOLOPM_TEST_RUNTIME_STATUS"
+        """
+        try smoke.write(to: smokeURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: smokeURL.path)
+
+        let harness = """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        CI_ARTIFACT_ROOT="$1/artifacts"
+        CI_TMPDIR="$1/tmp"
+        mkdir -p "$CI_ARTIFACT_ROOT" "$CI_TMPDIR"
+        cd "$1"
+        \(functionSource)
+        runtime_fixture() {
+          local layout_status=0
+          run_layout_stability_gate "$CI_ARTIFACT_ROOT/ui-runtime" 1024 724 || layout_status=$?
+          if [[ "$layout_status" -ne 0 ]]; then
+            return "$layout_status"
+          fi
+          if [[ "$SOLOPM_TEST_POST_LAYOUT_STATUS" -ne 0 ]]; then
+            printf 'later unclassified runtime failure\n'
+            return "$SOLOPM_TEST_POST_LAYOUT_STATUS"
+          fi
+        }
+        if run_lane_with_artifacts ui-runtime runtime_fixture; then
+          lane_status=0
+        else
+          lane_status=$?
+        fi
+        cat "$CI_ARTIFACT_ROOT/ui-runtime/gate-summary.txt"
+        exit "$lane_status"
+        """
+        try harness.write(to: harnessURL, atomically: true, encoding: .utf8)
+
+        return try runTool(
+            ["/bin/bash", harnessURL.path, fixtureDirectory.path],
+            environment: [
+                "SOLOPM_TEST_CAPACITY_OUTPUT": outputURL.path,
+                "SOLOPM_TEST_CAPACITY_STATUS": String(capacityStatus),
+                "SOLOPM_TEST_RUNTIME_STATUS": String(runtimeStatus),
+                "SOLOPM_TEST_POST_LAYOUT_STATUS": String(postLayoutStatus)
+            ]
+        )
     }
 
     private func runTool(
