@@ -18,11 +18,11 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(cardSource.contains("localizedDisplay(task.priority.label)"))
         XCTAssertTrue(cardSource.contains("task.dueLabel.map(localizedDisplay) ?? localizedDisplay(\"No due date\")"))
         XCTAssertTrue(cardSource.contains("ZStack"))
-        XCTAssertTrue(cardSource.contains("TaskCardSelectableSummary(task: task, isPointerHovered: isPointerHovered)"))
+        XCTAssertTrue(cardSource.contains("TaskCardSelectableSummary(task: task)"))
         XCTAssertTrue(cardSource.contains("Color.clear"))
-        XCTAssertTrue(cardSource.contains(".accessibilityElement(children: .ignore)"))
-        XCTAssertTrue(cardSource.contains(".allowsHitTesting(false)"))
+        XCTAssertFalse(cardSource.contains("TaskCardSelectableSummary(task: task, isPointerHovered:"))
         XCTAssertFalse(cardSource.contains(".accessibilityElement(children: .combine)"))
+        XCTAssertFalse(cardSource.contains(".accessibilityElement(children: .ignore)"))
         XCTAssertFalse(cardSource.contains(".accessibilityHidden(true)"))
         XCTAssertTrue(cardSource.contains(".accessibilityLabel(\"Open task \\(task.title)\")"))
     }
@@ -75,7 +75,12 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("private var localizedDueValue: String"))
         XCTAssertTrue(source.contains("task.dueLabel.map(localizedDisplay) ?? localizedDisplay(\"No due date\")"))
         XCTAssertTrue(source.contains("Text(verbatim: displayValue)"))
-        XCTAssertTrue(source.contains(".accessibilityHidden(true)"))
+        let stripStart = try XCTUnwrap(source.range(of: "private struct TaskCardMetadataStrip: View"))
+        let stripEnd = try XCTUnwrap(
+            source.range(of: "private struct ProjectTaskList: View", range: stripStart.upperBound..<source.endIndex)
+        )
+        let stripSource = String(source[stripStart.lowerBound..<stripEnd.lowerBound])
+        XCTAssertFalse(stripSource.contains(".accessibilityHidden(true)"))
         XCTAssertFalse(source.contains("task-card-metadata-strip-"))
     }
 

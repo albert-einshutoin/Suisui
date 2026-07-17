@@ -1615,12 +1615,12 @@ private struct BoardTaskCard: View {
                 // hosted macOS 14, rebuilding a selected Button's combined AX
                 // children can also drop those children from the raster tree.
                 // The clear native Button below preserves one familiar click
-                // target while owning all spoken metadata explicitly. Ignoring
-                // the visual subtree's AX children avoids duplicate focus
-                // stops without asking hosted SwiftUI to hide render nodes.
-                TaskCardSelectableSummary(task: task, isPointerHovered: isPointerHovered)
-                    .accessibilityElement(children: .ignore)
-                    .allowsHitTesting(false)
+                // target while owning all spoken metadata explicitly. Keep the
+                // visual subtree free of AX transformations: hosted macOS 14
+                // can remove transformed Text nodes when the pointer rebuilds
+                // a repeated card. Static text remains readable, while the
+                // clear native Button is the only actionable overlay.
+                TaskCardSelectableSummary(task: task)
 
                 Button(action: onOpenDetails) {
                     Color.clear
@@ -1686,7 +1686,6 @@ private struct BoardTaskCard: View {
 
 private struct TaskCardSelectableSummary: View {
     let task: ProjectBoardTask
-    let isPointerHovered: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -1702,7 +1701,7 @@ private struct TaskCardSelectableSummary: View {
 
                     Spacer(minLength: 6)
 
-                    TaskDragAffordance(tint: task.status.tint, isPointerHovered: isPointerHovered)
+                    TaskDragAffordance(tint: task.status.tint)
                 }
 
                 if !task.detail.isEmpty {
@@ -1722,14 +1721,13 @@ private struct TaskCardSelectableSummary: View {
 
 private struct TaskDragAffordance: View {
     let tint: Color
-    let isPointerHovered: Bool
 
     var body: some View {
         Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
             .font(.caption)
             .foregroundStyle(tint)
             .frame(width: 24, height: 24)
-            .background(tint.opacity(isPointerHovered ? 0.18 : 0.10), in: Circle())
+            .background(tint.opacity(0.12), in: Circle())
             .help("Drag to another status column")
             .accessibilityHidden(true)
     }
@@ -1863,10 +1861,6 @@ private struct TaskCardMetadataStrip: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .font(.caption2)
-        // BoardTaskCard exposes this same complete value on its one actionable
-        // Button, so a second nested AX node is redundant and destabilizes the
-        // hosted selected-card render tree.
-        .accessibilityHidden(true)
     }
 
     private var displayValue: String {
