@@ -6553,6 +6553,28 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(malformed.output.contains("failure_reason=window-size-unavailable"), malformed.output)
         XCTAssertTrue(malformed.output.contains("observed_width=unavailable"), malformed.output)
         XCTAssertFalse(malformed.output.contains("/Users/"), malformed.output)
+
+        let multiline = try runTodayWindowSizeResultFixture(
+            requestedWidth: width,
+            requestedHeight: height,
+            observedOutput: "1024 724\n/Users/private/secret"
+        )
+        XCTAssertEqual(multiline.exitCode, 1, multiline.output)
+        XCTAssertTrue(multiline.output.contains("failure_reason=window-size-unavailable"), multiline.output)
+        XCTAssertTrue(multiline.output.contains("observed_width=unavailable"), multiline.output)
+        XCTAssertTrue(multiline.output.contains("observed_height=unavailable"), multiline.output)
+        XCTAssertFalse(multiline.output.contains("/Users/"), multiline.output)
+
+        let extraToken = try runTodayWindowSizeResultFixture(
+            requestedWidth: width,
+            requestedHeight: height,
+            observedOutput: "1024 724 unexpected"
+        )
+        XCTAssertEqual(extraToken.exitCode, 1, extraToken.output)
+        XCTAssertTrue(extraToken.output.contains("failure_reason=window-size-unavailable"), extraToken.output)
+        XCTAssertTrue(extraToken.output.contains("observed_width=unavailable"), extraToken.output)
+        XCTAssertTrue(extraToken.output.contains("observed_height=unavailable"), extraToken.output)
+        XCTAssertFalse(extraToken.output.contains("unexpected"), extraToken.output)
     }
 
     func testRuntimeTodayProductionRouteSmokeUsesPIDScopedAXAndOptInRuntimeGate() throws {

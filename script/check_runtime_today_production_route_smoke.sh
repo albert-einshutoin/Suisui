@@ -518,20 +518,16 @@ record_owned_window_size_result() {
   local observed_output="$3"
   local observed_width="unavailable"
   local observed_height="unavailable"
-  local unexpected=""
   local status="failed"
   local reason="window-size-unavailable"
 
-  if [[ "$osascript_status" -eq 0 ]]; then
-    read -r observed_width observed_height unexpected <<<"$observed_output"
-    # Persist only an exact pair of positive integers. Raw AppleScript output
-    # can contain host paths or localized diagnostics and must not enter the
-    # public CI artifact when the response is malformed.
-    if [[ ! "$observed_width" =~ ^[1-9][0-9]*$ ||
-      ! "$observed_height" =~ ^[1-9][0-9]*$ || -n "$unexpected" ]]; then
-      observed_width="unavailable"
-      observed_height="unavailable"
-    elif [[ "$observed_width" -eq "$WINDOW_WIDTH" && "$observed_height" -eq "$WINDOW_HEIGHT" ]]; then
+  # Validate the complete response before splitting it. `read` alone only
+  # consumes the first line, so a valid-looking first line could otherwise
+  # hide a second diagnostic line or host path in a public CI artifact flow.
+  if [[ "$osascript_status" -eq 0 &&
+    "$observed_output" =~ ^[1-9][0-9]*\ [1-9][0-9]*$ ]]; then
+    read -r observed_width observed_height <<<"$observed_output"
+    if [[ "$observed_width" -eq "$WINDOW_WIDTH" && "$observed_height" -eq "$WINDOW_HEIGHT" ]]; then
       status="passed"
       reason="none"
     else
