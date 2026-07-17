@@ -85,10 +85,13 @@ struct VoiceCaptureView: View {
                 .accessibilityIdentifier("voice-command-clear")
             }
 
-            captureZone
-
             ScrollView {
                 VStack(alignment: .leading, spacing: SoloPMSpacing.md) {
+                    // Capture belongs to the same scroll boundary as later
+                    // states so larger text and compact displays never make
+                    // the primary controls increase the window minimum size.
+                    captureZone
+
                     if hasWorkingContent {
                         workingZone
                             .transition(.opacity.combined(with: .move(edge: .top)))
@@ -111,14 +114,7 @@ struct VoiceCaptureView: View {
                     value: hasReviewContent
                 )
             }
-            // While idle there is no working/review content; collapsing the
-            // empty scroll region hands the window height to the capture zone
-            // above instead of rendering it as blank space.
-            .frame(
-                maxWidth: .infinity,
-                maxHeight: hasWorkingContent || hasReviewContent ? .infinity : 0,
-                alignment: .topLeading
-            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .padding(SoloPMSpacing.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -233,10 +229,9 @@ struct VoiceCaptureView: View {
             .font(.body)
             .lineLimit(5...8)
             .padding(8)
-            // The input area absorbs leftover window height (content stays
-            // top-aligned) so the idle window reads as one intentional
-            // capture surface instead of leaving a dead lower half.
-            .frame(minHeight: 150, idealHeight: 180, maxHeight: .infinity, alignment: .topLeading)
+            // A finite ceiling keeps the editor comfortable without feeding
+            // an unbounded intrinsic height into AppKit window fitting.
+            .frame(minHeight: 150, idealHeight: 180, maxHeight: 220, alignment: .topLeading)
             .overlay(alignment: .topLeading) {
                 if isVoiceCommandInputEmpty {
                     VoiceCommandInputPrompt()

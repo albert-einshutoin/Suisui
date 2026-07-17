@@ -68,7 +68,7 @@ struct SoloPM: App {
                 .preferredColorScheme(effectiveAppearancePreference.colorScheme)
                 .environment(\.locale, effectiveLanguagePreference.locale)
         }
-        .defaultSize(width: 680, height: 640)
+        .defaultSize(width: 760, height: 640)
 
         MenuBarExtra {
             MenuBarPanel(
@@ -827,6 +827,10 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
                     .preferredColorScheme(SoloPMAppearancePreference.environmentOverride?.colorScheme)
                     .environment(\.locale, (AppLanguagePreference.environmentOverride ?? .system).locale)
             )
+            // This deterministic evidence window owns its outer viewport.
+            // Prevent SwiftUI fitting hints from becoming AppKit min/max
+            // constraints that silently clamp the audited 760x640 frame.
+            hostingController.sizingOptions = []
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 760, height: 640),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],

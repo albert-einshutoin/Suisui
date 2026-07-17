@@ -3619,9 +3619,11 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testReviewPanelUsesResponsiveLongContentGuards() throws {
         let appSource = try readAppShellSource()
+        let voiceSource = try readPackageFile("Sources/SoloPMApp/Views/VoiceCaptureView.swift")
 
         XCTAssertTrue(appSource.contains("ScrollView"))
-        XCTAssertTrue(appSource.contains(".frame(minHeight: 150, idealHeight: 180, maxHeight: .infinity, alignment: .topLeading)"))
+        XCTAssertTrue(voiceSource.contains(".frame(minHeight: 150, idealHeight: 180, maxHeight: 220, alignment: .topLeading)"))
+        XCTAssertFalse(voiceSource.contains(".frame(minHeight: 150, idealHeight: 180, maxHeight: .infinity, alignment: .topLeading)"))
         XCTAssertTrue(appSource.contains(".frame(maxWidth: .infinity, alignment: .leading)"))
         XCTAssertTrue(appSource.contains("ActionReviewHeader"))
         XCTAssertTrue(appSource.contains("ReviewActionTitleRow"))
@@ -3631,6 +3633,23 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains(".help(argumentSummary.fullText)"))
         XCTAssertTrue(appSource.contains(".help(currentStringArgument(\"title\"))"))
         XCTAssertTrue(appSource.contains(".fixedSize(horizontal: false, vertical: true)"))
+    }
+
+    func testVoiceCommandUsesScrollableFiniteViewportForProductAndEvidenceWindows() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let voiceSource = try readPackageFile("Sources/SoloPMApp/Views/VoiceCaptureView.swift")
+
+        let body = try XCTUnwrap(voiceSource.range(of: "var body: some View"))
+        let scrollView = try XCTUnwrap(voiceSource.range(of: "ScrollView", range: body.lowerBound..<voiceSource.endIndex))
+        let captureZone = try XCTUnwrap(voiceSource.range(of: "captureZone", range: scrollView.upperBound..<voiceSource.endIndex))
+        XCTAssertLessThan(scrollView.lowerBound, captureZone.lowerBound)
+        XCTAssertTrue(appSource.contains(".defaultSize(width: 760, height: 640)"))
+
+        let evidenceFunction = try XCTUnwrap(appSource.range(of: "private func openVoiceCommandWindowForEvidenceIfRequested()"))
+        let evidenceSource = String(appSource[evidenceFunction.lowerBound...])
+        let sizingOptions = try XCTUnwrap(evidenceSource.range(of: "hostingController.sizingOptions = []"))
+        let contentController = try XCTUnwrap(evidenceSource.range(of: "window.contentViewController = hostingController"))
+        XCTAssertLessThan(sizingOptions.lowerBound, contentController.lowerBound)
     }
 
     func testReviewRuntimeDoesNotFallBackToEmptyToolRegistry() throws {
