@@ -1961,19 +1961,17 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(source.contains("TaskCardMetadataStrip(task: task)"))
         XCTAssertTrue(source.contains("private struct TaskCardMetadataStrip"))
-        XCTAssertTrue(source.contains("private struct TaskMetadataChip"))
-        // The strip wraps chips into fixed rows (identity + schedule) so
-        // chips truncate inside the card instead of clipping at its edge,
-        // and the due chip renders only when the task has a due date.
-        XCTAssertTrue(source.contains("private var identityChipRow: some View"))
-        XCTAssertTrue(source.contains("private var scheduleChipRow: some View"))
-        XCTAssertTrue(source.contains("if task.dueLabel != nil || recurrenceValue != nil"))
-        XCTAssertTrue(source.contains("if let dueLabel = task.dueLabel"))
+        XCTAssertTrue(source.contains("private struct TaskMetadataLine"))
+        // Hosted SwiftUI dropped child Text nodes from repeated chip rows.
+        // Each metadata row is therefore one precomposed verbatim Text node.
+        XCTAssertTrue(source.contains("private var identityLineValue: String"))
+        XCTAssertTrue(source.contains("private var scheduleLineValue: String?"))
+        XCTAssertTrue(source.contains("Text(verbatim: value)"))
+        XCTAssertTrue(source.contains("components.joined(separator: \" · \")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"task-card-metadata-strip-\\(task.id)\")"))
         XCTAssertTrue(source.contains(".accessibilityValue(\"\\(localizedStatusValue), \\(localizedPriorityValue), \\(localizedDueValue)\")"))
         XCTAssertTrue(source.contains("No due date"))
         XCTAssertTrue(source.contains(".minimumScaleFactor(0.82)"))
-        XCTAssertTrue(source.contains("minWidth: ProjectBoardLayoutMetrics.taskMetadataChipMinWidth"))
         XCTAssertTrue(source.contains("minHeight: ProjectBoardLayoutMetrics.taskMetadataChipMinHeight"))
         XCTAssertTrue(phase.contains("[x] `ui-samples/01.png`、`03.png`、`04.png` を基準に、左サイドバー、中央ボード/リスト、右インスペクタの情報密度を見直す。"))
         XCTAssertTrue(phase.contains("[x] Task card metadata strip はstatus / priority / dueを固定寸法chipに分離し、狭いKanban列ではadaptive gridへ逃がす。"))

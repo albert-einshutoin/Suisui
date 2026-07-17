@@ -1825,12 +1825,15 @@ private struct TaskCardMetadataStrip: View {
     let task: ProjectBoardTask
 
     var body: some View {
-        // Hosted macOS can reserve extra width for persistent scrollbars. Use
-        // compact pills only when their complete titles fit; otherwise the
-        // approachable full-width fallback keeps every meaning visible.
+        // Hosted SwiftUI can lose child Text nodes when repeated cards render
+        // several icon-and-label pills. Compose each semantic row into one
+        // verbatim Text node so metadata never becomes icon-only decoration.
         VStack(alignment: .leading, spacing: 6) {
-            identityChipRow
-            scheduleChipRow
+            TaskMetadataLine(value: identityLineValue, tint: task.status.tint)
+
+            if let scheduleLineValue {
+                TaskMetadataLine(value: scheduleLineValue, tint: .blue)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .font(.caption2)
@@ -1842,64 +1845,22 @@ private struct TaskCardMetadataStrip: View {
         .accessibilityIdentifier("task-card-metadata-strip-\(task.id)")
     }
 
-    private var identityChipRow: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) {
-                statusChip
-                    .fixedSize(horizontal: true, vertical: false)
-                priorityChip
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                statusChip
-                priorityChip
-            }
-        }
+    private var identityLineValue: String {
+        "\(localizedStatusValue) · \(localizedPriorityValue)"
     }
 
-    private var statusChip: some View {
-        TaskMetadataChip(
-            value: task.status.title,
-            systemImage: task.status.systemImage,
-            tint: task.status.tint
-        )
-    }
-
-    private var priorityChip: some View {
-        TaskMetadataChip(
-            value: task.priority.label,
-            systemImage: "flag",
-            tint: task.priority.color
-        )
-    }
-
-    /// Due and recurrence chips render only when the task carries those
-    /// values; an unconditional placeholder chip reads as broken metadata.
+    /// Schedule text renders only when the task carries a due or recurrence
+    /// value; an unconditional placeholder line reads as broken metadata.
     /// The dateless case stays discoverable through the accessibility value.
-    @ViewBuilder
-    private var scheduleChipRow: some View {
-        if task.dueLabel != nil || recurrenceValue != nil {
-            // Dates and recurrence labels are least tolerant of compression,
-            // so each receives the card's full readable width.
-            VStack(alignment: .leading, spacing: 6) {
-                if let dueLabel = task.dueLabel {
-                    TaskMetadataChip(
-                        value: dueLabel,
-                        systemImage: "calendar",
-                        tint: .blue
-                    )
-                }
-
-                if let recurrenceValue {
-                    TaskMetadataChip(
-                        value: recurrenceValue,
-                        systemImage: "repeat",
-                        tint: .purple
-                    )
-                }
-            }
+    private var scheduleLineValue: String? {
+        var components: [String] = []
+        if let dueLabel = task.dueLabel {
+            components.append(localizedDisplay(dueLabel))
         }
+        if let recurrenceValue {
+            components.append(recurrenceValue)
+        }
+        return components.isEmpty ? nil : components.joined(separator: " · ")
     }
 
     private var localizedStatusValue: String {
@@ -1930,49 +1891,29 @@ private struct TaskCardMetadataStrip: View {
     }
 }
 
-private struct TaskMetadataChip: View {
-    /// Keeps at least a short, recognizable text run beside the icon even when
-    /// persistent scrollbars take width from an already narrow Kanban card.
-    /// Twenty-four points still lets two minimum-width chips fit the card.
-    private static let minimumTextWidth: CGFloat = 24
-
+private struct TaskMetadataLine: View {
     let value: String
-    let systemImage: String
     let tint: Color
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: systemImage)
-                .frame(width: 12)
-                // SF Symbols must not borrow the text's last usable points
-                // during HStack compression; the text owns the flexible space.
-                .fixedSize(horizontal: true, vertical: false)
-
-            Text(localizedDisplay(value))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .minimumScaleFactor(0.82)
-                // Label's default compression can reduce its title to zero
-                // width on hosted CI with always-visible scrollbars. A small
-                // floor plus priority preserves status/priority/due text while
-                // still allowing long localized values to truncate in-card.
-                .frame(minWidth: Self.minimumTextWidth, alignment: .leading)
-                .layoutPriority(1)
-        }
-        .foregroundStyle(tint)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        // Full-width pills make the fallback easy to scan and keep the text's
-        // usable width deterministic. The preferred compact row explicitly
-        // opts into each pill's intrinsic width with fixedSize.
-        .frame(
-            minWidth: ProjectBoardLayoutMetrics.taskMetadataChipMinWidth,
-            maxWidth: .infinity,
-            minHeight: ProjectBoardLayoutMetrics.taskMetadataChipMinHeight,
-            alignment: .leading
-        )
-        .background(tint.opacity(0.10), in: Capsule())
-        .help(value)
+        Text(verbatim: value)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .minimumScaleFactor(0.82)
+            .layoutPriority(1)
+            .foregroundStyle(tint)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            // A calm full-width label is easier to scan than several small
+            // pills and keeps all meaning in the one render node above.
+            .frame(
+                minWidth: ProjectBoardLayoutMetrics.taskMetadataChipMinWidth,
+                maxWidth: .infinity,
+                minHeight: ProjectBoardLayoutMetrics.taskMetadataChipMinHeight,
+                alignment: .leading
+            )
+            .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .help(value)
     }
 }
 
