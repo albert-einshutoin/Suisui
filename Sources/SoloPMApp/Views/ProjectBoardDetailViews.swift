@@ -1453,12 +1453,20 @@ private struct BoardColumnView: View {
     }
 
     private func taskRow(_ task: ProjectBoardTask) -> some View {
-        BoardTaskCard(
-            task: task,
-            isSelected: selectedTaskID == task.id,
-            onOpenDetails: { onOpenTaskDetails(task.id) },
-            onMoveStatus: { status in onMoveTask(task.id, status) }
-        )
+        VStack(alignment: .leading, spacing: 4) {
+            if selectedTaskID == task.id {
+                Label("Selected", systemImage: "checkmark.circle.fill")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundColor(Color(nsColor: .labelColor))
+                    .accessibilityIdentifier("selected-task-indicator-\(task.id)")
+            }
+
+            BoardTaskCard(
+                task: task,
+                onOpenDetails: { onOpenTaskDetails(task.id) },
+                onMoveStatus: { status in onMoveTask(task.id, status) }
+            )
+        }
         .draggable(String(task.id)) {
             BoardTaskDragPreview(task: task)
         }
@@ -1603,7 +1611,6 @@ private struct InlineTaskComposer: View {
 
 private struct BoardTaskCard: View {
     let task: ProjectBoardTask
-    let isSelected: Bool
     let onOpenDetails: () -> Void
     let onMoveStatus: (ProjectTaskStatus) -> Void
     @State private var isPointerHovered = false
@@ -1611,7 +1618,7 @@ private struct BoardTaskCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button(action: onOpenDetails) {
-                TaskCardSelectableSummary(task: task, isSelected: isSelected, isPointerHovered: isPointerHovered)
+                TaskCardSelectableSummary(task: task, isPointerHovered: isPointerHovered)
             }
             .buttonStyle(.plain)
             .contentShape(RoundedRectangle(cornerRadius: 6))
@@ -1649,9 +1656,7 @@ private struct BoardTaskCard: View {
     }
 
     private var accessibilityValueText: String {
-        isSelected
-            ? "\(localizedDisplay("Selected")), \(accessibilityMetadataValue)"
-            : accessibilityMetadataValue
+        accessibilityMetadataValue
     }
 
     private var accessibilityMetadataValue: String {
@@ -1683,7 +1688,6 @@ private struct BoardTaskCard: View {
 
 private struct TaskCardSelectableSummary: View {
     let task: ProjectBoardTask
-    let isSelected: Bool
     let isPointerHovered: Bool
 
     var body: some View {
@@ -1697,14 +1701,6 @@ private struct TaskCardSelectableSummary: View {
                         .lineLimit(2)
                         .truncationMode(.tail)
                         .help(task.title)
-
-                    if isSelected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(Color(nsColor: .labelColor))
-                            .help("Selected")
-                            .accessibilityHidden(true)
-                    }
 
                     Spacer(minLength: 6)
 

@@ -1900,7 +1900,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("TaskCardSelectableSummary"))
         XCTAssertTrue(source.contains("TaskDragAffordance"))
         XCTAssertTrue(cardSource.contains("Button(action: onOpenDetails)"))
-        XCTAssertTrue(cardSource.contains("TaskCardSelectableSummary(task: task, isSelected: isSelected, isPointerHovered: isPointerHovered)"))
+        XCTAssertTrue(cardSource.contains("TaskCardSelectableSummary(task: task, isPointerHovered: isPointerHovered)"))
         XCTAssertTrue(cardSource.contains(".accessibilityElement(children: .combine)"))
         XCTAssertTrue(cardSource.contains(".buttonStyle(.plain)"))
         XCTAssertTrue(cardSource.contains(".accessibilityIdentifier(\"task-card-open-details-\\(task.id)\")"))
