@@ -102,8 +102,44 @@ final class VisualCaptureStabilityTests: XCTestCase {
         XCTAssertTrue(frame.contains("visibleFrame.minY"))
         XCTAssertTrue(frame.contains("kAXRoleAttribute"))
         XCTAssertTrue(frame.contains("kAXValueAttribute"))
-        XCTAssertTrue(frame.contains("replacingOccurrences(of: \"\\t\", with: \" \")"))
-        XCTAssertTrue(frame.contains("replacingOccurrences(of: \"\\n\", with: \" \")"))
+        XCTAssertTrue(frame.contains("identityFingerprintField"))
+        XCTAssertTrue(frame.contains("let bytes = Array(value.utf8)"))
+        XCTAssertTrue(frame.contains("return \"s\\(bytes.count):\\(encoded)\""))
+        XCTAssertFalse(frame.contains("replacingOccurrences(of: \"\\t\", with: \" \")"))
+        XCTAssertFalse(frame.contains("replacingOccurrences(of: \"\\n\", with: \" \")"))
+    }
+
+    func testAXIdentityFingerprintEncodingIsInjectiveForTransportCharacters() throws {
+        let source = try readPackageFile("script/ui_evidence_ax_target_frame_audit.swift")
+        let functionStart = try XCTUnwrap(source.range(of: "func identityFingerprintField(_ value: String?) -> String {"))
+        let functionEnd = try XCTUnwrap(
+            source.range(of: "\n}\n\nlet identityAttributes", range: functionStart.upperBound..<source.endIndex)
+        )
+        let functionSource = String(source[functionStart.lowerBound..<functionEnd.lowerBound]) + "\n}"
+        let root = packageRoot()
+        let fixture = root.appendingPathComponent(".build/ax-fingerprint-field-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixture) }
+
+        let harness = fixture.appendingPathComponent("main.swift")
+        try """
+        import Foundation
+
+        \(functionSource)
+
+        let collisionFixture: [String?] = ["A B", "A\\tB", "A\\nB", "A\\rB", "", nil]
+        collisionFixture.forEach { print(identityFingerprintField($0)) }
+        """.write(to: harness, atomically: true, encoding: .utf8)
+        let executable = fixture.appendingPathComponent("fingerprint-fixture")
+        let compile = try run(["/usr/bin/swiftc", harness.path, "-o", executable.path])
+        XCTAssertEqual(compile.status, 0, compile.output)
+
+        let result = try run([executable.path])
+        XCTAssertEqual(result.status, 0, result.output)
+        let fields = result.output.split(separator: "\n").map(String.init)
+        XCTAssertEqual(fields.count, 6, result.output)
+        XCTAssertEqual(Set(fields).count, fields.count, "transport-character identities must not collide")
+        XCTAssertEqual(fields, ["s3:412042", "s3:410942", "s3:410a42", "s3:410d42", "s0:", "n"])
     }
 
     func testDestinationPositionFailureRelaunchesFreshOwnedProcessAndFailsClosedWhenExhausted() throws {

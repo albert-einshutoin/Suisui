@@ -178,14 +178,15 @@ struct VisibleCandidate {
     let visibleFrame: CGRect
 }
 
-// Keep identity values in one TSV line. AX labels and values can contain user
-// newlines or tabs, so capture comparison must normalize transport characters
-// before exact fingerprint comparison.
-func tsvSafe(_ value: String?) -> String {
-    (value ?? "")
-        .replacingOccurrences(of: "\t", with: " ")
-        .replacingOccurrences(of: "\n", with: " ")
-        .replacingOccurrences(of: "\r", with: " ")
+// Length-prefixed UTF-8 hex keeps every identity field on one TSV line without
+// collapsing tabs, newlines, carriage returns, or absent values into the same
+// fingerprint. This must be injective because duplicate AX publications are
+// accepted only when their complete identities are exactly equal.
+func identityFingerprintField(_ value: String?) -> String {
+    guard let value else { return "n" }
+    let bytes = Array(value.utf8)
+    let encoded = bytes.map { String(format: "%02x", $0) }.joined()
+    return "s\(bytes.count):\(encoded)"
 }
 
 let identityAttributes: [CFString] = [
@@ -211,7 +212,7 @@ func candidateIdentityFingerprint(_ candidate: VisibleCandidate) -> String {
         candidate.visibleFrame.height
     )
     let identityFields = identityAttributes.map { attribute in
-        tsvSafe(stringValue(copyAttribute(candidate.element, attribute)))
+        identityFingerprintField(stringValue(copyAttribute(candidate.element, attribute)))
     }
     return ([geometryFields] + identityFields).joined(separator: "\t")
 }
