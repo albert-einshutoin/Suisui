@@ -1202,9 +1202,10 @@ persist_project_board_selection() {
   esac
 
   PROJECT_BOARD_SELECTION_OVERRIDE="project:$project_id"
-  # Task-specific identifiers plus subtree-scoped marker checks prevent one
-  # card's identifier from being combined with another card's metadata text.
-  PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details=>Capture launch screenshots|task-card-metadata-strip-$unscheduled_task_id=>$planned_label, $medium_label, $no_due_date_label|task-card-metadata-strip-$capture_task_id=>$planned_label, $high_label, $capture_due_date"
+  # SwiftUI combines each card into its parent button in the runtime AX tree.
+  # Bind title and metadata proof to that exact task button so a hidden child
+  # identifier or another card's text cannot authenticate the screenshot.
+  PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details-$capture_task_id=>Capture launch screenshots|task-card-open-details-$capture_task_id=>$planned_label, $high_label, $capture_due_date|task-card-open-details-$unscheduled_task_id=>$planned_label, $medium_label, $no_due_date_label"
   INBOX_VOICE_TASK_OVERRIDE="$inbox_voice_task_id"
   INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>Inbox classification actions"
   write_app_preference solopm.projectBoard.selectedDestination "$PROJECT_BOARD_SELECTION_OVERRIDE"
