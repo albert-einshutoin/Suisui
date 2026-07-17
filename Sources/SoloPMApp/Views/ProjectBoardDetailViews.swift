@@ -1615,11 +1615,11 @@ private struct BoardTaskCard: View {
             }
             .buttonStyle(.plain)
             .contentShape(RoundedRectangle(cornerRadius: 6))
-            // The button publishes a complete label, value, and hint while its
-            // visual descendants remain in one contained subtree. `.ignore`
-            // drops the explicit value on macOS 14; `.contain` preserves the
-            // parent marker without reintroducing nested `.combine` rendering.
-            .accessibilityElement(children: .contain)
+            // macOS 14 publishes this Button's explicit metadata value only
+            // when its visual label is combined. The inner metadata Text is AX
+            // hidden below, so this is one combination boundary rather than
+            // the nested combine tree that destabilized hosted rendering.
+            .accessibilityElement(children: .combine)
             .accessibilityLabel("Open task \(task.title)")
             .accessibilityValue(accessibilityValueText)
             .accessibilityHint("Opens task details in the inspector. Task inspector fields can then be edited without dragging.")

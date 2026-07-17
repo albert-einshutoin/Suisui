@@ -17,7 +17,7 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(cardSource.contains("localizedDisplay(task.status.title)"))
         XCTAssertTrue(cardSource.contains("localizedDisplay(task.priority.label)"))
         XCTAssertTrue(cardSource.contains("task.dueLabel.map(localizedDisplay) ?? localizedDisplay(\"No due date\")"))
-        XCTAssertTrue(cardSource.contains(".accessibilityElement(children: .contain)"))
+        XCTAssertTrue(cardSource.contains(".accessibilityElement(children: .combine)"))
         XCTAssertFalse(cardSource.contains(".accessibilityElement(children: .ignore)"))
         XCTAssertTrue(cardSource.contains(".accessibilityLabel(\"Open task \\(task.title)\")"))
     }
