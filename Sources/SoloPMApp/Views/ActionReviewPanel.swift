@@ -254,7 +254,7 @@ private struct ActionReviewHeader: View {
     }
 
     private var riskBadge: some View {
-        Text(riskLevel.rawValue.capitalized)
+        Text(localizedRiskLevel(riskLevel))
             .font(.caption)
             .foregroundStyle(riskLevel >= .write ? SoloPMTone.attention.color : .secondary)
             .lineLimit(1)
@@ -409,7 +409,7 @@ private struct ReviewActionTitleRow: View {
             )
         ) {
             Label {
-                Text(item.editedAction.tool.rawValue)
+                Text(localizedActionTool(item.editedAction.tool))
                     .lineLimit(2)
                     .truncationMode(.tail)
                     .fixedSize(horizontal: false, vertical: true)
@@ -417,7 +417,7 @@ private struct ReviewActionTitleRow: View {
                 Image(systemName: reviewIconName(for: item.editedAction.actionType))
             }
             .font(.subheadline)
-            .help(item.editedAction.tool.rawValue)
+            .help(localizedActionTool(item.editedAction.tool))
         }
     }
 

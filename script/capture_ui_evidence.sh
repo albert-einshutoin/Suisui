@@ -42,6 +42,7 @@ mkdir -p "$EVIDENCE_TMPDIR"
 export TMPDIR="$EVIDENCE_TMPDIR/"
 AX_MARKER_CHECKER="$EVIDENCE_TMPDIR/ui-evidence-ax-marker-checker.$$"
 AX_SCROLL_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-scroll-to.$$"
+AX_SCROLL_CONTAINER_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-scroll-container.$$"
 AX_TARGET_FRAME_AUDITOR="$EVIDENCE_TMPDIR/ui-evidence-ax-target-frame-auditor.$$"
 AX_PRESS_ELEMENT_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-press-element.$$"
 POINTER_PARKER="$EVIDENCE_TMPDIR/ui-evidence-pointer-park.$$"
@@ -60,6 +61,7 @@ SCHEDULE_WORKLOAD=0
 DONE_ANALYTICS=0
 PROJECT_BOARD_SELECTION_OVERRIDE=""
 PROJECT_BOARD_SELECTED_TASK_OVERRIDE=""
+SCHEDULE_MODE_OVERRIDE=""
 PROJECT_BOARD_TARGET_MARKERS=""
 INBOX_VOICE_TARGET_MARKERS=""
 APPEARANCE_OVERRIDE=""
@@ -165,6 +167,7 @@ cleanup() {
   fi
   rm -f "$AX_MARKER_CHECKER"
   rm -f "$AX_SCROLL_HELPER"
+  rm -f "$AX_SCROLL_CONTAINER_HELPER"
   rm -f "$AX_TARGET_FRAME_AUDITOR"
   rm -f "$AX_PRESS_ELEMENT_HELPER"
   rm -f "$POINTER_PARKER"
@@ -257,6 +260,9 @@ app_env_args() {
   fi
   if [[ -n "$PROJECT_BOARD_SELECTED_TASK_OVERRIDE" ]]; then
     args+=("SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID=$PROJECT_BOARD_SELECTED_TASK_OVERRIDE")
+  fi
+  if [[ -n "$SCHEDULE_MODE_OVERRIDE" ]]; then
+    args+=("SOLOPM_VISUAL_EVIDENCE_SCHEDULE_MODE=$SCHEDULE_MODE_OVERRIDE")
   fi
   if [[ -n "$APPEARANCE_OVERRIDE" ]]; then
     args+=("SOLOPM_APPEARANCE_PREFERENCE=$APPEARANCE_OVERRIDE")
@@ -553,6 +559,21 @@ prepare_ax_scroll_helper() {
     return
   fi
   /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_scroll_to.swift" -o "$AX_SCROLL_HELPER"
+}
+
+prepare_ax_scroll_container_helper() {
+  if [[ -x "$AX_SCROLL_CONTAINER_HELPER" ]]; then
+    return
+  fi
+  /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_scroll_container.swift" -o "$AX_SCROLL_CONTAINER_HELPER"
+}
+
+scroll_ax_container_down() {
+  local identifier="$1"
+  prepare_ax_scroll_container_helper
+  SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+    SOLOPM_UI_EVIDENCE_AX_SCROLL_EVENTS=10 \
+    "$AX_SCROLL_CONTAINER_HELPER" "$EVIDENCE_APP_PID" "$identifier" >/dev/null
 }
 
 prepare_ax_target_frame_auditor() {
@@ -1518,6 +1539,8 @@ capture_project_board_destination() {
   local scroll_target_identifier="${7:-}"
   local target_audit_identifier="${8:-}"
   local post_scroll_target_markers="${9:-}"
+  local schedule_mode_override="${10:-}"
+  local scroll_container_identifier="${11:-}"
   local route_attempt
   local marker_diagnostic
   local launch_destination="$selected_destination"
@@ -1526,6 +1549,7 @@ capture_project_board_destination() {
   APPEARANCE_OVERRIDE="$appearance"
   PROJECT_BOARD_SELECTION_OVERRIDE="$launch_destination"
   PROJECT_BOARD_SELECTED_TASK_OVERRIDE="$selected_task_id"
+  SCHEDULE_MODE_OVERRIDE="$schedule_mode_override"
   SETTINGS_WINDOW_OVERRIDE=""
   SETTINGS_TAB_OVERRIDE=""
   VOICE_COMMAND_WINDOW_OVERRIDE=""
@@ -1560,12 +1584,14 @@ capture_project_board_destination() {
       return 1
     fi
     sleep 0.25
-
     destination_status=0
+
     # Typed route overrides are the production deep-link contract. Launching
     # the exact route avoids depending on whether a SwiftUI List has published
     # an off-screen project row into the hosted runner's AX tree.
-    wait_for_project_board_destination "$label" "$target_markers" 2>>"$marker_diagnostic" || destination_status=$?
+    if [[ "$destination_status" -eq 0 ]]; then
+      wait_for_project_board_destination "$label" "$target_markers" 2>>"$marker_diagnostic" || destination_status=$?
+    fi
     if [[ "$destination_status" -eq 0 ]]; then
       rm -f "$marker_diagnostic"
       PROJECT_BOARD_SELECTION_OVERRIDE="$selected_destination"
@@ -1586,7 +1612,15 @@ capture_project_board_destination() {
   # Route markers can exist outside the current ScrollView viewport. Scroll the
   # evidence-specific landmark into view so captures of the same route prove a
   # distinct visual state instead of producing duplicate raster baselines.
-  scroll_ax_target_into_view "$scroll_target_identifier" "$label"
+  if [[ -n "$scroll_container_identifier" ]]; then
+    # Some SwiftUI descendants do not enter the visible AX subtree until their
+    # containing ScrollView moves. Materialize that region first, then use the
+    # exact target helper to settle on the evidence landmark.
+    scroll_ax_container_down "$scroll_container_identifier"
+    sleep 0.5
+  else
+    scroll_ax_target_into_view "$scroll_target_identifier" "$label"
+  fi
   sleep 0.5
   if [[ -n "$post_scroll_target_markers" ]]; then
     wait_for_project_board_destination "$label after scroll" "$post_scroll_target_markers"
@@ -1783,7 +1817,7 @@ write_schedule_cockpit_evidence_file() {
     printf -- '- Generated at: `%s`\n' "$generated_at"
     printf -- '- Source commit: `%s`\n' "$source_commit"
     printf -- '- Screen Recording preflight: `script/capture_ui_evidence.sh --doctor`\n'
-    printf -- '- Target markers: `schedule-workflow`, `schedule-week-grid`, `schedule-week-time-axis-grid`\n'
+    printf -- '- Target markers: `schedule-workflow`, `schedule-mode-overview`, `schedule-mini-calendar`\n'
     printf '\n'
     printf '%s\n' '## Schedule Cockpit'
     printf '\n'
@@ -2076,9 +2110,10 @@ P0_TODAY_TARGET_MARKERS="today-workflow=>$TODAY_ROUTE_LABEL|today-briefing-panel
 INBOX_VOICE_ROUTE_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL"
 P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>Inbox classification actions"
 PROJECTS_TARGET_MARKERS="sidebar-destination-projects=>$PROJECTS_ROUTE_LABEL|projects-portfolio-overview=>$PROJECTS_ROUTE_LABEL"
-SCHEDULE_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-week-grid=>$WEEKLY_GRID_LABEL|schedule-week-time-axis-grid=>"
-SCHEDULE_COCKPIT_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-week-grid=>$WEEKLY_GRID_LABEL|schedule-week-time-axis-grid=>"
-SCHEDULE_WORKLOAD_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-workload-dashboard=>|schedule-workload-attention-banner=>|schedule-workload-day-detail=>"
+SCHEDULE_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-mode-overview=>|schedule-mini-calendar=>"
+SCHEDULE_COCKPIT_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-mode-overview=>|schedule-mini-calendar=>"
+SCHEDULE_WORKLOAD_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-mode-workload=>|schedule-mini-calendar=>"
+SCHEDULE_WORKLOAD_DETAIL_MARKERS="schedule-workload-attention-banner=>|schedule-workload-day-detail=>"
 DONE_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL"
 DONE_ANALYTICS_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL|done-completion-heatmap=>|done-productivity-insight=>|done-local-rule-insight=>"
 VOICE_COMMAND_TARGET_MARKERS="voice-command-root=>$VOICE_COMMAND_LABEL"
@@ -2103,8 +2138,8 @@ if [[ "$P0_WORKFLOWS" == "1" ]]; then
 fi
 
 if [[ "$SCHEDULE_COCKPIT" == "1" ]]; then
-  capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_COCKPIT_TARGET_MARKERS" "" "schedule-week-grid" "schedule-week-grid"
-  capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_COCKPIT_TARGET_MARKERS" "" "schedule-week-grid" "schedule-week-grid"
+  capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_COCKPIT_TARGET_MARKERS" "" "schedule-mini-calendar" "schedule-mini-calendar"
+  capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_COCKPIT_TARGET_MARKERS" "" "schedule-mini-calendar" "schedule-mini-calendar"
 
   GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   write_schedule_cockpit_evidence_file "$GENERATED_AT" "$SCHEDULE_LIGHT_SCREENSHOT" "$SCHEDULE_DARK_SCREENSHOT"
@@ -2116,8 +2151,8 @@ if [[ "$SCHEDULE_COCKPIT" == "1" ]]; then
 fi
 
 if [[ "$SCHEDULE_WORKLOAD" == "1" ]]; then
-  capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard"
-  capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard"
+  capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "" "schedule-workload-attention-banner" "$SCHEDULE_WORKLOAD_DETAIL_MARKERS" workload schedule-workflow
+  capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "" "schedule-workload-attention-banner" "$SCHEDULE_WORKLOAD_DETAIL_MARKERS" workload schedule-workflow
 
   GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   write_schedule_workload_evidence_file "$GENERATED_AT" "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT"
@@ -2154,10 +2189,10 @@ capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "I
 capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_ROUTE_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail" "$INBOX_VOICE_TARGET_MARKERS"
 capture_project_board_destination light projects "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS" "" "" "projects-portfolio-overview"
 capture_project_board_destination dark projects "$PROJECTS_OVERVIEW_DARK_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS" "" "" "projects-portfolio-overview"
-capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS" "" "schedule-week-grid" "schedule-week-grid"
-capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS" "" "schedule-week-grid" "schedule-week-grid"
-capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard"
-capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard"
+capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS" "" "schedule-mini-calendar" "schedule-mini-calendar"
+capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS" "" "schedule-mini-calendar" "schedule-mini-calendar"
+capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "" "schedule-workload-attention-banner" "$SCHEDULE_WORKLOAD_DETAIL_MARKERS" workload schedule-workflow
+capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "" "schedule-workload-attention-banner" "$SCHEDULE_WORKLOAD_DETAIL_MARKERS" workload schedule-workflow
 capture_project_board_destination light done "$DONE_LIGHT_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS" "" "" "done-workflow"
 capture_project_board_destination dark done "$DONE_DARK_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS" "" "" "done-workflow"
 capture_settings_overview light "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT"

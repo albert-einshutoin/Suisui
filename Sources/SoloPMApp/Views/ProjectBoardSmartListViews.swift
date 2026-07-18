@@ -59,6 +59,7 @@ private struct SmartListSidebarRow: View {
         .buttonStyle(.plain)
         .listRowBackground(isSelected ? Color.accentColor.opacity(0.12) : nil)
         .help(LocalizedStringKey(smartList.name))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier("project-board-smart-list-row-\(smartList.id)")
         .accessibilityLabel(localizedDisplay("Smart list %@", localizedDisplay(smartList.name)))
         .accessibilityHint("Shows tasks matching this saved filter in the board detail.")

@@ -5954,6 +5954,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("AX Runtime Schedule Due"))
         XCTAssertTrue(script.contains("AX Runtime Schedule Unscheduled"))
         XCTAssertTrue(script.contains("schedule-workflow"))
+        XCTAssertTrue(script.contains("schedule-mode-overview"))
+        XCTAssertTrue(script.contains("schedule-mode-option-timeline"))
         XCTAssertTrue(script.contains("schedule-week-grid"))
         XCTAssertTrue(script.contains("schedule-status-banner"))
         XCTAssertTrue(script.contains("schedule-unscheduled-add-draft-$unscheduled_task_id"))
@@ -5976,7 +5978,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("payload_json LIKE '%\\\"requiresApproval\\\":true%'"))
         XCTAssertTrue(script.contains("status='planned' AND due_at IS NULL"))
         XCTAssertTrue(script.contains("status='planned' AND due_at='$runtime_day_key'"))
-        XCTAssertTrue(script.contains("OK: runtime schedule cockpit smoke covered weekly grid, unscheduled add-to-draft, and approval-gated Calendar apply"))
+        XCTAssertTrue(script.contains("OK: runtime schedule cockpit smoke covered overview-to-timeline navigation, unscheduled add-to-draft, and approval-gated Calendar apply"))
         XCTAssertFalse(script.contains(":memory:"))
         XCTAssertFalse(script.contains("not implemented yet"))
         XCTAssertFalse(script.contains("fake success"))
@@ -6015,7 +6017,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("fake Git and GitHub runners"))
         XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
         XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH=\"$database_path\""))
-        XCTAssertTrue(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
+        XCTAssertFalse(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK=1"))
         XCTAssertFalse(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_FIXTURE_BOOKMARK"))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
@@ -7075,7 +7077,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
         XCTAssertTrue(script.contains("/usr/bin/open \"${open_args[@]}\""))
         XCTAssertTrue(script.contains("--env"))
-        XCTAssertTrue(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
+        XCTAssertFalse(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
         XCTAssertTrue(script.contains("\"SOLOPM_DATABASE_PATH=$database_path\""))
         XCTAssertTrue(script.contains("wait_for_visible_windows()"))
         XCTAssertTrue(script.contains("wait_for_database_table \"projects\""))
@@ -7093,7 +7095,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SELECT CASE WHEN count(*) = 7 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=project:$seed_project_id"))
         XCTAssertTrue(script.contains("printf 'SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1\\n'"))
-        XCTAssertTrue(script.contains("printf 'SOLOPM_LAUNCH_RECOVERY_MODE=1\\n'"))
+        XCTAssertFalse(script.contains("printf 'SOLOPM_LAUNCH_RECOVERY_MODE=1\\n'"))
         XCTAssertTrue(script.contains("evidence_command_file=\"$ROOT_DIR/.tmp/voiceover-review/create-evidence-command.sh\""))
         XCTAssertTrue(script.contains("worksheet_file=\"$ROOT_DIR/.tmp/voiceover-review/voiceover-worksheet.md\""))
         XCTAssertTrue(script.contains("pending_evidence_file=\"$ROOT_DIR/.tmp/voiceover-review/accessibility-voiceover-pending-$SOURCE_COMMIT.md\""))
@@ -7153,7 +7155,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("launch_voiceover_candidate_for_evidence()"))
         XCTAssertTrue(script.contains("/usr/bin/open -n -F \"$REPO_ROOT/dist/$APP_NAME.app\" \\"))
         XCTAssertTrue(script.contains("--env SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \\"))
-        XCTAssertTrue(script.contains("--env SOLOPM_LAUNCH_RECOVERY_MODE=1 \\"))
+        XCTAssertFalse(script.contains("--env SOLOPM_LAUNCH_RECOVERY_MODE=1 \\"))
         XCTAssertTrue(script.contains("--env \"SOLOPM_DATABASE_PATH=$EXPECTED_DATABASE_PATH\" \\"))
         XCTAssertTrue(script.contains("--env \"SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$EXPECTED_SELECTED_DESTINATION\""))
         XCTAssertTrue(script.contains("wait_for_voiceover_candidate_process"))
@@ -8303,8 +8305,8 @@ final class ReleasePipelineTests: XCTestCase {
             "today": "today-workflow",
             "inbox-voice": "inbox-voice-intake-detail",
             "projects-overview": "projects-portfolio-overview",
-            "schedule": "schedule-week-grid",
-            "schedule-workload": "schedule-workload-dashboard",
+            "schedule": "schedule-mini-calendar",
+            "schedule-workload": "schedule-workload-attention-banner",
             "done": "done-workflow",
             "settings-overview": "settings-status-overview",
             "settings-integrations": "settings-google-calendar-id-save-flow",
@@ -8610,8 +8612,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("\"inbox-voice-intake-detail\""))
         XCTAssertTrue(captureScript.contains("post_scroll_target_markers"))
         XCTAssertTrue(captureScript.contains("wait_for_project_board_destination \"$label after scroll\" \"$post_scroll_target_markers\""))
-        XCTAssertTrue(captureScript.contains("\"schedule-week-grid\""))
-        XCTAssertTrue(captureScript.contains("\"schedule-workload-dashboard\""))
+        XCTAssertTrue(captureScript.contains("\"schedule-mini-calendar\""))
+        XCTAssertTrue(captureScript.contains("SOLOPM_VISUAL_EVIDENCE_SCHEDULE_MODE=$SCHEDULE_MODE_OVERRIDE"))
+        XCTAssertTrue(captureScript.contains("\"schedule-workload-attention-banner\""))
         XCTAssertTrue(captureScript.contains("capture_settings_sync light \"$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT\""))
         XCTAssertTrue(captureScript.contains("capture_settings_sync dark \"$SETTINGS_INTEGRATIONS_DARK_SCREENSHOT\""))
         XCTAssertTrue(captureScript.contains("'Review captured note', 'backlog'"))

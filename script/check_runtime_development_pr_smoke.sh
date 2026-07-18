@@ -356,7 +356,6 @@ launch_app_for_development_detail() {
     SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG="$runtime_blocked_external_write_log" \
     REAL_GIT="$REAL_GIT" \
     SOLOPM_FORCE_PROJECT_BOARD_FALLBACK=1 \
-    SOLOPM_LAUNCH_RECOVERY_MODE=1 \
     SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
     SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID="$seed_task_id" \
@@ -418,7 +417,6 @@ launch_app_for_assistant_queue() {
     SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG="$runtime_blocked_external_write_log" \
     REAL_GIT="$REAL_GIT" \
     SOLOPM_FORCE_PROJECT_BOARD_FALLBACK=1 \
-    SOLOPM_LAUNCH_RECOVERY_MODE=1 \
     SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="assistant-queue" \
     "$APP_BINARY" >>"$APP_LOG_FILE" 2>&1 &

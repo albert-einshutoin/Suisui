@@ -801,6 +801,25 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(japaneseKeys.contains("Start with %@, then check milestone %@."))
     }
 
+    func testInboxVoiceMetadataAndActionPlanEnumsDoNotExposeRawValues() throws {
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift")
+        let reviewSource = try readPackageFile("Sources/SoloPMApp/Views/ActionReviewPanel.swift")
+        let voiceSource = try readPackageFile("Sources/SoloPMApp/Views/VoiceCaptureView.swift")
+        let localizedDisplaySource = try readPackageFile("Sources/SoloPMApp/LocalizedDisplay.swift")
+
+        XCTAssertFalse(workflowSource.contains("Text(capture.sourceKind.rawValue)"))
+        XCTAssertFalse(workflowSource.contains("value: capture.sourceKind.rawValue"))
+        XCTAssertFalse(workflowSource.contains("value: capture.classificationStatus.rawValue"))
+        XCTAssertFalse(workflowSource.contains("value: capture.transcriptionStatus.rawValue"))
+        XCTAssertFalse(reviewSource.contains("Text(riskLevel.rawValue.capitalized)"))
+        XCTAssertFalse(reviewSource.contains("Text(item.editedAction.tool.rawValue)"))
+        XCTAssertFalse(voiceSource.contains("Text(plan.riskLevel.rawValue.capitalized)"))
+        XCTAssertFalse(voiceSource.contains("Text(action.tool.rawValue)"))
+        XCTAssertTrue(localizedDisplaySource.contains("func localizedInboxCaptureSource"))
+        XCTAssertTrue(localizedDisplaySource.contains("func localizedActionTool"))
+        XCTAssertTrue(localizedDisplaySource.contains("func localizedRiskLevel"))
+    }
+
     func testThemePickerIsOwnedOnlyBySettingsAppearanceSectionAcrossAppSources() throws {
         let expectedOwner = "Sources/SoloPMApp/Views/SettingsAppearanceSection.swift"
         let markers = [
@@ -1005,6 +1024,9 @@ final class AppExperienceSourceTests: XCTestCase {
         let scheduleSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowScheduleView.swift")
         let doneSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowDoneView.swift")
         let voiceSource = try readPackageFile("Sources/SoloPMApp/Views/VoiceCaptureView.swift")
+        let commandPaletteSource = try readPackageFile("Sources/SoloPMApp/Views/CommandPaletteView.swift")
+        let smartListSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardSmartListViews.swift")
+        let boardDetailSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
 
         XCTAssertTrue(settingsSource.contains("Image(systemName: row.state.systemImage)"))
         XCTAssertTrue(settingsSource.contains("Text(localizedSettingsDisplay(row.title))"))
@@ -1016,6 +1038,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceSource.contains("@Environment(\\.accessibilityReduceMotion)"))
         XCTAssertTrue(voiceSource.contains("SoloPMMotion.animation"))
         XCTAssertTrue(voiceSource.contains("Image(systemName: stateSystemImage)"))
+        XCTAssertTrue(commandPaletteSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
+        XCTAssertTrue(smartListSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
+        XCTAssertTrue(boardDetailSource.contains("@Environment(\\.accessibilityReduceMotion) private var reduceMotion"))
+        XCTAssertTrue(boardDetailSource.contains("reduceMotion ? nil : .snappy(duration: 0.16)"))
+        XCTAssertTrue(doneSource.contains("heatmapMarkerDiameter"))
+        XCTAssertTrue(doneSource.contains("done-heatmap-legend"))
 
         for nonAssistantSource in [settingsSource, todaySource, scheduleSource, doneSource] {
             XCTAssertFalse(
@@ -1433,6 +1461,30 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(layoutSmoke.contains("source \"$AX_HELPERS\""))
         XCTAssertTrue(crudSmoke.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
         XCTAssertTrue(crudSmoke.contains("source \"$AX_HELPERS\""))
+    }
+
+    func testProjectBoardWindowRestorationUsesNarrowPresentationOnlyBridge() throws {
+        let appSource = try readAppShellSource()
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let bridgeSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardWindowStateBridge.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardWindowPresentationState.swift")
+
+        XCTAssertTrue(appSource.contains("ProjectBoardWindowStateBridge("))
+        XCTAssertTrue(appSource.contains("restoresPrimaryWindow: isPrimaryOnboardingWindow"))
+        XCTAssertTrue(boardSource.contains("@SceneStorage(\"projectBoard.sidebarHidden\")"))
+        XCTAssertTrue(boardSource.contains("@SceneStorage(\"projectBoard.userRequestedInspector\")"))
+        XCTAssertTrue(boardSource.contains("@AppStorage(\"projectBoard.primary.sidebarHidden\")"))
+        XCTAssertTrue(boardSource.contains("@AppStorage(\"projectBoard.primary.userRequestedInspector\")"))
+        XCTAssertTrue(bridgeSource.contains("NSViewRepresentable"))
+        XCTAssertTrue(bridgeSource.contains("NSWindow.didMoveNotification"))
+        XCTAssertTrue(bridgeSource.contains("NSWindow.didResizeNotification"))
+        XCTAssertTrue(bridgeSource.contains("ProjectBoardWindowPresentationState"))
+        XCTAssertTrue(bridgeSource.contains("solopm.projectBoard.primaryWindowFrame"))
+        XCTAssertTrue(coreSource.contains("public struct ProjectBoardWindowFrame"))
+        XCTAssertTrue(coreSource.contains("public static let currentVersion = 1"))
+        XCTAssertFalse(coreSource.contains("public var taskTitle"))
+        XCTAssertFalse(coreSource.contains("public var transcript"))
+        XCTAssertFalse(coreSource.contains("public var approvalToken"))
     }
 
     func testProjectBoardToolbarDisplayModeOnlyAllowsIconAndTextOrIconOnly() throws {
@@ -1954,7 +2006,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("struct TaskStatusAccentRail"))
         XCTAssertTrue(source.contains(".onHover { isPointerHovered = $0 }"))
         XCTAssertTrue(source.contains(".shadow(color: Color.black.opacity(isPointerHovered ? 0.10 : 0.04)"))
-        XCTAssertTrue(source.contains(".animation(.snappy(duration: 0.16), value: isPointerHovered)"))
+        XCTAssertTrue(source.contains(".animation(reduceMotion ? nil : .snappy(duration: 0.16), value: isPointerHovered)"))
     }
 
     func testTaskCardsUseSampleInspiredNonOverlappingMetadataStrip() throws {
@@ -2451,16 +2503,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-review-status\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityElement(children: .contain)"))
         XCTAssertTrue(workflowSource.contains("Transcript only"))
-        XCTAssertTrue(workflowSource.contains("Transcript-only voice capture, duration \\(capture.durationLabel), waveform preview"))
+        XCTAssertTrue(workflowSource.contains("Transcript-only voice capture, duration %@, waveform preview"))
         XCTAssertFalse(workflowSource.contains("Playback unavailable in this MVP"))
         XCTAssertFalse(workflowSource.contains("Button {} label:"))
         XCTAssertTrue(workflowSource.contains(".accessibilityLabel(title)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityValue(value)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityLabel(\"Voice intake detail for \\(taskTitle)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityValue(captureAccessibilityValue(capture))"))
-        XCTAssertTrue(workflowSource.contains("capture.durationLabel"))
+        XCTAssertTrue(workflowSource.contains("localizedInboxCaptureDuration(capture.durationSeconds)"))
         XCTAssertTrue(workflowSource.contains("capture.transcript"))
-        XCTAssertTrue(workflowSource.contains("capture.classificationStatus.rawValue"))
+        XCTAssertTrue(workflowSource.contains("localizedInboxCaptureClassification(capture.classificationStatus)"))
+        XCTAssertTrue(workflowSource.contains("localizedInboxCaptureTranscription(capture.transcriptionStatus)"))
+        XCTAssertTrue(workflowSource.contains("localizedInboxCaptureSource(capture.sourceKind)"))
         XCTAssertTrue(workflowSource.contains("Transcript failed. Review the original voice memo before converting."))
         XCTAssertTrue(workflowSource.contains("AI interpretation unavailable because transcription failed."))
         XCTAssertTrue(workflowSource.contains("No AI interpretation yet."))
@@ -3479,13 +3533,13 @@ final class AppExperienceSourceTests: XCTestCase {
         let scheduleWorkflowSource = String(workflowSource[scheduleWorkflowStart.lowerBound..<scheduleWorkflowEnd.lowerBound])
         XCTAssertTrue(scheduleWorkflowSource.contains("viewModel.prepareScheduleDraft(on: workloadReferenceDate)"))
         XCTAssertLessThan(
-            try XCTUnwrap(scheduleWorkflowSource.range(of: "ScheduleDraftApprovalControls(")).lowerBound,
+            try XCTUnwrap(scheduleWorkflowSource.range(of: "scheduleWorkflowArea")).lowerBound,
             try XCTUnwrap(scheduleWorkflowSource.range(of: "ScheduleMiniCalendarPanel(")).lowerBound
         )
-        XCTAssertLessThan(
-            try XCTUnwrap(scheduleWorkflowSource.range(of: "ScheduleDraftApprovalControls(")).lowerBound,
-            try XCTUnwrap(scheduleWorkflowSource.range(of: "ScheduleDraftPanel(viewModel: viewModel)")).lowerBound
-        )
+        let workflowAreaStart = try XCTUnwrap(scheduleWorkflowSource.range(of: "private var scheduleWorkflowArea"))
+        let generateButtonStart = try XCTUnwrap(scheduleWorkflowSource.range(of: "private var generateDraftButton"))
+        let workflowAreaSource = String(scheduleWorkflowSource[workflowAreaStart.lowerBound..<generateButtonStart.lowerBound])
+        XCTAssertTrue(workflowAreaSource.contains("ScheduleDraftApprovalControls("))
         XCTAssertFalse(scheduleWorkflowSource.contains("applyScheduleDraftToCalendar"))
         XCTAssertTrue(modelSource.contains("public struct ScheduleDraft"))
         XCTAssertTrue(coreSource.contains("public func unscheduledScheduleTasks"))
@@ -3521,7 +3575,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workloadSource.contains("inboxUntriagedCount"))
         XCTAssertTrue(workloadSource.contains("private static func isInboxProject"))
 
-        XCTAssertTrue(workflowSource.contains("WeeklyScheduleCockpitPanel("))
+        XCTAssertTrue(workflowSource.contains("WeeklyScheduleTimelinePanel("))
         XCTAssertTrue(workflowSource.contains("let scheduleReadModel = viewModel.derivedReadModels.schedule"))
         XCTAssertTrue(workflowSource.contains("cockpit: scheduleReadModel.weeklyCockpit"))
         XCTAssertTrue(workflowSource.contains("ScheduleMiniCalendarPanel("))
@@ -3552,10 +3606,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("DailyWorkloadPanel("))
         XCTAssertTrue(workflowSource.contains("let workloadOverview = scheduleReadModel.workloadOverview"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-dashboard\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-previous-week\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-next-week\")"))
+        XCTAssertFalse(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-previous-week\")"))
+        XCTAssertFalse(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-next-week\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-day-cell-\\(day.dateKey)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-count-badge-\\(day.dateKey)-total\")"))
+        XCTAssertTrue(workflowSource.contains("day.totalTaskCount != day.openTaskCount"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-count-badge-\\(day.dateKey)-in-progress\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-count-badge-\\(day.dateKey)-blocked\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-count-badge-\\(day.dateKey)-missed\")"))
@@ -3569,7 +3624,6 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("schedule-workload-light.png"))
         XCTAssertTrue(captureScript.contains("schedule-workload-dark.png"))
         XCTAssertTrue(captureScript.contains("schedule-workflow=>$SCHEDULE_ROUTE_LABEL"))
-        XCTAssertTrue(captureScript.contains("schedule-workload-dashboard=>"))
         XCTAssertTrue(captureScript.contains("schedule-workload-attention-banner=>"))
         XCTAssertTrue(captureScript.contains("schedule-workload-day-detail=>"))
         XCTAssertTrue(captureScript.contains("docs/release/evidence/schedule-workload-screenshots.md"))
@@ -3580,9 +3634,32 @@ final class AppExperienceSourceTests: XCTestCase {
         let dashboardStart = try XCTUnwrap(workflowSource.range(of: "private struct DailyWorkloadPanel"))
         let dashboardSource = String(workflowSource[dashboardStart.lowerBound...])
         XCTAssertFalse(dashboardSource.contains("applyScheduleDraftToCalendar"))
-        let weeklyStart = try XCTUnwrap(workflowSource.range(of: "private struct WeeklyScheduleCockpitPanel"))
+        let weeklyStart = try XCTUnwrap(workflowSource.range(of: "private struct WeeklyScheduleTimelinePanel"))
         let weeklyWorkflowSource = String(workflowSource[weeklyStart.lowerBound...])
         XCTAssertFalse(weeklyWorkflowSource.contains("applyScheduleDraftToCalendar"))
+    }
+
+    func testScheduleUsesProgressiveModesWithOneSharedWeekNavigation() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowScheduleView.swift")
+
+        XCTAssertTrue(source.contains("private enum ScheduleSurfaceMode"))
+        XCTAssertTrue(source.contains("case overview"))
+        XCTAssertTrue(source.contains("case timeline"))
+        XCTAssertTrue(source.contains("case workload"))
+        XCTAssertTrue(source.contains("ScheduleSurfaceMode.visualEvidenceInitialMode()"))
+        XCTAssertTrue(source.contains("SOLOPM_VISUAL_EVIDENCE_SCHEDULE_MODE"))
+        XCTAssertTrue(source.contains("SOLOPM_VISUAL_EVIDENCE_REFERENCE_INSTANT"))
+        XCTAssertTrue(source.contains("Button { selectedMode = mode }"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-mode-picker\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-mode-option-\\(mode.rawValue)\")"))
+        XCTAssertTrue(source.contains(".accessibilityAddTraits(selectedMode == mode ? .isSelected : [])"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-mode-\\(selectedMode.rawValue)\")"))
+        XCTAssertTrue(source.contains("WeeklyScheduleTimelinePanel("))
+        XCTAssertTrue(source.contains("WeeklyScheduleAgendaPanel(day: scheduleReadModel.weeklyCockpit.agendaDay)"))
+        XCTAssertTrue(source.contains("WeeklyScheduleReminderPanel("))
+        XCTAssertEqual(source.components(separatedBy: "ScheduleMiniCalendarPanel(").count - 1, 1)
+        XCTAssertFalse(source.contains("schedule-workload-previous-week"))
+        XCTAssertFalse(source.contains("schedule-workload-next-week"))
     }
 
     func testAppAndCLIShareDefaultDatabaseLocation() throws {
@@ -5376,8 +5453,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("SCHEDULE_COCKPIT=1"))
         XCTAssertTrue(script.contains("write_schedule_cockpit_evidence_file"))
         XCTAssertTrue(script.contains("script/capture_ui_evidence.sh --schedule-cockpit"))
-        XCTAssertTrue(script.contains("schedule-week-time-axis-grid=>"))
-        XCTAssertTrue(script.contains("SCHEDULE_COCKPIT_TARGET_MARKERS=\"schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-week-grid=>$WEEKLY_GRID_LABEL|schedule-week-time-axis-grid=>\""))
+        XCTAssertTrue(script.contains("schedule-mode-overview=>"))
+        XCTAssertTrue(script.contains("SCHEDULE_COCKPIT_TARGET_MARKERS=\"schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-mode-overview=>|schedule-mini-calendar=>\""))
+        XCTAssertTrue(script.contains("SCHEDULE_MODE_OVERRIDE=\"$schedule_mode_override\""))
+        XCTAssertTrue(script.contains("SOLOPM_VISUAL_EVIDENCE_SCHEDULE_MODE=$SCHEDULE_MODE_OVERRIDE"))
+        XCTAssertTrue(script.contains("SCHEDULE_WORKLOAD_TARGET_MARKERS=\"schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-mode-workload=>|schedule-mini-calendar=>\""))
+        XCTAssertTrue(script.contains("SCHEDULE_WORKLOAD_DETAIL_MARKERS=\"schedule-workload-attention-banner=>|schedule-workload-day-detail=>\""))
+        XCTAssertTrue(script.contains("\"$SCHEDULE_WORKLOAD_DETAIL_MARKERS\" workload schedule-workflow"))
+        XCTAssertTrue(script.contains("ui_evidence_ax_scroll_container.swift"))
         XCTAssertTrue(script.contains("capture_project_board_destination light schedule \"$SCHEDULE_LIGHT_SCREENSHOT\" \"Schedule cockpit\" \"$SCHEDULE_COCKPIT_TARGET_MARKERS\""))
         XCTAssertTrue(script.contains("capture_project_board_destination dark schedule \"$SCHEDULE_DARK_SCREENSHOT\" \"Schedule cockpit\" \"$SCHEDULE_COCKPIT_TARGET_MARKERS\""))
         XCTAssertTrue(script.contains("if [[ \"$SCHEDULE_COCKPIT\" == \"1\" ]]"))
