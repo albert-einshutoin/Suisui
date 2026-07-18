@@ -527,7 +527,6 @@ write_voiceover_evidence_command() {
     printf '%s\n' '  terminate_voiceover_candidate'
     printf '%s\n' '  /usr/bin/open -n -F "$REPO_ROOT/dist/$APP_NAME.app" \'
     printf '%s\n' '    --env SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \'
-    printf '%s\n' '    --env SOLOPM_LAUNCH_RECOVERY_MODE=1 \'
     printf '%s\n' '    --env "SOLOPM_DATABASE_PATH=$EXPECTED_DATABASE_PATH" \'
     printf '%s\n' '    --env "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$EXPECTED_SELECTED_DESTINATION"'
     printf '%s\n' '  wait_for_voiceover_candidate_process'
@@ -664,8 +663,6 @@ open_candidate_app() {
     "$APP_BUNDLE"
     --env
     SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1
-    --env
-    SOLOPM_LAUNCH_RECOVERY_MODE=1
     --env
     "SOLOPM_DATABASE_PATH=$database_path"
   )
@@ -887,7 +884,6 @@ pending_evidence_file="$ROOT_DIR/.tmp/voiceover-review/accessibility-voiceover-p
 pending_evidence_source="$(voiceover_evidence_source_for_candidate "$database_path" "$seed_project_id")"
 {
   printf 'SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1\n'
-  printf 'SOLOPM_LAUNCH_RECOVERY_MODE=1\n'
   printf 'SOLOPM_DATABASE_PATH=%q\n' "$database_path"
   printf 'SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=%q\n' "project:$seed_project_id"
   printf 'SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT=%q\n' "$SOURCE_COMMIT"
@@ -914,5 +910,5 @@ if [[ "$launch_app" -eq 1 ]]; then
   printf 'App launched for manual VoiceOver review with SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:%s"\n' "$seed_project_id"
 else
   printf 'Launch skipped. To open the same candidate manually, run:\n'
-  printf '/usr/bin/open -n -F %q --env SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 --env SOLOPM_LAUNCH_RECOVERY_MODE=1 --env %q --env %q\n' "$APP_BUNDLE" "SOLOPM_DATABASE_PATH=$database_path" "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=project:$seed_project_id"
+  printf '/usr/bin/open -n -F %q --env SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 --env %q --env %q\n' "$APP_BUNDLE" "SOLOPM_DATABASE_PATH=$database_path" "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=project:$seed_project_id"
 fi
