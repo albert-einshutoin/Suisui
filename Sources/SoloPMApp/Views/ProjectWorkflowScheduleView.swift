@@ -10,6 +10,21 @@ private enum ScheduleSurfaceMode: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    static func visualEvidenceInitialMode(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> ScheduleSurfaceMode {
+        // Visual evidence launches one mode per isolated process so a hosted
+        // screenshot does not depend on timing an intermediate interaction.
+        // Requiring the fixed-instant evidence context prevents this override
+        // from changing a normal product launch.
+        guard environment["SOLOPM_VISUAL_EVIDENCE_REFERENCE_INSTANT"] != nil,
+              let rawValue = environment["SOLOPM_VISUAL_EVIDENCE_SCHEDULE_MODE"],
+              let mode = ScheduleSurfaceMode(rawValue: rawValue) else {
+            return .overview
+        }
+        return mode
+    }
+
     var title: LocalizedStringKey {
         switch self {
         case .overview: "Overview"
@@ -23,7 +38,7 @@ struct ScheduleWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     @State private var workloadReferenceDate = VisualEvidenceRuntimeContext.referenceDate()
     @State private var selectedWorkloadDayKey: String?
-    @State private var selectedMode: ScheduleSurfaceMode = .overview
+    @State private var selectedMode = ScheduleSurfaceMode.visualEvidenceInitialMode()
 
     var body: some View {
         let scheduleReadModel = viewModel.derivedReadModels.schedule

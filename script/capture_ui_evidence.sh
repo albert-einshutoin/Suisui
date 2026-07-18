@@ -60,6 +60,7 @@ SCHEDULE_WORKLOAD=0
 DONE_ANALYTICS=0
 PROJECT_BOARD_SELECTION_OVERRIDE=""
 PROJECT_BOARD_SELECTED_TASK_OVERRIDE=""
+SCHEDULE_MODE_OVERRIDE=""
 PROJECT_BOARD_TARGET_MARKERS=""
 INBOX_VOICE_TARGET_MARKERS=""
 APPEARANCE_OVERRIDE=""
@@ -257,6 +258,9 @@ app_env_args() {
   fi
   if [[ -n "$PROJECT_BOARD_SELECTED_TASK_OVERRIDE" ]]; then
     args+=("SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID=$PROJECT_BOARD_SELECTED_TASK_OVERRIDE")
+  fi
+  if [[ -n "$SCHEDULE_MODE_OVERRIDE" ]]; then
+    args+=("SOLOPM_VISUAL_EVIDENCE_SCHEDULE_MODE=$SCHEDULE_MODE_OVERRIDE")
   fi
   if [[ -n "$APPEARANCE_OVERRIDE" ]]; then
     args+=("SOLOPM_APPEARANCE_PREFERENCE=$APPEARANCE_OVERRIDE")
@@ -1518,8 +1522,7 @@ capture_project_board_destination() {
   local scroll_target_identifier="${7:-}"
   local target_audit_identifier="${8:-}"
   local post_scroll_target_markers="${9:-}"
-  local mode_option_identifier="${10:-}"
-  local mode_option_label="${11:-}"
+  local schedule_mode_override="${10:-}"
   local route_attempt
   local marker_diagnostic
   local launch_destination="$selected_destination"
@@ -1528,6 +1531,7 @@ capture_project_board_destination() {
   APPEARANCE_OVERRIDE="$appearance"
   PROJECT_BOARD_SELECTION_OVERRIDE="$launch_destination"
   PROJECT_BOARD_SELECTED_TASK_OVERRIDE="$selected_task_id"
+  SCHEDULE_MODE_OVERRIDE="$schedule_mode_override"
   SETTINGS_WINDOW_OVERRIDE=""
   SETTINGS_TAB_OVERRIDE=""
   VOICE_COMMAND_WINDOW_OVERRIDE=""
@@ -1563,17 +1567,6 @@ capture_project_board_destination() {
     fi
     sleep 0.25
     destination_status=0
-
-    if [[ -n "$mode_option_identifier" ]]; then
-      # Progressive Schedule modes intentionally render one detail surface at
-      # a time. Select the requested segment through the live AX tree so each
-      # baseline proves the same path a keyboard/VoiceOver user can operate.
-      if ! ax_click_sidebar_destination "$APP_NAME" "$mode_option_identifier" "$mode_option_label"; then
-        echo "missing AX mode option: $mode_option_identifier" >>"$marker_diagnostic"
-        destination_status=1
-      fi
-      sleep 0.5
-    fi
 
     # Typed route overrides are the production deep-link contract. Launching
     # the exact route avoids depending on whether a SwiftUI List has published
@@ -2067,7 +2060,6 @@ case "$EVIDENCE_LOCALE" in
     PROJECTS_ROUTE_LABEL="Projects"
     SCHEDULE_ROUTE_LABEL="Schedule"
     WEEKLY_GRID_LABEL="Weekly schedule grid"
-    WORKLOAD_MODE_LABEL="Workload"
     DONE_ROUTE_LABEL="Done"
     VOICE_COMMAND_LABEL="Voice Command"
     ;;
@@ -2077,7 +2069,6 @@ case "$EVIDENCE_LOCALE" in
     PROJECTS_ROUTE_LABEL="プロジェクト"
     SCHEDULE_ROUTE_LABEL="予定"
     WEEKLY_GRID_LABEL="週間スケジュールグリッド"
-    WORKLOAD_MODE_LABEL="負荷"
     DONE_ROUTE_LABEL="完了"
     VOICE_COMMAND_LABEL="音声コマンド"
     ;;
@@ -2133,8 +2124,8 @@ if [[ "$SCHEDULE_COCKPIT" == "1" ]]; then
 fi
 
 if [[ "$SCHEDULE_WORKLOAD" == "1" ]]; then
-  capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard" "" "schedule-mode-option-workload" "$WORKLOAD_MODE_LABEL"
-  capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard" "" "schedule-mode-option-workload" "$WORKLOAD_MODE_LABEL"
+  capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard" "" workload
+  capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard" "" workload
 
   GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   write_schedule_workload_evidence_file "$GENERATED_AT" "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT"
@@ -2173,8 +2164,8 @@ capture_project_board_destination light projects "$PROJECTS_OVERVIEW_LIGHT_SCREE
 capture_project_board_destination dark projects "$PROJECTS_OVERVIEW_DARK_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS" "" "" "projects-portfolio-overview"
 capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS" "" "schedule-mini-calendar" "schedule-mini-calendar"
 capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS" "" "schedule-mini-calendar" "schedule-mini-calendar"
-capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard" "" "schedule-mode-option-workload" "$WORKLOAD_MODE_LABEL"
-capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard" "" "schedule-mode-option-workload" "$WORKLOAD_MODE_LABEL"
+capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard" "" workload
+capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard" "" workload
 capture_project_board_destination light done "$DONE_LIGHT_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS" "" "" "done-workflow"
 capture_project_board_destination dark done "$DONE_DARK_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS" "" "" "done-workflow"
 capture_settings_overview light "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT"
