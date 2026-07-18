@@ -133,7 +133,7 @@
         "height": 724
       },
       "axFrameAudit": true,
-      "axTargetIdentifier": "schedule-workload-dashboard",
+      "axTargetIdentifier": "schedule-workload-attention-banner",
       "artifacts": {
         "light": "schedule-workload-light.png",
         "dark": "schedule-workload-dark.png"

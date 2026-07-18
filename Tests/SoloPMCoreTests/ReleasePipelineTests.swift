@@ -8306,7 +8306,7 @@ final class ReleasePipelineTests: XCTestCase {
             "inbox-voice": "inbox-voice-intake-detail",
             "projects-overview": "projects-portfolio-overview",
             "schedule": "schedule-mini-calendar",
-            "schedule-workload": "schedule-workload-dashboard",
+            "schedule-workload": "schedule-workload-attention-banner",
             "done": "done-workflow",
             "settings-overview": "settings-status-overview",
             "settings-integrations": "settings-google-calendar-id-save-flow",
