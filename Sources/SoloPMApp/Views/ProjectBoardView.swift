@@ -64,6 +64,7 @@ struct ProjectBoardView: View {
     @StateObject private var viewModel: ProjectBoardViewModel
     @ObservedObject private var sceneCoordinator: ProjectBoardSceneCoordinator
     private let sceneID: UUID
+    private let restoresPrimaryPresentationState: Bool
     private let taskAutomationSettings: () -> TaskAutoExecutionSettings
     private let appSettings: () -> AppSettings
     private let smartListStore: (any SmartListStore)?
@@ -73,6 +74,8 @@ struct ProjectBoardView: View {
     @SceneStorage(ProjectBoardScenePersistence.routeStorageKey) private var currentSceneRouteRawValue = ""
     @SceneStorage("projectBoard.userRequestedInspector") private var userRequestedInspector = false
     @SceneStorage("projectBoard.sidebarHidden") private var storedSidebarHidden = false
+    @AppStorage("projectBoard.primary.userRequestedInspector") private var primaryUserRequestedInspector = false
+    @AppStorage("projectBoard.primary.sidebarHidden") private var primarySidebarHidden = false
     @State private var displayMode: ProjectBoardDisplayMode = .board
     @State private var selectedDestination: ProjectBoardSidebarDestination? = .today
     @State private var projectBoardWindowWidth: CGFloat = 0
@@ -101,6 +104,7 @@ struct ProjectBoardView: View {
     init(
         viewModel: ProjectBoardViewModel,
         sceneID: UUID,
+        restoresPrimaryPresentationState: Bool,
         sceneCoordinator: ProjectBoardSceneCoordinator = .shared,
         taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings = { .default },
         appSettings: @escaping () -> AppSettings = { .default },
@@ -111,6 +115,7 @@ struct ProjectBoardView: View {
         _viewModel = StateObject(wrappedValue: viewModel)
         _sceneCoordinator = ObservedObject(wrappedValue: sceneCoordinator)
         self.sceneID = sceneID
+        self.restoresPrimaryPresentationState = restoresPrimaryPresentationState
         self.taskAutomationSettings = taskAutomationSettings
         self.appSettings = appSettings
         self.smartListStore = smartListStore
@@ -243,6 +248,7 @@ struct ProjectBoardView: View {
         )
         .task {
             sceneCoordinator.register(sceneID: sceneID)
+            restorePrimaryPresentationStateIfNeeded()
             columnVisibility = storedSidebarHidden ? .detailOnly : .all
             LaunchPerformanceSignposts.measureFirstBoardLoadOnce {
                 viewModel.load()
@@ -274,6 +280,12 @@ struct ProjectBoardView: View {
         }
         .onChange(of: sceneCoordinator.deliveryRevision) { _, _ in
             consumePendingSceneOpenRequests()
+        }
+        .onChange(of: restoresPrimaryPresentationState) { _, restoresPrimary in
+            if restoresPrimary {
+                restorePrimaryPresentationStateIfNeeded()
+                columnVisibility = storedSidebarHidden ? .detailOnly : .all
+            }
         }
         .onChange(of: selectedDestination) { _, destination in
             allowsCompactInspectorPresentation = false
@@ -763,6 +775,7 @@ struct ProjectBoardView: View {
 
     private func requestInspectorPresentation() {
         userRequestedInspector = true
+        persistPrimaryPresentationStateIfNeeded()
         allowsCompactInspectorPresentation = true
     }
 
@@ -787,11 +800,13 @@ struct ProjectBoardView: View {
         )
         projectBoardWindowWidth = width
         userRequestedInspector = intent.userRequested
+        persistPrimaryPresentationStateIfNeeded()
         allowsCompactInspectorPresentation = intent.allowsCompactPresentation
     }
 
     private func dismissInspector() {
         userRequestedInspector = false
+        persistPrimaryPresentationStateIfNeeded()
         allowsCompactInspectorPresentation = false
     }
 
@@ -812,8 +827,24 @@ struct ProjectBoardView: View {
         withTransaction(transaction) {
             columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
             storedSidebarHidden = columnVisibility == .detailOnly
+            persistPrimaryPresentationStateIfNeeded()
             refreshProjectBoardColumnsAfterToolbarDisplayModeChange()
         }
+    }
+
+    private func restorePrimaryPresentationStateIfNeeded() {
+        guard restoresPrimaryPresentationState else { return }
+        // SceneStorage keeps simultaneous windows isolated. OS window
+        // restoration is deliberately disabled, so a primary-only copy carries
+        // safe presentation preferences across a completely fresh launch.
+        userRequestedInspector = primaryUserRequestedInspector
+        storedSidebarHidden = primarySidebarHidden
+    }
+
+    private func persistPrimaryPresentationStateIfNeeded() {
+        guard restoresPrimaryPresentationState else { return }
+        primaryUserRequestedInspector = userRequestedInspector
+        primarySidebarHidden = storedSidebarHidden
     }
 
     private func refreshProjectBoardColumnsAfterToolbarDisplayModeChange() {

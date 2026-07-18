@@ -383,12 +383,18 @@ private struct ProjectBoardWindowRootView: View {
             ProjectBoardView(
                 viewModel: viewModel,
                 sceneID: sceneID,
+                restoresPrimaryPresentationState: isPrimaryOnboardingWindow,
                 sceneCoordinator: sceneCoordinator,
                 taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution },
                 appSettings: { settingsViewModel.settings },
                 developmentAutomationReviewSession: AppRuntimeFactory.makeReviewSessionViewModel
             )
-            .background(ProjectBoardWindowStateBridge(sceneID: sceneID))
+            .background(
+                ProjectBoardWindowStateBridge(
+                    sceneID: sceneID,
+                    restoresPrimaryWindow: isPrimaryOnboardingWindow
+                )
+            )
         }
     }
 }
@@ -541,6 +547,7 @@ private struct ProjectBoardFallbackRootView: View {
                 ProjectBoardView(
                     viewModel: viewModel,
                     sceneID: sceneID,
+                    restoresPrimaryPresentationState: false,
                     sceneCoordinator: ProjectBoardSceneCoordinator.shared,
                     taskAutomationSettings: taskAutomationSettings,
                     appSettings: appSettings,

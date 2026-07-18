@@ -7,9 +7,10 @@ import SwiftUI
 /// `SceneStorage`; this bridge persists only the backing window frame.
 struct ProjectBoardWindowStateBridge: NSViewRepresentable {
     let sceneID: UUID
+    let restoresPrimaryWindow: Bool
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(sceneID: sceneID)
+        Coordinator(sceneID: sceneID, restoresPrimaryWindow: restoresPrimaryWindow)
     }
 
     func makeNSView(context: Context) -> ProjectBoardWindowAttachmentView {
@@ -21,7 +22,10 @@ struct ProjectBoardWindowStateBridge: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: ProjectBoardWindowAttachmentView, context: Context) {
-        context.coordinator.update(sceneID: sceneID)
+        context.coordinator.update(
+            sceneID: sceneID,
+            restoresPrimaryWindow: restoresPrimaryWindow
+        )
         if let window = nsView.window {
             context.coordinator.attach(to: window)
         }
@@ -39,20 +43,35 @@ struct ProjectBoardWindowStateBridge: NSViewRepresentable {
     final class Coordinator: NSObject {
         private weak var window: NSWindow?
         private var sceneID: UUID
+        private var restoresPrimaryWindow: Bool
         private var observers: [NSObjectProtocol] = []
         private var pendingSave: Task<Void, Never>?
         private var hasRestoredCurrentWindow = false
         private let defaults: UserDefaults
 
-        init(sceneID: UUID, defaults: UserDefaults = .standard) {
+        init(
+            sceneID: UUID,
+            restoresPrimaryWindow: Bool,
+            defaults: UserDefaults = .standard
+        ) {
             self.sceneID = sceneID
+            self.restoresPrimaryWindow = restoresPrimaryWindow
             self.defaults = defaults
         }
 
-        func update(sceneID: UUID) {
-            guard self.sceneID != sceneID else { return }
-            detach(savingCurrentFrame: true)
-            self.sceneID = sceneID
+        func update(sceneID: UUID, restoresPrimaryWindow: Bool) {
+            if self.sceneID != sceneID {
+                detach(savingCurrentFrame: true)
+                self.sceneID = sceneID
+            }
+            guard self.restoresPrimaryWindow != restoresPrimaryWindow else { return }
+            self.restoresPrimaryWindow = restoresPrimaryWindow
+            // The root learns whether it owns the primary scene on appear.
+            // Re-run restoration once when that stable role becomes available.
+            if restoresPrimaryWindow, let window {
+                hasRestoredCurrentWindow = false
+                restoreFrameIfAvailable(on: window)
+            }
         }
 
         func attach(to nextWindow: NSWindow?) {
@@ -88,7 +107,10 @@ struct ProjectBoardWindowStateBridge: NSViewRepresentable {
                 width: ProjectBoardWindowFrame.minimumWidth,
                 height: ProjectBoardWindowFrame.minimumHeight
             )
-            guard let data = defaults.data(forKey: storageKey),
+            let data = restoresPrimaryWindow
+                ? defaults.data(forKey: primaryStorageKey) ?? defaults.data(forKey: storageKey)
+                : defaults.data(forKey: storageKey)
+            guard let data,
                   let state = ProjectBoardWindowPresentationState.decodeCurrent(from: data) else {
                 return
             }
@@ -139,10 +161,19 @@ struct ProjectBoardWindowStateBridge: NSViewRepresentable {
             let state = ProjectBoardWindowPresentationState(frame: ProjectBoardWindowFrame(frame))
             guard let data = try? JSONEncoder().encode(state) else { return }
             defaults.set(data, forKey: storageKey)
+            if restoresPrimaryWindow {
+                // OS restoration stays disabled to avoid stale SwiftUI windows.
+                // Only the first board uses this stable cross-launch fallback.
+                defaults.set(data, forKey: primaryStorageKey)
+            }
         }
 
         private var storageKey: String {
             "solopm.projectBoard.windowFrame.\(sceneID.uuidString)"
+        }
+
+        private var primaryStorageKey: String {
+            "solopm.projectBoard.primaryWindowFrame"
         }
     }
 }
