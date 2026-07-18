@@ -81,6 +81,7 @@ public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
     public var subtitle: String
     public var hasWorkspaceDirectory: Bool
     public var hasWorkspaceBookmark: Bool
+    public var workspacePath: String?
     public var workspaceDisplayName: String?
     public var columns: [ProjectBoardColumn]
     public var artifacts: [ProjectBoardArtifact]
@@ -93,6 +94,7 @@ public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
         subtitle: String,
         hasWorkspaceDirectory: Bool = false,
         hasWorkspaceBookmark: Bool = false,
+        workspacePath: String? = nil,
         workspaceDisplayName: String? = nil,
         columns: [ProjectBoardColumn],
         artifacts: [ProjectBoardArtifact] = [],
@@ -104,6 +106,7 @@ public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
         self.subtitle = subtitle
         self.hasWorkspaceDirectory = hasWorkspaceDirectory
         self.hasWorkspaceBookmark = hasWorkspaceBookmark
+        self.workspacePath = workspacePath
         self.workspaceDisplayName = workspaceDisplayName
         self.columns = columns
         self.artifacts = artifacts

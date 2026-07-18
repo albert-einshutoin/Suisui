@@ -253,6 +253,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         let loadedProject = try XCTUnwrap(stores.board.loadSnapshot().projects.first { $0.id == project.id })
         XCTAssertTrue(loadedProject.hasWorkspaceDirectory)
         XCTAssertTrue(loadedProject.hasWorkspaceBookmark)
+        XCTAssertEqual(loadedProject.workspacePath, "/tmp/solopm-launch")
         XCTAssertEqual(loadedProject.workspaceDisplayName, "solopm-launch")
         XCTAssertNotEqual(loadedProject.workspaceDisplayName, "/tmp/solopm-launch")
 
