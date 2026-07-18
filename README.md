@@ -1,5 +1,7 @@
 # SoloPM
 
+[日本語版 README](README.ja.md)
+
 SoloPM is a macOS-first personal PM app that turns voice or text into projects, tasks, calendar events, reminders, notifications, and local work artifacts after user review.
 
 ![SoloPM public alpha preview](docs/assets/screenshots/solopm-alpha-preview.svg)

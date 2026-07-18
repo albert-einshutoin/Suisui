@@ -79,6 +79,51 @@ final class Phase5DocumentationTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(alpha.components(separatedBy: "Workflow ").count - 1, 3)
     }
 
+    func testJapanesePublicAlphaEntryPointsExplainSetupSafetyAndLimits() throws {
+        let englishReadme = try readPackageFile("README.md")
+        let japaneseReadme = try readPackageFile("README.ja.md")
+        let englishAlpha = try readPackageFile("docs/release/public-alpha.md")
+        let japaneseAlpha = try readPackageFile("docs/release/public-alpha-ja.md")
+
+        XCTAssertTrue(englishReadme.contains("[日本語版 README](README.ja.md)"))
+        XCTAssertTrue(englishAlpha.contains("[日本語版](public-alpha-ja.md)"))
+
+        for marker in [
+            "最初の5分",
+            "./script/build_and_run.sh",
+            "Voice Command",
+            "承認後に実行",
+            "Keychain",
+            "STT",
+            "TTS",
+            "Finder",
+            "できること",
+            "まだできないこと",
+            "既知の制限",
+            "手動VoiceOver",
+            "Notarization"
+        ] {
+            XCTAssertTrue(japaneseReadme.contains(marker), "Japanese README must include \(marker)")
+        }
+
+        for marker in [
+            "対象ユーザー",
+            "主要ワークフロー",
+            "承認後に実行",
+            "ローカルファースト",
+            "既知の制限",
+            "フィードバック",
+            "チーム",
+            "クラウド同期",
+            "外部SaaS"
+        ] {
+            XCTAssertTrue(japaneseAlpha.contains(marker), "Japanese alpha notes must include \(marker)")
+        }
+
+        XCTAssertNil(japaneseReadme.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
+        XCTAssertNil(japaneseAlpha.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
+    }
+
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
