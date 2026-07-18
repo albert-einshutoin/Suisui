@@ -7628,6 +7628,38 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testUnrelatedAutomationAndReceiptStateDoesNotRepublishTodayDerivedModels() throws {
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: VolatileExecutionReceiptStore()
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = try XCTUnwrap(viewModel.createTask(
+            title: "Ship release",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-22T18:00:00Z"
+        ))
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        viewModel.refreshDerivedReadModels(on: referenceDate, calendar: utcCalendar())
+        let initialModels = viewModel.derivedReadModels
+        let initialPreviewBuildCount = viewModel.dailyPlanningReviewPreviewBuildCount
+
+        _ = viewModel.prepareTaskAutomationReview(
+            settings: TaskAutoExecutionSettings(isEnabled: true, mode: .reviewOnly, cadence: .manual),
+            trigger: .manual,
+            referenceDate: referenceDate,
+            calendar: utcCalendar()
+        )
+        viewModel.setExecutionReceiptHistorySearchText("reviewed")
+
+        XCTAssertEqual(viewModel.derivedReadModels, initialModels)
+        XCTAssertEqual(viewModel.dailyPlanningReviewPreviewBuildCount, initialPreviewBuildCount)
+    }
+
+    @MainActor
     func testProjectBoardViewModelPreparesScheduleDraftWithoutMutatingTasks() throws {
         let store = try makeStore()
         let viewModel = ProjectBoardViewModel(store: store)
@@ -8314,7 +8346,362 @@ final class ProjectBoardStoreTests: XCTestCase {
         viewModel.load()
 
         XCTAssertEqual(viewModel.errorMessage, "Project board unavailable")
+        XCTAssertEqual(viewModel.fatalFailure, .initialLoadFailed("Project board unavailable"))
+        XCTAssertEqual(
+            viewModel.errorPresentation,
+            .fatal(message: "Project board unavailable", canRetry: true)
+        )
         XCTAssertFalse(viewModel.isEmptyProjectStateVisible)
+    }
+
+    @MainActor
+    func testTaskSaveFailureRemainsInlineAndPreservesBoardContextForRetry() throws {
+        let store = PartiallyFailingBulkMoveProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        viewModel.selectedProjectID = 1
+        viewModel.selectedTaskID = 1
+        let selectedTask = try XCTUnwrap(viewModel.selectedTask)
+
+        viewModel.updateSelectedTask(
+            title: "Edited title",
+            detail: selectedTask.detail,
+            status: selectedTask.status,
+            priority: selectedTask.priority,
+            dueDate: nil
+        )
+
+        XCTAssertEqual(viewModel.snapshot, store.snapshot)
+        XCTAssertEqual(viewModel.selectedTaskID, selectedTask.id)
+        XCTAssertNil(viewModel.fatalFailure)
+        XCTAssertEqual(viewModel.taskSaveFailure(taskID: selectedTask.id), .saveFailed("Project board unavailable"))
+        XCTAssertEqual(
+            viewModel.errorPresentation,
+            .inline(message: "Project board unavailable", canRetry: true)
+        )
+        XCTAssertEqual(viewModel.taskSaveFailure(taskID: selectedTask.id)?.message, "Project board unavailable")
+        XCTAssertEqual(
+            viewModel.rootErrorPresentation,
+            .inline(message: "Project board unavailable", canRetry: true)
+        )
+    }
+
+    @MainActor
+    func testReadinessFailureIsRedactedInlineAndRetryRechecksProvider() {
+        let sync = RecoveringReadinessGoogleCalendarSync()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            googleCalendarSync: sync
+        )
+        viewModel.load()
+        sync.shouldFail = true
+
+        viewModel.refreshGoogleCalendarSyncStatus()
+
+        XCTAssertEqual(sync.statusCallCount, 2)
+        XCTAssertEqual(
+            viewModel.failure,
+            .readinessCheckFailed("calendar readiness failed token=[REDACTED_SECRET]")
+        )
+        XCTAssertEqual(
+            viewModel.errorPresentation,
+            .inline(message: "calendar readiness failed token=[REDACTED_SECRET]", canRetry: true)
+        )
+
+        sync.shouldFail = false
+        viewModel.retryCurrentFailure()
+
+        XCTAssertEqual(sync.statusCallCount, 3)
+        XCTAssertNil(viewModel.failure)
+    }
+
+    @MainActor
+    func testReadinessFailureRemainsVisibleWhenRetryStillFails() {
+        let sync = RecoveringReadinessGoogleCalendarSync()
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore(), googleCalendarSync: sync)
+        viewModel.load()
+        sync.shouldFail = true
+        viewModel.refreshGoogleCalendarSyncStatus()
+
+        viewModel.retryCurrentFailure()
+
+        XCTAssertEqual(sync.statusCallCount, 3)
+        XCTAssertEqual(
+            viewModel.errorPresentation,
+            .inline(message: "calendar readiness failed token=[REDACTED_SECRET]", canRetry: true)
+        )
+    }
+
+    @MainActor
+    func testTaskSaveRetryReplaysCapturedDraftInsteadOfReloadingOnly() throws {
+        let store = PartiallyFailingBulkMoveProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        viewModel.selectedProjectID = 1
+        viewModel.selectedTaskID = 1
+
+        viewModel.updateSelectedTask(
+            title: "Retried title",
+            detail: "Retried detail",
+            status: .planned,
+            priority: .high,
+            dueDate: nil
+        )
+        store.shouldFailUpdates = false
+
+        viewModel.retryCurrentFailure()
+
+        XCTAssertEqual(viewModel.selectedTask?.title, "Retried title")
+        XCTAssertEqual(viewModel.selectedTask?.detail, "Retried detail")
+        XCTAssertEqual(viewModel.selectedTask?.priority, .high)
+        XCTAssertNil(viewModel.failure)
+    }
+
+    @MainActor
+    func testTaskSaveFailureMovesToRootAndExactRetryRestoresCapturedSelectionAfterNavigation() {
+        let store = PartiallyFailingBulkMoveProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        viewModel.selectedProjectID = 1
+        viewModel.selectedTaskID = 1
+        viewModel.updateSelectedTask(
+            title: "Captured retry title",
+            detail: "Captured retry detail",
+            status: .planned,
+            priority: .high,
+            dueDate: nil
+        )
+
+        viewModel.selectedTaskID = 2
+
+        XCTAssertNotNil(viewModel.rootErrorPresentation)
+        XCTAssertNil(viewModel.taskSaveFailure(taskID: 2))
+
+        store.shouldFailUpdates = false
+        viewModel.retryCurrentFailure()
+
+        XCTAssertEqual(viewModel.selectedTaskID, 1)
+        XCTAssertEqual(viewModel.selectedTask?.title, "Captured retry title")
+        XCTAssertEqual(viewModel.selectedTask?.detail, "Captured retry detail")
+        XCTAssertEqual(viewModel.selectedTask?.priority, .high)
+        XCTAssertNil(viewModel.failure)
+    }
+
+    @MainActor
+    func testTaskSaveRetryBecomesUnavailableWhenCapturedTaskDisappears() {
+        let store = PartiallyFailingBulkMoveProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        viewModel.selectedTaskID = 1
+        viewModel.updateSelectedTask(
+            title: "Unavailable retry target",
+            detail: "",
+            status: .planned,
+            priority: .medium,
+            dueDate: nil
+        )
+        store.removeTaskForTest(id: 1)
+        viewModel.load()
+
+        XCTAssertEqual(
+            viewModel.errorPresentation,
+            .inline(message: "Project board unavailable", canRetry: false)
+        )
+        XCTAssertNil(viewModel.failureActionLabel)
+        viewModel.retryCurrentFailure()
+        XCTAssertNotNil(viewModel.failure)
+    }
+
+    @MainActor
+    func testSQLiteTriggerFailurePublishesTaskRetryContextBeforeFailureAndSurvivesReload() throws {
+        let databaseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("solopm-project-board-retry-\(UUID().uuidString).sqlite")
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: databaseURL)
+        }
+        let connection = try SQLiteConnection(path: databaseURL.path)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteProjectBoardStore(connection: connection)
+        let projectID = try XCTUnwrap(try store.loadSnapshot().projects.first?.id)
+        let task = try store.createTask(ProjectBoardTaskDraft(
+            projectID: projectID,
+            title: "Persisted title",
+            status: .planned
+        ))
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        viewModel.selectedProjectID = projectID
+        viewModel.selectedTaskID = task.id
+        try connection.execute(
+            "CREATE TRIGGER fail_task_update BEFORE UPDATE ON tasks "
+                + "WHEN OLD.id = \(task.id) BEGIN SELECT RAISE(FAIL, 'injected recoverable task save failure'); END;"
+        )
+
+        viewModel.updateSelectedTask(
+            title: "Rejected title",
+            detail: "",
+            status: .planned,
+            priority: .medium,
+            dueDate: nil
+        )
+        // Runtime store notifications can reload immediately after SQLite
+        // reports a write failure; the retry context must survive that load.
+        viewModel.load()
+
+        XCTAssertEqual(
+            try connection.queryRows("SELECT title FROM tasks WHERE id = \(task.id);").first?["title"],
+            "Persisted title"
+        )
+        XCTAssertEqual(
+            viewModel.failure,
+            .saveFailed("injected recoverable task save failure")
+        )
+        XCTAssertEqual(
+            viewModel.errorPresentation,
+            .inline(message: "injected recoverable task save failure", canRetry: true)
+        )
+        XCTAssertEqual(
+            viewModel.taskSaveFailure(taskID: task.id),
+            .saveFailed("injected recoverable task save failure")
+        )
+        XCTAssertEqual(viewModel.failureActionLabel, "Retry")
+
+        try connection.execute("DROP TRIGGER fail_task_update;")
+        viewModel.retryCurrentFailure()
+        XCTAssertEqual(
+            try connection.queryRows("SELECT title FROM tasks WHERE id = \(task.id);").first?["title"],
+            "Rejected title"
+        )
+        XCTAssertNil(viewModel.failure)
+    }
+
+    @MainActor
+    func testCorrectedTaskSaveClearsPreviousFailureWithoutUsingRetryButton() {
+        let store = PartiallyFailingBulkMoveProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        viewModel.selectedProjectID = 1
+        viewModel.selectedTaskID = 1
+        viewModel.updateSelectedTask(
+            title: "First failed title",
+            detail: "",
+            status: .planned,
+            priority: .medium,
+            dueDate: nil
+        )
+        store.shouldFailUpdates = false
+
+        viewModel.updateSelectedTask(
+            title: "Corrected title",
+            detail: "",
+            status: .planned,
+            priority: .medium,
+            dueDate: nil
+        )
+
+        XCTAssertEqual(viewModel.selectedTask?.title, "Corrected title")
+        XCTAssertNil(viewModel.failure)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testProjectUpdateRetryReplaysCapturedTitleInsteadOfReloadingOnly() {
+        let store = PartiallyFailingBulkMoveProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        viewModel.selectedProjectID = 1
+
+        viewModel.updateSelectedProject(title: "Retried project title")
+        store.shouldFailUpdates = false
+        viewModel.retryCurrentFailure()
+
+        XCTAssertEqual(viewModel.selectedProject?.title, "Retried project title")
+        XCTAssertNil(viewModel.failure)
+    }
+
+    @MainActor
+    func testTaskDeleteRetryDeletesOnlyTheCapturedTaskID() {
+        let store = PartiallyFailingBulkMoveProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        viewModel.selectedTaskID = 1
+
+        viewModel.deleteSelectedTask()
+        XCTAssertNotNil(viewModel.rootErrorPresentation)
+        XCTAssertNil(viewModel.taskSaveFailure(taskID: 1))
+        viewModel.selectedTaskID = 2
+        store.shouldFailDeletes = false
+        viewModel.retryCurrentFailure()
+
+        XCTAssertEqual(store.deleteTaskAttempts, [1, 1])
+        XCTAssertFalse(viewModel.snapshot.projects.flatMap(\.tasks).contains { $0.id == 1 })
+        XCTAssertTrue(viewModel.snapshot.projects.flatMap(\.tasks).contains { $0.id == 2 })
+        XCTAssertNil(viewModel.failure)
+    }
+
+    @MainActor
+    func testTaskMoveRetryPreservesCapturedTaskIDAndDestinationStatus() {
+        let store = PartiallyFailingBulkMoveProjectBoardStore()
+        store.shouldFailMoves = true
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+
+        viewModel.moveTask(id: 1, to: .blocked)
+        XCTAssertNotNil(viewModel.rootErrorPresentation)
+        XCTAssertNil(viewModel.taskSaveFailure(taskID: 1))
+        viewModel.selectedTaskID = 2
+        store.shouldFailMoves = false
+        viewModel.retryCurrentFailure()
+
+        XCTAssertEqual(store.moveTaskAttempts.map(\.id), [1, 1])
+        XCTAssertEqual(store.moveTaskAttempts.map(\.status), [.blocked, .blocked])
+        XCTAssertEqual(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == 1 }?.status, .blocked)
+        XCTAssertEqual(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == 2 }?.status, .planned)
+        XCTAssertNil(viewModel.failure)
+    }
+
+    @MainActor
+    func testGoogleCalendarRetryPreservesApprovalTokenAndApprovalRequiredCannotRetry() {
+        let retryingSync = RetryingGoogleCalendarSync(behavior: .fail)
+        let retryingViewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            googleCalendarSync: retryingSync
+        )
+        retryingViewModel.load()
+
+        XCTAssertNil(retryingViewModel.syncDueTasksToGoogleCalendar(approvalToken: "approval-123"))
+        retryingSync.behavior = .succeed
+        retryingViewModel.retryCurrentFailure()
+
+        XCTAssertEqual(retryingSync.approvalTokenIDs, ["approval-123", "approval-123"])
+        XCTAssertNil(retryingViewModel.failure)
+
+        let approvalRequiredSync = RetryingGoogleCalendarSync(behavior: .approvalRequired)
+        let approvalRequiredViewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            googleCalendarSync: approvalRequiredSync
+        )
+        approvalRequiredViewModel.load()
+        XCTAssertNil(approvalRequiredViewModel.syncDueTasksToGoogleCalendar(approvalToken: "rejected-token"))
+
+        XCTAssertNil(approvalRequiredViewModel.failureActionLabel)
+        XCTAssertEqual(
+            approvalRequiredViewModel.errorPresentation,
+            .inline(
+                message: "Google Calendar sync requires approval before writing events.",
+                canRetry: false
+            )
+        )
+        approvalRequiredViewModel.retryCurrentFailure()
+        XCTAssertEqual(approvalRequiredSync.approvalTokenIDs, ["rejected-token"])
+
+        let missingApprovalViewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            googleCalendarSync: RetryingGoogleCalendarSync(behavior: .succeed)
+        )
+        missingApprovalViewModel.load()
+        XCTAssertNil(missingApprovalViewModel.syncDueTasksToGoogleCalendar(approvalToken: nil))
+        XCTAssertNil(missingApprovalViewModel.failureActionLabel)
     }
 
     @MainActor
@@ -8855,6 +9242,11 @@ private struct ProjectBoardSecretError: Error, CustomStringConvertible {
 
 private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
     private var currentSnapshot: ProjectBoardSnapshot
+    var shouldFailUpdates = true
+    var shouldFailMoves = false
+    var shouldFailDeletes = true
+    private(set) var moveTaskAttempts: [(id: Int64, status: ProjectTaskStatus)] = []
+    private(set) var deleteTaskAttempts: [Int64] = []
 
     init() {
         let plannedTasks = [
@@ -8903,6 +9295,14 @@ private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore
         currentSnapshot
     }
 
+    func removeTaskForTest(id: Int64) {
+        for projectIndex in currentSnapshot.projects.indices {
+            for columnIndex in currentSnapshot.projects[projectIndex].columns.indices {
+                currentSnapshot.projects[projectIndex].columns[columnIndex].tasks.removeAll { $0.id == id }
+            }
+        }
+    }
+
     func loadSnapshot() throws -> ProjectBoardSnapshot {
         currentSnapshot
     }
@@ -8916,7 +9316,20 @@ private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore
     }
 
     func updateProject(id: Int64, title: String) throws -> ProjectBoardProject {
-        throw ProjectBoardStoreTestError.unavailable
+        guard !shouldFailUpdates,
+              let index = currentSnapshot.projects.firstIndex(where: { $0.id == id }) else {
+            throw ProjectBoardStoreTestError.unavailable
+        }
+        let current = currentSnapshot.projects[index]
+        let updated = ProjectBoardProject(
+            id: current.id,
+            title: title,
+            status: current.status,
+            subtitle: current.subtitle,
+            columns: current.columns
+        )
+        currentSnapshot.projects[index] = updated
+        return updated
     }
 
     func completeProject(id: Int64) throws -> ProjectBoardProject {
@@ -8940,11 +9353,32 @@ private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore
     }
 
     func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
-        throw ProjectBoardStoreTestError.unavailable
+        guard !shouldFailUpdates,
+              let projectIndex = currentSnapshot.projects.firstIndex(where: { $0.id == draft.projectID }),
+              let original = currentSnapshot.projects[projectIndex].tasks.first(where: { $0.id == id }) else {
+            throw ProjectBoardStoreTestError.unavailable
+        }
+        let updated = ProjectBoardTask(
+            id: original.id,
+            projectID: draft.projectID,
+            title: draft.title,
+            detail: draft.detail,
+            status: draft.status,
+            priority: draft.priority,
+            dueAt: draft.dueAt,
+            recurrence: draft.recurrence
+        )
+        for columnIndex in currentSnapshot.projects[projectIndex].columns.indices {
+            currentSnapshot.projects[projectIndex].columns[columnIndex].tasks.removeAll { $0.id == id }
+        }
+        let columnIndex = currentSnapshot.projects[projectIndex].columns.firstIndex { $0.status == draft.status }!
+        currentSnapshot.projects[projectIndex].columns[columnIndex].tasks.insert(updated, at: 0)
+        return updated
     }
 
     func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask {
-        guard id == 1 else {
+        moveTaskAttempts.append((id: id, status: status))
+        guard !shouldFailMoves, id == 1 else {
             throw ProjectBoardStoreTestError.unavailable
         }
 
@@ -9021,7 +9455,16 @@ private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore
     }
 
     func deleteTask(id: Int64) throws {
-        throw ProjectBoardStoreTestError.unavailable
+        deleteTaskAttempts.append(id)
+        guard !shouldFailDeletes,
+              currentSnapshot.projects.contains(where: { project in project.tasks.contains { $0.id == id } }) else {
+            throw ProjectBoardStoreTestError.unavailable
+        }
+        for projectIndex in currentSnapshot.projects.indices {
+            for columnIndex in currentSnapshot.projects[projectIndex].columns.indices {
+                currentSnapshot.projects[projectIndex].columns[columnIndex].tasks.removeAll { $0.id == id }
+            }
+        }
     }
 
     func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact {
@@ -9050,6 +9493,54 @@ private enum ProjectBoardStoreTestError: Error, CustomStringConvertible {
 
     var description: String {
         "Project board unavailable"
+    }
+}
+
+private final class RecoveringReadinessGoogleCalendarSync: GoogleCalendarRuntimeSyncing, @unchecked Sendable {
+    var shouldFail = false
+    private(set) var statusCallCount = 0
+
+    func status(now: Date) throws -> GoogleCalendarRuntimeSyncStatus {
+        statusCallCount += 1
+        if shouldFail {
+            throw ProjectBoardSecretError(message: "calendar readiness failed token=sk-readinessSecret123")
+        }
+        return .runtimeNotConfigured
+    }
+
+    func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult {
+        throw GoogleCalendarRuntimeSyncError.notReady(.runtimeNotConfigured)
+    }
+}
+
+private final class RetryingGoogleCalendarSync: GoogleCalendarRuntimeSyncing, @unchecked Sendable {
+    enum Behavior {
+        case fail
+        case succeed
+        case approvalRequired
+    }
+
+    var behavior: Behavior
+    private(set) var approvalTokenIDs: [String] = []
+
+    init(behavior: Behavior) {
+        self.behavior = behavior
+    }
+
+    func status(now: Date) throws -> GoogleCalendarRuntimeSyncStatus {
+        GoogleCalendarRuntimeSyncStatus(plan: .pro, state: .ready)
+    }
+
+    func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult {
+        approvalTokenIDs.append(context.approvalToken?.id ?? "")
+        switch behavior {
+        case .fail:
+            throw ProjectBoardStoreTestError.unavailable
+        case .succeed:
+            return GoogleCalendarTaskSyncResult(createdEventCount: 1)
+        case .approvalRequired:
+            throw GoogleCalendarRuntimeSyncError.approvalRequired
+        }
     }
 }
 

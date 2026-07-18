@@ -36,33 +36,29 @@ The task path covers task listing, create, content entry, edit, status execution
 
 ## Today Cockpit
 
-The actionable Today path covers the `ui-samples/01.png` inspired cockpit: opening Today, capturing a local command, using quick suggestions, seeing the persistent assistant rail, and reaching the rail's local focus, schedule draft, edit, subtask draft, and reminder draft actions. This automated path is not release evidence by itself; it prevents source/runtime regressions before the manual Today VoiceOver pass and fresh screenshots are captured.
+The actionable Today path covers the `ui-samples/01.png` inspired cockpit: opening Today, hearing one recommendation, activating one prominent primary action, capturing a local command, opening secondary planning actions, seeing the persistent assistant rail, and reaching the rail's schedule draft, edit, subtask draft, and reminder draft actions. This automated path is not release evidence by itself; it prevents source/runtime regressions before the manual Today VoiceOver pass and fresh screenshots are captured.
 
 | Step | AX identifier | Expected role | Required behavior |
 | --- | --- | --- | --- |
 | Open Today | `sidebar-destination-today` | button | User can move from navigation into the Today cockpit. |
 | Today region | `today-workflow` | group | The Today surface is exposed as the selected workflow. |
-| Briefing panel | `today-briefing-panel` | group | The command input, review prompt, suggestions, and flow strip are reachable before the rail. |
+| Briefing panel | `today-briefing-panel` | group | The recommendation, primary action, command input, secondary actions, and flow strip are reachable before the rail. |
+| Focus recommendation | `today-focus-recommendation` | group | Announces the recommended task and reason, or the empty-state “No focus task” summary, before an action. |
+| Primary action | `today-primary-action` | button | Exposes exactly one prominent action: start the recommended focus, add valid command text to Inbox when no recommendation exists, or prepare an empty Today task draft. |
 | Command field | `today-command-capture-field` | text field | Captures new local work without changing existing task status. |
-| Add command | `today-command-add` | button | Sends the command into local Inbox rather than external Calendar or Reminder writes. |
-| Common action rail | `today-common-action-rail` | group | Groups common Today command chips so they are not buried in prose. |
-| Add task chip | `today-common-chip-add-task` | button | Prefills a local task command draft. |
-| Plan tomorrow chip | `today-common-chip-plan-tomorrow` | button | Prefills a tomorrow planning draft without Calendar writes. |
-| Prepare meeting chip | `today-common-chip-prepare-meeting` | button | Prefills a meeting preparation task. |
-| Draft reply chip | `today-common-chip-draft-reply` | button | Prefills a reply draft task. |
-| Suggestion rail | `today-suggestion-rail` | group | Exposes recommended focus suggestions. |
-| Start focus | `today-start-focus` | button | Starts local focus for the recommended task without mutating status. |
+| Add command | `today-command-add` | button | Explicitly sends valid command text into local Inbox while the recommended focus remains the primary action. |
+| Secondary actions | `today-secondary-actions-menu` | button | Opens task-draft, planning, alternative focus, schedule-draft, and completed-task display actions without competing with the single primary action. |
 | Flow strip | `today-flow-strip` | group | Shows due/overdue counts and local time-block planning state. |
 | Assistant rail | `today-assistant-rail` | group | Persistent right/bottom rail is reachable for selected or recommended Today work. |
 | Next action | `today-rail-next-action` | group | Announces what to do next and why. |
 | Task detail | `today-rail-task-detail` | group | Exposes project, status, priority, due date, notes, subtasks, and reminder summary. |
-| Rail focus | `today-rail-focus` | button | Starts local focus from the rail. |
+| Rail actions | `today-rail-actions-menu` | button | Groups the selected task's local schedule, edit, subtask, and approval-gated reminder actions after the primary focus action. |
 | Rail schedule draft | `today-rail-schedule-block` | button | Creates a local schedule draft without writing Calendar. |
 | Rail edit | `today-rail-edit-task` | button | Opens the selected task in the inspector for manual edits. |
 | Rail subtask draft | `today-rail-add-subtask` | button | Prefills a local subtask draft. |
 | Rail reminder draft | `today-rail-reminder-draft` | button | Prefills a reminder draft while preserving approval-gated external writes. |
 
-`AccessibilityFocusPathRequirement.todayCockpit` is the seeded/actionable path. It assumes a recommended or selected Today task exists, so rail action buttons are required and enabled. `AccessibilityFocusPathRequirement.todayEmptyCockpit` covers the 0-task state: Today navigation, the command field, common action chips, suggestion/flow landmarks, and the assistant rail empty detail must remain reachable without requiring `today-command-add`, `today-start-focus`, or task-specific rail action buttons to be enabled.
+`AccessibilityFocusPathRequirement.todayCockpit` is the seeded/actionable path. It assumes a recommended or selected Today task exists, so `today-primary-action` starts that focus and `today-rail-actions-menu` exposes the task-specific draft actions. `AccessibilityFocusPathRequirement.todayEmptyCockpit` covers the 0-task state: Today navigation, the “No focus task” `today-focus-recommendation`, the task-preparation `today-primary-action`, command field, `today-secondary-actions-menu`, flow landmark, and assistant rail empty detail must remain reachable without requiring `today-command-add` or the task-specific `today-rail-actions-menu`.
 
 ## Manual P0 cockpit observations
 
@@ -71,7 +67,7 @@ The manual release worksheet must also capture the P0 workflow cockpits that are
 | Manual worksheet field | Source issue | Required behavior |
 | --- | --- | --- |
 | Inbox voice triage | `#5 Inbox: match rich voice intake and triage detail from ui-samples/02` | The selected voice intake detail announces transcript, interpretation, source metadata, memo editing, and the make-task, schedule, review-later, and project-conversion triage actions in the Inbox rail without forcing unrelated inspector navigation. |
-| Today rail actions | `#6 Today: add persistent assistant rail and next-action cockpit` | The Today rail announces next action context, task detail, focus, schedule draft, edit, subtask draft, and approval-gated reminder draft actions in a reachable order. |
+| Today rail actions | `#6 Today: add persistent assistant rail and next-action cockpit` | Today announces recommendation -> one primary focus action -> command capture -> secondary actions -> flow -> rail context -> task actions menu; the menu then exposes schedule draft, edit, subtask draft, and approval-gated reminder draft actions. |
 
 ## Automation Boundary
 

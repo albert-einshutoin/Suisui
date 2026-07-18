@@ -21,6 +21,7 @@ let appPID = pid_t(rawPID)
 let selectedWindowTitle = CommandLine.arguments[4]
 let environment = ProcessInfo.processInfo.environment
 let maxNodes = Int(environment["SOLOPM_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
+let identityFingerprintEnabled = environment["SOLOPM_UI_EVIDENCE_AX_IDENTITY_FINGERPRINT"] == "1"
 
 guard maxNodes > 0 else {
     fputs("SOLOPM_UI_EVIDENCE_AX_MAX_NODES must be a positive integer.\n", stderr)
@@ -171,10 +172,49 @@ guard !matches.isEmpty else {
     fputs("No exact AX identifier \(targetIdentifier) was found in the selected window.\n", stderr)
     exit(1)
 }
-
 struct VisibleCandidate {
+    let element: AXUIElement
     let targetFrame: CGRect
     let visibleFrame: CGRect
+}
+
+// Length-prefixed UTF-8 hex keeps every identity field on one TSV line without
+// collapsing tabs, newlines, carriage returns, or absent values into the same
+// fingerprint. This must be injective because duplicate AX publications are
+// accepted only when their complete identities are exactly equal.
+func identityFingerprintField(_ value: String?) -> String {
+    guard let value else { return "n" }
+    let bytes = Array(value.utf8)
+    let encoded = bytes.map { String(format: "%02x", $0) }.joined()
+    return "s\(bytes.count):\(encoded)"
+}
+
+let identityAttributes: [CFString] = [
+    kAXRoleAttribute as CFString,
+    kAXSubroleAttribute as CFString,
+    kAXTitleAttribute as CFString,
+    kAXDescriptionAttribute as CFString,
+    kAXHelpAttribute as CFString,
+    kAXValueAttribute as CFString,
+    "AXLabel" as CFString
+]
+
+func candidateIdentityFingerprint(_ candidate: VisibleCandidate) -> String {
+    let geometryFields = String(
+        format: "%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f",
+        candidate.targetFrame.minX,
+        candidate.targetFrame.minY,
+        candidate.targetFrame.width,
+        candidate.targetFrame.height,
+        candidate.visibleFrame.minX,
+        candidate.visibleFrame.minY,
+        candidate.visibleFrame.width,
+        candidate.visibleFrame.height
+    )
+    let identityFields = identityAttributes.map { attribute in
+        identityFingerprintField(stringValue(copyAttribute(candidate.element, attribute)))
+    }
+    return ([geometryFields] + identityFields).joined(separator: "\t")
 }
 
 func visibleCandidate(for target: AXUIElement) -> VisibleCandidate? {
@@ -209,10 +249,23 @@ func visibleCandidate(for target: AXUIElement) -> VisibleCandidate? {
           visibleFrame.height >= min(44, targetFrame.height) else {
         return nil
     }
-    return VisibleCandidate(targetFrame: targetFrame, visibleFrame: visibleFrame)
+    return VisibleCandidate(element: target, targetFrame: targetFrame, visibleFrame: visibleFrame)
 }
 
 let candidates = matches.compactMap(visibleCandidate)
+if identityFingerprintEnabled {
+    guard !candidates.isEmpty else {
+        fputs("Identity fingerprint requires a visible AX target for identifier \(targetIdentifier); found none from \(matches.count) exact match(es).\n", stderr)
+        exit(1)
+    }
+    let candidateFingerprints = Set(candidates.map(candidateIdentityFingerprint))
+    // Identical visible AX duplicates are a SwiftUI publication detail, not a
+    // second product target. Distinct identities remain ambiguous and fail.
+    if candidateFingerprints.count != 1 {
+        fputs("Identity fingerprint found \(candidateFingerprints.count) distinct visible candidate fingerprint(s) for identifier \(targetIdentifier) across \(candidates.count) visible candidate(s).\n", stderr)
+        exit(1)
+    }
+}
 guard let selectedCandidate = candidates.sorted(by: { lhs, rhs in
     let lhsVisibleArea = lhs.visibleFrame.width * lhs.visibleFrame.height
     let rhsVisibleArea = rhs.visibleFrame.width * rhs.visibleFrame.height
@@ -239,4 +292,16 @@ let visibleFrame = selectedCandidate.visibleFrame
 // TSV keeps the shell transport deterministic while retaining sub-point AX
 // geometry. The receipt writer validates these values again before signing the
 // complete capture set.
-print(String(format: "%@\t%.3f\t%.3f\t%.3f\t%.3f", targetIdentifier, targetFrame.width, targetFrame.height, visibleFrame.width, visibleFrame.height))
+let receiptFields = String(
+    format: "%@\t%.3f\t%.3f\t%.3f\t%.3f",
+    targetIdentifier,
+    targetFrame.width,
+    targetFrame.height,
+    visibleFrame.width,
+    visibleFrame.height
+)
+if !identityFingerprintEnabled {
+    print(receiptFields)
+    exit(0)
+}
+print([receiptFields, candidateIdentityFingerprint(selectedCandidate)].joined(separator: "\t"))

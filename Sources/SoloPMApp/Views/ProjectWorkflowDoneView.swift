@@ -6,8 +6,6 @@ import UniformTypeIdentifiers
 struct DoneWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     let appSettings: AppSettings
-    @State private var isExportingExecutionReceipts = false
-    @State private var executionReceiptExportDocument = ExecutionReceiptHistoryFileDocument(data: Data())
 
     init(viewModel: ProjectBoardViewModel, appSettings: AppSettings = .default) {
         self.viewModel = viewModel
@@ -22,7 +20,7 @@ struct DoneWorkflowView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 10) {
-                    Label("Done", systemImage: "checkmark.circle")
+                    Label("Completed", systemImage: "checkmark.circle")
                         .font(.title2.weight(.semibold))
                     Spacer()
                 }
@@ -66,222 +64,18 @@ struct DoneWorkflowView: View {
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Label("AI Usage Meter", systemImage: "chart.bar.xaxis")
-                        .font(.headline)
-                    ExecutionUsageMeterSummaryView(
-                        snapshot: viewModel.executionUsageMeterSnapshot,
-                        managedAIBilling: appSettings.managedAIBilling
-                    )
-                }
-                .accessibilityIdentifier("ai-usage-meter-summary")
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Label("Recent AI Activity", systemImage: "doc.text.magnifyingglass")
-                        .font(.headline)
-                    HStack(spacing: 8) {
-                        TextField(
-                            "Search AI activity",
-                            text: Binding(
-                                get: { viewModel.executionReceiptHistorySearchText },
-                                set: { viewModel.setExecutionReceiptHistorySearchText($0) }
-                            )
-                        )
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityIdentifier("execution-receipt-search-field")
-
-                        Menu {
-                            Button("All Statuses") {
-                                viewModel.setExecutionReceiptHistoryStatusFilter(nil)
-                            }
-                            Divider()
-                            Button("Succeeded") {
-                                viewModel.setExecutionReceiptHistoryStatusFilter(.succeeded)
-                            }
-                            Button("Failed") {
-                                viewModel.setExecutionReceiptHistoryStatusFilter(.failed)
-                            }
-                            Button("Canceled") {
-                                viewModel.setExecutionReceiptHistoryStatusFilter(.canceled)
-                            }
-                            Button("Running") {
-                                viewModel.setExecutionReceiptHistoryStatusFilter(.running)
-                            }
-                        } label: {
-                            Label(receiptStatusFilterLabel, systemImage: "line.3.horizontal.decrease.circle")
-                        }
-                        .accessibilityIdentifier("execution-receipt-status-filter")
-
-                        Menu {
-                            Button("All References") {
-                                viewModel.setExecutionReceiptHistoryReferenceKindFilter(nil)
-                            }
-                            Divider()
-                            Button("Task") {
-                                viewModel.setExecutionReceiptHistoryReferenceKindFilter(.task)
-                            }
-                            Button("Project") {
-                                viewModel.setExecutionReceiptHistoryReferenceKindFilter(.project)
-                            }
-                            Button("Document") {
-                                viewModel.setExecutionReceiptHistoryReferenceKindFilter(.document)
-                            }
-                            Button("Reminder") {
-                                viewModel.setExecutionReceiptHistoryReferenceKindFilter(.reminder)
-                            }
-                            Button("Calendar Event") {
-                                viewModel.setExecutionReceiptHistoryReferenceKindFilter(.calendarEvent)
-                            }
-                            Button("Development Branch") {
-                                viewModel.setExecutionReceiptHistoryReferenceKindFilter(.developmentBranch)
-                            }
-                            Button("Pull Request") {
-                                viewModel.setExecutionReceiptHistoryReferenceKindFilter(.pullRequest)
-                            }
-                        } label: {
-                            Label(receiptReferenceFilterLabel, systemImage: "tag")
-                        }
-                        .accessibilityIdentifier("execution-receipt-reference-filter")
-
-                        Button {
-                            viewModel.prepareExecutionReceiptHistoryExport()
-                            guard let data = viewModel.executionReceiptHistoryExportData else {
-                                return
-                            }
-                            executionReceiptExportDocument = ExecutionReceiptHistoryFileDocument(data: data)
-                            isExportingExecutionReceipts = true
-                        } label: {
-                            Label("Export JSON", systemImage: "square.and.arrow.up")
-                        }
-                        .disabled(viewModel.executionReceiptHistorySnapshot.rows.isEmpty)
-                        .accessibilityIdentifier("execution-receipt-export-button")
-                    }
-                    .font(.caption)
-
-                    if let exportMessage = viewModel.executionReceiptHistoryExportMessage {
-                        Label(exportMessage, systemImage: "doc.text")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .accessibilityIdentifier("execution-receipt-export-message")
-                    }
-                    if let unavailableMessage = viewModel.executionReceiptHistorySnapshot.unavailableMessage {
-                        ContentUnavailableView(
-                            "AI activity is unavailable",
-                            systemImage: "exclamationmark.triangle",
-                            description: Text(unavailableMessage)
-                        )
-                    } else if viewModel.executionReceiptHistorySnapshot.rows.isEmpty {
-                        ContentUnavailableView(
-                            "No AI activity yet",
-                            systemImage: "doc.text.magnifyingglass",
-                            description: Text("AI activity appears here after approved AI work runs.")
-                        )
-                    } else {
-                        ForEach(viewModel.executionReceiptHistorySnapshot.rows) { row in
-                            ExecutionReceiptHistoryRowView(row: row)
-                        }
-                    }
-                }
-                .accessibilityIdentifier("recent-ai-receipts")
             }
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("done-workflow")
-        .onAppear {
-            viewModel.refreshExecutionReceiptAuditSnapshotsIfNeeded()
-        }
-        .fileExporter(
-            isPresented: $isExportingExecutionReceipts,
-            document: executionReceiptExportDocument,
-            contentType: .json,
-            defaultFilename: executionReceiptDefaultExportFilename
-        ) { result in
-            switch result {
-            case .success:
-                viewModel.recordExecutionReceiptHistoryExportCompleted()
-                executionReceiptExportDocument = ExecutionReceiptHistoryFileDocument(data: Data())
-            case .failure(let error):
-                viewModel.recordExecutionReceiptHistoryFileFailure(error)
-            }
-        }
+        .accessibilityLabel("Completed")
+        .accessibilityHint("Reviews completed tasks, completed projects, and local recap.")
     }
-
-    private var receiptStatusFilterLabel: LocalizedStringKey {
-        guard let status = viewModel.executionReceiptHistoryStatusFilter else {
-            return "All Statuses"
-        }
-        switch status {
-        case .notStarted:
-            return "Not Started"
-        case .running:
-            return "Running"
-        case .succeeded:
-            return "Succeeded"
-        case .failed:
-            return "Failed"
-        case .skipped:
-            return "Skipped"
-        case .canceled:
-            return "Canceled"
-        }
-    }
-
-    private var receiptReferenceFilterLabel: LocalizedStringKey {
-        guard let referenceKind = viewModel.executionReceiptHistoryReferenceKindFilter else {
-            return "All References"
-        }
-        switch referenceKind {
-        case .unknown:
-            return "Unknown"
-        case .assistantQueue:
-            return "Assistant Queue"
-        case .actionPlan:
-            return "Action Plan"
-        case .reviewSession:
-            return "Review Session"
-        case .task:
-            return "Task"
-        case .project:
-            return "Project"
-        case .document:
-            return "Document"
-        case .calendarEvent:
-            return "Calendar Event"
-        case .notification:
-            return "Notification"
-        case .reminder:
-            return "Reminder"
-        case .developmentBranch:
-            return "Development Branch"
-        case .developmentBaseBranch:
-            return "Development Base Branch"
-        case .developmentCommit:
-            return "Development Commit"
-        case .file:
-            return "File"
-        case .pullRequest:
-            return "Pull Request"
-        case .externalMCP:
-            return "External MCP"
-        }
-    }
-
-    private var executionReceiptDefaultExportFilename: String {
-        "solopm-receipts-\(Self.exportDateFormatter.string(from: Date())).json"
-    }
-
-    private static let exportDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        return formatter
-    }()
 }
 
-private struct ExecutionUsageMeterSummaryView: View {
+struct ExecutionUsageMeterSummaryView: View {
     let snapshot: ExecutionUsageMeterSnapshot
     let managedAIBilling: ManagedAIBillingSettings
 
@@ -356,7 +150,7 @@ private struct ExecutionUsageMeterSummaryView: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
         .accessibilityValue(value)
@@ -378,14 +172,18 @@ private struct ManagedAIUsageThresholdRowView: View {
             Text(row.capLabel)
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
-            Text(row.statusLabel)
-                .font(.caption2.weight(.semibold).monospacedDigit())
-                .foregroundStyle(row.status == .exceeded ? .red : .green)
+            Label(row.statusLabel, systemImage: statusSystemImage)
+                .font(SoloPMTypography.compactLabel.monospacedDigit())
+                .foregroundStyle(row.status == .exceeded ? SoloPMTone.danger.color : SoloPMTone.positive.color)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.title)
         .accessibilityValue(row.accessibilityValue)
         .accessibilityIdentifier("ai-usage-threshold-row-\(row.scope.rawValue)")
+    }
+
+    private var statusSystemImage: String {
+        row.status == .exceeded ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
     }
 }
 
@@ -416,7 +214,7 @@ private struct ExecutionUsageMeterBucketRowView: View {
     }
 }
 
-private struct ExecutionReceiptHistoryFileDocument: FileDocument {
+struct ExecutionReceiptHistoryFileDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.json] }
     static var writableContentTypes: [UTType] { [.json] }
 
@@ -452,7 +250,7 @@ private struct DoneStatTile: View {
         }
         .frame(minWidth: 112, maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
     }
 }
 
@@ -479,11 +277,11 @@ private struct DoneCompletionHeatmapView: View {
 
             LazyVGrid(columns: columns, alignment: .leading, spacing: 4) {
                 ForEach(buckets, id: \.dayKey) { bucket in
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: SoloPMRadius.control)
                         .fill(heatmapColor(for: bucket.completedCount))
                         .frame(width: 18, height: 18)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: SoloPMRadius.control)
                                 .stroke(Color.secondary.opacity(0.18), lineWidth: 0.5)
                         )
                         .accessibilityIdentifier("done-heatmap-day-\(bucket.dayKey)")
@@ -506,7 +304,7 @@ private struct DoneCompletionHeatmapView: View {
             return Color.secondary.opacity(0.10)
         }
         let normalized = min(Double(count) / Double(maxCompletedCount), 1.0)
-        return Color.green.opacity(0.25 + normalized * 0.55)
+        return SoloPMTone.positive.color.opacity(0.25 + normalized * 0.55)
     }
 }
 
@@ -636,7 +434,7 @@ private struct DoneInsightTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
     }
 }
 
@@ -647,7 +445,7 @@ private struct DoneTaskHistoryRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: task.status == .done ? "checkmark.circle.fill" : "arrow.uturn.backward.circle")
-                .foregroundStyle(task.status == .done ? .green : .secondary)
+                .foregroundStyle(task.status == .done ? SoloPMTone.positive.color : .secondary)
             VStack(alignment: .leading, spacing: 2) {
                 Text(task.title)
                     .font(.callout.weight(.medium))
@@ -772,11 +570,11 @@ struct ExecutionReceiptHistoryRowView: View {
         case .notStarted, .skipped, .canceled:
             return .secondary
         case .running:
-            return .blue
+            return SoloPMBrand.soloBlue
         case .succeeded:
-            return .green
+            return SoloPMTone.positive.color
         case .failed:
-            return .red
+            return SoloPMTone.danger.color
         }
     }
 }

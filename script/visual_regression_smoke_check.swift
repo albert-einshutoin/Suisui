@@ -2,6 +2,7 @@ import CoreGraphics
 import CryptoKit
 import Foundation
 import ImageIO
+import Vision
 
 // This checker deliberately keeps image health, raster comparison, and runtime AX
 // evidence separate: a valid PNG alone is never evidence that the UI is usable.
@@ -55,6 +56,7 @@ struct Screen: Decodable {
     let id: String; let title: String; let themes: [String]; let viewport: Viewport
     let axFrameAudit: Bool?; let axTargetIdentifier: String; let rasterComparison: RasterPatch?
     let themeOverrides: [String: RasterPatch]?; let artifacts: [String: String]
+    let requiredVisibleTextLines: [String]?
 }
 struct BaselineMetadata: Codable {
     let sourceCommit: String; let normalRoute: String; let locale: String
@@ -191,6 +193,39 @@ func healthBlocker(_ image: RGBAImage, bytes: Int, label: String, tolerances: Se
     return nil
 }
 
+func normalizedVisibleText(_ value: String) -> String {
+    let folded = value.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+    let scalars = folded.unicodeScalars.map { scalar in
+        CharacterSet.alphanumerics.contains(scalar) ? String(scalar) : " "
+    }.joined()
+    return scalars.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+}
+
+func recognizedVisibleTextLines(in url: URL, recognitionLanguage: String) throws -> [String] {
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    request.usesLanguageCorrection = false
+    request.recognitionLanguages = [recognitionLanguage]
+    try VNImageRequestHandler(url: url, options: [:]).perform([request])
+    return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+}
+
+func visibleTextBlockers(for screen: Screen, theme: String, screenshotURL: URL, locale: String) -> [String] {
+    guard let requiredLines = screen.requiredVisibleTextLines, !requiredLines.isEmpty else { return [] }
+    do {
+        let recognized = try recognizedVisibleTextLines(in: screenshotURL, recognitionLanguage: locale).map(normalizedVisibleText)
+        return requiredLines.compactMap { requiredLine in
+            let expected = normalizedVisibleText(requiredLine)
+            guard recognized.contains(where: { $0.contains(expected) }) else {
+                return "BLOCKER: required visible text line is missing for \(screen.id) \(theme): \(requiredLine)"
+            }
+            return nil
+        }
+    } catch {
+        return ["BLOCKER: visible text recognition failed for \(screen.id) \(theme): \(error.localizedDescription)"]
+    }
+}
+
 func context(for manifest: Manifest) -> CaptureContext {
     return manifest.baselineContext
 }
@@ -258,6 +293,23 @@ func validateManifest(_ manifest: Manifest) -> [String] {
         }
         if !isSafePathComponent(screen.axTargetIdentifier) {
             blockers.append("BLOCKER: visual manifest axTargetIdentifier must be a safe nonblank component for \(screen.id)")
+        }
+        if let requiredLines = screen.requiredVisibleTextLines {
+            if requiredLines.isEmpty {
+                blockers.append("BLOCKER: visual manifest requiredVisibleTextLines must not be empty when present for \(screen.id)")
+            }
+            if requiredLines.count > 16 {
+                blockers.append("BLOCKER: visual manifest requiredVisibleTextLines exceeds 16 entries for \(screen.id)")
+            }
+            var normalizedLines = Set<String>()
+            for requiredLine in requiredLines {
+                let normalized = normalizedVisibleText(requiredLine)
+                if normalized.isEmpty || requiredLine.count > 256 {
+                    blockers.append("BLOCKER: visual manifest requiredVisibleTextLines contains an invalid line for \(screen.id)")
+                } else if !normalizedLines.insert(normalized).inserted {
+                    blockers.append("BLOCKER: visual manifest requiredVisibleTextLines contains a duplicate line for \(screen.id): \(requiredLine)")
+                }
+            }
         }
         validatePatch(screen.rasterComparison, scope: screen.id, blockers: &blockers)
 
@@ -440,7 +492,23 @@ func main() throws {
         guard let url = containedURL(URL(fileURLWithPath: options.screenshotDirectory), artifact) else { blockers.append("BLOCKER: visual manifest artifact escapes screenshot root for \(screen.id) \(theme)"); continue }
         let label = "\(screen.id) \(theme) (\(artifact))"
         guard manager.fileExists(atPath: url.path) else { blockers.append("BLOCKER: missing visual screenshot: \(label)"); continue }
-        do { let image = try canonicalRGBA(url); let size = (try manager.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue ?? 0; if let fault = healthBlocker(image, bytes: size, label: label, tolerances: manifest.semanticTolerances) { blockers.append("BLOCKER: \(fault)") } else { currentEntries.append((screen, theme, artifact, url, image)) } } catch { blockers.append("BLOCKER: visual screenshot could not decode: \(label) (\(error.localizedDescription))") }
+        do {
+            let image = try canonicalRGBA(url)
+            let size = (try manager.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue ?? 0
+            if let fault = healthBlocker(image, bytes: size, label: label, tolerances: manifest.semanticTolerances) {
+                blockers.append("BLOCKER: \(fault)")
+            } else {
+                blockers.append(contentsOf: visibleTextBlockers(
+                    for: screen,
+                    theme: theme,
+                    screenshotURL: url,
+                    locale: manifest.baselineContext.locale
+                ))
+                currentEntries.append((screen, theme, artifact, url, image))
+            }
+        } catch {
+            blockers.append("BLOCKER: visual screenshot could not decode: \(label) (\(error.localizedDescription))")
+        }
     }}
     // Hash once per raster so exact duplicate detection stays linear for normal
     // captures; byte equality remains the authority in case hashes collide.

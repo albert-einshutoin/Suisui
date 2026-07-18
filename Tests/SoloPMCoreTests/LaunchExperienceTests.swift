@@ -40,7 +40,7 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(script.contains("-ApplePersistenceIgnoreState YES"))
         XCTAssertTrue(script.contains("wait_for_project_board_window"))
         XCTAssertTrue(script.contains("wait_for_project_board_marker"))
-        XCTAssertTrue(script.contains("project-board-header-bar"))
+        XCTAssertTrue(script.contains("project-board-command-palette"))
         XCTAssertTrue(script.contains("project-board-sidebar"))
         XCTAssertTrue(script.contains("project-board-detail"))
         XCTAssertTrue(script.contains("BLOCKER: Project Board window was not visible within"))
@@ -165,6 +165,49 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("NSApplication.shared.activate(ignoringOtherApps: true)"))
     }
 
+    func testGlobalVoiceShortcutIsProcessOwnedAndReusesExistingVoiceWindow() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let adapterSource = try readPackageFile("Sources/SoloPMApp/Adapters/SystemShortcutClient.swift")
+
+        XCTAssertTrue(appSource.contains("@StateObject private var shortcutSettingsViewModel"))
+        XCTAssertTrue(adapterSource.contains("SystemShortcutClient"))
+        XCTAssertTrue(adapterSource.contains("registerDefaultVoiceCaptureShortcut()"))
+        XCTAssertTrue(appSource.contains("VoiceWindowActivationCoordinator.shared"))
+        XCTAssertTrue(adapterSource.contains("activateExistingWindowOrRequestOpen"))
+        XCTAssertTrue(appSource.contains(".background(GlobalVoiceShortcutBridge())"))
+        XCTAssertTrue(appSource.contains("installOpenRequest"))
+        XCTAssertTrue(appSource.contains("openWindow(id: \"voice-capture\")"))
+        XCTAssertTrue(appSource.contains("private struct MenuBarExtraLabel: View"))
+        XCTAssertTrue(adapterSource.contains("performVoiceCommandShortcutMenuItem"))
+        XCTAssertTrue(adapterSource.contains("item.keyEquivalent == \"V\""))
+        XCTAssertTrue(adapterSource.contains("modifiers.contains(.shift)"))
+        XCTAssertFalse(adapterSource.contains("item.title == \"Voice Command\""))
+        XCTAssertTrue(appSource.contains("openWindow(id: \"voice-capture\")"))
+        XCTAssertTrue(appSource.contains("markVoiceWindowVisible"))
+        XCTAssertTrue(appSource.contains("markVoiceWindowClosed"))
+        XCTAssertTrue(appSource.contains("VoiceWindowIdentifierInstaller()"))
+        XCTAssertTrue(adapterSource.contains("NSUserInterfaceItemIdentifier(VoiceWindowIdentity.identifierRawValue)"))
+        XCTAssertTrue(adapterSource.contains("VoiceWindowIdentity.matches("))
+        XCTAssertFalse(adapterSource.contains("window.title == \"Voice Command\""))
+        XCTAssertTrue(adapterSource.contains("RegisterEventHotKey"))
+        XCTAssertTrue(adapterSource.contains("UnregisterEventHotKey"))
+        XCTAssertTrue(adapterSource.contains("InstallEventHandler"))
+        XCTAssertTrue(adapterSource.contains("kVK_Space"))
+        XCTAssertTrue(adapterSource.contains("optionKey"))
+        XCTAssertTrue(adapterSource.contains("Task { @MainActor"))
+        XCTAssertFalse(adapterSource.contains("NSEvent.addGlobalMonitorForEvents"))
+        XCTAssertFalse(adapterSource.contains("CGEvent.tapCreate"))
+    }
+
+    func testGlobalShortcutDoesNotRequireInputMonitoringEntitlement() throws {
+        let entitlements = try readPackageFile("packaging/SoloPM.entitlements")
+        let adapterSource = try readPackageFile("Sources/SoloPMApp/Adapters/SystemShortcutClient.swift")
+
+        XCTAssertFalse(entitlements.contains("listen-event"))
+        XCTAssertFalse(entitlements.contains("input-monitoring"))
+        XCTAssertFalse(adapterSource.contains("AXIsProcessTrusted"))
+    }
+
     func testAppInitActivatesButDefersFallbackWindowCreationToDelegate() throws {
         let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
@@ -236,26 +279,25 @@ final class LaunchExperienceTests: XCTestCase {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let menuBarSource = try readPackageFile("Sources/SoloPMApp/Views/MenuBarPanel.swift")
 
-        // Digest taps must land on Today, not the last visited destination,
-        // and reuse the single ProjectBoardTodayNavigation routing entry point.
+        // Digest taps must land on Today through the one app-level coordinator
+        // before reopening a window if necessary.
         let observerStart = try XCTUnwrap(appSource.range(of: "forName: .soloPMDigestNotificationOpened"))
         let observerEnd = try XCTUnwrap(appSource.range(
             of: "openSettingsWindowForEvidenceIfRequested()",
             range: observerStart.lowerBound..<appSource.endIndex
         ))
         let observerBlock = appSource[observerStart.lowerBound..<observerEnd.lowerBound]
-        XCTAssertTrue(observerBlock.contains("ProjectBoardTodayNavigation.forceSelectToday()"))
+        XCTAssertTrue(observerBlock.contains("ProjectBoardSceneCoordinator.shared.requestOpen(route: .primary(.today))"))
         XCTAssertTrue(observerBlock.contains("ensureProjectBoardWindowIsVisible()"))
 
-        // An already-open board switches through the notification; a fresh
-        // window restores from the persisted destination.
-        XCTAssertTrue(boardSource.contains("ProjectBoardTodayNavigation.openTodayNotification"))
-        XCTAssertTrue(boardSource.contains("private func forceSelectTodayDestination()"))
-        XCTAssertTrue(boardSource.contains("selectedDestination = .today"))
+        // Every board observes publication, but the coordinator atomically
+        // returns the request to only one registered scene.
+        XCTAssertTrue(boardSource.contains("sceneCoordinator.consumeNext(for: sceneID)"))
+        XCTAssertTrue(boardSource.contains("applySceneOpenRequest(request)"))
 
-        // The menu bar summary shares the same routing function instead of a
-        // second implementation.
-        XCTAssertTrue(menuBarSource.contains("ProjectBoardTodayNavigation.forceSelectToday()"))
+        // The menu bar summary shares the coordinator instead of creating a
+        // second notification-driven routing implementation.
+        XCTAssertTrue(menuBarSource.contains("sceneCoordinator.requestOpen(route: .primary(.today))"))
         XCTAssertTrue(menuBarSource.contains("openWindow(id: \"project-board\")"))
         XCTAssertTrue(menuBarSource.contains(".accessibilityIdentifier(\"menu-bar-open-today\")"))
         XCTAssertTrue(menuBarSource.contains("Label(\"Open Today\", systemImage: \"chevron.right.circle\")"))
@@ -375,7 +417,7 @@ final class LaunchExperienceTests: XCTestCase {
         // The marker waiter is deliberately generic: the production smoke must
         // exercise both concrete markers through that helper, not duplicate it.
         XCTAssertTrue(source.contains("wait_for_marker_until()"))
-        XCTAssertTrue(source.contains("wait_for_marker_until \"project-board-header-bar\" \"\" \"$case_deadline\""))
+        XCTAssertTrue(source.contains("wait_for_marker_until \"project-board-command-palette\" \"\" \"$case_deadline\""))
         XCTAssertTrue(source.contains("wait_for_marker_until \"today-workflow\" \"$expected_today_label\" \"$case_deadline\""))
         XCTAssertTrue(source.contains("RUNTIME_TIMEOUT_SECONDS=\"${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS:-30}\""))
         XCTAssertFalse(source.contains("RUNTIME_TIMEOUT_SECONDS=\"${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS:-10}\""))
@@ -461,9 +503,10 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertLessThan(boardWindow.lowerBound, menuBar.lowerBound)
     }
 
-    func testProjectBoardMultiWindowBoundaryUsesIndependentViewModelsAndSharedSelectionPersistence() throws {
+    func testProjectBoardMultiWindowBoundaryUsesIndependentViewModelsAndSceneRoutePersistence() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let coordinatorSource = try readPackageFile("Sources/SoloPMApp/Composition/ProjectBoardSceneCoordinator.swift")
 
         XCTAssertTrue(appSource.contains("WindowGroup(\"SoloPM\", id: \"project-board\")"))
         XCTAssertTrue(appSource.contains("taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution }"))
@@ -473,8 +516,15 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("@StateObject private var viewModel: ProjectBoardViewModel"))
         XCTAssertTrue(boardSource.contains("let taskAutomationSettings: () -> TaskAutoExecutionSettings"))
         XCTAssertTrue(boardSource.contains("let appSettings: () -> AppSettings"))
+        XCTAssertTrue(appSource.contains("@SceneStorage(ProjectBoardScenePersistence.sceneIDStorageKey)"))
+        XCTAssertTrue(boardSource.contains("@SceneStorage(ProjectBoardScenePersistence.routeStorageKey)"))
         XCTAssertTrue(boardSource.contains("@AppStorage(ProjectBoardSelectionPersistence.storageKey)"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardRouteCodec.resolution("))
+        XCTAssertTrue(boardSource.contains("ProjectBoardRouteCodec.rawValue(for:"))
         XCTAssertTrue(boardSource.contains("@State private var selectedDestination: ProjectBoardSidebarDestination? = .today"))
+        XCTAssertTrue(coordinatorSource.contains("@MainActor"))
+        XCTAssertTrue(coordinatorSource.contains("ProjectBoardSceneNavigationState"))
+        XCTAssertTrue(coordinatorSource.contains("consumeNext(for: sceneID)"))
     }
 
     private func readPackageFile(_ relativePath: String) throws -> String {

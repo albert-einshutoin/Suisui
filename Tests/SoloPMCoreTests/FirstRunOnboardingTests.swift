@@ -9,15 +9,13 @@ final class FirstRunOnboardingTests: XCTestCase {
         XCTAssertTrue(flow.isFirstStep)
         XCTAssertFalse(flow.isLastStep)
         XCTAssertEqual(flow.stepIndex, 0)
-        XCTAssertEqual(flow.stepCount, 4)
+        XCTAssertEqual(flow.stepCount, 3)
 
         flow.goBack()
         XCTAssertEqual(flow.step, .welcome)
 
         flow.advance()
         XCTAssertEqual(flow.step, .aiProvider)
-        flow.advance()
-        XCTAssertEqual(flow.step, .permissions)
         flow.advance()
         XCTAssertEqual(flow.step, .finish)
         XCTAssertTrue(flow.isLastStep)
@@ -26,7 +24,7 @@ final class FirstRunOnboardingTests: XCTestCase {
         XCTAssertEqual(flow.step, .finish)
 
         flow.goBack()
-        XCTAssertEqual(flow.step, .permissions)
+        XCTAssertEqual(flow.step, .aiProvider)
     }
 
     func testGatePresentsOnlyForFreshInteractiveLaunches() {
@@ -35,6 +33,23 @@ final class FirstRunOnboardingTests: XCTestCase {
         )
         XCTAssertFalse(
             FirstRunOnboardingGate.shouldPresent(hasCompletedOnboarding: true, environment: [:])
+        )
+    }
+
+    func testOnlyThePrimaryProjectBoardWindowOwnsFirstRunPresentation() {
+        XCTAssertTrue(
+            FirstRunOnboardingGate.shouldPresent(
+                hasDismissedOnboarding: false,
+                isPrimaryWindow: true,
+                environment: [:]
+            )
+        )
+        XCTAssertFalse(
+            FirstRunOnboardingGate.shouldPresent(
+                hasDismissedOnboarding: false,
+                isPrimaryWindow: false,
+                environment: [:]
+            )
         )
     }
 
@@ -65,6 +80,26 @@ final class FirstRunOnboardingTests: XCTestCase {
                 "Expected onboarding to stay hidden for \(environment)."
             )
         }
+    }
+
+    func testOnboardingRuntimeSmokeUsesAnIsolatedDatabaseWithoutForcingDismissedUsers() {
+        let environment = [
+            "SOLOPM_DATABASE_PATH": "/tmp/fresh-onboarding.sqlite",
+            FirstRunOnboardingGate.runtimeSmokeEnvironmentKey: "1"
+        ]
+
+        XCTAssertTrue(
+            FirstRunOnboardingGate.shouldPresent(
+                hasDismissedOnboarding: false,
+                environment: environment
+            )
+        )
+        XCTAssertFalse(
+            FirstRunOnboardingGate.shouldPresent(
+                hasDismissedOnboarding: true,
+                environment: environment
+            )
+        )
     }
 
     func testReadinessSnapshotKeepsPlanningRequiredAndPermissionsOptional() {

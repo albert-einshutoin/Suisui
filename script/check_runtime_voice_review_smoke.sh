@@ -16,15 +16,23 @@ APP_NAME="${APP_NAME:?APP_NAME is required}"
 BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:?BUNDLE_IDENTIFIER is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 TIMEOUT_SECONDS="${SOLOPM_RUNTIME_VOICE_REVIEW_TIMEOUT_SECONDS:-35}"
+AX_ATTEMPT_SECONDS="${SOLOPM_RUNTIME_VOICE_REVIEW_AX_ATTEMPT_SECONDS:-5}"
 KEEP_DATABASE="${SOLOPM_RUNTIME_VOICE_REVIEW_KEEP_DATABASE:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
-WINDOW_WIDTH="${SOLOPM_RUNTIME_VOICE_REVIEW_WINDOW_WIDTH:-760}"
 WINDOW_HEIGHT="${SOLOPM_RUNTIME_VOICE_REVIEW_WINDOW_HEIGHT:-640}"
 daily_planning_seed_task_id=""
 
+# shellcheck source=/dev/null
+source "$AX_HELPERS"
+
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_RUNTIME_VOICE_REVIEW_TIMEOUT_SECONDS must be a positive integer" >&2
+  exit 2
+fi
+if [[ ! "$AX_ATTEMPT_SECONDS" =~ ^[0-9]+$ || "$AX_ATTEMPT_SECONDS" -lt 1 ]]; then
+  echo "SOLOPM_RUNTIME_VOICE_REVIEW_AX_ATTEMPT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
@@ -38,19 +46,33 @@ mkdir -p "$ROOT_DIR/.tmp"
 tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-voice-review.XXXXXX")"
 database_path="$tmp_dir/SoloPM-runtime-voice-review.sqlite"
 settings_suite_name="$BUNDLE_IDENTIFIER.runtime-voice-review.$(/usr/bin/uuidgen | tr '[:upper:]' '[:lower:]')"
+settings_suite_names=()
+app_launch_pid=""
+app_launch_identity=""
 app_pid=""
+app_identity=""
 
 terminate_app() {
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-  if [[ -n "${app_pid:-}" ]]; then
-    wait "$app_pid" >/dev/null 2>&1 || true
-    app_pid=""
+  local owned_pid="${app_pid:-}"
+  local launch_pid="${app_launch_pid:-}"
+  if [[ -n "$owned_pid" ]]; then
+    ax_terminate_owned_process "$owned_pid" "$APP_BINARY" "${app_identity:-}"
   fi
+  if [[ -n "$launch_pid" && "$launch_pid" != "$owned_pid" ]]; then
+    ax_terminate_owned_process "$launch_pid" "$APP_BINARY" "${app_launch_identity:-}"
+  fi
+  app_launch_pid=""
+  app_launch_identity=""
+  app_pid=""
+  app_identity=""
 }
 
 cleanup() {
   terminate_app
-  /usr/bin/defaults delete "$settings_suite_name" >/dev/null 2>&1 || true
+  local suite
+  for suite in "${settings_suite_names[@]}"; do
+    /usr/bin/defaults delete "$suite" >/dev/null 2>&1 || true
+  done
   if [[ "$KEEP_DATABASE" != "1" ]]; then
     rm -rf "$tmp_dir"
   else
@@ -59,24 +81,31 @@ cleanup() {
 }
 trap cleanup EXIT
 
-wait_for_app_process() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: $APP_NAME process did not appear within ${TIMEOUT_SECONDS}s" >&2
-      return 1
+wait_for_osascript_attempt() {
+  local osascript_pid="$1"
+  local ax_attempt_seconds="${SOLOPM_RUNTIME_VOICE_REVIEW_AX_ATTEMPT_SECONDS:-5}"
+  local attempt_deadline=$((SECONDS + ax_attempt_seconds))
+  while kill -0 "$osascript_pid" >/dev/null 2>&1; do
+    if [[ "$SECONDS" -ge "$attempt_deadline" ]]; then
+      kill "$osascript_pid" >/dev/null 2>&1 || true
+      wait "$osascript_pid" >/dev/null 2>&1 || true
+      return 124
     fi
-    sleep 1
+    sleep 0.1
   done
+  wait "$osascript_pid"
 }
 
 activate_app() {
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
+  ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
+  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
-  set appName to item 1 of argv
+  set appPID to (item 1 of argv) as integer
   tell application "System Events"
-    if not (exists process appName) then return "missing"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "pid-owned process missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set frontmost to true
       repeat with windowIndex from 1 to count of windows
         set currentWindow to window windowIndex
@@ -93,68 +122,28 @@ on run argv
 end run
 APPLESCRIPT
   local osascript_pid=$!
-  for _ in {1..20}; do
-    if ! kill -0 "$osascript_pid" >/dev/null 2>&1; then
-      wait "$osascript_pid" >/dev/null 2>&1 || true
-      return 0
-    fi
-    sleep 0.1
-  done
-  kill "$osascript_pid" >/dev/null 2>&1 || true
-  wait "$osascript_pid" >/dev/null 2>&1 || true
+  wait_for_osascript_attempt "$osascript_pid"
 }
 
 wait_for_voice_window() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  local window_found=""
-  local osascript_status=1
-
-  while true; do
-    set +e
-    window_found="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>/dev/null
-on run argv
-  set appName to item 1 of argv
-  tell application "System Events"
-    if not (exists process appName) then return "0"
-    tell process appName
-      repeat with windowIndex from 1 to count of windows
-        try
-          if (name of window windowIndex as text) is "Voice Command" then return "1"
-        end try
-      end repeat
-    end tell
-  end tell
-  return "0"
-end run
-APPLESCRIPT
-)"
-    osascript_status=$?
-    set -e
-
-    if [[ "$osascript_status" -eq 0 && "$window_found" == "1" ]]; then
-      return 0
-    fi
-
-    activate_app
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: $APP_NAME did not expose the Voice Command AX window within ${TIMEOUT_SECONDS}s" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "Voice Command" \
+    "$TIMEOUT_SECONDS" "" "$APP_BINARY"
 }
 
 set_voice_window_size() {
   local width="$1"
   local height="$2"
-  /usr/bin/osascript - "$APP_NAME" "$width" "$height" <<'APPLESCRIPT' >/dev/null
+  ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
+  /usr/bin/osascript - "$app_pid" "$width" "$height" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
-  set appName to item 1 of argv
+  set appPID to (item 1 of argv) as integer
   set targetWidth to (item 2 of argv) as integer
   set targetHeight to (item 3 of argv) as integer
   tell application "System Events"
-    if not (exists process appName) then error "process missing"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "pid-owned process missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set frontmost to true
       repeat with windowIndex from 1 to count of windows
         set currentWindow to window windowIndex
@@ -169,21 +158,41 @@ on run argv
   end tell
 end run
 APPLESCRIPT
+  local osascript_pid=$!
+  wait_for_osascript_attempt "$osascript_pid"
   sleep 1
 }
 
 launch_app_for_voice_review() {
+  local locale="$1"
+  local width="$2"
   terminate_app
+  database_path="$tmp_dir/SoloPM-runtime-voice-review-$locale.sqlite"
+  settings_suite_name="$BUNDLE_IDENTIFIER.runtime-voice-review.$locale.$(/usr/bin/uuidgen | tr '[:upper:]' '[:lower:]')"
+  settings_suite_names+=("$settings_suite_name")
   SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
     SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_APP_SETTINGS_SUITE_NAME="$settings_suite_name" \
     SOLOPM_OPEN_VOICE_COMMAND_ON_LAUNCH=1 \
-    "$APP_BINARY" &
-  app_pid=$!
-  wait_for_app_process
-  activate_app
+    SOLOPM_LANGUAGE_PREFERENCE="$locale" \
+    "$APP_BINARY" -ApplePersistenceIgnoreState YES &
+  app_launch_pid=$!
+  app_launch_identity="$(ax_wait_for_owned_process_identity "$app_launch_pid" "$APP_BINARY" 3)" || {
+    echo "BLOCKER: Voice launch identity could not be established" >&2
+    return 1
+  }
+  app_pid="$(ax_wait_for_owned_app_pid "$app_launch_pid" "$APP_BINARY" "$TIMEOUT_SECONDS")" || {
+    echo "BLOCKER: PID-owned Voice process did not appear" >&2
+    return 1
+  }
+  app_identity="$(ax_wait_for_owned_process_identity "$app_pid" "$APP_BINARY" 3)" || {
+    echo "BLOCKER: Voice process identity could not be established" >&2
+    return 1
+  }
+  ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$TIMEOUT_SECONDS" "$APP_BINARY"
   wait_for_voice_window
-  set_voice_window_size "$WINDOW_WIDTH" "$WINDOW_HEIGHT"
+  activate_app
+  set_voice_window_size "$width" "$WINDOW_HEIGHT"
 }
 
 setTextAreaContaining() {
@@ -192,14 +201,18 @@ setTextAreaContaining() {
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
 
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$fragment" "$text_value" <<'APPLESCRIPT'
+    ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
+    local attempt_output="$tmp_dir/set-text.$$.out"
+    /usr/bin/osascript - "$app_pid" "$fragment" "$text_value" <<'APPLESCRIPT' >"$attempt_output" 2>&1 &
 on run argv
-  set appName to item 1 of argv
+  set appPID to (item 1 of argv) as integer
   set fragment to item 2 of argv
   set textValue to item 3 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "pid-owned process missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set windowCount to count of windows
       repeat with windowIndex from 1 to windowCount
         set currentWindow to window windowIndex
@@ -251,10 +264,15 @@ on run argv
   error "text area signal not found: " & fragment
 end run
 APPLESCRIPT
-    then
+    local osascript_pid=$!
+    if wait_for_osascript_attempt "$osascript_pid"; then
+      cat "$attempt_output"
+      rm -f "$attempt_output"
       sleep 1
       return 0
     fi
+    rm -f "$attempt_output"
+    ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: failed to set AX text area: $fragment" >&2
       return 1
@@ -267,13 +285,17 @@ pressControlContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT'
+    ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
+    local attempt_output="$tmp_dir/press-control.$$.out"
+    /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT' >"$attempt_output" 2>&1 &
 on run argv
-  set appName to item 1 of argv
+  set appPID to (item 1 of argv) as integer
   set fragment to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "pid-owned process missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       repeat with windowIndex from 1 to count of windows
         set currentWindow to window windowIndex
         set windowName to ""
@@ -330,11 +352,82 @@ on run argv
   error "control signal not found: " & fragment
 end run
 APPLESCRIPT
-    then
+    local osascript_pid=$!
+    if wait_for_osascript_attempt "$osascript_pid"; then
+      cat "$attempt_output"
+      rm -f "$attempt_output"
       return 0
     fi
+    rm -f "$attempt_output"
+    ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: failed to press control in AX tree: $fragment" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+waitForControlEnabledState() {
+  local fragment="$1"
+  local expected_enabled="$2"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
+    local attempt_output="$tmp_dir/control-state.$$.out"
+    /usr/bin/osascript - "$app_pid" "$fragment" "$expected_enabled" <<'APPLESCRIPT' >"$attempt_output" 2>&1 &
+on run argv
+  set appPID to (item 1 of argv) as integer
+  set fragment to item 2 of argv
+  set expectedEnabled to item 3 of argv
+  tell application "System Events"
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "pid-owned process missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
+      repeat with windowIndex from 1 to count of windows
+        set currentWindow to window windowIndex
+        set windowName to ""
+        try
+          set windowName to name of currentWindow as text
+        end try
+        if windowName is "Voice Command" then
+          set axItems to entire contents of currentWindow
+          repeat with axItem in axItems
+            set itemRole to ""
+            try
+              set itemRole to role of axItem as text
+            end try
+            if itemRole is "AXButton" then
+              set itemIdentifier to ""
+              try
+                set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
+              end try
+              if itemIdentifier contains fragment then
+                set isEnabled to enabled of axItem as boolean
+                if (expectedEnabled is "true" and isEnabled) or (expectedEnabled is "false" and not isEnabled) then
+                  return "matched"
+                end if
+                error "control enabled state did not match"
+              end if
+            end if
+          end repeat
+        end if
+      end repeat
+    end tell
+  end tell
+  error "control signal not found: " & fragment
+end run
+APPLESCRIPT
+    local osascript_pid=$!
+    if wait_for_osascript_attempt "$osascript_pid"; then
+      rm -f "$attempt_output"
+      return 0
+    fi
+    rm -f "$attempt_output"
+    ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: control '$fragment' did not reach enabled=$expected_enabled" >&2
       return 1
     fi
     sleep 1
@@ -345,13 +438,17 @@ waitForTextContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT' >/dev/null 2>&1
+    ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
+    local attempt_output="$tmp_dir/wait-text.$$.out"
+    /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT' >"$attempt_output" 2>&1 &
 on run argv
-  set appName to item 1 of argv
+  set appPID to (item 1 of argv) as integer
   set fragment to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "pid-owned process missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       repeat with windowIndex from 1 to count of windows
         set currentWindow to window windowIndex
         set windowName to ""
@@ -387,15 +484,103 @@ on run argv
   error "text not found: " & fragment
 end run
 APPLESCRIPT
-    then
+    local osascript_pid=$!
+    if wait_for_osascript_attempt "$osascript_pid"; then
+      rm -f "$attempt_output"
       return 0
     fi
+    rm -f "$attempt_output"
+    ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: Voice Command window did not expose text: $fragment" >&2
       return 1
     fi
     sleep 1
   done
+}
+
+waitForVoiceWindowSize() {
+  local expected_width="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
+    local attempt_output="$tmp_dir/window-size.$$.out"
+    /usr/bin/osascript - "$app_pid" "$expected_width" "$WINDOW_HEIGHT" <<'APPLESCRIPT' >"$attempt_output" 2>&1 &
+on run argv
+  set appPID to (item 1 of argv) as integer
+  set expectedWidth to (item 2 of argv) as integer
+  set requestedHeight to (item 3 of argv) as integer
+  tell application "System Events"
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "pid-owned process missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
+      repeat with currentWindow in windows
+        try
+          if (name of currentWindow as text) is "Voice Command" then
+            set currentSize to size of currentWindow
+            if item 1 of currentSize is expectedWidth and item 2 of currentSize is greater than or equal to requestedHeight then return "matched"
+          end if
+        end try
+      end repeat
+    end tell
+  end tell
+  error "Voice window size did not match"
+end run
+APPLESCRIPT
+    local osascript_pid=$!
+    if wait_for_osascript_attempt "$osascript_pid"; then
+      rm -f "$attempt_output"
+      return 0
+    fi
+    rm -f "$attempt_output"
+    ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: Voice window did not settle at width ${expected_width}" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+run_voice_readiness_matrix() {
+  local locale="$1"
+  local width="$2"
+  local record_label
+  local hands_free_label
+  local provider_label
+  local privacy_label
+
+  case "$locale" in
+    english)
+      record_label="Record once"
+      hands_free_label="Hands-free mode"
+      provider_label="Speech provider: OpenAI Transcribe"
+      privacy_label="Audio is processed by the selected speech-to-text provider only while Hands-free mode is listening."
+      ;;
+    japanese)
+      record_label="1回録音"
+      hands_free_label="ハンズフリーモード"
+      provider_label="音声認識プロバイダー: OpenAI Transcribe"
+      privacy_label="音声はハンズフリーモードで待ち受けている間だけ、選択中の音声認識プロバイダーで処理されます。"
+      ;;
+    *)
+      echo "BLOCKER: unsupported Voice runtime locale: $locale" >&2
+      return 2
+      ;;
+  esac
+
+  launch_app_for_voice_review "$locale" "$width"
+  waitForVoiceWindowSize "$width"
+  waitForTextContaining "$record_label"
+  waitForTextContaining "$hands_free_label"
+  waitForTextContaining "$provider_label"
+  waitForTextContaining "$privacy_label"
+  setTextAreaContaining "voice-command-input" "   "
+  waitForControlEnabledState "voice-command-generate-plan" "false"
+  setTextAreaContaining "voice-command-input" "Create a task called Runtime Voice Review Smoke."
+  waitForControlEnabledState "voice-command-generate-plan" "true"
+  printf "OK: %s Voice readiness verified at width %s\n" "$locale" "$width"
 }
 
 sqlite_scalar() {
@@ -473,13 +658,14 @@ if [[ ! -x "$APP_BINARY" ]]; then
   exit 2
 fi
 
-launch_app_for_voice_review
+run_voice_readiness_matrix japanese 1024
+run_voice_readiness_matrix english 1024
 planning_initial_project_count="$(sqlite_scalar "SELECT count(*) FROM projects;")"
 if [[ -z "$planning_initial_project_count" ]]; then
   echo "BLOCKER: initial project count before planning was not readable" >&2
   exit 2
 fi
-setTextAreaContaining "voice-command-input" "Create a task called Runtime Voice Review Smoke."
+printf "OK: Generate Plan stayed disabled for whitespace and enabled for a valid draft\n"
 pressControlContaining "voice-command-generate-plan"
 waitForTextContaining "The AI provider rejected the configured API key."
 
@@ -518,7 +704,7 @@ verify_sql_value \
 verify_sql_value \
   "1" \
   "only one daily planning queue draft before approval" \
-  "SELECT count(*) FROM assistant_queue_items;"
+  "SELECT count(*) FROM assistant_queue_items WHERE id LIKE 'action-plan:daily-planning:%';"
 verify_sql_value \
   "0" \
   "daily planning review execution before approval" \
@@ -561,7 +747,7 @@ verify_sql_value \
 verify_sql_value \
   "2" \
   "two daily planning queue drafts before approval" \
-  "SELECT count(*) FROM assistant_queue_items;"
+  "SELECT count(*) FROM assistant_queue_items WHERE id LIKE 'action-plan:daily-planning:%';"
 verify_sql_value \
   "0" \
   "move-to-today review execution before approval" \
@@ -599,7 +785,7 @@ verify_sql_value \
 verify_sql_value \
   "3" \
   "three daily planning queue drafts before approval" \
-  "SELECT count(*) FROM assistant_queue_items;"
+  "SELECT count(*) FROM assistant_queue_items WHERE id LIKE 'action-plan:daily-planning:%';"
 verify_sql_value \
   "0" \
   "defer review execution before approval" \
@@ -638,7 +824,7 @@ verify_sql_value \
 verify_sql_value \
   "4" \
   "four daily planning queue drafts before approval" \
-  "SELECT count(*) FROM assistant_queue_items;"
+  "SELECT count(*) FROM assistant_queue_items WHERE id LIKE 'action-plan:daily-planning:%';"
 verify_sql_value \
   "0" \
   "split review execution before approval" \

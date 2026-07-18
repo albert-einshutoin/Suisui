@@ -23,7 +23,7 @@ DONE_ANALYTICS_EVIDENCE_FILE="${SOLOPM_DONE_ANALYTICS_EVIDENCE_FILE:-$ROOT_DIR/d
 EVIDENCE_TMPDIR="${SOLOPM_UI_EVIDENCE_TMPDIR:-$ROOT_DIR/.tmp}"
 VISUAL_BASELINE_MANIFEST="$ROOT_DIR/docs/quality/visual-baseline-manifest.json"
 SOLOPM_VISUAL_AX_AUDIT_RESULT="${SOLOPM_VISUAL_AX_AUDIT_RESULT:-$EVIDENCE_TMPDIR/visual-ax-audit-receipt.json}"
-VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1024x674}"
+VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1024x724}"
 SETTINGS_VISUAL_BASELINE_VIEWPORT="${SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT:-720x712}"
 VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT="${SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT:-760x640}"
 TARGET_TIMEOUT_SECONDS="${SOLOPM_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS:-30}"
@@ -44,8 +44,12 @@ AX_MARKER_CHECKER="$EVIDENCE_TMPDIR/ui-evidence-ax-marker-checker.$$"
 AX_SCROLL_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-scroll-to.$$"
 AX_TARGET_FRAME_AUDITOR="$EVIDENCE_TMPDIR/ui-evidence-ax-target-frame-auditor.$$"
 AX_PRESS_ELEMENT_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-press-element.$$"
+POINTER_PARKER="$EVIDENCE_TMPDIR/ui-evidence-pointer-park.$$"
 AX_CAPTURE_RECEIPT_TSV="$EVIDENCE_TMPDIR/visual-ax-captures.$$.tsv"
 AX_RECEIPT_WRITER="$EVIDENCE_TMPDIR/write-visual-ax-audit-receipt.$$"
+VISUAL_RASTER_STABILITY_CHECKER="$EVIDENCE_TMPDIR/visual-raster-stability-checker.$$"
+VISUAL_APPEARANCE_CHECKER="$EVIDENCE_TMPDIR/visual-appearance-checker.$$"
+VISUAL_FIRST_RASTER="$EVIDENCE_TMPDIR/visual-first-raster.$$.png"
 EVIDENCE_HOME="${SOLOPM_UI_EVIDENCE_HOME:-$(mktemp -d "$EVIDENCE_TMPDIR/solopm-ui-evidence.XXXXXX")}"
 KEEP_HOME="${SOLOPM_UI_EVIDENCE_KEEP_HOME:-0}"
 DRY_RUN=0
@@ -163,7 +167,9 @@ cleanup() {
   rm -f "$AX_SCROLL_HELPER"
   rm -f "$AX_TARGET_FRAME_AUDITOR"
   rm -f "$AX_PRESS_ELEMENT_HELPER"
-  rm -f "$AX_CAPTURE_RECEIPT_TSV" "$AX_RECEIPT_WRITER"
+  rm -f "$POINTER_PARKER"
+  rm -f "$AX_CAPTURE_RECEIPT_TSV" "$AX_RECEIPT_WRITER" "$VISUAL_RASTER_STABILITY_CHECKER" "$VISUAL_APPEARANCE_CHECKER"
+  rm -f "$VISUAL_FIRST_RASTER"
   rm -f "$EVIDENCE_APP_LOG"
   if [[ "$KEEP_HOME" != "1" && -d "$EVIDENCE_HOME" && "${SOLOPM_UI_EVIDENCE_HOME:-}" == "" ]]; then
     rm -rf "$EVIDENCE_HOME"
@@ -255,6 +261,11 @@ app_env_args() {
   if [[ -n "$APPEARANCE_OVERRIDE" ]]; then
     args+=("SOLOPM_APPEARANCE_PREFERENCE=$APPEARANCE_OVERRIDE")
   fi
+  if [[ "$APPEARANCE_OVERRIDE" == "system" ]]; then
+    # Keep the product preference truthful while giving hosted GUI sessions a
+    # deterministic system appearance that does not depend on the login user.
+    args+=("SOLOPM_VISUAL_EVIDENCE_SYSTEM_APPEARANCE=dark")
+  fi
   if [[ "$SETTINGS_WINDOW_OVERRIDE" == "1" ]]; then
     args+=("SOLOPM_OPEN_SETTINGS_ON_LAUNCH=1")
   fi
@@ -280,30 +291,21 @@ emit_evidence_app_diagnostic() {
 
 open_evidence_app() {
   local env_args=()
-  local system_appearance="Light"
   while IFS= read -r -d '' env_arg; do
     env_args+=("$env_arg")
   done < <(app_env_args)
-  # The hosted GUI session does not guarantee a stable login-window theme.
-  # Keep the product preference set to `system`, while pinning the capture
-  # process' inherited system appearance to canonical Aqua for reproducible
-  # System evidence across local and hosted macOS runners.
-  if [[ "$APPEARANCE_OVERRIDE" == "dark" ]]; then
-    system_appearance="Dark"
-  fi
-  # Keep this array non-empty: macOS runners still ship Bash 3.2, where
-  # expanding an empty local array under `set -u` aborts the capture.
-  local appearance_args=("-AppleInterfaceStyle" "$system_appearance")
   stop_evidence_app
   : >"$EVIDENCE_APP_LOG"
   # Direct launch preserves the isolated database, appearance, selected route,
   # Settings, and Voice Command env exactly. LaunchServices can drop or delay
   # those env values on some release hosts, which makes screenshot evidence
   # fail before the app exposes a real window.
+  # Use the most constrained persistent-scrollbar setting so layout does not
+  # inherit a local or hosted runner preference.
   /usr/bin/env -i PATH="$PATH" TMPDIR="$EVIDENCE_TMPDIR" "${env_args[@]}" \
     "$APP_BINARY" \
     -ApplePersistenceIgnoreState YES \
-    "${appearance_args[@]}" \
+    -AppleShowScrollBars Always \
     -AppleLanguages "$APPLE_LANGUAGES" \
     -AppleLocale "$APPLE_LOCALE" \
     >>"$EVIDENCE_APP_LOG" 2>&1 &
@@ -465,9 +467,18 @@ wait_for_window_capture_metadata() {
   find_window_capture_metadata "$window_name"
 }
 
+wait_for_owned_evidence_window() {
+  local window_name="${1:-}"
+  local diagnostic_file="${2:-}"
+
+  ax_wait_for_pid_owned_window "$APP_NAME" "$EVIDENCE_APP_PID" "$window_name" \
+    "$TARGET_TIMEOUT_SECONDS" "$diagnostic_file" "$APP_BINARY"
+}
+
 target_marker_present() {
   local identifier="$1"
   local text="$2"
+  local marker_mode="${3:-legacy}"
   local error_file
   local checker_pid
   local deadline
@@ -480,9 +491,27 @@ target_marker_present() {
   # accessibility tree can make AppleScript recursion stall on detail-heavy screens.
   # Compile the helper once; running it through `swift` for every marker leaves
   # swift-frontend children that a shell watchdog cannot reliably terminate.
-  SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
-    "$AX_MARKER_CHECKER" "$APP_NAME" "$identifier" "$text" "$EVIDENCE_APP_PID" \
-    >/dev/null 2>"$error_file" &
+  case "$marker_mode" in
+    strict-task-card)
+      SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+        SOLOPM_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
+        SOLOPM_UI_EVIDENCE_AX_REQUIRE_EXACT_IDENTIFIER=1 \
+        "$AX_MARKER_CHECKER" "$APP_NAME" "$identifier" "$text" "$EVIDENCE_APP_PID" \
+        >/dev/null 2>"$error_file" &
+      ;;
+    legacy)
+      # Existing workflow markers intentionally allow identifier and text to
+      # live in different runtime AX elements (for example Inbox Voice).
+      SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+        "$AX_MARKER_CHECKER" "$APP_NAME" "$identifier" "$text" "$EVIDENCE_APP_PID" \
+        >/dev/null 2>"$error_file" &
+      ;;
+    *)
+      echo "invalid AX target marker mode: $marker_mode" >&2
+      rm -f "$error_file"
+      return 2
+      ;;
+  esac
   checker_pid=$!
   deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
   while kill -0 "$checker_pid" >/dev/null 2>&1; do
@@ -533,27 +562,24 @@ prepare_ax_target_frame_auditor() {
   /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_target_frame_audit.swift" -o "$AX_TARGET_FRAME_AUDITOR"
 }
 
-prepare_ax_press_element_helper() {
-  if [[ -x "$AX_PRESS_ELEMENT_HELPER" ]]; then
+prepare_pointer_parker() {
+  if [[ -x "$POINTER_PARKER" ]]; then
     return
   fi
-  /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_press_element.swift" -o "$AX_PRESS_ELEMENT_HELPER"
+  /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_pointer_park.swift" -o "$POINTER_PARKER"
 }
 
-press_project_sidebar_row() {
-  local project_id="$1"
-  if [[ ! "$project_id" =~ ^[1-9][0-9]*$ ]]; then
-    echo "invalid project id for visual destination navigation" >&2
-    return 2
-  fi
-  prepare_ax_press_element_helper
-  SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
-    "$AX_PRESS_ELEMENT_HELPER" "$EVIDENCE_APP_PID" "project-sidebar-row-$project_id"
+park_pointer_outside_evidence_window() {
+  prepare_pointer_parker
+  # Canonical evidence windows start at x >= 80 and y >= 70, so the screen's
+  # top-left corner is outside product content for every capture viewport.
+  "$POINTER_PARKER" 8 8
 }
 
 audit_ax_target_frame() {
   local identifier="$1"
   local window_name="$2"
+  local audit_mode="${3:-${AX_TARGET_FRAME_AUDIT_MODE:-receipt}}"
   local output_file
   local error_file
   local auditor_pid
@@ -564,9 +590,16 @@ audit_ax_target_frame() {
   output_file="$(mktemp "${TMPDIR:-/tmp}/solopm-ui-target-frame-output.XXXXXX")"
   error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-ui-target-frame-error.XXXXXX")"
   prepare_ax_target_frame_auditor
-  SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
-    "$AX_TARGET_FRAME_AUDITOR" "$APP_NAME" "$identifier" "$EVIDENCE_APP_PID" "$window_name" \
-    >"$output_file" 2>"$error_file" &
+  if [[ "$audit_mode" == "fingerprint" ]]; then
+    SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+      SOLOPM_UI_EVIDENCE_AX_IDENTITY_FINGERPRINT=1 \
+      "$AX_TARGET_FRAME_AUDITOR" "$APP_NAME" "$identifier" "$EVIDENCE_APP_PID" "$window_name" \
+      >"$output_file" 2>"$error_file" &
+  else
+    SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+      "$AX_TARGET_FRAME_AUDITOR" "$APP_NAME" "$identifier" "$EVIDENCE_APP_PID" "$window_name" \
+      >"$output_file" 2>"$error_file" &
+  fi
   auditor_pid=$!
   deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
   while kill -0 "$auditor_pid" >/dev/null 2>&1; do
@@ -601,6 +634,7 @@ audit_ax_target_frame() {
 wait_for_stable_ax_target_frame() {
   local identifier="$1"
   local window_name="$2"
+  local audit_mode="${3:-${AX_TARGET_FRAME_AUDIT_MODE:-receipt}}"
   local stable_samples_required=3
   local stable_samples=0
   local previous_sample=""
@@ -608,7 +642,7 @@ wait_for_stable_ax_target_frame() {
   local deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
 
   while [[ "$SECONDS" -lt "$deadline" ]]; do
-    if ! current_sample="$(audit_ax_target_frame "$identifier" "$window_name")"; then
+    if ! current_sample="$(audit_ax_target_frame "$identifier" "$window_name" "$audit_mode")"; then
       return 1
     fi
     if [[ "$current_sample" == "$previous_sample" ]]; then
@@ -626,6 +660,17 @@ wait_for_stable_ax_target_frame() {
 
   echo "AX target frame did not converge for screenshot evidence: $identifier" >&2
   return 1
+}
+
+receipt_ax_target_frame_fields() {
+  local fingerprint="$1"
+  local identifier target_width target_height visible_width visible_height remainder
+  IFS=$'\t' read -r identifier target_width target_height visible_width visible_height remainder <<<"$fingerprint"
+  if [[ -z "$identifier" || -z "$target_width" || -z "$target_height" || -z "$visible_width" || -z "$visible_height" ]]; then
+    echo "invalid AX identity fingerprint; receipt fields are incomplete" >&2
+    return 1
+  fi
+  printf '%s\t%s\t%s\t%s\t%s\n' "$identifier" "$target_width" "$target_height" "$visible_width" "$visible_height"
 }
 
 scroll_ax_target_into_view() {
@@ -680,6 +725,7 @@ assert_project_board_destination_ready() {
   local marker
   local identifier
   local text
+  local marker_mode
   local missing=()
 
   if [[ -z "$marker_spec" ]]; then
@@ -695,7 +741,17 @@ assert_project_board_destination_ready() {
     fi
     identifier="${marker%%=>*}"
     text="${marker#*=>}"
-    if ! target_marker_present "$identifier" "$text"; then
+    if [[ "$identifier" == task-card-open-details-* ]]; then
+      if [[ "$identifier" =~ ^task-card-open-details-[0-9]+$ ]]; then
+        marker_mode="strict-task-card"
+      else
+        echo "invalid task-card UI evidence identifier for $label: $identifier" >&2
+        return 2
+      fi
+    else
+      marker_mode="legacy"
+    fi
+    if ! target_marker_present "$identifier" "$text" "$marker_mode"; then
       missing+=("$marker")
     fi
   done
@@ -727,6 +783,7 @@ wait_for_project_board_destination() {
 
 position_window_for_capture() {
   local window_name="${1:-}"
+  local diagnostic_file="${2:-}"
   local viewport="$VISUAL_BASELINE_VIEWPORT"
   local origin_x=80
   local origin_y=70
@@ -743,14 +800,22 @@ position_window_for_capture() {
 
   local width="${viewport%x*}"
   local height="${viewport#*x}"
-  local position_attempts=3
-  local position_attempt
+  local deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
+  local window_metadata
+  local observed_width=""
+  local observed_height=""
   if [[ ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
     echo "invalid viewport: $viewport" >&2
     return 2
   fi
 
-  for ((position_attempt = 1; position_attempt <= position_attempts; position_attempt++)); do
+  while true; do
+    if ! wait_for_owned_evidence_window "$window_name" "$diagnostic_file"; then
+      echo "failure_category=window" >&2
+      echo "failure_message=visual-owned-window-unavailable" >&2
+      return 1
+    fi
+
     if /usr/bin/osascript - "$EVIDENCE_APP_PID" "$window_name" "$origin_x" "$origin_y" "$width" "$height" <<'APPLESCRIPT' >/dev/null
 on run argv
   set appPID to item 1 of argv as integer
@@ -783,19 +848,36 @@ on run argv
 end run
 APPLESCRIPT
     then
-      return 0
+      if window_metadata="$(wait_for_window_capture_metadata "$window_name" 2>/dev/null)"; then
+        read -r _ _ _ observed_width observed_height <<<"$window_metadata"
+        # AppKit may clamp AX resize requests to a content-derived minimum.
+        # Reject that state here so a wrong viewport never reaches capture or
+        # masquerades as a valid artifact until the final receipt audit.
+        if [[ "$observed_width" == "$width" && "$observed_height" == "$height" ]]; then
+          park_pointer_outside_evidence_window
+          return 0
+        fi
+      fi
     fi
-    if [[ "$position_attempt" -lt "$position_attempts" ]]; then
-      # AX can transiently publish an empty process window collection while
-      # SwiftUI changes routes. Reactivate the same owned PID and retry only
-      # the positioning step so the audited route cannot switch underneath us.
-      activate_evidence_app
-      sleep 0.25
+
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      break
     fi
+
+    # SwiftUI can replace the route window after the initial AX wait. Reacquire
+    # the window from the same owned PID before retrying, instead of falling
+    # through to another process or accepting stale CG metadata.
+    echo "INFO: waiting for recreated owned evidence window before positioning" >&2
+    activate_evidence_app
+    sleep 0.25
   done
 
   echo "failure_category=window" >&2
-  echo "failure_message=visual-window-position-unavailable" >&2
+  if [[ -n "$observed_width" && -n "$observed_height" ]]; then
+    echo "failure_message=visual-window-viewport-mismatch requested=${width}x${height} observed=${observed_width}x${observed_height}" >&2
+  else
+    echo "failure_message=visual-window-position-unavailable" >&2
+  fi
   return 1
 }
 
@@ -1112,6 +1194,13 @@ persist_project_board_selection() {
   local database_path="$1"
   local project_id
   local inbox_voice_task_id
+  local capture_task_id
+  local unscheduled_task_id
+  local capture_due_date
+  local planned_label
+  local medium_label
+  local high_label
+  local no_due_date_label
   project_id="$(sqlite3 "$database_path" "SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1;")"
 
   if [[ -z "$project_id" ]]; then
@@ -1123,9 +1212,45 @@ persist_project_board_selection() {
     echo "seeded Scheduled manual capture task was not found." >&2
     exit 1
   fi
+  capture_task_id="$(sqlite3 "$database_path" "SELECT id FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Capture launch screenshots' ORDER BY id DESC LIMIT 1;")"
+  review_task_id="$(sqlite3 "$database_path" "SELECT id FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Review VoiceOver focus path' ORDER BY id DESC LIMIT 1;")"
+  unscheduled_task_id="$(sqlite3 "$database_path" "SELECT id FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Unscheduled schedule draft input' ORDER BY id DESC LIMIT 1;")"
+  if [[ ! "$capture_task_id" =~ ^[0-9]+$ || ! "$review_task_id" =~ ^[0-9]+$ || ! "$unscheduled_task_id" =~ ^[0-9]+$ ]]; then
+    echo "seeded project-board metadata tasks were not found." >&2
+    exit 1
+  fi
+  capture_due_date="$(sqlite3 "$database_path" "SELECT substr(due_at, 1, 10) FROM tasks WHERE id = $capture_task_id;")"
+  review_due_date="$(sqlite3 "$database_path" "SELECT substr(due_at, 1, 10) FROM tasks WHERE id = $review_task_id;")"
+  if [[ ! "$capture_due_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ || ! "$review_due_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    echo "seeded project-board evidence tasks have no canonical due date." >&2
+    exit 1
+  fi
+
+  # These values mirror the canonical Localizable.strings entries used by the
+  # task metadata accessibility value in each capture locale.
+  case "$EVIDENCE_LOCALE" in
+    english)
+      planned_label="Planned"
+      in_progress_label="In Progress"
+      medium_label="Medium"
+      high_label="High"
+      no_due_date_label="No due date"
+      ;;
+    japanese)
+      planned_label="予定"
+      in_progress_label="進行中"
+      medium_label="中"
+      high_label="高"
+      no_due_date_label="期限なし"
+      ;;
+  esac
 
   PROJECT_BOARD_SELECTION_OVERRIDE="project:$project_id"
-  PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details=>Capture launch screenshots"
+  # SwiftUI combines each card into its parent button in the runtime AX tree.
+  # Bind title and metadata proof to that exact task button so a hidden child
+  # identifier or another card's text cannot authenticate the screenshot.
+  PROJECT_BOARD_SELECTED_TASK_OVERRIDE="$review_task_id"
+  PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details-$capture_task_id=>Capture launch screenshots|task-card-open-details-$capture_task_id=>$planned_label, $high_label, $capture_due_date|task-card-open-details-$review_task_id=>Review VoiceOver focus path|task-card-open-details-$review_task_id=>$in_progress_label, $high_label, $review_due_date|task-card-open-details-$unscheduled_task_id=>$planned_label, $medium_label, $no_due_date_label"
   INBOX_VOICE_TASK_OVERRIDE="$inbox_voice_task_id"
   INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>Inbox classification actions"
   write_app_preference solopm.projectBoard.selectedDestination "$PROJECT_BOARD_SELECTION_OVERRIDE"
@@ -1136,53 +1261,93 @@ capture_visible_window() {
   local output_path="$2"
   local window_name="${3:-}"
   local target_identifier="${4:-}"
+  local expected_appearance="${label%% *}"
+  if [[ "$expected_appearance" == "system" ]]; then
+    expected_appearance="dark"
+  fi
 
   if [[ -z "$target_identifier" ]]; then
     echo "missing AX target frame audit identifier for $label" >&2
     exit 2
   fi
 
-  position_window_for_capture "$window_name"
-  sleep 0.25
-
-  local window_metadata
-  window_metadata="$(wait_for_window_capture_metadata "$window_name")"
-  set -- $window_metadata
-  local window_id="$1"
-  local window_x="$2"
-  local window_y="$3"
-  local window_width="$4"
-  local window_height="$5"
-  local window_context
-  window_context="id=$window_id bounds=${window_width}x${window_height}+${window_x}+${window_y}"
-  local target_frame_audit
-  # SwiftUI can publish the target before its wrapping text finishes layout.
-  # Bind the raster to a converged AX frame so repeated captures do not approve
-  # different subpixel layouts for the same product state.
-  target_frame_audit="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name")"
-
   local capture_attempt
   local capture_attempts=3
   local capture_ready=0
+  local window_metadata
+  local window_id window_x window_y window_width window_height
+  local window_context=""
+  local target_frame_audit
+  local target_frame_fingerprint
+  local AX_TARGET_FRAME_AUDIT_MODE="fingerprint"
+  local successful_window_width=""
+  local successful_window_height=""
+  local successful_target_frame_audit=""
+  local first_raster="$VISUAL_FIRST_RASTER"
+  local second_raster="$output_path"
+  local second_window_metadata
+  local second_target_frame_fingerprint
   for ((capture_attempt = 1; capture_attempt <= capture_attempts; capture_attempt++)); do
-    rm -f "$output_path"
+    # A route transition can recreate the window between attempts. Reposition
+    # first, then bind this exact attempt to fresh PID-owned CG bounds and a
+    # converged AX target frame. Only a successful attempt is written to the
+    # receipt, so stale window IDs or frames cannot authenticate the raster.
+    position_window_for_capture "$window_name"
+    sleep 0.25
+    window_metadata="$(wait_for_window_capture_metadata "$window_name")"
+    set -- $window_metadata
+    window_id="$1"
+    window_x="$2"
+    window_y="$3"
+    window_width="$4"
+    window_height="$5"
+    window_context="id=$window_id bounds=${window_width}x${window_height}+${window_x}+${window_y}"
+    target_frame_audit="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name")"
+    target_frame_fingerprint="$target_frame_audit"
+    target_frame_audit="$(receipt_ax_target_frame_fields "$target_frame_fingerprint")"
+
+    rm -f "$output_path" "$first_raster"
     # Window shadows change raster bounds depending on transient activation
     # state. Excluding them binds repeated captures to the logical viewport
     # instead of nondeterministic compositor padding.
-    if screencapture -x -o -l "$window_id" "$output_path" \
-      || screencapture -x -R "${window_x},${window_y},${window_width},${window_height}" "$output_path"; then
-      if [[ -s "$output_path" ]] && assert_screenshot_has_visible_content "$output_path"; then
-        capture_ready=1
-        break
+    if screencapture -x -o -l "$window_id" "$first_raster"; then
+      if [[ -s "$first_raster" ]] && assert_screenshot_has_visible_content "$first_raster"; then
+        # AX geometry can settle before SwiftUI child text reaches the
+        # compositor. Reconfirm the same PID-owned window and target frame,
+        # then accept only two consecutive rasters that satisfy the canonical
+        # manifest thresholds. This prevents a partially rendered chip from
+        # becoming evidence while tolerating bounded antialiasing noise.
+        sleep 0.2
+        second_window_metadata="$(wait_for_window_capture_metadata "$window_name")"
+        # A fresh three-sample acquisition rejects a target that briefly
+        # returns to the same frame while its SwiftUI subtree is still moving.
+        second_target_frame_fingerprint="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name")"
+        if [[ "$second_window_metadata" == "$window_metadata" && "$second_target_frame_fingerprint" == "$target_frame_fingerprint" ]] \
+          && screencapture -x -o -l "$window_id" "$second_raster" \
+          && [[ -s "$second_raster" ]] \
+          && assert_screenshot_has_visible_content "$second_raster" \
+          && "$VISUAL_APPEARANCE_CHECKER" "$second_raster" "$expected_appearance" \
+          && "$VISUAL_RASTER_STABILITY_CHECKER" \
+            --manifest "$VISUAL_BASELINE_MANIFEST" \
+            --first "$first_raster" \
+            --second "$second_raster"; then
+          successful_window_width="$window_width"
+          successful_window_height="$window_height"
+          successful_target_frame_audit="$target_frame_audit"
+          capture_ready=1
+          rm -f "$first_raster"
+          break
+        fi
+        echo "INFO: screenshot raster did not converge on attempt $capture_attempt; retrying the owned window." >&2
       fi
     fi
     # AX readiness can precede the final compositor frame on hosted runners.
     # Re-raise the same PID-owned window and retry instead of accepting a
     # partially black raster as baseline evidence.
     activate_evidence_app
-    position_window_for_capture "$window_name"
     sleep 1
   done
+  rm -f "$first_raster"
 
   if [[ "$capture_ready" != "1" ]]; then
     print_capture_failure_guidance "$label" "$output_path" "$window_context"
@@ -1215,7 +1380,7 @@ capture_visible_window() {
   # health checks. The receipt is intentionally end-of-run so partial captures
   # can never be mistaken for complete runtime AX evidence.
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$(basename "$output_path")" "$label" "$window_width" "$window_height" "$target_frame_audit" "$sha256" \
+    "$(basename "$output_path")" "$label" "$successful_window_width" "$successful_window_height" "$successful_target_frame_audit" "$sha256" \
     >>"$AX_CAPTURE_RECEIPT_TSV"
 }
 
@@ -1356,13 +1521,7 @@ capture_project_board_destination() {
   local route_attempt
   local marker_diagnostic
   local launch_destination="$selected_destination"
-  local project_id=""
   local destination_status
-
-  if [[ "$selected_destination" =~ ^project:([1-9][0-9]*)$ ]]; then
-    project_id="${BASH_REMATCH[1]}"
-    launch_destination="projects"
-  fi
 
   APPEARANCE_OVERRIDE="$appearance"
   PROJECT_BOARD_SELECTION_OVERRIDE="$launch_destination"
@@ -1371,6 +1530,8 @@ capture_project_board_destination() {
   SETTINGS_TAB_OVERRIDE=""
   VOICE_COMMAND_WINDOW_OVERRIDE=""
   for ((route_attempt = 1; route_attempt <= EVIDENCE_ROUTE_ATTEMPTS; route_attempt++)); do
+    marker_diagnostic="$EVIDENCE_TMPDIR/project-board-destination.$$.attempt-$route_attempt.err"
+    : >"$marker_diagnostic"
     stop_evidence_app
     write_appearance_preference "$appearance"
     write_app_preference solopm.projectBoard.selectedDestination "$launch_destination"
@@ -1378,32 +1539,33 @@ capture_project_board_destination() {
     wait_for_process
     activate_evidence_app
     sleep 1.5
-    wait_for_window_capture_metadata >/dev/null
     # Dense workflow footers may not enter the AX visible subtree until the
     # evidence window is widened, so target validation uses the same bounds as
     # the screenshot instead of a smaller launch-default window.
-    position_window_for_capture
+    # Treat CG metadata publication and AX positioning as one readiness unit.
+    # SwiftUI can remove the first window between process readiness and either
+    # probe, so both failures must consume the same bounded fresh-process retry.
+    if ! wait_for_window_capture_metadata > /dev/null 2>>"$marker_diagnostic" ||
+      ! position_window_for_capture "" "$marker_diagnostic" 2>>"$marker_diagnostic"; then
+      if [[ "$route_attempt" -lt "$EVIDENCE_ROUTE_ATTEMPTS" ]]; then
+        echo "INFO: retrying exact production destination after owned window readiness failure" >&2
+        emit_evidence_app_diagnostic
+        rm -f "$marker_diagnostic"
+        continue
+      fi
+      cat "$marker_diagnostic" >&2
+      emit_evidence_app_diagnostic
+      rm -f "$marker_diagnostic"
+      PROJECT_BOARD_SELECTION_OVERRIDE="$selected_destination"
+      return 1
+    fi
     sleep 0.25
 
-    marker_diagnostic="$EVIDENCE_TMPDIR/project-board-destination.$$.attempt-$route_attempt.err"
-    : >"$marker_diagnostic"
     destination_status=0
-    if [[ -n "$project_id" ]]; then
-      # The hosted macOS runner can publish a real Projects window while a
-      # direct project cold launch remains stuck before detail composition.
-      # Follow the production user path instead: prove Projects first, then
-      # select the exact seeded row through its PID-scoped AX identifier.
-      wait_for_project_board_destination \
-        "Projects overview before $label" \
-        "sidebar-destination-projects=>|projects-portfolio-overview=>" \
-        2>>"$marker_diagnostic" || destination_status=$?
-      if [[ "$destination_status" -eq 0 ]]; then
-        press_project_sidebar_row "$project_id" 2>>"$marker_diagnostic" || destination_status=$?
-      fi
-    fi
-    if [[ "$destination_status" -eq 0 ]]; then
-      wait_for_project_board_destination "$label" "$target_markers" 2>>"$marker_diagnostic" || destination_status=$?
-    fi
+    # Typed route overrides are the production deep-link contract. Launching
+    # the exact route avoids depending on whether a SwiftUI List has published
+    # an off-screen project row into the hosted runner's AX tree.
+    wait_for_project_board_destination "$label" "$target_markers" 2>>"$marker_diagnostic" || destination_status=$?
     if [[ "$destination_status" -eq 0 ]]; then
       rm -f "$marker_diagnostic"
       PROJECT_BOARD_SELECTION_OVERRIDE="$selected_destination"
@@ -1836,6 +1998,8 @@ fi
 assert_visual_product_source_is_committed
 
 "$ROOT_DIR/script/build_and_run.sh" --build-only
+/usr/bin/swiftc "$ROOT_DIR/script/visual_raster_stability_check.swift" -o "$VISUAL_RASTER_STABILITY_CHECKER"
+/usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_appearance_check.swift" -o "$VISUAL_APPEARANCE_CHECKER"
 
 SOURCE_COMMIT="$(ui_evidence_product_source_commit)"
 
@@ -1977,9 +2141,9 @@ if [[ "$DONE_ANALYTICS" == "1" ]]; then
   exit 0
 fi
 
-capture_project_board_destination light "$PROJECT_BOARD_SELECTION_OVERRIDE" "$LIGHT_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS" "" "" "project-board-detail"
-capture_project_board_destination dark "$PROJECT_BOARD_SELECTION_OVERRIDE" "$DARK_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS" "" "" "project-board-detail"
-capture_project_board_destination system "$PROJECT_BOARD_SELECTION_OVERRIDE" "$SYSTEM_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS" "" "" "project-board-detail"
+capture_project_board_destination light "$PROJECT_BOARD_SELECTION_OVERRIDE" "$LIGHT_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS" "$PROJECT_BOARD_SELECTED_TASK_OVERRIDE" "" "project-board-detail"
+capture_project_board_destination dark "$PROJECT_BOARD_SELECTION_OVERRIDE" "$DARK_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS" "$PROJECT_BOARD_SELECTED_TASK_OVERRIDE" "" "project-board-detail"
+capture_project_board_destination system "$PROJECT_BOARD_SELECTION_OVERRIDE" "$SYSTEM_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS" "$PROJECT_BOARD_SELECTED_TASK_OVERRIDE" "" "project-board-detail"
 capture_project_board_destination light inbox "$INBOX_LIGHT_SCREENSHOT" "Inbox" "$INBOX_TARGET_MARKERS" "" "" "inbox-workflow"
 capture_project_board_destination dark inbox "$INBOX_DARK_SCREENSHOT" "Inbox" "$INBOX_TARGET_MARKERS" "" "" "inbox-workflow"
 capture_project_board_destination system inbox "$INBOX_SYSTEM_SCREENSHOT" "Inbox" "$INBOX_TARGET_MARKERS" "" "" "inbox-workflow"

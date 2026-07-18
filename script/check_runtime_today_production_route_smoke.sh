@@ -28,12 +28,15 @@ CPU_SAMPLE_INTERVAL_SECONDS=1
 REQUIRED_CONSECUTIVE_CPU_SAMPLES=3
 MAX_CPU_PERCENT=20
 MAX_TOOLBAR_LAYOUT_DEPTH="${SOLOPM_RUNTIME_TODAY_MAX_TOOLBAR_LAYOUT_DEPTH:-1}"
+WINDOW_WIDTH="${SOLOPM_RUNTIME_TODAY_WINDOW_WIDTH:-1024}"
+WINDOW_HEIGHT="${SOLOPM_RUNTIME_TODAY_WINDOW_HEIGHT:-724}"
 FIXTURES=("empty" "small")
 LOCALES=("english" "japanese")
 KEEP_ARTIFACTS="${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_KEEP_ARTIFACTS:-0}"
 ARTIFACT_ROOT="${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_ARTIFACT_DIR:-$ROOT_DIR/.tmp/runtime-today-production-route}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}"
+AX_IDENTIFIER_COUNT_HELPER="${AX_IDENTIFIER_COUNT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_identifier_count.swift}"
 
 if [[ ! "$RUNTIME_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$RUNTIME_TIMEOUT_SECONDS" -lt 3 ]]; then
   echo "SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS must be an integer of at least 3" >&2
@@ -50,6 +53,16 @@ if [[ ! "$MAX_TOOLBAR_LAYOUT_DEPTH" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
+if [[ ! "$WINDOW_WIDTH" =~ ^[1-9][0-9]*$ ]]; then
+  echo "SOLOPM_RUNTIME_TODAY_WINDOW_WIDTH must be a positive integer" >&2
+  exit 2
+fi
+
+if [[ ! "$WINDOW_HEIGHT" =~ ^[1-9][0-9]*$ ]]; then
+  echo "SOLOPM_RUNTIME_TODAY_WINDOW_HEIGHT must be a positive integer" >&2
+  exit 2
+fi
+
 if [[ ! "$SQLITE_BUSY_TIMEOUT_MS" =~ ^[1-9][0-9]*$ ]]; then
   echo "SOLOPM_RUNTIME_TODAY_SQLITE_BUSY_TIMEOUT_MS must be a positive integer" >&2
   exit 2
@@ -62,6 +75,10 @@ fi
 
 if [[ ! -r "$AX_HELPERS" ]]; then
   echo "BLOCKER: AX helpers are unavailable: $AX_HELPERS" >&2
+  exit 2
+fi
+if [[ ! -r "$AX_IDENTIFIER_COUNT_HELPER" ]]; then
+  echo "BLOCKER: AX identifier count helper is unavailable: $AX_IDENTIFIER_COUNT_HELPER" >&2
   exit 2
 fi
 
@@ -371,8 +388,67 @@ wait_for_marker_until() {
 }
 
 wait_for_required_markers() {
-  wait_for_marker_until "project-board-header-bar" "" "$case_deadline"
+  wait_for_marker_until "project-board-command-palette" "" "$case_deadline"
   wait_for_marker_until "today-workflow" "$expected_today_label" "$case_deadline"
+}
+
+read_ax_identifier_counts() {
+  local identifier_marker="$1"
+  local output_file="$2"
+  local error_file="$3"
+  local helper_pid
+  local watchdog_pid
+  local status
+
+  SOLOPM_UI_EVIDENCE_AX_MAX_NODES=9000 \
+    /usr/bin/swift "$AX_IDENTIFIER_COUNT_HELPER" "$app_pid" "$identifier_marker" \
+    >"$output_file" 2>"$error_file" &
+  helper_pid=$!
+  (
+    sleep "$RUNTIME_TIMEOUT_SECONDS"
+    kill "$helper_pid" >/dev/null 2>&1 || true
+  ) &
+  watchdog_pid=$!
+  set +e
+  wait "$helper_pid"
+  status=$?
+  set -e
+  kill "$watchdog_pid" >/dev/null 2>&1 || true
+  wait "$watchdog_pid" >/dev/null 2>&1 || true
+  return "$status"
+}
+
+verify_today_action_contract() {
+  local expected_primary_enabled=1
+  local expected_catch_up_total=0
+  local primary_output="$route_artifact_dir/primary-action-count.txt"
+  local primary_error="$route_artifact_dir/primary-action-count.err"
+  local catch_up_output="$route_artifact_dir/catch-up-count.txt"
+  local catch_up_error="$route_artifact_dir/catch-up-count.err"
+
+  [[ "$fixture" == "small" ]] && expected_catch_up_total=1
+
+  if ! read_ax_identifier_counts "today-primary-action" "$primary_output" "$primary_error"; then
+    cat "$primary_error" >&2
+    return 1
+  fi
+  if ! grep -E "^total=[1-9][0-9]* enabled=[1-9][0-9]* actionable_enabled=${expected_primary_enabled}$" "$primary_output" >/dev/null; then
+    echo "BLOCKER: Today must expose exactly one enabled prominent primary action for fixture=$fixture; got $(cat "$primary_output")" >&2
+    return 1
+  fi
+
+  if ! read_ax_identifier_counts "today-catch-up-section" "$catch_up_output" "$catch_up_error"; then
+    cat "$catch_up_error" >&2
+    return 1
+  fi
+  local catch_up_pattern="^total=0 enabled=0 actionable_enabled=0$"
+  if [[ "$expected_catch_up_total" -gt 0 ]]; then
+    catch_up_pattern="^total=[1-9][0-9]* enabled=[1-9][0-9]* actionable_enabled=[0-9]+$"
+  fi
+  if ! grep -E "$catch_up_pattern" "$catch_up_output" >/dev/null; then
+    echo "BLOCKER: Catch Up presence did not match fixture=$fixture; got $(cat "$catch_up_output")" >&2
+    return 1
+  fi
 }
 
 route_text_for() {
@@ -382,10 +458,18 @@ route_text_for() {
     inbox:ja) printf '%s' "インボックス" ;;
     today:en) printf '%s' "Today" ;;
     today:ja) printf '%s' "今日" ;;
-    catch-up:en) printf '%s' "Catch Up" ;;
-    catch-up:ja) printf '%s' "キャッチアップ" ;;
     projects:en) printf '%s' "Projects" ;;
     projects:ja) printf '%s' "プロジェクト" ;;
+    review:en) printf '%s' "Review" ;;
+    review:ja) printf '%s' "確認" ;;
+    review-schedule:en) printf '%s' "Schedule" ;;
+    review-schedule:ja) printf '%s' "予定" ;;
+    review-completed:en) printf '%s' "Completed" ;;
+    review-completed:ja) printf '%s' "完了" ;;
+    review-automation:en) printf '%s' "Automation Activity" ;;
+    review-automation:ja) printf '%s' "自動化アクティビティ" ;;
+    review-assistant-queue:en) printf '%s' "Assistant Queue" ;;
+    review-assistant-queue:ja) printf '%s' "アシスタントキュー" ;;
     project:*|inspector:*) printf '%s' "fixture-project-1" ;;
     *) return 1 ;;
   esac
@@ -428,8 +512,76 @@ fail_case() {
   return 1
 }
 
+record_owned_window_size_result() {
+  local diagnostic_file="$1"
+  local osascript_status="$2"
+  local observed_output="$3"
+  local observed_width="unavailable"
+  local observed_height="unavailable"
+  local status="failed"
+  local reason="window-size-unavailable"
+
+  # Validate the complete response before splitting it. `read` alone only
+  # consumes the first line, so a valid-looking first line could otherwise
+  # hide a second diagnostic line or host path in a public CI artifact flow.
+  if [[ "$osascript_status" -eq 0 &&
+    "$observed_output" =~ ^[1-9][0-9]*\ [1-9][0-9]*$ ]]; then
+    read -r observed_width observed_height <<<"$observed_output"
+    if [[ "$observed_width" -eq "$WINDOW_WIDTH" && "$observed_height" -eq "$WINDOW_HEIGHT" ]]; then
+      status="passed"
+      reason="none"
+    else
+      reason="window-size-mismatch"
+    fi
+  fi
+
+  printf 'status=%s\nfailure_category=%s\nfailure_reason=%s\nrequested_width=%s\nrequested_height=%s\nobserved_width=%s\nobserved_height=%s\n' \
+    "$status" "$([[ "$status" == "passed" ]] && printf none || printf window)" "$reason" \
+    "$WINDOW_WIDTH" "$WINDOW_HEIGHT" "$observed_width" "$observed_height" \
+    >"$diagnostic_file"
+  [[ "$status" == "passed" ]]
+}
+
+set_owned_window_size() {
+  local diagnostic_file="$1"
+  local deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
+  local observed_output=""
+  local osascript_status=0
+  while true; do
+    set +e
+    observed_output="$(/usr/bin/osascript - "$app_pid" "$WINDOW_WIDTH" "$WINDOW_HEIGHT" <<'APPLESCRIPT' 2>/dev/null
+on run argv
+  set appPID to item 1 of argv as integer
+  set targetWidth to item 2 of argv as integer
+  set targetHeight to item 3 of argv as integer
+  tell application "System Events"
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "pid-owned process missing"
+    tell item 1 of matchingProcesses
+      if not (exists window 1) then error "pid-owned window missing"
+      set size of window 1 to {targetWidth, targetHeight}
+      set actualSize to size of window 1
+      return (item 1 of actualSize as text) & " " & (item 2 of actualSize as text)
+    end tell
+  end tell
+end run
+APPLESCRIPT
+    )"
+    osascript_status=$?
+    set -e
+    if record_owned_window_size_result "$diagnostic_file" "$osascript_status" "$observed_output"; then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      return 1
+    fi
+    sleep 1
+  done
+}
+
 launch_route_process_and_window() {
   local window_diagnostic="$1"
+  local window_size_diagnostic="${window_diagnostic%.err}-size.env"
   route_failure_category=""
 
   if ! launch_app "$locale" "$route_destination"; then
@@ -446,6 +598,10 @@ launch_route_process_and_window() {
   fi
   if ! ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "" "$RUNTIME_TIMEOUT_SECONDS" "$window_diagnostic" "$APP_BINARY"; then
     route_failure_category="$(ax_classify_window_failure "$window_diagnostic" "$app_pid")"
+    return 1
+  fi
+  if ! set_owned_window_size "$window_size_diagnostic"; then
+    route_failure_category="window"
     return 1
   fi
   return 0
@@ -467,7 +623,7 @@ launch_route_and_wait_for_markers() {
   # its AX route subtree is queryable; only a window-classified failure gets
   # one clean relaunch below.
   case_deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
-  if ! wait_for_marker_until "project-board-header-bar" "" "$case_deadline"; then
+  if ! wait_for_marker_until "project-board-command-palette" "" "$case_deadline"; then
     route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
     return 1
   fi
@@ -517,6 +673,10 @@ run_route() {
   fi
 
   if [[ "$route_id" == "today" ]]; then
+    if ! verify_today_action_contract; then
+      fail_route "product-marker" "today-primary-or-catch-up-contract"
+      return 1
+    fi
     # Keep the existing Today acceptance contract: the production route must
     # settle below the CPU threshold and retain the toolbar/preview recursion
     # diagnostics after AX readiness, for both empty and seeded databases.
@@ -572,7 +732,7 @@ navigate_to_seed_project() {
   fi
 
   case_deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
-  for marker in "project-board-header-bar" "$route_sidebar_marker" "$route_content_marker"; do
+  for marker in "project-board-command-palette" "$route_sidebar_marker" "$route_content_marker"; do
     required_text=""
     [[ "$marker" == "$route_content_marker" ]] && required_text="$route_text"
     if ! wait_for_marker_until "$marker" "$required_text" "$case_deadline"; then
@@ -619,7 +779,11 @@ run_normal_routes() {
   local routes=(
     "inbox|inbox|sidebar-destination-inbox|inbox-workflow"
     "today|today|sidebar-destination-today|today-workflow"
-    "catch-up|catch-up|sidebar-destination-catch-up|catch-up-workflow"
+    "review|primary:review|sidebar-destination-review|review-hub"
+    "review-schedule|review:schedule|sidebar-destination-review|schedule-workflow"
+    "review-completed|review:completed|sidebar-destination-review|done-workflow"
+    "review-automation|review:automation|sidebar-destination-review|automation-activity-workflow"
+    "review-assistant-queue|review:assistant-queue|sidebar-destination-review|assistant-queue-workflow"
     "projects|projects|sidebar-destination-projects|projects-portfolio-overview"
   )
 
@@ -632,7 +796,15 @@ run_normal_routes() {
       return 1
     fi
   done
-  navigate_to_seed_project
+  # The state-restoration lane owns AX row pressing and Inspector drill-down.
+  # This route smoke verifies that the typed project deep link still resolves
+  # through the Projects top-level selection to the real project detail.
+  run_route \
+    "project" \
+    "project:$seed_project_id" \
+    "sidebar-destination-projects" \
+    "project-board-detail" \
+    "$(route_text_for "project")"
 }
 
 cpu_percent_for_app() {

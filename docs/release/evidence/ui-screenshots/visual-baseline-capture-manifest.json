@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-07-10T12:34:54Z",
-  "sourceCommit": "f08e27af42d529674a6308002903e8e339f5de39",
+  "generatedAt": "2026-07-17T06:07:09Z",
+  "sourceCommit": "fed759c2eb82f55e09e2be9522933ea4cfd21ecf",
   "locale": "en-US",
   "timeZoneIdentifier": "UTC",
   "referenceInstant": "2026-07-10T12:00:00Z",
   "sourceManifest": "docs/quality/visual-baseline-manifest.json",
   "screenshotDirectory": "docs/release/evidence/ui-screenshots",
-  "mainViewport": "1420x860",
+  "mainViewport": "1024x724",
   "settingsViewport": "720x712",
   "voiceCommandViewport": "760x640",
   "comparison": "semantic"

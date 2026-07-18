@@ -89,6 +89,11 @@ public enum ProjectBoardSelectionPersistence {
         return rawValue?.isEmpty == false ? rawValue : nil
     }
 
+    /// Temporary encoder for command and payload adapters that still speak the
+    /// former destination type. It cannot delegate to the typed codec because
+    /// `.catchUp` remains a distinct compatibility signal while `BoardRoute`
+    /// renders it contextually inside Today. Remove this with
+    /// `ProjectBoardSidebarDestination` after every adapter uses `BoardRoute`.
     public static func rawValue(for destination: ProjectBoardSidebarDestination) -> String {
         switch destination {
         case .inbox:
@@ -110,6 +115,27 @@ public enum ProjectBoardSelectionPersistence {
         }
     }
 
+    /// Persists typed routes using the new stable codec while the explicitly
+    /// named adapter avoids ambiguity with legacy `.project(42)` shorthand.
+    public static func rawValue(forTypedRoute route: BoardRoute) -> String {
+        ProjectBoardRouteCodec.rawValue(for: route)
+    }
+
+    /// Adapts the existing project model input to the typed route codec without
+    /// changing the legacy destination API still used by the current UI.
+    public static func route(
+        from rawValue: String,
+        availableProjects: [ProjectBoardProject]
+    ) -> BoardRoute {
+        ProjectBoardRouteCodec.route(
+            from: rawValue,
+            availableProjectIDs: Set(availableProjects.map(\.id))
+        )
+    }
+
+    /// Temporary compatibility decoder paired with the legacy encoder above.
+    /// It intentionally preserves `.catchUp`; consolidating it into Today now
+    /// would change production UI behavior before the typed sidebar migration.
     public static func destination(
         from rawValue: String,
         availableProjects: [ProjectBoardProject]
@@ -147,26 +173,6 @@ public enum ProjectBoardSelectionPersistence {
                 return .today
             }
         }
-    }
-}
-
-/// Single routing entry point that forces the Project Board onto the Today
-/// destination from outside the board window (digest notification taps and the
-/// menu bar summary). It persists the destination first so a Project Board
-/// window created afterwards restores straight into Today, then posts the
-/// notification so an already-open board switches immediately.
-public enum ProjectBoardTodayNavigation {
-    public static let openTodayNotification = Notification.Name("dev.solopm.projectBoardOpenTodayRequested")
-
-    public static func forceSelectToday(
-        defaults: UserDefaults = .standard,
-        notificationCenter: NotificationCenter = .default
-    ) {
-        defaults.set(
-            ProjectBoardSelectionPersistence.rawValue(for: .today),
-            forKey: ProjectBoardSelectionPersistence.storageKey
-        )
-        notificationCenter.post(name: openTodayNotification, object: nil)
     }
 }
 

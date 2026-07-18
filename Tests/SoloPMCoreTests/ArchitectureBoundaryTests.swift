@@ -116,8 +116,7 @@ final class ArchitectureBoundaryTests: XCTestCase {
             ],
             "Sources/SoloPMApp/Views/SettingsView.swift": [
                 "struct SettingsView: View",
-                "enum SettingsTab: String",
-                "private struct SettingsStatusOverview: View"
+                "enum SettingsTab: String"
             ]
         ]
 
@@ -149,7 +148,8 @@ final class ArchitectureBoundaryTests: XCTestCase {
         for compositionMarker in [
             "WindowGroup(\"SoloPM\", id: \"project-board\")",
             "VoiceCaptureWindowRootView()",
-            "MenuBarPanel(controller: menuBarController, quickCaptureController: menuBarQuickCaptureController)",
+            "quickCaptureController: menuBarQuickCaptureController,",
+            "sceneCoordinator: projectBoardSceneCoordinator",
             "SettingsView(",
             "AppRuntimeFactory.prepareProjectBoardRuntimeBundle()"
         ] {
@@ -241,6 +241,129 @@ final class ArchitectureBoundaryTests: XCTestCase {
         XCTAssertTrue(sharedSource.contains("struct WorkflowTaskSurface"))
         XCTAssertTrue(sharedSource.contains("struct WorkflowHeader"))
         XCTAssertTrue(sharedSource.contains("struct WorkflowDoneToggle"))
+    }
+
+    func testTodayFeaturePublishesOneAggregateStateWithoutObservingBoardAtTheViewRoot() throws {
+        let todayViewSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift")
+        let featureSource = try readPackageFile("Sources/SoloPMCore/App/TodayFeatureViewModel.swift")
+
+        XCTAssertTrue(todayViewSource.contains("@StateObject private var viewModel: TodayFeatureViewModel"))
+        XCTAssertFalse(todayViewSource.contains("@ObservedObject private var viewModel: ProjectBoardViewModel"))
+        XCTAssertTrue(featureSource.contains("public struct TodayFeatureState: Equatable"))
+        XCTAssertEqual(
+            featureSource.components(separatedBy: "@Published public private(set)").count - 1,
+            1,
+            "Today should invalidate SwiftUI once through one aggregate published state"
+        )
+        XCTAssertTrue(featureSource.contains("applyStateIfChanged"))
+        XCTAssertFalse(featureSource.contains(".combineLatest(board.$snapshot)"))
+    }
+
+    func testProjectBoardAndSettingsRetainRootOwnershipWhileLeafViewsAreSplit() throws {
+        let boardRoot = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let inspectors = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardInspectors.swift")
+        let details = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
+        let settingsRoot = try readPackageFile("Sources/SoloPMApp/Views/SettingsView.swift")
+        let settingsFeatures = try readPackageFile("Sources/SoloPMApp/Views/SettingsFeatureViews.swift")
+
+        for ownershipMarker in [
+            "@StateObject private var viewModel: ProjectBoardViewModel",
+            "NavigationSplitView",
+            ".inspector(isPresented:",
+            ".sheet("
+        ] {
+            XCTAssertTrue(boardRoot.contains(ownershipMarker), "ProjectBoardView must retain \(ownershipMarker)")
+        }
+        for movedDeclaration in [
+            "struct TaskInspectorView: View",
+            "struct ProjectInspectorView: View"
+        ] {
+            XCTAssertFalse(boardRoot.contains(movedDeclaration))
+            XCTAssertTrue(inspectors.contains(movedDeclaration))
+        }
+        for movedDeclaration in [
+            "struct ProjectsPortfolioOverview: View",
+            "struct ProjectBoardDetail: View",
+            "struct ProjectKanbanBoard: View"
+        ] {
+            XCTAssertFalse(boardRoot.contains(movedDeclaration))
+            XCTAssertTrue(details.contains(movedDeclaration))
+        }
+
+        XCTAssertTrue(settingsRoot.contains("@StateObject private var settingsViewModel"))
+        XCTAssertTrue(settingsRoot.contains("@State private var selectedTab: SettingsTab"))
+        XCTAssertTrue(settingsRoot.contains("TabView(selection: $selectedTab)"))
+        for leafType in [
+            "struct SettingsOverviewFeatureView: View",
+            "struct SettingsAppearanceFeatureView: View",
+            "struct SettingsAIFeatureView: View",
+            "struct SettingsSyncFeatureView: View",
+            "struct SettingsPrivacyFeatureView: View",
+            "struct SettingsMCPFeatureView: View"
+        ] {
+            XCTAssertTrue(settingsFeatures.contains(leafType), "SettingsFeatureViews must own \(leafType)")
+        }
+        XCTAssertFalse(settingsFeatures.contains("extension SettingsView"))
+        XCTAssertFalse(settingsFeatures.contains("context.overviewSettingsTab"))
+        XCTAssertFalse(settingsFeatures.contains("context.appearanceSettingsTab"))
+        XCTAssertFalse(settingsFeatures.contains("context.aiSettingsTab"))
+        XCTAssertFalse(settingsFeatures.contains("context.syncSettingsTab"))
+        XCTAssertFalse(settingsFeatures.contains("context.privacySettingsTab"))
+        XCTAssertFalse(settingsFeatures.contains("context.mcpSettingsTab"))
+        XCTAssertFalse(settingsFeatures.contains("struct SettingsFeatureContext"))
+        for rootOnlyRuntimeDependency in [
+            "LazyDependencyLoader",
+            "LazyObservableObjectLoader",
+            "GoogleCalendarOAuthConnecting",
+            "GoogleCalendarOAuthDisconnecting",
+            "GoogleCalendarListProviding",
+            "AppRuntimeFactory"
+        ] {
+            XCTAssertFalse(
+                settingsFeatures.contains(rootOnlyRuntimeDependency),
+                "Settings leaf views must not own runtime orchestration through \(rootOnlyRuntimeDependency)"
+            )
+        }
+        for dependencyType in [
+            "SettingsOverviewDependencies",
+            "SettingsAppearanceDependencies",
+            "SettingsAIDependencies",
+            "SettingsSyncDependencies",
+            "SettingsPrivacyDependencies",
+            "SettingsMCPDependencies"
+        ] {
+            let suffix = try XCTUnwrap(settingsFeatures.range(of: "struct \(dependencyType)")).upperBound
+            let declaration = String(settingsFeatures[suffix...].prefix { $0 != "}" })
+            for forbidden in [
+                "LazyDependencyLoader",
+                "LazyObservableObjectLoader",
+                "GoogleCalendarOAuthConnecting",
+                "GoogleCalendarOAuthDisconnecting",
+                "GoogleCalendarListProviding",
+                "some View"
+            ] {
+                XCTAssertFalse(declaration.contains(forbidden), "\(dependencyType) must not expose \(forbidden)")
+            }
+        }
+        for tabBody in [
+            "var overviewSettingsTab:",
+            "var appearanceSettingsTab:",
+            "var aiSettingsTab:",
+            "var syncSettingsTab:",
+            "var privacySettingsTab:",
+            "var mcpSettingsTab:"
+        ] {
+            XCTAssertFalse(settingsRoot.contains(tabBody))
+            XCTAssertFalse(settingsFeatures.contains(tabBody))
+        }
+        for movedDeclaration in [
+            "struct MCPServerSettingsRow: View",
+            "struct SelectedAIProviderStatusRow: View",
+            "struct ProValueOverviewRow: View"
+        ] {
+            XCTAssertFalse(settingsRoot.contains(movedDeclaration))
+            XCTAssertTrue(settingsFeatures.contains(movedDeclaration))
+        }
     }
 
     func testAutomationApprovalBoundaryKeepsQueueTranslationSeparateFromExecution() throws {

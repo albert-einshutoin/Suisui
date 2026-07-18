@@ -12,7 +12,22 @@ struct WorkflowEmptyStateAction {
     let handler: () -> Void
 }
 
-struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
+@MainActor
+protocol WorkflowTaskSurfaceModel: ObservableObject {
+    var selectedTaskID: Int64? { get }
+    func projectTitle(for task: ProjectBoardTask) -> String
+    func selectTask(id: Int64)
+    func toggleTaskCompletion(id: Int64)
+}
+
+extension ProjectBoardViewModel: WorkflowTaskSurfaceModel {
+    func selectTask(id: Int64) {
+        selectedTaskID = id
+    }
+}
+extension TodayFeatureViewModel: WorkflowTaskSurfaceModel {}
+
+struct WorkflowTaskSurface<Model: WorkflowTaskSurfaceModel, HeaderAccessory: View, Footer: View>: View {
     let title: String
     let subtitle: String
     let systemImage: String
@@ -20,7 +35,7 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
     let emptyTitle: String
     let emptyDescription: String
     let emptyStateAction: WorkflowEmptyStateAction?
-    @ObservedObject var viewModel: ProjectBoardViewModel
+    @ObservedObject var viewModel: Model
     let onSelectTask: ((ProjectBoardTask) -> Void)?
     let fillsAvailableHeight: Bool
     let triageSummary: (ProjectBoardTask) -> InboxTriageSummary?
@@ -35,7 +50,7 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
         emptyTitle: String,
         emptyDescription: String,
         emptyStateAction: WorkflowEmptyStateAction? = nil,
-        viewModel: ProjectBoardViewModel,
+        viewModel: Model,
         onSelectTask: ((ProjectBoardTask) -> Void)? = nil,
         fillsAvailableHeight: Bool = true,
         triageSummary: @escaping (ProjectBoardTask) -> InboxTriageSummary? = { _ in nil },
@@ -119,7 +134,7 @@ struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
             onSelectTask(task)
             return
         }
-        viewModel.selectedTaskID = task.id
+        viewModel.selectTask(id: task.id)
     }
 }
 
@@ -256,6 +271,7 @@ private struct WorkflowTaskRow: View {
 
     private var workflowAccessibilityValue: String {
         var values = [
+            String(localized: isSelected ? "Selected" : "Not selected"),
             "Project: \(projectTitle)",
             "\(String(localized: "Status")): \(String(localized: String.LocalizationValue(task.status.title)))",
             "\(String(localized: "Priority")): \(String(localized: String.LocalizationValue(task.priority.label)))"

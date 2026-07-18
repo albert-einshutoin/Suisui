@@ -4,10 +4,10 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct CatchUpWorkflowView: View {
-    @ObservedObject var viewModel: ProjectBoardViewModel
+    @ObservedObject var viewModel: TodayFeatureViewModel
 
     private var summary: MissedTaskReviewSummary {
-        viewModel.derivedReadModels.missedTaskReview
+        viewModel.missedTaskReview
     }
 
     var body: some View {
@@ -33,7 +33,7 @@ struct CatchUpWorkflowView: View {
                     .accessibilityIdentifier("catch-up-state-error")
             }
 
-            if let feedback = viewModel.todayCommandFeedback {
+            if let feedback = viewModel.commandFeedback {
                 Label(feedback, systemImage: "checkmark.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -53,7 +53,7 @@ struct CatchUpWorkflowView: View {
 
 private struct CatchUpMissedTaskReviewPanel: View {
     let summary: MissedTaskReviewSummary
-    @ObservedObject var viewModel: ProjectBoardViewModel
+    @ObservedObject var viewModel: TodayFeatureViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -172,7 +172,7 @@ private struct CatchUpCountBadge: View {
 
 private struct CatchUpMissedTaskRow: View {
     let item: MissedTaskReviewItem
-    @ObservedObject var viewModel: ProjectBoardViewModel
+    @ObservedObject var viewModel: TodayFeatureViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

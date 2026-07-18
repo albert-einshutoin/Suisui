@@ -3,6 +3,12 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
+LAYOUT_STABILITY_MODE="${1:-run}"
+
+if [[ $# -gt 1 || "$LAYOUT_STABILITY_MODE" != "run" && "$LAYOUT_STABILITY_MODE" != "--check-display-capacity" ]]; then
+  echo "usage: $0 [--check-display-capacity]" >&2
+  exit 2
+fi
 
 if [[ ! -f "$METADATA_FILE" ]]; then
   echo "missing metadata file: $METADATA_FILE" >&2
@@ -25,12 +31,23 @@ LAYOUT_STABILITY_RUNTIME_DIR="${SOLOPM_LAYOUT_STABILITY_RUNTIME_DIR:-${TMPDIR:-/
 LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX="${SOLOPM_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX:-0}"
 LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX="${SOLOPM_LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX:-1}"
 LAYOUT_STABILITY_DATABASE_PATH="${SOLOPM_LAYOUT_STABILITY_DATABASE_PATH:-$LAYOUT_STABILITY_RUNTIME_DIR/SoloPM-layout-stability.sqlite}"
-LAYOUT_STABILITY_WINDOW_MIN_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_MIN_WIDTH:-980}"
+LAYOUT_STABILITY_WINDOW_BELOW_MIN_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_BELOW_MIN_WIDTH:-900}"
+LAYOUT_STABILITY_WINDOW_COMPACT_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_COMPACT_WIDTH:-960}"
+LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH:-1024}"
+LAYOUT_STABILITY_WINDOW_MIN_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_MIN_WIDTH:-960}"
+LAYOUT_STABILITY_WINDOW_BELOW_MIN_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_BELOW_MIN_HEIGHT:-580}"
+LAYOUT_STABILITY_CONTENT_MIN_HEIGHT="${SOLOPM_LAYOUT_STABILITY_CONTENT_MIN_HEIGHT:-620}"
 LAYOUT_STABILITY_WINDOW_MIN_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_MIN_HEIGHT:-720}"
 LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH:-1180}"
 LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT:-760}"
 LAYOUT_STABILITY_WINDOW_WIDE_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_WIDE_WIDTH:-1420}"
 LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT:-860}"
+readonly PRODUCT_LAYOUT_WINDOW_STANDARD_WIDTH_FLOOR=1180
+readonly PRODUCT_LAYOUT_WINDOW_STANDARD_HEIGHT_FLOOR=760
+readonly PRODUCT_LAYOUT_WINDOW_WIDE_WIDTH_FLOOR=1420
+readonly PRODUCT_LAYOUT_WINDOW_WIDE_HEIGHT_FLOOR=860
+LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH="${SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH:-0}"
+LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT="${SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT:-0}"
 LAYOUT_STABILITY_AX_COLLECTION_TIMEOUT_SECONDS="${SOLOPM_LAYOUT_STABILITY_AX_COLLECTION_TIMEOUT_SECONDS:-8}"
 LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_COUNT="${SOLOPM_LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_COUNT:-3}"
 LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_DELAY_MS="${SOLOPM_LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_DELAY_MS:-50}"
@@ -38,6 +55,7 @@ SQLITE3="${SQLITE3:-sqlite3}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_FRAME_HELPER="${AX_FRAME_HELPER:-$ROOT_DIR/script/ui_evidence_ax_frame_dump.swift}"
 AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}"
+WINDOW_CONTENT_SIZE_HELPER="${WINDOW_CONTENT_SIZE_HELPER:-$ROOT_DIR/script/ui_evidence_window_content_size.swift}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_LAYOUT_STABILITY_TIMEOUT_SECONDS must be a positive integer" >&2
@@ -70,7 +88,12 @@ if [[ ! "$LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_DELAY_MS" =~ ^[0-9]+$ ]]; then
 fi
 
 for dimension_name in \
+  LAYOUT_STABILITY_WINDOW_BELOW_MIN_WIDTH \
   LAYOUT_STABILITY_WINDOW_MIN_WIDTH \
+  LAYOUT_STABILITY_WINDOW_COMPACT_WIDTH \
+  LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH \
+  LAYOUT_STABILITY_WINDOW_BELOW_MIN_HEIGHT \
+  LAYOUT_STABILITY_CONTENT_MIN_HEIGHT \
   LAYOUT_STABILITY_WINDOW_MIN_HEIGHT \
   LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH \
   LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT \
@@ -82,6 +105,54 @@ for dimension_name in \
     exit 2
   fi
 done
+
+if [[ "$LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH" -lt "$PRODUCT_LAYOUT_WINDOW_STANDARD_WIDTH_FLOOR" ||
+  "$LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT" -lt "$PRODUCT_LAYOUT_WINDOW_STANDARD_HEIGHT_FLOOR" ||
+  "$LAYOUT_STABILITY_WINDOW_WIDE_WIDTH" -lt "$PRODUCT_LAYOUT_WINDOW_WIDE_WIDTH_FLOOR" ||
+  "$LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT" -lt "$PRODUCT_LAYOUT_WINDOW_WIDE_HEIGHT_FLOOR" ]]; then
+  printf 'failure_category=configuration\n' >&2
+  printf 'failure_reason=layout-window-contract-below-product-floor\n' >&2
+  printf 'BLOCKER: layout window override is below the immutable product contract (standard floor=%sx%s, wide floor=%sx%s; configured standard=%sx%s, wide=%sx%s).\n' \
+    "$PRODUCT_LAYOUT_WINDOW_STANDARD_WIDTH_FLOOR" "$PRODUCT_LAYOUT_WINDOW_STANDARD_HEIGHT_FLOOR" \
+    "$PRODUCT_LAYOUT_WINDOW_WIDE_WIDTH_FLOOR" "$PRODUCT_LAYOUT_WINDOW_WIDE_HEIGHT_FLOOR" \
+    "$LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH" "$LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT" \
+    "$LAYOUT_STABILITY_WINDOW_WIDE_WIDTH" "$LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT" >&2
+  exit 2
+fi
+
+for visible_dimension_name in LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT; do
+  visible_dimension_value="${!visible_dimension_name}"
+  if [[ ! "$visible_dimension_value" =~ ^[0-9]+$ ]]; then
+    echo "$visible_dimension_name must be a non-negative integer" >&2
+    exit 2
+  fi
+done
+
+require_layout_display_capacity() {
+  if [[ "$LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH" -lt "$LAYOUT_STABILITY_WINDOW_WIDE_WIDTH" ||
+    "$LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT" -lt "$LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT" ]]; then
+    printf 'failure_category=runner-capability\n' >&2
+    printf 'failure_reason=layout-visible-frame-too-small\n' >&2
+    printf 'BLOCKER: UI runner visible frame %sx%s cannot exercise required layout windows (standard=%sx%s, wide=%sx%s); product contract was not downgraded.\n' \
+      "$LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH" "$LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT" \
+      "$LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH" "$LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT" \
+      "$LAYOUT_STABILITY_WINDOW_WIDE_WIDTH" "$LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT" >&2
+    return 1
+  fi
+  printf 'OK: UI runner visible frame %sx%s can exercise required layout windows (standard=%sx%s, wide=%sx%s)\n' \
+    "$LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH" "$LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT" \
+    "$LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH" "$LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT" \
+    "$LAYOUT_STABILITY_WINDOW_WIDE_WIDTH" "$LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT"
+}
+
+if [[ "$LAYOUT_STABILITY_MODE" == "--check-display-capacity" ]]; then
+  if [[ "$LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH" -eq 0 || "$LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT" -eq 0 ]]; then
+    echo "SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH and SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT are required" >&2
+    exit 2
+  fi
+  require_layout_display_capacity
+  exit $?
+fi
 
 if ! command -v "$SQLITE3" >/dev/null 2>&1; then
   echo "BLOCKER: sqlite3 is required for layout stability smoke" >&2
@@ -102,11 +173,12 @@ DIFF_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/diff.tsv"
 SAMPLES_JSON_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/samples.json"
 DIFF_JSON_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/diff.json"
 WINDOW_METADATA_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/window.tsv"
+WINDOW_CONTENT_SIZE_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/window-content-size.tsv"
+WINDOW_RESIZE_ATTEMPTS_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/window-resize-attempts.tsv"
 REQUIRED_AX_IDENTIFIERS=(
-  "project-board-header-bar"
+  "project-board-command-palette"
   "project-board-detail"
   "project-board-sidebar"
-  "project-inspector"
 )
 # Sampling schedule: t=0ms, t=50ms, t=150ms, t=300ms.
 SAMPLE_OFFSETS_MS=(0 50 150 300)
@@ -117,9 +189,11 @@ app_identity=""
 app_launch_identity=""
 AX_FRAME_HELPER_BINARY="$LAYOUT_STABILITY_OUTPUT_DIR/ui-evidence-ax-frame-dump.$$"
 AX_PRESS_ELEMENT_HELPER_BINARY="$LAYOUT_STABILITY_OUTPUT_DIR/ui-evidence-ax-press-element.$$"
+WINDOW_CONTENT_SIZE_HELPER_BINARY="$LAYOUT_STABILITY_OUTPUT_DIR/ui-evidence-window-content-size.$$"
 
 : >"$SAMPLES_FILE"
 : >"$DIFF_FILE"
+printf 'attempt\trequested_width\trequested_height\texpected_width\tbefore_window_id\tbefore_x\tbefore_y\tbefore_width\tbefore_height\tax_status\tafter_window_id\tafter_x\tafter_y\tafter_width\tafter_height\n' >"$WINDOW_RESIZE_ATTEMPTS_FILE"
 
 write_json_artifacts() {
   # JSON phase values: "phase":"before", "phase":"immediate", "phase":"after".
@@ -191,7 +265,7 @@ terminate_app() {
 
 cleanup() {
   terminate_app
-  rm -f "$AX_FRAME_HELPER_BINARY" "$AX_PRESS_ELEMENT_HELPER_BINARY"
+  rm -f "$AX_FRAME_HELPER_BINARY" "$AX_PRESS_ELEMENT_HELPER_BINARY" "$WINDOW_CONTENT_SIZE_HELPER_BINARY"
 }
 
 prepare_ax_helpers() {
@@ -199,6 +273,7 @@ prepare_ax_helpers() {
   # collection would shift every requested sample beyond the 300ms window.
   /usr/bin/swiftc "$AX_FRAME_HELPER" -o "$AX_FRAME_HELPER_BINARY"
   /usr/bin/swiftc "$AX_PRESS_ELEMENT_HELPER" -o "$AX_PRESS_ELEMENT_HELPER_BINARY"
+  /usr/bin/swiftc "$WINDOW_CONTENT_SIZE_HELPER" -o "$WINDOW_CONTENT_SIZE_HELPER_BINARY"
 }
 
 activate_app() {
@@ -307,6 +382,9 @@ SQL
 }
 
 prepare_layout_candidate() {
+  rm -rf "$LAYOUT_STABILITY_RUNTIME_DIR/home"
+  mkdir -p "$LAYOUT_STABILITY_RUNTIME_DIR/home"
+  rm -f "$WINDOW_CONTENT_SIZE_FILE"
   ./script/build_and_run.sh --build-only
   migrate_layout_database
   seed_layout_candidate
@@ -316,6 +394,7 @@ launch_layout_candidate() {
   terminate_app
   /usr/bin/env -i PATH="$PATH" TMPDIR="$LAYOUT_STABILITY_RUNTIME_DIR" HOME="$LAYOUT_STABILITY_RUNTIME_DIR/home" CFFIXED_USER_HOME="$LAYOUT_STABILITY_RUNTIME_DIR/home" \
     SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$LAYOUT_STABILITY_DATABASE_PATH" \
+    SOLOPM_LAYOUT_STABILITY_WINDOW_CONTENT_SIZE_PATH="$WINDOW_CONTENT_SIZE_FILE" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$layout_project_id" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_launch_pid=$!
@@ -326,6 +405,7 @@ launch_layout_candidate() {
 }
 
 read_window_metadata() {
+  local require_single_window="${1:-0}"
   local output
   local metadata_status
   set +e
@@ -333,6 +413,7 @@ read_window_metadata() {
     SOLOPM_WINDOW_OWNER="$APP_NAME" \
     SOLOPM_WINDOW_OWNER_PID="$app_pid" \
     SOLOPM_WINDOW_NAME="$WINDOW_NAME" \
+    SOLOPM_REQUIRE_SINGLE_WINDOW="$require_single_window" \
     /usr/bin/swift "$ROOT_DIR/script/ui_evidence_window_metadata.swift"
   )"
   metadata_status=$?
@@ -372,45 +453,178 @@ wait_for_window_metadata() {
   done
 }
 
+wait_for_window_width() {
+  local expected_width="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local window_id window_x window_y window_width window_height
+  while true; do
+    if read_window_metadata >/dev/null 2>&1 && window_metadata_has_positive_bounds; then
+      read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE"
+      if [[ "$window_width" -eq "$expected_width" ]]; then
+        return 0
+      fi
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: Project Board window width did not settle at ${expected_width}px within ${TIMEOUT_SECONDS}s (actual=${window_width:-unknown})" >&2
+      return 1
+    fi
+    sleep 0.1
+  done
+}
+
 set_project_board_window_size() {
   local width="$1"
   local height="$2"
+  local expected_width="${3:-$width}"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local attempt=0
+  local window_id window_x window_y window_width window_height
+  local before_window_id before_x before_y before_width before_height
+  local after_window_id after_x after_y after_width after_height ax_status
   # Resize the real app window through AX so the smoke covers AppKit/SwiftUI
-  # bridge behavior instead of only source-level layout contracts.
+  # bridge behavior instead of only source-level layout contracts. Route and
+  # inspector transitions can recreate the SwiftUI window after AX accepted a
+  # resize, so bind the unique main named AX window to the sole visible CG
+  # frame before mutation, then reapply until fresh CG metadata proves the
+  # expected width. Both sides fail closed on ambiguity so a stale same-title
+  # window cannot pass the gate.
   while true; do
-    if /usr/bin/osascript - "$app_pid" "$width" "$height" <<'APPLESCRIPT' >/dev/null 2>&1
+    attempt=$((attempt + 1))
+    before_window_id=-1
+    before_x=-1
+    before_y=-1
+    before_width=-1
+    before_height=-1
+    after_window_id=-1
+    after_x=-1
+    after_y=-1
+    after_width=-1
+    after_height=-1
+    ax_status=125
+    if wait_for_visible_windows >/dev/null 2>&1 &&
+      read_window_metadata 1 >/dev/null 2>&1 && window_metadata_has_positive_bounds
+    then
+      read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE"
+      before_window_id="$window_id"
+      before_x="$window_x"
+      before_y="$window_y"
+      before_width="$window_width"
+      before_height="$window_height"
+      if /usr/bin/osascript - \
+        "$app_pid" "$WINDOW_NAME" "$width" "$height" \
+        "$window_x" "$window_y" "$window_width" "$window_height" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
   set appPID to (item 1 of argv) as integer
-  set targetWidth to (item 2 of argv) as integer
-  set targetHeight to (item 3 of argv) as integer
+  set requestedName to item 2 of argv
+  set targetWidth to (item 3 of argv) as integer
+  set targetHeight to (item 4 of argv) as integer
+  set expectedX to (item 5 of argv) as integer
+  set expectedY to (item 6 of argv) as integer
+  set expectedWidth to (item 7 of argv) as integer
+  set expectedHeight to (item 8 of argv) as integer
   tell application "System Events"
     set appMatches to application processes whose unix id is appPID
     if (count of appMatches) is 0 then error "process missing"
     set targetProcess to item 1 of appMatches
     tell targetProcess
-      if not (exists window 1) then error "window missing"
+      set targetWindow to missing value
+      set candidateCount to 0
+      repeat with currentWindow in windows
+        set currentName to ""
+        set currentMain to false
+        set currentPosition to missing value
+        set currentSize to missing value
+        try
+          set currentName to name of currentWindow as text
+        end try
+        try
+          set currentMain to value of attribute "AXMain" of currentWindow as boolean
+        end try
+        try
+          set currentPosition to position of currentWindow
+          set currentSize to size of currentWindow
+        end try
+        if currentName is requestedName and currentMain and currentPosition is {expectedX, expectedY} and currentSize is {expectedWidth, expectedHeight} then
+          set candidateCount to candidateCount + 1
+          set targetWindow to currentWindow
+        end if
+      end repeat
+      if candidateCount is not 1 then error "main named pid-owned window matching visible CG frame is not unique"
       set frontmost to true
       try
-        perform action "AXRaise" of window 1
+        perform action "AXRaise" of targetWindow
       end try
-      set size of window 1 to {targetWidth, targetHeight}
+      set size of targetWindow to {targetWidth, targetHeight}
     end tell
   end tell
 end run
 APPLESCRIPT
-    then
-      break
+      then
+        ax_status=0
+      else
+        ax_status=$?
+      fi
+      if read_window_metadata 1 >/dev/null 2>&1 && window_metadata_has_positive_bounds; then
+        read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE"
+        after_window_id="$window_id"
+        after_x="$window_x"
+        after_y="$window_y"
+        after_width="$window_width"
+        after_height="$window_height"
+      fi
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$attempt" "$width" "$height" "$expected_width" \
+      "$before_window_id" "$before_x" "$before_y" "$before_width" "$before_height" \
+      "$ax_status" "$after_window_id" "$after_x" "$after_y" "$after_width" "$after_height" \
+      >>"$WINDOW_RESIZE_ATTEMPTS_FILE"
+    if [[ "$ax_status" -eq 0 && "$after_width" -eq "$expected_width" ]]; then
+      return 0
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: failed to resize owned app window pid=$app_pid to ${width}x${height}" >&2
+      echo "BLOCKER: failed to resize named PID-owned app window pid=$app_pid to ${width}x${height} (observed=${window_width:-unknown}x${window_height:-unknown})" >&2
       return 1
     fi
+    if [[ "$attempt" -gt 1 ]]; then
+      echo "INFO: reapplying owned window size after route/window recreation (attempt=$attempt target=${width}x${height} observed=${window_width:-unknown}x${window_height:-unknown})" >&2
+    fi
     activate_app
-    wait_for_visible_windows >/dev/null 2>&1 || true
-    sleep 1
+    sleep 0.2
   done
+}
+
+assert_window_minimum_width() {
+  local state="$1"
+  local window_id window_x window_y window_width window_height
   wait_for_window_metadata
+  read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE"
+  if [[ "$window_width" -lt "$LAYOUT_STABILITY_WINDOW_MIN_WIDTH" ]]; then
+    echo "BLOCKER: Project Board window shrank below ${LAYOUT_STABILITY_WINDOW_MIN_WIDTH}px while inspector was ${state} (actual=${window_width}px)" >&2
+    return 1
+  fi
+  printf 'OK: Project Board minimum width held at %spx while inspector was %s\n' "$window_width" "$state"
+}
+
+assert_window_content_minimum() {
+  local state="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local content_width content_height
+  while true; do
+    if read -r content_width content_height < <("$WINDOW_CONTENT_SIZE_HELPER_BINARY" "$WINDOW_CONTENT_SIZE_FILE" 2>/dev/null) &&
+      [[ "$content_width" =~ ^[0-9]+$ ]] &&
+      [[ "$content_height" =~ ^[0-9]+$ ]] &&
+      [[ "$content_width" -ge "$LAYOUT_STABILITY_WINDOW_MIN_WIDTH" ]] &&
+      [[ "$content_height" -ge "$LAYOUT_STABILITY_CONTENT_MIN_HEIGHT" ]]; then
+      printf 'OK: Project Board content minimum held at %sx%s while inspector was %s\n' \
+        "$content_width" "$content_height" "$state"
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: Project Board content size fell below ${LAYOUT_STABILITY_WINDOW_MIN_WIDTH}x${LAYOUT_STABILITY_CONTENT_MIN_HEIGHT} while inspector was ${state} (actual=${content_width:-unknown}x${content_height:-unknown})" >&2
+      return 1
+    fi
+    sleep 0.1
+  done
 }
 
 window_size_key() {
@@ -443,6 +657,42 @@ wait_for_ax_identifier() {
   sed -n '1,20p' "$probe_file.err" >&2 || true
   return 1
 }
+
+wait_for_ax_identifier_absent() {
+  local identifier="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local probe_file="$LAYOUT_STABILITY_OUTPUT_DIR/wait-absent-${identifier//[^[:alnum:]_-]/_}.tsv"
+
+  while true; do
+    if collect_ax_frames >"$probe_file" 2>"$probe_file.err" &&
+      ! awk -F $'\t' -v wanted="$identifier" '$1 == wanted { found = 1 } END { exit(found ? 0 : 1) }' "$probe_file"; then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: AX identifier stayed visible: $identifier" >&2
+      return 1
+    fi
+    sleep 0.2
+  done
+}
+
+click_ax_identifier() {
+  local identifier="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+
+  while true; do
+    if wait_for_visible_windows >/dev/null 2>&1 &&
+      "$AX_PRESS_ELEMENT_HELPER_BINARY" "$app_pid" "$identifier"; then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: AXPress failed for identifier: $identifier" >&2
+      return 1
+    fi
+    activate_app
+    sleep 0.2
+  done
+}
 click_sidebar_destination_by_coordinate() {
   local destination_identifier="$1"
   local window_id window_x window_y window_width window_height destination_offset target_x target_y
@@ -451,14 +701,17 @@ click_sidebar_destination_by_coordinate() {
   read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE"
 
   case "$destination_identifier" in
-    sidebar-destination-inbox)
+    sidebar-destination-today)
       destination_offset=76
       ;;
-    sidebar-destination-assistant-queue)
+    sidebar-destination-inbox)
       destination_offset=108
       ;;
-    sidebar-destination-today)
+    sidebar-destination-projects)
       destination_offset=140
+      ;;
+    sidebar-destination-review)
+      destination_offset=172
       ;;
     *)
       echo "BLOCKER: no coordinate fallback for sidebar destination: $destination_identifier" >&2
@@ -503,6 +756,26 @@ assert_sidebar_destination_window_size_stable() {
 
   before_size="$(window_size_key)"
   click_sidebar_destination "$destination_identifier" "$destination_label"
+  wait_for_ax_identifier "$workflow_identifier"
+  after_size="$(window_size_key)"
+
+  if [[ "$after_size" != "$before_size" ]]; then
+    echo "BLOCKER: Project Board window size changed after selecting $destination_identifier: before=$before_size after=$after_size" >&2
+    return 1
+  fi
+
+  printf "OK: Project Board window size stayed %s after selecting %s\n" "$after_size" "$destination_identifier"
+  printf -- '- `%s` kept window size `%s` after `%s`\n' "$label" "$after_size" "$destination_identifier" >>"$SUMMARY_FILE"
+}
+
+assert_ax_destination_window_size_stable() {
+  local label="$1"
+  local destination_identifier="$2"
+  local workflow_identifier="$3"
+  local before_size after_size
+
+  before_size="$(window_size_key)"
+  click_ax_identifier "$destination_identifier"
   wait_for_ax_identifier "$workflow_identifier"
   after_size="$(window_size_key)"
 
@@ -668,7 +941,10 @@ assert_no_negative_or_overlapping_frames() {
       function right(id) { return x[id] + w[id] }
       function bottom(id) { return y[id] + h[id] }
       function isBodyRegion(id) {
-        return id == "project-board-sidebar" || id == "project-board-detail" || id == "project-inspector"
+        return id == "project-board-sidebar" ||
+          id == "project-board-detail" ||
+          id == "project-inspector" ||
+          id == "task-inspector"
       }
       function overlaps(a, b) {
         return right(a) > x[b] + threshold &&
@@ -802,10 +1078,11 @@ sample_layout_frames() {
     # The first sample is intentionally taken at t=0ms so transient layout
     # correction cannot be hidden behind a delayed runloop retry.
     awk -F $'\t' -v label="$label" -v sample="$sample_index" -v offset="t=${offset_ms}ms" '
-      $1 == "project-board-header-bar" ||
+      $1 == "project-board-command-palette" ||
       $1 == "project-board-detail" ||
       $1 == "project-board-sidebar" ||
-      $1 == "project-inspector" {
+      $1 == "project-inspector" ||
+      $1 == "task-inspector" {
         print label "\t" sample "\t" offset "\t" $1 "\t" $2 "\t" $3 "\t" $4 "\t" $5
       }
     ' "$frame_file" >>"$SAMPLES_FILE"
@@ -911,22 +1188,90 @@ wait_for_required_layout_subjects
 assert_layout_stable "initial"
 
 click_sidebar_toggle
-assert_layout_stable "sidebar-hidden" "project-board-header-bar" "project-board-detail" "project-inspector"
+assert_layout_stable "sidebar-hidden" "project-board-command-palette" "project-board-detail"
 
 click_sidebar_toggle
 assert_layout_stable "sidebar-restored"
 
-set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_MIN_WIDTH" "$LAYOUT_STABILITY_WINDOW_MIN_HEIGHT"
-assert_layout_stable "window-min"
+set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_COMPACT_WIDTH" "$LAYOUT_STABILITY_WINDOW_MIN_HEIGHT"
+wait_for_ax_identifier_absent "project-inspector"
+assert_layout_stable "inspector-compact-closed"
+
+set_project_board_window_size \
+  "$LAYOUT_STABILITY_WINDOW_BELOW_MIN_WIDTH" \
+  "$LAYOUT_STABILITY_WINDOW_MIN_HEIGHT" \
+  "$LAYOUT_STABILITY_WINDOW_MIN_WIDTH"
+wait_for_ax_identifier_absent "project-inspector"
+assert_layout_stable "window-minimum-closed"
+assert_window_minimum_width "closed"
+
+set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH" "$LAYOUT_STABILITY_WINDOW_MIN_HEIGHT"
+wait_for_ax_identifier_absent "project-inspector"
+assert_layout_stable "inspector-canonical-closed"
+
+set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH" "$LAYOUT_STABILITY_WINDOW_BELOW_MIN_HEIGHT"
+wait_for_ax_identifier_absent "project-inspector"
+assert_window_content_minimum "closed"
+assert_layout_stable "content-minimum-closed"
+
+click_ax_identifier "project-header-open-inspector"
+wait_for_ax_identifier "project-inspector"
+assert_layout_stable "inspector-explicit-open" "project-board-command-palette" "project-board-detail" "project-board-sidebar" "project-inspector"
+
+set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH" "$LAYOUT_STABILITY_WINDOW_BELOW_MIN_HEIGHT"
+wait_for_ax_identifier "project-inspector"
+assert_window_content_minimum "open"
+assert_layout_stable "content-minimum-open" "project-board-command-palette" "project-board-detail" "project-board-sidebar" "project-inspector"
+
+set_project_board_window_size \
+  "$LAYOUT_STABILITY_WINDOW_BELOW_MIN_WIDTH" \
+  "$LAYOUT_STABILITY_WINDOW_MIN_HEIGHT" \
+  "$LAYOUT_STABILITY_WINDOW_MIN_WIDTH"
+wait_for_ax_identifier "project-inspector"
+assert_layout_stable "window-minimum-open" "project-board-command-palette" "project-board-detail" "project-board-sidebar" "project-inspector"
+assert_window_minimum_width "open"
+
+set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH" "$LAYOUT_STABILITY_WINDOW_MIN_HEIGHT"
+click_ax_identifier "project-inspector-close"
+wait_for_ax_identifier_absent "project-inspector"
+assert_layout_stable "inspector-explicit-close"
+
+click_ax_identifier "task-card-open-details"
+wait_for_ax_identifier "task-inspector"
+wait_for_ax_identifier_absent "project-inspector"
+assert_layout_stable "task-inspector-explicit-open" "project-board-command-palette" "project-board-detail" "project-board-sidebar" "task-inspector"
+click_ax_identifier "task-inspector-close"
+wait_for_ax_identifier_absent "task-inspector"
+assert_layout_stable "task-inspector-explicit-close"
+
+# Wide-window phases are a product contract, not a value to silently clamp to
+# the hosted desktop. Preserve the earlier compact/canonical evidence, then
+# classify an undersized work area as runner capability before AX retries can
+# misreport the host limit as an app regression.
+if [[ "$LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH" -gt 0 && "$LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT" -gt 0 ]]; then
+  require_layout_display_capacity
+fi
 
 set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH" "$LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT"
-assert_layout_stable "window-standard"
+assert_layout_stable "inspector-wide-closed"
+click_ax_identifier "project-header-open-inspector"
+wait_for_ax_identifier "project-inspector"
+assert_layout_stable "inspector-wide-open" "project-board-command-palette" "project-board-detail" "project-board-sidebar" "project-inspector"
+
+set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH" "$LAYOUT_STABILITY_WINDOW_MIN_HEIGHT"
+wait_for_ax_identifier_absent "project-inspector"
+assert_layout_stable "inspector-resize-hidden"
+
+set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH" "$LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT"
+wait_for_ax_identifier_absent "project-inspector"
+assert_layout_stable "inspector-wide-stays-closed"
 
 set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_WIDE_WIDTH" "$LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT"
 assert_layout_stable "window-wide"
 
 assert_sidebar_destination_window_size_stable "destination-inbox" "sidebar-destination-inbox" "Inbox" "inbox-workflow"
-assert_sidebar_destination_window_size_stable "destination-assistant-queue" "sidebar-destination-assistant-queue" "Assistant Queue" "assistant-queue-workflow"
+assert_sidebar_destination_window_size_stable "destination-review" "sidebar-destination-review" "Review" "review-hub"
+assert_ax_destination_window_size_stable "destination-review-assistant-queue" "review-destination-assistant-queue" "assistant-queue-workflow"
 assert_sidebar_destination_window_size_stable "destination-today" "sidebar-destination-today" "Today" "today-workflow"
 
 write_json_artifacts
@@ -938,6 +1283,7 @@ write_json_artifacts
   printf -- '- `samples.json`\n'
   printf -- '- `diff.tsv`\n'
   printf -- '- `diff.json`\n'
+  printf -- '- `window-resize-attempts.tsv`\n'
   printf '\n'
   printf '%s\n' 'Status: passed'
 } >>"$SUMMARY_FILE"

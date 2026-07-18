@@ -88,6 +88,8 @@ struct ScheduleWorkflowView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("schedule-workflow")
+        .accessibilityLabel("Schedule")
+        .accessibilityHint("Reviews workload and approval-ready schedule drafts from Review.")
     }
 
     private func moveWorkloadToPreviousWeek() {
@@ -210,7 +212,7 @@ private struct ScheduleMiniCalendarPanel: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("schedule-mini-calendar")
         .accessibilityLabel("Mini Calendar")
@@ -253,7 +255,7 @@ private struct ScheduleMiniCalendarDayChip: View {
                     .font(.caption.weight(.semibold))
                 if day.overdueTaskCount > 0 {
                     Image(systemName: "clock.badge.exclamationmark")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(SoloPMTone.danger.color)
                         .accessibilityHidden(true)
                 }
             }
@@ -277,10 +279,10 @@ private struct ScheduleMiniCalendarDayChip: View {
         }
         .padding(9)
         .frame(maxWidth: .infinity, minHeight: 64, alignment: .topLeading)
-        .background(background, in: RoundedRectangle(cornerRadius: 8))
+        .background(background, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? Color.accentColor.opacity(0.6) : loadTint.opacity(0.2))
+            RoundedRectangle(cornerRadius: SoloPMRadius.card)
+                .stroke(isSelected ? SoloPMBrand.soloBlue.opacity(0.6) : loadTint.opacity(0.2))
         }
     }
 
@@ -296,23 +298,23 @@ private struct ScheduleMiniCalendarDayChip: View {
 
     private var loadTint: Color {
         if day.overdueTaskCount > 0 || day.blockedTaskCount > 0 {
-            return .orange
+            return SoloPMTone.danger.color
         }
         if day.openTaskCount > 2 {
-            return .blue
+            return SoloPMBrand.soloBlue
         }
         return .secondary
     }
 
     private var background: Color {
         if isSelected {
-            return Color.accentColor.opacity(0.12)
+            return SoloPMBrand.soloBlue.opacity(0.12)
         }
         if day.overdueTaskCount > 0 || day.blockedTaskCount > 0 {
-            return Color.orange.opacity(0.08)
+            return SoloPMTone.danger.color.opacity(0.08)
         }
         if day.totalTaskCount > 0 {
-            return Color.blue.opacity(0.06)
+            return SoloPMBrand.soloBlue.opacity(0.06)
         }
         return Color.secondary.opacity(0.05)
     }
@@ -393,7 +395,7 @@ private struct WeeklyScheduleCockpitPanel: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("schedule-week-cockpit")
         .accessibilityLabel("Weekly workload")
@@ -532,7 +534,7 @@ private struct WeeklyScheduleTimeAxisSlot: View {
         .padding(6)
         .frame(width: 132, alignment: .topLeading)
         .frame(minHeight: 34, alignment: .topLeading)
-        .background(Color.secondary.opacity(blocks.isEmpty ? 0.03 : 0.07), in: RoundedRectangle(cornerRadius: 6))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.control))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Time axis slot")
         .accessibilityValue(accessibilityValue)
@@ -567,7 +569,7 @@ private struct WeeklyScheduleTimeAxisBlock: View {
             if block.overlapGroupSize > 1 {
                 Text(String(format: String(localized: "Lane %d/%d"), block.overlapLane + 1, block.overlapGroupSize))
                     .font(.caption2)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(SoloPMTone.neutral.color)
                     .lineLimit(1)
             }
         }
@@ -603,7 +605,7 @@ private struct WeeklyScheduleDayColumn: View {
                     systemImage: "checkmark.circle"
                 )
                 .font(.caption2)
-                .foregroundStyle(.green)
+                .foregroundStyle(SoloPMTone.positive.color)
                 .lineLimit(1)
                 .accessibilityIdentifier("schedule-week-completion-history-\(day.dateKey)")
                 .accessibilityLabel("Completion history count")
@@ -619,7 +621,7 @@ private struct WeeklyScheduleDayColumn: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 78, alignment: .topLeading)
                     .padding(8)
-                    .background(Color.secondary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+                    .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(day.blocks.prefix(4)) { block in
@@ -636,9 +638,9 @@ private struct WeeklyScheduleDayColumn: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(dayBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(dayBackground, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: SoloPMRadius.card)
                 .stroke(loadTint.opacity(0.25))
         }
         .accessibilityElement(children: .contain)
@@ -667,11 +669,11 @@ private struct WeeklyScheduleDayColumn: View {
         case .open:
             .secondary
         case .focused:
-            .blue
+            SoloPMBrand.soloBlue
         case .heavy:
-            .orange
+            SoloPMTone.neutral.color
         case .overloaded:
-            .red
+            SoloPMTone.danger.color
         }
     }
 
@@ -680,11 +682,11 @@ private struct WeeklyScheduleDayColumn: View {
         case .open:
             Color.secondary.opacity(0.04)
         case .focused:
-            Color.blue.opacity(0.06)
+            SoloPMBrand.soloBlue.opacity(0.06)
         case .heavy:
-            Color.orange.opacity(0.08)
+            SoloPMTone.neutral.color.opacity(0.08)
         case .overloaded:
-            Color.red.opacity(0.08)
+            SoloPMTone.danger.color.opacity(0.08)
         }
     }
 }
@@ -705,7 +707,7 @@ private struct WeeklyScheduleBlockRow: View {
                 if block.overlapGroupSize > 1 {
                     Text(String(format: String(localized: "Lane %d/%d"), block.overlapLane + 1, block.overlapGroupSize))
                         .font(.caption2)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(SoloPMTone.neutral.color)
                 }
             }
             Text(block.task.title)
@@ -718,7 +720,7 @@ private struct WeeklyScheduleBlockRow: View {
         }
         .padding(7)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("schedule-week-block-\(block.id)")
         .accessibilityLabel(block.task.title)
@@ -768,7 +770,7 @@ private struct WeeklyScheduleAgendaPanel: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
         .accessibilityIdentifier("schedule-agenda")
     }
 }
@@ -836,7 +838,7 @@ private struct WeeklyScheduleReminderPanel: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("schedule-smart-reminders")
         .accessibilityLabel("Smart reminder proposals")
@@ -956,7 +958,7 @@ private struct DailyWorkloadPanel: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("schedule-workload-dashboard")
         .accessibilityLabel("Daily Workload")
@@ -970,7 +972,7 @@ private struct DailyWorkloadAttentionBanner: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: overview.attentionSignalCount > 0 ? "exclamationmark.triangle" : "checkmark.circle")
-                .foregroundStyle(overview.attentionSignalCount > 0 ? .orange : .secondary)
+                .foregroundStyle(overview.attentionSignalCount > 0 ? SoloPMTone.danger.color : .secondary)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(headline)
@@ -983,7 +985,7 @@ private struct DailyWorkloadAttentionBanner: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(overview.attentionSignalCount > 0 ? Color.orange.opacity(0.08) : Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("schedule-workload-attention-banner")
         .accessibilityLabel("Workload attention")
@@ -1024,7 +1026,7 @@ private struct DailyWorkloadDayCell: View {
                 Spacer(minLength: 4)
                 if day.overdueTaskCount > 0 {
                     Image(systemName: "clock.badge.exclamationmark")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(SoloPMTone.danger.color)
                         .accessibilityHidden(true)
                 }
             }
@@ -1055,19 +1057,35 @@ private struct DailyWorkloadDayCell: View {
             if hasSecondaryMetrics {
                 HStack(spacing: 6) {
                     if day.inProgressTaskCount > 0 {
-                        secondaryMetric(String(format: String(localized: "%d doing"), day.inProgressTaskCount), tint: .blue)
+                        secondaryMetric(
+                            String(format: String(localized: "%d doing"), day.inProgressTaskCount),
+                            systemImage: "arrow.triangle.2.circlepath",
+                            tint: SoloPMBrand.soloBlue
+                        )
                             .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-in-progress")
                     }
                     if day.blockedTaskCount > 0 {
-                        secondaryMetric(String(format: String(localized: "%d blocked"), day.blockedTaskCount), tint: .orange)
+                        secondaryMetric(
+                            String(format: String(localized: "%d blocked"), day.blockedTaskCount),
+                            systemImage: "exclamationmark.octagon.fill",
+                            tint: SoloPMTone.danger.color
+                        )
                             .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-blocked")
                     }
                     if day.overdueTaskCount > 0 {
-                        secondaryMetric(String(format: String(localized: "%d missed"), day.overdueTaskCount), tint: .red)
+                        secondaryMetric(
+                            String(format: String(localized: "%d missed"), day.overdueTaskCount),
+                            systemImage: "clock.badge.exclamationmark",
+                            tint: SoloPMTone.danger.color
+                        )
                             .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-missed")
                     }
                     if day.doneTaskCount > 0 {
-                        secondaryMetric(String(format: String(localized: "%d done"), day.doneTaskCount), tint: .secondary)
+                        secondaryMetric(
+                            String(format: String(localized: "%d done"), day.doneTaskCount),
+                            systemImage: "checkmark.circle",
+                            tint: .secondary
+                        )
                             .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-done")
                     }
                 }
@@ -1075,10 +1093,13 @@ private struct DailyWorkloadDayCell: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
-        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        .background(
+            isSelected ? SoloPMSurface.elevatedSelection : SoloPMSurface.groupedContent,
+            in: RoundedRectangle(cornerRadius: SoloPMRadius.card)
+        )
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? Color.accentColor.opacity(0.55) : Color.secondary.opacity(0.14))
+            RoundedRectangle(cornerRadius: SoloPMRadius.card)
+                .stroke(isSelected ? SoloPMBorder.selected : SoloPMBorder.subtle)
         }
     }
 
@@ -1099,9 +1120,9 @@ private struct DailyWorkloadDayCell: View {
         return formatter.string(from: day.date)
     }
 
-    private func secondaryMetric(_ label: String, tint: Color) -> some View {
-        Text(label)
-            .font(.caption2.monospacedDigit())
+    private func secondaryMetric(_ label: String, systemImage: String, tint: Color) -> some View {
+        Label(label, systemImage: systemImage)
+            .font(SoloPMTypography.compactLabel.monospacedDigit())
             .foregroundStyle(tint)
             .lineLimit(1)
     }
@@ -1150,7 +1171,7 @@ private struct DailyWorkloadDayDetail: View {
                         }
                     }
                     .padding(8)
-                    .background(Color.secondary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+                    .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
                 }
             }
         }
@@ -1181,7 +1202,7 @@ private struct DailyWorkloadUnscheduledBucket: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("schedule-workload-unscheduled-bucket")
         .accessibilityLabel("Unscheduled tasks")
@@ -1206,7 +1227,7 @@ private struct DailyWorkloadInboxBucket: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("schedule-workload-inbox-bucket")
         .accessibilityLabel("Inbox triage captures")
@@ -1274,7 +1295,7 @@ private struct ScheduleDraftPanel: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
     }
 }
 
@@ -1317,7 +1338,7 @@ private struct ScheduleUnscheduledPanel: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
     }
 }
 
@@ -1331,7 +1352,7 @@ private struct ScheduleStatusBanner: View {
             .foregroundStyle(.secondary)
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
             .accessibilityIdentifier("schedule-status-banner")
     }
 

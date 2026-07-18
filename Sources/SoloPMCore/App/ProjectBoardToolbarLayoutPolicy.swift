@@ -1,5 +1,72 @@
 import Foundation
 
+public struct ProjectBoardToolbarContext: Equatable, Sendable {
+    public enum RouteKind: Equatable, Sendable {
+        case today
+        case inbox
+        case projects
+        case project
+        case review
+        case smartList
+    }
+
+    public let routeKind: RouteKind
+    public let isDeveloperModeEnabled: Bool
+    public let hasInspectorSelection: Bool
+
+    public init(
+        routeKind: RouteKind,
+        isDeveloperModeEnabled: Bool,
+        hasInspectorSelection: Bool
+    ) {
+        self.routeKind = routeKind
+        self.isDeveloperModeEnabled = isDeveloperModeEnabled
+        self.hasInspectorSelection = hasInspectorSelection
+    }
+
+    public var hasPrimaryVoiceAction: Bool {
+        true
+    }
+
+    public var showsIntegrations: Bool {
+        true
+    }
+
+    public var showsAutomation: Bool {
+        true
+    }
+
+    public var showsSettings: Bool {
+        true
+    }
+
+    public var showsDeveloperTerminal: Bool {
+        isDeveloperModeEnabled && routeKind == .project
+    }
+
+    public var showsInspectorToggle: Bool {
+        hasInspectorSelection
+    }
+
+    public static let today = ProjectBoardToolbarContext(
+        routeKind: .today,
+        isDeveloperModeEnabled: false,
+        hasInspectorSelection: false
+    )
+
+    public static let project = ProjectBoardToolbarContext(
+        routeKind: .project,
+        isDeveloperModeEnabled: false,
+        hasInspectorSelection: false
+    )
+
+    public static let developerProject = ProjectBoardToolbarContext(
+        routeKind: .project,
+        isDeveloperModeEnabled: true,
+        hasInspectorSelection: false
+    )
+}
+
 public enum ProjectBoardToolbarLayoutPolicy {
     public struct Item: Equatable {
         public let identifierRawValue: String

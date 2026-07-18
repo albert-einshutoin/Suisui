@@ -3,7 +3,6 @@ import Foundation
 public enum FirstRunOnboardingStep: String, CaseIterable, Equatable, Sendable {
     case welcome
     case aiProvider
-    case permissions
     case finish
 }
 
@@ -203,6 +202,7 @@ public enum FirstRunOnboardingGate {
     public static let completionDefaultsKey = "solopm.onboarding.completed"
     public static let dismissedDefaultsKey = "solopm.onboarding.dismissed"
     public static let disableEnvironmentKey = "SOLOPM_DISABLE_ONBOARDING"
+    public static let runtimeSmokeEnvironmentKey = "SOLOPM_ONBOARDING_RUNTIME_SMOKE"
 
     // Evidence, smoke, and launch-verification harnesses drive the real app
     // and must never sit behind a first-run sheet.
@@ -232,11 +232,32 @@ public enum FirstRunOnboardingGate {
             return false
         }
         for key in harnessEnvironmentKeys {
+            if key == "SOLOPM_DATABASE_PATH",
+               environment[runtimeSmokeEnvironmentKey] == "1" {
+                // The onboarding runtime smoke needs an isolated database but
+                // still exercises this normal fresh-user gate. Other database
+                // harnesses continue to suppress onboarding by default.
+                continue
+            }
             if let value = environment[key], !value.isEmpty {
                 return false
             }
         }
         return true
+    }
+
+    public static func shouldPresent(
+        hasDismissedOnboarding: Bool,
+        isPrimaryWindow: Bool,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        guard isPrimaryWindow else {
+            return false
+        }
+        return shouldPresent(
+            hasDismissedOnboarding: hasDismissedOnboarding,
+            environment: environment
+        )
     }
 
     public static func migrateLegacyCompletionIfNeeded(defaults: UserDefaults) {
@@ -351,6 +372,34 @@ public struct OnboardingSampleProjectCreationResult: Equatable, Sendable {
     }
 }
 
+public enum OnboardingSampleProjectEnsureResult: Equatable, Sendable {
+    case created(OnboardingSampleProjectCreationResult)
+    case existing(OnboardingSampleProjectCreationResult)
+
+    public var project: ProjectRecord {
+        result.project
+    }
+
+    public var tasks: [TaskRecord] {
+        result.tasks
+    }
+
+    public var firstLessonTaskID: Int64? {
+        tasks.first?.id
+    }
+
+    private var result: OnboardingSampleProjectCreationResult {
+        switch self {
+        case let .created(result), let .existing(result):
+            result
+        }
+    }
+}
+
+public enum OnboardingSampleProjectError: Error, Equatable {
+    case missingAfterEnsure
+}
+
 /// Creates the "Learn SoloPM" sample project through the normal store create
 /// paths. Stores, defaults, clock, and localization are injected
 /// (VoiceRuntimeFactory-style) so tests can drive it against a temporary
@@ -434,6 +483,45 @@ public final class OnboardingSampleProjectCreator: @unchecked Sendable {
         }
         defaults.set(true, forKey: OnboardingSampleProjectDefinition.createdDefaultsKey)
         notificationCenter.post(name: .soloPMProjectBoardDidChange, object: nil)
+        return OnboardingSampleProjectCreationResult(project: project, tasks: tasks)
+    }
+
+    /// Returns a stable outcome for both a fresh and a repeated onboarding
+    /// run. The UI needs the existing task IDs to route and focus the first
+    /// lesson without creating a duplicate project.
+    public func ensureSampleProject() throws -> OnboardingSampleProjectEnsureResult {
+        if let result = try completeMarkedProject() {
+            defaults.set(true, forKey: OnboardingSampleProjectDefinition.createdDefaultsKey)
+            return .existing(result)
+        }
+
+        // A stale defaults bit must not turn the primary onboarding action
+        // into a silent no-op after the database was replaced or repaired.
+        defaults.set(false, forKey: OnboardingSampleProjectDefinition.createdDefaultsKey)
+        if let result = try createSampleProjectIfNeeded() {
+            return .created(result)
+        }
+        if let result = try completeMarkedProject() {
+            return .existing(result)
+        }
+        throw OnboardingSampleProjectError.missingAfterEnsure
+    }
+
+    private func completeMarkedProject() throws -> OnboardingSampleProjectCreationResult? {
+        guard let project = try projectStore.list(includeArchived: true).first(where: {
+            $0.sourceCommand == OnboardingSampleProjectDefinition.projectMarkerSourceCommand
+        }) else {
+            return nil
+        }
+        let tasks = try taskStore.listAll()
+            .filter {
+                $0.projectID == project.id
+                    && $0.sourceCommand == OnboardingSampleProjectDefinition.projectMarkerSourceCommand
+            }
+            .sorted { $0.id < $1.id }
+        guard tasks.count == OnboardingSampleProjectDefinition.tasks.count else {
+            return nil
+        }
         return OnboardingSampleProjectCreationResult(project: project, tasks: tasks)
     }
 

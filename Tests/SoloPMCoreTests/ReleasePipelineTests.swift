@@ -1,10 +1,17 @@
 import Foundation
 import CoreGraphics
+import CoreText
 import CryptoKit
 import ImageIO
 import XCTest
 
 final class ReleasePipelineTests: XCTestCase {
+    func testAccessibilitySourceAnchorCountContractAllowsCoverageGrowth() throws {
+        let output = "OK: accessibility source anchors are present (92 anchors)\n"
+
+        XCTAssertEqual(try accessibilitySourceAnchorCount(in: output), 92)
+    }
+
     func testBuildAndRunSerializesDistBundleRebuilds() throws {
         let script = try readPackageFile("script/build_and_run.sh")
 
@@ -4549,55 +4556,62 @@ final class ReleasePipelineTests: XCTestCase {
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
         let phase14 = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
 
-        XCTAssertTrue(script.contains("REQUIRED_SOURCE_ANCHORS"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-sidebar"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-detail"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::inline-task-create"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-show-archived"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-add-project"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-header-add-task"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::task-status-move-controls"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::task-status-move-"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-detail"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-status"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-priority"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-due"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-apply-suggestion"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-save"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-delete"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-delete-confirmation-cancel"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-title"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-apply-suggestion"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-save"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-complete"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-restore"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-archive"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-delete"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-overview-task-open-"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-overview-add-task"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-local-suggestion-open-task"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-local-suggestion-review-action"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-artifact-path"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-artifact-track"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-artifact-remove-"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift::sidebar-destination-"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-quick-add-button"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-intake-detail"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-transcript"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-interpretation"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-memo-editor"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-memo-save"))
-        XCTAssertTrue(script.contains(#"Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(\"n\", modifiers: [.command])"#))
-        XCTAssertTrue(script.contains(#"Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(\"n\", modifiers: [.command, .shift])"#))
+        XCTAssertTrue(script.contains("REQUIRED_FUNCTIONAL_SURFACE_ANCHORS"))
+        XCTAssertTrue(script.contains("REQUIRED_SOURCE_OWNER_ASSERTIONS"))
+        XCTAssertTrue(script.contains("project_board_surface_source_files()"))
+        XCTAssertTrue(script.contains("-name 'ProjectBoard*.swift'"))
+        XCTAssertTrue(script.contains("-name 'ProjectWorkflow*.swift'"))
+        XCTAssertTrue(script.contains("-name 'TaskInspector*.swift'"))
+        XCTAssertTrue(script.contains("surface_anchor_is_present()"))
+        XCTAssertTrue(script.contains("project-board::project-board-sidebar"))
+        XCTAssertTrue(script.contains("project-board::project-board-detail"))
+        XCTAssertTrue(script.contains("project-board::inline-task-create"))
+        XCTAssertTrue(script.contains("project-board::project-board-show-archived"))
+        XCTAssertTrue(script.contains("project-board::project-board-add-project"))
+        XCTAssertTrue(script.contains("project-board::project-header-add-task"))
+        XCTAssertTrue(script.contains("project-board::task-status-move-controls"))
+        XCTAssertTrue(script.contains("project-board::task-status-move-"))
+        XCTAssertTrue(script.contains("project-board::task-inspector-detail"))
+        XCTAssertTrue(script.contains("project-board::task-inspector-status"))
+        XCTAssertTrue(script.contains("project-board::task-inspector-priority"))
+        XCTAssertTrue(script.contains("project-board::task-inspector-due"))
+        XCTAssertTrue(script.contains("project-board::task-inspector-apply-suggestion"))
+        XCTAssertTrue(script.contains("project-board::task-inspector-save"))
+        XCTAssertTrue(script.contains("project-board::task-inspector-delete"))
+        XCTAssertTrue(script.contains("project-board::task-inspector-delete-confirmation-cancel"))
+        XCTAssertTrue(script.contains("project-board::project-inspector-title"))
+        XCTAssertTrue(script.contains("project-board::project-inspector-apply-suggestion"))
+        XCTAssertTrue(script.contains("project-board::project-inspector-save"))
+        XCTAssertTrue(script.contains("project-board::project-inspector-complete"))
+        XCTAssertTrue(script.contains("project-board::project-inspector-restore"))
+        XCTAssertTrue(script.contains("project-board::project-inspector-archive"))
+        XCTAssertTrue(script.contains("project-board::project-inspector-delete"))
+        XCTAssertTrue(script.contains("project-board::project-overview-task-open-"))
+        XCTAssertTrue(script.contains("project-board::project-overview-add-task"))
+        XCTAssertTrue(script.contains("project-board::project-local-suggestion-open-task"))
+        XCTAssertTrue(script.contains("project-board::project-local-suggestion-review-action"))
+        XCTAssertTrue(script.contains("project-board::project-artifact-path"))
+        XCTAssertTrue(script.contains("project-board::project-artifact-track"))
+        XCTAssertTrue(script.contains("project-board::project-artifact-remove-"))
+        XCTAssertTrue(script.contains("project-board::sidebar-destination-"))
+        XCTAssertTrue(script.contains("project-board::inbox-quick-add-button"))
+        XCTAssertTrue(script.contains("project-board::inbox-voice-intake-detail"))
+        XCTAssertTrue(script.contains("project-board::inbox-voice-transcript"))
+        XCTAssertTrue(script.contains("project-board::inbox-voice-interpretation"))
+        XCTAssertTrue(script.contains("project-board::inbox-voice-memo-editor"))
+        XCTAssertTrue(script.contains("project-board::inbox-voice-memo-save"))
+        XCTAssertTrue(script.contains("project-board::today-plan-summary"))
+        XCTAssertTrue(script.contains(#"project-board::.keyboardShortcut(\"n\", modifiers: [.command])"#))
+        XCTAssertTrue(script.contains(#"project-board::.keyboardShortcut(\"n\", modifiers: [.command, .shift])"#))
         XCTAssertTrue(script.contains(#"Sources/SoloPMApp/SoloPMApp.swift::.keyboardShortcut(\",\", modifiers: [.command])"#))
-        XCTAssertTrue(script.contains(#"Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(\"s\", modifiers: [.command])"#))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(.delete, modifiers: [.command])"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(.return, modifiers: [.command])"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(.escape, modifiers: [])"))
-        XCTAssertTrue(script.contains(#"Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::.keyboardShortcut(\"1\", modifiers: [.command])"#))
-        XCTAssertTrue(script.contains(#"Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::.keyboardShortcut(\"2\", modifiers: [.command])"#))
-        XCTAssertTrue(script.contains(#"Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::.keyboardShortcut(\"3\", modifiers: [.command])"#))
-        XCTAssertTrue(script.contains(#"Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::.keyboardShortcut(\"4\", modifiers: [.command])"#))
+        XCTAssertTrue(script.contains(#"project-board::.keyboardShortcut(\"s\", modifiers: [.command])"#))
+        XCTAssertTrue(script.contains("project-board::.keyboardShortcut(.delete, modifiers: [.command])"))
+        XCTAssertTrue(script.contains("project-board::.keyboardShortcut(.return, modifiers: [.command])"))
+        XCTAssertTrue(script.contains("project-board::.keyboardShortcut(.escape, modifiers: [])"))
+        XCTAssertTrue(script.contains(#"project-board::.keyboardShortcut(\"1\", modifiers: [.command])"#))
+        XCTAssertTrue(script.contains(#"project-board::.keyboardShortcut(\"2\", modifiers: [.command])"#))
+        XCTAssertTrue(script.contains(#"project-board::.keyboardShortcut(\"3\", modifiers: [.command])"#))
+        XCTAssertTrue(script.contains(#"project-board::.keyboardShortcut(\"4\", modifiers: [.command])"#))
         XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/MenuBarPanel.swift::.keyboardShortcut(.return, modifiers: [.command])"))
         XCTAssertTrue(script.contains("--runtime"))
         XCTAssertTrue(script.contains("--skip-source-anchors"))
@@ -4679,7 +4693,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         let result = try runScript("script/check_accessibility_preflight.sh", arguments: ["--source-only"])
         XCTAssertEqual(result.exitCode, 0, result.output)
-        XCTAssertTrue(result.output.contains("OK: accessibility source anchors are present"))
+        XCTAssertGreaterThanOrEqual(try accessibilitySourceAnchorCount(in: result.output), 91)
 
         XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --source-only"))
         XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --runtime"))
@@ -5769,9 +5783,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("open -n -F --env \"SOLOPM_DATABASE_PATH=$database_path\""))
         XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
         XCTAssertFalse(script.contains("script/check_accessibility_preflight.sh --runtime --skip-launch"))
-        XCTAssertTrue(script.contains("pressButtonUntilSQLiteValue \"created project\" \"project-board-add-project\""))
+        XCTAssertTrue(script.contains("pressButtonUntilSQLiteValue \"created project\" \"project-board-add-project\" \"projects-hub-compact-add-project\""))
         XCTAssertTrue(script.contains("created_project_id=\"$(wait_for_nonempty_value \"created project id\""))
         XCTAssertGreaterThanOrEqual(script.components(separatedBy: "launch_app_for_seed_project \"$created_project_id\"").count - 1, 2)
+        XCTAssertTrue(script.contains("pressButtonContaining \"project-board-inspector-toggle\""))
         XCTAssertTrue(script.contains("launch_app_for_seed_project \"$created_project_id\" \"$created_task_id\"\nwaitForTextFieldContaining \"task-inspector-title\""))
         XCTAssertTrue(script.contains("value of attribute \"AXIdentifier\" of axItem as text"))
         XCTAssertTrue(script.contains("set frontmost to true"))
@@ -5839,7 +5854,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("set targetProcess to item 1 of matchingProcesses"))
         XCTAssertFalse(script.contains("/usr/bin/osascript - \"$APP_NAME\""))
         XCTAssertTrue(script.contains("set isEnabled to enabled of axItem as boolean"))
-        XCTAssertTrue(script.contains("if isEnabled and signalText contains fragment then"))
+        XCTAssertTrue(script.contains("if isEnabled and (matchesPrimary or matchesFallback) then"))
         XCTAssertTrue(script.contains("local deadline=$((SECONDS + TIMEOUT_SECONDS))"))
         XCTAssertTrue(script.contains("pressButtonUntilSQLiteValue()"))
         XCTAssertTrue(script.contains("INFO: SQLite postcondition for $label was not met after pressing '$fragment'; retrying AX press."))
@@ -5973,7 +5988,14 @@ final class ReleasePipelineTests: XCTestCase {
     func testRuntimeDevelopmentPRSmokeScriptRunsApprovedDirectoryFixtureFlow() throws {
         let script = try readPackageFile("script/check_runtime_development_pr_smoke.sh")
         let workflow = try readPackageFile("script/check_runtime_workflow_smoke.sh")
-        let projectBoardViewSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        // The runtime contract belongs to the composed Project Board surface,
+        // not to one physical file. Keep this regression gate stable when
+        // leaf inspectors are extracted from the scene-owning root view.
+        let projectBoardViewSource = try [
+            "Sources/SoloPMApp/Views/ProjectBoardView.swift",
+            "Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift",
+            "Sources/SoloPMApp/Views/ProjectBoardInspectors.swift"
+        ].map(readPackageFile).joined(separator: "\n\n")
         let gitRunnerSource = try readPackageFile("Sources/SoloPMCore/DeveloperMode/GitReadOnlyTools.swift")
 
         XCTAssertTrue(script.contains("swift test --filter DevelopmentAutomationRuntimeSmokeTests/testApprovedProjectDirectoryCanEditVerifyCommitAndPreparePullRequestBranch --quiet"))
@@ -6309,34 +6331,40 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
         XCTAssertTrue(script.contains("seed_today_task()"))
         XCTAssertTrue(script.contains("AX Runtime Today Complete"))
-        XCTAssertTrue(script.contains("today_due_at=\"$(date '+%Y-%m-%dT09:00:00%z')\""))
+        XCTAssertTrue(script.contains("today_due_at=\"$(date -u -v+1H '+%Y-%m-%dT%H:%M:%SZ')\""))
         XCTAssertTrue(script.contains("due_at='$today_due_at'"))
         XCTAssertTrue(script.contains("launch_app_for_database_migration()"))
         XCTAssertTrue(script.contains("launch_app_for_database_migration\nwait_for_database_table \"projects\""))
         XCTAssertTrue(script.contains("launch_app_for_today\nwait_for_database_table \"assistant_queue_items\""))
         XCTAssertFalse(script.contains("launch_app_for_today_board()"))
         XCTAssertTrue(script.contains("Keep the edit and subtask checks in separate launches."))
-        XCTAssertTrue(script.contains("pressButtonContainingBounded \"today-rail-edit-task\""))
+        XCTAssertTrue(script.contains("pressMenuButtonContaining \"today-rail-actions-menu\""))
+        XCTAssertTrue(script.contains("pressMenuItemContaining \"today-rail-edit-task\""))
         XCTAssertTrue(script.contains("waitForAXSubtreeMarkerContaining \"task-inspector-title\" \"AX Runtime Today Complete\""))
-        XCTAssertTrue(script.contains("pressButtonContainingBounded \"today-rail-add-subtask\""))
-        let editActionRange = try XCTUnwrap(script.range(of: "pressButtonContainingBounded \"today-rail-edit-task\""))
+        XCTAssertTrue(script.contains("pressMenuItemContaining \"today-rail-add-subtask\""))
+        let editActionRange = try XCTUnwrap(script.range(of: "pressMenuItemContaining \"today-rail-edit-task\""))
         let editCloseRange = try XCTUnwrap(script.range(of: "terminate_app", range: editActionRange.upperBound..<script.endIndex))
         let subtaskLaunchRange = try XCTUnwrap(script.range(of: "launch_app_for_today", range: editCloseRange.upperBound..<script.endIndex))
-        let subtaskActionRange = try XCTUnwrap(script.range(of: "pressButtonContainingBounded \"today-rail-add-subtask\"", range: subtaskLaunchRange.upperBound..<script.endIndex))
+        let subtaskActionRange = try XCTUnwrap(script.range(of: "pressMenuItemContaining \"today-rail-add-subtask\"", range: subtaskLaunchRange.upperBound..<script.endIndex))
         XCTAssertLessThan(editActionRange.lowerBound, editCloseRange.lowerBound)
         XCTAssertLessThan(editCloseRange.lowerBound, subtaskLaunchRange.lowerBound)
         XCTAssertLessThan(subtaskLaunchRange.lowerBound, subtaskActionRange.lowerBound)
         XCTAssertTrue(script.contains("waitForAXElementContaining \"today-command-capture-field\""))
         XCTAssertTrue(script.contains("waitForAXElementContaining \"today-command-capture-field\" \"AX Runtime Today Complete\""))
         XCTAssertFalse(script.contains("pressButtonContaining \"workflow-task-row-$today_task_id\""))
-        XCTAssertTrue(script.contains("waitForAXElementContaining \"today-rail-focus\""))
-        XCTAssertTrue(script.contains("pressButtonContaining \"today-rail-focus\""))
+        XCTAssertTrue(script.contains("waitForAXElementContaining \"today-primary-action\" \"AX Runtime Today Complete\""))
+        XCTAssertTrue(script.contains("pressButtonContaining \"today-primary-action\""))
         XCTAssertTrue(script.contains("verify_single_value \"focus kept Today task open\""))
         XCTAssertTrue(script.contains("waitForAXElementContaining()"))
-        XCTAssertTrue(script.contains("pressButtonContaining \"today-rail-schedule-block\""))
+        XCTAssertTrue(script.contains("ui_evidence_ax_marker_check.swift"))
+        XCTAssertTrue(script.contains("ui_evidence_ax_press_element.swift"))
+        XCTAssertTrue(script.contains("pressAXElementContainingBounded()"))
+        XCTAssertTrue(script.contains("watchdog_pid"))
+        XCTAssertFalse(script.contains("entire contents"))
+        XCTAssertTrue(script.contains("pressMenuItemContaining \"today-rail-schedule-block\""))
         XCTAssertTrue(script.contains("waitForAXElementContaining \"today-rail-schedule-draft-status\""))
         XCTAssertTrue(script.contains("verify_single_value \"schedule draft kept Today task open\""))
-        XCTAssertTrue(script.contains("pressButtonUntilSQLiteValue \"queue Today rail reminder draft\" \"today-rail-reminder-draft\""))
+        XCTAssertTrue(script.contains("pressMenuItemContaining \"today-rail-reminder-draft\""))
         XCTAssertTrue(script.contains("action-plan:today-reminder:%:task:$today_task_id"))
         XCTAssertTrue(script.contains("state='waitingReview' AND approval_json IS NULL"))
         XCTAssertTrue(script.contains("status='planned' AND completed_at IS NULL"))
@@ -6344,7 +6372,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("verify_single_value \"complete today task\""))
         XCTAssertTrue(script.contains("status='completed' AND completed_at IS NOT NULL"))
         XCTAssertTrue(script.contains("source_command='runtime-today-complete-smoke'"))
-        XCTAssertTrue(script.contains("OK: runtime today complete smoke covered Today rail focus, schedule draft, edit inspector, subtask prefill, reminder draft, and visible row completion"))
+        XCTAssertTrue(script.contains("OK: runtime today complete smoke covered the single primary focus action"))
         XCTAssertFalse(script.contains(":memory:"))
         XCTAssertFalse(script.contains("not implemented yet"))
     }
@@ -6356,6 +6384,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(script.components(separatedBy: "./script/build_and_run.sh --build-only").count - 1, 1)
         XCTAssertTrue(script.contains("FIXTURES=(\"empty\" \"small\")"))
         XCTAssertTrue(script.contains("LOCALES=(\"english\" \"japanese\")"))
+        XCTAssertTrue(script.contains("WINDOW_WIDTH=\"${SOLOPM_RUNTIME_TODAY_WINDOW_WIDTH:-1024}\""))
+        XCTAssertTrue(script.contains("WINDOW_HEIGHT=\"${SOLOPM_RUNTIME_TODAY_WINDOW_HEIGHT:-724}\""))
+        XCTAssertTrue(script.contains("set size of window 1 to {targetWidth, targetHeight}"))
         XCTAssertTrue(script.contains("locale_label_for"))
         XCTAssertTrue(script.contains("english) printf '%s' \"en\""))
         XCTAssertTrue(script.contains("japanese) printf '%s' \"ja\""))
@@ -6369,8 +6400,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("/usr/bin/env -i"))
         XCTAssertFalse(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE="))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"today\""))
-        XCTAssertTrue(script.contains("project-board-header-bar"))
+        XCTAssertTrue(script.contains("project-board-command-palette"))
         XCTAssertTrue(script.contains("today-workflow"))
+        XCTAssertTrue(script.contains("ui_evidence_ax_identifier_count.swift"))
+        XCTAssertTrue(script.contains("verify_today_action_contract"))
+        XCTAssertTrue(script.contains("\"today-primary-action\""))
+        XCTAssertTrue(script.contains("\"today-catch-up-section\""))
+        XCTAssertTrue(script.contains("actionable_enabled=${expected_primary_enabled}"))
+        XCTAssertTrue(script.contains("expected_catch_up_total=0"))
+        XCTAssertTrue(script.contains("[[ \"$fixture\" == \"small\" ]] && expected_catch_up_total=1"))
+        XCTAssertTrue(script.contains("fail_route \"product-marker\" \"today-primary-or-catch-up-contract\""))
         XCTAssertTrue(script.contains("CPU_SAMPLE_INTERVAL_SECONDS=1"))
         XCTAssertTrue(script.contains("REQUIRED_CONSECUTIVE_CPU_SAMPLES=3"))
         XCTAssertTrue(script.contains("MAX_CPU_PERCENT=20"))
@@ -6384,7 +6423,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("launch_route_and_wait_for_markers \"$route_artifact_dir/window-attempt-1.err\""))
         XCTAssertTrue(script.contains("launch_route_and_wait_for_markers \"$route_artifact_dir/window-attempt-2.err\""))
         XCTAssertTrue(script.contains("launch_route_and_wait_for_markers() {"))
-        XCTAssertTrue(script.contains("wait_for_marker_until \"project-board-header-bar\""))
+        XCTAssertTrue(script.contains("wait_for_marker_until \"project-board-command-palette\""))
         XCTAssertTrue(script.contains("wait_for_marker_until \"$route_sidebar_marker\""))
         XCTAssertTrue(script.contains("wait_for_marker_until \"$route_content_marker\""))
         XCTAssertTrue(script.contains("$route_failure_category\" != \"window"))
@@ -6452,6 +6491,93 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("set -x"))
     }
 
+    func testRuntimeTodayWindowSizeMatchesVisualManifestAndRecordsSafeMismatchDiagnostics() throws {
+        let script = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
+        let manifestData = try Data(
+            contentsOf: packageRoot().appendingPathComponent("docs/quality/visual-baseline-manifest.json")
+        )
+        let manifest = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
+        )
+        let screens = try XCTUnwrap(manifest["screens"] as? [[String: Any]])
+        let today = try XCTUnwrap(screens.first { $0["id"] as? String == "today" })
+        let viewport = try XCTUnwrap(today["viewport"] as? [String: Any])
+        let width = try XCTUnwrap(viewport["width"] as? Int)
+        let height = try XCTUnwrap(viewport["height"] as? Int)
+
+        XCTAssertEqual(width, 1_024)
+        XCTAssertEqual(height, 724)
+        XCTAssertTrue(script.contains("WINDOW_WIDTH=\"${SOLOPM_RUNTIME_TODAY_WINDOW_WIDTH:-\(width)}\""))
+        XCTAssertTrue(script.contains("WINDOW_HEIGHT=\"${SOLOPM_RUNTIME_TODAY_WINDOW_HEIGHT:-\(height)}\""))
+        XCTAssertTrue(script.contains("local window_size_diagnostic=\"${window_diagnostic%.err}-size.env\""))
+        XCTAssertTrue(script.contains("set_owned_window_size \"$window_size_diagnostic\""))
+        XCTAssertTrue(script.contains("record_owned_window_size_result \"$diagnostic_file\""))
+
+        let invalidRequestedSize = try runScript(
+            "script/check_runtime_today_production_route_smoke.sh",
+            environment: ["SOLOPM_RUNTIME_TODAY_WINDOW_WIDTH": "/Users/private/secret"]
+        )
+        XCTAssertEqual(invalidRequestedSize.exitCode, 2, invalidRequestedSize.output)
+        XCTAssertTrue(invalidRequestedSize.output.contains("SOLOPM_RUNTIME_TODAY_WINDOW_WIDTH must be a positive integer"))
+        XCTAssertFalse(invalidRequestedSize.output.contains("/Users/"), invalidRequestedSize.output)
+
+        let matched = try runTodayWindowSizeResultFixture(
+            requestedWidth: width,
+            requestedHeight: height,
+            observedOutput: "1024 724"
+        )
+        XCTAssertEqual(matched.exitCode, 0, matched.output)
+        XCTAssertTrue(matched.output.contains("status=passed"), matched.output)
+        XCTAssertTrue(matched.output.contains("requested_width=1024"), matched.output)
+        XCTAssertTrue(matched.output.contains("requested_height=724"), matched.output)
+        XCTAssertTrue(matched.output.contains("observed_width=1024"), matched.output)
+        XCTAssertTrue(matched.output.contains("observed_height=724"), matched.output)
+
+        let clamped = try runTodayWindowSizeResultFixture(
+            requestedWidth: 1_024,
+            requestedHeight: 760,
+            observedOutput: "1024 724"
+        )
+        XCTAssertEqual(clamped.exitCode, 1, clamped.output)
+        XCTAssertTrue(clamped.output.contains("status=failed"), clamped.output)
+        XCTAssertTrue(clamped.output.contains("failure_category=window"), clamped.output)
+        XCTAssertTrue(clamped.output.contains("failure_reason=window-size-mismatch"), clamped.output)
+        XCTAssertTrue(clamped.output.contains("requested_height=760"), clamped.output)
+        XCTAssertTrue(clamped.output.contains("observed_height=724"), clamped.output)
+
+        let malformed = try runTodayWindowSizeResultFixture(
+            requestedWidth: width,
+            requestedHeight: height,
+            observedOutput: "1024 724 /Users/private/secret"
+        )
+        XCTAssertEqual(malformed.exitCode, 1, malformed.output)
+        XCTAssertTrue(malformed.output.contains("failure_reason=window-size-unavailable"), malformed.output)
+        XCTAssertTrue(malformed.output.contains("observed_width=unavailable"), malformed.output)
+        XCTAssertFalse(malformed.output.contains("/Users/"), malformed.output)
+
+        let multiline = try runTodayWindowSizeResultFixture(
+            requestedWidth: width,
+            requestedHeight: height,
+            observedOutput: "1024 724\n/Users/private/secret"
+        )
+        XCTAssertEqual(multiline.exitCode, 1, multiline.output)
+        XCTAssertTrue(multiline.output.contains("failure_reason=window-size-unavailable"), multiline.output)
+        XCTAssertTrue(multiline.output.contains("observed_width=unavailable"), multiline.output)
+        XCTAssertTrue(multiline.output.contains("observed_height=unavailable"), multiline.output)
+        XCTAssertFalse(multiline.output.contains("/Users/"), multiline.output)
+
+        let extraToken = try runTodayWindowSizeResultFixture(
+            requestedWidth: width,
+            requestedHeight: height,
+            observedOutput: "1024 724 unexpected"
+        )
+        XCTAssertEqual(extraToken.exitCode, 1, extraToken.output)
+        XCTAssertTrue(extraToken.output.contains("failure_reason=window-size-unavailable"), extraToken.output)
+        XCTAssertTrue(extraToken.output.contains("observed_width=unavailable"), extraToken.output)
+        XCTAssertTrue(extraToken.output.contains("observed_height=unavailable"), extraToken.output)
+        XCTAssertFalse(extraToken.output.contains("unexpected"), extraToken.output)
+    }
+
     func testRuntimeTodayProductionRouteSmokeUsesPIDScopedAXAndOptInRuntimeGate() throws {
         let script = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
         let helper = try readPackageFile("script/ui_evidence_ax_marker_check.swift")
@@ -6478,12 +6604,35 @@ final class ReleasePipelineTests: XCTestCase {
         let script = try readPackageFile("script/check_runtime_settings_save_smoke.sh")
         let helper = try readPackageFile("script/settings_save_smoke_check.swift")
 
+        XCTAssertTrue(script.contains("source \"$AX_HELPERS\""))
+        XCTAssertTrue(script.contains("app_launch_pid=\"\""))
+        XCTAssertTrue(script.contains("app_identity=\"\""))
+        XCTAssertTrue(script.contains("app_launch_identity=\"\""))
+        XCTAssertTrue(script.contains("ax_wait_for_owned_app_pid \"$app_launch_pid\" \"$APP_BINARY\" \"$TIMEOUT_SECONDS\""))
+        XCTAssertTrue(script.contains("ax_wait_for_owned_process_identity \"$app_pid\" \"$APP_BINARY\""))
+        XCTAssertTrue(script.contains("ax_terminate_owned_process \"$owned_pid\" \"$APP_BINARY\""))
+        XCTAssertTrue(script.contains("application processes whose unix id is appPID"))
+        XCTAssertTrue(script.contains("separately running SoloPM"))
+        XCTAssertTrue(script.contains("PID survives every Overview, AI, and Sync smoke relaunch"))
+        XCTAssertFalse(script.contains("pkill -x"))
+        XCTAssertFalse(script.contains("pgrep -x"))
+        XCTAssertFalse(script.contains("tell process appName"))
+        XCTAssertFalse(script.contains("window 1"))
         XCTAssertTrue(script.contains("SOLOPM_OPEN_SETTINGS_ON_LAUNCH=1"))
         XCTAssertTrue(script.contains("TIMEOUT_SECONDS=\"${SOLOPM_RUNTIME_SETTINGS_SAVE_TIMEOUT_SECONDS:-60}\""))
         XCTAssertTrue(script.contains("SOLOPM_SETTINGS_EVIDENCE_TAB=\"$settings_tab\""))
-        XCTAssertTrue(script.contains("SOLOPM_LANGUAGE_PREFERENCE=english"))
+        XCTAssertTrue(script.contains("SOLOPM_LANGUAGE_PREFERENCE=\"$language\""))
         XCTAssertTrue(script.contains("launch_app_for_settings \"AI\""))
         XCTAssertTrue(script.contains("launch_app_for_settings \"Sync\""))
+        XCTAssertTrue(script.contains("launch_app_for_settings \"Overview\" \"english\" \"1024\""))
+        XCTAssertTrue(script.contains("launch_app_for_settings \"Overview\" \"japanese\" \"1024\""))
+        XCTAssertTrue(script.contains("launch_app_for_settings \"Overview\" \"japanese\" \"760\""))
+        XCTAssertTrue(script.contains("verify_readiness_overview \"Ready\" \"Set Up When Used\""))
+        XCTAssertTrue(script.contains("verify_readiness_overview \"準備完了\" \"使うときに設定\""))
+        XCTAssertTrue(script.contains("settings-readiness-group-ready"))
+        XCTAssertTrue(script.contains("settings-readiness-group-setup-when-used"))
+        XCTAssertTrue(script.contains("ui_evidence_ax_marker_check.swift"))
+        XCTAssertTrue(script.contains("\"$app_pid\""))
         XCTAssertTrue(script.contains("HOME=\"$settings_home\""))
         XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH=\"$database_path\""))
         XCTAssertTrue(script.contains("settings-task-auto-execution-toggle"))
@@ -6502,6 +6651,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("/usr/bin/defaults export \"$settings_suite_name\" \"$settings_home/app-settings.plist\""))
         XCTAssertTrue(script.contains("/usr/bin/defaults delete \"$settings_suite_name\""))
         XCTAssertTrue(script.contains("enableCheckboxContaining()"))
+        XCTAssertTrue(script.contains("SOLOPM_RUNTIME_SETTINGS_AX_CHECKBOX_ATTEMPT_SECONDS"))
+        XCTAssertTrue(script.contains("local osascript_pid=$!"))
+        XCTAssertTrue(script.contains("local attempt_deadline=$((SECONDS + checkboxAttemptSeconds))"))
+        XCTAssertTrue(script.contains("kill \"$osascript_pid\""))
+        XCTAssertTrue(script.contains("wait \"$osascript_pid\""))
+        XCTAssertFalse(script.contains("output=\"$(/usr/bin/osascript - \"$app_pid\" \"$fragment\""))
         XCTAssertTrue(script.contains("enableCheckboxContaining \"settings-task-auto-execution-toggle\""))
         XCTAssertTrue(script.contains("pressControlContaining \"settings-task-auto-execution-save\""))
         XCTAssertTrue(script.contains("waitForAXElementContaining \"settings-google-calendar-id-save-flow\""))
@@ -6554,12 +6709,28 @@ final class ReleasePipelineTests: XCTestCase {
     func testRuntimeVoiceReviewSmokeScriptFailsClosedWithoutAPIKeyAndPersistsPlanningAudit() throws {
         let script = try readPackageFile("script/check_runtime_voice_review_smoke.sh")
 
+        XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
+        XCTAssertTrue(script.contains("ax_wait_for_owned_app_pid"))
+        XCTAssertTrue(script.contains("ax_wait_for_owned_process_identity"))
+        XCTAssertTrue(script.contains("ax_process_matches_identity"))
+        XCTAssertTrue(script.contains("ax_terminate_owned_process"))
+        XCTAssertTrue(script.contains("application processes whose unix id is appPID"))
+        XCTAssertTrue(script.contains("run_voice_readiness_matrix english 1024"))
+        XCTAssertTrue(script.contains("run_voice_readiness_matrix japanese 1024"))
+        XCTAssertTrue(script.contains("local ax_attempt_seconds=\"${SOLOPM_RUNTIME_VOICE_REVIEW_AX_ATTEMPT_SECONDS:-5}\""))
+        XCTAssertTrue(script.contains("local osascript_pid=$!"))
+        XCTAssertTrue(script.contains("kill \"$osascript_pid\""))
+        XCTAssertTrue(script.contains("wait \"$osascript_pid\""))
+        XCTAssertFalse(script.contains("pkill -x"))
+        XCTAssertFalse(script.contains("pgrep -x"))
+        XCTAssertFalse(script.contains("tell process appName"))
+        XCTAssertFalse(script.contains("window 1"))
         XCTAssertTrue(script.contains("SOLOPM_OPEN_VOICE_COMMAND_ON_LAUNCH=1"))
         XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
         XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH=\"$database_path\""))
         XCTAssertTrue(script.contains("settings_suite_name=\"$BUNDLE_IDENTIFIER.runtime-voice-review."))
         XCTAssertTrue(script.contains("SOLOPM_APP_SETTINGS_SUITE_NAME=\"$settings_suite_name\""))
-        XCTAssertTrue(script.contains("/usr/bin/defaults delete \"$settings_suite_name\""))
+        XCTAssertTrue(script.contains("/usr/bin/defaults delete \"$suite\""))
         XCTAssertTrue(script.contains("setTextAreaContaining \"voice-command-input\""))
         XCTAssertTrue(script.contains("pressControlContaining \"voice-command-generate-plan\""))
         XCTAssertTrue(script.contains("The AI provider rejected the configured API key."))
@@ -6684,7 +6855,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("window_size_key()"))
         XCTAssertTrue(script.contains("set_project_board_window_size()"))
         XCTAssertTrue(script.contains("set appMatches to application processes whose unix id is appPID"))
-        XCTAssertTrue(script.contains("BLOCKER: failed to resize owned app window"))
+        XCTAssertTrue(script.contains("BLOCKER: failed to resize named PID-owned app window"))
         XCTAssertTrue(script.contains("assert_no_negative_or_overlapping_frames()"))
         XCTAssertTrue(script.contains("capture_layout_screenshot()"))
         XCTAssertTrue(script.contains("t=0ms"))
@@ -6699,13 +6870,25 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("samples.json"))
         XCTAssertTrue(script.contains("diff.json"))
         XCTAssertTrue(script.contains("window-min"))
-        XCTAssertTrue(script.contains("window-standard"))
+        XCTAssertTrue(script.contains("content-minimum-closed"))
+        XCTAssertTrue(script.contains("content-minimum-open"))
+        XCTAssertTrue(script.contains("ui_evidence_window_content_size.swift"))
+        XCTAssertTrue(script.contains("BLOCKER: Project Board content size fell below"))
+        let contentSizeHelper = try readPackageFile("script/ui_evidence_window_content_size.swift")
+        XCTAssertTrue(contentSizeHelper.contains("CommandLine.arguments.count == 2"))
+        XCTAssertTrue(contentSizeHelper.contains("Window content size requires a diagnostic file path."))
+        XCTAssertTrue(contentSizeHelper.contains("components.count == 2"))
+        XCTAssertTrue(contentSizeHelper.contains("Int(components[0]) != nil"))
+        XCTAssertTrue(contentSizeHelper.contains("Int(components[1]) != nil"))
+        XCTAssertTrue(script.contains("inspector-wide-open"))
         XCTAssertTrue(script.contains("window-wide"))
         XCTAssertTrue(script.contains("destination-inbox"))
-        XCTAssertTrue(script.contains("destination-assistant-queue"))
+        XCTAssertTrue(script.contains("destination-review"))
+        XCTAssertTrue(script.contains("destination-review-assistant-queue"))
         XCTAssertTrue(script.contains("destination-today"))
         XCTAssertTrue(script.contains("sidebar-destination-inbox"))
-        XCTAssertTrue(script.contains("sidebar-destination-assistant-queue"))
+        XCTAssertTrue(script.contains("sidebar-destination-review"))
+        XCTAssertTrue(script.contains("review-destination-assistant-queue"))
         XCTAssertTrue(script.contains("sidebar-destination-today"))
         XCTAssertTrue(script.contains("BLOCKER: Project Board window size changed after selecting"))
         XCTAssertTrue(script.contains("BLOCKER: layout frame overlaps after"))
@@ -6714,7 +6897,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("\"phase\":\"immediate\""))
         XCTAssertTrue(script.contains("\"phase\":\"after\""))
         XCTAssertTrue(script.contains("BLOCKER: required AX identifier missing"))
-        XCTAssertTrue(script.contains("project-board-header-bar"))
+        XCTAssertTrue(script.contains("project-board-command-palette"))
         XCTAssertTrue(script.contains("project-board-detail"))
         XCTAssertTrue(script.contains("project-board-sidebar"))
         XCTAssertTrue(script.contains("project-inspector"))
@@ -6776,9 +6959,15 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("\"$APP_BINARY\" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &"))
         XCTAssertTrue(script.contains("cold-launch-visible-window"))
         XCTAssertTrue(script.contains("wait_for_visible_window"))
-        XCTAssertTrue(script.contains("wait_for_marker \"project-board-header-bar\""))
+        XCTAssertTrue(script.contains("wait_for_marker \"project-board-command-palette\""))
         XCTAssertTrue(script.contains("measure_destination \"destination-inbox\" \"sidebar-destination-inbox\" \"Inbox\" \"inbox-workflow\""))
-        XCTAssertTrue(script.contains("measure_destination \"destination-assistant-queue\" \"sidebar-destination-assistant-queue\" \"Assistant Queue\" \"assistant-queue-workflow\""))
+        XCTAssertTrue(script.contains("measure_destination \"destination-review\" \"sidebar-destination-review\" \"Review\" \"review-hub\""))
+        XCTAssertTrue(script.contains("measure_review_assistant_queue"))
+        XCTAssertTrue(script.contains("try_click_destination \"review-destination-assistant-queue\""))
+        XCTAssertTrue(script.contains("click_sidebar_destination \"review-hub-compact-navigation\" \"Review view chooser\""))
+        XCTAssertTrue(script.contains("click_destination_until_available \"review-hub-compact-destination-assistant-queue\" \"Assistant Queue\""))
+        XCTAssertTrue(script.contains("wait_for_marker \"assistant-queue-workflow\""))
+        XCTAssertFalse(script.contains("sidebar-destination-assistant-queue"))
         XCTAssertTrue(script.contains("measure_destination \"destination-today\" \"sidebar-destination-today\" \"Today\" \"today-workflow\""))
         XCTAssertFalse(script.contains("ax_wait_for_visible_window"))
         XCTAssertTrue(script.contains("/usr/bin/swiftc \"$AX_PRESS_ELEMENT_HELPER\" -o \"$AX_PRESS_ELEMENT_HELPER_EXECUTABLE\""))
@@ -8094,14 +8283,14 @@ final class ReleasePipelineTests: XCTestCase {
         ]
         XCTAssertEqual(screenIDs, coreSystemScreens.union(sampleDerivedScreens))
         let expectedViewports: [String: (width: Int, height: Int)] = [
-            "project-board": (1_024, 674),
-            "inbox": (1_024, 674),
-            "today": (1_024, 674),
-            "inbox-voice": (1_024, 674),
-            "projects-overview": (1_024, 674),
-            "schedule": (1_024, 674),
-            "schedule-workload": (1_024, 674),
-            "done": (1_024, 674),
+            "project-board": (1_024, 724),
+            "inbox": (1_024, 724),
+            "today": (1_024, 724),
+            "inbox-voice": (1_024, 724),
+            "projects-overview": (1_024, 724),
+            "schedule": (1_024, 724),
+            "schedule-workload": (1_024, 724),
+            "done": (1_024, 724),
             "settings-overview": (720, 712),
             "settings-integrations": (720, 712),
             "settings-appearance": (720, 712),
@@ -8177,6 +8366,20 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(baselineContext["referenceInstant"] as? String, "2026-07-10T12:00:00Z")
     }
 
+    func testVisualBaselineManifestRequiresSelectedCardRasterTextProof() throws {
+        let manifestData = try Data(
+            contentsOf: packageRoot().appendingPathComponent("docs/quality/visual-baseline-manifest.json")
+        )
+        let manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: manifestData) as? [String: Any])
+        let screens = try XCTUnwrap(manifest["screens"] as? [[String: Any]])
+        let projectBoard = try XCTUnwrap(screens.first { $0["id"] as? String == "project-board" })
+
+        XCTAssertEqual(
+            projectBoard["requiredVisibleTextLines"] as? [String],
+            ["Confirm project board to task", "In Progress High", "2026-07-10"]
+        )
+    }
+
     func testVisualBaselineDocumentationAndCaptureScriptDescribeReviewableUpdates() throws {
         let documentation = try readPackageFile("docs/quality/visual-baselines.md")
         let captureScript = try readPackageFile("script/capture_ui_evidence.sh")
@@ -8224,6 +8427,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("set targetWindow to window 1"))
         XCTAssertFalse(captureScript.contains("set targetWindow to front window"))
         XCTAssertTrue(captureScript.contains("application processes whose unix id is appPID"))
+        XCTAssertFalse(captureScript.contains("press_project_sidebar_row"))
+        XCTAssertTrue(captureScript.contains("launch_destination=\"$selected_destination\""))
         XCTAssertTrue(captureScript.contains("SOLOPM_WINDOW_OWNER_PID=\"$EVIDENCE_APP_PID\""))
         XCTAssertFalse(captureScript.contains("/usr/bin/osascript - \"$APP_NAME\""))
         XCTAssertFalse(captureScript.contains("tell process \"$APP_NAME\""))
@@ -9289,6 +9494,38 @@ final class ReleasePipelineTests: XCTestCase {
         let update = try runVisualRegressionFixture(fixture, updateBaselines: true)
         XCTAssertNotEqual(update.exitCode, 0)
         XCTAssertTrue(update.output.localizedCaseInsensitiveContains("decoded raster"), update.output)
+    }
+
+    func testVisualRegressionSmokeRequiresVisibleTextLinesBeforeNormalOrBaselineUpdate() throws {
+        let requiredLines = [
+            "Confirm project board to task",
+            "In Progress High",
+            "2026-07-10"
+        ]
+        let visible = try makeVisualRegressionFixture(
+            requiredVisibleTextLines: requiredLines,
+            currentVisibleTextLines: [
+                "Confirm project board to task",
+                "In Progress • High",
+                "2026-07-10"
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: visible.root) }
+
+        let visibleResult = try runVisualRegressionFixture(visible)
+        XCTAssertEqual(visibleResult.exitCode, 0, visibleResult.output)
+
+        let blank = try makeVisualRegressionFixture(requiredVisibleTextLines: requiredLines)
+        defer { try? FileManager.default.removeItem(at: blank.root) }
+        let baselineURL = blank.baseline.appendingPathComponent("project-board-light.png")
+        let originalBaseline = try Data(contentsOf: baselineURL)
+
+        for updateBaselines in [false, true] {
+            let result = try runVisualRegressionFixture(blank, updateBaselines: updateBaselines)
+            XCTAssertNotEqual(result.exitCode, 0, result.output)
+            XCTAssertTrue(result.output.contains("required visible text line is missing"), result.output)
+            XCTAssertEqual(try Data(contentsOf: baselineURL), originalBaseline)
+        }
     }
 
     func testReleaseReadinessReportCanWriteOperatorActionSummaryWithoutPassingManualGates() throws {
@@ -13845,7 +14082,9 @@ final class ReleasePipelineTests: XCTestCase {
         includeAudit: Bool = true,
         includeBaselineMetadata: Bool = true,
         auditSourceCommit: String = "fixture-commit",
-        auditCreatedAt: String = ISO8601DateFormatter().string(from: Date())
+        auditCreatedAt: String = ISO8601DateFormatter().string(from: Date()),
+        requiredVisibleTextLines: [String]? = nil,
+        currentVisibleTextLines: [String]? = nil
     ) throws -> VisualRegressionFixture {
         let root = packageRoot().appendingPathComponent(
             ".build/test-visual-regression-contract-\(UUID().uuidString)", isDirectory: true
@@ -13860,11 +14099,31 @@ final class ReleasePipelineTests: XCTestCase {
         try FileManager.default.createDirectory(at: artifacts, withIntermediateDirectories: true)
 
         let currentPNG = current.appendingPathComponent("project-board-light.png")
-        try writeVisiblePNG(to: currentPNG, width: 800, height: 600, trailingBytes: 60_000)
+        if let currentVisibleTextLines {
+            try writeVisibleTextPNG(
+                to: currentPNG,
+                width: 800,
+                height: 600,
+                lines: currentVisibleTextLines,
+                trailingBytes: 60_000
+            )
+        } else {
+            try writeVisiblePNG(to: currentPNG, width: 800, height: 600, trailingBytes: 60_000)
+        }
         let currentSHA256 = try sha256Hex(of: currentPNG)
         if includeBaseline {
             let baselinePNG = baseline.appendingPathComponent("project-board-light.png")
-            try writeVisiblePNG(to: baselinePNG, width: 800, height: 600, trailingBytes: 60_000)
+            if let currentVisibleTextLines {
+                try writeVisibleTextPNG(
+                    to: baselinePNG,
+                    width: 800,
+                    height: 600,
+                    lines: currentVisibleTextLines,
+                    trailingBytes: 60_000
+                )
+            } else {
+                try writeVisiblePNG(to: baselinePNG, width: 800, height: 600, trailingBytes: 60_000)
+            }
             if includeBaselineMetadata {
                 try """
                 {
@@ -13883,7 +14142,10 @@ final class ReleasePipelineTests: XCTestCase {
             }
         }
 
-        try visualBaselineManifestFixture(artifacts: ["light": "project-board-light.png"])
+        try visualBaselineManifestFixture(
+            artifacts: ["light": "project-board-light.png"],
+            requiredVisibleTextLines: requiredVisibleTextLines
+        )
             .write(to: manifest, atomically: true, encoding: .utf8)
         if includeAudit {
             try """
@@ -14031,6 +14293,61 @@ final class ReleasePipelineTests: XCTestCase {
         }
     }
 
+    private func writeVisibleTextPNG(
+        to url: URL,
+        width: Int,
+        height: Int,
+        lines: [String],
+        trailingBytes: Int = 0
+    ) throws {
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        guard let context = CGContext(
+            data: &pixels,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            XCTFail("Could not create visible text PNG fixture context.")
+            return
+        }
+        context.setFillColor(CGColor(gray: 0.94, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(CGColor(red: 0.12, green: 0.32, blue: 0.58, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width / 3, height: height))
+
+        let font = CTFontCreateWithName("Helvetica" as CFString, 32, nil)
+        for (index, line) in lines.enumerated() {
+            let attributed = NSAttributedString(
+                string: line,
+                attributes: [
+                    kCTFontAttributeName as NSAttributedString.Key: font,
+                    kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(gray: 0.05, alpha: 1)
+                ]
+            )
+            let textLine = CTLineCreateWithAttributedString(attributed)
+            context.textPosition = CGPoint(x: 300, y: CGFloat(height - 100 - (index * 70)))
+            CTLineDraw(textLine, context)
+        }
+
+        guard let image = context.makeImage(),
+              let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
+            XCTFail("Could not create visible text PNG fixture destination.")
+            return
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+
+        if trailingBytes > 0 {
+            let handle = try FileHandle(forWritingTo: url)
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data(repeating: 0, count: trailingBytes))
+            try handle.close()
+        }
+    }
+
     private func writeChangedVisiblePNG(
         to url: URL,
         width: Int,
@@ -14130,7 +14447,10 @@ final class ReleasePipelineTests: XCTestCase {
         }
     }
 
-    private func visualBaselineManifestFixture(artifacts: [String: String]) -> String {
+    private func visualBaselineManifestFixture(
+        artifacts: [String: String],
+        requiredVisibleTextLines: [String]? = nil
+    ) throws -> String {
         let artifactLines = artifacts
             .sorted { $0.key < $1.key }
             .map { "          \"\($0.key)\": \"\($0.value)\"" }
@@ -14139,6 +14459,16 @@ final class ReleasePipelineTests: XCTestCase {
             .sorted()
             .map { "\"\($0)\"" }
             .joined(separator: ", ")
+        let visibleTextLines: String
+        if let requiredVisibleTextLines {
+            let encoded = try requiredVisibleTextLines.map { line in
+                let data = try JSONSerialization.data(withJSONObject: line, options: [.fragmentsAllowed])
+                return String(decoding: data, as: UTF8.self)
+            }.joined(separator: ", ")
+            visibleTextLines = "\n              \"requiredVisibleTextLines\": [\(encoded)],"
+        } else {
+            visibleTextLines = ""
+        }
 
         return """
         {
@@ -14183,6 +14513,7 @@ final class ReleasePipelineTests: XCTestCase {
               "appearances": [\(themeLines)],
               "axFrameAudit": true,
               "axTargetIdentifier": "project-board-root",
+        \(visibleTextLines)
               "artifacts": {
         \(artifactLines)
               }
@@ -14195,6 +14526,15 @@ final class ReleasePipelineTests: XCTestCase {
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func accessibilitySourceAnchorCount(in output: String) throws -> Int {
+        let pattern = #"OK: accessibility source anchors are present \(([0-9]+) anchors\)"#
+        let regex = try NSRegularExpression(pattern: pattern)
+        let outputRange = NSRange(output.startIndex..<output.endIndex, in: output)
+        let match = try XCTUnwrap(regex.firstMatch(in: output, range: outputRange))
+        let countRange = try XCTUnwrap(Range(match.range(at: 1), in: output))
+        return try XCTUnwrap(Int(output[countRange]))
     }
 
     private func removeItemIfPresent(at url: URL) throws {
@@ -14224,6 +14564,51 @@ final class ReleasePipelineTests: XCTestCase {
         environment: [String: String] = [:]
     ) throws -> (exitCode: Int32, output: String) {
         try runProcess(arguments: arguments, environment: environment)
+    }
+
+    private func runTodayWindowSizeResultFixture(
+        requestedWidth: Int,
+        requestedHeight: Int,
+        observedOutput: String,
+        osascriptStatus: Int32 = 0
+    ) throws -> (exitCode: Int32, output: String) {
+        let script = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
+        let functionStart = try XCTUnwrap(script.range(of: "record_owned_window_size_result() {"))
+        let functionEnd = try XCTUnwrap(
+            script.range(of: "\n\nset_owned_window_size() {", range: functionStart.upperBound..<script.endIndex)
+        )
+        let functionSource = String(script[functionStart.lowerBound..<functionEnd.lowerBound])
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-today-window-size-\(UUID().uuidString)", isDirectory: true)
+        let diagnosticURL = fixtureDirectory.appendingPathComponent("window-size.env")
+        let harnessURL = fixtureDirectory.appendingPathComponent("harness.sh")
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let harness = """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        WINDOW_WIDTH="$1"
+        WINDOW_HEIGHT="$2"
+        \(functionSource)
+        if record_owned_window_size_result "$3" "$4" "$5"; then
+          result_status=0
+        else
+          result_status=$?
+        fi
+        cat "$3"
+        exit "$result_status"
+        """
+        try harness.write(to: harnessURL, atomically: true, encoding: .utf8)
+        return try runTool([
+            "bash",
+            harnessURL.path,
+            String(requestedWidth),
+            String(requestedHeight),
+            diagnosticURL.path,
+            String(osascriptStatus),
+            observedOutput
+        ])
     }
 
     private func runProcess(

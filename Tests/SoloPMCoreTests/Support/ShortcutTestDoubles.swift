@@ -21,8 +21,7 @@ final class InMemoryShortcutClient: ShortcutClient, @unchecked Sendable {
 
         registrationState = ShortcutRegistrationState(
             voiceCaptureShortcut: shortcut,
-            isRegistered: true,
-            conflictDescription: nil
+            status: .registered
         )
         return registrationState
     }
@@ -31,7 +30,8 @@ final class InMemoryShortcutClient: ShortcutClient, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        registrationState.isRegistered = false
+        registrationState.status = .notRegistered
+        registrationState.detail = nil
         return registrationState
     }
 }

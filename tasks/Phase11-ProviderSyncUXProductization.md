@@ -165,7 +165,7 @@
 
 - [x] `ui-samples/01.png`、`03.png`、`04.png` を基準に、左サイドバー、中央ボード/リスト、右インスペクタの情報密度を見直す。
 - [x] Task cardの選択領域を `Open task` のキーボードフォーカス可能なButtonにし、status移動コントロールとdrag affordanceが同じアクセシビリティ要素に潰れないよう分離する。
-- [x] Task card metadata strip はstatus / priority / dueを固定寸法chipに分離し、狭いKanban列ではadaptive gridへ逃がす。
+- [x] Task card metadata strip はstatus / priorityとdue / recurrenceを最大2行の意味的なTextへ統合し、狭いKanban列・選択状態・Light/Dark/Systemでも文字が欠落しない表示にする。
 - [x] Project Detailではタスク一覧、成果物、タイムライン、AI提案をタブまたはセクションとして整理する。
 - [x] Project Overview / headerの `Add Task` は押下後にBoardへ切り替え、Backlogのinline composerを即表示する。Overview上で状態だけ変わり入力欄が見えない状態を残さない。
 - [x] Task cardはタイトル、状態、優先度、期限、ドラッグ affordance が重ならず表示されることをスクリーンショットで確認する。

@@ -19,6 +19,14 @@ ACCESSIBILITY=0
 SYSTEM_EVENTS=0
 SCREEN_RECORDING="not-required"
 VISIBLE_PIXELS="not-required"
+DISPLAY_FRAME_X=0
+DISPLAY_FRAME_Y=0
+DISPLAY_FRAME_WIDTH=0
+DISPLAY_FRAME_HEIGHT=0
+DISPLAY_VISIBLE_FRAME_X=0
+DISPLAY_VISIBLE_FRAME_Y=0
+DISPLAY_VISIBLE_FRAME_WIDTH=0
+DISPLAY_VISIBLE_FRAME_HEIGHT=0
 PRIVATE_DIR=""
 
 mkdir -p "$ARTIFACT_DIR"
@@ -40,6 +48,14 @@ write_summary() {
     printf 'system_events=%s\n' "$SYSTEM_EVENTS"
     printf 'screen_recording=%s\n' "$SCREEN_RECORDING"
     printf 'visible_pixels=%s\n' "$VISIBLE_PIXELS"
+    printf 'display_frame_x=%s\n' "$DISPLAY_FRAME_X"
+    printf 'display_frame_y=%s\n' "$DISPLAY_FRAME_Y"
+    printf 'display_frame_width=%s\n' "$DISPLAY_FRAME_WIDTH"
+    printf 'display_frame_height=%s\n' "$DISPLAY_FRAME_HEIGHT"
+    printf 'display_visible_frame_x=%s\n' "$DISPLAY_VISIBLE_FRAME_X"
+    printf 'display_visible_frame_y=%s\n' "$DISPLAY_VISIBLE_FRAME_Y"
+    printf 'display_visible_frame_width=%s\n' "$DISPLAY_VISIBLE_FRAME_WIDTH"
+    printf 'display_visible_frame_height=%s\n' "$DISPLAY_VISIBLE_FRAME_HEIGHT"
   } >"$SUMMARY_FILE"
 }
 
@@ -130,9 +146,32 @@ if ! PROBE_OUTPUT="$("$PROBE_EXECUTABLE" 2>/dev/null)"; then
   block "runner-capability" "system-probe-execution-failed"
 fi
 
-probe_value() {
+probe_exact_value() {
   local key="$1"
-  printf '%s\n' "$PROBE_OUTPUT" | awk -F= -v key="$key" '$1 == key && ($2 == "0" || $2 == "1") { print $2; found = 1; exit } END { if (found != 1) exit 1 }'
+  local value_pattern="$2"
+  printf '%s\n' "$PROBE_OUTPUT" | awk -F= -v key="$key" -v valuePattern="$value_pattern" '
+    $1 == key {
+      count += 1
+      if (NF != 2 || $2 !~ valuePattern) invalid = 1
+      value = $2
+    }
+    END {
+      if (count != 1 || invalid) exit 1
+      print value
+    }
+  '
+}
+
+probe_value() {
+  probe_exact_value "$1" '^(0|1)$'
+}
+
+probe_integer_value() {
+  probe_exact_value "$1" '^-?[0-9]+$'
+}
+
+probe_positive_integer_value() {
+  probe_exact_value "$1" '^[1-9][0-9]*$'
 }
 
 if ! ACTIVE_DISPLAY="$(probe_value active_display)"; then
@@ -140,6 +179,17 @@ if ! ACTIVE_DISPLAY="$(probe_value active_display)"; then
 fi
 if [[ "$ACTIVE_DISPLAY" != "1" ]]; then
   block "runner-capability" "active-display-unavailable"
+fi
+
+if ! DISPLAY_FRAME_X="$(probe_integer_value display_frame_x)" ||
+  ! DISPLAY_FRAME_Y="$(probe_integer_value display_frame_y)" ||
+  ! DISPLAY_FRAME_WIDTH="$(probe_positive_integer_value display_frame_width)" ||
+  ! DISPLAY_FRAME_HEIGHT="$(probe_positive_integer_value display_frame_height)" ||
+  ! DISPLAY_VISIBLE_FRAME_X="$(probe_integer_value display_visible_frame_x)" ||
+  ! DISPLAY_VISIBLE_FRAME_Y="$(probe_integer_value display_visible_frame_y)" ||
+  ! DISPLAY_VISIBLE_FRAME_WIDTH="$(probe_positive_integer_value display_visible_frame_width)" ||
+  ! DISPLAY_VISIBLE_FRAME_HEIGHT="$(probe_positive_integer_value display_visible_frame_height)"; then
+  block "runner-capability" "invalid-display-geometry"
 fi
 
 if ! ACCESSIBILITY="$(probe_value accessibility)"; then

@@ -64,97 +64,99 @@ REQUIRED_RUNTIME_DESTRUCTIVE_CANCEL_MARKERS=(
   "Delete task cancel=>task-inspector-delete-confirmation-cancel"
 )
 
-REQUIRED_SOURCE_ANCHORS=(
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-sidebar"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::Project navigation"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-detail"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-kanban-board"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-show-archived"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-add-project"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-header-add-task"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-card-open-details"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-status-move-controls"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-status-move-"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::inline-task-title"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::inline-task-detail"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::inline-task-priority"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::inline-task-due"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::inline-task-create"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::inline-task-cancel"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Creates the task in the local SoloPM database\")"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Cancels task creation and returns focus to the board column\")"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-task-auto-execution-review"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.accessibilityHint(\"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings.\")"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-title"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-detail"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-status"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-priority"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-due"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-apply-suggestion"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-save"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-auto-execution-review"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-auto-execution-run-plan"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-delete"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-delete-confirmation-cancel"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Applies the local next-step suggestion to the selected task\")"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Saves edits to the selected task in the local SoloPM database\")"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Prepares review-only local automation for the selected task\")"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Runs the reviewed local task step after explicit user approval\")"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Deletes the selected task after confirmation\")"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-title"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-apply-suggestion"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-save"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-complete"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-restore"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-archive"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-delete"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Applies the local next-step suggestion to the selected project\")"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Saves edits to the selected project in the local SoloPM database\")"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Restores the selected project to active views in the local SoloPM database\")"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Completes the selected project in the local SoloPM database\")"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Archives the selected project after confirmation\")"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Deletes the selected project after confirmation\")"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-overview-task-open-"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-overview-add-task"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-local-suggestion-open-task"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-local-suggestion-review-action"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-artifact-path"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-artifact-track"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-artifact-remove-"
-  "Sources/SoloPMApp/Views/ProjectWorkflowViews.swift::sidebar-destination-"
-  "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-quick-add-button"
-  "Sources/SoloPMApp/Views/ProjectWorkflowSharedViews.swift::workflow-task-row-"
-  "Sources/SoloPMApp/Views/ProjectWorkflowSharedViews.swift::workflow-task-completion-"
-  "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-action-panel"
-  "Sources/SoloPMApp/Views/ProjectWorkflowSharedViews.swift::inbox-row-triage-summary-"
-  "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-action-grid"
-  "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-intake-detail"
-  "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-transcript-preview"
-  "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-waveform"
-  "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-transcript"
-  "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-interpretation"
-  "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-memo-editor"
-  "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::inbox-voice-memo-save"
-  "Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift::today-plan-summary"
-  "Sources/SoloPMApp/Views/ProjectWorkflowCatchUpView.swift::catch-up-workflow"
-  "Sources/SoloPMApp/Views/ProjectWorkflowCatchUpView.swift::catch-up-missed-review-panel"
-  "Sources/SoloPMApp/Views/ProjectWorkflowCatchUpView.swift::catch-up-missed-review-row-"
-  "Sources/SoloPMApp/Views/ProjectWorkflowCatchUpView.swift::catch-up-missed-complete-"
-  "Sources/SoloPMApp/Views/ProjectWorkflowCatchUpView.swift::catch-up-missed-reschedule-"
-  "Sources/SoloPMApp/Views/ProjectWorkflowCatchUpView.swift::catch-up-missed-defer-"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(\"n\", modifiers: [.command])"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(\"n\", modifiers: [.command, .shift])"
+REQUIRED_FUNCTIONAL_SURFACE_ANCHORS=(
+  "project-board::project-board-sidebar"
+  "project-board::Project navigation"
+  "project-board::project-board-detail"
+  "project-board::project-kanban-board"
+  "project-board::project-board-show-archived"
+  "project-board::project-board-add-project"
+  "project-board::project-header-add-task"
+  "project-board::task-card-open-details"
+  "project-board::task-status-move-controls"
+  "project-board::task-status-move-"
+  "project-board::inline-task-title"
+  "project-board::inline-task-detail"
+  "project-board::inline-task-priority"
+  "project-board::inline-task-due"
+  "project-board::inline-task-create"
+  "project-board::inline-task-cancel"
+  "project-board::.help(\"Creates the task in the local SoloPM database\")"
+  "project-board::.help(\"Cancels task creation and returns focus to the board column\")"
+  "project-board::project-board-task-auto-execution-review"
+  "project-board::.accessibilityHint(\"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings.\")"
+  "project-board::task-inspector"
+  "project-board::task-inspector-title"
+  "project-board::task-inspector-detail"
+  "project-board::task-inspector-status"
+  "project-board::task-inspector-priority"
+  "project-board::task-inspector-due"
+  "project-board::task-inspector-apply-suggestion"
+  "project-board::task-inspector-save"
+  "project-board::task-auto-execution-review"
+  "project-board::task-auto-execution-run-plan"
+  "project-board::task-inspector-delete"
+  "project-board::task-inspector-delete-confirmation-cancel"
+  "project-board::.help(\"Applies the local next-step suggestion to the selected task\")"
+  "project-board::.help(\"Saves edits to the selected task in the local SoloPM database\")"
+  "project-board::.help(\"Prepares review-only local automation for the selected task\")"
+  "project-board::.help(\"Runs the reviewed local task step after explicit user approval\")"
+  "project-board::.help(\"Deletes the selected task after confirmation\")"
+  "project-board::project-inspector"
+  "project-board::project-inspector-title"
+  "project-board::project-inspector-apply-suggestion"
+  "project-board::project-inspector-save"
+  "project-board::project-inspector-complete"
+  "project-board::project-inspector-restore"
+  "project-board::project-inspector-archive"
+  "project-board::project-inspector-delete"
+  "project-board::.help(\"Applies the local next-step suggestion to the selected project\")"
+  "project-board::.help(\"Saves edits to the selected project in the local SoloPM database\")"
+  "project-board::.help(\"Restores the selected project to active views in the local SoloPM database\")"
+  "project-board::.help(\"Completes the selected project in the local SoloPM database\")"
+  "project-board::.help(\"Archives the selected project after confirmation\")"
+  "project-board::.help(\"Deletes the selected project after confirmation\")"
+  "project-board::project-overview-task-open-"
+  "project-board::project-overview-add-task"
+  "project-board::project-local-suggestion-open-task"
+  "project-board::project-local-suggestion-review-action"
+  "project-board::project-artifact-path"
+  "project-board::project-artifact-track"
+  "project-board::project-artifact-remove-"
+  "project-board::sidebar-destination-"
+  "project-board::inbox-quick-add-button"
+  "project-board::workflow-task-row-"
+  "project-board::workflow-task-completion-"
+  "project-board::inbox-action-panel"
+  "project-board::inbox-row-triage-summary-"
+  "project-board::inbox-action-grid"
+  "project-board::inbox-voice-intake-detail"
+  "project-board::inbox-voice-transcript-preview"
+  "project-board::inbox-voice-waveform"
+  "project-board::inbox-voice-transcript"
+  "project-board::inbox-voice-interpretation"
+  "project-board::inbox-voice-memo-editor"
+  "project-board::inbox-voice-memo-save"
+  "project-board::today-plan-summary"
+  "project-board::catch-up-workflow"
+  "project-board::catch-up-missed-review-panel"
+  "project-board::catch-up-missed-review-row-"
+  "project-board::catch-up-missed-complete-"
+  "project-board::catch-up-missed-reschedule-"
+  "project-board::catch-up-missed-defer-"
+  "project-board::.keyboardShortcut(\"n\", modifiers: [.command])"
+  "project-board::.keyboardShortcut(\"n\", modifiers: [.command, .shift])"
+  "project-board::.keyboardShortcut(\"s\", modifiers: [.command])"
+  "project-board::.keyboardShortcut(.delete, modifiers: [.command])"
+  "project-board::.keyboardShortcut(.return, modifiers: [.command])"
+  "project-board::.keyboardShortcut(.escape, modifiers: [])"
+  "project-board::.keyboardShortcut(\"1\", modifiers: [.command])"
+  "project-board::.keyboardShortcut(\"2\", modifiers: [.command])"
+  "project-board::.keyboardShortcut(\"3\", modifiers: [.command])"
+  "project-board::.keyboardShortcut(\"4\", modifiers: [.command])"
+)
+REQUIRED_SOURCE_OWNER_ASSERTIONS=(
   "Sources/SoloPMApp/SoloPMApp.swift::.keyboardShortcut(\",\", modifiers: [.command])"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(\"s\", modifiers: [.command])"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(.delete, modifiers: [.command])"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(.return, modifiers: [.command])"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(.escape, modifiers: [])"
-  "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::.keyboardShortcut(\"1\", modifiers: [.command])"
-  "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::.keyboardShortcut(\"2\", modifiers: [.command])"
-  "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::.keyboardShortcut(\"3\", modifiers: [.command])"
-  "Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift::.keyboardShortcut(\"4\", modifiers: [.command])"
   "Sources/SoloPMApp/Views/MenuBarPanel.swift::.keyboardShortcut(.return, modifiers: [.command])"
 )
 
@@ -247,9 +249,58 @@ cleanup_launched_app() {
 }
 trap cleanup_launched_app EXIT INT TERM
 
+project_board_surface_source_files() {
+  find "$ROOT_DIR/Sources/SoloPMApp/Views" -type f \
+    \( -name 'ProjectBoard*.swift' -o -name 'ProjectWorkflow*.swift' -o -name 'TaskInspector*.swift' \) \
+    -print | LC_ALL=C sort
+}
+
+PROJECT_BOARD_SURFACE_FILES=()
+
+surface_anchor_is_present() {
+  local surface_name="$1"
+  local needle="$2"
+  local source_path
+
+  case "$surface_name" in
+    project-board)
+      for source_path in "${PROJECT_BOARD_SURFACE_FILES[@]}"; do
+        if grep -F "$needle" "$source_path" >/dev/null; then
+          return 0
+        fi
+      done
+      ;;
+    *)
+      echo "BLOCKER: unknown functional accessibility surface: $surface_name" >&2
+      return 2
+      ;;
+  esac
+
+  return 1
+}
+
 if [[ "$SKIP_SOURCE_ANCHORS" -ne 1 ]]; then
   missing_count=0
-  for anchor in "${REQUIRED_SOURCE_ANCHORS[@]}"; do
+  while IFS= read -r source_path; do
+    [[ -n "$source_path" ]] && PROJECT_BOARD_SURFACE_FILES+=("$source_path")
+  done < <(project_board_surface_source_files)
+
+  if [[ "${#PROJECT_BOARD_SURFACE_FILES[@]}" -eq 0 ]]; then
+    echo "BLOCKER: project-board accessibility surface has no source files" >&2
+    missing_count=$((missing_count + 1))
+  fi
+
+  for anchor in "${REQUIRED_FUNCTIONAL_SURFACE_ANCHORS[@]}"; do
+    surface_name="${anchor%%::*}"
+    needle="${anchor#*::}"
+
+    if ! surface_anchor_is_present "$surface_name" "$needle"; then
+      echo "BLOCKER: missing accessibility anchor '$needle' in $surface_name surface" >&2
+      missing_count=$((missing_count + 1))
+    fi
+  done
+
+  for anchor in "${REQUIRED_SOURCE_OWNER_ASSERTIONS[@]}"; do
     source_file="${anchor%%::*}"
     needle="${anchor#*::}"
     source_path="$ROOT_DIR/$source_file"
@@ -271,7 +322,8 @@ if [[ "$SKIP_SOURCE_ANCHORS" -ne 1 ]]; then
     exit 1
   fi
 
-  printf 'OK: accessibility source anchors are present (%d anchors)\n' "${#REQUIRED_SOURCE_ANCHORS[@]}"
+  source_anchor_count=$((${#REQUIRED_FUNCTIONAL_SURFACE_ANCHORS[@]} + ${#REQUIRED_SOURCE_OWNER_ASSERTIONS[@]}))
+  printf 'OK: accessibility source anchors are present (%d anchors)\n' "$source_anchor_count"
 fi
 
 if [[ "$SOURCE_ONLY" -eq 1 && "$RUN_RUNTIME" -eq 0 ]]; then

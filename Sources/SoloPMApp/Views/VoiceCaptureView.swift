@@ -68,8 +68,12 @@ struct VoiceCaptureView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: SoloPMSpacing.md) {
             HStack {
+                // Structural identifiers stay on leaf headings. SwiftUI
+                // propagates container identifiers into descendants, which
+                // would hide action and mode-control identifiers from AX.
                 Label("Voice Command", systemImage: "mic")
                     .font(.headline)
+                    .accessibilityIdentifier("voice-command-root")
                 Spacer()
                 Button {
                     viewModel.clear()
@@ -81,10 +85,13 @@ struct VoiceCaptureView: View {
                 .accessibilityIdentifier("voice-command-clear")
             }
 
-            captureZone
-
             ScrollView {
                 VStack(alignment: .leading, spacing: SoloPMSpacing.md) {
+                    // Capture belongs to the same scroll boundary as later
+                    // states so larger text and compact displays never make
+                    // the primary controls increase the window minimum size.
+                    captureZone
+
                     if hasWorkingContent {
                         workingZone
                             .transition(.opacity.combined(with: .move(edge: .top)))
@@ -98,21 +105,19 @@ struct VoiceCaptureView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 // Zones fade/slide in briefly as they appear; Reduce Motion
                 // disables the animation so state changes apply instantly.
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: hasWorkingContent)
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: hasReviewContent)
+                .animation(
+                    SoloPMMotion.animation(duration: SoloPMMotion.standard, reduceMotion: reduceMotion),
+                    value: hasWorkingContent
+                )
+                .animation(
+                    SoloPMMotion.animation(duration: SoloPMMotion.standard, reduceMotion: reduceMotion),
+                    value: hasReviewContent
+                )
             }
-            // While idle there is no working/review content; collapsing the
-            // empty scroll region hands the window height to the capture zone
-            // above instead of rendering it as blank space.
-            .frame(
-                maxWidth: .infinity,
-                maxHeight: hasWorkingContent || hasReviewContent ? .infinity : 0,
-                alignment: .topLeading
-            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .padding(SoloPMSpacing.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .accessibilityIdentifier("voice-command-root")
         .onChange(of: viewModel.dailyPlanningReviewRequest) { _, request in
             guard let request else {
                 return
@@ -168,7 +173,7 @@ struct VoiceCaptureView: View {
                     .frame(width: 64, height: 64)
                     .background(
                         Circle()
-                            .fill(viewModel.isRecording ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.accentColor.opacity(0.14)))
+                            .fill(viewModel.isRecording ? AnyShapeStyle(.tint) : AnyShapeStyle(SoloPMBrand.soloBlue.opacity(0.14)))
                     )
                     .contentShape(Circle())
                     .opacity(isHeroRecordDisabled ? 0.45 : 1)
@@ -176,8 +181,12 @@ struct VoiceCaptureView: View {
             .buttonStyle(.plain)
             .disabled(isHeroRecordDisabled)
             .help("Records audio, then transcribes it into the command field.")
-            .accessibilityLabel(localizedSettingsDisplay(viewModel.isRecording ? "Stop" : "Record"))
+            .accessibilityLabel(localizedSettingsDisplay(viewModel.isRecording ? "Stop recording" : "Record once"))
             .accessibilityIdentifier("voice-command-record")
+
+            Label("Record once", systemImage: "waveform.badge.mic")
+                .font(.subheadline.weight(.semibold))
+                .accessibilityIdentifier("voice-command-capture-zone")
 
             StatusRow(phase: viewModel.phase)
 
@@ -220,10 +229,9 @@ struct VoiceCaptureView: View {
             .font(.body)
             .lineLimit(5...8)
             .padding(8)
-            // The input area absorbs leftover window height (content stays
-            // top-aligned) so the idle window reads as one intentional
-            // capture surface instead of leaving a dead lower half.
-            .frame(minHeight: 150, idealHeight: 180, maxHeight: .infinity, alignment: .topLeading)
+            // A finite ceiling keeps the editor comfortable without feeding
+            // an unbounded intrinsic height into AppKit window fitting.
+            .frame(minHeight: 150, idealHeight: 180, maxHeight: 220, alignment: .topLeading)
             .overlay(alignment: .topLeading) {
                 if isVoiceCommandInputEmpty {
                     VoiceCommandInputPrompt()
@@ -233,7 +241,7 @@ struct VoiceCaptureView: View {
                 }
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: SoloPMRadius.control)
                     .stroke(.quaternary)
             }
             .accessibilityIdentifier("voice-command-input")
@@ -281,7 +289,8 @@ struct VoiceCaptureView: View {
                     Label("Generate Plan", systemImage: "wand.and.stars")
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .recording || viewModel.phase == .transcribing || viewModel.isLowLatencyVoiceAgentListening)
+                .disabled(!viewModel.canGeneratePlan || viewModel.phase == .generatingPlan || viewModel.phase == .recording || viewModel.phase == .transcribing || viewModel.isLowLatencyVoiceAgentListening)
+                .help(localizedSettingsDisplay(actionReadinessMessage))
                 .accessibilityIdentifier("voice-command-generate-plan")
                 .accessibilityHint(localizedSettingsDisplay(actionReadinessMessage))
             }
@@ -295,7 +304,6 @@ struct VoiceCaptureView: View {
             }
         }
         .soloCard()
-        .accessibilityIdentifier("voice-command-capture-zone")
     }
 
     /// Next-step affordance next to a failed status: Open Settings when the
@@ -439,6 +447,7 @@ struct VoiceCaptureView: View {
 
             if let result = viewModel.inboxCaptureResult {
                 VoiceInboxCaptureSavedPanel(result: result) {
+                    _ = ProjectBoardSceneCoordinator.shared.requestOpen(route: .primary(.inbox))
                     openWindow(id: "project-board")
                 }
             }
@@ -488,7 +497,14 @@ struct VoiceCaptureView: View {
 
     private func postDailyPlanningReviewRequest(_ request: VoiceDailyPlanningReviewRequest) {
         openWindow(id: "project-board")
+        let route: BoardRoute = request.requestedActionDraftKind == nil
+            ? .primary(.today)
+            : .review(.assistantQueue)
         guard let bridgeRequest = SoloPMVoiceDailyPlanningReviewBridge.storePendingRequest(request) else {
+            return
+        }
+        guard ProjectBoardSceneCoordinator.shared.requestOpen(id: request.id, route: route) != nil else {
+            SoloPMVoiceDailyPlanningReviewBridge.discardPendingRequest(id: bridgeRequest.id)
             return
         }
         NotificationCenter.default.post(
@@ -503,6 +519,13 @@ struct VoiceCaptureView: View {
         guard let bridgeRequest = SoloPMVoiceInboxTriageBridge.storePendingRequest(request) else {
             return
         }
+        guard ProjectBoardSceneCoordinator.shared.requestOpen(
+            id: request.id,
+            route: .primary(.inbox)
+        ) != nil else {
+            SoloPMVoiceInboxTriageBridge.discardPendingRequest(id: bridgeRequest.id)
+            return
+        }
         NotificationCenter.default.post(
             name: .soloPMVoiceInboxTriageRequested,
             object: nil,
@@ -512,6 +535,13 @@ struct VoiceCaptureView: View {
 
     private func postAssistantQueueOpenRequest() {
         guard let bridgeRequest = SoloPMAssistantQueueBridge.storePendingOpen(itemID: viewModel.assistantQueueExecutionHandoffItemID) else {
+            return
+        }
+        guard ProjectBoardSceneCoordinator.shared.requestOpen(
+            id: bridgeRequest.id,
+            route: .review(.assistantQueue)
+        ) != nil else {
+            SoloPMAssistantQueueBridge.discardPendingOpen(id: bridgeRequest.id)
             return
         }
         openWindow(id: "project-board")
@@ -606,9 +636,10 @@ private struct LowLatencyVoiceAgentPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: SoloPMSpacing.xs) {
             HStack(alignment: .firstTextBaseline, spacing: SoloPMSpacing.sm) {
-                Label("Voice recognition", systemImage: "waveform")
+                Label("Hands-free mode", systemImage: "waveform")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("voice-agent-panel")
 
                 Label(stateLabel, systemImage: stateSystemImage)
                     .font(.caption)
@@ -626,6 +657,7 @@ private struct LowLatencyVoiceAgentPanel: View {
                         Label("Stop", systemImage: "stop.circle")
                     }
                     .controlSize(.small)
+                    .accessibilityLabel("Stop Hands-free mode")
                     .accessibilityIdentifier("voice-agent-stop")
                 } else {
                     Button {
@@ -638,9 +670,20 @@ private struct LowLatencyVoiceAgentPanel: View {
                     .controlSize(.small)
                     .disabled(isBusyOutsideVoiceAgent)
                     .help("Starts continuous hands-free recognition, separate from push-to-record.")
+                    .accessibilityLabel("Start Hands-free mode")
                     .accessibilityIdentifier("voice-agent-start")
                 }
             }
+
+            Text(localizedDisplay("Speech provider: %@", viewModel.handsFreeModeProviderName))
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+
+            Text("Audio is processed by the selected speech-to-text provider only while Hands-free mode is listening.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("voice-hands-free-provider-privacy")
 
             if !viewModel.liveTranscript.isEmpty {
                 liveTranscriptText
@@ -659,7 +702,6 @@ private struct LowLatencyVoiceAgentPanel: View {
                     .accessibilityIdentifier("voice-agent-live-intent")
             }
         }
-        .accessibilityIdentifier("voice-agent-panel")
     }
 
     /// Finalized speech renders in primary color; the trailing partial segment
@@ -737,16 +779,19 @@ private struct VoiceInputLevelMeter: View {
                     .foregroundStyle(.tint)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(.quaternary, in: Capsule())
+                    .background(SoloPMSurface.groupedContent, in: Capsule())
             } else {
                 HStack(alignment: .bottom, spacing: 3) {
                     ForEach(Array(Self.barThresholds.enumerated()), id: \.offset) { index, threshold in
-                        RoundedRectangle(cornerRadius: 1.5)
-                            .fill(meter.inputLevel >= threshold ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary))
+                        Capsule()
+                            .fill(meter.inputLevel >= threshold ? AnyShapeStyle(.tint) : SoloPMSurface.groupedContent)
                             .frame(width: 4, height: 8 + CGFloat(index) * 3)
                     }
                 }
-                .animation(.linear(duration: 0.1), value: meter.inputLevel)
+                .animation(
+                    SoloPMMotion.animation(duration: SoloPMMotion.quick, reduceMotion: reduceMotion),
+                    value: meter.inputLevel
+                )
             }
         }
         .accessibilityElement(children: .ignore)
@@ -788,6 +833,7 @@ private struct VoiceCommandExampleChips: View {
             Text("Try one of these commands")
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
+                .accessibilityIdentifier("voice-command-example-chips")
             HStack(spacing: SoloPMSpacing.sm) {
                 exampleChip(
                     String(localized: "Capture follow-up for launch review"),
@@ -801,7 +847,6 @@ private struct VoiceCommandExampleChips: View {
                 )
             }
         }
-        .accessibilityIdentifier("voice-command-example-chips")
     }
 
     private func exampleChip(_ text: String, systemImage: String, index: Int) -> some View {
@@ -862,7 +907,7 @@ private struct VoiceInboxCaptureSavedPanel: View {
             .accessibilityIdentifier("voice-inbox-capture-open-board")
         }
         .padding(10)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.control))
         .accessibilityIdentifier("voice-inbox-capture-saved")
     }
 }
@@ -904,8 +949,7 @@ private struct VoiceDailyPlanningReviewRequestPanel: View {
             }
             .accessibilityIdentifier("voice-daily-planning-open-board")
         }
-        .padding(10)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        .soloAssistantSignal()
         .accessibilityIdentifier("voice-daily-planning-request")
     }
 
@@ -959,7 +1003,7 @@ private struct VoiceInboxTriageRequestPanel: View {
             .accessibilityIdentifier("voice-inbox-triage-open-board")
         }
         .padding(10)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.control))
         .accessibilityIdentifier("voice-inbox-triage-request")
     }
 }
@@ -1062,15 +1106,17 @@ private struct AssistantQueuePanel: View {
                 .accessibilityHint(localizedSettingsDisplay("Opens the Assistant Queue without running the item."))
             }
         }
-        .padding(10)
-        .background(Color.secondary.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .soloAssistantSignal()
         .accessibilityIdentifier("voice-assistant-queue-panel")
     }
 
     private var queueStateLabel: some View {
-        Text(localizedSettingsDisplay(stateLabel))
-            .font(.caption)
+        Label {
+            Text(localizedSettingsDisplay(stateLabel))
+        } icon: {
+            Image(systemName: stateSystemImage)
+        }
+            .font(SoloPMTypography.metadata)
             .foregroundStyle(stateColor)
             .lineLimit(1)
             .accessibilityIdentifier("voice-assistant-queue-state")
@@ -1125,6 +1171,27 @@ private struct AssistantQueuePanel: View {
             SoloPMTone.attention.color
         case .captured, .interpreted, .drafted, .waitingReview, .running:
             .secondary
+        }
+    }
+
+    private var stateSystemImage: String {
+        switch item.state {
+        case .captured, .interpreted, .drafted:
+            "pencil.circle"
+        case .waitingReview:
+            "person.crop.circle.badge.questionmark"
+        case .approved:
+            "checkmark.seal"
+        case .running:
+            "arrow.triangle.2.circlepath"
+        case .blocked, .failed:
+            "exclamationmark.octagon.fill"
+        case .done:
+            "checkmark.circle.fill"
+        case .rejected:
+            "xmark.circle.fill"
+        case .deferred:
+            "clock"
         }
     }
 
@@ -1199,9 +1266,7 @@ private struct ClarificationPanel: View {
                 .accessibilityIdentifier("voice-command-clarification-cancel")
             }
         }
-        .padding(10)
-        .background(Color.secondary.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .soloAssistantSignal()
         .accessibilityIdentifier("voice-command-clarification-panel")
     }
 }
@@ -1293,9 +1358,7 @@ private struct VoiceIntentPreview: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(10)
-        .background(Color.secondary.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .soloAssistantSignal()
         .accessibilityIdentifier("voice-command-intent-preview")
     }
 

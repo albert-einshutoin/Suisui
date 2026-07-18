@@ -75,6 +75,63 @@ final class FirstRunOnboardingSampleTests: XCTestCase {
         XCTAssertEqual(try taskStore.listAll().count, 6)
     }
 
+    func testEnsureReturnsTheSameFirstLessonWithoutDuplicatingTheProject() throws {
+        let connection = try migratedConnection()
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let creator = makeCreator(
+            projectStore: projectStore,
+            taskStore: taskStore,
+            defaults: try makeIsolatedDefaults()
+        )
+
+        let first = try creator.ensureSampleProject()
+        let repeated = try creator.ensureSampleProject()
+
+        guard case .created = first else {
+            return XCTFail("first ensure must create the teaching project")
+        }
+        guard case .existing = repeated else {
+            return XCTFail("second ensure must reuse the teaching project")
+        }
+        XCTAssertEqual(repeated.project.id, first.project.id)
+        XCTAssertEqual(repeated.firstLessonTaskID, first.firstLessonTaskID)
+        XCTAssertEqual(try projectStore.list().count, 1)
+        XCTAssertEqual(try taskStore.listAll().count, 6)
+    }
+
+    func testTaskBatchFailureRollsBackTheTeachingProjectAndCompletionFlag() throws {
+        let connection = try migratedConnection()
+        try connection.execute(
+            """
+            CREATE TRIGGER reject_onboarding_tasks
+            BEFORE INSERT ON tasks
+            WHEN NEW.source_command = 'onboarding-sample'
+            BEGIN
+                SELECT RAISE(ABORT, 'injected onboarding failure');
+            END;
+            """
+        )
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let defaults = try makeIsolatedDefaults()
+        let creator = makeCreator(projectStore: projectStore, taskStore: taskStore, defaults: defaults)
+
+        XCTAssertThrowsError(try creator.ensureSampleProject())
+        XCTAssertTrue(try projectStore.list(includeArchived: true).isEmpty)
+        XCTAssertTrue(try taskStore.listAll().isEmpty)
+        XCTAssertFalse(defaults.bool(forKey: OnboardingSampleProjectDefinition.createdDefaultsKey))
+
+        try connection.execute("DROP TRIGGER reject_onboarding_tasks;")
+        let recovered = try creator.ensureSampleProject()
+        guard case .created = recovered else {
+            return XCTFail("retry after rollback must create a complete teaching project")
+        }
+        XCTAssertEqual(try projectStore.list().count, 1)
+        XCTAssertEqual(try taskStore.listAll().count, 6)
+        XCTAssertTrue(defaults.bool(forKey: OnboardingSampleProjectDefinition.createdDefaultsKey))
+    }
+
     func testExistingIncompleteMarkedProjectIsRebuiltBeforeRecordingCompletion() throws {
         let connection = try migratedConnection()
         let projectStore = SQLiteProjectStore(connection: connection)

@@ -2,11 +2,11 @@
 
 Generated with `script/capture_ui_evidence.sh`.
 
-- Generated at: `2026-07-10T12:34:54Z`
-- Source commit: `08dbedb4`
+- Generated at: `2026-07-17T06:07:09Z`
+- Source commit: `fed759c2`
 - App bundle: `dist/SoloPM.app`
 - Visual baseline manifest: `docs/quality/visual-baseline-manifest.json`
-- Viewport contract: `SOLOPM_VISUAL_BASELINE_VIEWPORT=1420x860`, `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT=720x712`, `SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT=760x640`
+- Viewport contract: `SOLOPM_VISUAL_BASELINE_VIEWPORT=1024x724`, `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT=720x712`, `SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT=760x640`
 - Runtime context: locale `en-US`, timezone `UTC`, reference instant `2026-07-10T12:00:00Z`
 - Launch mode: normal `ProjectBoardView` route with explicit selected destination; recovery flags are excluded from release evidence.
 - Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`

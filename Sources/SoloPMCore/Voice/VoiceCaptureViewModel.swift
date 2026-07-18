@@ -271,6 +271,13 @@ public final class VoiceCaptureViewModel: ObservableObject {
         lowLatencyVoiceAgentState == .listening
     }
 
+    public var handsFreeModeProviderName: String {
+        // A Voice window owns its injected provider for its lifetime. Naming
+        // that exact provider prevents the privacy surface from drifting when
+        // Settings changes underneath an already-open window.
+        sttProvider.id.displayName
+    }
+
     public var clarificationQuestion: ClarificationQuestion? {
         clarificationSession?.currentQuestion
     }
