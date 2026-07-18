@@ -72,6 +72,7 @@ struct ProjectBoardView: View {
     @AppStorage(ProjectBoardSelectionPersistence.storageKey) private var initialRouteRawValue = ProjectBoardSelectionPersistence.defaultRawValue
     @SceneStorage(ProjectBoardScenePersistence.routeStorageKey) private var currentSceneRouteRawValue = ""
     @SceneStorage("projectBoard.userRequestedInspector") private var userRequestedInspector = false
+    @SceneStorage("projectBoard.sidebarHidden") private var storedSidebarHidden = false
     @State private var displayMode: ProjectBoardDisplayMode = .board
     @State private var selectedDestination: ProjectBoardSidebarDestination? = .today
     @State private var projectBoardWindowWidth: CGFloat = 0
@@ -242,6 +243,7 @@ struct ProjectBoardView: View {
         )
         .task {
             sceneCoordinator.register(sceneID: sceneID)
+            columnVisibility = storedSidebarHidden ? .detailOnly : .all
             LaunchPerformanceSignposts.measureFirstBoardLoadOnce {
                 viewModel.load()
             }
@@ -809,6 +811,7 @@ struct ProjectBoardView: View {
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+            storedSidebarHidden = columnVisibility == .detailOnly
             refreshProjectBoardColumnsAfterToolbarDisplayModeChange()
         }
     }

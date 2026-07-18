@@ -1463,6 +1463,26 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(crudSmoke.contains("source \"$AX_HELPERS\""))
     }
 
+    func testProjectBoardWindowRestorationUsesNarrowPresentationOnlyBridge() throws {
+        let appSource = try readAppShellSource()
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let bridgeSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardWindowStateBridge.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardWindowPresentationState.swift")
+
+        XCTAssertTrue(appSource.contains("ProjectBoardWindowStateBridge(sceneID: sceneID)"))
+        XCTAssertTrue(boardSource.contains("@SceneStorage(\"projectBoard.sidebarHidden\")"))
+        XCTAssertTrue(boardSource.contains("@SceneStorage(\"projectBoard.userRequestedInspector\")"))
+        XCTAssertTrue(bridgeSource.contains("NSViewRepresentable"))
+        XCTAssertTrue(bridgeSource.contains("NSWindow.didMoveNotification"))
+        XCTAssertTrue(bridgeSource.contains("NSWindow.didResizeNotification"))
+        XCTAssertTrue(bridgeSource.contains("ProjectBoardWindowPresentationState"))
+        XCTAssertTrue(coreSource.contains("public struct ProjectBoardWindowFrame"))
+        XCTAssertTrue(coreSource.contains("public static let currentVersion = 1"))
+        XCTAssertFalse(coreSource.contains("public var taskTitle"))
+        XCTAssertFalse(coreSource.contains("public var transcript"))
+        XCTAssertFalse(coreSource.contains("public var approvalToken"))
+    }
+
     func testProjectBoardToolbarDisplayModeOnlyAllowsIconAndTextOrIconOnly() throws {
         let boardSource = try readProjectBoardSurfaceSources()
 

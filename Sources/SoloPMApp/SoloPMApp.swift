@@ -388,6 +388,7 @@ private struct ProjectBoardWindowRootView: View {
                 appSettings: { settingsViewModel.settings },
                 developmentAutomationReviewSession: AppRuntimeFactory.makeReviewSessionViewModel
             )
+            .background(ProjectBoardWindowStateBridge(sceneID: sceneID))
         }
     }
 }
