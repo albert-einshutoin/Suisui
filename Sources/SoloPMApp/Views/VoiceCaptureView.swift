@@ -1123,7 +1123,7 @@ private struct AssistantQueuePanel: View {
     }
 
     private var riskLabel: some View {
-        Text(String(format: localizedSettingsDisplay("Risk: %@"), item.riskLevel.rawValue))
+        Text(String(format: localizedSettingsDisplay("Risk: %@"), localizedRiskLevel(item.riskLevel)))
             .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(1)
@@ -1198,7 +1198,7 @@ private struct AssistantQueuePanel: View {
     private func capabilityLabel(_ capability: AssistantQueueRequiredCapability) -> String {
         switch capability {
         case .tool(let tool):
-            return tool.rawValue
+            return localizedActionTool(tool)
         case .appPermission(let permission):
             return permission.rawValue
         case .connectedMacRequired:
@@ -1418,7 +1418,7 @@ private struct ActionPlanPreview: View {
                     Text(plan.summary)
                         .font(.headline)
                     Spacer()
-                    Text(plan.riskLevel.rawValue.capitalized)
+                    Text(localizedRiskLevel(plan.riskLevel))
                         .font(.caption)
                         .foregroundStyle(plan.riskLevel >= .write ? SoloPMTone.attention.color : .secondary)
                 }
@@ -1428,7 +1428,7 @@ private struct ActionPlanPreview: View {
                         Image(systemName: iconName(for: action.actionType))
                             .frame(width: 18)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(action.tool.rawValue)
+                            Text(localizedActionTool(action.tool))
                                 .font(.subheadline)
                             Text(argumentSummary(action.arguments))
                                 .font(.caption)
