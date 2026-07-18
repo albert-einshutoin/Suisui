@@ -319,6 +319,8 @@ require_executable "$ROOT_DIR/script/sign_app.sh" "signing script"
 require_executable "$ROOT_DIR/script/notarize_app.sh" "notarization script"
 require_executable "$ROOT_DIR/script/package_release.sh" "packaging script"
 require_executable "$ROOT_DIR/script/check_release_bundle_inventory.sh" "release bundle inventory script"
+require_executable "$ROOT_DIR/script/check_release_artifact_size.sh" "release artifact size script"
+require_executable "$ROOT_DIR/script/verify_package_evidence_metrics.sh" "package evidence metrics verifier"
 require_executable "$ROOT_DIR/script/verify_appcast.sh" "appcast verification script"
 require_executable "$ROOT_DIR/script/validate_sparkle_release_config.sh" "Sparkle release config validator"
 require_command codesign
@@ -683,6 +685,7 @@ require_release_package_evidence() {
   local signed_required
   local notarized_required
   local manifest_git_commit
+  local metrics_output
 
   manifest_path="${checksum_file%.sha256}.package-evidence.json"
   if [[ ! -f "$manifest_path" ]]; then
@@ -714,6 +717,14 @@ require_release_package_evidence() {
     add_blocker "release package evidence manifest is missing source git commit"
   elif [[ -n "$CURRENT_GIT_COMMIT" && "$manifest_git_commit" != "$CURRENT_GIT_COMMIT" ]]; then
     add_blocker "release package evidence source commit does not match current git commit: expected '$CURRENT_GIT_COMMIT', got '$manifest_git_commit'"
+  fi
+
+  metrics_output=""
+  if ! metrics_output="$("$ROOT_DIR/script/verify_package_evidence_metrics.sh" \
+    "$manifest_path" \
+    "$(artifact_file_for_path "$package_path")" \
+    "$APP_BUNDLE" 2>&1)"; then
+    add_blocker "release package evidence metrics failed: $metrics_output"
   fi
 }
 

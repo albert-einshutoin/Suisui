@@ -13969,6 +13969,151 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("Contents/Resources/Models/ggml-tiny.bin"))
     }
 
+    func testReleaseBundleInventoryHandlesLargeListingsUnderPipefail() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-bundle-large-inventory-\(UUID().uuidString)", isDirectory: true)
+        let appURL = fixtureRoot.appendingPathComponent("SoloPM.app", isDirectory: true)
+        let resourcesURL = appURL.appendingPathComponent("Contents/Resources", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        try FileManager.default.createDirectory(at: resourcesURL, withIntermediateDirectories: true)
+        for index in 0..<1_024 {
+            let filename = String(format: "inventory-entry-%04d-%@.txt", index, String(repeating: "x", count: 48))
+            XCTAssertTrue(FileManager.default.createFile(
+                atPath: resourcesURL.appendingPathComponent(filename).path,
+                contents: Data([0x41])
+            ))
+        }
+
+        let result = try runScript(
+            "script/check_release_bundle_inventory.sh",
+            arguments: [appURL.path],
+            environment: ["SOLOPM_PACKAGE_INVENTORY_TOP_COUNT": "1"]
+        )
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("OK: release bundle inventory passed"))
+    }
+
+    func testReleaseArtifactSizeGateRejectsOversizedArtifactsByFormat() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-size-\(UUID().uuidString)", isDirectory: true)
+        let artifactURL = fixtureRoot.appendingPathComponent("SoloPM.zip")
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        try Data(repeating: 0x41, count: 16).write(to: artifactURL)
+
+        let rejected = try runScript(
+            "script/check_release_artifact_size.sh",
+            arguments: [artifactURL.path, "zip"],
+            environment: ["SOLOPM_MAX_ZIP_ARTIFACT_BYTES": "8"]
+        )
+        XCTAssertNotEqual(rejected.exitCode, 0)
+        XCTAssertTrue(rejected.output.contains("BLOCKER: zip artifact exceeds production size budget"))
+
+        let accepted = try runScript(
+            "script/check_release_artifact_size.sh",
+            arguments: [artifactURL.path, "zip"],
+            environment: ["SOLOPM_MAX_ZIP_ARTIFACT_BYTES": "32"]
+        )
+        XCTAssertEqual(accepted.exitCode, 0, accepted.output)
+        XCTAssertTrue(accepted.output.contains("OK: zip artifact size passed"))
+    }
+
+    func testPackageSmokePreparesAnIsolatedCopyBeforeInventoryAndPackaging() throws {
+        let script = try readPackageFile("script/package_release.sh")
+
+        XCTAssertTrue(script.contains("PACKAGE_APP_BUNDLE"))
+        XCTAssertTrue(script.contains("package-smoke-app"))
+        XCTAssertTrue(script.contains("prepare_release_bundle.sh\" \"$PACKAGE_APP_BUNDLE"))
+        XCTAssertLessThan(
+            try XCTUnwrap(script.range(of: "prepare_release_bundle.sh\" \"$PACKAGE_APP_BUNDLE")).lowerBound,
+            try XCTUnwrap(script.range(of: "check_release_bundle_inventory.sh\" \"$PACKAGE_APP_BUNDLE")).lowerBound
+        )
+        XCTAssertTrue(script.contains("\"$PACKAGE_APP_BUNDLE\" \"$ZIP_PATH\""))
+    }
+
+    func testPackageEvidenceValidatorsRequireSizesAndPreparationModes() throws {
+        let verifier = try readPackageFile("script/verify_package_evidence_metrics.sh")
+        XCTAssertTrue(verifier.contains("package.appBundleBytes"))
+        XCTAssertTrue(verifier.contains("package.appBinaryBytes"))
+        XCTAssertTrue(verifier.contains("package.artifactBytes"))
+        XCTAssertTrue(verifier.contains("package.stripMode"))
+        XCTAssertTrue(verifier.contains("package.sparklePruneMode"))
+        XCTAssertTrue(verifier.contains("local-symbols-removed"))
+        XCTAssertTrue(verifier.contains("development-assets-removed"))
+
+        for path in [
+            "script/create_release_evidence.sh",
+            "script/verify_release_environment.sh",
+            "script/verify_appcast.sh"
+        ] {
+            let script = try readPackageFile(path)
+            XCTAssertTrue(script.contains("verify_package_evidence_metrics.sh"), path)
+        }
+    }
+
+    func testPackageEvidenceMetricsVerifierMatchesArtifactAndAppBytes() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-package-evidence-metrics-\(UUID().uuidString)", isDirectory: true)
+        let appURL = fixtureRoot.appendingPathComponent("SoloPM.app", isDirectory: true)
+        let binaryURL = appURL.appendingPathComponent("Contents/MacOS/SoloPM")
+        let resourceURL = appURL.appendingPathComponent("Contents/Resources/value.txt")
+        let artifactURL = fixtureRoot.appendingPathComponent("SoloPM.zip")
+        let manifestURL = fixtureRoot.appendingPathComponent("SoloPM.zip.package-evidence.json")
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        try FileManager.default.createDirectory(
+            at: binaryURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: resourceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data(repeating: 0x41, count: 4).write(to: binaryURL)
+        try Data(repeating: 0x42, count: 3).write(to: resourceURL)
+        try Data(repeating: 0x43, count: 16).write(to: artifactURL)
+
+        let validManifest = """
+        {
+          "package": {
+            "appBundleBytes": 7,
+            "appBinaryBytes": 4,
+            "artifactBytes": 16,
+            "stripMode": "local-symbols-removed",
+            "sparklePruneMode": "development-assets-removed"
+          }
+        }
+        """
+        try validManifest.write(to: manifestURL, atomically: true, encoding: .utf8)
+
+        let accepted = try runScript(
+            "script/verify_package_evidence_metrics.sh",
+            arguments: [manifestURL.path, artifactURL.path, appURL.path]
+        )
+        XCTAssertEqual(accepted.exitCode, 0, accepted.output)
+
+        try validManifest.replacingOccurrences(of: "\"artifactBytes\": 16", with: "\"artifactBytes\": 15")
+            .write(to: manifestURL, atomically: true, encoding: .utf8)
+        let artifactMismatch = try runScript(
+            "script/verify_package_evidence_metrics.sh",
+            arguments: [manifestURL.path, artifactURL.path, appURL.path]
+        )
+        XCTAssertNotEqual(artifactMismatch.exitCode, 0)
+        XCTAssertTrue(artifactMismatch.output.contains("package.artifactBytes does not match artifact"))
+
+        try validManifest.replacingOccurrences(of: "\"appBinaryBytes\": 4", with: "\"appBinaryBytes\": 5")
+            .write(to: manifestURL, atomically: true, encoding: .utf8)
+        let appMismatch = try runScript(
+            "script/verify_package_evidence_metrics.sh",
+            arguments: [manifestURL.path, artifactURL.path, appURL.path]
+        )
+        XCTAssertNotEqual(appMismatch.exitCode, 0)
+        XCTAssertTrue(appMismatch.output.contains("package.appBinaryBytes does not match app binary"))
+    }
+
     func testDistributionPackagingUsesCleanZipAndRecordsSizeEvidence() throws {
         let packageScript = try readPackageFile("script/package_release.sh")
         let signingScript = try readPackageFile("script/sign_app.sh")
@@ -13984,9 +14129,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(packageScript.contains("release app was not stripped before signing"))
         XCTAssertTrue(packageScript.contains("Sparkle development assets were not pruned before signing"))
         XCTAssertTrue(signingScript.contains("prepare_release_bundle.sh"))
+        XCTAssertTrue(packageScript.contains("check_release_artifact_size.sh"))
         XCTAssertLessThan(
             try XCTUnwrap(signingScript.range(of: "prepare_release_bundle.sh")).lowerBound,
             try XCTUnwrap(signingScript.range(of: "codesign \"${CODESIGN_ARGS[@]}\"")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(packageScript.range(of: "check_release_artifact_size.sh\" \"$DMG_PATH")).lowerBound,
+            try XCTUnwrap(packageScript.range(of: "create_checksum \"$DMG_PATH\"")).lowerBound
         )
     }
 
@@ -14054,6 +14204,16 @@ final class ReleasePipelineTests: XCTestCase {
         let manifestPath = checksumURL.path.replacingOccurrences(of: ".sha256", with: ".package-evidence.json")
         let manifestURL = URL(fileURLWithPath: manifestPath)
         let sourceCommit = try gitCommit ?? currentGitCommit()
+        let artifactBytes: Int
+        if let artifactPath {
+            let artifactURL = artifactPath.hasPrefix("/")
+                ? URL(fileURLWithPath: artifactPath)
+                : packageRoot().appendingPathComponent(artifactPath)
+            let attributes = try? FileManager.default.attributesOfItem(atPath: artifactURL.path)
+            artifactBytes = (attributes?[.size] as? NSNumber)?.intValue ?? 1
+        } else {
+            artifactBytes = 1
+        }
         var jsonLines = [
             "{",
             "  \"package\": {"
@@ -14065,7 +14225,12 @@ final class ReleasePipelineTests: XCTestCase {
             "    \"format\": \"dmg\",",
             "    \"createdAt\": \"2026-06-18T00:00:00Z\",",
             "    \"signedPackageRequired\": \(signedPackageRequired ? "true" : "false"),",
-            "    \"notarizedPackageRequired\": \(notarizedPackageRequired ? "true" : "false")",
+            "    \"notarizedPackageRequired\": \(notarizedPackageRequired ? "true" : "false"),",
+            "    \"appBundleBytes\": 1,",
+            "    \"appBinaryBytes\": 1,",
+            "    \"artifactBytes\": \(artifactBytes),",
+            "    \"stripMode\": \"local-symbols-removed\",",
+            "    \"sparklePruneMode\": \"development-assets-removed\"",
             "  },",
             "  \"source\": {",
             "    \"gitCommit\": \"\(sourceCommit)\"",
@@ -14170,6 +14335,9 @@ final class ReleasePipelineTests: XCTestCase {
             withIntermediateDirectories: true
         )
         try "zip content".write(to: artifactURL, atomically: true, encoding: .utf8)
+        let artifactBytes = try XCTUnwrap(
+            (FileManager.default.attributesOfItem(atPath: artifactURL.path)[.size] as? NSNumber)?.intValue
+        )
         try "\(artifactSha)  \(artifactURL.path)\n"
             .write(to: checksumURL, atomically: true, encoding: .utf8)
         try """
@@ -14179,7 +14347,12 @@ final class ReleasePipelineTests: XCTestCase {
             "format": "zip",
             "createdAt": "2026-06-18T00:00:00Z",
             "signedPackageRequired": true,
-            "notarizedPackageRequired": true
+            "notarizedPackageRequired": true,
+            "appBundleBytes": 1,
+            "appBinaryBytes": 1,
+            "artifactBytes": \(artifactBytes),
+            "stripMode": "local-symbols-removed",
+            "sparklePruneMode": "development-assets-removed"
           },
           "source": {
             "gitCommit": "test-fixture"

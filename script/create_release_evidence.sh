@@ -484,6 +484,7 @@ require_release_package_evidence() {
   local signed_required
   local notarized_required
   local manifest_git_commit
+  local artifact_file
   manifest_path="$(package_evidence_file)"
 
   if [[ -z "$manifest_path" || ! -f "$manifest_path" ]]; then
@@ -532,6 +533,11 @@ require_release_package_evidence() {
     echo "package evidence source commit does not match current git commit" >&2
     exit 2
   fi
+
+  artifact_file="$(artifact_file_for_path "$expected_artifact_path")"
+  "$ROOT_DIR/script/verify_package_evidence_metrics.sh" \
+    "$manifest_path" \
+    "$artifact_file"
 }
 
 require_artifact_file_integrity() {

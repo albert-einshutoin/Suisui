@@ -40,6 +40,8 @@ SOLOPM_REQUIRE_NOTARIZED_PACKAGE=0 \
 ./script/package_release.sh
 ```
 
+smoke modeは`dist/SoloPM.app`を変更せず、一時コピーにだけrelease stripとSparkle開発資産のpruneを適用する。一時コピーは終了時に削除され、元bundleが署名済みでも署名を破壊しない。
+
 release artifact を作る通常実行では、`SOLOPM_REQUIRE_SIGNED_PACKAGE=1` と `SOLOPM_REQUIRE_NOTARIZED_PACKAGE=1` が既定値になる。つまり `codesign --verify`、`xcrun stapler validate`、`spctl -a -vv` を通らない app bundle からは配布用 DMG / ZIP を作らない。
 
 Developer ID署名前に`sign_app.sh`がmain binaryのlocal symbolをstripし、Sparkleの実行時不要なHeaders/Modulesを削除する。`package_release.sh`は署名・公証後のappを変更せず、AppleDoubleや不要な拡張属性を含めないclean ZIPを生成する。package evidenceにはapp、main binary、artifactのbytesとstrip/pruning modeが記録される。

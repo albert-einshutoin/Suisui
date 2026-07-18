@@ -42,7 +42,10 @@ done < <(find "$APP_BUNDLE" -type f -print0)
 app_bundle_bytes="$(awk -F '\t' '{ total += $1 } END { printf "%.0f", total }' "$inventory_file")"
 printf 'App bundle bytes: %s (budget: %s)\n' "$app_bundle_bytes" "$MAX_APP_BUNDLE_BYTES"
 printf 'Largest bundled files (top %s):\n' "$TOP_COUNT"
-sort -nr -k1,1 "$inventory_file" | head -n "$TOP_COUNT" | awk -F '\t' '{ printf "  %s bytes\t%s\n", $1, $2 }'
+# awk intentionally consumes the complete sort stream. Exiting after TOP_COUNT
+# would close the pipe early and make sort fail with SIGPIPE under pipefail.
+sort -nr -k1,1 "$inventory_file" \
+  | awk -F '\t' -v limit="$TOP_COUNT" 'NR <= limit { printf "  %s bytes\t%s\n", $1, $2 }'
 
 failed=0
 while IFS=$'\t' read -r _ relative_path; do

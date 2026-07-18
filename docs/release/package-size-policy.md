@@ -5,6 +5,7 @@ SoloPMの配布物は、初回導入が軽く、必要な高度機能はユー�
 ## Production budget
 
 - `SoloPM.app`: file payload合計50 MiB以下。`script/check_release_bundle_inventory.sh`が超過をfail closedにする。
+- ZIP: 6 MiB以下。DMG: 9 MiB以下。`script/check_release_artifact_size.sh`が形式別に検証し、必要な変更は`SOLOPM_MAX_ZIP_ARTIFACT_BYTES`または`SOLOPM_MAX_DMG_ARTIFACT_BYTES`をPRで明示して更新する。
 - Release evidence: app bundle、main binary、ZIP/DMGの実測bytesとstrip/pruning modeを記録する。
 - Review threshold: 新規依存または新規リソースがapp bundleを5 MiB以上増やす変更は、PRに代替案、ユーザー価値、更新・脆弱性対応責任を記載する。
 - `.build`や開発者cacheの容量を、ユーザーへ配るapp bundleの容量として扱わない。
@@ -35,4 +36,6 @@ Sparkleの`Resources`、`Updater.app`、`XPCServices`は更新ランタイムな
 5. notarizationとstapleを行う。
 6. `package_release.sh`でclean ZIP/DMGを生成し、サイズ証跡とchecksumを保存する。
 
-署名後のapp bundleはパッケージ生成時に変更しない。内容変更が必要になった場合は、Release buildの準備から署名・公証をやり直す。
+署名後のapp bundleはパッケージ生成時に変更しない。unsigned smokeでは`dist/SoloPM.app`を一時ディレクトリへ複製し、そのコピーだけをstrip/pruneする。内容変更が必要になった場合は、Release buildの準備から署名・公証をやり直す。
+
+ZIP/DMG生成後は、checksumとpackage evidenceの作成前にartifact容量を検証する。最終preflight、release evidence作成、appcast検証はpackage evidenceの容量値とstrip/pruning modeを実ファイルに照合し、旧形式や改変された証跡を拒否する。

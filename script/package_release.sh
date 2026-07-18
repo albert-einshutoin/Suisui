@@ -21,8 +21,7 @@ REQUIRE_NOTARIZED_PACKAGE="${SOLOPM_REQUIRE_NOTARIZED_PACKAGE:-1}"
 
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
-APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-PREPARATION_MARKER="$APP_BUNDLE/Contents/Resources/release-preparation.env"
+PACKAGE_APP_BUNDLE="$APP_BUNDLE"
 RELEASE_DIR="$DIST_DIR/releases"
 SMOKE_RELEASE_DIR="$DIST_DIR/package-smoke"
 STAGING_DIR="$DIST_DIR/package-staging"
@@ -70,6 +69,9 @@ if [[ ! -d "$APP_BUNDLE" ]]; then
   SOLOPM_BUILD_CONFIGURATION=release "$ROOT_DIR/script/build_and_run.sh" --build-only
 fi
 
+# Production gates always inspect the immutable signed source bundle. Unsigned
+# smoke preparation happens later on a disposable copy so this script can never
+# invalidate a Developer ID signature on dist/SoloPM.app.
 if [[ "$REQUIRE_SIGNED_PACKAGE" == "1" ]]; then
   codesign --verify --strict --deep --verbose=2 "$APP_BUNDLE"
 fi
@@ -79,9 +81,33 @@ if [[ "$REQUIRE_NOTARIZED_PACKAGE" == "1" ]]; then
   spctl -a -vv "$APP_BUNDLE"
 fi
 
-"$ROOT_DIR/script/check_release_bundle_inventory.sh" "$APP_BUNDLE"
+SMOKE_APP_ROOT=""
+cleanup_smoke_app() {
+  if [[ -n "$SMOKE_APP_ROOT" ]]; then
+    rm -rf "$SMOKE_APP_ROOT"
+  fi
+}
+trap cleanup_smoke_app EXIT INT TERM
 
-APP_BUNDLE_BYTES="$(find "$APP_BUNDLE" -type f -exec stat -f '%z' {} + | awk '{ total += $1 } END { printf "%.0f", total }')"
+if [[ "$REQUIRE_SIGNED_PACKAGE" == "0" || "$REQUIRE_NOTARIZED_PACKAGE" == "0" ]]; then
+  RELEASE_DIR="$SMOKE_RELEASE_DIR"
+  DMG_PATH="$RELEASE_DIR/$ARTIFACT_BASENAME.dmg"
+  ZIP_PATH="$RELEASE_DIR/$ARTIFACT_BASENAME.zip"
+fi
+
+if [[ "$REQUIRE_SIGNED_PACKAGE" == "0" ]]; then
+  SMOKE_APP_ROOT="$(mktemp -d "$DIST_DIR/package-smoke-app.XXXXXX")"
+  PACKAGE_APP_BUNDLE="$SMOKE_APP_ROOT/$APP_NAME.app"
+  COPYFILE_DISABLE=1 ditto --norsrc --noextattr "$APP_BUNDLE" "$PACKAGE_APP_BUNDLE"
+  "$ROOT_DIR/script/prepare_release_bundle.sh" "$PACKAGE_APP_BUNDLE"
+fi
+
+APP_BINARY="$PACKAGE_APP_BUNDLE/Contents/MacOS/$APP_NAME"
+PREPARATION_MARKER="$PACKAGE_APP_BUNDLE/Contents/Resources/release-preparation.env"
+
+"$ROOT_DIR/script/check_release_bundle_inventory.sh" "$PACKAGE_APP_BUNDLE"
+
+APP_BUNDLE_BYTES="$(find "$PACKAGE_APP_BUNDLE" -type f -exec stat -f '%z' {} + | awk '{ total += $1 } END { printf "%.0f", total }')"
 APP_BINARY_BYTES="$(stat -f '%z' "$APP_BINARY")"
 STRIP_MODE="unknown"
 SPARKLE_PRUNE_MODE="unknown"
@@ -90,21 +116,13 @@ if [[ -f "$PREPARATION_MARKER" ]]; then
   SPARKLE_PRUNE_MODE="$(awk -F= '$1 == "SPARKLE_PRUNE_MODE" { print $2; exit }' "$PREPARATION_MARKER")"
 fi
 
-if [[ "$REQUIRE_SIGNED_PACKAGE" == "1" ]]; then
-  if [[ "$STRIP_MODE" != "local-symbols-removed" ]]; then
-    echo "release app was not stripped before signing; rebuild with ./script/sign_app.sh" >&2
-    exit 2
-  fi
-  if [[ "$SPARKLE_PRUNE_MODE" != "development-assets-removed" ]]; then
-    echo "Sparkle development assets were not pruned before signing; rebuild with ./script/sign_app.sh" >&2
-    exit 2
-  fi
+if [[ "$STRIP_MODE" != "local-symbols-removed" ]]; then
+  echo "release app was not stripped before signing; rebuild with ./script/sign_app.sh" >&2
+  exit 2
 fi
-
-if [[ "$REQUIRE_SIGNED_PACKAGE" == "0" || "$REQUIRE_NOTARIZED_PACKAGE" == "0" ]]; then
-  RELEASE_DIR="$SMOKE_RELEASE_DIR"
-  DMG_PATH="$RELEASE_DIR/$ARTIFACT_BASENAME.dmg"
-  ZIP_PATH="$RELEASE_DIR/$ARTIFACT_BASENAME.zip"
+if [[ "$SPARKLE_PRUNE_MODE" != "development-assets-removed" ]]; then
+  echo "Sparkle development assets were not pruned before signing; rebuild with ./script/sign_app.sh" >&2
+  exit 2
 fi
 
 rm -rf "$RELEASE_DIR" "$STAGING_DIR"
@@ -155,7 +173,7 @@ create_checksum() {
 }
 
 if [[ "$PACKAGE_FORMAT" == "dmg" || "$PACKAGE_FORMAT" == "all" ]]; then
-  cp -R "$APP_BUNDLE" "$STAGING_DIR/"
+  cp -R "$PACKAGE_APP_BUNDLE" "$STAGING_DIR/"
   ln -s /Applications "$STAGING_DIR/Applications"
   hdiutil create \
     -volname "$APP_NAME" \
@@ -163,12 +181,14 @@ if [[ "$PACKAGE_FORMAT" == "dmg" || "$PACKAGE_FORMAT" == "all" ]]; then
     -ov \
     -format UDZO \
     "$DMG_PATH"
+  "$ROOT_DIR/script/check_release_artifact_size.sh" "$DMG_PATH" "dmg"
   create_checksum "$DMG_PATH"
   create_package_evidence "$DMG_PATH" "dmg"
 fi
 
 if [[ "$PACKAGE_FORMAT" == "zip" || "$PACKAGE_FORMAT" == "all" ]]; then
-  COPYFILE_DISABLE=1 ditto -c -k --keepParent --norsrc --noextattr "$APP_BUNDLE" "$ZIP_PATH"
+  COPYFILE_DISABLE=1 ditto -c -k --keepParent --norsrc --noextattr "$PACKAGE_APP_BUNDLE" "$ZIP_PATH"
+  "$ROOT_DIR/script/check_release_artifact_size.sh" "$ZIP_PATH" "zip"
   create_checksum "$ZIP_PATH"
   create_package_evidence "$ZIP_PATH" "zip"
 fi
