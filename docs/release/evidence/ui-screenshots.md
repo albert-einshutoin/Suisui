@@ -2,8 +2,8 @@
 
 Generated with `script/capture_ui_evidence.sh`.
 
-- Generated at: `2026-07-18T10:01:04Z`
-- Source commit: `184acc1e`
+- Generated at: `2026-07-18T12:27:47Z`
+- Source commit: `7670db8f`
 - App bundle: `dist/SoloPM.app`
 - Visual baseline manifest: `docs/quality/visual-baseline-manifest.json`
 - Viewport contract: `SOLOPM_VISUAL_BASELINE_VIEWPORT=1024x724`, `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT=720x712`, `SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT=760x640`
@@ -17,53 +17,53 @@ Generated with `script/capture_ui_evidence.sh`.
 
 ## Screenshots
 
-- Light: `docs/release/evidence/ui-screenshots/project-board-light.png`
-- Dark: `docs/release/evidence/ui-screenshots/project-board-dark.png`
-- System: `docs/release/evidence/ui-screenshots/project-board-system.png`
-- Settings Overview Light: `docs/release/evidence/ui-screenshots/settings-overview-light.png`
-- Settings Overview Dark: `docs/release/evidence/ui-screenshots/settings-overview-dark.png`
-- Settings Appearance Light: `docs/release/evidence/ui-screenshots/settings-appearance-light.png`
-- Settings Appearance Dark: `docs/release/evidence/ui-screenshots/settings-appearance-dark.png`
-- MCP Settings Light: `docs/release/evidence/ui-screenshots/settings-mcp-light.png`
-- MCP Settings Dark: `docs/release/evidence/ui-screenshots/settings-mcp-dark.png`
-- Inbox Voice Light: `docs/release/evidence/ui-screenshots/inbox-voice-light.png`
-- Inbox Voice Dark: `docs/release/evidence/ui-screenshots/inbox-voice-dark.png`
-- Projects Overview Light: `docs/release/evidence/ui-screenshots/projects-overview-light.png`
-- Projects Overview Dark: `docs/release/evidence/ui-screenshots/projects-overview-dark.png`
-- Schedule Light: `docs/release/evidence/ui-screenshots/schedule-light.png`
-- Schedule Dark: `docs/release/evidence/ui-screenshots/schedule-dark.png`
-- Schedule Workload Light: `docs/release/evidence/ui-screenshots/schedule-workload-light.png`
-- Schedule Workload Dark: `docs/release/evidence/ui-screenshots/schedule-workload-dark.png`
-- Done Light: `docs/release/evidence/ui-screenshots/done-light.png`
-- Done Dark: `docs/release/evidence/ui-screenshots/done-dark.png`
-- Settings Integrations Light: `docs/release/evidence/ui-screenshots/settings-integrations-light.png`
-- Settings Integrations Dark: `docs/release/evidence/ui-screenshots/settings-integrations-dark.png`
+- Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/project-board-light.png`
+- Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/project-board-dark.png`
+- System: `.tmp/ci-artifacts/ui-visual/current/screenshots/project-board-system.png`
+- Settings Overview Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/settings-overview-light.png`
+- Settings Overview Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/settings-overview-dark.png`
+- Settings Appearance Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/settings-appearance-light.png`
+- Settings Appearance Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/settings-appearance-dark.png`
+- MCP Settings Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/settings-mcp-light.png`
+- MCP Settings Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/settings-mcp-dark.png`
+- Inbox Voice Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/inbox-voice-light.png`
+- Inbox Voice Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/inbox-voice-dark.png`
+- Projects Overview Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/projects-overview-light.png`
+- Projects Overview Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/projects-overview-dark.png`
+- Schedule Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/schedule-light.png`
+- Schedule Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/schedule-dark.png`
+- Schedule Workload Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/schedule-workload-light.png`
+- Schedule Workload Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/schedule-workload-dark.png`
+- Done Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/done-light.png`
+- Done Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/done-dark.png`
+- Settings Integrations Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/settings-integrations-light.png`
+- Settings Integrations Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/settings-integrations-dark.png`
 
 ## Visual Baseline Manifest Screenshots
 
-- Project Board Light: `docs/release/evidence/ui-screenshots/project-board-light.png`
-- Project Board Dark: `docs/release/evidence/ui-screenshots/project-board-dark.png`
-- Project Board System: `docs/release/evidence/ui-screenshots/project-board-system.png`
-- Inbox Light: `docs/release/evidence/ui-screenshots/inbox-light.png`
-- Inbox Dark: `docs/release/evidence/ui-screenshots/inbox-dark.png`
-- Inbox System: `docs/release/evidence/ui-screenshots/inbox-system.png`
-- Today Light: `docs/release/evidence/ui-screenshots/today-light.png`
-- Today Dark: `docs/release/evidence/ui-screenshots/today-dark.png`
-- Today System: `docs/release/evidence/ui-screenshots/today-system.png`
-- Settings Overview Light: `docs/release/evidence/ui-screenshots/settings-overview-light.png`
-- Settings Overview Dark: `docs/release/evidence/ui-screenshots/settings-overview-dark.png`
-- Settings Overview System: `docs/release/evidence/ui-screenshots/settings-overview-system.png`
-- Settings Appearance Light: `docs/release/evidence/ui-screenshots/settings-appearance-light.png`
-- Settings Appearance Dark: `docs/release/evidence/ui-screenshots/settings-appearance-dark.png`
-- Settings Appearance System: `docs/release/evidence/ui-screenshots/settings-appearance-system.png`
-- MCP Settings Light: `docs/release/evidence/ui-screenshots/settings-mcp-light.png`
-- MCP Settings Dark: `docs/release/evidence/ui-screenshots/settings-mcp-dark.png`
-- MCP Settings System: `docs/release/evidence/ui-screenshots/settings-mcp-system.png`
-- Voice Command Light: `docs/release/evidence/ui-screenshots/voice-command-light.png`
-- Voice Command Dark: `docs/release/evidence/ui-screenshots/voice-command-dark.png`
-- Voice Command System: `docs/release/evidence/ui-screenshots/voice-command-system.png`
-- Schedule Workload Light: `docs/release/evidence/ui-screenshots/schedule-workload-light.png`
-- Schedule Workload Dark: `docs/release/evidence/ui-screenshots/schedule-workload-dark.png`
+- Project Board Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/project-board-light.png`
+- Project Board Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/project-board-dark.png`
+- Project Board System: `.tmp/ci-artifacts/ui-visual/current/screenshots/project-board-system.png`
+- Inbox Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/inbox-light.png`
+- Inbox Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/inbox-dark.png`
+- Inbox System: `.tmp/ci-artifacts/ui-visual/current/screenshots/inbox-system.png`
+- Today Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/today-light.png`
+- Today Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/today-dark.png`
+- Today System: `.tmp/ci-artifacts/ui-visual/current/screenshots/today-system.png`
+- Settings Overview Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/settings-overview-light.png`
+- Settings Overview Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/settings-overview-dark.png`
+- Settings Overview System: `.tmp/ci-artifacts/ui-visual/current/screenshots/settings-overview-system.png`
+- Settings Appearance Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/settings-appearance-light.png`
+- Settings Appearance Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/settings-appearance-dark.png`
+- Settings Appearance System: `.tmp/ci-artifacts/ui-visual/current/screenshots/settings-appearance-system.png`
+- MCP Settings Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/settings-mcp-light.png`
+- MCP Settings Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/settings-mcp-dark.png`
+- MCP Settings System: `.tmp/ci-artifacts/ui-visual/current/screenshots/settings-mcp-system.png`
+- Voice Command Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/voice-command-light.png`
+- Voice Command Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/voice-command-dark.png`
+- Voice Command System: `.tmp/ci-artifacts/ui-visual/current/screenshots/voice-command-system.png`
+- Schedule Workload Light: `.tmp/ci-artifacts/ui-visual/current/screenshots/schedule-workload-light.png`
+- Schedule Workload Dark: `.tmp/ci-artifacts/ui-visual/current/screenshots/schedule-workload-dark.png`
 
 ## Notes
 
