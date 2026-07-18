@@ -8036,6 +8036,39 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
+    func testTrackedUIScreenshotEvidenceReferencesPublishedArtifacts() throws {
+        let evidence = try readPackageFile("docs/release/evidence/ui-screenshots.md")
+
+        for filename in [
+            "project-board-light.png",
+            "project-board-dark.png",
+            "project-board-system.png",
+            "inbox-voice-light.png",
+            "inbox-voice-dark.png",
+            "projects-overview-light.png",
+            "projects-overview-dark.png",
+            "schedule-light.png",
+            "schedule-dark.png",
+            "done-light.png",
+            "done-dark.png",
+            "settings-integrations-light.png",
+            "settings-integrations-dark.png",
+            "settings-overview-light.png",
+            "settings-overview-dark.png",
+            "settings-appearance-light.png",
+            "settings-appearance-dark.png",
+            "settings-mcp-light.png",
+            "settings-mcp-dark.png"
+        ] {
+            XCTAssertTrue(
+                evidence.contains("docs/release/evidence/ui-screenshots/\(filename)"),
+                "tracked UI evidence must reference the published artifact \(filename)"
+            )
+        }
+
+        XCTAssertFalse(evidence.contains(".tmp/"), "tracked UI evidence must not point at local CI artifacts")
+    }
+
     func testReleaseReadinessReportAggregatesRuntimeMockScanTasksAndPreflight() throws {
         let script = try readPackageFile("script/release_readiness_report.sh")
         let contentCheckScript = try readPackageFile("script/ui_evidence_content_check.swift")
@@ -8417,6 +8450,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(documentation.contains("not a hand-authored JSON"))
         XCTAssertTrue(documentation.contains("whole-screen sibling-overlap proof"))
         XCTAssertTrue(documentation.contains("script/check_layout_stability_smoke.sh"))
+        XCTAssertTrue(documentation.contains("squash merge"))
+        XCTAssertTrue(documentation.contains("evidence-only follow-up PR"))
 
         XCTAssertTrue(captureScript.contains("VISUAL_BASELINE_MANIFEST=\"$ROOT_DIR/docs/quality/visual-baseline-manifest.json\""))
         XCTAssertTrue(captureScript.contains("SOLOPM_VISUAL_BASELINE_VIEWPORT"))

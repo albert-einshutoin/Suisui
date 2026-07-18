@@ -1,5 +1,7 @@
 # Public Alpha Notes
 
+[日本語版](public-alpha-ja.md)
+
 SoloPM public alpha is scoped to the completed Phase 0-4 foundation plus Phase 5 release packaging.
 
 ## Scope

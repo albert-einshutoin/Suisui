@@ -6171,7 +6171,6 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testOnboardingRerunCoordinatorOwnsSingleWindowPresentation() throws {
         let appSource = try readAppShellSource()
-        let factorySource = try readPackageFile("Sources/SoloPMApp/Composition/SettingsRuntimeFactory.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/FirstRunOnboarding.swift")
         let settingsSource = try readSettingsSurfaceSources()
 

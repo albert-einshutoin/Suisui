@@ -4,6 +4,13 @@
 
 このPhaseのゴールは、開発者の手元でだけ動くことではない。release-candidate source commit、manual evidence、Gemini free-tier live smoke、Keychain access prompt、signed, notarized, stapled artifact、Sparkle metadata、public alpha scopeがすべて同じリリース候補を指し、`release_readiness_report.sh` が green になる状態を作る。
 
+## Current Truth (2026-07-18)
+
+- 実装レベル: Google Calendar runtime、integration readiness、local OSS TTS、Daily Planning、UI evidence refreshは実装済みで、対応するfeature issue #3、#11、#12、#14、#23はclosed。
+- 自動検証レベル: product source `14d1013d` のvisual/MCP evidence整合を復旧し、日本語README/Public Alpha導線とSwift 6 clean-build警告解消を追加。最終の全回帰はこの変更ブランチで再実行する。
+- 手動・外部環境レベル: #244 manual VoiceOver、#245 competitor hands-on、#246 signed/notarized/Sparkle release-machine evidenceはopen。Google OAuth live proofとcurrent-source STT/TTS実機証跡もrelease gateとして残る。
+- 判定ルール: 実装済みをrelease-readyと同一視しない。最新の分類は `docs/release/product-out-gap-ledger.md`、最終判定は `script/release_readiness_report.sh` を正とする。
+
 ## Product Bar
 
 - VoiceOverの主導線として、Project Boardでタスク列挙 -> 作成 -> 内容編集 -> status move -> automation review -> approved execution -> delete confirmation -> project completion/delete cascade が現在のrelease-candidate source commitで確認されている。

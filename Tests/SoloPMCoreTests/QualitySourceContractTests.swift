@@ -290,10 +290,15 @@ final class QualitySourceContractTests: XCTestCase {
             "Release machine signing, notarization, Sparkle",
             "UI evidence refresh",
             "Owner",
+            "Implementation status",
+            "Release gate status",
             "Reproduction / verifier",
             "Next action",
             "Known limitations link",
-            "Phase16/17 handoff"
+            "Phase16/17 handoff",
+            "Closed Lanes",
+            "Implementation complete",
+            "Evidence pending"
         ] {
             XCTAssertTrue(ledger.contains(marker), "Product-out gap ledger must include \(marker)")
         }
