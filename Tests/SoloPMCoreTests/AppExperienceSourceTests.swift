@@ -1024,6 +1024,9 @@ final class AppExperienceSourceTests: XCTestCase {
         let scheduleSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowScheduleView.swift")
         let doneSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowDoneView.swift")
         let voiceSource = try readPackageFile("Sources/SoloPMApp/Views/VoiceCaptureView.swift")
+        let commandPaletteSource = try readPackageFile("Sources/SoloPMApp/Views/CommandPaletteView.swift")
+        let smartListSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardSmartListViews.swift")
+        let boardDetailSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift")
 
         XCTAssertTrue(settingsSource.contains("Image(systemName: row.state.systemImage)"))
         XCTAssertTrue(settingsSource.contains("Text(localizedSettingsDisplay(row.title))"))
@@ -1035,6 +1038,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceSource.contains("@Environment(\\.accessibilityReduceMotion)"))
         XCTAssertTrue(voiceSource.contains("SoloPMMotion.animation"))
         XCTAssertTrue(voiceSource.contains("Image(systemName: stateSystemImage)"))
+        XCTAssertTrue(commandPaletteSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
+        XCTAssertTrue(smartListSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
+        XCTAssertTrue(boardDetailSource.contains("@Environment(\\.accessibilityReduceMotion) private var reduceMotion"))
+        XCTAssertTrue(boardDetailSource.contains("reduceMotion ? nil : .snappy(duration: 0.16)"))
+        XCTAssertTrue(doneSource.contains("heatmapMarkerDiameter"))
+        XCTAssertTrue(doneSource.contains("done-heatmap-legend"))
 
         for nonAssistantSource in [settingsSource, todaySource, scheduleSource, doneSource] {
             XCTAssertFalse(

@@ -1594,6 +1594,8 @@
 "Waiting for transcription" = "文字起こし待ち";
 "Ready for triage" = "整理できます";
 "Transcript ready" = "文字起こし完了";
+"Fewer completions" = "完了が少ない";
+"More completions" = "完了が多い";
 "Commit changes" = "変更をコミット";
 "Push branch" = "ブランチをpush";
 "Create pull request" = "Pull Requestを作成";

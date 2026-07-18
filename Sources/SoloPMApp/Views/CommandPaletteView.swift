@@ -163,6 +163,7 @@ struct CommandPaletteView: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityLabel(rowAccessibilityLabel(for: item))
         .accessibilityHint(rowAccessibilityHint(for: item))
         .accessibilityIdentifier(rowAccessibilityIdentifier(for: item))
