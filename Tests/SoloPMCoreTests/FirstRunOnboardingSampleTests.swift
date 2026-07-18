@@ -8,6 +8,25 @@ final class FirstRunOnboardingSampleTests: XCTestCase {
         let now: Date
     }
 
+    private final class NotificationCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var storage = 0
+
+        var value: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return storage
+        }
+
+        func increment() {
+            // NotificationCenter's observer is @Sendable and may change its
+            // delivery queue later, so the test must not capture mutable state.
+            lock.lock()
+            defer { lock.unlock() }
+            storage += 1
+        }
+    }
+
     // 2026-07-12T03:00:00Z == 12:00 JST, safely inside one Tokyo calendar day.
     private static let fixedNow = Date(timeIntervalSince1970: 1_783_825_200)
     private static let timeZoneIdentifier = "Asia/Tokyo"
@@ -191,18 +210,18 @@ final class FirstRunOnboardingSampleTests: XCTestCase {
             defaults: defaults,
             notificationCenter: notificationCenter
         )
-        var postCount = 0
+        let postCount = NotificationCounter()
         let token = notificationCenter.addObserver(
             forName: .soloPMProjectBoardDidChange,
             object: nil,
             queue: nil
         ) { _ in
-            postCount += 1
+            postCount.increment()
         }
         defer { notificationCenter.removeObserver(token) }
 
         XCTAssertNil(try creator.createSampleProjectIfNeeded())
-        XCTAssertEqual(postCount, 0)
+        XCTAssertEqual(postCount.value, 0)
     }
 
     // MARK: - Fixture helpers
