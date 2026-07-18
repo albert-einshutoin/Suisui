@@ -2002,7 +2002,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("struct TaskStatusAccentRail"))
         XCTAssertTrue(source.contains(".onHover { isPointerHovered = $0 }"))
         XCTAssertTrue(source.contains(".shadow(color: Color.black.opacity(isPointerHovered ? 0.10 : 0.04)"))
-        XCTAssertTrue(source.contains(".animation(.snappy(duration: 0.16), value: isPointerHovered)"))
+        XCTAssertTrue(source.contains(".animation(reduceMotion ? nil : .snappy(duration: 0.16), value: isPointerHovered)"))
     }
 
     func testTaskCardsUseSampleInspiredNonOverlappingMetadataStrip() throws {
@@ -3529,13 +3529,13 @@ final class AppExperienceSourceTests: XCTestCase {
         let scheduleWorkflowSource = String(workflowSource[scheduleWorkflowStart.lowerBound..<scheduleWorkflowEnd.lowerBound])
         XCTAssertTrue(scheduleWorkflowSource.contains("viewModel.prepareScheduleDraft(on: workloadReferenceDate)"))
         XCTAssertLessThan(
-            try XCTUnwrap(scheduleWorkflowSource.range(of: "ScheduleDraftApprovalControls(")).lowerBound,
+            try XCTUnwrap(scheduleWorkflowSource.range(of: "scheduleWorkflowArea")).lowerBound,
             try XCTUnwrap(scheduleWorkflowSource.range(of: "ScheduleMiniCalendarPanel(")).lowerBound
         )
-        XCTAssertLessThan(
-            try XCTUnwrap(scheduleWorkflowSource.range(of: "ScheduleDraftApprovalControls(")).lowerBound,
-            try XCTUnwrap(scheduleWorkflowSource.range(of: "ScheduleDraftPanel(viewModel: viewModel)")).lowerBound
-        )
+        let workflowAreaStart = try XCTUnwrap(scheduleWorkflowSource.range(of: "private var scheduleWorkflowArea"))
+        let generateButtonStart = try XCTUnwrap(scheduleWorkflowSource.range(of: "private var generateDraftButton"))
+        let workflowAreaSource = String(scheduleWorkflowSource[workflowAreaStart.lowerBound..<generateButtonStart.lowerBound])
+        XCTAssertTrue(workflowAreaSource.contains("ScheduleDraftApprovalControls("))
         XCTAssertFalse(scheduleWorkflowSource.contains("applyScheduleDraftToCalendar"))
         XCTAssertTrue(modelSource.contains("public struct ScheduleDraft"))
         XCTAssertTrue(coreSource.contains("public func unscheduledScheduleTasks"))
