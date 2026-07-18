@@ -111,7 +111,6 @@ struct SettingsView: View {
     @Binding private var languagePreference: AppLanguagePreference
     @State private var isConfirmingMCPRegistrationDeletion = false
     @State private var isConfirmingGoogleCalendarOAuthDisconnect = false
-    @State private var isChoosingDataLocation = false
     @State private var pendingBackupRestoreDocument: WorkspaceBackupDocument?
     @State private var isConfirmingBackupRestore = false
     @State private var backupStatusMessage: String?
@@ -308,7 +307,6 @@ struct SettingsView: View {
             settingsViewModel: settingsViewModel,
             launchAtLoginViewModel: launchAtLoginViewModel,
             watcherDiagnosticsLoader: watcherDiagnosticsLoader,
-            isChoosingDataLocation: $isChoosingDataLocation,
             pendingBackupRestoreDocument: $pendingBackupRestoreDocument,
             isConfirmingBackupRestore: $isConfirmingBackupRestore,
             backupStatusMessage: $backupStatusMessage,
@@ -332,7 +330,6 @@ struct SettingsView: View {
             setLaunchAtLoginEnabled: launchAtLoginViewModel.setEnabled,
             dataLocationOverviewStatusLabel: builder.dataLocationOverviewStatusLabel,
             diagnosticsLoadState: diagnosticsLoadState,
-            isChoosingDataLocation: $isChoosingDataLocation,
             pendingBackupRestoreDocument: $pendingBackupRestoreDocument,
             isConfirmingBackupRestore: $isConfirmingBackupRestore,
             backupStatusMessage: $backupStatusMessage,
@@ -1223,7 +1220,6 @@ struct SettingsPrivacyProjectionBuilder {
     let settingsViewModel: AppSettingsViewModel
     let launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
     let watcherDiagnosticsLoader: LazyDependencyLoader<WatcherDiagnosticsSnapshot>
-    @Binding var isChoosingDataLocation: Bool
     @Binding var pendingBackupRestoreDocument: WorkspaceBackupDocument?
     @Binding var isConfirmingBackupRestore: Bool
     @Binding var backupStatusMessage: String?

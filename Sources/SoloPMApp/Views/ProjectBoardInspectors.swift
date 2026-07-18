@@ -54,6 +54,7 @@ struct ProjectInspectorView: View {
     let onClose: () -> Void
 
     @State private var title: String
+    @State private var workspacePathInput: String
     @State private var isConfirmingArchive = false
     @State private var isConfirmingDelete = false
 
@@ -68,6 +69,7 @@ struct ProjectInspectorView: View {
         self.onReviewDevelopmentAutomation = onReviewDevelopmentAutomation
         self.onClose = onClose
         _title = State(initialValue: project.title)
+        _workspacePathInput = State(initialValue: project.workspacePath ?? "")
     }
 
     var body: some View {
@@ -108,14 +110,31 @@ struct ProjectInspectorView: View {
                 LabeledContent("Current", value: project.workspaceDisplayName ?? "Not set")
                     .accessibilityIdentifier("project-workspace-current")
 
+                LocalPathSelectionField(
+                    title: "Project directory path",
+                    text: $workspacePathInput,
+                    selectionKind: .directory,
+                    accessibilityIdentifier: "project-workspace-path-input",
+                    browseAccessibilityIdentifier: "project-workspace-choose",
+                    canCreateDirectories: true,
+                    onSelection: { applyProjectDirectory(url: $0) }
+                )
+                .disabled(project.isArchived)
+                if workspacePathInput.isEmpty == false && workspacePathInput.hasPrefix("/") == false {
+                    Label("Enter an absolute path beginning with /.", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("project-workspace-path-validation")
+                }
+
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 8) {
-                        chooseProjectDirectoryButton
+                        applyProjectDirectoryButton
                         clearProjectDirectoryButton
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
-                        chooseProjectDirectoryButton
+                        applyProjectDirectoryButton
                         clearProjectDirectoryButton
                     }
                 }
@@ -233,23 +252,31 @@ struct ProjectInspectorView: View {
 
     private func refreshFields(from project: ProjectBoardProject) {
         title = project.title
+        workspacePathInput = project.workspacePath ?? ""
     }
 
-    private var chooseProjectDirectoryButton: some View {
+    private var applyProjectDirectoryButton: some View {
         Button {
-            chooseProjectDirectory()
+            let path = workspacePathInput.trimmingCharacters(in: .whitespacesAndNewlines)
+            applyProjectDirectory(url: URL(fileURLWithPath: path, isDirectory: true))
         } label: {
-            Label("Choose Directory", systemImage: "folder.badge.plus")
+            Label("Apply Path", systemImage: "checkmark.circle")
         }
-        .disabled(project.isArchived)
-        .help("Choose the local folder SoloPM can use for this project")
-        .accessibilityIdentifier("project-workspace-choose")
-        .accessibilityHint("Opens a folder picker and stores the selected project directory locally.")
+        .disabled(
+            project.isArchived
+                || workspacePathInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || workspacePathInput.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/") == false
+        )
+        .help("Store the entered project directory and its local permission")
+        .accessibilityIdentifier("project-workspace-apply-path")
+        .accessibilityHint("Validates and stores the project directory entered in the path field.")
     }
 
     private var clearProjectDirectoryButton: some View {
         Button {
-            _ = viewModel.clearProjectWorkspacePath(projectID: project.id)
+            if viewModel.clearProjectWorkspacePath(projectID: project.id) {
+                workspacePathInput = ""
+            }
         } label: {
             Label("Clear Directory", systemImage: "xmark.circle")
         }
@@ -259,35 +286,34 @@ struct ProjectInspectorView: View {
         .accessibilityHint("Removes the stored project directory from SoloPM without deleting files.")
     }
 
-    private func chooseProjectDirectory() {
+    private func applyProjectDirectory(url: URL) {
         #if canImport(AppKit)
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = true
-        panel.prompt = String(localized: "Choose")
-        panel.message = String(localized: "Choose the local folder SoloPM can use for this project")
-        panel.begin { response in
-            guard response == .OK, let url = panel.url else {
-                return
-            }
-            let bookmarkData: Data
-            do {
-                bookmarkData = try url.bookmarkData(
-                    options: [.withSecurityScope],
-                    includingResourceValuesForKeys: nil,
-                    relativeTo: nil
-                )
-            } catch {
-                DispatchQueue.main.async {
-                    viewModel.reportProjectWorkspaceSelectionFailure()
-                }
-                return
-            }
-            DispatchQueue.main.async {
-                _ = viewModel.assignProjectWorkspacePath(url.path, bookmarkData: bookmarkData, projectID: project.id)
-            }
+        let standardizedURL = url.standardizedFileURL
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: standardizedURL.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            viewModel.reportProjectWorkspaceSelectionFailure()
+            return
+        }
+        let bookmarkData: Data
+        do {
+            // The bookmark keeps both typed and Finder-selected paths on the
+            // same security-scoped persistence boundary used by automation.
+            bookmarkData = try standardizedURL.bookmarkData(
+                options: [.withSecurityScope],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+        } catch {
+            viewModel.reportProjectWorkspaceSelectionFailure()
+            return
+        }
+        if viewModel.assignProjectWorkspacePath(
+            standardizedURL.path,
+            bookmarkData: bookmarkData,
+            projectID: project.id
+        ) {
+            workspacePathInput = standardizedURL.path
         }
         #endif
     }
@@ -326,6 +352,19 @@ private struct ProjectDevelopmentAutomationPanel: View {
 
     private var readiness: ProjectDevelopmentAutomationReadiness {
         viewModel.developmentAutomationReadiness(for: project, task: viewModel.selectedTask)
+    }
+
+    private func repositoryRelativePath(for url: URL) -> String {
+        guard let workspacePath = project.workspacePath else {
+            return url.path
+        }
+        let workspaceURL = URL(fileURLWithPath: workspacePath, isDirectory: true).standardizedFileURL
+        let selectedURL = url.standardizedFileURL
+        let workspacePrefix = workspaceURL.path.hasSuffix("/") ? workspaceURL.path : "\(workspaceURL.path)/"
+        guard selectedURL.path.hasPrefix(workspacePrefix) else {
+            return selectedURL.path
+        }
+        return String(selectedURL.path.dropFirst(workspacePrefix.count))
     }
 
     private var developmentProgress: ProjectDevelopmentAutomationProgress {
@@ -399,9 +438,14 @@ private struct ProjectDevelopmentAutomationPanel: View {
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("project-development-automation-edit-operation")
 
-                TextField("Repository file path", text: $repositoryEditRelativePath)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("project-development-automation-edit-path")
+                LocalPathSelectionField(
+                    title: "Repository file path",
+                    text: $repositoryEditRelativePath,
+                    selectionKind: .file,
+                    accessibilityIdentifier: "project-development-automation-edit-path",
+                    baseDirectoryURL: project.workspacePath.map { URL(fileURLWithPath: $0, isDirectory: true) },
+                    selectedPath: repositoryRelativePath(for:)
+                )
 
                 TextField("Expected SHA for updates", text: $repositoryEditExpectedSHA256)
                     .textFieldStyle(.roundedBorder)

@@ -1850,3 +1850,13 @@
 "The global shortcut event handler is unavailable." = "グローバルショートカットのイベント処理を利用できません。";
 "Option + Space is already used by another app." = "Option + Spaceは別のアプリで使用されています。";
 "Option + Space could not be registered on this Mac." = "このMacではOption + Spaceを登録できませんでした。";
+"Browse…" = "参照…";
+"Choose a folder in Finder." = "Finder形式の画面でフォルダを選択します。";
+"Choose a file in Finder." = "Finder形式の画面でファイルを選択します。";
+"Choose a folder or enter its path directly" = "フォルダを選択するか、パスを直接入力してください";
+"Choose a file or enter its path directly" = "ファイルを選択するか、パスを直接入力してください";
+"Project directory path" = "プロジェクトディレクトリのパス";
+"Apply Path" = "パスを適用";
+"Store the entered project directory and its local permission" = "入力したプロジェクトディレクトリとローカル権限を保存します";
+"Validates and stores the project directory entered in the path field." = "入力欄のプロジェクトディレクトリを検証して保存します。";
+"Enter an absolute path beginning with /." = "/ から始まる絶対パスを入力してください。";

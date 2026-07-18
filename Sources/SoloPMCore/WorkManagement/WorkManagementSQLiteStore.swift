@@ -541,6 +541,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             subtitle: subtitle,
             hasWorkspaceDirectory: project.workspacePath != nil,
             hasWorkspaceBookmark: project.workspaceBookmarkData?.isEmpty == false,
+            workspacePath: project.workspacePath,
             workspaceDisplayName: workspaceDisplayName(for: project.workspacePath),
             columns: columns,
             artifacts: projectArtifacts,

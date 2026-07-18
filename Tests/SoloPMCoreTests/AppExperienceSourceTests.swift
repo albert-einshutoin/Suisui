@@ -2591,14 +2591,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("Remove artifact link"))
         XCTAssertTrue(source.contains("viewModel.deleteProjectArtifact"))
         XCTAssertTrue(source.contains("Section(\"Project Directory\")"))
-        XCTAssertTrue(source.contains("chooseProjectDirectory()"))
+        XCTAssertTrue(source.contains("applyProjectDirectory(url:"))
         XCTAssertTrue(source.contains("viewModel.assignProjectWorkspacePath"))
         XCTAssertTrue(source.contains("viewModel.clearProjectWorkspacePath"))
         XCTAssertTrue(source.contains("viewModel.reportProjectWorkspaceSelectionFailure"))
         XCTAssertFalse(source.contains("let bookmarkData = try? url.bookmarkData"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-workspace-current\")"))
-        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-workspace-choose\")"))
+        XCTAssertTrue(source.contains("browseAccessibilityIdentifier: \"project-workspace-choose\""))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-workspace-clear\")"))
+        XCTAssertTrue(source.contains("LocalPathSelectionField("))
+        XCTAssertTrue(source.contains("accessibilityIdentifier: \"project-workspace-path-input\""))
+        XCTAssertTrue(source.contains("applyProjectDirectory(url:"))
+        XCTAssertTrue(modelSource.contains("public var workspacePath: String?"))
         XCTAssertTrue(source.contains("Section(\"Development Automation\")"))
         XCTAssertTrue(source.contains("ProjectDevelopmentAutomationPanel("))
         XCTAssertTrue(source.contains("onReviewDevelopmentAutomation: onReviewDevelopmentAutomation"))
@@ -2705,6 +2709,31 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(storeSource.contains("func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact"))
         XCTAssertTrue(storeSource.contains("func deleteProjectArtifact(id: Int64) throws"))
         XCTAssertTrue(sqliteStoreSource.contains("SQLiteArtifactStore(connection: connection)"))
+    }
+
+    func testPathInputsSupportTypingAndNativeFinderSelection() throws {
+        let componentPath = packageRoot().appendingPathComponent("Sources/SoloPMApp/Views/LocalPathSelectionField.swift")
+        guard FileManager.default.fileExists(atPath: componentPath.path) else {
+            XCTFail("LocalPathSelectionField.swift must provide the shared typed path and Finder picker control.")
+            return
+        }
+        let componentSource = try readPackageFile("Sources/SoloPMApp/Views/LocalPathSelectionField.swift")
+        let settingsSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsFeatureViews.swift")
+        let projectSource = try readProjectBoardInspectorSource()
+
+        XCTAssertTrue(componentSource.contains("TextField("))
+        XCTAssertTrue(componentSource.contains("NSOpenPanel()"))
+        XCTAssertTrue(componentSource.contains("panel.canChooseFiles = selectionKind.canChooseFiles"))
+        XCTAssertTrue(componentSource.contains("panel.canChooseDirectories = selectionKind.canChooseDirectories"))
+        XCTAssertTrue(componentSource.contains("panel.directoryURL = initialDirectoryURL"))
+        XCTAssertTrue(componentSource.contains(".accessibilityIdentifier(accessibilityIdentifier)"))
+        XCTAssertTrue(componentSource.contains(#"browseAccessibilityIdentifier ?? "\(accessibilityIdentifier)-browse""#))
+
+        XCTAssertTrue(settingsSource.contains("accessibilityIdentifier: \"settings-whisper-cpp-executable-path\""))
+        XCTAssertTrue(settingsSource.contains("accessibilityIdentifier: \"settings-kokoro-executable-path\""))
+        XCTAssertTrue(settingsSource.contains("accessibilityIdentifier: \"settings-default-workspace-path\""))
+        XCTAssertTrue(settingsSource.contains("accessibilityIdentifier: \"settings-mcp-working-directory\""))
+        XCTAssertTrue(projectSource.contains("accessibilityIdentifier: \"project-development-automation-edit-path\""))
     }
 
     func testProjectDetailSurfacesMilestonesTimelineAndAssistantWithoutDroppingExistingSections() throws {
@@ -4627,7 +4656,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(aiTabSource.contains("settingsViewModel.selectableTTSProviders"))
         XCTAssertTrue(aiTabSource.contains("SelectedTTSProviderStatusRow(row: settingsViewModel.ttsProviderReadinessRow)"))
         XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-provider-picker\")"))
-        XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-kokoro-executable-path\")"))
+        XCTAssertTrue(aiTabSource.contains("accessibilityIdentifier: \"settings-kokoro-executable-path\""))
         XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-language-picker\")"))
         XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-voice-id\")"))
         XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-test-play\")"))
