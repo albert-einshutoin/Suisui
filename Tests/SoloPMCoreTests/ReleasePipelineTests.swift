@@ -312,6 +312,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("release app bundle is missing action plan schema resource"))
         XCTAssertTrue(script.contains("release app bundle is missing Sparkle framework"))
         XCTAssertTrue(script.contains("release app bundle is missing Sparkle updater app"))
+        XCTAssertTrue(script.contains("release app is missing pre-sign preparation marker"))
+        XCTAssertTrue(script.contains("release app was not stripped before signing"))
+        XCTAssertTrue(script.contains("Sparkle development assets were not pruned before signing"))
+        XCTAssertTrue(script.contains("check_release_bundle_inventory.sh"))
     }
 
     func testReleasePreflightRequiresProductionSparkleFeedMetadata() throws {
