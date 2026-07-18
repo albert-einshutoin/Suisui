@@ -3610,6 +3610,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-next-week\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-day-cell-\\(day.dateKey)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-count-badge-\\(day.dateKey)-total\")"))
+        XCTAssertTrue(workflowSource.contains("day.totalTaskCount != day.openTaskCount"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-count-badge-\\(day.dateKey)-in-progress\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-count-badge-\\(day.dateKey)-blocked\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-count-badge-\\(day.dateKey)-missed\")"))

@@ -1124,7 +1124,10 @@ private struct DailyWorkloadDayCell: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 4)
-                if day.totalTaskCount > 0 {
+                // Avoid repeating the same count in a 96pt day card. Show the
+                // total only when completed work makes it meaningfully
+                // different from the open count.
+                if day.totalTaskCount > 0, day.totalTaskCount != day.openTaskCount {
                     Text(String(format: String(localized: "%d tasks"), day.totalTaskCount))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
