@@ -3,10 +3,27 @@ import SoloPMCore
 import SwiftUI
 import UniformTypeIdentifiers
 
+private enum ScheduleSurfaceMode: String, CaseIterable, Identifiable {
+    case overview
+    case timeline
+    case workload
+
+    var id: String { rawValue }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .overview: "Overview"
+        case .timeline: "Timeline"
+        case .workload: "Workload"
+        }
+    }
+}
+
 struct ScheduleWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     @State private var workloadReferenceDate = VisualEvidenceRuntimeContext.referenceDate()
     @State private var selectedWorkloadDayKey: String?
+    @State private var selectedMode: ScheduleSurfaceMode = .overview
 
     var body: some View {
         let scheduleReadModel = viewModel.derivedReadModels.schedule
@@ -14,27 +31,23 @@ struct ScheduleWorkflowView: View {
         let workloadReferenceDayKey = scheduleDateKey(for: workloadReferenceDate)
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 10) {
-                    Label("Schedule", systemImage: "calendar")
-                        .font(.title2.weight(.semibold))
-                    Spacer()
-                    Button {
-                        // Use the visible schedule date so drafted blocks match the week the user is reviewing.
-                        _ = viewModel.prepareScheduleDraft(on: workloadReferenceDate)
-                    } label: {
-                        Label("Generate Draft", systemImage: "wand.and.stars")
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        scheduleTitle
+                        Spacer(minLength: 12)
+                        modePicker
                     }
-                    .accessibilityIdentifier("schedule-generate-draft")
-                    .accessibilityHint("Combines the visible day's local time blocks and unscheduled tasks without writing to Calendar.")
+                    VStack(alignment: .leading, spacing: 10) {
+                        scheduleTitle
+                        modePicker
+                    }
                 }
 
-                ScheduleDraftApprovalControls(
-                    hasDraft: viewModel.scheduleDraft != nil,
-                    queueCalendarApply: {
-                        _ = viewModel.enqueueScheduleDraftCalendarApply(on: workloadReferenceDate)
-                    }
-                )
+                scheduleWorkflowArea
 
+                // One root-owned week/day navigator keeps every mode on the
+                // same temporal context. Mode-specific panels never maintain
+                // their own week cursor, which prevents silent draft drift.
                 ScheduleMiniCalendarPanel(
                     overview: workloadOverview,
                     selectedDayKey: $selectedWorkloadDayKey,
@@ -45,36 +58,45 @@ struct ScheduleWorkflowView: View {
                     selectDay: selectMiniCalendarDay
                 )
 
-                DailyWorkloadPanel(
-                    overview: workloadOverview,
-                    selectedDayKey: $selectedWorkloadDayKey,
-                    referenceDayKey: workloadReferenceDayKey,
-                    previousWeek: moveWorkloadToPreviousWeek,
-                    nextWeek: moveWorkloadToNextWeek,
-                    selectDay: selectMiniCalendarDay
-                )
-
-                WeeklyScheduleCockpitPanel(
-                    cockpit: scheduleReadModel.weeklyCockpit,
-                    queueReminderDraft: { task, day in
-                        viewModel.enqueueScheduleReminderDraft(
-                            for: task.id,
-                            sourceTranscript: "Schedule smart reminder draft",
-                            on: day.date
-                        )
+                Group {
+                    switch selectedMode {
+                    case .overview:
+                        VStack(alignment: .leading, spacing: 12) {
+                            WeeklyScheduleAgendaPanel(day: scheduleReadModel.weeklyCockpit.agendaDay)
+                            ScheduleStatusBanner(result: viewModel.scheduleApplyResult)
+                            HStack(alignment: .top, spacing: 12) {
+                                ScheduleDraftPanel(viewModel: viewModel)
+                                ScheduleUnscheduledPanel(
+                                    tasks: scheduleReadModel.unscheduledTasks,
+                                    viewModel: viewModel,
+                                    referenceDate: workloadReferenceDate
+                                )
+                            }
+                        }
+                    case .timeline:
+                        WeeklyScheduleTimelinePanel(cockpit: scheduleReadModel.weeklyCockpit)
+                    case .workload:
+                        VStack(alignment: .leading, spacing: 12) {
+                            DailyWorkloadPanel(
+                                overview: workloadOverview,
+                                selectedDayKey: $selectedWorkloadDayKey,
+                                referenceDayKey: workloadReferenceDayKey,
+                                selectDay: selectMiniCalendarDay
+                            )
+                            WeeklyScheduleReminderPanel(
+                                cockpit: scheduleReadModel.weeklyCockpit,
+                                queueReminderDraft: { task, day in
+                                    viewModel.enqueueScheduleReminderDraft(
+                                        for: task.id,
+                                        sourceTranscript: "Schedule smart reminder draft",
+                                        on: day.date
+                                    )
+                                }
+                            )
+                        }
                     }
-                )
-
-                ScheduleStatusBanner(result: viewModel.scheduleApplyResult)
-
-                HStack(alignment: .top, spacing: 12) {
-                    ScheduleDraftPanel(viewModel: viewModel)
-                    ScheduleUnscheduledPanel(
-                        tasks: scheduleReadModel.unscheduledTasks,
-                        viewModel: viewModel,
-                        referenceDate: workloadReferenceDate
-                    )
                 }
+                .accessibilityIdentifier("schedule-mode-\(selectedMode.rawValue)")
 
                 if let feedback = viewModel.todayCommandFeedback {
                     Label(feedback, systemImage: "info.circle")
@@ -90,6 +112,61 @@ struct ScheduleWorkflowView: View {
         .accessibilityIdentifier("schedule-workflow")
         .accessibilityLabel("Schedule")
         .accessibilityHint("Reviews workload and approval-ready schedule drafts from Review.")
+    }
+
+    private var scheduleTitle: some View {
+        Label("Schedule", systemImage: "calendar")
+            .font(.title2.weight(.semibold))
+    }
+
+    private var modePicker: some View {
+        Picker("Schedule View", selection: $selectedMode) {
+            ForEach(ScheduleSurfaceMode.allCases) { mode in
+                Text(mode.title).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(maxWidth: 360)
+        .accessibilityIdentifier("schedule-mode-picker")
+        .accessibilityHint("Switches the visible schedule detail while preserving the selected week and day.")
+    }
+
+    private var scheduleWorkflowArea: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                generateDraftButton
+                ScheduleDraftApprovalControls(
+                    hasDraft: viewModel.scheduleDraft != nil,
+                    queueCalendarApply: queueCalendarApply
+                )
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                generateDraftButton
+                ScheduleDraftApprovalControls(
+                    hasDraft: viewModel.scheduleDraft != nil,
+                    queueCalendarApply: queueCalendarApply
+                )
+            }
+        }
+        .padding(10)
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.card))
+        .accessibilityIdentifier("schedule-workflow-area")
+    }
+
+    private var generateDraftButton: some View {
+        Button {
+            // Use the root-owned date so every mode drafts the week the user sees.
+            _ = viewModel.prepareScheduleDraft(on: workloadReferenceDate)
+        } label: {
+            Label("Generate Draft", systemImage: "wand.and.stars")
+        }
+        .accessibilityIdentifier("schedule-generate-draft")
+        .accessibilityHint("Combines the visible day's local time blocks and unscheduled tasks without writing to Calendar.")
+    }
+
+    private func queueCalendarApply() {
+        _ = viewModel.enqueueScheduleDraftCalendarApply(on: workloadReferenceDate)
     }
 
     private func moveWorkloadToPreviousWeek() {
@@ -345,9 +422,8 @@ private extension DailyWorkloadDay {
     }
 }
 
-private struct WeeklyScheduleCockpitPanel: View {
+private struct WeeklyScheduleTimelinePanel: View {
     let cockpit: WeeklyScheduleCockpit
-    let queueReminderDraft: (ProjectBoardTask, WeeklyScheduleDay) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -385,13 +461,6 @@ private struct WeeklyScheduleCockpitPanel: View {
 
             WeeklyScheduleTimeAxisGrid(cockpit: cockpit)
 
-            HStack(alignment: .top, spacing: 12) {
-                WeeklyScheduleAgendaPanel(day: cockpit.agendaDay)
-                WeeklyScheduleReminderPanel(
-                    cockpit: cockpit,
-                    queueReminderDraft: queueReminderDraft
-                )
-            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -872,8 +941,6 @@ private struct DailyWorkloadPanel: View {
     let overview: DailyWorkloadOverview
     @Binding var selectedDayKey: String?
     let referenceDayKey: String
-    let previousWeek: () -> Void
-    let nextWeek: () -> Void
     let selectDay: (DailyWorkloadDay) -> Void
 
     private var selectedDay: DailyWorkloadDay? {
@@ -888,22 +955,6 @@ private struct DailyWorkloadPanel: View {
             HStack(alignment: .center, spacing: 10) {
                 Label("Daily Workload", systemImage: "calendar.day.timeline.left")
                     .font(.headline)
-                Spacer(minLength: 8)
-                Button(action: previousWeek) {
-                    Label("Previous Week", systemImage: "chevron.left")
-                }
-                .labelStyle(.iconOnly)
-                .help("Previous Week")
-                .accessibilityIdentifier("schedule-workload-previous-week")
-                .accessibilityLabel("Previous Week")
-
-                Button(action: nextWeek) {
-                    Label("Next Week", systemImage: "chevron.right")
-                }
-                .labelStyle(.iconOnly)
-                .help("Next Week")
-                .accessibilityIdentifier("schedule-workload-next-week")
-                .accessibilityLabel("Next Week")
             }
 
             Text("Local task counts and progress. External Calendar writes require review approval.")

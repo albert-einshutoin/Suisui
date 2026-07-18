@@ -1596,6 +1596,9 @@
 "Transcript ready" = "Transcript ready";
 "Fewer completions" = "Fewer completions";
 "More completions" = "More completions";
+"Workload" = "Workload";
+"Schedule View" = "Schedule View";
+"Switches the visible schedule detail while preserving the selected week and day." = "Switches the visible schedule detail while preserving the selected week and day.";
 "Commit changes" = "Commit changes";
 "Push branch" = "Push branch";
 "Create pull request" = "Create pull request";

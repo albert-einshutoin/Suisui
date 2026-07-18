@@ -3551,7 +3551,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workloadSource.contains("inboxUntriagedCount"))
         XCTAssertTrue(workloadSource.contains("private static func isInboxProject"))
 
-        XCTAssertTrue(workflowSource.contains("WeeklyScheduleCockpitPanel("))
+        XCTAssertTrue(workflowSource.contains("WeeklyScheduleTimelinePanel("))
         XCTAssertTrue(workflowSource.contains("let scheduleReadModel = viewModel.derivedReadModels.schedule"))
         XCTAssertTrue(workflowSource.contains("cockpit: scheduleReadModel.weeklyCockpit"))
         XCTAssertTrue(workflowSource.contains("ScheduleMiniCalendarPanel("))
@@ -3582,8 +3582,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("DailyWorkloadPanel("))
         XCTAssertTrue(workflowSource.contains("let workloadOverview = scheduleReadModel.workloadOverview"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-dashboard\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-previous-week\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-next-week\")"))
+        XCTAssertFalse(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-previous-week\")"))
+        XCTAssertFalse(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-next-week\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-day-cell-\\(day.dateKey)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-count-badge-\\(day.dateKey)-total\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-count-badge-\\(day.dateKey)-in-progress\")"))
@@ -3610,9 +3610,27 @@ final class AppExperienceSourceTests: XCTestCase {
         let dashboardStart = try XCTUnwrap(workflowSource.range(of: "private struct DailyWorkloadPanel"))
         let dashboardSource = String(workflowSource[dashboardStart.lowerBound...])
         XCTAssertFalse(dashboardSource.contains("applyScheduleDraftToCalendar"))
-        let weeklyStart = try XCTUnwrap(workflowSource.range(of: "private struct WeeklyScheduleCockpitPanel"))
+        let weeklyStart = try XCTUnwrap(workflowSource.range(of: "private struct WeeklyScheduleTimelinePanel"))
         let weeklyWorkflowSource = String(workflowSource[weeklyStart.lowerBound...])
         XCTAssertFalse(weeklyWorkflowSource.contains("applyScheduleDraftToCalendar"))
+    }
+
+    func testScheduleUsesProgressiveModesWithOneSharedWeekNavigation() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowScheduleView.swift")
+
+        XCTAssertTrue(source.contains("private enum ScheduleSurfaceMode"))
+        XCTAssertTrue(source.contains("case overview"))
+        XCTAssertTrue(source.contains("case timeline"))
+        XCTAssertTrue(source.contains("case workload"))
+        XCTAssertTrue(source.contains("Picker(\"Schedule View\", selection: $selectedMode)"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-mode-picker\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-mode-\\(selectedMode.rawValue)\")"))
+        XCTAssertTrue(source.contains("WeeklyScheduleTimelinePanel("))
+        XCTAssertTrue(source.contains("WeeklyScheduleAgendaPanel(day: scheduleReadModel.weeklyCockpit.agendaDay)"))
+        XCTAssertTrue(source.contains("WeeklyScheduleReminderPanel("))
+        XCTAssertEqual(source.components(separatedBy: "ScheduleMiniCalendarPanel(").count - 1, 1)
+        XCTAssertFalse(source.contains("schedule-workload-previous-week"))
+        XCTAssertFalse(source.contains("schedule-workload-next-week"))
     }
 
     func testAppAndCLIShareDefaultDatabaseLocation() throws {
