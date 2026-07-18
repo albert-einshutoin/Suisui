@@ -284,11 +284,33 @@ private struct DoneCompletionHeatmapView: View {
                             RoundedRectangle(cornerRadius: SoloPMRadius.control)
                                 .stroke(Color.secondary.opacity(0.18), lineWidth: 0.5)
                         )
+                        .overlay {
+                            if bucket.completedCount > 0 {
+                                Circle()
+                                    .fill(Color.primary.opacity(0.72))
+                                    .frame(
+                                        width: heatmapMarkerDiameter(for: bucket.completedCount),
+                                        height: heatmapMarkerDiameter(for: bucket.completedCount)
+                                    )
+                            }
+                        }
                         .accessibilityIdentifier("done-heatmap-day-\(bucket.dayKey)")
                         .accessibilityLabel(String(format: String(localized: "Completed tasks on %@"), bucket.dayKey))
                         .accessibilityValue(String(format: String(localized: "%d tasks"), bucket.completedCount))
                 }
             }
+
+            HStack(spacing: 6) {
+                Text("Fewer completions")
+                heatmapLegendCell(count: 0)
+                heatmapLegendCell(count: max(maxCompletedCount / 2, 1))
+                heatmapLegendCell(count: maxCompletedCount)
+                Text("More completions")
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("done-heatmap-legend")
 
             Text("Heatmap intensity is based on local completion history only.")
                 .font(.caption)
@@ -305,6 +327,31 @@ private struct DoneCompletionHeatmapView: View {
         }
         let normalized = min(Double(count) / Double(maxCompletedCount), 1.0)
         return SoloPMTone.positive.color.opacity(0.25 + normalized * 0.55)
+    }
+
+    private func heatmapMarkerDiameter(for count: Int) -> CGFloat {
+        guard count > 0 else {
+            return 0
+        }
+        let normalized = min(Double(count) / Double(maxCompletedCount), 1.0)
+        return 3 + CGFloat(normalized * 6)
+    }
+
+    private func heatmapLegendCell(count: Int) -> some View {
+        RoundedRectangle(cornerRadius: SoloPMRadius.control)
+            .fill(heatmapColor(for: count))
+            .frame(width: 18, height: 18)
+            .overlay {
+                if count > 0 {
+                    Circle()
+                        .fill(Color.primary.opacity(0.72))
+                        .frame(
+                            width: heatmapMarkerDiameter(for: count),
+                            height: heatmapMarkerDiameter(for: count)
+                        )
+                }
+            }
+            .accessibilityHidden(true)
     }
 }
 

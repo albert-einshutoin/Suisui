@@ -1619,6 +1619,7 @@ private struct InlineTaskComposer: View {
 }
 
 private struct BoardTaskCard: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let task: ProjectBoardTask
     let showsSupplementaryContent: Bool
     let onOpenDetails: () -> Void
@@ -1667,7 +1668,7 @@ private struct BoardTaskCard: View {
         .shadow(color: Color.black.opacity(isPointerHovered ? 0.10 : 0.04), radius: isPointerHovered ? 12 : 8, x: 0, y: isPointerHovered ? 4 : 2)
         .contentShape(RoundedRectangle(cornerRadius: 8))
         .onHover { isPointerHovered = $0 }
-        .animation(.snappy(duration: 0.16), value: isPointerHovered)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.16), value: isPointerHovered)
         .accessibilityElement(children: .contain)
     }
 
