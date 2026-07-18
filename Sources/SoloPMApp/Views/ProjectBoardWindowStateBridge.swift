@@ -40,7 +40,7 @@ struct ProjectBoardWindowStateBridge: NSViewRepresentable {
         private weak var window: NSWindow?
         private var sceneID: UUID
         private var observers: [NSObjectProtocol] = []
-        private var pendingSave: DispatchWorkItem?
+        private var pendingSave: Task<Void, Never>?
         private var hasRestoredCurrentWindow = false
         private let defaults: UserDefaults
 
@@ -125,11 +125,14 @@ struct ProjectBoardWindowStateBridge: NSViewRepresentable {
 
         private func scheduleSave(frame: NSRect) {
             pendingSave?.cancel()
-            let item = DispatchWorkItem { [weak self] in
+            pendingSave = Task { [weak self] in
+                // Coalesce continuous drag notifications without scheduling a
+                // layout correction on the run loop. The latest frame still
+                // wins, while cancellation prevents stale geometry writes.
+                try? await Task.sleep(for: .milliseconds(200))
+                guard !Task.isCancelled else { return }
                 self?.saveFrame(frame)
             }
-            pendingSave = item
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: item)
         }
 
         private func saveFrame(_ frame: NSRect) {

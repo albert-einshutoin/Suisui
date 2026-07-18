@@ -287,7 +287,7 @@ private struct DoneCompletionHeatmapView: View {
                         .overlay {
                             if bucket.completedCount > 0 {
                                 Circle()
-                                    .fill(Color.primary.opacity(0.72))
+                                    .fill(SoloPMTone.neutral.color.opacity(0.72))
                                     .frame(
                                         width: heatmapMarkerDiameter(for: bucket.completedCount),
                                         height: heatmapMarkerDiameter(for: bucket.completedCount)
@@ -344,7 +344,7 @@ private struct DoneCompletionHeatmapView: View {
             .overlay {
                 if count > 0 {
                     Circle()
-                        .fill(Color.primary.opacity(0.72))
+                        .fill(SoloPMTone.neutral.color.opacity(0.72))
                         .frame(
                             width: heatmapMarkerDiameter(for: count),
                             height: heatmapMarkerDiameter(for: count)
