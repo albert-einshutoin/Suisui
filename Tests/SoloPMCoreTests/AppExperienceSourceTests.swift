@@ -801,6 +801,25 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(japaneseKeys.contains("Start with %@, then check milestone %@."))
     }
 
+    func testInboxVoiceMetadataAndActionPlanEnumsDoNotExposeRawValues() throws {
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowInboxView.swift")
+        let reviewSource = try readPackageFile("Sources/SoloPMApp/Views/ActionReviewPanel.swift")
+        let voiceSource = try readPackageFile("Sources/SoloPMApp/Views/VoiceCaptureView.swift")
+        let localizedDisplaySource = try readPackageFile("Sources/SoloPMApp/LocalizedDisplay.swift")
+
+        XCTAssertFalse(workflowSource.contains("Text(capture.sourceKind.rawValue)"))
+        XCTAssertFalse(workflowSource.contains("value: capture.sourceKind.rawValue"))
+        XCTAssertFalse(workflowSource.contains("value: capture.classificationStatus.rawValue"))
+        XCTAssertFalse(workflowSource.contains("value: capture.transcriptionStatus.rawValue"))
+        XCTAssertFalse(reviewSource.contains("Text(riskLevel.rawValue.capitalized)"))
+        XCTAssertFalse(reviewSource.contains("Text(item.editedAction.tool.rawValue)"))
+        XCTAssertFalse(voiceSource.contains("Text(plan.riskLevel.rawValue.capitalized)"))
+        XCTAssertFalse(voiceSource.contains("Text(action.tool.rawValue)"))
+        XCTAssertTrue(localizedDisplaySource.contains("func localizedInboxCaptureSource"))
+        XCTAssertTrue(localizedDisplaySource.contains("func localizedActionTool"))
+        XCTAssertTrue(localizedDisplaySource.contains("func localizedRiskLevel"))
+    }
+
     func testThemePickerIsOwnedOnlyBySettingsAppearanceSectionAcrossAppSources() throws {
         let expectedOwner = "Sources/SoloPMApp/Views/SettingsAppearanceSection.swift"
         let markers = [
@@ -2451,16 +2470,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-review-status\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityElement(children: .contain)"))
         XCTAssertTrue(workflowSource.contains("Transcript only"))
-        XCTAssertTrue(workflowSource.contains("Transcript-only voice capture, duration \\(capture.durationLabel), waveform preview"))
+        XCTAssertTrue(workflowSource.contains("Transcript-only voice capture, duration %@, waveform preview"))
         XCTAssertFalse(workflowSource.contains("Playback unavailable in this MVP"))
         XCTAssertFalse(workflowSource.contains("Button {} label:"))
         XCTAssertTrue(workflowSource.contains(".accessibilityLabel(title)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityValue(value)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityLabel(\"Voice intake detail for \\(taskTitle)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityValue(captureAccessibilityValue(capture))"))
-        XCTAssertTrue(workflowSource.contains("capture.durationLabel"))
+        XCTAssertTrue(workflowSource.contains("localizedInboxCaptureDuration(capture.durationSeconds)"))
         XCTAssertTrue(workflowSource.contains("capture.transcript"))
-        XCTAssertTrue(workflowSource.contains("capture.classificationStatus.rawValue"))
+        XCTAssertTrue(workflowSource.contains("localizedInboxCaptureClassification(capture.classificationStatus)"))
+        XCTAssertTrue(workflowSource.contains("localizedInboxCaptureTranscription(capture.transcriptionStatus)"))
+        XCTAssertTrue(workflowSource.contains("localizedInboxCaptureSource(capture.sourceKind)"))
         XCTAssertTrue(workflowSource.contains("Transcript failed. Review the original voice memo before converting."))
         XCTAssertTrue(workflowSource.contains("AI interpretation unavailable because transcription failed."))
         XCTAssertTrue(workflowSource.contains("No AI interpretation yet."))

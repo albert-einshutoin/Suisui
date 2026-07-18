@@ -359,7 +359,7 @@ private struct InboxVoiceIntakeDetail: View {
                     Label("Voice Intake", systemImage: "waveform")
                         .font(.caption.weight(.semibold))
                     Spacer(minLength: 8)
-                    Text(capture.sourceKind.rawValue)
+                    Text(localizedInboxCaptureSource(capture.sourceKind))
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.blue)
                         .padding(.horizontal, 7)
@@ -370,10 +370,10 @@ private struct InboxVoiceIntakeDetail: View {
                 voicePlayback(capture)
 
                 LazyVGrid(columns: metadataColumns, alignment: .leading, spacing: 6) {
-                    metadataRow(title: "Source", value: capture.sourceKind.rawValue)
-                    metadataRow(title: "Duration", value: capture.durationLabel)
-                    metadataRow(title: "Classification", value: capture.classificationStatus.rawValue)
-                    metadataRow(title: "Transcription", value: capture.transcriptionStatus.rawValue)
+                    metadataRow(title: "Source", value: localizedInboxCaptureSource(capture.sourceKind))
+                    metadataRow(title: "Duration", value: localizedInboxCaptureDuration(capture.durationSeconds))
+                    metadataRow(title: "Classification", value: localizedInboxCaptureClassification(capture.classificationStatus))
+                    metadataRow(title: "Transcription", value: localizedInboxCaptureTranscription(capture.transcriptionStatus))
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("inbox-voice-source-metadata")
@@ -448,7 +448,7 @@ private struct InboxVoiceIntakeDetail: View {
 
             Spacer(minLength: 8)
 
-            Text(capture.durationLabel)
+            Text(localizedInboxCaptureDuration(capture.durationSeconds))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
         }
@@ -457,7 +457,10 @@ private struct InboxVoiceIntakeDetail: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-voice-transcript-preview")
         .accessibilityLabel("Voice transcript preview")
-        .accessibilityValue("Transcript-only voice capture, duration \(capture.durationLabel), waveform preview")
+        .accessibilityValue(localizedDisplay(
+            "Transcript-only voice capture, duration %@, waveform preview",
+            localizedInboxCaptureDuration(capture.durationSeconds)
+        ))
     }
 
     private var waveformBars: [CGFloat] {
@@ -482,10 +485,10 @@ private struct InboxVoiceIntakeDetail: View {
                 .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
                 .accessibilityIdentifier("inbox-voice-memo-editor")
                 .accessibilityLabel("Inbox voice note")
-                .accessibilityValue(normalizedMemo(memoDraft).isEmpty ? "No memo yet." : normalizedMemo(memoDraft))
+                .accessibilityValue(normalizedMemo(memoDraft).isEmpty ? localizedDisplay("No memo yet.") : normalizedMemo(memoDraft))
 
             HStack {
-                Text(normalizedMemo(capture.memo).isEmpty ? "No memo yet." : "Saved note available.")
+                Text(localizedDisplay(normalizedMemo(capture.memo).isEmpty ? "No memo yet." : "Saved note available."))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
@@ -509,16 +512,16 @@ private struct InboxVoiceIntakeDetail: View {
         // Keep a parent summary for release marker scans while preserving child
         // identifiers for transcript, interpretation, playback, and memo controls.
         var values = [
-            "Source: \(capture.sourceKind.rawValue)",
-            "Duration: \(capture.durationLabel)",
-            "Classification: \(capture.classificationStatus.rawValue)",
-            "Transcription: \(capture.transcriptionStatus.rawValue)",
-            "Transcript: \(transcriptReviewText(for: capture))",
-            "Interpretation: \(interpretationReviewText(for: capture))",
-            "Review: \(reviewStatusText(for: capture))"
+            localizedDisplay("Source: %@", localizedInboxCaptureSource(capture.sourceKind)),
+            localizedDisplay("Duration: %@", localizedInboxCaptureDuration(capture.durationSeconds)),
+            localizedDisplay("Classification: %@", localizedInboxCaptureClassification(capture.classificationStatus)),
+            localizedDisplay("Transcription: %@", localizedInboxCaptureTranscription(capture.transcriptionStatus)),
+            localizedDisplay("Transcript: %@", transcriptReviewText(for: capture)),
+            localizedDisplay("Interpretation: %@", interpretationReviewText(for: capture)),
+            localizedDisplay("Review: %@", reviewStatusText(for: capture))
         ]
         if let memo = capture.memo {
-            values.append("Memo: \(memo)")
+            values.append(localizedDisplay("Memo: %@", memo))
         }
         return values.joined(separator: ", ")
     }
@@ -542,33 +545,33 @@ private struct InboxVoiceIntakeDetail: View {
     private func transcriptReviewText(for capture: InboxCaptureRecord) -> String {
         switch capture.transcriptionStatus {
         case .failed:
-            return "Transcript failed. Review the original voice memo before converting."
+            return localizedDisplay("Transcript failed. Review the original voice memo before converting.")
         case .pending:
-            return "Transcript pending."
+            return localizedDisplay("Transcript pending.")
         case .succeeded:
             let transcript = capture.transcript?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return transcript.isEmpty ? "Transcript is empty." : transcript
+            return transcript.isEmpty ? localizedDisplay("Transcript is empty.") : transcript
         }
     }
 
     private func interpretationReviewText(for capture: InboxCaptureRecord) -> String {
         guard capture.transcriptionStatus != .failed else {
-            return "AI interpretation unavailable because transcription failed."
+            return localizedDisplay("AI interpretation unavailable because transcription failed.")
         }
         let interpretation = capture.interpretationSummary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return interpretation.isEmpty ? "No AI interpretation yet." : interpretation
+        return interpretation.isEmpty ? localizedDisplay("No AI interpretation yet.") : interpretation
     }
 
     private func reviewStatusText(for capture: InboxCaptureRecord) -> String {
         switch capture.transcriptionStatus {
         case .failed:
-            return "Needs transcript review"
+            return localizedDisplay("Needs transcript review")
         case .pending:
-            return "Waiting for transcription"
+            return localizedDisplay("Waiting for transcription")
         case .succeeded:
             return capture.interpretationSummary?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                ? "Ready for triage"
-                : "Transcript ready"
+                ? localizedDisplay("Ready for triage")
+                : localizedDisplay("Transcript ready")
         }
     }
 
