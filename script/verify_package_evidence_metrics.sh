@@ -19,7 +19,7 @@ if [[ ! -f "$MANIFEST_PATH" ]]; then
   exit 2
 fi
 if [[ ! -f "$ARTIFACT_PATH" ]]; then
-  echo "missing package evidence artifact: $ARTIFACT_PATH" >&2
+  echo "missing release artifact file: $ARTIFACT_PATH" >&2
   exit 2
 fi
 if ! plutil -convert json -o /dev/null "$MANIFEST_PATH" 2>/dev/null; then
