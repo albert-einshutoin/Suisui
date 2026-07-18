@@ -21,6 +21,8 @@ REQUIRE_NOTARIZED_PACKAGE="${SOLOPM_REQUIRE_NOTARIZED_PACKAGE:-1}"
 
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
+APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+PREPARATION_MARKER="$APP_BUNDLE/Contents/Resources/release-preparation.env"
 RELEASE_DIR="$DIST_DIR/releases"
 SMOKE_RELEASE_DIR="$DIST_DIR/package-smoke"
 STAGING_DIR="$DIST_DIR/package-staging"
@@ -77,6 +79,28 @@ if [[ "$REQUIRE_NOTARIZED_PACKAGE" == "1" ]]; then
   spctl -a -vv "$APP_BUNDLE"
 fi
 
+"$ROOT_DIR/script/check_release_bundle_inventory.sh" "$APP_BUNDLE"
+
+APP_BUNDLE_BYTES="$(find "$APP_BUNDLE" -type f -exec stat -f '%z' {} + | awk '{ total += $1 } END { printf "%.0f", total }')"
+APP_BINARY_BYTES="$(stat -f '%z' "$APP_BINARY")"
+STRIP_MODE="unknown"
+SPARKLE_PRUNE_MODE="unknown"
+if [[ -f "$PREPARATION_MARKER" ]]; then
+  STRIP_MODE="$(awk -F= '$1 == "STRIP_MODE" { print $2; exit }' "$PREPARATION_MARKER")"
+  SPARKLE_PRUNE_MODE="$(awk -F= '$1 == "SPARKLE_PRUNE_MODE" { print $2; exit }' "$PREPARATION_MARKER")"
+fi
+
+if [[ "$REQUIRE_SIGNED_PACKAGE" == "1" ]]; then
+  if [[ "$STRIP_MODE" != "local-symbols-removed" ]]; then
+    echo "release app was not stripped before signing; rebuild with ./script/sign_app.sh" >&2
+    exit 2
+  fi
+  if [[ "$SPARKLE_PRUNE_MODE" != "development-assets-removed" ]]; then
+    echo "Sparkle development assets were not pruned before signing; rebuild with ./script/sign_app.sh" >&2
+    exit 2
+  fi
+fi
+
 if [[ "$REQUIRE_SIGNED_PACKAGE" == "0" || "$REQUIRE_NOTARIZED_PACKAGE" == "0" ]]; then
   RELEASE_DIR="$SMOKE_RELEASE_DIR"
   DMG_PATH="$RELEASE_DIR/$ARTIFACT_BASENAME.dmg"
@@ -101,6 +125,8 @@ create_package_evidence() {
   local package_format="$2"
   local manifest_path="$artifact_path.package-evidence.json"
   local artifact_relative_path="${artifact_path#"$ROOT_DIR/"}"
+  local artifact_bytes
+  artifact_bytes="$(stat -f '%z' "$artifact_path")"
 
   {
     printf '{\n'
@@ -109,7 +135,12 @@ create_package_evidence() {
     printf '    "format": "%s",\n' "$(json_escape "$package_format")"
     printf '    "createdAt": "%s",\n' "$PACKAGE_CREATED_AT"
     printf '    "signedPackageRequired": %s,\n' "$([[ "$REQUIRE_SIGNED_PACKAGE" == "1" ]] && printf true || printf false)"
-    printf '    "notarizedPackageRequired": %s\n' "$([[ "$REQUIRE_NOTARIZED_PACKAGE" == "1" ]] && printf true || printf false)"
+    printf '    "notarizedPackageRequired": %s,\n' "$([[ "$REQUIRE_NOTARIZED_PACKAGE" == "1" ]] && printf true || printf false)"
+    printf '    "appBundleBytes": %s,\n' "$APP_BUNDLE_BYTES"
+    printf '    "appBinaryBytes": %s,\n' "$APP_BINARY_BYTES"
+    printf '    "artifactBytes": %s,\n' "$artifact_bytes"
+    printf '    "stripMode": "%s",\n' "$(json_escape "$STRIP_MODE")"
+    printf '    "sparklePruneMode": "%s"\n' "$(json_escape "$SPARKLE_PRUNE_MODE")"
     printf '  },\n'
     printf '  "source": {\n'
     printf '    "gitCommit": "%s"\n' "$(json_escape "$SOURCE_GIT_COMMIT")"
@@ -137,7 +168,7 @@ if [[ "$PACKAGE_FORMAT" == "dmg" || "$PACKAGE_FORMAT" == "all" ]]; then
 fi
 
 if [[ "$PACKAGE_FORMAT" == "zip" || "$PACKAGE_FORMAT" == "all" ]]; then
-  ditto -c -k --keepParent "$APP_BUNDLE" "$ZIP_PATH"
+  COPYFILE_DISABLE=1 ditto -c -k --keepParent --norsrc --noextattr "$APP_BUNDLE" "$ZIP_PATH"
   create_checksum "$ZIP_PATH"
   create_package_evidence "$ZIP_PATH" "zip"
 fi

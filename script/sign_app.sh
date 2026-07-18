@@ -96,6 +96,9 @@ if [[ ! -x "$APP_BINARY" ]]; then
   exit 2
 fi
 
+"$ROOT_DIR/script/prepare_release_bundle.sh" "$APP_BUNDLE"
+"$ROOT_DIR/script/check_release_bundle_inventory.sh" "$APP_BUNDLE"
+
 CODESIGN_ARGS=(
   --force
   --timestamp
@@ -111,7 +114,10 @@ fi
 if [[ -d "$APP_CONTENTS/Frameworks" ]]; then
   while IFS= read -r -d '' nested_code; do
     codesign "${CODESIGN_ARGS[@]}" "$nested_code"
-  done < <(find "$APP_CONTENTS/Frameworks" \( -name "*.framework" -o -name "*.dylib" -o -name "*.xpc" -o -name "*.appex" \) -print0)
+  done < <(find "$APP_CONTENTS/Frameworks" -depth \( \
+    \( -type d \( -name "*.framework" -o -name "*.xpc" -o -name "*.appex" -o -name "*.app" \) \) \
+    -o \( -type f -name "*.dylib" \) \
+  \) -print0)
 fi
 
 codesign "${CODESIGN_ARGS[@]}" "$APP_BUNDLE"

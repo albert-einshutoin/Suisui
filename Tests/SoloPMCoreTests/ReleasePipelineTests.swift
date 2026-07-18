@@ -13886,6 +13886,118 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains(".package-evidence.json"))
     }
 
+    func testReleaseBundlePreparationStripsBinaryAndPrunesOnlyNonRuntimeSparkleAssets() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-bundle-preparation-\(UUID().uuidString)", isDirectory: true)
+        let appURL = fixtureRoot.appendingPathComponent("SoloPM.app", isDirectory: true)
+        let binaryURL = appURL.appendingPathComponent("Contents/MacOS/SoloPM")
+        let sparkleVersionURL = appURL
+            .appendingPathComponent("Contents/Frameworks/Sparkle.framework/Versions/B", isDirectory: true)
+        let fakeStripURL = fixtureRoot.appendingPathComponent("fake-strip.sh")
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for relativePath in [
+            "Headers",
+            "PrivateHeaders",
+            "Modules",
+            "Resources",
+            "Updater.app",
+            "XPCServices"
+        ] {
+            try FileManager.default.createDirectory(
+                at: sparkleVersionURL.appendingPathComponent(relativePath, isDirectory: true),
+                withIntermediateDirectories: true
+            )
+        }
+        try "runtime".write(
+            to: sparkleVersionURL.appendingPathComponent("Autoupdate"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try FileManager.default.createDirectory(
+            at: binaryURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try "unstripped".write(to: binaryURL, atomically: true, encoding: .utf8)
+        try "#!/usr/bin/env bash\nprintf 'stripped' >>\"$2\"\n"
+            .write(to: fakeStripURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fakeStripURL.path)
+
+        let result = try runScript(
+            "script/prepare_release_bundle.sh",
+            arguments: [appURL.path],
+            environment: ["SOLOPM_STRIP_TOOL": fakeStripURL.path]
+        )
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(try String(contentsOf: binaryURL).contains("stripped"))
+        for removedPath in ["Headers", "PrivateHeaders", "Modules"] {
+            XCTAssertFalse(FileManager.default.fileExists(
+                atPath: sparkleVersionURL.appendingPathComponent(removedPath).path
+            ))
+        }
+        for retainedPath in ["Resources", "Updater.app", "XPCServices", "Autoupdate"] {
+            XCTAssertTrue(FileManager.default.fileExists(
+                atPath: sparkleVersionURL.appendingPathComponent(retainedPath).path
+            ))
+        }
+        XCTAssertTrue(result.output.contains("release bundle prepared before signing"))
+    }
+
+    func testReleaseBundleInventoryRejectsBundledVoiceModelsAndReportsLargestFiles() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-bundle-inventory-\(UUID().uuidString)", isDirectory: true)
+        let appURL = fixtureRoot.appendingPathComponent("SoloPM.app", isDirectory: true)
+        let modelURL = appURL.appendingPathComponent("Contents/Resources/Models/ggml-tiny.bin")
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        try FileManager.default.createDirectory(
+            at: modelURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data(repeating: 0x41, count: 512).write(to: modelURL)
+
+        let result = try runScript("script/check_release_bundle_inventory.sh", arguments: [appURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("Largest bundled files"))
+        XCTAssertTrue(result.output.contains("BLOCKER: bundled voice model binary is not allowed"))
+        XCTAssertTrue(result.output.contains("Contents/Resources/Models/ggml-tiny.bin"))
+    }
+
+    func testDistributionPackagingUsesCleanZipAndRecordsSizeEvidence() throws {
+        let packageScript = try readPackageFile("script/package_release.sh")
+        let signingScript = try readPackageFile("script/sign_app.sh")
+
+        XCTAssertTrue(packageScript.contains("COPYFILE_DISABLE=1"))
+        XCTAssertTrue(packageScript.contains("--norsrc"))
+        XCTAssertTrue(packageScript.contains("--noextattr"))
+        XCTAssertTrue(packageScript.contains("\"appBundleBytes\""))
+        XCTAssertTrue(packageScript.contains("\"appBinaryBytes\""))
+        XCTAssertTrue(packageScript.contains("\"artifactBytes\""))
+        XCTAssertTrue(packageScript.contains("\"stripMode\""))
+        XCTAssertTrue(packageScript.contains("check_release_bundle_inventory.sh"))
+        XCTAssertTrue(packageScript.contains("release app was not stripped before signing"))
+        XCTAssertTrue(packageScript.contains("Sparkle development assets were not pruned before signing"))
+        XCTAssertTrue(signingScript.contains("prepare_release_bundle.sh"))
+        XCTAssertLessThan(
+            try XCTUnwrap(signingScript.range(of: "prepare_release_bundle.sh")).lowerBound,
+            try XCTUnwrap(signingScript.range(of: "codesign \"${CODESIGN_ARGS[@]}\"")).lowerBound
+        )
+    }
+
+    func testPackageSizePolicyDefinesDependencyAndSwiftTermBoundaries() throws {
+        let policy = try readPackageFile("docs/release/package-size-policy.md")
+        let distribution = try readPackageFile("docs/release/distribution.md")
+
+        XCTAssertTrue(policy.contains("SwiftTerm"))
+        XCTAssertTrue(policy.contains("user cache"))
+        XCTAssertTrue(policy.contains("No bundled voice models"))
+        XCTAssertTrue(policy.contains("Review threshold"))
+        XCTAssertTrue(policy.contains("check_release_bundle_inventory.sh"))
+        XCTAssertTrue(distribution.contains("package-size-policy.md"))
+    }
+
     func testDistributionPackageScriptRequiresNotarizedAppByDefault() throws {
         let script = try readPackageFile("script/package_release.sh")
         let distribution = try readPackageFile("docs/release/distribution.md")
