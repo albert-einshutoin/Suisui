@@ -8417,6 +8417,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(documentation.contains("not a hand-authored JSON"))
         XCTAssertTrue(documentation.contains("whole-screen sibling-overlap proof"))
         XCTAssertTrue(documentation.contains("script/check_layout_stability_smoke.sh"))
+        XCTAssertTrue(documentation.contains("squash merge"))
+        XCTAssertTrue(documentation.contains("evidence-only follow-up PR"))
 
         XCTAssertTrue(captureScript.contains("VISUAL_BASELINE_MANIFEST=\"$ROOT_DIR/docs/quality/visual-baseline-manifest.json\""))
         XCTAssertTrue(captureScript.contains("SOLOPM_VISUAL_BASELINE_VIEWPORT"))
