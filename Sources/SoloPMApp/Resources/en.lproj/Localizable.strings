@@ -1850,3 +1850,13 @@
 "The global shortcut event handler is unavailable." = "The global shortcut event handler is unavailable.";
 "Option + Space is already used by another app." = "Option + Space is already used by another app.";
 "Option + Space could not be registered on this Mac." = "Option + Space could not be registered on this Mac.";
+"Browse…" = "Browse…";
+"Choose a folder in Finder." = "Choose a folder in Finder.";
+"Choose a file in Finder." = "Choose a file in Finder.";
+"Choose a folder or enter its path directly" = "Choose a folder or enter its path directly";
+"Choose a file or enter its path directly" = "Choose a file or enter its path directly";
+"Project directory path" = "Project directory path";
+"Apply Path" = "Apply Path";
+"Store the entered project directory and its local permission" = "Store the entered project directory and its local permission";
+"Validates and stores the project directory entered in the path field." = "Validates and stores the project directory entered in the path field.";
+"Enter an absolute path beginning with /." = "Enter an absolute path beginning with /.";

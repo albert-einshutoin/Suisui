@@ -297,15 +297,15 @@ struct SettingsAIFeatureView: View {
                             .tag(provider)
                     }
                 }
-                TextField(
-                    "whisper.cpp executable",
+                LocalPathSelectionField(
+                    title: "whisper.cpp executable",
                     text: Binding(
                         get: { settingsViewModel.settings.whisperCppExecutablePath ?? "" },
                         set: { settingsViewModel.setWhisperCppExecutablePath($0) }
-                    )
+                    ),
+                    selectionKind: .file,
+                    accessibilityIdentifier: "settings-whisper-cpp-executable-path"
                 )
-                .textFieldStyle(.roundedBorder)
-                .accessibilityIdentifier("settings-whisper-cpp-executable-path")
                 .accessibilityHint("Sets the absolute path to whisper-cli for offline speech to text.")
 
                 LocalSTTProviderStatusRow(row: settingsViewModel.localSTTProviderReadinessRow)
@@ -396,15 +396,15 @@ struct SettingsAIFeatureView: View {
 
                 SelectedTTSProviderStatusRow(row: settingsViewModel.ttsProviderReadinessRow)
 
-                TextField(
-                    "Kokoro executable",
+                LocalPathSelectionField(
+                    title: "Kokoro executable",
                     text: Binding(
                         get: { settingsViewModel.settings.kokoroExecutablePath ?? "" },
                         set: { settingsViewModel.setKokoroExecutablePath($0) }
-                    )
+                    ),
+                    selectionKind: .file,
+                    accessibilityIdentifier: "settings-kokoro-executable-path"
                 )
-                .textFieldStyle(.roundedBorder)
-                .accessibilityIdentifier("settings-kokoro-executable-path")
                 .accessibilityHint("Sets the absolute path to the local Kokoro TTS executable.")
 
                 Picker(
@@ -789,19 +789,17 @@ struct SettingsPrivacyFeatureView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
-                TextField(
-                    "Workspace",
+                LocalPathSelectionField(
+                    title: "Workspace",
                     text: Binding(
                         get: { settingsViewModel.settings.defaultWorkspacePath ?? "" },
                         set: { settingsViewModel.setDefaultWorkspacePath($0) }
-                    )
+                    ),
+                    selectionKind: .directory,
+                    accessibilityIdentifier: "settings-default-workspace-path",
+                    canCreateDirectories: true
                 )
                 LabeledContent("Data Location", value: context.dataLocationOverviewStatusLabel)
-                Button {
-                    context.isChoosingDataLocation = true
-                } label: {
-                    Label("Choose Data Location", systemImage: "folder")
-                }
                 Button {
                     context.presentBackupExportPanel()
                 } label: {
@@ -887,21 +885,6 @@ struct SettingsPrivacyFeatureView: View {
 
         }
         .formStyle(.grouped)
-        .fileImporter(
-            isPresented: context.$isChoosingDataLocation,
-            allowedContentTypes: [.folder],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                if let url = urls.first {
-                    settingsViewModel.setDefaultWorkspacePath(url.path)
-                }
-            case .failure(let error):
-                settingsViewModel.setDefaultWorkspacePath(settingsViewModel.settings.defaultWorkspacePath ?? "")
-                settingsViewModel.setTransientErrorMessage(error.localizedDescription)
-            }
-        }
         .confirmationDialog(
             "Restore from backup?",
             isPresented: context.$isConfirmingBackupRestore,
@@ -989,10 +972,15 @@ struct SettingsMCPFeatureView: View {
                             get: { loadedExternalMCPViewModel.argumentsText },
                             set: { loadedExternalMCPViewModel.updateArgumentsText($0) }
                         ))
-                        TextField("Working Directory", text: Binding(
-                            get: { loadedExternalMCPViewModel.registration.workingDirectory ?? "" },
-                            set: { loadedExternalMCPViewModel.updateWorkingDirectory($0) }
-                        ))
+                        LocalPathSelectionField(
+                            title: "Working Directory",
+                            text: Binding(
+                                get: { loadedExternalMCPViewModel.registration.workingDirectory ?? "" },
+                                set: { loadedExternalMCPViewModel.updateWorkingDirectory($0) }
+                            ),
+                            selectionKind: .directory,
+                            accessibilityIdentifier: "settings-mcp-working-directory"
+                        )
                         TextField("Environment References", text: Binding(
                             get: { loadedExternalMCPViewModel.environmentText },
                             set: { loadedExternalMCPViewModel.updateEnvironmentText($0) }
@@ -1553,7 +1541,6 @@ struct SettingsPrivacyDependencies {
     let setLaunchAtLoginEnabled: (Bool) -> Void
     let dataLocationOverviewStatusLabel: String
     let diagnosticsLoadState: SettingsFeatureLoadState<WatcherDiagnosticsSnapshot>
-    @Binding var isChoosingDataLocation: Bool
     @Binding var pendingBackupRestoreDocument: WorkspaceBackupDocument?
     @Binding var isConfirmingBackupRestore: Bool
     @Binding var backupStatusMessage: String?
