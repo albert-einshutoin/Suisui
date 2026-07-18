@@ -1596,6 +1596,9 @@
 "Transcript ready" = "文字起こし完了";
 "Fewer completions" = "完了が少ない";
 "More completions" = "完了が多い";
+"Workload" = "負荷";
+"Schedule View" = "スケジュール表示";
+"Switches the visible schedule detail while preserving the selected week and day." = "選択中の週と日付を保ったまま、表示するスケジュール詳細を切り替えます。";
 "Commit changes" = "変更をコミット";
 "Push branch" = "ブランチをpush";
 "Create pull request" = "Pull Requestを作成";
