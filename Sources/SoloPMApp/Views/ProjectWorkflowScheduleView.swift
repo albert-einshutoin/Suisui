@@ -120,16 +120,33 @@ struct ScheduleWorkflowView: View {
     }
 
     private var modePicker: some View {
-        Picker("Schedule View", selection: $selectedMode) {
+        HStack(spacing: 2) {
             ForEach(ScheduleSurfaceMode.allCases) { mode in
-                Text(mode.title)
-                    .tag(mode)
+                Button { selectedMode = mode } label: {
+                    Text(mode.title)
+                        .font(.subheadline.weight(selectedMode == mode ? .semibold : .regular))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .contentShape(Rectangle())
+                }
+                    .buttonStyle(.plain)
+                    .background(
+                        selectedMode == mode ? SoloPMSurface.elevatedSelection : AnyShapeStyle(.clear),
+                        in: RoundedRectangle(cornerRadius: SoloPMRadius.control - 2)
+                    )
                     .accessibilityIdentifier("schedule-mode-option-\(mode.rawValue)")
+                    .accessibilityAddTraits(selectedMode == mode ? .isSelected : [])
             }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
+        .padding(2)
+        .background(SoloPMSurface.groupedContent, in: RoundedRectangle(cornerRadius: SoloPMRadius.control))
+        .overlay {
+            RoundedRectangle(cornerRadius: SoloPMRadius.control)
+                .stroke(SoloPMBorder.subtle, lineWidth: 1)
+        }
         .frame(maxWidth: 360)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Schedule View")
         .accessibilityIdentifier("schedule-mode-picker")
         .accessibilityHint("Switches the visible schedule detail while preserving the selected week and day.")
     }
