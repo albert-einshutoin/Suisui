@@ -118,7 +118,7 @@
         "height": 724
       },
       "axFrameAudit": true,
-      "axTargetIdentifier": "schedule-week-grid",
+      "axTargetIdentifier": "schedule-mini-calendar",
       "artifacts": {
         "light": "schedule-light.png",
         "dark": "schedule-dark.png"

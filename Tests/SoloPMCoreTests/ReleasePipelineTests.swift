@@ -5954,6 +5954,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("AX Runtime Schedule Due"))
         XCTAssertTrue(script.contains("AX Runtime Schedule Unscheduled"))
         XCTAssertTrue(script.contains("schedule-workflow"))
+        XCTAssertTrue(script.contains("schedule-mode-overview"))
+        XCTAssertTrue(script.contains("schedule-mode-option-timeline"))
         XCTAssertTrue(script.contains("schedule-week-grid"))
         XCTAssertTrue(script.contains("schedule-status-banner"))
         XCTAssertTrue(script.contains("schedule-unscheduled-add-draft-$unscheduled_task_id"))
@@ -5976,7 +5978,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("payload_json LIKE '%\\\"requiresApproval\\\":true%'"))
         XCTAssertTrue(script.contains("status='planned' AND due_at IS NULL"))
         XCTAssertTrue(script.contains("status='planned' AND due_at='$runtime_day_key'"))
-        XCTAssertTrue(script.contains("OK: runtime schedule cockpit smoke covered weekly grid, unscheduled add-to-draft, and approval-gated Calendar apply"))
+        XCTAssertTrue(script.contains("OK: runtime schedule cockpit smoke covered overview-to-timeline navigation, unscheduled add-to-draft, and approval-gated Calendar apply"))
         XCTAssertFalse(script.contains(":memory:"))
         XCTAssertFalse(script.contains("not implemented yet"))
         XCTAssertFalse(script.contains("fake success"))
@@ -8303,7 +8305,7 @@ final class ReleasePipelineTests: XCTestCase {
             "today": "today-workflow",
             "inbox-voice": "inbox-voice-intake-detail",
             "projects-overview": "projects-portfolio-overview",
-            "schedule": "schedule-week-grid",
+            "schedule": "schedule-mini-calendar",
             "schedule-workload": "schedule-workload-dashboard",
             "done": "done-workflow",
             "settings-overview": "settings-status-overview",
@@ -8610,7 +8612,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("\"inbox-voice-intake-detail\""))
         XCTAssertTrue(captureScript.contains("post_scroll_target_markers"))
         XCTAssertTrue(captureScript.contains("wait_for_project_board_destination \"$label after scroll\" \"$post_scroll_target_markers\""))
-        XCTAssertTrue(captureScript.contains("\"schedule-week-grid\""))
+        XCTAssertTrue(captureScript.contains("\"schedule-mini-calendar\""))
+        XCTAssertTrue(captureScript.contains("\"schedule-mode-option-workload\""))
         XCTAssertTrue(captureScript.contains("\"schedule-workload-dashboard\""))
         XCTAssertTrue(captureScript.contains("capture_settings_sync light \"$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT\""))
         XCTAssertTrue(captureScript.contains("capture_settings_sync dark \"$SETTINGS_INTEGRATIONS_DARK_SCREENSHOT\""))

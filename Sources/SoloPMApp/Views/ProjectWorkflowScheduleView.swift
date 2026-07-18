@@ -122,7 +122,9 @@ struct ScheduleWorkflowView: View {
     private var modePicker: some View {
         Picker("Schedule View", selection: $selectedMode) {
             ForEach(ScheduleSurfaceMode.allCases) { mode in
-                Text(mode.title).tag(mode)
+                Text(mode.title)
+                    .tag(mode)
+                    .accessibilityIdentifier("schedule-mode-option-\(mode.rawValue)")
             }
         }
         .pickerStyle(.segmented)

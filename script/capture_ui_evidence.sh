@@ -1518,6 +1518,8 @@ capture_project_board_destination() {
   local scroll_target_identifier="${7:-}"
   local target_audit_identifier="${8:-}"
   local post_scroll_target_markers="${9:-}"
+  local mode_option_identifier="${10:-}"
+  local mode_option_label="${11:-}"
   local route_attempt
   local marker_diagnostic
   local launch_destination="$selected_destination"
@@ -1560,12 +1562,25 @@ capture_project_board_destination() {
       return 1
     fi
     sleep 0.25
-
     destination_status=0
+
+    if [[ -n "$mode_option_identifier" ]]; then
+      # Progressive Schedule modes intentionally render one detail surface at
+      # a time. Select the requested segment through the live AX tree so each
+      # baseline proves the same path a keyboard/VoiceOver user can operate.
+      if ! ax_click_sidebar_destination "$APP_NAME" "$mode_option_identifier" "$mode_option_label"; then
+        echo "missing AX mode option: $mode_option_identifier" >>"$marker_diagnostic"
+        destination_status=1
+      fi
+      sleep 0.5
+    fi
+
     # Typed route overrides are the production deep-link contract. Launching
     # the exact route avoids depending on whether a SwiftUI List has published
     # an off-screen project row into the hosted runner's AX tree.
-    wait_for_project_board_destination "$label" "$target_markers" 2>>"$marker_diagnostic" || destination_status=$?
+    if [[ "$destination_status" -eq 0 ]]; then
+      wait_for_project_board_destination "$label" "$target_markers" 2>>"$marker_diagnostic" || destination_status=$?
+    fi
     if [[ "$destination_status" -eq 0 ]]; then
       rm -f "$marker_diagnostic"
       PROJECT_BOARD_SELECTION_OVERRIDE="$selected_destination"
@@ -1783,7 +1798,7 @@ write_schedule_cockpit_evidence_file() {
     printf -- '- Generated at: `%s`\n' "$generated_at"
     printf -- '- Source commit: `%s`\n' "$source_commit"
     printf -- '- Screen Recording preflight: `script/capture_ui_evidence.sh --doctor`\n'
-    printf -- '- Target markers: `schedule-workflow`, `schedule-week-grid`, `schedule-week-time-axis-grid`\n'
+    printf -- '- Target markers: `schedule-workflow`, `schedule-mode-overview`, `schedule-mini-calendar`\n'
     printf '\n'
     printf '%s\n' '## Schedule Cockpit'
     printf '\n'
@@ -2052,6 +2067,7 @@ case "$EVIDENCE_LOCALE" in
     PROJECTS_ROUTE_LABEL="Projects"
     SCHEDULE_ROUTE_LABEL="Schedule"
     WEEKLY_GRID_LABEL="Weekly schedule grid"
+    WORKLOAD_MODE_LABEL="Workload"
     DONE_ROUTE_LABEL="Done"
     VOICE_COMMAND_LABEL="Voice Command"
     ;;
@@ -2061,6 +2077,7 @@ case "$EVIDENCE_LOCALE" in
     PROJECTS_ROUTE_LABEL="プロジェクト"
     SCHEDULE_ROUTE_LABEL="予定"
     WEEKLY_GRID_LABEL="週間スケジュールグリッド"
+    WORKLOAD_MODE_LABEL="負荷"
     DONE_ROUTE_LABEL="完了"
     VOICE_COMMAND_LABEL="音声コマンド"
     ;;
@@ -2076,8 +2093,8 @@ P0_TODAY_TARGET_MARKERS="today-workflow=>$TODAY_ROUTE_LABEL|today-briefing-panel
 INBOX_VOICE_ROUTE_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL"
 P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>Inbox classification actions"
 PROJECTS_TARGET_MARKERS="sidebar-destination-projects=>$PROJECTS_ROUTE_LABEL|projects-portfolio-overview=>$PROJECTS_ROUTE_LABEL"
-SCHEDULE_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-week-grid=>$WEEKLY_GRID_LABEL|schedule-week-time-axis-grid=>"
-SCHEDULE_COCKPIT_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-week-grid=>$WEEKLY_GRID_LABEL|schedule-week-time-axis-grid=>"
+SCHEDULE_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-mode-overview=>|schedule-mini-calendar=>"
+SCHEDULE_COCKPIT_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-mode-overview=>|schedule-mini-calendar=>"
 SCHEDULE_WORKLOAD_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-workload-dashboard=>|schedule-workload-attention-banner=>|schedule-workload-day-detail=>"
 DONE_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL"
 DONE_ANALYTICS_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL|done-completion-heatmap=>|done-productivity-insight=>|done-local-rule-insight=>"
@@ -2103,8 +2120,8 @@ if [[ "$P0_WORKFLOWS" == "1" ]]; then
 fi
 
 if [[ "$SCHEDULE_COCKPIT" == "1" ]]; then
-  capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_COCKPIT_TARGET_MARKERS" "" "schedule-week-grid" "schedule-week-grid"
-  capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_COCKPIT_TARGET_MARKERS" "" "schedule-week-grid" "schedule-week-grid"
+  capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_COCKPIT_TARGET_MARKERS" "" "schedule-mini-calendar" "schedule-mini-calendar"
+  capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_COCKPIT_TARGET_MARKERS" "" "schedule-mini-calendar" "schedule-mini-calendar"
 
   GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   write_schedule_cockpit_evidence_file "$GENERATED_AT" "$SCHEDULE_LIGHT_SCREENSHOT" "$SCHEDULE_DARK_SCREENSHOT"
@@ -2116,8 +2133,8 @@ if [[ "$SCHEDULE_COCKPIT" == "1" ]]; then
 fi
 
 if [[ "$SCHEDULE_WORKLOAD" == "1" ]]; then
-  capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard"
-  capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard"
+  capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard" "" "schedule-mode-option-workload" "$WORKLOAD_MODE_LABEL"
+  capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard" "" "schedule-mode-option-workload" "$WORKLOAD_MODE_LABEL"
 
   GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   write_schedule_workload_evidence_file "$GENERATED_AT" "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT"
@@ -2154,10 +2171,10 @@ capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "I
 capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_ROUTE_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE" "inbox-voice-intake-detail" "inbox-voice-intake-detail" "$INBOX_VOICE_TARGET_MARKERS"
 capture_project_board_destination light projects "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS" "" "" "projects-portfolio-overview"
 capture_project_board_destination dark projects "$PROJECTS_OVERVIEW_DARK_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS" "" "" "projects-portfolio-overview"
-capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS" "" "schedule-week-grid" "schedule-week-grid"
-capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS" "" "schedule-week-grid" "schedule-week-grid"
-capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard"
-capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard"
+capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS" "" "schedule-mini-calendar" "schedule-mini-calendar"
+capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS" "" "schedule-mini-calendar" "schedule-mini-calendar"
+capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard" "" "schedule-mode-option-workload" "$WORKLOAD_MODE_LABEL"
+capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-dashboard" "schedule-workload-dashboard" "" "schedule-mode-option-workload" "$WORKLOAD_MODE_LABEL"
 capture_project_board_destination light done "$DONE_LIGHT_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS" "" "" "done-workflow"
 capture_project_board_destination dark done "$DONE_DARK_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS" "" "" "done-workflow"
 capture_settings_overview light "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT"
