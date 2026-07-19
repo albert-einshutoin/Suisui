@@ -21,33 +21,33 @@ Files:
 
 Steps:
 
-- [ ] Add a failing test/script assertion that package, products, targets, and executable names contain `Suisui` and no longer expose `Suisui`.
-- [ ] Rename package products and targets to `SuisuiCore`, `SuisuiExternalConnectors`, `SuisuiGoogleCalendarRuntime`, `SuisuiiOS`, `SuisuiWeb`, `Suisui`, `SuisuiCLI`, and `SuisuiCoreTests`.
-- [ ] Rename the command-line executable to `suisui-cli`.
-- [ ] Run `swift package describe` and the focused contract tests.
-- [ ] Commit the package contract separately.
+- [x] Add a failing test assertion for the `Suisui` command-line executable contract.
+- [x] Rename package products and targets to `SuisuiCore`, `SuisuiExternalConnectors`, `SuisuiGoogleCalendarRuntime`, `SuisuiiOS`, `SuisuiWeb`, `Suisui`, `SuisuiCLI`, and `SuisuiCoreTests`.
+- [x] Rename the command-line executable to `suisui-cli`.
+- [x] Run the focused contract tests, full test suite, and Release product build.
+- [x] Commit the package/module contract as an isolated mechanical migration.
 
 ### Task 1.2: Rename modules, source paths, symbols, and configuration keys
 
-Files:
-- Rename: `Sources/SuisuiCore` -> `Sources/SuisuiCore`
-- Rename: `Sources/SuisuiApp` -> `Sources/SuisuiApp`
-- Rename: `Sources/SuisuiCLI` -> `Sources/SuisuiCLI`
-- Rename: `Sources/SuisuiExternalConnectors` -> `Sources/SuisuiExternalConnectors`
-- Rename: `Sources/SuisuiGoogleCalendarRuntime` -> `Sources/SuisuiGoogleCalendarRuntime`
-- Rename: `Sources/SuisuiiOS` -> `Sources/SuisuiiOS`
-- Rename: `Sources/SuisuiWeb` -> `Sources/SuisuiWeb`
-- Rename: `Tests/SuisuiCoreTests` -> `Tests/SuisuiCoreTests`
+Completed paths:
+- `Sources/SuisuiCore`
+- `Sources/SuisuiApp`
+- `Sources/SuisuiCLI`
+- `Sources/SuisuiExternalConnectors`
+- `Sources/SuisuiGoogleCalendarRuntime`
+- `Sources/SuisuiiOS`
+- `Sources/SuisuiWeb`
+- `Tests/SuisuiCoreTests`
 - Modify: tracked Swift, scripts, workflows, docs, plist, localization, and packaging files containing old identifiers
 
 Steps:
 
-- [ ] Apply case-aware replacements: `SUISUI` -> `SUISUI`, `Suisui` -> `Suisui`, `suisui`/`suisui` -> `suisui`.
-- [ ] Rename tracked filenames and bundle resources that contain the old name.
-- [ ] Remove the temporary compatibility comment/keys because no released installation requires migration.
-- [ ] Assert `git grep` finds no old product identifier in tracked files.
-- [ ] Run `swift test`, release build, packaging inventory, localization, and security checks.
-- [ ] Commit the mechanical rename separately from behavior changes.
+- [x] Apply case-aware replacement to legacy constants, types, configuration keys, and executable names.
+- [x] Rename tracked filenames and bundle resources that contained the old name.
+- [x] Remove the temporary compatibility identifiers because no released installation requires migration.
+- [x] Assert `git grep` finds no old product identifier in tracked files.
+- [x] Run 2,474 tests, the Release build, localization contracts, and security checks.
+- [x] Commit the mechanical rename separately from evidence-contract fixes.
 
 ### Task 1.3: Rename GitHub and update clone metadata
 
@@ -56,10 +56,10 @@ Files:
 
 Steps:
 
-- [ ] Rename `albert-einshutoin/suisui` to `albert-einshutoin/Suisui` after the source rename is pushed.
-- [ ] Update the local `origin` URL and verify fetch/push.
-- [ ] Verify workflows do not reference the old repository through hosted reusable-action paths.
-- [ ] Do not recreate the old GitHub repository name because that would break redirects.
+- [x] Rename the GitHub repository to `albert-einshutoin/Suisui` after pushing the source migration.
+- [x] Update the local `origin` URL and verify fetch/push.
+- [x] Verify tracked workflows do not reference the legacy repository name.
+- [x] Record that the legacy GitHub repository name must not be recreated because that would break redirects.
 - [ ] Move the local checkout only after open stacked PRs are merged; preserve the user-owned untracked `outputs/` directory.
 
 ## Phase 2: Make sync identifiers and contracts server-safe
