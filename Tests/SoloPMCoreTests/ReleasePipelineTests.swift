@@ -7242,7 +7242,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Confirm the approved execution receipt announces the reviewed task title and detail after the plan runs."))
         XCTAssertTrue(script.contains("VoiceOver review artifact"))
         XCTAssertTrue(script.contains("SELECT CASE WHEN count(*) = 7 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"))
-        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=project:$seed_project_id"))
+        XCTAssertTrue(script.contains("printf 'SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=%q\\n' \"project:$seed_project_id\""))
         XCTAssertTrue(script.contains("printf 'SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1\\n'"))
         XCTAssertFalse(script.contains("printf 'SOLOPM_LAUNCH_RECOVERY_MODE=1\\n'"))
         XCTAssertTrue(script.contains("evidence_command_file=\"$ROOT_DIR/.tmp/voiceover-review/create-evidence-command.sh\""))
