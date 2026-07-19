@@ -624,6 +624,10 @@ private final class SoloPMProjectBoardWindowFallback {
         )
         window.title = "Suisui"
         window.contentViewController = hostingController
+        // The loading view is temporary. Pin only the supported compact
+        // minimum so its initial fitting size cannot become a permanent
+        // 1180pt resize floor after the real board replaces it.
+        window.contentMinSize = NSSize(width: 960, height: 620)
         window.isReleasedWhenClosed = false
         window.setFrame(NSRect(x: 120, y: 160, width: 1_180, height: 760), display: true)
         self.window = window
