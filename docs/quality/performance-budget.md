@@ -7,14 +7,14 @@ relax.
 
 ## Instrumented signposts
 
-Subsystem: `dev.solopm.performance`
+Subsystem: `dev.suisui.performance`
 Category: `launch`
 
 | Signpost (interval) | What it measures | Emitting code |
 | --- | --- | --- |
-| `LaunchToRuntimeBundle` | Preparation of the Project Board runtime bundle on the detached launch task (SQLite open + migration + store composition), from the start of `prepareProjectBoardRuntimeBundle()` work to bundle ready. | `Sources/SoloPMApp/Composition/ProjectBoardRuntimeFactory.swift` |
-| `DatabaseOpenMigrate` | SQLite connection open plus `CoreMigrations` migration inside bundle preparation. Sub-interval of `LaunchToRuntimeBundle`. | `Sources/SoloPMApp/Composition/ProjectBoardRuntimeFactory.swift` |
-| `FirstBoardLoad` | The first `ProjectBoardViewModel.load()` of the process (snapshot load + derived read model rebuild) inside the board view's initial `.task`. Emitted once per process; later reloads are unmeasured. | `Sources/SoloPMApp/Views/ProjectBoardView.swift` via `Sources/SoloPMApp/Composition/LaunchPerformanceSignposts.swift` |
+| `LaunchToRuntimeBundle` | Preparation of the Project Board runtime bundle on the detached launch task (SQLite open + migration + store composition), from the start of `prepareProjectBoardRuntimeBundle()` work to bundle ready. | `Sources/SuisuiApp/Composition/ProjectBoardRuntimeFactory.swift` |
+| `DatabaseOpenMigrate` | SQLite connection open plus `CoreMigrations` migration inside bundle preparation. Sub-interval of `LaunchToRuntimeBundle`. | `Sources/SuisuiApp/Composition/ProjectBoardRuntimeFactory.swift` |
+| `FirstBoardLoad` | The first `ProjectBoardViewModel.load()` of the process (snapshot load + derived read model rebuild) inside the board view's initial `.task`. Emitted once per process; later reloads are unmeasured. | `Sources/SuisuiApp/Views/ProjectBoardView.swift` via `Sources/SuisuiApp/Composition/LaunchPerformanceSignposts.swift` |
 
 Signposts are measurement-only: no call site branches on them and they wrap
 existing work without changing behavior.
@@ -25,7 +25,7 @@ existing work without changing behavior.
    intend to record).
 2. In Instruments, use the **os_signpost** instrument (or start from the
    **App Launch** template and add os_signpost), then filter to subsystem
-   `dev.solopm.performance`, category `launch`.
+   `dev.suisui.performance`, category `launch`.
 3. Record from process start through the first fully painted Project Board.
 4. Read the interval durations for `LaunchToRuntimeBundle`,
    `DatabaseOpenMigrate`, and `FirstBoardLoad`.
@@ -33,7 +33,7 @@ existing work without changing behavior.
 Command-line alternative while the app runs:
 
 ```
-log stream --predicate 'subsystem == "dev.solopm.performance"' --signpost
+log stream --predicate 'subsystem == "dev.suisui.performance"' --signpost
 ```
 
 Note the intentional gap: `LaunchToRuntimeBundle` starts when the launch
@@ -68,7 +68,7 @@ configuration, dataset size, date).
 `script/check_performance_stress_suite.sh` is the existing regression guard
 for scale-sensitive paths (large boards, large assistant queues, receipt
 listing, vector search, calendar sync bounds). It runs deterministic
-`swift test` filters and, with `SOLOPM_STRESS_RUNTIME_PERFORMANCE=1`, the
+`swift test` filters and, with `SUISUI_STRESS_RUNTIME_PERFORMANCE=1`, the
 release launch performance smoke
 (`script/check_release_launch_performance_smoke.sh`). Keep that suite green
 before trusting any budget number recorded above.

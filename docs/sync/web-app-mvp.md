@@ -4,7 +4,7 @@ Verified: 2026-06-21
 
 ## Web frontend / backend boundary
 
-SoloPM Web is a synced-domain client, not a local execution surface. The first MVP reads `SyncDomainPayload` shaped data and sends task mutations through Cloud Relay compatible endpoints.
+Suisui Web is a synced-domain client, not a local execution surface. The first MVP reads `SyncDomainPayload` shaped data and sends task mutations through Cloud Relay compatible endpoints.
 
 | Boundary | MVP choice |
 | --- | --- |
@@ -52,4 +52,4 @@ These actions should be represented as pending automation requests, not executed
 ## Verification
 
 - `swift test --filter WebAppMVPTests`
-- `swift build --target SoloPMWeb`
+- `swift build --target SuisuiWeb`

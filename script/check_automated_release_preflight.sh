@@ -5,12 +5,12 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 TMP_ROOT="$ROOT_DIR/.tmp"
 XCODE_WORKSPACE_RELATIVE=".swiftpm/xcode/package.xcworkspace"
-XCODE_SCHEME="${SOLOPM_XCODE_SCHEME:-SoloPM}"
-XCODE_DESTINATION="${SOLOPM_XCODE_DESTINATION:-platform=macOS}"
-XCODE_CONFIGURATION="${SOLOPM_XCODE_CONFIGURATION:-Debug}"
-XCODE_PREFLIGHT_TIMEOUT_SECONDS="${SOLOPM_XCODE_PREFLIGHT_TIMEOUT_SECONDS:-600}"
-AUTOMATED_PREFLIGHT_EVIDENCE_FILE="${SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE:-}"
-REFRESH_MANUAL_HELPERS="${SOLOPM_REFRESH_MANUAL_HELPERS:-1}"
+XCODE_SCHEME="${SUISUI_XCODE_SCHEME:-Suisui}"
+XCODE_DESTINATION="${SUISUI_XCODE_DESTINATION:-platform=macOS}"
+XCODE_CONFIGURATION="${SUISUI_XCODE_CONFIGURATION:-Debug}"
+XCODE_PREFLIGHT_TIMEOUT_SECONDS="${SUISUI_XCODE_PREFLIGHT_TIMEOUT_SECONDS:-600}"
+AUTOMATED_PREFLIGHT_EVIDENCE_FILE="${SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE:-}"
+REFRESH_MANUAL_HELPERS="${SUISUI_REFRESH_MANUAL_HELPERS:-1}"
 APP_NAME="Suisui"
 RUNTIME_AX_SMOKE_OUTPUT=""
 VOICEOVER_CANDIDATE_SOURCE_COMMIT=""
@@ -45,7 +45,7 @@ if [[ -z "$AUTOMATED_PREFLIGHT_EVIDENCE_FILE" ]]; then
 fi
 
 mkdir -p "$TMP_ROOT"
-TMP_DIR="$(mktemp -d "$TMP_ROOT/solopm-automated-release-preflight.XXXXXX")"
+TMP_DIR="$(mktemp -d "$TMP_ROOT/suisui-automated-release-preflight.XXXXXX")"
 MCP_EVIDENCE_FILE="$TMP_DIR/mcp-inspector.md"
 
 section() {
@@ -76,7 +76,7 @@ tracked_source_tree_is_clean() {
 
 refresh_manual_release_helpers() {
   if [[ "$REFRESH_MANUAL_HELPERS" != "1" ]]; then
-    echo "INFO: manual release helper refresh skipped because SOLOPM_REFRESH_MANUAL_HELPERS is not 1"
+    echo "INFO: manual release helper refresh skipped because SUISUI_REFRESH_MANUAL_HELPERS is not 1"
     return 0
   fi
 
@@ -162,10 +162,10 @@ capture_voiceover_candidate_context() {
   # records the exact seeded candidate used by the runtime AX smoke gate.
   # shellcheck source=/dev/null
   source "$launch_env_file"
-  VOICEOVER_CANDIDATE_SOURCE_COMMIT="${SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT:-}"
-  VOICEOVER_CANDIDATE_PROJECT_ID="${SOLOPM_VOICEOVER_REVIEW_PROJECT_ID:-}"
-  VOICEOVER_CANDIDATE_DATABASE="${SOLOPM_DATABASE_PATH:-}"
-  VOICEOVER_CANDIDATE_SELECTED_DESTINATION="${SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION:-}"
+  VOICEOVER_CANDIDATE_SOURCE_COMMIT="${SUISUI_VOICEOVER_REVIEW_SOURCE_COMMIT:-}"
+  VOICEOVER_CANDIDATE_PROJECT_ID="${SUISUI_VOICEOVER_REVIEW_PROJECT_ID:-}"
+  VOICEOVER_CANDIDATE_DATABASE="${SUISUI_DATABASE_PATH:-}"
+  VOICEOVER_CANDIDATE_SELECTED_DESTINATION="${SUISUI_PROJECT_BOARD_SELECTED_DESTINATION:-}"
 
   if [[ -z "${VOICEOVER_CANDIDATE_SOURCE_COMMIT//[[:space:]]/}" ||
     -z "${VOICEOVER_CANDIDATE_PROJECT_ID//[[:space:]]/}" ||
@@ -229,18 +229,18 @@ trap cleanup EXIT
 require_clean_source_tree_for_evidence
 
 if ! [[ "$XCODE_PREFLIGHT_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || [[ "$XCODE_PREFLIGHT_TIMEOUT_SECONDS" -le 0 ]]; then
-  echo "BLOCKER: SOLOPM_XCODE_PREFLIGHT_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "BLOCKER: SUISUI_XCODE_PREFLIGHT_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
 section "Release CI"
-SOLOPM_CI_RELEASE_GATES=1 ./scripts/ci.sh
+SUISUI_CI_RELEASE_GATES=1 ./scripts/ci.sh
 
 section "Local CRUD smoke"
 ./script/check_local_crud_smoke.sh
 
 section "Production UI runtime gate"
-SOLOPM_CI_ARTIFACT_ROOT="$TMP_DIR/ui-gates" ./scripts/ci.sh ui-runtime
+SUISUI_CI_ARTIFACT_ROOT="$TMP_DIR/ui-gates" ./scripts/ci.sh ui-runtime
 
 section "Xcode build preflight"
 if ! command -v xcodebuild >/dev/null 2>&1; then
@@ -254,17 +254,17 @@ fi
 run_xcodebuild_with_timeout
 
 section "Real visual regression"
-SOLOPM_CI_ARTIFACT_ROOT="$TMP_DIR/ui-gates" ./scripts/ci.sh ui-visual
+SUISUI_CI_ARTIFACT_ROOT="$TMP_DIR/ui-gates" ./scripts/ci.sh ui-visual
 
 section "Release launch performance smoke"
 # Release preflight should validate the same release-oriented launch budgets
 # that operators rely on for release evidence. Keep these assignments fixed so
 # caller-provided debug or relaxed-budget env cannot weaken automated evidence.
-SOLOPM_PERFORMANCE_PROFILE=release \
-SOLOPM_PERFORMANCE_BUILD_CONFIGURATION=release \
-SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS=15000 \
-SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS=3000 \
-SOLOPM_CI_ARTIFACT_ROOT="$TMP_DIR/ui-gates" \
+SUISUI_PERFORMANCE_PROFILE=release \
+SUISUI_PERFORMANCE_BUILD_CONFIGURATION=release \
+SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS=15000 \
+SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS=3000 \
+SUISUI_CI_ARTIFACT_ROOT="$TMP_DIR/ui-gates" \
   ./scripts/ci.sh ui-performance
 
 section "Runtime accessibility candidate"
@@ -294,7 +294,7 @@ if [[ -z "${RUNTIME_AX_SMOKE_OUTPUT//[[:space:]]/}" ]]; then
 fi
 
 section "MCP compliance preflight"
-SOLOPM_MCP_EVIDENCE_FILE="$MCP_EVIDENCE_FILE" ./script/verify_mcp_compliance.sh
+SUISUI_MCP_EVIDENCE_FILE="$MCP_EVIDENCE_FILE" ./script/verify_mcp_compliance.sh
 
 section "Refresh manual release helpers"
 refresh_manual_release_helpers
@@ -305,9 +305,9 @@ printf "\nOK: automated release preflight passed\n"
 printf "This does not mark the release ready.\n"
 if [[ -n "$AUTOMATED_PREFLIGHT_EVIDENCE_FILE" ]]; then
   printf "NEXT: run "
-  printf 'SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=%q ./script/release_readiness_report.sh' "$AUTOMATED_PREFLIGHT_EVIDENCE_FILE"
+  printf 'SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=%q ./script/release_readiness_report.sh' "$AUTOMATED_PREFLIGHT_EVIDENCE_FILE"
   printf " to reuse this evidence with the remaining release blockers.\n"
 else
-  printf "NEXT: run SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh to combine automated proof gates with the remaining release blockers.\n"
+  printf "NEXT: run SUISUI_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh to combine automated proof gates with the remaining release blockers.\n"
 fi
 printf "NEXT: complete manual VoiceOver, competitor hands-on, and signing/notarization/Sparkle/Gatekeeper evidence before release.\n"

@@ -9,10 +9,10 @@ release_candidate_source_commit() {
   # should follow the release-candidate app/runtime source, not helper commits.
   commit="$(
     git -C "$ROOT_DIR" log -1 --format=%h -- \
-      Sources/SoloPMApp \
-      Sources/SoloPMCore \
-      Sources/SoloPMCLI \
-      Sources/SoloPMExternalConnectors \
+      Sources/SuisuiApp \
+      Sources/SuisuiCore \
+      Sources/SuisuiCLI \
+      Sources/SuisuiExternalConnectors \
       Package.swift \
       packaging/app_metadata.env 2>/dev/null || true
   )"

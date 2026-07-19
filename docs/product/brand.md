@@ -39,7 +39,7 @@ the primary wordmark.
 
 The public app bundle, executable, window titles, onboarding, backups, and
 release artifacts use `Suisui`. SwiftPM module names, the bundle identifier
-`dev.solopm.app`, the existing Application Support directory, database name,
-environment variables, and stable plist integration keys retain `SoloPM` for
+`dev.suisui.app`, the existing Application Support directory, database name,
+environment variables, and stable plist integration keys retain `Suisui` for
 this migration. This preserves upgrades and existing local data; those
 internal identifiers are not public brand copy.

@@ -1,18 +1,18 @@
 # Notarization
 
-SoloPM の notarization は local release machine で行う。Apple ID、app-specific password、API key などの credentials は repo に保存せず、`xcrun notarytool store-credentials` で Keychain profile として保存する。
+Suisui の notarization は local release machine で行う。Apple ID、app-specific password、API key などの credentials は repo に保存せず、`xcrun notarytool store-credentials` で Keychain profile として保存する。
 
 ## Setup
 
 ```bash
-xcrun notarytool store-credentials SoloPMNotaryProfile
+xcrun notarytool store-credentials SuisuiNotaryProfile
 ```
 
 `packaging/notarization.env.example` を参考に、ローカルだけで `packaging/notarization.env` を作る。
 
 ```bash
-SOLOPM_NOTARY_PROFILE=SoloPMNotaryProfile
-SOLOPM_REQUIRE_NOTARIZATION=1
+SUISUI_NOTARY_PROFILE=SuisuiNotaryProfile
+SUISUI_REQUIRE_NOTARIZATION=1
 ```
 
 ## Flow
@@ -29,7 +29,7 @@ SOLOPM_REQUIRE_NOTARIZATION=1
 notarization が失敗した場合は、submission id を使って詳細 log を取得する。
 
 ```bash
-xcrun notarytool log <submission-id> --keychain-profile SoloPMNotaryProfile
+xcrun notarytool log <submission-id> --keychain-profile SuisuiNotaryProfile
 ```
 
 `script/notarize_app.sh` は submit output を `dist/notary/notarytool-submit.log` に残す。credential 不足、unsigned binary、hardened runtime 不足、nested code の署名不備をまず切り分ける。

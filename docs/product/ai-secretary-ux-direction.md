@@ -2,7 +2,7 @@
 
 Date: 2026-06-25
 
-SoloPM should grow from a personal AI PM into an AI secretary for tasks, documents, and chores. The product role is not a generic chat surface. It is a local-first work desk that receives ordinary work, turns it into reviewable tasks, drafts, schedules, reminders, and follow-ups, then asks the user before external writes or destructive actions.
+Suisui should grow from a personal AI PM into an AI secretary for tasks, documents, and chores. The product role is not a generic chat surface. It is a local-first work desk that receives ordinary work, turns it into reviewable tasks, drafts, schedules, reminders, and follow-ups, then asks the user before external writes or destructive actions.
 
 ## Product Stance
 

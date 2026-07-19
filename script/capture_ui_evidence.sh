@@ -16,27 +16,27 @@ APP_NAME="${APP_NAME:?APP_NAME is required}"
 BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:?BUNDLE_IDENTIFIER is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-SCREENSHOT_DIR="${SOLOPM_UI_EVIDENCE_DIR:-$ROOT_DIR/docs/release/evidence/ui-screenshots}"
-EVIDENCE_FILE="${SOLOPM_UI_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/ui-screenshots.md}"
-SCHEDULE_COCKPIT_EVIDENCE_FILE="${SOLOPM_SCHEDULE_COCKPIT_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/schedule-cockpit-screenshots.md}"
-DONE_ANALYTICS_EVIDENCE_FILE="${SOLOPM_DONE_ANALYTICS_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/done-analytics-screenshots.md}"
-EVIDENCE_TMPDIR="${SOLOPM_UI_EVIDENCE_TMPDIR:-$ROOT_DIR/.tmp}"
+SCREENSHOT_DIR="${SUISUI_UI_EVIDENCE_DIR:-$ROOT_DIR/docs/release/evidence/ui-screenshots}"
+EVIDENCE_FILE="${SUISUI_UI_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/ui-screenshots.md}"
+SCHEDULE_COCKPIT_EVIDENCE_FILE="${SUISUI_SCHEDULE_COCKPIT_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/schedule-cockpit-screenshots.md}"
+DONE_ANALYTICS_EVIDENCE_FILE="${SUISUI_DONE_ANALYTICS_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/done-analytics-screenshots.md}"
+EVIDENCE_TMPDIR="${SUISUI_UI_EVIDENCE_TMPDIR:-$ROOT_DIR/.tmp}"
 VISUAL_BASELINE_MANIFEST="$ROOT_DIR/docs/quality/visual-baseline-manifest.json"
-SOLOPM_VISUAL_AX_AUDIT_RESULT="${SOLOPM_VISUAL_AX_AUDIT_RESULT:-$EVIDENCE_TMPDIR/visual-ax-audit-receipt.json}"
-VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1024x676}"
-SETTINGS_VISUAL_BASELINE_VIEWPORT="${SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT:-720x676}"
-VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT="${SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT:-760x640}"
-TARGET_TIMEOUT_SECONDS="${SOLOPM_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS:-30}"
+SUISUI_VISUAL_AX_AUDIT_RESULT="${SUISUI_VISUAL_AX_AUDIT_RESULT:-$EVIDENCE_TMPDIR/visual-ax-audit-receipt.json}"
+VISUAL_BASELINE_VIEWPORT="${SUISUI_VISUAL_BASELINE_VIEWPORT:-1024x676}"
+SETTINGS_VISUAL_BASELINE_VIEWPORT="${SUISUI_SETTINGS_VISUAL_BASELINE_VIEWPORT:-720x676}"
+VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT="${SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT:-760x640}"
+TARGET_TIMEOUT_SECONDS="${SUISUI_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS:-30}"
 EVIDENCE_WINDOW_ATTEMPTS=2
 EVIDENCE_ROUTE_ATTEMPTS=2
-AX_MARKER_MAX_NODES="${SOLOPM_UI_EVIDENCE_AX_MAX_NODES:-6000}"
-EVIDENCE_LOCALE="${SOLOPM_UI_EVIDENCE_LOCALE:-english}"
+AX_MARKER_MAX_NODES="${SUISUI_UI_EVIDENCE_AX_MAX_NODES:-6000}"
+EVIDENCE_LOCALE="${SUISUI_UI_EVIDENCE_LOCALE:-english}"
 EVIDENCE_LOCALES=("english" "japanese")
 # A fixed instant keeps relative seed dates and UI read models on one day even
 # when a long 33-screen capture crosses midnight. These capture-only variables
 # are ignored by normal launches, which continue to use the system clock.
-EVIDENCE_REFERENCE_INSTANT="${SOLOPM_VISUAL_EVIDENCE_REFERENCE_INSTANT:-2026-07-10T12:00:00Z}"
-EVIDENCE_TIME_ZONE="${SOLOPM_VISUAL_EVIDENCE_TIME_ZONE:-UTC}"
+EVIDENCE_REFERENCE_INSTANT="${SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT:-2026-07-10T12:00:00Z}"
+EVIDENCE_TIME_ZONE="${SUISUI_VISUAL_EVIDENCE_TIME_ZONE:-UTC}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 mkdir -p "$EVIDENCE_TMPDIR"
 export TMPDIR="$EVIDENCE_TMPDIR/"
@@ -51,8 +51,8 @@ AX_RECEIPT_WRITER="$EVIDENCE_TMPDIR/write-visual-ax-audit-receipt.$$"
 VISUAL_RASTER_STABILITY_CHECKER="$EVIDENCE_TMPDIR/visual-raster-stability-checker.$$"
 VISUAL_APPEARANCE_CHECKER="$EVIDENCE_TMPDIR/visual-appearance-checker.$$"
 VISUAL_FIRST_RASTER="$EVIDENCE_TMPDIR/visual-first-raster.$$.png"
-EVIDENCE_HOME="${SOLOPM_UI_EVIDENCE_HOME:-$(mktemp -d "$EVIDENCE_TMPDIR/solopm-ui-evidence.XXXXXX")}"
-KEEP_HOME="${SOLOPM_UI_EVIDENCE_KEEP_HOME:-0}"
+EVIDENCE_HOME="${SUISUI_UI_EVIDENCE_HOME:-$(mktemp -d "$EVIDENCE_TMPDIR/suisui-ui-evidence.XXXXXX")}"
+KEEP_HOME="${SUISUI_UI_EVIDENCE_KEEP_HOME:-0}"
 DRY_RUN=0
 DOCTOR=0
 P0_WORKFLOWS=0
@@ -112,31 +112,31 @@ if [[ $((DRY_RUN + DOCTOR + P0_WORKFLOWS + SCHEDULE_COCKPIT + SCHEDULE_WORKLOAD 
 fi
 
 if [[ ! "$TARGET_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TARGET_TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "SOLOPM_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "SUISUI_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 if [[ ! "$AX_MARKER_MAX_NODES" =~ ^[0-9]+$ || "$AX_MARKER_MAX_NODES" -lt 1 ]]; then
-  echo "SOLOPM_UI_EVIDENCE_AX_MAX_NODES must be a positive integer" >&2
+  echo "SUISUI_UI_EVIDENCE_AX_MAX_NODES must be a positive integer" >&2
   exit 2
 fi
 if [[ " ${EVIDENCE_LOCALES[*]} " != *" $EVIDENCE_LOCALE "* ]]; then
-  echo "SOLOPM_UI_EVIDENCE_LOCALE must be english or japanese" >&2
+  echo "SUISUI_UI_EVIDENCE_LOCALE must be english or japanese" >&2
   exit 2
 fi
 if [[ ! "$EVIDENCE_REFERENCE_INSTANT" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
-  echo "SOLOPM_VISUAL_EVIDENCE_REFERENCE_INSTANT must be a whole-second UTC ISO-8601 instant" >&2
+  echo "SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT must be a whole-second UTC ISO-8601 instant" >&2
   exit 2
 fi
 if ! /bin/date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$EVIDENCE_REFERENCE_INSTANT" "+%Y-%m-%dT%H:%M:%SZ" >/dev/null 2>&1; then
-  echo "SOLOPM_VISUAL_EVIDENCE_REFERENCE_INSTANT is not a valid UTC instant" >&2
+  echo "SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT is not a valid UTC instant" >&2
   exit 2
 fi
 if [[ "$EVIDENCE_TIME_ZONE" != "UTC" ]]; then
-  echo "SOLOPM_VISUAL_EVIDENCE_TIME_ZONE must be UTC for canonical visual baselines" >&2
+  echo "SUISUI_VISUAL_EVIDENCE_TIME_ZONE must be UTC for canonical visual baselines" >&2
   exit 2
 fi
 
-# The product language override controls SoloPM's localized strings, while
+# The product language override controls Suisui's localized strings, while
 # AppleLanguages/AppleLocale control Foundation/AppKit formatters. Keep all
 # three values in one mapping so the runtime pixels and signed receipt cannot
 # claim different locales on capture hosts with different system settings.
@@ -157,7 +157,7 @@ esac
 # complete-run receipt up front. Otherwise a failed or partial recapture could
 # leave a still-fresh receipt that incorrectly authenticates a mixed image set.
 if [[ "$DRY_RUN" != "1" && "$DOCTOR" != "1" ]]; then
-  rm -f "$SOLOPM_VISUAL_AX_AUDIT_RESULT"
+  rm -f "$SUISUI_VISUAL_AX_AUDIT_RESULT"
 fi
 
 # shellcheck source=/dev/null
@@ -176,14 +176,14 @@ cleanup() {
   rm -f "$AX_CAPTURE_RECEIPT_TSV" "$AX_RECEIPT_WRITER" "$VISUAL_RASTER_STABILITY_CHECKER" "$VISUAL_APPEARANCE_CHECKER"
   rm -f "$VISUAL_FIRST_RASTER"
   rm -f "$EVIDENCE_APP_LOG"
-  if [[ "$KEEP_HOME" != "1" && -d "$EVIDENCE_HOME" && "${SOLOPM_UI_EVIDENCE_HOME:-}" == "" ]]; then
+  if [[ "$KEEP_HOME" != "1" && -d "$EVIDENCE_HOME" && "${SUISUI_UI_EVIDENCE_HOME:-}" == "" ]]; then
     rm -rf "$EVIDENCE_HOME"
   fi
 }
 
 ui_evidence_product_source_commit() {
   local commit
-  local source_ref="${SOLOPM_VISUAL_SOURCE_REF:-HEAD}"
+  local source_ref="${SUISUI_VISUAL_SOURCE_REF:-HEAD}"
   commit="$(
     git -C "$ROOT_DIR" log -1 --format=%H "$source_ref" -- \
       Sources \
@@ -242,53 +242,53 @@ ui_evidence_source_commit() {
 }
 
 app_env_args() {
-  local args=("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1")
+  local args=("SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1")
   args+=("HOME=$EVIDENCE_HOME")
   args+=("CFFIXED_USER_HOME=$EVIDENCE_HOME")
   args+=("TZ=$EVIDENCE_TIME_ZONE")
-  args+=("SOLOPM_VISUAL_EVIDENCE_REFERENCE_INSTANT=$EVIDENCE_REFERENCE_INSTANT")
-  args+=("SOLOPM_VISUAL_EVIDENCE_TIME_ZONE=$EVIDENCE_TIME_ZONE")
-  args+=("SOLOPM_VISUAL_EVIDENCE_LOCALE_IDENTIFIER=$EVIDENCE_RECEIPT_LOCALE")
-  # Pin SoloPM's product language. Foundation/AppKit locale defaults are pinned
+  args+=("SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT=$EVIDENCE_REFERENCE_INSTANT")
+  args+=("SUISUI_VISUAL_EVIDENCE_TIME_ZONE=$EVIDENCE_TIME_ZONE")
+  args+=("SUISUI_VISUAL_EVIDENCE_LOCALE_IDENTIFIER=$EVIDENCE_RECEIPT_LOCALE")
+  # Pin Suisui's product language. Foundation/AppKit locale defaults are pinned
   # separately through launch arguments in open_evidence_app.
-  args+=("SOLOPM_LANGUAGE_PREFERENCE=$EVIDENCE_LOCALE")
+  args+=("SUISUI_LANGUAGE_PREFERENCE=$EVIDENCE_LOCALE")
   if [[ -n "$DATABASE_PATH" ]]; then
     # Screenshot evidence must open the exact SQLite file seeded below; relying
     # on HOME-derived defaults can silently fall back to another database.
-    args+=("SOLOPM_DATABASE_PATH=$DATABASE_PATH")
+    args+=("SUISUI_DATABASE_PATH=$DATABASE_PATH")
   fi
   if [[ -n "$PROJECT_BOARD_SELECTION_OVERRIDE" ]]; then
-    args+=("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$PROJECT_BOARD_SELECTION_OVERRIDE")
+    args+=("SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=$PROJECT_BOARD_SELECTION_OVERRIDE")
   fi
   if [[ -n "$PROJECT_BOARD_SELECTED_TASK_OVERRIDE" ]]; then
-    args+=("SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID=$PROJECT_BOARD_SELECTED_TASK_OVERRIDE")
+    args+=("SUISUI_PROJECT_BOARD_SELECTED_TASK_ID=$PROJECT_BOARD_SELECTED_TASK_OVERRIDE")
   fi
   if [[ -n "$SCHEDULE_MODE_OVERRIDE" ]]; then
-    args+=("SOLOPM_VISUAL_EVIDENCE_SCHEDULE_MODE=$SCHEDULE_MODE_OVERRIDE")
+    args+=("SUISUI_VISUAL_EVIDENCE_SCHEDULE_MODE=$SCHEDULE_MODE_OVERRIDE")
   fi
   if [[ -n "$APPEARANCE_OVERRIDE" ]]; then
-    args+=("SOLOPM_APPEARANCE_PREFERENCE=$APPEARANCE_OVERRIDE")
+    args+=("SUISUI_APPEARANCE_PREFERENCE=$APPEARANCE_OVERRIDE")
   fi
   if [[ "$APPEARANCE_OVERRIDE" == "system" ]]; then
     # Keep the product preference truthful while giving hosted GUI sessions a
     # deterministic system appearance that does not depend on the login user.
-    args+=("SOLOPM_VISUAL_EVIDENCE_SYSTEM_APPEARANCE=dark")
+    args+=("SUISUI_VISUAL_EVIDENCE_SYSTEM_APPEARANCE=dark")
   fi
   if [[ "$SETTINGS_WINDOW_OVERRIDE" == "1" ]]; then
-    args+=("SOLOPM_OPEN_SETTINGS_ON_LAUNCH=1")
+    args+=("SUISUI_OPEN_SETTINGS_ON_LAUNCH=1")
   fi
   if [[ -n "$SETTINGS_TAB_OVERRIDE" ]]; then
-    args+=("SOLOPM_SETTINGS_EVIDENCE_TAB=$SETTINGS_TAB_OVERRIDE")
+    args+=("SUISUI_SETTINGS_EVIDENCE_TAB=$SETTINGS_TAB_OVERRIDE")
   fi
   if [[ "$VOICE_COMMAND_WINDOW_OVERRIDE" == "1" ]]; then
-    args+=("SOLOPM_OPEN_VOICE_COMMAND_ON_LAUNCH=1")
+    args+=("SUISUI_OPEN_VOICE_COMMAND_ON_LAUNCH=1")
   fi
   printf '%s\0' "${args[@]}"
 }
 
 emit_evidence_app_diagnostic() {
   [[ -s "$EVIDENCE_APP_LOG" ]] || return 0
-  echo "Sanitized SoloPM launch diagnostic:" >&2
+  echo "Sanitized Suisui launch diagnostic:" >&2
   /usr/bin/sed -E \
     -e 's#/(Users|Volumes)/[^[:space:]]+#<path>#g' \
     -e 's#/private/var/folders/[^[:space:]]+#<temp-path>#g' \
@@ -450,9 +450,9 @@ wait_for_database() {
 
 find_window_capture_metadata() {
   local window_name="${1:-}"
-  SOLOPM_WINDOW_OWNER="$APP_NAME" \
-    SOLOPM_WINDOW_OWNER_PID="$EVIDENCE_APP_PID" \
-    SOLOPM_WINDOW_NAME="$window_name" \
+  SUISUI_WINDOW_OWNER="$APP_NAME" \
+    SUISUI_WINDOW_OWNER_PID="$EVIDENCE_APP_PID" \
+    SUISUI_WINDOW_NAME="$window_name" \
     /usr/bin/swift "$ROOT_DIR/script/ui_evidence_window_metadata.swift"
 }
 
@@ -492,7 +492,7 @@ target_marker_present() {
   local deadline
   local status
   local timed_out=0
-  error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-ui-target-marker-error.XXXXXX")"
+  error_file="$(mktemp "${TMPDIR:-/tmp}/suisui-ui-target-marker-error.XXXXXX")"
   prepare_ax_marker_checker
 
   # AX marker scans use a bounded Swift AX traversal because SwiftUI's generated
@@ -501,16 +501,16 @@ target_marker_present() {
   # swift-frontend children that a shell watchdog cannot reliably terminate.
   case "$marker_mode" in
     strict-task-card)
-      SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
-        SOLOPM_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
-        SOLOPM_UI_EVIDENCE_AX_REQUIRE_EXACT_IDENTIFIER=1 \
+      SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+        SUISUI_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
+        SUISUI_UI_EVIDENCE_AX_REQUIRE_EXACT_IDENTIFIER=1 \
         "$AX_MARKER_CHECKER" "$APP_NAME" "$identifier" "$text" "$EVIDENCE_APP_PID" \
         >/dev/null 2>"$error_file" &
       ;;
     legacy)
       # Existing workflow markers intentionally allow identifier and text to
       # live in different runtime AX elements (for example Inbox Voice).
-      SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+      SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
         "$AX_MARKER_CHECKER" "$APP_NAME" "$identifier" "$text" "$EVIDENCE_APP_PID" \
         >/dev/null 2>"$error_file" &
       ;;
@@ -573,8 +573,8 @@ prepare_ax_scroll_container_helper() {
 scroll_ax_container_down() {
   local identifier="$1"
   prepare_ax_scroll_container_helper
-  SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
-    SOLOPM_UI_EVIDENCE_AX_SCROLL_EVENTS=10 \
+  SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+    SUISUI_UI_EVIDENCE_AX_SCROLL_EVENTS=10 \
     "$AX_SCROLL_CONTAINER_HELPER" "$EVIDENCE_APP_PID" "$identifier" >/dev/null
 }
 
@@ -610,16 +610,16 @@ audit_ax_target_frame() {
   local status
   local timed_out=0
 
-  output_file="$(mktemp "${TMPDIR:-/tmp}/solopm-ui-target-frame-output.XXXXXX")"
-  error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-ui-target-frame-error.XXXXXX")"
+  output_file="$(mktemp "${TMPDIR:-/tmp}/suisui-ui-target-frame-output.XXXXXX")"
+  error_file="$(mktemp "${TMPDIR:-/tmp}/suisui-ui-target-frame-error.XXXXXX")"
   prepare_ax_target_frame_auditor
   if [[ "$audit_mode" == "fingerprint" ]]; then
-    SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
-      SOLOPM_UI_EVIDENCE_AX_IDENTITY_FINGERPRINT=1 \
+    SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+      SUISUI_UI_EVIDENCE_AX_IDENTITY_FINGERPRINT=1 \
       "$AX_TARGET_FRAME_AUDITOR" "$APP_NAME" "$identifier" "$EVIDENCE_APP_PID" "$window_name" \
       >"$output_file" 2>"$error_file" &
   else
-    SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+    SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
       "$AX_TARGET_FRAME_AUDITOR" "$APP_NAME" "$identifier" "$EVIDENCE_APP_PID" "$window_name" \
       >"$output_file" 2>"$error_file" &
   fi
@@ -716,9 +716,9 @@ scroll_ax_target_into_view() {
     return 0
   fi
 
-  error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-ui-scroll-target-error.XXXXXX")"
+  error_file="$(mktemp "${TMPDIR:-/tmp}/suisui-ui-scroll-target-error.XXXXXX")"
   prepare_ax_scroll_helper
-  SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+  SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
     "$AX_SCROLL_HELPER" "$APP_NAME" "$identifier" "$EVIDENCE_APP_PID" \
     >/dev/null 2>"$error_file" &
   helper_pid=$!
@@ -804,7 +804,7 @@ wait_for_project_board_destination() {
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       assert_project_board_destination_ready "$label" "$marker_spec"
       echo "BLOCKER: UI evidence target did not become ready for $label within ${TARGET_TIMEOUT_SECONDS}s" >&2
-      echo "NEXT: keep the intended SoloPM window visible, verify Accessibility permission for Terminal/Codex, and rerun script/capture_ui_evidence.sh." >&2
+      echo "NEXT: keep the intended Suisui window visible, verify Accessibility permission for Terminal/Codex, and rerun script/capture_ui_evidence.sh." >&2
       return 1
     fi
     sleep 0.25
@@ -930,16 +930,16 @@ print_capture_failure_guidance() {
   {
     echo "UI screenshot capture could not produce valid visible pixels for appearance: $appearance"
     echo "output: $output_path"
-    echo "selected SoloPM window: $window_context"
+    echo "selected Suisui window: $window_context"
     echo "Open System Settings > Privacy & Security > Screen Recording / Screen & System Audio Recording and allow the terminal or Codex app that runs this script."
     echo "Quit and reopen the terminal or Codex app after granting permission, then rerun: script/capture_ui_evidence.sh"
-    echo "For debugging, rerun with SOLOPM_UI_EVIDENCE_KEEP_HOME=1 to keep the isolated HOME: $EVIDENCE_HOME"
+    echo "For debugging, rerun with SUISUI_UI_EVIDENCE_KEEP_HOME=1 to keep the isolated HOME: $EVIDENCE_HOME"
   } >&2
 }
 
 write_appearance_preference() {
   local appearance="$1"
-  write_app_preference solopm.appearancePreference "$appearance"
+  write_app_preference suisui.appearancePreference "$appearance"
 }
 
 write_app_preference() {
@@ -1107,7 +1107,7 @@ INSERT INTO inbox_capture_records (
 ) VALUES (
   (SELECT id FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Scheduled manual capture' ORDER BY id DESC LIMIT 1),
   'voice_memo',
-  '/tmp/solopm-ui-evidence-redacted.m4a',
+  '/tmp/suisui-ui-evidence-redacted.m4a',
   18.5,
   'Schedule launch review and capture visual evidence.',
   'Create a task for launch review evidence.',
@@ -1148,7 +1148,7 @@ INSERT INTO mcp_server_registrations (
   'Local Filesystem MCP',
   '/usr/bin/env',
   '[\"node\",\"@modelcontextprotocol/server-filesystem\",\"/tmp\"]',
-  '{\"SOLOPM_FILESYSTEM_TOKEN\":{\"type\":\"keychain\",\"key\":\"mcp_filesystem_token\"}}',
+  '{\"SUISUI_FILESYSTEM_TOKEN\":{\"type\":\"keychain\",\"key\":\"mcp_filesystem_token\"}}',
   './fixtures/mcp-workspace',
   1
 );
@@ -1288,7 +1288,7 @@ persist_project_board_selection() {
   PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details-$capture_task_id=>Capture launch screenshots|task-card-open-details-$capture_task_id=>$planned_label, $high_label, $capture_due_date|task-card-open-details-$review_task_id=>Review VoiceOver focus path|task-card-open-details-$review_task_id=>$in_progress_label, $high_label, $review_due_date|task-card-open-details-$unscheduled_task_id=>$planned_label, $medium_label, $no_due_date_label"
   INBOX_VOICE_TASK_OVERRIDE="$inbox_voice_task_id"
   INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>Inbox classification actions"
-  write_app_preference solopm.projectBoard.selectedDestination "$PROJECT_BOARD_SELECTION_OVERRIDE"
+  write_app_preference suisui.projectBoard.selectedDestination "$PROJECT_BOARD_SELECTION_OVERRIDE"
 }
 
 capture_visible_window() {
@@ -1572,7 +1572,7 @@ capture_project_board_destination() {
     : >"$marker_diagnostic"
     stop_evidence_app
     write_appearance_preference "$appearance"
-    write_app_preference solopm.projectBoard.selectedDestination "$launch_destination"
+    write_app_preference suisui.projectBoard.selectedDestination "$launch_destination"
     open_evidence_app
     wait_for_process
     activate_evidence_app
@@ -1695,7 +1695,7 @@ write_evidence_file() {
     printf -- '- Source commit: `%s`\n' "$(ui_evidence_source_commit)"
     printf -- '- App bundle: `dist/%s.app`\n' "$APP_NAME"
     printf -- '- Visual baseline manifest: `%s`\n' "$(relative_path "$VISUAL_BASELINE_MANIFEST")"
-    printf -- '- Viewport contract: `SOLOPM_VISUAL_BASELINE_VIEWPORT=%s`, `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT=%s`, `SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT=%s`\n' "$VISUAL_BASELINE_VIEWPORT" "$SETTINGS_VISUAL_BASELINE_VIEWPORT" "$VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT"
+    printf -- '- Viewport contract: `SUISUI_VISUAL_BASELINE_VIEWPORT=%s`, `SUISUI_SETTINGS_VISUAL_BASELINE_VIEWPORT=%s`, `SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT=%s`\n' "$VISUAL_BASELINE_VIEWPORT" "$SETTINGS_VISUAL_BASELINE_VIEWPORT" "$VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT"
     printf -- '- Runtime context: locale `%s`, timezone `%s`, reference instant `%s`\n' "$EVIDENCE_RECEIPT_LOCALE" "$EVIDENCE_TIME_ZONE" "$EVIDENCE_REFERENCE_INSTANT"
     printf '%s\n' '- Launch mode: normal `ProjectBoardView` route with explicit selected destination; recovery flags are excluded from release evidence.'
     printf '%s\n' '- Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`'
@@ -1762,7 +1762,7 @@ write_evidence_file() {
     printf '%s\n' '- API keys and provider tokens are not read, written, logged, rendered, or captured unmasked.'
     printf '%s\n' '- Run `script/capture_ui_evidence.sh --doctor` first to verify required commands and Screen Recording visible-pixel capture without writing release evidence.'
     printf '%s\n' '- The capture host must grant Screen Recording permission through System Settings > Privacy & Security > Screen Recording / Screen & System Audio Recording to the terminal/Codex app; otherwise the script fails before treating screenshots as evidence.'
-    printf '%s\n' '- If capture still fails, rerun with `SOLOPM_UI_EVIDENCE_KEEP_HOME=1` to keep the isolated HOME for database and preference inspection.'
+    printf '%s\n' '- If capture still fails, rerun with `SUISUI_UI_EVIDENCE_KEEP_HOME=1` to keep the isolated HOME for database and preference inspection.'
     printf '%s\n' '- VoiceOver focus order still requires a manual assistive-technology pass.'
   } >"$EVIDENCE_FILE"
 }
@@ -1810,7 +1810,7 @@ write_p0_workflow_evidence_file() {
     printf '%s\n' '## Guardrails'
     printf '\n'
     printf '%s\n' '- API keys, provider tokens, OAuth tokens, calendar contents, and customer file contents are not captured.'
-    printf '%s\n' '- The app runs with `SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1`, an isolated HOME, and a seeded SQLite database.'
+    printf '%s\n' '- The app runs with `SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1`, an isolated HOME, and a seeded SQLite database.'
     printf '%s\n' '- The P0 workflow capture uses the normal `ProjectBoardView` route with explicit Today and Inbox selected destinations.'
   } >"$ROOT_DIR/docs/release/evidence/p0-workflow-screenshots.md"
 }
@@ -1843,7 +1843,7 @@ write_schedule_cockpit_evidence_file() {
     printf '%s\n' '- The cockpit is seeded from local ProjectBoard tasks in an isolated SQLite database.'
     printf '%s\n' '- Opening the cockpit does not enqueue or execute external Calendar or Reminder writes.'
     printf '%s\n' '- API keys, provider tokens, OAuth tokens, calendar contents, and customer file contents are not captured.'
-    printf '%s\n' '- The app runs with `SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1`, an explicit isolated SQLite database, and env-driven Schedule selection.'
+    printf '%s\n' '- The app runs with `SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1`, an explicit isolated SQLite database, and env-driven Schedule selection.'
   } >"$SCHEDULE_COCKPIT_EVIDENCE_FILE"
 }
 
@@ -1875,7 +1875,7 @@ write_schedule_workload_evidence_file() {
     printf '%s\n' '- The dashboard is seeded from local ProjectBoard tasks in an isolated SQLite database.'
     printf '%s\n' '- Opening the workload dashboard does not enqueue or execute external Calendar writes.'
     printf '%s\n' '- API keys, provider tokens, OAuth tokens, calendar contents, and customer file contents are not captured.'
-    printf '%s\n' '- The app runs with `SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1`, an isolated HOME, and a seeded SQLite database.'
+    printf '%s\n' '- The app runs with `SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1`, an isolated HOME, and a seeded SQLite database.'
   } >"$ROOT_DIR/docs/release/evidence/schedule-workload-screenshots.md"
 }
 
@@ -1907,7 +1907,7 @@ write_done_analytics_evidence_file() {
     printf '%s\n' '- The Done dashboard is seeded from local ProjectBoard completion history in an isolated SQLite database.'
     printf '%s\n' '- Opening Done analytics does not enqueue or execute external writes.'
     printf '%s\n' '- API keys, provider tokens, OAuth tokens, calendar contents, and customer file contents are not captured.'
-    printf '%s\n' '- The app runs with `SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1`, an isolated HOME, and a seeded SQLite database.'
+    printf '%s\n' '- The app runs with `SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1`, an isolated HOME, and a seeded SQLite database.'
   } >"$DONE_ANALYTICS_EVIDENCE_FILE"
 }
 
@@ -1973,7 +1973,7 @@ run_doctor() {
   if command -v screencapture >/dev/null 2>&1 && command -v swift >/dev/null 2>&1; then
     local probe_base
     local probe
-    probe_base="$(mktemp "${TMPDIR:-/tmp}/solopm-ui-evidence-doctor.XXXXXX")"
+    probe_base="$(mktemp "${TMPDIR:-/tmp}/suisui-ui-evidence-doctor.XXXXXX")"
     probe="$probe_base.png"
     rm -f "$probe_base"
     if screencapture -x "$probe" >/dev/null 2>&1 && [[ -s "$probe" ]] && assert_screenshot_has_visible_content "$probe"; then
@@ -1998,18 +1998,18 @@ fi
 
 write_visual_ax_audit_receipt() {
   local source_commit="$1"
-  rm -f "$SOLOPM_VISUAL_AX_AUDIT_RESULT"
+  rm -f "$SUISUI_VISUAL_AX_AUDIT_RESULT"
   /usr/bin/swiftc "$ROOT_DIR/script/write_visual_ax_audit_receipt.swift" -o "$AX_RECEIPT_WRITER"
   "$AX_RECEIPT_WRITER" \
     "$VISUAL_BASELINE_MANIFEST" \
     "$AX_CAPTURE_RECEIPT_TSV" \
-    "$SOLOPM_VISUAL_AX_AUDIT_RESULT" \
+    "$SUISUI_VISUAL_AX_AUDIT_RESULT" \
     "$source_commit" \
     "normal" \
     "$EVIDENCE_RECEIPT_LOCALE" \
     "$EVIDENCE_TIME_ZONE" \
     "$EVIDENCE_REFERENCE_INSTANT"
-  echo "AX audit receipt: $SOLOPM_VISUAL_AX_AUDIT_RESULT"
+  echo "AX audit receipt: $SUISUI_VISUAL_AX_AUDIT_RESULT"
 }
 
 require_command sqlite3
@@ -2051,7 +2051,7 @@ assert_visual_product_source_is_committed
 
 SOURCE_COMMIT="$(ui_evidence_product_source_commit)"
 
-DATABASE_PATH="$EVIDENCE_HOME/Library/Application Support/SoloPM/SoloPM.sqlite"
+DATABASE_PATH="$EVIDENCE_HOME/Library/Application Support/Suisui/Suisui.sqlite"
 initialize_database "$DATABASE_PATH"
 seed_database "$DATABASE_PATH"
 seed_mcp_registrations "$DATABASE_PATH"

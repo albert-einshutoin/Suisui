@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import readline from "node:readline";
 
-const mode = process.env.SOLOPM_MCP_FIXTURE_MODE || "success";
+const mode = process.env.SUISUI_MCP_FIXTURE_MODE || "success";
 let initialized = false;
 
 const tools = [
@@ -53,8 +53,8 @@ function handleInitialize(request) {
         },
       },
       serverInfo: {
-        name: "solopm-mcp-fixture",
-        title: "SoloPM MCP Fixture",
+        name: "suisui-mcp-fixture",
+        title: "Suisui MCP Fixture",
         version: "0.1.0",
       },
     },

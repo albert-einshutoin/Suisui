@@ -1,6 +1,6 @@
 # Release Checklist
 
-This checklist is the single runbook for reproducing a SoloPM public alpha release.
+This checklist is the single runbook for reproducing a Suisui public alpha release.
 
 When automated gates are green but readiness still reports manual/release-machine blockers, use `docs/release/manual-unblockers.md` as the focused lane checklist for VoiceOver, competitor hands-on, and release-machine evidence. It maps the remaining blockers to the generated `.tmp` worksheet and command files and keeps `--validate-only` before evidence writes.
 
@@ -12,7 +12,7 @@ When automated gates are green but readiness still reports manual/release-machin
 - `packaging/notarization.env` exists only on the release machine.
 - `packaging/release-evidence.json` exists only on the release machine after manual checks.
 - Sparkle private key exists in Keychain.
-- `SOLOPM_SPARKLE_FEED_URL` is a production HTTPS appcast URL, and `SOLOPM_SPARKLE_PUBLIC_ED_KEY` is set for release builds.
+- `SUISUI_SPARKLE_FEED_URL` is a production HTTPS appcast URL, and `SUISUI_SPARKLE_PUBLIC_ED_KEY` is set for release builds.
 
 ## Order
 
@@ -26,8 +26,8 @@ swift test
 2. build
 
 ```bash
-SOLOPM_BUILD_CONFIGURATION=release ./script/build_and_run.sh --build-only
-SOLOPM_BUILD_CONFIGURATION=release ./script/build_and_run.sh --verify
+SUISUI_BUILD_CONFIGURATION=release ./script/build_and_run.sh --build-only
+SUISUI_BUILD_CONFIGURATION=release ./script/build_and_run.sh --verify
 ```
 
 `--verify` must report a visible Project Board window, not only a running process.
@@ -42,14 +42,14 @@ SOLOPM_BUILD_CONFIGURATION=release ./script/build_and_run.sh --verify
 4. notarize
 
 ```bash
-SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh
+SUISUI_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh
 ./script/notarize_app.sh
 ```
 
 5. package
 
 ```bash
-SOLOPM_PACKAGE_FORMAT=all ./script/package_release.sh
+SUISUI_PACKAGE_FORMAT=all ./script/package_release.sh
 ```
 
 この処理は配布appの容量上限、最大ファイル、voice model非同梱を`script/check_release_bundle_inventory.sh`で検証し、clean ZIPとサイズ証跡を生成する。署名後のapp bundleは変更しない。
@@ -62,11 +62,11 @@ cat dist/releases/*.sha256
 
 7. appcast
 
-`SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX` は environment か `packaging/sparkle.env` に production HTTPS artifact URL prefix を設定する。
+`SUISUI_SPARKLE_DOWNLOAD_URL_PREFIX` は environment か `packaging/sparkle.env` に production HTTPS artifact URL prefix を設定する。
 
 ```bash
-SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/generate_appcast.sh
-SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml
+SUISUI_REQUIRE_RELEASE_APPCAST=1 ./script/generate_appcast.sh
+SUISUI_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml
 ```
 
 8. manual release evidence
@@ -75,11 +75,11 @@ SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcas
 ./script/prepare_release_manual_helpers.sh
 ./script/prepare_release_machine_evidence.sh
 source packaging/app_metadata.env
-export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
+export SUISUI_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
 ./script/create_release_evidence.sh
 ```
 
-After any source commit changes, run `./script/prepare_release_manual_helpers.sh` before recording manual evidence. It regenerates the VoiceOver pending preview/launch env/worksheet/command, competitor hands-on pending evidence, competitor benchmark pending worksheet, and competitor hands-on worksheet/command for the release-candidate product source commit; it also regenerates the release-machine worksheet/command for the current release evidence source commit without writing passed evidence. Use the lane-specific preparation scripts when you are iterating on one helper, but use the wrapper when the release action summary reports stale or missing manual helpers. Manual Review Helper Freshness verifies `.tmp/voiceover-review/launch.env` contains `SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT` for the release-candidate source commit and a concrete `SOLOPM_VOICEOVER_REVIEW_PROJECT_ID`. After committing source changes, `./script/prepare_release_manual_helpers.sh --prune-stale` removes ignored pending previews for older source commits and legacy default preview files while keeping the release-candidate helper files and without writing passed evidence.
+After any source commit changes, run `./script/prepare_release_manual_helpers.sh` before recording manual evidence. It regenerates the VoiceOver pending preview/launch env/worksheet/command, competitor hands-on pending evidence, competitor benchmark pending worksheet, and competitor hands-on worksheet/command for the release-candidate product source commit; it also regenerates the release-machine worksheet/command for the current release evidence source commit without writing passed evidence. Use the lane-specific preparation scripts when you are iterating on one helper, but use the wrapper when the release action summary reports stale or missing manual helpers. Manual Review Helper Freshness verifies `.tmp/voiceover-review/launch.env` contains `SUISUI_VOICEOVER_REVIEW_SOURCE_COMMIT` for the release-candidate source commit and a concrete `SUISUI_VOICEOVER_REVIEW_PROJECT_ID`. After committing source changes, `./script/prepare_release_manual_helpers.sh --prune-stale` removes ignored pending previews for older source commits and legacy default preview files while keeping the release-candidate helper files and without writing passed evidence.
 Every generated action summary includes a Persistent Manual Unblocker Runbook section that links back to `docs/release/manual-unblockers.md`, so operators can return to the tracked lane checklist after `.tmp/release-actions*.md` is replaced or regenerated.
 The manual helper wrapper itself requires a clean tracked source tree before regenerating pending previews or command files, so commit or revert tracked changes before preparing manual review helpers for a release candidate.
 The preparation script writes `.tmp/release-machine/release-machine-worksheet.md` and `.tmp/release-machine/create-release-evidence-command.sh`. Fill the worksheet while performing the release-machine checks, then run the generated command only after replacing every placeholder with concrete observations from the signed, notarized, stapled release artifact.
@@ -88,7 +88,7 @@ The generated release-machine command also verifies `.tmp/release-machine/releas
 The generated release-machine command requires `packaging/signing.env`, `packaging/notarization.env`, and `packaging/sparkle.env` to exist on the release machine and sources them before validating or writing release evidence.
 The generated release-machine command runs signing, online notarization profile, and release Sparkle setup verifiers before `create_release_evidence.sh --validate-only`.
 Run the generated release-machine `--validate-only` command first; it performs the same release evidence validation without writing `packaging/release-evidence.json`. Only run the generated `--force` write command after validation succeeds and every signed/notarized release-machine manual check is complete.
-The generated release-machine command reruns `SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh` after writing release evidence, so the operator sees the final release-machine gate result before returning to `release_readiness_report.sh`.
+The generated release-machine command reruns `SUISUI_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh` after writing release evidence, so the operator sees the final release-machine gate result before returning to `release_readiness_report.sh`.
 Direct manual evidence scripts also require a clean tracked source tree before writing passed evidence. This applies to `./script/create_release_evidence.sh`, `./script/create_voiceover_evidence.sh --passed`, and `./script/create_competitor_hands_on_evidence.sh --passed`, even when the generated worksheet command is bypassed.
 Passed VoiceOver and competitor hands-on evidence must include the generator provenance line (`Generated by: script/create_voiceover_evidence.sh` or `Generated by: script/create_competitor_hands_on_evidence.sh`). `release_readiness_report.sh` rejects hand-written `Status: passed` manual evidence without that marker, even when the other context fields look complete.
 Passed VoiceOver evidence must also identify the actual macOS version used for the manual pass. `macOS unknown`, `macOS version`, placeholders, samples, examples, or replacement text are rejected before evidence is written and remain release blockers if found in tracked evidence.
@@ -99,7 +99,7 @@ The script also requires the matching `*.package-evidence.json` generated by `./
 
 ```bash
 source packaging/app_metadata.env
-export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
+export SUISUI_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
 ./script/create_release_evidence.sh \
   --validate-only \
   --release-machine-launch \
@@ -154,8 +154,8 @@ The `--note` value must name the observed result for each true manual flag.
 
 ```bash
 source packaging/app_metadata.env
-export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
-SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh
+export SUISUI_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
+SUISUI_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh
 ```
 
 10. MCP Inspector evidence
@@ -184,9 +184,9 @@ Confirm `docs/release/evidence/mcp-inspector.md` includes:
 - `tools/list` and `tools/call`
 - malformed-json / mismatched-id / invalid-schema / timeout failure taxonomy
 
-If `Sources/SoloPMCore/ExternalMCP`, `Sources/SoloPMApp/SoloPMApp.swift`, `Sources/SoloPMApp/Composition`, `fixtures/mcp`, or `Package.swift` changes after this evidence is generated, rerun `./script/verify_mcp_compliance.sh`; `release_readiness_report.sh` rejects MCP Inspector evidence whose `Source commit` no longer matches the current MCP runtime/fixture source commit.
+If `Sources/SuisuiCore/ExternalMCP`, `Sources/SuisuiApp/SuisuiApp.swift`, `Sources/SuisuiApp/Composition`, `fixtures/mcp`, or `Package.swift` changes after this evidence is generated, rerun `./script/verify_mcp_compliance.sh`; `release_readiness_report.sh` rejects MCP Inspector evidence whose `Source commit` no longer matches the current MCP runtime/fixture source commit.
 
-SoloPM must not be described as a full MCP host for this release.
+Suisui must not be described as a full MCP host for this release.
 
 11. UI and accessibility evidence
 
@@ -197,7 +197,7 @@ script/capture_ui_evidence.sh --doctor
 script/capture_ui_evidence.sh
 ```
 
-`docs/release/evidence/ui-screenshots.md` records the latest UI runtime source commit from `Sources/SoloPMApp`, `Sources/SoloPMCore`, and `Package.swift`; rerun `script/capture_ui_evidence.sh` after UI/runtime source changes so the release report cannot reuse stale screenshots.
+`docs/release/evidence/ui-screenshots.md` records the latest UI runtime source commit from `Sources/SuisuiApp`, `Sources/SuisuiCore`, and `Package.swift`; rerun `script/capture_ui_evidence.sh` after UI/runtime source changes so the release report cannot reuse stale screenshots.
 
 Run the accessibility preflight before the manual VoiceOver pass. The source-only check is safe for CI/local review and verifies both accessibility anchors and primary CRUD keyboard shortcuts; the runtime check launches `dist/Suisui.app` and requires macOS Accessibility permission for Terminal/Codex:
 
@@ -211,17 +211,17 @@ The runtime preflight is intentionally stricter than a process/window check: it 
 When reviewing a local release candidate in a visible macOS session, include the runtime AX smoke in the readiness report:
 
 ```bash
-SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT=1 ./script/release_readiness_report.sh
+SUISUI_ACCESSIBILITY_RUNTIME_PREFLIGHT=1 ./script/release_readiness_report.sh
 ```
 
-Before claiming local CRUD is product-ready, run the runtime accessible CRUD smoke. It builds `dist/Suisui.app`, launches it with an isolated `SOLOPM_DATABASE_PATH`, selects a seeded Project Board via `SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION`, then uses macOS Accessibility to create, rename, complete, and delete a project; create, update, move, and directly delete a task; and verify project deletion removes a remaining task from SQLite:
+Before claiming local CRUD is product-ready, run the runtime accessible CRUD smoke. It builds `dist/Suisui.app`, launches it with an isolated `SUISUI_DATABASE_PATH`, selects a seeded Project Board via `SUISUI_PROJECT_BOARD_SELECTED_DESTINATION`, then uses macOS Accessibility to create, rename, complete, and delete a project; create, update, move, and directly delete a task; and verify project deletion removes a remaining task from SQLite:
 
 ```bash
 ./script/check_runtime_accessible_crud_smoke.sh
-SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SMOKE=1 ./script/release_readiness_report.sh
+SUISUI_RUNTIME_ACCESSIBLE_CRUD_SMOKE=1 ./script/release_readiness_report.sh
 ```
 
-Prepare the manual VoiceOver candidate with deterministic local data before starting the screen-reader pass. This creates an isolated `.tmp/voiceover-review/SoloPM-voiceover-review.sqlite`, seeds `VoiceOver Review Project` with one task in each board column, a dedicated approved execution receipt task, and an accessibility evidence artifact link, prints the `SOLOPM_DATABASE_PATH` / `SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION` launch command, and writes `.tmp/voiceover-review/create-evidence-command.sh` for the matching evidence step. Use `--no-launch` when you only want to inspect the generated database before opening the app:
+Prepare the manual VoiceOver candidate with deterministic local data before starting the screen-reader pass. This creates an isolated `.tmp/voiceover-review/Suisui-voiceover-review.sqlite`, seeds `VoiceOver Review Project` with one task in each board column, a dedicated approved execution receipt task, and an accessibility evidence artifact link, prints the `SUISUI_DATABASE_PATH` / `SUISUI_PROJECT_BOARD_SELECTED_DESTINATION` launch command, and writes `.tmp/voiceover-review/create-evidence-command.sh` for the matching evidence step. Use `--no-launch` when you only want to inspect the generated database before opening the app:
 
 ```bash
 ./script/prepare_voiceover_review_candidate.sh --no-launch
@@ -229,7 +229,7 @@ Prepare the manual VoiceOver candidate with deterministic local data before star
 ```
 
 Fill the worksheet with concrete observations from the manual pass before running the generated command.
-The generated VoiceOver evidence command requires a clean tracked source tree, pins the release-candidate source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit. The script also writes `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` so the reviewer can inspect the current release-candidate context without modifying tracked evidence. The generated `.tmp/voiceover-review/launch.env` records `SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT` and `SOLOPM_VOICEOVER_REVIEW_PROJECT_ID` so manual reviewers can confirm the launched candidate matches the release-candidate source commit and seeded project. The generated evidence command reloads that `launch.env`, verifies the seeded candidate database and project id, launches the same candidate before runtime AX smoke capture, and blocks if the helper context is stale. The generated VoiceOver evidence command also verifies `.tmp/voiceover-review/voiceover-worksheet.md` is marked completed, pinned to the same source commit and candidate database, free of unchecked/pending/template markers, and filled before validate-only or passed evidence can run. The generated VoiceOver evidence command reads reviewer, environment, and focus observations from the completed worksheet, so manual reviewers do not retype VoiceOver notes into shell placeholders. The generated VoiceOver evidence command also rejects boilerplate worksheet values such as `TBD`, `Verified`, `OK`, or `No issues`; each required worksheet field must contain concrete VoiceOver observations. The worksheet maps `approved-execution-receipt` to the Task content execution note so manual reviewers confirm the approved execution receipt, not only the Run approved plan button. It also requires Inbox voice triage and Today rail actions observations for the #5/#6 P0 cockpits, so older Project Board-only VoiceOver evidence cannot close those issues. The seeded VoiceOver candidate includes a dedicated approved execution receipt task so the manual pass has a concrete task title/detail pair to run and hear back from `approved-execution-receipt`. The seeded VoiceOver candidate also includes a due-today Today rail task so manual reviewers select a concrete task before checking next action, task detail, focus, schedule draft, edit, subtask draft, and reminder draft controls. The Task content execution observation must explicitly mention the redacted receipt, reviewed title, and reviewed detail so a reachable Run approved plan control cannot hide missing content-execution evidence. Rerun `./script/prepare_release_manual_helpers.sh` after any source commit changes so the candidate database, release app, runtime AX smoke, and manual VoiceOver observations stay bound to the same release candidate.
+The generated VoiceOver evidence command requires a clean tracked source tree, pins the release-candidate source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit. The script also writes `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` so the reviewer can inspect the current release-candidate context without modifying tracked evidence. The generated `.tmp/voiceover-review/launch.env` records `SUISUI_VOICEOVER_REVIEW_SOURCE_COMMIT` and `SUISUI_VOICEOVER_REVIEW_PROJECT_ID` so manual reviewers can confirm the launched candidate matches the release-candidate source commit and seeded project. The generated evidence command reloads that `launch.env`, verifies the seeded candidate database and project id, launches the same candidate before runtime AX smoke capture, and blocks if the helper context is stale. The generated VoiceOver evidence command also verifies `.tmp/voiceover-review/voiceover-worksheet.md` is marked completed, pinned to the same source commit and candidate database, free of unchecked/pending/template markers, and filled before validate-only or passed evidence can run. The generated VoiceOver evidence command reads reviewer, environment, and focus observations from the completed worksheet, so manual reviewers do not retype VoiceOver notes into shell placeholders. The generated VoiceOver evidence command also rejects boilerplate worksheet values such as `TBD`, `Verified`, `OK`, or `No issues`; each required worksheet field must contain concrete VoiceOver observations. The worksheet maps `approved-execution-receipt` to the Task content execution note so manual reviewers confirm the approved execution receipt, not only the Run approved plan button. It also requires Inbox voice triage and Today rail actions observations for the #5/#6 P0 cockpits, so older Project Board-only VoiceOver evidence cannot close those issues. The seeded VoiceOver candidate includes a dedicated approved execution receipt task so the manual pass has a concrete task title/detail pair to run and hear back from `approved-execution-receipt`. The seeded VoiceOver candidate also includes a due-today Today rail task so manual reviewers select a concrete task before checking next action, task detail, focus, schedule draft, edit, subtask draft, and reminder draft controls. The Task content execution observation must explicitly mention the redacted receipt, reviewed title, and reviewed detail so a reachable Run approved plan control cannot hide missing content-execution evidence. Rerun `./script/prepare_release_manual_helpers.sh` after any source commit changes so the candidate database, release app, runtime AX smoke, and manual VoiceOver observations stay bound to the same release candidate.
 Direct `./script/create_voiceover_evidence.sh --pending` also defaults to `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md`; it must not modify `docs/release/evidence/accessibility-voiceover.md` unless `--output` points there explicitly.
 Run `.tmp/voiceover-review/create-evidence-command.sh --validate-only` first; it performs the same passed-evidence validation and exits before writing `docs/release/evidence/accessibility-voiceover.md`. Only run `.tmp/voiceover-review/create-evidence-command.sh` without `--validate-only` after validation succeeds and the real manual VoiceOver pass is complete.
 
@@ -306,7 +306,7 @@ Each competitor note and Ship / Defer / Reject delta must identify what was actu
   --todoist-note "Concrete Todoist observation from the hands-on pass." \
   --linear-note "Concrete Linear observation from the hands-on pass." \
   --motion-note "Concrete Motion observation from the hands-on pass." \
-  --ship "SoloPM public-alpha behavior to ship based on the benchmark." \
+  --ship "Suisui public-alpha behavior to ship based on the benchmark." \
   --defer "Behavior to defer until stronger reliability or demand evidence exists." \
   --reject "Behavior to keep out of public alpha scope." \
   --benchmark-output docs/product/competitor-benchmark.md \
@@ -319,7 +319,7 @@ Each competitor note and Ship / Defer / Reject delta must identify what was actu
   --todoist-note "Concrete Todoist observation from the hands-on pass." \
   --linear-note "Concrete Linear observation from the hands-on pass." \
   --motion-note "Concrete Motion observation from the hands-on pass." \
-  --ship "SoloPM public-alpha behavior to ship based on the benchmark." \
+  --ship "Suisui public-alpha behavior to ship based on the benchmark." \
   --defer "Behavior to defer until stronger reliability or demand evidence exists." \
   --reject "Behavior to keep out of public alpha scope." \
   --benchmark-output docs/product/competitor-benchmark.md \
@@ -331,11 +331,11 @@ Each competitor note and Ship / Defer / Reject delta must identify what was actu
 Before closing local OSS STT/TTS issues, run the local runtime smoke with checksum-verified user-cache models, absolute user-selected runtime executables, a real STT sample WAV, and both Japanese and English Kokoro prompts:
 
 ```bash
-SOLOPM_WHISPER_CPP_EXECUTABLE=/absolute/path/to/whisper-cli \
-SOLOPM_STT_SAMPLE_WAV=/absolute/path/to/sample-ja-or-en.wav \
-SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS="<expected words>" \
-SOLOPM_KOKORO_EXECUTABLE=/absolute/path/to/kokoro-runtime \
-SOLOPM_LOCAL_VOICE_EVIDENCE_FILE=docs/release/evidence/local-voice-runtime.md \
+SUISUI_WHISPER_CPP_EXECUTABLE=/absolute/path/to/whisper-cli \
+SUISUI_STT_SAMPLE_WAV=/absolute/path/to/sample-ja-or-en.wav \
+SUISUI_STT_EXPECTED_TRANSCRIPT_CONTAINS="<expected words>" \
+SUISUI_KOKORO_EXECUTABLE=/absolute/path/to/kokoro-runtime \
+SUISUI_LOCAL_VOICE_EVIDENCE_FILE=docs/release/evidence/local-voice-runtime.md \
 ./script/check_local_voice_runtime_smoke.sh
 ```
 
@@ -345,7 +345,7 @@ SOLOPM_LOCAL_VOICE_EVIDENCE_FILE=docs/release/evidence/local-voice-runtime.md \
 
 Run the automated local gate sweep first. It verifies CI, SQLite CRUD, runtime accessible CRUD, layout stability, Xcode build, visible-window launch, seeded-candidate runtime AX, and MCP compliance gates in one command. The runtime AX step opens the same deterministic VoiceOver review candidate with `./script/prepare_voiceover_review_candidate.sh --skip-build` before checking `crudSignals=8/8`, `focusPathSignals=6/6`, and `destructiveCancelSignals=1/1`, then writes the captured `Runtime AX smoke: OK: runtime AX smoke visible...` line into the automated preflight evidence. The automated preflight evidence also records the seeded VoiceOver candidate source commit, project ID, database path, and selected destination used for runtime AX smoke. The seeded runtime AX gate uses `--timeout 30` because macOS accessibility tree updates can lag behind the visible Project Board window after launch. After automated preflight passes, it refreshes VoiceOver and competitor helper files for the release-candidate product source commit and release-machine helper files for the current release evidence source commit without writing passed evidence. This automated sweep does not replace manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper evidence.
 
-The final readiness report treats skipped automated proof gates as blockers by default. Run the sweep command for a full local proof, point the report at a clean-tree automated preflight evidence file, or run the individual `SOLOPM_*_PREFLIGHT=1` / smoke flags below when narrowing failures. Do not claim release readiness from the default report output if CI, SQLite CRUD, runtime accessible CRUD, layout stability, Xcode build, visible launch, or runtime AX were skipped.
+The final readiness report treats skipped automated proof gates as blockers by default. Run the sweep command for a full local proof, point the report at a clean-tree automated preflight evidence file, or run the individual `SUISUI_*_PREFLIGHT=1` / smoke flags below when narrowing failures. Do not claim release readiness from the default report output if CI, SQLite CRUD, runtime accessible CRUD, layout stability, Xcode build, visible launch, or runtime AX were skipped.
 
 Manual VoiceOver and competitor hands-on evidence record the current release-candidate product `Source commit`; rerun `./script/prepare_release_manual_helpers.sh` and then repeat the affected manual passes after product source changes instead of reusing evidence from an older release candidate.
 
@@ -353,33 +353,33 @@ Manual VoiceOver and competitor hands-on evidence record the current release-can
 ./script/check_automated_release_preflight.sh
 ```
 
-A standard run writes `.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md` and requires a clean tracked source tree, so commit or discard tracked changes before producing release proof. Override `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE` only when a release operator needs to write or reuse a non-standard evidence path. The release readiness report auto-discovers `.tmp/automated-release-preflight-<commit>.md` for the current source commit when the environment variable is omitted.
-The Xcode build gate has a fail-closed watchdog so a local SwiftBuild hang cannot leave release proof generation running forever. Use `SOLOPM_XCODE_PREFLIGHT_TIMEOUT_SECONDS=<seconds>` only when a release machine is known to need a longer Xcode build window. If the Xcode watchdog times out, reproduce the exact `xcodebuild -workspace ... -scheme ... -destination ... build` command from the blocker output and keep automated preflight evidence rejected until that Xcode build gate passes.
+A standard run writes `.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md` and requires a clean tracked source tree, so commit or discard tracked changes before producing release proof. Override `SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE` only when a release operator needs to write or reuse a non-standard evidence path. The release readiness report auto-discovers `.tmp/automated-release-preflight-<commit>.md` for the current source commit when the environment variable is omitted.
+The Xcode build gate has a fail-closed watchdog so a local SwiftBuild hang cannot leave release proof generation running forever. Use `SUISUI_XCODE_PREFLIGHT_TIMEOUT_SECONDS=<seconds>` only when a release machine is known to need a longer Xcode build window. If the Xcode watchdog times out, reproduce the exact `xcodebuild -workspace ... -scheme ... -destination ... build` command from the blocker output and keep automated preflight evidence rejected until that Xcode build gate passes.
 When the final report reuses this evidence, it verifies the generator identity, UTC timestamp, source commit, clean-tree marker, app name, Xcode workspace/scheme/configuration/destination, every automated proof gate, the runtime AX smoke OK line with `unlabeledButtons=0`, `genericButtons=0`, `crudSignals=8/8`, `focusPathSignals=6/6`, and `destructiveCancelSignals=1/1`, and the manual-evidence boundary text.
 
 ```bash
 source packaging/app_metadata.env
-export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
+export SUISUI_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
 ./script/release_readiness_report.sh
-SOLOPM_RELEASE_ACTIONS_FILE=.tmp/release-actions.md ./script/release_readiness_report.sh
+SUISUI_RELEASE_ACTIONS_FILE=.tmp/release-actions.md ./script/release_readiness_report.sh
 ./script/release_readiness_report.sh # auto-discovers .tmp/automated-release-preflight-<commit>.md
-SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=".tmp/automated-release-preflight-$(git rev-parse --short HEAD).md" ./script/release_readiness_report.sh
-SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh
-SOLOPM_RELEASE_CI_PREFLIGHT=1 ./script/release_readiness_report.sh
-SOLOPM_LOCAL_CRUD_SMOKE=1 ./script/release_readiness_report.sh
-SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SMOKE=1 ./script/release_readiness_report.sh
-SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT=1 ./script/release_readiness_report.sh
-SOLOPM_RELEASE_XCODE_PREFLIGHT=1 ./script/release_readiness_report.sh
-SOLOPM_BUILD_CONFIGURATION=release SOLOPM_RELEASE_LAUNCH_PREFLIGHT=1 ./script/release_readiness_report.sh
+SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=".tmp/automated-release-preflight-$(git rev-parse --short HEAD).md" ./script/release_readiness_report.sh
+SUISUI_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh
+SUISUI_RELEASE_CI_PREFLIGHT=1 ./script/release_readiness_report.sh
+SUISUI_LOCAL_CRUD_SMOKE=1 ./script/release_readiness_report.sh
+SUISUI_RUNTIME_ACCESSIBLE_CRUD_SMOKE=1 ./script/release_readiness_report.sh
+SUISUI_ACCESSIBILITY_RUNTIME_PREFLIGHT=1 ./script/release_readiness_report.sh
+SUISUI_RELEASE_XCODE_PREFLIGHT=1 ./script/release_readiness_report.sh
+SUISUI_BUILD_CONFIGURATION=release SUISUI_RELEASE_LAUNCH_PREFLIGHT=1 ./script/release_readiness_report.sh
 ```
 
-The Operator Priority Queue appears before the full blocker list and shows the highest-impact manual lanes, the blocker count each lane can clear, the release-environment item count for the release-machine lane, the unchecked manual phase-item count for checklist routing, and the next worksheet plus generated command/helper to use. The action summary groups remaining blockers into Automated Proof Gates, Manual VoiceOver, Competitor Hands-On, Release Machine, Phase Checklist, and Other buckets. The action summary includes a Local Product Gate Status section so reviewers can distinguish current-commit local MCP/data/CRUD proof from manual and release-machine blockers. If a login item manual gate remains, the Operator Priority Queue also calls out the signed-app Launch at Login check and points to `--login-item-toggle` in `.tmp/release-machine/create-release-evidence-command.sh`. When valid clean-tree automated preflight evidence is supplied, the Automated Proof Gates section shows the accepted evidence file, source commit, release-candidate product source commit, generated timestamp, runtime AX smoke OK line, and passed gates instead of only telling the operator to rerun the sweep. Manual VoiceOver and competitor hands-on blockers are also split into dedicated sections so the operator can repair evidence without treating those manual gates as passed. The action summary header lists both the report `Source commit` and `Release-candidate product source commit`, so operators can tell apart release-script changes from the product commit that manual VoiceOver and competitor evidence must match. The Phase Checklist section also routes unchecked manual gates to Manual VoiceOver, Competitor Hands-On, Release Machine, Login Item Manual Check, or Manual Review so the operator can match each checklist item to the correct evidence path. If a login item manual gate remains, the action summary includes the `create_release_evidence.sh` command with `--login-item-toggle`, concrete `--manual-environment`, `--checked-by`, and a review `--note`, making it clear that launch-at-login evidence is bound to the signed release artifact rather than a standalone checkbox. The Release Machine section includes `./script/prepare_release_machine_evidence.sh`, `.tmp/release-machine/release-machine-worksheet.md`, `.tmp/release-machine/create-release-evidence-command.sh`, and an ordered command block for local secret setup, signing validation, notarization validation, release packaging, appcast generation, release evidence, and final preflight, while still requiring placeholders to be replaced with production values and real observations. The generated release-machine command refuses to run until its worksheet is `Status: completed`, source-pinned, filled, free of pending/unchecked/template markers, and free of boilerplate values such as `TBD`, `Verified`, `OK`, or `manual checks completed`. That command block now edits and runs the generated `.tmp/release-machine/create-release-evidence-command.sh` before showing the direct `create_release_evidence.sh --force` fallback, so operators keep the generated validate-only step and final online preflight as the primary path. The action summary includes a Manual Evidence Source Hygiene section explaining that direct passed evidence scripts also require a clean tracked source tree. It also reminds operators that release-machine evidence must include `generator.name: script/create_release_evidence.sh` and that hand-written `packaging/release-evidence.json` remains blocked. Generated competitor/release-machine command files must fail validate-only until every placeholder is replaced, and generated VoiceOver commands must fail until worksheet values are complete, so template commands cannot be treated as evidence-ready. The release environment section routes verifier blockers to Signing Configuration, Notarization, Sparkle / Appcast, Gatekeeper / Stapling, Release Evidence, Source Hygiene, or Local Inspection while still redacting sensitive-looking values. When release environment preflight fails, the action summary also prints a `Release Machine Local Doctor` section with `./script/check_release_machine_local_doctor.sh` plus non-secret diagnostics for installed Developer ID identities, local env file presence, signing setup, online notary setup, Sparkle release config, and final release preflight. The manual evidence sections include full generator commands with every required flag; VoiceOver reads values from the completed worksheet, while competitor and release-machine placeholders must be replaced with real observations before running them. The Manual Review Helper Freshness section uses `./script/prepare_release_manual_helpers.sh` to regenerate VoiceOver and competitor helper files for the release-candidate product source commit and release-machine helper files for the current release evidence source commit without writing passed evidence. Manual Review Helper Freshness verifies `.tmp/voiceover-review/launch.env` contains `SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT` for the release-candidate source commit and a concrete `SOLOPM_VOICEOVER_REVIEW_PROJECT_ID`. If old `.tmp/voiceover-review/*-pending-<old-commit>.md` or `.tmp/competitor-hands-on/*-pending-<old-commit>.md` previews remain, or if legacy default `.tmp/competitor-hands-on/evidence.md` remains, the Ignored Stale Manual Helper Previews section lists them as ignored so operators do not copy stale release-candidate context into tracked evidence. `./script/prepare_release_manual_helpers.sh --prune-stale` removes ignored old pending previews and legacy default preview files after the release-candidate helpers are regenerated, and does not write passed evidence. The Manual VoiceOver section includes `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md`, `.tmp/voiceover-review/voiceover-worksheet.md`, and `.tmp/voiceover-review/create-evidence-command.sh` before the final passed command, so operators can inspect release-candidate context without modifying tracked evidence. Its generated command now refuses to run until the VoiceOver worksheet is `Status: completed`, source/database-pinned, filled, and free of pending/unchecked/template markers, reads reviewer/environment/focus notes from that worksheet, and the action summary repeats that the Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail. The Competitor Hands-On section includes `./script/prepare_release_manual_helpers.sh`, `.tmp/competitor-hands-on/hands-on-worksheet.md`, `.tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md`, and `.tmp/competitor-hands-on/create-evidence-command.sh` before the final passed command, so operators have editable helper files without accidentally marking the manual gate passed. Its generated command now refuses to run until the worksheet is `Status: completed`, source-pinned, filled, and free of pending/unchecked/template markers. The action summary also expands those pending paths for the current release-candidate product source commit, making the exact VoiceOver and competitor pending evidence filenames visible without mentally substituting `<commit>`. When release environment preflight fails, it also copies the concrete `BLOCKER:` lines from `verify_release_environment.sh` into a `Release Environment Blockers` section with repo-relative paths and without secret-like values.
+The Operator Priority Queue appears before the full blocker list and shows the highest-impact manual lanes, the blocker count each lane can clear, the release-environment item count for the release-machine lane, the unchecked manual phase-item count for checklist routing, and the next worksheet plus generated command/helper to use. The action summary groups remaining blockers into Automated Proof Gates, Manual VoiceOver, Competitor Hands-On, Release Machine, Phase Checklist, and Other buckets. The action summary includes a Local Product Gate Status section so reviewers can distinguish current-commit local MCP/data/CRUD proof from manual and release-machine blockers. If a login item manual gate remains, the Operator Priority Queue also calls out the signed-app Launch at Login check and points to `--login-item-toggle` in `.tmp/release-machine/create-release-evidence-command.sh`. When valid clean-tree automated preflight evidence is supplied, the Automated Proof Gates section shows the accepted evidence file, source commit, release-candidate product source commit, generated timestamp, runtime AX smoke OK line, and passed gates instead of only telling the operator to rerun the sweep. Manual VoiceOver and competitor hands-on blockers are also split into dedicated sections so the operator can repair evidence without treating those manual gates as passed. The action summary header lists both the report `Source commit` and `Release-candidate product source commit`, so operators can tell apart release-script changes from the product commit that manual VoiceOver and competitor evidence must match. The Phase Checklist section also routes unchecked manual gates to Manual VoiceOver, Competitor Hands-On, Release Machine, Login Item Manual Check, or Manual Review so the operator can match each checklist item to the correct evidence path. If a login item manual gate remains, the action summary includes the `create_release_evidence.sh` command with `--login-item-toggle`, concrete `--manual-environment`, `--checked-by`, and a review `--note`, making it clear that launch-at-login evidence is bound to the signed release artifact rather than a standalone checkbox. The Release Machine section includes `./script/prepare_release_machine_evidence.sh`, `.tmp/release-machine/release-machine-worksheet.md`, `.tmp/release-machine/create-release-evidence-command.sh`, and an ordered command block for local secret setup, signing validation, notarization validation, release packaging, appcast generation, release evidence, and final preflight, while still requiring placeholders to be replaced with production values and real observations. The generated release-machine command refuses to run until its worksheet is `Status: completed`, source-pinned, filled, free of pending/unchecked/template markers, and free of boilerplate values such as `TBD`, `Verified`, `OK`, or `manual checks completed`. That command block now edits and runs the generated `.tmp/release-machine/create-release-evidence-command.sh` before showing the direct `create_release_evidence.sh --force` fallback, so operators keep the generated validate-only step and final online preflight as the primary path. The action summary includes a Manual Evidence Source Hygiene section explaining that direct passed evidence scripts also require a clean tracked source tree. It also reminds operators that release-machine evidence must include `generator.name: script/create_release_evidence.sh` and that hand-written `packaging/release-evidence.json` remains blocked. Generated competitor/release-machine command files must fail validate-only until every placeholder is replaced, and generated VoiceOver commands must fail until worksheet values are complete, so template commands cannot be treated as evidence-ready. The release environment section routes verifier blockers to Signing Configuration, Notarization, Sparkle / Appcast, Gatekeeper / Stapling, Release Evidence, Source Hygiene, or Local Inspection while still redacting sensitive-looking values. When release environment preflight fails, the action summary also prints a `Release Machine Local Doctor` section with `./script/check_release_machine_local_doctor.sh` plus non-secret diagnostics for installed Developer ID identities, local env file presence, signing setup, online notary setup, Sparkle release config, and final release preflight. The manual evidence sections include full generator commands with every required flag; VoiceOver reads values from the completed worksheet, while competitor and release-machine placeholders must be replaced with real observations before running them. The Manual Review Helper Freshness section uses `./script/prepare_release_manual_helpers.sh` to regenerate VoiceOver and competitor helper files for the release-candidate product source commit and release-machine helper files for the current release evidence source commit without writing passed evidence. Manual Review Helper Freshness verifies `.tmp/voiceover-review/launch.env` contains `SUISUI_VOICEOVER_REVIEW_SOURCE_COMMIT` for the release-candidate source commit and a concrete `SUISUI_VOICEOVER_REVIEW_PROJECT_ID`. If old `.tmp/voiceover-review/*-pending-<old-commit>.md` or `.tmp/competitor-hands-on/*-pending-<old-commit>.md` previews remain, or if legacy default `.tmp/competitor-hands-on/evidence.md` remains, the Ignored Stale Manual Helper Previews section lists them as ignored so operators do not copy stale release-candidate context into tracked evidence. `./script/prepare_release_manual_helpers.sh --prune-stale` removes ignored old pending previews and legacy default preview files after the release-candidate helpers are regenerated, and does not write passed evidence. The Manual VoiceOver section includes `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md`, `.tmp/voiceover-review/voiceover-worksheet.md`, and `.tmp/voiceover-review/create-evidence-command.sh` before the final passed command, so operators can inspect release-candidate context without modifying tracked evidence. Its generated command now refuses to run until the VoiceOver worksheet is `Status: completed`, source/database-pinned, filled, and free of pending/unchecked/template markers, reads reviewer/environment/focus notes from that worksheet, and the action summary repeats that the Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail. The Competitor Hands-On section includes `./script/prepare_release_manual_helpers.sh`, `.tmp/competitor-hands-on/hands-on-worksheet.md`, `.tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md`, and `.tmp/competitor-hands-on/create-evidence-command.sh` before the final passed command, so operators have editable helper files without accidentally marking the manual gate passed. Its generated command now refuses to run until the worksheet is `Status: completed`, source-pinned, filled, and free of pending/unchecked/template markers. The action summary also expands those pending paths for the current release-candidate product source commit, making the exact VoiceOver and competitor pending evidence filenames visible without mentally substituting `<commit>`. When release environment preflight fails, it also copies the concrete `BLOCKER:` lines from `verify_release_environment.sh` into a `Release Environment Blockers` section with repo-relative paths and without secret-like values.
 The Operator Priority Queue names the manual worksheet before the generated command for VoiceOver, competitor hands-on, release-machine, and login-item evidence lanes.
 
 14. tag
 
 ```bash
-git tag -a v0.1.0-alpha.1 -m "SoloPM 0.1.0 alpha 1"
+git tag -a v0.1.0-alpha.1 -m "Suisui 0.1.0 alpha 1"
 ```
 
 15. release notes

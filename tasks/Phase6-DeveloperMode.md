@@ -1,6 +1,6 @@
 # Phase 6: Developer Mode
 
-目的は、個人開発者 / OSS 作者向けに SoloPM の価値を強めること。Git や GitHub を扱うが、最初は read-only と approval-first を徹底する。
+目的は、個人開発者 / OSS 作者向けに Suisui の価値を強めること。Git や GitHub を扱うが、最初は read-only と approval-first を徹底する。
 
 ## Scope
 
@@ -71,16 +71,16 @@
 
 ### P6-005: CLI foundation
 
-- [x] `solopm-cli` CLI の command scope を決める。
+- [x] `suisui-cli` CLI の command scope を決める。
 - [x] 最初は `status`、`tasks due`、`plan validate`、`frames search` など read / local 操作に限定する。
 - [x] app DB との接続方法を決める。
 - [x] テスト: CLI argument parse と exit code を確認する。
 - [x] 完了条件: GUI なしでも主要な local 状態を確認できる。
 
 実装メモ:
-- SwiftPM product `solopm-cli` / target `SoloPMCLI` を追加した。
+- SwiftPM product `suisui-cli` / target `SuisuiCLI` を追加した。
 - `status`、`tasks due`、`frames search` は app default SQLite DB を read-only で開き、Project / Task / Knowledge Frame の実データを表示する。
-- app DB は GUI と共有する `SoloPMAppDatabaseLocation.defaultDatabaseURL(createDirectory: false)` に固定し、DB が無い初回状態ではファイルを作らず `database: missing` を返す。
+- app DB は GUI と共有する `SuisuiAppDatabaseLocation.defaultDatabaseURL(createDirectory: false)` に固定し、DB が無い初回状態ではファイルを作らず `database: missing` を返す。
 - `plan validate <path>` は `ActionPlanValidator` を使い、write 系 command は parser で受け付けない。
 
 ### P6-006: codebase-memory optional integration
@@ -89,7 +89,7 @@
 - [x] 接続前に送信される文脈を preview する。
 - [x] MVP の Knowledge Frame と責務を混ぜない。
 - [x] テスト: connector disabled 時に planning が失敗しないことを確認する。
-- [x] 完了条件: 外部記憶連携がなくても SoloPM が成立する。
+- [x] 完了条件: 外部記憶連携がなくても Suisui が成立する。
 
 実装メモ:
 - `CodebaseMemoryPlanningIntegration` は disabled / preview-only / enabled-with-approval を分ける。
@@ -109,4 +109,4 @@ OSS 作者向け sample workflow:
 2. `git.status` / `git.diff_summary` / `git.log_summary` で local state を読み取る。
 3. `DeveloperDraftGenerator` で README / release note draft を preview し、secret redaction report を確認する。
 4. 必要な issue は `github.issue.create_draft` で Review UI に出し、明示承認後に `github.issue.create_with_approval` を通す。
-5. GUI が不要な確認は `solopm-cli status` / `solopm-cli plan validate <path>` から read-only に実行する。
+5. GUI が不要な確認は `suisui-cli status` / `suisui-cli plan validate <path>` から read-only に実行する。

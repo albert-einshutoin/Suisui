@@ -1,6 +1,6 @@
 # Phase 13: Multiplatform Automation
 
-目的は、SoloPM を macOS-first の個人PMアプリから、iOS / Web / macOS で使える会話ベースのタスク管理&自動化ツールへ拡張するための実装計画を固定すること。既存の local-first、BYOK、approval-first、audit-first の境界は維持し、Cloud Sync / Cloud Relay / Hosted MCP / Harness を段階的に追加する。
+目的は、Suisui を macOS-first の個人PMアプリから、iOS / Web / macOS で使える会話ベースのタスク管理&自動化ツールへ拡張するための実装計画を固定すること。既存の local-first、BYOK、approval-first、audit-first の境界は維持し、Cloud Sync / Cloud Relay / Hosted MCP / Harness を段階的に追加する。
 
 参照: `docs/product/multiplatform-automation.md`
 
@@ -77,7 +77,7 @@
 - [x] embeddings / FTS / provider prompt context のどこで処理するかを選べるadapterにする。
 - [x] 完了条件: 設定されたdocsだけをAIに渡し、成果物や事前準備タスクをreviewableに生成できる。
 
-## P13-008: SoloPM Harness
+## P13-008: Suisui Harness
 
 - [x] Provider prompt regression、task mutation flow、document-scoped automation、MCP compatibilityのscenario schemaを作る。
 - [x] Local harnessとCloud-triggered harnessを同じ結果形式にする。

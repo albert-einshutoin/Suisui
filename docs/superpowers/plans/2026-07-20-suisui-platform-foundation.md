@@ -16,12 +16,12 @@
 ### Task 1.1: Pin the new SwiftPM contract with tests
 
 Files:
-- Modify: `Tests/SoloPMCoreTests/PackageContractTests.swift` (or the existing package contract test)
+- Modify: `Tests/SuisuiCoreTests/PackageContractTests.swift` (or the existing package contract test)
 - Modify: `Package.swift`
 
 Steps:
 
-- [ ] Add a failing test/script assertion that package, products, targets, and executable names contain `Suisui` and no longer expose `SoloPM`.
+- [ ] Add a failing test/script assertion that package, products, targets, and executable names contain `Suisui` and no longer expose `Suisui`.
 - [ ] Rename package products and targets to `SuisuiCore`, `SuisuiExternalConnectors`, `SuisuiGoogleCalendarRuntime`, `SuisuiiOS`, `SuisuiWeb`, `Suisui`, `SuisuiCLI`, and `SuisuiCoreTests`.
 - [ ] Rename the command-line executable to `suisui-cli`.
 - [ ] Run `swift package describe` and the focused contract tests.
@@ -30,19 +30,19 @@ Steps:
 ### Task 1.2: Rename modules, source paths, symbols, and configuration keys
 
 Files:
-- Rename: `Sources/SoloPMCore` -> `Sources/SuisuiCore`
-- Rename: `Sources/SoloPMApp` -> `Sources/SuisuiApp`
-- Rename: `Sources/SoloPMCLI` -> `Sources/SuisuiCLI`
-- Rename: `Sources/SoloPMExternalConnectors` -> `Sources/SuisuiExternalConnectors`
-- Rename: `Sources/SoloPMGoogleCalendarRuntime` -> `Sources/SuisuiGoogleCalendarRuntime`
-- Rename: `Sources/SoloPMiOS` -> `Sources/SuisuiiOS`
-- Rename: `Sources/SoloPMWeb` -> `Sources/SuisuiWeb`
-- Rename: `Tests/SoloPMCoreTests` -> `Tests/SuisuiCoreTests`
+- Rename: `Sources/SuisuiCore` -> `Sources/SuisuiCore`
+- Rename: `Sources/SuisuiApp` -> `Sources/SuisuiApp`
+- Rename: `Sources/SuisuiCLI` -> `Sources/SuisuiCLI`
+- Rename: `Sources/SuisuiExternalConnectors` -> `Sources/SuisuiExternalConnectors`
+- Rename: `Sources/SuisuiGoogleCalendarRuntime` -> `Sources/SuisuiGoogleCalendarRuntime`
+- Rename: `Sources/SuisuiiOS` -> `Sources/SuisuiiOS`
+- Rename: `Sources/SuisuiWeb` -> `Sources/SuisuiWeb`
+- Rename: `Tests/SuisuiCoreTests` -> `Tests/SuisuiCoreTests`
 - Modify: tracked Swift, scripts, workflows, docs, plist, localization, and packaging files containing old identifiers
 
 Steps:
 
-- [ ] Apply case-aware replacements: `SOLOPM` -> `SUISUI`, `SoloPM` -> `Suisui`, `soloPM`/`solopm` -> `suisui`.
+- [ ] Apply case-aware replacements: `SUISUI` -> `SUISUI`, `Suisui` -> `Suisui`, `suisui`/`suisui` -> `suisui`.
 - [ ] Rename tracked filenames and bundle resources that contain the old name.
 - [ ] Remove the temporary compatibility comment/keys because no released installation requires migration.
 - [ ] Assert `git grep` finds no old product identifier in tracked files.
@@ -56,7 +56,7 @@ Files:
 
 Steps:
 
-- [ ] Rename `albert-einshutoin/soloPM` to `albert-einshutoin/Suisui` after the source rename is pushed.
+- [ ] Rename `albert-einshutoin/suisui` to `albert-einshutoin/Suisui` after the source rename is pushed.
 - [ ] Update the local `origin` URL and verify fetch/push.
 - [ ] Verify workflows do not reference the old repository through hosted reusable-action paths.
 - [ ] Do not recreate the old GitHub repository name because that would break redirects.

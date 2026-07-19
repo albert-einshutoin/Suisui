@@ -14,23 +14,23 @@ source "$METADATA_FILE"
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 APP_BUNDLE="${1:-$ROOT_DIR/dist/$APP_NAME.app}"
-TOP_COUNT="${SOLOPM_PACKAGE_INVENTORY_TOP_COUNT:-15}"
-MAX_APP_BUNDLE_BYTES="${SOLOPM_MAX_APP_BUNDLE_BYTES:-52428800}"
+TOP_COUNT="${SUISUI_PACKAGE_INVENTORY_TOP_COUNT:-15}"
+MAX_APP_BUNDLE_BYTES="${SUISUI_MAX_APP_BUNDLE_BYTES:-52428800}"
 
 if [[ ! -d "$APP_BUNDLE" ]]; then
   echo "missing app bundle: $APP_BUNDLE" >&2
   exit 2
 fi
 if [[ ! "$TOP_COUNT" =~ ^[1-9][0-9]*$ ]]; then
-  echo "SOLOPM_PACKAGE_INVENTORY_TOP_COUNT must be a positive integer" >&2
+  echo "SUISUI_PACKAGE_INVENTORY_TOP_COUNT must be a positive integer" >&2
   exit 2
 fi
 if [[ ! "$MAX_APP_BUNDLE_BYTES" =~ ^[1-9][0-9]*$ ]]; then
-  echo "SOLOPM_MAX_APP_BUNDLE_BYTES must be a positive integer" >&2
+  echo "SUISUI_MAX_APP_BUNDLE_BYTES must be a positive integer" >&2
   exit 2
 fi
 
-inventory_file="$(mktemp "${TMPDIR:-/tmp}/solopm-release-inventory.XXXXXX")"
+inventory_file="$(mktemp "${TMPDIR:-/tmp}/suisui-release-inventory.XXXXXX")"
 trap 'rm -f "$inventory_file"' EXIT INT TERM
 
 while IFS= read -r -d '' bundled_file; do

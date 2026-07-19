@@ -1,6 +1,6 @@
 # Phase 0: Skeleton
 
-目的は、SoloPM を macOS SwiftUI アプリとして継続開発できる土台に乗せること。AI や音声の本実装には入らず、アプリ構造、設定、永続化、秘密情報、ショートカットの境界を先に固める。
+目的は、Suisui を macOS SwiftUI アプリとして継続開発できる土台に乗せること。AI や音声の本実装には入らず、アプリ構造、設定、永続化、秘密情報、ショートカットの境界を先に固める。
 
 ## Scope
 
@@ -38,13 +38,13 @@
 - [x] macOS SwiftUI app を作成する。
 - [x] Swift language mode を Swift 6 にする。
 - [x] deployment target は ADR に残す。SpeechAnalyzer / FoundationModels は availability check 前提にする。
-- [x] `SoloPMApp`、`Core`、`Storage`、`Integrations`、`DesignSystem`、`TestingSupport` の責務境界を作る。
+- [x] `SuisuiApp`、`Core`、`Storage`、`Integrations`、`DesignSystem`、`TestingSupport` の責務境界を作る。
 - [x] テスト: 空の unit test target が実行できることを確認する。
 - [x] 完了条件: `xcodebuild test` または `swift test` の baseline が通る。
 
 ### P0-003: App entry と MenuBarExtra の最小実装
 
-- [x] `SoloPMApp` の entry point を作る。
+- [x] `SuisuiApp` の entry point を作る。
 - [x] MenuBarExtra にアプリ名、Today summary placeholder、Voice Command placeholder、Settings 導線を出す。
 - [x] View に business logic を置かず、表示用 state は ViewModel から受ける。
 - [x] テスト: Menu bar summary 用 ViewModel の初期状態を unit test する。
@@ -113,7 +113,7 @@
 
 ### P0-011: Project documentation baseline
 
-- [x] root `README.md` を作り、SoloPM の一文説明、MVP scope、開発開始手順、local verification command を書く。
+- [x] root `README.md` を作り、Suisui の一文説明、MVP scope、開発開始手順、local verification command を書く。
 - [x] `CONTRIBUTING.md` を作り、GitHub Flow、TDD、Issue 展開ルール、PR checklist を `tasks/README.md` へリンクする。
 - [x] `SECURITY.md` を作り、API Key / token を Keychain に保存し、ログや DB に保存しない方針を書く。
 - [x] root README から `docs/README.md`、`docs/tech_stack.md`、`tasks/README.md` へリンクする。

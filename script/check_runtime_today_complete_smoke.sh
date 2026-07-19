@@ -15,16 +15,16 @@ source "$METADATA_FILE"
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-TIMEOUT_SECONDS="${SOLOPM_RUNTIME_TODAY_COMPLETE_TIMEOUT_SECONDS:-30}"
-KEEP_DATABASE="${SOLOPM_RUNTIME_TODAY_COMPLETE_KEEP_DATABASE:-0}"
+TIMEOUT_SECONDS="${SUISUI_RUNTIME_TODAY_COMPLETE_TIMEOUT_SECONDS:-30}"
+KEEP_DATABASE="${SUISUI_RUNTIME_TODAY_COMPLETE_KEEP_DATABASE:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
-WINDOW_WIDTH="${SOLOPM_RUNTIME_TODAY_COMPLETE_WINDOW_WIDTH:-1300}"
-WINDOW_HEIGHT="${SOLOPM_RUNTIME_TODAY_COMPLETE_WINDOW_HEIGHT:-860}"
-AX_MAX_NODES="${SOLOPM_RUNTIME_TODAY_COMPLETE_AX_MAX_NODES:-9000}"
+WINDOW_WIDTH="${SUISUI_RUNTIME_TODAY_COMPLETE_WINDOW_WIDTH:-1300}"
+WINDOW_HEIGHT="${SUISUI_RUNTIME_TODAY_COMPLETE_WINDOW_HEIGHT:-860}"
+AX_MAX_NODES="${SUISUI_RUNTIME_TODAY_COMPLETE_AX_MAX_NODES:-9000}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "SOLOPM_RUNTIME_TODAY_COMPLETE_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "SUISUI_RUNTIME_TODAY_COMPLETE_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
@@ -35,8 +35,8 @@ fi
 
 cd "$ROOT_DIR"
 mkdir -p "$ROOT_DIR/.tmp"
-tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-today-complete.XXXXXX")"
-database_path="$tmp_dir/SoloPM-runtime-today-complete.sqlite"
+tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/suisui-runtime-today-complete.XXXXXX")"
+database_path="$tmp_dir/Suisui-runtime-today-complete.sqlite"
 runtime_home="$tmp_dir/home"
 # ISO8601DateFormatter accepts the UTC form consistently across locale and
 # midnight boundaries. One hour ahead keeps the seeded task executable even
@@ -78,7 +78,7 @@ wait_for_app_process() {
 
 wait_for_no_app_process() {
   # The smoke owns only app_pid. Do not inspect or terminate another user's
-  # SoloPM process while resetting the isolated test database.
+  # Suisui process while resetting the isolated test database.
   [[ -z "${app_pid:-}" ]]
 }
 
@@ -185,9 +185,9 @@ APPLESCRIPT
 launch_app_for_today() {
   terminate_app
   /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
-    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="today" \
-    SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID="$today_task_id" \
+    SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 SUISUI_DATABASE_PATH="$database_path" \
+    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="today" \
+    SUISUI_PROJECT_BOARD_SELECTED_TASK_ID="$today_task_id" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_launch_pid=$!
   wait_for_app_process
@@ -199,8 +199,8 @@ launch_app_for_today() {
 launch_app_for_database_migration() {
   terminate_app
   /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
-    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="today" \
+    SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 SUISUI_DATABASE_PATH="$database_path" \
+    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="today" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_launch_pid=$!
   wait_for_app_process
@@ -322,9 +322,9 @@ waitForAXSubtreeMarkerContaining() {
   local status
 
   while true; do
-    error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-today-ax-marker-error.XXXXXX")"
-    SOLOPM_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
-      SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
+    error_file="$(mktemp "${TMPDIR:-/tmp}/suisui-today-ax-marker-error.XXXXXX")"
+    SUISUI_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
+      SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
       /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" "$APP_NAME" "$identifier_fragment" "$required_text" "$app_pid" \
       >/dev/null 2>"$error_file" &
     checker_pid=$!
@@ -364,8 +364,8 @@ pressButtonContainingBounded() {
   local status
 
   while true; do
-    error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-today-ax-button-error.XXXXXX")"
-    SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
+    error_file="$(mktemp "${TMPDIR:-/tmp}/suisui-today-ax-button-error.XXXXXX")"
+    SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
       /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" "$app_pid" "$fragment" \
       >/dev/null 2>"$error_file" &
     checker_pid=$!
@@ -417,8 +417,8 @@ pressAXElementContainingBounded() {
   local status
 
   while true; do
-    error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-today-ax-element-error.XXXXXX")"
-    SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
+    error_file="$(mktemp "${TMPDIR:-/tmp}/suisui-today-ax-element-error.XXXXXX")"
+    SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
       /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_element.swift" "$app_pid" "$fragment" \
       >/dev/null 2>"$error_file" &
     helper_pid=$!

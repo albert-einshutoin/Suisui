@@ -6,7 +6,7 @@ Date: 2026-07-03
 
 Decision: defer new SwiftPM targets.
 
-SoloPM should not add Work Management, Automation Core, Integration Core, or
+Suisui should not add Work Management, Automation Core, Integration Core, or
 App Shell targets in the current refactor pass. The boundaries are now
 documented and source-level tests are active, but the measured coupling still
 shows that a package graph change would be mostly structural churn rather than
@@ -23,15 +23,15 @@ security, or approval-before-execution contracts.
 
 | Target | Depends on | Current role |
 | --- | --- | --- |
-| `SoloPMCore` | system `sqlite3` linker setting | Domain models, stores, ports, security, audit, developer-mode automation, and reusable runtime contracts. |
-| `SoloPMExternalConnectors` | `SoloPMCore` | Optional SaaS connector implementations and connector-specific OAuth lifecycle. |
-| `SoloPMGoogleCalendarRuntime` | `SoloPMCore` | Google Calendar runtime OAuth, HTTP clients, calendar list, and sync adapters. |
-| `SoloPMiOS` | `SoloPMCore` | iOS companion surface. |
-| `SoloPMWeb` | `SoloPMCore` | Web MVP surface. |
-| `SoloPM` | `SoloPMCore`, `SoloPMGoogleCalendarRuntime`, `Sparkle`, `SwiftTerm` | macOS executable, app shell, SwiftUI views, composition roots, and platform adapters. |
-| `SoloPMCLI` | `SoloPMCore` | CLI read-only/reporting surface. |
+| `SuisuiCore` | system `sqlite3` linker setting | Domain models, stores, ports, security, audit, developer-mode automation, and reusable runtime contracts. |
+| `SuisuiExternalConnectors` | `SuisuiCore` | Optional SaaS connector implementations and connector-specific OAuth lifecycle. |
+| `SuisuiGoogleCalendarRuntime` | `SuisuiCore` | Google Calendar runtime OAuth, HTTP clients, calendar list, and sync adapters. |
+| `SuisuiiOS` | `SuisuiCore` | iOS companion surface. |
+| `SuisuiWeb` | `SuisuiCore` | Web MVP surface. |
+| `Suisui` | `SuisuiCore`, `SuisuiGoogleCalendarRuntime`, `Sparkle`, `SwiftTerm` | macOS executable, app shell, SwiftUI views, composition roots, and platform adapters. |
+| `SuisuiCLI` | `SuisuiCore` | CLI read-only/reporting surface. |
 
-The app target still deliberately avoids `SoloPMExternalConnectors`. Optional
+The app target still deliberately avoids `SuisuiExternalConnectors`. Optional
 connector code remains available to tests and future integrations without
 broadening the shipping app dependency graph.
 
@@ -41,19 +41,19 @@ Measured from the repository on 2026-07-03:
 
 | Measurement | Result | Implication |
 | --- | --- | --- |
-| Source file count by target | `SoloPMCore` 122, `SoloPMApp` 33, `SoloPMExternalConnectors` 1, `SoloPMGoogleCalendarRuntime` 1, `SoloPMCLI` 1, `SoloPMiOS` 1, `SoloPMWeb` 1 | Core is still the dominant dependency closure; target splits would mostly move Core-internal coupling unless more domain files are isolated first. |
-| Core folder concentration | `Sources/SoloPMCore/App` 38 files / 24,090 LOC, `WorkManagement` 3 files / 1,304 LOC, `ExternalMCP` 8, `Voice` 12, `DeveloperMode` 12, `Database` 2, `Security` 5, `Review` 3 | Some domains have folders, but Work Management and planning still share the broad App layer. |
-| Import distribution | `Foundation` 148, `SoloPMCore` 33, `SwiftUI` 21, `CryptoKit` 11, `UniformTypeIdentifiers` 10, `Combine` 9, `AppKit` 4, `SoloPMGoogleCalendarRuntime` 2 | UI/platform imports are concentrated in the app target, while most domain code shares Foundation/Core. |
-| Platform import placement | SwiftUI/AppKit/Sparkle/SwiftTerm/AuthenticationServices/EventKit imports are in `Sources/SoloPMApp` only. | Existing boundary tests are already enforcing the most valuable split: platform code stays outside Core/runtime targets. |
+| Source file count by target | `SuisuiCore` 122, `SuisuiApp` 33, `SuisuiExternalConnectors` 1, `SuisuiGoogleCalendarRuntime` 1, `SuisuiCLI` 1, `SuisuiiOS` 1, `SuisuiWeb` 1 | Core is still the dominant dependency closure; target splits would mostly move Core-internal coupling unless more domain files are isolated first. |
+| Core folder concentration | `Sources/SuisuiCore/App` 38 files / 24,090 LOC, `WorkManagement` 3 files / 1,304 LOC, `ExternalMCP` 8, `Voice` 12, `DeveloperMode` 12, `Database` 2, `Security` 5, `Review` 3 | Some domains have folders, but Work Management and planning still share the broad App layer. |
+| Import distribution | `Foundation` 148, `SuisuiCore` 33, `SwiftUI` 21, `CryptoKit` 11, `UniformTypeIdentifiers` 10, `Combine` 9, `AppKit` 4, `SuisuiGoogleCalendarRuntime` 2 | UI/platform imports are concentrated in the app target, while most domain code shares Foundation/Core. |
+| Platform import placement | SwiftUI/AppKit/Sparkle/SwiftTerm/AuthenticationServices/EventKit imports are in `Sources/SuisuiApp` only. | Existing boundary tests are already enforcing the most valuable split: platform code stays outside Core/runtime targets. |
 | Local verification cost | `./scripts/ci.sh` completed locally in about 20 seconds during the preceding integration refactor. | Current build/test cost does not justify package graph churn by itself. |
 
 ## Candidate Target Assessment
 
 | Candidate target | Potential benefit | Current blocker | Decision |
 | --- | --- | --- | --- |
-| Work Management | Smaller domain API for projects, tasks, inbox, milestones, due work, and board snapshots. | `Sources/SoloPMCore/App` still holds broad board, schedule, sync, and presentation view-model code. Splitting now would require either cyclic dependencies or a large behavior-preserving move in the same PR. | Defer until Work Management owns a stable closure of value types, stores, services, and view-model boundaries. |
+| Work Management | Smaller domain API for projects, tasks, inbox, milestones, due work, and board snapshots. | `Sources/SuisuiCore/App` still holds broad board, schedule, sync, and presentation view-model code. Splitting now would require either cyclic dependencies or a large behavior-preserving move in the same PR. | Defer until Work Management owns a stable closure of value types, stores, services, and view-model boundaries. |
 | Automation Core | Clear approval-before-execution package for assistant queue, review sessions, receipts, cost preview, and audit transitions. | Automation still crosses Work Management mutations, audit/security redaction, developer workflow tools, and runtime receipts. Boundary tests currently give better protection with less graph churn. | Defer until queue translation, execution coordination, and receipt persistence are independently importable. |
-| Integration Core | Reusable connector contracts for Google Calendar, MCP, notifications, SaaS connectors, and shared HTTP/value contracts. | `SoloPMGoogleCalendarRuntime` and `SoloPMExternalConnectors` already separate concrete runtime adapters. The shared value/protocol contracts now live in Core without linking optional connector implementations into the app. | Defer; continue extracting only shared value/protocol contracts when they reduce coupling. |
+| Integration Core | Reusable connector contracts for Google Calendar, MCP, notifications, SaaS connectors, and shared HTTP/value contracts. | `SuisuiGoogleCalendarRuntime` and `SuisuiExternalConnectors` already separate concrete runtime adapters. The shared value/protocol contracts now live in Core without linking optional connector implementations into the app. | Defer; continue extracting only shared value/protocol contracts when they reduce coupling. |
 | App Shell | Smaller app composition surface for launch, scene wiring, settings runtime, and platform permissions. | The executable target already is the app shell. Further target splitting would not help OSS contributors unless composition factories can be reused independently from SwiftUI views and platform adapters. | Defer; keep folder-level `Composition`, `Views`, and `Adapters` boundaries. |
 
 ## Measurement Commands
@@ -61,12 +61,12 @@ Measured from the repository on 2026-07-03:
 Refresh the measurements before reopening the decision:
 
 ```sh
-for d in Sources/SoloPMCore Sources/SoloPMApp Sources/SoloPMExternalConnectors Sources/SoloPMGoogleCalendarRuntime Sources/SoloPMCLI Sources/SoloPMiOS Sources/SoloPMWeb; do
+for d in Sources/SuisuiCore Sources/SuisuiApp Sources/SuisuiExternalConnectors Sources/SuisuiGoogleCalendarRuntime Sources/SuisuiCLI Sources/SuisuiiOS Sources/SuisuiWeb; do
   printf "%s " "$d"
   find "$d" -name '*.swift' -type f | wc -l
 done
 
-for d in Sources/SoloPMCore/App Sources/SoloPMCore/WorkManagement Sources/SoloPMCore/ExternalMCP Sources/SoloPMCore/Voice Sources/SoloPMCore/DeveloperMode Sources/SoloPMCore/Database Sources/SoloPMCore/Security Sources/SoloPMCore/Review Sources/SoloPMApp/Composition Sources/SoloPMApp/Views Sources/SoloPMApp/Adapters; do
+for d in Sources/SuisuiCore/App Sources/SuisuiCore/WorkManagement Sources/SuisuiCore/ExternalMCP Sources/SuisuiCore/Voice Sources/SuisuiCore/DeveloperMode Sources/SuisuiCore/Database Sources/SuisuiCore/Security Sources/SuisuiCore/Review Sources/SuisuiApp/Composition Sources/SuisuiApp/Views Sources/SuisuiApp/Adapters; do
   printf "%s " "$d"
   find "$d" -name '*.swift' -type f 2>/dev/null | wc -l
 done

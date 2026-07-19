@@ -5,7 +5,7 @@ Status: Accepted
 
 ## Context
 
-SoloPM must record Action Plans, user approvals, and tool invocations locally. The technical plan mentions SQLite and local JSONL logs. Phase 0 needs one primary store to avoid duplicating write paths too early.
+Suisui must record Action Plans, user approvals, and tool invocations locally. The technical plan mentions SQLite and local JSONL logs. Phase 0 needs one primary store to avoid duplicating write paths too early.
 
 ## Decision
 

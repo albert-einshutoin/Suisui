@@ -2,7 +2,7 @@
 
 Verified: 2026-06-21
 
-This document fixes the first SoloPM Cloud Sync boundary for Phase 13. The goal is not to implement a production sync backend yet. The goal is to make the shared data model safe enough that iOS, Web, and macOS can later exchange task data without introducing plaintext secrets or ambiguous merge behavior.
+This document fixes the first Suisui Cloud Sync boundary for Phase 13. The goal is not to implement a production sync backend yet. The goal is to make the shared data model safe enough that iOS, Web, and macOS can later exchange task data without introducing plaintext secrets or ambiguous merge behavior.
 
 ## Ledger Shape
 

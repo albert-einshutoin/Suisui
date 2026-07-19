@@ -1,0 +1,46 @@
+{
+  "purpose": "Project Board state restoration fixture for empty, normal, many-item, and deleted-selection launch scenarios.",
+  "runtimeControls": {
+    "databasePath": "SUISUI_DATABASE_PATH",
+    "selectedDestination": "SUISUI_PROJECT_BOARD_SELECTED_DESTINATION",
+    "windowWidths": [
+      "SUISUI_LAYOUT_STABILITY_WINDOW_MIN_WIDTH",
+      "SUISUI_LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH",
+      "SUISUI_LAYOUT_STABILITY_WINDOW_WIDE_WIDTH"
+    ]
+  },
+  "scenarios": [
+    {
+      "name": "emptyDatabase",
+      "projectIDs": [],
+      "taskCount": 0,
+      "savedSelection": "project:42",
+      "expectedDestination": "today",
+      "expectedLaunchSurface": "Suisui Project Board window remains visible"
+    },
+    {
+      "name": "normalSeededDatabase",
+      "projectIDs": [42],
+      "taskCount": 8,
+      "envOverride": "project:42",
+      "expectedDestination": "project:42",
+      "expectedLaunchSurface": "Project detail and Kanban columns are visible"
+    },
+    {
+      "name": "deletedSavedProject",
+      "projectIDs": [41, 43],
+      "taskCount": 6,
+      "savedSelection": "project:42",
+      "expectedDestination": "today",
+      "guard": "ProjectBoardSelectionPersistence.destination"
+    },
+    {
+      "name": "manyProjectsAndTasks",
+      "projectCount": 24,
+      "tasksPerProject": 12,
+      "envOverride": "projects",
+      "expectedDestination": "projects",
+      "expectedLaunchSurface": "Portfolio list remains scrollable without header/detail overlap"
+    }
+  ]
+}

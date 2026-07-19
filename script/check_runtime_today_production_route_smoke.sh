@@ -20,51 +20,51 @@ APP_NAME="${APP_NAME:?APP_NAME is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 SQLITE3="${SQLITE3:-sqlite3}"
-SQLITE_BUSY_TIMEOUT_MS="${SOLOPM_RUNTIME_TODAY_SQLITE_BUSY_TIMEOUT_MS:-5000}"
-RUNTIME_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS:-30}"
+SQLITE_BUSY_TIMEOUT_MS="${SUISUI_RUNTIME_TODAY_SQLITE_BUSY_TIMEOUT_MS:-5000}"
+RUNTIME_TIMEOUT_SECONDS="${SUISUI_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS:-30}"
 RUNTIME_WINDOW_ATTEMPTS=2
-CPU_CONVERGENCE_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_TODAY_CPU_CONVERGENCE_TIMEOUT_SECONDS:-10}"
+CPU_CONVERGENCE_TIMEOUT_SECONDS="${SUISUI_RUNTIME_TODAY_CPU_CONVERGENCE_TIMEOUT_SECONDS:-10}"
 CPU_SAMPLE_INTERVAL_SECONDS=1
 REQUIRED_CONSECUTIVE_CPU_SAMPLES=3
 MAX_CPU_PERCENT=20
-MAX_TOOLBAR_LAYOUT_DEPTH="${SOLOPM_RUNTIME_TODAY_MAX_TOOLBAR_LAYOUT_DEPTH:-1}"
-WINDOW_WIDTH="${SOLOPM_RUNTIME_TODAY_WINDOW_WIDTH:-1024}"
-WINDOW_HEIGHT="${SOLOPM_RUNTIME_TODAY_WINDOW_HEIGHT:-676}"
+MAX_TOOLBAR_LAYOUT_DEPTH="${SUISUI_RUNTIME_TODAY_MAX_TOOLBAR_LAYOUT_DEPTH:-1}"
+WINDOW_WIDTH="${SUISUI_RUNTIME_TODAY_WINDOW_WIDTH:-1024}"
+WINDOW_HEIGHT="${SUISUI_RUNTIME_TODAY_WINDOW_HEIGHT:-676}"
 FIXTURES=("empty" "small")
 LOCALES=("english" "japanese")
-KEEP_ARTIFACTS="${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_KEEP_ARTIFACTS:-0}"
-ARTIFACT_ROOT="${SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_ARTIFACT_DIR:-$ROOT_DIR/.tmp/runtime-today-production-route}"
+KEEP_ARTIFACTS="${SUISUI_RUNTIME_TODAY_PRODUCTION_ROUTE_KEEP_ARTIFACTS:-0}"
+ARTIFACT_ROOT="${SUISUI_RUNTIME_TODAY_PRODUCTION_ROUTE_ARTIFACT_DIR:-$ROOT_DIR/.tmp/runtime-today-production-route}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}"
 AX_IDENTIFIER_COUNT_HELPER="${AX_IDENTIFIER_COUNT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_identifier_count.swift}"
 
 if [[ ! "$RUNTIME_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$RUNTIME_TIMEOUT_SECONDS" -lt 3 ]]; then
-  echo "SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS must be an integer of at least 3" >&2
+  echo "SUISUI_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS must be an integer of at least 3" >&2
   exit 2
 fi
 
 if [[ ! "$CPU_CONVERGENCE_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$CPU_CONVERGENCE_TIMEOUT_SECONDS" -lt 3 ]]; then
-  echo "SOLOPM_RUNTIME_TODAY_CPU_CONVERGENCE_TIMEOUT_SECONDS must be an integer of at least 3" >&2
+  echo "SUISUI_RUNTIME_TODAY_CPU_CONVERGENCE_TIMEOUT_SECONDS must be an integer of at least 3" >&2
   exit 2
 fi
 
 if [[ ! "$MAX_TOOLBAR_LAYOUT_DEPTH" =~ ^[0-9]+$ ]]; then
-  echo "SOLOPM_RUNTIME_TODAY_MAX_TOOLBAR_LAYOUT_DEPTH must be a non-negative integer" >&2
+  echo "SUISUI_RUNTIME_TODAY_MAX_TOOLBAR_LAYOUT_DEPTH must be a non-negative integer" >&2
   exit 2
 fi
 
 if [[ ! "$WINDOW_WIDTH" =~ ^[1-9][0-9]*$ ]]; then
-  echo "SOLOPM_RUNTIME_TODAY_WINDOW_WIDTH must be a positive integer" >&2
+  echo "SUISUI_RUNTIME_TODAY_WINDOW_WIDTH must be a positive integer" >&2
   exit 2
 fi
 
 if [[ ! "$WINDOW_HEIGHT" =~ ^[1-9][0-9]*$ ]]; then
-  echo "SOLOPM_RUNTIME_TODAY_WINDOW_HEIGHT must be a positive integer" >&2
+  echo "SUISUI_RUNTIME_TODAY_WINDOW_HEIGHT must be a positive integer" >&2
   exit 2
 fi
 
 if [[ ! "$SQLITE_BUSY_TIMEOUT_MS" =~ ^[1-9][0-9]*$ ]]; then
-  echo "SOLOPM_RUNTIME_TODAY_SQLITE_BUSY_TIMEOUT_MS must be a positive integer" >&2
+  echo "SUISUI_RUNTIME_TODAY_SQLITE_BUSY_TIMEOUT_MS must be a positive integer" >&2
   exit 2
 fi
 
@@ -87,7 +87,7 @@ source "$AX_HELPERS"
 
 # A localized title must be below the Today container, not merely elsewhere in
 # another visible app window. This makes the language matrix a runtime check.
-export SOLOPM_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1
+export SUISUI_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1
 
 mkdir -p "$ROOT_DIR/.tmp" "$ARTIFACT_ROOT"
 
@@ -117,7 +117,7 @@ route_start_day_key=""
 
 terminate_app() {
   # A PID-scoped shutdown avoids terminating a developer's separately running
-  # SoloPM instance while still guaranteeing each smoke launch is cleaned up.
+  # Suisui instance while still guaranteeing each smoke launch is cleaned up.
   local owned_pid="${app_pid:-}"
   local launch_pid="${app_launch_pid:-}"
   if [[ -n "$owned_pid" ]]; then
@@ -190,8 +190,8 @@ capture_runtime_route_diagnostics() {
   local current_day_key
   local allowed_preview_build_count=1
   local preview_build_reason="single-day-route"
-  preview_build_count="$(runtime_counter_value 'solopm.dailyPlanningPreview.buildCount')"
-  toolbar_layout_max_depth="$(runtime_counter_value 'solopm.toolbar.layout.maxDepth')"
+  preview_build_count="$(runtime_counter_value 'suisui.dailyPlanningPreview.buildCount')"
+  toolbar_layout_max_depth="$(runtime_counter_value 'suisui.toolbar.layout.maxDepth')"
   current_day_key="$(date '+%Y-%m-%d')"
   if [[ -n "$route_start_day_key" && "$current_day_key" != "$route_start_day_key" ]]; then
     # Today legitimately rebuilds once when the route crossed the local day boundary.
@@ -246,16 +246,16 @@ launch_app() {
   terminate_app
   # Start from an empty environment so host API keys, proxy settings, and saved
   # smoke flags cannot supply credentials or alter this normal-route exercise.
-  # The default Today route remains SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="today";
+  # The default Today route remains SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="today";
   /usr/bin/env -i \
     PATH="$PATH" \
     TMPDIR="$case_artifact_dir/tmp" \
     HOME="$case_home" \
     CFFIXED_USER_HOME="$case_cf_user_home" \
-    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_DATABASE_PATH="$database_path" \
-    SOLOPM_LANGUAGE_PREFERENCE="$locale" \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="$selected_destination" \
+    SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_DATABASE_PATH="$database_path" \
+    SUISUI_LANGUAGE_PREFERENCE="$locale" \
+    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="$selected_destination" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
   app_launch_pid=$!
   app_launch_identity="$(ax_wait_for_owned_process_identity "$app_launch_pid" "$APP_BINARY" 3)" || return 1
@@ -400,7 +400,7 @@ read_ax_identifier_counts() {
   local watchdog_pid
   local status
 
-  SOLOPM_UI_EVIDENCE_AX_MAX_NODES=9000 \
+  SUISUI_UI_EVIDENCE_AX_MAX_NODES=9000 \
     /usr/bin/swift "$AX_IDENTIFIER_COUNT_HELPER" "$app_pid" "$identifier_marker" \
     >"$output_file" 2>"$error_file" &
   helper_pid=$!
@@ -846,7 +846,7 @@ run_case() {
   case_artifact_dir="$ARTIFACT_ROOT/${fixture}-${locale_label}"
   case_home="$case_artifact_dir/home"
   case_cf_user_home="$case_artifact_dir/cf-user-home"
-  database_path="$case_artifact_dir/SoloPM.sqlite"
+  database_path="$case_artifact_dir/Suisui.sqlite"
   route_artifact_dir=""
   route_id=""
   route_destination=""

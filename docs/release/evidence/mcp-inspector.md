@@ -4,7 +4,7 @@ Generated: 2026-07-19T19:01:47Z
 
 - Source commit: `cae92bf1`
 
-Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and SoloPM's local JSON-RPC smoke checks.
+Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and Suisui's local JSON-RPC smoke checks.
 
 Stable baseline: `2025-11-25`
 
@@ -28,7 +28,7 @@ Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-1
 
 Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/
 
-EMA remote authorization is not a SoloPM public-alpha release target
+EMA remote authorization is not a Suisui public-alpha release target
 
 Draft watchlist: `2026-07-28`
 
@@ -46,9 +46,9 @@ Draft 2026-07-28 uses per-request `_meta` protocolVersion/clientInfo/clientCapab
 
 Draft `server/discover` is required for draft 2026-07-28 version and capability discovery.
 
-Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented in SoloPM public alpha.
+Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented in Suisui public alpha.
 
-Release positioning: SoloPM is not a full MCP host; this evidence covers stable client-side stdio Tools only. Resources, Prompts, Streamable HTTP, OAuth/remote MCP, Enterprise-Managed Authorization, draft per-request protocol metadata, and draft server/discover are not release targets.
+Release positioning: Suisui is not a full MCP host; this evidence covers stable client-side stdio Tools only. Resources, Prompts, Streamable HTTP, OAuth/remote MCP, Enterprise-Managed Authorization, draft per-request protocol metadata, and draft server/discover are not release targets.
 
 Fixture: `fixtures/mcp/stdio-fixture-server.mjs`
 
@@ -86,12 +86,12 @@ exit: 0
 ## MCP Inspector CLI tools/call
 
 ```console
-$ npx --loglevel error -y @modelcontextprotocol/inspector --cli node fixtures/mcp/stdio-fixture-server.mjs --method tools/call --tool-name read_status --tool-arg project=soloPM
+$ npx --loglevel error -y @modelcontextprotocol/inspector --cli node fixtures/mcp/stdio-fixture-server.mjs --method tools/call --tool-name read_status --tool-arg project=suisui
 {
   "content": [
     {
       "type": "text",
-      "text": "status: ok project=soloPM"
+      "text": "status: ok project=suisui"
     }
   ],
   "isError": false
@@ -99,19 +99,19 @@ $ npx --loglevel error -y @modelcontextprotocol/inspector --cli node fixtures/mc
 exit: 0
 ```
 
-## SoloPM local smoke success
+## Suisui local smoke success
 
 ```console
 $ node fixtures/mcp/stdio-smoke-client.mjs --mode success
 initialize: protocolVersion=2025-11-25
 tools/list: read_status
-tools/call: status: ok project=soloPM
+tools/call: status: ok project=suisui
 result: success initialize -> tools/list -> tools/call
 
 exit: 0
 ```
 
-## SoloPM local failure smoke: malformed-json
+## Suisui local failure smoke: malformed-json
 
 ```console
 $ node fixtures/mcp/stdio-smoke-client.mjs --mode malformed-json --expect-failure malformed-json
@@ -120,7 +120,7 @@ malformed-json: Malformed JSON-RPC response.
 exit: 0
 ```
 
-## SoloPM local failure smoke: mismatched-id
+## Suisui local failure smoke: mismatched-id
 
 ```console
 $ node fixtures/mcp/stdio-smoke-client.mjs --mode mismatched-id --expect-failure mismatched-id
@@ -130,7 +130,7 @@ mismatched-id: Mismatched response id.
 exit: 0
 ```
 
-## SoloPM local failure smoke: invalid-schema
+## Suisui local failure smoke: invalid-schema
 
 ```console
 $ node fixtures/mcp/stdio-smoke-client.mjs --mode invalid-schema --expect-failure invalid-schema
@@ -140,7 +140,7 @@ invalid-schema: Tool entry inputSchema must be an object.
 exit: 0
 ```
 
-## SoloPM local failure smoke: timeout
+## Suisui local failure smoke: timeout
 
 ```console
 $ node fixtures/mcp/stdio-smoke-client.mjs --mode timeout --expect-failure timeout
@@ -152,6 +152,6 @@ exit: 0
 
 ## Notes
 
-- The Inspector commands above exercise the official MCP Inspector CLI against the same stdio fixture that SoloPM uses for automated smoke coverage.
+- The Inspector commands above exercise the official MCP Inspector CLI against the same stdio fixture that Suisui uses for automated smoke coverage.
 - The failure taxonomy records malformed JSON-RPC, mismatched id, invalid schema, and timeout behavior without shipping fixture code in production sources.
 - Structured output and `outputSchema` release-subset validation are covered by `ExternalMCPTests.testToolsListParsesStructuredOutputSchema`, `ExternalMCPTests.testExternalMCPExecutionRequiresStructuredContentWhenOutputSchemaProvided`, and related executor regression tests. The Inspector smoke remains focused on stable stdio Tools wiring and failure taxonomy.

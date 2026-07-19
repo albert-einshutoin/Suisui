@@ -8,7 +8,7 @@ UI_EVIDENCE_FILE="$ROOT_DIR/docs/release/evidence/ui-screenshots.md"
 MCP_EVIDENCE_FILE="$ROOT_DIR/docs/release/evidence/mcp-inspector.md"
 VOICEOVER_EVIDENCE_FILE="$ROOT_DIR/docs/release/evidence/accessibility-voiceover.md"
 COMPETITOR_EVIDENCE_FILE="$ROOT_DIR/docs/release/evidence/competitor-hands-on.md"
-OUTPUT_FILE="${SOLOPM_QUALITY_STATUS_FILE:-$ROOT_DIR/docs/quality/status.md}"
+OUTPUT_FILE="${SUISUI_QUALITY_STATUS_FILE:-$ROOT_DIR/docs/quality/status.md}"
 
 redact() {
   sed -E \
@@ -57,10 +57,10 @@ manual_release_evidence_source_commit() {
   # inputs move.
   commit="$(
     git -C "$ROOT_DIR" log -1 --format=%h -- \
-      Sources/SoloPMApp \
-      Sources/SoloPMCore \
-      Sources/SoloPMCLI \
-      Sources/SoloPMExternalConnectors \
+      Sources/SuisuiApp \
+      Sources/SuisuiCore \
+      Sources/SuisuiCLI \
+      Sources/SuisuiExternalConnectors \
       Package.swift \
       packaging/app_metadata.env 2>/dev/null || true
   )"
@@ -249,7 +249,7 @@ write_gate_classification() {
     "source + build" \
     "$(script_status "scripts/ci.sh")" \
     "scripts/ci.sh" \
-    "Use as the default fast PR verifier; opt into runtime, visual, or release lanes with SOLOPM_CI_* flags."
+    "Use as the default fast PR verifier; opt into runtime, visual, or release lanes with SUISUI_CI_* flags."
   write_gate_row \
     "Focused tests" \
     "source + unit" \
@@ -346,7 +346,7 @@ risk_manual="$(count_risk_coverage "manual-only")"
 expected_manual_commit="$(manual_release_evidence_source_commit)"
 
 {
-  printf "# SoloPM Quality Status\n\n"
+  printf "# Suisui Quality Status\n\n"
   printf "Generated at: %s\n" "$generated_at"
   printf "Source commit: %s\n\n" "$source_commit"
 
@@ -394,7 +394,7 @@ expected_manual_commit="$(manual_release_evidence_source_commit)"
   printf -- '- `docs/quality/test-triage.md`\n'
   printf -- '- `docs/quality/flake-quarantine.md`\n'
   printf -- '- `./script/check_automated_release_preflight.sh`\n'
-  printf -- '- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md ./script/release_readiness_report.sh`\n\n'
+  printf -- '- `SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md ./script/release_readiness_report.sh`\n\n'
 
   printf "## Notes\n\n"
   printf -- "- This dashboard is a quality triage aid, not release evidence.\n"

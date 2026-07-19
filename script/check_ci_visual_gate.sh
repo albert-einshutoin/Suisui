@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUTPUT_DIR="${SOLOPM_CI_VISUAL_GATE_OUTPUT_DIR:-$ROOT_DIR/.tmp/ci-visual-gate}"
+OUTPUT_DIR="${SUISUI_CI_VISUAL_GATE_OUTPUT_DIR:-$ROOT_DIR/.tmp/ci-visual-gate}"
 SUMMARY_FILE="$OUTPUT_DIR/ui-visual-gate-summary.env"
 EXPECTED_SCREENSHOT_COUNT=33
 STATUS="blocked"
@@ -81,7 +81,7 @@ SCREENSHOT_DIR="$CURRENT_DIR/screenshots"
 DIFF_DIR="$OUTPUT_DIR/diff"
 LOG_DIR="$OUTPUT_DIR/logs"
 CAPABILITY_DIR="$OUTPUT_DIR/capability"
-PRIVATE_DIR="$(mktemp -d "/tmp/solopm-ci-visual-gate.XXXXXX")"
+PRIVATE_DIR="$(mktemp -d "/tmp/suisui-ci-visual-gate.XXXXXX")"
 PRIVATE_HOME="$PRIVATE_DIR/home"
 PRIVATE_TMP="$PRIVATE_DIR/tmp"
 CAPTURE_EVIDENCE_FILE="$CURRENT_DIR/ui-screenshots.md"
@@ -144,7 +144,7 @@ snapshot_tracked_evidence "$TRACKED_EVIDENCE_BEFORE"
 
 if ! run_logged capability \
   /usr/bin/env \
-  SOLOPM_UI_RUNNER_CAPABILITY_ARTIFACT_DIR="$CAPABILITY_DIR" \
+  SUISUI_UI_RUNNER_CAPABILITY_ARTIFACT_DIR="$CAPABILITY_DIR" \
   "$ROOT_DIR/script/check_macos_ui_runner_capabilities.sh" visual; then
   block "runner-capability" "visual-runner-capability-unavailable"
 fi
@@ -154,14 +154,14 @@ fi
 rm -f "$AX_RECEIPT"
 if ! run_logged capture \
   /usr/bin/env \
-  SOLOPM_UI_EVIDENCE_DIR="$SCREENSHOT_DIR" \
-  SOLOPM_UI_EVIDENCE_FILE="$CAPTURE_EVIDENCE_FILE" \
-  SOLOPM_SCHEDULE_COCKPIT_EVIDENCE_FILE="$CURRENT_DIR/schedule-cockpit-screenshots.md" \
-  SOLOPM_DONE_ANALYTICS_EVIDENCE_FILE="$CURRENT_DIR/done-analytics-screenshots.md" \
-  SOLOPM_UI_EVIDENCE_TMPDIR="$PRIVATE_TMP" \
-  SOLOPM_UI_EVIDENCE_HOME="$PRIVATE_HOME" \
-  SOLOPM_UI_EVIDENCE_KEEP_HOME=0 \
-  SOLOPM_VISUAL_AX_AUDIT_RESULT="$AX_RECEIPT" \
+  SUISUI_UI_EVIDENCE_DIR="$SCREENSHOT_DIR" \
+  SUISUI_UI_EVIDENCE_FILE="$CAPTURE_EVIDENCE_FILE" \
+  SUISUI_SCHEDULE_COCKPIT_EVIDENCE_FILE="$CURRENT_DIR/schedule-cockpit-screenshots.md" \
+  SUISUI_DONE_ANALYTICS_EVIDENCE_FILE="$CURRENT_DIR/done-analytics-screenshots.md" \
+  SUISUI_UI_EVIDENCE_TMPDIR="$PRIVATE_TMP" \
+  SUISUI_UI_EVIDENCE_HOME="$PRIVATE_HOME" \
+  SUISUI_UI_EVIDENCE_KEEP_HOME=0 \
+  SUISUI_VISUAL_AX_AUDIT_RESULT="$AX_RECEIPT" \
   "$ROOT_DIR/script/capture_ui_evidence.sh"; then
   block "capture" "full-capture-failed"
 fi
@@ -183,11 +183,11 @@ fi
 # forwards either baseline-update switch supported by the lower-level checker.
 if ! run_logged compare \
   /usr/bin/env \
-  SOLOPM_VISUAL_BASELINE_MANIFEST="$MANIFEST" \
-  SOLOPM_VISUAL_SCREENSHOT_DIR="$SCREENSHOT_DIR" \
-  SOLOPM_VISUAL_BASELINE_DIR="$BASELINE_DIR" \
-  SOLOPM_VISUAL_ARTIFACT_DIR="$DIFF_DIR" \
-  SOLOPM_VISUAL_AX_AUDIT_RESULT="$AX_RECEIPT" \
+  SUISUI_VISUAL_BASELINE_MANIFEST="$MANIFEST" \
+  SUISUI_VISUAL_SCREENSHOT_DIR="$SCREENSHOT_DIR" \
+  SUISUI_VISUAL_BASELINE_DIR="$BASELINE_DIR" \
+  SUISUI_VISUAL_ARTIFACT_DIR="$DIFF_DIR" \
+  SUISUI_VISUAL_AX_AUDIT_RESULT="$AX_RECEIPT" \
   "$ROOT_DIR/script/check_visual_regression_smoke.sh"; then
   block "visual-diff" "baseline-comparison-failed"
 fi

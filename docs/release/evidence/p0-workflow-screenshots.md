@@ -27,5 +27,5 @@ This targeted evidence covers the Personal MVP Inbox and Today closeout paths wi
 ## Guardrails
 
 - API keys, provider tokens, OAuth tokens, calendar contents, and customer file contents are not captured.
-- The app runs with `SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1`, an isolated HOME, and a seeded SQLite database.
-- The P0 workflow capture uses `SOLOPM_LAUNCH_RECOVERY_MODE=1` so evidence targets Today and Inbox workflow rails directly.
+- The app runs with `SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1`, an isolated HOME, and a seeded SQLite database.
+- The P0 workflow capture uses `SUISUI_LAUNCH_RECOVERY_MODE=1` so evidence targets Today and Inbox workflow rails directly.

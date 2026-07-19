@@ -19,7 +19,7 @@ CURRENT_PROJECT_VERSION="${CURRENT_PROJECT_VERSION:?CURRENT_PROJECT_VERSION is r
 
 OUTPUT_FILE=""
 OUTPUT_FILE_WAS_SET=0
-ACCESSIBILITY_PREFLIGHT_SCRIPT="${SOLOPM_ACCESSIBILITY_PREFLIGHT_SCRIPT:-$ROOT_DIR/script/check_accessibility_preflight.sh}"
+ACCESSIBILITY_PREFLIGHT_SCRIPT="${SUISUI_ACCESSIBILITY_PREFLIGHT_SCRIPT:-$ROOT_DIR/script/check_accessibility_preflight.sh}"
 VOICEOVER_STATUS="pending"
 CHECKED_BY=""
 CHECK_DATE="$(date +%F)"
@@ -50,10 +50,10 @@ release_candidate_source_commit() {
   # release-candidate runtime/app metadata paths instead of the evidence commit.
   commit="$(
     git -C "$ROOT_DIR" log -1 --format=%h -- \
-      Sources/SoloPMApp \
-      Sources/SoloPMCore \
-      Sources/SoloPMCLI \
-      Sources/SoloPMExternalConnectors \
+      Sources/SuisuiApp \
+      Sources/SuisuiCore \
+      Sources/SuisuiCLI \
+      Sources/SuisuiExternalConnectors \
       Package.swift \
       packaging/app_metadata.env 2>/dev/null || true
   )"
@@ -71,7 +71,7 @@ sanitize_voiceover_evidence_source() {
   local project_id
 
   project_id="$(sed -nE 's/.*project:([0-9][0-9]*).*/\1/p' <<<"$value" | head -n 1)"
-  if [[ -n "$project_id" && ( "$value" == *".tmp/voiceover-review"* || "$value" == *"SoloPM-voiceover-review.sqlite"* ) ]]; then
+  if [[ -n "$project_id" && ( "$value" == *".tmp/voiceover-review"* || "$value" == *"Suisui-voiceover-review.sqlite"* ) ]]; then
     # Release evidence is tracked and often reviewed in public diffs. Keep the
     # exact pinned DB path in ignored launch helpers, but abstract it here.
     printf 'dist/%s.app manual VoiceOver pass using isolated .tmp voiceover review database project:%s' "$APP_NAME" "$project_id"
@@ -277,7 +277,7 @@ capture_runtime_ax_smoke_note() {
   local ok_line
 
   if [[ -z "${ACCESSIBILITY_PREFLIGHT_SCRIPT//[[:space:]]/}" ]]; then
-    echo "SOLOPM_ACCESSIBILITY_PREFLIGHT_SCRIPT is empty" >&2
+    echo "SUISUI_ACCESSIBILITY_PREFLIGHT_SCRIPT is empty" >&2
     exit 2
   fi
 
@@ -684,7 +684,7 @@ write_passed_evidence() {
     printf '\n'
     printf '%s\n' '- Blocker observed: none during the manual VoiceOver pass.'
     printf '%s\n' '- Affected path: none.'
-    printf '%s\n' '- Follow-up source/test link: `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift` VoiceOver source-anchor coverage.'
+    printf '%s\n' '- Follow-up source/test link: `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift` VoiceOver source-anchor coverage.'
     printf '%s\n' '- Fix owner: none.'
   } >"$OUTPUT_FILE"
 }

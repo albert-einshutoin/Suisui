@@ -15,16 +15,16 @@ source "$METADATA_FILE"
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-TIMEOUT_SECONDS="${SOLOPM_RUNTIME_INBOX_TRIAGE_TIMEOUT_SECONDS:-30}"
-KEEP_DATABASE="${SOLOPM_RUNTIME_INBOX_TRIAGE_KEEP_DATABASE:-0}"
+TIMEOUT_SECONDS="${SUISUI_RUNTIME_INBOX_TRIAGE_TIMEOUT_SECONDS:-30}"
+KEEP_DATABASE="${SUISUI_RUNTIME_INBOX_TRIAGE_KEEP_DATABASE:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_TEXT_INPUT_HELPER="${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}"
-WINDOW_WIDTH="${SOLOPM_RUNTIME_INBOX_TRIAGE_WINDOW_WIDTH:-1400}"
-WINDOW_HEIGHT="${SOLOPM_RUNTIME_INBOX_TRIAGE_WINDOW_HEIGHT:-920}"
+WINDOW_WIDTH="${SUISUI_RUNTIME_INBOX_TRIAGE_WINDOW_WIDTH:-1400}"
+WINDOW_HEIGHT="${SUISUI_RUNTIME_INBOX_TRIAGE_WINDOW_HEIGHT:-920}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "SOLOPM_RUNTIME_INBOX_TRIAGE_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "SUISUI_RUNTIME_INBOX_TRIAGE_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
@@ -35,8 +35,8 @@ fi
 
 cd "$ROOT_DIR"
 mkdir -p "$ROOT_DIR/.tmp"
-tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-inbox-triage.XXXXXX")"
-database_path="$tmp_dir/SoloPM-runtime-inbox-triage.sqlite"
+tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/suisui-runtime-inbox-triage.XXXXXX")"
+database_path="$tmp_dir/Suisui-runtime-inbox-triage.sqlite"
 runtime_home="$tmp_dir/home"
 mkdir -p "$runtime_home"
 app_pid=""
@@ -74,7 +74,7 @@ wait_for_app_process() {
 
 wait_for_no_app_process() {
   # The smoke owns only app_pid. Do not inspect or terminate another user's
-  # SoloPM process while resetting the isolated test database.
+  # Suisui process while resetting the isolated test database.
   [[ -z "${app_pid:-}" ]]
 }
 
@@ -179,8 +179,8 @@ APPLESCRIPT
 launch_app_for_inbox() {
   terminate_app
   /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
-    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="inbox" \
+    SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 SUISUI_DATABASE_PATH="$database_path" \
+    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="inbox" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_launch_pid=$!
   wait_for_app_process

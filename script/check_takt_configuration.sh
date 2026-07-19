@@ -40,8 +40,8 @@ if rg -n -i 'opencode' \
   "$TAKT_DIR/workflows" \
   "$TAKT_DIR/automation" \
   "$TAKT_DIR/quality-gates"; then
-  echo 'BLOCKER: OpenCode remains in an executable soloPM TAKT route' >&2
+  echo 'BLOCKER: OpenCode remains in an executable suisui TAKT route' >&2
   exit 1
 fi
 
-printf 'OK: soloPM TAKT configuration uses cursor-agent without OpenCode routes\n'
+printf 'OK: suisui TAKT configuration uses cursor-agent without OpenCode routes\n'

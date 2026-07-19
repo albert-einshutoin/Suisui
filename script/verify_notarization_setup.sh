@@ -6,7 +6,7 @@ NOTARIZATION_ENV_FILE="$ROOT_DIR/packaging/notarization.env"
 NOTARIZATION_EXAMPLE_FILE="$ROOT_DIR/packaging/notarization.env.example"
 NOTARIZATION_DOCS="$ROOT_DIR/docs/release/notarization.md"
 NOTARIZE_SCRIPT="$ROOT_DIR/script/notarize_app.sh"
-ONLINE_PREFLIGHT="${SOLOPM_RELEASE_PREFLIGHT_ONLINE:-0}"
+ONLINE_PREFLIGHT="${SUISUI_RELEASE_PREFLIGHT_ONLINE:-0}"
 
 require_file() {
   local path="$1"
@@ -38,7 +38,7 @@ case "$ONLINE_PREFLIGHT" in
   0|1)
     ;;
   *)
-    echo "SOLOPM_RELEASE_PREFLIGHT_ONLINE must be 0 or 1" >&2
+    echo "SUISUI_RELEASE_PREFLIGHT_ONLINE must be 0 or 1" >&2
     exit 2
     ;;
 esac
@@ -53,15 +53,15 @@ if [[ -f "$NOTARIZATION_ENV_FILE" ]]; then
   source "$NOTARIZATION_ENV_FILE"
 fi
 
-NOTARY_PROFILE="${SOLOPM_NOTARY_PROFILE:-}"
+NOTARY_PROFILE="${SUISUI_NOTARY_PROFILE:-}"
 
 if [[ -z "$NOTARY_PROFILE" ]]; then
-  echo "Notarization setup files are valid. SOLOPM_NOTARY_PROFILE is not set, so notary profile validation was not attempted."
+  echo "Notarization setup files are valid. SUISUI_NOTARY_PROFILE is not set, so notary profile validation was not attempted."
   exit 0
 fi
 
 if [[ "$ONLINE_PREFLIGHT" != "1" ]]; then
-  echo "Notarization setup files are valid. Configured profile was not validated online; rerun with SOLOPM_RELEASE_PREFLIGHT_ONLINE=1."
+  echo "Notarization setup files are valid. Configured profile was not validated online; rerun with SUISUI_RELEASE_PREFLIGHT_ONLINE=1."
   exit 0
 fi
 

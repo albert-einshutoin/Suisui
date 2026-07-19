@@ -6,9 +6,9 @@ METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 SIGNING_ENV_FILE="$ROOT_DIR/packaging/signing.env"
 NOTARIZATION_ENV_FILE="$ROOT_DIR/packaging/notarization.env"
 SPARKLE_ENV_FILE="$ROOT_DIR/packaging/sparkle.env"
-OUTPUT_FILE="${SOLOPM_RELEASE_EVIDENCE_FILE:-$ROOT_DIR/packaging/release-evidence.json}"
-CHECKSUM_FILE="${SOLOPM_RELEASE_ARTIFACT_SHA256_FILE:-}"
-RELEASE_APPCAST_FILE="${SOLOPM_RELEASE_APPCAST_FILE:-$ROOT_DIR/dist/releases/appcast.xml}"
+OUTPUT_FILE="${SUISUI_RELEASE_EVIDENCE_FILE:-$ROOT_DIR/packaging/release-evidence.json}"
+CHECKSUM_FILE="${SUISUI_RELEASE_ARTIFACT_SHA256_FILE:-}"
+RELEASE_APPCAST_FILE="${SUISUI_RELEASE_APPCAST_FILE:-$ROOT_DIR/dist/releases/appcast.xml}"
 FORCE=0
 VALIDATE_ONLY=0
 RELEASE_MACHINE_LAUNCH=false
@@ -20,7 +20,7 @@ CLEAN_ENVIRONMENT_LAUNCH=false
 LOGIN_ITEM_TOGGLE=false
 SPARKLE_APPCAST_METADATA=false
 MANUAL_ENVIRONMENT=""
-CHECKED_BY="${SOLOPM_RELEASE_CHECKED_BY:-$(id -un 2>/dev/null || printf "release-owner")}"
+CHECKED_BY="${SUISUI_RELEASE_CHECKED_BY:-$(id -un 2>/dev/null || printf "release-owner")}"
 NOTES=()
 
 usage() {
@@ -173,10 +173,10 @@ APP_BUNDLE_PATH="dist/$APP_NAME.app"
 ARTIFACT_BASENAME="$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION"
 CHECKED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 RELEASE_EVIDENCE_GENERATOR="script/create_release_evidence.sh"
-SIGNING_IDENTITY="${SOLOPM_SIGNING_IDENTITY:-}"
-NOTARY_PROFILE="${SOLOPM_NOTARY_PROFILE:-}"
-SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
-SPARKLE_PUBLIC_ED_KEY="${SOLOPM_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
+SIGNING_IDENTITY="${SUISUI_SIGNING_IDENTITY:-}"
+NOTARY_PROFILE="${SUISUI_NOTARY_PROFILE:-}"
+SPARKLE_FEED_URL="${SUISUI_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
+SPARKLE_PUBLIC_ED_KEY="${SUISUI_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
 
 current_git_commit() {
   if command -v git >/dev/null 2>&1 && git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -378,7 +378,7 @@ require_manual_note_proofs() {
   require_manual_note_proof_if_checked \
     "$RELEASE_MACHINE_LAUNCH" \
     "release machine launch" \
-    'release[ -]?machine.*launch|launch.*release[ -]?machine|dist/solopm\.app'
+    'release[ -]?machine.*launch|launch.*release[ -]?machine|dist/suisui\.app'
   require_manual_note_proof_if_checked \
     "$CHECKSUM_VERIFICATION" \
     "checksum verification" \
@@ -571,7 +571,7 @@ require_artifact_file_integrity() {
 
 require_release_signing_context() {
   if [[ -z "$SIGNING_IDENTITY" || -z "$NOTARY_PROFILE" ]]; then
-    echo "release evidence requires SOLOPM_SIGNING_IDENTITY and SOLOPM_NOTARY_PROFILE" >&2
+    echo "release evidence requires SUISUI_SIGNING_IDENTITY and SUISUI_NOTARY_PROFILE" >&2
     exit 2
   fi
 
@@ -588,10 +588,10 @@ require_release_signing_context() {
 require_release_sparkle_context() {
   local validation_output
   if ! validation_output="$(
-    SOLOPM_BUILD_CONFIGURATION=release \
-      SOLOPM_SPARKLE_CONFIG_QUIET=1 \
-      SOLOPM_SPARKLE_FEED_URL="$SPARKLE_FEED_URL" \
-      SOLOPM_SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
+    SUISUI_BUILD_CONFIGURATION=release \
+      SUISUI_SPARKLE_CONFIG_QUIET=1 \
+      SUISUI_SPARKLE_FEED_URL="$SPARKLE_FEED_URL" \
+      SUISUI_SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
       "$ROOT_DIR/script/validate_sparkle_release_config.sh" 2>&1
   )"; then
     printf "release evidence Sparkle config is invalid: %s\n" "$validation_output" >&2
@@ -602,7 +602,7 @@ require_release_sparkle_context() {
 require_release_appcast() {
   local validation_output
   if ! validation_output="$(
-    SOLOPM_REQUIRE_RELEASE_APPCAST=1 \
+    SUISUI_REQUIRE_RELEASE_APPCAST=1 \
       "$ROOT_DIR/script/verify_appcast.sh" "$RELEASE_APPCAST_FILE" 2>&1
   )"; then
     printf "release evidence appcast verification failed: %s: %s\n" "$RELEASE_APPCAST_FILE" "$validation_output" >&2
@@ -638,7 +638,7 @@ artifact_sha="$(read_artifact_sha256)"
 artifact_path="$(read_artifact_path)"
 appcast_path="$(artifact_path_for_compare "$RELEASE_APPCAST_FILE")"
 if [[ "$artifact_sha" == "missing-release-artifact" || "$artifact_path" == "missing-release-artifact" ]]; then
-  echo "release evidence requires a packaged artifact checksum; run ./script/package_release.sh first or set SOLOPM_RELEASE_ARTIFACT_SHA256_FILE" >&2
+  echo "release evidence requires a packaged artifact checksum; run ./script/package_release.sh first or set SUISUI_RELEASE_ARTIFACT_SHA256_FILE" >&2
   exit 2
 fi
 if [[ -z "$SOURCE_GIT_COMMIT" ]]; then

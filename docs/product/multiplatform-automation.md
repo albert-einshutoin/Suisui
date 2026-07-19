@@ -4,11 +4,11 @@ Verified: 2026-06-21
 
 ## Positioning
 
-SoloPM starts as a macOS-first local app, but the long-term product should become a task management and automation layer that is available from iOS, Web, and macOS.
+Suisui starts as a macOS-first local app, but the long-term product should become a task management and automation layer that is available from iOS, Web, and macOS.
 
 The target promise is:
 
-> Talk to SoloPM from any device, review what it understood, and let it turn project context into tasks, status updates, preparation work, and draft artifacts.
+> Talk to Suisui from any device, review what it understood, and let it turn project context into tasks, status updates, preparation work, and draft artifacts.
 
 This expands the product beyond a desktop task board without turning it into an unrestricted cloud agent. The product should remain approval-first, auditable, and local-first where the platform allows it.
 
@@ -27,11 +27,11 @@ The core interaction should be conversational:
 
 ```text
 User: "今週やるべきリリース準備タスクを列挙して"
-SoloPM: lists current tasks and missing preparation items
+Suisui: lists current tasks and missing preparation items
 User: "署名まわりを進行中にして、Notarization確認は明日までにして"
-SoloPM: proposes status and due-date changes
+Suisui: proposes status and due-date changes
 User: approves
-SoloPM: updates tasks and records an audit trail
+Suisui: updates tasks and records an audit trail
 ```
 
 Supported conversation operations:
@@ -47,7 +47,7 @@ Supported conversation operations:
 
 ## Automation From Project Context
 
-SoloPM should optionally let AI inspect scoped app and project documents before proposing work.
+Suisui should optionally let AI inspect scoped app and project documents before proposing work.
 
 Sources:
 
@@ -72,7 +72,7 @@ The default output should be a reviewed plan, not surprise execution. Low-risk t
 
 ## Safety Model
 
-The automation model must preserve SoloPM's existing trust boundaries:
+The automation model must preserve Suisui's existing trust boundaries:
 
 - Every AI-generated mutation is represented as an Action Plan or pending action.
 - Writes are categorized by risk.
@@ -85,7 +85,7 @@ Why: cross-platform automation increases the blast radius. The product should wi
 
 ## Data Architecture
 
-SoloPM needs a shared domain model across iOS, Web, and macOS:
+Suisui needs a shared domain model across iOS, Web, and macOS:
 
 | Domain | Purpose |
 | --- | --- |
@@ -143,7 +143,7 @@ Must have:
 
 Should have:
 
-- Shortcuts integration for "create task" and "ask SoloPM".
+- Shortcuts integration for "create task" and "ask Suisui".
 - Voice input.
 - Share sheet ingestion.
 - Offline capture that syncs later.
@@ -178,7 +178,7 @@ Users should be able to configure which documents AI may use:
 | Task artifacts | draft notes, release notes, generated files | Opt-in per project |
 | External sources | GitHub issues, calendar, SaaS docs | Later and connector-specific |
 
-For each AI request, SoloPM should show:
+For each AI request, Suisui should show:
 
 - Documents considered.
 - Why they were included.
@@ -197,11 +197,11 @@ This direction strengthens the existing pricing model:
 
 The main paid wedge remains:
 
-> SoloPM can receive and prepare work even when your Mac is not running.
+> Suisui can receive and prepare work even when your Mac is not running.
 
 ## Non-Goals
 
-- Do not market SoloPM as an unrestricted autonomous agent.
+- Do not market Suisui as an unrestricted autonomous agent.
 - Do not let a cloud LLM mutate local data without an explicit policy and audit trail.
 - Do not sync raw secrets.
 - Do not make Web-only behavior diverge from the shared Action Plan model.

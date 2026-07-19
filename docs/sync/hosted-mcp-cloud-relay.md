@@ -22,7 +22,7 @@ Tokens must be shown only once, stored hashed server-side, and never written to 
 
 ## Initial Hosted MCP Tools
 
-SoloPM exposes only remote-safe task mutation tools:
+Suisui exposes only remote-safe task mutation tools:
 
 | Tool | Required arguments | Approval state |
 | --- | --- | --- |

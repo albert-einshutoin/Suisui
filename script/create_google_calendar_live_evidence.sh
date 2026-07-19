@@ -51,9 +51,9 @@ fail() {
 
 current_product_source_commit() {
   git -C "$ROOT_DIR" log -1 --format=%h -- \
-    Sources/SoloPMCore \
-    Sources/SoloPMApp \
-    Sources/SoloPMGoogleCalendarRuntime \
+    Sources/SuisuiCore \
+    Sources/SuisuiApp \
+    Sources/SuisuiGoogleCalendarRuntime \
     Package.swift
 }
 

@@ -15,9 +15,9 @@ source "$METADATA_FILE"
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 MARKETING_VERSION="${MARKETING_VERSION:?MARKETING_VERSION is required}"
 CURRENT_PROJECT_VERSION="${CURRENT_PROJECT_VERSION:?CURRENT_PROJECT_VERSION is required}"
-PACKAGE_FORMAT="${SOLOPM_PACKAGE_FORMAT:-dmg}"
-REQUIRE_SIGNED_PACKAGE="${SOLOPM_REQUIRE_SIGNED_PACKAGE:-1}"
-REQUIRE_NOTARIZED_PACKAGE="${SOLOPM_REQUIRE_NOTARIZED_PACKAGE:-1}"
+PACKAGE_FORMAT="${SUISUI_PACKAGE_FORMAT:-dmg}"
+REQUIRE_SIGNED_PACKAGE="${SUISUI_REQUIRE_SIGNED_PACKAGE:-1}"
+REQUIRE_NOTARIZED_PACKAGE="${SUISUI_REQUIRE_NOTARIZED_PACKAGE:-1}"
 
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
@@ -42,7 +42,7 @@ case "$PACKAGE_FORMAT" in
   dmg|zip|all)
     ;;
   *)
-    echo "SOLOPM_PACKAGE_FORMAT must be dmg, zip, or all" >&2
+    echo "SUISUI_PACKAGE_FORMAT must be dmg, zip, or all" >&2
     exit 2
     ;;
 esac
@@ -51,7 +51,7 @@ case "$REQUIRE_SIGNED_PACKAGE" in
   0|1)
     ;;
   *)
-    echo "SOLOPM_REQUIRE_SIGNED_PACKAGE must be 0 or 1" >&2
+    echo "SUISUI_REQUIRE_SIGNED_PACKAGE must be 0 or 1" >&2
     exit 2
     ;;
 esac
@@ -60,13 +60,13 @@ case "$REQUIRE_NOTARIZED_PACKAGE" in
   0|1)
     ;;
   *)
-    echo "SOLOPM_REQUIRE_NOTARIZED_PACKAGE must be 0 or 1" >&2
+    echo "SUISUI_REQUIRE_NOTARIZED_PACKAGE must be 0 or 1" >&2
     exit 2
     ;;
 esac
 
 if [[ ! -d "$APP_BUNDLE" ]]; then
-  SOLOPM_BUILD_CONFIGURATION=release "$ROOT_DIR/script/build_and_run.sh" --build-only
+  SUISUI_BUILD_CONFIGURATION=release "$ROOT_DIR/script/build_and_run.sh" --build-only
 fi
 
 # Production gates always inspect the immutable signed source bundle. Unsigned

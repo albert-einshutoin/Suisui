@@ -1,7 +1,7 @@
 # Regression Risk Map
 
 Status: P14-001 source contract green
-Owner: Quality bar for SoloPM (Project Board, Inbox, Today, Settings, Voice Command, Menu Bar)
+Owner: Quality bar for Suisui (Project Board, Inbox, Today, Settings, Voice Command, Menu Bar)
 Source of truth: `tasks/Phase14-QualityRegressionHardening.md`
 
 このドキュメントは、UI / state mutation / 永続化 / リリース証跡に対する「残risk」と
@@ -50,7 +50,7 @@ risk 行は次の 5 層のいずれかに必ず対応付ける。複数の層に
 
 ### Project Board layout stability invariants
 
-`Sources/SoloPMApp/Views/ProjectBoardView.swift` を中心に、以下の不変条件を source 層 +
+`Sources/SuisuiApp/Views/ProjectBoardView.swift` を中心に、以下の不変条件を source 層 +
 runtime AX smoke で固定する。Phase 14 で加わった layout stability harness
 (P14-002 / P14-003) はここの各行を参照する。
 

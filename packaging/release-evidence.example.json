@@ -3,10 +3,10 @@
     "version": "0.1.0",
     "buildNumber": "1",
     "appBundlePath": "dist/Suisui.app",
-    "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
+    "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
     "artifactSha256": "replace-after-package",
-    "signingIdentity": "Developer ID Application: SoloPM Release Owner (TEAMID)",
-    "notaryProfile": "SoloPMNotaryProfile",
+    "signingIdentity": "Developer ID Application: Suisui Release Owner (TEAMID)",
+    "notaryProfile": "SuisuiNotaryProfile",
     "sparkleFeedURL": "replace-after-sparkle-config",
     "appcastPath": "dist/releases/appcast.xml"
   },

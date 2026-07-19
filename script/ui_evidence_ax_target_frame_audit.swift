@@ -20,15 +20,15 @@ guard let rawPID = Int32(CommandLine.arguments[3]), rawPID > 0 else {
 let appPID = pid_t(rawPID)
 let selectedWindowTitle = CommandLine.arguments[4]
 let environment = ProcessInfo.processInfo.environment
-let maxNodes = Int(environment["SOLOPM_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
-let identityFingerprintEnabled = environment["SOLOPM_UI_EVIDENCE_AX_IDENTITY_FINGERPRINT"] == "1"
+let maxNodes = Int(environment["SUISUI_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
+let identityFingerprintEnabled = environment["SUISUI_UI_EVIDENCE_AX_IDENTITY_FINGERPRINT"] == "1"
 
 guard maxNodes > 0 else {
-    fputs("SOLOPM_UI_EVIDENCE_AX_MAX_NODES must be a positive integer.\n", stderr)
+    fputs("SUISUI_UI_EVIDENCE_AX_MAX_NODES must be a positive integer.\n", stderr)
     exit(2)
 }
 guard AXIsProcessTrusted() else {
-    fputs("Accessibility permission is required to audit SoloPM UI evidence targets.\n", stderr)
+    fputs("Accessibility permission is required to audit Suisui UI evidence targets.\n", stderr)
     exit(2)
 }
 guard NSWorkspace.shared.runningApplications.contains(where: { $0.processIdentifier == appPID }) else {
@@ -166,7 +166,7 @@ while cursor < queue.count && visitedCount < maxNodes {
 }
 
 if visitedCount >= maxNodes {
-    fputs("AX target frame audit reached SOLOPM_UI_EVIDENCE_AX_MAX_NODES=\(maxNodes).\n", stderr)
+    fputs("AX target frame audit reached SUISUI_UI_EVIDENCE_AX_MAX_NODES=\(maxNodes).\n", stderr)
 }
 guard !matches.isEmpty else {
     fputs("No exact AX identifier \(targetIdentifier) was found in the selected window.\n", stderr)

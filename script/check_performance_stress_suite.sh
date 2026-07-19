@@ -2,11 +2,11 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-STRESS_TMP_ROOT="${SOLOPM_STRESS_TMP_ROOT:-$ROOT_DIR/.tmp}"
-OUTPUT_DIR="${SOLOPM_STRESS_OUTPUT_DIR:-$STRESS_TMP_ROOT/performance-stress}"
+STRESS_TMP_ROOT="${SUISUI_STRESS_TMP_ROOT:-$ROOT_DIR/.tmp}"
+OUTPUT_DIR="${SUISUI_STRESS_OUTPUT_DIR:-$STRESS_TMP_ROOT/performance-stress}"
 SUMMARY_FILE="$OUTPUT_DIR/summary.md"
-SCRATCH_PATH="${SOLOPM_STRESS_SCRATCH_PATH:-$ROOT_DIR/.build/performance-stress}"
-RUN_RUNTIME_PERFORMANCE="${SOLOPM_STRESS_RUNTIME_PERFORMANCE:-0}"
+SCRATCH_PATH="${SUISUI_STRESS_SCRATCH_PATH:-$ROOT_DIR/.build/performance-stress}"
+RUN_RUNTIME_PERFORMANCE="${SUISUI_STRESS_RUNTIME_PERFORMANCE:-0}"
 
 validate_flag() {
   local name="$1"
@@ -53,18 +53,18 @@ run_swift_stress_tests() {
 }
 
 run_runtime_performance_smoke() {
-  SOLOPM_PERFORMANCE_PROFILE="${SOLOPM_PERFORMANCE_PROFILE:-debug}" \
-  SOLOPM_PERFORMANCE_BUILD_CONFIGURATION="${SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-debug}" \
-  SOLOPM_PERFORMANCE_OUTPUT_DIR="${SOLOPM_PERFORMANCE_OUTPUT_DIR:-$OUTPUT_DIR/release-launch-performance}" \
+  SUISUI_PERFORMANCE_PROFILE="${SUISUI_PERFORMANCE_PROFILE:-debug}" \
+  SUISUI_PERFORMANCE_BUILD_CONFIGURATION="${SUISUI_PERFORMANCE_BUILD_CONFIGURATION:-debug}" \
+  SUISUI_PERFORMANCE_OUTPUT_DIR="${SUISUI_PERFORMANCE_OUTPUT_DIR:-$OUTPUT_DIR/release-launch-performance}" \
     "$ROOT_DIR/script/check_release_launch_performance_smoke.sh"
 }
 
-validate_flag "SOLOPM_STRESS_RUNTIME_PERFORMANCE" "$RUN_RUNTIME_PERFORMANCE"
+validate_flag "SUISUI_STRESS_RUNTIME_PERFORMANCE" "$RUN_RUNTIME_PERFORMANCE"
 
 cd "$ROOT_DIR"
 mkdir -p "$OUTPUT_DIR"
 {
-  printf '# SoloPM Performance Stress Suite\n\n'
+  printf '# Suisui Performance Stress Suite\n\n'
   printf -- '- Started: `%s`\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   printf -- '- Swift stress filters: `%d`\n' "${#STRESS_TEST_FILTERS[@]}"
   printf -- '- Runtime performance smoke: `%s`\n' "$RUN_RUNTIME_PERFORMANCE"

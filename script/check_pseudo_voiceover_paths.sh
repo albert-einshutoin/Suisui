@@ -34,8 +34,8 @@ REQUIRED_MARKERS=(
   "dynamicRequiredNodeIDPrefixes"
   "todayCockpit"
   "todayEmptyCockpit"
-  "SoloPMHarnessTaskLifecycleOperation"
-  "SoloPMHarnessTodayCockpitOperation"
+  "SuisuiHarnessTaskLifecycleOperation"
+  "SuisuiHarnessTodayCockpitOperation"
   "requiredTaskLifecycleOperations"
   "requiredTodayCockpitOperations"
   "requiredFocusNodeIDs"
@@ -95,15 +95,15 @@ TODAY_UI_ACCESSIBILITY_IDENTIFIERS=(
   "today-rail-actions-menu"
 )
 
-TODAY_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift"
-SIDEBAR_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SoloPMApp/Views/ProjectWorkflowViews.swift"
-SIDEBAR_DESTINATION_SOURCE="$ROOT_DIR/Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift"
+TODAY_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift"
+SIDEBAR_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectWorkflowViews.swift"
+SIDEBAR_DESTINATION_SOURCE="$ROOT_DIR/Sources/SuisuiCore/App/ProjectBoardSelectionPersistence.swift"
 
 SOURCES=(
-  "$ROOT_DIR/Sources/SoloPMCore/App/AccessibilityFocusPathAudit.swift"
-  "$ROOT_DIR/Sources/SoloPMCore/App/SoloPMHarness.swift"
+  "$ROOT_DIR/Sources/SuisuiCore/App/AccessibilityFocusPathAudit.swift"
+  "$ROOT_DIR/Sources/SuisuiCore/App/SuisuiHarness.swift"
   "$SIDEBAR_DESTINATION_SOURCE"
-  "$ROOT_DIR/Sources/SoloPMApp/Views/ProjectBoardView.swift"
+  "$ROOT_DIR/Sources/SuisuiApp/Views/ProjectBoardView.swift"
   "$TODAY_WORKFLOW_SOURCE"
   "$SIDEBAR_WORKFLOW_SOURCE"
   "$ROOT_DIR/docs/quality/accessibility-focus-paths.md"
@@ -160,7 +160,7 @@ if [[ "$RUN_SWIFT_TESTS" -eq 1 ]]; then
   # optional Swift pass proves the real harness behavior before a manual
   # VoiceOver worksheet can reuse the pseudo VoiceOver gate.
   swift test --filter AccessibilityFocusPathAuditTests
-  swift test --filter SoloPMHarnessTests
+  swift test --filter SuisuiHarnessTests
 fi
 
 echo "OK: pseudo VoiceOver focus path contract covers task lifecycle execution and Today cockpit markers"

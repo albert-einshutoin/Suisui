@@ -6,7 +6,7 @@
 
 Suisui is a macOS-first AI personal project manager that turns voice or text into projects, tasks, calendar events, reminders, notifications, and local work artifacts after user review.
 
-![Suisui public alpha preview](docs/assets/screenshots/solopm-alpha-preview.svg)
+![Suisui public alpha preview](docs/assets/screenshots/suisui-alpha-preview.svg)
 
 ## Public Alpha
 
@@ -56,15 +56,15 @@ Local verification:
 ```sh
 ./scripts/ci.sh
 ./script/build_and_run.sh --verify
-swift build --product solopm-cli
-.build/debug/solopm-cli --help
+swift build --product suisui-cli
+.build/debug/suisui-cli --help
 ```
 
 `./scripts/ci.sh` is the shared non-GUI verification entrypoint for local development and GitHub Actions. `./script/build_and_run.sh --verify` additionally launches the app and is intended for local macOS UI smoke checks.
 
 `./script/build_and_run.sh --verify` is product-path proof: it launches the normal ProjectBoard with isolated `HOME`, `CFFIXED_USER_HOME`, SQLite, and keychain-disabled settings, then checks the PID-owned window and the native-toolbar `project-board-command-palette`, `project-board-sidebar`, and `project-board-detail` product markers. Failures use the machine-readable categories `launch`, `window`, `accessibility`, or `product-marker`.
 
-Recovery diagnostics are a separate contract for designated diagnostic scripts. Those scripts may use `SOLOPM_LAUNCH_RECOVERY_MODE=1` and related recovery flags to inspect a degraded or recovery-only surface. Recovery success is diagnostic evidence, not product or release proof; release evidence must pass the normal `--verify` path. Today, Inbox, accessible CRUD, layout, launch-performance, and UI screenshot release flows launch the normal `ProjectBoardView` route with an explicit selected destination instead.
+Recovery diagnostics are a separate contract for designated diagnostic scripts. Those scripts may use `SUISUI_LAUNCH_RECOVERY_MODE=1` and related recovery flags to inspect a degraded or recovery-only surface. Recovery success is diagnostic evidence, not product or release proof; release evidence must pass the normal `--verify` path. Today, Inbox, accessible CRUD, layout, launch-performance, and UI screenshot release flows launch the normal `ProjectBoardView` route with an explicit selected destination instead.
 
 Release verification starts from the [Release Checklist](docs/release/checklist.md).
 

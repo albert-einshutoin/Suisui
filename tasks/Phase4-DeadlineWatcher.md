@@ -1,6 +1,6 @@
 # Phase 4: Deadline Watcher
 
-目的は、SoloPM の差別化である「納期まで見張る」体験を成立させること。Project / Task / Artifact の状態をローカルで監視し、期限前と期限超過を落ち着いた頻度で通知する。
+目的は、Suisui の差別化である「納期まで見張る」体験を成立させること。Project / Task / Artifact の状態をローカルで監視し、期限前と期限超過を落ち着いた頻度で通知する。
 
 ## Scope
 

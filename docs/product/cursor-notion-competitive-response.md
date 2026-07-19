@@ -18,9 +18,9 @@ Important details from the announcement:
 - Remote MCP gives the agent scoped workspace context instead of forcing blind coding.
 - Notion treats Cursor as the agent engine while Notion remains the user-facing context surface.
 
-## SoloPM Counter-Position
+## Suisui Counter-Position
 
-SoloPM should not try to out-Notion Notion or rebuild Cursor's coding-agent infrastructure. The stronger lane is:
+Suisui should not try to out-Notion Notion or rebuild Cursor's coding-agent infrastructure. The stronger lane is:
 
 - Local-first personal AI PM instead of team workspace automation.
 - VoiceOver task listing as a first-class workflow, not a secondary accessibility pass.
@@ -29,7 +29,7 @@ SoloPM should not try to out-Notion Notion or rebuild Cursor's coding-agent infr
 - Provider-neutral and MCP-ready, but scoped, redacted, and approval-gated.
 - Mac-native Keychain, permissions, and release evidence as product trust signals.
 
-The competitive response is to make SoloPM the fastest private place to decide what should be delegated, package the work safely, and verify the result. External coding agents can be execution engines; SoloPM should own personal context, prioritization, due dates, evidence, accessibility, and approval.
+The competitive response is to make Suisui the fastest private place to decide what should be delegated, package the work safely, and verify the result. External coding agents can be execution engines; Suisui should own personal context, prioritization, due dates, evidence, accessibility, and approval.
 
 ## Acceleration Lane
 
@@ -37,12 +37,12 @@ The next acceleration should be implemented as Issue seeds under Phase15-17, not
 
 | Lane | Product outcome | Why now |
 | --- | --- | --- |
-| Agent work request handoff | Convert selected tasks/docs/projects into a redacted external-agent work packet with acceptance criteria and verification commands. | Notion/Cursor makes assignment from a workspace table normal. SoloPM needs a local-first equivalent that does not auto-write or leak secrets. |
-| remote MCP context pack | Generate an explicit MCP scope for selected SoloPM context, with allowlisted servers, expiry, and read/write boundary. | Cursor/Notion highlights remote MCP as the context layer. SoloPM already has MCP foundations; it should expose scoped packs rather than broad workspace access. |
+| Agent work request handoff | Convert selected tasks/docs/projects into a redacted external-agent work packet with acceptance criteria and verification commands. | Notion/Cursor makes assignment from a workspace table normal. Suisui needs a local-first equivalent that does not auto-write or leak secrets. |
+| remote MCP context pack | Generate an explicit MCP scope for selected Suisui context, with allowlisted servers, expiry, and read/write boundary. | Cursor/Notion highlights remote MCP as the context layer. Suisui already has MCP foundations; it should expose scoped packs rather than broad workspace access. |
 | streaming progress and resumable runs | Track external agent run events, last cursor, resumed state, failure reason, and redacted logs. | Users will expect live progress and resumability once agent work is delegated. |
-| VoiceOver task listing agent queue | Make task listing the primary queue for work ready to review, hand off, execute, or verify. | SoloPM's accessibility-first task model is a differentiator against workspace-first competitors. |
-| Verification-before-handoff gate | Every handoff packet includes tests, artifacts, rollback, and "do not auto-merge/auto-push" policy. | SoloPM should win on safe execution and proof, not raw autonomy. |
-| Competitive launch messaging | Explain SoloPM as private personal PM + safe delegation, not a generic Notion clone. | Product-out needs clear positioning before Public Alpha. |
+| VoiceOver task listing agent queue | Make task listing the primary queue for work ready to review, hand off, execute, or verify. | Suisui's accessibility-first task model is a differentiator against workspace-first competitors. |
+| Verification-before-handoff gate | Every handoff packet includes tests, artifacts, rollback, and "do not auto-merge/auto-push" policy. | Suisui should win on safe execution and proof, not raw autonomy. |
+| Competitive launch messaging | Explain Suisui as private personal PM + safe delegation, not a generic Notion clone. | Product-out needs clear positioning before Public Alpha. |
 
 ## Immediate Issue Order
 
@@ -56,7 +56,7 @@ The next acceleration should be implemented as Issue seeds under Phase15-17, not
 
 ## Product Bar
 
-- The user can select a SoloPM task or project and create a reviewed agent work request without exposing secrets.
+- The user can select a Suisui task or project and create a reviewed agent work request without exposing secrets.
 - The work request carries task title, redacted detail, source documents, due date, priority, target repo/branch when provided, acceptance criteria, verification commands, and non-goals.
 - The user sees what context will be shared before any external agent or MCP endpoint receives it.
 - The generated request is accessible from VoiceOver task listing and keyboard navigation.
@@ -65,15 +65,15 @@ The next acceleration should be implemented as Issue seeds under Phase15-17, not
 
 ## Non-Goals
 
-- Do not build a full coding-agent cloud sandbox in SoloPM.
+- Do not build a full coding-agent cloud sandbox in Suisui.
 - Do not auto-create PRs, auto-merge, auto-push, or grant broad repo/workspace access by default.
 - Do not send raw personal task details, API keys, OAuth tokens, Keychain values, or full document bodies without explicit review.
 - Do not make Notion integration the main product lane. Treat Notion/Cursor as a market signal, not the product definition.
 
 ## Review Questions
 
-- Does this feature make SoloPM faster for one person's real project execution?
+- Does this feature make Suisui faster for one person's real project execution?
 - Does it preserve Local-first and review-before-execution boundaries?
 - Can a VoiceOver user find the task, inspect the handoff, and approve or cancel?
 - Can the result be verified with focused tests or release evidence?
-- If an external agent fails, can SoloPM explain what happened without leaking raw logs or secrets?
+- If an external agent fails, can Suisui explain what happened without leaking raw logs or secrets?

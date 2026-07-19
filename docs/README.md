@@ -8,22 +8,22 @@
 ## 1. プロダクト概要
 
 ### 仮称
-- SoloPM
+- Suisui
 - WorkPilot
 - VoicePM
 - PlanDock
 - MCPilot
 
-本仕様では仮称を **SoloPM** とする。
+本仕様では仮称を **Suisui** とする。
 
 ### 一文コンセプト
 **話すだけで、予定・タスク・通知・成果物を作成するMac常駐の個人用AI PMアプリ。**
 
 ### 価値仮説
 個人開発者、企画職、PdM、副業ワーカー、ライター、研究者、登壇者などは、複数の個人プロジェクトを抱えながら、タスク分解、期日管理、通知設定、成果物作成、メール/連絡文作成を手作業で行っている。  
-SoloPMは、音声入力からAIが意図を構造化し、MCP経由でMac上のカレンダー、リマインダー、通知、ファイル、Knowledge Frameなどを操作することで、作業の初動と納期管理を自動化する。
+Suisuiは、音声入力からAIが意図を構造化し、MCP経由でMac上のカレンダー、リマインダー、通知、ファイル、Knowledge Frameなどを操作することで、作業の初動と納期管理を自動化する。
 
-長期的には、SoloPM は iOS / Web / macOS からアクセスできる会話ベースのタスク管理&自動化ツールへ拡張する。詳細は `docs/product/multiplatform-automation.md` を正とし、macOS alpha はその最初の実行面として扱う。
+長期的には、Suisui は iOS / Web / macOS からアクセスできる会話ベースのタスク管理&自動化ツールへ拡張する。詳細は `docs/product/multiplatform-automation.md` を正とし、macOS alpha はその最初の実行面として扱う。
 
 プロダクト順序は `docs/product/roadmap.md` を正とする。初期は個人向けの最小MVPとして、音声からタスク・予定・通知・承認待ちを作り、忘れを防ぐ local-first な voice-task loop を成立させる。その後のMVPで、Business向けの組織管理、KnowledgeBase/RAG、QZT evidence、Memory Pager、監査、課金を追加する。
 
@@ -47,7 +47,7 @@ Project / Task / Calendar / Reminder / Notification / Markdown files を作成
 ## 2. ポジショニング
 
 ### ユーザーに見せる説明
-**SoloPMは、Macに常駐する音声ファーストのAIタスク・スケジュール管理アプリです。話すだけでタスク、予定、通知、プロジェクト、成果物の下地を作成し、締切前や期限超過時に知らせてくれます。**
+**Suisuiは、Macに常駐する音声ファーストのAIタスク・スケジュール管理アプリです。話すだけでタスク、予定、通知、プロジェクト、成果物の下地を作成し、締切前や期限超過時に知らせてくれます。**
 
 ### 内部的な説明
 STT → LLM → Intent Plan → MCP Host → Built-in MCP Servers → Data Creation という流れで、Mac上と外部サービス上の仕事データを作成・監視する。
@@ -58,7 +58,7 @@ STT → LLM → Intent Plan → MCP Host → Built-in MCP Servers → Data Creat
 - 音声入力アプリ: 音声をテキスト化する
 - 汎用AIエージェント: 何でもできるが、納期・タスク・予定に特化していない
 
-SoloPMは、**音声を仕事データへ変換し、納期まで監視する**ことに特化する。
+Suisuiは、**音声を仕事データへ変換し、納期まで監視する**ことに特化する。
 
 ---
 
@@ -126,9 +126,9 @@ AI API費用はユーザー負担。アプリは機能と利便性に課金す�
 
 | Plan | 価格案 | 内容 |
 |---|---:|---|
-| Free | 無料 | ローカル基本機能、BYOK、SoloPM中継型ツール実行、MCP登録/診断 |
+| Free | 無料 | ローカル基本機能、BYOK、Suisui中継型ツール実行、MCP登録/診断 |
 | Sync | $5/月 or $48/年 | iOS/Web/macOS デバイス間同期、E2EE、履歴、削除復元 |
-| Pro | $10/月 or $96/年 | Sync、Cloud Relay、PC未起動時のタスク作成、Hosted MCP、docs-scoped automation、SoloPM Harness |
+| Pro | $10/月 or $96/年 | Sync、Cloud Relay、PC未起動時のタスク作成、Hosted MCP、docs-scoped automation、Suisui Harness |
 | Team | 将来 | 共有プロジェクト、管理者機能、監査ログ、チーム連携 |
 
 初期の訴求は **「Macが起動していなくてもタスクを作成できる」** を Pro の中核価値にする。
@@ -784,7 +784,7 @@ QZT記事公開が3日後です
 ### ワイヤーフレーム: Menu Bar Panel
 ```text
 ┌──────────────────────────────┐
-│ SoloPM                       │
+│ Suisui                       │
 │ [🎙 話して追加]              │
 ├──────────────────────────────┤
 │ Today                        │

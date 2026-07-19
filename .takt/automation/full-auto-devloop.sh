@@ -22,7 +22,7 @@ WORKFLOW="${TAKT_LOOP_WORKFLOW:-.takt/workflows/subscription-devloop.yaml}"
 INTERVAL_SECONDS="${TAKT_LOOP_INTERVAL_SECONDS:-300}"
 REQUESTED_MAX_AUTO_MERGE_FILES="${TAKT_LOOP_MAX_AUTO_MERGE_FILES:-12}"
 REQUESTED_MAX_AUTO_MERGE_LINES="${TAKT_LOOP_MAX_AUTO_MERGE_LINES:-500}"
-# TaktDesk has generic 100-file/3000-line defaults. SoloPM caps those values
+# TaktDesk has generic 100-file/3000-line defaults. Suisui caps those values
 # because release, security, and UI changes need a reviewable human-sized diff.
 HARD_MAX_AUTO_MERGE_FILES=20
 HARD_MAX_AUTO_MERGE_LINES=800
@@ -65,7 +65,7 @@ log() {
 
 if (( REQUESTED_MAX_AUTO_MERGE_FILES > HARD_MAX_AUTO_MERGE_FILES \
   || REQUESTED_MAX_AUTO_MERGE_LINES > HARD_MAX_AUTO_MERGE_LINES )); then
-  log "auto-merge limits capped at ${MAX_AUTO_MERGE_FILES} files / ${MAX_AUTO_MERGE_LINES} changed lines for SoloPM"
+  log "auto-merge limits capped at ${MAX_AUTO_MERGE_FILES} files / ${MAX_AUTO_MERGE_LINES} changed lines for Suisui"
 fi
 
 run_quality_gate_for_worktree() {
@@ -397,7 +397,7 @@ $(tail -40 "$start_log")
 path_is_forbidden_for_auto_merge() {
   local path="$1"
   case "$path" in
-    .github/*|.takt/*|packaging/*|Package.swift|Package.resolved|Sources/SoloPMCore/Security/*|script/check_security*|script/*release*|script/*sign*|script/*notar*|infra/*|terraform/*|migrations/*|db/migrations/*|auth/*|billing/*|payments/*|security/*|*.env*|*secret*|*credential*|*private-key*)
+    .github/*|.takt/*|packaging/*|Package.swift|Package.resolved|Sources/SuisuiCore/Security/*|script/check_security*|script/*release*|script/*sign*|script/*notar*|infra/*|terraform/*|migrations/*|db/migrations/*|auth/*|billing/*|payments/*|security/*|*.env*|*secret*|*credential*|*private-key*)
       return 0
       ;;
     *)

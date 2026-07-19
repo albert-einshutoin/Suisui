@@ -1,6 +1,6 @@
 # Phase 11: Provider Sync UX Productization
 
-目的は、SoloPM を「ローカルで動くタスクアプリ」から、主要LLM provider、MCP仕様準拠、有料同期ゲート、競合水準の操作感まで含めたプロダクトに引き上げること。外部SaaS連携は引き続き本Phaseの非対象だが、LLM通信と有料同期の機能境界は実装する。
+目的は、Suisui を「ローカルで動くタスクアプリ」から、主要LLM provider、MCP仕様準拠、有料同期ゲート、競合水準の操作感まで含めたプロダクトに引き上げること。外部SaaS連携は引き続き本Phaseの非対象だが、LLM通信と有料同期の機能境界は実装する。
 
 ## Product Bar
 
@@ -10,7 +10,7 @@
 - Freeユーザーが同期を押しても、外部通信やデータアップロードが走らず、Pro gateで止まるか。
 - Pro同期の実装が未構成の場合、mock successではなく「同期バックエンド未構成」と表示されるか。
 - MCPは公式仕様に対して、実装済み範囲と未対応範囲がテストと証跡で説明できるか。
-- 競合の便利機能を足すだけでなく、SoloPMの強みである local-first / BYOK / approval-first が崩れていないか。
+- 競合の便利機能を足すだけでなく、Suisuiの強みである local-first / BYOK / approval-first が崩れていないか。
 
 ## Scope
 
@@ -35,7 +35,7 @@
 - [x] `notifications/initialized` が `initialize` 成功後にだけ送られることをテストする。
 - [x] `protocolVersion` は `2025-11-25` を提示し、serverが返したversionを監査/Settings表示へ残す。
 - [x] `tools/list` responseの `name` / `title` / `description` / `inputSchema` 型不一致を fail fast する既存テストを compliance matrix にリンクする。
-- [x] MCP推奨のtool name範囲をSoloPMの安全境界として実装し、1-128文字のASCII英数字/underscore/hyphen/dot以外はfail fastする。
+- [x] MCP推奨のtool name範囲をSuisuiの安全境界として実装し、1-128文字のASCII英数字/underscore/hyphen/dot以外はfail fastする。
 - [x] paginated `tools/list` 全体で重複tool nameを拒否し、Settings catalog / audit / approval policyが同名toolで上書きされないようにする。
 - [x] `tools/list` の `nextCursor` paginationを追跡し、複数ページのtool catalogを途中で切らず、malformed / repeated cursorをfail fastする。
 - [x] `initialize` result の `capabilities` / `serverInfo.name` / `serverInfo.version` を必須として検証し、不完全なserverには `notifications/initialized` を送らない。
@@ -43,7 +43,7 @@
 - [x] `tools/list` の `outputSchema` をrelease subsetとしてparse/validateし、`tools/call` 成功時は object `structuredContent` の必須fieldとprimitive typeを検証してからsuccess auditへ進む。`isError = true` のtool実行エラーはLLMが自己修正できるactionable resultとしてschema検証をskipする。
 - [x] `resources/list` / `prompts/list` は未対応としてUIとdocsで明示し、対応済みのように表示しない。
 - [x] `2026-07-28` draft / release-candidate の per-request protocol metadata と `server/discover` は今回のrelease target外として、`docs/mcp-compliance.md` と `docs/release/evidence/mcp-inspector.md` に明記する。
-- [x] `2026-07-28` RCは `initialize` / `notifications/initialized` / protocol-level sessionを外し、per-request `_meta`、required `server/discover`、tools/list `ttlMs` / `cacheScope` を含むため、SoloPM public alphaのstable stdio Tools subsetとは別boundaryとして証跡化する。
+- [x] `2026-07-28` RCは `initialize` / `notifications/initialized` / protocol-level sessionを外し、per-request `_meta`、required `server/discover`、tools/list `ttlMs` / `cacheScope` を含むため、Suisui public alphaのstable stdio Tools subsetとは別boundaryとして証跡化する。
 - [x] `MCPClient.initialize()` は server が draft `2026-07-28` を返した場合、generic unsupportedではなくstable `2025-11-25` stdio Tools subsetだけをpublic alpha対応範囲として案内し、draft metadata / `server/discover` を対応済みに見せない。
 - [x] MCP evidence は公式latest entrypoint、latest確認日、公式stable latest `2025-11-25`、公式stable source URL、`2026-07-28` release-candidate source URL / final予定日の境界を明記しない限りrelease readyにしない。
 - [x] MCP evidence はEnterprise-Managed Authorization extensionがstableであることをwatchlistに入れ、remote authorizationはpublic alpha対象外と明記しない限りrelease readyにしない。
@@ -116,10 +116,10 @@
 ## P11-015: OpenCode local provider integration
 
 - [x] OpenCodeはクラウドAPI providerではなく、ローカル開発者向けの `opencodeLocal` adapterとして扱う。
-- [x] SoloPMは `~/.local/share/opencode/auth.json` を読まない。ユーザーが選んだ `opencode` executableとworkspaceだけを使う。
+- [x] Suisuiは `~/.local/share/opencode/auth.json` を読まない。ユーザーが選んだ `opencode` executableとworkspaceだけを使う。
 - [x] subprocess実行はtimeout、stderr redaction、working directory validation、user approvalを必須にする。
 - [x] OpenCode outputはAction Plan JSONのみ受け入れ、自然文だけの応答は実行しない。
-- [x] 完了条件: 開発者はOpenCode資産を使えるが、SoloPMが勝手に認証情報を吸い上げない。
+- [x] 完了条件: 開発者はOpenCode資産を使えるが、Suisuiが勝手に認証情報を吸い上げない。
 
 ## P11-020: Subscription entitlement domain
 
@@ -179,7 +179,7 @@
   - [x] Project OverviewのArtifacts panelから絶対パスのexpected artifactを追加でき、Project snapshotへ即反映する。相対パスはworkspace未確定として保存せず、mock artifact rowを作らない。
   - [x] Project OverviewのArtifact行からlocal artifact linkを削除でき、実ファイルを削除せずSQLite snapshotだけを更新する。存在しないlink削除は成功扱いにせず、ユーザーへmissing stateを返す。
   - [x] Review Executeの `filesystem.create_markdown_file` / `filesystem.create_artifacts_from_frame` は `projectId` / `taskId` を受けた場合、作成ファイルをSQLite `artifacts` へ `created` linkとして保存し、Project Overviewへ実成果物として戻す。
-- [x] 完了条件: Notion的な柔軟さ、Linear的な速度、Todoist的な即時入力のうち、SoloPMに必要な部分だけが実装される。
+- [x] 完了条件: Notion的な柔軟さ、Linear的な速度、Todoist的な即時入力のうち、Suisuiに必要な部分だけが実装される。
 
 ## P11-032: Today and Inbox workflow
 
@@ -219,15 +219,15 @@
   - [x] `script/check_accessibility_preflight.sh --runtime` はProject Board上のAdd Task、タスク詳細オープン、ステータス移動、ローカル提案適用、自動化レビュー、承認済み実行、Save、DeleteのAX identifier/help signalsを `crudSignals=8/8` としてblocker化する。
   - [x] `script/check_accessibility_preflight.sh --runtime` はProject navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector のAX identifier/help signalsを `focusPathSignals=6/6` としてblocker化する。
   - [x] `script/check_accessibility_preflight.sh --runtime` はDelete Task確認を開き、Cancel Delete TaskのAX identifier/help signalを `destructiveCancelSignals=1/1` としてblocker化する。
-  - [x] `script/check_runtime_accessible_crud_smoke.sh` は隔離 `SOLOPM_DATABASE_PATH` と `SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION` を使い、実アプリのAccessibility操作でProjectの作成、リネーム保存、完了、削除、Task作成、Task更新、Task status移動、Task直接削除、Project削除時のTask cascade削除がSQLiteに反映されることを検証する。
+  - [x] `script/check_runtime_accessible_crud_smoke.sh` は隔離 `SUISUI_DATABASE_PATH` と `SUISUI_PROJECT_BOARD_SELECTED_DESTINATION` を使い、実アプリのAccessibility操作でProjectの作成、リネーム保存、完了、削除、Task作成、Task更新、Task status移動、Task直接削除、Project削除時のTask cascade削除がSQLiteに反映されることを検証する。
   - [x] VoiceOver passed evidence は同じrelease候補で実行したruntime AX smoke OK行、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8`、`focusPathSignals=6/6`、`destructiveCancelSignals=1/1` を含まない場合release readyにしない。
   - [x] `script/create_voiceover_evidence.sh --capture-runtime-ax-smoke` は手動VoiceOver証跡の作成時に同じrelease候補のruntime AX smoke OK行を自動取得し、古いコピー済みcountsでrelease readyを偽らない。
-  - [x] `script/prepare_voiceover_review_candidate.sh` は隔離DBにVoiceOver確認用Project/各StatusのTask/Artifactをseedし、`SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION` 付きで同じrelease候補を開ける。
+  - [x] `script/prepare_voiceover_review_candidate.sh` は隔離DBにVoiceOver確認用Project/各StatusのTask/Artifactをseedし、`SUISUI_PROJECT_BOARD_SELECTED_DESTINATION` 付きで同じrelease候補を開ける。
   - [x] `script/prepare_voiceover_review_candidate.sh` は `.tmp/voiceover-review/create-evidence-command.sh` を生成し、同じ候補DB/Project IDを使った手動VoiceOver証跡コマンドをoperatorがplaceholder置換して実行できる。
   - [x] `script/prepare_voiceover_review_candidate.sh` pins `.tmp/voiceover-review/create-evidence-command.sh` to a clean tracked source tree and the release-candidate source commit it was generated for, and the generated command exits before writing evidence if the release candidate tree is dirty or the commit has changed.
   - [x] `script/prepare_voiceover_review_candidate.sh` writes `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` with the current release-candidate `Source commit` without modifying tracked evidence.
   - [x] Direct `script/create_voiceover_evidence.sh --pending` defaults to `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` and does not modify tracked VoiceOver release evidence unless `--output` explicitly points there.
-  - [x] `script/prepare_voiceover_review_candidate.sh` writes `.tmp/voiceover-review/launch.env` with `SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT` and `SOLOPM_VOICEOVER_REVIEW_PROJECT_ID` so manual reviewers do not launch stale VoiceOver candidates.
+  - [x] `script/prepare_voiceover_review_candidate.sh` writes `.tmp/voiceover-review/launch.env` with `SUISUI_VOICEOVER_REVIEW_SOURCE_COMMIT` and `SUISUI_VOICEOVER_REVIEW_PROJECT_ID` so manual reviewers do not launch stale VoiceOver candidates.
   - [x] Generated VoiceOver evidence command reloads `.tmp/voiceover-review/launch.env`, verifies the seeded candidate database/project id, and launches the same candidate before runtime AX smoke capture.
   - [x] Generated VoiceOver evidence command verifies `.tmp/voiceover-review/voiceover-worksheet.md` is current, marked completed, filled, and free of pending/unchecked markers before validate-only or passed evidence.
   - [x] Generated VoiceOver evidence command reads the completed worksheet values directly into `script/create_voiceover_evidence.sh`, so the reviewer does not duplicate focus notes in command-line placeholders.
@@ -250,9 +250,9 @@
 
 ## P11-040: Competitor benchmark and feature fit
 
-- [ ] Notion、Todoist、Linear、Motion を2-4時間で触り、SoloPMに関係する機能だけを `docs/product/competitor-benchmark.md` に記録する。
+- [ ] Notion、Todoist、Linear、Motion を2-4時間で触り、Suisuiに関係する機能だけを `docs/product/competitor-benchmark.md` に記録する。
 - [x] 公式docs/product pageベースの desk research を `docs/product/competitor-benchmark.md` に記録する。
-- [x] 実操作2-4時間で見るべき競合別クリックパス、測定項目、SoloPM採用/非採用判断基準を `docs/product/competitor-benchmark.md` に記録する。
+- [x] 実操作2-4時間で見るべき競合別クリックパス、測定項目、Suisui採用/非採用判断基準を `docs/product/competitor-benchmark.md` に記録する。
 - [x] `script/create_competitor_hands_on_evidence.sh` と `release_readiness_report.sh` でpending/未チェックの競合hands-on証跡をrelease readyにしない。
 - [x] `script/create_competitor_hands_on_evidence.sh --passed` は手動確認済みの具体メモから `docs/product/competitor-benchmark.md` の `## Hands-On Findings` も同時生成する。
 - [x] 競合hands-on証跡はmacOS/browser/app version、account tier、paid trial有無を含む環境contextがない場合release readyにしない。
@@ -268,11 +268,11 @@
 - [x] action summary は VoiceOver の `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` preview、`.tmp/voiceover-review/voiceover-worksheet.md`、`.tmp/voiceover-review/create-evidence-command.sh` を案内し、operatorがtracked evidenceを汚さずrelease候補contextを確認できるようにする。
 - [x] action summary は VoiceOver / competitor hands-on の current `Source commit` に対応する pending evidence path も併記し、operatorが実ファイル名を推測しなくてよい。
 - [x] release action summary は competitor hands-on の pending generator と `.tmp/competitor-hands-on/create-evidence-command.sh` を先に案内し、手動証跡を未完了のまま明確に修復できる。
-- [x] Notion: 柔軟だが個人PM用途では構造化と運用設計が重い。SoloPMは「音声/AIで構造化済みのProject/Taskに落とす」ことで差別化する。
-- [x] Todoist: 速いcaptureと今日の整理が強い。SoloPMはInbox/Todayの即時入力とAI分類を取り込む。
-- [x] Linear: issue/project/cycleの速度とキーボード操作が強い。SoloPMは個人向けにstatus移動とProject進捗だけを取り込む。
-- [x] Motion: AIスケジュールと自動調整が強いが、提案理由が見えないと不安になる。SoloPMは提案理由、適用前確認、local-firstを維持する。
-- [x] 完了条件: 競合比較が機能一覧ではなく、ユーザーの困りごととSoloPMの採用/非採用判断に結びつく。
+- [x] Notion: 柔軟だが個人PM用途では構造化と運用設計が重い。Suisuiは「音声/AIで構造化済みのProject/Taskに落とす」ことで差別化する。
+- [x] Todoist: 速いcaptureと今日の整理が強い。SuisuiはInbox/Todayの即時入力とAI分類を取り込む。
+- [x] Linear: issue/project/cycleの速度とキーボード操作が強い。Suisuiは個人向けにstatus移動とProject進捗だけを取り込む。
+- [x] Motion: AIスケジュールと自動調整が強いが、提案理由が見えないと不安になる。Suisuiは提案理由、適用前確認、local-firstを維持する。
+- [x] 完了条件: 競合比較が機能一覧ではなく、ユーザーの困りごととSuisuiの採用/非採用判断に結びつく。
 
 ## P11-041: VC/investor-grade product review loop
 
@@ -295,7 +295,7 @@
   - [x] `docs/ux/click-path-audit.md` の改善紐づけ表で、PR未作成の現時点はcurrent branchの改善commit/source testに対応づけ、PR作成時にdescriptionへ転記する方針を明記する。
 - [x] `ui-samples/` を参考にした画面密度・インスペクタ・Settingsの改善がスクリーンショットで検証されている。
 - [x] 競合benchmarkから採用/非採用判断が残っている。
-- [x] `swift test`、`./scripts/ci.sh`、`xcodebuild ... -scheme SoloPM build` がgreen。
+- [x] `swift test`、`./scripts/ci.sh`、`xcodebuild ... -scheme Suisui build` がgreen。
 
 ## Source Notes
 

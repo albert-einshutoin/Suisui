@@ -28,7 +28,7 @@ RAW_SECRET_DENYLIST=(
 )
 
 SCAN_PATHS=(
-  "Tests/SoloPMCoreTests/Fixtures"
+  "Tests/SuisuiCoreTests/Fixtures"
   "docs/release/evidence"
   "docs/release/evidence/ui-screenshots"
   "packaging"
@@ -63,12 +63,12 @@ VOICE_MODEL_BINARY_PATTERNS=(
   "voicemodels/*.bin"
 )
 
-if [[ "${SOLOPM_SECURITY_SCAN_INCLUDE_TMP:-0}" == "1" ]]; then
+if [[ "${SUISUI_SECURITY_SCAN_INCLUDE_TMP:-0}" == "1" ]]; then
   SCAN_PATHS+=(".tmp")
 fi
 
-if [[ -n "${SOLOPM_SECURITY_SCAN_EXTRA_PATHS:-}" ]]; then
-  IFS=':' read -r -a extra_scan_paths <<<"$SOLOPM_SECURITY_SCAN_EXTRA_PATHS"
+if [[ -n "${SUISUI_SECURITY_SCAN_EXTRA_PATHS:-}" ]]; then
+  IFS=':' read -r -a extra_scan_paths <<<"$SUISUI_SECURITY_SCAN_EXTRA_PATHS"
   SCAN_PATHS+=("${extra_scan_paths[@]}")
 fi
 

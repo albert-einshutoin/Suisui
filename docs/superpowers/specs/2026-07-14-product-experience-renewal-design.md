@@ -1,4 +1,4 @@
-# SoloPM Product Experience Renewal Design
+# Suisui Product Experience Renewal Design
 
 - Date: 2026-07-14
 - Status: proposed for implementation
@@ -7,9 +7,9 @@
 
 ## 1. Objective
 
-SoloPMを、初めて使う人には迷いが少なく、必要になれば高度なAI承認実行、計画、連携、自動化まで扱えるmacOSプロダクトへ刷新する。
+Suisuiを、初めて使う人には迷いが少なく、必要になれば高度なAI承認実行、計画、連携、自動化まで扱えるmacOSプロダクトへ刷新する。
 
-完成状態では、日常導線を `Today`、`Inbox`、`Projects`、`Review` の4領域に絞る。既存の高度機能は削除せず、文脈、badge、メニュー、Review内section、Command Paletteから必要なときだけ見せる。視覚面は「Calm Signal Desk」を採用し、ネイティブなmacOS構造の上にSoloPM固有の静かなSignal表現を作る。
+完成状態では、日常導線を `Today`、`Inbox`、`Projects`、`Review` の4領域に絞る。既存の高度機能は削除せず、文脈、badge、メニュー、Review内section、Command Paletteから必要なときだけ見せる。視覚面は「Calm Signal Desk」を採用し、ネイティブなmacOS構造の上にSuisui固有の静かなSignal表現を作る。
 
 ## 2. Chosen Approach
 
@@ -258,13 +258,13 @@ pure policy `InspectorPresentationPolicy` を導入する。
 
 ### Semantic tokens
 
-- `SoloPMBrand`: adaptive Solo Blue、Signal Amber。semantic tintだけに使う。
-- `SoloPMTypography`: pageTitle、sectionTitle、body、metadata、compactLabel。
-- `SoloPMSurface`: canvas、groupedContent、elevatedSelection、assistantSignal。
-- `SoloPMBorder`: subtle、selected、attention、danger。
-- `SoloPMMotion`: quick、standard、emphasis、Reduce Motion fallback。
-- `SoloPMIconMetrics`: compact、standard、feature。
-- `SoloPMControlDensity`: compact、standard、prominent。
+- `SuisuiBrand`: adaptive Solo Blue、Signal Amber。semantic tintだけに使う。
+- `SuisuiTypography`: pageTitle、sectionTitle、body、metadata、compactLabel。
+- `SuisuiSurface`: canvas、groupedContent、elevatedSelection、assistantSignal。
+- `SuisuiBorder`: subtle、selected、attention、danger。
+- `SuisuiMotion`: quick、standard、emphasis、Reduce Motion fallback。
+- `SuisuiIconMetrics`: compact、standard、feature。
+- `SuisuiControlDensity`: compact、standard、prominent。
 
 ### Rules
 
@@ -279,14 +279,14 @@ pure policy `InspectorPresentationPolicy` を導入する。
 
 ## 11. Experience-First Onboarding
 
-既存のtransactional/idempotentなLearn SoloPM生成処理を再利用し、初回の既定導線を設定先行から価値体験先行へ変える。
+既存のtransactional/idempotentなLearn Suisui生成処理を再利用し、初回の既定導線を設定先行から価値体験先行へ変える。
 
 1. Welcome
-   - Primary: `Try SoloPM now`
+   - Primary: `Try Suisui now`
    - Secondary: `Set up AI first`
    - `Skip` を維持
-2. Try SoloPM
-   - Learn SoloPMを作成
+2. Try Suisui
+   - Learn Suisuiを作成
    - 新4領域のTodayまたはProjectsへroute
    - 最初の一つのtask操作を案内
 3. Contextual setup
@@ -297,7 +297,7 @@ pure policy `InspectorPresentationPolicy` を導入する。
 
 - API keyやpermissionなしでも60秒以内にProject/Task操作を体験できる。
 - ユーザーが選ぶ前にOS permission promptを出さない。
-- Learn SoloPMを重複作成せず、途中失敗時に不完全Projectを残さない。
+- Learn Suisuiを重複作成せず、途中失敗時に不完全Projectを残さない。
 - lesson文言が最終4領域、Toolbar、shortcutと一致する。
 - AI未設定でもInbox、Project、Today、Undoを学べる。
 - global shortcut未登録時にOption+Spaceを登録済みとして教えない。
@@ -432,7 +432,7 @@ GitHub Flowのfeature branch上で、次の粒度を基本にコミットする�
 8. fix: make Voice empty state and modes truthful
 9. feat: add production global shortcut lifecycle
 10. fix: route Voice requests to exact Project Board scene
-11. feat: expand semantic SoloPM design tokens
+11. feat: expand semantic Suisui design tokens
 12. refactor: migrate feature surfaces and split leaf views
 13. feat: make onboarding experience-first
 14. fix: complete localization, due date, error, and accessibility paths

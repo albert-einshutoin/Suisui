@@ -13,7 +13,7 @@ fi
 source "$METADATA_FILE"
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
-ARTIFACT_DIR="${SOLOPM_RUNTIME_WORKFLOW_ARTIFACT_DIR:-$ROOT_DIR/.tmp/runtime-workflow-smoke}"
+ARTIFACT_DIR="${SUISUI_RUNTIME_WORKFLOW_ARTIFACT_DIR:-$ROOT_DIR/.tmp/runtime-workflow-smoke}"
 SCENARIOS=("project_task_crud" "inbox_triage" "today_complete" "settings_save" "voice_review" "development_pr" "schedule_cockpit")
 REQUESTED_SCENARIOS=()
 
@@ -105,7 +105,7 @@ run_project_task_crud() {
   local scenario_status="failed"
   local scenario_reason="project/task CRUD scenario did not finish"
 
-  if scenario_output="$(SOLOPM_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE=1 ./script/check_runtime_accessible_crud_smoke.sh 2>&1)"; then
+  if scenario_output="$(SUISUI_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE=1 ./script/check_runtime_accessible_crud_smoke.sh 2>&1)"; then
     printf '%s\n' "$scenario_output"
     scenario_status="passed"
     scenario_reason="project/task CRUD SQLite postconditions passed"
@@ -125,7 +125,7 @@ run_inbox_triage() {
   local scenario_status="failed"
   local scenario_reason="inbox_triage scenario did not finish"
 
-  if scenario_output="$(SOLOPM_RUNTIME_INBOX_TRIAGE_KEEP_DATABASE=1 ./script/check_runtime_inbox_triage_smoke.sh 2>&1)"; then
+  if scenario_output="$(SUISUI_RUNTIME_INBOX_TRIAGE_KEEP_DATABASE=1 ./script/check_runtime_inbox_triage_smoke.sh 2>&1)"; then
     printf '%s\n' "$scenario_output"
     scenario_status="passed"
     scenario_reason="Inbox quick add, classification actions, and undo SQLite postconditions passed"
@@ -145,7 +145,7 @@ run_today_complete() {
   local scenario_status="failed"
   local scenario_reason="today_complete scenario did not finish"
 
-  if scenario_output="$(SOLOPM_RUNTIME_TODAY_COMPLETE_KEEP_DATABASE=1 ./script/check_runtime_today_complete_smoke.sh 2>&1)"; then
+  if scenario_output="$(SUISUI_RUNTIME_TODAY_COMPLETE_KEEP_DATABASE=1 ./script/check_runtime_today_complete_smoke.sh 2>&1)"; then
     printf '%s\n' "$scenario_output"
     scenario_status="passed"
     scenario_reason="Today visible row completion SQLite postconditions passed"
@@ -165,7 +165,7 @@ run_settings_save() {
   local scenario_status="failed"
   local scenario_reason="settings_save scenario did not finish"
 
-  if scenario_output="$(SOLOPM_RUNTIME_SETTINGS_SAVE_KEEP_HOME=1 ./script/check_runtime_settings_save_smoke.sh 2>&1)"; then
+  if scenario_output="$(SUISUI_RUNTIME_SETTINGS_SAVE_KEEP_HOME=1 ./script/check_runtime_settings_save_smoke.sh 2>&1)"; then
     printf '%s\n' "$scenario_output"
     scenario_status="passed"
     scenario_reason="Settings non-secret UserDefaults postconditions passed"
@@ -185,7 +185,7 @@ run_voice_review() {
   local scenario_status="failed"
   local scenario_reason="voice_review scenario did not finish"
 
-  if scenario_output="$(SOLOPM_RUNTIME_VOICE_REVIEW_KEEP_DATABASE=1 ./script/check_runtime_voice_review_smoke.sh 2>&1)"; then
+  if scenario_output="$(SUISUI_RUNTIME_VOICE_REVIEW_KEEP_DATABASE=1 ./script/check_runtime_voice_review_smoke.sh 2>&1)"; then
     printf '%s\n' "$scenario_output"
     scenario_status="passed"
     scenario_reason="Voice Command fail-closed planning audit and pre-approval write boundary passed"
@@ -205,7 +205,7 @@ run_development_pr() {
   local scenario_status="failed"
   local scenario_reason="development_pr scenario did not finish"
 
-  if scenario_output="$(SOLOPM_RUNTIME_DEVELOPMENT_PR_KEEP_WORKSPACE=1 ./script/check_runtime_development_pr_smoke.sh 2>&1)"; then
+  if scenario_output="$(SUISUI_RUNTIME_DEVELOPMENT_PR_KEEP_WORKSPACE=1 ./script/check_runtime_development_pr_smoke.sh 2>&1)"; then
     printf '%s\n' "$scenario_output"
     scenario_status="passed"
     scenario_reason="Approved project directory file edits, verification, commit, and fake PR creation boundary passed"
@@ -225,7 +225,7 @@ run_schedule_cockpit() {
   local scenario_status="failed"
   local scenario_reason="schedule_cockpit scenario did not finish"
 
-  if scenario_output="$(SOLOPM_RUNTIME_SCHEDULE_COCKPIT_KEEP_DATABASE=1 ./script/check_runtime_schedule_cockpit_smoke.sh 2>&1)"; then
+  if scenario_output="$(SUISUI_RUNTIME_SCHEDULE_COCKPIT_KEEP_DATABASE=1 ./script/check_runtime_schedule_cockpit_smoke.sh 2>&1)"; then
     printf '%s\n' "$scenario_output"
     scenario_status="passed"
     scenario_reason="Schedule weekly grid, unscheduled draft add, and Calendar apply approval boundary passed"

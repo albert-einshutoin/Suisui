@@ -2,11 +2,11 @@
 
 Verified: 2026-06-20
 
-Purpose: keep SoloPM release decisions tied to user pull, retention, monetization, and risk. This file is not a marketing narrative; it is a decision log for whether the product is becoming more releasable.
+Purpose: keep Suisui release decisions tied to user pull, retention, monetization, and risk. This file is not a marketing narrative; it is a decision log for whether the product is becoming more releasable.
 
 ## Current Position
 
-SoloPM is no longer just a mock task board. It now has local SQLite-backed Project/Task CRUD, artifact visibility from real rows, provider catalog boundaries, MCP compliance documentation, paid sync gating, Project/Task inspectors, deterministic local suggestions, and UI screenshot evidence for the main release surfaces.
+Suisui is no longer just a mock task board. It now has local SQLite-backed Project/Task CRUD, artifact visibility from real rows, provider catalog boundaries, MCP compliance documentation, paid sync gating, Project/Task inspectors, deterministic local suggestions, and UI screenshot evidence for the main release surfaces.
 
 The product is still not release-complete. UI screenshot evidence is now present and release-report validated. Remaining release blockers are VoiceOver manual pass, competitor hands-on validation, and signing/notarization/Sparkle/Gatekeeper evidence. Those gaps should stay visible because they directly affect trust.
 
@@ -33,7 +33,7 @@ The product is still not release-complete. UI screenshot evidence is now present
 ## Release Investor Narrative
 
 Why it can grow:
-- SoloPM targets users who already feel overloaded by task tools but still need local trust and AI assistance.
+- Suisui targets users who already feel overloaded by task tools but still need local trust and AI assistance.
 - The capture -> review -> execute loop is narrower than Notion and less team-heavy than Linear.
 - BYOK and local-first storage give a trust wedge for technical users.
 
@@ -44,7 +44,7 @@ Why users may pay:
 
 Why it may fail:
 - If visual quality and accessibility are not proven, users will not trust the app for daily operations.
-- If AI suggestions become opaque or autonomous too early, SoloPM loses its approval-first differentiator.
+- If AI suggestions become opaque or autonomous too early, Suisui loses its approval-first differentiator.
 - If settings/provider complexity dominates the first-run experience, the app will feel like infrastructure rather than a PM tool.
 
 ## Next Review Gates

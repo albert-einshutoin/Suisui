@@ -12,7 +12,7 @@ fi
 # shellcheck source=/dev/null
 source "$METADATA_FILE"
 
-APP_NAME="${APP_NAME:-SoloPM}"
+APP_NAME="${APP_NAME:-Suisui}"
 APP_BUNDLE="${1:-$ROOT_DIR/dist/$APP_NAME.app}"
 MAIN_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 SUPPORTED_ARCHITECTURES="${SUPPORTED_ARCHITECTURES:-}"

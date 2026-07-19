@@ -12,7 +12,7 @@ automated_evidence=".tmp/automated-release-preflight-${current_commit}.md"
 If the evidence file for the current HEAD does not exist yet, generate it before starting manual lanes:
 
 ```bash
-SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/check_automated_release_preflight.sh
+SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/check_automated_release_preflight.sh
 ```
 
 Use the latest action summary for the current release-candidate source commit and generated helper paths. Use `Release candidate product source commit`, not the action summary `Source commit`, when filling manual VoiceOver or competitor evidence. The release-candidate source commit can intentionally differ from HEAD when only docs, tests, or release scripts changed after the product source was built.
@@ -22,14 +22,14 @@ Use this runbook after `release_readiness_report.sh` is green for automated gate
 Do not ask an LLM, automation, or a generated action summary to create passed evidence for manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, Gatekeeper, clean install, or Launch at Login checks without the real pass. Generated helpers can route the work, but only concrete observations from the real release-candidate app or signed release artifact can unblock these lanes.
 
 ```bash
-SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/release_readiness_report.sh
+SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/release_readiness_report.sh
 ```
 
 ## VoiceOver
 
 Goal: replace stale `docs/release/evidence/accessibility-voiceover.md` with a real manual VoiceOver pass for the release-candidate source commit shown in the latest action summary.
 
-Tracking issue: [#244 Release closeout: complete manual VoiceOver evidence](https://github.com/albert-einshutoin/soloPM/issues/244)
+Tracking issue: [#244 Release closeout: complete manual VoiceOver evidence](https://github.com/albert-einshutoin/suisui/issues/244)
 
 Generated helpers:
 
@@ -62,7 +62,7 @@ Verification:
 
 ```bash
 ./.tmp/voiceover-review/create-evidence-command.sh --validate-only
-SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/release_readiness_report.sh
+SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/release_readiness_report.sh
 ```
 
 Commit only after the VoiceOver section is green:
@@ -80,23 +80,23 @@ Required local inputs:
 
 - `whisper-cli` executable
 - a real WAV containing known words; avoid committing personal recordings
-- `ggml-tiny.bin` at `~/Library/Application Support/SoloPM/VoiceModels/whisper.cpp/`
-- `kokoro-v1_0.pth` at `~/Library/Application Support/SoloPM/VoiceModels/Kokoro/`
+- `ggml-tiny.bin` at `~/Library/Application Support/Suisui/VoiceModels/whisper.cpp/`
+- `kokoro-v1_0.pth` at `~/Library/Application Support/Suisui/VoiceModels/Kokoro/`
 - the checked-in `script/kokoro_tts_runtime.py` wrapper and its documented Python dependencies
 
 Run the full release proof from the repository root:
 
 ```bash
-export SOLOPM_WHISPER_CPP_EXECUTABLE="/absolute/path/to/whisper-cli"
-export SOLOPM_STT_SAMPLE_WAV="/absolute/path/to/non-sensitive-sample.wav"
-export SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS="<words actually spoken in the WAV>"
-export SOLOPM_KOKORO_EXECUTABLE="$PWD/script/kokoro_tts_runtime.py"
-export SOLOPM_TTS_LANGUAGES="ja en"
-export SOLOPM_LOCAL_VOICE_EVIDENCE_FILE="docs/release/evidence/local-voice-runtime.md"
+export SUISUI_WHISPER_CPP_EXECUTABLE="/absolute/path/to/whisper-cli"
+export SUISUI_STT_SAMPLE_WAV="/absolute/path/to/non-sensitive-sample.wav"
+export SUISUI_STT_EXPECTED_TRANSCRIPT_CONTAINS="<words actually spoken in the WAV>"
+export SUISUI_KOKORO_EXECUTABLE="$PWD/script/kokoro_tts_runtime.py"
+export SUISUI_TTS_LANGUAGES="ja en"
+export SUISUI_LOCAL_VOICE_EVIDENCE_FILE="docs/release/evidence/local-voice-runtime.md"
 ./script/check_local_voice_runtime_smoke.sh
 ```
 
-After it passes, listen to `.tmp/local-voice-runtime-smoke/kokoro-ja.wav` and `kokoro-en.wav`, then open SoloPM Settings -> Voice and run Test Play in the release candidate. Confirm intelligible output, correct Japanese/English selection, and no unexpected network request. Do not commit the WAV, model, executable, cache, or raw recording. Rerun `./script/release_readiness_report.sh` after reviewing the generated path-redacted evidence.
+After it passes, listen to `.tmp/local-voice-runtime-smoke/kokoro-ja.wav` and `kokoro-en.wav`, then open Suisui Settings -> Voice and run Test Play in the release candidate. Confirm intelligible output, correct Japanese/English selection, and no unexpected network request. Do not commit the WAV, model, executable, cache, or raw recording. Rerun `./script/release_readiness_report.sh` after reviewing the generated path-redacted evidence.
 
 ## Google Calendar live sync
 
@@ -104,11 +104,11 @@ Goal: replace the product-out Google Calendar blocker with real OAuth, writable 
 
 Required manual work:
 
-1. Configure the release-candidate app with `SOLOPM_GOOGLE_CALENDAR_OAUTH_CLIENT_ID` or `SoloPMGoogleCalendarOAuthClientID`.
+1. Configure the release-candidate app with `SUISUI_GOOGLE_CALENDAR_OAUTH_CLIENT_ID` or `SuisuiGoogleCalendarOAuthClientID`.
 2. Open Settings -> Sync, connect Google Calendar through OAuth, and confirm the consent screen uses Calendar scopes.
 3. Load writable calendars, choose a test calendar, and save the selected calendar ID.
 4. Create or choose an eligible due task, approve `Sync due tasks to Google Calendar`, and confirm the Google event appears in the test calendar.
-5. Run the same sync again and confirm SoloPM skips the already-linked task instead of creating a duplicate event.
+5. Run the same sync again and confirm Suisui skips the already-linked task instead of creating a duplicate event.
 6. Record concrete observations with `script/create_google_calendar_live_evidence.sh --validate-only` first, then rerun with `--force` only after validation succeeds.
 
 Release-ready evidence requirements:
@@ -124,11 +124,11 @@ Verification:
 
 ```bash
 script/create_google_calendar_live_evidence.sh --validate-only \
-  --source-commit "$(git log -1 --format=%h -- Sources/SoloPMCore Sources/SoloPMApp Sources/SoloPMGoogleCalendarRuntime Package.swift)" \
+  --source-commit "$(git log -1 --format=%h -- Sources/SuisuiCore Sources/SuisuiApp Sources/SuisuiGoogleCalendarRuntime Package.swift)" \
   --checked-by "<reviewer>" \
   --environment "<macOS/app build/test Google account>" \
   --calendar-id "<test calendar id>" \
-  --task-id "<synced SoloPM task id>" \
+  --task-id "<synced Suisui task id>" \
   --event-id "<created Google Calendar event id>" \
   --oauth-note "<OAuth consent observation>" \
   --calendar-list-note "<writable calendar list observation>" \
@@ -149,7 +149,7 @@ git commit -m "docs: record google calendar live sync evidence"
 
 Goal: replace pending competitor evidence and convert `docs/product/competitor-benchmark.md` from worksheet/desk research to real hands-on findings.
 
-Tracking issue: [#245 Release closeout: complete competitor hands-on benchmark](https://github.com/albert-einshutoin/soloPM/issues/245)
+Tracking issue: [#245 Release closeout: complete competitor hands-on benchmark](https://github.com/albert-einshutoin/suisui/issues/245)
 
 Generated helpers:
 
@@ -180,7 +180,7 @@ Verification:
 
 ```bash
 ./.tmp/competitor-hands-on/create-evidence-command.sh --validate-only
-SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/release_readiness_report.sh
+SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/release_readiness_report.sh
 ```
 
 Commit only after the competitor section is green:
@@ -194,7 +194,7 @@ git commit -m "docs: record competitor hands-on release evidence"
 
 Goal: produce a signed, notarized, stapled release artifact with production Sparkle metadata and release evidence.
 
-Tracking issue: [#246 Release closeout: configure signed notarized Sparkle release machine evidence](https://github.com/albert-einshutoin/soloPM/issues/246)
+Tracking issue: [#246 Release closeout: configure signed notarized Sparkle release machine evidence](https://github.com/albert-einshutoin/suisui/issues/246)
 
 Generated helpers:
 
@@ -209,11 +209,11 @@ Required local-only files on the release machine:
 
 Required environment/config values:
 
-- `SOLOPM_SIGNING_IDENTITY`
-- `SOLOPM_NOTARY_PROFILE`
-- `SOLOPM_SPARKLE_FEED_URL`
-- `SOLOPM_SPARKLE_PUBLIC_ED_KEY`
-- `SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX`
+- `SUISUI_SIGNING_IDENTITY`
+- `SUISUI_NOTARY_PROFILE`
+- `SUISUI_SPARKLE_FEED_URL`
+- `SUISUI_SPARKLE_PUBLIC_ED_KEY`
+- `SUISUI_SPARKLE_DOWNLOAD_URL_PREFIX`
 
 Required release-machine flow:
 
@@ -221,11 +221,11 @@ Required release-machine flow:
 ./script/check_release_machine_local_doctor.sh
 ./script/verify_signing_setup.sh
 ./script/sign_app.sh
-SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh
+SUISUI_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh
 ./script/notarize_app.sh
-SOLOPM_PACKAGE_FORMAT=all ./script/package_release.sh
-SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/generate_appcast.sh
-SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml
+SUISUI_PACKAGE_FORMAT=all ./script/package_release.sh
+SUISUI_REQUIRE_RELEASE_APPCAST=1 ./script/generate_appcast.sh
+SUISUI_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml
 ```
 
 Then fill `.tmp/release-machine/release-machine-worksheet.md` while checking the signed/notarized app. Set `Status: completed`, change every completed `[ ]` to `[x]`, and keep the explanatory text. The generated command reads the worksheet directly, so the observations do not need to be entered again. The note must name the observed proof for each checked flag:
@@ -253,8 +253,8 @@ Verification:
 ```bash
 ./.tmp/release-machine/create-release-evidence-command.sh --validate-only
 ./.tmp/release-machine/create-release-evidence-command.sh
-SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh
-SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/release_readiness_report.sh
+SUISUI_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh
+SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/release_readiness_report.sh
 ```
 
 `packaging/release-evidence.json` is release-machine local-only evidence and is intentionally ignored. Do not add or commit it. Keep secrets, notarization identifiers, local user paths, and clean-user details on the release machine. If external auditability is needed, attach only a redacted summary plus artifact checksum to the GitHub Release or the release closeout Issue; never attach the local env files or the raw release evidence.
@@ -265,7 +265,7 @@ After all three lanes are green:
 
 ```bash
 swift test
-SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/release_readiness_report.sh
+SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/release_readiness_report.sh
 git status --short --branch
 ```
 

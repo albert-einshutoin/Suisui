@@ -5,7 +5,7 @@ Status: Accepted
 
 ## Context
 
-SoloPM originally listed GRDB.swift as the first candidate for the local SQLite wrapper. The implemented codebase already has a small `sqlite3`-backed adapter, migration runner, in-memory test path, FTS5 usage, and focused store APIs for projects, tasks, knowledge frames, notifications, calendar links, reminders, deadlines, artifacts, and knowledge vectors.
+Suisui originally listed GRDB.swift as the first candidate for the local SQLite wrapper. The implemented codebase already has a small `sqlite3`-backed adapter, migration runner, in-memory test path, FTS5 usage, and focused store APIs for projects, tasks, knowledge frames, notifications, calendar links, reminders, deadlines, artifacts, and knowledge vectors.
 
 ## Decision
 
@@ -33,4 +33,4 @@ Keep the internal `sqlite3` adapter as the MVP persistence boundary. Defer GRDB.
 ## Links
 
 - Related task: tasks/Phase0-Skeleton.md
-- Related implementation: Sources/SoloPMCore/Database/SQLiteDatabaseClient.swift
+- Related implementation: Sources/SuisuiCore/Database/SQLiteDatabaseClient.swift

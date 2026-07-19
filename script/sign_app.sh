@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 SIGNING_ENV_FILE="$ROOT_DIR/packaging/signing.env"
-ENTITLEMENTS_FILE="$ROOT_DIR/packaging/SoloPM.entitlements"
+ENTITLEMENTS_FILE="$ROOT_DIR/packaging/Suisui.entitlements"
 
 if [[ ! -f "$METADATA_FILE" ]]; then
   echo "missing metadata file: $METADATA_FILE" >&2
@@ -25,10 +25,10 @@ if [[ -f "$SIGNING_ENV_FILE" ]]; then
 fi
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
-SIGNING_IDENTITY="${SOLOPM_SIGNING_IDENTITY:-}"
-SIGNING_KEYCHAIN="${SOLOPM_CODESIGN_KEYCHAIN:-}"
-REQUIRE_SIGNING="${SOLOPM_REQUIRE_SIGNING:-1}"
-SKIP_BUILD="${SOLOPM_SIGNING_SKIP_BUILD:-0}"
+SIGNING_IDENTITY="${SUISUI_SIGNING_IDENTITY:-}"
+SIGNING_KEYCHAIN="${SUISUI_CODESIGN_KEYCHAIN:-}"
+REQUIRE_SIGNING="${SUISUI_REQUIRE_SIGNING:-1}"
+SKIP_BUILD="${SUISUI_SIGNING_SKIP_BUILD:-0}"
 
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
@@ -39,7 +39,7 @@ case "$REQUIRE_SIGNING" in
   0|1)
     ;;
   *)
-    echo "SOLOPM_REQUIRE_SIGNING must be 0 or 1" >&2
+    echo "SUISUI_REQUIRE_SIGNING must be 0 or 1" >&2
     exit 2
     ;;
 esac
@@ -50,7 +50,7 @@ require_developer_id_application_identity() {
     "Developer ID Application:"*)
       ;;
     *)
-      echo "SOLOPM_SIGNING_IDENTITY must be a Developer ID Application identity: $signing_identity" >&2
+      echo "SUISUI_SIGNING_IDENTITY must be a Developer ID Application identity: $signing_identity" >&2
       exit 2
       ;;
   esac
@@ -58,11 +58,11 @@ require_developer_id_application_identity() {
 
 if [[ -z "$SIGNING_IDENTITY" ]]; then
   if [[ "$REQUIRE_SIGNING" == "0" ]]; then
-    echo "SOLOPM_SIGNING_IDENTITY is empty; signing skipped because SOLOPM_REQUIRE_SIGNING=0."
+    echo "SUISUI_SIGNING_IDENTITY is empty; signing skipped because SUISUI_REQUIRE_SIGNING=0."
     exit 0
   fi
 
-  echo "SOLOPM_SIGNING_IDENTITY is required for Developer ID signing." >&2
+  echo "SUISUI_SIGNING_IDENTITY is required for Developer ID signing." >&2
   echo "Run 'security find-identity -p codesigning -v' and use a Developer ID Application identity." >&2
   exit 2
 fi
@@ -77,16 +77,16 @@ fi
 
 case "$SKIP_BUILD" in
   0)
-    SOLOPM_BUILD_CONFIGURATION=release "$ROOT_DIR/script/build_and_run.sh" --build-only
+    SUISUI_BUILD_CONFIGURATION=release "$ROOT_DIR/script/build_and_run.sh" --build-only
     ;;
   1)
     if [[ ! -d "$APP_BUNDLE" ]]; then
-      echo "app bundle does not exist and SOLOPM_SIGNING_SKIP_BUILD=1: $APP_BUNDLE" >&2
+      echo "app bundle does not exist and SUISUI_SIGNING_SKIP_BUILD=1: $APP_BUNDLE" >&2
       exit 2
     fi
     ;;
   *)
-    echo "SOLOPM_SIGNING_SKIP_BUILD must be 0 or 1" >&2
+    echo "SUISUI_SIGNING_SKIP_BUILD must be 0 or 1" >&2
     exit 2
     ;;
 esac
@@ -113,7 +113,7 @@ fi
 
 # Apple recommends granting entitlements only to the executable that needs them.
 # Sparkle helpers are separate executables and do not record audio, so they keep
-# Hardened Runtime enabled without inheriting SoloPM's audio-input permission.
+# Hardened Runtime enabled without inheriting Suisui's audio-input permission.
 APP_CODESIGN_ARGS=(
   "${NESTED_CODESIGN_ARGS[@]}"
   --entitlements "$ENTITLEMENTS_FILE"

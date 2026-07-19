@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GATE_MODE="${1:-}"
-ARTIFACT_DIR="${SOLOPM_UI_RUNNER_CAPABILITY_ARTIFACT_DIR:-$ROOT_DIR/.tmp/ui-runner-capabilities}"
+ARTIFACT_DIR="${SUISUI_UI_RUNNER_CAPABILITY_ARTIFACT_DIR:-$ROOT_DIR/.tmp/ui-runner-capabilities}"
 SUMMARY_FILE="$ARTIFACT_DIR/ui-runner-capability-summary.env"
 PROBE_SOURCE="$ROOT_DIR/script/macos_ui_runner_capability_probe.swift"
 CONTENT_CHECK_SOURCE="$ROOT_DIR/script/ui_evidence_content_check.swift"
@@ -137,7 +137,7 @@ if [[ ! -r "$PROBE_SOURCE" ]]; then
   block "runner-capability" "system-probe-source-unavailable"
 fi
 
-PRIVATE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/solopm-ui-runner-capability.XXXXXX")"
+PRIVATE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/suisui-ui-runner-capability.XXXXXX")"
 PROBE_EXECUTABLE="$PRIVATE_DIR/macos-ui-runner-capability-probe"
 if ! /usr/bin/swiftc "$PROBE_SOURCE" -o "$PROBE_EXECUTABLE" >/dev/null 2>&1; then
   block "runner-capability" "system-probe-compile-failed"
@@ -226,7 +226,7 @@ if [[ "$GATE_MODE" == "visual" ]]; then
     rm -f "$SCREENSHOT"
     if screencapture -x "$SCREENSHOT" >/dev/null 2>&1 &&
       [[ -s "$SCREENSHOT" ]] &&
-      SOLOPM_UI_EVIDENCE_ALLOW_DESKTOP_BACKGROUND=1 \
+      SUISUI_UI_EVIDENCE_ALLOW_DESKTOP_BACKGROUND=1 \
         /usr/bin/swift "$CONTENT_CHECK_SOURCE" "$SCREENSHOT" >/dev/null 2>&1; then
       VISIBLE_PIXELS=1
       break

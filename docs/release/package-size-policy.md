@@ -1,11 +1,11 @@
 # Package Size Policy
 
-SoloPMの配布物は、初回導入が軽く、必要な高度機能はユーザーが選んだときだけ追加取得する構成をProduction基準とする。
+Suisuiの配布物は、初回導入が軽く、必要な高度機能はユーザーが選んだときだけ追加取得する構成をProduction基準とする。
 
 ## Production budget
 
-- `SoloPM.app`: file payload合計50 MiB以下。`script/check_release_bundle_inventory.sh`が超過をfail closedにする。
-- ZIP: 7.5 MiB以下。DMG: 9 MiB以下。`script/check_release_artifact_size.sh`が形式別に検証し、必要な変更は`SOLOPM_MAX_ZIP_ARTIFACT_BYTES`または`SOLOPM_MAX_DMG_ARTIFACT_BYTES`をPRで明示して更新する。
+- `Suisui.app`: file payload合計50 MiB以下。`script/check_release_bundle_inventory.sh`が超過をfail closedにする。
+- ZIP: 7.5 MiB以下。DMG: 9 MiB以下。`script/check_release_artifact_size.sh`が形式別に検証し、必要な変更は`SUISUI_MAX_ZIP_ARTIFACT_BYTES`または`SUISUI_MAX_DMG_ARTIFACT_BYTES`をPRで明示して更新する。
 - 正式な多解像度アプリアイコンは1024pxキャンバスと全macOS表現を維持しつつ、視覚上十分な512px相当に最適化した。ZIP実測値7,443,842 bytesを根拠に上限を7.5 MiBとし、約420 KiBを超える追加回帰は拒否する。
 - Release evidence: app bundle、main binary、ZIP/DMGの実測bytesとstrip/pruning modeを記録する。
 - Review threshold: 新規依存または新規リソースがapp bundleを5 MiB以上増やす変更は、PRに代替案、ユーザー価値、更新・脆弱性対応責任を記載する。
@@ -13,7 +13,7 @@ SoloPMの配布物は、初回導入が軽く、必要な高度機能はユー�
 
 ## Bundled and user-cache boundaries
 
-- No bundled voice models. STT/TTSモデルは明示操作後にchecksum検証し、user cache (`Application Support/SoloPM`)へ保存する。
+- No bundled voice models. STT/TTSモデルは明示操作後にchecksum検証し、user cache (`Application Support/Suisui`)へ保存する。
 - 大規模なAIモデル、生成cache、検証fixtureをapp bundleへ入れない。
 - ネットワークがなくても、取得済みかつchecksum検証済みのモデルは利用できる設計を維持する。
 - `script/check_release_bundle_inventory.sh`は配布appそのものを走査し、既知のモデル形式、`.DS_Store`、AppleDouble、dSYMの混入を拒否し、最大ファイルを表示する。

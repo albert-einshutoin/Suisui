@@ -54,7 +54,7 @@
 - [x] 分類不能な tool は default で disabled にする。
 - [x] tool description と schema を UI で確認できるようにする。
 - [x] テスト: unknown risk tool が実行不可になることを確認する。
-- [x] 完了条件: 外部 tool でも SoloPM の safety model が壊れない。
+- [x] 完了条件: 外部 tool でも Suisui の safety model が壊れない。
 
 実装メモ:
 - `ExternalMCPToolClassifier` は explicit policy がない tool を `.disabled` に倒す。

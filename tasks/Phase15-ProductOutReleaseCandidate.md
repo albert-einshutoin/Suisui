@@ -1,6 +1,6 @@
 # Phase 15: Product-Out Release Candidate
 
-目的は、Phase14で固めた品質基盤の上に、SoloPMを「実装はあるがまだ出せない」状態から「release candidateとして外部ユーザーに渡せる」状態へ閉じること。ここでは新機能を大きく増やさず、既存の主要価値である VoiceOver-aware task listing、review-before-execution、document-scoped automation、LLM provider planning、local-first storage、release packaging を、実機証跡と失敗時の判断基準まで含めて製品判定できる形にする。
+目的は、Phase14で固めた品質基盤の上に、Suisuiを「実装はあるがまだ出せない」状態から「release candidateとして外部ユーザーに渡せる」状態へ閉じること。ここでは新機能を大きく増やさず、既存の主要価値である VoiceOver-aware task listing、review-before-execution、document-scoped automation、LLM provider planning、local-first storage、release packaging を、実機証跡と失敗時の判断基準まで含めて製品判定できる形にする。
 
 このPhaseのゴールは、開発者の手元でだけ動くことではない。release-candidate source commit、manual evidence、Gemini free-tier live smoke、Keychain access prompt、signed, notarized, stapled artifact、Sparkle metadata、public alpha scopeがすべて同じリリース候補を指し、`release_readiness_report.sh` が green になる状態を作る。
 
@@ -15,7 +15,7 @@
 
 - VoiceOverの主導線として、Project Boardでタスク列挙 -> 作成 -> 内容編集 -> status move -> automation review -> approved execution -> delete confirmation -> project completion/delete cascade が現在のrelease-candidate source commitで確認されている。
 - Gemini free-tier live smoke は、API keyが設定済みで無料枠内に収まる時だけ実行し、quota、503、network、未設定の場合は明示的なskip reasonを残す。skipをfake successにしない。
-- Keychain access prompt は、SoloPM起動後の通常操作で毎回出ない。必要な初回承認、provider key保存、Google OAuthなどの明示的な認証操作と、不要な再認証プロンプトを区別できる。
+- Keychain access prompt は、Suisui起動後の通常操作で毎回出ない。必要な初回承認、provider key保存、Google OAuthなどの明示的な認証操作と、不要な再認証プロンプトを区別できる。
 - manual VoiceOver、competitor hands-on、release machine evidence は、現在のrelease-candidate source commitに紐づき、古い証跡やpending templateでrelease判定しない。
 - release artifact は signed, notarized, stapled の状態で、clean install、Gatekeeper、Launch at Login、Sparkle appcast metadataまで検証されている。
 - README、public alpha notes、privacy/security、release checklist、known limitationsが、実装済み機能と非対象を過不足なく説明している。
@@ -83,7 +83,7 @@ Priority: High
 
 ### Context
 
-VoiceOverからのタスク列挙はSoloPMの主機能であり、擬似VoiceOverやAX smokeだけでは最終証跡にならない。実際のVoiceOverで、タスク一覧が最初の操作対象として理解でき、CRUD/実行/削除まで迷わず辿れる必要がある。
+VoiceOverからのタスク列挙はSuisuiの主機能であり、擬似VoiceOverやAX smokeだけでは最終証跡にならない。実際のVoiceOverで、タスク一覧が最初の操作対象として理解でき、CRUD/実行/削除まで迷わず辿れる必要がある。
 
 ### Scope
 
@@ -122,11 +122,11 @@ Priority: High
 
 ### Context
 
-SoloPM起動後の通常操作でmacOS側が毎回Keychain認証を求めると、製品として使い続けられない。これはGemini API key、OpenAI/Claude/Groq/OpenRouter key、Google OAuth token、MCP secretsなどのsecret取得経路で起きうる。初回保存や明示的な再認証は必要だが、タスク操作や画面遷移のたびにプロンプトが出る状態はblockerにする。
+Suisui起動後の通常操作でmacOS側が毎回Keychain認証を求めると、製品として使い続けられない。これはGemini API key、OpenAI/Claude/Groq/OpenRouter key、Google OAuth token、MCP secretsなどのsecret取得経路で起きうる。初回保存や明示的な再認証は必要だが、タスク操作や画面遷移のたびにプロンプトが出る状態はblockerにする。
 
 ### Scope
 
-- 対象: `Sources/SoloPMApp`, `Sources/SoloPMCore`, Keychain adapter、AI provider settings、Google Calendar sync readiness、MCP credential storage
+- 対象: `Sources/SuisuiApp`, `Sources/SuisuiCore`, Keychain adapter、AI provider settings、Google Calendar sync readiness、MCP credential storage
 - Keychain read/writeの呼び出し頻度、access control、service/account命名、readiness cache、エラー表示を整理する。
 - Google API keyではなくOAuth token/refresh tokenに対する認証導線かどうかをUI文言で区別する。
 
@@ -146,7 +146,7 @@ SoloPM起動後の通常操作でmacOS側が毎回Keychain認証を求めると�
 - [ ] Keychain access denied、item missing、interaction not allowedを分けてUIに出す。
 - [ ] Google連携の文言を「Google API key」ではなく「Google OAuth authorization」として説明する。
 - [ ] 資格情報があるrelease machineでGoogle Calendar live syncを実行し、`script/create_google_calendar_live_evidence.sh --force` で `docs/release/evidence/google-calendar-live-sync.md` を生成する。
-- [ ] 実機でSoloPM起動 -> Project Board操作 -> task list -> task edit -> automation reviewを行い、不要なKeychain promptが出ないことをmanual noteに残す。
+- [ ] 実機でSuisui起動 -> Project Board操作 -> task list -> task edit -> automation reviewを行い、不要なKeychain promptが出ないことをmanual noteに残す。
 
 ### Acceptance Criteria
 
@@ -177,14 +177,14 @@ Priority: High
 
 ### Tests First
 
-- [ ] Gemini live smoke scriptが `SOLOPM_GEMINI_LIVE_SMOKE=1` のような明示フラグなしに外部callしないことをsource testで固定する。
+- [ ] Gemini live smoke scriptが `SUISUI_GEMINI_LIVE_SMOKE=1` のような明示フラグなしに外部callしないことをsource testで固定する。
 - [ ] quota/network/503のskip reasonをrelease readinessがfake passではなくnon-blocking skipとして扱うfixture testを追加する。
 - [ ] provider responseがtask listing action以外へ勝手にwrite actionを出した場合にreview-onlyで止まるtestを追加する。
 
 ### Implementation Steps
 
 - [ ] Gemini API keyの取得はKeychainまたは明示env経由に限定し、ログへ出さない。
-- [ ] live smoke promptは「現在のSoloPMタスクを列挙して、実行せず要約する」程度に抑える。
+- [ ] live smoke promptは「現在のSuisuiタスクを列挙して、実行せず要約する」程度に抑える。
 - [ ] timeout、retry回数、quota保護、token上限を固定する。
 - [ ] 503やquota系はskip reasonをartifactに残し、その他のvalidation errorはfailにする。
 - [ ] release readiness reportに、live smoke pass / skipped with reason / failedを分けて表示する。
@@ -269,7 +269,7 @@ Priority: Middle
 
 ### Acceptance Criteria
 
-- [ ] 初見ユーザーがSoloPMの価値、制限、導入方法をREADMEから理解できる。
+- [ ] 初見ユーザーがSuisuiの価値、制限、導入方法をREADMEから理解できる。
 - [ ] release operatorがどの証跡を更新すべきか迷わない。
 - [ ] 実装されていないSaaS/Team/hosted automationを過剰に売らない。
 
@@ -355,7 +355,7 @@ release candidate closure中に見つかった改善をその場で全部直そ�
 - [ ] `script/check_runtime_accessible_crud_smoke.sh`
 - [ ] `script/check_security_regressions.sh`
 - [ ] `script/check_automated_release_preflight.sh`
-- [ ] `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md ./script/release_readiness_report.sh`
+- [ ] `SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md ./script/release_readiness_report.sh`
 - [ ] `swift test`
 
 ## Exit Gate

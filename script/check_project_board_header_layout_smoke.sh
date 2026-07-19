@@ -15,15 +15,15 @@ source "$METADATA_FILE"
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-TIMEOUT_SECONDS="${SOLOPM_HEADER_LAYOUT_SMOKE_TIMEOUT_SECONDS:-20}"
-OUTPUT_DIR="${SOLOPM_HEADER_LAYOUT_SMOKE_OUTPUT_DIR:-$ROOT_DIR/.tmp/project-board-header-layout-smoke}"
-WINDOW_NAME="${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}"
-HEADER_LAYOUT_DATABASE_PATH="${SOLOPM_HEADER_LAYOUT_DATABASE_PATH:-$OUTPUT_DIR/SoloPM-header-layout.sqlite}"
+TIMEOUT_SECONDS="${SUISUI_HEADER_LAYOUT_SMOKE_TIMEOUT_SECONDS:-20}"
+OUTPUT_DIR="${SUISUI_HEADER_LAYOUT_SMOKE_OUTPUT_DIR:-$ROOT_DIR/.tmp/project-board-header-layout-smoke}"
+WINDOW_NAME="${SUISUI_PROJECT_BOARD_WINDOW_NAME:-Suisui}"
+HEADER_LAYOUT_DATABASE_PATH="${SUISUI_HEADER_LAYOUT_DATABASE_PATH:-$OUTPUT_DIR/Suisui-header-layout.sqlite}"
 SQLITE3="${SQLITE3:-sqlite3}"
-SETTINGS_SUITE="dev.solopm.header-layout-smoke"
+SETTINGS_SUITE="dev.suisui.header-layout-smoke"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "SOLOPM_HEADER_LAYOUT_SMOKE_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "SUISUI_HEADER_LAYOUT_SMOKE_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
@@ -184,9 +184,9 @@ prepare_header_layout_candidate() {
   # observed, so initialize and seed the narrow toolbar fixture directly.
   rm -f "$HEADER_LAYOUT_DATABASE_PATH" "$HEADER_LAYOUT_DATABASE_PATH-wal" "$HEADER_LAYOUT_DATABASE_PATH-shm"
 
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_LAUNCH_RECOVERY_MODE=1 \
-    SOLOPM_DATABASE_PATH="$HEADER_LAYOUT_DATABASE_PATH" \
+  SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_LAUNCH_RECOVERY_MODE=1 \
+    SUISUI_DATABASE_PATH="$HEADER_LAYOUT_DATABASE_PATH" \
     "$APP_BINARY" &
   app_pid=$!
   wait_for_app_process
@@ -306,11 +306,11 @@ SQL
 launch_header_layout_candidate() {
   local language="${1:-english}"
   terminate_app
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_APP_SETTINGS_SUITE_NAME="$SETTINGS_SUITE" \
-    SOLOPM_LANGUAGE_PREFERENCE="$language" \
-    SOLOPM_DATABASE_PATH="$HEADER_LAYOUT_DATABASE_PATH" \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$header_layout_project_id" \
+  SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_APP_SETTINGS_SUITE_NAME="$SETTINGS_SUITE" \
+    SUISUI_LANGUAGE_PREFERENCE="$language" \
+    SUISUI_DATABASE_PATH="$HEADER_LAYOUT_DATABASE_PATH" \
+    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="project:$header_layout_project_id" \
     "$APP_BINARY" &
   app_pid=$!
   wait_for_app_process
@@ -628,9 +628,9 @@ exercise_toolbar_utilities() {
 read_window_metadata() {
   local output
   output="$(
-    SOLOPM_WINDOW_OWNER="$APP_NAME" \
-    SOLOPM_WINDOW_OWNER_PID="$app_pid" \
-    SOLOPM_WINDOW_NAME="$WINDOW_NAME" \
+    SUISUI_WINDOW_OWNER="$APP_NAME" \
+    SUISUI_WINDOW_OWNER_PID="$app_pid" \
+    SUISUI_WINDOW_NAME="$WINDOW_NAME" \
     /usr/bin/swift "$ROOT_DIR/script/ui_evidence_window_metadata.swift"
   )"
   read -r window_id window_x window_y window_width window_height <<<"$output"

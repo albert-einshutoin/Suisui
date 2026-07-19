@@ -11,11 +11,11 @@ guard CommandLine.arguments.count == 3,
 let pid = pid_t(rawPID)
 let marker = CommandLine.arguments[2]
 let environment = ProcessInfo.processInfo.environment
-let maxNodes = Int(environment["SOLOPM_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
-let scrollEventCount = Int(environment["SOLOPM_UI_EVIDENCE_AX_SCROLL_EVENTS"] ?? "10") ?? 10
+let maxNodes = Int(environment["SUISUI_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
+let scrollEventCount = Int(environment["SUISUI_UI_EVIDENCE_AX_SCROLL_EVENTS"] ?? "10") ?? 10
 
 guard AXIsProcessTrusted() else {
-    fputs("Accessibility permission is required to scroll SoloPM UI evidence.\n", stderr)
+    fputs("Accessibility permission is required to scroll Suisui UI evidence.\n", stderr)
     exit(2)
 }
 
@@ -177,7 +177,7 @@ while cursor < queue.count && visitedCount < maxNodes {
 }
 
 if visitedCount >= maxNodes {
-    fputs("AX scroll scan reached SOLOPM_UI_EVIDENCE_AX_MAX_NODES=\(maxNodes).\n", stderr)
+    fputs("AX scroll scan reached SUISUI_UI_EVIDENCE_AX_MAX_NODES=\(maxNodes).\n", stderr)
 }
 fputs("Missing AX scroll container marker: \(marker).\n", stderr)
 exit(1)

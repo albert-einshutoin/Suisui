@@ -1,6 +1,6 @@
 # Phase 3: Review & Execute
 
-目的は、LLM が生成した ActionPlan をユーザーが理解、編集、承認してから実行できるようにすること。SoloPM の信頼性はこの Phase で決まるため、確認 UI と実行安全性を最優先にする。
+目的は、LLM が生成した ActionPlan をユーザーが理解、編集、承認してから実行できるようにすること。Suisui の信頼性はこの Phase で決まるため、確認 UI と実行安全性を最優先にする。
 
 ## Scope
 
@@ -39,7 +39,7 @@
 - [x] 手動確認: 長いタイトル、長いタスク一覧、狭い window で崩れない。
 - [x] 完了条件: ユーザーが何が作られるかを実行前に判断できる。
 
-確認メモ: 2026-06-18 に `CFFIXED_USER_HOME` で一時 Application Support を使い、長い project title と 18 件の長文 task を入れた `dist/SoloPM.app` を 640x440 window で確認した。長文 card は省略 / hover 表示になり、board は縦横スクロール可能で、操作部品の重なりは見えない。Core の `argumentDisplaySummary` は title を優先表示し、長文・大量 field を省略しつつ full text を hover で確認できる。Voice / Review 画面も scrollable にし、Review header / action row は `ViewThatFits` で縦 fallback できる。
+確認メモ: 2026-06-18 に `CFFIXED_USER_HOME` で一時 Application Support を使い、長い project title と 18 件の長文 task を入れた `dist/Suisui.app` を 640x440 window で確認した。長文 card は省略 / hover 表示になり、board は縦横スクロール可能で、操作部品の重なりは見えない。Core の `argumentDisplaySummary` は title を優先表示し、長文・大量 field を省略しつつ full text を hover で確認できる。Voice / Review 画面も scrollable にし、Review header / action row は `ViewThatFits` で縦 fallback できる。
 
 ### P3-003: Action edit forms
 

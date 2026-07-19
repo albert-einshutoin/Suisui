@@ -1,6 +1,6 @@
 # Phase 14: Quality Regression Hardening
 
-目的は、SoloPM の実装済み機能を増やす前に、レイアウト、クリックパス、アクセシビリティ、永続化、セキュリティ、リリース証跡のテスト漏れを体系的に潰し、ユーザーが毎日使うプロダクトとして「一瞬の崩れ」「状態変更直後だけのズレ」「手動確認でしか見つからない退行」を継続的に検出できる品質基盤を作ること。
+目的は、Suisui の実装済み機能を増やす前に、レイアウト、クリックパス、アクセシビリティ、永続化、セキュリティ、リリース証跡のテスト漏れを体系的に潰し、ユーザーが毎日使うプロダクトとして「一瞬の崩れ」「状態変更直後だけのズレ」「手動確認でしか見つからない退行」を継続的に検出できる品質基盤を作ること。
 
 このPhaseは単なるテスト追加ではない。UIの責務境界、SwiftUI / AppKit 同期境界、デザイン寸法の不変条件、runtime smoke、スクリーンショット証跡、CIの失敗基準を揃え、今後のUI変更が小さなPRでも安全に進む状態を作る。
 
@@ -61,7 +61,7 @@ Priority: High
 
 ### Scope
 
-- 対象: `docs/quality/regression-risk-map.md`, `Tests/SoloPMCoreTests`, `script/`
+- 対象: `docs/quality/regression-risk-map.md`, `Tests/SuisuiCoreTests`, `script/`
 - Project Board、Inbox、Today、Settings、Voice Command、Menu Bar、release scripts のriskを分類する。
 - 既存テストが守っていること、守っていないことを表にする。
 
@@ -99,7 +99,7 @@ Priority: High
 
 ### Scope
 
-- 対象: `script/check_layout_stability_smoke.sh`, `script/check_project_board_header_layout_smoke.sh`, `Tests/SoloPMCoreTests/ReleasePipelineTests.swift`
+- 対象: `script/check_layout_stability_smoke.sh`, `script/check_project_board_header_layout_smoke.sh`, `Tests/SuisuiCoreTests/ReleasePipelineTests.swift`
 - Runtime app を起動し、AX identifierから対象要素のframeを取得する共通helperを作る。
 - state mutation直後の `t=0ms`, `t=50ms`, `t=150ms`, `t=300ms` のframe差分を検出する。
 
@@ -143,7 +143,7 @@ Project Board は sidebar、header、detail board、inspector、toolbar/AppKit b
 
 ### Scope
 
-- 対象: `Sources/SoloPMApp/Views/ProjectBoardView.swift`, `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`, `script/check_project_board_header_layout_smoke.sh`
+- 対象: `Sources/SuisuiApp/Views/ProjectBoardView.swift`, `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`, `script/check_project_board_header_layout_smoke.sh`
 - Header actions、sidebar toggle、Board/List/Overview切替、inspector開閉、terminal panel表示、project selection変更を網羅する。
 
 ### Tests First
@@ -234,12 +234,12 @@ Priority: High
 
 ### Scope
 
-- 対象: `script/check_runtime_accessible_crud_smoke.sh`, `script/check_runtime_inbox_triage_smoke.sh`, `script/check_runtime_today_complete_smoke.sh`, `script/check_runtime_settings_save_smoke.sh`, `script/check_runtime_voice_review_smoke.sh`, `script/check_runtime_workflow_smoke.sh`, `Tests/SoloPMCoreTests/ReleasePipelineTests.swift`
+- 対象: `script/check_runtime_accessible_crud_smoke.sh`, `script/check_runtime_inbox_triage_smoke.sh`, `script/check_runtime_today_complete_smoke.sh`, `script/check_runtime_settings_save_smoke.sh`, `script/check_runtime_voice_review_smoke.sh`, `script/check_runtime_workflow_smoke.sh`, `Tests/SuisuiCoreTests/ReleasePipelineTests.swift`
 - 既存CRUD smokeを拡張し、日次利用クリックパスを分けて検証する。
 
 ### Tests First
 
-- [x] smoke scriptが isolated `SOLOPM_DATABASE_PATH` を必須にしていることをsource testで固定する。
+- [x] smoke scriptが isolated `SUISUI_DATABASE_PATH` を必須にしていることをsource testで固定する。
 - [x] 実行後のSQLite stateを確認し、UI操作だけ成功してDB未反映の場合に失敗するテストを追加する。
 - [x] click-pathごとに `PASS/FAIL/SKIP` ではなく、失敗理由と最後に見えたwindow情報を出すことをsource testで固定する。
 
@@ -274,7 +274,7 @@ Priority: High
 
 ### Scope
 
-- 対象: `docs/adr/`, `Sources/SoloPMApp/Views`, `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`
+- 対象: `docs/adr/`, `Sources/SuisuiApp/Views`, `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
 - Sidebar toggle、toolbar display mode、split view visibility、theme switching、inspector open/close、project selection変更を対象にする。
 
 ### Tests First
@@ -312,7 +312,7 @@ Priority: Middle
 
 ### Scope
 
-- 対象: `Sources/SoloPMApp/DesignSystem`, `Sources/SoloPMApp/Views`, `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`
+- 対象: `Sources/SuisuiApp/DesignSystem`, `Sources/SuisuiApp/Views`, `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
 - Header height、toolbar button size、sidebar min width、detail min width、inspector width、card min height、inline composer heightを扱う。
 
 ### Tests First
@@ -349,7 +349,7 @@ Priority: Middle
 
 ### Scope
 
-- 対象: `SoloPMApp.swift`, `ProjectBoardView.swift`, launch scripts, runtime smoke
+- 対象: `SuisuiApp.swift`, `ProjectBoardView.swift`, launch scripts, runtime smoke
 - Launch state、window size、selected destination、sidebar visibility、theme、multi-windowを扱う。
 
 ### Tests First
@@ -387,7 +387,7 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 
 ### Scope
 
-- 対象: `script/check_accessibility_preflight.sh`, `script/check_runtime_accessible_crud_smoke.sh`, `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`
+- 対象: `script/check_accessibility_preflight.sh`, `script/check_runtime_accessible_crud_smoke.sh`, `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
 - Project Board、Inbox、Today、Settings、Voice Commandのfocus pathとkeyboard pathを扱う。
 
 ### Tests First
@@ -411,14 +411,14 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 - [x] UI component追加時のAX identifier命名規則を定義する。
 - [x] Manual VoiceOver worksheetとruntime AX smokeの項目を対応付ける。
 - [x] `approved-execution-receipt` stepでreviewed task contentの欠落を検出し、タイトルだけの実行証跡ではmanual evidenceを再利用できないようにする。
-- [x] `script/check_pseudo_voiceover_paths.sh --swift-test` をPR gateへ接続し、source markerだけでなく `AccessibilityFocusPathAuditTests` / `SoloPMHarnessTests` でMCP擬似VoiceOverロジックも検証する。
+- [x] `script/check_pseudo_voiceover_paths.sh --swift-test` をPR gateへ接続し、source markerだけでなく `AccessibilityFocusPathAuditTests` / `SuisuiHarnessTests` でMCP擬似VoiceOverロジックも検証する。
 - [x] `AccessibilityFocusPathAudit` は必須nodeがdisabledの場合、存在だけでは通さず `disabledRequiredNode` として返す。
 - [x] `AccessibilityFocusPathAudit` は必須nodeの相対順が崩れた場合、存在だけでは通さず `outOfOrderRequiredNode` として返す。
 - [x] `AccessibilityFocusPathAudit` は重複したAX identifierを `duplicateNodeID` として返し、最初のnodeで監査を継続して後続findingも隠さない。
 - [x] `AccessibilityFocusPathAudit` は空または空白だけのAX identifierを `blankNodeID` として返し、MCP/E2E automationがtargetを特定できないsnapshotをfailする。
 - [x] `AccessibilityFocusPathAudit` は必須group/outline nodeのlabelが空の場合、存在だけでは通さず `unlabeledRequiredNode` として返す。
-- [x] `SoloPMHarnessAccessibilityAuditRunner` はdynamic AX identifier findingを安定required node stepへ戻し、required nodeに紐づかないsnapshot findingも専用stepとしてfailさせる。
-- [x] `SoloPMHarnessTaskLifecycleOperation.requiredFocusNodeIDs` と `SoloPMHarnessScenario.requiredFocusNodeIDs(for:)` で lifecycle operation と AX required node の対応をコード化し、operation list と pseudo VoiceOver focus path が将来ズレた場合にテストで落ちるようにする。
+- [x] `SuisuiHarnessAccessibilityAuditRunner` はdynamic AX identifier findingを安定required node stepへ戻し、required nodeに紐づかないsnapshot findingも専用stepとしてfailさせる。
+- [x] `SuisuiHarnessTaskLifecycleOperation.requiredFocusNodeIDs` と `SuisuiHarnessScenario.requiredFocusNodeIDs(for:)` で lifecycle operation と AX required node の対応をコード化し、operation list と pseudo VoiceOver focus path が将来ズレた場合にテストで落ちるようにする。
 - [x] runtime accessible CRUD smoke は承認済みtask content executionを実アプリ上で実行し、SQLiteのstatus/detail更新だけでなく `approved-execution-receipt` のAX signalにreviewed title/detailが露出することを確認する。
 
 ### Acceptance Criteria
@@ -434,7 +434,7 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 - [x] 必須CRUD/実行controlのAX identifierは一意な場合だけ擬似VoiceOver gateを通過する。
 - [x] 必須CRUD/実行controlのAX identifierは空白ではない場合だけ擬似VoiceOver gateを通過する。
 - [x] required node以外の空AX identifierやdynamic required nodeの重複も、harness runのstatus/diffへ反映される場合だけ擬似VoiceOver gateを通過する。
-- [x] lifecycle operationを増減したとき、対応するAX required nodeを明示しないと `SoloPMHarnessTests` が失敗する。
+- [x] lifecycle operationを増減したとき、対応するAX required nodeを明示しないと `SuisuiHarnessTests` が失敗する。
 
 ### Non-goals
 
@@ -451,7 +451,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 
 ### Scope
 
-- 対象: `Sources/SoloPMCore/Storage`, `Tests/SoloPMCoreTests/ProjectBoardStoreTests.swift`, migration tests
+- 対象: `Sources/SuisuiCore/Storage`, `Tests/SuisuiCoreTests/ProjectBoardStoreTests.swift`, migration tests
 - Project、Task、Artifact、Inbox capture、Settings、MCP registration、audit logを扱う。
 
 ### Tests First
@@ -491,7 +491,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] Task automation provider request builderでdocument deliverablesのsuggested output path衝突を正規化後に除外し、同一出力先へ複数draftを送らない。
 - [x] ProjectBoard ViewModelのsession history更新をprovider request成功後に限定し、review UIを開くだけで日次LLM API予算が枯渇しないようにする。
 - [x] Task automation provider request builderでdocument deliverablesの `sourceDocumentIDs` が空の場合は、source previewが存在してもLLM payloadへ通さず、成果物draftが選択済みdocument IDへ束縛されていることをprovider境界で再検証する。
-- [x] SoloPMHarnessDocumentAutomationRunnerでdocument deliverableのsuggested output path一意性を独立stepとして検証し、E2E reportのdiffに衝突kindを出す。
+- [x] SuisuiHarnessDocumentAutomationRunnerでdocument deliverableのsuggested output path一意性を独立stepとして検証し、E2E reportのdiffに衝突kindを出す。
 - [x] `ScopedAutomationDocument` の初期化境界で source document ID / title / summary / inclusion reason をredactし、ファイル名・外部プレビュー・ユーザー選定理由由来のsecret-like値を後段へ渡さない。
 - [x] `DocumentAutomationDeliverableDraft` と `DocumentAutomationDeliverableSource` の生成・復元境界で title / suggested path / source document ID / rationaleをredactし、保存済みJSONやfuture connector由来のdraftがprovider直前以外のreview面で漏れないようにする。
 - [x] ProjectBoard ViewModelに、現在のboard snapshotと設定からreview-only `PlanningRequest` を作る入口を追加し、document deliverablesも同じredacted JSON payloadへ渡す。
@@ -543,7 +543,7 @@ Priority: High
 
 ### Scope
 
-- 対象: `Tests/SoloPMCoreTests`, `script/`, `.gitignore`, release evidence scripts
+- 対象: `Tests/SuisuiCoreTests`, `script/`, `.gitignore`, release evidence scripts
 - Logs、screenshots、SQLite fixtures、audit logs、evidence files、temporary directoriesを扱う。
 
 ### Tests First
@@ -694,7 +694,7 @@ Priority: High
 
 ### Tests First
 
-- [x] `ReleasePipelineTests` で automated preflight script が `SOLOPM_XCODE_PREFLIGHT_TIMEOUT_SECONDS` と `run_xcodebuild_with_timeout()` を持つことを固定する。
+- [x] `ReleasePipelineTests` で automated preflight script が `SUISUI_XCODE_PREFLIGHT_TIMEOUT_SECONDS` と `run_xcodebuild_with_timeout()` を持つことを固定する。
 - [x] timeout時に `BLOCKER: Xcode build preflight timed out ...` を出すことをsource-levelで固定する。
 
 ### Implementation Steps
@@ -707,7 +707,7 @@ Priority: High
 ### Acceptance Criteria
 
 - [x] Xcode buildが返らない場合でもrelease proof生成が無限停止しない。
-- [x] timeoutは運用者が `SOLOPM_XCODE_PREFLIGHT_TIMEOUT_SECONDS` で調整できる。
+- [x] timeoutは運用者が `SUISUI_XCODE_PREFLIGHT_TIMEOUT_SECONDS` で調整できる。
 - [x] timeoutした実行は automated preflight evidence を成功扱いにしない。
 
 ## Verification

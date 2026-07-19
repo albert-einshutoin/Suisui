@@ -1,6 +1,6 @@
 # Developer ID Signing
 
-SoloPM の public alpha は、当面 `local release machine` で Developer ID signing を行う。CI signing は、CI secret store と release 権限の設計が固まるまで延期する。
+Suisui の public alpha は、当面 `local release machine` で Developer ID signing を行う。CI signing は、CI secret store と release 権限の設計が固まるまで延期する。
 
 ## Secret Boundary
 
@@ -21,8 +21,8 @@ security find-identity -p codesigning -v
 3. `packaging/signing.env.example` を参考に、ローカルだけで `packaging/signing.env` を作る。
 
 ```bash
-SOLOPM_SIGNING_IDENTITY="Developer ID Application: Example Name (TEAMID)"
-SOLOPM_REQUIRE_SIGNING=1
+SUISUI_SIGNING_IDENTITY="Developer ID Application: Example Name (TEAMID)"
+SUISUI_REQUIRE_SIGNING=1
 ```
 
 ## Signing
@@ -32,7 +32,7 @@ SOLOPM_REQUIRE_SIGNING=1
 ./script/sign_app.sh
 ```
 
-`script/sign_app.sh` は既定で release configuration の app bundle を作り直してから signing する。既存 bundle を明示的に署名したい場合だけ、`SOLOPM_SIGNING_SKIP_BUILD=1` を指定する。
+`script/sign_app.sh` は既定で release configuration の app bundle を作り直してから signing する。既存 bundle を明示的に署名したい場合だけ、`SUISUI_SIGNING_SKIP_BUILD=1` を指定する。
 
 ## Validation
 

@@ -15,9 +15,9 @@ source "$METADATA_FILE"
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-DEFAULT_DATABASE_PATH="$ROOT_DIR/.tmp/voiceover-review/SoloPM-voiceover-review.sqlite"
+DEFAULT_DATABASE_PATH="$ROOT_DIR/.tmp/voiceover-review/Suisui-voiceover-review.sqlite"
 VOICEOVER_REVIEW_ARTIFACT_PATH="$ROOT_DIR/docs/release/evidence/accessibility-voiceover.md"
-TIMEOUT_SECONDS="${SOLOPM_VOICEOVER_REVIEW_TIMEOUT_SECONDS:-30}"
+TIMEOUT_SECONDS="${SUISUI_VOICEOVER_REVIEW_TIMEOUT_SECONDS:-30}"
 SQLITE3="${SQLITE3:-sqlite3}"
 
 release_candidate_source_commit() {
@@ -26,10 +26,10 @@ release_candidate_source_commit() {
   # files may be committed later, so use product source paths instead of HEAD.
   commit="$(
     git -C "$ROOT_DIR" log -1 --format=%h -- \
-      Sources/SoloPMApp \
-      Sources/SoloPMCore \
-      Sources/SoloPMCLI \
-      Sources/SoloPMExternalConnectors \
+      Sources/SuisuiApp \
+      Sources/SuisuiCore \
+      Sources/SuisuiCLI \
+      Sources/SuisuiExternalConnectors \
       Package.swift \
       packaging/app_metadata.env 2>/dev/null || true
   )"
@@ -91,7 +91,7 @@ case "$database_path" in
 esac
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "SOLOPM_VOICEOVER_REVIEW_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "SUISUI_VOICEOVER_REVIEW_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
@@ -157,7 +157,7 @@ write_voiceover_review_worksheet() {
   local evidence_source="$4"
 
   {
-    printf '%s\n' '# SoloPM VoiceOver Manual Review Worksheet'
+    printf '%s\n' '# Suisui VoiceOver Manual Review Worksheet'
     printf '\n'
     printf '%s\n' 'Status: pending'
     printf -- '- Source commit: `%s`\n' "$SOURCE_COMMIT"
@@ -289,7 +289,7 @@ write_voiceover_evidence_command() {
     printf 'EXPECTED_SOURCE_COMMIT=%q\n' "$SOURCE_COMMIT"
     printf '%s\n' 'release_candidate_source_commit() {'
     printf '%s\n' '  local commit'
-    printf '%s\n' '  commit="$(git log -1 --format=%h -- Sources/SoloPMApp Sources/SoloPMCore Sources/SoloPMCLI Sources/SoloPMExternalConnectors Package.swift packaging/app_metadata.env 2>/dev/null || true)"'
+    printf '%s\n' '  commit="$(git log -1 --format=%h -- Sources/SuisuiApp Sources/SuisuiCore Sources/SuisuiCLI Sources/SuisuiExternalConnectors Package.swift packaging/app_metadata.env 2>/dev/null || true)"'
     printf '%s\n' '  if [[ -n "$commit" ]]; then printf "%s" "$commit"; else git rev-parse --short HEAD 2>/dev/null || printf unknown; fi'
     printf '%s\n' '}'
     printf '%s\n' 'CURRENT_SOURCE_COMMIT="$(release_candidate_source_commit)"'
@@ -314,7 +314,7 @@ write_voiceover_evidence_command() {
     printf '%s\n' 'fi'
     printf '%s\n' '# shellcheck source=/dev/null'
     printf '%s\n' 'source "$VOICEOVER_LAUNCH_ENV_FILE"'
-    printf '%s\n' 'if [[ "${SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT:-}" != "$EXPECTED_SOURCE_COMMIT" || "${SOLOPM_VOICEOVER_REVIEW_PROJECT_ID:-}" != "$EXPECTED_PROJECT_ID" || "${SOLOPM_DATABASE_PATH:-}" != "$EXPECTED_DATABASE_PATH" || "${SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION:-}" != "$EXPECTED_SELECTED_DESTINATION" ]]; then'
+    printf '%s\n' 'if [[ "${SUISUI_VOICEOVER_REVIEW_SOURCE_COMMIT:-}" != "$EXPECTED_SOURCE_COMMIT" || "${SUISUI_VOICEOVER_REVIEW_PROJECT_ID:-}" != "$EXPECTED_PROJECT_ID" || "${SUISUI_DATABASE_PATH:-}" != "$EXPECTED_DATABASE_PATH" || "${SUISUI_PROJECT_BOARD_SELECTED_DESTINATION:-}" != "$EXPECTED_SELECTED_DESTINATION" ]]; then'
     printf '%s\n' '  printf "BLOCKER: VoiceOver evidence command launch env is missing or stale for source=%s project=%s database=%s destination=%s\n" "$EXPECTED_SOURCE_COMMIT" "$EXPECTED_PROJECT_ID" "$EXPECTED_DATABASE_PATH" "$EXPECTED_SELECTED_DESTINATION" >&2'
     printf '%s\n' '  exit 2'
     printf '%s\n' 'fi'
@@ -489,7 +489,7 @@ write_voiceover_evidence_command() {
     printf '%s\n' '}'
     printf '\n'
     printf '%s\n' 'wait_for_voiceover_candidate_process() {'
-    printf '%s\n' '  local timeout_seconds="${SOLOPM_VOICEOVER_REVIEW_TIMEOUT_SECONDS:-30}"'
+    printf '%s\n' '  local timeout_seconds="${SUISUI_VOICEOVER_REVIEW_TIMEOUT_SECONDS:-30}"'
     printf '%s\n' '  local deadline=$((SECONDS + timeout_seconds))'
     printf '%s\n' '  while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do'
     printf '%s\n' '    if [[ "$SECONDS" -ge "$deadline" ]]; then'
@@ -501,7 +501,7 @@ write_voiceover_evidence_command() {
     printf '%s\n' '}'
     printf '\n'
     printf '%s\n' 'wait_for_voiceover_candidate_windows() {'
-    printf '%s\n' '  local timeout_seconds="${SOLOPM_VOICEOVER_REVIEW_TIMEOUT_SECONDS:-30}"'
+    printf '%s\n' '  local timeout_seconds="${SUISUI_VOICEOVER_REVIEW_TIMEOUT_SECONDS:-30}"'
     printf '%s\n' '  local deadline=$((SECONDS + timeout_seconds))'
     printf '%s\n' '  local window_count=""'
     printf '%s\n' '  local osascript_status=1'
@@ -536,9 +536,9 @@ write_voiceover_evidence_command() {
     printf '%s\n' 'launch_voiceover_candidate_for_evidence() {'
     printf '%s\n' '  terminate_voiceover_candidate'
     printf '%s\n' '  /usr/bin/env \'
-    printf '%s\n' '    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \'
-    printf '%s\n' '    "SOLOPM_DATABASE_PATH=$EXPECTED_DATABASE_PATH" \'
-    printf '%s\n' '    "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$EXPECTED_SELECTED_DESTINATION" \'
+    printf '%s\n' '    SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \'
+    printf '%s\n' '    "SUISUI_DATABASE_PATH=$EXPECTED_DATABASE_PATH" \'
+    printf '%s\n' '    "SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=$EXPECTED_SELECTED_DESTINATION" \'
     printf '%s\n' '    "$APP_BINARY" &'
     printf '%s\n' '  CANDIDATE_APP_PID=$!'
     printf '%s\n' '  wait_for_voiceover_candidate_process'
@@ -670,14 +670,14 @@ wait_for_database_table() {
 open_candidate_app() {
   local selected_destination="${1:-}"
   local launch_environment=(
-    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1
-    "SOLOPM_DATABASE_PATH=$database_path"
+    SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1
+    "SUISUI_DATABASE_PATH=$database_path"
   )
   if [[ -n "$selected_destination" ]]; then
-    launch_environment+=("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$selected_destination")
+    launch_environment+=("SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=$selected_destination")
   fi
   # Own the candidate PID directly. LaunchServices can reuse or create a
-  # menu-bar-only instance while another SoloPM process is still retiring,
+  # menu-bar-only instance while another Suisui process is still retiring,
   # leaving the reviewer with no Project Board window.
   /usr/bin/nohup /usr/bin/env "${launch_environment[@]}" "$APP_BINARY" >/dev/null 2>&1 &
   app_pid=$!
@@ -894,11 +894,11 @@ worksheet_file="$ROOT_DIR/.tmp/voiceover-review/voiceover-worksheet.md"
 pending_evidence_file="$ROOT_DIR/.tmp/voiceover-review/accessibility-voiceover-pending-$SOURCE_COMMIT.md"
 pending_evidence_source="$(voiceover_evidence_source_for_candidate "$database_path" "$seed_project_id")"
 {
-  printf 'SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1\n'
-  printf 'SOLOPM_DATABASE_PATH=%q\n' "$database_path"
-  printf 'SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=%q\n' "project:$seed_project_id"
-  printf 'SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT=%q\n' "$SOURCE_COMMIT"
-  printf 'SOLOPM_VOICEOVER_REVIEW_PROJECT_ID=%q\n' "$seed_project_id"
+  printf 'SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1\n'
+  printf 'SUISUI_DATABASE_PATH=%q\n' "$database_path"
+  printf 'SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=%q\n' "project:$seed_project_id"
+  printf 'SUISUI_VOICEOVER_REVIEW_SOURCE_COMMIT=%q\n' "$SOURCE_COMMIT"
+  printf 'SUISUI_VOICEOVER_REVIEW_PROJECT_ID=%q\n' "$seed_project_id"
 } >"$launch_env_file"
 write_voiceover_review_worksheet "$worksheet_file" "$database_path" "$seed_project_id" "$pending_evidence_source"
 write_voiceover_evidence_command "$evidence_command_file" "$database_path" "$seed_project_id"
@@ -924,7 +924,7 @@ if [[ "$launch_app" -eq 1 ]]; then
   wait_for_app_process
   activate_app
   wait_for_visible_windows
-  printf 'App launched for manual VoiceOver review with SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:%s"\n' "$seed_project_id"
+  printf 'App launched for manual VoiceOver review with SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="project:%s"\n' "$seed_project_id"
 else
   printf 'Launch skipped. To open the same candidate manually, run:\n'
   printf 'set -a; source %q; set +a; %q\n' "$launch_env_file" "$APP_BINARY"

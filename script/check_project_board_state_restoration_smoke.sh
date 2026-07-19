@@ -15,16 +15,16 @@ source "$METADATA_FILE"
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-WINDOW_NAME="${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}"
-TIMEOUT_SECONDS="${SOLOPM_STATE_RESTORATION_TIMEOUT_SECONDS:-30}"
-STATE_RESTORATION_OUTPUT_DIR="${SOLOPM_STATE_RESTORATION_OUTPUT_DIR:-$ROOT_DIR/.tmp/project-board-state-restoration}"
-STATE_RESTORATION_MANY_PROJECT_COUNT="${SOLOPM_STATE_RESTORATION_MANY_PROJECT_COUNT:-24}"
-STATE_RESTORATION_MANY_TASKS_PER_PROJECT="${SOLOPM_STATE_RESTORATION_MANY_TASKS_PER_PROJECT:-12}"
-KEEP_OUTPUT="${SOLOPM_STATE_RESTORATION_KEEP_OUTPUT:-0}"
+WINDOW_NAME="${SUISUI_PROJECT_BOARD_WINDOW_NAME:-Suisui}"
+TIMEOUT_SECONDS="${SUISUI_STATE_RESTORATION_TIMEOUT_SECONDS:-30}"
+STATE_RESTORATION_OUTPUT_DIR="${SUISUI_STATE_RESTORATION_OUTPUT_DIR:-$ROOT_DIR/.tmp/project-board-state-restoration}"
+STATE_RESTORATION_MANY_PROJECT_COUNT="${SUISUI_STATE_RESTORATION_MANY_PROJECT_COUNT:-24}"
+STATE_RESTORATION_MANY_TASKS_PER_PROJECT="${SUISUI_STATE_RESTORATION_MANY_TASKS_PER_PROJECT:-12}"
+KEEP_OUTPUT="${SUISUI_STATE_RESTORATION_KEEP_OUTPUT:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "SOLOPM_STATE_RESTORATION_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "SUISUI_STATE_RESTORATION_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
@@ -193,8 +193,8 @@ wait_for_project_board_window_metadata() {
   while true; do
     set +e
     metadata_output="$(
-      SOLOPM_WINDOW_OWNER="$APP_NAME" \
-      SOLOPM_WINDOW_NAME="$WINDOW_NAME" \
+      SUISUI_WINDOW_OWNER="$APP_NAME" \
+      SUISUI_WINDOW_NAME="$WINDOW_NAME" \
       /usr/bin/swift "$ROOT_DIR/script/ui_evidence_window_metadata.swift" 2>&1
     )"
     metadata_status=$?
@@ -221,9 +221,9 @@ launch_state_case() {
   local selected_destination="$3"
 
   terminate_app
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_DATABASE_PATH="$database_path" \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="$selected_destination" \
+  SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_DATABASE_PATH="$database_path" \
+    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="$selected_destination" \
     "$APP_BINARY" &
   app_pid=$!
   wait_for_app_process
@@ -234,7 +234,7 @@ launch_state_case() {
 
   {
     printf '| `%s` | `%s` | `%s` | visible |\n' "$label" "$database_path" "$selected_destination"
-    printf -- '- `%s` launch env: `SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="%s"`\n' "$label" "$selected_destination"
+    printf -- '- `%s` launch env: `SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="%s"`\n' "$label" "$selected_destination"
   } >>"$summary_file"
   printf "OK: Project Board state restoration launched %s with %s\n" "$label" "$selected_destination"
 
@@ -352,19 +352,19 @@ fi
 
 empty_selected_destination="project:42"
 # The empty scenario intentionally launches with a stale saved project id:
-# SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:42"
+# SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="project:42"
 launch_state_case "empty-database" "$empty_database_path" "$empty_selected_destination"
 
 seed_project_id="$(prepare_seed_database "$normal_database_path")"
 # The normal scenario opens the deterministic seeded candidate:
-# SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id"
+# SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id"
 launch_state_case "normal-database" "$normal_database_path" "project:$seed_project_id"
 
 prepare_seed_database "$many_database_path" >/dev/null
 seed_many_projects_and_tasks "$many_database_path"
 # The many scenario opens the portfolio destination so sidebar/detail restore
 # must stay stable under a large project/task list:
-# SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="projects"
+# SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="projects"
 launch_state_case "many-database" "$many_database_path" "projects"
 
 printf "OK: Project Board state restoration smoke launched empty, normal, and many databases\n"

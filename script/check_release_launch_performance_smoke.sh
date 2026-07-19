@@ -16,10 +16,10 @@ APP_NAME="${APP_NAME:?APP_NAME is required}"
 BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:-}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-TIMEOUT_SECONDS="${SOLOPM_PERFORMANCE_TIMEOUT_SECONDS:-30}"
-OUTPUT_DIR="${SOLOPM_PERFORMANCE_OUTPUT_DIR:-$ROOT_DIR/.tmp/release-launch-performance}"
-PERFORMANCE_HOME="${SOLOPM_PERFORMANCE_HOME:-$OUTPUT_DIR/home}"
-PERFORMANCE_DATABASE_PATH="${SOLOPM_PERFORMANCE_DATABASE_PATH:-$PERFORMANCE_HOME/Library/Application Support/SoloPM/SoloPM.sqlite}"
+TIMEOUT_SECONDS="${SUISUI_PERFORMANCE_TIMEOUT_SECONDS:-30}"
+OUTPUT_DIR="${SUISUI_PERFORMANCE_OUTPUT_DIR:-$ROOT_DIR/.tmp/release-launch-performance}"
+PERFORMANCE_HOME="${SUISUI_PERFORMANCE_HOME:-$OUTPUT_DIR/home}"
+PERFORMANCE_DATABASE_PATH="${SUISUI_PERFORMANCE_DATABASE_PATH:-$PERFORMANCE_HOME/Library/Application Support/Suisui/Suisui.sqlite}"
 SUMMARY_FILE="$OUTPUT_DIR/summary.md"
 SAMPLES_FILE="$OUTPUT_DIR/samples.tsv"
 TIMELINE_FILE="$OUTPUT_DIR/launch-timeline.tsv"
@@ -28,9 +28,9 @@ AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence
 AX_MARKER_HELPER="${AX_MARKER_HELPER:-$ROOT_DIR/script/ui_evidence_ax_marker_check.swift}"
 AX_PRESS_ELEMENT_HELPER_EXECUTABLE="$OUTPUT_DIR/ui-evidence-ax-press-element.$$"
 AX_MARKER_HELPER_EXECUTABLE="$OUTPUT_DIR/ui-evidence-ax-marker-checker.$$"
-SOLOPM_PERFORMANCE_PROFILE="${SOLOPM_PERFORMANCE_PROFILE:-release}"
+SUISUI_PERFORMANCE_PROFILE="${SUISUI_PERFORMANCE_PROFILE:-release}"
 
-case "$SOLOPM_PERFORMANCE_PROFILE" in
+case "$SUISUI_PERFORMANCE_PROFILE" in
   release)
     # Release profile keeps the build aligned with release-machine evidence and
     # the stricter Sparkle requirements already enforced by the release path.
@@ -46,13 +46,13 @@ case "$SOLOPM_PERFORMANCE_PROFILE" in
     DEFAULT_DESTINATION_SWITCH_BUDGET_MS=5000
     ;;
   *)
-    echo "BLOCKER: SOLOPM_PERFORMANCE_PROFILE must be release or debug" >&2
+    echo "BLOCKER: SUISUI_PERFORMANCE_PROFILE must be release or debug" >&2
     exit 2
     ;;
 esac
 
-PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE="${SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-}"
-if [[ "$SOLOPM_PERFORMANCE_PROFILE" == "release" && -n "$PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE" && "$PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE" != "release" ]]; then
+PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE="${SUISUI_PERFORMANCE_BUILD_CONFIGURATION:-}"
+if [[ "$SUISUI_PERFORMANCE_PROFILE" == "release" && -n "$PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE" && "$PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE" != "release" ]]; then
   # Release safety stays strict here so release evidence cannot be weakened by
   # a debug build override hiding launch behavior differences.
   echo "BLOCKER: release performance profile requires release build configuration" >&2
@@ -60,8 +60,8 @@ if [[ "$SOLOPM_PERFORMANCE_PROFILE" == "release" && -n "$PERFORMANCE_BUILD_CONFI
 fi
 
 BUILD_CONFIGURATION="${PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE:-$DEFAULT_BUILD_CONFIGURATION}"
-MAX_COLD_LAUNCH_MS="${SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS:-$DEFAULT_COLD_LAUNCH_BUDGET_MS}"
-MAX_DESTINATION_SWITCH_MS="${SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS:-$DEFAULT_DESTINATION_SWITCH_BUDGET_MS}"
+MAX_COLD_LAUNCH_MS="${SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS:-$DEFAULT_COLD_LAUNCH_BUDGET_MS}"
+MAX_DESTINATION_SWITCH_MS="${SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS:-$DEFAULT_DESTINATION_SWITCH_BUDGET_MS}"
 
 require_positive_integer_budget() {
   local name="$1"
@@ -76,7 +76,7 @@ reject_relaxed_release_budget() {
   local name="$1"
   local value="$2"
   local default_value="$3"
-  if [[ "$SOLOPM_PERFORMANCE_PROFILE" == "release" && "$value" -gt "$default_value" ]]; then
+  if [[ "$SUISUI_PERFORMANCE_PROFILE" == "release" && "$value" -gt "$default_value" ]]; then
     # Release evidence must not be made easier by env overrides; lower values are
     # allowed because they are stricter and preserve the release baseline.
     echo "BLOCKER: release performance budget override cannot exceed default $name budget (${default_value}ms)" >&2
@@ -84,8 +84,8 @@ reject_relaxed_release_budget() {
   fi
 }
 
-require_positive_integer_budget "SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS" "$MAX_COLD_LAUNCH_MS"
-require_positive_integer_budget "SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS" "$MAX_DESTINATION_SWITCH_MS"
+require_positive_integer_budget "SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS" "$MAX_COLD_LAUNCH_MS"
+require_positive_integer_budget "SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS" "$MAX_DESTINATION_SWITCH_MS"
 reject_relaxed_release_budget "cold launch" "$MAX_COLD_LAUNCH_MS" "$DEFAULT_COLD_LAUNCH_BUDGET_MS"
 reject_relaxed_release_budget "destination switch" "$MAX_DESTINATION_SWITCH_MS" "$DEFAULT_DESTINATION_SWITCH_BUDGET_MS"
 
@@ -140,7 +140,7 @@ prepare_ax_helpers() {
 
 activate_app() {
   # Target the process we launched. Addressing the application by name can make
-  # LaunchServices start or activate a different SoloPM instance and invalidate
+  # LaunchServices start or activate a different Suisui instance and invalidate
   # both the isolated database and the performance sample.
   /usr/bin/osascript - "$APP_PID" "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
@@ -182,9 +182,9 @@ open_app() {
     timeline_path="$TIMELINE_FILE"
   fi
   /usr/bin/env -i PATH="$PATH" TMPDIR="$OUTPUT_DIR" HOME="$PERFORMANCE_HOME" CFFIXED_USER_HOME="$PERFORMANCE_HOME" \
-    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$PERFORMANCE_DATABASE_PATH" \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="today" \
-    SOLOPM_LAUNCH_TIMELINE_PATH="$timeline_path" \
+    SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 SUISUI_DATABASE_PATH="$PERFORMANCE_DATABASE_PATH" \
+    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="today" \
+    SUISUI_LAUNCH_TIMELINE_PATH="$timeline_path" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
   APP_LAUNCH_PID=$!
   APP_LAUNCH_IDENTITY="$(ax_wait_for_owned_process_identity "$APP_LAUNCH_PID" "$APP_BINARY" 3)" || {
@@ -417,7 +417,7 @@ trap cleanup EXIT
   printf '%s\n' '# Release Launch Performance Smoke'
   printf '\n'
   printf 'Generated at: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-  printf 'Performance profile: `%s`\n' "$SOLOPM_PERFORMANCE_PROFILE"
+  printf 'Performance profile: `%s`\n' "$SUISUI_PERFORMANCE_PROFILE"
   printf 'Build configuration: `%s`\n' "$BUILD_CONFIGURATION"
   printf 'Default cold launch budget: `%sms`\n' "$MAX_COLD_LAUNCH_MS"
   printf 'Default destination switch budget: `%sms`\n' "$MAX_DESTINATION_SWITCH_MS"
@@ -428,11 +428,11 @@ printf '%s\t%s\n' "label" "elapsed_ms" >"$SAMPLES_FILE"
 
 terminate_app
 prepare_ax_helpers
-if [[ "$SOLOPM_PERFORMANCE_PROFILE" == "release" ]]; then
-  SOLOPM_RELEASE_BUILD_PURPOSE=performance \
-    SOLOPM_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
+if [[ "$SUISUI_PERFORMANCE_PROFILE" == "release" ]]; then
+  SUISUI_RELEASE_BUILD_PURPOSE=performance \
+    SUISUI_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
 else
-  SOLOPM_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
+  SUISUI_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
 fi
 prepare_production_fixture
 
