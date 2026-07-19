@@ -8662,6 +8662,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("SOLOPM_VISUAL_BASELINE_VIEWPORT"))
         XCTAssertTrue(captureScript.contains("SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT"))
         XCTAssertTrue(captureScript.contains("ui_evidence_product_source_commit"))
+        XCTAssertTrue(captureScript.contains("local origin_x=0"))
+        XCTAssertTrue(captureScript.contains("local origin_y=0"))
         XCTAssertTrue(captureScript.contains("set position of targetWindow to {originX, originY}"))
         XCTAssertTrue(captureScript.contains("set size of targetWindow to {targetWidth, targetHeight}"))
         XCTAssertFalse(captureScript.contains("set bounds of front window"))

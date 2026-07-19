@@ -808,17 +808,16 @@ position_window_for_capture() {
   local window_name="${1:-}"
   local diagnostic_file="${2:-}"
   local viewport="$VISUAL_BASELINE_VIEWPORT"
-  local origin_x=80
-  local origin_y=70
+  # Hosted macOS runners can expose only a 1024x768 desktop. Positioning away
+  # from the origin makes WindowServer shrink a 1024x724 evidence window even
+  # though the requested viewport itself fits the display.
+  local origin_x=0
+  local origin_y=0
 
   if [[ "$window_name" == "Voice Command" ]]; then
     viewport="$VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT"
-    origin_x=160
-    origin_y=140
   elif [[ -n "$window_name" ]]; then
     viewport="$SETTINGS_VISUAL_BASELINE_VIEWPORT"
-    origin_x=120
-    origin_y=90
   fi
 
   local width="${viewport%x*}"
