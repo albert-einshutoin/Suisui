@@ -981,8 +981,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "SOLOPM_RELEASE_APPCAST_FILE": appcastURL.path,
                 "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
                 "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
-                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
-                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases/",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.suisui.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.suisui.app/releases/",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
@@ -996,7 +996,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(evidence.contains("\"artifactSha256\": \"42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98\""))
         XCTAssertTrue(evidence.contains("\"signingIdentity\": \"Developer ID Application: SoloPM Test (TEAMID)\""))
         XCTAssertTrue(evidence.contains("\"notaryProfile\": \"SoloPMNotaryProfile\""))
-        XCTAssertTrue(evidence.contains("\"sparkleFeedURL\": \"https://updates.solopm.app/releases/appcast.xml\""))
+        XCTAssertTrue(evidence.contains("\"sparkleFeedURL\": \"https://updates.suisui.app/releases/appcast.xml\""))
         XCTAssertTrue(evidence.contains("\"appcastPath\": \".build/test-release-appcast.xml\""))
         XCTAssertTrue(evidence.contains("\"generator\""))
         XCTAssertTrue(evidence.contains("\"name\": \"script/create_release_evidence.sh\""))
@@ -1066,8 +1066,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "SOLOPM_RELEASE_APPCAST_FILE": appcastURL.path,
                 "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
                 "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
-                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
-                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases/",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.suisui.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.suisui.app/releases/",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
@@ -1145,8 +1145,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "SOLOPM_RELEASE_APPCAST_FILE": appcastURL.path,
                 "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
                 "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
-                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
-                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases/",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.suisui.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.suisui.app/releases/",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
@@ -1192,8 +1192,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "SOLOPM_RELEASE_APPCAST_FILE": appcastURL.path,
                 "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
                 "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
-                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
-                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases/",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.suisui.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.suisui.app/releases/",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
@@ -1235,8 +1235,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "SOLOPM_RELEASE_APPCAST_FILE": appcastURL.path,
                 "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
                 "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
-                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
-                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases/",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.suisui.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.suisui.app/releases/",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
@@ -1559,8 +1559,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "SOLOPM_RELEASE_APPCAST_FILE": appcastURL.path,
                 "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
                 "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
-                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
-                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases/",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.suisui.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.suisui.app/releases/",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
@@ -1653,8 +1653,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "SOLOPM_RELEASE_APPCAST_FILE": appcastURL.path,
                 "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
                 "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
-                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
-                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases/",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.suisui.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.suisui.app/releases/",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
@@ -1708,8 +1708,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "SOLOPM_RELEASE_APPCAST_FILE": appcastURL.path,
                 "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
                 "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
-                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
-                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases/",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.suisui.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.suisui.app/releases/",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
@@ -1764,8 +1764,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "SOLOPM_RELEASE_APPCAST_FILE": appcastURL.path,
                 "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
                 "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
-                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
-                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases/",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.suisui.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.suisui.app/releases/",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
@@ -2134,7 +2134,7 @@ final class ReleasePipelineTests: XCTestCase {
             environment: [
                 "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
                 "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path,
-                "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Release Owner (TEAMID)",
+                "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: Suisui Release Owner (TEAMID)",
                 "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile"
             ]
         )
@@ -2161,7 +2161,7 @@ final class ReleasePipelineTests: XCTestCase {
             "appBundlePath": "dist/SoloPM.app",
             "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "actual-sha",
-            "signingIdentity": "Developer ID Application: SoloPM Release Owner (TEAMID)",
+            "signingIdentity": "Developer ID Application: Suisui Release Owner (TEAMID)",
             "notaryProfile": "SoloPMNotaryProfile",
             "sparkleFeedURL": "https://updates-old.solopm.app/releases/appcast.xml",
             "appcastPath": "dist/releases/old-appcast.xml"
@@ -2187,9 +2187,9 @@ final class ReleasePipelineTests: XCTestCase {
             environment: [
                 "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
                 "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path,
-                "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Release Owner (TEAMID)",
+                "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: Suisui Release Owner (TEAMID)",
                 "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
-                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.suisui.app/releases/appcast.xml",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
@@ -2222,7 +2222,7 @@ final class ReleasePipelineTests: XCTestCase {
             "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
             "notaryProfile": "SoloPMNotaryProfile",
-            "sparkleFeedURL": "https://updates.solopm.app/releases/appcast.xml",
+            "sparkleFeedURL": "https://updates.suisui.app/releases/appcast.xml",
             "appcastPath": "dist/releases/appcast.xml"
           },
           "source": {
@@ -2288,7 +2288,7 @@ final class ReleasePipelineTests: XCTestCase {
             "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
             "notaryProfile": "SoloPMNotaryProfile",
-            "sparkleFeedURL": "https://updates.solopm.app/releases/appcast.xml",
+            "sparkleFeedURL": "https://updates.suisui.app/releases/appcast.xml",
             "appcastPath": "dist/releases/appcast.xml"
           },
           "source": {
@@ -2653,7 +2653,7 @@ final class ReleasePipelineTests: XCTestCase {
             "artifactSha256": "actual-sha",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
             "notaryProfile": "SoloPMNotaryProfile",
-            "sparkleFeedURL": "https://updates.solopm.app/releases/appcast.xml",
+            "sparkleFeedURL": "https://updates.suisui.app/releases/appcast.xml",
             "appcastPath": "dist/releases/appcast.xml"
           },
           "manualChecks": {
@@ -2707,7 +2707,7 @@ final class ReleasePipelineTests: XCTestCase {
             "artifactSha256": "actual-sha",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
             "notaryProfile": "SoloPMNotaryProfile",
-            "sparkleFeedURL": "https://updates.solopm.app/releases/appcast.xml",
+            "sparkleFeedURL": "https://updates.suisui.app/releases/appcast.xml",
             "appcastPath": "dist/releases/appcast.xml"
           },
           "source": {
@@ -2769,7 +2769,7 @@ final class ReleasePipelineTests: XCTestCase {
             "artifactSha256": "actual-sha",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
             "notaryProfile": "SoloPMNotaryProfile",
-            "sparkleFeedURL": "https://updates.solopm.app/releases/appcast.xml",
+            "sparkleFeedURL": "https://updates.suisui.app/releases/appcast.xml",
             "appcastPath": "dist/releases/appcast.xml"
           },
           "manualChecks": {
@@ -2828,7 +2828,7 @@ final class ReleasePipelineTests: XCTestCase {
             "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
             "notaryProfile": "SoloPMNotaryProfile",
-            "sparkleFeedURL": "https://updates.solopm.app/releases/appcast.xml",
+            "sparkleFeedURL": "https://updates.suisui.app/releases/appcast.xml",
             "appcastPath": "dist/releases/appcast.xml"
           },
           "source": {
@@ -2896,7 +2896,7 @@ final class ReleasePipelineTests: XCTestCase {
             "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
             "notaryProfile": "SoloPMNotaryProfile",
-            "sparkleFeedURL": "https://updates.solopm.app/releases/appcast.xml",
+            "sparkleFeedURL": "https://updates.suisui.app/releases/appcast.xml",
             "appcastPath": "dist/releases/appcast.xml"
           },
           "source": {
@@ -2961,7 +2961,7 @@ final class ReleasePipelineTests: XCTestCase {
             "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
             "notaryProfile": "SoloPMNotaryProfile",
-            "sparkleFeedURL": "https://updates.solopm.app/releases/appcast.xml",
+            "sparkleFeedURL": "https://updates.suisui.app/releases/appcast.xml",
             "appcastPath": "dist/releases/appcast.xml"
           },
           "source": {
@@ -3027,7 +3027,7 @@ final class ReleasePipelineTests: XCTestCase {
             "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
             "notaryProfile": "SoloPMNotaryProfile",
-            "sparkleFeedURL": "https://updates.solopm.app/releases/appcast.xml",
+            "sparkleFeedURL": "https://updates.suisui.app/releases/appcast.xml",
             "appcastPath": "dist/releases/appcast.xml"
           },
           "source": {
@@ -3097,7 +3097,7 @@ final class ReleasePipelineTests: XCTestCase {
             "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
             "notaryProfile": "SoloPMNotaryProfile",
-            "sparkleFeedURL": "https://updates.solopm.app/releases/appcast.xml",
+            "sparkleFeedURL": "https://updates.suisui.app/releases/appcast.xml",
             "appcastPath": "dist/releases/appcast.xml"
           },
           "source": {
@@ -4020,8 +4020,8 @@ final class ReleasePipelineTests: XCTestCase {
         let taskContentExecutionNote = "Approved execution announced the reviewed task title and detail, then left a redacted receipt with task identity, reviewed detail, and before/after status."
         let inboxVoiceTriageNote = "Inbox voice capture detail announces transcript, AI interpretation, source metadata, memo field, and make task schedule review later project triage actions."
         let todayRailActionsNote = "Today assistant rail announces next action and task detail before focus schedule draft edit subtask draft and reminder draft controls."
-        let unsafeEvidenceSource = "dist/SoloPM.app manual VoiceOver pass using \(packageRoot().path)/.tmp/voiceover-review/SoloPM-voiceover-review.sqlite project:119 file:///Users/alice/private.wav"
-        let sanitizedEvidenceSource = "dist/SoloPM.app manual VoiceOver pass using isolated .tmp voiceover review database project:119"
+        let unsafeEvidenceSource = "dist/Suisui.app manual VoiceOver pass using \(packageRoot().path)/.tmp/voiceover-review/SoloPM-voiceover-review.sqlite project:119 file:///Users/alice/private.wav"
+        let sanitizedEvidenceSource = "dist/Suisui.app manual VoiceOver pass using isolated .tmp voiceover review database project:119"
         let localPathMarkers = [packageRoot().path, "/Users/", "/Volumes/", "file://"]
 
         let pendingResult = try runScript(
@@ -4055,7 +4055,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         let unsafePassedResult = try runScript(
             "script/create_voiceover_evidence.sh",
-            arguments: ["--passed", "--checked-by", "SoloPM Release Owner", "--output", passedURL.path]
+            arguments: ["--passed", "--checked-by", "Suisui Release Owner", "--output", passedURL.path]
         )
         XCTAssertNotEqual(unsafePassedResult.exitCode, 0)
         XCTAssertTrue(unsafePassedResult.output.contains("--confirm-manual-voiceover-pass is required with --passed"))
@@ -4065,7 +4065,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--passed",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -4081,7 +4081,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--passed",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver/keyboard/device details used for the manual pass",
@@ -4140,7 +4140,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--passed",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS unknown",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -4200,7 +4200,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--passed",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "June 19, 2026",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -4229,7 +4229,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--passed",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-02-31",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -4258,7 +4258,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--passed",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2099-01-01",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -4284,7 +4284,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--passed",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -4310,7 +4310,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--passed",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -4336,7 +4336,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--passed",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -4363,7 +4363,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--passed",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -4393,7 +4393,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--passed",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -4420,7 +4420,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--validate-only",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -4450,7 +4450,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--validate-only",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -4480,7 +4480,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--validate-only",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -4522,7 +4522,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--passed",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -4556,7 +4556,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--passed",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -4583,7 +4583,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--validate-only",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -4640,7 +4640,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--passed",
-                "--checked-by", "SoloPM Release Owner",
+                "--checked-by", "Suisui Release Owner",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -4671,7 +4671,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(passedEvidence.contains("- App build: `0.1.0 (1)`"))
         XCTAssertTrue(passedEvidence.contains("- Bundle identifier: `dev.solopm.app`"))
         XCTAssertTrue(passedEvidence.contains("- Source commit: `\(currentShortCommit)`"))
-        XCTAssertTrue(passedEvidence.contains("- Checked by: SoloPM Release Owner"))
+        XCTAssertTrue(passedEvidence.contains("- Checked by: Suisui Release Owner"))
         XCTAssertTrue(passedEvidence.contains("- Check date: 2026-06-19"))
         XCTAssertTrue(passedEvidence.contains("- Evidence source: `\(sanitizedEvidenceSource)`"))
         XCTAssertTrue(passedEvidence.contains("- Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display"))
@@ -12233,7 +12233,7 @@ final class ReleasePipelineTests: XCTestCase {
         - macOS version: macOS 15.5
         - App build: `0.1.0 (999)`
         - Bundle identifier: `dev.solopm.wrong`
-        - Checked by: SoloPM Release Owner
+        - Checked by: Suisui Release Owner
         - Check date: 2026-06-19
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
@@ -12320,7 +12320,7 @@ final class ReleasePipelineTests: XCTestCase {
         - App build: `0.1.0 (1)`
         - Bundle identifier: `dev.solopm.app`
         - Source commit: `deadbee`
-        - Checked by: SoloPM Release Owner
+        - Checked by: Suisui Release Owner
         - Check date: 2026-02-31
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
@@ -12428,7 +12428,7 @@ final class ReleasePipelineTests: XCTestCase {
         - App build: `0.1.0 (1)`
         - Bundle identifier: `dev.solopm.app`
         - Source commit: `\(currentShortCommit)`
-        - Checked by: SoloPM Release Owner
+        - Checked by: Suisui Release Owner
         - Check date: 2026-06-19
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
@@ -12532,7 +12532,7 @@ final class ReleasePipelineTests: XCTestCase {
         - App build: `0.1.0 (1)`
         - Bundle identifier: `dev.solopm.app`
         - Source commit: `unknown`
-        - Checked by: SoloPM Release Owner
+        - Checked by: Suisui Release Owner
         - Check date: 2026-06-01
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
@@ -12705,7 +12705,7 @@ final class ReleasePipelineTests: XCTestCase {
         - App build: `0.1.0 (1)`
         - Bundle identifier: `dev.solopm.app`
         - Source commit: `deadbee`
-        - Checked by: SoloPM Release Owner
+        - Checked by: Suisui Release Owner
         - Check date: 2099-01-01
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
@@ -12968,7 +12968,7 @@ final class ReleasePipelineTests: XCTestCase {
         - App build: `0.1.0 (1)`
         - Bundle identifier: `dev.solopm.app`
         - Source commit: `\(currentShortCommit)`
-        - Checked by: SoloPM Release Owner
+        - Checked by: Suisui Release Owner
         - Check date: 2026-06-19
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
@@ -13118,7 +13118,7 @@ final class ReleasePipelineTests: XCTestCase {
         - macOS version: macOS 15.5
         - App build: `0.1.0 (1)`
         - Bundle identifier: `dev.solopm.app`
-        - Checked by: SoloPM Release Owner
+        - Checked by: Suisui Release Owner
         - Check date: 2026-06-19
         - Evidence source: `dist/SoloPM.app` manual pass
 
