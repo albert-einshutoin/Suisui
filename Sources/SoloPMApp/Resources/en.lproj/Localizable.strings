@@ -120,11 +120,11 @@
 "Selected provider: %@" = "Selected provider: %@";
 "Set up your AI" = "Set up your AI";
 "Skip Setup" = "Skip Setup";
-"SoloPM plans with the AI provider you choose. Add an API key in Settings, or pick a local model that needs no key." = "SoloPM plans with the AI provider you choose. Add an API key in Settings, or pick a local model that needs no key.";
-"SoloPM works with your microphone, Calendar, Reminders, and Notifications. macOS asks for each permission the first time it is needed." = "SoloPM works with your microphone, Calendar, Reminders, and Notifications. macOS asks for each permission the first time it is needed.";
+"SoloPM plans with the AI provider you choose. Add an API key in Settings, or pick a local model that needs no key." = "Suisui plans with the AI provider you choose. Add an API key in Settings, or pick a local model that needs no key.";
+"SoloPM works with your microphone, Calendar, Reminders, and Notifications. macOS asks for each permission the first time it is needed." = "Suisui works with your microphone, Calendar, Reminders, and Notifications. macOS asks for each permission the first time it is needed.";
 "Speak" = "Speak";
-"Speak or type what you need to do. SoloPM drafts the tasks, events, and reminders for you, and writes nothing until you approve it." = "Speak or type what you need to do. SoloPM drafts the tasks, events, and reminders for you, and writes nothing until you approve it.";
-"Start Using SoloPM" = "Start Using SoloPM";
+"Speak or type what you need to do. SoloPM drafts the tasks, events, and reminders for you, and writes nothing until you approve it." = "Speak or type what you need to do. Suisui drafts the tasks, events, and reminders for you, and writes nothing until you approve it.";
+"Start Using SoloPM" = "Start Using Suisui";
 "Step %d of %d" = "Step %d of %d";
 "Try saying: \"Plan a release checklist due next Friday.\" Review the plan, then approve it." = "Try saying: \"Plan a release checklist due next Friday.\" Review the plan, then approve it.";
 "Action needed: %@" = "Action needed: %@";
@@ -144,7 +144,7 @@
 "Required" = "Required";
 "Run Setup Again" = "Run Setup Again";
 "Setup needs attention" = "Setup needs attention";
-"SoloPM can open now, but planning is not ready yet. Review the required item below or finish setup later from Settings." = "SoloPM can open now, but planning is not ready yet. Review the required item below or finish setup later from Settings.";
+"SoloPM can open now, but planning is not ready yet. Review the required item below or finish setup later from Settings." = "Suisui can open now, but planning is not ready yet. Review the required item below or finish setup later from Settings.";
 "Status unknown" = "Status unknown";
 "Unavailable: %@" = "Unavailable: %@";
 "This permission is restricted by macOS." = "This permission is restricted by macOS.";
@@ -174,7 +174,7 @@
 "Sync due tasks from Project Board" = "Sync due tasks from Project Board";
 "Tokens stay in Keychain; Settings uses OAuth only." = "Tokens stay in Keychain; Settings uses OAuth only.";
 "This removes local Google Calendar OAuth tokens from Keychain. Tasks and saved calendar ID stay unchanged." = "This removes local Google Calendar OAuth tokens from Keychain. Tasks and saved calendar ID stay unchanged.";
-"Update SoloPM runtime configuration" = "Update SoloPM runtime configuration";
+"Update SoloPM runtime configuration" = "Update Suisui runtime configuration";
 "Upgrade to Pro before OAuth authorization" = "Upgrade to Pro before OAuth authorization";
 "In Progress" = "In Progress";
 "Inbox" = "Inbox";
@@ -260,7 +260,7 @@
 "Terminal Locked" = "Terminal Locked";
 "Terminal Unavailable" = "Terminal Unavailable";
 "Theme" = "Theme";
-"This removes the saved registration from SoloPM." = "This removes the saved registration from SoloPM.";
+"This removes the saved registration from SoloPM." = "This removes the saved registration from Suisui.";
 "Today" = "Today";
 "Configure whisper.cpp executable" = "Configure whisper.cpp executable";
 "Download failed" = "Download failed";
@@ -301,11 +301,11 @@
 "Review the command before choosing Inbox capture or an approval-gated plan." = "Review the command before choosing Inbox capture or an approval-gated plan.";
 "Wait for download" = "Wait for download";
 "Watcher" = "Watcher";
-"Welcome to SoloPM" = "Welcome to SoloPM";
+"Welcome to SoloPM" = "Welcome to Suisui";
 "whisper.cpp executable path is required for offline speech to text." = "whisper.cpp executable path is required for offline speech to text.";
 "whisper.cpp model metadata is not registered." = "whisper.cpp model metadata is not registered.";
-"Changes the appearance for all SoloPM windows." = "Changes the appearance for all SoloPM windows.";
-"Changes the language for all SoloPM windows." = "Changes the language for all SoloPM windows.";
+"Changes the appearance for all SoloPM windows." = "Changes the appearance for all Suisui windows.";
+"Changes the language for all SoloPM windows." = "Changes the language for all Suisui windows.";
 "Connector planned" = "Connector planned";
 "Database mappings stay explicit before tasks are exported." = "Database mappings stay explicit before tasks are exported.";
 "Due tasks can be pushed as calendar events after Pro and Google authorization." = "Due tasks can be pushed as calendar events after Pro and Google authorization.";
@@ -324,7 +324,7 @@
 "Add a project" = "Add a project";
 "Add this item to Inbox" = "Add this item to Inbox";
 "Add to Inbox" = "Add to Inbox";
-"Adds an expected artifact link to the selected project in the local SoloPM database." = "Adds an expected artifact link to the selected project in the local SoloPM database.";
+"Adds an expected artifact link to the selected project in the local SoloPM database." = "Adds an expected artifact link to the selected project in the local Suisui database.";
 "Adds the typed item to the local Inbox." = "Adds the typed item to the local Inbox.";
 "All tasks are done. Complete the project to keep active views focused." = "All tasks are done. Complete the project to keep active views focused.";
 "Anthropic API Key" = "Anthropic API Key";
@@ -361,8 +361,8 @@
 "Complete Project" = "Complete Project";
 "Complete task" = "Complete task";
 "Completed" = "Completed";
-"Completes the selected project in the local SoloPM database" = "Completes the selected project in the local SoloPM database";
-"Completes the selected project in the local SoloPM database." = "Completes the selected project in the local SoloPM database.";
+"Completes the selected project in the local SoloPM database" = "Completes the selected project in the local Suisui database";
+"Completes the selected project in the local SoloPM database." = "Completes the selected project in the local Suisui database.";
 "Configured" = "Configured";
 "Connected" = "Connected";
 "Create a first concrete task so the project has a next action." = "Create a first concrete task so the project has a next action.";
@@ -372,8 +372,8 @@
 "Creates a local project from the selected Inbox item." = "Creates a local project from the selected Inbox item.";
 "Duration" = "Duration";
 "Creates a new local project and selects it." = "Creates a new local project and selects it.";
-"Creates the task in the local SoloPM database" = "Creates the task in the local SoloPM database";
-"Creates the task in the local SoloPM database." = "Creates the task in the local SoloPM database.";
+"Creates the task in the local SoloPM database" = "Creates the task in the local Suisui database";
+"Creates the task in the local SoloPM database." = "Creates the task in the local Suisui database.";
 "Creates the task in your Inbox." = "Creates the task in your Inbox.";
 "Danger Zone" = "Danger Zone";
 "Dark" = "Dark";
@@ -397,7 +397,7 @@
 "Edit, save, move, or delete the selected task." = "Edit, save, move, or delete the selected task.";
 "Enabled" = "Enabled";
 "Enter an absolute local path to track as an expected project artifact." = "Enter an absolute local path to track as an expected project artifact.";
-"Enter the task name before creating it in the local SoloPM database." = "Enter the task name before creating it in the local SoloPM database.";
+"Enter the task name before creating it in the local SoloPM database." = "Enter the task name before creating it in the local Suisui database.";
 "Environment References" = "Environment References";
 "Executing" = "Executing";
 "Execution gated" = "Execution gated";
@@ -453,7 +453,7 @@
 "Moves the suggested blocked task back to In Progress in the local database." = "Moves the suggested blocked task back to In Progress in the local database.";
 "Moves the task between board columns." = "Moves the task between board columns.";
 "Never" = "Never";
-"New SoloPM Window" = "New SoloPM Window";
+"New SoloPM Window" = "New Suisui Window";
 "Next Check" = "Next Check";
 "No approval required" = "No approval required";
 "No arguments" = "No arguments";
@@ -501,7 +501,7 @@
 "Notion" = "Notion";
 "Off" = "Off";
 "On" = "On";
-"Only selected SoloPM data classes are included." = "Only selected SoloPM data classes are included.";
+"Only selected SoloPM data classes are included." = "Only selected Suisui data classes are included.";
 "Open" = "Open";
 "Open Details" = "Open Details";
 "Open Settings" = "Open Settings";
@@ -547,7 +547,7 @@
 "Reminder permission is denied." = "Reminder permission is denied.";
 "Remove artifact link" = "Remove artifact link";
 "Remove artifact link without deleting the local file" = "Remove artifact link without deleting the local file";
-"Removes this local SoloPM artifact link without deleting the file." = "Removes this local SoloPM artifact link without deleting the file.";
+"Removes this local SoloPM artifact link without deleting the file." = "Removes this local Suisui artifact link without deleting the file.";
 "Reopen task" = "Reopen task";
 "Repeat" = "Repeat";
 "Repeats the task by creating the next occurrence when it is completed" = "Repeats the task by creating the next occurrence when it is completed";
@@ -557,8 +557,8 @@
 "Restore this project before editing tasks or including it in active summaries." = "Restore this project before editing tasks or including it in active summaries.";
 "Restore this project to edit tasks or include it in active deadline summaries." = "Restore this project to edit tasks or include it in active deadline summaries.";
 "Restores the last classified Inbox item when possible." = "Restores the last classified Inbox item when possible.";
-"Restores the selected project to active views in the local SoloPM database" = "Restores the selected project to active views in the local SoloPM database";
-"Restores the selected project to active views in the local SoloPM database." = "Restores the selected project to active views in the local SoloPM database.";
+"Restores the selected project to active views in the local SoloPM database" = "Restores the selected project to active views in the local Suisui database";
+"Restores the selected project to active views in the local SoloPM database." = "Restores the selected project to active views in the local Suisui database.";
 "Restricted" = "Restricted";
 "Retry available after review" = "Retry available after review";
 "Review Later" = "Review Later";
@@ -585,10 +585,10 @@
 "Google Calendar sync status is unavailable." = "Google Calendar sync status is unavailable.";
 "Google Calendar sync failed." = "Google Calendar sync failed.";
 "Save Project" = "Save Project";
-"Saves edits to the selected project in the local SoloPM database" = "Saves edits to the selected project in the local SoloPM database";
-"Saves edits to the selected project in the local SoloPM database." = "Saves edits to the selected project in the local SoloPM database.";
-"Saves edits to the selected task in the local SoloPM database" = "Saves edits to the selected task in the local SoloPM database";
-"Saves edits to the selected task in the local SoloPM database." = "Saves edits to the selected task in the local SoloPM database.";
+"Saves edits to the selected project in the local SoloPM database" = "Saves edits to the selected project in the local Suisui database";
+"Saves edits to the selected project in the local SoloPM database." = "Saves edits to the selected project in the local Suisui database.";
+"Saves edits to the selected task in the local SoloPM database" = "Saves edits to the selected task in the local Suisui database";
+"Saves edits to the selected task in the local SoloPM database." = "Saves edits to the selected task in the local Suisui database.";
 "Edit and save the selected task." = "Edit and save the selected task.";
 "Schedule Today" = "Schedule Today";
 "Schedule selected Inbox item for today" = "Schedule selected Inbox item for today";
@@ -604,7 +604,7 @@
 "Shows archived projects in the sidebar without deleting local data." = "Shows archived projects in the sidebar without deleting local data.";
 "Shows the recommended focus task, due counts, and local time blocks." = "Shows the recommended focus task, due counts, and local time blocks.";
 "Skipped" = "Skipped";
-"SoloPM" = "SoloPM";
+"SoloPM" = "Suisui";
 "Speech to Text" = "Speech to Text";
 "Status" = "Status";
 "Source" = "Source";
@@ -622,9 +622,9 @@
 "Task summary" = "Task summary";
 "Task title" = "Task title";
 "Tasks" = "Tasks";
-"This hides the project from the active board and deadline summaries. Existing local tasks are kept in the SoloPM database." = "This hides the project from the active board and deadline summaries. Existing local tasks are kept in the SoloPM database.";
-"This permanently removes the project, its local tasks, deadline rules, artifact links, calendar links, and reminder links from SoloPM." = "This permanently removes the project, its local tasks, deadline rules, artifact links, calendar links, and reminder links from SoloPM.";
-"This removes the task from the local SoloPM database." = "This removes the task from the local SoloPM database.";
+"This hides the project from the active board and deadline summaries. Existing local tasks are kept in the SoloPM database." = "This hides the project from the active board and deadline summaries. Existing local tasks are kept in the Suisui database.";
+"This permanently removes the project, its local tasks, deadline rules, artifact links, calendar links, and reminder links from SoloPM." = "This permanently removes the project, its local tasks, deadline rules, artifact links, calendar links, and reminder links from Suisui.";
+"This removes the task from the local SoloPM database." = "This removes the task from the local Suisui database.";
 "This task is already complete." = "This task is already complete.";
 "Time Blocks" = "Time Blocks";
 "Timeline" = "Timeline";
@@ -643,7 +643,7 @@
 "Undo" = "Undo";
 "Undo the last Inbox classification" = "Undo the last Inbox classification";
 "Unknown microphone permission status." = "Unknown microphone permission status.";
-"Updates the task status in the local SoloPM database without opening the inspector." = "Updates the task status in the local SoloPM database without opening the inspector.";
+"Updates the task status in the local SoloPM database without opening the inspector." = "Updates the task status in the local Suisui database without opening the inspector.";
 "Upgrade required" = "Upgrade required";
 "Use NAME=keychain:secret_key per line. Raw secret values are rejected." = "Use NAME=keychain:secret_key per line. Raw secret values are rejected.";
 "Use the same key name referenced by keychain:<secret_key>." = "Use the same key name referenced by keychain:<secret_key>.";
@@ -892,13 +892,13 @@
 "Calendar is not configured." = "Calendar is not configured.";
 "Create a schedule draft first." = "Create a schedule draft first.";
 "External Calendar writes require review approval." = "External Calendar writes require review approval.";
-"SoloPM will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped." = "SoloPM will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped.";
+"SoloPM will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped." = "Suisui will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped.";
 "Sync due tasks to Google Calendar?" = "Sync due tasks to Google Calendar?";
 "Prepared schedule draft with %d time blocks and %d unscheduled tasks." = "Prepared schedule draft with %d time blocks and %d unscheduled tasks.";
 "Schedule review approval is required before Calendar write." = "Schedule review approval is required before Calendar write.";
 "Create a schedule draft before applying to Calendar." = "Create a schedule draft before applying to Calendar.";
 "Calendar is not configured. No external write was performed." = "Calendar is not configured. No external write was performed.";
-"Created from a reviewed SoloPM schedule draft." = "Created from a reviewed SoloPM schedule draft.";
+"Created from a reviewed SoloPM schedule draft." = "Created from a reviewed Suisui schedule draft.";
 "Applied %d Calendar events." = "Applied %d Calendar events.";
 "Calendar apply failed." = "Calendar apply failed.";
 "Combines the visible day's local time blocks and unscheduled tasks without writing to Calendar." = "Combines the visible day's local time blocks and unscheduled tasks without writing to Calendar.";
@@ -1027,8 +1027,8 @@
 "When is the due date?" = "When is the due date?";
 "Which destination should receive the draft?" = "Which destination should receive the draft?";
 "Which source documents should be used?" = "Which source documents should be used?";
-"What scope should SoloPM prepare for review?" = "What scope should SoloPM prepare for review?";
-"Should SoloPM keep this as a reviewed draft?" = "Should SoloPM keep this as a reviewed draft?";
+"What scope should SoloPM prepare for review?" = "What scope should Suisui prepare for review?";
+"Should SoloPM keep this as a reviewed draft?" = "Should Suisui keep this as a reviewed draft?";
 "Assistant Queue" = "Assistant Queue";
 "Open Assistant Queue" = "Open Assistant Queue";
 "Opens the Assistant Queue without running the item." = "Opens the Assistant Queue without running the item.";
@@ -1266,11 +1266,11 @@
 "Project Directory" = "Project Directory";
 "Selected directory" = "Selected directory";
 "Choose Directory" = "Choose Directory";
-"Choose the local folder SoloPM can use for this project" = "Choose the local folder SoloPM can use for this project";
+"Choose the local folder SoloPM can use for this project" = "Choose the local folder Suisui can use for this project";
 "Clear Directory" = "Clear Directory";
 "Clear this project's local directory permission" = "Clear this project's local directory permission";
 "Opens a folder picker and stores the selected project directory locally." = "Opens a folder picker and stores the selected project directory locally.";
-"Removes the stored project directory from SoloPM without deleting files." = "Removes the stored project directory from SoloPM without deleting files.";
+"Removes the stored project directory from SoloPM without deleting files." = "Removes the stored project directory from Suisui without deleting files.";
 "AI Usage Meter" = "AI Usage Meter";
 "Execution usage meter is unavailable" = "Execution usage meter is unavailable";
 "Total Tokens" = "Total Tokens";
@@ -1352,7 +1352,7 @@
 "%@: none" = "%@: none";
 "Billing" = "Billing";
 "Managed AI billing" = "Managed AI billing";
-"Enables local cost cap controls for SoloPM-managed AI work." = "Enables local cost cap controls for SoloPM-managed AI work.";
+"Enables local cost cap controls for SoloPM-managed AI work." = "Enables local cost cap controls for Suisui-managed AI work.";
 "Per-run cap" = "Per-run cap";
 "Daily threshold" = "Daily threshold";
 "Monthly threshold" = "Monthly threshold";
@@ -1522,8 +1522,8 @@
 "Completed in Assistant Queue" = "Completed in Assistant Queue";
 "Rejected in Assistant Queue" = "Rejected in Assistant Queue";
 "Waiting for review approval" = "Waiting for review approval";
-"Execution receipts are unavailable, so SoloPM cannot confirm which development approval comes next." = "Execution receipts are unavailable, so SoloPM cannot confirm which development approval comes next.";
-"Execution receipts could not be read, so SoloPM cannot confirm which development approval comes next." = "Execution receipts could not be read, so SoloPM cannot confirm which development approval comes next.";
+"Execution receipts are unavailable, so SoloPM cannot confirm which development approval comes next." = "Execution receipts are unavailable, so Suisui cannot confirm which development approval comes next.";
+"Execution receipts could not be read, so SoloPM cannot confirm which development approval comes next." = "Execution receipts could not be read, so Suisui cannot confirm which development approval comes next.";
 "Review the pull request execution receipt before queueing." = "Review the pull request execution receipt before queueing.";
 "Resolve development automation setup" = "Resolve development automation setup";
 "Pull request lifecycle complete" = "Pull request lifecycle complete";
@@ -1571,7 +1571,7 @@
 "Branch push failed. Review the execution receipt before queueing pull request creation." = "Branch push failed. Review the execution receipt before queueing pull request creation.";
 "Create the pull request and wait for its execution receipt before queueing review or merge." = "Create the pull request and wait for its execution receipt before queueing review or merge.";
 "Pull request creation failed. Review the execution receipt before queueing review or merge." = "Pull request creation failed. Review the execution receipt before queueing review or merge.";
-"Pull request receipt is missing URL or base branch evidence, so SoloPM will not draft review or merge approval." = "Pull request receipt is missing URL or base branch evidence, so SoloPM will not draft review or merge approval.";
+"Pull request receipt is missing URL or base branch evidence, so SoloPM will not draft review or merge approval." = "Pull request receipt is missing URL or base branch evidence, so Suisui will not draft review or merge approval.";
 "Pull request review gate failed. Resolve the receipt before queueing merge." = "Pull request review gate failed. Resolve the receipt before queueing merge.";
 "Pull request is ready for a review gate approval." = "Pull request is ready for a review gate approval.";
 "Pull request is ready for a merge gate approval." = "Pull request is ready for a merge gate approval.";
@@ -1620,8 +1620,8 @@
 "Done follow-up draft is already in Assistant Queue." = "Done follow-up draft is already in Assistant Queue.";
 "Queued Done follow-up draft for approval." = "Queued Done follow-up draft for approval.";
 "Create or select a project for runtime CRUD verification." = "Create or select a project for runtime CRUD verification.";
-"Creates a new local project in the SoloPM database" = "Creates a new local project in the SoloPM database";
-"Creates a new local project in the SoloPM database." = "Creates a new local project in the SoloPM database.";
+"Creates a new local project in the SoloPM database" = "Creates a new local project in the Suisui database";
+"Creates a new local project in the SoloPM database." = "Creates a new local project in the Suisui database.";
 "Move task" = "Move task";
 "Opens task details in the inspector." = "Opens task details in the inspector.";
 "Project title" = "Project title";
@@ -1719,7 +1719,7 @@
 "Restore from Backup…" = "Restore from Backup…";
 "Save all projects, tasks, and knowledge frames to a local JSON file" = "Save all projects, tasks, and knowledge frames to a local JSON file";
 "Writes a local backup file. No data leaves this Mac." = "Writes a local backup file. No data leaves this Mac.";
-"Add items from a SoloPM backup file to this workspace" = "Add items from a SoloPM backup file to this workspace";
+"Add items from a SoloPM backup file to this workspace" = "Add items from a Suisui backup file to this workspace";
 "Opens a backup file and asks for confirmation before adding its items." = "Opens a backup file and asks for confirmation before adding its items.";
 "Restore from backup?" = "Restore from backup?";
 "Add Backup Items" = "Add Backup Items";
@@ -1728,8 +1728,8 @@
 "Restored %d projects, %d tasks, and %d knowledge frames. Skipped %d duplicate frames." = "Restored %d projects, %d tasks, and %d knowledge frames. Skipped %d duplicate frames.";
 "Back Up" = "Back Up";
 "Choose" = "Choose";
-"Choose where to save the SoloPM backup file" = "Choose where to save the SoloPM backup file";
-"Choose a SoloPM backup file to restore" = "Choose a SoloPM backup file to restore";
+"Choose where to save the SoloPM backup file" = "Choose where to save the Suisui backup file";
+"Choose a SoloPM backup file to restore" = "Choose a Suisui backup file to restore";
 "Add a task for today" = "Add a task for today";
 "Capture with Voice" = "Capture with Voice";
 
@@ -1761,14 +1761,14 @@
 /* Onboarding sample project (T-09) */
 "Create sample project" = "Create sample project";
 "Sample project added" = "Sample project added";
-"Adds a Learn SoloPM practice project with sample tasks to the Project Board." = "Adds a Learn SoloPM practice project with sample tasks to the Project Board.";
+"Adds a Learn SoloPM practice project with sample tasks to the Project Board." = "Adds a Learn Suisui practice project with sample tasks to the Project Board.";
 "Could not create the sample project." = "Could not create the sample project.";
-"Learn SoloPM" = "Learn SoloPM";
+"Learn SoloPM" = "Learn Suisui";
 "Start with a private practice project. No AI account or Mac permissions are needed." = "Start with a private practice project. No AI account or Mac permissions are needed.";
 "Capture" = "Capture";
 "Set up AI first" = "Set up AI first";
-"Try SoloPM now" = "Try SoloPM now";
-"Creates or reuses Learn SoloPM, opens Today, and selects the first lesson." = "Creates or reuses Learn SoloPM, opens Today, and selects the first lesson.";
+"Try SoloPM now" = "Try Suisui now";
+"Creates or reuses Learn SoloPM, opens Today, and selects the first lesson." = "Creates or reuses Learn Suisui, opens Today, and selects the first lesson.";
 "Press ⌘K and search for anything" = "Press ⌘K and search for anything";
 "The command palette matches views, projects, smart lists, and even task content. Try typing part of this sentence." = "The command palette matches views, projects, smart lists, and even task content. Try typing part of this sentence.";
 "Drag this task to another column" = "Drag this task to another column";
@@ -1776,7 +1776,7 @@
 "Press ⌘Z to undo your last change" = "Press ⌘Z to undo your last change";
 "Board operations such as complete, move, and edit go onto an undo stack. ⌘Z reverts the latest one." = "Board operations such as complete, move, and edit go onto an undo stack. ⌘Z reverts the latest one.";
 "Say a task out loud in the Voice window" = "Say a task out loud in the Voice window";
-"Open Voice Command from the toolbar or the ⌘K palette, then speak. SoloPM drafts a plan you approve before anything is written." = "Open Voice Command from the toolbar or the ⌘K palette, then speak. SoloPM drafts a plan you approve before anything is written.";
+"Open Voice Command from the toolbar or the ⌘K palette, then speak. SoloPM drafts a plan you approve before anything is written." = "Open Voice Command from the toolbar or the ⌘K palette, then speak. Suisui drafts a plan you approve before anything is written.";
 "Set a due date by typing 'tomorrow' in Quick Add" = "Set a due date by typing 'tomorrow' in Quick Add";
 "Quick Add understands natural-language dates such as 'tomorrow' or 'next Friday' and files the task with the right due date." = "Quick Add understands natural-language dates such as 'tomorrow' or 'next Friday' and files the task with the right due date.";
 "This task repeats weekly — complete it to see the next one appear" = "This task repeats weekly — complete it to see the next one appear";
@@ -1788,7 +1788,7 @@
 "Writes a diagnostics text file with configuration metadata and counts only. No keys or content leave this Mac." = "Writes a diagnostics text file with configuration metadata and counts only. No keys or content leave this Mac.";
 "The diagnostics file includes app and macOS versions, the selected AI provider kind, notification settings, task and project counts, and watcher check times. It never includes API keys, task, knowledge, or plan content, voice transcripts, or audit log entries." = "The diagnostics file includes app and macOS versions, the selected AI provider kind, notification settings, task and project counts, and watcher check times. It never includes API keys, task, knowledge, or plan content, voice transcripts, or audit log entries.";
 "Export" = "Export";
-"Choose where to save the SoloPM diagnostics report" = "Choose where to save the SoloPM diagnostics report";
+"Choose where to save the SoloPM diagnostics report" = "Choose where to save the Suisui diagnostics report";
 
 /* Voice error next steps (T-10) */
 "Try Again" = "Try Again";
@@ -1862,7 +1862,7 @@
 "Not registered" = "Not registered";
 "Conflict" = "Conflict";
 "In-app fallback: %@" = "In-app fallback: %@";
-"SoloPM currently supports only Option + Space." = "SoloPM currently supports only Option + Space.";
+"SoloPM currently supports only Option + Space." = "Suisui currently supports only Option + Space.";
 
 /* Suisui public brand. Internal SoloPM compatibility keys remain for stored data and configuration. */
 "Suisui" = "Suisui";

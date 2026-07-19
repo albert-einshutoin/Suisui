@@ -120,11 +120,11 @@
 "Selected provider: %@" = "選択中のプロバイダー: %@";
 "Set up your AI" = "AIをセットアップ";
 "Skip Setup" = "セットアップをスキップ";
-"SoloPM plans with the AI provider you choose. Add an API key in Settings, or pick a local model that needs no key." = "SoloPMは選択したAIプロバイダーでプランを作ります。設定でAPIキーを追加するか、キー不要のローカルモデルを選んでください。";
-"SoloPM works with your microphone, Calendar, Reminders, and Notifications. macOS asks for each permission the first time it is needed." = "SoloPMはマイク、カレンダー、リマインダー、通知と連携します。各権限は初めて使うときにmacOSが確認します。";
+"SoloPM plans with the AI provider you choose. Add an API key in Settings, or pick a local model that needs no key." = "Suisuiは選択したAIプロバイダーでプランを作ります。設定でAPIキーを追加するか、キー不要のローカルモデルを選んでください。";
+"SoloPM works with your microphone, Calendar, Reminders, and Notifications. macOS asks for each permission the first time it is needed." = "Suisuiはマイク、カレンダー、リマインダー、通知と連携します。各権限は初めて使うときにmacOSが確認します。";
 "Speak" = "話す";
-"Speak or type what you need to do. SoloPM drafts the tasks, events, and reminders for you, and writes nothing until you approve it." = "やりたいことを話すか入力してください。SoloPMがタスク・予定・リマインダーの下書きを作り、承認するまで何も書き込みません。";
-"Start Using SoloPM" = "SoloPMを使いはじめる";
+"Speak or type what you need to do. SoloPM drafts the tasks, events, and reminders for you, and writes nothing until you approve it." = "やりたいことを話すか入力してください。Suisuiがタスク・予定・リマインダーの下書きを作り、承認するまで何も書き込みません。";
+"Start Using SoloPM" = "Suisuiを使いはじめる";
 "Step %d of %d" = "ステップ %d / %d";
 "Try saying: \"Plan a release checklist due next Friday.\" Review the plan, then approve it." = "「来週金曜までのリリースチェックリストを作って」と話しかけてみてください。プランを確認して、承認するだけです。";
 "Action needed: %@" = "要対応: %@";
@@ -144,7 +144,7 @@
 "Required" = "必須";
 "Run Setup Again" = "セットアップを再実行";
 "Setup needs attention" = "セットアップに対応が必要です";
-"SoloPM can open now, but planning is not ready yet. Review the required item below or finish setup later from Settings." = "SoloPMは今すぐ開けますが、プラン作成の準備ができていません。下の必須項目を確認するか、Settingsから後でセットアップしてください。";
+"SoloPM can open now, but planning is not ready yet. Review the required item below or finish setup later from Settings." = "Suisuiは今すぐ開けますが、プラン作成の準備ができていません。下の必須項目を確認するか、Settingsから後でセットアップしてください。";
 "Status unknown" = "状態不明";
 "Unavailable: %@" = "利用不可: %@";
 "This permission is restricted by macOS." = "この権限はmacOSによって制限されています。";
@@ -174,7 +174,7 @@
 "Sync due tasks from Project Board" = "Project Boardから期限付きタスクを同期";
 "Tokens stay in Keychain; Settings uses OAuth only." = "トークンはKeychainに保存され、SettingsはOAuthのみを使用します。";
 "This removes local Google Calendar OAuth tokens from Keychain. Tasks and saved calendar ID stay unchanged." = "ローカルのGoogle Calendar OAuthトークンをKeychainから削除します。タスクと保存済みカレンダーIDは変更しません。";
-"Update SoloPM runtime configuration" = "SoloPMランタイム設定を更新";
+"Update SoloPM runtime configuration" = "Suisuiランタイム設定を更新";
 "Upgrade to Pro before OAuth authorization" = "OAuth認証前にProへアップグレード";
 "In Progress" = "進行中";
 "Inbox" = "インボックス";
@@ -260,7 +260,7 @@
 "Terminal Locked" = "ターミナルはロック中";
 "Terminal Unavailable" = "ターミナルを利用できません";
 "Theme" = "テーマ";
-"This removes the saved registration from SoloPM." = "保存済みの登録をSoloPMから削除します。";
+"This removes the saved registration from SoloPM." = "保存済みの登録をSuisuiから削除します。";
 "Today" = "今日";
 "Configure whisper.cpp executable" = "whisper.cpp実行ファイルを設定";
 "Download failed" = "ダウンロード失敗";
@@ -301,11 +301,11 @@
 "Review the command before choosing Inbox capture or an approval-gated plan." = "Inboxキャプチャまたは承認付きプランを選ぶ前に、コマンドを確認してください。";
 "Wait for download" = "ダウンロード完了を待機";
 "Watcher" = "監視";
-"Welcome to SoloPM" = "SoloPMへようこそ";
+"Welcome to SoloPM" = "Suisuiへようこそ";
 "whisper.cpp executable path is required for offline speech to text." = "オフライン音声認識にはwhisper.cpp実行ファイルのパスが必要です。";
 "whisper.cpp model metadata is not registered." = "whisper.cppモデルのメタデータが登録されていません。";
-"Changes the appearance for all SoloPM windows." = "すべてのSoloPMウィンドウの表示を変更します。";
-"Changes the language for all SoloPM windows." = "すべてのSoloPMウィンドウの言語を変更します。";
+"Changes the appearance for all SoloPM windows." = "すべてのSuisuiウィンドウの表示を変更します。";
+"Changes the language for all SoloPM windows." = "すべてのSuisuiウィンドウの言語を変更します。";
 "Connector planned" = "コネクター予定";
 "Database mappings stay explicit before tasks are exported." = "タスクをエクスポートする前にデータベースの対応付けを明示します。";
 "Due tasks can be pushed as calendar events after Pro and Google authorization." = "ProとGoogle認証後、期限付きタスクをカレンダー予定として送信できます。";
@@ -324,7 +324,7 @@
 "Add a project" = "プロジェクトを追加";
 "Add this item to Inbox" = "この項目をインボックスに追加";
 "Add to Inbox" = "インボックスに追加";
-"Adds an expected artifact link to the selected project in the local SoloPM database." = "選択したプロジェクトに期待成果物リンクをローカルSoloPMデータベースへ追加します。";
+"Adds an expected artifact link to the selected project in the local SoloPM database." = "選択したプロジェクトに期待成果物リンクをローカルSuisuiデータベースへ追加します。";
 "Adds the typed item to the local Inbox." = "入力した項目をローカルのインボックスに追加します。";
 "All tasks are done. Complete the project to keep active views focused." = "すべてのタスクが完了しています。アクティブ表示を絞るため、プロジェクトを完了してください。";
 "Anthropic API Key" = "Anthropic APIキー";
@@ -361,8 +361,8 @@
 "Complete Project" = "プロジェクトを完了";
 "Complete task" = "タスクを完了";
 "Completed" = "完了済み";
-"Completes the selected project in the local SoloPM database" = "選択中のプロジェクトをローカルSoloPMデータベースで完了にします";
-"Completes the selected project in the local SoloPM database." = "選択中のプロジェクトをローカルSoloPMデータベースで完了にします。";
+"Completes the selected project in the local SoloPM database" = "選択中のプロジェクトをローカルSuisuiデータベースで完了にします";
+"Completes the selected project in the local SoloPM database." = "選択中のプロジェクトをローカルSuisuiデータベースで完了にします。";
 "Configured" = "設定済み";
 "Connected" = "接続済み";
 "Create a first concrete task so the project has a next action." = "次のアクションを持てるよう、最初の具体的なタスクを作成してください。";
@@ -372,8 +372,8 @@
 "Creates a local project from the selected Inbox item." = "選択中のインボックス項目からローカルプロジェクトを作成します。";
 "Duration" = "長さ";
 "Creates a new local project and selects it." = "新しいローカルプロジェクトを作成して選択します。";
-"Creates the task in the local SoloPM database" = "ローカルSoloPMデータベースにタスクを作成します";
-"Creates the task in the local SoloPM database." = "ローカルSoloPMデータベースにタスクを作成します。";
+"Creates the task in the local SoloPM database" = "ローカルSuisuiデータベースにタスクを作成します";
+"Creates the task in the local SoloPM database." = "ローカルSuisuiデータベースにタスクを作成します。";
 "Creates the task in your Inbox." = "Inboxにタスクを作成します。";
 "Danger Zone" = "危険な操作";
 "Dark" = "ダーク";
@@ -397,7 +397,7 @@
 "Edit, save, move, or delete the selected task." = "選択中のタスクを編集、保存、移動、削除します。";
 "Enabled" = "有効";
 "Enter an absolute local path to track as an expected project artifact." = "期待成果物として追跡するローカルの絶対パスを入力します。";
-"Enter the task name before creating it in the local SoloPM database." = "ローカルSoloPMデータベースに作成する前にタスク名を入力します。";
+"Enter the task name before creating it in the local SoloPM database." = "ローカルSuisuiデータベースに作成する前にタスク名を入力します。";
 "Environment References" = "環境参照";
 "Executing" = "実行中";
 "Execution gated" = "実行は制限中";
@@ -453,7 +453,7 @@
 "Moves the suggested blocked task back to In Progress in the local database." = "提案されたブロック中タスクをローカルデータベースで進行中へ戻します。";
 "Moves the task between board columns." = "タスクをボード列間で移動します。";
 "Never" = "未実行";
-"New SoloPM Window" = "新規SoloPMウィンドウ";
+"New SoloPM Window" = "新規Suisuiウィンドウ";
 "Next Check" = "次回確認";
 "No approval required" = "承認不要";
 "No arguments" = "引数なし";
@@ -501,7 +501,7 @@
 "Notion" = "Notion";
 "Off" = "オフ";
 "On" = "オン";
-"Only selected SoloPM data classes are included." = "選択されたSoloPMデータ種別のみが含まれます。";
+"Only selected SoloPM data classes are included." = "選択されたSuisuiデータ種別のみが含まれます。";
 "Open" = "未完了";
 "Open Details" = "詳細を開く";
 "Open Settings" = "設定を開く";
@@ -547,7 +547,7 @@
 "Reminder permission is denied." = "リマインダー権限が拒否されています。";
 "Remove artifact link" = "成果物リンクを削除";
 "Remove artifact link without deleting the local file" = "ローカルファイルを削除せずに成果物リンクを削除";
-"Removes this local SoloPM artifact link without deleting the file." = "ファイルを削除せず、このローカルSoloPM成果物リンクを削除します。";
+"Removes this local SoloPM artifact link without deleting the file." = "ファイルを削除せず、このローカルSuisui成果物リンクを削除します。";
 "Reopen task" = "タスクを再開";
 "Repeat" = "繰り返し";
 "Repeats the task by creating the next occurrence when it is completed" = "完了すると次の繰り返しタスクを自動作成します";
@@ -557,8 +557,8 @@
 "Restore this project before editing tasks or including it in active summaries." = "タスク編集やアクティブサマリーへの反映前に、このプロジェクトを復元してください。";
 "Restore this project to edit tasks or include it in active deadline summaries." = "タスクを編集したりアクティブな期限サマリーへ含めたりするには、このプロジェクトを復元してください。";
 "Restores the last classified Inbox item when possible." = "可能な場合、最後に分類したインボックス項目を復元します。";
-"Restores the selected project to active views in the local SoloPM database" = "選択中のプロジェクトをローカルSoloPMデータベースでアクティブ表示へ復元します";
-"Restores the selected project to active views in the local SoloPM database." = "選択中のプロジェクトをローカルSoloPMデータベースでアクティブ表示へ復元します。";
+"Restores the selected project to active views in the local SoloPM database" = "選択中のプロジェクトをローカルSuisuiデータベースでアクティブ表示へ復元します";
+"Restores the selected project to active views in the local SoloPM database." = "選択中のプロジェクトをローカルSuisuiデータベースでアクティブ表示へ復元します。";
 "Restricted" = "制限中";
 "Retry available after review" = "確認後に再試行可能";
 "Review Later" = "後で確認";
@@ -585,10 +585,10 @@
 "Google Calendar sync status is unavailable." = "Google Calendar同期の状態を確認できません。";
 "Google Calendar sync failed." = "Google Calendar同期に失敗しました。";
 "Save Project" = "プロジェクトを保存";
-"Saves edits to the selected project in the local SoloPM database" = "選択中のプロジェクト編集をローカルSoloPMデータベースに保存します";
-"Saves edits to the selected project in the local SoloPM database." = "選択中のプロジェクト編集をローカルSoloPMデータベースに保存します。";
-"Saves edits to the selected task in the local SoloPM database" = "選択中のタスク編集をローカルSoloPMデータベースに保存します";
-"Saves edits to the selected task in the local SoloPM database." = "選択中のタスク編集をローカルSoloPMデータベースに保存します。";
+"Saves edits to the selected project in the local SoloPM database" = "選択中のプロジェクト編集をローカルSuisuiデータベースに保存します";
+"Saves edits to the selected project in the local SoloPM database." = "選択中のプロジェクト編集をローカルSuisuiデータベースに保存します。";
+"Saves edits to the selected task in the local SoloPM database" = "選択中のタスク編集をローカルSuisuiデータベースに保存します";
+"Saves edits to the selected task in the local SoloPM database." = "選択中のタスク編集をローカルSuisuiデータベースに保存します。";
 "Edit and save the selected task." = "選択中のタスクを編集して保存します。";
 "Schedule Today" = "今日に予定";
 "Schedule selected Inbox item for today" = "選択中のインボックス項目を今日に予定";
@@ -604,7 +604,7 @@
 "Shows archived projects in the sidebar without deleting local data." = "ローカルデータを削除せず、サイドバーにアーカイブ済みプロジェクトを表示します。";
 "Shows the recommended focus task, due counts, and local time blocks." = "推奨集中タスク、期限数、ローカル時間ブロックを表示します。";
 "Skipped" = "スキップ";
-"SoloPM" = "SoloPM";
+"SoloPM" = "Suisui";
 "Speech to Text" = "音声文字起こし";
 "Status" = "ステータス";
 "Source" = "入力元";
@@ -622,9 +622,9 @@
 "Task summary" = "タスクサマリー";
 "Task title" = "タスク名";
 "Tasks" = "タスク";
-"This hides the project from the active board and deadline summaries. Existing local tasks are kept in the SoloPM database." = "この操作でプロジェクトはアクティブボードと期限サマリーから非表示になります。既存のローカルタスクはSoloPMデータベースに残ります。";
-"This permanently removes the project, its local tasks, deadline rules, artifact links, calendar links, and reminder links from SoloPM." = "この操作はプロジェクト、ローカルタスク、期限ルール、成果物リンク、カレンダーリンク、リマインダーリンクをSoloPMから完全に削除します。";
-"This removes the task from the local SoloPM database." = "この操作はローカルSoloPMデータベースからタスクを削除します。";
+"This hides the project from the active board and deadline summaries. Existing local tasks are kept in the SoloPM database." = "この操作でプロジェクトはアクティブボードと期限サマリーから非表示になります。既存のローカルタスクはSuisuiデータベースに残ります。";
+"This permanently removes the project, its local tasks, deadline rules, artifact links, calendar links, and reminder links from SoloPM." = "この操作はプロジェクト、ローカルタスク、期限ルール、成果物リンク、カレンダーリンク、リマインダーリンクをSuisuiから完全に削除します。";
+"This removes the task from the local SoloPM database." = "この操作はローカルSuisuiデータベースからタスクを削除します。";
 "This task is already complete." = "このタスクは既に完了しています。";
 "Time Blocks" = "時間ブロック";
 "Timeline" = "タイムライン";
@@ -643,7 +643,7 @@
 "Undo" = "元に戻す";
 "Undo the last Inbox classification" = "最後のインボックス分類を元に戻す";
 "Unknown microphone permission status." = "不明なマイク権限ステータスです。";
-"Updates the task status in the local SoloPM database without opening the inspector." = "インスペクタを開かずにローカルSoloPMデータベースのタスクステータスを更新します。";
+"Updates the task status in the local SoloPM database without opening the inspector." = "インスペクタを開かずにローカルSuisuiデータベースのタスクステータスを更新します。";
 "Upgrade required" = "アップグレードが必要";
 "Use NAME=keychain:secret_key per line. Raw secret values are rejected." = "1行ごとにNAME=keychain:secret_keyを使います。生のシークレット値は拒否されます。";
 "Use the same key name referenced by keychain:<secret_key>." = "keychain:<secret_key>で参照するものと同じキー名を使います。";
@@ -892,13 +892,13 @@
 "Calendar is not configured." = "カレンダーは未設定です。";
 "Create a schedule draft first." = "先に予定ドラフトを作成してください。";
 "External Calendar writes require review approval." = "外部カレンダーへの書き込みには確認と承認が必要です。";
-"SoloPM will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped." = "SoloPMは期限付きの未完了タスクをGoogleカレンダーの予定として作成します。既にリンク済みのタスクはスキップされます。";
+"SoloPM will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped." = "Suisuiは期限付きの未完了タスクをGoogleカレンダーの予定として作成します。既にリンク済みのタスクはスキップされます。";
 "Sync due tasks to Google Calendar?" = "期限付きタスクをGoogleカレンダーへ同期しますか?";
 "Prepared schedule draft with %d time blocks and %d unscheduled tasks." = "%d件の時間枠と%d件の未スケジュールタスクで予定ドラフトを作成しました。";
 "Schedule review approval is required before Calendar write." = "カレンダーへ書き込む前に予定レビューの承認が必要です。";
 "Create a schedule draft before applying to Calendar." = "カレンダーへ適用する前に予定ドラフトを作成してください。";
 "Calendar is not configured. No external write was performed." = "カレンダーが未設定です。外部書き込みは実行されませんでした。";
-"Created from a reviewed SoloPM schedule draft." = "確認済みのSoloPM予定ドラフトから作成されました。";
+"Created from a reviewed SoloPM schedule draft." = "確認済みのSuisui予定ドラフトから作成されました。";
 "Applied %d Calendar events." = "%d件のカレンダー予定を適用しました。";
 "Calendar apply failed." = "カレンダー適用に失敗しました。";
 "Combines the visible day's local time blocks and unscheduled tasks without writing to Calendar." = "カレンダーへ書き込まず、表示中の日のローカル時間枠と未スケジュールタスクを結合します。";
@@ -1027,8 +1027,8 @@
 "When is the due date?" = "期限はいつですか?";
 "Which destination should receive the draft?" = "下書きの送信先はどこですか?";
 "Which source documents should be used?" = "どの元資料を使いますか?";
-"What scope should SoloPM prepare for review?" = "SoloPMがレビュー用に準備する範囲はどこまでですか?";
-"Should SoloPM keep this as a reviewed draft?" = "SoloPMはこれを確認済み下書きとして保持しますか?";
+"What scope should SoloPM prepare for review?" = "Suisuiがレビュー用に準備する範囲はどこまでですか?";
+"Should SoloPM keep this as a reviewed draft?" = "Suisuiはこれを確認済み下書きとして保持しますか?";
 "Assistant Queue" = "アシスタントキュー";
 "Open Assistant Queue" = "アシスタントキューを開く";
 "Opens the Assistant Queue without running the item." = "項目を実行せずにアシスタントキューを開きます。";
@@ -1266,11 +1266,11 @@
 "Project Directory" = "プロジェクトディレクトリ";
 "Selected directory" = "選択済みディレクトリ";
 "Choose Directory" = "ディレクトリを選択";
-"Choose the local folder SoloPM can use for this project" = "このプロジェクトでSoloPMが使用できるローカルフォルダを選択します";
+"Choose the local folder SoloPM can use for this project" = "このプロジェクトでSuisuiが使用できるローカルフォルダを選択します";
 "Clear Directory" = "ディレクトリを解除";
 "Clear this project's local directory permission" = "このプロジェクトのローカルディレクトリ権限を解除します";
 "Opens a folder picker and stores the selected project directory locally." = "フォルダ選択を開き、選択したプロジェクトディレクトリをローカルに保存します。";
-"Removes the stored project directory from SoloPM without deleting files." = "ファイルは削除せず、SoloPMに保存したプロジェクトディレクトリだけを削除します。";
+"Removes the stored project directory from SoloPM without deleting files." = "ファイルは削除せず、Suisuiに保存したプロジェクトディレクトリだけを削除します。";
 "AI Usage Meter" = "AI使用量メーター";
 "Execution usage meter is unavailable" = "実行使用量メーターを利用できません";
 "Total Tokens" = "合計トークン";
@@ -1352,7 +1352,7 @@
 "%@: none" = "%@: なし";
 "Billing" = "課金";
 "Managed AI billing" = "管理AI課金";
-"Enables local cost cap controls for SoloPM-managed AI work." = "SoloPM管理AI作業のローカルコスト上限を有効にします。";
+"Enables local cost cap controls for SoloPM-managed AI work." = "Suisui管理AI作業のローカルコスト上限を有効にします。";
 "Per-run cap" = "1回あたり上限";
 "Daily threshold" = "日次しきい値";
 "Monthly threshold" = "月次しきい値";
@@ -1571,7 +1571,7 @@
 "Branch push failed. Review the execution receipt before queueing pull request creation." = "ブランチpushに失敗しました。Pull Request作成をキューへ追加する前に実行receiptを確認してください。";
 "Create the pull request and wait for its execution receipt before queueing review or merge." = "レビューまたはマージをキューへ追加する前に、Pull Requestを作成し実行receiptを待ってください。";
 "Pull request creation failed. Review the execution receipt before queueing review or merge." = "Pull Request作成に失敗しました。レビューまたはマージをキューへ追加する前に実行receiptを確認してください。";
-"Pull request receipt is missing URL or base branch evidence, so SoloPM will not draft review or merge approval." = "Pull Request receiptにURLまたはbaseブランチの証跡がないため、SoloPMはレビューまたはマージ承認をドラフトしません。";
+"Pull request receipt is missing URL or base branch evidence, so SoloPM will not draft review or merge approval." = "Pull Request receiptにURLまたはbaseブランチの証跡がないため、Suisuiはレビューまたはマージ承認をドラフトしません。";
 "Pull request review gate failed. Resolve the receipt before queueing merge." = "Pull Requestレビューゲートに失敗しました。マージをキューへ追加する前にreceiptを解消してください。";
 "Pull request is ready for a review gate approval." = "Pull Requestはレビューゲート承認の準備ができています。";
 "Pull request is ready for a merge gate approval." = "Pull Requestはマージゲート承認の準備ができています。";
@@ -1620,8 +1620,8 @@
 "Done follow-up draft is already in Assistant Queue." = "Doneフォローアップ下書きは既にAssistant Queueにあります。";
 "Queued Done follow-up draft for approval." = "Doneフォローアップ下書きを承認用にキューへ追加しました。";
 "Create or select a project for runtime CRUD verification." = "runtime CRUD検証用にプロジェクトを作成または選択してください。";
-"Creates a new local project in the SoloPM database" = "SoloPMデータベースに新しいローカルプロジェクトを作成します";
-"Creates a new local project in the SoloPM database." = "SoloPMデータベースに新しいローカルプロジェクトを作成します。";
+"Creates a new local project in the SoloPM database" = "Suisuiデータベースに新しいローカルプロジェクトを作成します";
+"Creates a new local project in the SoloPM database." = "Suisuiデータベースに新しいローカルプロジェクトを作成します。";
 "Move task" = "タスクを移動";
 "Opens task details in the inspector." = "インスペクタでタスク詳細を開きます。";
 "Project title" = "プロジェクトタイトル";
@@ -1719,7 +1719,7 @@
 "Restore from Backup…" = "バックアップから復元…";
 "Save all projects, tasks, and knowledge frames to a local JSON file" = "すべてのプロジェクト、タスク、ナレッジフレームをローカルのJSONファイルに保存します";
 "Writes a local backup file. No data leaves this Mac." = "ローカルにバックアップファイルを書き出します。データがこのMacの外に送信されることはありません。";
-"Add items from a SoloPM backup file to this workspace" = "SoloPMバックアップファイルの項目をこのワークスペースに追加します";
+"Add items from a SoloPM backup file to this workspace" = "Suisuiバックアップファイルの項目をこのワークスペースに追加します";
 "Opens a backup file and asks for confirmation before adding its items." = "バックアップファイルを開き、項目を追加する前に確認を求めます。";
 "Restore from backup?" = "バックアップから復元しますか?";
 "Add Backup Items" = "バックアップ項目を追加";
@@ -1728,8 +1728,8 @@
 "Restored %d projects, %d tasks, and %d knowledge frames. Skipped %d duplicate frames." = "%d件のプロジェクト、%d件のタスク、%d件のナレッジフレームを復元しました。重複するフレーム%d件をスキップしました。";
 "Back Up" = "バックアップ";
 "Choose" = "選択";
-"Choose where to save the SoloPM backup file" = "SoloPMバックアップファイルの保存先を選択してください";
-"Choose a SoloPM backup file to restore" = "復元するSoloPMバックアップファイルを選択してください";
+"Choose where to save the SoloPM backup file" = "Suisuiバックアップファイルの保存先を選択してください";
+"Choose a SoloPM backup file to restore" = "復元するSuisuiバックアップファイルを選択してください";
 "Add a task for today" = "今日のタスクを追加";
 "Capture with Voice" = "音声でキャプチャ";
 
@@ -1761,14 +1761,14 @@
 /* Onboarding sample project (T-09) */
 "Create sample project" = "サンプルプロジェクトを作成";
 "Sample project added" = "サンプルプロジェクトを追加しました";
-"Adds a Learn SoloPM practice project with sample tasks to the Project Board." = "練習用の「SoloPMを学ぶ」プロジェクトとサンプルタスクをプロジェクトボードに追加します。";
+"Adds a Learn SoloPM practice project with sample tasks to the Project Board." = "練習用の「Suisuiを学ぶ」プロジェクトとサンプルタスクをプロジェクトボードに追加します。";
 "Could not create the sample project." = "サンプルプロジェクトを作成できませんでした。";
-"Learn SoloPM" = "SoloPMを学ぶ";
+"Learn SoloPM" = "Suisuiを学ぶ";
 "Start with a private practice project. No AI account or Mac permissions are needed." = "非公開の練習プロジェクトから始めましょう。AIアカウントもMacの権限も必要ありません。";
 "Capture" = "取り込む";
 "Set up AI first" = "先にAIを設定";
-"Try SoloPM now" = "今すぐSoloPMを試す";
-"Creates or reuses Learn SoloPM, opens Today, and selects the first lesson." = "「SoloPMを学ぶ」を作成または再利用し、Todayを開いて最初のレッスンを選択します。";
+"Try SoloPM now" = "今すぐSuisuiを試す";
+"Creates or reuses Learn SoloPM, opens Today, and selects the first lesson." = "「Suisuiを学ぶ」を作成または再利用し、Todayを開いて最初のレッスンを選択します。";
 "Press ⌘K and search for anything" = "⌘Kを押して何でも検索";
 "The command palette matches views, projects, smart lists, and even task content. Try typing part of this sentence." = "コマンドパレットはビュー、プロジェクト、スマートリスト、さらにタスクの内容まで検索できます。この文章の一部を入力してみてください。";
 "Drag this task to another column" = "このタスクを別の列にドラッグ";
@@ -1776,7 +1776,7 @@
 "Press ⌘Z to undo your last change" = "⌘Zで直前の変更を元に戻す";
 "Board operations such as complete, move, and edit go onto an undo stack. ⌘Z reverts the latest one." = "完了・移動・編集などのボード操作は取り消しスタックに積まれます。⌘Zで最新の操作を元に戻せます。";
 "Say a task out loud in the Voice window" = "音声ウィンドウでタスクを声に出して伝える";
-"Open Voice Command from the toolbar or the ⌘K palette, then speak. SoloPM drafts a plan you approve before anything is written." = "ツールバーまたは⌘Kパレットから音声コマンドを開いて話してください。SoloPMがプランを下書きし、承認するまで何も書き込みません。";
+"Open Voice Command from the toolbar or the ⌘K palette, then speak. SoloPM drafts a plan you approve before anything is written." = "ツールバーまたは⌘Kパレットから音声コマンドを開いて話してください。Suisuiがプランを下書きし、承認するまで何も書き込みません。";
 "Set a due date by typing 'tomorrow' in Quick Add" = "クイック追加に「tomorrow」と入力して期限を設定";
 "Quick Add understands natural-language dates such as 'tomorrow' or 'next Friday' and files the task with the right due date." = "クイック追加は「tomorrow」や「next Friday」のような自然言語の日付を理解し、正しい期限付きでタスクを登録します。";
 "This task repeats weekly — complete it to see the next one appear" = "このタスクは毎週繰り返します — 完了すると次の回が現れます";
@@ -1788,7 +1788,7 @@
 "Writes a diagnostics text file with configuration metadata and counts only. No keys or content leave this Mac." = "設定メタデータと件数のみの診断テキストファイルを書き出します。キーや内容がこのMacの外に出ることはありません。";
 "The diagnostics file includes app and macOS versions, the selected AI provider kind, notification settings, task and project counts, and watcher check times. It never includes API keys, task, knowledge, or plan content, voice transcripts, or audit log entries." = "診断ファイルには、アプリとmacOSのバージョン、選択中のAIプロバイダーの種類、通知設定、タスクとプロジェクトの件数、ウォッチャーのチェック時刻が含まれます。APIキー、タスク・ナレッジ・プランの内容、音声の書き起こし、監査ログは一切含まれません。";
 "Export" = "書き出す";
-"Choose where to save the SoloPM diagnostics report" = "SoloPM診断レポートの保存先を選択してください";
+"Choose where to save the SoloPM diagnostics report" = "Suisui診断レポートの保存先を選択してください";
 
 /* Voice error next steps (T-10) */
 "Try Again" = "再試行";
@@ -1862,7 +1862,7 @@
 "Not registered" = "未登録";
 "Conflict" = "競合";
 "In-app fallback: %@" = "アプリ内の代替操作: %@";
-"SoloPM currently supports only Option + Space." = "現在SoloPMが対応するグローバルショートカットはOption + Spaceのみです。";
+"SoloPM currently supports only Option + Space." = "現在Suisuiが対応するグローバルショートカットはOption + Spaceのみです。";
 
 /* Suisui public brand. Internal SoloPM compatibility keys remain for stored data and configuration. */
 "Suisui" = "すいすい";

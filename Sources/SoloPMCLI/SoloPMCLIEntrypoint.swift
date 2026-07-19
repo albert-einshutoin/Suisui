@@ -17,7 +17,7 @@ struct SoloPMCLI {
             fputs("\(error.message)\n", stderr)
             return error.exitCode
         } catch {
-            fputs("Unexpected error: SoloPM CLI failed unexpectedly.\n", stderr)
+            fputs("Unexpected error: Suisui CLI failed unexpectedly.\n", stderr)
             return .runtimeFailure
         }
     }
@@ -48,7 +48,7 @@ struct SoloPMCLI {
             }
             return .success
         } catch {
-            fputs("local read failed: SoloPM local data could not be read.\n", stderr)
+            fputs("local read failed: Suisui local data could not be read.\n", stderr)
             return .runtimeFailure
         }
     }

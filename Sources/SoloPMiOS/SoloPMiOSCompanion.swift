@@ -204,7 +204,7 @@ public struct SoloPMiOSConversationView: View {
         NavigationStack {
             Form {
                 Section("Conversation") {
-                    TextField("What should SoloPM do?", text: $viewModel.conversationPrompt, axis: .vertical)
+                    TextField("What should Suisui do?", text: $viewModel.conversationPrompt, axis: .vertical)
                     Label("Voice, Shortcuts, and Share Sheet capture use the same action contract.", systemImage: "waveform")
                 }
             }

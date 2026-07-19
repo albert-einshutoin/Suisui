@@ -399,7 +399,7 @@ public enum WebAppRenderer {
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>SoloPM Web</title>
+          <title>Suisui Web</title>
         </head>
         <body>
           \(section("task-board", boardHTML(workspace.boardColumns)))
