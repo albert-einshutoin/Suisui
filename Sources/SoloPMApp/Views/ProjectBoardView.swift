@@ -31,9 +31,9 @@ enum ProjectBoardLayoutMetrics {
     static let sidebarColumnMinWidth: CGFloat = 180
     static let sidebarColumnIdealWidth: CGFloat = 200
     // NavigationSplitView otherwise gives the detail column a large implicit
-    // minimum. With the 276pt inspector open, that floor prevents the product
+    // minimum. With the compact inspector open, that floor prevents the product
     // from reaching its supported 1024pt compact window width.
-    static let detailColumnMinWidth: CGFloat = 480
+    static let detailColumnMinWidth: CGFloat = 440
     static let detailColumnIdealWidth: CGFloat = 700
     static let terminalPanelMinHeight: CGFloat = 220
     static let terminalPanelIdealHeight: CGFloat = 280
@@ -41,7 +41,7 @@ enum ProjectBoardLayoutMetrics {
     static let portfolioCardMinHeight: CGFloat = 230
     static let overviewPanelMinHeight: CGFloat = 170
     static let displayModePickerWidth: CGFloat = 252
-    // 204pt columns keep two full Kanban columns visible beside the 300pt
+    // 204pt columns keep two full Kanban columns reachable beside the compact
     // inspector at the 1024pt canonical window width: 2 x (204 + 20 padding)
     // + 12 spacing = 460pt fits the ~466pt board viewport there.
     static let boardColumnWidth: CGFloat = 204
@@ -85,6 +85,7 @@ struct ProjectBoardView: View {
     @State private var selectedDestination: ProjectBoardSidebarDestination? = .today
     @State private var projectBoardWindowWidth: CGFloat = 0
     @State private var allowsCompactInspectorPresentation = false
+    @State private var isCompactInspectorSheetPresented = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var toolbarLayoutRefreshToken = 0
     @State private var isTerminalPanelPresented = false
@@ -210,9 +211,32 @@ struct ProjectBoardView: View {
             minHeight: ProjectBoardWindowMetrics.minHeight,
             alignment: .topLeading
         )
-        .inspector(isPresented: inspectorBinding) {
+        .inspector(isPresented: wideInspectorBinding) {
             inspectorContent
-                .inspectorColumnWidth(min: 276, ideal: 300, max: 420)
+                .inspectorColumnWidth(min: 240, ideal: 280, max: 420)
+        }
+        .sheet(isPresented: $isCompactInspectorSheetPresented, onDismiss: {
+            // A user-dismissed compact sheet must clear the persisted intent.
+            // During a compact-to-wide resize, the width is already wide and
+            // the same intent is preserved for the native inspector instead.
+            if usesCompactInspectorPresentation {
+                dismissInspector()
+            }
+        }) {
+            NavigationStack {
+                inspectorContent
+                    .frame(minWidth: 360, minHeight: 480)
+            }
+            .onChange(of: inspectorSelectionContext) { previousSelection, selection in
+                if isCompactInspectorSheetPresented,
+                   selection == .none || (previousSelection == .task && selection != .task) {
+                    // Deleting a selected task otherwise swaps the modal to
+                    // its parent project, while deleting a project leaves an
+                    // EmptyView. Close either compact flow so the user returns
+                    // to the board action they just completed.
+                    dismissInspector()
+                }
+            }
         }
         .navigationTitle("Suisui")
         // The Edit-menu board undo command targets the key Project Board
@@ -739,13 +763,23 @@ struct ProjectBoardView: View {
         )
     }
 
-    private var inspectorBinding: Binding<Bool> {
+    private var usesCompactInspectorPresentation: Bool {
+        projectBoardWindowWidth < InspectorPresentationPolicy.wideMinimumWidth
+    }
+
+    private var wideInspectorBinding: Binding<Bool> {
         Binding(
-            get: { isInspectorEffectivelyPresented },
+            get: {
+                isInspectorEffectivelyPresented
+                    && !usesCompactInspectorPresentation
+            },
             set: { isPresented in
                 if isPresented {
                     requestInspectorPresentation()
-                } else {
+                } else if !usesCompactInspectorPresentation {
+                    // SwiftUI also writes `false` to the inactive native
+                    // presenter. Only the wide presenter may clear the shared
+                    // scene intent while the window is actually wide.
                     dismissInspector()
                 }
             }
@@ -788,6 +822,12 @@ struct ProjectBoardView: View {
         userRequestedInspector = true
         persistPrimaryPresentationStateIfNeeded()
         allowsCompactInspectorPresentation = true
+        if usesCompactInspectorPresentation {
+            // Drive the compact sheet with dedicated state. A computed binding
+            // can be reset by SwiftUI while its sibling inspector presenter is
+            // inactive, making an explicit Edit action appear to do nothing.
+            isCompactInspectorSheetPresented = true
+        }
     }
 
     private func openProjectInspector() {
@@ -813,9 +853,15 @@ struct ProjectBoardView: View {
         userRequestedInspector = intent.userRequested
         persistPrimaryPresentationStateIfNeeded()
         allowsCompactInspectorPresentation = intent.allowsCompactPresentation
+        if usesCompactInspectorPresentation {
+            isCompactInspectorSheetPresented = isInspectorEffectivelyPresented
+        } else {
+            isCompactInspectorSheetPresented = false
+        }
     }
 
     private func dismissInspector() {
+        isCompactInspectorSheetPresented = false
         userRequestedInspector = false
         persistPrimaryPresentationStateIfNeeded()
         allowsCompactInspectorPresentation = false

@@ -1111,11 +1111,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(toolbarSource.contains(".pickerStyle(.segmented)"))
     }
 
-    func testProjectBoardInspectorUsesNativeSwiftUIPresentation() throws {
+    func testProjectBoardInspectorUsesAdaptiveNativePresentation() throws {
         let boardSource = try readProjectBoardSurfaceSources()
 
-        XCTAssertTrue(boardSource.contains(".inspector(isPresented: inspectorBinding)"))
-        XCTAssertTrue(boardSource.contains(".inspectorColumnWidth(min: 276, ideal: 300, max: 420)"))
+        XCTAssertTrue(boardSource.contains(".inspector(isPresented: wideInspectorBinding)"))
+        XCTAssertTrue(boardSource.contains("@State private var isCompactInspectorSheetPresented = false"))
+        XCTAssertTrue(boardSource.contains(".sheet(isPresented: $isCompactInspectorSheetPresented"))
+        XCTAssertTrue(boardSource.contains(".onChange(of: inspectorSelectionContext)"))
+        XCTAssertTrue(boardSource.contains("previousSelection == .task && selection != .task"))
+        XCTAssertTrue(boardSource.contains("private var usesCompactInspectorPresentation: Bool"))
+        XCTAssertTrue(boardSource.contains("static let detailColumnMinWidth: CGFloat = 440"))
+        XCTAssertTrue(boardSource.contains(".inspectorColumnWidth(min: 240, ideal: 280, max: 420)"))
         XCTAssertFalse(boardSource.contains("inspectorOverlayContent"))
         XCTAssertFalse(boardSource.contains(".overlay(alignment: .trailing)"))
     }
