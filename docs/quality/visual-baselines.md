@@ -16,10 +16,10 @@ The source of truth is `docs/quality/visual-baseline-manifest.json`.
 | Schedule | Light / Dark | 1024x724 | schedule cockpit, unscheduled tasks, review-only calendar draft |
 | Schedule Workload | Light / Dark | 1024x724 | daily workload counts, attention banner, selected day detail |
 | Done | Light / Dark | 1024x724 | completion analytics, history, reopen affordance |
-| Settings Overview | Light / Dark / System | 720x712 | overview navigation and account-free local state |
-| Settings Integrations | Light / Dark | 720x712 | provider, TTS/STT, Calendar/Reminder, Sync, Privacy, Data Location status |
-| Settings Appearance | Light / Dark / System | 720x712 | theme picker and contrast controls |
-| MCP Settings | Light / Dark / System | 720x712 | registered MCP rows without secrets or machine-local paths |
+| Settings Overview | Light / Dark / System | 720x676 | overview navigation and account-free local state |
+| Settings Integrations | Light / Dark | 720x676 | provider, TTS/STT, Calendar/Reminder, Sync, Privacy, Data Location status |
+| Settings Appearance | Light / Dark / System | 720x676 | theme picker and contrast controls |
+| MCP Settings | Light / Dark / System | 720x676 | registered MCP rows without secrets or machine-local paths |
 | Voice Command | Light / Dark / System | 760x640 | command entry, local interpretation, approval boundary |
 
 ## Tolerances
