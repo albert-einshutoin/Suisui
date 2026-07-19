@@ -2,7 +2,9 @@ import Foundation
 import XCTest
 
 final class PublicBrandSurfaceTests: XCTestCase {
-    func testLocalizedValuesUseSuisuiWithoutRenamingCompatibilityIdentifiers() throws {
+    func testLocalizedValuesDoNotExposeLegacyBrand() throws {
+        let legacyBrand = ["Solo", "PM"].joined()
+
         for locale in ["en", "ja"] {
             let contents = try read("Sources/SuisuiApp/Resources/\(locale).lproj/Localizable.strings")
             let publicValues = contents
@@ -15,7 +17,7 @@ final class PublicBrandSurfaceTests: XCTestCase {
                 .replacingOccurrences(of: "SUISUI_GOOGLE_CALENDAR_OAUTH_CLIENT_ID", with: "")
                 .replacingOccurrences(of: "SuisuiGoogleCalendarOAuthClientID", with: "")
 
-            XCTAssertFalse(publicValues.contains("Suisui"), "\(locale) still exposes the legacy brand")
+            XCTAssertFalse(publicValues.contains(legacyBrand), "\(locale) still exposes the legacy brand")
         }
     }
 
