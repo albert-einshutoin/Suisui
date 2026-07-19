@@ -2,6 +2,12 @@ import Foundation
 import XCTest
 
 final class AppExperienceSourceTests: XCTestCase {
+    func testSettingsWindowSupportsHostedCompactHeight() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/SettingsView.swift")
+
+        XCTAssertTrue(source.contains(".frame(width: 680, height: 584)"))
+    }
+
     func testProjectBoardPrimaryNavigationUsesExactlyFourTopLevelRows() throws {
         let sidebarSource = try readPackageFile(
             "Sources/SoloPMApp/Views/ProjectBoardSidebarView.swift"

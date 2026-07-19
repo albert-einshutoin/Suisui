@@ -410,7 +410,7 @@ SettingsPrivacyFeatureView(
                 .tabItem { Label("Privacy", systemImage: "lock.shield") }
                 .tag(SettingsTab.privacy)
         }
-        .frame(width: 680, height: 620)
+        .frame(width: 680, height: 584)
         .scenePadding()
         .onAppear {
             launchAtLoginViewModel.refresh()
