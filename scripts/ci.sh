@@ -125,8 +125,10 @@ run_performance_gates() {
   local artifact_dir="$CI_ARTIFACT_ROOT/ui-performance"
   SOLOPM_UI_RUNNER_CAPABILITY_ARTIFACT_DIR="$artifact_dir/runner-capability" \
     ./script/check_macos_ui_runner_capabilities.sh performance
-  SOLOPM_PERFORMANCE_PROFILE="${SOLOPM_PERFORMANCE_PROFILE:-debug}" \
-  SOLOPM_PERFORMANCE_BUILD_CONFIGURATION="${SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-debug}" \
+  # The production-route lane must fail closed against the public Release SLO.
+  # Debug remains available only through an explicit local override.
+  SOLOPM_PERFORMANCE_PROFILE="${SOLOPM_PERFORMANCE_PROFILE:-release}" \
+  SOLOPM_PERFORMANCE_BUILD_CONFIGURATION="${SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-release}" \
   SOLOPM_PERFORMANCE_OUTPUT_DIR="$artifact_dir/performance" \
   SOLOPM_PERFORMANCE_HOME="$CI_TMPDIR/ui-performance-home" \
     ./script/check_release_launch_performance_smoke.sh

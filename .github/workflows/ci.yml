@@ -96,6 +96,10 @@ jobs:
       - name: Measure production runtime
         env:
           SOLOPM_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
+          SOLOPM_PERFORMANCE_PROFILE: release
+          SOLOPM_PERFORMANCE_BUILD_CONFIGURATION: release
+          SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS: 1000
+          SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS: 3000
         run: ./scripts/ci.sh ui-performance
 
       - name: Upload sanitized performance diagnostics

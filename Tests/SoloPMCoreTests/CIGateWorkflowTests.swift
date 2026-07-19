@@ -23,6 +23,10 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(workflow.contains("SOLOPM_VISUAL_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}"))
         XCTAssertTrue(workflow.contains("fetch-depth: 0"))
         XCTAssertTrue(workflow.contains("./scripts/ci.sh ui-performance"))
+        XCTAssertTrue(workflow.contains("SOLOPM_PERFORMANCE_PROFILE: release"))
+        XCTAssertTrue(workflow.contains("SOLOPM_PERFORMANCE_BUILD_CONFIGURATION: release"))
+        XCTAssertTrue(workflow.contains("SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS: 1000"))
+        XCTAssertTrue(workflow.contains("SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS: 3000"))
         XCTAssertFalse(workflow.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
     }
 
@@ -57,6 +61,8 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(script.contains("check_ci_visual_gate.sh"))
         XCTAssertTrue(script.contains("check_macos_ui_runner_capabilities.sh performance"))
         XCTAssertTrue(script.contains("check_release_launch_performance_smoke.sh"))
+        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_PROFILE=\"${SOLOPM_PERFORMANCE_PROFILE:-release}\""))
+        XCTAssertTrue(script.contains("SOLOPM_PERFORMANCE_BUILD_CONFIGURATION=\"${SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-release}\""))
         XCTAssertFalse(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
 
         let layoutGate = try readRepositoryFile("script/check_layout_stability_smoke.sh")
