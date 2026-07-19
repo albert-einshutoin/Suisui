@@ -70,4 +70,35 @@ xcrun stapler staple "$DMG_PATH"
 xcrun stapler validate "$DMG_PATH"
 spctl -a -t open --context context:primary-signature -vv "$DMG_PATH"
 
+NOTARIZATION_EVIDENCE_FILE="${SOLOPM_DMG_NOTARIZATION_EVIDENCE_FILE:-$DMG_PATH.notarization.json}"
+artifact_path="$DMG_PATH"
+submission_log_path="$SUBMISSION_LOG"
+if [[ "$artifact_path" == "$ROOT_DIR/"* ]]; then
+  artifact_path="${artifact_path#"$ROOT_DIR/"}"
+fi
+if [[ "$submission_log_path" == "$ROOT_DIR/"* ]]; then
+  submission_log_path="${submission_log_path#"$ROOT_DIR/"}"
+fi
+artifact_sha256="$(shasum -a 256 "$DMG_PATH" | awk 'NF { print $1; exit }')"
+checked_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+# Persist only non-secret Apple acceptance data. The final preflight binds this
+# submission id and stapled artifact digest to the exact DMG users download.
+mkdir -p "$(dirname "$NOTARIZATION_EVIDENCE_FILE")"
+cat >"$NOTARIZATION_EVIDENCE_FILE" <<EOF
+{
+  "notarization": {
+    "artifactPath": "$artifact_path",
+    "artifactSha256": "$artifact_sha256",
+    "submissionID": "$submission_id",
+    "status": "$notary_status",
+    "staplerValidated": true,
+    "gatekeeperAccepted": true,
+    "submissionLog": "$submission_log_path",
+    "checkedAt": "$checked_at"
+  }
+}
+EOF
+
 echo "Notarized, stapled, and Gatekeeper-validated release DMG: $DMG_PATH"
+echo "DMG notarization evidence written: $NOTARIZATION_EVIDENCE_FILE"

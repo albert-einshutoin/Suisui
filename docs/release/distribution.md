@@ -18,6 +18,8 @@ SOLOPM_PACKAGE_FORMAT=all ./script/package_release.sh
 
 出力先は `dist/releases/`。
 
+Production DMGの公証後には`*.dmg.notarization.json`も生成する。この非機密sidecarはnotary submission ID、`Accepted`状態、stapler/Gatekeeper結果、staple後DMGのSHA-256を保持し、最終preflightで配布DMGと再照合する。
+
 ```text
 SoloPM-0.1.0+1.dmg
 SoloPM-0.1.0+1.dmg.sha256

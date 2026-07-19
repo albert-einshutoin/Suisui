@@ -29,6 +29,22 @@ final class ProductionDistributionTests: XCTestCase {
         XCTAssertTrue(sparkleExample.contains("SOLOPM_SPARKLE_SIGN_UPDATE="))
     }
 
+    func testDMGNotarizationPersistsStructuredAuditableEvidence() throws {
+        let notarizer = try readRepositoryFile("script/notarize_release_dmg.sh")
+        let verifier = try readRepositoryFile("script/verify_dmg_notarization_evidence.sh")
+        let releaseEnvironment = try readRepositoryFile("script/verify_release_environment.sh")
+
+        XCTAssertTrue(notarizer.contains(".notarization.json"))
+        XCTAssertTrue(notarizer.contains("\"submissionID\""))
+        XCTAssertTrue(notarizer.contains("\"artifactSha256\""))
+        XCTAssertTrue(notarizer.contains("\"staplerValidated\": true"))
+        XCTAssertTrue(notarizer.contains("\"gatekeeperAccepted\": true"))
+        XCTAssertTrue(verifier.contains("notarization.submissionID"))
+        XCTAssertTrue(verifier.contains("notarization.status"))
+        XCTAssertTrue(verifier.contains("notarization.artifactSha256"))
+        XCTAssertTrue(releaseEnvironment.contains("verify_dmg_notarization_evidence.sh"))
+    }
+
     private func readRepositoryFile(_ relativePath: String) throws -> String {
         let fileURL = repositoryRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: fileURL, encoding: .utf8)

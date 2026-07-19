@@ -323,6 +323,7 @@ require_executable "$ROOT_DIR/script/check_release_bundle_inventory.sh" "release
 require_executable "$ROOT_DIR/script/check_release_artifact_size.sh" "release artifact size script"
 require_executable "$ROOT_DIR/script/verify_package_evidence_metrics.sh" "package evidence metrics verifier"
 require_executable "$ROOT_DIR/script/verify_appcast.sh" "appcast verification script"
+require_executable "$ROOT_DIR/script/verify_dmg_notarization_evidence.sh" "DMG notarization evidence verifier"
 require_executable "$ROOT_DIR/script/validate_sparkle_release_config.sh" "Sparkle release config validator"
 require_command codesign
 require_command security
@@ -774,6 +775,11 @@ require_release_dmg_notarization() {
   # Gatekeeper must assess the downloaded container, not only the nested app.
   if ! spctl -a -t open --context context:primary-signature -vv "$package_file" >/dev/null 2>&1; then
     add_blocker "release DMG failed Gatekeeper assessment: $package_file"
+  fi
+
+  notarization_evidence_output=""
+  if ! notarization_evidence_output="$("$ROOT_DIR/script/verify_dmg_notarization_evidence.sh" "$package_file" 2>&1)"; then
+    add_blocker "release DMG structured notarization evidence failed: $notarization_evidence_output"
   fi
 }
 
