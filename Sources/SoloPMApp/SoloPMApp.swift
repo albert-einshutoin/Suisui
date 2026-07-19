@@ -51,7 +51,7 @@ struct SoloPM: App {
             .environment(\.locale, effectiveLanguagePreference.locale)
         }
         .defaultSize(width: ProjectBoardWindowMetrics.defaultWidth, height: ProjectBoardWindowMetrics.defaultHeight)
-        // ProjectBoardWindowStateBridge owns the explicit 960x620 minimum.
+        // ProjectBoardWindowStateBridge owns the explicit 960x572 minimum.
         // SwiftUI's content-derived minimum can lock the hydrated split view
         // near its 1180pt ideal and reject compact/manual AX resizing.
         .windowResizability(.automatic)
@@ -590,7 +590,7 @@ private struct ProjectBoardFallbackLoadingView: View {
         // ideal size here becomes the hosting window's effective minimum and
         // prevents the production board from honoring compact or evidence
         // viewport sizes after hydration completes.
-        .frame(minWidth: 960, minHeight: 620)
+        .frame(minWidth: 960, minHeight: 572)
         .accessibilityIdentifier("project-board-fallback-loading")
     }
 }
@@ -630,7 +630,7 @@ private final class SoloPMProjectBoardWindowFallback {
         // The loading view is temporary. Pin only the supported compact
         // minimum so its initial fitting size cannot become a permanent
         // 1180pt resize floor after the real board replaces it.
-        window.contentMinSize = NSSize(width: 960, height: 620)
+        window.contentMinSize = NSSize(width: 960, height: 572)
         window.isReleasedWhenClosed = false
         window.setFrame(NSRect(x: 120, y: 160, width: 1_180, height: 760), display: true)
         self.window = window
@@ -837,7 +837,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
                 .environment(\.locale, (AppLanguagePreference.environmentOverride ?? .system).locale)
             )
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 680, height: 620),
+                contentRect: NSRect(x: 0, y: 0, width: 680, height: 572),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered,
                 defer: false
@@ -845,7 +845,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
             window.title = selectedTab.rawValue
             window.contentViewController = hostingController
             window.isReleasedWhenClosed = false
-            window.setFrame(NSRect(x: 120, y: 160, width: 680, height: 620), display: true)
+            window.setFrame(NSRect(x: 120, y: 160, width: 680, height: 572), display: true)
             self.settingsEvidenceWindow = window
             window.makeKeyAndOrderFront(nil)
             window.orderFrontRegardless()

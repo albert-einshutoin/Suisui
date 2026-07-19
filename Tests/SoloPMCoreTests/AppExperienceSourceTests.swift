@@ -1523,6 +1523,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("static let defaultWidth: CGFloat = 1_180"))
         XCTAssertTrue(boardSource.contains("static let minWidth: CGFloat = 960"))
         XCTAssertTrue(boardSource.contains(".frame(\n            minHeight: ProjectBoardWindowMetrics.minHeight"))
+        XCTAssertTrue(boardSource.contains("static let minHeight: CGFloat = 572"))
         XCTAssertTrue(boardSource.contains("private func enforceProjectBoardWindowMinimumSize()"))
         XCTAssertTrue(boardSource.contains("window.contentMinSize = minimumContentSize"))
         XCTAssertTrue(boardSource.contains("window.frameRect("))

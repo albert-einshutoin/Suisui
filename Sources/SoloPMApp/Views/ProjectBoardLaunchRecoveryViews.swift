@@ -19,7 +19,7 @@ struct ProjectBoardLaunchRecoveryView: View {
             workflowBody
             recoveryInspector
         }
-            .frame(minWidth: 960, idealWidth: 1_180, minHeight: 620, idealHeight: 760)
+            .frame(minWidth: 960, idealWidth: 1_180, minHeight: 572, idealHeight: 760)
             .task {
                 loadRuntimeState()
             }
@@ -174,7 +174,7 @@ private struct ProjectBoardUIEvidenceProjectsOverviewRecoveryView: View {
             .accessibilityIdentifier("projects-portfolio-overview")
             .accessibilityLabel("Projects portfolio overview")
         }
-        .frame(minWidth: 960, idealWidth: 1_180, minHeight: 620, idealHeight: 760)
+        .frame(minWidth: 960, idealWidth: 1_180, minHeight: 572, idealHeight: 760)
     }
 
     private func portfolioCard(_ summary: ProjectPortfolioSummary) -> some View {
@@ -376,7 +376,7 @@ private struct ProjectBoardLayoutStabilityRecoveryView: View {
                 .frame(width: 320)
                 .frame(maxHeight: .infinity)
         }
-        .frame(minWidth: 960, idealWidth: 1_180, minHeight: 620, idealHeight: 760)
+        .frame(minWidth: 960, idealWidth: 1_180, minHeight: 572, idealHeight: 760)
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button {
@@ -641,7 +641,7 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
             }
         }
         .padding(18)
-        .frame(minWidth: 960, idealWidth: 1_180, minHeight: 620, idealHeight: 760, alignment: .topLeading)
+        .frame(minWidth: 960, idealWidth: 1_180, minHeight: 572, idealHeight: 760, alignment: .topLeading)
         .task {
             loadRuntimeState()
         }

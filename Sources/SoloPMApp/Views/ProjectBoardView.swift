@@ -14,7 +14,7 @@ enum ProjectBoardWindowMetrics {
     static let defaultWidth: CGFloat = 1_180
     static let defaultHeight: CGFloat = 760
     static let minWidth: CGFloat = 960
-    static let minHeight: CGFloat = 620
+    static let minHeight: CGFloat = 572
 }
 
 enum ProjectBoardLayoutMetrics {
@@ -1511,7 +1511,7 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
         // AX-driven resizes can bypass SwiftUI's content fitting constraint.
         // The product contract is expressed in content coordinates; titlebar
         // and toolbar height vary per window and must not consume the usable
-        // 960x620 board area.
+        // 960x572 board area.
         let minimumContentSize = NSSize(
             width: ProjectBoardWindowMetrics.minWidth,
             height: ProjectBoardWindowMetrics.minHeight
