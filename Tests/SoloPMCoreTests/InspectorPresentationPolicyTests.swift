@@ -87,25 +87,31 @@ final class InspectorPresentationPolicyTests: XCTestCase {
         }
     }
 
-    func testWideToCompactResizeClearsIntentAndDoesNotRestoreWhenWideAgain() {
+    func testWideToCompactResizePreservesFreshExplicitCompactRequest() {
+        let explicitIntent = InspectorPresentationIntent(
+            userRequested: true,
+            allowsCompactPresentation: true
+        )
         let intent = InspectorPresentationPolicy.intentAfterResize(
             previousWindowWidth: 1_180,
             currentWindowWidth: 1_024,
-            intent: InspectorPresentationIntent(
-                userRequested: true,
-                allowsCompactPresentation: true
-            )
+            intent: explicitIntent
         )
 
-        XCTAssertEqual(intent, .closed)
-        XCTAssertFalse(
-            InspectorPresentationPolicy.shouldPresent(
-                windowWidth: 1_180,
-                route: .project(42),
-                selection: .task,
-                userRequested: intent.userRequested,
-                allowsCompactPresentation: intent.allowsCompactPresentation
-            )
+        XCTAssertEqual(intent, explicitIntent)
+    }
+
+    func testWideToCompactResizeClearsPassiveWideIntent() {
+        XCTAssertEqual(
+            InspectorPresentationPolicy.intentAfterResize(
+                previousWindowWidth: 1_180,
+                currentWindowWidth: 1_024,
+                intent: InspectorPresentationIntent(
+                    userRequested: true,
+                    allowsCompactPresentation: false
+                )
+            ),
+            .closed
         )
     }
 

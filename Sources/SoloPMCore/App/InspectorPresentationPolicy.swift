@@ -21,9 +21,9 @@ public struct InspectorPresentationIntent: Equatable, Sendable {
 }
 
 /// Pure policy separating per-scene user intent from effective presentation.
-/// Route or selection invalidation only affects visibility, while crossing
-/// from wide into compact mode explicitly dismisses the Inspector by product
-/// design and requires a fresh user action before it can reopen.
+/// Route or selection invalidation only affects visibility. Crossing from wide
+/// into compact mode dismisses passive wide-window intent, while a fresh
+/// explicit compact request survives delayed hosted-window geometry updates.
 public enum InspectorPresentationPolicy {
     public static let wideMinimumWidth = 1_180.0
 
@@ -62,13 +62,14 @@ public enum InspectorPresentationPolicy {
         intent: InspectorPresentationIntent
     ) -> InspectorPresentationIntent {
         guard previousWindowWidth >= wideMinimumWidth,
-              currentWindowWidth < wideMinimumWidth else {
+              currentWindowWidth < wideMinimumWidth,
+              !intent.allowsCompactPresentation else {
             return intent
         }
 
-        // Crossing into compact mode is a product-level dismissal, not a
-        // temporary hide. Reopening therefore always requires a fresh,
-        // explicit user action after the resize.
+        // A passive wide-window preference closes when compacted. A fresh
+        // explicit compact request is preserved above because SwiftUI can
+        // report the clamped hosted-window width after the button action.
         return .closed
     }
 }
