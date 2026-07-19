@@ -164,6 +164,16 @@ write_command() {
     printf '%s\n' '# Keep worksheet instructions, set Status: completed, check every item, and fill every required value.'
     printf '%s\n' '# This command must only be run after the signed, notarized, stapled release artifact and appcast are verified.'
     printf '\n'
+    printf '%s\n' 'VALIDATE_ONLY=0'
+    printf '%s\n' 'usage() {'
+    printf '%s\n' '  printf "%s\n" "usage: $0 [--validate-only]"'
+    printf '%s\n' '}'
+    printf '%s\n' 'if [[ "$#" -gt 1 ]]; then usage >&2; exit 2; fi'
+    printf '%s\n' 'if [[ "$#" -eq 1 ]]; then'
+    printf '%s\n' '  if [[ "$1" != "--validate-only" ]]; then usage >&2; exit 2; fi'
+    printf '%s\n' '  VALIDATE_ONLY=1'
+    printf '%s\n' 'fi'
+    printf '\n'
     printf 'REPO_ROOT=%q\n' "$ROOT_DIR"
     printf '%s\n' 'cd "$REPO_ROOT"'
     printf '\n'
@@ -277,6 +287,11 @@ write_command() {
     printf '\n'
     printf '%s\n' '# Validate the filled release-machine evidence command before writing tracked evidence.'
     write_release_evidence_invocation "--validate-only"
+    printf '\n'
+    printf '%s\n' 'if [[ "$VALIDATE_ONLY" == 1 ]]; then'
+    printf '%s\n' '  printf "%s\n" "Release evidence validation passed; packaging/release-evidence.json was not written."'
+    printf '%s\n' '  exit 0'
+    printf '%s\n' 'fi'
     printf '\n'
     printf '%s\n' '# If validation passes and every release-machine manual check is complete, write tracked evidence.'
     write_release_evidence_invocation "--force"
