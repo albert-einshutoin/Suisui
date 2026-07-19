@@ -36,6 +36,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("<string>SoloPM.icns</string>"))
         XCTAssertTrue(bundleMetadataVerifier.contains("CFBundleIconFile"))
         XCTAssertTrue(bundleMetadataVerifier.contains("missing bundled app icon"))
+        XCTAssertTrue(bundleMetadataVerifier.contains("com.apple.security.device.audio-input"))
+        XCTAssertTrue(bundleMetadataVerifier.contains("assert_eq \"$ENTITLEMENT_KEY_COUNT\" \"1\""))
         XCTAssertTrue(artifactSizeGate.contains("SOLOPM_MAX_ZIP_ARTIFACT_BYTES:-7864320"))
         XCTAssertTrue(packageSizePolicy.contains("視覚上十分な512px相当に最適化"))
     }
