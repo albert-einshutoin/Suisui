@@ -5,8 +5,8 @@ SoloPMの配布物は、初回導入が軽く、必要な高度機能はユー�
 ## Production budget
 
 - `SoloPM.app`: file payload合計50 MiB以下。`script/check_release_bundle_inventory.sh`が超過をfail closedにする。
-- ZIP: 8 MiB以下。DMG: 9 MiB以下。`script/check_release_artifact_size.sh`が形式別に検証し、必要な変更は`SOLOPM_MAX_ZIP_ARTIFACT_BYTES`または`SOLOPM_MAX_DMG_ARTIFACT_BYTES`をPRで明示して更新する。
-- ZIP上限は、正式な多解像度アプリアイコンを含むZIP実測値7,781,363 bytesを根拠に、6 MiBから8 MiBへ更新した。アイコンを除外したり解像度を欠落させたりせず、今後も約600 KiBの回帰余地だけを許容する。
+- ZIP: 7.5 MiB以下。DMG: 9 MiB以下。`script/check_release_artifact_size.sh`が形式別に検証し、必要な変更は`SOLOPM_MAX_ZIP_ARTIFACT_BYTES`または`SOLOPM_MAX_DMG_ARTIFACT_BYTES`をPRで明示して更新する。
+- 正式な多解像度アプリアイコンは1024pxキャンバスと全macOS表現を維持しつつ、視覚上十分な512px相当に最適化した。ZIP実測値7,443,842 bytesを根拠に上限を7.5 MiBとし、約420 KiBを超える追加回帰は拒否する。
 - Release evidence: app bundle、main binary、ZIP/DMGの実測bytesとstrip/pruning modeを記録する。
 - Review threshold: 新規依存または新規リソースがapp bundleを5 MiB以上増やす変更は、PRに代替案、ユーザー価値、更新・脆弱性対応責任を記載する。
 - `.build`や開発者cacheの容量を、ユーザーへ配るapp bundleの容量として扱わない。

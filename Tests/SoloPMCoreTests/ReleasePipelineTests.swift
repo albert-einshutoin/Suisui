@@ -20,6 +20,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(properties[kCGImagePropertyPixelWidth] as? Int, 1024)
         XCTAssertEqual(properties[kCGImagePropertyPixelHeight] as? Int, 1024)
         XCTAssertTrue(FileManager.default.fileExists(atPath: iconURL.path))
+        let iconBytes = try XCTUnwrap(
+            FileManager.default.attributesOfItem(atPath: iconURL.path)[.size] as? NSNumber
+        ).intValue
+        XCTAssertLessThanOrEqual(iconBytes, 1_300_000)
         XCTAssertTrue(generator.contains("icon_16x16.png"))
         XCTAssertTrue(generator.contains("icon_512x512@2x.png"))
         XCTAssertTrue(generator.contains("iconutil -c icns"))
@@ -29,8 +33,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("<string>SoloPM.icns</string>"))
         XCTAssertTrue(bundleMetadataVerifier.contains("CFBundleIconFile"))
         XCTAssertTrue(bundleMetadataVerifier.contains("missing bundled app icon"))
-        XCTAssertTrue(artifactSizeGate.contains("SOLOPM_MAX_ZIP_ARTIFACT_BYTES:-8388608"))
-        XCTAssertTrue(packageSizePolicy.contains("正式な多解像度アプリアイコンを含むZIP実測値"))
+        XCTAssertTrue(artifactSizeGate.contains("SOLOPM_MAX_ZIP_ARTIFACT_BYTES:-7864320"))
+        XCTAssertTrue(packageSizePolicy.contains("視覚上十分な512px相当に最適化"))
     }
 
     func testAccessibilitySourceAnchorCountContractAllowsCoverageGrowth() throws {
