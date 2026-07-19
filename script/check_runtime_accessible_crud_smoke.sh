@@ -183,6 +183,7 @@ launch_app_for_seed_project() {
   local seed_project_id="$1"
   local selected_task_id="${2:-}"
   local inspector_field="project-inspector-title"
+  local inspector_button="project-header-open-inspector"
   terminate_app
   if [[ -n "$selected_task_id" ]]; then
     /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
@@ -203,12 +204,13 @@ launch_app_for_seed_project() {
   wait_for_visible_windows
   if [[ -n "$selected_task_id" ]]; then
     inspector_field="task-inspector-title"
+    inspector_button="task-card-open-details"
   fi
   # Scene/AppStorage presentation intent survives the repeated launches in this
   # isolated HOME. Inspect the postcondition first so a blind toggle cannot
   # close an inspector that SwiftUI has already restored from the prior phase.
   if ! textFieldContainingExists "$inspector_field"; then
-    pressButtonUntilTextFieldContaining "project-board-inspector-toggle" "$inspector_field"
+    pressButtonUntilTextFieldContaining "$inspector_button" "$inspector_field"
   fi
 }
 
@@ -851,6 +853,7 @@ setTextFieldContaining "project-inspector-title" "AX Runtime CRUD Project"
 waitForTextFieldContaining "AX Runtime CRUD Project"
 pressButtonContaining "project-inspector-save"
 verify_single_value "renamed project" "SELECT title FROM projects WHERE id=$created_project_id;" "AX Runtime CRUD Project"
+pressButtonContaining "project-inspector-close"
 
 pressButtonUntilTextFieldContaining "project-header-add-task" "inline-task-title"
 waitForTextFieldContaining "inline-task-title"
@@ -894,6 +897,7 @@ verify_single_value "failed save did not mutate task" "SELECT title FROM tasks W
 "$SQLITE3" "$database_path" "DROP TRIGGER runtime_crud_fail_task_update;"
 pressButtonContaining "task-inspector-save-retry" "Retry"
 verify_single_value "recoverable task save retry" "SELECT title FROM tasks WHERE id=$created_task_id;" "AX Runtime CRUD Task Retried"
+pressButtonContaining "task-inspector-close"
 pressButtonContaining "task-status-move-planned-$created_task_id"
 verify_single_value "advanced task status" "SELECT status FROM tasks WHERE id=$created_task_id;" "planned"
 terminate_app
@@ -917,9 +921,20 @@ pressButtonContaining "task-auto-execution-review"
 pressButtonContaining "task-auto-execution-run-plan"
 verify_single_value "executed task status" "SELECT status FROM tasks WHERE id=$execution_task_id;" "in_progress"
 verify_single_value "executed task detail marker" "SELECT CASE WHEN detail LIKE '%SoloPM approved automation execution%' THEN 1 ELSE 0 END FROM tasks WHERE id=$execution_task_id;" "1"
-pressButtonContaining "task-card-open-details"
-scrollAXContainerDown "task-inspector"
+# Depending on SwiftUI's modal lifecycle, running the plan may keep the task
+# inspector open or dismiss it. Inspect the postcondition before pressing the
+# card so we neither miss the closed case nor obscure an existing sheet by
+# activating a sibling Project Board window.
+if ! textFieldContainingExists "task-inspector-title"; then
+  pressButtonContaining "task-card-open-details"
+fi
+waitForTextFieldContaining "task-inspector-title"
+# The compact inspector sheet has a shorter viewport than the wide native
+# inspector. Scroll in a bounded increment so the receipt becomes visible
+# instead of overshooting it into the later Danger Zone section.
+SOLOPM_UI_EVIDENCE_AX_SCROLL_EVENTS=4 scrollAXContainerDown "task-inspector"
 waitForAXElementContaining "approved-execution-receipt" "AX Runtime Execution Task" "Execute this runtime task through the approved plan."
+pressButtonContaining "task-inspector-close"
 
 pressButtonUntilTextFieldContaining "project-header-add-task" "inline-task-title"
 waitForTextFieldContaining "inline-task-title"

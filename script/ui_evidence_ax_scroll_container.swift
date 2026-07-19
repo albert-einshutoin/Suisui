@@ -110,12 +110,19 @@ guard let windowsValue = copyAttribute(appElement, kAXWindowsAttribute as CFStri
     exit(2)
 }
 
-var queue = elements(from: windowsValue)
+struct TraversalNode {
+    let element: AXUIElement
+    let owningWindow: AXUIElement
+}
+
+let windows = elements(from: windowsValue)
+var queue = windows.map { TraversalNode(element: $0, owningWindow: $0) }
 var cursor = 0
 var visitedCount = 0
 
 while cursor < queue.count && visitedCount < maxNodes {
-    let element = queue[cursor]
+    let node = queue[cursor]
+    let element = node.element
     cursor += 1
     visitedCount += 1
 
@@ -125,9 +132,10 @@ while cursor < queue.count && visitedCount < maxNodes {
             fputs("Refusing AX scroll because app pid \(pid) is not frontmost.\n", stderr)
             exit(1)
         }
-        for window in elements(from: windowsValue) {
-            _ = AXUIElementPerformAction(window, kAXRaiseAction as CFString)
-        }
+        // Raising every app window leaves the last sibling above the modal we
+        // are about to scroll. Raise only the window that owns the matched
+        // container so its sheet remains visible and receives the wheel event.
+        _ = AXUIElementPerformAction(node.owningWindow, kAXRaiseAction as CFString)
         guard let position = point(from: copyAttribute(element, kAXPositionAttribute as CFString)),
               let dimensions = size(from: copyAttribute(element, kAXSizeAttribute as CFString)),
               dimensions.width > 0,
@@ -162,7 +170,9 @@ while cursor < queue.count && visitedCount < maxNodes {
     }
 
     for attribute in childAttributes {
-        queue.append(contentsOf: elements(from: copyAttribute(element, attribute as CFString)))
+        queue.append(contentsOf: elements(from: copyAttribute(element, attribute as CFString)).map {
+            TraversalNode(element: $0, owningWindow: node.owningWindow)
+        })
     }
 }
 
