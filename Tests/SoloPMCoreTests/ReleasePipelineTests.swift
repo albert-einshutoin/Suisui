@@ -136,6 +136,76 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("signature is missing hardened runtime"))
     }
 
+    func testReleaseDMGNotarizationSubmitsStaplesValidatesAndAssessesOutermostArtifact() throws {
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-release-dmg-notarization-\(UUID().uuidString)", isDirectory: true)
+        let fakeBinDirectory = fixtureDirectory.appendingPathComponent("bin", isDirectory: true)
+        let artifactURL = fixtureDirectory.appendingPathComponent("SoloPM-fixture.dmg")
+        let commandLogURL = fixtureDirectory.appendingPathComponent("commands.log")
+        try FileManager.default.createDirectory(at: fakeBinDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+        try Data("fixture-dmg".utf8).write(to: artifactURL)
+
+        let xcrun = """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf 'xcrun %s\\n' "$*" >>"$SOLOPM_NOTARIZATION_FIXTURE_LOG"
+        if [[ "$1 $2" == "notarytool submit" ]]; then
+          printf '{"id":"fixture-submission-id","status":"Accepted"}\\n'
+        fi
+        """
+        let spctl = """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf 'spctl %s\\n' "$*" >>"$SOLOPM_NOTARIZATION_FIXTURE_LOG"
+        """
+        for (name, contents) in [("xcrun", xcrun), ("spctl", spctl)] {
+            let url = fakeBinDirectory.appendingPathComponent(name)
+            try contents.write(to: url, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        }
+
+        let path = "\(fakeBinDirectory.path):/usr/bin:/bin:/usr/sbin:/sbin"
+        let result = try runScript(
+            "script/notarize_release_dmg.sh",
+            arguments: [artifactURL.path],
+            environment: [
+                "PATH": path,
+                "SOLOPM_NOTARY_PROFILE": "fixture-profile",
+                "SOLOPM_NOTARIZATION_FIXTURE_LOG": commandLogURL.path
+            ]
+        )
+        let commands = try String(contentsOf: commandLogURL, encoding: .utf8)
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(commands.contains("xcrun notarytool submit \(artifactURL.path) --keychain-profile fixture-profile --wait --output-format json"))
+        XCTAssertTrue(commands.contains("xcrun stapler staple \(artifactURL.path)"))
+        XCTAssertTrue(commands.contains("xcrun stapler validate \(artifactURL.path)"))
+        XCTAssertTrue(commands.contains("spctl -a -t open --context context:primary-signature -vv \(artifactURL.path)"))
+        XCTAssertLessThan(
+            try XCTUnwrap(commands.range(of: "notarytool submit")).lowerBound,
+            try XCTUnwrap(commands.range(of: "stapler staple")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(commands.range(of: "stapler validate")).lowerBound,
+            try XCTUnwrap(commands.range(of: "spctl -a -t open")).lowerBound
+        )
+    }
+
+    func testReleasePackagingNotarizesDMGBeforeChecksumAndEvidence() throws {
+        let packageScript = try readPackageFile("script/package_release.sh")
+        let verifier = try readPackageFile("script/verify_release_environment.sh")
+
+        XCTAssertTrue(packageScript.contains("notarize_release_dmg.sh\" \"$DMG_PATH\""))
+        XCTAssertLessThan(
+            try XCTUnwrap(packageScript.range(of: "notarize_release_dmg.sh\" \"$DMG_PATH\"")).lowerBound,
+            try XCTUnwrap(packageScript.range(of: "create_checksum \"$DMG_PATH\"")).lowerBound
+        )
+        XCTAssertTrue(verifier.contains("notarize_release_dmg.sh"))
+        XCTAssertTrue(verifier.contains("xcrun stapler validate \"$package_file\""))
+        XCTAssertTrue(verifier.contains("spctl -a -t open --context context:primary-signature -vv \"$package_file\""))
+    }
+
     func testNotarizationSetupVerifierChecksProfileWithoutSecrets() throws {
         let script = try readPackageFile("script/verify_notarization_setup.sh")
 
