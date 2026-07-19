@@ -9748,7 +9748,8 @@ final class ReleasePipelineTests: XCTestCase {
         let visible = try makeVisualRegressionFixture(
             requiredVisibleTextLines: requiredLines,
             currentVisibleTextLines: [
-                "Confirm project board to task",
+                // Vision can omit an inter-word space at compact 1x capture sizes.
+                "Confirm project boardto task",
                 "In Progress • High",
                 "2026-07-10"
             ]
