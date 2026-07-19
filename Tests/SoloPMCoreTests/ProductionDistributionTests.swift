@@ -25,8 +25,16 @@ final class ProductionDistributionTests: XCTestCase {
         XCTAssertTrue(verifier.contains("SOLOPM_VERIFY_REMOTE_SPARKLE"))
         XCTAssertTrue(verifier.contains("curl"))
         XCTAssertTrue(verifier.contains("published Sparkle artifact SHA-256 does not match"))
+        XCTAssertTrue(verifier.contains("$remote_enclosure_url\" --output \"$remote_artifact"))
+        XCTAssertTrue(verifier.contains("published Sparkle feed enclosure URL does not match"))
+        XCTAssertTrue(verifier.contains("published Sparkle feed edSignature does not match"))
+        XCTAssertTrue(verifier.contains("--verify \"$remote_artifact\" \"$remote_enclosure_signature\""))
         XCTAssertTrue(environment.contains("SOLOPM_VERIFY_REMOTE_SPARKLE=\"$ONLINE_PREFLIGHT\""))
         XCTAssertTrue(sparkleExample.contains("SOLOPM_SPARKLE_SIGN_UPDATE="))
+
+        let sourceRange = try XCTUnwrap(verifier.range(of: "source \"$SPARKLE_ENV_FILE\""))
+        let toolRange = try XCTUnwrap(verifier.range(of: "SPARKLE_SIGN_UPDATE=\"${SOLOPM_SPARKLE_SIGN_UPDATE:-}\""))
+        XCTAssertLessThan(sourceRange.lowerBound, toolRange.lowerBound)
     }
 
     func testDMGNotarizationPersistsStructuredAuditableEvidence() throws {

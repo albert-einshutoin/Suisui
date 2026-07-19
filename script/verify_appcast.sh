@@ -9,7 +9,6 @@ SAMPLE_APPCAST_FILE="$ROOT_DIR/packaging/appcast.sample.xml"
 REQUIRE_RELEASE_APPCAST="${SOLOPM_REQUIRE_RELEASE_APPCAST:-0}"
 VERIFY_REMOTE_SPARKLE="${SOLOPM_VERIFY_REMOTE_SPARKLE:-0}"
 VERIFY_SPARKLE_SIGNATURE="${SOLOPM_VERIFY_SPARKLE_SIGNATURE:-$VERIFY_REMOTE_SPARKLE}"
-SPARKLE_SIGN_UPDATE="${SOLOPM_SPARKLE_SIGN_UPDATE:-}"
 REMOTE_TMP_DIR=""
 
 cleanup() {
@@ -24,6 +23,7 @@ if [[ -f "$SPARKLE_ENV_FILE" ]]; then
   source "$SPARKLE_ENV_FILE"
 fi
 
+SPARKLE_SIGN_UPDATE="${SOLOPM_SPARKLE_SIGN_UPDATE:-}"
 DOWNLOAD_URL_PREFIX="${SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX:-${SPARKLE_DOWNLOAD_URL_PREFIX:-}}"
 SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
 
@@ -287,11 +287,34 @@ if [[ "$REQUIRE_RELEASE_APPCAST" == "1" ]]; then
     curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
       "$SPARKLE_FEED_URL" --output "$remote_appcast"
     xmllint --noout "$remote_appcast"
+
+    # Select the enclosure for this exact release from the feed users consume.
+    # A feed can contain older items first, so the first enclosure is not a
+    # trustworthy proxy for the artifact currently being released.
+    remote_enclosure_url="$(xmllint --xpath "string((//*[local-name()='enclosure'][contains(@url, '$expected_zip_name')]/@url)[1])" "$remote_appcast" 2>/dev/null || true)"
+    remote_enclosure_signature="$(xmllint --xpath "string((//*[local-name()='enclosure'][contains(@url, '$expected_zip_name')]/@*[local-name()='edSignature'])[1])" "$remote_appcast" 2>/dev/null || true)"
+    if [[ -z "$remote_enclosure_url" || -z "$remote_enclosure_signature" ]]; then
+      echo "published Sparkle feed is missing the current release enclosure or edSignature" >&2
+      exit 2
+    fi
+    if [[ "$remote_enclosure_url" != "$enclosure_url" ]]; then
+      echo "published Sparkle feed enclosure URL does not match the local release appcast" >&2
+      exit 2
+    fi
+    if [[ "$remote_enclosure_signature" != "$enclosure_signature" ]]; then
+      echo "published Sparkle feed edSignature does not match the local release appcast" >&2
+      exit 2
+    fi
     curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
-      "$enclosure_url" --output "$remote_artifact"
+      "$remote_enclosure_url" --output "$remote_artifact"
     published_sha="$(shasum -a 256 "$remote_artifact" | awk 'NF { print $1; exit }')"
     if [[ "$published_sha" != "$actual_zip_sha" ]]; then
       echo "published Sparkle artifact SHA-256 does not match local release artifact" >&2
+      exit 2
+    fi
+    if [[ "$VERIFY_SPARKLE_SIGNATURE" == "1" ]] \
+      && ! "$sign_update" --verify "$remote_artifact" "$remote_enclosure_signature" >/dev/null; then
+      echo "published Sparkle artifact edSignature verification failed" >&2
       exit 2
     fi
   fi
