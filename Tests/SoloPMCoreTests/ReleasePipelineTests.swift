@@ -7150,7 +7150,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("/usr/bin/env -i"))
         XCTAssertTrue(script.contains("\"$APP_BINARY\" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &"))
         XCTAssertTrue(script.contains("cold-launch-visible-window"))
+        XCTAssertTrue(script.contains("cold-launch-command-ready"))
+        XCTAssertTrue(script.contains("cold-launch-today-ready"))
+        XCTAssertTrue(script.contains("SOLOPM_LAUNCH_TIMELINE_PATH"))
+        XCTAssertTrue(script.contains("wait_for_launch_milestone \"command-ready\""))
+        XCTAssertTrue(script.contains("record_sample \"cold-launch-visible-window\""))
+        XCTAssertTrue(script.contains("record_sample \"cold-launch-command-ready\""))
+        XCTAssertTrue(script.contains("record_sample \"cold-launch-today-ready\""))
         XCTAssertTrue(script.contains("wait_for_visible_window"))
+        XCTAssertTrue(script.contains("__AX_ANY_WINDOW__"))
+        XCTAssertTrue(script.contains("AX_WAIT_POLL_INTERVAL_SECONDS=0.05"))
         XCTAssertTrue(script.contains("wait_for_marker \"project-board-command-palette\""))
         XCTAssertTrue(script.contains("measure_destination \"destination-inbox\" \"sidebar-destination-inbox\" \"Inbox\" \"inbox-workflow\""))
         XCTAssertTrue(script.contains("measure_destination \"destination-review\" \"sidebar-destination-review\" \"Review\" \"review-hub\""))
@@ -7186,13 +7195,13 @@ final class ReleasePipelineTests: XCTestCase {
             "script/check_release_launch_performance_smoke.sh",
             environment: [
                 "SOLOPM_PERFORMANCE_PROFILE": "release",
-                "SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS": "15001",
+                "SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS": "1001",
                 "SOLOPM_PERFORMANCE_OUTPUT_DIR": outputDirectory.path
             ]
         )
 
         XCTAssertEqual(result.exitCode, 2)
-        XCTAssertTrue(result.output.contains("BLOCKER: release performance budget override cannot exceed default cold launch budget (15000ms)"))
+        XCTAssertTrue(result.output.contains("BLOCKER: release performance budget override cannot exceed default cold launch budget (1000ms)"))
         XCTAssertFalse(result.output.contains("./script/build_and_run.sh"))
     }
 

@@ -37,16 +37,18 @@ log stream --predicate 'subsystem == "dev.solopm.performance"' --signpost
 ```
 
 Note the intentional gap: `LaunchToRuntimeBundle` starts when the launch
-task begins bundle preparation (after a short `ProjectBoardLaunchHydrationDelay`
-of 150 ms that keeps the first window paint responsive), not at `main()`.
-For true process-start-to-paint numbers, combine with the App Launch
-template's lifecycle phases.
+task begins bundle preparation, not at `main()`. There is no fixed hydration
+delay on the launch path; SwiftUI receives one scheduling yield before the
+detached runtime work begins. For true process-start-to-ready numbers, run
+`script/check_release_launch_performance_smoke.sh`. The harness budgets the
+app-emitted `command-ready` milestone and separately requires the matching AX
+markers, so accessibility traversal overhead cannot weaken or inflate the SLO.
 
 ## Budgets to hold
 
 | Metric | Budget | Primary signpost / probe |
 | --- | --- | --- |
-| Cold launch → first board paint | 1.0 s | App Launch template end-to-end; `LaunchToRuntimeBundle` + `FirstBoardLoad` cover the SoloPM-owned share |
+| Cold launch → command-ready board | 1.0 s | Release smoke app-owned `command-ready` milestone plus mandatory `project-board-command-palette` AX proof |
 | Board reload at 1k tasks | 100 ms | `FirstBoardLoad` measured against a seeded 1k-task database |
 | Command palette content search | 50 ms | `CommandPaletteContentSearchService` query (no signpost yet; measure with Instruments Time Profiler or a test harness) |
 
@@ -55,9 +57,9 @@ template's lifecycle phases.
 Record real numbers here after each profiling run (machine, build
 configuration, dataset size, date).
 
-| Date | Machine / build | LaunchToRuntimeBundle | DatabaseOpenMigrate | FirstBoardLoad | Cold launch → first paint | Palette search |
-| --- | --- | --- | --- | --- | --- | --- |
-| — | — | unmeasured — record on first profiling run | unmeasured — record on first profiling run | unmeasured — record on first profiling run | unmeasured — record on first profiling run | unmeasured — record on first profiling run |
+| Date | Machine / build | Window visible | Command ready | Today ready | Result |
+| --- | --- | --- | --- | --- | --- |
+| 2026-07-20 | Mac mini (M4, 32 GB), Release | 494 ms | 450 ms | 451 ms | GREEN (`.tmp/suisui-release-performance-after-5/`) |
 
 ## Scale guard
 

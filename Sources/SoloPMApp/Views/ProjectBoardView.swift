@@ -253,10 +253,12 @@ struct ProjectBoardView: View {
             LaunchPerformanceSignposts.measureFirstBoardLoadOnce {
                 viewModel.load()
             }
+            LaunchPerformanceMilestones.record("command-ready")
             viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
             reloadSavedSmartLists()
             restoreSelectedDestinationIfNeeded()
             consumePendingSceneOpenRequests()
+            LaunchPerformanceMilestones.record("today-ready")
         }
         .onDisappear {
             sceneCoordinator.unregister(sceneID: sceneID)

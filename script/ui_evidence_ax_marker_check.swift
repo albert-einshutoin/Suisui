@@ -150,6 +150,14 @@ guard !windows.isEmpty else {
     exit(2)
 }
 
+// Performance smoke needs a localization- and brand-independent first-window
+// timestamp. Keep that intent explicit instead of treating an empty AX
+// identifier as a wildcard, which conflicts with exact-identifier audits.
+if identifierNeedle == "__AX_ANY_WINDOW__" {
+    print("present")
+    exit(0)
+}
+
 var foundIdentifier = false
 // An empty text marker intentionally means identifier-only verification. This
 // keeps stable AX identifiers usable across locales without accepting a missing

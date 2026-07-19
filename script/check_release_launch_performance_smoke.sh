@@ -22,6 +22,7 @@ PERFORMANCE_HOME="${SOLOPM_PERFORMANCE_HOME:-$OUTPUT_DIR/home}"
 PERFORMANCE_DATABASE_PATH="${SOLOPM_PERFORMANCE_DATABASE_PATH:-$PERFORMANCE_HOME/Library/Application Support/SoloPM/SoloPM.sqlite}"
 SUMMARY_FILE="$OUTPUT_DIR/summary.md"
 SAMPLES_FILE="$OUTPUT_DIR/samples.tsv"
+TIMELINE_FILE="$OUTPUT_DIR/launch-timeline.tsv"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}"
 AX_MARKER_HELPER="${AX_MARKER_HELPER:-$ROOT_DIR/script/ui_evidence_ax_marker_check.swift}"
@@ -34,7 +35,7 @@ case "$SOLOPM_PERFORMANCE_PROFILE" in
     # Release profile keeps the build aligned with release-machine evidence and
     # the stricter Sparkle requirements already enforced by the release path.
     DEFAULT_BUILD_CONFIGURATION=release
-    DEFAULT_COLD_LAUNCH_BUDGET_MS=15000
+    DEFAULT_COLD_LAUNCH_BUDGET_MS=1000
     DEFAULT_DESTINATION_SWITCH_BUDGET_MS=3000
     ;;
   debug)
@@ -95,10 +96,16 @@ mkdir -p "$(dirname "$PERFORMANCE_DATABASE_PATH")"
 # shellcheck source=/dev/null
 source "$AX_HELPERS"
 
+# A one-second product SLO needs finer sampling than the conservative shared
+# smoke default. This changes only observer cadence, never the product budget.
+AX_WAIT_POLL_INTERVAL_SECONDS=0.05
+export AX_WAIT_POLL_INTERVAL_SECONDS
+
 APP_PID=""
 APP_LAUNCH_PID=""
 APP_IDENTITY=""
 APP_LAUNCH_IDENTITY=""
+TRACK_LAUNCH_MILESTONES=0
 
 now_ms() {
   /usr/bin/perl -MTime::HiRes=time -e 'printf "%d\n", time() * 1000'
@@ -170,9 +177,14 @@ APPLESCRIPT
 open_app() {
   # Direct launch retains the deterministic HOME/SQLite/selection contract;
   # unlike LaunchServices it cannot silently drop normal-route environment.
+  local timeline_path=""
+  if [[ "$TRACK_LAUNCH_MILESTONES" == "1" ]]; then
+    timeline_path="$TIMELINE_FILE"
+  fi
   /usr/bin/env -i PATH="$PATH" TMPDIR="$OUTPUT_DIR" HOME="$PERFORMANCE_HOME" CFFIXED_USER_HOME="$PERFORMANCE_HOME" \
     SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$PERFORMANCE_DATABASE_PATH" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="today" \
+    SOLOPM_LAUNCH_TIMELINE_PATH="$timeline_path" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
   APP_LAUNCH_PID=$!
   APP_LAUNCH_IDENTITY="$(ax_wait_for_owned_process_identity "$APP_LAUNCH_PID" "$APP_BINARY" 3)" || {
@@ -189,11 +201,33 @@ open_app() {
     return 1
   }
   ax_wait_for_pid_owned_process "$APP_NAME" "$APP_PID" "$TIMEOUT_SECONDS" "$APP_BINARY"
-  activate_app
+}
+
+wait_for_launch_milestone() {
+  local label="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local timestamp=""
+  while true; do
+    timestamp="$(awk -F '\t' -v label="$label" '$1 == label { print $2; exit }' "$TIMELINE_FILE" 2>/dev/null || true)"
+    if [[ "$timestamp" =~ ^[0-9]+$ ]]; then
+      printf '%s\n' "$timestamp"
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      ax_emit_failure_category "product-marker" "performance-launch-milestone-unavailable"
+      echo "BLOCKER: app did not emit launch milestone: $label" >&2
+      return 1
+    fi
+    sleep 0.05
+  done
 }
 
 wait_for_visible_window() {
-  if ! ax_wait_for_pid_owned_window "$APP_NAME" "$APP_PID" "" "$TIMEOUT_SECONDS" "" "$APP_BINARY"; then
+  local probe_file="$OUTPUT_DIR/wait-visible-window.txt"
+  # Reuse the compiled AX probe and its explicit any-window token to detect an
+  # owned window at sub-second cadence. The shared AppleScript helper polls at
+  # one-second intervals and would otherwise dominate a one-second launch SLO.
+  if ! ax_wait_for_ax_identifier "$APP_NAME" "__AX_ANY_WINDOW__" "$TIMEOUT_SECONDS" "$ROOT_DIR" "$probe_file" "" "$APP_PID"; then
     ax_emit_failure_category "window" "performance-window-unavailable"
     echo "BLOCKER: $APP_NAME did not publish a visible window for launched pid $APP_PID within ${TIMEOUT_SECONDS}s" >&2
     return 1
@@ -398,12 +432,20 @@ SOLOPM_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --bu
 prepare_production_fixture
 
 launch_start_ms="$(now_ms)"
+rm -f "$TIMELINE_FILE"
+TRACK_LAUNCH_MILESTONES=1
 open_app
 wait_for_visible_window
+visible_window_ms="$(now_ms)"
+command_ready_ms="$(wait_for_launch_milestone "command-ready")"
+today_ready_ms="$(wait_for_launch_milestone "today-ready")"
+# AX markers remain mandatory proof that the app-owned readiness milestones
+# correspond to real, operable UI rather than optimistic instrumentation.
 wait_for_marker "project-board-command-palette"
 wait_for_marker "today-workflow"
-launch_end_ms="$(now_ms)"
-record_sample "cold-launch-visible-window" "$launch_start_ms" "$launch_end_ms" "$MAX_COLD_LAUNCH_MS"
+record_sample "cold-launch-visible-window" "$launch_start_ms" "$visible_window_ms"
+record_sample "cold-launch-command-ready" "$launch_start_ms" "$command_ready_ms" "$MAX_COLD_LAUNCH_MS"
+record_sample "cold-launch-today-ready" "$launch_start_ms" "$today_ready_ms"
 
 measure_destination "destination-inbox" "sidebar-destination-inbox" "Inbox" "inbox-workflow"
 # Assistant Queue is intentionally nested under Review in the four-area IA.

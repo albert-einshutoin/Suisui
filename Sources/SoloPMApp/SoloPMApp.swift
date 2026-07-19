@@ -340,7 +340,9 @@ private struct ProjectBoardWindowRootView: View {
             // Main-window creation must not wait for SQLite migration, receipt
             // stores, or connector composition. Prepare the heavy runtime
             // bundle off-main, then publish the MainActor-only view model.
-            try? await Task.sleep(nanoseconds: ProjectBoardLaunchHydrationDelay.nanoseconds)
+            // Give SwiftUI one scheduling turn to publish the lightweight
+            // loading surface without imposing a fixed delay on fast Macs.
+            await Task.yield()
             let runtime = await AppRuntimeFactory.prepareProjectBoardRuntimeBundle()
             guard Task.isCancelled == false else {
                 return
@@ -397,12 +399,6 @@ private struct ProjectBoardWindowRootView: View {
             )
         }
     }
-}
-
-private enum ProjectBoardLaunchHydrationDelay {
-    // AX/window-server publication can lag SwiftUI's first body pass. Keep the
-    // pause short because the heavy runtime work already moves off-main.
-    static let nanoseconds: UInt64 = 150_000_000
 }
 
 private struct SettingsWindowRootView: View {
@@ -565,7 +561,9 @@ private struct ProjectBoardFallbackRootView: View {
             // small visible window first prevents SQLite open/migration and the
             // full board's initial SwiftUI layout from leaving evidence scripts
             // with a process but no window.
-            try? await Task.sleep(nanoseconds: ProjectBoardLaunchHydrationDelay.nanoseconds)
+            // The window is already visible. Yield once before starting the
+            // detached runtime work so first paint wins without a fixed pause.
+            await Task.yield()
             let runtime = await AppRuntimeFactory.prepareProjectBoardRuntimeBundle()
             guard Task.isCancelled == false else {
                 return
@@ -738,6 +736,13 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
 
     private func ensureProjectBoardWindowIsVisible() {
         projectBoardWindowRestoreAttempts = 0
+        if SoloPMWindowlessFallbackEnvironment.shouldCreateDirectFallbackWindow {
+            // Isolated release/performance launches deliberately bypass state
+            // restoration. Publish their owned fallback window immediately;
+            // waiting here would become product launch latency, not resilience.
+            createFallbackProjectBoardWindow()
+            return
+        }
         attemptEnsureProjectBoardWindowIsVisible(after: 0.25)
     }
 

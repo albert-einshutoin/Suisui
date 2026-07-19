@@ -243,6 +243,7 @@ final class LaunchExperienceTests: XCTestCase {
 
     func testAppDelegateReopensProjectBoardWhenNoWindowIsVisible() throws {
         let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let projectBoardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
         XCTAssertTrue(source.contains("applicationShouldHandleReopen"))
         XCTAssertTrue(source.contains("ensureProjectBoardWindowIsVisible()"))
@@ -266,8 +267,12 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("let runtime = await AppRuntimeFactory.prepareProjectBoardRuntimeBundle()"))
         XCTAssertTrue(source.contains("AppRuntimeFactory.makeProjectBoardViewModel(runtime: runtime)"))
         XCTAssertTrue(source.contains("await MainActor.run"))
-        XCTAssertTrue(source.contains("ProjectBoardLaunchHydrationDelay.nanoseconds"))
-        XCTAssertTrue(source.contains("static let nanoseconds: UInt64 = 150_000_000"))
+        XCTAssertTrue(projectBoardSource.contains("LaunchPerformanceMilestones.record(\"command-ready\")"))
+        XCTAssertTrue(projectBoardSource.contains("LaunchPerformanceMilestones.record(\"today-ready\")"))
+        XCTAssertFalse(source.contains("ProjectBoardLaunchHydrationDelay.nanoseconds"))
+        XCTAssertFalse(source.contains("static let nanoseconds: UInt64 = 150_000_000"))
+        XCTAssertTrue(source.contains("if SoloPMWindowlessFallbackEnvironment.shouldCreateDirectFallbackWindow"))
+        XCTAssertTrue(source.contains("createFallbackProjectBoardWindow()"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-board-fallback-loading\")"))
         XCTAssertTrue(source.contains("makeKeyAndOrderFront(nil)"))
         XCTAssertTrue(source.contains("#selector(NSWindow.newWindowForTab(_:))"))
