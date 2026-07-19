@@ -535,10 +535,12 @@ write_voiceover_evidence_command() {
     printf '\n'
     printf '%s\n' 'launch_voiceover_candidate_for_evidence() {'
     printf '%s\n' '  terminate_voiceover_candidate'
-    printf '%s\n' '  /usr/bin/open -n -F "$REPO_ROOT/dist/$APP_NAME.app" \'
-    printf '%s\n' '    --env SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \'
-    printf '%s\n' '    --env "SOLOPM_DATABASE_PATH=$EXPECTED_DATABASE_PATH" \'
-    printf '%s\n' '    --env "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$EXPECTED_SELECTED_DESTINATION"'
+    printf '%s\n' '  /usr/bin/env \'
+    printf '%s\n' '    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \'
+    printf '%s\n' '    "SOLOPM_DATABASE_PATH=$EXPECTED_DATABASE_PATH" \'
+    printf '%s\n' '    "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$EXPECTED_SELECTED_DESTINATION" \'
+    printf '%s\n' '    "$APP_BINARY" &'
+    printf '%s\n' '  CANDIDATE_APP_PID=$!'
     printf '%s\n' '  wait_for_voiceover_candidate_process'
     printf '%s\n' '  activate_voiceover_candidate'
     printf '%s\n' '  wait_for_voiceover_candidate_windows'
@@ -667,19 +669,18 @@ wait_for_database_table() {
 
 open_candidate_app() {
   local selected_destination="${1:-}"
-  local open_args=(
-    -n
-    -F
-    "$APP_BUNDLE"
-    --env
+  local launch_environment=(
     SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1
-    --env
     "SOLOPM_DATABASE_PATH=$database_path"
   )
   if [[ -n "$selected_destination" ]]; then
-    open_args+=(--env "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$selected_destination")
+    launch_environment+=("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$selected_destination")
   fi
-  /usr/bin/open "${open_args[@]}"
+  # Own the candidate PID directly. LaunchServices can reuse or create a
+  # menu-bar-only instance while another SoloPM process is still retiring,
+  # leaving the reviewer with no Project Board window.
+  /usr/bin/nohup /usr/bin/env "${launch_environment[@]}" "$APP_BINARY" >/dev/null 2>&1 &
+  app_pid=$!
 }
 
 seed_voiceover_review_data() {
