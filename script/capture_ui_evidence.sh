@@ -68,6 +68,8 @@ APPEARANCE_OVERRIDE=""
 SETTINGS_WINDOW_OVERRIDE=""
 SETTINGS_TAB_OVERRIDE=""
 VOICE_COMMAND_WINDOW_OVERRIDE=""
+POSITIONED_WINDOW_WIDTH=""
+POSITIONED_WINDOW_HEIGHT=""
 EVIDENCE_APP_PID=""
 EVIDENCE_APP_LAUNCH_PID=""
 EVIDENCE_APP_IDENTITY=""
@@ -823,6 +825,7 @@ position_window_for_capture() {
   local height="${viewport#*x}"
   local deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
   local window_metadata
+  local ax_window_size
   local observed_width=""
   local observed_height=""
   if [[ ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
@@ -837,7 +840,7 @@ position_window_for_capture() {
       return 1
     fi
 
-    if /usr/bin/osascript - "$EVIDENCE_APP_PID" "$window_name" "$origin_x" "$origin_y" "$width" "$height" <<'APPLESCRIPT' >/dev/null
+    if ax_window_size="$(/usr/bin/osascript - "$EVIDENCE_APP_PID" "$window_name" "$origin_x" "$origin_y" "$width" "$height" <<'APPLESCRIPT'
 on run argv
   set appPID to item 1 of argv as integer
   set windowName to item 2 of argv
@@ -864,17 +867,22 @@ on run argv
       end if
       set position of targetWindow to {originX, originY}
       set size of targetWindow to {targetWidth, targetHeight}
+      set actualSize to size of targetWindow
+      return (item 1 of actualSize as text) & " " & (item 2 of actualSize as text)
     end tell
   end tell
 end run
 APPLESCRIPT
-    then
+    )"; then
+      read -r observed_width observed_height <<<"$ax_window_size"
       if window_metadata="$(wait_for_window_capture_metadata "$window_name" 2>/dev/null)"; then
-        read -r _ _ _ observed_width observed_height <<<"$window_metadata"
-        # AppKit may clamp AX resize requests to a content-derived minimum.
-        # Reject that state here so a wrong viewport never reaches capture or
-        # masquerades as a valid artifact until the final receipt audit.
+        # CG window bounds include compositor decoration on newer macOS
+        # versions even when `screencapture -o` excludes the shadow. The AX
+        # size is the product's logical viewport and is therefore the value
+        # bound to the manifest and receipt.
         if [[ "$observed_width" == "$width" && "$observed_height" == "$height" ]]; then
+          POSITIONED_WINDOW_WIDTH="$observed_width"
+          POSITIONED_WINDOW_HEIGHT="$observed_height"
           park_pointer_outside_evidence_window
           return 0
         fi
@@ -1352,8 +1360,8 @@ capture_visible_window() {
             --manifest "$VISUAL_BASELINE_MANIFEST" \
             --first "$first_raster" \
             --second "$second_raster"; then
-          successful_window_width="$window_width"
-          successful_window_height="$window_height"
+          successful_window_width="$POSITIONED_WINDOW_WIDTH"
+          successful_window_height="$POSITIONED_WINDOW_HEIGHT"
           successful_target_frame_audit="$target_frame_audit"
           capture_ready=1
           rm -f "$first_raster"
