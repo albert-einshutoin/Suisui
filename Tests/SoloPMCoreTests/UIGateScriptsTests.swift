@@ -514,7 +514,7 @@ final class UIGateScriptsTests: XCTestCase {
     func testLayoutResizeMovesWindowAwayFromRightEdgeBeforeGrowing() throws {
         let script = try readPackageFile("script/check_layout_stability_smoke.sh")
 
-        XCTAssertTrue(script.contains("set normalizedPosition to {40, currentY}"))
+        XCTAssertTrue(script.contains("set normalizedPosition to {40, expectedY}"))
         XCTAssertTrue(script.contains("set position of targetWindow to normalizedPosition"))
         let positionChange = try XCTUnwrap(script.range(of: "set position of targetWindow to normalizedPosition"))
         let sizeChange = try XCTUnwrap(script.range(of: "set size of targetWindow to {targetWidth, targetHeight}"))
