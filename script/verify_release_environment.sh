@@ -990,7 +990,7 @@ fi
 
 if [[ -f "$RELEASE_APPCAST_FILE" ]]; then
   appcast_validation_output=""
-  if ! appcast_validation_output="$(SOLOPM_REQUIRE_RELEASE_APPCAST=1 "$ROOT_DIR/script/verify_appcast.sh" "$RELEASE_APPCAST_FILE" 2>&1)"; then
+  if ! appcast_validation_output="$(SOLOPM_REQUIRE_RELEASE_APPCAST=1 SOLOPM_VERIFY_REMOTE_SPARKLE="$ONLINE_PREFLIGHT" "$ROOT_DIR/script/verify_appcast.sh" "$RELEASE_APPCAST_FILE" 2>&1)"; then
     add_blocker "release appcast verification failed: $RELEASE_APPCAST_FILE: $appcast_validation_output"
   fi
 else

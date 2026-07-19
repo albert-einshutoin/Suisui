@@ -7,6 +7,17 @@ SPARKLE_ENV_FILE="$ROOT_DIR/packaging/sparkle.env"
 APPCAST_FILE="${1:-$ROOT_DIR/packaging/appcast.sample.xml}"
 SAMPLE_APPCAST_FILE="$ROOT_DIR/packaging/appcast.sample.xml"
 REQUIRE_RELEASE_APPCAST="${SOLOPM_REQUIRE_RELEASE_APPCAST:-0}"
+VERIFY_REMOTE_SPARKLE="${SOLOPM_VERIFY_REMOTE_SPARKLE:-0}"
+VERIFY_SPARKLE_SIGNATURE="${SOLOPM_VERIFY_SPARKLE_SIGNATURE:-$VERIFY_REMOTE_SPARKLE}"
+SPARKLE_SIGN_UPDATE="${SOLOPM_SPARKLE_SIGN_UPDATE:-}"
+REMOTE_TMP_DIR=""
+
+cleanup() {
+  if [[ -n "$REMOTE_TMP_DIR" ]]; then
+    rm -rf "$REMOTE_TMP_DIR"
+  fi
+}
+trap cleanup EXIT
 
 if [[ -f "$SPARKLE_ENV_FILE" ]]; then
   # shellcheck source=/dev/null
@@ -14,6 +25,7 @@ if [[ -f "$SPARKLE_ENV_FILE" ]]; then
 fi
 
 DOWNLOAD_URL_PREFIX="${SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX:-${SPARKLE_DOWNLOAD_URL_PREFIX:-}}"
+SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
 
 artifact_path_for_compare() {
   local artifact_path="$1"
@@ -32,6 +44,47 @@ case "$REQUIRE_RELEASE_APPCAST" in
     exit 2
     ;;
 esac
+
+case "$VERIFY_REMOTE_SPARKLE" in
+  0|1) ;;
+  *) echo "SOLOPM_VERIFY_REMOTE_SPARKLE must be 0 or 1" >&2; exit 2 ;;
+esac
+case "$VERIFY_SPARKLE_SIGNATURE" in
+  0|1) ;;
+  *) echo "SOLOPM_VERIFY_SPARKLE_SIGNATURE must be 0 or 1" >&2; exit 2 ;;
+esac
+
+find_sign_update() {
+  local candidate
+  if [[ -n "$SPARKLE_SIGN_UPDATE" ]]; then
+    if [[ ! -x "$SPARKLE_SIGN_UPDATE" ]]; then
+      echo "configured Sparkle sign_update is not executable: $SPARKLE_SIGN_UPDATE" >&2
+      return 1
+    fi
+    printf '%s' "$SPARKLE_SIGN_UPDATE"
+    return 0
+  fi
+
+  if [[ -n "${SOLOPM_SPARKLE_BIN_DIR:-}" ]]; then
+    candidate="$SOLOPM_SPARKLE_BIN_DIR/sign_update"
+    if [[ -x "$candidate" ]]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  fi
+
+  for candidate in \
+    "$ROOT_DIR/.build/artifacts/sparkle/Sparkle/bin/sign_update" \
+    "$ROOT_DIR/.build/artifacts/sparkle-project/Sparkle/bin/sign_update"; do
+    if [[ -x "$candidate" ]]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+
+  echo "Sparkle sign_update tool was not found; set SOLOPM_SPARKLE_SIGN_UPDATE or SOLOPM_SPARKLE_BIN_DIR" >&2
+  return 1
+}
 
 if [[ ! -f "$METADATA_FILE" ]]; then
   echo "missing metadata file: $METADATA_FILE" >&2
@@ -200,6 +253,48 @@ if [[ "$REQUIRE_RELEASE_APPCAST" == "1" ]]; then
   "$ROOT_DIR/script/verify_package_evidence_metrics.sh" \
     "$expected_zip_package_evidence" \
     "$expected_zip_path"
+
+  enclosure_signature="$(xmllint --xpath 'string((//*[local-name()="enclosure"]/@*[local-name()="edSignature"])[1])' "$APPCAST_FILE" 2>/dev/null || true)"
+  enclosure_url="$(xmllint --xpath 'string((//*[local-name()="enclosure"]/@url)[1])' "$APPCAST_FILE" 2>/dev/null || true)"
+
+  if [[ "$VERIFY_SPARKLE_SIGNATURE" == "1" ]]; then
+    if [[ -z "$enclosure_signature" ]]; then
+      echo "release appcast is missing a verifiable Sparkle edSignature" >&2
+      exit 2
+    fi
+    sign_update="$(find_sign_update)"
+    # Sparkle's own verifier reads the release key from Keychain. This avoids
+    # treating a merely non-empty XML attribute as cryptographic evidence.
+    if ! "$sign_update" --verify "$expected_zip_path" "$enclosure_signature" >/dev/null; then
+      echo "release appcast Sparkle edSignature verification failed" >&2
+      exit 2
+    fi
+  fi
+
+  if [[ "$VERIFY_REMOTE_SPARKLE" == "1" ]]; then
+    if [[ -z "$SPARKLE_FEED_URL" ]]; then
+      echo "SOLOPM_SPARKLE_FEED_URL is required for published Sparkle verification" >&2
+      exit 2
+    fi
+    if [[ -z "$enclosure_url" ]]; then
+      echo "release appcast is missing a published enclosure URL" >&2
+      exit 2
+    fi
+
+    REMOTE_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/solopm-sparkle-verify.XXXXXX")"
+    remote_appcast="$REMOTE_TMP_DIR/appcast.xml"
+    remote_artifact="$REMOTE_TMP_DIR/$expected_zip_name"
+    curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
+      "$SPARKLE_FEED_URL" --output "$remote_appcast"
+    xmllint --noout "$remote_appcast"
+    curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
+      "$enclosure_url" --output "$remote_artifact"
+    published_sha="$(shasum -a 256 "$remote_artifact" | awk 'NF { print $1; exit }')"
+    if [[ "$published_sha" != "$actual_zip_sha" ]]; then
+      echo "published Sparkle artifact SHA-256 does not match local release artifact" >&2
+      exit 2
+    fi
+  fi
 fi
 
 echo "Appcast smoke passed: $APPCAST_FILE"

@@ -2,6 +2,8 @@
 
 SoloPM public alpha の標準配布物は `DMG` とする。Mac ユーザーが Finder 上で `SoloPM.app` を `Applications` に移せるように、DMG には `/Applications` への symlink を含める。
 
+初回Productionリリースの対応環境はmacOS 14以降のApple Silicon（`arm64`）とする。Intel Macは対象外であり、配布ページとリリースノートにも同じ条件を明記する。`packaging/app_metadata.env`の`SUPPORTED_ARCHITECTURES`と実バイナリのsliceは、署名前に`script/verify_release_architecture.sh`で完全一致を検証する。Universal 2へ移行するときは、Intel環境の起動・更新・性能証跡を追加してから対応契約を変更する。
+
 Sparkle appcast 用、またはapp bundleのnotarization submission用には ZIP も生成できるが、ユーザー向けの標準downloadはDMGに寄せる。ユーザーがdownloadする最外郭DMGも別途notary serviceへ送信し、ticketをstapleする。
 
 容量上限、モデル非同梱、SwiftTerm/Sparkleの判断基準は [Package Size Policy](package-size-policy.md) を参照する。
