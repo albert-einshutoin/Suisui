@@ -180,6 +180,31 @@ require_app_bundle_structure() {
   fi
 }
 
+require_release_bundle_preparation() {
+  local app_bundle="$1"
+  local preparation_marker="$app_bundle/Contents/Resources/release-preparation.env"
+  local strip_mode
+  local sparkle_prune_mode
+
+  if [[ ! -f "$preparation_marker" ]]; then
+    add_blocker "release app is missing pre-sign preparation marker: $preparation_marker"
+    return
+  fi
+
+  strip_mode="$(awk -F= '$1 == "STRIP_MODE" { print $2; exit }' "$preparation_marker")"
+  sparkle_prune_mode="$(awk -F= '$1 == "SPARKLE_PRUNE_MODE" { print $2; exit }' "$preparation_marker")"
+  if [[ "$strip_mode" != "local-symbols-removed" ]]; then
+    add_blocker "release app was not stripped before signing; rebuild with ./script/sign_app.sh"
+  fi
+  if [[ "$sparkle_prune_mode" != "development-assets-removed" ]]; then
+    add_blocker "Sparkle development assets were not pruned before signing; rebuild with ./script/sign_app.sh"
+  fi
+
+  if ! "$ROOT_DIR/script/check_release_bundle_inventory.sh" "$app_bundle" >/dev/null 2>&1; then
+    add_blocker "release bundle inventory failed; run ./script/check_release_bundle_inventory.sh '$app_bundle' for size or forbidden-content details"
+  fi
+}
+
 require_release_sparkle_metadata() {
   local app_bundle="$1"
   local feed_url
@@ -293,6 +318,9 @@ require_executable "$ROOT_DIR/script/create_release_evidence.sh" "release eviden
 require_executable "$ROOT_DIR/script/sign_app.sh" "signing script"
 require_executable "$ROOT_DIR/script/notarize_app.sh" "notarization script"
 require_executable "$ROOT_DIR/script/package_release.sh" "packaging script"
+require_executable "$ROOT_DIR/script/check_release_bundle_inventory.sh" "release bundle inventory script"
+require_executable "$ROOT_DIR/script/check_release_artifact_size.sh" "release artifact size script"
+require_executable "$ROOT_DIR/script/verify_package_evidence_metrics.sh" "package evidence metrics verifier"
 require_executable "$ROOT_DIR/script/verify_appcast.sh" "appcast verification script"
 require_executable "$ROOT_DIR/script/validate_sparkle_release_config.sh" "Sparkle release config validator"
 require_command codesign
@@ -657,6 +685,7 @@ require_release_package_evidence() {
   local signed_required
   local notarized_required
   local manifest_git_commit
+  local metrics_output
 
   manifest_path="${checksum_file%.sha256}.package-evidence.json"
   if [[ ! -f "$manifest_path" ]]; then
@@ -688,6 +717,14 @@ require_release_package_evidence() {
     add_blocker "release package evidence manifest is missing source git commit"
   elif [[ -n "$CURRENT_GIT_COMMIT" && "$manifest_git_commit" != "$CURRENT_GIT_COMMIT" ]]; then
     add_blocker "release package evidence source commit does not match current git commit: expected '$CURRENT_GIT_COMMIT', got '$manifest_git_commit'"
+  fi
+
+  metrics_output=""
+  if ! metrics_output="$("$ROOT_DIR/script/verify_package_evidence_metrics.sh" \
+    "$manifest_path" \
+    "$(artifact_file_for_path "$package_path")" \
+    "$APP_BUNDLE" 2>&1)"; then
+    add_blocker "release package evidence metrics failed: $metrics_output"
   fi
 }
 
@@ -862,6 +899,7 @@ fi
 
 if [[ -d "$APP_BUNDLE" ]]; then
   require_app_bundle_structure "$APP_BUNDLE"
+  require_release_bundle_preparation "$APP_BUNDLE"
   require_app_bundle_metadata "$APP_BUNDLE" "$BUNDLE_IDENTIFIER" "${MARKETING_VERSION:-}" "${CURRENT_PROJECT_VERSION:-}"
   require_release_sparkle_metadata "$APP_BUNDLE"
   require_app_entitlements "$APP_BUNDLE"

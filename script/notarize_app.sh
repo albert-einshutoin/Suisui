@@ -75,7 +75,7 @@ require_distribution_signature "$APP_BUNDLE"
 
 rm -rf "$NOTARY_DIR"
 mkdir -p "$NOTARY_DIR"
-ditto -c -k --keepParent "$APP_BUNDLE" "$SUBMISSION_ZIP"
+COPYFILE_DISABLE=1 ditto -c -k --keepParent --norsrc --noextattr "$APP_BUNDLE" "$SUBMISSION_ZIP"
 
 set +e
 xcrun notarytool submit "$SUBMISSION_ZIP" --keychain-profile "$NOTARY_PROFILE" --wait 2>&1 | tee "$SUBMISSION_LOG"

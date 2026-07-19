@@ -52,6 +52,8 @@ SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh
 SOLOPM_PACKAGE_FORMAT=all ./script/package_release.sh
 ```
 
+この処理は配布appの容量上限、最大ファイル、voice model非同梱を`script/check_release_bundle_inventory.sh`で検証し、clean ZIPとサイズ証跡を生成する。署名後のapp bundleは変更しない。
+
 6. checksum
 
 ```bash

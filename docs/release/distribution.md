@@ -4,6 +4,8 @@ SoloPM public alpha の標準配布物は `DMG` とする。Mac ユーザーが 
 
 Sparkle appcast 用、または notarization submission 用には ZIP も生成できるが、ユーザー向けの標準 download は DMG に寄せる。
 
+容量上限、モデル非同梱、SwiftTerm/Sparkleの判断基準は [Package Size Policy](package-size-policy.md) を参照する。
+
 ## Build Package
 
 署名済み、notarized、staple 済みの `dist/SoloPM.app` を作った後に実行する。
@@ -38,7 +40,13 @@ SOLOPM_REQUIRE_NOTARIZED_PACKAGE=0 \
 ./script/package_release.sh
 ```
 
+smoke modeは`dist/SoloPM.app`を変更せず、一時コピーにだけrelease stripとSparkle開発資産のpruneを適用する。一時コピーは終了時に削除され、元bundleが署名済みでも署名を破壊しない。
+
 release artifact を作る通常実行では、`SOLOPM_REQUIRE_SIGNED_PACKAGE=1` と `SOLOPM_REQUIRE_NOTARIZED_PACKAGE=1` が既定値になる。つまり `codesign --verify`、`xcrun stapler validate`、`spctl -a -vv` を通らない app bundle からは配布用 DMG / ZIP を作らない。
+
+Developer ID署名前に`sign_app.sh`がmain binaryのlocal symbolをstripし、Sparkleの実行時不要なHeaders/Modulesを削除する。`package_release.sh`は署名・公証後のappを変更せず、AppleDoubleや不要な拡張属性を含めないclean ZIPを生成する。package evidenceにはapp、main binary、artifactのbytesとstrip/pruning modeが記録される。
+
+署名必須の通常実行では、署名前準備markerがない旧バンドルや、strip/pruningが無効なバンドルを拒否する。外部ツールで署名だけを付けたappを再利用せず、`./script/sign_app.sh`から作り直す。
 
 上記の smoke mode は `dist/package-smoke/` に出力し、`dist/releases/` には置かない。`packaging/release-evidence.json` は `dist/releases/*.package-evidence.json` で signed / notarized gate が有効だったことを確認するため、smoke artifact は release evidence として使えない。
 

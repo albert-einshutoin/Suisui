@@ -513,6 +513,9 @@ final class SparkleUpdateFoundationTests: XCTestCase {
         let artifactSha = "554f3f497395d59fc12389d51b5fb7208248425e0dbad975db3f08132f58dbed"
 
         try "zip content".write(to: artifactURL, atomically: true, encoding: .utf8)
+        let artifactBytes = try XCTUnwrap(
+            (FileManager.default.attributesOfItem(atPath: artifactURL.path)[.size] as? NSNumber)?.intValue
+        )
         try "\(artifactSha)  \(artifactPath)\n"
             .write(to: checksumURL, atomically: true, encoding: .utf8)
         try """
@@ -522,7 +525,12 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             "format": "zip",
             "createdAt": "2026-06-18T00:00:00Z",
             "signedPackageRequired": true,
-            "notarizedPackageRequired": true
+            "notarizedPackageRequired": true,
+            "appBundleBytes": 1,
+            "appBinaryBytes": 1,
+            "artifactBytes": \(artifactBytes),
+            "stripMode": "local-symbols-removed",
+            "sparklePruneMode": "development-assets-removed"
           },
           "source": {
             "gitCommit": "test-fixture"

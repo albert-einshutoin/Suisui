@@ -196,6 +196,10 @@ if [[ "$REQUIRE_RELEASE_APPCAST" == "1" ]]; then
     echo "release appcast package evidence requires signed and notarized gates enabled" >&2
     exit 2
   fi
+
+  "$ROOT_DIR/script/verify_package_evidence_metrics.sh" \
+    "$expected_zip_package_evidence" \
+    "$expected_zip_path"
 fi
 
 echo "Appcast smoke passed: $APPCAST_FILE"
