@@ -554,6 +554,12 @@ on run argv
       try
         perform action "AXRaise" of targetWindow
       end try
+      set currentY to item 2 of (position of targetWindow)
+      set normalizedPosition to {40, currentY}
+      -- Growing a window at the right edge makes AppKit clamp its width to the
+      -- remaining screen space. Normalize the harness position first so the
+      -- observed width measures the product constraint, not desktop placement.
+      set position of targetWindow to normalizedPosition
       set size of targetWindow to {targetWidth, targetHeight}
     end tell
   end tell
