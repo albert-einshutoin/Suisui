@@ -551,7 +551,7 @@ final class ReleasePipelineTests: XCTestCase {
               <title>0.1.0</title>
               <sparkle:version>1</sparkle:version>
               <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
-              <enclosure url="https://example.com/releases/SoloPM-0.1.0+1.zip" length="12345" type="application/octet-stream" sparkle:edSignature="release-signature-smoke-value"/>
+              <enclosure url="https://example.com/releases/Suisui-0.1.0+1.zip" length="12345" type="application/octet-stream" sparkle:edSignature="release-signature-smoke-value"/>
             </item>
           </channel>
         </rss>
@@ -1892,11 +1892,11 @@ final class ReleasePipelineTests: XCTestCase {
             at: evidenceURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try "abcdef1234567890  dist/package-smoke/SoloPM-0.1.0+1.zip\n"
+        try "abcdef1234567890  dist/package-smoke/Suisui-0.1.0+1.zip\n"
             .write(to: checksumURL, atomically: true, encoding: .utf8)
         let packageEvidenceURL = try writePackageEvidence(
             for: checksumURL,
-            artifactPath: "dist/package-smoke/SoloPM-0.1.0+1.zip",
+            artifactPath: "dist/package-smoke/Suisui-0.1.0+1.zip",
             signedPackageRequired: false,
             notarizedPackageRequired: false
         )
@@ -1929,7 +1929,7 @@ final class ReleasePipelineTests: XCTestCase {
             at: evidenceURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try "abcdef1234567890  dist/releases/SoloPM-0.1.0+1.dmg\n"
+        try "abcdef1234567890  dist/releases/Suisui-0.1.0+1.dmg\n"
             .write(to: checksumURL, atomically: true, encoding: .utf8)
         let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: nil)
         defer {
@@ -1967,7 +1967,7 @@ final class ReleasePipelineTests: XCTestCase {
             "version": "0.1.0",
             "buildNumber": "1",
             "appBundlePath": "dist/SoloPM.app",
-            "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
+            "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "evidence-sha"
           },
           "manualChecks": {
@@ -1977,7 +1977,7 @@ final class ReleasePipelineTests: XCTestCase {
           }
         }
         """.write(to: evidenceURL, atomically: true, encoding: .utf8)
-        try "actual-sha  dist/releases/SoloPM-0.1.0+1.dmg\n"
+        try "actual-sha  dist/releases/Suisui-0.1.0+1.dmg\n"
             .write(to: checksumURL, atomically: true, encoding: .utf8)
         defer {
             try? FileManager.default.removeItem(at: evidenceURL)
@@ -2001,7 +2001,7 @@ final class ReleasePipelineTests: XCTestCase {
             .appendingPathComponent(".build/test-release-evidence-missing-artifact-file.json")
         let checksumURL = packageRoot()
             .appendingPathComponent(".build/test-release-artifact-missing-file.dmg.sha256")
-        let artifactPath = "dist/releases/SoloPM-0.1.0+1.missing-file.dmg"
+        let artifactPath = "dist/releases/Suisui-0.1.0+1.missing-file.dmg"
         try FileManager.default.createDirectory(
             at: evidenceURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -2108,7 +2108,7 @@ final class ReleasePipelineTests: XCTestCase {
             "version": "0.1.0",
             "buildNumber": "1",
             "appBundlePath": "dist/SoloPM.app",
-            "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
+            "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "actual-sha",
             "signingIdentity": "Developer ID Application: Other Release Owner (TEAMID)",
             "notaryProfile": "OtherNotaryProfile"
@@ -2120,7 +2120,7 @@ final class ReleasePipelineTests: XCTestCase {
           }
         }
         """.write(to: evidenceURL, atomically: true, encoding: .utf8)
-        try "actual-sha  dist/releases/SoloPM-0.1.0+1.dmg\n"
+        try "actual-sha  dist/releases/Suisui-0.1.0+1.dmg\n"
             .write(to: checksumURL, atomically: true, encoding: .utf8)
         let packageEvidenceURL = try writePackageEvidence(for: checksumURL)
         defer {
@@ -2159,7 +2159,7 @@ final class ReleasePipelineTests: XCTestCase {
             "version": "0.1.0",
             "buildNumber": "1",
             "appBundlePath": "dist/SoloPM.app",
-            "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
+            "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "actual-sha",
             "signingIdentity": "Developer ID Application: SoloPM Release Owner (TEAMID)",
             "notaryProfile": "SoloPMNotaryProfile",
@@ -2173,7 +2173,7 @@ final class ReleasePipelineTests: XCTestCase {
           }
         }
         """.write(to: evidenceURL, atomically: true, encoding: .utf8)
-        try "actual-sha  dist/releases/SoloPM-0.1.0+1.dmg\n"
+        try "actual-sha  dist/releases/Suisui-0.1.0+1.dmg\n"
             .write(to: checksumURL, atomically: true, encoding: .utf8)
         let packageEvidenceURL = try writePackageEvidence(for: checksumURL)
         defer {
@@ -2349,7 +2349,7 @@ final class ReleasePipelineTests: XCTestCase {
             "version": "0.1.0",
             "buildNumber": "1",
             "appBundlePath": "dist/SoloPM.app",
-            "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
+            "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "actual-sha"
           },
           "manualChecks": {
@@ -2359,7 +2359,7 @@ final class ReleasePipelineTests: XCTestCase {
           }
         }
         """.write(to: evidenceURL, atomically: true, encoding: .utf8)
-        try "actual-sha  dist/releases/SoloPM-0.1.0+1.dmg\n"
+        try "actual-sha  dist/releases/Suisui-0.1.0+1.dmg\n"
             .write(to: checksumURL, atomically: true, encoding: .utf8)
         defer {
             try? FileManager.default.removeItem(at: evidenceURL)
@@ -2384,9 +2384,9 @@ final class ReleasePipelineTests: XCTestCase {
         let releaseDirectory = packageRoot()
             .appendingPathComponent("dist/releases", isDirectory: true)
         let dmgChecksumURL = releaseDirectory
-            .appendingPathComponent("SoloPM-0.1.0+1.ambiguous-a.dmg.sha256")
+            .appendingPathComponent("Suisui-0.1.0+1.ambiguous-a.dmg.sha256")
         let zipChecksumURL = releaseDirectory
-            .appendingPathComponent("SoloPM-0.1.0+1.ambiguous-b.zip.sha256")
+            .appendingPathComponent("Suisui-0.1.0+1.ambiguous-b.zip.sha256")
         try FileManager.default.createDirectory(
             at: evidenceURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -2401,7 +2401,7 @@ final class ReleasePipelineTests: XCTestCase {
             "version": "0.1.0",
             "buildNumber": "1",
             "appBundlePath": "dist/SoloPM.app",
-            "artifactPath": "dist/releases/SoloPM-0.1.0+1.ambiguous-a.dmg",
+            "artifactPath": "dist/releases/Suisui-0.1.0+1.ambiguous-a.dmg",
             "artifactSha256": "actual-sha"
           },
           "manualChecks": {
@@ -2411,9 +2411,9 @@ final class ReleasePipelineTests: XCTestCase {
           }
         }
         """.write(to: evidenceURL, atomically: true, encoding: .utf8)
-        try "actual-sha  dist/releases/SoloPM-0.1.0+1.ambiguous-a.dmg\n"
+        try "actual-sha  dist/releases/Suisui-0.1.0+1.ambiguous-a.dmg\n"
             .write(to: dmgChecksumURL, atomically: true, encoding: .utf8)
-        try "other-sha  dist/releases/SoloPM-0.1.0+1.ambiguous-b.zip\n"
+        try "other-sha  dist/releases/Suisui-0.1.0+1.ambiguous-b.zip\n"
             .write(to: zipChecksumURL, atomically: true, encoding: .utf8)
         defer {
             try? FileManager.default.removeItem(at: evidenceURL)
@@ -2446,7 +2446,7 @@ final class ReleasePipelineTests: XCTestCase {
             "version": "0.1.0",
             "buildNumber": "1",
             "appBundlePath": "dist/SoloPM.app",
-            "artifactPath": "dist/package-smoke/SoloPM-0.1.0+1.zip",
+            "artifactPath": "dist/package-smoke/Suisui-0.1.0+1.zip",
             "artifactSha256": "actual-sha"
           },
           "manualChecks": {
@@ -2456,11 +2456,11 @@ final class ReleasePipelineTests: XCTestCase {
           }
         }
         """.write(to: evidenceURL, atomically: true, encoding: .utf8)
-        try "actual-sha  dist/package-smoke/SoloPM-0.1.0+1.zip\n"
+        try "actual-sha  dist/package-smoke/Suisui-0.1.0+1.zip\n"
             .write(to: checksumURL, atomically: true, encoding: .utf8)
         let packageEvidenceURL = try writePackageEvidence(
             for: checksumURL,
-            artifactPath: "dist/package-smoke/SoloPM-0.1.0+1.zip",
+            artifactPath: "dist/package-smoke/Suisui-0.1.0+1.zip",
             signedPackageRequired: false,
             notarizedPackageRequired: false
         )
@@ -2497,7 +2497,7 @@ final class ReleasePipelineTests: XCTestCase {
             "version": "0.1.0",
             "buildNumber": "1",
             "appBundlePath": "dist/SoloPM.app",
-            "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
+            "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "actual-sha"
           },
           "manualChecks": {
@@ -2507,7 +2507,7 @@ final class ReleasePipelineTests: XCTestCase {
           }
         }
         """.write(to: evidenceURL, atomically: true, encoding: .utf8)
-        try "actual-sha  dist/releases/SoloPM-0.1.0+1.dmg\n"
+        try "actual-sha  dist/releases/Suisui-0.1.0+1.dmg\n"
             .write(to: checksumURL, atomically: true, encoding: .utf8)
         let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: nil)
         defer {
@@ -2606,7 +2606,7 @@ final class ReleasePipelineTests: XCTestCase {
             "version": "0.1.0",
             "buildNumber": "1",
             "appBundlePath": "dist/SoloPM.app",
-            "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
+            "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "actual-sha"
           },
           "manualChecks": {
@@ -2615,7 +2615,7 @@ final class ReleasePipelineTests: XCTestCase {
           }
         }
         """.write(to: evidenceURL, atomically: true, encoding: .utf8)
-        try "actual-sha  dist/releases/SoloPM-0.1.0+1.dmg\n"
+        try "actual-sha  dist/releases/Suisui-0.1.0+1.dmg\n"
             .write(to: checksumURL, atomically: true, encoding: .utf8)
         defer {
             try? FileManager.default.removeItem(at: evidenceURL)
@@ -2649,7 +2649,7 @@ final class ReleasePipelineTests: XCTestCase {
             "version": "0.1.0",
             "buildNumber": "1",
             "appBundlePath": "dist/SoloPM.app",
-            "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
+            "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "actual-sha",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
             "notaryProfile": "SoloPMNotaryProfile",
@@ -2669,7 +2669,7 @@ final class ReleasePipelineTests: XCTestCase {
           }
         }
         """.write(to: evidenceURL, atomically: true, encoding: .utf8)
-        try "actual-sha  dist/releases/SoloPM-0.1.0+1.dmg\n"
+        try "actual-sha  dist/releases/Suisui-0.1.0+1.dmg\n"
             .write(to: checksumURL, atomically: true, encoding: .utf8)
         defer {
             try? FileManager.default.removeItem(at: evidenceURL)
@@ -2703,7 +2703,7 @@ final class ReleasePipelineTests: XCTestCase {
             "version": "0.1.0",
             "buildNumber": "1",
             "appBundlePath": "dist/SoloPM.app",
-            "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
+            "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "actual-sha",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
             "notaryProfile": "SoloPMNotaryProfile",
@@ -2731,7 +2731,7 @@ final class ReleasePipelineTests: XCTestCase {
           }
         }
         """.write(to: evidenceURL, atomically: true, encoding: .utf8)
-        try "actual-sha  dist/releases/SoloPM-0.1.0+1.dmg\n"
+        try "actual-sha  dist/releases/Suisui-0.1.0+1.dmg\n"
             .write(to: checksumURL, atomically: true, encoding: .utf8)
         defer {
             try? FileManager.default.removeItem(at: evidenceURL)
@@ -2765,7 +2765,7 @@ final class ReleasePipelineTests: XCTestCase {
             "version": "0.1.0",
             "buildNumber": "1",
             "appBundlePath": "dist/SoloPM.app",
-            "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
+            "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "actual-sha",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
             "notaryProfile": "SoloPMNotaryProfile",
@@ -2785,7 +2785,7 @@ final class ReleasePipelineTests: XCTestCase {
           }
         }
         """.write(to: evidenceURL, atomically: true, encoding: .utf8)
-        try "actual-sha  dist/releases/SoloPM-0.1.0+1.dmg\n"
+        try "actual-sha  dist/releases/Suisui-0.1.0+1.dmg\n"
             .write(to: checksumURL, atomically: true, encoding: .utf8)
         defer {
             try? FileManager.default.removeItem(at: evidenceURL)
@@ -7485,7 +7485,7 @@ final class ReleasePipelineTests: XCTestCase {
         Generated at: 2026-06-19T12:30:44Z
         Source commit: \(currentShortCommit)
         Tracked source tree: clean
-        App: SoloPM
+        App: Suisui
         Xcode workspace: .swiftpm/xcode/package.xcworkspace
         Xcode scheme: SoloPM
         Xcode configuration: Release
@@ -7715,7 +7715,7 @@ final class ReleasePipelineTests: XCTestCase {
         Generated at: 2026-06-19T12:30:44Z
         Source commit: \(currentShortCommit)
         Tracked source tree: clean
-        App: SoloPM
+        App: Suisui
         Xcode workspace: .swiftpm/xcode/package.xcworkspace
         Xcode scheme: SoloPM
         Xcode configuration: Release
@@ -7829,7 +7829,7 @@ final class ReleasePipelineTests: XCTestCase {
         Generated at: 2026-06-19T12:30:44Z
         Source commit: \(currentShortCommit)
         Tracked source tree: clean
-        App: SoloPM
+        App: Suisui
         Xcode workspace: .swiftpm/xcode/package.xcworkspace
         Xcode scheme: SoloPM
         Xcode configuration: Debug
@@ -7911,7 +7911,7 @@ final class ReleasePipelineTests: XCTestCase {
         Generated at: 2026-06-19T12:30:44Z
         Source commit: \(currentShortCommit)
         Tracked source tree: clean
-        App: SoloPM
+        App: Suisui
         Xcode workspace: .swiftpm/xcode/package.xcworkspace
         Xcode scheme: SoloPM
         Xcode configuration: Debug
@@ -8003,7 +8003,7 @@ final class ReleasePipelineTests: XCTestCase {
         Generated at: 2026-06-19T12:30:44Z
         Source commit: \(currentShortCommit)
         Tracked source tree: clean
-        App: SoloPM
+        App: Suisui
         Xcode workspace: .swiftpm/xcode/package.xcworkspace
         Xcode scheme: SoloPM
         Xcode configuration: Debug
@@ -8128,7 +8128,7 @@ final class ReleasePipelineTests: XCTestCase {
         )
 
         XCTAssertNotEqual(result.exitCode, 0)
-        XCTAssertTrue(result.output.contains("automated preflight evidence is invalid: app mismatch: expected SoloPM"))
+        XCTAssertTrue(result.output.contains("automated preflight evidence is invalid: app mismatch: expected Suisui"))
         XCTAssertFalse(result.output.contains("OK: automated preflight evidence covers current commit and all local proof gates"))
         XCTAssertTrue(result.output.contains("release CI preflight was not run"))
     }
@@ -14395,7 +14395,7 @@ final class ReleasePipelineTests: XCTestCase {
 
     private func writePackageEvidence(
         for checksumURL: URL,
-        artifactPath: String? = "dist/releases/SoloPM-0.1.0+1.dmg",
+        artifactPath: String? = "dist/releases/Suisui-0.1.0+1.dmg",
         signedPackageRequired: Bool = true,
         notarizedPackageRequired: Bool = true,
         gitCommit: String? = nil
@@ -14523,11 +14523,11 @@ final class ReleasePipelineTests: XCTestCase {
             ? " sparkle:edSignature=\"release-signature-smoke-value\""
             : ""
         let artifactURL = appcastURL.deletingLastPathComponent()
-            .appendingPathComponent("SoloPM-0.1.0+1.zip")
+            .appendingPathComponent("Suisui-0.1.0+1.zip")
         let checksumURL = appcastURL.deletingLastPathComponent()
-            .appendingPathComponent("SoloPM-0.1.0+1.zip.sha256")
+            .appendingPathComponent("Suisui-0.1.0+1.zip.sha256")
         let packageEvidenceURL = appcastURL.deletingLastPathComponent()
-            .appendingPathComponent("SoloPM-0.1.0+1.zip.package-evidence.json")
+            .appendingPathComponent("Suisui-0.1.0+1.zip.package-evidence.json")
         let artifactSha = "554f3f497395d59fc12389d51b5fb7208248425e0dbad975db3f08132f58dbed"
         try FileManager.default.createDirectory(
             at: appcastURL.deletingLastPathComponent(),
@@ -14562,12 +14562,12 @@ final class ReleasePipelineTests: XCTestCase {
         <?xml version="1.0" encoding="utf-8"?>
         <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
           <channel>
-            <title>SoloPM Releases</title>
+            <title>Suisui Releases</title>
             <item>
-              <title>SoloPM 0.1.0</title>
+              <title>Suisui 0.1.0</title>
               <sparkle:version>1</sparkle:version>
               <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
-              <enclosure url="https://updates.solopm.app/releases/SoloPM-0.1.0+1.zip" length="12345" type="application/octet-stream"\(signatureAttribute)/>
+              <enclosure url="https://updates.suisui.app/releases/Suisui-0.1.0+1.zip" length="12345" type="application/octet-stream"\(signatureAttribute)/>
             </item>
           </channel>
         </rss>
