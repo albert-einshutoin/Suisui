@@ -216,7 +216,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertFalse(source.contains(".accessibilityIdentifier(\"project-inspector\")"))
         XCTAssertTrue(source.contains("@SceneStorage(\"projectBoard.userRequestedInspector\") private var userRequestedInspector"))
-        XCTAssertTrue(source.contains("private var inspectorBinding: Binding<Bool>"))
+        XCTAssertTrue(source.contains("private var wideInspectorBinding: Binding<Bool>"))
         XCTAssertFalse(source.contains("today-workflow"))
     }
 
@@ -1527,7 +1527,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let detailStart = try XCTUnwrap(boardSource.range(of: "} detail: {"))
-        let inspectorStart = try XCTUnwrap(boardSource.range(of: ".inspector(isPresented: inspectorBinding)"))
+        let inspectorStart = try XCTUnwrap(boardSource.range(of: ".inspector(isPresented: wideInspectorBinding)"))
         let toolbarStart = try XCTUnwrap(boardSource.range(of: ".toolbar {"))
 
         XCTAssertGreaterThan(toolbarStart.lowerBound, inspectorStart.lowerBound)

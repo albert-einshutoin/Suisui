@@ -6590,7 +6590,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("FIXTURES=(\"empty\" \"small\")"))
         XCTAssertTrue(script.contains("LOCALES=(\"english\" \"japanese\")"))
         XCTAssertTrue(script.contains("WINDOW_WIDTH=\"${SOLOPM_RUNTIME_TODAY_WINDOW_WIDTH:-1024}\""))
-        XCTAssertTrue(script.contains("WINDOW_HEIGHT=\"${SOLOPM_RUNTIME_TODAY_WINDOW_HEIGHT:-724}\""))
+        XCTAssertTrue(script.contains("WINDOW_HEIGHT=\"${SOLOPM_RUNTIME_TODAY_WINDOW_HEIGHT:-676}\""))
         XCTAssertTrue(script.contains("set size of window 1 to {targetWidth, targetHeight}"))
         XCTAssertTrue(script.contains("locale_label_for"))
         XCTAssertTrue(script.contains("english) printf '%s' \"en\""))
