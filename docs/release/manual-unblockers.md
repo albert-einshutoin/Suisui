@@ -252,7 +252,7 @@ Verification:
 
 ```bash
 ./.tmp/release-machine/create-release-evidence-command.sh --validate-only
-./.tmp/release-machine/create-release-evidence-command.sh --force
+./.tmp/release-machine/create-release-evidence-command.sh
 SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh
 SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/release_readiness_report.sh
 ```

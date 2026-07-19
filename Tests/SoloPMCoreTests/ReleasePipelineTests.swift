@@ -854,6 +854,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(runbook.contains("SOLOPM_STT_SAMPLE_WAV"))
         XCTAssertFalse(runbook.contains("git add packaging/release-evidence.json"))
         XCTAssertTrue(runbook.contains("release-machine local-only"))
+        XCTAssertTrue(runbook.contains("./.tmp/release-machine/create-release-evidence-command.sh\n"))
+        XCTAssertFalse(runbook.contains("./.tmp/release-machine/create-release-evidence-command.sh --force"))
     }
 
     func testLocalVisualQAArtifactsAndMacMetadataAreIgnored() throws {
