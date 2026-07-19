@@ -112,7 +112,7 @@ export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_V
   --sparkle-appcast-metadata \
   --manual-environment "macOS version, hardware, clean user/install notes" \
   --checked-by "$USER" \
-  --note "Verified release-machine launch from dist/SoloPM.app, checksum SHA-256, clean DMG install, Applications install, Gatekeeper acceptance, clean environment launch, login item toggle, and Sparkle appcast metadata on macOS 15.5 arm64 signed build."
+  --note "Verified release-machine launch from dist/Suisui.app, checksum SHA-256, clean DMG install, Applications install, Gatekeeper acceptance, clean environment launch, login item toggle, and Sparkle appcast metadata on macOS 15.5 arm64 signed build."
 ./script/create_release_evidence.sh \
   --force \
   --release-machine-launch \
@@ -125,7 +125,7 @@ export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_V
   --sparkle-appcast-metadata \
   --manual-environment "macOS version, hardware, clean user/install notes" \
   --checked-by "$USER" \
-  --note "Verified release-machine launch from dist/SoloPM.app, checksum SHA-256, clean DMG install, Applications install, Gatekeeper acceptance, clean environment launch, login item toggle, and Sparkle appcast metadata on macOS 15.5 arm64 signed build."
+  --note "Verified release-machine launch from dist/Suisui.app, checksum SHA-256, clean DMG install, Applications install, Gatekeeper acceptance, clean environment launch, login item toggle, and Sparkle appcast metadata on macOS 15.5 arm64 signed build."
 ```
 
 Set manual check flags only for that signed and notarized build. Each flag maps to a Manual Checks bullet below; do not set a flag unless that exact check was performed on the same release artifact. Record the OS, hardware, install location, and clean user/profile details in `--manual-environment`.
@@ -139,7 +139,7 @@ Manual flag evidence requirements:
 
 | Flag | Required proof in `--note` |
 | --- | --- |
-| `--release-machine-launch` | Signed/notarized app opens from `dist/SoloPM.app` on the release machine. |
+| `--release-machine-launch` | Signed/notarized app opens from `dist/Suisui.app` on the release machine. |
 | `--checksum-verification` | `shasum -a 256` matches the generated `*.sha256` artifact. |
 | `--clean-dmg-install` | DMG downloads and opens in a clean user or VM. |
 | `--applications-folder-install` | App is dragged to `/Applications` and launches there. |
@@ -199,7 +199,7 @@ script/capture_ui_evidence.sh
 
 `docs/release/evidence/ui-screenshots.md` records the latest UI runtime source commit from `Sources/SoloPMApp`, `Sources/SoloPMCore`, and `Package.swift`; rerun `script/capture_ui_evidence.sh` after UI/runtime source changes so the release report cannot reuse stale screenshots.
 
-Run the accessibility preflight before the manual VoiceOver pass. The source-only check is safe for CI/local review and verifies both accessibility anchors and primary CRUD keyboard shortcuts; the runtime check launches `dist/SoloPM.app` and requires macOS Accessibility permission for Terminal/Codex:
+Run the accessibility preflight before the manual VoiceOver pass. The source-only check is safe for CI/local review and verifies both accessibility anchors and primary CRUD keyboard shortcuts; the runtime check launches `dist/Suisui.app` and requires macOS Accessibility permission for Terminal/Codex:
 
 ```bash
 ./script/check_accessibility_preflight.sh --source-only
@@ -214,7 +214,7 @@ When reviewing a local release candidate in a visible macOS session, include the
 SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT=1 ./script/release_readiness_report.sh
 ```
 
-Before claiming local CRUD is product-ready, run the runtime accessible CRUD smoke. It builds `dist/SoloPM.app`, launches it with an isolated `SOLOPM_DATABASE_PATH`, selects a seeded Project Board via `SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION`, then uses macOS Accessibility to create, rename, complete, and delete a project; create, update, move, and directly delete a task; and verify project deletion removes a remaining task from SQLite:
+Before claiming local CRUD is product-ready, run the runtime accessible CRUD smoke. It builds `dist/Suisui.app`, launches it with an isolated `SOLOPM_DATABASE_PATH`, selects a seeded Project Board via `SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION`, then uses macOS Accessibility to create, rename, complete, and delete a project; create, update, move, and directly delete a task; and verify project deletion removes a remaining task from SQLite:
 
 ```bash
 ./script/check_runtime_accessible_crud_smoke.sh

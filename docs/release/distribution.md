@@ -10,7 +10,7 @@ Sparkle appcast 用、またはapp bundleのnotarization submission用には ZIP
 
 ## Build Package
 
-署名済み、notarized、staple済みの`dist/SoloPM.app`を作った後に実行する。通常実行では、作成したDMGを`notarytool submit --wait`へ送信し、DMG自体のstaple/validateとGatekeeper assessmentが成功した後でchecksumとpackage evidenceを確定する。
+署名済み、notarized、staple済みの`dist/Suisui.app`を作った後に実行する。通常実行では、作成したDMGを`notarytool submit --wait`へ送信し、DMG自体のstaple/validateとGatekeeper assessmentが成功した後でchecksumとpackage evidenceを確定する。
 
 ```bash
 SOLOPM_PACKAGE_FORMAT=all ./script/package_release.sh
@@ -44,7 +44,7 @@ SOLOPM_REQUIRE_NOTARIZED_PACKAGE=0 \
 ./script/package_release.sh
 ```
 
-smoke modeは`dist/SoloPM.app`を変更せず、一時コピーにだけrelease stripとSparkle開発資産のpruneを適用する。一時コピーは終了時に削除され、元bundleが署名済みでも署名を破壊しない。
+smoke modeは`dist/Suisui.app`を変更せず、一時コピーにだけrelease stripとSparkle開発資産のpruneを適用する。一時コピーは終了時に削除され、元bundleが署名済みでも署名を破壊しない。
 
 release artifact を作る通常実行では、`SOLOPM_REQUIRE_SIGNED_PACKAGE=1` と `SOLOPM_REQUIRE_NOTARIZED_PACKAGE=1` が既定値になる。つまり `codesign --verify`、`xcrun stapler validate`、`spctl -a -vv` を通らない app bundle からは配布用 DMG / ZIP を作らない。
 

@@ -22,7 +22,7 @@ SOLOPM_REQUIRE_NOTARIZATION=1
 ./script/notarize_app.sh
 ```
 
-`script/notarize_app.sh` は `dist/SoloPM.app` を ZIP 化し、`xcrun notarytool submit --wait` で notarization を待つ。成功後に `xcrun stapler staple` と `xcrun stapler validate` を実行し、最後に `spctl -a -vv` で Gatekeeper の trust policy を確認する。
+`script/notarize_app.sh` は `dist/Suisui.app` を ZIP 化し、`xcrun notarytool submit --wait` で notarization を待つ。成功後に `xcrun stapler staple` と `xcrun stapler validate` を実行し、最後に `spctl -a -vv` で Gatekeeper の trust policy を確認する。
 
 ## Failure Log
 

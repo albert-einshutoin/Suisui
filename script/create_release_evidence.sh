@@ -48,7 +48,7 @@ The script records metadata and artifact checksum evidence only. Pass manual
 check flags only after testing the signed and notarized build.
 
 Manual flag evidence requirements:
-  --release-machine-launch: signed/notarized app opens from dist/SoloPM.app on the release machine
+  --release-machine-launch: signed/notarized app opens from dist/Suisui.app on the release machine
   --checksum-verification: shasum -a 256 matches the generated *.sha256 artifact
   --clean-dmg-install: DMG downloads and opens in a clean user or VM
   --applications-folder-install: app is dragged to /Applications and launches there

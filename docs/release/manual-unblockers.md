@@ -39,7 +39,7 @@ Generated helpers:
 
 Required manual work:
 
-1. Open the candidate with `set -a; source .tmp/voiceover-review/launch.env; set +a; ./dist/SoloPM.app/Contents/MacOS/SoloPM`, or rerun `./script/prepare_voiceover_review_candidate.sh --skip-build`.
+1. Open the candidate with `set -a; source .tmp/voiceover-review/launch.env; set +a; ./dist/Suisui.app/Contents/MacOS/Suisui`, or rerun `./script/prepare_voiceover_review_candidate.sh --skip-build`.
 2. The beige `VoiceOver Review Project` screen is the prepared candidate and waits for manual input. Press Command-F5 (or Fn-Command-F5) to enable VoiceOver. Move with Control-Option-Right/Left Arrow and activate with Control-Option-Space.
 3. With actual VoiceOver enabled, verify Project board -> card -> Inline Task Composer -> inspector focus order.
 4. Verify the Inbox voice triage detail announces transcript, interpretation, metadata, memo editing, and triage actions.
@@ -242,7 +242,7 @@ Then fill `.tmp/release-machine/release-machine-worksheet.md` while checking the
 Release-ready evidence requirements:
 
 - `generator.name: script/create_release_evidence.sh`
-- signed/notarized/stapled `dist/SoloPM.app`
+- signed/notarized/stapled `dist/Suisui.app`
 - production Sparkle `SUFeedURL` and `SUPublicEDKey`
 - appcast with Sparkle `edSignature`
 - matching `*.sha256` and `*.package-evidence.json`

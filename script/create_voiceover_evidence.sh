@@ -618,7 +618,7 @@ write_pending_evidence() {
     printf '%s\n' '## Setup'
     printf '\n'
     printf '%s\n' '1. Enable VoiceOver on macOS.'
-    printf '%s\n' '2. Launch `dist/SoloPM.app`.'
+    printf '%s\n' '2. Launch `dist/Suisui.app`.'
     printf '%s\n' '3. Seed the Project Board with at least one active project and one task with a due date.'
     printf '%s\n' '4. Open the Project Board window and keep the right inspector visible.'
     printf '%s\n' '5. Run `./script/create_voiceover_evidence.sh --passed --capture-runtime-ax-smoke ...` after the manual pass, or run `./script/check_accessibility_preflight.sh --runtime` and paste the OK line into `Runtime AX smoke`.'

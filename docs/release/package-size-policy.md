@@ -38,6 +38,6 @@ Sparkleの`Resources`、`Updater.app`、`XPCServices`は更新ランタイムな
 6. `package_release.sh`でclean ZIP/DMGを生成し、配布DMG自体をnotarize/staple/Gatekeeper検証する。
 7. DMG検証成功後にのみ、artifactのサイズ証跡とchecksumを保存する。
 
-署名後のapp bundleはパッケージ生成時に変更しない。unsigned smokeでは`dist/SoloPM.app`を一時ディレクトリへ複製し、そのコピーだけをstrip/pruneする。内容変更が必要になった場合は、Release buildの準備から署名・公証をやり直す。
+署名後のapp bundleはパッケージ生成時に変更しない。unsigned smokeでは`dist/Suisui.app`を一時ディレクトリへ複製し、そのコピーだけをstrip/pruneする。内容変更が必要になった場合は、Release buildの準備から署名・公証をやり直す。
 
 ZIP/DMG生成後は、checksumとpackage evidenceの作成前にartifact容量を検証する。最終preflight、release evidence作成、appcast検証はpackage evidenceの容量値とstrip/pruning modeを実ファイルに照合し、旧形式や改変された証跡を拒否する。

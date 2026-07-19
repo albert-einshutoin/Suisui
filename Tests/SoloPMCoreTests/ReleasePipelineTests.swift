@@ -583,7 +583,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(example.contains("\"sparkleAppcastMetadata\": false"))
         XCTAssertTrue(example.contains("\"version\": \"0.1.0\""))
         XCTAssertTrue(example.contains("\"buildNumber\": \"1\""))
-        XCTAssertTrue(example.contains("\"appBundlePath\": \"dist/SoloPM.app\""))
+        XCTAssertTrue(example.contains("\"appBundlePath\": \"dist/Suisui.app\""))
         XCTAssertTrue(example.contains("\"signingIdentity\""))
         XCTAssertTrue(example.contains("\"notaryProfile\""))
         XCTAssertTrue(example.contains("\"sparkleFeedURL\""))
@@ -601,7 +601,7 @@ final class ReleasePipelineTests: XCTestCase {
         let example = try readPackageFile("packaging/release-evidence.example.json")
 
         XCTAssertTrue(script.contains("Manual flag evidence requirements:"))
-        XCTAssertTrue(script.contains("--release-machine-launch: signed/notarized app opens from dist/SoloPM.app on the release machine"))
+        XCTAssertTrue(script.contains("--release-machine-launch: signed/notarized app opens from dist/Suisui.app on the release machine"))
         XCTAssertTrue(script.contains("--checksum-verification: shasum -a 256 matches the generated *.sha256 artifact"))
         XCTAssertTrue(script.contains("--clean-dmg-install: DMG downloads and opens in a clean user or VM"))
         XCTAssertTrue(script.contains("--applications-folder-install: app is dragged to /Applications and launches there"))
@@ -991,7 +991,7 @@ final class ReleasePipelineTests: XCTestCase {
         let evidence = try String(contentsOf: evidenceURL, encoding: .utf8)
         XCTAssertTrue(evidence.contains("\"version\": \"0.1.0\""))
         XCTAssertTrue(evidence.contains("\"buildNumber\": \"1\""))
-        XCTAssertTrue(evidence.contains("\"appBundlePath\": \"dist/SoloPM.app\""))
+        XCTAssertTrue(evidence.contains("\"appBundlePath\": \"dist/Suisui.app\""))
         XCTAssertTrue(evidence.contains("\"artifactPath\": \"\(artifactPath)\""))
         XCTAssertTrue(evidence.contains("\"artifactSha256\": \"42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98\""))
         XCTAssertTrue(evidence.contains("\"signingIdentity\": \"Developer ID Application: SoloPM Test (TEAMID)\""))
@@ -1756,7 +1756,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--sparkle-appcast-metadata",
                 "--manual-environment", "macOS 15.5 clean user on arm64",
                 "--checked-by", "release-owner",
-                "--note", "Verified release-machine launch from dist/SoloPM.app, checksum SHA-256, clean DMG install, Applications install, Gatekeeper acceptance, login item toggle, and Sparkle appcast metadata on macOS 15.5 arm64 signed build."
+                "--note", "Verified release-machine launch from dist/Suisui.app, checksum SHA-256, clean DMG install, Applications install, Gatekeeper acceptance, login item toggle, and Sparkle appcast metadata on macOS 15.5 arm64 signed build."
             ],
             environment: [
                 "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
@@ -1966,7 +1966,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "evidence-sha"
           },
@@ -2011,7 +2011,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "\(artifactPath)",
             "artifactSha256": "actual-sha"
           },
@@ -2060,7 +2060,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "\(artifactURL.path)",
             "artifactSha256": "actual-sha"
           },
@@ -2107,7 +2107,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "actual-sha",
             "signingIdentity": "Developer ID Application: Other Release Owner (TEAMID)",
@@ -2158,7 +2158,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "actual-sha",
             "signingIdentity": "Developer ID Application: Suisui Release Owner (TEAMID)",
@@ -2217,7 +2217,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "\(artifactPath)",
             "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
@@ -2283,7 +2283,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "\(artifactPath)",
             "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
@@ -2348,7 +2348,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "actual-sha"
           },
@@ -2400,7 +2400,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "dist/releases/Suisui-0.1.0+1.ambiguous-a.dmg",
             "artifactSha256": "actual-sha"
           },
@@ -2445,7 +2445,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "dist/package-smoke/Suisui-0.1.0+1.zip",
             "artifactSha256": "actual-sha"
           },
@@ -2496,7 +2496,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "actual-sha"
           },
@@ -2552,7 +2552,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "\(absoluteArtifactPath)",
             "artifactSha256": "\(artifactSha)"
           },
@@ -2605,7 +2605,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "actual-sha"
           },
@@ -2648,7 +2648,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "actual-sha",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
@@ -2702,7 +2702,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "actual-sha",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
@@ -2764,7 +2764,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "dist/releases/Suisui-0.1.0+1.dmg",
             "artifactSha256": "actual-sha",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
@@ -2823,7 +2823,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "\(artifactPath)",
             "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
@@ -2849,7 +2849,7 @@ final class ReleasePipelineTests: XCTestCase {
             "checkedBy": "Release reviewer",
             "checkedAt": "2026-06-18T00:00:00Z",
             "notes": [
-              "Verified release-machine launch from dist/SoloPM.app, checksum SHA-256, clean DMG install, Applications install, Gatekeeper acceptance, clean environment launch, login item toggle, and Sparkle appcast metadata on macOS 15.5 arm64 signed build."
+              "Verified release-machine launch from dist/Suisui.app, checksum SHA-256, clean DMG install, Applications install, Gatekeeper acceptance, clean environment launch, login item toggle, and Sparkle appcast metadata on macOS 15.5 arm64 signed build."
             ]
           }
         }
@@ -2891,7 +2891,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "\(artifactPath)",
             "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
@@ -2956,7 +2956,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "\(artifactPath)",
             "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
@@ -3022,7 +3022,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "\(artifactPath)",
             "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
@@ -3047,7 +3047,7 @@ final class ReleasePipelineTests: XCTestCase {
           "review": {
             "checkedBy": "release-owner",
             "checkedAt": "2026-06-18T00:00:00Z",
-            "notes": ["Verified release-machine launch from dist/SoloPM.app, checksum SHA-256, clean DMG install, Applications install, Gatekeeper acceptance, login item toggle, and Sparkle appcast metadata on macOS 15.5 arm64 signed build."]
+            "notes": ["Verified release-machine launch from dist/Suisui.app, checksum SHA-256, clean DMG install, Applications install, Gatekeeper acceptance, login item toggle, and Sparkle appcast metadata on macOS 15.5 arm64 signed build."]
           }
         }
         """.write(to: evidenceURL, atomically: true, encoding: .utf8)
@@ -3092,7 +3092,7 @@ final class ReleasePipelineTests: XCTestCase {
           "release": {
             "version": "0.1.0",
             "buildNumber": "1",
-            "appBundlePath": "dist/SoloPM.app",
+            "appBundlePath": "dist/Suisui.app",
             "artifactPath": "\(artifactPath)",
             "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
             "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
@@ -10028,8 +10028,8 @@ final class ReleasePipelineTests: XCTestCase {
         printf "release environment fixture\\n"
         printf "Blockers:\\n"
         printf -- "- BLOCKER: missing local signing config: $ROOT_DIR/packaging/signing.env\\n"
-        printf -- "- BLOCKER: release app bundle is missing Sparkle framework: $ROOT_DIR/dist/SoloPM.app/Contents/Frameworks/Sparkle.framework\\n"
-        printf -- "- BLOCKER: dist app failed Gatekeeper assessment: $ROOT_DIR/dist/SoloPM.app\\n"
+        printf -- "- BLOCKER: release app bundle is missing Sparkle framework: $ROOT_DIR/dist/Suisui.app/Contents/Frameworks/Sparkle.framework\\n"
+        printf -- "- BLOCKER: dist app failed Gatekeeper assessment: $ROOT_DIR/dist/Suisui.app\\n"
         printf -- "- BLOCKER: missing local release evidence: run ./script/create_release_evidence.sh after packaging and manual checks\\n"
         printf -- "- BLOCKER: notarization token failed: super-secret-token\\n"
         exit 23
@@ -10055,8 +10055,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("- [x] Phase checklist has no active blocker groups in this report run."))
         XCTAssertTrue(actionSummary.contains("## Release Environment Blockers"))
         XCTAssertTrue(actionSummary.contains("- [ ] missing local signing config: packaging/signing.env"))
-        XCTAssertTrue(actionSummary.contains("- [ ] release app bundle is missing Sparkle framework: dist/SoloPM.app/Contents/Frameworks/Sparkle.framework"))
-        XCTAssertTrue(actionSummary.contains("- [ ] dist app failed Gatekeeper assessment: dist/SoloPM.app"))
+        XCTAssertTrue(actionSummary.contains("- [ ] release app bundle is missing Sparkle framework: dist/Suisui.app/Contents/Frameworks/Sparkle.framework"))
+        XCTAssertTrue(actionSummary.contains("- [ ] dist app failed Gatekeeper assessment: dist/Suisui.app"))
         XCTAssertTrue(actionSummary.contains("- [ ] missing local release evidence: run ./script/create_release_evidence.sh after packaging and manual checks"))
         XCTAssertTrue(actionSummary.contains("- [ ] release environment blocker contained a sensitive field; inspect verify_release_environment.sh output locally"))
         XCTAssertTrue(actionSummary.contains("## Release Machine Local Doctor"))
@@ -10078,8 +10078,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("./script/verify_release_environment.sh"))
         XCTAssertTrue(actionSummary.contains("## Release Environment Routes"))
         XCTAssertTrue(actionSummary.contains("Signing Configuration blockers:\n- [ ] missing local signing config: packaging/signing.env"))
-        XCTAssertTrue(actionSummary.contains("Sparkle / Appcast blockers:\n- [ ] release app bundle is missing Sparkle framework: dist/SoloPM.app/Contents/Frameworks/Sparkle.framework"))
-        XCTAssertTrue(actionSummary.contains("Gatekeeper / Stapling blockers:\n- [ ] dist app failed Gatekeeper assessment: dist/SoloPM.app"))
+        XCTAssertTrue(actionSummary.contains("Sparkle / Appcast blockers:\n- [ ] release app bundle is missing Sparkle framework: dist/Suisui.app/Contents/Frameworks/Sparkle.framework"))
+        XCTAssertTrue(actionSummary.contains("Gatekeeper / Stapling blockers:\n- [ ] dist app failed Gatekeeper assessment: dist/Suisui.app"))
         XCTAssertTrue(actionSummary.contains("Release Evidence blockers:\n- [ ] missing local release evidence: run ./script/create_release_evidence.sh after packaging and manual checks"))
         XCTAssertTrue(actionSummary.contains("Local Inspection blockers:\n- [ ] release environment blocker contained a sensitive field; inspect verify_release_environment.sh output locally"))
         XCTAssertFalse(actionSummary.contains(fixtureRoot.path))
@@ -12146,7 +12146,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Bundle identifier: `dev.solopm.SoloPM`
         - Checked by:
         - Check date:
-        - Evidence source: signed or release-candidate `dist/SoloPM.app`
+        - Evidence source: signed or release-candidate `dist/Suisui.app`
         - Accessibility environment:
         - Runtime AX smoke:
 
@@ -12235,7 +12235,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Bundle identifier: `dev.solopm.wrong`
         - Checked by: Suisui Release Owner
         - Check date: 2026-06-19
-        - Evidence source: `dist/SoloPM.app` manual pass
+        - Evidence source: `dist/Suisui.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
         - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
@@ -12322,7 +12322,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Source commit: `deadbee`
         - Checked by: Suisui Release Owner
         - Check date: 2026-02-31
-        - Evidence source: `dist/SoloPM.app` manual pass
+        - Evidence source: `dist/Suisui.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
         - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
@@ -12430,7 +12430,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Source commit: `\(currentShortCommit)`
         - Checked by: Suisui Release Owner
         - Check date: 2026-06-19
-        - Evidence source: `dist/SoloPM.app` manual pass
+        - Evidence source: `dist/Suisui.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
         - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
@@ -12534,7 +12534,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Source commit: `unknown`
         - Checked by: Suisui Release Owner
         - Check date: 2026-06-01
-        - Evidence source: `dist/SoloPM.app` manual pass
+        - Evidence source: `dist/Suisui.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
         - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
@@ -12707,7 +12707,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Source commit: `deadbee`
         - Checked by: Suisui Release Owner
         - Check date: 2099-01-01
-        - Evidence source: `dist/SoloPM.app` manual pass
+        - Evidence source: `dist/Suisui.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
         - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
@@ -12836,7 +12836,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Bundle identifier: `dev.solopm.app`
         - Checked by: Reviewer Name
         - Check date: 2026-06-19
-        - Evidence source: `dist/SoloPM.app` manual pass
+        - Evidence source: `dist/Suisui.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
         - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
@@ -12970,7 +12970,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Source commit: `\(currentShortCommit)`
         - Checked by: Suisui Release Owner
         - Check date: 2026-06-19
-        - Evidence source: `dist/SoloPM.app` manual pass
+        - Evidence source: `dist/Suisui.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
         - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
@@ -13120,7 +13120,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Bundle identifier: `dev.solopm.app`
         - Checked by: Suisui Release Owner
         - Check date: 2026-06-19
-        - Evidence source: `dist/SoloPM.app` manual pass
+        - Evidence source: `dist/Suisui.app` manual pass
 
         ## Verified Focus Path
 
@@ -15071,7 +15071,7 @@ final class ReleasePipelineTests: XCTestCase {
     }
 
     private var completeManualReleaseEvidenceNote: String {
-        "Verified release-machine launch from dist/SoloPM.app, checksum SHA-256, clean DMG install, Applications install, Gatekeeper acceptance, clean environment launch, login item toggle, and Sparkle appcast metadata on macOS 15.5 arm64 signed build."
+        "Verified release-machine launch from dist/Suisui.app, checksum SHA-256, clean DMG install, Applications install, Gatekeeper acceptance, clean environment launch, login item toggle, and Sparkle appcast metadata on macOS 15.5 arm64 signed build."
     }
 
     private func runScript(

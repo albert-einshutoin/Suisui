@@ -37,9 +37,9 @@ SOLOPM_REQUIRE_SIGNING=1
 ## Validation
 
 ```bash
-codesign --verify --strict --deep --verbose=2 dist/SoloPM.app
-codesign -dvvv --entitlements :- dist/SoloPM.app
-spctl -a -vv dist/SoloPM.app
+codesign --verify --strict --deep --verbose=2 dist/Suisui.app
+codesign -dvvv --entitlements :- dist/Suisui.app
+spctl -a -vv dist/Suisui.app
 ```
 
 `codesign --verify` は署名の整合性を確認する。`spctl -a -vv` は Gatekeeper の trust policy を確認する。notarization は別タスクで扱うため、この手順では staple 済み判定までは要求しない。

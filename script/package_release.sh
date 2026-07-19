@@ -71,7 +71,7 @@ fi
 
 # Production gates always inspect the immutable signed source bundle. Unsigned
 # smoke preparation happens later on a disposable copy so this script can never
-# invalidate a Developer ID signature on dist/SoloPM.app.
+# invalidate a Developer ID signature on dist/Suisui.app.
 if [[ "$REQUIRE_SIGNED_PACKAGE" == "1" ]]; then
   codesign --verify --strict --deep --verbose=2 "$APP_BUNDLE"
 fi

@@ -35,7 +35,7 @@ SoloPM の public alpha は SwiftPM package から `.app` bundle を生成する
 - File access: MVP はユーザーが選択した workspace 配下だけを扱い、sandbox scoped bookmark の設計は後続で検討する。
 - Login item: `SMAppService` を使う。専用 entitlement は追加しない。
 
-Entitlement を追加する場合は、該当 Phase のタスク、根拠、対象実行ファイル、検証コマンド、削除条件をこの文書に追記する。配布物では主アプリを `codesign -d --entitlements :- dist/SoloPM.app` で確認し、nested codeに主アプリ用entitlementが混入していないことも確認する。
+Entitlement を追加する場合は、該当 Phase のタスク、根拠、対象実行ファイル、検証コマンド、削除条件をこの文書に追記する。配布物では主アプリを `codesign -d --entitlements :- dist/Suisui.app` で確認し、nested codeに主アプリ用entitlementが混入していないことも確認する。
 
 根拠:
 

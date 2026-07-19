@@ -113,7 +113,7 @@ write_worksheet() {
     printf '\n'
     printf '%s\n' '## Manual Release Checks To Perform'
     printf '\n'
-    printf '%s\n' '- [ ] Release-machine launch: open `dist/SoloPM.app` after signing/notarization.'
+    printf '%s\n' '- [ ] Release-machine launch: open `dist/Suisui.app` after signing/notarization.'
     printf '%s\n' '- [ ] Checksum verification: verify the DMG SHA-256 against the generated `.sha256` file.'
     printf '%s\n' '- [ ] Clean DMG install: download/open the DMG in a clean user or VM.'
     printf '%s\n' '- [ ] Applications folder install: drag SoloPM to `/Applications` and launch it there.'
