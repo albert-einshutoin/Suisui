@@ -154,6 +154,44 @@ final class VisualCaptureStabilityTests: XCTestCase {
         XCTAssertFalse(frame.contains("replacingOccurrences(of: \"\\n\", with: \" \")"))
     }
 
+    func testStableAXTargetFrameWaitRecoversFromTransientMissingWindow() throws {
+        let source = try readPackageFile("script/capture_ui_evidence.sh")
+        let functionStart = try XCTUnwrap(source.range(of: "wait_for_stable_ax_target_frame() {"))
+        let functionEnd = try XCTUnwrap(
+            source.range(of: "\nreceipt_ax_target_frame_fields() {", range: functionStart.upperBound..<source.endIndex)
+        )
+        let functionSource = String(source[functionStart.lowerBound..<functionEnd.lowerBound])
+        let root = packageRoot()
+        let fixture = root.appendingPathComponent(".build/visual-ax-window-retry-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixture) }
+
+        let stateFile = fixture.appendingPathComponent("audit-state")
+        let harness = fixture.appendingPathComponent("retry-fixture.sh")
+        try """
+        #!/bin/bash
+        set -euo pipefail
+        TARGET_TIMEOUT_SECONDS=5
+        STATE_FILE='\(stateFile.path)'
+        audit_ax_target_frame() {
+          if [[ ! -e "$STATE_FILE" ]]; then
+            : > "$STATE_FILE"
+            echo 'Suisui has no AX windows.' >&2
+            return 2
+          fi
+          printf 'project-board-detail\\t440\\t676\\t440\\t676\\tfingerprint\\n'
+        }
+
+        \(functionSource)
+
+        wait_for_stable_ax_target_frame project-board-detail '' fingerprint
+        """.write(to: harness, atomically: true, encoding: .utf8)
+
+        let result = try run(["/bin/bash", harness.path])
+        XCTAssertEqual(result.status, 0, result.output)
+        XCTAssertTrue(result.output.contains("project-board-detail\t440\t676\t440\t676\tfingerprint"), result.output)
+    }
+
     func testAXIdentityFingerprintEncodingIsInjectiveForTransportCharacters() throws {
         let source = try readPackageFile("script/ui_evidence_ax_target_frame_audit.swift")
         let functionStart = try XCTUnwrap(source.range(of: "func identityFingerprintField(_ value: String?) -> String {"))

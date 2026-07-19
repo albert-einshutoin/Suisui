@@ -666,7 +666,14 @@ wait_for_stable_ax_target_frame() {
 
   while [[ "$SECONDS" -lt "$deadline" ]]; do
     if ! current_sample="$(audit_ax_target_frame "$identifier" "$window_name" "$audit_mode")"; then
-      return 1
+      # CGWindow can publish the owned window one scheduling turn before the
+      # Accessibility server publishes kAXWindows on hosted macOS runners.
+      # Retry only inside the existing deadline and require a fresh sequence
+      # of stable samples, so a real missing/incorrect target still fails closed.
+      previous_sample=""
+      stable_samples=0
+      sleep 0.25
+      continue
     fi
     if [[ "$current_sample" == "$previous_sample" ]]; then
       stable_samples=$((stable_samples + 1))
