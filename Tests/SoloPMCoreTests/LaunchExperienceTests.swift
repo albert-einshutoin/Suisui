@@ -275,6 +275,8 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("if SoloPMWindowlessFallbackEnvironment.shouldCreateDirectFallbackWindow"))
         XCTAssertTrue(source.contains("createFallbackProjectBoardWindow()"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-board-fallback-loading\")"))
+        XCTAssertTrue(source.contains(".frame(minWidth: 960, minHeight: 620)"))
+        XCTAssertFalse(source.contains(".frame(minWidth: 960, idealWidth: 1_180, minHeight: 620, idealHeight: 760)"))
         XCTAssertTrue(source.contains("makeKeyAndOrderFront(nil)"))
         XCTAssertTrue(source.contains("#selector(NSWindow.newWindowForTab(_:))"))
         XCTAssertTrue(source.contains("return false"))

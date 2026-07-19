@@ -583,7 +583,11 @@ private struct ProjectBoardFallbackLoadingView: View {
             systemImage: "rectangle.3.group",
             description: Text("Preparing local project data for the visible window.")
         )
-        .frame(minWidth: 960, idealWidth: 1_180, minHeight: 620, idealHeight: 760)
+        // This temporary surface must advertise only the real minimum. An
+        // ideal size here becomes the hosting window's effective minimum and
+        // prevents the production board from honoring compact or evidence
+        // viewport sizes after hydration completes.
+        .frame(minWidth: 960, minHeight: 620)
         .accessibilityIdentifier("project-board-fallback-loading")
     }
 }
