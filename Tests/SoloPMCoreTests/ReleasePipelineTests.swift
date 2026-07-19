@@ -6711,7 +6711,7 @@ final class ReleasePipelineTests: XCTestCase {
         let height = try XCTUnwrap(viewport["height"] as? Int)
 
         XCTAssertEqual(width, 1_024)
-        XCTAssertEqual(height, 724)
+        XCTAssertEqual(height, 676)
         XCTAssertTrue(script.contains("WINDOW_WIDTH=\"${SOLOPM_RUNTIME_TODAY_WINDOW_WIDTH:-\(width)}\""))
         XCTAssertTrue(script.contains("WINDOW_HEIGHT=\"${SOLOPM_RUNTIME_TODAY_WINDOW_HEIGHT:-\(height)}\""))
         XCTAssertTrue(script.contains("local window_size_diagnostic=\"${window_diagnostic%.err}-size.env\""))
@@ -6729,31 +6729,31 @@ final class ReleasePipelineTests: XCTestCase {
         let matched = try runTodayWindowSizeResultFixture(
             requestedWidth: width,
             requestedHeight: height,
-            observedOutput: "1024 724"
+            observedOutput: "1024 676"
         )
         XCTAssertEqual(matched.exitCode, 0, matched.output)
         XCTAssertTrue(matched.output.contains("status=passed"), matched.output)
         XCTAssertTrue(matched.output.contains("requested_width=1024"), matched.output)
-        XCTAssertTrue(matched.output.contains("requested_height=724"), matched.output)
+        XCTAssertTrue(matched.output.contains("requested_height=676"), matched.output)
         XCTAssertTrue(matched.output.contains("observed_width=1024"), matched.output)
-        XCTAssertTrue(matched.output.contains("observed_height=724"), matched.output)
+        XCTAssertTrue(matched.output.contains("observed_height=676"), matched.output)
 
         let clamped = try runTodayWindowSizeResultFixture(
             requestedWidth: 1_024,
             requestedHeight: 760,
-            observedOutput: "1024 724"
+            observedOutput: "1024 676"
         )
         XCTAssertEqual(clamped.exitCode, 1, clamped.output)
         XCTAssertTrue(clamped.output.contains("status=failed"), clamped.output)
         XCTAssertTrue(clamped.output.contains("failure_category=window"), clamped.output)
         XCTAssertTrue(clamped.output.contains("failure_reason=window-size-mismatch"), clamped.output)
         XCTAssertTrue(clamped.output.contains("requested_height=760"), clamped.output)
-        XCTAssertTrue(clamped.output.contains("observed_height=724"), clamped.output)
+        XCTAssertTrue(clamped.output.contains("observed_height=676"), clamped.output)
 
         let malformed = try runTodayWindowSizeResultFixture(
             requestedWidth: width,
             requestedHeight: height,
-            observedOutput: "1024 724 /Users/private/secret"
+            observedOutput: "1024 676 /Users/private/secret"
         )
         XCTAssertEqual(malformed.exitCode, 1, malformed.output)
         XCTAssertTrue(malformed.output.contains("failure_reason=window-size-unavailable"), malformed.output)
@@ -6763,7 +6763,7 @@ final class ReleasePipelineTests: XCTestCase {
         let multiline = try runTodayWindowSizeResultFixture(
             requestedWidth: width,
             requestedHeight: height,
-            observedOutput: "1024 724\n/Users/private/secret"
+            observedOutput: "1024 676\n/Users/private/secret"
         )
         XCTAssertEqual(multiline.exitCode, 1, multiline.output)
         XCTAssertTrue(multiline.output.contains("failure_reason=window-size-unavailable"), multiline.output)

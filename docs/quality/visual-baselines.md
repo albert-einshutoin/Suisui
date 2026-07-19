@@ -8,14 +8,14 @@ The source of truth is `docs/quality/visual-baseline-manifest.json`.
 
 | Screen | Required Themes | Viewport | Evidence |
 | --- | --- | --- | --- |
-| Project Board | Light / Dark / System | 1024x724 | sidebar, task cards, project header, inspector |
-| Inbox | Light / Dark / System | 1024x724 | inbox list and selected intake context |
-| Today | Light / Dark / System | 1024x724 | due work, schedule blocks, recommended next step |
-| Inbox Voice | Light / Dark | 1024x724 | voice capture metadata, transcript context, interpretation state |
-| Projects Overview | Light / Dark | 1024x724 | portfolio cards, progress, risk, next due, selected summary |
-| Schedule | Light / Dark | 1024x724 | schedule cockpit, unscheduled tasks, review-only calendar draft |
-| Schedule Workload | Light / Dark | 1024x724 | daily workload counts, attention banner, selected day detail |
-| Done | Light / Dark | 1024x724 | completion analytics, history, reopen affordance |
+| Project Board | Light / Dark / System | 1024x676 | sidebar, task cards, project header, inspector |
+| Inbox | Light / Dark / System | 1024x676 | inbox list and selected intake context |
+| Today | Light / Dark / System | 1024x676 | due work, schedule blocks, recommended next step |
+| Inbox Voice | Light / Dark | 1024x676 | voice capture metadata, transcript context, interpretation state |
+| Projects Overview | Light / Dark | 1024x676 | portfolio cards, progress, risk, next due, selected summary |
+| Schedule | Light / Dark | 1024x676 | schedule cockpit, unscheduled tasks, review-only calendar draft |
+| Schedule Workload | Light / Dark | 1024x676 | daily workload counts, attention banner, selected day detail |
+| Done | Light / Dark | 1024x676 | completion analytics, history, reopen affordance |
 | Settings Overview | Light / Dark / System | 720x676 | overview navigation and account-free local state |
 | Settings Integrations | Light / Dark | 720x676 | provider, TTS/STT, Calendar/Reminder, Sync, Privacy, Data Location status |
 | Settings Appearance | Light / Dark / System | 720x676 | theme picker and contrast controls |
@@ -38,7 +38,7 @@ The manifest's `baselineContext` fixes the registered baseline source commit, `n
 
 When a repository uses squash merge, do not merge product-source changes and their final tracked evidence as one squash commit. Squashing rewrites the product source commit after the evidence was generated, which makes an otherwise valid baseline stale on `main`. Merge the product change first, then refresh the manifest, sidecar metadata, screenshot evidence, and other source-pinned release evidence in an evidence-only follow-up PR. That follow-up must not change `Sources` or `Package.swift`, so its own merge cannot move the product source commit again.
 
-The main-window viewport is bounded to `1024x724`, the full visible frame available on the GitHub-hosted macOS GUI session used by the required visual lane. The 724-point frame preserves the product's 620-point minimum content area after the native titlebar and toolbar are included. This also makes compact-window layout behavior part of the canonical regression contract instead of approving a desktop-only viewport that CI cannot reproduce.
+The main-window viewport is bounded to `1024x676`, the full visible frame available on the GitHub-hosted macOS GUI session used by the required visual lane. The 676-point frame preserves the product's 572-point minimum content area after the native titlebar and toolbar are included. This also makes compact-window layout behavior part of the canonical regression contract instead of approving a desktop-only viewport that CI cannot reproduce.
 
 ## AX audit receipt
 
