@@ -1534,7 +1534,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("SOLOPM_LAYOUT_STABILITY_WINDOW_CONTENT_SIZE_PATH"))
         XCTAssertFalse(boardSource.contains("max(constrainedFrame.height, minimumSize.height)"))
         XCTAssertTrue(appSource.contains(".defaultSize(width: ProjectBoardWindowMetrics.defaultWidth, height: ProjectBoardWindowMetrics.defaultHeight)"))
-        XCTAssertTrue(appSource.contains(".windowResizability(.contentMinSize)"))
+        XCTAssertTrue(appSource.contains(".windowResizability(.automatic)"))
+        XCTAssertFalse(appSource.contains(".windowResizability(.contentMinSize)"))
         XCTAssertEqual(boardSource.components(separatedBy: ".navigationTitle(\"Suisui\")").count - 1, 1)
         XCTAssertEqual(boardSource.components(separatedBy: ".projectBoardSynchronizedColumnBounds()").count - 1, 2)
         // The sidebar pins bounded (min/ideal) column widths so fixed

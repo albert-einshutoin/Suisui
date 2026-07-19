@@ -51,7 +51,10 @@ struct SoloPM: App {
             .environment(\.locale, effectiveLanguagePreference.locale)
         }
         .defaultSize(width: ProjectBoardWindowMetrics.defaultWidth, height: ProjectBoardWindowMetrics.defaultHeight)
-        .windowResizability(.contentMinSize)
+        // ProjectBoardWindowStateBridge owns the explicit 960x620 minimum.
+        // SwiftUI's content-derived minimum can lock the hydrated split view
+        // near its 1180pt ideal and reject compact/manual AX resizing.
+        .windowResizability(.automatic)
         .commands {
             CommandGroup(replacing: .appSettings) {
                 SettingsLink {
