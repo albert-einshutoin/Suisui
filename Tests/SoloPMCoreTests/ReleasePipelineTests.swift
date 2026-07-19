@@ -6,6 +6,33 @@ import ImageIO
 import XCTest
 
 final class ReleasePipelineTests: XCTestCase {
+    func testBuildAndRunBundlesCustomMacOSAppIcon() throws {
+        let script = try readPackageFile("script/build_and_run.sh")
+        let generator = try readPackageFile("script/generate_app_icon.sh")
+        let artifactSizeGate = try readPackageFile("script/check_release_artifact_size.sh")
+        let bundleMetadataVerifier = try readPackageFile("script/verify_bundle_metadata.sh")
+        let packageSizePolicy = try readPackageFile("docs/release/package-size-policy.md")
+        let masterURL = packageRoot().appendingPathComponent("packaging/SoloPM-AppIcon-1024.png")
+        let iconURL = packageRoot().appendingPathComponent("packaging/SoloPM.icns")
+
+        let imageSource = try XCTUnwrap(CGImageSourceCreateWithURL(masterURL as CFURL, nil))
+        let properties = try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any])
+        XCTAssertEqual(properties[kCGImagePropertyPixelWidth] as? Int, 1024)
+        XCTAssertEqual(properties[kCGImagePropertyPixelHeight] as? Int, 1024)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: iconURL.path))
+        XCTAssertTrue(generator.contains("icon_16x16.png"))
+        XCTAssertTrue(generator.contains("icon_512x512@2x.png"))
+        XCTAssertTrue(generator.contains("iconutil -c icns"))
+        XCTAssertTrue(script.contains("APP_ICON_SOURCE=\"$ROOT_DIR/packaging/SoloPM.icns\""))
+        XCTAssertTrue(script.contains("cp \"$APP_ICON_SOURCE\" \"$APP_RESOURCES/SoloPM.icns\""))
+        XCTAssertTrue(script.contains("<key>CFBundleIconFile</key>"))
+        XCTAssertTrue(script.contains("<string>SoloPM.icns</string>"))
+        XCTAssertTrue(bundleMetadataVerifier.contains("CFBundleIconFile"))
+        XCTAssertTrue(bundleMetadataVerifier.contains("missing bundled app icon"))
+        XCTAssertTrue(artifactSizeGate.contains("SOLOPM_MAX_ZIP_ARTIFACT_BYTES:-8388608"))
+        XCTAssertTrue(packageSizePolicy.contains("正式な多解像度アプリアイコンを含むZIP実測値"))
+    }
+
     func testAccessibilitySourceAnchorCountContractAllowsCoverageGrowth() throws {
         let output = "OK: accessibility source anchors are present (92 anchors)\n"
 
