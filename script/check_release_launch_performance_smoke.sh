@@ -428,7 +428,12 @@ printf '%s\t%s\n' "label" "elapsed_ms" >"$SAMPLES_FILE"
 
 terminate_app
 prepare_ax_helpers
-SOLOPM_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
+if [[ "$SOLOPM_PERFORMANCE_PROFILE" == "release" ]]; then
+  SOLOPM_RELEASE_BUILD_PURPOSE=performance \
+    SOLOPM_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
+else
+  SOLOPM_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
+fi
 prepare_production_fixture
 
 launch_start_ms="$(now_ms)"

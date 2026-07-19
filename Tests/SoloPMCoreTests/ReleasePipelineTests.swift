@@ -31,6 +31,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SWIFT_PRODUCT_NAME=\"${SWIFT_PRODUCT_NAME:-$APP_NAME}\""))
         XCTAssertTrue(script.contains("--product \"$SWIFT_PRODUCT_NAME\""))
         XCTAssertTrue(script.contains("BUILD_BINARY=\"$BUILD_DIR/$SWIFT_PRODUCT_NAME\""))
+        XCTAssertTrue(script.contains("RELEASE_BUILD_PURPOSE=\"${SOLOPM_RELEASE_BUILD_PURPOSE:-distribution}\""))
+        XCTAssertTrue(script.contains("release performance build purpose requires --build-only with release configuration"))
+        XCTAssertTrue(script.contains("if [[ \"$RELEASE_BUILD_PURPOSE\" == \"distribution\" ]]"))
         XCTAssertTrue(script.contains("cp \"$APP_ICON_SOURCE\" \"$APP_RESOURCES/SoloPM.icns\""))
         XCTAssertTrue(script.contains("<key>CFBundleIconFile</key>"))
         XCTAssertTrue(script.contains("<string>SoloPM.icns</string>"))
@@ -40,6 +43,24 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(bundleMetadataVerifier.contains("assert_eq \"$ENTITLEMENT_KEY_COUNT\" \"1\""))
         XCTAssertTrue(artifactSizeGate.contains("SOLOPM_MAX_ZIP_ARTIFACT_BYTES:-7864320"))
         XCTAssertTrue(packageSizePolicy.contains("視覚上十分な512px相当に最適化"))
+    }
+
+    func testPerformanceReleaseBuildPurposeCannotBypassInteractiveOrDebugDistributionChecks() throws {
+        let result = try runScript(
+            "script/build_and_run.sh",
+            arguments: ["--build-only"],
+            environment: [
+                "SOLOPM_RELEASE_BUILD_PURPOSE": "performance",
+                "SOLOPM_BUILD_CONFIGURATION": "debug"
+            ]
+        )
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(
+            result.output.contains("release performance build purpose requires --build-only with release configuration"),
+            result.output
+        )
+        XCTAssertFalse(result.output.contains("Building for debugging"), result.output)
     }
 
     func testAccessibilitySourceAnchorCountContractAllowsCoverageGrowth() throws {
@@ -7144,6 +7165,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("BLOCKER: performance budget exceeded"))
         XCTAssertTrue(script.contains("BLOCKER: performance smoke could not inspect the AX marker"))
         XCTAssertTrue(script.contains("SOLOPM_BUILD_CONFIGURATION=\"$BUILD_CONFIGURATION\" ./script/build_and_run.sh --build-only"))
+        XCTAssertTrue(script.contains("SOLOPM_RELEASE_BUILD_PURPOSE=performance"))
         XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
         XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
         XCTAssertFalse(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE"))
@@ -7188,7 +7210,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("/usr/bin/swiftc \"$AX_MARKER_HELPER\" -o \"$AX_MARKER_HELPER_EXECUTABLE\""))
         XCTAssertTrue(script.contains("\"$AX_PRESS_ELEMENT_HELPER_EXECUTABLE\" \"$APP_PID\" \"$destination_identifier\""))
         XCTAssertFalse(script.contains("/usr/bin/swift \"$AX_PRESS_ELEMENT_HELPER\""))
-        XCTAssertTrue(script.contains("prepare_ax_helpers\nSOLOPM_BUILD_CONFIGURATION"))
+        XCTAssertTrue(script.contains("prepare_ax_helpers\nif [[ \"$SOLOPM_PERFORMANCE_PROFILE\" == \"release\" ]]"))
         XCTAssertFalse(script.contains("ax_click_sidebar_destination"))
         XCTAssertTrue(script.contains("ax_wait_for_ax_identifier"))
         XCTAssertTrue(script.contains("samples.tsv"))

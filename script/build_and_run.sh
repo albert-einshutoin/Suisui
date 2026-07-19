@@ -49,6 +49,7 @@ CURRENT_PROJECT_VERSION="${CURRENT_PROJECT_VERSION:?CURRENT_PROJECT_VERSION is r
 MIN_SYSTEM_VERSION="${MIN_SYSTEM_VERSION:?MIN_SYSTEM_VERSION is required}"
 COPYRIGHT="${COPYRIGHT:?COPYRIGHT is required}"
 BUILD_CONFIGURATION="${SOLOPM_BUILD_CONFIGURATION:-debug}"
+RELEASE_BUILD_PURPOSE="${SOLOPM_RELEASE_BUILD_PURPOSE:-distribution}"
 SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
 SPARKLE_PUBLIC_ED_KEY="${SOLOPM_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
 LOCAL_LICENSE_PUBLIC_KEY_BASE64="${SOLOPM_LOCAL_LICENSE_PUBLIC_KEY_BASE64:-${SOLOPM_LOCAL_LICENSE_PUBLIC_KEY:-}}"
@@ -269,11 +270,32 @@ acquire_build_and_run_lock() {
 }
 
 trap cleanup_build_and_run EXIT INT TERM
+
+case "$RELEASE_BUILD_PURPOSE" in
+  distribution)
+    ;;
+  performance)
+    # Performance CI needs the optimized executable and real app bundle, but
+    # must not fabricate production Sparkle credentials. Keep this exception
+    # build-only so no runnable/package workflow can bypass distribution checks.
+    if [[ "$BUILD_CONFIGURATION" != "release" || ( "$MODE" != "--build-only" && "$MODE" != "build" ) ]]; then
+      echo "BLOCKER: release performance build purpose requires --build-only with release configuration" >&2
+      exit 2
+    fi
+    ;;
+  *)
+    echo "BLOCKER: SOLOPM_RELEASE_BUILD_PURPOSE must be distribution or performance" >&2
+    exit 2
+    ;;
+esac
+
 acquire_build_and_run_lock
 
 stop_existing_dist_apps_for_mode
 
-SOLOPM_SPARKLE_CONFIG_QUIET=1 "$ROOT_DIR/script/validate_sparkle_release_config.sh"
+if [[ "$RELEASE_BUILD_PURPOSE" == "distribution" ]]; then
+  SOLOPM_SPARKLE_CONFIG_QUIET=1 "$ROOT_DIR/script/validate_sparkle_release_config.sh"
+fi
 
 case "$BUILD_CONFIGURATION" in
   debug)
