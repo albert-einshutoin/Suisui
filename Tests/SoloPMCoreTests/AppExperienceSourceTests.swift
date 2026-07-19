@@ -1542,6 +1542,8 @@ final class AppExperienceSourceTests: XCTestCase {
         // destination labels render untruncated at the 1024pt canonical
         // width; a hard-coded fixed width remains forbidden.
         XCTAssertTrue(boardSource.contains(".navigationSplitViewColumnWidth(min: ProjectBoardLayoutMetrics.sidebarColumnMinWidth, ideal: ProjectBoardLayoutMetrics.sidebarColumnIdealWidth)"))
+        XCTAssertTrue(boardSource.contains("min: ProjectBoardLayoutMetrics.detailColumnMinWidth"))
+        XCTAssertTrue(boardSource.contains("ideal: ProjectBoardLayoutMetrics.detailColumnIdealWidth"))
         XCTAssertFalse(boardSource.contains("ProjectBoardLayout.sidebarColumnWidth"))
         XCTAssertEqual(boardSource.components(separatedBy: ".id(toolbarLayoutRefreshToken)").count - 1, 2)
         XCTAssertTrue(boardSource.contains("@State private var toolbarLayoutRefreshToken = 0"))

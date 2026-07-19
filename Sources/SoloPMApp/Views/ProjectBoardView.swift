@@ -30,6 +30,11 @@ enum ProjectBoardLayoutMetrics {
     // 200pt to keep the shared header and 300pt inspector inside that viewport.
     static let sidebarColumnMinWidth: CGFloat = 180
     static let sidebarColumnIdealWidth: CGFloat = 200
+    // NavigationSplitView otherwise gives the detail column a large implicit
+    // minimum. With the 276pt inspector open, that floor prevents the product
+    // from reaching its supported 1024pt compact window width.
+    static let detailColumnMinWidth: CGFloat = 480
+    static let detailColumnIdealWidth: CGFloat = 700
     static let terminalPanelMinHeight: CGFloat = 220
     static let terminalPanelIdealHeight: CGFloat = 280
     static let terminalPanelMaxHeight: CGFloat = 360
@@ -196,6 +201,10 @@ struct ProjectBoardView: View {
             }
             .id(toolbarLayoutRefreshToken)
             .projectBoardSynchronizedColumnBounds()
+            .navigationSplitViewColumnWidth(
+                min: ProjectBoardLayoutMetrics.detailColumnMinWidth,
+                ideal: ProjectBoardLayoutMetrics.detailColumnIdealWidth
+            )
         }
         .frame(
             minHeight: ProjectBoardWindowMetrics.minHeight,
