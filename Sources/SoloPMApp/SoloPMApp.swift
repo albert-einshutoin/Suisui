@@ -40,7 +40,7 @@ struct SoloPM: App {
     }
 
     var body: some Scene {
-        WindowGroup("SoloPM", id: "project-board") {
+        WindowGroup("Suisui", id: "project-board") {
             ProjectBoardWindowRootView(
                 settingsViewModel: settingsViewModel,
                 onboardingRerunCoordinator: onboardingRerunCoordinator,
@@ -170,7 +170,7 @@ private struct MenuBarExtraLabel: View {
 }
 
 /// App-menu window commands so the primary surfaces are reachable from the
-/// keyboard anywhere in the app (File menu, next to New SoloPM Window).
+/// keyboard anywhere in the app (File menu, next to New Suisui Window).
 private struct SoloPMWindowCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
@@ -618,13 +618,14 @@ private final class SoloPMProjectBoardWindowFallback {
             backing: .buffered,
             defer: false
         )
-        window.title = "SoloPM"
+        window.title = "Suisui"
         window.contentViewController = hostingController
         window.isReleasedWhenClosed = false
         window.setFrame(NSRect(x: 120, y: 160, width: 1_180, height: 760), display: true)
         self.window = window
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
+        LaunchPerformanceMilestones.record("window-visible")
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
@@ -635,7 +636,7 @@ private final class SoloPMProjectBoardWindowFallback {
             window.isVisible
                 && window.occlusionState.contains(.visible)
                 && !window.isMiniaturized
-                && window.title == "SoloPM"
+                && window.title == "Suisui"
         }
     }
 
@@ -773,7 +774,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
 
     private func performNewProjectBoardWindowMenuItem() -> Bool {
         guard let fileMenu = NSApp.mainMenu?.item(withTitle: "File")?.submenu,
-              let itemIndex = fileMenu.items.firstIndex(where: { $0.title == "New SoloPM Window" && $0.isEnabled }) else {
+              let itemIndex = fileMenu.items.firstIndex(where: { $0.title == "New Suisui Window" && $0.isEnabled }) else {
             return false
         }
 
@@ -882,7 +883,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
             window.isVisible
                 && window.occlusionState.contains(.visible)
                 && !window.isMiniaturized
-                && window.title == "SoloPM"
+                && window.title == "Suisui"
         }
     }
 }

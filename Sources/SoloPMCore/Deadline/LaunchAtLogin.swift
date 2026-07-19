@@ -56,7 +56,7 @@ public final class LaunchAtLoginSettingsViewModel: ObservableObject {
         case .enabled, .disabled:
             nil
         case .requiresApproval:
-            "macOS requires approval in System Settings before SoloPM can launch at login."
+            "macOS requires approval in System Settings before Suisui can launch at login."
         case .unavailable:
             "Launch at Login is unavailable for this app bundle. Use a signed app installed in Applications for release verification."
         }

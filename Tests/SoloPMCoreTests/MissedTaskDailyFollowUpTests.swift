@@ -23,7 +23,7 @@ final class MissedTaskDailyFollowUpTests: XCTestCase {
         XCTAssertEqual(try stateStore.lastNotifiedDay(), "2026-06-30")
         XCTAssertEqual(scheduled.count, 1)
         XCTAssertEqual(scheduled.first?.id, "missed-task-review-2026-06-30")
-        XCTAssertEqual(scheduled.first?.title, "SoloPM Catch Up")
+        XCTAssertEqual(scheduled.first?.title, "Suisui Catch Up")
         XCTAssertEqual(scheduled.first?.scheduledAt, "2026-06-30T09:00:00Z")
         XCTAssertEqual(
             scheduled.first?.body,
@@ -58,7 +58,7 @@ final class MissedTaskDailyFollowUpTests: XCTestCase {
         let stateStore = VolatileMissedTaskReviewStateStore()
         let notificationClient = InMemoryNotificationClient()
         _ = try notificationClient.schedule(NotificationDraft(
-            title: "SoloPM Catch Up",
+            title: "Suisui Catch Up",
             body: "Already pending.",
             scheduledAt: "2026-06-30T08:00:00Z",
             identifierHint: "missed-task-review-2026-06-30"

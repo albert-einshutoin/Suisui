@@ -56,7 +56,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             "script/validate_sparkle_release_config.sh",
             environment: [
                 "SOLOPM_BUILD_CONFIGURATION": "release",
-                "SOLOPM_SPARKLE_FEED_URL": "http://updates.example.invalid/solopm/appcast.xml",
+                "SOLOPM_SPARKLE_FEED_URL": "http://updates.example.invalid/suisui/appcast.xml",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
@@ -68,7 +68,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             "script/validate_sparkle_release_config.sh",
             environment: [
                 "SOLOPM_BUILD_CONFIGURATION": "release",
-                "SOLOPM_SPARKLE_FEED_URL": "https://example.com/solopm/appcast.xml",
+                "SOLOPM_SPARKLE_FEED_URL": "https://example.com/suisui/appcast.xml",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
@@ -80,7 +80,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             "script/validate_sparkle_release_config.sh",
             environment: [
                 "SOLOPM_BUILD_CONFIGURATION": "release",
-                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.suisui.app/releases/appcast.xml",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "base64-public-key-from-generate_keys"
             ]
         )
@@ -92,7 +92,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             "script/validate_sparkle_release_config.sh",
             environment: [
                 "SOLOPM_BUILD_CONFIGURATION": "release",
-                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.suisui.app/releases/appcast.xml",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "generated-public-ed-key-value"
             ]
         )
@@ -104,7 +104,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             "script/validate_sparkle_release_config.sh",
             environment: [
                 "SOLOPM_BUILD_CONFIGURATION": "release",
-                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.suisui.app/releases/appcast.xml",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
@@ -120,7 +120,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
         XCTAssertTrue(appcast.contains("<rss"))
         XCTAssertTrue(appcast.contains("sparkle:version=\"\(metadata["CURRENT_PROJECT_VERSION"] ?? "")\""))
         XCTAssertTrue(appcast.contains("sparkle:shortVersionString=\"\(metadata["MARKETING_VERSION"] ?? "")\""))
-        XCTAssertTrue(appcast.contains("url=\"https://example.com/solopm/SoloPM-\(metadata["MARKETING_VERSION"] ?? "")+\(metadata["CURRENT_PROJECT_VERSION"] ?? "").zip\""))
+        XCTAssertTrue(appcast.contains("url=\"https://example.com/suisui/Suisui-\(metadata["MARKETING_VERSION"] ?? "")+\(metadata["CURRENT_PROJECT_VERSION"] ?? "").zip\""))
     }
 
     func testAppcastVerifierAcceptsSparkleGeneratedElementMetadata() throws {
@@ -140,7 +140,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
               <title>0.1.0</title>
               <sparkle:version>1</sparkle:version>
               <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
-              <enclosure url="https://updates.solopm.app/releases/SoloPM-0.1.0+1.zip" length="12345" type="application/octet-stream" sparkle:edSignature="release-signature-smoke-value"/>
+              <enclosure url="https://updates.suisui.app/releases/Suisui-0.1.0+1.zip" length="12345" type="application/octet-stream" sparkle:edSignature="release-signature-smoke-value"/>
             </item>
           </channel>
         </rss>
@@ -157,7 +157,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             arguments: [appcastURL.path],
             environment: [
                 "SOLOPM_REQUIRE_RELEASE_APPCAST": "1",
-                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases"
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.suisui.app/releases"
             ]
         )
 
@@ -181,7 +181,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
               <title>0.1.0</title>
               <sparkle:version>1</sparkle:version>
               <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
-              <enclosure url="https://updates.solopm.app/releases/SoloPM-0.1.0+1.zip" length="12345" type="application/octet-stream" sparkle:edSignature="release-signature-smoke-value"/>
+              <enclosure url="https://updates.suisui.app/releases/Suisui-0.1.0+1.zip" length="12345" type="application/octet-stream" sparkle:edSignature="release-signature-smoke-value"/>
             </item>
           </channel>
         </rss>
@@ -193,7 +193,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             arguments: [appcastURL.path],
             environment: [
                 "SOLOPM_REQUIRE_RELEASE_APPCAST": "1",
-                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases"
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.suisui.app/releases"
             ]
         )
 
@@ -217,7 +217,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
               <title>0.1.0</title>
               <sparkle:version>999</sparkle:version>
               <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
-              <enclosure url="https://updates.solopm.app/releases/SoloPM-0.1.0+1.zip" length="12345" type="application/octet-stream" sparkle:edSignature="release-signature-smoke-value"/>
+              <enclosure url="https://updates.suisui.app/releases/Suisui-0.1.0+1.zip" length="12345" type="application/octet-stream" sparkle:edSignature="release-signature-smoke-value"/>
             </item>
           </channel>
         </rss>
@@ -262,7 +262,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             withIntermediateDirectories: true
         )
         let zeroLengthAppcast = try readPackageFile("packaging/appcast.sample.xml")
-            .replacingOccurrences(of: "https://example.com/solopm/", with: "https://updates.solopm.app/solopm/")
+            .replacingOccurrences(of: "https://example.com/suisui/", with: "https://updates.suisui.app/suisui/")
             .replacingOccurrences(of: "local-smoke-signature-placeholder", with: "release-signature-smoke-value")
         try zeroLengthAppcast.write(to: releaseLikeAppcastURL, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: releaseLikeAppcastURL) }
@@ -299,7 +299,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             withIntermediateDirectories: true
         )
         try readPackageFile("packaging/appcast.sample.xml")
-            .replacingOccurrences(of: "https://example.com/solopm/", with: "http://updates.example.invalid/solopm/")
+            .replacingOccurrences(of: "https://example.com/suisui/", with: "http://updates.example.invalid/suisui/")
             .replacingOccurrences(of: "local-smoke-signature-placeholder", with: "release-signature-smoke-value")
             .replacingOccurrences(of: #" length="0""#, with: #" length="12345""#)
             .write(to: releaseLikeAppcastURL, atomically: true, encoding: .utf8)
@@ -315,14 +315,14 @@ final class SparkleUpdateFoundationTests: XCTestCase {
         XCTAssertTrue(result.output.contains("release appcast enclosure URL must use https"))
 
         let mixedSchemeAppcast = try readPackageFile("packaging/appcast.sample.xml")
-            .replacingOccurrences(of: "https://example.com/solopm/", with: "https://updates.solopm.app/solopm/")
+            .replacingOccurrences(of: "https://example.com/suisui/", with: "https://updates.suisui.app/suisui/")
             .replacingOccurrences(of: "local-smoke-signature-placeholder", with: "release-signature-smoke-value")
             .replacingOccurrences(of: #" length="0""#, with: #" length="12345""#)
             .replacingOccurrences(
                 of: "    </item>",
                 with: """
                       <enclosure
-                        url="http://updates.solopm.app/solopm/legacy.zip"
+                        url="http://updates.suisui.app/suisui/legacy.zip"
                         length="12345"
                         type="application/octet-stream" />
                     </item>
@@ -356,7 +356,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
               <title>0.1.0</title>
               <sparkle:version>1</sparkle:version>
               <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
-              <enclosure url="https://cdn.solopm.app/releases/SoloPM-0.1.0+1.zip" length="12345" type="application/octet-stream" sparkle:edSignature="release-signature-smoke-value"/>
+              <enclosure url="https://cdn.suisui.app/releases/Suisui-0.1.0+1.zip" length="12345" type="application/octet-stream" sparkle:edSignature="release-signature-smoke-value"/>
             </item>
           </channel>
         </rss>
@@ -368,7 +368,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             arguments: [releaseLikeAppcastURL.path],
             environment: [
                 "SOLOPM_REQUIRE_RELEASE_APPCAST": "1",
-                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases"
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.suisui.app/releases"
             ]
         )
 
@@ -387,7 +387,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             .replacingOccurrences(of: "local-smoke-signature-placeholder", with: "release-signature-smoke-value")
             .replacingOccurrences(of: #" length="0""#, with: #" length="12345""#)
         try releaseLikeAppcast
-            .replacingOccurrences(of: "https://example.com/solopm/", with: "https://updates.example.invalid/solopm/")
+            .replacingOccurrences(of: "https://example.com/suisui/", with: "https://updates.example.invalid/suisui/")
             .write(to: releaseLikeAppcastURL, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: releaseLikeAppcastURL) }
 
@@ -401,7 +401,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
         XCTAssertTrue(reservedDomainResult.output.contains("release appcast enclosure URL must not use placeholder or local domains"))
 
         try releaseLikeAppcast
-            .replacingOccurrences(of: "https://example.com/solopm/", with: "https://localhost/solopm/")
+            .replacingOccurrences(of: "https://example.com/suisui/", with: "https://localhost/suisui/")
             .write(to: releaseLikeAppcastURL, atomically: true, encoding: .utf8)
 
         let localDomainResult = try runScript(
@@ -443,7 +443,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             environment: [
                 "SOLOPM_REQUIRE_RELEASE_APPCAST": "1",
                 "SOLOPM_REQUIRE_SPARKLE_TOOLS": "0",
-                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://example.com/solopm"
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://example.com/suisui"
             ]
         )
 
@@ -467,7 +467,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             environment: [
                 "SOLOPM_REQUIRE_RELEASE_APPCAST": "1",
                 "SOLOPM_REQUIRE_SPARKLE_TOOLS": "0",
-                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases"
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.suisui.app/releases"
             ]
         )
 
@@ -506,9 +506,9 @@ final class SparkleUpdateFoundationTests: XCTestCase {
     }
 
     private func writeReleaseZipEvidence(in directoryURL: URL) throws -> [URL] {
-        let artifactURL = directoryURL.appendingPathComponent("SoloPM-0.1.0+1.zip")
-        let checksumURL = directoryURL.appendingPathComponent("SoloPM-0.1.0+1.zip.sha256")
-        let packageEvidenceURL = directoryURL.appendingPathComponent("SoloPM-0.1.0+1.zip.package-evidence.json")
+        let artifactURL = directoryURL.appendingPathComponent("Suisui-0.1.0+1.zip")
+        let checksumURL = directoryURL.appendingPathComponent("Suisui-0.1.0+1.zip.sha256")
+        let packageEvidenceURL = directoryURL.appendingPathComponent("Suisui-0.1.0+1.zip.package-evidence.json")
         let artifactPath = artifactURL.path
         let artifactSha = "554f3f497395d59fc12389d51b5fb7208248425e0dbad975db3f08132f58dbed"
 

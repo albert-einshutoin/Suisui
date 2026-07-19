@@ -836,7 +836,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
     }
 
     private static func localDataRepairMessage(for error: LocalStoreDecodingError) -> String {
-        let action = "Restore from backup or repair the local database, then reopen SoloPM."
+        let action = "Restore from backup or repair the local database, then reopen Suisui."
         switch error {
         case .invalidStringArray(let column):
             return "Local MCP registration data needs repair: \(column) contains invalid list JSON. \(action)"

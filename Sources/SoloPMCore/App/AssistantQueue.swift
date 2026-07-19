@@ -289,7 +289,7 @@ public enum AssistantQueueAdapter {
 
     public static func makeItem(
         automationRequest: SyncAutomationRequestPayload,
-        costPreview: AssistantQueueCostPreview = .localOnly(note: "Local Mac execution preview only. No SoloPM managed charge before run.")
+        costPreview: AssistantQueueCostPreview = .localOnly(note: "Local Mac execution preview only. No Suisui managed charge before run.")
     ) -> AssistantQueueItem {
         let actionPlan = AssistantQueueExecutableActionPlanFactory.actionPlan(for: .automationRequest(automationRequest))
         return AssistantQueueItem(
@@ -346,7 +346,7 @@ public enum AssistantQueueAdapter {
                 .providerExecutionApproval
             ],
             blockingReason: "\(displayName) connector send is not configured. Create a reviewed draft instead; no external message was sent.",
-            costPreview: .localOnly(note: "Blocked connector send gate. No external message is sent and no SoloPM managed charge is incurred.")
+            costPreview: .localOnly(note: "Blocked connector send gate. No external message is sent and no Suisui managed charge is incurred.")
         )
     }
 

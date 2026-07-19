@@ -84,7 +84,7 @@ final class WeeklyReviewSummaryTests: XCTestCase {
         let scheduled = try fixture.client.listScheduled()
         XCTAssertEqual(scheduled.count, 1)
         let record = try XCTUnwrap(scheduled.first)
-        XCTAssertEqual(record.title, "SoloPM Weekly Review")
+        XCTAssertEqual(record.title, "Suisui Weekly Review")
         XCTAssertEqual(record.body, "2 completed this week, 1 still open.")
         XCTAssertFalse(record.body?.contains("Done this week") ?? true)
         XCTAssertFalse(record.body?.contains("Still open item") ?? true)

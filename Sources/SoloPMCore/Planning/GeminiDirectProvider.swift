@@ -612,7 +612,7 @@ private enum GeminiDirectFunctionDeclarationCatalog {
         case .taskCreate:
             return GeminiDirectFunctionDeclaration(
                 name: functionName(for: tool),
-                description: "Create one local SoloPM task. SoloPM will require local user approval before writing.",
+                description: "Create one local Suisui task. Suisui will require local user approval before writing.",
                 parameters: GeminiDirectSchema(
                     type: "object",
                     properties: taskProperties(),
@@ -622,7 +622,7 @@ private enum GeminiDirectFunctionDeclarationCatalog {
         case .taskBulkCreate:
             return GeminiDirectFunctionDeclaration(
                 name: functionName(for: tool),
-                description: "Create multiple local SoloPM tasks. SoloPM will require local user approval before writing.",
+                description: "Create multiple local Suisui tasks. Suisui will require local user approval before writing.",
                 parameters: GeminiDirectSchema(
                     type: "object",
                     properties: [
@@ -642,7 +642,7 @@ private enum GeminiDirectFunctionDeclarationCatalog {
         case .taskList:
             return GeminiDirectFunctionDeclaration(
                 name: functionName(for: tool),
-                description: "List current local SoloPM tasks. This is read-only and does not require local write approval.",
+                description: "List current local Suisui tasks. This is read-only and does not require local write approval.",
                 parameters: GeminiDirectSchema(
                     type: "object",
                     properties: [:],
@@ -652,7 +652,7 @@ private enum GeminiDirectFunctionDeclarationCatalog {
         case .taskUpdate:
             return GeminiDirectFunctionDeclaration(
                 name: functionName(for: tool),
-                description: "Update one local SoloPM task, including status, project, due date, detail, title, or priority. SoloPM will require local user approval before writing.",
+                description: "Update one local Suisui task, including status, project, due date, detail, title, or priority. Suisui will require local user approval before writing.",
                 parameters: GeminiDirectSchema(
                     type: "object",
                     properties: taskUpdateProperties(),
@@ -662,11 +662,11 @@ private enum GeminiDirectFunctionDeclarationCatalog {
         case .taskComplete:
             return GeminiDirectFunctionDeclaration(
                 name: functionName(for: tool),
-                description: "Mark one local SoloPM task as completed. SoloPM will require local user approval before writing.",
+                description: "Mark one local Suisui task as completed. Suisui will require local user approval before writing.",
                 parameters: GeminiDirectSchema(
                     type: "object",
                     properties: [
-                        "id": GeminiDirectSchema(type: "integer", description: "Required local SoloPM task id.")
+                        "id": GeminiDirectSchema(type: "integer", description: "Required local Suisui task id.")
                     ],
                     required: ["id"]
                 )
@@ -679,7 +679,7 @@ private enum GeminiDirectFunctionDeclarationCatalog {
     private static func taskProperties() -> [String: GeminiDirectSchema] {
         [
             "title": GeminiDirectSchema(type: "string", description: "Required task title."),
-            "projectId": GeminiDirectSchema(type: "integer", description: "Optional local SoloPM project id."),
+            "projectId": GeminiDirectSchema(type: "integer", description: "Optional local Suisui project id."),
             "detail": GeminiDirectSchema(type: "string", description: "Optional task detail."),
             "dueAt": GeminiDirectSchema(type: "string", description: "Optional ISO-8601 due date or timestamp."),
             "priority": GeminiDirectSchema(type: "string", description: "Optional priority label."),
@@ -689,9 +689,9 @@ private enum GeminiDirectFunctionDeclarationCatalog {
 
     private static func taskUpdateProperties() -> [String: GeminiDirectSchema] {
         [
-            "id": GeminiDirectSchema(type: "integer", description: "Required local SoloPM task id."),
+            "id": GeminiDirectSchema(type: "integer", description: "Required local Suisui task id."),
             "title": GeminiDirectSchema(type: "string", description: "Optional replacement task title."),
-            "projectId": GeminiDirectSchema(type: "integer", description: "Optional local SoloPM project id to move the task into."),
+            "projectId": GeminiDirectSchema(type: "integer", description: "Optional local Suisui project id to move the task into."),
             "status": GeminiDirectSchema(type: "string", description: "Optional task status: open, backlog, planned, in_progress, blocked, or completed."),
             "detail": GeminiDirectSchema(type: "string", description: "Optional task detail."),
             "dueAt": GeminiDirectSchema(type: "string", description: "Optional ISO-8601 due date or timestamp."),
@@ -807,7 +807,7 @@ private struct GeminiDirectFunctionCallActionPlanMapper {
                 // Review summaries are the first thing the VoiceOver flow
                 // announces, so the read-only task-list path gets a concrete
                 // label instead of a generic provider-function fallback.
-                return "List current SoloPM tasks."
+                return "List current Suisui tasks."
             case .taskCreate:
                 if case .string(let title)? = actions[0].arguments["title"] {
                     return "Create task: \(title)"
@@ -816,7 +816,7 @@ private struct GeminiDirectFunctionCallActionPlanMapper {
                 break
             }
         }
-        return "Prepare \(actions.count) SoloPM task action\(actions.count == 1 ? "" : "s") from Gemini function call."
+        return "Prepare \(actions.count) Suisui task action\(actions.count == 1 ? "" : "s") from Gemini function call."
     }
 
     private func nonBlank(_ value: String?) -> String? {

@@ -288,7 +288,7 @@ final class SyncEntitlementTests: XCTestCase {
 
         viewModel.startSync()
 
-        XCTAssertEqual(viewModel.errorMessage, "Upgrade to Sync to sync SoloPM data.")
+        XCTAssertEqual(viewModel.errorMessage, "Upgrade to Sync to sync Suisui data.")
         XCTAssertEqual(networkClient.startCallCount, 0)
     }
 

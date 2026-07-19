@@ -223,7 +223,7 @@ struct SettingsAIFeatureView: View {
                         Label("Managed AI billing", systemImage: "creditcard")
                     }
                     .accessibilityIdentifier("settings-managed-ai-billing-toggle")
-                    .accessibilityHint("Enables local cost cap controls for SoloPM-managed AI work.")
+                    .accessibilityHint("Enables local cost cap controls for Suisui-managed AI work.")
 
                     Stepper(
                         value: Binding(
@@ -813,7 +813,7 @@ struct SettingsPrivacyFeatureView: View {
                 } label: {
                     Label("Restore from Backup…", systemImage: "arrow.up.doc")
                 }
-                .help("Add items from a SoloPM backup file to this workspace")
+                .help("Add items from a Suisui backup file to this workspace")
                 .accessibilityIdentifier("settings-backup-restore")
                 .accessibilityHint("Opens a backup file and asks for confirmation before adding its items.")
                 if let backupStatusMessage = context.backupStatusMessage {

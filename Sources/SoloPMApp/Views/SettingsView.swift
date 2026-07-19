@@ -435,7 +435,7 @@ SettingsPrivacyFeatureView(
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes the saved registration from SoloPM.")
+            Text("This removes the saved registration from Suisui.")
         }
         .confirmationDialog(
             "Disconnect Google Calendar",
@@ -933,7 +933,7 @@ struct SettingsOverviewProjectionBuilder {
     var syncSafetyBoundaryLabel: String {
         switch syncStatusLabelForOverview {
         case "Ready", "Syncing":
-            "Only selected SoloPM data classes are included."
+            "Only selected Suisui data classes are included."
         case "Sync backend is not configured":
             "No upload starts while the backend is missing."
         case "Upgrade required":
@@ -1203,7 +1203,7 @@ struct SettingsSyncProjectionBuilder {
     var syncSafetyBoundaryLabel: String {
         switch syncStatusLabelForOverview {
         case "Ready", "Syncing":
-            "Only selected SoloPM data classes are included."
+            "Only selected Suisui data classes are included."
         case "Sync backend is not configured":
             "No upload starts while the backend is missing."
         case "Upgrade required":
@@ -1241,7 +1241,7 @@ struct SettingsPrivacyProjectionBuilder {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
-        return "SoloPM-Backup-\(formatter.string(from: Date())).json"
+        return "Suisui-Backup-\(formatter.string(from: Date())).json"
     }
 
     func presentBackupExportPanel() {
@@ -1252,7 +1252,7 @@ struct SettingsPrivacyProjectionBuilder {
         panel.isExtensionHidden = false
         panel.nameFieldStringValue = defaultBackupFilename
         panel.prompt = String(localized: "Back Up")
-        panel.message = String(localized: "Choose where to save the SoloPM backup file")
+        panel.message = String(localized: "Choose where to save the Suisui backup file")
         panel.begin { response in
             guard response == .OK, let url = panel.url else {
                 return
@@ -1302,7 +1302,7 @@ struct SettingsPrivacyProjectionBuilder {
         panel.isExtensionHidden = false
         panel.nameFieldStringValue = defaultDiagnosticsFilename
         panel.prompt = String(localized: "Export")
-        panel.message = String(localized: "Choose where to save the SoloPM diagnostics report")
+        panel.message = String(localized: "Choose where to save the Suisui diagnostics report")
         panel.begin { response in
             guard response == .OK, let url = panel.url else {
                 return
@@ -1332,7 +1332,7 @@ struct SettingsPrivacyProjectionBuilder {
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.json]
         panel.prompt = String(localized: "Choose")
-        panel.message = String(localized: "Choose a SoloPM backup file to restore")
+        panel.message = String(localized: "Choose a Suisui backup file to restore")
         panel.begin { response in
             guard response == .OK, let url = panel.url else {
                 return

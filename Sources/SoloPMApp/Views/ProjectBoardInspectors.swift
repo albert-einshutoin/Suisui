@@ -157,9 +157,9 @@ struct ProjectInspectorView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title == project.title)
                 .keyboardShortcut("s", modifiers: [.command])
-                .help("Saves edits to the selected project in the local SoloPM database")
+                .help("Saves edits to the selected project in the local Suisui database")
                 .accessibilityIdentifier("project-inspector-save")
-                .accessibilityHint("Saves edits to the selected project in the local SoloPM database.")
+                .accessibilityHint("Saves edits to the selected project in the local Suisui database.")
             }
 
             Section("Suggestion") {
@@ -174,9 +174,9 @@ struct ProjectInspectorView: View {
                         Label("Restore Project", systemImage: "arrow.uturn.backward")
                     }
                     .buttonStyle(.borderedProminent)
-                    .help("Restores the selected project to active views in the local SoloPM database")
+                    .help("Restores the selected project to active views in the local Suisui database")
                     .accessibilityIdentifier("project-inspector-restore")
-                    .accessibilityHint("Restores the selected project to active views in the local SoloPM database.")
+                    .accessibilityHint("Restores the selected project to active views in the local Suisui database.")
                 } else {
                     Button {
                         viewModel.completeSelectedProject()
@@ -184,9 +184,9 @@ struct ProjectInspectorView: View {
                         Label("Complete Project", systemImage: "checkmark.seal")
                     }
                     .disabled(project.isCompleted)
-                    .help("Completes the selected project in the local SoloPM database")
+                    .help("Completes the selected project in the local Suisui database")
                     .accessibilityIdentifier("project-inspector-complete")
-                    .accessibilityHint("Completes the selected project in the local SoloPM database.")
+                    .accessibilityHint("Completes the selected project in the local Suisui database.")
                 }
             }
 
@@ -194,7 +194,7 @@ struct ProjectInspectorView: View {
                 if isConfirmingArchive {
                     InspectorDestructiveConfirmation(
                         title: "Archive this project?",
-                        message: "This hides the project from the active board and deadline summaries. Existing local tasks are kept in the SoloPM database.",
+                        message: "This hides the project from the active board and deadline summaries. Existing local tasks are kept in the Suisui database.",
                         confirmTitle: "Archive Project",
                         confirmSystemImage: "archivebox",
                         accessibilityIdentifier: "project-inspector-archive-confirmation",
@@ -216,7 +216,7 @@ struct ProjectInspectorView: View {
                 if isConfirmingDelete {
                     InspectorDestructiveConfirmation(
                         title: "Delete this project?",
-                        message: "This permanently removes the project, its local tasks, deadline rules, artifact links, calendar links, and reminder links from SoloPM.",
+                        message: "This permanently removes the project, its local tasks, deadline rules, artifact links, calendar links, and reminder links from Suisui.",
                         confirmTitle: "Delete Project",
                         confirmSystemImage: "trash",
                         accessibilityIdentifier: "project-inspector-delete-confirmation",
@@ -283,7 +283,7 @@ struct ProjectInspectorView: View {
         .disabled(project.isArchived || !project.hasWorkspaceDirectory)
         .help("Clear this project's local directory permission")
         .accessibilityIdentifier("project-workspace-clear")
-        .accessibilityHint("Removes the stored project directory from SoloPM without deleting files.")
+        .accessibilityHint("Removes the stored project directory from Suisui without deleting files.")
     }
 
     private func applyProjectDirectory(url: URL) {
@@ -1337,10 +1337,10 @@ struct TaskInspectorView: View {
                             || hasInvalidPersistedDueDate
                     )
                     .keyboardShortcut("s", modifiers: [.command])
-                    .help("Saves edits to the selected task in the local SoloPM database")
+                    .help("Saves edits to the selected task in the local Suisui database")
                     .accessibilityIdentifier("task-inspector-save")
                     .accessibilityHint(
-                        "Saves edits to the selected task in the local SoloPM database.")
+                        "Saves edits to the selected task in the local Suisui database.")
 
                 }
 
@@ -1366,7 +1366,7 @@ struct TaskInspectorView: View {
                     if isConfirmingDelete {
                         InspectorDestructiveConfirmation(
                             title: "Delete this task?",
-                            message: "This removes the task from the local SoloPM database.",
+                            message: "This removes the task from the local Suisui database.",
                             confirmTitle: "Delete Task",
                             confirmSystemImage: "trash",
                             // The runtime AX preflight tracks this generated cancel

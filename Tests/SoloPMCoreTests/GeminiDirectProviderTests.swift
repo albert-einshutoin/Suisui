@@ -636,7 +636,7 @@ final class GeminiDirectProviderTests: XCTestCase {
         XCTAssertTrue(response.validationResult.isValid)
         XCTAssertFalse(plan.requiresApproval)
         XCTAssertEqual(plan.approvalRequirement, .none)
-        XCTAssertEqual(plan.summary, "List current SoloPM tasks.")
+        XCTAssertEqual(plan.summary, "List current Suisui tasks.")
         XCTAssertEqual(plan.actions.first?.tool, .taskList)
     }
 

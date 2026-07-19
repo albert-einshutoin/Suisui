@@ -435,18 +435,22 @@ launch_start_ms="$(now_ms)"
 rm -f "$TIMELINE_FILE"
 TRACK_LAUNCH_MILESTONES=1
 open_app
-wait_for_visible_window
-visible_window_ms="$(now_ms)"
+visible_window_ms="$(wait_for_launch_milestone "window-visible")"
 command_ready_ms="$(wait_for_launch_milestone "command-ready")"
 today_ready_ms="$(wait_for_launch_milestone "today-ready")"
 # AX markers remain mandatory proof that the app-owned readiness milestones
 # correspond to real, operable UI rather than optimistic instrumentation.
+wait_for_visible_window
 wait_for_marker "project-board-command-palette"
 wait_for_marker "today-workflow"
 record_sample "cold-launch-visible-window" "$launch_start_ms" "$visible_window_ms"
 record_sample "cold-launch-command-ready" "$launch_start_ms" "$command_ready_ms" "$MAX_COLD_LAUNCH_MS"
 record_sample "cold-launch-today-ready" "$launch_start_ms" "$today_ready_ms"
 
+# Activation is intentionally outside the cold-launch sample. The product is
+# already command-ready; this only gives the AX destination benchmark a stable
+# foreground window without charging automation setup to launch latency.
+activate_app
 measure_destination "destination-inbox" "sidebar-destination-inbox" "Inbox" "inbox-workflow"
 # Assistant Queue is intentionally nested under Review in the four-area IA.
 # Measure both real user transitions so this gate cannot silently restore the

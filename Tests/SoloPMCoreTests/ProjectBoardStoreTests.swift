@@ -5509,7 +5509,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(plan.actions.first?.arguments["title"], .string("Review calendar plan token=\(titleSecret)"))
         XCTAssertEqual(plan.actions.first?.arguments["startAt"], .string("2026-06-30T09:30:00Z"))
         XCTAssertEqual(plan.actions.first?.arguments["durationMinutes"], .number(30))
-        XCTAssertEqual(plan.actions.first?.arguments["notes"], .string("Created from a reviewed SoloPM schedule draft."))
+        XCTAssertEqual(plan.actions.first?.arguments["notes"], .string("Created from a reviewed Suisui schedule draft."))
     }
 
     @MainActor
@@ -8733,7 +8733,7 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         XCTAssertEqual(
             viewModel.errorMessage,
-            "Local board data needs repair: projects.tags_json contains invalid list JSON. Restore from backup or repair the local database, then reopen SoloPM."
+            "Local board data needs repair: projects.tags_json contains invalid list JSON. Restore from backup or repair the local database, then reopen Suisui."
         )
         XCTAssertFalse(viewModel.isEmptyProjectStateVisible)
     }
@@ -8748,7 +8748,7 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         XCTAssertEqual(
             viewModel.errorMessage,
-            "Local board data needs repair: projects.status contains unsupported value \"parked\". Restore from backup or repair the local database, then reopen SoloPM."
+            "Local board data needs repair: projects.status contains unsupported value \"parked\". Restore from backup or repair the local database, then reopen Suisui."
         )
         XCTAssertFalse(viewModel.isEmptyProjectStateVisible)
     }
@@ -8764,7 +8764,7 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         XCTAssertEqual(
             viewModel.errorMessage,
-            "Local board data needs repair: tasks.due_at contains invalid date value \"\(String(repeating: "x", count: 80))...\". Restore from backup or repair the local database, then reopen SoloPM."
+            "Local board data needs repair: tasks.due_at contains invalid date value \"\(String(repeating: "x", count: 80))...\". Restore from backup or repair the local database, then reopen Suisui."
         )
     }
 

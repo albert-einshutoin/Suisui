@@ -68,7 +68,7 @@ final class ClarificationSessionTests: XCTestCase {
         var session = ClarificationSession(route: route, requiredSlots: [.executionScope, .executionApproval])
 
         XCTAssertEqual(session.currentQuestion?.slot, .executionScope)
-        XCTAssertEqual(session.currentQuestion?.prompt, "What scope should SoloPM prepare for review?")
+        XCTAssertEqual(session.currentQuestion?.prompt, "What scope should Suisui prepare for review?")
         _ = session.answer("tests only")
 
         XCTAssertEqual(session.currentQuestion?.slot, .executionApproval)

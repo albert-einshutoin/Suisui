@@ -18,7 +18,7 @@ struct SettingsAppearanceSection: View {
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier("settings-theme-picker")
-            .accessibilityHint("Changes the appearance for all SoloPM windows.")
+            .accessibilityHint("Changes the appearance for all Suisui windows.")
         }
 
         Section("Language") {
@@ -34,7 +34,7 @@ struct SettingsAppearanceSection: View {
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier("settings-language-picker")
-            .accessibilityHint("Changes the language for all SoloPM windows.")
+            .accessibilityHint("Changes the language for all Suisui windows.")
         }
     }
 }

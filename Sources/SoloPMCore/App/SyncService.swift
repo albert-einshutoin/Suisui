@@ -325,7 +325,7 @@ public final class SyncSettingsViewModel: ObservableObject {
 
         switch serviceError {
         case let .upgradeRequired(requiredPlan):
-            return "Upgrade to \(requiredPlan.displayName) to sync SoloPM data."
+            return "Upgrade to \(requiredPlan.displayName) to sync Suisui data."
         case .syncBackendNotConfigured:
             return "Sync backend is not configured."
         case .networkUnavailable:

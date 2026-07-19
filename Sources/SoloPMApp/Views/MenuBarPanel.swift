@@ -47,7 +47,7 @@ struct MenuBarPanel: View {
 
     private var headerRow: some View {
         HStack(spacing: SoloPMSpacing.sm) {
-            Text("SoloPM")
+            Text("Suisui")
                 .font(.headline)
 
             Spacer()

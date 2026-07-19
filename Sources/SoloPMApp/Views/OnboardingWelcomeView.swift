@@ -62,9 +62,13 @@ struct OnboardingWelcomeView: View {
     private var welcomeStep: some View {
         onboardingStep(
             systemImage: "waveform.badge.mic",
-            title: "Welcome to SoloPM"
+            title: "Welcome to Suisui"
         ) {
-            Text("Start with a private practice project. No AI account or Mac permissions are needed.")
+            Text("Speak it. Review it. Move it.")
+                .font(.headline)
+                .multilineTextAlignment(.center)
+
+            Text("Talk to Suisui. Review the draft, then move your work forward.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 
@@ -116,7 +120,7 @@ struct OnboardingWelcomeView: View {
             systemImage: "brain",
             title: "Set up your AI"
         ) {
-            Text("SoloPM plans with the AI provider you choose. Add an API key in Settings, or pick a local model that needs no key.")
+            Text("Suisui plans with the AI provider you choose. Add an API key in Settings, or pick a local model that needs no key.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 
@@ -149,7 +153,7 @@ struct OnboardingWelcomeView: View {
             Text(
                 displayedPlanningState.isReady
                     ? "Try saying: \"Plan a release checklist due next Friday.\" Review the plan, then approve it."
-                    : "SoloPM can open now, but planning is not ready yet. Review the required item below or finish setup later from Settings."
+                    : "Suisui can open now, but planning is not ready yet. Review the required item below or finish setup later from Settings."
             )
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
@@ -334,14 +338,14 @@ struct OnboardingWelcomeView: View {
                 }
                 .accessibilityIdentifier("onboarding-set-up-ai")
 
-                Button("Try SoloPM now") {
+                Button("Try Suisui now") {
                     createSampleProject()
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(isCreatingSampleProject || sampleProjectAction == nil)
                 .accessibilityIdentifier("onboarding-try-solopm")
-                .accessibilityHint("Creates or reuses Learn SoloPM, opens Today, and selects the first lesson.")
+                .accessibilityHint("Creates or reuses Learn Suisui, opens Today, and selects the first lesson.")
             } else {
                 Button("Back") {
                     flow.goBack()
@@ -349,7 +353,7 @@ struct OnboardingWelcomeView: View {
                 .accessibilityIdentifier("onboarding-back")
 
                 if flow.isLastStep {
-                    Button(readinessSnapshot.planningState.isReady ? "Start Using SoloPM" : "Finish Setup Later") {
+                    Button(readinessSnapshot.planningState.isReady ? "Start Using Suisui" : "Finish Setup Later") {
                         completeOnboarding()
                     }
                     .buttonStyle(.borderedProminent)

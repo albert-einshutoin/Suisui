@@ -1362,7 +1362,7 @@ final class AppSettingsTests: XCTestCase {
             previewer.requests,
             [
                 TextToSpeechRequest(
-                    text: "SoloPMのローカル音声テストです。",
+                    text: "Suisuiのローカル音声テストです。",
                     languageCode: "ja",
                     voiceID: "jf_alpha"
                 )

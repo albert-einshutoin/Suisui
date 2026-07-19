@@ -15,7 +15,7 @@ public enum AssistantQueueStoreError: Error, Equatable, Sendable {
             case .saveFailed:
                 return "Assistant Queue could not save generated work. Confirm local data storage is available, then try again."
             case .encodingFailed, .decodingFailed, .invalidStoredValue:
-                return "Local Assistant Queue data needs repair. Restore from backup or repair the local database, then reopen SoloPM."
+                return "Local Assistant Queue data needs repair. Restore from backup or repair the local database, then reopen Suisui."
             }
         }
         return "Assistant Queue could not save generated work. Confirm local data storage is available, then try again."

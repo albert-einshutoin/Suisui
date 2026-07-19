@@ -1,7 +1,7 @@
 import XCTest
 @testable import SoloPMCore
 
-/// Covers the onboarding "Learn SoloPM" sample project creator against a temp
+/// Covers the onboarding "Learn Suisui" sample project creator against a temp
 /// SQLite fixture: field mapping, idempotence, and the board-change signal.
 final class FirstRunOnboardingSampleTests: XCTestCase {
     private struct FixedDateProvider: DateProvider {
@@ -157,7 +157,7 @@ final class FirstRunOnboardingSampleTests: XCTestCase {
         let taskStore = SQLiteTaskStore(connection: connection)
         let defaults = try makeIsolatedDefaults()
         let interruptedProject = try projectStore.create(
-            title: "Learn SoloPM",
+            title: "Learn Suisui",
             sourceCommand: OnboardingSampleProjectDefinition.projectMarkerSourceCommand
         )
         _ = try taskStore.create(

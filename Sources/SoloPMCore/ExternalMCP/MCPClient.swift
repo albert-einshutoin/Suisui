@@ -37,8 +37,8 @@ public final class MCPClient: @unchecked Sendable {
                 "protocolVersion": .string(MCPProtocolVersion.v2025_11_25.rawValue),
                 "capabilities": .object([:]),
                 "clientInfo": .object([
-                    "name": .string("SoloPM"),
-                    "title": .string("SoloPM"),
+                    "name": .string("Suisui"),
+                    "title": .string("Suisui"),
                     "version": .string("0.1.0")
                 ])
             ])

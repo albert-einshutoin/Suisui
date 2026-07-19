@@ -144,7 +144,7 @@ public struct AssistantQueueCostPreview: Codable, Equatable, Sendable {
     }
 
     public static func localOnly(
-        note: String? = "Local-only execution. SoloPM managed charge unavailable.",
+        note: String? = "Local-only execution. Suisui managed charge unavailable.",
         model: ExecutionReceiptModel? = nil,
         observedUsage: ExecutionReceiptUsage? = nil
     ) -> Self {
@@ -161,7 +161,7 @@ public struct AssistantQueueCostPreview: Codable, Equatable, Sendable {
     public static func userProviderBilled(
         provider: String,
         modelName: String,
-        note: String? = "BYOK or user-provider billing. SoloPM managed charge unavailable.",
+        note: String? = "BYOK or user-provider billing. Suisui managed charge unavailable.",
         observedUsage: ExecutionReceiptUsage? = nil
     ) -> Self {
         AssistantQueueCostPreview(
@@ -221,14 +221,14 @@ public struct AssistantQueueCostPreview: Codable, Equatable, Sendable {
         case (.soloPMManaged, .unavailable):
             return "Preview only: managed cost unavailable, not charged yet"
         case (.localOnly, _):
-            return "Preview only: local execution, no SoloPM managed charge"
+            return "Preview only: local execution, no Suisui managed charge"
         case (.userProviderBilled, _):
-            return "Preview only: BYOK/user-provider billed, no SoloPM managed charge"
+            return "Preview only: BYOK/user-provider billed, no Suisui managed charge"
         }
     }
 
     private var estimatedReviewLabel: String {
-        var parts = ["Preview only: estimated before run", "not charged yet", "SoloPM managed"]
+        var parts = ["Preview only: estimated before run", "not charged yet", "Suisui managed"]
         if let estimatedCostCents, let currencyCode {
             parts.append("\(currencyCode) \(Self.formattedMajorCurrency(fromCents: estimatedCostCents))")
         }

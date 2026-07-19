@@ -118,7 +118,7 @@ public enum InboxCaptureStoreError: Error, Equatable, Sendable {
             case .notFound:
                 return "Inbox capture is no longer available."
             case .invalidStoredValue:
-                return "Local Inbox capture data needs repair. Restore from backup or repair the local database, then reopen SoloPM."
+                return "Local Inbox capture data needs repair. Restore from backup or repair the local database, then reopen Suisui."
             }
         }
 

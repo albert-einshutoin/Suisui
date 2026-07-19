@@ -158,7 +158,7 @@ final class TTSProviderTests: XCTestCase {
         let player = RecordingSpeechAudioPlayer()
         let service = TextToSpeechPreviewService(provider: provider, audioPlayer: player)
         let request = TextToSpeechRequest(
-            text: "SoloPM local voice test is ready.",
+            text: "Suisui local voice test is ready.",
             languageCode: "en",
             voiceID: "af_heart"
         )

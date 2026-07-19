@@ -205,7 +205,7 @@ struct ProjectBoardView: View {
             inspectorContent
                 .inspectorColumnWidth(min: 276, ideal: 300, max: 420)
         }
-        .navigationTitle("SoloPM")
+        .navigationTitle("Suisui")
         // The Edit-menu board undo command targets the key Project Board
         // window through this focused scene value; text-field undo keeps the
         // standard responder-chain Undo item.
@@ -351,7 +351,7 @@ struct ProjectBoardView: View {
             }
             .accessibilityIdentifier("project-board-google-calendar-sync-approval-cancel")
         } message: {
-            Text("SoloPM will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped.")
+            Text("Suisui will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped.")
         }
         .sheet(item: $developmentAutomationReviewSheet) { sheet in
             ActionReviewPanel(viewModel: sheet.viewModel) {

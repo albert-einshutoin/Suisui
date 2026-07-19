@@ -146,7 +146,7 @@ final class ArchitectureBoundaryTests: XCTestCase {
         }
 
         for compositionMarker in [
-            "WindowGroup(\"SoloPM\", id: \"project-board\")",
+            "WindowGroup(\"Suisui\", id: \"project-board\")",
             "VoiceCaptureWindowRootView()",
             "quickCaptureController: menuBarQuickCaptureController,",
             "sceneCoordinator: projectBoardSceneCoordinator",

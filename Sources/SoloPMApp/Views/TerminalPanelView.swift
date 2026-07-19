@@ -181,7 +181,7 @@ private struct LocalShellTerminalRepresentable: NSViewRepresentable {
         terminal.layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
         terminal.caretColor = .controlAccentColor
         terminal.getTerminal().setCursorStyle(.steadyBlock)
-        terminal.feed(text: "SoloPM Terminal\n")
+        terminal.feed(text: "Suisui Terminal\n")
         terminal.startProcess(
             executable: shellPath,
             args: [],

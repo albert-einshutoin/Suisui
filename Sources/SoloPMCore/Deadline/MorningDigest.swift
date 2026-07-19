@@ -169,7 +169,7 @@ public final class MorningDigestScheduler: @unchecked Sendable {
             )
             let record = try notificationClient.schedule(
                 NotificationDraft(
-                    title: "SoloPM Daily Digest",
+                    title: "Suisui Daily Digest",
                     body: Self.makeBody(
                         overdueCount: overdueCount,
                         dueTodayCount: dueTodayCount,

@@ -53,7 +53,7 @@ public enum ExternalConnectorExposurePolicy {
             id: .slack,
             displayName: "Slack",
             state: .assistantQueueDraftOnly,
-            detail: "External message requests stay reviewable in Assistant Queue; SoloPM does not send directly.",
+            detail: "External message requests stay reviewable in Assistant Queue; Suisui does not send directly.",
             systemImage: "bubble.left.and.bubble.right"
         ),
         ExternalConnectorExposure(

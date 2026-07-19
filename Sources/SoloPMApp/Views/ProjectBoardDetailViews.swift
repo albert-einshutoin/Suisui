@@ -776,7 +776,7 @@ private struct ProjectArtifactSection: View {
         .disabled(project.isArchived || artifactPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         .accessibilityIdentifier("project-artifact-track")
         .accessibilityLabel("Track artifact link")
-        .accessibilityHint("Adds an expected artifact link to the selected project in the local SoloPM database.")
+        .accessibilityHint("Adds an expected artifact link to the selected project in the local Suisui database.")
     }
 
     private func artifactRemoveButton(for artifact: ProjectBoardArtifact) -> some View {
@@ -793,7 +793,7 @@ private struct ProjectArtifactSection: View {
         .help("Remove artifact link without deleting the local file")
         .accessibilityIdentifier("project-artifact-remove-\(artifact.id)")
         .accessibilityLabel("Remove artifact link")
-        .accessibilityHint("Removes this local SoloPM artifact link without deleting the file.")
+        .accessibilityHint("Removes this local Suisui artifact link without deleting the file.")
     }
 }
 
@@ -1547,7 +1547,7 @@ private struct InlineTaskComposer: View {
                 .focused($isTitleFocused)
                 .onSubmit(submit)
                 .accessibilityIdentifier("inline-task-title")
-                .accessibilityHint("Enter the task name before creating it in the local SoloPM database.")
+                .accessibilityHint("Enter the task name before creating it in the local Suisui database.")
 
             TextField("Detail", text: $detail, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
@@ -1578,9 +1578,9 @@ private struct InlineTaskComposer: View {
                 }
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .keyboardShortcut(.return, modifiers: [.command])
-                .help("Creates the task in the local SoloPM database")
+                .help("Creates the task in the local Suisui database")
                 .accessibilityIdentifier("inline-task-create")
-                .accessibilityHint("Creates the task in the local SoloPM database.")
+                .accessibilityHint("Creates the task in the local Suisui database.")
 
                 Button(action: onCancel) {
                     Label("Cancel", systemImage: "xmark")

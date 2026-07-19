@@ -57,7 +57,7 @@ final class SystemShortcutClient: ShortcutClient, @unchecked Sendable {
                 registrationState = ShortcutRegistrationState(
                     voiceCaptureShortcut: shortcut,
                     status: .unavailable,
-                    detail: "SoloPM currently supports only Option + Space."
+                    detail: "Suisui currently supports only Option + Space."
                 )
                 return registrationState
             }

@@ -1649,9 +1649,9 @@ public enum ExecutionReceiptFactory {
         }
         switch costPreview.billingMode {
         case .userProviderBilled:
-            return "\(base) provider-billed usage recorded; SoloPM managed charge unavailable."
+            return "\(base) provider-billed usage recorded; Suisui managed charge unavailable."
         case .localOnly:
-            return "\(base) Local-only execution; SoloPM managed charge unavailable."
+            return "\(base) Local-only execution; Suisui managed charge unavailable."
         case .soloPMManaged:
             return base
         }

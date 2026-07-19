@@ -202,7 +202,7 @@ private struct WorkflowTaskRow: View {
             .foregroundStyle(task.status.tint)
             .help(LocalizedStringKey(toggleCompletionTitle))
             .accessibilityLabel(toggleCompletionAccessibilityLabel)
-            .accessibilityHint("Updates the task status in the local SoloPM database without opening the inspector.")
+            .accessibilityHint("Updates the task status in the local Suisui database without opening the inspector.")
             .accessibilityIdentifier("workflow-task-completion-\(task.id)")
 
             Button(action: onSelect) {

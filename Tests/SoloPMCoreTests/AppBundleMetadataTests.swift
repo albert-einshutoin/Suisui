@@ -5,14 +5,15 @@ final class AppBundleMetadataTests: XCTestCase {
     func testPackagingMetadataDefinesPublicAlphaIdentity() throws {
         let metadata = try loadMetadata()
 
-        XCTAssertEqual(metadata["APP_NAME"], "SoloPM")
+        XCTAssertEqual(metadata["APP_NAME"], "Suisui")
+        XCTAssertEqual(metadata["SWIFT_PRODUCT_NAME"], "SoloPM")
         XCTAssertEqual(metadata["BUNDLE_IDENTIFIER"], "dev.solopm.app")
         XCTAssertEqual(metadata["APP_CATEGORY"], "public.app-category.productivity")
         XCTAssertEqual(metadata["MIN_SYSTEM_VERSION"], "14.0")
         XCTAssertEqual(metadata["SUPPORTED_ARCHITECTURES"], "arm64")
         XCTAssertEqual(metadata["MARKETING_VERSION"], "0.1.0")
         XCTAssertEqual(metadata["CURRENT_PROJECT_VERSION"], "1")
-        XCTAssertEqual(metadata["COPYRIGHT"], "Copyright (c) 2026 SoloPM contributors.")
+        XCTAssertEqual(metadata["COPYRIGHT"], "Copyright (c) 2026 Suisui contributors.")
         XCTAssertGreaterThan(try XCTUnwrap(Int(metadata["CURRENT_PROJECT_VERSION"] ?? "")), 0)
     }
 

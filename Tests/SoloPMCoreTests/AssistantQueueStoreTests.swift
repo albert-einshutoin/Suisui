@@ -39,7 +39,7 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertTrue(row.costPreviewLabel?.contains("Preview only") ?? false)
         XCTAssertTrue(row.costPreviewLabel?.contains("estimated before run") ?? false)
         XCTAssertTrue(row.costPreviewLabel?.contains("not charged yet") ?? false)
-        XCTAssertTrue(row.costPreviewLabel?.contains("SoloPM managed") ?? false)
+        XCTAssertTrue(row.costPreviewLabel?.contains("Suisui managed") ?? false)
         XCTAssertTrue(row.costPreviewLabel?.contains("USD") ?? false)
         XCTAssertTrue(
             row.costPreviewLabel?.contains("1,500 tokens") ?? false,

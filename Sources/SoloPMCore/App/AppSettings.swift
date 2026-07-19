@@ -2301,8 +2301,8 @@ public final class AppSettingsViewModel: ObservableObject {
 
     private static func ttsPreviewText(for languageCode: String) -> String {
         AppSettings.normalizedTTSLanguageCode(languageCode) == "ja"
-            ? "SoloPMのローカル音声テストです。"
-            : "SoloPM local voice test is ready."
+            ? "Suisuiのローカル音声テストです。"
+            : "Suisui local voice test is ready."
     }
 
     private static func sanitizedTTSPreviewFailureMessage(from error: Error) -> String {

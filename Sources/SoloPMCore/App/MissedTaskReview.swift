@@ -188,7 +188,7 @@ public final class MissedTaskDailyFollowUpScheduler: @unchecked Sendable {
 
             let record = try notificationClient.schedule(
                 NotificationDraft(
-                    title: "SoloPM Catch Up",
+                    title: "Suisui Catch Up",
                     body: makeCountOnlyBody(from: summary.immediateQueue),
                     scheduledAt: DeadlineDateParser.string(from: now),
                     identifierHint: identifier

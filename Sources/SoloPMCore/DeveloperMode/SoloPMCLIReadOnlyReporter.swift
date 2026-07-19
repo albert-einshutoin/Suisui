@@ -6,7 +6,7 @@ public enum SoloPMCLIReadOnlyError: Error, Equatable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case let .missingTable(table, databasePath):
-            "SoloPM database at \(databasePath) is missing required table '\(table)'. Open the app once to run migrations."
+            "Suisui database at \(databasePath) is missing required table '\(table)'. Open the app once to run migrations."
         }
     }
 }
@@ -25,7 +25,7 @@ public struct SoloPMCLIReadOnlyReporter {
     public func statusLines() throws -> [String] {
         guard fileManager.fileExists(atPath: databaseURL.path) else {
             return [
-                "SoloPM CLI status",
+                "Suisui CLI status",
                 "database: missing \(databaseURL.path)"
             ]
         }
@@ -35,7 +35,7 @@ public struct SoloPMCLIReadOnlyReporter {
         let knowledgeFrames = try SQLiteKnowledgeFrameStore(connection: connection).list()
 
         return [
-            "SoloPM CLI status",
+            "Suisui CLI status",
             "database: \(databaseURL.path)",
             "projects active: \(try countRows(connection, sql: "SELECT COUNT(*) AS count FROM projects WHERE status = 'active';"))",
             "projects archived: \(try countRows(connection, sql: "SELECT COUNT(*) AS count FROM projects WHERE status = 'archived';"))",
@@ -48,7 +48,7 @@ public struct SoloPMCLIReadOnlyReporter {
     public func tasksDueLines() throws -> [String] {
         guard fileManager.fileExists(atPath: databaseURL.path) else {
             return [
-                "SoloPM tasks due",
+                "Suisui tasks due",
                 "database: missing \(databaseURL.path)"
             ]
         }
@@ -56,7 +56,7 @@ public struct SoloPMCLIReadOnlyReporter {
         let connection = try openConnection(requiredTables: ["projects", "tasks"])
         let tasks = try SQLiteTaskStore(connection: connection).listDue(onOrBefore: nowISO8601String())
         var lines = [
-            "SoloPM tasks due",
+            "Suisui tasks due",
             "database: \(databaseURL.path)",
             "count: \(tasks.count)"
         ]
@@ -73,7 +73,7 @@ public struct SoloPMCLIReadOnlyReporter {
     public func framesSearchLines(query: String) throws -> [String] {
         guard fileManager.fileExists(atPath: databaseURL.path) else {
             return [
-                "SoloPM frames search",
+                "Suisui frames search",
                 "database: missing \(databaseURL.path)",
                 "query: \(query)"
             ]
@@ -82,7 +82,7 @@ public struct SoloPMCLIReadOnlyReporter {
         let connection = try openConnection(requiredTables: ["knowledge_frames", "knowledge_frames_fts"])
         let frames = try SQLiteKnowledgeFrameStore(connection: connection).search(query: query)
         var lines = [
-            "SoloPM frames search",
+            "Suisui frames search",
             "database: \(databaseURL.path)",
             "query: \(query)",
             "count: \(frames.count)"

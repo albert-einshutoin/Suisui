@@ -41,6 +41,7 @@ if [[ -f "$SPARKLE_ENV_FILE" ]]; then
 fi
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
+SWIFT_PRODUCT_NAME="${SWIFT_PRODUCT_NAME:-$APP_NAME}"
 BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:?BUNDLE_IDENTIFIER is required}"
 APP_CATEGORY="${APP_CATEGORY:?APP_CATEGORY is required}"
 MARKETING_VERSION="${MARKETING_VERSION:?MARKETING_VERSION is required}"
@@ -55,7 +56,7 @@ LOCAL_LICENSE_PUBLIC_KEY_BASE64="${SOLOPM_LOCAL_LICENSE_PUBLIC_KEY_BASE64:-${SOL
 # default aligned with runtime smoke waits while
 # preserving SOLOPM_VERIFY_TIMEOUT_SECONDS for faster local overrides.
 VERIFY_TIMEOUT_SECONDS="${SOLOPM_VERIFY_TIMEOUT_SECONDS:-30}"
-PROJECT_BOARD_WINDOW_NAME="${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}"
+PROJECT_BOARD_WINDOW_NAME="${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-$APP_NAME}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 VERIFY_ROOT="$BUILD_AND_RUN_TMPDIR/verify"
 VERIFY_HOME="$VERIFY_ROOT/home"
@@ -276,11 +277,11 @@ SOLOPM_SPARKLE_CONFIG_QUIET=1 "$ROOT_DIR/script/validate_sparkle_release_config.
 
 case "$BUILD_CONFIGURATION" in
   debug)
-    swift build "${SWIFT_BUILD_ARGS[@]}" --product "$APP_NAME"
+    swift build "${SWIFT_BUILD_ARGS[@]}" --product "$SWIFT_PRODUCT_NAME"
     BUILD_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" --show-bin-path)"
     ;;
   release)
-    swift build "${SWIFT_BUILD_ARGS[@]}" -c release --product "$APP_NAME"
+    swift build "${SWIFT_BUILD_ARGS[@]}" -c release --product "$SWIFT_PRODUCT_NAME"
     BUILD_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" -c release --show-bin-path)"
     ;;
   *)
@@ -289,7 +290,7 @@ case "$BUILD_CONFIGURATION" in
     ;;
 esac
 
-BUILD_BINARY="$BUILD_DIR/$APP_NAME"
+BUILD_BINARY="$BUILD_DIR/$SWIFT_PRODUCT_NAME"
 RESOURCE_BUNDLE="$BUILD_DIR/SoloPM_SoloPMCore.bundle"
 
 rm -rf "$APP_BUNDLE"

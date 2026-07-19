@@ -345,7 +345,7 @@ final class ExternalMCPTests: XCTestCase {
                 .invalidResponse(
                     serverID: "draft",
                     method: "initialize",
-                    reason: "Unsupported result.protocolVersion: 2026-07-28. SoloPM public alpha supports stable MCP 2025-11-25 stdio Tools only; draft 2026-07-28 protocol metadata and server/discover are out of scope for this release."
+                    reason: "Unsupported result.protocolVersion: 2026-07-28. Suisui public alpha supports stable MCP 2025-11-25 stdio Tools only; draft 2026-07-28 protocol metadata and server/discover are out of scope for this release."
                 )
             )
         }
@@ -370,7 +370,7 @@ final class ExternalMCPTests: XCTestCase {
                 .invalidResponse(
                     serverID: "modern-only",
                     method: "initialize",
-                    reason: "Unsupported protocol version during initialize. SoloPM public alpha supports stable MCP 2025-11-25 stdio Tools only; draft/modern protocol metadata and server/discover are out of scope for this release."
+                    reason: "Unsupported protocol version during initialize. Suisui public alpha supports stable MCP 2025-11-25 stdio Tools only; draft/modern protocol metadata and server/discover are out of scope for this release."
                 )
             )
         }
@@ -872,7 +872,7 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(viewModel.registration, registration)
         XCTAssertEqual(
             viewModel.errorMessage,
-            "Local MCP registration data needs repair: mcp_server_registrations.environment_json contains invalid key-value JSON. Restore from backup or repair the local database, then reopen SoloPM."
+            "Local MCP registration data needs repair: mcp_server_registrations.environment_json contains invalid key-value JSON. Restore from backup or repair the local database, then reopen Suisui."
         )
     }
 
@@ -1493,7 +1493,7 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(viewModel.connectionCheckResultLabel, "Failed")
         XCTAssertEqual(
             viewModel.errorMessage,
-            "MCP initialize response was invalid: Unsupported protocol version during initialize. SoloPM public alpha supports stable MCP 2025-11-25 stdio Tools only; draft/modern protocol metadata and server/discover are out of scope for this release."
+            "MCP initialize response was invalid: Unsupported protocol version during initialize. Suisui public alpha supports stable MCP 2025-11-25 stdio Tools only; draft/modern protocol metadata and server/discover are out of scope for this release."
         )
         XCTAssertEqual(transport.recordedMethods, ["initialize"])
     }

@@ -11,7 +11,7 @@ final class SoloPMCLIReadOnlyReporterTests: XCTestCase {
         XCTAssertEqual(
             lines,
             [
-                "SoloPM CLI status",
+                "Suisui CLI status",
                 "database: \(databaseURL.path)",
                 "projects active: 1",
                 "projects archived: 1",
@@ -28,7 +28,7 @@ final class SoloPMCLIReadOnlyReporterTests: XCTestCase {
 
         let lines = try reporter.tasksDueLines()
 
-        XCTAssertEqual(lines.first, "SoloPM tasks due")
+        XCTAssertEqual(lines.first, "Suisui tasks due")
         XCTAssertTrue(lines.contains("database: \(databaseURL.path)"))
         XCTAssertTrue(lines.contains("count: 1"))
         XCTAssertTrue(lines.contains("- Due Task | due: 2026-06-18T00:00:00Z | priority: high"))
@@ -43,7 +43,7 @@ final class SoloPMCLIReadOnlyReporterTests: XCTestCase {
 
         let lines = try reporter.framesSearchLines(query: "release readiness")
 
-        XCTAssertEqual(lines.first, "SoloPM frames search")
+        XCTAssertEqual(lines.first, "Suisui frames search")
         XCTAssertTrue(lines.contains("query: release readiness"))
         XCTAssertTrue(lines.contains("count: 1"))
         XCTAssertTrue(lines.contains("- Release readiness frame"))
@@ -58,7 +58,7 @@ final class SoloPMCLIReadOnlyReporterTests: XCTestCase {
         XCTAssertEqual(
             lines,
             [
-                "SoloPM CLI status",
+                "Suisui CLI status",
                 "database: missing \(databaseURL.path)"
             ]
         )

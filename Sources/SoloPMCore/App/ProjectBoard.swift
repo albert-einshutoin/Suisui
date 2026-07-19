@@ -2048,7 +2048,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                     branchName: branchName,
                     receipts: []
                 ),
-                blockingReason: String(localized: "Execution receipts are unavailable, so SoloPM cannot confirm which development approval comes next.")
+                blockingReason: String(localized: "Execution receipts are unavailable, so Suisui cannot confirm which development approval comes next.")
             )
         }
 
@@ -2092,7 +2092,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                     branchName: branchName,
                     receipts: []
                 ),
-                blockingReason: String(localized: "Execution receipts could not be read, so SoloPM cannot confirm which development approval comes next.")
+                blockingReason: String(localized: "Execution receipts could not be read, so Suisui cannot confirm which development approval comes next.")
             )
         }
     }
@@ -3076,7 +3076,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             return String(localized: "Pull request creation failed. Review the execution receipt before queueing review or merge.")
         }
         if pullRequestURL == nil || baseBranch == nil {
-            return String(localized: "Pull request receipt is missing URL or base branch evidence, so SoloPM will not draft review or merge approval.")
+            return String(localized: "Pull request receipt is missing URL or base branch evidence, so Suisui will not draft review or merge approval.")
         }
         if reviewReceipt?.status == .failed || reviewReceipt?.status == .canceled {
             return String(localized: "Pull request review gate failed. Resolve the receipt before queueing merge.")
@@ -3254,7 +3254,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         task: ProjectBoardTask
     ) -> String {
         let taskTitle = sanitizedSingleLineDevelopmentAutomationText(task.title, fallback: "task \(task.id)")
-        return truncatedPullRequestTitle("SoloPM: \(taskTitle)")
+        return truncatedPullRequestTitle("Suisui: \(taskTitle)")
     }
 
     private static func developmentPullRequestBody(
@@ -5676,7 +5676,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                         "title": .string(candidate.taskTitle),
                         "startAt": .string(candidate.startAt),
                         "durationMinutes": .number(Double(durationMinutes)),
-                        "notes": .string(String(localized: "Created from a reviewed SoloPM schedule draft.")),
+                        "notes": .string(String(localized: "Created from a reviewed Suisui schedule draft.")),
                         "taskId": .number(Double(candidate.taskID)),
                         "projectId": .number(Double(candidate.projectID))
                     ],
@@ -6080,7 +6080,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                     title: candidate.taskTitle,
                     startAt: candidate.startAt,
                     endAt: candidate.endAt,
-                    notes: String(localized: "Created from a reviewed SoloPM schedule draft.")
+                    notes: String(localized: "Created from a reviewed Suisui schedule draft.")
                 ))
                 createdEvents.append(ScheduleDraftApplyCreatedEvent(candidate: candidate, record: event))
             }
@@ -7133,7 +7133,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     private static func repairGuidance(for error: LocalStoreDecodingError) -> String {
-        let action = "Restore from backup or repair the local database, then reopen SoloPM."
+        let action = "Restore from backup or repair the local database, then reopen Suisui."
         switch error {
         case .invalidStringArray(let column):
             return "Local board data needs repair: \(column) contains invalid list JSON. \(action)"
@@ -7212,7 +7212,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         } catch {
             errorMessage = Self.userFacingMessage(
                 for: error,
-                fallback: "Task import failed. Choose a SoloPM task JSON export."
+                fallback: "Task import failed. Choose a Suisui task JSON export."
             )
             return nil
         }

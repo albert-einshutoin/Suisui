@@ -794,7 +794,7 @@ public enum CoreMigrations {
                 encoder.outputFormatting = [.sortedKeys]
                 let previewJSON = String(
                     decoding: try encoder.encode(AssistantQueueCostPreview.localOnly(
-                        note: "Legacy local execution preview added during migration. No SoloPM managed charge before run."
+                        note: "Legacy local execution preview added during migration. No Suisui managed charge before run."
                     )),
                     as: UTF8.self
                 )

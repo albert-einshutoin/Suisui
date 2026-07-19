@@ -444,7 +444,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
                             "title": .string("Calendar block token=task-secret"),
                             "startAt": .string("2026-06-30T09:30:00Z"),
                             "durationMinutes": .number(30),
-                            "notes": .string("Created from a reviewed SoloPM schedule draft."),
+                            "notes": .string("Created from a reviewed Suisui schedule draft."),
                             "taskId": .number(42),
                             "projectId": .number(7)
                         ],
@@ -942,7 +942,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
         XCTAssertNil(result.receipt.usage.estimatedCostCents)
         XCTAssertEqual(result.receipt.model, ExecutionReceiptModel(provider: "openai.chat_completions", name: "gpt-5.5"))
         XCTAssertTrue(result.receipt.outputSummary.contains("provider-billed"))
-        XCTAssertTrue(result.receipt.outputSummary.contains("SoloPM managed charge unavailable"))
+        XCTAssertTrue(result.receipt.outputSummary.contains("Suisui managed charge unavailable"))
     }
 
     func testCoordinatorRunsApprovedAutomationRequestTaskMutationThroughActionExecutor() throws {

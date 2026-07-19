@@ -305,9 +305,9 @@ private struct ProjectBoardLaunchRecoveryTaskInspector: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .help("Saves edits to the selected task in the local SoloPM database")
+                .help("Saves edits to the selected task in the local Suisui database")
                 .accessibilityIdentifier("task-inspector-save")
-                .accessibilityHint("Saves edits to the selected task in the local SoloPM database.")
+                .accessibilityHint("Saves edits to the selected task in the local Suisui database.")
             }
         }
         .formStyle(.grouped)
@@ -681,9 +681,9 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
                 Label("Add Project", systemImage: "plus")
             }
             .buttonStyle(.borderedProminent)
-            .help("Creates a new local project in the SoloPM database")
+            .help("Creates a new local project in the Suisui database")
             .accessibilityIdentifier("project-board-add-project")
-            .accessibilityHint("Creates a new local project in the SoloPM database.")
+            .accessibilityHint("Creates a new local project in the Suisui database.")
 
             ForEach(viewModel.snapshot.projects) { project in
                 Button {
@@ -742,9 +742,9 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(projectTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .help("Saves edits to the selected project in the local SoloPM database")
+            .help("Saves edits to the selected project in the local Suisui database")
             .accessibilityIdentifier("project-inspector-save")
-            .accessibilityHint("Saves edits to the selected project in the local SoloPM database.")
+            .accessibilityHint("Saves edits to the selected project in the local Suisui database.")
 
             Button {
                 isTaskComposerVisible = true
@@ -770,14 +770,14 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
                 Label("Complete Project", systemImage: "checkmark.seal")
             }
             .disabled(project.isCompleted)
-            .help("Completes the selected project in the local SoloPM database")
+            .help("Completes the selected project in the local Suisui database")
             .accessibilityIdentifier("project-inspector-complete")
-            .accessibilityHint("Completes the selected project in the local SoloPM database.")
+            .accessibilityHint("Completes the selected project in the local Suisui database.")
 
             if isConfirmingProjectDelete {
                 ProjectBoardRuntimeCRUDDestructiveConfirmation(
                     title: "Delete this project?",
-                    message: "This permanently removes the project and its local tasks from SoloPM.",
+                    message: "This permanently removes the project and its local tasks from Suisui.",
                     confirmTitle: "Delete Project",
                     accessibilityIdentifier: "project-inspector-delete-confirmation",
                     confirmAction: {
@@ -841,9 +841,9 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
                 Label("Add", systemImage: "checkmark")
             }
             .disabled(taskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .help("Creates the task in the local SoloPM database")
+            .help("Creates the task in the local Suisui database")
             .accessibilityIdentifier("inline-task-create")
-            .accessibilityHint("Creates the task in the local SoloPM database.")
+            .accessibilityHint("Creates the task in the local Suisui database.")
         }
         .padding(10)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -928,9 +928,9 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(taskInspectorTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .help("Saves edits to the selected task in the local SoloPM database")
+            .help("Saves edits to the selected task in the local Suisui database")
             .accessibilityIdentifier("task-inspector-save")
-            .accessibilityHint("Saves edits to the selected task in the local SoloPM database.")
+            .accessibilityHint("Saves edits to the selected task in the local Suisui database.")
 
             Button {
                 let nextStatus = task.status == .blocked ? ProjectTaskStatus.inProgress : task.status.nextStatus
@@ -972,7 +972,7 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
             if isConfirmingTaskDelete {
                 ProjectBoardRuntimeCRUDDestructiveConfirmation(
                     title: "Delete this task?",
-                    message: "This removes the task from the local SoloPM database.",
+                    message: "This removes the task from the local Suisui database.",
                     confirmTitle: "Delete Task",
                     accessibilityIdentifier: "task-inspector-delete-confirmation",
                     confirmAction: {

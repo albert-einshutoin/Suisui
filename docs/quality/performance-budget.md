@@ -60,6 +60,7 @@ configuration, dataset size, date).
 | Date | Machine / build | Window visible | Command ready | Today ready | Result |
 | --- | --- | --- | --- | --- | --- |
 | 2026-07-20 | Mac mini (M4, 32 GB), Release | 494 ms | 450 ms | 451 ms | GREEN (`.tmp/suisui-release-performance-after-5/`) |
+| 2026-07-20 | Mac mini (M4, 32 GB), branded `Suisui.app` Release | 212 ms | 447 ms | 448 ms | GREEN (`.tmp/suisui-branded-release-performance-3/`) |
 
 ## Scale guard
 

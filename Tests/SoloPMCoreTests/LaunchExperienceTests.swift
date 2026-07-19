@@ -18,7 +18,7 @@ final class LaunchExperienceTests: XCTestCase {
         let script = try readPackageFile("script/build_and_run.sh")
 
         XCTAssertTrue(script.contains("SOLOPM_VERIFY_TIMEOUT_SECONDS"))
-        XCTAssertTrue(script.contains("PROJECT_BOARD_WINDOW_NAME=\"${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}\""))
+        XCTAssertTrue(script.contains("PROJECT_BOARD_WINDOW_NAME=\"${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-$APP_NAME}\""))
         XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
         XCTAssertTrue(script.contains("/usr/bin/env -i"))
         XCTAssertTrue(script.contains("HOME=\"$VERIFY_HOME\""))
@@ -253,7 +253,7 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("projectBoardWindowRestoreAttempts < SoloPMWindowlessFallbackEnvironment.maxWindowGroupRestoreAttempts"))
         XCTAssertTrue(source.contains("didRequestWindow ? 0.75 : 0.25"))
         XCTAssertTrue(source.contains("performNewProjectBoardWindowMenuItem()"))
-        XCTAssertTrue(source.contains("New SoloPM Window"))
+        XCTAssertTrue(source.contains("New Suisui Window"))
         XCTAssertTrue(source.contains("performActionForItem(at: itemIndex)"))
         XCTAssertTrue(source.contains("visibleProjectBoardWindows"))
         XCTAssertTrue(source.contains("fallbackProjectBoardWindow"))
@@ -269,6 +269,7 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("await MainActor.run"))
         XCTAssertTrue(projectBoardSource.contains("LaunchPerformanceMilestones.record(\"command-ready\")"))
         XCTAssertTrue(projectBoardSource.contains("LaunchPerformanceMilestones.record(\"today-ready\")"))
+        XCTAssertTrue(source.contains("LaunchPerformanceMilestones.record(\"window-visible\")"))
         XCTAssertFalse(source.contains("ProjectBoardLaunchHydrationDelay.nanoseconds"))
         XCTAssertFalse(source.contains("static let nanoseconds: UInt64 = 150_000_000"))
         XCTAssertTrue(source.contains("if SoloPMWindowlessFallbackEnvironment.shouldCreateDirectFallbackWindow"))
@@ -501,9 +502,9 @@ final class LaunchExperienceTests: XCTestCase {
     func testProjectBoardOpensOnLaunch() throws {
         let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
-        XCTAssertTrue(source.contains("WindowGroup(\"SoloPM\", id: \"project-board\")"))
+        XCTAssertTrue(source.contains("WindowGroup(\"Suisui\", id: \"project-board\")"))
 
-        let boardWindow = try XCTUnwrap(source.range(of: "WindowGroup(\"SoloPM\", id: \"project-board\")"))
+        let boardWindow = try XCTUnwrap(source.range(of: "WindowGroup(\"Suisui\", id: \"project-board\")"))
         let menuBar = try XCTUnwrap(source.range(of: "MenuBarExtraLabel(controller: menuBarController)"))
         XCTAssertLessThan(boardWindow.lowerBound, menuBar.lowerBound)
     }
@@ -513,11 +514,11 @@ final class LaunchExperienceTests: XCTestCase {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let coordinatorSource = try readPackageFile("Sources/SoloPMApp/Composition/ProjectBoardSceneCoordinator.swift")
 
-        XCTAssertTrue(appSource.contains("WindowGroup(\"SoloPM\", id: \"project-board\")"))
+        XCTAssertTrue(appSource.contains("WindowGroup(\"Suisui\", id: \"project-board\")"))
         XCTAssertTrue(appSource.contains("taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution }"))
         XCTAssertTrue(appSource.contains("appSettings: { settingsViewModel.settings }"))
         XCTAssertTrue(appSource.contains("#selector(NSWindow.newWindowForTab(_:))"))
-        XCTAssertTrue(appSource.contains("New SoloPM Window"))
+        XCTAssertTrue(appSource.contains("New Suisui Window"))
         XCTAssertTrue(boardSource.contains("@StateObject private var viewModel: ProjectBoardViewModel"))
         XCTAssertTrue(boardSource.contains("let taskAutomationSettings: () -> TaskAutoExecutionSettings"))
         XCTAssertTrue(boardSource.contains("let appSettings: () -> AppSettings"))

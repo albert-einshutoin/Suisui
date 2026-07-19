@@ -1,20 +1,22 @@
-# SoloPM
+# Suisui
 
 [日本語版 README](README.ja.md)
 
-SoloPM is a macOS-first personal PM app that turns voice or text into projects, tasks, calendar events, reminders, notifications, and local work artifacts after user review.
+**Speak it. Review it. Move it.**
 
-![SoloPM public alpha preview](docs/assets/screenshots/solopm-alpha-preview.svg)
+Suisui is a macOS-first AI personal project manager that turns voice or text into projects, tasks, calendar events, reminders, notifications, and local work artifacts after user review.
+
+![Suisui public alpha preview](docs/assets/screenshots/solopm-alpha-preview.svg)
 
 ## Public Alpha
 
-SoloPM is preparing its first public alpha. The current build is intended for local-first evaluation by individual developers and makers who want a voice-first workflow for project planning and deadline follow-up.
+Suisui is preparing its first public alpha. The current build is intended for local-first evaluation by individual developers and makers who want a voice-first workflow for project planning and deadline follow-up.
 
 The product specification lives in [docs/README.md](docs/README.md), the product roadmap lives in [docs/product/roadmap.md](docs/product/roadmap.md), the technical baseline lives in [docs/tech_stack.md](docs/tech_stack.md), and the release runbook lives in [docs/release/checklist.md](docs/release/checklist.md).
 
 ## MVP Scope
 
-SoloPM ships the Personal MVP first. The smallest MVP is a local-first voice-task loop for one user: capture work by voice or text, clarify missing details, create reviewed tasks/projects/schedule artifacts, and prevent forgotten work.
+Suisui ships the Personal MVP first. The smallest MVP is a local-first voice-task loop for one user: capture work by voice or text, clarify missing details, create reviewed tasks/projects/schedule artifacts, and prevent forgotten work.
 
 - macOS menu bar app
 - voice / text input
@@ -41,7 +43,7 @@ The Business MVP is a later target. Organizations, roles, tenant policies, Knowl
 
 ## Development
 
-SoloPM follows GitHub Flow and TDD. Work should start from the current target branch using a short-lived feature branch, then return by pull request:
+Suisui follows GitHub Flow and TDD. Work should start from the current target branch using a short-lived feature branch, then return by pull request:
 
 ```sh
 git checkout main

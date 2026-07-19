@@ -565,7 +565,7 @@ public struct GoogleCalendarSettingsReadinessRow: Equatable, Sendable {
         case .tokenExpiredWithoutRefresh:
             "Reconnect with OAuth authorization"
         case .runtimeNotConfigured:
-            "Update SoloPM runtime configuration"
+            "Update Suisui runtime configuration"
         case .ready:
             "Sync due tasks from Project Board"
         case .failed:
@@ -854,7 +854,7 @@ public final class GoogleCalendarTaskSyncService: @unchecked Sendable {
         let dueAt = task.dueAt ?? ""
         let isAllDay = !dueAt.contains("T")
         let detail = task.detail.trimmingCharacters(in: .whitespacesAndNewlines)
-        let notes = detail.isEmpty ? "SoloPM project: \(project.title)" : "SoloPM project: \(project.title)\n\n\(detail)"
+        let notes = detail.isEmpty ? "Suisui project: \(project.title)" : "Suisui project: \(project.title)\n\n\(detail)"
         let endAt = isAllDay ? try Self.exclusiveEndDate(forDateOnlyDueAt: dueAt) : dueAt
         return CalendarEventDraft(
             title: task.title,

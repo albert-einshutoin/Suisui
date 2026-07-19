@@ -187,9 +187,9 @@ public struct ClarificationSession: Codable, Equatable, Sendable {
         case .documentSource:
             ClarificationQuestion(slot: .documentSource, prompt: "Which source documents should be used?")
         case .executionScope:
-            ClarificationQuestion(slot: .executionScope, prompt: "What scope should SoloPM prepare for review?")
+            ClarificationQuestion(slot: .executionScope, prompt: "What scope should Suisui prepare for review?")
         case .executionApproval:
-            ClarificationQuestion(slot: .executionApproval, prompt: "Should SoloPM keep this as a reviewed draft?")
+            ClarificationQuestion(slot: .executionApproval, prompt: "Should Suisui keep this as a reviewed draft?")
         }
     }
 

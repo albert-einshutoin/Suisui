@@ -77,7 +77,7 @@ final class MorningDigestTests: XCTestCase {
         let scheduled = try fixture.client.listScheduled()
         XCTAssertEqual(scheduled.count, 1)
         let record = try XCTUnwrap(scheduled.first)
-        XCTAssertEqual(record.title, "SoloPM Daily Digest")
+        XCTAssertEqual(record.title, "Suisui Daily Digest")
         XCTAssertEqual(record.body, "1 overdue, 1 due today, 0 more this week.")
         XCTAssertFalse(record.body?.contains("Overdue item") ?? true)
     }

@@ -194,7 +194,7 @@ public final class MissedTaskRescheduleSuggestionPlanner: @unchecked Sendable {
             redactedSummary: "Reschedule 1 \(reasonLabel) task to \(targetLabel).",
             requiredCapabilities: [.tool(.taskUpdate)],
             costPreview: .localOnly(
-                note: "Local reschedule suggestion. No SoloPM managed charge before run."
+                note: "Local reschedule suggestion. No Suisui managed charge before run."
             )
         )
     }

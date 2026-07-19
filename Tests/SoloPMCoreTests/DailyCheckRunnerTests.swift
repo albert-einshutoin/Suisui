@@ -189,7 +189,7 @@ final class DailyCheckRunnerTests: XCTestCase {
         XCTAssertFalse(requiresApprovalViewModel.canToggle)
         XCTAssertEqual(
             requiresApprovalViewModel.statusDetail,
-            "macOS requires approval in System Settings before SoloPM can launch at login."
+            "macOS requires approval in System Settings before Suisui can launch at login."
         )
     }
 

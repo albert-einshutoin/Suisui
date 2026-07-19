@@ -282,7 +282,7 @@ public extension Notification.Name {
 
 // MARK: - Onboarding sample project
 
-/// Pure data description of one "Learn SoloPM" practice task. The English
+/// Pure data description of one "Learn Suisui" practice task. The English
 /// strings double as localization keys: the app passes `localizedDisplay`
 /// into `OnboardingSampleProjectCreator` so titles and details are localized
 /// at creation time (mirroring how smart list preset names route static
@@ -316,14 +316,14 @@ public struct OnboardingSampleTaskDefinition: Equatable, Sendable {
 }
 
 public enum OnboardingSampleProjectDefinition {
-    public static let projectTitle = "Learn SoloPM"
+    public static let projectTitle = "Learn Suisui"
     /// Stable marker persisted in `projects.source_command` so the sample can
     /// be recognized even if the defaults flag is lost.
     public static let projectMarkerSourceCommand = "onboarding-sample"
     /// Defaults flag that makes sample creation a one-shot action.
     public static let createdDefaultsKey = "solopm.onboarding.sampleProjectCreated"
 
-    /// Six tasks that each teach a real SoloPM feature. The weekly task also
+    /// Six tasks that each teach a real Suisui feature. The weekly task also
     /// carries a due date because completion-driven recurrence needs one to
     /// schedule the next occurrence (see `TaskRecurrence`).
     public static let tasks: [OnboardingSampleTaskDefinition] = [
@@ -345,7 +345,7 @@ public enum OnboardingSampleProjectDefinition {
         ),
         OnboardingSampleTaskDefinition(
             title: "Say a task out loud in the Voice window",
-            detail: "Open Voice Command from the toolbar or the ⌘K palette, then speak. SoloPM drafts a plan you approve before anything is written.",
+            detail: "Open Voice Command from the toolbar or the ⌘K palette, then speak. Suisui drafts a plan you approve before anything is written.",
             priority: .medium
         ),
         OnboardingSampleTaskDefinition(
@@ -400,7 +400,7 @@ public enum OnboardingSampleProjectError: Error, Equatable {
     case missingAfterEnsure
 }
 
-/// Creates the "Learn SoloPM" sample project through the normal store create
+/// Creates the "Learn Suisui" sample project through the normal store create
 /// paths. Stores, defaults, clock, and localization are injected
 /// (VoiceRuntimeFactory-style) so tests can drive it against a temporary
 /// SQLite database; the app wires it in `OnboardingSampleProjectFactory`.

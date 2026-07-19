@@ -173,7 +173,7 @@ public final class WeeklyReviewSummaryScheduler: @unchecked Sendable {
             )
             let record = try notificationClient.schedule(
                 NotificationDraft(
-                    title: "SoloPM Weekly Review",
+                    title: "Suisui Weekly Review",
                     body: Self.makeBody(completedCount: completedCount, openCount: openCount),
                     scheduledAt: DeadlineDateParser.string(from: fireDate),
                     identifierHint: identifier

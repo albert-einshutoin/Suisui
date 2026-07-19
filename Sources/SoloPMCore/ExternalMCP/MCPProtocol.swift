@@ -7,13 +7,13 @@ public enum MCPProtocolVersion: String, Equatable, Sendable {
 
     public static func unsupportedInitializeReason(for protocolVersion: String) -> String {
         if protocolVersion == "2026-07-28" {
-            return "Unsupported result.protocolVersion: \(protocolVersion). SoloPM public alpha supports \(publicAlphaBaselineDescription); draft 2026-07-28 protocol metadata and server/discover are out of scope for this release."
+            return "Unsupported result.protocolVersion: \(protocolVersion). Suisui public alpha supports \(publicAlphaBaselineDescription); draft 2026-07-28 protocol metadata and server/discover are out of scope for this release."
         }
         return "Unsupported result.protocolVersion: \(protocolVersion)."
     }
 
     public static func unsupportedInitializeErrorReason() -> String {
-        "Unsupported protocol version during initialize. SoloPM public alpha supports \(publicAlphaBaselineDescription); draft/modern protocol metadata and server/discover are out of scope for this release."
+        "Unsupported protocol version during initialize. Suisui public alpha supports \(publicAlphaBaselineDescription); draft/modern protocol metadata and server/discover are out of scope for this release."
     }
 
     public static func isUnsupportedProtocolError(code: Int, message: String) -> Bool {
