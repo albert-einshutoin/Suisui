@@ -259,6 +259,41 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("security find-identity -p codesigning -v"))
     }
 
+    func testHardenedRuntimeGrantsAudioInputOnlyToMainApp() throws {
+        let entitlementsData = try Data(
+            contentsOf: packageRoot().appendingPathComponent("packaging/SoloPM.entitlements")
+        )
+        let entitlements = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: entitlementsData, format: nil)
+                as? [String: Any]
+        )
+        let signingScript = try readPackageFile("script/sign_app.sh")
+
+        XCTAssertEqual(entitlements["com.apple.security.device.audio-input"] as? Bool, true)
+        XCTAssertTrue(signingScript.contains("NESTED_CODESIGN_ARGS=("))
+        XCTAssertTrue(signingScript.contains("APP_CODESIGN_ARGS=("))
+        XCTAssertTrue(signingScript.contains("codesign \"${NESTED_CODESIGN_ARGS[@]}\" \"$nested_code\""))
+        XCTAssertTrue(signingScript.contains("codesign \"${APP_CODESIGN_ARGS[@]}\" \"$APP_BUNDLE\""))
+        XCTAssertTrue(signingScript.contains("verify_release_architecture.sh\" \"$APP_BUNDLE\""))
+        XCTAssertLessThan(
+            try XCTUnwrap(signingScript.range(of: "check_release_bundle_inventory.sh")).lowerBound,
+            try XCTUnwrap(signingScript.range(of: "verify_release_architecture.sh")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(signingScript.range(of: "verify_release_architecture.sh")).lowerBound,
+            try XCTUnwrap(signingScript.range(of: "codesign \"${NESTED_CODESIGN_ARGS[@]}\"")).lowerBound
+        )
+
+        let nestedArgumentsStart = try XCTUnwrap(
+            signingScript.range(of: "NESTED_CODESIGN_ARGS=(")
+        ).lowerBound
+        let nestedArgumentsEnd = try XCTUnwrap(
+            signingScript.range(of: "APP_CODESIGN_ARGS=(")
+        ).lowerBound
+        let nestedArguments = nestedArgumentsStart..<nestedArgumentsEnd
+        XCTAssertFalse(signingScript[nestedArguments].contains("--entitlements"))
+    }
+
     func testReleaseMachineLocalDoctorRunsNonSecretDiagnostics() throws {
         let script = try readPackageFile("script/check_release_machine_local_doctor.sh")
 
@@ -14202,7 +14237,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(packageScript.contains("check_release_artifact_size.sh"))
         XCTAssertLessThan(
             try XCTUnwrap(signingScript.range(of: "prepare_release_bundle.sh")).lowerBound,
-            try XCTUnwrap(signingScript.range(of: "codesign \"${CODESIGN_ARGS[@]}\"")).lowerBound
+            try XCTUnwrap(signingScript.range(of: "codesign \"${APP_CODESIGN_ARGS[@]}\" \"$APP_BUNDLE\"")).lowerBound
         )
         XCTAssertLessThan(
             try XCTUnwrap(packageScript.range(of: "check_release_artifact_size.sh\" \"$DMG_PATH")).lowerBound,

@@ -98,29 +98,37 @@ fi
 
 "$ROOT_DIR/script/prepare_release_bundle.sh" "$APP_BUNDLE"
 "$ROOT_DIR/script/check_release_bundle_inventory.sh" "$APP_BUNDLE"
+"$ROOT_DIR/script/verify_release_architecture.sh" "$APP_BUNDLE"
 
-CODESIGN_ARGS=(
+NESTED_CODESIGN_ARGS=(
   --force
   --timestamp
   --options runtime
-  --entitlements "$ENTITLEMENTS_FILE"
   --sign "$SIGNING_IDENTITY"
 )
 
 if [[ -n "$SIGNING_KEYCHAIN" ]]; then
-  CODESIGN_ARGS+=(--keychain "$SIGNING_KEYCHAIN")
+  NESTED_CODESIGN_ARGS+=(--keychain "$SIGNING_KEYCHAIN")
 fi
+
+# Apple recommends granting entitlements only to the executable that needs them.
+# Sparkle helpers are separate executables and do not record audio, so they keep
+# Hardened Runtime enabled without inheriting SoloPM's audio-input permission.
+APP_CODESIGN_ARGS=(
+  "${NESTED_CODESIGN_ARGS[@]}"
+  --entitlements "$ENTITLEMENTS_FILE"
+)
 
 if [[ -d "$APP_CONTENTS/Frameworks" ]]; then
   while IFS= read -r -d '' nested_code; do
-    codesign "${CODESIGN_ARGS[@]}" "$nested_code"
+    codesign "${NESTED_CODESIGN_ARGS[@]}" "$nested_code"
   done < <(find "$APP_CONTENTS/Frameworks" -depth \( \
     \( -type d \( -name "*.framework" -o -name "*.xpc" -o -name "*.appex" -o -name "*.app" \) \) \
     -o \( -type f -name "*.dylib" \) \
   \) -print0)
 fi
 
-codesign "${CODESIGN_ARGS[@]}" "$APP_BUNDLE"
+codesign "${APP_CODESIGN_ARGS[@]}" "$APP_BUNDLE"
 codesign --verify --strict --deep --verbose=2 "$APP_BUNDLE"
 codesign -dvvv --entitlements :- "$APP_BUNDLE" >/dev/null
 

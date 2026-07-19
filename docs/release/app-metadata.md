@@ -20,14 +20,24 @@ SoloPM の public alpha は SwiftPM package から `.app` bundle を生成する
 
 ## Entitlement Inventory
 
-`packaging/SoloPM.entitlements` は現時点で空の plist にしている。P5-001 時点では不要な entitlement を入れない方針を優先する。
+`packaging/SoloPM.entitlements` は主アプリ実行ファイルに必要な権限だけを定義する。Apple の Hardened Runtime 方針に従い、機能に必要な entitlement だけを `true` で追加する。
+
+現在要求する entitlement:
+
+- Audio Input (`com.apple.security.device.audio-input = true`): 音声コマンドの録音と Core Audio の入力利用に必要。`NSMicrophoneUsageDescription` による利用目的表示と、macOS のユーザー許可は引き続き必要。
+
+`script/sign_app.sh` はこの plist を `SoloPM.app` の主アプリだけに適用する。Sparkle framework、Updater.app、Downloader XPCなどのnested codeは録音を行わないため、Hardened Runtime署名だけを付け、Audio Input entitlementを付与しない。これは権限を必要な実行ファイルに限定するための境界であり、nested codeが将来録音を必要とする設計へ変わらない限り維持する。
 
 現在 entitlement として要求しないもの:
 
 - App Sandbox: Mac App Store 配布ではないため、Developer ID alpha では有効化しない。
 - Network client: BYOK LLM provider は通常の outbound HTTP で動くが、sandbox を有効化するまで entitlement は不要。
 - File access: MVP はユーザーが選択した workspace 配下だけを扱い、sandbox scoped bookmark の設計は後続で検討する。
-- Microphone: `NSMicrophoneUsageDescription` を `Info.plist` に入れる。entitlement では管理しない。
 - Login item: `SMAppService` を使う。専用 entitlement は追加しない。
 
-Entitlement を追加する場合は、該当 Phase のタスク、根拠、検証コマンド、削除条件をこの文書に追記する。
+Entitlement を追加する場合は、該当 Phase のタスク、根拠、対象実行ファイル、検証コマンド、削除条件をこの文書に追記する。配布物では主アプリを `codesign -d --entitlements :- dist/SoloPM.app` で確認し、nested codeに主アプリ用entitlementが混入していないことも確認する。
+
+根拠:
+
+- [Apple: Hardened Runtime](https://developer.apple.com/documentation/security/hardened-runtime)
+- [Apple: Audio Input Entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.device.audio-input)
