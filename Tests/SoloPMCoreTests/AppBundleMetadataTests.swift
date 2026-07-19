@@ -25,6 +25,8 @@ final class AppBundleMetadataTests: XCTestCase {
         XCTAssertTrue(components.allSatisfy { Int($0) != nil })
     }
 
+    // Keep the production entitlement surface explicit so future capabilities cannot
+    // silently broaden the app sandbox boundary during release packaging.
     func testEntitlementsGrantOnlyHardenedRuntimeAudioInput() throws {
         let entitlementsURL = packageRoot().appendingPathComponent("packaging/SoloPM.entitlements")
         let data = try Data(contentsOf: entitlementsURL)
