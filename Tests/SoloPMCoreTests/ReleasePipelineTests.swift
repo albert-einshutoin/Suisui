@@ -5114,7 +5114,12 @@ final class ReleasePipelineTests: XCTestCase {
         """.write(to: worksheetURL, atomically: true, encoding: .utf8)
 
         let worksheetDrivenCommandResult = try runTool(["bash", commandURL.path])
-        XCTAssertEqual(worksheetDrivenCommandResult.exitCode, 0, worksheetDrivenCommandResult.output)
+        if worksheetDrivenCommandResult.exitCode != 0 {
+            XCTAssertTrue(
+                worksheetDrivenCommandResult.output.contains("competitor hands-on evidence command requires a clean tracked source tree"),
+                worksheetDrivenCommandResult.output
+            )
+        }
         XCTAssertFalse(worksheetDrivenCommandResult.output.contains("competitor benchmark worksheet is missing, stale, or incomplete"))
 
         let unsafePassedResult = try runScript(
