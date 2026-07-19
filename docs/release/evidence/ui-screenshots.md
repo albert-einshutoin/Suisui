@@ -2,11 +2,11 @@
 
 Generated with `script/capture_ui_evidence.sh`.
 
-- Generated at: `2026-07-19T17:02:58Z`
-- Source commit: `9129b24e`
+- Generated at: `2026-07-19T17:42:30Z`
+- Source commit: `c34d6fa1`
 - App bundle: `dist/Suisui.app`
 - Visual baseline manifest: `docs/quality/visual-baseline-manifest.json`
-- Viewport contract: `SOLOPM_VISUAL_BASELINE_VIEWPORT=1024x724`, `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT=720x712`, `SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT=760x640`
+- Viewport contract: `SOLOPM_VISUAL_BASELINE_VIEWPORT=1024x676`, `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT=720x676`, `SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT=760x640`
 - Runtime context: locale `en-US`, timezone `UTC`, reference instant `2026-07-10T12:00:00Z`
 - Launch mode: normal `ProjectBoardView` route with explicit selected destination; recovery flags are excluded from release evidence.
 - Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`
