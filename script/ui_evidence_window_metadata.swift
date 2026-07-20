@@ -2,10 +2,10 @@ import CoreGraphics
 import Foundation
 
 let environment = ProcessInfo.processInfo.environment
-let ownerName = environment["SOLOPM_WINDOW_OWNER"] ?? "SoloPM"
-let ownerPID = environment["SOLOPM_WINDOW_OWNER_PID"].flatMap(Int.init)
-let requiredWindowName = environment["SOLOPM_WINDOW_NAME"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-let requireSingleWindow = environment["SOLOPM_REQUIRE_SINGLE_WINDOW"] == "1"
+let ownerName = environment["SUISUI_WINDOW_OWNER"] ?? "Suisui"
+let ownerPID = environment["SUISUI_WINDOW_OWNER_PID"].flatMap(Int.init)
+let requiredWindowName = environment["SUISUI_WINDOW_NAME"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+let requireSingleWindow = environment["SUISUI_REQUIRE_SINGLE_WINDOW"] == "1"
 let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
 
 guard let windowInfo = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {

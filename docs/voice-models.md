@@ -1,13 +1,13 @@
-# SoloPM Voice Model Cache
+# Suisui Voice Model Cache
 
-SoloPM does not bundle local STT or TTS model binaries in the repository or app bundle. Local OSS voice models are installed only after an explicit user action in Settings, then stored in the user's application support directory.
+Suisui does not bundle local STT or TTS model binaries in the repository or app bundle. Local OSS voice models are installed only after an explicit user action in Settings, then stored in the user's application support directory.
 
 ## Cache Location
 
 Default cache root:
 
 ```text
-~/Library/Application Support/SoloPM/VoiceModels/
+~/Library/Application Support/Suisui/VoiceModels/
 ```
 
 Test and development fixtures should stay under `.tmp/`, which is already ignored by git. Do not commit downloaded model binaries, `.partial` files, generated model caches, or alternate local cache roots.
@@ -84,17 +84,17 @@ Until those runtime checks are captured, source-only changes can close the no-bu
 Default full STT + TTS mode:
 
 ```sh
-SOLOPM_WHISPER_CPP_EXECUTABLE=/absolute/path/to/whisper-cli \
-SOLOPM_STT_SAMPLE_WAV=/absolute/path/to/sample-ja-or-en.wav \
-SOLOPM_KOKORO_EXECUTABLE=/absolute/path/to/kokoro-runtime \
+SUISUI_WHISPER_CPP_EXECUTABLE=/absolute/path/to/whisper-cli \
+SUISUI_STT_SAMPLE_WAV=/absolute/path/to/sample-ja-or-en.wav \
+SUISUI_KOKORO_EXECUTABLE=/absolute/path/to/kokoro-runtime \
 ./script/check_local_voice_runtime_smoke.sh
 ```
 
 Issue #13 STT-only smoke:
 
 ```sh
-SOLOPM_WHISPER_CPP_EXECUTABLE=/absolute/path/to/whisper-cli \
-SOLOPM_STT_SAMPLE_WAV=/absolute/path/to/sample-ja-or-en.wav \
+SUISUI_WHISPER_CPP_EXECUTABLE=/absolute/path/to/whisper-cli \
+SUISUI_STT_SAMPLE_WAV=/absolute/path/to/sample-ja-or-en.wav \
 ./script/check_local_voice_runtime_smoke.sh --stt-only
 ```
 
@@ -102,10 +102,10 @@ To create tracked evidence for an STT-only pass, keep it under
 `docs/release/evidence/*stt-only*.md` and make the limitation explicit:
 
 ```sh
-SOLOPM_WHISPER_CPP_EXECUTABLE=/absolute/path/to/whisper-cli \
-SOLOPM_STT_SAMPLE_WAV=/absolute/path/to/sample-ja-or-en.wav \
-SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS="<expected words>" \
-SOLOPM_LOCAL_VOICE_EVIDENCE_FILE=docs/release/evidence/local-voice-runtime-stt-only.md \
+SUISUI_WHISPER_CPP_EXECUTABLE=/absolute/path/to/whisper-cli \
+SUISUI_STT_SAMPLE_WAV=/absolute/path/to/sample-ja-or-en.wav \
+SUISUI_STT_EXPECTED_TRANSCRIPT_CONTAINS="<expected words>" \
+SUISUI_LOCAL_VOICE_EVIDENCE_FILE=docs/release/evidence/local-voice-runtime-stt-only.md \
 ./script/check_local_voice_runtime_smoke.sh --stt-only
 ```
 
@@ -119,19 +119,19 @@ sample must include a known phrase and the default smoke must cover both
 Japanese and English Kokoro prompts:
 
 ```sh
-SOLOPM_WHISPER_CPP_EXECUTABLE=/absolute/path/to/whisper-cli \
-SOLOPM_STT_SAMPLE_WAV=/absolute/path/to/sample-ja-or-en.wav \
-SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS="<expected words>" \
+SUISUI_WHISPER_CPP_EXECUTABLE=/absolute/path/to/whisper-cli \
+SUISUI_STT_SAMPLE_WAV=/absolute/path/to/sample-ja-or-en.wav \
+SUISUI_STT_EXPECTED_TRANSCRIPT_CONTAINS="<expected words>" \
 PATH="/absolute/path/to/kokoro-venv/bin:$PATH" \
-SOLOPM_KOKORO_EXECUTABLE="$PWD/script/kokoro_tts_runtime.py" \
-SOLOPM_LOCAL_VOICE_EVIDENCE_FILE=docs/release/evidence/local-voice-runtime.md \
+SUISUI_KOKORO_EXECUTABLE="$PWD/script/kokoro_tts_runtime.py" \
+SUISUI_LOCAL_VOICE_EVIDENCE_FILE=docs/release/evidence/local-voice-runtime.md \
 ./script/check_local_voice_runtime_smoke.sh
 ```
 
-The verifier defaults to `~/Library/Application Support/SoloPM/VoiceModels`, or `SOLOPM_LOCAL_VOICE_CACHE_ROOT` when testing an alternate cache. It checks the recorded `ggml-tiny.bin` SHA-256 before launching STT in every mode, and in default full mode it also checks `kokoro-v1_0.pth` before launching TTS. It writes smoke artifacts under `.tmp/local-voice-runtime-smoke` by default, and accepts `SOLOPM_LOCAL_VOICE_SMOKE_OUTPUT_DIR` for a separate ignored artifact directory. The full smoke requires `SOLOPM_WHISPER_CPP_EXECUTABLE`, `SOLOPM_STT_SAMPLE_WAV`, and `SOLOPM_KOKORO_EXECUTABLE` so missing local setup fails as an explicit `BLOCKER:` instead of being mistaken for release readiness. `--stt-only` intentionally skips the Kokoro executable/model/TTS language requirements so #13 can advance independently of #14. When `SOLOPM_LOCAL_VOICE_EVIDENCE_FILE` is set in full mode, `SOLOPM_KOKORO_EXECUTABLE` must point at the checked-in `script/kokoro_tts_runtime.py` wrapper, `SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS` and both `ja` / `en` TTS languages are required, and the wrapper forces `HF_HUB_OFFLINE=1` plus `TRANSFORMERS_OFFLINE=1` before importing Kokoro. This keeps the tracked no-network evidence tied to reviewed source instead of an arbitrary local shim while still allowing reviewers to put their Python virtualenv first on `PATH`. The tracked evidence records no-network and no-bundled-model boundaries, but it does not prove Settings Test Play or VoiceOver accessibility; those remain separate closeout gates.
+The verifier defaults to `~/Library/Application Support/Suisui/VoiceModels`, or `SUISUI_LOCAL_VOICE_CACHE_ROOT` when testing an alternate cache. It checks the recorded `ggml-tiny.bin` SHA-256 before launching STT in every mode, and in default full mode it also checks `kokoro-v1_0.pth` before launching TTS. It writes smoke artifacts under `.tmp/local-voice-runtime-smoke` by default, and accepts `SUISUI_LOCAL_VOICE_SMOKE_OUTPUT_DIR` for a separate ignored artifact directory. The full smoke requires `SUISUI_WHISPER_CPP_EXECUTABLE`, `SUISUI_STT_SAMPLE_WAV`, and `SUISUI_KOKORO_EXECUTABLE` so missing local setup fails as an explicit `BLOCKER:` instead of being mistaken for release readiness. `--stt-only` intentionally skips the Kokoro executable/model/TTS language requirements so #13 can advance independently of #14. When `SUISUI_LOCAL_VOICE_EVIDENCE_FILE` is set in full mode, `SUISUI_KOKORO_EXECUTABLE` must point at the checked-in `script/kokoro_tts_runtime.py` wrapper, `SUISUI_STT_EXPECTED_TRANSCRIPT_CONTAINS` and both `ja` / `en` TTS languages are required, and the wrapper forces `HF_HUB_OFFLINE=1` plus `TRANSFORMERS_OFFLINE=1` before importing Kokoro. This keeps the tracked no-network evidence tied to reviewed source instead of an arbitrary local shim while still allowing reviewers to put their Python virtualenv first on `PATH`. The tracked evidence records no-network and no-bundled-model boundaries, but it does not prove Settings Test Play or VoiceOver accessibility; those remain separate closeout gates.
 
-By default the TTS half synthesizes both Japanese and English prompts using `SOLOPM_TTS_LANGUAGES="ja en"`, `SOLOPM_TTS_JA_VOICE_ID=jf_alpha`, and `SOLOPM_TTS_EN_VOICE_ID=af_heart`. STT defaults to `SOLOPM_STT_LANGUAGE=ja`, but release reviewers can set `SOLOPM_STT_LANGUAGE=en` or `auto` when the sample WAV is English or mixed language.
+By default the TTS half synthesizes both Japanese and English prompts using `SUISUI_TTS_LANGUAGES="ja en"`, `SUISUI_TTS_JA_VOICE_ID=jf_alpha`, and `SUISUI_TTS_EN_VOICE_ID=af_heart`. STT defaults to `SUISUI_STT_LANGUAGE=ja`, but release reviewers can set `SUISUI_STT_LANGUAGE=en` or `auto` when the sample WAV is English or mixed language.
 
 ## Accessibility Boundary
 
-Product TTS is not VoiceOver. Local TTS can read short SoloPM prompts such as overdue counts or task creation summaries, but it does not replace manual VoiceOver evidence. Screen-reader accessibility remains a separate release gate under `docs/release/checklist.md`.
+Product TTS is not VoiceOver. Local TTS can read short Suisui prompts such as overdue counts or task creation summaries, but it does not replace manual VoiceOver evidence. Screen-reader accessibility remains a separate release gate under `docs/release/checklist.md`.

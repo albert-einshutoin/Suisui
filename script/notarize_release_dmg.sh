@@ -10,7 +10,7 @@ if [[ -f "$NOTARIZATION_ENV_FILE" ]]; then
 fi
 
 DMG_PATH="${1:-}"
-NOTARY_PROFILE="${SOLOPM_NOTARY_PROFILE:-}"
+NOTARY_PROFILE="${SUISUI_NOTARY_PROFILE:-}"
 
 if [[ -z "$DMG_PATH" ]]; then
   echo "usage: $0 <release.dmg>" >&2
@@ -32,7 +32,7 @@ if [[ ! -f "$DMG_PATH" ]]; then
 fi
 
 if [[ -z "$NOTARY_PROFILE" ]]; then
-  echo "SOLOPM_NOTARY_PROFILE is required to notarize the release DMG." >&2
+  echo "SUISUI_NOTARY_PROFILE is required to notarize the release DMG." >&2
   echo "Create it with 'xcrun notarytool store-credentials <profile-name>' on the release machine." >&2
   exit 2
 fi
@@ -70,7 +70,7 @@ xcrun stapler staple "$DMG_PATH"
 xcrun stapler validate "$DMG_PATH"
 spctl -a -t open --context context:primary-signature -vv "$DMG_PATH"
 
-NOTARIZATION_EVIDENCE_FILE="${SOLOPM_DMG_NOTARIZATION_EVIDENCE_FILE:-$DMG_PATH.notarization.json}"
+NOTARIZATION_EVIDENCE_FILE="${SUISUI_DMG_NOTARIZATION_EVIDENCE_FILE:-$DMG_PATH.notarization.json}"
 artifact_path="$DMG_PATH"
 submission_log_path="$SUBMISSION_LOG"
 if [[ "$artifact_path" == "$ROOT_DIR/"* ]]; then

@@ -107,7 +107,7 @@ for offset in stride(from: 0, to: pixels.count, by: bytesPerPixel) {
     }
 }
 
-if ProcessInfo.processInfo.environment["SOLOPM_UI_EVIDENCE_CONTENT_DIAGNOSTICS"] == "1" {
+if ProcessInfo.processInfo.environment["SUISUI_UI_EVIDENCE_CONTENT_DIAGNOSTICS"] == "1" {
     fputs(
         "content diagnostics: visible=\(visiblePixelCount) transparent=\(transparentPixelCount) opaqueBlack=\(opaqueBlackPixelCount) total=\(sampleWidth * sampleHeight)\n",
         stderr
@@ -125,7 +125,7 @@ guard visiblePixelCount >= minimumVisiblePixels else {
     exit(1)
 }
 
-if ProcessInfo.processInfo.environment["SOLOPM_UI_EVIDENCE_ALLOW_DESKTOP_BACKGROUND"] != "1" {
+if ProcessInfo.processInfo.environment["SUISUI_UI_EVIDENCE_ALLOW_DESKTOP_BACKGROUND"] != "1" {
     // These checks apply to owned, shadowless window evidence. The runner
     // capability probe captures the whole desktop, where a black wallpaper is
     // valid and must not be mistaken for an incompletely composed app window.

@@ -19,14 +19,14 @@ guard let rawPID = Int32(CommandLine.arguments[3]), rawPID > 0 else {
 }
 let appPID = pid_t(rawPID)
 let environment = ProcessInfo.processInfo.environment
-let maxNodes = Int(environment["SOLOPM_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
+let maxNodes = Int(environment["SUISUI_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
 
 guard maxNodes > 0 else {
-    fputs("SOLOPM_UI_EVIDENCE_AX_MAX_NODES must be a positive integer.\n", stderr)
+    fputs("SUISUI_UI_EVIDENCE_AX_MAX_NODES must be a positive integer.\n", stderr)
     exit(2)
 }
 guard AXIsProcessTrusted() else {
-    fputs("Accessibility permission is required to scroll SoloPM UI evidence targets.\n", stderr)
+    fputs("Accessibility permission is required to scroll Suisui UI evidence targets.\n", stderr)
     exit(2)
 }
 guard NSWorkspace.shared.runningApplications.contains(where: { app in
@@ -310,7 +310,7 @@ while cursor < queue.count && visitedCount < maxNodes {
 
 guard let target else {
     if visitedCount >= maxNodes {
-        fputs("AX scroll scan reached SOLOPM_UI_EVIDENCE_AX_MAX_NODES=\(maxNodes).\n", stderr)
+        fputs("AX scroll scan reached SUISUI_UI_EVIDENCE_AX_MAX_NODES=\(maxNodes).\n", stderr)
     }
     fputs("missing exact AX scroll target: \(targetIdentifier)\n", stderr)
     exit(1)
@@ -372,7 +372,7 @@ for scrollBar in scrollBars {
 }
 
 if visitedCount >= maxNodes {
-    fputs("AX scroll scan reached SOLOPM_UI_EVIDENCE_AX_MAX_NODES=\(maxNodes).\n", stderr)
+    fputs("AX scroll scan reached SUISUI_UI_EVIDENCE_AX_MAX_NODES=\(maxNodes).\n", stderr)
 }
 let ancestorRoles = ancestors.map { element in
     stringValue(copyAttribute(element, kAXRoleAttribute as CFString)) ?? "unknown"

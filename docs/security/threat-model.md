@@ -1,8 +1,8 @@
-# SoloPM Threat Model
+# Suisui Threat Model
 
 Verified: 2026-07-07
 
-This document records what SoloPM protects, where trust boundaries sit, and which existing controls map to which threats. It complements [SECURITY.md](../../SECURITY.md) (policy and reporting) and [docs/sync/cloud-sync-foundation.md](../sync/cloud-sync-foundation.md) (the E2EE sync boundary). It describes the current local-first macOS app plus the planned sync/relay surfaces; it is not a compliance artifact.
+This document records what Suisui protects, where trust boundaries sit, and which existing controls map to which threats. It complements [SECURITY.md](../../SECURITY.md) (policy and reporting) and [docs/sync/cloud-sync-foundation.md](../sync/cloud-sync-foundation.md) (the E2EE sync boundary). It describes the current local-first macOS app plus the planned sync/relay surfaces; it is not a compliance artifact.
 
 ## Scope and Assumptions
 
@@ -16,7 +16,7 @@ In scope:
 Out of scope (assumed trusted or handled elsewhere):
 
 - macOS itself, the Keychain implementation, and hardware security.
-- A fully compromised user account or root-level malware; SoloPM cannot defend content from an attacker who owns the session.
+- A fully compromised user account or root-level malware; Suisui cannot defend content from an attacker who owns the session.
 - Physical attacks beyond casual lock-screen reading.
 
 ## Assets
@@ -81,7 +81,7 @@ Out of scope (assumed trusted or handled elsewhere):
 - **Local database unencrypted at rest.** SQLite content is protected only by file permissions and FileVault; malware running as the user can read it directly.
 - **Clipboard and screenshot exposure.** Task content copied to the clipboard or captured in screen shares leaves every control above; no clipboard scrubbing exists.
 - **Prompt injection.** Review-before-write limits blast radius but a user who approves a poisoned plan still executes it.
-- **External MCP servers.** They run with the user's privileges; SoloPM constrains what it asks them to do, not what they can do.
+- **External MCP servers.** They run with the user's privileges; Suisui constrains what it asks them to do, not what they can do.
 
 ## Review Cadence
 

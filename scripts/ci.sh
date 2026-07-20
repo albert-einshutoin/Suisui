@@ -2,35 +2,35 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CI_TMP_ROOT="${SOLOPM_CI_TMP_ROOT:-$ROOT_DIR/.tmp}"
+CI_TMP_ROOT="${SUISUI_CI_TMP_ROOT:-$ROOT_DIR/.tmp}"
 CI_TMPDIR_CREATED=0
-CI_RUNTIME_GATES="${SOLOPM_CI_RUNTIME_GATES:-0}"
-CI_VISUAL_GATES="${SOLOPM_CI_VISUAL_GATES:-0}"
-CI_RELEASE_GATES="${SOLOPM_CI_RELEASE_GATES:-0}"
-CI_PERFORMANCE_GATES="${SOLOPM_CI_PERFORMANCE_GATES:-0}"
-CI_STRESS_GATES="${SOLOPM_CI_STRESS_GATES:-0}"
-CI_LANE="${1:-${SOLOPM_CI_LANE:-swiftpm}}"
+CI_RUNTIME_GATES="${SUISUI_CI_RUNTIME_GATES:-0}"
+CI_VISUAL_GATES="${SUISUI_CI_VISUAL_GATES:-0}"
+CI_RELEASE_GATES="${SUISUI_CI_RELEASE_GATES:-0}"
+CI_PERFORMANCE_GATES="${SUISUI_CI_PERFORMANCE_GATES:-0}"
+CI_STRESS_GATES="${SUISUI_CI_STRESS_GATES:-0}"
+CI_LANE="${1:-${SUISUI_CI_LANE:-swiftpm}}"
 CI_LANE_WAS_EXPLICIT=0
-CI_ARTIFACT_ROOT="${SOLOPM_CI_ARTIFACT_ROOT:-$ROOT_DIR/.tmp/ci-artifacts}"
-UI_GATE_LOCK_DIR="${SOLOPM_UI_GATE_LOCK_DIR:-/tmp/solopm-ui-gate-${UID}.lock}"
-UI_GATE_LOCK_TIMEOUT_SECONDS="${SOLOPM_UI_GATE_LOCK_TIMEOUT_SECONDS:-180}"
+CI_ARTIFACT_ROOT="${SUISUI_CI_ARTIFACT_ROOT:-$ROOT_DIR/.tmp/ci-artifacts}"
+UI_GATE_LOCK_DIR="${SUISUI_UI_GATE_LOCK_DIR:-/tmp/suisui-ui-gate-${UID}.lock}"
+UI_GATE_LOCK_TIMEOUT_SECONDS="${SUISUI_UI_GATE_LOCK_TIMEOUT_SECONDS:-180}"
 UI_GATE_LOCK_ACQUIRED=0
 
 if [[ $# -gt 1 ]]; then
   echo "usage: $0 [swiftpm|ui-runtime|ui-visual|ui-performance]" >&2
   exit 2
 fi
-if [[ $# -eq 1 || -n "${SOLOPM_CI_LANE:-}" ]]; then
+if [[ $# -eq 1 || -n "${SUISUI_CI_LANE:-}" ]]; then
   CI_LANE_WAS_EXPLICIT=1
 fi
 
 mkdir -p "$CI_TMP_ROOT" "$CI_ARTIFACT_ROOT"
 
-if [[ -n "${SOLOPM_CI_TMPDIR:-}" ]]; then
-  CI_TMPDIR="${SOLOPM_CI_TMPDIR%/}"
+if [[ -n "${SUISUI_CI_TMPDIR:-}" ]]; then
+  CI_TMPDIR="${SUISUI_CI_TMPDIR%/}"
   mkdir -p "$CI_TMPDIR"
 else
-  CI_TMPDIR="$(mktemp -d "$CI_TMP_ROOT/solopm-ci-tmp.XXXXXX")"
+  CI_TMPDIR="$(mktemp -d "$CI_TMP_ROOT/suisui-ci-tmp.XXXXXX")"
   CI_TMPDIR_CREATED=1
 fi
 
@@ -113,7 +113,7 @@ run_pr_gate() {
   script/check_pseudo_voiceover_paths.sh --swift-test
   swift test --filter ProjectBoardStoreTests
   swift build
-  swift build --product solopm-cli
+  swift build --product suisui-cli
   ./script/build_and_run.sh --build-only
 }
 
@@ -123,12 +123,14 @@ run_release_gates() {
 
 run_performance_gates() {
   local artifact_dir="$CI_ARTIFACT_ROOT/ui-performance"
-  SOLOPM_UI_RUNNER_CAPABILITY_ARTIFACT_DIR="$artifact_dir/runner-capability" \
+  SUISUI_UI_RUNNER_CAPABILITY_ARTIFACT_DIR="$artifact_dir/runner-capability" \
     ./script/check_macos_ui_runner_capabilities.sh performance
-  SOLOPM_PERFORMANCE_PROFILE="${SOLOPM_PERFORMANCE_PROFILE:-debug}" \
-  SOLOPM_PERFORMANCE_BUILD_CONFIGURATION="${SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-debug}" \
-  SOLOPM_PERFORMANCE_OUTPUT_DIR="$artifact_dir/performance" \
-  SOLOPM_PERFORMANCE_HOME="$CI_TMPDIR/ui-performance-home" \
+  # The production-route lane must fail closed against the public Release SLO.
+  # Debug remains available only through an explicit local override.
+  SUISUI_PERFORMANCE_PROFILE="${SUISUI_PERFORMANCE_PROFILE:-release}" \
+  SUISUI_PERFORMANCE_BUILD_CONFIGURATION="${SUISUI_PERFORMANCE_BUILD_CONFIGURATION:-release}" \
+  SUISUI_PERFORMANCE_OUTPUT_DIR="$artifact_dir/performance" \
+  SUISUI_PERFORMANCE_HOME="$CI_TMPDIR/ui-performance-home" \
     ./script/check_release_launch_performance_smoke.sh
 }
 
@@ -146,7 +148,7 @@ run_build_and_run_verify() {
   mkdir -p "$verify_tmp" "$verify_artifact_dir"
 
   set +e
-  SOLOPM_TMPDIR="$verify_tmp" ./script/build_and_run.sh --verify
+  SUISUI_TMPDIR="$verify_tmp" ./script/build_and_run.sh --verify
   verify_status=$?
   set -e
 
@@ -218,8 +220,8 @@ run_layout_stability_gate() {
   mkdir -p "$layout_dir"
 
   set +e
-  SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH="$visible_frame_width" \
-  SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT="$visible_frame_height" \
+  SUISUI_LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH="$visible_frame_width" \
+  SUISUI_LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT="$visible_frame_height" \
     ./script/check_layout_stability_smoke.sh --check-display-capacity \
     >"$capacity_log" 2>&1
   capacity_status=$?
@@ -229,10 +231,10 @@ run_layout_stability_gate() {
     cat "$capacity_log"
     printf 'status=capable\nproduct_contract=unchanged\n' >"$capacity_summary"
     set +e
-    SOLOPM_LAYOUT_STABILITY_OUTPUT_DIR="$layout_dir" \
-    SOLOPM_LAYOUT_STABILITY_RUNTIME_DIR="$CI_TMPDIR/layout-stability-runtime" \
-    SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH="$visible_frame_width" \
-    SOLOPM_LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT="$visible_frame_height" \
+    SUISUI_LAYOUT_STABILITY_OUTPUT_DIR="$layout_dir" \
+    SUISUI_LAYOUT_STABILITY_RUNTIME_DIR="$CI_TMPDIR/layout-stability-runtime" \
+    SUISUI_LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH="$visible_frame_width" \
+    SUISUI_LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT="$visible_frame_height" \
       ./script/check_layout_stability_smoke.sh
     runtime_status=$?
     set -e
@@ -264,22 +266,22 @@ run_runtime_gates() {
   local visible_frame_dimensions
   local visible_frame_width
   local visible_frame_height
-  SOLOPM_UI_RUNNER_CAPABILITY_ARTIFACT_DIR="$artifact_dir/runner-capability" \
+  SUISUI_UI_RUNNER_CAPABILITY_ARTIFACT_DIR="$artifact_dir/runner-capability" \
     ./script/check_macos_ui_runner_capabilities.sh runtime
   if ! visible_frame_dimensions="$(read_layout_visible_frame_dimensions "$capability_summary")"; then
     return 1
   fi
   read -r visible_frame_width visible_frame_height <<<"$visible_frame_dimensions"
   run_build_and_run_verify "$artifact_dir"
-  SOLOPM_RUNTIME_ACCESSIBLE_CRUD_ARTIFACT_DIR="$artifact_dir/runtime-accessible-crud" \
+  SUISUI_RUNTIME_ACCESSIBLE_CRUD_ARTIFACT_DIR="$artifact_dir/runtime-accessible-crud" \
     ./script/check_runtime_accessible_crud_smoke.sh
   run_layout_stability_gate "$artifact_dir" "$visible_frame_width" "$visible_frame_height"
-  SOLOPM_RUNTIME_TODAY_PRODUCTION_ROUTE_ARTIFACT_DIR="$artifact_dir/today-production-route" \
+  SUISUI_RUNTIME_TODAY_PRODUCTION_ROUTE_ARTIFACT_DIR="$artifact_dir/today-production-route" \
     ./script/check_runtime_today_production_route_smoke.sh
 }
 
 run_visual_gates() {
-  SOLOPM_CI_VISUAL_GATE_OUTPUT_DIR="$CI_ARTIFACT_ROOT/ui-visual" \
+  SUISUI_CI_VISUAL_GATE_OUTPUT_DIR="$CI_ARTIFACT_ROOT/ui-visual" \
     ./script/check_ci_visual_gate.sh
 }
 
@@ -353,12 +355,12 @@ run_lane_with_artifacts() {
   return "$status"
 }
 
-validate_ci_flag "SOLOPM_CI_RUNTIME_GATES" "$CI_RUNTIME_GATES"
-validate_ci_flag "SOLOPM_CI_VISUAL_GATES" "$CI_VISUAL_GATES"
-validate_ci_flag "SOLOPM_CI_RELEASE_GATES" "$CI_RELEASE_GATES"
-validate_ci_flag "SOLOPM_CI_PERFORMANCE_GATES" "$CI_PERFORMANCE_GATES"
-validate_ci_flag "SOLOPM_CI_STRESS_GATES" "$CI_STRESS_GATES"
-validate_positive_integer "SOLOPM_UI_GATE_LOCK_TIMEOUT_SECONDS" "$UI_GATE_LOCK_TIMEOUT_SECONDS"
+validate_ci_flag "SUISUI_CI_RUNTIME_GATES" "$CI_RUNTIME_GATES"
+validate_ci_flag "SUISUI_CI_VISUAL_GATES" "$CI_VISUAL_GATES"
+validate_ci_flag "SUISUI_CI_RELEASE_GATES" "$CI_RELEASE_GATES"
+validate_ci_flag "SUISUI_CI_PERFORMANCE_GATES" "$CI_PERFORMANCE_GATES"
+validate_ci_flag "SUISUI_CI_STRESS_GATES" "$CI_STRESS_GATES"
+validate_positive_integer "SUISUI_UI_GATE_LOCK_TIMEOUT_SECONDS" "$UI_GATE_LOCK_TIMEOUT_SECONDS"
 
 case "$CI_LANE" in
   swiftpm)

@@ -15,15 +15,15 @@ source "$METADATA_FILE"
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-TIMEOUT_SECONDS="${SOLOPM_RUNTIME_SCHEDULE_COCKPIT_TIMEOUT_SECONDS:-30}"
-KEEP_DATABASE="${SOLOPM_RUNTIME_SCHEDULE_COCKPIT_KEEP_DATABASE:-0}"
+TIMEOUT_SECONDS="${SUISUI_RUNTIME_SCHEDULE_COCKPIT_TIMEOUT_SECONDS:-30}"
+KEEP_DATABASE="${SUISUI_RUNTIME_SCHEDULE_COCKPIT_KEEP_DATABASE:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
-WINDOW_WIDTH="${SOLOPM_RUNTIME_SCHEDULE_COCKPIT_WINDOW_WIDTH:-1500}"
-WINDOW_HEIGHT="${SOLOPM_RUNTIME_SCHEDULE_COCKPIT_WINDOW_HEIGHT:-940}"
-AX_MAX_NODES="${SOLOPM_RUNTIME_SCHEDULE_COCKPIT_AX_MAX_NODES:-9000}"
+WINDOW_WIDTH="${SUISUI_RUNTIME_SCHEDULE_COCKPIT_WINDOW_WIDTH:-1500}"
+WINDOW_HEIGHT="${SUISUI_RUNTIME_SCHEDULE_COCKPIT_WINDOW_HEIGHT:-940}"
+AX_MAX_NODES="${SUISUI_RUNTIME_SCHEDULE_COCKPIT_AX_MAX_NODES:-9000}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "SOLOPM_RUNTIME_SCHEDULE_COCKPIT_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "SUISUI_RUNTIME_SCHEDULE_COCKPIT_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
@@ -34,8 +34,8 @@ fi
 
 cd "$ROOT_DIR"
 mkdir -p "$ROOT_DIR/.tmp"
-tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-schedule-cockpit.XXXXXX")"
-database_path="$tmp_dir/SoloPM-runtime-schedule-cockpit.sqlite"
+tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/suisui-runtime-schedule-cockpit.XXXXXX")"
+database_path="$tmp_dir/Suisui-runtime-schedule-cockpit.sqlite"
 runtime_day_key=""
 app_pid=""
 
@@ -172,8 +172,8 @@ APPLESCRIPT
 
 launch_app_for_database_migration() {
   terminate_app
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_DATABASE_PATH="$database_path" \
+  SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_DATABASE_PATH="$database_path" \
     "$APP_BINARY" &
   app_pid=$!
   wait_for_app_process
@@ -183,9 +183,9 @@ launch_app_for_database_migration() {
 
 launch_app_for_schedule() {
   terminate_app
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_DATABASE_PATH="$database_path" \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="schedule" \
+  SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_DATABASE_PATH="$database_path" \
+    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="schedule" \
     "$APP_BINARY" &
   app_pid=$!
   wait_for_app_process
@@ -319,12 +319,12 @@ axMarkerPresent() {
   local checker_pid
   local watchdog_pid
   local status
-  error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-schedule-ax-marker-error.XXXXXX")"
+  error_file="$(mktemp "${TMPDIR:-/tmp}/suisui-schedule-ax-marker-error.XXXXXX")"
 
   # Schedule is rendered inside the full Project Board. Bound the Swift AX
   # traversal so a large SwiftUI tree cannot stall the smoke indefinitely.
-  SOLOPM_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
-  SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
+  SUISUI_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
+  SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
     /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" "$APP_NAME" "$identifier" "$text" \
     >/dev/null 2>"$error_file" &
   checker_pid=$!
@@ -354,8 +354,8 @@ pressButtonContaining() {
   local watchdog_pid
   local status
   while true; do
-    error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-schedule-ax-button-error.XXXXXX")"
-    SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
+    error_file="$(mktemp "${TMPDIR:-/tmp}/suisui-schedule-ax-button-error.XXXXXX")"
+    SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
       /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" "$APP_NAME" "$fragment" \
       >/dev/null 2>"$error_file" &
     checker_pid=$!

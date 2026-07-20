@@ -1,6 +1,6 @@
-# SoloPM Role And Strengths
+# Suisui Role And Strengths
 
-SoloPM is a Local-first AI secretary and personal AI PM for macOS. Its role is to turn captured work, project documents, due dates, and local context into reviewable next actions without moving ownership away from the user.
+Suisui is a Local-first AI secretary and personal AI PM for macOS. Its role is to turn captured work, project documents, due dates, and local context into reviewable next actions without moving ownership away from the user.
 
 ## Strengths
 
@@ -17,4 +17,4 @@ SoloPM is a Local-first AI secretary and personal AI PM for macOS. Its role is t
 
 ## Product Boundary
 
-SoloPM should not silently execute destructive actions, leak provider keys, or treat generated summaries as proof of manual checks. High-risk work stays explicit: review the plan, inspect the documents used, approve the action, then run it.
+Suisui should not silently execute destructive actions, leak provider keys, or treat generated summaries as proof of manual checks. High-risk work stays explicit: review the plan, inspect the documents used, approve the action, then run it.

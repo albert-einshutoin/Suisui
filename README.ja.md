@@ -1,12 +1,14 @@
-# SoloPM
+# Suisui（すいすい）
 
 [English README](README.md)
 
-SoloPMは、声や文章で伝えた仕事をプロジェクト、タスク、予定、リマインダー、通知、ローカル文書へ整理するmacOS向けのパーソナルPMです。AIが勝手に書き込むのではなく、提案を人が確認し、**承認後に実行**することを基本にしています。
+**声から、仕事がすいすい進む。**
+
+Suisuiは、声や文章で伝えた仕事をプロジェクト、タスク、予定、リマインダー、通知、ローカル文書へ整理するmacOS向けのAIパーソナルプロジェクトマネージャーです。AIが勝手に書き込むのではなく、提案を人が確認し、**承認後に実行**することを基本にしています。
 
 現在は、日本語を主言語として一人で仕事や個人プロジェクトを進める方を対象に、最初のパブリックアルファを準備しています。
 
-![SoloPM public alpha preview](docs/assets/screenshots/solopm-alpha-preview.svg)
+![Suisui public alpha preview](docs/assets/screenshots/suisui-alpha-preview.svg)
 
 ## 最初の5分
 
@@ -19,8 +21,8 @@ SoloPMは、声や文章で伝えた仕事をプロジェクト、タスク、�
 ### 2. 起動する
 
 ```sh
-git clone https://github.com/albert-einshutoin/soloPM.git
-cd soloPM
+git clone https://github.com/albert-einshutoin/suisui.git
+cd suisui
 ./script/build_and_run.sh
 ```
 
@@ -47,7 +49,7 @@ cd soloPM
 ## 最初のワークフロー
 
 1. Inboxへ「来週金曜までにリリース準備を終えたい」のように入力します。
-2. SoloPMが不足情報を確認し、プロジェクト、タスク、期限の案を作ります。
+2. Suisuiが不足情報を確認し、プロジェクト、タスク、期限の案を作ります。
 3. 内容、保存先、期限、実行される操作を確認します。
 4. 修正が必要なら編集し、問題なければ承認します。
 5. 承認された項目だけがローカルデータや許可済みのAppleサービスへ反映されます。
@@ -101,19 +103,19 @@ cd soloPM
 
 ## プライバシーと安全性
 
-SoloPMはローカルファーストです。秘密情報はKeychainに保存し、外部AIへ送る文脈は必要最小限に制限します。保存や外部連携を伴う操作は、対象と内容を表示し、利用者の承認後に実行します。
+Suisuiはローカルファーストです。秘密情報はKeychainに保存し、外部AIへ送る文脈は必要最小限に制限します。保存や外部連携を伴う操作は、対象と内容を表示し、利用者の承認後に実行します。
 
 詳しくは[プライバシーとセキュリティ](docs/release/privacy-security.md)と[SECURITY.md](SECURITY.md)を参照してください。
 
 ## 開発と検証
 
-SoloPMはGitHub FlowとTDDで開発しています。ローカルの基本検証は次のとおりです。
+SuisuiはGitHub FlowとTDDで開発しています。ローカルの基本検証は次のとおりです。
 
 ```sh
 ./scripts/ci.sh
 ./script/build_and_run.sh --verify
-swift build --product solopm-cli
-.build/debug/solopm-cli --help
+swift build --product suisui-cli
+.build/debug/suisui-cli --help
 ```
 
 プロダクトの方向性は[ロードマップ](docs/product/roadmap.md)、アルファ版の対象範囲は[日本語パブリックアルファノート](docs/release/public-alpha-ja.md)に記載しています。

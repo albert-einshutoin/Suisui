@@ -1,9 +1,9 @@
 import Foundation
 
 let environment = ProcessInfo.processInfo.environment
-let bundleIdentifier = environment["SOLOPM_SETTINGS_SMOKE_BUNDLE_IDENTIFIER"] ?? "dev.solopm.app"
-let timeoutSeconds = Double(environment["SOLOPM_SETTINGS_SMOKE_TIMEOUT_SECONDS"] ?? "20") ?? 20
-let expectedGoogleCalendarID = environment["SOLOPM_SETTINGS_SMOKE_GOOGLE_CALENDAR_ID"]
+let bundleIdentifier = environment["SUISUI_SETTINGS_SMOKE_BUNDLE_IDENTIFIER"] ?? "dev.suisui.app"
+let timeoutSeconds = Double(environment["SUISUI_SETTINGS_SMOKE_TIMEOUT_SECONDS"] ?? "20") ?? 20
+let expectedGoogleCalendarID = environment["SUISUI_SETTINGS_SMOKE_GOOGLE_CALENDAR_ID"]
 let deadline = Date().addingTimeInterval(timeoutSeconds)
 
 func fail(_ message: String) -> Never {

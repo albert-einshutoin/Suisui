@@ -10,10 +10,10 @@ guard CommandLine.arguments.count == 3 else {
 let appSelector = CommandLine.arguments[1]
 let marker = CommandLine.arguments[2]
 let environment = ProcessInfo.processInfo.environment
-let maxNodes = Int(environment["SOLOPM_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
+let maxNodes = Int(environment["SUISUI_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
 
 guard AXIsProcessTrusted() else {
-    fputs("Accessibility permission is required to press SoloPM UI evidence buttons.\n", stderr)
+    fputs("Accessibility permission is required to press Suisui UI evidence buttons.\n", stderr)
     exit(2)
 }
 
@@ -23,7 +23,7 @@ if let rawPID = Int32(appSelector) {
     runningApp = NSRunningApplication(processIdentifier: pid)
 } else {
     runningApp = NSWorkspace.shared.runningApplications.first(where: { app in
-        app.localizedName == appSelector || app.bundleIdentifier == "dev.solopm.app"
+        app.localizedName == appSelector || app.bundleIdentifier == "dev.suisui.app"
     })
 }
 
@@ -140,7 +140,7 @@ while cursor < queue.count && visitedCount < maxNodes {
 }
 
 if visitedCount >= maxNodes {
-    fputs("AX button scan reached SOLOPM_UI_EVIDENCE_AX_MAX_NODES=\(maxNodes).\n", stderr)
+    fputs("AX button scan reached SUISUI_UI_EVIDENCE_AX_MAX_NODES=\(maxNodes).\n", stderr)
 }
 if foundDisabledMatch {
     fputs("button marker matched but was disabled: \(marker)\n", stderr)

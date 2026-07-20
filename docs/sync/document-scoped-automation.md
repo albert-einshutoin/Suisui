@@ -4,7 +4,7 @@ Verified: 2026-06-23
 
 ## Purpose
 
-Document-scoped automation lets SoloPM use selected app and project context to propose tasks, status changes, preparation work, and draft artifacts. It remains review-first: the user must see which documents were considered, why they were included, and what changes are proposed.
+Document-scoped automation lets Suisui use selected app and project context to propose tasks, status changes, preparation work, and draft artifacts. It remains review-first: the user must see which documents were considered, why they were included, and what changes are proposed.
 
 ## Scopes
 
@@ -29,7 +29,7 @@ The current default requires review for draft-or-higher outputs. This keeps the 
 
 ## Deliverable Drafts
 
-When selected documents imply file-like deliverables, SoloPM creates reviewable draft specs before any file write. Each draft records:
+When selected documents imply file-like deliverables, Suisui creates reviewable draft specs before any file write. Each draft records:
 
 - Output kind.
 - Suggested path.
@@ -41,7 +41,7 @@ When selected documents imply file-like deliverables, SoloPM creates reviewable 
 
 External sources are excluded from source document IDs and source previews until their connector-specific approval flow is implemented. If only external sources are selected, no deliverable draft is created. This keeps GitHub, calendar, SaaS docs, and other remote connector state from silently becoming the basis for local deliverables.
 
-Deliverable source binding is output-specific. Release notes cite release-note or changelog sources, PR plans cite implementation / regression / pull request sources, and draft artifacts cite artifact or Markdown draft sources. User request text can describe the desired work, but it is not treated as source evidence for a specific deliverable. If approved selected documents do not carry a direct deliverable signal, SoloPM falls back to a preparation checklist only. This keeps review evidence useful instead of over-citing unrelated background docs. The LLM review request keeps these source previews inside fenced redacted JSON, so the model has enough approved document context to draft useful artifacts while copied secrets and unapproved external connector previews stay out of provider context.
+Deliverable source binding is output-specific. Release notes cite release-note or changelog sources, PR plans cite implementation / regression / pull request sources, and draft artifacts cite artifact or Markdown draft sources. User request text can describe the desired work, but it is not treated as source evidence for a specific deliverable. If approved selected documents do not carry a direct deliverable signal, Suisui falls back to a preparation checklist only. This keeps review evidence useful instead of over-citing unrelated background docs. The LLM review request keeps these source previews inside fenced redacted JSON, so the model has enough approved document context to draft useful artifacts while copied secrets and unapproved external connector previews stay out of provider context.
 
 Source document identifiers, titles, summaries, and inclusion reasons are redacted when `ScopedAutomationDocument` is created. These fields can come from filenames, connector previews, or user notes, so later review summaries and provider prompts must never assume only the body summary can contain secret-like values.
 
@@ -67,7 +67,7 @@ These are proposals, not surprise execution. Write-like changes should be repres
 
 ## Context Strategies
 
-SoloPM can choose where document context is processed:
+Suisui can choose where document context is processed:
 
 | Strategy | Boundary | Use |
 | --- | --- | --- |

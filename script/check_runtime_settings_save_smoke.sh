@@ -16,14 +16,14 @@ APP_NAME="${APP_NAME:?APP_NAME is required}"
 BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:?BUNDLE_IDENTIFIER is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-TIMEOUT_SECONDS="${SOLOPM_RUNTIME_SETTINGS_SAVE_TIMEOUT_SECONDS:-60}"
-KEEP_HOME="${SOLOPM_RUNTIME_SETTINGS_SAVE_KEEP_HOME:-0}"
-WINDOW_WIDTH="${SOLOPM_RUNTIME_SETTINGS_SAVE_WINDOW_WIDTH:-760}"
-WINDOW_HEIGHT="${SOLOPM_RUNTIME_SETTINGS_SAVE_WINDOW_HEIGHT:-900}"
+TIMEOUT_SECONDS="${SUISUI_RUNTIME_SETTINGS_SAVE_TIMEOUT_SECONDS:-60}"
+KEEP_HOME="${SUISUI_RUNTIME_SETTINGS_SAVE_KEEP_HOME:-0}"
+WINDOW_WIDTH="${SUISUI_RUNTIME_SETTINGS_SAVE_WINDOW_WIDTH:-760}"
+WINDOW_HEIGHT="${SUISUI_RUNTIME_SETTINGS_SAVE_WINDOW_HEIGHT:-900}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "SOLOPM_RUNTIME_SETTINGS_SAVE_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "SUISUI_RUNTIME_SETTINGS_SAVE_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 if [[ ! -r "$AX_HELPERS" ]]; then
@@ -36,9 +36,9 @@ source "$AX_HELPERS"
 
 cd "$ROOT_DIR"
 mkdir -p "$ROOT_DIR/.tmp"
-tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-settings-save.XXXXXX")"
+tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/suisui-runtime-settings-save.XXXXXX")"
 settings_home="$tmp_dir/home"
-database_path="$tmp_dir/SoloPM-runtime-settings-save.sqlite"
+database_path="$tmp_dir/Suisui-runtime-settings-save.sqlite"
 settings_suite_name="$BUNDLE_IDENTIFIER.runtime-settings-save.$(/usr/bin/uuidgen | tr '[:upper:]' '[:lower:]')"
 runtime_google_calendar_id="runtime-settings-smoke@group.calendar.google.com"
 app_pid=""
@@ -47,7 +47,7 @@ app_identity=""
 app_launch_identity=""
 
 terminate_app() {
-  # Cleanup is intentionally identity-scoped so a separately running SoloPM
+  # Cleanup is intentionally identity-scoped so a separately running Suisui
   # PID survives every Overview, AI, and Sync smoke relaunch.
   local owned_pid="${app_pid:-}"
   local launch_pid="${app_launch_pid:-}"
@@ -167,12 +167,12 @@ launch_app_for_settings() {
   terminate_app
   mkdir -p "$settings_home/Library/Preferences"
   HOME="$settings_home" \
-    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_DATABASE_PATH="$database_path" \
-    SOLOPM_APP_SETTINGS_SUITE_NAME="$settings_suite_name" \
-    SOLOPM_OPEN_SETTINGS_ON_LAUNCH=1 \
-    SOLOPM_SETTINGS_EVIDENCE_TAB="$settings_tab" \
-    SOLOPM_LANGUAGE_PREFERENCE="$language" \
+    SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_DATABASE_PATH="$database_path" \
+    SUISUI_APP_SETTINGS_SUITE_NAME="$settings_suite_name" \
+    SUISUI_OPEN_SETTINGS_ON_LAUNCH=1 \
+    SUISUI_SETTINGS_EVIDENCE_TAB="$settings_tab" \
+    SUISUI_LANGUAGE_PREFERENCE="$language" \
     "$APP_BINARY" &
   app_launch_pid=$!
   app_launch_identity="$(ax_wait_for_owned_process_identity "$app_launch_pid" "$APP_BINARY" 3)" || return 1
@@ -187,9 +187,9 @@ waitForAXElementContaining() {
   local required_text_one="${2:-}"
   local required_text_two="${3:-}"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  local axQueryAttemptSeconds="${SOLOPM_RUNTIME_SETTINGS_AX_QUERY_ATTEMPT_SECONDS:-30}"
+  local axQueryAttemptSeconds="${SUISUI_RUNTIME_SETTINGS_AX_QUERY_ATTEMPT_SECONDS:-30}"
   if [[ ! "$axQueryAttemptSeconds" =~ ^[0-9]+$ || "$axQueryAttemptSeconds" -lt 1 ]]; then
-    echo "SOLOPM_RUNTIME_SETTINGS_AX_QUERY_ATTEMPT_SECONDS must be a positive integer" >&2
+    echo "SUISUI_RUNTIME_SETTINGS_AX_QUERY_ATTEMPT_SECONDS must be a positive integer" >&2
     return 2
   fi
 
@@ -293,9 +293,9 @@ APPLESCRIPT
 pressControlContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  local pressControlAttemptSeconds="${SOLOPM_RUNTIME_SETTINGS_AX_PRESS_ATTEMPT_SECONDS:-30}"
+  local pressControlAttemptSeconds="${SUISUI_RUNTIME_SETTINGS_AX_PRESS_ATTEMPT_SECONDS:-30}"
   if [[ ! "$pressControlAttemptSeconds" =~ ^[0-9]+$ || "$pressControlAttemptSeconds" -lt 1 ]]; then
-    echo "SOLOPM_RUNTIME_SETTINGS_AX_PRESS_ATTEMPT_SECONDS must be a positive integer" >&2
+    echo "SUISUI_RUNTIME_SETTINGS_AX_PRESS_ATTEMPT_SECONDS must be a positive integer" >&2
     return 2
   fi
 
@@ -402,9 +402,9 @@ setTextFieldContaining() {
   local fragment="$1"
   local replacement="$2"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  local axTextAttemptSeconds="${SOLOPM_RUNTIME_SETTINGS_AX_TEXT_ATTEMPT_SECONDS:-30}"
+  local axTextAttemptSeconds="${SUISUI_RUNTIME_SETTINGS_AX_TEXT_ATTEMPT_SECONDS:-30}"
   if [[ ! "$axTextAttemptSeconds" =~ ^[0-9]+$ || "$axTextAttemptSeconds" -lt 1 ]]; then
-    echo "SOLOPM_RUNTIME_SETTINGS_AX_TEXT_ATTEMPT_SECONDS must be a positive integer" >&2
+    echo "SUISUI_RUNTIME_SETTINGS_AX_TEXT_ATTEMPT_SECONDS must be a positive integer" >&2
     return 2
   fi
 
@@ -528,10 +528,10 @@ APPLESCRIPT
 enableCheckboxContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  local checkboxAttemptSeconds="${SOLOPM_RUNTIME_SETTINGS_AX_CHECKBOX_ATTEMPT_SECONDS:-30}"
+  local checkboxAttemptSeconds="${SUISUI_RUNTIME_SETTINGS_AX_CHECKBOX_ATTEMPT_SECONDS:-30}"
   local checkbox_verified=0
   if [[ ! "$checkboxAttemptSeconds" =~ ^[0-9]+$ || "$checkboxAttemptSeconds" -lt 1 ]]; then
-    echo "SOLOPM_RUNTIME_SETTINGS_AX_CHECKBOX_ATTEMPT_SECONDS must be a positive integer" >&2
+    echo "SUISUI_RUNTIME_SETTINGS_AX_CHECKBOX_ATTEMPT_SECONDS must be a positive integer" >&2
     return 2
   fi
 
@@ -649,9 +649,9 @@ APPLESCRIPT
 
 verify_settings_saved() {
   HOME="$settings_home" \
-    SOLOPM_SETTINGS_SMOKE_BUNDLE_IDENTIFIER="$settings_suite_name" \
-    SOLOPM_SETTINGS_SMOKE_TIMEOUT_SECONDS="$TIMEOUT_SECONDS" \
-    SOLOPM_SETTINGS_SMOKE_GOOGLE_CALENDAR_ID="$runtime_google_calendar_id" \
+    SUISUI_SETTINGS_SMOKE_BUNDLE_IDENTIFIER="$settings_suite_name" \
+    SUISUI_SETTINGS_SMOKE_TIMEOUT_SECONDS="$TIMEOUT_SECONDS" \
+    SUISUI_SETTINGS_SMOKE_GOOGLE_CALENDAR_ID="$runtime_google_calendar_id" \
     /usr/bin/swift "$ROOT_DIR/script/settings_save_smoke_check.swift"
 }
 

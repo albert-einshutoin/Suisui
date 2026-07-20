@@ -5,7 +5,7 @@ Status: Accepted
 
 ## Context
 
-SoloPM's Personal MVP is voice-first: it should capture work by voice, clarify intent, and read back short confirmations such as overdue counts, created task summaries, and reminder results. Product TTS is separate from VoiceOver evidence; screen-reader validation remains a release gate and must not be treated as the assistant's speech runtime.
+Suisui's Personal MVP is voice-first: it should capture work by voice, clarify intent, and read back short confirmations such as overdue counts, created task summaries, and reminder results. Product TTS is separate from VoiceOver evidence; screen-reader validation remains a release gate and must not be treated as the assistant's speech runtime.
 
 Issue #14 asks for a local OSS TTS path for Japanese and English. The first release must avoid bundling large model files in git or the app bundle, and it must not introduce a license or notarization problem while still letting users prove a ready local runtime can play a short preview.
 
@@ -13,7 +13,7 @@ Issue #14 asks for a local OSS TTS path for Japanese and English. The first rele
 
 Use Kokoro as the first ready-gated local TTS provider surface for short Japanese and English assistant prompts.
 
-SoloPM will:
+Suisui will:
 
 - Keep Kokoro model files outside git and the app bundle.
 - Reuse the existing `VoiceModelManager` download/cache/checksum contract.
@@ -28,7 +28,7 @@ SoloPM will:
 
 ### Kokoro
 
-- Pros: Apache-2.0 model card, small model family for TTS, Japanese and English voice metadata, already present in SoloPM's `VoiceModelCatalog`.
+- Pros: Apache-2.0 model card, small model family for TTS, Japanese and English voice metadata, already present in Suisui's `VoiceModelCatalog`.
 - Cons: The reference runtime commonly involves Python/PyTorch and phonemizer dependencies, so app-bundle integration, Swift-native playback, and notarized packaging need a later dedicated slice.
 
 ### sherpa-onnx
@@ -39,7 +39,7 @@ SoloPM will:
 ### Piper
 
 - Pros: Lightweight local TTS ecosystem with strong English voice availability.
-- Cons: The current official project path is GPL-oriented and Japanese coverage was not confirmed as a safe first provider, so it is not the first SoloPM TTS provider.
+- Cons: The current official project path is GPL-oriented and Japanese coverage was not confirmed as a safe first provider, so it is not the first Suisui TTS provider.
 
 ## Consequences
 
@@ -51,10 +51,10 @@ SoloPM will:
 
 ## Links
 
-- Related issue: https://github.com/albert-einshutoin/soloPM/issues/14
+- Related issue: https://github.com/albert-einshutoin/suisui/issues/14
 - Kokoro repository: https://github.com/hexgrad/kokoro
 - Kokoro model card: https://huggingface.co/hexgrad/Kokoro-82M
 - sherpa-onnx repository: https://github.com/k2-fsa/sherpa-onnx
 - Piper repository: https://github.com/OHF-Voice/piper1-gpl
-- Related implementation: Sources/SoloPMCore/Voice/TTSProviders.swift
-- Related tests: Tests/SoloPMCoreTests/TTSProviderTests.swift
+- Related implementation: Sources/SuisuiCore/Voice/TTSProviders.swift
+- Related tests: Tests/SuisuiCoreTests/TTSProviderTests.swift

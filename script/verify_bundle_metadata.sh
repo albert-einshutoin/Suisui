@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
-ENTITLEMENTS_FILE="$ROOT_DIR/packaging/SoloPM.entitlements"
+ENTITLEMENTS_FILE="$ROOT_DIR/packaging/Suisui.entitlements"
 PLIST_BUDDY="/usr/libexec/PlistBuddy"
 
 # shellcheck source=/dev/null
@@ -17,7 +17,7 @@ read_key() {
 
 build_bundle() {
   local configuration="$1"
-  SOLOPM_BUILD_CONFIGURATION="$configuration" "$ROOT_DIR/script/build_and_run.sh" --build-only >/dev/null
+  SUISUI_BUILD_CONFIGURATION="$configuration" "$ROOT_DIR/script/build_and_run.sh" --build-only >/dev/null
 }
 
 assert_eq() {
@@ -46,7 +46,7 @@ assert_metadata_matches() {
   assert_eq "$(read_key LSMinimumSystemVersion)" "$MIN_SYSTEM_VERSION" "$label LSMinimumSystemVersion"
   assert_eq "$(read_key NSHumanReadableCopyright)" "$COPYRIGHT" "$label NSHumanReadableCopyright"
   icon_file="$(read_key CFBundleIconFile)"
-  assert_eq "$icon_file" "SoloPM.icns" "$label CFBundleIconFile"
+  assert_eq "$icon_file" "Suisui.icns" "$label CFBundleIconFile"
   if [[ ! -s "$ROOT_DIR/dist/$APP_NAME.app/Contents/Resources/$icon_file" ]]; then
     echo "$label missing bundled app icon: Contents/Resources/$icon_file" >&2
     exit 1
@@ -69,6 +69,10 @@ assert_eq "$(read_key LSApplicationCategoryType)" "$DEBUG_CATEGORY" "Debug/Relea
 
 plutil -lint "$ENTITLEMENTS_FILE" >/dev/null
 ENTITLEMENT_KEY_COUNT="$("$PLIST_BUDDY" -c "Print" "$ENTITLEMENTS_FILE" | sed -n '/=/p' | wc -l | tr -d ' ')"
-assert_eq "$ENTITLEMENT_KEY_COUNT" "0" "entitlement key count"
+assert_eq "$ENTITLEMENT_KEY_COUNT" "1" "entitlement key count"
+assert_eq \
+  "$("$PLIST_BUDDY" -c "Print :com.apple.security.device.audio-input" "$ENTITLEMENTS_FILE")" \
+  "true" \
+  "audio-input entitlement"
 
 echo "Bundle metadata verified for debug and release."

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Local Kokoro TTS runtime adapter for SoloPM smoke tests.
+"""Local Kokoro TTS runtime adapter for Suisui smoke tests.
 
 This wrapper intentionally exposes the small executable contract expected by
-SoloPM instead of asking the app to know Kokoro's Python package internals.
+Suisui instead of asking the app to know Kokoro's Python package internals.
 """
 
 from __future__ import annotations

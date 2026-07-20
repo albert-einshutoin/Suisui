@@ -1,6 +1,6 @@
 # Privacy / Security
 
-SoloPM public alpha is local-first. The app is designed so users can inspect the plan before write actions run.
+Suisui public alpha is local-first. The app is designed so users can inspect the plan before write actions run.
 
 ## Local Data
 

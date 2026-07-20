@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "SoloPM",
+    name: "Suisui",
     defaultLocalization: "en",
     platforms: [
         .macOS(.v14),
@@ -11,24 +11,24 @@ let package = Package(
     ],
     products: [
         .library(
-            name: "SoloPMCore",
-            targets: ["SoloPMCore"]
+            name: "SuisuiCore",
+            targets: ["SuisuiCore"]
         ),
         .library(
-            name: "SoloPMiOS",
-            targets: ["SoloPMiOS"]
+            name: "SuisuiiOS",
+            targets: ["SuisuiiOS"]
         ),
         .library(
-            name: "SoloPMWeb",
-            targets: ["SoloPMWeb"]
+            name: "SuisuiWeb",
+            targets: ["SuisuiWeb"]
         ),
         .executable(
-            name: "SoloPM",
-            targets: ["SoloPM"]
+            name: "Suisui",
+            targets: ["Suisui"]
         ),
         .executable(
-            name: "solopm-cli",
-            targets: ["SoloPMCLI"]
+            name: "suisui-cli",
+            targets: ["SuisuiCLI"]
         )
     ],
     dependencies: [
@@ -37,7 +37,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "SoloPMCore",
+            name: "SuisuiCore",
             resources: [
                 .process("Resources")
             ],
@@ -46,43 +46,43 @@ let package = Package(
             ]
         ),
         .target(
-            name: "SoloPMExternalConnectors",
-            dependencies: ["SoloPMCore"]
+            name: "SuisuiExternalConnectors",
+            dependencies: ["SuisuiCore"]
         ),
         .target(
-            name: "SoloPMGoogleCalendarRuntime",
-            dependencies: ["SoloPMCore"]
+            name: "SuisuiGoogleCalendarRuntime",
+            dependencies: ["SuisuiCore"]
         ),
         .target(
-            name: "SoloPMiOS",
-            dependencies: ["SoloPMCore"],
-            path: "Sources/SoloPMiOS"
+            name: "SuisuiiOS",
+            dependencies: ["SuisuiCore"],
+            path: "Sources/SuisuiiOS"
         ),
         .target(
-            name: "SoloPMWeb",
-            dependencies: ["SoloPMCore"],
-            path: "Sources/SoloPMWeb"
+            name: "SuisuiWeb",
+            dependencies: ["SuisuiCore"],
+            path: "Sources/SuisuiWeb"
         ),
         .executableTarget(
-            name: "SoloPM",
+            name: "Suisui",
             dependencies: [
-                "SoloPMCore",
-                "SoloPMGoogleCalendarRuntime",
+                "SuisuiCore",
+                "SuisuiGoogleCalendarRuntime",
                 .product(name: "Sparkle", package: "Sparkle"),
                 .product(name: "SwiftTerm", package: "SwiftTerm")
             ],
-            path: "Sources/SoloPMApp",
+            path: "Sources/SuisuiApp",
             resources: [
                 .process("Resources")
             ]
         ),
         .executableTarget(
-            name: "SoloPMCLI",
-            dependencies: ["SoloPMCore"]
+            name: "SuisuiCLI",
+            dependencies: ["SuisuiCore"]
         ),
         .testTarget(
-            name: "SoloPMCoreTests",
-            dependencies: ["SoloPMCore", "SoloPMExternalConnectors", "SoloPMGoogleCalendarRuntime", "SoloPMWeb"],
+            name: "SuisuiCoreTests",
+            dependencies: ["SuisuiCore", "SuisuiExternalConnectors", "SuisuiGoogleCalendarRuntime", "SuisuiWeb"],
             resources: [
                 .process("Fixtures")
             ]

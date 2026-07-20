@@ -16,36 +16,36 @@ APP_NAME="${APP_NAME:?APP_NAME is required}"
 APP_BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:-}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS:-60}"
-KEEP_DATABASE="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE:-0}"
-ARTIFACT_DIR="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_ARTIFACT_DIR:-}"
+TIMEOUT_SECONDS="${SUISUI_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS:-60}"
+KEEP_DATABASE="${SUISUI_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE:-0}"
+ARTIFACT_DIR="${SUISUI_RUNTIME_ACCESSIBLE_CRUD_ARTIFACT_DIR:-}"
 SQLITE3="${SQLITE3:-sqlite3}"
-SQLITE_BUSY_TIMEOUT_MS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS:-5000}"
-DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS:-10}"
-FORM_POSTCONDITION_TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_FORM_POSTCONDITION_TIMEOUT_SECONDS:-10}"
-RECOVERABLE_ONLY="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY:-0}"
+SQLITE_BUSY_TIMEOUT_MS="${SUISUI_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS:-5000}"
+DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS="${SUISUI_RUNTIME_ACCESSIBLE_CRUD_DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS:-10}"
+FORM_POSTCONDITION_TIMEOUT_SECONDS="${SUISUI_RUNTIME_ACCESSIBLE_CRUD_FORM_POSTCONDITION_TIMEOUT_SECONDS:-10}"
+RECOVERABLE_ONLY="${SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY:-0}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_TEXT_INPUT_HELPER="${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}"
 AX_SCROLL_HELPER="${AX_SCROLL_HELPER:-$ROOT_DIR/script/ui_evidence_ax_scroll_container.swift}"
 AX_BUTTON_HELPER="${AX_BUTTON_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_button.swift}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "SUISUI_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
 if [[ ! "$SQLITE_BUSY_TIMEOUT_MS" =~ ^[0-9]+$ || "$SQLITE_BUSY_TIMEOUT_MS" -lt 1 ]]; then
-  echo "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS must be a positive integer" >&2
+  echo "SUISUI_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS must be a positive integer" >&2
   exit 2
 fi
 
 if [[ ! "$DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "SUISUI_RUNTIME_ACCESSIBLE_CRUD_DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
 if [[ ! "$FORM_POSTCONDITION_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$FORM_POSTCONDITION_TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_FORM_POSTCONDITION_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "SUISUI_RUNTIME_ACCESSIBLE_CRUD_FORM_POSTCONDITION_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
@@ -59,8 +59,8 @@ source "$AX_HELPERS"
 
 cd "$ROOT_DIR"
 mkdir -p "$ROOT_DIR/.tmp"
-tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-accessible-crud.XXXXXX")"
-database_path="$tmp_dir/SoloPM-runtime-accessible-crud.sqlite"
+tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/suisui-runtime-accessible-crud.XXXXXX")"
+database_path="$tmp_dir/Suisui-runtime-accessible-crud.sqlite"
 runtime_home="$tmp_dir/home"
 mkdir -p "$runtime_home"
 created_project_id=""
@@ -122,7 +122,7 @@ wait_for_app_process() {
 
 wait_for_no_app_process() {
   # The smoke owns only app_pid. Do not inspect or terminate another user's
-  # SoloPM process while resetting the isolated test database.
+  # Suisui process while resetting the isolated test database.
   [[ -z "${app_pid:-}" ]]
 }
 
@@ -171,7 +171,7 @@ wait_for_visible_windows() {
 
 launch_app_for_database_migration() {
   terminate_app
-  /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="projects" "$APP_BINARY" -ApplePersistenceIgnoreState YES &
+  /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 SUISUI_DATABASE_PATH="$database_path" SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="projects" "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_launch_pid=$!
   app_launch_identity="$(ax_wait_for_owned_process_identity "$app_launch_pid" "$APP_BINARY" 3)" || return 1
   wait_for_app_process
@@ -183,17 +183,18 @@ launch_app_for_seed_project() {
   local seed_project_id="$1"
   local selected_task_id="${2:-}"
   local inspector_field="project-inspector-title"
+  local inspector_button="project-header-open-inspector"
   terminate_app
   if [[ -n "$selected_task_id" ]]; then
     /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
-      SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
-      SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
-      SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID="$selected_task_id" \
+      SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 SUISUI_DATABASE_PATH="$database_path" \
+      SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
+      SUISUI_PROJECT_BOARD_SELECTED_TASK_ID="$selected_task_id" \
       "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   else
     /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
-      SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
-      SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
+      SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 SUISUI_DATABASE_PATH="$database_path" \
+      SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
       "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   fi
   app_launch_pid=$!
@@ -203,20 +204,21 @@ launch_app_for_seed_project() {
   wait_for_visible_windows
   if [[ -n "$selected_task_id" ]]; then
     inspector_field="task-inspector-title"
+    inspector_button="task-card-open-details"
   fi
   # Scene/AppStorage presentation intent survives the repeated launches in this
   # isolated HOME. Inspect the postcondition first so a blind toggle cannot
   # close an inspector that SwiftUI has already restored from the prior phase.
   if ! textFieldContainingExists "$inspector_field"; then
-    pressButtonUntilTextFieldContaining "project-board-inspector-toggle" "$inspector_field"
+    pressButtonUntilTextFieldContaining "$inspector_button" "$inspector_field"
   fi
 }
 
 launch_app_for_crud_mutation() {
   terminate_app
   /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
-    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="projects" \
+    SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 SUISUI_DATABASE_PATH="$database_path" \
+    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="projects" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_launch_pid=$!
   app_launch_identity="$(ax_wait_for_owned_process_identity "$app_launch_pid" "$APP_BINARY" 3)" || return 1
@@ -851,6 +853,7 @@ setTextFieldContaining "project-inspector-title" "AX Runtime CRUD Project"
 waitForTextFieldContaining "AX Runtime CRUD Project"
 pressButtonContaining "project-inspector-save"
 verify_single_value "renamed project" "SELECT title FROM projects WHERE id=$created_project_id;" "AX Runtime CRUD Project"
+pressButtonContaining "project-inspector-close"
 
 pressButtonUntilTextFieldContaining "project-header-add-task" "inline-task-title"
 waitForTextFieldContaining "inline-task-title"
@@ -894,6 +897,7 @@ verify_single_value "failed save did not mutate task" "SELECT title FROM tasks W
 "$SQLITE3" "$database_path" "DROP TRIGGER runtime_crud_fail_task_update;"
 pressButtonContaining "task-inspector-save-retry" "Retry"
 verify_single_value "recoverable task save retry" "SELECT title FROM tasks WHERE id=$created_task_id;" "AX Runtime CRUD Task Retried"
+pressButtonContaining "task-inspector-close"
 pressButtonContaining "task-status-move-planned-$created_task_id"
 verify_single_value "advanced task status" "SELECT status FROM tasks WHERE id=$created_task_id;" "planned"
 terminate_app
@@ -916,10 +920,21 @@ waitForTextFieldContaining "task-inspector-title"
 pressButtonContaining "task-auto-execution-review"
 pressButtonContaining "task-auto-execution-run-plan"
 verify_single_value "executed task status" "SELECT status FROM tasks WHERE id=$execution_task_id;" "in_progress"
-verify_single_value "executed task detail marker" "SELECT CASE WHEN detail LIKE '%SoloPM approved automation execution%' THEN 1 ELSE 0 END FROM tasks WHERE id=$execution_task_id;" "1"
-pressButtonContaining "task-card-open-details"
-scrollAXContainerDown "task-inspector"
+verify_single_value "executed task detail marker" "SELECT CASE WHEN detail LIKE '%Suisui approved automation execution%' THEN 1 ELSE 0 END FROM tasks WHERE id=$execution_task_id;" "1"
+# Depending on SwiftUI's modal lifecycle, running the plan may keep the task
+# inspector open or dismiss it. Inspect the postcondition before pressing the
+# card so we neither miss the closed case nor obscure an existing sheet by
+# activating a sibling Project Board window.
+if ! textFieldContainingExists "task-inspector-title"; then
+  pressButtonContaining "task-card-open-details"
+fi
+waitForTextFieldContaining "task-inspector-title"
+# The compact inspector sheet has a shorter viewport than the wide native
+# inspector. Scroll in a bounded increment so the receipt becomes visible
+# instead of overshooting it into the later Danger Zone section.
+SUISUI_UI_EVIDENCE_AX_SCROLL_EVENTS=4 scrollAXContainerDown "task-inspector"
 waitForAXElementContaining "approved-execution-receipt" "AX Runtime Execution Task" "Execute this runtime task through the approved plan."
+pressButtonContaining "task-inspector-close"
 
 pressButtonUntilTextFieldContaining "project-header-add-task" "inline-task-title"
 waitForTextFieldContaining "inline-task-title"

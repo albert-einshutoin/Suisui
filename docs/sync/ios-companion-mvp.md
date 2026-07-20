@@ -1,14 +1,14 @@
 # iOS Companion MVP
 
-The Phase 13 iOS companion starts as a SwiftPM `SoloPMiOS` support module backed by `SoloPMCore`. A wrapper Xcode app can use `SoloPMiOSCompanionApp` as the SwiftUI entry point.
+The Phase 13 iOS companion starts as a SwiftPM `SuisuiiOS` support module backed by `SuisuiCore`. A wrapper Xcode app can use `SuisuiiOSCompanionApp` as the SwiftUI entry point.
 
 ## Package Shape
 
 - Package platform: `.iOS(.v17)` plus existing `.macOS(.v14)`.
-- Product: `SoloPMiOS`.
-- Target: `Sources/SoloPMiOS`.
-- Entry type: `SoloPMiOSCompanionApp`.
-- Root surface: `SoloPMiOSRootView`.
+- Product: `SuisuiiOS`.
+- Target: `Sources/SuisuiiOS`.
+- Entry type: `SuisuiiOSCompanionApp`.
+- Root surface: `SuisuiiOSRootView`.
 
 This keeps iOS UI code separate from the macOS app target while reusing the platform-neutral sync and task mutation contracts.
 
@@ -34,7 +34,7 @@ The MVP surface set is:
 - Conversation
 - Pending action approval inbox
 
-`SoloPMiOSRootView` exposes those surfaces as tabs so the first screen is the task tool itself, not a landing page.
+`SuisuiiOSRootView` exposes those surfaces as tabs so the first screen is the task tool itself, not a landing page.
 
 ## Capture Inputs
 
@@ -43,7 +43,7 @@ The initial capture scope is:
 - Text conversation
 - Voice input
 - Shortcuts create task
-- Shortcuts ask SoloPM
+- Shortcuts ask Suisui
 - Share Sheet capture
 
 All write paths produce `SyncTaskMutationPayload` or approved `SyncAutomationRequestPayload` values. Local filesystem automation and arbitrary MCP execution remain out of scope for iOS.
@@ -69,7 +69,7 @@ Blank title, status, and due-date inputs are rejected before mutation creation.
 Verified locally:
 
 - `swift test --filter IOSCompanionTests`
-- `swift build --target SoloPMiOS`
-- `xcodebuild -workspace .swiftpm/xcode/package.xcworkspace -scheme SoloPMiOS -destination 'platform=macOS,variant=Mac Catalyst' build`
+- `swift build --target SuisuiiOS`
+- `xcodebuild -workspace .swiftpm/xcode/package.xcworkspace -scheme SuisuiiOS -destination 'platform=macOS,variant=Mac Catalyst' build`
 
 The pure iOS device/simulator destination could not be executed on this machine because Xcode reports that the iOS 26.5 platform is not installed. The target and scheme are present; installing the iOS platform component should allow the same scheme to build for `generic/platform=iOS`.

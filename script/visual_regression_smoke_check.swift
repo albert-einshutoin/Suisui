@@ -216,7 +216,15 @@ func visibleTextBlockers(for screen: Screen, theme: String, screenshotURL: URL, 
         let recognized = try recognizedVisibleTextLines(in: screenshotURL, recognitionLanguage: locale).map(normalizedVisibleText)
         return requiredLines.compactMap { requiredLine in
             let expected = normalizedVisibleText(requiredLine)
-            guard recognized.contains(where: { $0.contains(expected) }) else {
+            // Vision occasionally joins adjacent words at compact 1x window
+            // captures. Compare the alphanumeric sequence as a fallback while
+            // retaining the full required phrase, so a missing card body still
+            // fails closed instead of depending on OCR whitespace behavior.
+            let compactExpected = expected.replacingOccurrences(of: " ", with: "")
+            guard recognized.contains(where: {
+                $0.contains(expected)
+                    || $0.replacingOccurrences(of: " ", with: "").contains(compactExpected)
+            }) else {
                 return "BLOCKER: required visible text line is missing for \(screen.id) \(theme): \(requiredLine)"
             }
             return nil

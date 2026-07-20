@@ -2,7 +2,7 @@
 
 目的は、現在の Project Board / Voice Command / Settings / MCP / Sync / Privacy の実装済み機能を保持したまま、`ui-samples/01.png` から `ui-samples/07.png` で示された日次運用、Inbox分類、Project俯瞰、Schedule、Done分析、Settings連携の不足を実装タスクへ分解すること。
 
-このPhaseは「見た目を似せる」ためのUI作業ではない。SoloPMの強みである local-first、BYOK、Keychain、approval-first、MCP safety boundary、Free local-only / Pro gate を崩さず、個人PMが毎日開く cockpit として画面の役割を再整理する。
+このPhaseは「見た目を似せる」ためのUI作業ではない。Suisuiの強みである local-first、BYOK、Keychain、approval-first、MCP safety boundary、Free local-only / Pro gate を崩さず、個人PMが毎日開く cockpit として画面の役割を再整理する。
 
 ## Current Function Preservation
 
@@ -81,7 +81,7 @@
 
 ### Scope
 
-- 対象: `Sources/SoloPMCore/Voice`, `Sources/SoloPMCore/App/ProjectBoard.swift`, `Sources/SoloPMApp/Views/ProjectWorkflowViews.swift`, `Sources/SoloPMApp/SoloPMApp.swift`
+- 対象: `Sources/SuisuiCore/Voice`, `Sources/SuisuiCore/App/ProjectBoard.swift`, `Sources/SuisuiApp/Views/ProjectWorkflowViews.swift`, `Sources/SuisuiApp/SuisuiApp.swift`
 - `ProjectBoardTask` へ音声capture由来の表示metadataを追加するか、Inbox専用の `InboxCaptureRecord` を追加する。
 - 録音ファイルpath、duration、transcript、AI解釈summary、source kindを扱う。
 - 音声ファイルはApplication Support配下に保存し、API keyやtranscriptをログに出さない。
@@ -533,7 +533,7 @@
 
 ### Scope
 
-- 対象: `SoloPMApp.swift`, `AppSettings.swift`, EventKit adapters, Deadline/Notification。
+- 対象: `SuisuiApp.swift`, `AppSettings.swift`, EventKit adapters, Deadline/Notification。
 - Existing Settings tabsは保持し、OverviewにIntegration statusを追加する。
 - TTSは最初はprovider設定UIだけにし、読み上げ実行は非対象にできる。
 
@@ -662,7 +662,7 @@ Phase 12は画面役割を増やすため、実装後にスクリーンショッ
 
 ### Scope
 
-- 対象: `script/capture_ui_evidence.sh`, `docs/release/evidence/ui-screenshots.md`, `docs/ux/click-path-audit.md`, `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`。
+- 対象: `script/capture_ui_evidence.sh`, `docs/release/evidence/ui-screenshots.md`, `docs/ux/click-path-audit.md`, `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`。
 - 新規画面のLight/Dark/System screenshotを追加する。
 - Click budgetをこのPhase文書から監査文書へ反映する。
 

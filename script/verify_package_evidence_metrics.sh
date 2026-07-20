@@ -69,7 +69,17 @@ if [[ -n "$APP_BUNDLE" ]]; then
     echo "missing app bundle for package evidence verification: $APP_BUNDLE" >&2
     exit 2
   fi
-  app_binary="$APP_BUNDLE/Contents/MacOS/${APP_NAME:?APP_NAME is required}"
+  app_executable="$(plutil -extract CFBundleExecutable raw -o - "$APP_BUNDLE/Contents/Info.plist" 2>/dev/null || true)"
+  if [[ -z "$app_executable" ]]; then
+    if [[ -f "$APP_BUNDLE/Contents/MacOS/${APP_NAME:?APP_NAME is required}" ]]; then
+      app_executable="$APP_NAME"
+    else
+      # Fixture/staging bundles can retain a legacy filename. Production
+      # verification remains bound to the signed bundle's Info.plist value.
+      app_executable="$(basename "$APP_BUNDLE" .app)"
+    fi
+  fi
+  app_binary="$APP_BUNDLE/Contents/MacOS/$app_executable"
   if [[ ! -f "$app_binary" ]]; then
     echo "missing app binary for package evidence verification: $app_binary" >&2
     exit 2

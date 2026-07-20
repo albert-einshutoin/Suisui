@@ -1,7 +1,7 @@
 # Flake Quarantine
 
 Status: active
-Owner: SoloPM quality gate
+Owner: Suisui quality gate
 
 No indefinite quarantine is allowed. This file may be empty, but any non-empty
 entry must be owned, reasoned, expiring, and reproducible.

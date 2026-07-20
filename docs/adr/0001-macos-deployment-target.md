@@ -5,7 +5,7 @@ Status: Accepted
 
 ## Context
 
-SoloPM is a macOS-native menu bar app. The product should use modern SwiftUI APIs such as `MenuBarExtra` while keeping optional macOS 26 APIs, including SpeechAnalyzer and Foundation Models, behind availability checks.
+Suisui is a macOS-native menu bar app. The product should use modern SwiftUI APIs such as `MenuBarExtra` while keeping optional macOS 26 APIs, including SpeechAnalyzer and Foundation Models, behind availability checks.
 
 ## Decision
 

@@ -66,7 +66,7 @@
 - [x] 送信される文脈を preview し、ユーザー承認を必須にする。
 - [x] Knowledge Frame / FTS5 の local path を primary に保つ。
 - [x] テスト: connector disabled、network failure、permission denied を確認する。
-- [x] 完了条件: WeKnora がなくても SoloPM の core value が成立する。
+- [x] 完了条件: WeKnora がなくても Suisui の core value が成立する。
 
 ### P9-007: Retrieval evaluation harness
 
@@ -85,8 +85,8 @@
 
 ## Implementation Notes
 
-- 実装: `Sources/SoloPMCore/Knowledge/KnowledgeAdvanced.swift`
-- テスト: `Tests/SoloPMCoreTests/KnowledgeAdvancedTests.swift`
+- 実装: `Sources/SuisuiCore/Knowledge/KnowledgeAdvanced.swift`
+- テスト: `Tests/SuisuiCoreTests/KnowledgeAdvancedTests.swift`
 - DB migration: `CoreMigrations.phase9` に `knowledge_frame_vectors` と `knowledge_retrieval_eval_runs` を追加する。
 - sqlite-vec は capability として分離し、未導入環境でも JSON fallback vector table で local-first の検索実験を継続できる。
 - embedding は `EmbeddingProvider` protocol で抽象化し、`DisabledEmbeddingProvider`、`LocalHashEmbeddingProvider`、BYOK OpenAI fallback wrapper を用意する。

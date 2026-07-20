@@ -12,10 +12,10 @@ guard CommandLine.arguments.count == 3,
 let appPID = pid_t(rawPID)
 let identifierMarker = CommandLine.arguments[2]
 let environment = ProcessInfo.processInfo.environment
-let maxNodes = Int(environment["SOLOPM_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
+let maxNodes = Int(environment["SUISUI_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
 
 guard AXIsProcessTrusted() else {
-    fputs("Accessibility permission is required to count SoloPM UI evidence markers.\n", stderr)
+    fputs("Accessibility permission is required to count Suisui UI evidence markers.\n", stderr)
     exit(2)
 }
 guard let runningApp = NSRunningApplication(processIdentifier: appPID), !runningApp.isTerminated else {
@@ -136,7 +136,7 @@ while cursor < queue.count && visitedCount < maxNodes {
 }
 
 if visitedCount >= maxNodes {
-    fputs("AX identifier count reached SOLOPM_UI_EVIDENCE_AX_MAX_NODES=\(maxNodes).\n", stderr)
+    fputs("AX identifier count reached SUISUI_UI_EVIDENCE_AX_MAX_NODES=\(maxNodes).\n", stderr)
     exit(2)
 }
 

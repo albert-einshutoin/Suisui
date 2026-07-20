@@ -6,9 +6,9 @@ METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 SIGNING_ENV_FILE="$ROOT_DIR/packaging/signing.env"
 NOTARIZATION_ENV_FILE="$ROOT_DIR/packaging/notarization.env"
 SPARKLE_ENV_FILE="$ROOT_DIR/packaging/sparkle.env"
-ENTITLEMENTS_FILE="$ROOT_DIR/packaging/SoloPM.entitlements"
-RELEASE_EVIDENCE_FILE="${SOLOPM_RELEASE_EVIDENCE_FILE:-$ROOT_DIR/packaging/release-evidence.json}"
-RELEASE_APPCAST_FILE="${SOLOPM_RELEASE_APPCAST_FILE:-$ROOT_DIR/dist/releases/appcast.xml}"
+ENTITLEMENTS_FILE="$ROOT_DIR/packaging/Suisui.entitlements"
+RELEASE_EVIDENCE_FILE="${SUISUI_RELEASE_EVIDENCE_FILE:-$ROOT_DIR/packaging/release-evidence.json}"
+RELEASE_APPCAST_FILE="${SUISUI_RELEASE_APPCAST_FILE:-$ROOT_DIR/dist/releases/appcast.xml}"
 PLIST_BUDDY="/usr/libexec/PlistBuddy"
 MULTIPLE_RELEASE_ARTIFACT_CHECKSUMS="__multiple_release_artifact_checksums__"
 RELEASE_EVIDENCE_GENERATOR="script/create_release_evidence.sh"
@@ -92,7 +92,7 @@ current_git_commit() {
 validate_release_sparkle_config() {
   local validation_output
 
-  if ! validation_output="$(SOLOPM_BUILD_CONFIGURATION=release "$ROOT_DIR/script/validate_sparkle_release_config.sh" 2>&1)"; then
+  if ! validation_output="$(SUISUI_BUILD_CONFIGURATION=release "$ROOT_DIR/script/validate_sparkle_release_config.sh" 2>&1)"; then
     add_blocker "release Sparkle config is invalid: $validation_output"
   fi
 }
@@ -104,7 +104,7 @@ require_developer_id_application_identity() {
       return 0
       ;;
     *)
-      add_blocker "SOLOPM_SIGNING_IDENTITY must be a Developer ID Application identity: $signing_identity"
+      add_blocker "SUISUI_SIGNING_IDENTITY must be a Developer ID Application identity: $signing_identity"
       return 1
       ;;
   esac
@@ -216,13 +216,13 @@ require_release_sparkle_metadata() {
   if [[ -z "$feed_url" ]]; then
     add_blocker "release app is missing Sparkle feed URL: SUFeedURL"
   elif [[ -n "${SPARKLE_FEED_URL:-}" && "$feed_url" != "$SPARKLE_FEED_URL" ]]; then
-    add_blocker "release app Sparkle feed URL does not match configured SOLOPM_SPARKLE_FEED_URL: SUFeedURL"
+    add_blocker "release app Sparkle feed URL does not match configured SUISUI_SPARKLE_FEED_URL: SUFeedURL"
   fi
 
   if [[ -z "$public_ed_key" ]]; then
     add_blocker "release app is missing Sparkle public EdDSA key: SUPublicEDKey"
   elif [[ -n "${SPARKLE_PUBLIC_ED_KEY:-}" && "$public_ed_key" != "$SPARKLE_PUBLIC_ED_KEY" ]]; then
-    add_blocker "release app Sparkle public EdDSA key does not match configured SOLOPM_SPARKLE_PUBLIC_ED_KEY: SUPublicEDKey"
+    add_blocker "release app Sparkle public EdDSA key does not match configured SUISUI_SPARKLE_PUBLIC_ED_KEY: SUPublicEDKey"
   else
     case "$public_ed_key" in
       base64-public-key-from-generate_keys|"<public key from generate_keys>")
@@ -296,7 +296,7 @@ require_app_entitlements() {
   actual_entitlements="$(signed_entitlements_json "$app_bundle" || true)"
 
   if [[ -z "$expected_entitlements" ]]; then
-    add_blocker "packaging/SoloPM.entitlements is not valid plist"
+    add_blocker "packaging/Suisui.entitlements is not valid plist"
     return
   fi
 
@@ -306,7 +306,7 @@ require_app_entitlements() {
   fi
 
   if [[ "$actual_entitlements" != "$expected_entitlements" ]]; then
-    add_blocker "release app entitlements do not match packaging/SoloPM.entitlements"
+    add_blocker "release app entitlements do not match packaging/Suisui.entitlements"
   fi
 }
 
@@ -538,7 +538,7 @@ require_evidence_manual_note_proofs() {
   require_evidence_note_proof_if_checked \
     "manualChecks.releaseMachineLaunch" \
     "release machine launch" \
-    'release[ -]?machine.*launch|launch.*release[ -]?machine|dist/solopm\.app'
+    'release[ -]?machine.*launch|launch.*release[ -]?machine|dist/suisui\.app'
   require_evidence_note_proof_if_checked \
     "manualChecks.checksumVerification" \
     "checksum verification" \
@@ -818,7 +818,7 @@ require_evidence_artifact_sha256() {
 
   checksum_file="$(release_artifact_checksum_file)"
   if [[ "$checksum_file" == "$MULTIPLE_RELEASE_ARTIFACT_CHECKSUMS" ]]; then
-    add_blocker "multiple release artifact checksum files found; set SOLOPM_RELEASE_ARTIFACT_SHA256_FILE to the exact package checksum"
+    add_blocker "multiple release artifact checksum files found; set SUISUI_RELEASE_ARTIFACT_SHA256_FILE to the exact package checksum"
     return
   fi
 
@@ -887,17 +887,17 @@ if [[ -f "$SPARKLE_ENV_FILE" ]]; then
   source "$SPARKLE_ENV_FILE"
 fi
 
-APP_NAME="${APP_NAME:-SoloPM}"
+APP_NAME="${APP_NAME:-Suisui}"
 BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:-}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 EXPECTED_APP_BUNDLE_PATH="dist/$APP_NAME.app"
 ARTIFACT_BASENAME="$APP_NAME-${MARKETING_VERSION:-}+${CURRENT_PROJECT_VERSION:-}"
-RELEASE_ARTIFACT_SHA256_FILE="${SOLOPM_RELEASE_ARTIFACT_SHA256_FILE:-}"
-SIGNING_IDENTITY="${SOLOPM_SIGNING_IDENTITY:-}"
-NOTARY_PROFILE="${SOLOPM_NOTARY_PROFILE:-}"
-SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
-SPARKLE_PUBLIC_ED_KEY="${SOLOPM_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
-ONLINE_PREFLIGHT="${SOLOPM_RELEASE_PREFLIGHT_ONLINE:-0}"
+RELEASE_ARTIFACT_SHA256_FILE="${SUISUI_RELEASE_ARTIFACT_SHA256_FILE:-}"
+SIGNING_IDENTITY="${SUISUI_SIGNING_IDENTITY:-}"
+NOTARY_PROFILE="${SUISUI_NOTARY_PROFILE:-}"
+SPARKLE_FEED_URL="${SUISUI_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
+SPARKLE_PUBLIC_ED_KEY="${SUISUI_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
+ONLINE_PREFLIGHT="${SUISUI_RELEASE_PREFLIGHT_ONLINE:-0}"
 CURRENT_GIT_COMMIT="$(current_git_commit)"
 
 validate_release_sparkle_config
@@ -906,12 +906,12 @@ case "$ONLINE_PREFLIGHT" in
   0|1)
     ;;
   *)
-    add_blocker "SOLOPM_RELEASE_PREFLIGHT_ONLINE must be 0 or 1"
+    add_blocker "SUISUI_RELEASE_PREFLIGHT_ONLINE must be 0 or 1"
     ;;
 esac
 
 if [[ -z "$SIGNING_IDENTITY" ]]; then
-  add_blocker "SOLOPM_SIGNING_IDENTITY is not set; Developer ID Application signing cannot run"
+  add_blocker "SUISUI_SIGNING_IDENTITY is not set; Developer ID Application signing cannot run"
 else
   if require_developer_id_application_identity "$SIGNING_IDENTITY" \
     && ! security find-identity -p codesigning -v | grep -F "$SIGNING_IDENTITY" >/dev/null; then
@@ -920,13 +920,13 @@ else
 fi
 
 if [[ -z "$NOTARY_PROFILE" ]]; then
-  add_blocker "SOLOPM_NOTARY_PROFILE is not set; notarization cannot run"
+  add_blocker "SUISUI_NOTARY_PROFILE is not set; notarization cannot run"
 elif [[ "$ONLINE_PREFLIGHT" == "1" ]]; then
   if ! xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null; then
     add_blocker "notarytool keychain profile could not be validated online: $NOTARY_PROFILE"
   fi
 else
-  add_warning "notary profile existence was not validated online; rerun with SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 before release"
+  add_warning "notary profile existence was not validated online; rerun with SUISUI_RELEASE_PREFLIGHT_ONLINE=1 before release"
 fi
 
 if [[ -d "$APP_BUNDLE" ]]; then
@@ -996,14 +996,14 @@ fi
 
 if [[ -f "$RELEASE_APPCAST_FILE" ]]; then
   appcast_validation_output=""
-  if ! appcast_validation_output="$(SOLOPM_REQUIRE_RELEASE_APPCAST=1 SOLOPM_VERIFY_REMOTE_SPARKLE="$ONLINE_PREFLIGHT" "$ROOT_DIR/script/verify_appcast.sh" "$RELEASE_APPCAST_FILE" 2>&1)"; then
+  if ! appcast_validation_output="$(SUISUI_REQUIRE_RELEASE_APPCAST=1 SUISUI_VERIFY_REMOTE_SPARKLE="$ONLINE_PREFLIGHT" "$ROOT_DIR/script/verify_appcast.sh" "$RELEASE_APPCAST_FILE" 2>&1)"; then
     add_blocker "release appcast verification failed: $RELEASE_APPCAST_FILE: $appcast_validation_output"
   fi
 else
   add_blocker "missing release appcast: run ./script/generate_appcast.sh before final release validation"
 fi
 
-printf "SoloPM release environment preflight\n"
+printf "Suisui release environment preflight\n"
 printf "app bundle: %s\n" "$APP_BUNDLE"
 printf "online notary check: %s\n" "$ONLINE_PREFLIGHT"
 printf "release evidence: %s\n" "$RELEASE_EVIDENCE_FILE"

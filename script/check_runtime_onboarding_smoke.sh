@@ -10,8 +10,8 @@ AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_BUTTON_HELPER="${AX_BUTTON_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_button.swift}"
 AX_MARKER_HELPER="${AX_MARKER_HELPER:-$ROOT_DIR/script/ui_evidence_ax_marker_check.swift}"
 SQLITE3="${SQLITE3:-sqlite3}"
-TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ONBOARDING_TIMEOUT_SECONDS:-45}"
-KEEP_HOME="${SOLOPM_RUNTIME_ONBOARDING_KEEP_HOME:-0}"
+TIMEOUT_SECONDS="${SUISUI_RUNTIME_ONBOARDING_TIMEOUT_SECONDS:-45}"
+KEEP_HOME="${SUISUI_RUNTIME_ONBOARDING_KEEP_HOME:-0}"
 
 [[ -r "$AX_HELPERS" ]] || { echo "BLOCKER: AX helpers unavailable: $AX_HELPERS" >&2; exit 2; }
 command -v "$SQLITE3" >/dev/null || { echo "BLOCKER: sqlite3 is required" >&2; exit 2; }
@@ -22,9 +22,9 @@ command -v "$SQLITE3" >/dev/null || { echo "BLOCKER: sqlite3 is required" >&2; e
 # shellcheck source=/dev/null
 source "$AX_HELPERS"
 mkdir -p "$ROOT_DIR/.tmp"
-tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-onboarding.XXXXXX")"
+tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/suisui-runtime-onboarding.XXXXXX")"
 runtime_home="$tmp_dir/home"
-database_path="$tmp_dir/SoloPM-runtime-onboarding.sqlite"
+database_path="$tmp_dir/Suisui-runtime-onboarding.sqlite"
 app_pid=""
 app_launch_pid=""
 app_identity=""
@@ -66,13 +66,13 @@ launch_app() {
     TMPDIR="$tmp_dir"
     HOME="$runtime_home"
     CFFIXED_USER_HOME="$runtime_home"
-    SOLOPM_DATABASE_PATH="$database_path"
-    SOLOPM_ONBOARDING_RUNTIME_SMOKE=1
-    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1
-    SOLOPM_LANGUAGE_PREFERENCE=english
+    SUISUI_DATABASE_PATH="$database_path"
+    SUISUI_ONBOARDING_RUNTIME_SMOKE=1
+    SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1
+    SUISUI_LANGUAGE_PREFERENCE=english
   )
   if [[ "$open_settings" == "1" ]]; then
-    environment+=(SOLOPM_OPEN_SETTINGS_ON_LAUNCH=1)
+    environment+=(SUISUI_OPEN_SETTINGS_ON_LAUNCH=1)
   fi
   local -a app_arguments=(
     -ApplePersistenceIgnoreState YES
@@ -84,9 +84,9 @@ launch_app() {
     # bundle ID. NSArgumentDomain resets only this owned launch while leaving
     # the product's normal FirstRunOnboardingGate decision in control.
     app_arguments+=(
-      -solopm.onboarding.dismissed NO
-      -solopm.onboarding.completed NO
-      -solopm.onboarding.sampleProjectCreated NO
+      -suisui.onboarding.dismissed NO
+      -suisui.onboarding.completed NO
+      -suisui.onboarding.sampleProjectCreated NO
     )
   fi
   "${environment[@]}" "$APP_BINARY" "${app_arguments[@]}" &
@@ -103,7 +103,7 @@ wait_ax_signals() {
   local second="${2:-}"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while (( SECONDS < deadline )); do
-    if SOLOPM_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
+    if SUISUI_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
        /usr/bin/swift "$AX_MARKER_HELPER" "$APP_NAME" "$first" "$second" "$app_pid" >/dev/null 2>&1; then
       return 0
     fi
@@ -148,7 +148,7 @@ wait_sql_value() {
 }
 
 launch_app 0 1
-press_button "Try SoloPM now" "今すぐSoloPMを試す"
+press_button "Try Suisui now" "今すぐSuisuiを試す"
 wait_sql_value "SELECT count(*) FROM projects WHERE source_command='onboarding-sample';" "1"
 wait_sql_value "SELECT count(*) FROM tasks WHERE source_command='onboarding-sample';" "6"
 first_lesson_id="$($SQLITE3 "$database_path" "SELECT id FROM tasks WHERE source_command='onboarding-sample' ORDER BY id LIMIT 1;")"
@@ -161,7 +161,7 @@ wait_sql_value "SELECT status FROM tasks WHERE id=$first_lesson_id;" "completed"
 # onboarding, then the visible Settings button must reopen exactly one sheet.
 launch_app 1
 press_button "Run Setup Again" "セットアップを再実行"
-press_button "Try SoloPM now" "今すぐSoloPMを試す"
+press_button "Try Suisui now" "今すぐSuisuiを試す"
 wait_sql_value "SELECT count(*) FROM projects WHERE source_command='onboarding-sample';" "1"
 wait_sql_value "SELECT count(*) FROM tasks WHERE source_command='onboarding-sample';" "6"
 wait_sql_value "SELECT status FROM tasks WHERE id=$first_lesson_id;" "completed"

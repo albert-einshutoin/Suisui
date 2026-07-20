@@ -19,8 +19,8 @@ if [[ -f "$NOTARIZATION_ENV_FILE" ]]; then
 fi
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
-NOTARY_PROFILE="${SOLOPM_NOTARY_PROFILE:-}"
-REQUIRE_NOTARIZATION="${SOLOPM_REQUIRE_NOTARIZATION:-1}"
+NOTARY_PROFILE="${SUISUI_NOTARY_PROFILE:-}"
+REQUIRE_NOTARIZATION="${SUISUI_REQUIRE_NOTARIZATION:-1}"
 
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
@@ -32,18 +32,18 @@ case "$REQUIRE_NOTARIZATION" in
   0|1)
     ;;
   *)
-    echo "SOLOPM_REQUIRE_NOTARIZATION must be 0 or 1" >&2
+    echo "SUISUI_REQUIRE_NOTARIZATION must be 0 or 1" >&2
     exit 2
     ;;
 esac
 
 if [[ -z "$NOTARY_PROFILE" ]]; then
   if [[ "$REQUIRE_NOTARIZATION" == "0" ]]; then
-    echo "SOLOPM_NOTARY_PROFILE is empty; notarization skipped because SOLOPM_REQUIRE_NOTARIZATION=0."
+    echo "SUISUI_NOTARY_PROFILE is empty; notarization skipped because SUISUI_REQUIRE_NOTARIZATION=0."
     exit 0
   fi
 
-  echo "SOLOPM_NOTARY_PROFILE is required for notarization." >&2
+  echo "SUISUI_NOTARY_PROFILE is required for notarization." >&2
   echo "Create it with 'xcrun notarytool store-credentials <profile-name>' on the release machine." >&2
   exit 2
 fi

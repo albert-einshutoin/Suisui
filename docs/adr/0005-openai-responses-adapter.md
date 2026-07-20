@@ -5,7 +5,7 @@ Status: Accepted
 
 ## Context
 
-SoloPM Phase 1 needs an LLM provider that converts a planning prompt into an `ActionPlan`. The provider must keep API keys behind `SecretStore`, avoid logging secrets or full private context by default, and remain testable without live network calls.
+Suisui Phase 1 needs an LLM provider that converts a planning prompt into an `ActionPlan`. The provider must keep API keys behind `SecretStore`, avoid logging secrets or full private context by default, and remain testable without live network calls.
 
 ## Decision
 

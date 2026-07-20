@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-SoloPM の重要な技術判断は ADR としてこのディレクトリに記録します。
+Suisui の重要な技術判断は ADR としてこのディレクトリに記録します。
 
 ## Naming
 

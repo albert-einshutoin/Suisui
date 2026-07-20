@@ -1,6 +1,6 @@
 # Information Architecture
 
-How SoloPM's four surfaces divide responsibility, the modal rules they
+How Suisui's four surfaces divide responsibility, the modal rules they
 follow, and the primary flows between them. Every claim below is grounded in
 the current code (files cited inline); the final section lists honest gaps.
 
@@ -8,7 +8,7 @@ the current code (files cited inline); the final section lists honest gaps.
 
 ### Project Board window (`project-board`)
 
-The main window (`Sources/SoloPMApp/Views/ProjectBoardView.swift`,
+The main window (`Sources/SuisuiApp/Views/ProjectBoardView.swift`,
 `ProjectWorkflow*.swift`).
 
 Sidebar destinations, in rendered order (`ProjectBoardView.swift`, sidebar
@@ -35,7 +35,7 @@ here already interpreted (from the Voice window, palette, or notifications).
 
 ### Voice Command window (`voice-capture`)
 
-`Sources/SoloPMApp/Views/VoiceCaptureView.swift`, three stacked zones.
+`Sources/SuisuiApp/Views/VoiceCaptureView.swift`, three stacked zones.
 
 Owns:
 - Capture (Zone 1): record/stop, typed transcript editing, Save to Inbox,
@@ -53,12 +53,12 @@ before execution."
 
 ### Settings window
 
-`Sources/SoloPMApp/Views/SettingsView.swift`. Six tabs
+`Sources/SuisuiApp/Views/SettingsView.swift`. Six tabs
 (`enum SettingsTab`): **Overview, Appearance, AI, MCP, Sync, Privacy**.
 
 Owns:
 - Two-tier disclosure: MCP and Sync are advanced tabs, hidden until the
-  `solopm.settings.showAdvanced` toggle (`@AppStorage`, default off) is
+  `suisui.settings.showAdvanced` toggle (`@AppStorage`, default off) is
   enabled; leaving advanced mode while on MCP/Sync falls back to Overview.
 - Provider configuration and readiness (API keys in Keychain), voice model
   management, notification/quiet-hours preferences, backup/restore,
@@ -69,13 +69,13 @@ only, and diagnostics/backup surfaces deal in counts and files, not rows.
 
 ### Menu bar panel
 
-`MenuBarExtra` in `Sources/SoloPMApp/SoloPMApp.swift`; panel content in
-`Sources/SoloPMApp/Views/MenuBarPanel.swift`.
+`MenuBarExtra` in `Sources/SuisuiApp/SuisuiApp.swift`; panel content in
+`Sources/SuisuiApp/Views/MenuBarPanel.swift`.
 
 Owns:
 - Glanceable summary: label badge with overdue count when > 0; panel card
   with Today / Overdue / This Week counts and up to three recent projects
-  (`Sources/SoloPMCore/App/MenuBarSummary.swift`).
+  (`Sources/SuisuiCore/App/MenuBarSummary.swift`).
 - Quick capture to Inbox: one text field + Add (⌘↩) via
   `MenuBarQuickCaptureController` (creates a backlog task in the Inbox
   project, with natural-language due-date parsing).
@@ -94,7 +94,7 @@ either captures one Inbox task or routes to a full window.
   `SmartListEditorSheet`, `ProjectBoardView.swift` /
   `ProjectBoardSmartListViews.swift`), first-run onboarding
   (`.sheet(isPresented: $isOnboardingPresented)` → `OnboardingWelcomeView`,
-  `SoloPMApp.swift`), and the development automation review panel
+  `SuisuiApp.swift`), and the development automation review panel
   (`.sheet(item: $developmentAutomationReviewSheet)` → `ActionReviewPanel`,
   `ProjectBoardView.swift`).
 - **Inspector** is the task/project editing surface, not a sheet:
@@ -145,16 +145,16 @@ Verified in `VoiceCaptureView.swift` (`postAssistantQueueOpenRequest`),
 flowchart LR
     W[DeadlineWatcherRuntime tick\n8s after launch, every 30 min] --> D[MorningDigestScheduler\ncount-only notification, from 09:00]
     D --> N[User taps notification]
-    N --> R[SoloPMNotificationResponder\nposts digest-opened]
+    N --> R[SuisuiNotificationResponder\nposts digest-opened]
     R --> T[Scene coordinator requests Today + ensure board window visible]
     T --> B[Project Board on Today]
 ```
 
-Verified in `Sources/SoloPMCore/Deadline/MorningDigest.swift` (one
+Verified in `Sources/SuisuiCore/Deadline/MorningDigest.swift` (one
 count-only digest per day, hour ≥ 9),
-`Sources/SoloPMApp/Composition/DeadlineWatcherRuntime.swift` and
+`Sources/SuisuiApp/Composition/DeadlineWatcherRuntime.swift` and
 `NotificationInteractionRuntime.swift`, and the app delegate observer in
-`SoloPMApp.swift` (`ProjectBoardSceneCoordinator.shared.requestOpen(route: .primary(.today))`).
+`SuisuiApp.swift` (`ProjectBoardSceneCoordinator.shared.requestOpen(route: .primary(.today))`).
 
 ### Weekly review (notification-only today)
 
@@ -166,9 +166,9 @@ flowchart LR
     T -.->|future| R[Dedicated weekly review surface\ndoes not exist yet]
 ```
 
-Verified in `Sources/SoloPMCore/Deadline/WeeklyReviewSummary.swift`
+Verified in `Sources/SuisuiCore/Deadline/WeeklyReviewSummary.swift`
 (schedule-only, count-only body) and
-`NotificationInteractionRuntime.swift`, where `solopm-weekly-review-`
+`NotificationInteractionRuntime.swift`, where `suisui-weekly-review-`
 notification taps share the daily digest branch and therefore open Today.
 **Future marker:** there is no weekly-review window or destination; the
 notification is currently the entire feature.

@@ -2,12 +2,12 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MANIFEST="${SOLOPM_VISUAL_BASELINE_MANIFEST:-$ROOT_DIR/docs/quality/visual-baseline-manifest.json}"
-SCREENSHOT_DIR="${SOLOPM_VISUAL_SCREENSHOT_DIR:-$ROOT_DIR/docs/release/evidence/ui-screenshots}"
-BASELINE_DIR="${SOLOPM_VISUAL_BASELINE_DIR:-$ROOT_DIR/docs/quality/visual-baselines}"
-ARTIFACT_DIR="${SOLOPM_VISUAL_ARTIFACT_DIR:-$ROOT_DIR/.tmp/visual-regression-artifacts}"
-AX_AUDIT_RESULT="${SOLOPM_AX_AUDIT_RESULT:-${SOLOPM_VISUAL_AX_AUDIT_RESULT:-$ROOT_DIR/.tmp/visual-ax-audit-receipt.json}}"
-CURRENT_SOURCE_COMMIT="${SOLOPM_VISUAL_CURRENT_SOURCE_COMMIT:-}"
+MANIFEST="${SUISUI_VISUAL_BASELINE_MANIFEST:-$ROOT_DIR/docs/quality/visual-baseline-manifest.json}"
+SCREENSHOT_DIR="${SUISUI_VISUAL_SCREENSHOT_DIR:-$ROOT_DIR/docs/release/evidence/ui-screenshots}"
+BASELINE_DIR="${SUISUI_VISUAL_BASELINE_DIR:-$ROOT_DIR/docs/quality/visual-baselines}"
+ARTIFACT_DIR="${SUISUI_VISUAL_ARTIFACT_DIR:-$ROOT_DIR/.tmp/visual-regression-artifacts}"
+AX_AUDIT_RESULT="${SUISUI_AX_AUDIT_RESULT:-${SUISUI_VISUAL_AX_AUDIT_RESULT:-$ROOT_DIR/.tmp/visual-ax-audit-receipt.json}}"
+CURRENT_SOURCE_COMMIT="${SUISUI_VISUAL_CURRENT_SOURCE_COMMIT:-}"
 UPDATE_BASELINES=0
 ALLOW_UPDATE=0
 FORWARD_ARGS=()
@@ -27,7 +27,7 @@ while [[ $# -gt 0 ]]; do
 done
 if [[ "$UPDATE_BASELINES" == 1 && "$ALLOW_UPDATE" != 1 ]]; then echo "BLOCKER: baseline update requires --allow-update" >&2; exit 1; fi
 if [[ -z "$CURRENT_SOURCE_COMMIT" ]]; then
-  SOURCE_REF="${SOLOPM_VISUAL_SOURCE_REF:-HEAD}"
+  SOURCE_REF="${SUISUI_VISUAL_SOURCE_REF:-HEAD}"
   CURRENT_SOURCE_COMMIT="$(git -C "$ROOT_DIR" log -1 --format=%H "$SOURCE_REF" -- Sources Package.swift 2>/dev/null || true)"
 fi
 [[ -n "$CURRENT_SOURCE_COMMIT" ]] || { echo "BLOCKER: current product source commit is unavailable; pass --current-source-commit" >&2; exit 1; }

@@ -14,10 +14,21 @@ source "$METADATA_FILE"
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 APP_BUNDLE="${1:-$ROOT_DIR/dist/$APP_NAME.app}"
-APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-STRIP_TOOL="${SOLOPM_STRIP_TOOL:-/usr/bin/strip}"
-ENABLE_STRIP="${SOLOPM_RELEASE_STRIP:-1}"
-ENABLE_SPARKLE_PRUNE="${SOLOPM_RELEASE_PRUNE_SPARKLE:-1}"
+APP_EXECUTABLE="$(plutil -extract CFBundleExecutable raw -o - "$APP_BUNDLE/Contents/Info.plist" 2>/dev/null || true)"
+if [[ -z "$APP_EXECUTABLE" ]]; then
+  if [[ -f "$APP_BUNDLE/Contents/MacOS/$APP_NAME" ]]; then
+    APP_EXECUTABLE="$APP_NAME"
+  else
+    # Test/staging bundles may deliberately use a legacy bundle name without
+    # an Info.plist. Falling back to that name keeps preparation independent
+    # from the public brand while production still uses CFBundleExecutable.
+    APP_EXECUTABLE="$(basename "$APP_BUNDLE" .app)"
+  fi
+fi
+APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_EXECUTABLE"
+STRIP_TOOL="${SUISUI_STRIP_TOOL:-/usr/bin/strip}"
+ENABLE_STRIP="${SUISUI_RELEASE_STRIP:-1}"
+ENABLE_SPARKLE_PRUNE="${SUISUI_RELEASE_PRUNE_SPARKLE:-1}"
 PREPARATION_MARKER="$APP_BUNDLE/Contents/Resources/release-preparation.env"
 
 for value_name in ENABLE_STRIP ENABLE_SPARKLE_PRUNE; do

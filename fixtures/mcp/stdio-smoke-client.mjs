@@ -28,7 +28,7 @@ let nextID = 1;
 const child = spawn(process.execPath, [serverPath], {
   env: {
     ...process.env,
-    SOLOPM_MCP_FIXTURE_MODE: mode,
+    SUISUI_MCP_FIXTURE_MODE: mode,
   },
   stdio: ["pipe", "pipe", "pipe"],
 });
@@ -138,7 +138,7 @@ async function runSequence() {
     protocolVersion: "2025-11-25",
     capabilities: {},
     clientInfo: {
-      name: "solopm-mcp-smoke",
+      name: "suisui-mcp-smoke",
       version: "0.1.0",
     },
   });
@@ -155,10 +155,10 @@ async function runSequence() {
 
   const call = await request("tools/call", {
     name: "read_status",
-    arguments: { project: "soloPM" },
+    arguments: { project: "suisui" },
   });
   const text = call.content?.[0]?.text;
-  if (text !== "status: ok project=soloPM") {
+  if (text !== "status: ok project=suisui") {
     throw new Error("tools/call returned unexpected text content.");
   }
   console.log(`tools/call: ${text}`);

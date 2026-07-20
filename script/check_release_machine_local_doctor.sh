@@ -104,18 +104,18 @@ run_diagnostic() {
   fi
 }
 
-printf "SoloPM release machine local doctor\n"
+printf "Suisui release machine local doctor\n"
 printf "Do not paste Developer ID certificate material, notary credentials, Sparkle private keys, tokens, or passwords into shared logs or action summaries.\n"
 
 check_developer_id_identities
 check_local_env_files
 run_diagnostic "./script/verify_signing_setup.sh" ./script/verify_signing_setup.sh
 run_diagnostic \
-  "SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh" \
-  env SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh
+  "SUISUI_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh" \
+  env SUISUI_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh
 run_diagnostic \
-  "SOLOPM_BUILD_CONFIGURATION=release SOLOPM_SPARKLE_CONFIG_QUIET=1 ./script/validate_sparkle_release_config.sh" \
-  env SOLOPM_BUILD_CONFIGURATION=release SOLOPM_SPARKLE_CONFIG_QUIET=1 ./script/validate_sparkle_release_config.sh
+  "SUISUI_BUILD_CONFIGURATION=release SUISUI_SPARKLE_CONFIG_QUIET=1 ./script/validate_sparkle_release_config.sh" \
+  env SUISUI_BUILD_CONFIGURATION=release SUISUI_SPARKLE_CONFIG_QUIET=1 ./script/validate_sparkle_release_config.sh
 run_diagnostic "./script/verify_release_environment.sh" ./script/verify_release_environment.sh
 
 if [[ "${#BLOCKERS[@]}" -gt 0 ]]; then

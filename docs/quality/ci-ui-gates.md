@@ -1,6 +1,6 @@
 # CI UI quality gates
 
-SoloPMは、source/unit/buildだけでは検出できない通常製品routeの退行を、独立したmacOS UI gateで検証する。GitHub Actionsは描画差分を安定させるため`macos-26`へ固定し、次の4 checkを常に別jobとして返す。
+Suisuiは、source/unit/buildだけでは検出できない通常製品routeの退行を、独立したmacOS UI gateで検証する。GitHub Actionsは描画差分を安定させるため`macos-26`へ固定し、次の4 checkを常に別jobとして返す。
 
 | Check | ローカル再現コマンド | 証明する内容 |
 | --- | --- | --- |
@@ -9,7 +9,7 @@ SoloPMは、source/unit/buildだけでは検出できない通常製品routeの�
 | UI Visual (live baseline) | `./scripts/ci.sh ui-visual` | 隔離された33画面live capture、fresh AX receipt、baseline raster差分 |
 | UI Performance (production route) | `./scripts/ci.sh ui-performance` | 通常route cold launchとInbox/Assistant Queue/Today切替budget |
 
-UI laneは同じWindowServer session上で同時実行しない。`scripts/ci.sh`がhost-wide lockを取得し、各harnessは自分が起動したexact PIDだけを終了する。`build-only`や`verify`が、別bundleや開発者が起動中のSoloPMを名前だけで終了してはならない。
+UI laneは同じWindowServer session上で同時実行しない。`scripts/ci.sh`がhost-wide lockを取得し、各harnessは自分が起動したexact PIDだけを終了する。`build-only`や`verify`が、別bundleや開発者が起動中のSuisuiを名前だけで終了してはならない。
 
 ## Runner requirements
 

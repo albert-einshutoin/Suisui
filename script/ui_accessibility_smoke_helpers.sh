@@ -413,6 +413,7 @@ ax_wait_for_ax_identifier() {
     ax_arguments+=("$app_pid")
   fi
   local marker_checker="${AX_MARKER_HELPER_EXECUTABLE:-}"
+  local poll_interval="${AX_WAIT_POLL_INTERVAL_SECONDS:-1}"
   local deadline=$((SECONDS + timeout_seconds))
 
   while true; do
@@ -429,6 +430,6 @@ ax_wait_for_ax_identifier() {
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       return 1
     fi
-    sleep 1
+    sleep "$poll_interval"
   done
 }

@@ -6,9 +6,9 @@ METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 SPARKLE_ENV_FILE="$ROOT_DIR/packaging/sparkle.env"
 APPCAST_FILE="${1:-$ROOT_DIR/packaging/appcast.sample.xml}"
 SAMPLE_APPCAST_FILE="$ROOT_DIR/packaging/appcast.sample.xml"
-REQUIRE_RELEASE_APPCAST="${SOLOPM_REQUIRE_RELEASE_APPCAST:-0}"
-VERIFY_REMOTE_SPARKLE="${SOLOPM_VERIFY_REMOTE_SPARKLE:-0}"
-VERIFY_SPARKLE_SIGNATURE="${SOLOPM_VERIFY_SPARKLE_SIGNATURE:-$VERIFY_REMOTE_SPARKLE}"
+REQUIRE_RELEASE_APPCAST="${SUISUI_REQUIRE_RELEASE_APPCAST:-0}"
+VERIFY_REMOTE_SPARKLE="${SUISUI_VERIFY_REMOTE_SPARKLE:-0}"
+VERIFY_SPARKLE_SIGNATURE="${SUISUI_VERIFY_SPARKLE_SIGNATURE:-$VERIFY_REMOTE_SPARKLE}"
 REMOTE_TMP_DIR=""
 
 cleanup() {
@@ -23,9 +23,9 @@ if [[ -f "$SPARKLE_ENV_FILE" ]]; then
   source "$SPARKLE_ENV_FILE"
 fi
 
-SPARKLE_SIGN_UPDATE="${SOLOPM_SPARKLE_SIGN_UPDATE:-}"
-DOWNLOAD_URL_PREFIX="${SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX:-${SPARKLE_DOWNLOAD_URL_PREFIX:-}}"
-SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
+SPARKLE_SIGN_UPDATE="${SUISUI_SPARKLE_SIGN_UPDATE:-}"
+DOWNLOAD_URL_PREFIX="${SUISUI_SPARKLE_DOWNLOAD_URL_PREFIX:-${SPARKLE_DOWNLOAD_URL_PREFIX:-}}"
+SPARKLE_FEED_URL="${SUISUI_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
 
 artifact_path_for_compare() {
   local artifact_path="$1"
@@ -40,18 +40,18 @@ case "$REQUIRE_RELEASE_APPCAST" in
   0|1)
     ;;
   *)
-    echo "SOLOPM_REQUIRE_RELEASE_APPCAST must be 0 or 1" >&2
+    echo "SUISUI_REQUIRE_RELEASE_APPCAST must be 0 or 1" >&2
     exit 2
     ;;
 esac
 
 case "$VERIFY_REMOTE_SPARKLE" in
   0|1) ;;
-  *) echo "SOLOPM_VERIFY_REMOTE_SPARKLE must be 0 or 1" >&2; exit 2 ;;
+  *) echo "SUISUI_VERIFY_REMOTE_SPARKLE must be 0 or 1" >&2; exit 2 ;;
 esac
 case "$VERIFY_SPARKLE_SIGNATURE" in
   0|1) ;;
-  *) echo "SOLOPM_VERIFY_SPARKLE_SIGNATURE must be 0 or 1" >&2; exit 2 ;;
+  *) echo "SUISUI_VERIFY_SPARKLE_SIGNATURE must be 0 or 1" >&2; exit 2 ;;
 esac
 
 find_sign_update() {
@@ -65,8 +65,8 @@ find_sign_update() {
     return 0
   fi
 
-  if [[ -n "${SOLOPM_SPARKLE_BIN_DIR:-}" ]]; then
-    candidate="$SOLOPM_SPARKLE_BIN_DIR/sign_update"
+  if [[ -n "${SUISUI_SPARKLE_BIN_DIR:-}" ]]; then
+    candidate="$SUISUI_SPARKLE_BIN_DIR/sign_update"
     if [[ -x "$candidate" ]]; then
       printf '%s' "$candidate"
       return 0
@@ -82,7 +82,7 @@ find_sign_update() {
     fi
   done
 
-  echo "Sparkle sign_update tool was not found; set SOLOPM_SPARKLE_SIGN_UPDATE or SOLOPM_SPARKLE_BIN_DIR" >&2
+  echo "Sparkle sign_update tool was not found; set SUISUI_SPARKLE_SIGN_UPDATE or SUISUI_SPARKLE_BIN_DIR" >&2
   return 1
 }
 
@@ -136,7 +136,7 @@ if [[ "$REQUIRE_RELEASE_APPCAST" == "1" ]]; then
     exit 2
   fi
 
-  if grep -F "https://example.com/solopm/" "$APPCAST_FILE" >/dev/null; then
+  if grep -F "https://example.com/suisui/" "$APPCAST_FILE" >/dev/null; then
     echo "release appcast still contains example.com smoke URL" >&2
     exit 2
   fi
@@ -165,7 +165,7 @@ if [[ "$REQUIRE_RELEASE_APPCAST" == "1" ]]; then
         "$normalized_download_prefix"*)
           ;;
         *)
-          echo "release appcast enclosure URL does not match configured SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX" >&2
+          echo "release appcast enclosure URL does not match configured SUISUI_SPARKLE_DOWNLOAD_URL_PREFIX" >&2
           exit 2
           ;;
       esac
@@ -273,7 +273,7 @@ if [[ "$REQUIRE_RELEASE_APPCAST" == "1" ]]; then
 
   if [[ "$VERIFY_REMOTE_SPARKLE" == "1" ]]; then
     if [[ -z "$SPARKLE_FEED_URL" ]]; then
-      echo "SOLOPM_SPARKLE_FEED_URL is required for published Sparkle verification" >&2
+      echo "SUISUI_SPARKLE_FEED_URL is required for published Sparkle verification" >&2
       exit 2
     fi
     if [[ -z "$enclosure_url" ]]; then
@@ -281,7 +281,7 @@ if [[ "$REQUIRE_RELEASE_APPCAST" == "1" ]]; then
       exit 2
     fi
 
-    REMOTE_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/solopm-sparkle-verify.XXXXXX")"
+    REMOTE_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/suisui-sparkle-verify.XXXXXX")"
     remote_appcast="$REMOTE_TMP_DIR/appcast.xml"
     remote_artifact="$REMOTE_TMP_DIR/$expected_zip_name"
     curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \

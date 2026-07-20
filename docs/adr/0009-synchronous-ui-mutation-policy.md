@@ -5,7 +5,7 @@ Status: Accepted
 
 ## Context
 
-SoloPM の Project Board は SwiftUI の `NavigationSplitView`、AppKit `NSToolbar`、inspector、theme switching、project selection が同じ画面で同時に動く。状態変更の直後に SwiftUI state mutation、AppKit layout pass、animation、view update が別タイミングで走ると、最終状態は正しくても一瞬だけ header、sidebar、detail、inspector がずれる。
+Suisui の Project Board は SwiftUI の `NavigationSplitView`、AppKit `NSToolbar`、inspector、theme switching、project selection が同じ画面で同時に動く。状態変更の直後に SwiftUI state mutation、AppKit layout pass、animation、view update が別タイミングで走ると、最終状態は正しくても一瞬だけ header、sidebar、detail、inspector がずれる。
 
 Phase 14 の layout stability smoke は `t=0ms` の即時サンプルも見るため、遅延補正で最終状態だけ合わせる実装はプロダクト品質として扱わない。UI PR で判断を迷わないように、同期扱いにする操作と、例外的に遅延してよい境界を ADR と source invariant で固定する。
 
@@ -63,7 +63,7 @@ SwiftUI state mutationは最小scopeのtransactionに閉じる。AppKit interop�
 ## Links
 
 - Related task: tasks/Phase14-QualityRegressionHardening.md
-- Related implementation: Sources/SoloPMApp/Views/ProjectBoardView.swift
-- Related tests: Tests/SoloPMCoreTests/AppExperienceSourceTests.swift
+- Related implementation: Sources/SuisuiApp/Views/ProjectBoardView.swift
+- Related tests: Tests/SuisuiCoreTests/AppExperienceSourceTests.swift
 - Related runtime smoke: script/check_layout_stability_smoke.sh
 - Related runtime smoke: script/check_project_board_header_layout_smoke.sh

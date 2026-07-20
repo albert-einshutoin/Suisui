@@ -1,8 +1,8 @@
-# SoloPM Design System — Calm Signal Desk
+# Suisui Design System — Calm Signal Desk
 
-Status: living document. Tokens live in `Sources/SoloPMApp/Views/SoloPMDesignSystem.swift`; this page explains when to use them. New UI should consume tokens instead of hardcoding values.
+Status: living document. Tokens live in `Sources/SuisuiApp/Views/SuisuiDesignSystem.swift`; this page explains when to use them. New UI should consume tokens instead of hardcoding values.
 
-Calm Signal Desk is SoloPM's visual direction: quiet enough for everyday project work, distinctive when the product has something useful to say, and familiar enough that a first-time macOS user can operate it without learning a custom interface language.
+Calm Signal Desk is Suisui's visual direction: quiet enough for everyday project work, distinctive when the product has something useful to say, and familiar enough that a first-time macOS user can operate it without learning a custom interface language.
 
 ## Principles
 
@@ -14,7 +14,7 @@ Calm Signal Desk is SoloPM's visual direction: quiet enough for everyday project
 
 ## Tokens
 
-### Brand (`SoloPMBrand`)
+### Brand (`SuisuiBrand`)
 
 | Token | Meaning | Use |
 | --- | --- | --- |
@@ -23,7 +23,7 @@ Calm Signal Desk is SoloPM's visual direction: quiet enough for everyday project
 
 Both colors are adaptive. Do not copy their RGB values into views.
 
-### Typography (`SoloPMTypography`)
+### Typography (`SuisuiTypography`)
 
 | Token | Use |
 | --- | --- |
@@ -37,24 +37,24 @@ The type ramp uses semantic SwiftUI fonts so user scaling and system legibility 
 
 ### Surfaces and borders
 
-`SoloPMSurface` provides solid, adaptive fills:
+`SuisuiSurface` provides solid, adaptive fills:
 
 - `canvas`: owned content canvases only, never a native container root.
 - `groupedContent`: related content inside `.soloCard()`.
 - `elevatedSelection`: selected custom content where native selection is unavailable.
 - `assistantSignal`: AI suggestions and assistant guidance.
 
-`SoloPMBorder` provides `subtle`, `selected`, `attention`, and `danger` edges. Borders support hierarchy; they do not replace text, icons, or accessible labels.
+`SuisuiBorder` provides `subtle`, `selected`, `attention`, and `danger` edges. Borders support hierarchy; they do not replace text, icons, or accessible labels.
 
-### Motion (`SoloPMMotion`)
+### Motion (`SuisuiMotion`)
 
-`quick`, `standard`, and `emphasis` are duration choices for state changes that benefit from spatial continuity. Call `SoloPMMotion.animation(duration:reduceMotion:)` with `@Environment(\.accessibilityReduceMotion)`. Under Reduce Motion the animation returns `nil`; do not substitute a faster decorative animation.
+`quick`, `standard`, and `emphasis` are duration choices for state changes that benefit from spatial continuity. Call `SuisuiMotion.animation(duration:reduceMotion:)` with `@Environment(\.accessibilityReduceMotion)`. Under Reduce Motion the animation returns `nil`; do not substitute a faster decorative animation.
 
 ### Icon and control metrics
 
-`SoloPMIconMetrics` defines `compact`, `standard`, and `feature` SF Symbol sizes. `SoloPMControlDensity` maps compact, standard, and prominent roles to native `ControlSize` values, allowing AppKit to preserve target geometry and focus behavior.
+`SuisuiIconMetrics` defines `compact`, `standard`, and `feature` SF Symbol sizes. `SuisuiControlDensity` maps compact, standard, and prominent roles to native `ControlSize` values, allowing AppKit to preserve target geometry and focus behavior.
 
-### Spacing (`SoloPMSpacing`)
+### Spacing (`SuisuiSpacing`)
 
 | Token | Value | Use |
 | --- | ---: | --- |
@@ -64,7 +64,7 @@ The type ramp uses semantic SwiftUI fonts so user scaling and system legibility 
 | `lg` | 16 | Panel edge padding, between sections |
 | `xl` | 24 | Large surface padding (sheets, onboarding) |
 
-### Corner radius (`SoloPMRadius`)
+### Corner radius (`SuisuiRadius`)
 
 | Token | Value | Use |
 | --- | ---: | --- |
@@ -73,7 +73,7 @@ The type ramp uses semantic SwiftUI fonts so user scaling and system legibility 
 
 Always pair with `style: .continuous`.
 
-### Status tones (`SoloPMTone`)
+### Status tones (`SuisuiTone`)
 
 | Tone | Color | Meaning |
 | --- | --- | --- |
@@ -82,11 +82,11 @@ Always pair with `style: .continuous`.
 | `danger` | red | Destructive or blocking states |
 | `positive` | green | Confirmed healthy/ready states |
 
-Route every status color through `SoloPMTone`. A raw status color is not allowed in new views: status must also include text, an icon, or shape so meaning never depends on color alone.
+Route every status color through `SuisuiTone`. A raw status color is not allowed in new views: status must also include text, an icon, or shape so meaning never depends on color alone.
 
 ## Components
 
-- **`SoloPMStatusChip`** — capsule count/status badge. Use for glanceable values (menu bar summary, board counts). Neutral values render quiet; attention values render tinted.
+- **`SuisuiStatusChip`** — capsule count/status badge. Use for glanceable values (menu bar summary, board counts). Neutral values render quiet; attention values render tinted.
 - **`.soloCard()`** — solid adaptive grouped-content treatment for panels. Use to group related information; do not nest cards.
 - **`.soloAssistantSignal()`** — restrained Signal Amber treatment for AI suggestions or assistant guidance. It is not a general warning card and must not replace native alerts.
 
@@ -95,7 +95,7 @@ Route every status color through `SoloPMTone`. A raw status color is not allowed
 - **Primary action**: exactly one `.borderedProminent` button per surface (e.g. onboarding Continue, quick-add submit). Secondary actions stay `.bordered` or `.borderless`.
 - **Empty states**: `ContentUnavailableView` with a one-line description that names the next action the user can take.
 - **Errors**: inline `Label` with `exclamationmark.triangle`, `attention` tone, max 2 lines with `fixedSize(horizontal: false, vertical: true)`. No modal alerts for recoverable errors.
-- **Icon feature marks** (onboarding, feature intros): use `SoloPMIconMetrics.feature` with a semantic tinted container.
+- **Icon feature marks** (onboarding, feature intros): use `SuisuiIconMetrics.feature` with a semantic tinted container.
 - **Step indicators**: capsule dots (active dot elongated + tinted), with a localized "Step N of M" accessibility label.
 
 ## Writing

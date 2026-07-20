@@ -1,4 +1,4 @@
-# SoloPM Quality Status
+# Suisui Quality Status
 
 Generated at: 2026-06-24T05:29:09Z
 Source commit: 07ad23c
@@ -31,7 +31,7 @@ Source commit: 07ad23c
 
 | Gate | Layer | Status | Evidence / command | Next action |
 | --- | --- | --- | --- | --- |
-| Lightweight PR gate | source + build | available | `scripts/ci.sh` | Use as the default fast PR verifier; opt into runtime, visual, or release lanes with SOLOPM_CI_* flags. |
+| Lightweight PR gate | source + build | available | `scripts/ci.sh` | Use as the default fast PR verifier; opt into runtime, visual, or release lanes with SUISUI_CI_* flags. |
 | Focused tests | source + unit | passed | `swift test --filter <suite>` | Run the three owner suites when touching UI contracts, release gates, or Project Board persistence. |
 | Full test suite | unit + integration | passed | `swift test` | Run before closing the Phase14 exit gate. |
 | Runtime smoke | runtime AX | passed | `script/check_runtime_accessible_crud_smoke.sh` | Run on a visible macOS session to cover CRUD, Inbox, Today, Settings, Voice Command, and layout stability. |
@@ -62,7 +62,7 @@ Source commit: 07ad23c
 - `docs/quality/test-triage.md`
 - `docs/quality/flake-quarantine.md`
 - `./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md ./script/release_readiness_report.sh`
+- `SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md ./script/release_readiness_report.sh`
 
 ## Notes
 

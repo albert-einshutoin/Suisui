@@ -2,7 +2,7 @@
 
 [日本語版](public-alpha-ja.md)
 
-SoloPM public alpha is scoped to the completed Phase 0-4 foundation plus Phase 5 release packaging.
+Suisui public alpha is scoped to the completed Phase 0-4 foundation plus Phase 5 release packaging.
 
 ## Scope
 
@@ -29,15 +29,15 @@ SoloPM public alpha is scoped to the completed Phase 0-4 foundation plus Phase 5
 
 ### Workflow 1: Voice To Project Plan
 
-Say or type a rough project goal. SoloPM generates an Action Plan, shows the proposed project and tasks, and waits for approval before writing local data.
+Say or type a rough project goal. Suisui generates an Action Plan, shows the proposed project and tasks, and waits for approval before writing local data.
 
 ### Workflow 2: Deadline Watch
 
-Create a project with a due date. SoloPM tracks overdue candidates and prepares local notification state so the user can see what needs attention.
+Create a project with a due date. Suisui tracks overdue candidates and prepares local notification state so the user can see what needs attention.
 
 ### Workflow 3: Artifact Draft
 
-Ask SoloPM to create a Markdown draft for a project deliverable. The write action is reviewed first and does not overwrite existing files.
+Ask Suisui to create a Markdown draft for a project deliverable. The write action is reviewed first and does not overwrite existing files.
 
 ## Known Limitations
 
@@ -49,4 +49,4 @@ Ask SoloPM to create a Markdown draft for a project deliverable. The write actio
 
 ## Feedback
 
-Use GitHub Issues for public alpha feedback. Include macOS version, SoloPM version, expected behavior, actual behavior, and whether the report contains private project data.
+Use GitHub Issues for public alpha feedback. Include macOS version, Suisui version, expected behavior, actual behavior, and whether the report contains private project data.

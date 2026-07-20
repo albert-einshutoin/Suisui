@@ -41,7 +41,7 @@ jobs:
 
       - name: Verify production runtime
         env:
-          SOLOPM_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
+          SUISUI_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
         run: ./scripts/ci.sh ui-runtime
 
       - name: Upload sanitized runtime diagnostics
@@ -69,10 +69,10 @@ jobs:
 
       - name: Capture and compare live UI
         env:
-          SOLOPM_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
+          SUISUI_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
           # actions/checkout uses an ephemeral pull-request merge commit. Bind
           # visual evidence to the stable head ref's latest product change.
-          SOLOPM_VISUAL_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+          SUISUI_VISUAL_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}
         run: ./scripts/ci.sh ui-visual
 
       - name: Upload audited visual diagnostics
@@ -95,7 +95,11 @@ jobs:
 
       - name: Measure production runtime
         env:
-          SOLOPM_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
+          SUISUI_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
+          SUISUI_PERFORMANCE_PROFILE: release
+          SUISUI_PERFORMANCE_BUILD_CONFIGURATION: release
+          SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS: 1000
+          SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS: 3000
         run: ./scripts/ci.sh ui-performance
 
       - name: Upload sanitized performance diagnostics

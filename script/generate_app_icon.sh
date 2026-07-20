@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SOURCE_PNG="${1:-$ROOT_DIR/packaging/SoloPM-AppIcon-1024.png}"
-OUTPUT_ICNS="${2:-$ROOT_DIR/packaging/SoloPM.icns}"
-TMP_ROOT="${SOLOPM_TMP_ROOT:-$ROOT_DIR/.tmp}"
+SOURCE_PNG="${1:-$ROOT_DIR/packaging/Suisui-AppIcon-1024.png}"
+OUTPUT_ICNS="${2:-$ROOT_DIR/packaging/Suisui.icns}"
+TMP_ROOT="${SUISUI_TMP_ROOT:-$ROOT_DIR/.tmp}"
 
 if [[ ! -f "$SOURCE_PNG" ]]; then
   printf 'missing app icon source: %s\n' "$SOURCE_PNG" >&2
@@ -19,8 +19,8 @@ if [[ "$width" != 1024 || "$height" != 1024 ]]; then
 fi
 
 mkdir -p "$TMP_ROOT" "$(dirname "$OUTPUT_ICNS")"
-ICON_TMP_ROOT="$(mktemp -d "$TMP_ROOT/solopm-app-icon.XXXXXX")"
-ICONSET="$ICON_TMP_ROOT/SoloPM.iconset"
+ICON_TMP_ROOT="$(mktemp -d "$TMP_ROOT/suisui-app-icon.XXXXXX")"
+ICONSET="$ICON_TMP_ROOT/Suisui.iconset"
 mkdir -p "$ICONSET"
 trap 'rm -rf "$ICON_TMP_ROOT"' EXIT
 

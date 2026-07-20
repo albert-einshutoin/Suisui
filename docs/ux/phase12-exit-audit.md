@@ -10,7 +10,7 @@ Status: passed for local/source/runtime-covered scope.
 
 Evidence:
 
-- Project Board remains the first app window: `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift` verifies the Project Board `WindowGroup` is declared before Voice Command.
+- Project Board remains the first app window: `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift` verifies the Project Board `WindowGroup` is declared before Voice Command.
 - Project Board core CRUD remains source-anchored: `ProjectBoardView.swift` still exposes `NavigationSplitView`, board columns, inline task composer, task inspector, archive/restore controls, destructive confirmations, and Backlog / In Progress / Done columns.
 - Inbox, Today, Voice Command, Settings, and Menu Bar remain reachable: `docs/ux/click-path-audit.md` records their current entry points and click counts.
 - Runtime proof is covered by automated preflight evidence: `release_readiness_report.sh` accepts the current automated preflight for release CI, local CRUD smoke, runtime accessible CRUD smoke, Xcode build, and launch.
@@ -56,7 +56,7 @@ Evidence:
 
 - `tasks/Phase12-ProductCockpitUXParity.md` defines the same role boundaries.
 - `docs/ux/click-path-audit.md` records the entry point and click count for each implemented screen.
-- `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift` pins the sidebar destinations and settings ownership.
+- `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift` pins the sidebar destinations and settings ownership.
 
 ## Privacy And Write Safety
 

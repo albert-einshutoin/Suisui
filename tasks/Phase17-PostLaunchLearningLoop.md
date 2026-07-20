@@ -1,6 +1,6 @@
 # Phase 17: Post-Launch Learning Loop
 
-目的は、SoloPMをProduct-outした後に、利用実態、crash/error triage、usage feedback、roadmap、OSS contribution、release cadenceを次の開発へ戻す運用を作ること。Public Alphaは出して終わりではなく、何が価値になり、何が摩擦になり、どの改善を次のpatch/minor releaseへ入れるかを学習するための入口にする。
+目的は、SuisuiをProduct-outした後に、利用実態、crash/error triage、usage feedback、roadmap、OSS contribution、release cadenceを次の開発へ戻す運用を作ること。Public Alphaは出して終わりではなく、何が価値になり、何が摩擦になり、どの改善を次のpatch/minor releaseへ入れるかを学習するための入口にする。
 
 Phase17では、個人タスク管理アプリとしてのprivacy boundaryを守りながら、ユーザー報告、手動検証、ローカル診断、OSS issueを統合して、次の開発を迷わず優先順位付けできる状態を目指す。
 
@@ -69,7 +69,7 @@ Priority: High
 
 ### Context
 
-crashやprovider errorは最重要のpost-launch signalだが、SoloPMはAPI key、OAuth token、個人タスク内容を扱う。診断に必要な情報と漏らしてはいけない情報を明確に分ける。
+crashやprovider errorは最重要のpost-launch signalだが、SuisuiはAPI key、OAuth token、個人タスク内容を扱う。診断に必要な情報と漏らしてはいけない情報を明確に分ける。
 
 ### Scope
 
@@ -110,7 +110,7 @@ post-launchで最優先に守るべきは、タスク列挙、作成、編集、
 
 ### Scope
 
-- 対象: `docs/quality/manual-to-automated-regression.md`, `Tests/SoloPMCoreTests`, runtime smoke scripts
+- 対象: `docs/quality/manual-to-automated-regression.md`, `Tests/SuisuiCoreTests`, runtime smoke scripts
 - user-reported workflow failureをunit/source/runtime/visual/manualのどこへ戻すか決める。
 
 ### Tests First
@@ -123,7 +123,7 @@ post-launchで最優先に守るべきは、タスク列挙、作成、編集、
 - [ ] Workflow failure分類表を作る。
 - [ ] VoiceOver task listing failureはAccessibilityFocusPathAuditまたはmanual VoiceOver worksheetへ戻す。
 - [ ] CRUD/data failureはProjectTaskKnowledgeToolTestsまたはruntime CRUD smokeへ戻す。
-- [ ] Document deliverable failureはDocumentScopedAutomationTests/SoloPMHarnessTestsへ戻す。
+- [ ] Document deliverable failureはDocumentScopedAutomationTests/SuisuiHarnessTestsへ戻す。
 - [ ] Provider setup failureはKeychain/provider readiness testsへ戻す。
 - [ ] すべてのbug fix PRにregression testを要求する。
 
@@ -215,7 +215,7 @@ Priority: Low
 
 ### Context
 
-OSSとしての価値を上げるには、外部PRを受けられる状態が必要。ただしSoloPMはsecret、Keychain、LLM、OAuth、MCP実行境界を扱うため、review policyを強くする。
+OSSとしての価値を上げるには、外部PRを受けられる状態が必要。ただしSuisuiはsecret、Keychain、LLM、OAuth、MCP実行境界を扱うため、review policyを強くする。
 
 ### Scope
 

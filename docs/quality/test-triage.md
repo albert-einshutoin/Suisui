@@ -1,7 +1,7 @@
 # Test Triage
 
 Status: P14-012 source contract
-Owner: SoloPM quality gate
+Owner: Suisui quality gate
 
 This document classifies failures before retrying or quarantining them. A failing
 test should keep failing until the category, owner, and next command are clear.

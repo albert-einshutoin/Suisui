@@ -1,8 +1,8 @@
-# SoloPM Product Experience Renewal Implementation Plan
+# Suisui Product Experience Renewal Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Deliver the approved four-destination, progressive, accessible, native macOS SoloPM experience without regressing approval-first execution, local-first data, undo, receipts, or existing deep links.
+**Goal:** Deliver the approved four-destination, progressive, accessible, native macOS Suisui experience without regressing approval-first execution, local-first data, undo, receipts, or existing deep links.
 
 **Architecture:** Introduce relocation-safe source contracts and a typed scene route before changing navigation. Migrate one vertical product slice at a time, preserve legacy route codecs and `ProjectBoardViewModel` as compatibility facades, and finish by requiring normal-route runtime, visual, performance, security, and fresh accessibility evidence.
 
@@ -16,43 +16,43 @@
 
 ### New core files
 
-- `Sources/SoloPMCore/App/ProjectBoardRoute.swift`: typed primary/review/project/smart-list routes and legacy codec.
-- `Sources/SoloPMCore/App/ProjectBoardSceneNavigation.swift`: pure scene routing reducer and exact-target request model.
-- `Sources/SoloPMCore/App/InspectorPresentationPolicy.swift`: width- and intent-based inspector policy.
-- `Sources/SoloPMCore/App/TodayPrimaryActionPresentation.swift`: one-primary-action decision.
-- `Sources/SoloPMCore/App/SettingsReadinessPresentation.swift`: neutral/ready/action/blocked readiness classification.
-- `Sources/SoloPMCore/App/TaskDueDateFieldState.swift`: localized date edit/clear/validation state.
-- `Sources/SoloPMCore/App/ProjectBoardErrorPresentation.swift`: fatal versus recoverable error classification.
-- `Sources/SoloPMCore/App/OnboardingExperience.swift`: experience-first onboarding path and target route.
+- `Sources/SuisuiCore/App/ProjectBoardRoute.swift`: typed primary/review/project/smart-list routes and legacy codec.
+- `Sources/SuisuiCore/App/ProjectBoardSceneNavigation.swift`: pure scene routing reducer and exact-target request model.
+- `Sources/SuisuiCore/App/InspectorPresentationPolicy.swift`: width- and intent-based inspector policy.
+- `Sources/SuisuiCore/App/TodayPrimaryActionPresentation.swift`: one-primary-action decision.
+- `Sources/SuisuiCore/App/SettingsReadinessPresentation.swift`: neutral/ready/action/blocked readiness classification.
+- `Sources/SuisuiCore/App/TaskDueDateFieldState.swift`: localized date edit/clear/validation state.
+- `Sources/SuisuiCore/App/ProjectBoardErrorPresentation.swift`: fatal versus recoverable error classification.
+- `Sources/SuisuiCore/App/OnboardingExperience.swift`: experience-first onboarding path and target route.
 
 ### New app files
 
-- `Sources/SoloPMApp/Views/ProjectBoardSidebarView.swift`: four primary destinations and nested project/filter rows.
-- `Sources/SoloPMApp/Views/ProjectBoardProjectsHubView.swift`: portfolio, project, smart-list, completed, and archived project navigation.
-- `Sources/SoloPMApp/Views/ProjectBoardReviewHubView.swift`: schedule/completed/automation/queue sections.
-- `Sources/SoloPMApp/Views/ProjectWorkflowAutomationActivityView.swift`: AI usage, receipts, and execution activity separated from completed work.
-- `Sources/SoloPMApp/Views/ProjectBoardToolbarContent.swift`: native contextual toolbar content.
-- `Sources/SoloPMApp/Views/SettingsStatusOverviewView.swift`: progressive readiness groups.
-- `Sources/SoloPMApp/Adapters/SystemShortcutClient.swift`: process-wide Option+Space registration.
-- `Sources/SoloPMApp/Composition/ProjectBoardSceneCoordinator.swift`: exact owned scene/window routing.
-- `Sources/SoloPMApp/Views/ProjectBoardInspectors.swift`: task/project inspector leaf views.
-- `Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift`: portfolio/project/kanban leaf views.
-- `Sources/SoloPMApp/Views/SettingsFeatureViews.swift`: extracted Settings tab surfaces.
+- `Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift`: four primary destinations and nested project/filter rows.
+- `Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift`: portfolio, project, smart-list, completed, and archived project navigation.
+- `Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift`: schedule/completed/automation/queue sections.
+- `Sources/SuisuiApp/Views/ProjectWorkflowAutomationActivityView.swift`: AI usage, receipts, and execution activity separated from completed work.
+- `Sources/SuisuiApp/Views/ProjectBoardToolbarContent.swift`: native contextual toolbar content.
+- `Sources/SuisuiApp/Views/SettingsStatusOverviewView.swift`: progressive readiness groups.
+- `Sources/SuisuiApp/Adapters/SystemShortcutClient.swift`: process-wide Option+Space registration.
+- `Sources/SuisuiApp/Composition/ProjectBoardSceneCoordinator.swift`: exact owned scene/window routing.
+- `Sources/SuisuiApp/Views/ProjectBoardInspectors.swift`: task/project inspector leaf views.
+- `Sources/SuisuiApp/Views/ProjectBoardDetailViews.swift`: portfolio/project/kanban leaf views.
+- `Sources/SuisuiApp/Views/SettingsFeatureViews.swift`: extracted Settings tab surfaces.
 
 ### Existing roots retained as owners
 
-- `Sources/SoloPMApp/Views/ProjectBoardView.swift`: scene state, `NavigationSplitView`, sheet/overlay composition.
-- `Sources/SoloPMApp/Views/SettingsView.swift`: Settings state object ownership and tab coordination.
-- `Sources/SoloPMCore/App/ProjectBoard.swift`: compatibility facade during feature-scoped migration.
+- `Sources/SuisuiApp/Views/ProjectBoardView.swift`: scene state, `NavigationSplitView`, sheet/overlay composition.
+- `Sources/SuisuiApp/Views/SettingsView.swift`: Settings state object ownership and tab coordination.
+- `Sources/SuisuiCore/App/ProjectBoard.swift`: compatibility facade during feature-scoped migration.
 
 ---
 
 ### Task 1: Make source and accessibility contracts relocation-safe
 
 **Files:**
-- Modify: `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`
-- Modify: `Tests/SoloPMCoreTests/ArchitectureBoundaryTests.swift`
-- Modify: `Tests/SoloPMCoreTests/ReleasePipelineTests.swift`
+- Modify: `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
+- Modify: `Tests/SuisuiCoreTests/ArchitectureBoundaryTests.swift`
+- Modify: `Tests/SuisuiCoreTests/ReleasePipelineTests.swift`
 - Modify: `script/check_accessibility_preflight.sh`
 
 - [ ] **Step 1: Add a failing aggregate-source contract**
@@ -61,7 +61,7 @@ Add a helper that reads every production Swift file whose basename starts with `
 
 ```swift
 private func readProjectBoardSurfaceSources() throws -> String {
-    let views = packageRoot.appendingPathComponent("Sources/SoloPMApp/Views")
+    let views = packageRoot.appendingPathComponent("Sources/SuisuiApp/Views")
     let names = try FileManager.default.contentsOfDirectory(atPath: views.path)
         .filter {
             ($0.hasPrefix("ProjectBoard") || $0.hasPrefix("ProjectWorkflow") || $0.hasPrefix("TaskInspector"))
@@ -92,9 +92,9 @@ Keep explicit file assertions only for actual ownership rules. Change `check_acc
 
 ```bash
 project_board_sources=(
-  Sources/SoloPMApp/Views/ProjectBoard*.swift
-  Sources/SoloPMApp/Views/ProjectWorkflow*.swift
-  Sources/SoloPMApp/Views/TaskInspector*.swift
+  Sources/SuisuiApp/Views/ProjectBoard*.swift
+  Sources/SuisuiApp/Views/ProjectWorkflow*.swift
+  Sources/SuisuiApp/Views/TaskInspector*.swift
 )
 ```
 
@@ -116,17 +116,17 @@ Expected: all pass with the same or greater source-anchor coverage.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Tests/SoloPMCoreTests/AppExperienceSourceTests.swift Tests/SoloPMCoreTests/ArchitectureBoundaryTests.swift Tests/SoloPMCoreTests/ReleasePipelineTests.swift script/check_accessibility_preflight.sh
+git add Tests/SuisuiCoreTests/AppExperienceSourceTests.swift Tests/SuisuiCoreTests/ArchitectureBoundaryTests.swift Tests/SuisuiCoreTests/ReleasePipelineTests.swift script/check_accessibility_preflight.sh
 git commit -m "test: make UI contracts relocation safe"
 ```
 
 ### Task 2: Add typed Board routes and legacy migration
 
 **Files:**
-- Create: `Sources/SoloPMCore/App/ProjectBoardRoute.swift`
-- Modify: `Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift`
-- Create: `Tests/SoloPMCoreTests/ProjectBoardRouteTests.swift`
-- Modify: `Tests/SoloPMCoreTests/ProjectBoardSelectionPersistenceTests.swift`
+- Create: `Sources/SuisuiCore/App/ProjectBoardRoute.swift`
+- Modify: `Sources/SuisuiCore/App/ProjectBoardSelectionPersistence.swift`
+- Create: `Tests/SuisuiCoreTests/ProjectBoardRouteTests.swift`
+- Modify: `Tests/SuisuiCoreTests/ProjectBoardSelectionPersistenceTests.swift`
 
 - [ ] **Step 1: Write failing route and migration tests**
 
@@ -191,19 +191,19 @@ Expected: all old raw-value tests and all new migration tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/SoloPMCore/App/ProjectBoardRoute.swift Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift Tests/SoloPMCoreTests/ProjectBoardRouteTests.swift Tests/SoloPMCoreTests/ProjectBoardSelectionPersistenceTests.swift
+git add Sources/SuisuiCore/App/ProjectBoardRoute.swift Sources/SuisuiCore/App/ProjectBoardSelectionPersistence.swift Tests/SuisuiCoreTests/ProjectBoardRouteTests.swift Tests/SuisuiCoreTests/ProjectBoardSelectionPersistenceTests.swift
 git commit -m "feat: add typed board route migration"
 ```
 
 ### Task 3: Introduce exact scene navigation and restoration
 
 **Files:**
-- Create: `Sources/SoloPMCore/App/ProjectBoardSceneNavigation.swift`
-- Create: `Sources/SoloPMApp/Composition/ProjectBoardSceneCoordinator.swift`
-- Modify: `Sources/SoloPMApp/SoloPMApp.swift`
-- Modify: `Sources/SoloPMApp/Views/ProjectBoardView.swift`
-- Create: `Tests/SoloPMCoreTests/ProjectBoardSceneNavigationTests.swift`
-- Modify: `Tests/SoloPMCoreTests/LaunchExperienceTests.swift`
+- Create: `Sources/SuisuiCore/App/ProjectBoardSceneNavigation.swift`
+- Create: `Sources/SuisuiApp/Composition/ProjectBoardSceneCoordinator.swift`
+- Modify: `Sources/SuisuiApp/SuisuiApp.swift`
+- Modify: `Sources/SuisuiApp/Views/ProjectBoardView.swift`
+- Create: `Tests/SuisuiCoreTests/ProjectBoardSceneNavigationTests.swift`
+- Modify: `Tests/SuisuiCoreTests/LaunchExperienceTests.swift`
 
 - [ ] **Step 1: Write failing reducer tests**
 
@@ -262,22 +262,22 @@ Expected: unit tests pass and one visible Project Board owns each request.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/SoloPMCore/App/ProjectBoardSceneNavigation.swift Sources/SoloPMApp/Composition/ProjectBoardSceneCoordinator.swift Sources/SoloPMApp/SoloPMApp.swift Sources/SoloPMApp/Views/ProjectBoardView.swift Tests/SoloPMCoreTests/ProjectBoardSceneNavigationTests.swift Tests/SoloPMCoreTests/LaunchExperienceTests.swift
+git add Sources/SuisuiCore/App/ProjectBoardSceneNavigation.swift Sources/SuisuiApp/Composition/ProjectBoardSceneCoordinator.swift Sources/SuisuiApp/SuisuiApp.swift Sources/SuisuiApp/Views/ProjectBoardView.swift Tests/SuisuiCoreTests/ProjectBoardSceneNavigationTests.swift Tests/SuisuiCoreTests/LaunchExperienceTests.swift
 git commit -m "feat: route board requests to exact scenes"
 ```
 
 ### Task 4: Replace the sidebar with four primary destinations and add Review
 
 **Files:**
-- Create: `Sources/SoloPMApp/Views/ProjectBoardSidebarView.swift`
-- Create: `Sources/SoloPMApp/Views/ProjectBoardProjectsHubView.swift`
-- Create: `Sources/SoloPMApp/Views/ProjectBoardReviewHubView.swift`
-- Create: `Sources/SoloPMApp/Views/ProjectWorkflowAutomationActivityView.swift`
-- Modify: `Sources/SoloPMApp/Views/ProjectBoardView.swift`
-- Modify: `Sources/SoloPMApp/Views/ProjectWorkflowScheduleView.swift`
-- Modify: `Sources/SoloPMApp/Views/ProjectWorkflowDoneView.swift`
-- Create: `Tests/SoloPMCoreTests/ProjectBoardPrimaryNavigationTests.swift`
-- Modify: `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`
+- Create: `Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift`
+- Create: `Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift`
+- Create: `Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift`
+- Create: `Sources/SuisuiApp/Views/ProjectWorkflowAutomationActivityView.swift`
+- Modify: `Sources/SuisuiApp/Views/ProjectBoardView.swift`
+- Modify: `Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift`
+- Modify: `Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift`
+- Create: `Tests/SuisuiCoreTests/ProjectBoardPrimaryNavigationTests.swift`
+- Modify: `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
 
 - [ ] **Step 1: Write failing navigation contracts**
 
@@ -326,17 +326,17 @@ Expected: four-area contracts pass, old route migration passes, and no AX anchor
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/SoloPMApp/Views/ProjectBoardSidebarView.swift Sources/SoloPMApp/Views/ProjectBoardProjectsHubView.swift Sources/SoloPMApp/Views/ProjectBoardReviewHubView.swift Sources/SoloPMApp/Views/ProjectWorkflowAutomationActivityView.swift Sources/SoloPMApp/Views/ProjectBoardView.swift Sources/SoloPMApp/Views/ProjectWorkflowScheduleView.swift Sources/SoloPMApp/Views/ProjectWorkflowDoneView.swift Tests/SoloPMCoreTests/ProjectBoardPrimaryNavigationTests.swift Tests/SoloPMCoreTests/AppExperienceSourceTests.swift
+git add Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift Sources/SuisuiApp/Views/ProjectWorkflowAutomationActivityView.swift Sources/SuisuiApp/Views/ProjectBoardView.swift Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift Tests/SuisuiCoreTests/ProjectBoardPrimaryNavigationTests.swift Tests/SuisuiCoreTests/AppExperienceSourceTests.swift
 git commit -m "feat: introduce four-area board navigation"
 ```
 
 ### Task 5: Make Inspector presentation responsive and intentional
 
 **Files:**
-- Create: `Sources/SoloPMCore/App/InspectorPresentationPolicy.swift`
-- Modify: `Sources/SoloPMApp/Views/ProjectBoardView.swift`
-- Create: `Tests/SoloPMCoreTests/InspectorPresentationPolicyTests.swift`
-- Modify: `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`
+- Create: `Sources/SuisuiCore/App/InspectorPresentationPolicy.swift`
+- Modify: `Sources/SuisuiApp/Views/ProjectBoardView.swift`
+- Create: `Tests/SuisuiCoreTests/InspectorPresentationPolicyTests.swift`
+- Modify: `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
 - Modify: `script/check_layout_stability_smoke.sh`
 
 - [ ] **Step 1: Write failing width-policy tests**
@@ -386,7 +386,7 @@ Run:
 ```bash
 swift test --filter InspectorPresentationPolicyTests
 swift test --filter AppExperienceSourceTests
-SOLOPM_LAYOUT_STABILITY_OUTPUT_DIR="$PWD/.tmp/layout-product-renewal" ./script/check_layout_stability_smoke.sh
+SUISUI_LAYOUT_STABILITY_OUTPUT_DIR="$PWD/.tmp/layout-product-renewal" ./script/check_layout_stability_smoke.sh
 ```
 
 Expected: 960/1024 start without an Inspector, explicit open works, and measured frame delta remains 0px after stabilization.
@@ -394,19 +394,19 @@ Expected: 960/1024 start without an Inspector, explicit open works, and measured
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/SoloPMCore/App/InspectorPresentationPolicy.swift Sources/SoloPMApp/Views/ProjectBoardView.swift Tests/SoloPMCoreTests/InspectorPresentationPolicyTests.swift Tests/SoloPMCoreTests/AppExperienceSourceTests.swift script/check_layout_stability_smoke.sh
+git add Sources/SuisuiCore/App/InspectorPresentationPolicy.swift Sources/SuisuiApp/Views/ProjectBoardView.swift Tests/SuisuiCoreTests/InspectorPresentationPolicyTests.swift Tests/SuisuiCoreTests/AppExperienceSourceTests.swift script/check_layout_stability_smoke.sh
 git commit -m "feat: make board inspector adaptive"
 ```
 
 ### Task 6: Replace custom header chrome with a native toolbar
 
 **Files:**
-- Create: `Sources/SoloPMApp/Views/ProjectBoardToolbarContent.swift`
-- Modify: `Sources/SoloPMApp/Views/ProjectBoardView.swift`
-- Modify: `Sources/SoloPMApp/SoloPMApp.swift`
-- Modify: `Sources/SoloPMCore/App/ProjectBoardToolbarLayoutPolicy.swift`
-- Modify: `Tests/SoloPMCoreTests/ProjectBoardToolbarLayoutPolicyTests.swift`
-- Modify: `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`
+- Create: `Sources/SuisuiApp/Views/ProjectBoardToolbarContent.swift`
+- Modify: `Sources/SuisuiApp/Views/ProjectBoardView.swift`
+- Modify: `Sources/SuisuiApp/SuisuiApp.swift`
+- Modify: `Sources/SuisuiCore/App/ProjectBoardToolbarLayoutPolicy.swift`
+- Modify: `Tests/SuisuiCoreTests/ProjectBoardToolbarLayoutPolicyTests.swift`
+- Modify: `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
 - Modify: `script/check_project_board_header_layout_smoke.sh`
 
 - [ ] **Step 1: Replace old-header tests with native-toolbar tests**
@@ -436,7 +436,7 @@ Expected: old custom-header implementation violates the new contract.
 
 Create `ProjectBoardToolbarContext` as an Equatable core value and `ProjectBoardToolbarContent` as a SwiftUI `ToolbarContent`. Keep Voice and context primary actions visible; place integrations, automation, Settings, and Developer Terminal in semantic groups/overflow. Use availability checks for macOS 26-only grouping APIs and standard toolbar items on macOS 14.
 
-Remove the custom `.bar` surface and preserve keyboard/menu access in `SoloPMApp.Commands`.
+Remove the custom `.bar` surface and preserve keyboard/menu access in `SuisuiApp.Commands`.
 
 - [ ] **Step 4: Verify native chrome**
 
@@ -454,18 +454,18 @@ Expected: one native chrome layer, no clipping at minimum width, and all utility
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/SoloPMApp/Views/ProjectBoardToolbarContent.swift Sources/SoloPMApp/Views/ProjectBoardView.swift Sources/SoloPMApp/SoloPMApp.swift Sources/SoloPMCore/App/ProjectBoardToolbarLayoutPolicy.swift Tests/SoloPMCoreTests/ProjectBoardToolbarLayoutPolicyTests.swift Tests/SoloPMCoreTests/AppExperienceSourceTests.swift script/check_project_board_header_layout_smoke.sh
+git add Sources/SuisuiApp/Views/ProjectBoardToolbarContent.swift Sources/SuisuiApp/Views/ProjectBoardView.swift Sources/SuisuiApp/SuisuiApp.swift Sources/SuisuiCore/App/ProjectBoardToolbarLayoutPolicy.swift Tests/SuisuiCoreTests/ProjectBoardToolbarLayoutPolicyTests.swift Tests/SuisuiCoreTests/AppExperienceSourceTests.swift script/check_project_board_header_layout_smoke.sh
 git commit -m "feat: adopt native project board toolbar"
 ```
 
 ### Task 7: Establish one Today primary action and contextual Catch Up
 
 **Files:**
-- Create: `Sources/SoloPMCore/App/TodayPrimaryActionPresentation.swift`
-- Modify: `Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift`
-- Modify: `Sources/SoloPMCore/App/ProjectBoard.swift`
-- Create: `Tests/SoloPMCoreTests/TodayPrimaryActionPresentationTests.swift`
-- Modify: `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`
+- Create: `Sources/SuisuiCore/App/TodayPrimaryActionPresentation.swift`
+- Modify: `Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift`
+- Modify: `Sources/SuisuiCore/App/ProjectBoard.swift`
+- Create: `Tests/SuisuiCoreTests/TodayPrimaryActionPresentationTests.swift`
+- Modify: `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
 - Modify: `script/check_runtime_today_complete_smoke.sh`
 
 - [ ] **Step 1: Write failing presentation-policy tests**
@@ -518,18 +518,18 @@ Expected: each seed state exposes zero or one enabled prominent action and Today
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/SoloPMCore/App/TodayPrimaryActionPresentation.swift Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift Sources/SoloPMCore/App/ProjectBoard.swift Tests/SoloPMCoreTests/TodayPrimaryActionPresentationTests.swift Tests/SoloPMCoreTests/AppExperienceSourceTests.swift script/check_runtime_today_complete_smoke.sh
+git add Sources/SuisuiCore/App/TodayPrimaryActionPresentation.swift Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift Sources/SuisuiCore/App/ProjectBoard.swift Tests/SuisuiCoreTests/TodayPrimaryActionPresentationTests.swift Tests/SuisuiCoreTests/AppExperienceSourceTests.swift script/check_runtime_today_complete_smoke.sh
 git commit -m "feat: focus Today on one primary action"
 ```
 
 ### Task 8: Make Settings readiness progressive and actionable
 
 **Files:**
-- Create: `Sources/SoloPMCore/App/SettingsReadinessPresentation.swift`
-- Create: `Sources/SoloPMApp/Views/SettingsStatusOverviewView.swift`
-- Modify: `Sources/SoloPMApp/Views/SettingsView.swift`
-- Create: `Tests/SoloPMCoreTests/SettingsReadinessPresentationTests.swift`
-- Modify: `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`
+- Create: `Sources/SuisuiCore/App/SettingsReadinessPresentation.swift`
+- Create: `Sources/SuisuiApp/Views/SettingsStatusOverviewView.swift`
+- Modify: `Sources/SuisuiApp/Views/SettingsView.swift`
+- Create: `Tests/SuisuiCoreTests/SettingsReadinessPresentationTests.swift`
+- Modify: `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
 - Modify: `script/check_runtime_settings_save_smoke.sh`
 
 - [ ] **Step 1: Write failing readiness classification tests**
@@ -608,17 +608,17 @@ Expected: fresh settings show Ready/Set up groups without an orange warning wall
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/SoloPMCore/App/SettingsReadinessPresentation.swift Sources/SoloPMApp/Views/SettingsStatusOverviewView.swift Sources/SoloPMApp/Views/SettingsView.swift Tests/SoloPMCoreTests/SettingsReadinessPresentationTests.swift Tests/SoloPMCoreTests/AppExperienceSourceTests.swift script/check_runtime_settings_save_smoke.sh
+git add Sources/SuisuiCore/App/SettingsReadinessPresentation.swift Sources/SuisuiApp/Views/SettingsStatusOverviewView.swift Sources/SuisuiApp/Views/SettingsView.swift Tests/SuisuiCoreTests/SettingsReadinessPresentationTests.swift Tests/SuisuiCoreTests/AppExperienceSourceTests.swift script/check_runtime_settings_save_smoke.sh
 git commit -m "feat: make Settings readiness progressive"
 ```
 
 ### Task 9: Make Voice empty state and capture modes truthful
 
 **Files:**
-- Modify: `Sources/SoloPMApp/Views/VoiceCaptureView.swift`
-- Modify: `Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift`
-- Modify: `Tests/SoloPMCoreTests/VoiceCaptureViewModelTests.swift`
-- Modify: `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`
+- Modify: `Sources/SuisuiApp/Views/VoiceCaptureView.swift`
+- Modify: `Sources/SuisuiCore/Voice/VoiceCaptureViewModel.swift`
+- Modify: `Tests/SuisuiCoreTests/VoiceCaptureViewModelTests.swift`
+- Modify: `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
 - Modify: `script/check_runtime_voice_review_smoke.sh`
 
 - [ ] **Step 1: Write failing UI contract and interaction tests**
@@ -678,20 +678,20 @@ Expected: whitespace keeps Generate Plan AXDisabled, valid input enables it, and
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/SoloPMApp/Views/VoiceCaptureView.swift Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift Tests/SoloPMCoreTests/VoiceCaptureViewModelTests.swift Tests/SoloPMCoreTests/AppExperienceSourceTests.swift script/check_runtime_voice_review_smoke.sh
+git add Sources/SuisuiApp/Views/VoiceCaptureView.swift Sources/SuisuiCore/Voice/VoiceCaptureViewModel.swift Tests/SuisuiCoreTests/VoiceCaptureViewModelTests.swift Tests/SuisuiCoreTests/AppExperienceSourceTests.swift script/check_runtime_voice_review_smoke.sh
 git commit -m "fix: make Voice actions and modes truthful"
 ```
 
 ### Task 10: Implement the process-wide global Voice shortcut
 
 **Files:**
-- Create: `Sources/SoloPMApp/Adapters/SystemShortcutClient.swift`
-- Modify: `Sources/SoloPMCore/Shortcuts/ShortcutRegistration.swift`
-- Modify: `Sources/SoloPMApp/SoloPMApp.swift`
-- Modify: `Sources/SoloPMApp/Views/SettingsView.swift`
-- Modify: `Sources/SoloPMApp/Views/MenuBarPanel.swift`
-- Modify: `Tests/SoloPMCoreTests/ShortcutRegistrationTests.swift`
-- Modify: `Tests/SoloPMCoreTests/LaunchExperienceTests.swift`
+- Create: `Sources/SuisuiApp/Adapters/SystemShortcutClient.swift`
+- Modify: `Sources/SuisuiCore/Shortcuts/ShortcutRegistration.swift`
+- Modify: `Sources/SuisuiApp/SuisuiApp.swift`
+- Modify: `Sources/SuisuiApp/Views/SettingsView.swift`
+- Modify: `Sources/SuisuiApp/Views/MenuBarPanel.swift`
+- Modify: `Tests/SuisuiCoreTests/ShortcutRegistrationTests.swift`
+- Modify: `Tests/SuisuiCoreTests/LaunchExperienceTests.swift`
 - Modify: `docs/adr/0003-global-shortcut-library.md`
 
 - [ ] **Step 1: Write failing lifecycle tests**
@@ -742,24 +742,24 @@ Expected: duplicate registration and duplicate windows are impossible in unit/co
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/SoloPMApp/Adapters/SystemShortcutClient.swift Sources/SoloPMCore/Shortcuts/ShortcutRegistration.swift Sources/SoloPMApp/SoloPMApp.swift Sources/SoloPMApp/Views/SettingsView.swift Sources/SoloPMApp/Views/MenuBarPanel.swift Tests/SoloPMCoreTests/ShortcutRegistrationTests.swift Tests/SoloPMCoreTests/LaunchExperienceTests.swift docs/adr/0003-global-shortcut-library.md
+git add Sources/SuisuiApp/Adapters/SystemShortcutClient.swift Sources/SuisuiCore/Shortcuts/ShortcutRegistration.swift Sources/SuisuiApp/SuisuiApp.swift Sources/SuisuiApp/Views/SettingsView.swift Sources/SuisuiApp/Views/MenuBarPanel.swift Tests/SuisuiCoreTests/ShortcutRegistrationTests.swift Tests/SuisuiCoreTests/LaunchExperienceTests.swift docs/adr/0003-global-shortcut-library.md
 git commit -m "feat: register global Voice shortcut"
 ```
 
 ### Task 11: Expand the Calm Signal Desk semantic design system
 
 **Files:**
-- Modify: `Sources/SoloPMApp/Views/SoloPMDesignSystem.swift`
+- Modify: `Sources/SuisuiApp/Views/SuisuiDesignSystem.swift`
 - Modify: `docs/ux/design-system.md`
-- Create: `Tests/SoloPMCoreTests/SoloPMDesignTokenContractTests.swift`
-- Modify: `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`
+- Create: `Tests/SuisuiCoreTests/SuisuiDesignTokenContractTests.swift`
+- Modify: `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
 
 - [ ] **Step 1: Write failing token contracts**
 
 ```swift
 func testDesignSystemDefinesEveryApprovedSemanticLayer() throws {
-    let source = try readSource("Sources/SoloPMApp/Views/SoloPMDesignSystem.swift")
-    for symbol in ["SoloPMBrand", "SoloPMTypography", "SoloPMSurface", "SoloPMBorder", "SoloPMMotion", "SoloPMIconMetrics", "SoloPMControlDensity"] {
+    let source = try readSource("Sources/SuisuiApp/Views/SuisuiDesignSystem.swift")
+    for symbol in ["SuisuiBrand", "SuisuiTypography", "SuisuiSurface", "SuisuiBorder", "SuisuiMotion", "SuisuiIconMetrics", "SuisuiControlDensity"] {
         XCTAssertTrue(source.contains("enum \(symbol)"), "Missing \(symbol)")
     }
 }
@@ -767,7 +767,7 @@ func testDesignSystemDefinesEveryApprovedSemanticLayer() throws {
 
 - [ ] **Step 2: Run and verify RED**
 
-Run: `swift test --filter SoloPMDesignTokenContractTests`
+Run: `swift test --filter SuisuiDesignTokenContractTests`
 
 Expected: missing semantic-layer assertions fail.
 
@@ -782,7 +782,7 @@ Do not apply custom backgrounds to native sidebar, toolbar, Form, or Inspector r
 Run:
 
 ```bash
-swift test --filter SoloPMDesignTokenContractTests
+swift test --filter SuisuiDesignTokenContractTests
 swift test --filter AppExperienceSourceTests
 swift build
 ```
@@ -792,20 +792,20 @@ Expected: contracts pass and the app builds for the macOS 14 deployment target.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/SoloPMApp/Views/SoloPMDesignSystem.swift docs/ux/design-system.md Tests/SoloPMCoreTests/SoloPMDesignTokenContractTests.swift Tests/SoloPMCoreTests/AppExperienceSourceTests.swift
-git commit -m "feat: expand semantic SoloPM design tokens"
+git add Sources/SuisuiApp/Views/SuisuiDesignSystem.swift docs/ux/design-system.md Tests/SuisuiCoreTests/SuisuiDesignTokenContractTests.swift Tests/SuisuiCoreTests/AppExperienceSourceTests.swift
+git commit -m "feat: expand semantic Suisui design tokens"
 ```
 
 ### Task 12: Migrate product surfaces to semantic styling and non-color cues
 
 **Files:**
-- Modify: `Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift`
-- Modify: `Sources/SoloPMApp/Views/ProjectWorkflowScheduleView.swift`
-- Modify: `Sources/SoloPMApp/Views/ProjectWorkflowDoneView.swift`
-- Modify: `Sources/SoloPMApp/Views/ProjectBoardReviewHubView.swift`
-- Modify: `Sources/SoloPMApp/Views/SettingsStatusOverviewView.swift`
-- Modify: `Sources/SoloPMApp/Views/VoiceCaptureView.swift`
-- Modify: `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`
+- Modify: `Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift`
+- Modify: `Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift`
+- Modify: `Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift`
+- Modify: `Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift`
+- Modify: `Sources/SuisuiApp/Views/SettingsStatusOverviewView.swift`
+- Modify: `Sources/SuisuiApp/Views/VoiceCaptureView.swift`
+- Modify: `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
 
 - [ ] **Step 1: Add failing migrated-surface guards**
 
@@ -819,7 +819,7 @@ Expected: current raw constants fail the narrowed migrated-surface contracts.
 
 - [ ] **Step 3: Replace raw styling with semantic tokens**
 
-Use `SoloPMTypography`, `SoloPMSurface`, `SoloPMBorder`, `SoloPMMotion`, and `SoloPMTone` consistently. Apply Signal Amber only to assistant attention, never to ordinary selection or decoration. Use icon + label + shape for attention/danger/positive states. Respect `accessibilityReduceMotion` for all new transitions.
+Use `SuisuiTypography`, `SuisuiSurface`, `SuisuiBorder`, `SuisuiMotion`, and `SuisuiTone` consistently. Apply Signal Amber only to assistant attention, never to ordinary selection or decoration. Use icon + label + shape for attention/danger/positive states. Respect `accessibilityReduceMotion` for all new transitions.
 
 - [ ] **Step 4: Verify build and accessibility source floor**
 
@@ -836,18 +836,18 @@ Expected: no new raw styling violations, no lost AX anchors, and Light/Dark adap
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift Sources/SoloPMApp/Views/ProjectWorkflowScheduleView.swift Sources/SoloPMApp/Views/ProjectWorkflowDoneView.swift Sources/SoloPMApp/Views/ProjectBoardReviewHubView.swift Sources/SoloPMApp/Views/SettingsStatusOverviewView.swift Sources/SoloPMApp/Views/VoiceCaptureView.swift Tests/SoloPMCoreTests/AppExperienceSourceTests.swift
+git add Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift Sources/SuisuiApp/Views/SettingsStatusOverviewView.swift Sources/SuisuiApp/Views/VoiceCaptureView.swift Tests/SuisuiCoreTests/AppExperienceSourceTests.swift
 git commit -m "refactor: apply calm signal surface styling"
 ```
 
 ### Task 13: Keep recoverable failures inline and validate due dates
 
 **Files:**
-- Create: `Sources/SoloPMCore/App/ProjectBoardErrorPresentation.swift`
-- Create: `Sources/SoloPMCore/App/TaskDueDateFieldState.swift`
-- Modify: `Sources/SoloPMApp/Views/ProjectBoardView.swift`
-- Create: `Tests/SoloPMCoreTests/ProjectBoardErrorPresentationTests.swift`
-- Create: `Tests/SoloPMCoreTests/TaskDueDateFieldStateTests.swift`
+- Create: `Sources/SuisuiCore/App/ProjectBoardErrorPresentation.swift`
+- Create: `Sources/SuisuiCore/App/TaskDueDateFieldState.swift`
+- Modify: `Sources/SuisuiApp/Views/ProjectBoardView.swift`
+- Create: `Tests/SuisuiCoreTests/ProjectBoardErrorPresentationTests.swift`
+- Create: `Tests/SuisuiCoreTests/TaskDueDateFieldStateTests.swift`
 - Modify: `script/check_runtime_accessible_crud_smoke.sh`
 
 - [ ] **Step 1: Write failing error/date tests**
@@ -926,21 +926,21 @@ Expected: injected recoverable failure leaves context visible; valid date and cl
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/SoloPMCore/App/ProjectBoardErrorPresentation.swift Sources/SoloPMCore/App/TaskDueDateFieldState.swift Sources/SoloPMApp/Views/ProjectBoardView.swift Tests/SoloPMCoreTests/ProjectBoardErrorPresentationTests.swift Tests/SoloPMCoreTests/TaskDueDateFieldStateTests.swift script/check_runtime_accessible_crud_smoke.sh
+git add Sources/SuisuiCore/App/ProjectBoardErrorPresentation.swift Sources/SuisuiCore/App/TaskDueDateFieldState.swift Sources/SuisuiApp/Views/ProjectBoardView.swift Tests/SuisuiCoreTests/ProjectBoardErrorPresentationTests.swift Tests/SuisuiCoreTests/TaskDueDateFieldStateTests.swift script/check_runtime_accessible_crud_smoke.sh
 git commit -m "fix: keep board errors inline and dates valid"
 ```
 
 ### Task 14: Make onboarding experience-first
 
 **Files:**
-- Create: `Sources/SoloPMCore/App/OnboardingExperience.swift`
-- Modify: `Sources/SoloPMCore/App/FirstRunOnboarding.swift`
-- Modify: `Sources/SoloPMApp/Views/OnboardingWelcomeView.swift`
-- Modify: `Sources/SoloPMApp/OnboardingSampleProjectFactory.swift`
-- Modify: `Sources/SoloPMApp/SoloPMApp.swift`
-- Create: `Tests/SoloPMCoreTests/OnboardingExperienceTests.swift`
-- Modify: `Tests/SoloPMCoreTests/FirstRunOnboardingTests.swift`
-- Modify: `Tests/SoloPMCoreTests/FirstRunOnboardingSampleTests.swift`
+- Create: `Sources/SuisuiCore/App/OnboardingExperience.swift`
+- Modify: `Sources/SuisuiCore/App/FirstRunOnboarding.swift`
+- Modify: `Sources/SuisuiApp/Views/OnboardingWelcomeView.swift`
+- Modify: `Sources/SuisuiApp/OnboardingSampleProjectFactory.swift`
+- Modify: `Sources/SuisuiApp/SuisuiApp.swift`
+- Create: `Tests/SuisuiCoreTests/OnboardingExperienceTests.swift`
+- Modify: `Tests/SuisuiCoreTests/FirstRunOnboardingTests.swift`
+- Modify: `Tests/SuisuiCoreTests/FirstRunOnboardingSampleTests.swift`
 - Create: `script/check_runtime_onboarding_smoke.sh`
 
 - [ ] **Step 1: Write failing first-value-path tests**
@@ -948,7 +948,7 @@ git commit -m "fix: keep board errors inline and dates valid"
 ```swift
 func testWelcomeDefaultsToLocalExperienceWithoutProviderOrPermissions() {
     let experience = OnboardingExperience.initial
-    XCTAssertEqual(experience.primaryAction, .trySoloPM)
+    XCTAssertEqual(experience.primaryAction, .trySuisui)
     XCTAssertEqual(experience.secondaryAction, .setUpAI)
     XCTAssertEqual(experience.requestedPermissions, [])
 }
@@ -968,8 +968,8 @@ Expected: compile failure for the missing experience model.
 
 ```swift
 public struct OnboardingExperience: Equatable, Sendable {
-    public enum Action: Equatable, Sendable { case trySoloPM, setUpAI, skip }
-    public static let initial = OnboardingExperience(primaryAction: .trySoloPM, secondaryAction: .setUpAI, requestedPermissions: [])
+    public enum Action: Equatable, Sendable { case trySuisui, setUpAI, skip }
+    public static let initial = OnboardingExperience(primaryAction: .trySuisui, secondaryAction: .setUpAI, requestedPermissions: [])
     public static let learnProjectTargetRoute: BoardRoute = .primary(.today)
     public let primaryAction: Action
     public let secondaryAction: Action
@@ -990,27 +990,27 @@ swift test --filter FirstRunOnboardingSampleTests
 ./script/check_runtime_onboarding_smoke.sh
 ```
 
-Expected: fresh isolated HOME can create Learn SoloPM, reach Today, complete one lesson, rerun without duplication, skip without data loss, and rollback an injected creation failure.
+Expected: fresh isolated HOME can create Learn Suisui, reach Today, complete one lesson, rerun without duplication, skip without data loss, and rollback an injected creation failure.
 
 Make the new verifier executable before running it: `chmod +x script/check_runtime_onboarding_smoke.sh`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/SoloPMCore/App/OnboardingExperience.swift Sources/SoloPMCore/App/FirstRunOnboarding.swift Sources/SoloPMApp/Views/OnboardingWelcomeView.swift Sources/SoloPMApp/OnboardingSampleProjectFactory.swift Sources/SoloPMApp/SoloPMApp.swift Tests/SoloPMCoreTests/OnboardingExperienceTests.swift Tests/SoloPMCoreTests/FirstRunOnboardingTests.swift Tests/SoloPMCoreTests/FirstRunOnboardingSampleTests.swift script/check_runtime_onboarding_smoke.sh
+git add Sources/SuisuiCore/App/OnboardingExperience.swift Sources/SuisuiCore/App/FirstRunOnboarding.swift Sources/SuisuiApp/Views/OnboardingWelcomeView.swift Sources/SuisuiApp/OnboardingSampleProjectFactory.swift Sources/SuisuiApp/SuisuiApp.swift Tests/SuisuiCoreTests/OnboardingExperienceTests.swift Tests/SuisuiCoreTests/FirstRunOnboardingTests.swift Tests/SuisuiCoreTests/FirstRunOnboardingSampleTests.swift script/check_runtime_onboarding_smoke.sh
 git commit -m "feat: make onboarding experience first"
 ```
 
 ### Task 15: Split oversized leaf views while retaining root ownership
 
 **Files:**
-- Create: `Sources/SoloPMApp/Views/ProjectBoardInspectors.swift`
-- Create: `Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift`
-- Create: `Sources/SoloPMApp/Views/SettingsFeatureViews.swift`
-- Modify: `Sources/SoloPMApp/Views/ProjectBoardView.swift`
-- Modify: `Sources/SoloPMApp/Views/SettingsView.swift`
-- Modify: `Tests/SoloPMCoreTests/ArchitectureBoundaryTests.swift`
-- Modify: `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`
+- Create: `Sources/SuisuiApp/Views/ProjectBoardInspectors.swift`
+- Create: `Sources/SuisuiApp/Views/ProjectBoardDetailViews.swift`
+- Create: `Sources/SuisuiApp/Views/SettingsFeatureViews.swift`
+- Modify: `Sources/SuisuiApp/Views/ProjectBoardView.swift`
+- Modify: `Sources/SuisuiApp/Views/SettingsView.swift`
+- Modify: `Tests/SuisuiCoreTests/ArchitectureBoundaryTests.swift`
+- Modify: `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
 
 - [ ] **Step 1: Write failing ownership contracts**
 
@@ -1048,19 +1048,19 @@ Expected: extracted views compile, CRUD/approval/receipt behavior is unchanged, 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/SoloPMApp/Views/ProjectBoardInspectors.swift Sources/SoloPMApp/Views/ProjectBoardDetailViews.swift Sources/SoloPMApp/Views/SettingsFeatureViews.swift Sources/SoloPMApp/Views/ProjectBoardView.swift Sources/SoloPMApp/Views/SettingsView.swift Tests/SoloPMCoreTests/ArchitectureBoundaryTests.swift Tests/SoloPMCoreTests/AppExperienceSourceTests.swift
+git add Sources/SuisuiApp/Views/ProjectBoardInspectors.swift Sources/SuisuiApp/Views/ProjectBoardDetailViews.swift Sources/SuisuiApp/Views/SettingsFeatureViews.swift Sources/SuisuiApp/Views/ProjectBoardView.swift Sources/SuisuiApp/Views/SettingsView.swift Tests/SuisuiCoreTests/ArchitectureBoundaryTests.swift Tests/SuisuiCoreTests/AppExperienceSourceTests.swift
 git commit -m "refactor: split board and Settings leaf views"
 ```
 
 ### Task 16: Isolate Today observation and invalidation
 
 **Files:**
-- Create: `Sources/SoloPMCore/App/TodayFeatureModel.swift`
-- Modify: `Sources/SoloPMCore/App/ProjectBoard.swift`
-- Modify: `Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift`
-- Create: `Tests/SoloPMCoreTests/TodayFeatureModelTests.swift`
-- Modify: `Tests/SoloPMCoreTests/ProjectBoardStoreTests.swift`
-- Modify: `Tests/SoloPMCoreTests/ArchitectureBoundaryTests.swift`
+- Create: `Sources/SuisuiCore/App/TodayFeatureModel.swift`
+- Modify: `Sources/SuisuiCore/App/ProjectBoard.swift`
+- Modify: `Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift`
+- Create: `Tests/SuisuiCoreTests/TodayFeatureModelTests.swift`
+- Modify: `Tests/SuisuiCoreTests/ProjectBoardStoreTests.swift`
+- Modify: `Tests/SuisuiCoreTests/ArchitectureBoundaryTests.swift`
 
 - [ ] **Step 1: Write failing observation-boundary tests**
 
@@ -1132,7 +1132,7 @@ Expected: publication counts match the tests and normal Today reaches CPU conver
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/SoloPMCore/App/TodayFeatureModel.swift Sources/SoloPMCore/App/ProjectBoard.swift Sources/SoloPMApp/Views/ProjectWorkflowTodayView.swift Tests/SoloPMCoreTests/TodayFeatureModelTests.swift Tests/SoloPMCoreTests/ProjectBoardStoreTests.swift Tests/SoloPMCoreTests/ArchitectureBoundaryTests.swift
+git add Sources/SuisuiCore/App/TodayFeatureModel.swift Sources/SuisuiCore/App/ProjectBoard.swift Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift Tests/SuisuiCoreTests/TodayFeatureModelTests.swift Tests/SuisuiCoreTests/ProjectBoardStoreTests.swift Tests/SuisuiCoreTests/ArchitectureBoundaryTests.swift
 git commit -m "refactor: isolate Today feature observation"
 ```
 
@@ -1143,8 +1143,8 @@ git commit -m "refactor: isolate Today feature observation"
 - Modify: `.github/workflows/ci.yml`
 - Modify: `script/check_ci_visual_gate.sh`
 - Modify: `docs/quality/visual-baseline-manifest.json`
-- Modify: `Tests/SoloPMCoreTests/CIGateWorkflowTests.swift`
-- Modify: `Tests/SoloPMCoreTests/ReleasePipelineTests.swift`
+- Modify: `Tests/SuisuiCoreTests/CIGateWorkflowTests.swift`
+- Modify: `Tests/SuisuiCoreTests/ReleasePipelineTests.swift`
 - Modify: `docs/quality/regression-risk-map.md`
 
 - [ ] **Step 1: Write failing workflow contracts**
@@ -1184,17 +1184,17 @@ Expected: every command exits 0, runtime artifacts are sanitized, normal-route c
 - [ ] **Step 5: Commit**
 
 ```bash
-git add scripts/ci.sh .github/workflows/ci.yml script/check_ci_visual_gate.sh docs/quality/visual-baseline-manifest.json Tests/SoloPMCoreTests/CIGateWorkflowTests.swift Tests/SoloPMCoreTests/ReleasePipelineTests.swift docs/quality/regression-risk-map.md docs/quality/visual-baselines
+git add scripts/ci.sh .github/workflows/ci.yml script/check_ci_visual_gate.sh docs/quality/visual-baseline-manifest.json Tests/SuisuiCoreTests/CIGateWorkflowTests.swift Tests/SuisuiCoreTests/ReleasePipelineTests.swift docs/quality/regression-risk-map.md docs/quality/visual-baselines
 git commit -m "test: require complete product UI evidence"
 ```
 
 ### Task 18: Complete localization, focus accessibility, and manual evidence
 
 **Files:**
-- Modify: `Sources/SoloPMApp/Resources/en.lproj/Localizable.strings`
-- Modify: `Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings`
-- Create: `Sources/SoloPMCore/App/AccessibilityFocusPathAudit.swift`
-- Create: `Tests/SoloPMCoreTests/AccessibilityFocusPathAuditTests.swift`
+- Modify: `Sources/SuisuiApp/Resources/en.lproj/Localizable.strings`
+- Modify: `Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings`
+- Create: `Sources/SuisuiCore/App/AccessibilityFocusPathAudit.swift`
+- Create: `Tests/SuisuiCoreTests/AccessibilityFocusPathAuditTests.swift`
 - Modify: `script/check_accessibility_preflight.sh`
 - Modify: `docs/release/evidence/accessibility-voiceover.md`
 - Modify: `docs/quality/status.md`
@@ -1212,7 +1212,7 @@ public enum AccessibilityFocusPath: String, CaseIterable, Sendable {
     case voiceRecordOnce
     case voiceHandsFree
     case settingsReadiness
-    case onboardingTrySoloPM
+    case onboardingTrySuisui
     case inlineErrorRetry
     case taskDueDate
 }
@@ -1264,7 +1264,7 @@ Expected: all automatable gates pass; release readiness reports only genuinely e
 - [ ] **Step 5: Commit and push current evidence**
 
 ```bash
-git add Sources/SoloPMApp/Resources/en.lproj/Localizable.strings Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings Sources/SoloPMCore/App/AccessibilityFocusPathAudit.swift Tests/SoloPMCoreTests/AccessibilityFocusPathAuditTests.swift script/check_accessibility_preflight.sh docs/release/evidence/accessibility-voiceover.md docs/quality/status.md docs/product/roadmap.md docs/ux/information-architecture.md
+git add Sources/SuisuiApp/Resources/en.lproj/Localizable.strings Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings Sources/SuisuiCore/App/AccessibilityFocusPathAudit.swift Tests/SuisuiCoreTests/AccessibilityFocusPathAuditTests.swift script/check_accessibility_preflight.sh docs/release/evidence/accessibility-voiceover.md docs/quality/status.md docs/product/roadmap.md docs/ux/information-architecture.md
 git commit -m "docs: close product experience evidence"
 git push -u origin feature/product-experience-renewal
 ```
@@ -1283,7 +1283,7 @@ Use `apply_patch` to create `.tmp/product-experience-renewal-pr.md` with these p
 Run:
 
 ```bash
-gh pr create --base main --head feature/product-experience-renewal --title "feat: renew SoloPM product experience around four daily workflows" --body-file .tmp/product-experience-renewal-pr.md
+gh pr create --base main --head feature/product-experience-renewal --title "feat: renew Suisui product experience around four daily workflows" --body-file .tmp/product-experience-renewal-pr.md
 ```
 
 Expected: a new open PR URL targeting `main`.
@@ -1306,7 +1306,7 @@ Apply branch protection with `strict=true`, `enforce_admins=true`, conversation 
 Run:
 
 ```bash
-gh api --method PUT repos/albert-einshutoin/soloPM/branches/main/protection --input - <<'JSON'
+gh api --method PUT repos/albert-einshutoin/suisui/branches/main/protection --input - <<'JSON'
 {
   "required_status_checks": {
     "strict": true,
@@ -1335,7 +1335,7 @@ gh api --method PUT repos/albert-einshutoin/soloPM/branches/main/protection --in
   "allow_fork_syncing": true
 }
 JSON
-gh api repos/albert-einshutoin/soloPM/branches/main/protection
+gh api repos/albert-einshutoin/suisui/branches/main/protection
 ```
 
 Expected: the response contains the exact five required contexts, strict checks, admin enforcement, and conversation resolution.

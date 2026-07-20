@@ -16,14 +16,14 @@ source "$METADATA_FILE"
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-ARTIFACT_DIR="${SOLOPM_RUNTIME_DEVELOPMENT_PR_ARTIFACT_DIR:-$ROOT_DIR/.tmp/runtime-development-pr-smoke}"
-KEEP_WORKSPACE="${SOLOPM_RUNTIME_DEVELOPMENT_PR_KEEP_WORKSPACE:-0}"
-KEEP_DATABASE="${SOLOPM_RUNTIME_DEVELOPMENT_PR_KEEP_DATABASE:-0}"
-TIMEOUT_SECONDS="${SOLOPM_RUNTIME_DEVELOPMENT_PR_TIMEOUT_SECONDS:-30}"
+ARTIFACT_DIR="${SUISUI_RUNTIME_DEVELOPMENT_PR_ARTIFACT_DIR:-$ROOT_DIR/.tmp/runtime-development-pr-smoke}"
+KEEP_WORKSPACE="${SUISUI_RUNTIME_DEVELOPMENT_PR_KEEP_WORKSPACE:-0}"
+KEEP_DATABASE="${SUISUI_RUNTIME_DEVELOPMENT_PR_KEEP_DATABASE:-0}"
+TIMEOUT_SECONDS="${SUISUI_RUNTIME_DEVELOPMENT_PR_TIMEOUT_SECONDS:-30}"
 SQLITE3="${SQLITE3:-sqlite3}"
-AX_MAX_NODES="${SOLOPM_RUNTIME_DEVELOPMENT_PR_AX_MAX_NODES:-9000}"
-WINDOW_WIDTH="${SOLOPM_RUNTIME_DEVELOPMENT_PR_WINDOW_WIDTH:-1440}"
-WINDOW_HEIGHT="${SOLOPM_RUNTIME_DEVELOPMENT_PR_WINDOW_HEIGHT:-920}"
+AX_MAX_NODES="${SUISUI_RUNTIME_DEVELOPMENT_PR_AX_MAX_NODES:-9000}"
+WINDOW_WIDTH="${SUISUI_RUNTIME_DEVELOPMENT_PR_WINDOW_WIDTH:-1440}"
+WINDOW_HEIGHT="${SUISUI_RUNTIME_DEVELOPMENT_PR_WINDOW_HEIGHT:-920}"
 OUTPUT_FILE="$ARTIFACT_DIR/swift-test-output.txt"
 APP_LOG_FILE="$ARTIFACT_DIR/visible-app-output.txt"
 ARTIFACT_FILE="$ARTIFACT_DIR/evidence.md"
@@ -31,8 +31,8 @@ WORKSPACE_ROOT="$ARTIFACT_DIR/workspaces"
 UI_ROOT="$ARTIFACT_DIR/visible-ui"
 UI_HOME="$UI_ROOT/home"
 UI_WORKSPACE="$UI_ROOT/approved-workspace"
-database_path="$UI_ROOT/SoloPM-runtime-development-pr-ui.sqlite"
-receipt_directory="$UI_HOME/Library/Application Support/SoloPM/ExecutionReceipts"
+database_path="$UI_ROOT/Suisui-runtime-development-pr-ui.sqlite"
+receipt_directory="$UI_HOME/Library/Application Support/Suisui/ExecutionReceipts"
 runtime_fake_git_bin="$UI_ROOT/fake-publish-bin"
 runtime_fake_git_push_log="$UI_ROOT/fake-push.log"
 runtime_fake_github_pr_log="$UI_ROOT/fake-pull-request-create.log"
@@ -42,8 +42,8 @@ runtime_blocked_external_write_log="$UI_ROOT/blocked-external-write.log"
 runtime_expected_branch_file="$UI_ROOT/fake-expected-branch.txt"
 runtime_expected_head_file="$UI_ROOT/fake-expected-head.txt"
 runtime_pull_request_base_branch="main"
-runtime_fake_pull_request_url="https://github.com/albert-einshutoin/soloPM/pull/16001"
-runtime_pull_request_title="SoloPM: Implement runtime branch flow"
+runtime_fake_pull_request_url="https://github.com/albert-einshutoin/suisui/pull/16001"
+runtime_pull_request_title="Suisui: Implement runtime branch flow"
 runtime_pull_request_body=$'## Summary\n- Prepare Implement runtime branch flow for AX Runtime Development Project.\n'
 REAL_GIT="$(command -v git || true)"
 app_pid=""
@@ -69,11 +69,11 @@ mkdir -p "$ARTIFACT_DIR" "$WORKSPACE_ROOT" "$UI_ROOT" "$UI_HOME" "$runtime_fake_
 cd "$ROOT_DIR"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "SOLOPM_RUNTIME_DEVELOPMENT_PR_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "SUISUI_RUNTIME_DEVELOPMENT_PR_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 if [[ ! "$AX_MAX_NODES" =~ ^[0-9]+$ || "$AX_MAX_NODES" -lt 1 ]]; then
-  echo "SOLOPM_RUNTIME_DEVELOPMENT_PR_AX_MAX_NODES must be a positive integer" >&2
+  echo "SUISUI_RUNTIME_DEVELOPMENT_PR_AX_MAX_NODES must be a positive integer" >&2
   exit 2
 fi
 if ! command -v "$SQLITE3" >/dev/null 2>&1; then
@@ -315,22 +315,22 @@ launch_app_for_database_migration() {
   PATH="$runtime_fake_git_bin:$PATH" \
     HOME="$UI_HOME" \
     CFFIXED_USER_HOME="$UI_HOME" \
-    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK=1 \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BRANCH="$prepared_branch_name" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD="$visible_commit_head_after" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BASE="$runtime_pull_request_base_branch" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_URL="$runtime_fake_pull_request_url" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_LOG="$runtime_fake_github_pr_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG="$runtime_fake_github_review_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_MERGE_LOG="$runtime_fake_github_merge_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_GIT_EXECUTABLE="$runtime_fake_git_bin/git" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_PUSH_LOG="$runtime_fake_git_push_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="$runtime_fake_git_push_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG="$runtime_blocked_external_write_log" \
+    SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK=1 \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_EXPECTED_BRANCH="$prepared_branch_name" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD="$visible_commit_head_after" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_EXPECTED_BASE="$runtime_pull_request_base_branch" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_CREATE_URL="$runtime_fake_pull_request_url" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_CREATE_LOG="$runtime_fake_github_pr_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG="$runtime_fake_github_review_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_MERGE_LOG="$runtime_fake_github_merge_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_GIT_EXECUTABLE="$runtime_fake_git_bin/git" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_PUSH_LOG="$runtime_fake_git_push_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="$runtime_fake_git_push_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG="$runtime_blocked_external_write_log" \
     REAL_GIT="$REAL_GIT" \
-    SOLOPM_FORCE_PROJECT_BOARD_FALLBACK=1 \
-    SOLOPM_DATABASE_PATH="$database_path" \
+    SUISUI_FORCE_PROJECT_BOARD_FALLBACK=1 \
+    SUISUI_DATABASE_PATH="$database_path" \
     "$APP_BINARY" >>"$APP_LOG_FILE" 2>&1 &
   app_pid=$!
   wait_for_app_process
@@ -341,24 +341,24 @@ launch_app_for_development_detail() {
   PATH="$runtime_fake_git_bin:$PATH" \
     HOME="$UI_HOME" \
     CFFIXED_USER_HOME="$UI_HOME" \
-    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK=1 \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BRANCH="$prepared_branch_name" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD="$visible_commit_head_after" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BASE="$runtime_pull_request_base_branch" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_URL="$runtime_fake_pull_request_url" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_LOG="$runtime_fake_github_pr_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG="$runtime_fake_github_review_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_MERGE_LOG="$runtime_fake_github_merge_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_GIT_EXECUTABLE="$runtime_fake_git_bin/git" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_PUSH_LOG="$runtime_fake_git_push_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="$runtime_fake_git_push_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG="$runtime_blocked_external_write_log" \
+    SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK=1 \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_EXPECTED_BRANCH="$prepared_branch_name" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD="$visible_commit_head_after" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_EXPECTED_BASE="$runtime_pull_request_base_branch" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_CREATE_URL="$runtime_fake_pull_request_url" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_CREATE_LOG="$runtime_fake_github_pr_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG="$runtime_fake_github_review_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_MERGE_LOG="$runtime_fake_github_merge_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_GIT_EXECUTABLE="$runtime_fake_git_bin/git" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_PUSH_LOG="$runtime_fake_git_push_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="$runtime_fake_git_push_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG="$runtime_blocked_external_write_log" \
     REAL_GIT="$REAL_GIT" \
-    SOLOPM_FORCE_PROJECT_BOARD_FALLBACK=1 \
-    SOLOPM_DATABASE_PATH="$database_path" \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
-    SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID="$seed_task_id" \
+    SUISUI_FORCE_PROJECT_BOARD_FALLBACK=1 \
+    SUISUI_DATABASE_PATH="$database_path" \
+    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
+    SUISUI_PROJECT_BOARD_SELECTED_TASK_ID="$seed_task_id" \
     "$APP_BINARY" >>"$APP_LOG_FILE" 2>&1 &
   app_pid=$!
   wait_for_app_process
@@ -372,23 +372,23 @@ launch_app_for_project_directory_picker() {
   PATH="$runtime_fake_git_bin:$PATH" \
     HOME="$UI_HOME" \
     CFFIXED_USER_HOME="$UI_HOME" \
-    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK=1 \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BRANCH="$prepared_branch_name" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD="$visible_commit_head_after" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BASE="$runtime_pull_request_base_branch" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_URL="$runtime_fake_pull_request_url" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_LOG="$runtime_fake_github_pr_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG="$runtime_fake_github_review_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_MERGE_LOG="$runtime_fake_github_merge_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_GIT_EXECUTABLE="$runtime_fake_git_bin/git" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_PUSH_LOG="$runtime_fake_git_push_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="$runtime_fake_git_push_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG="$runtime_blocked_external_write_log" \
+    SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK=1 \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_EXPECTED_BRANCH="$prepared_branch_name" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD="$visible_commit_head_after" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_EXPECTED_BASE="$runtime_pull_request_base_branch" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_CREATE_URL="$runtime_fake_pull_request_url" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_CREATE_LOG="$runtime_fake_github_pr_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG="$runtime_fake_github_review_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_MERGE_LOG="$runtime_fake_github_merge_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_GIT_EXECUTABLE="$runtime_fake_git_bin/git" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_PUSH_LOG="$runtime_fake_git_push_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="$runtime_fake_git_push_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG="$runtime_blocked_external_write_log" \
     REAL_GIT="$REAL_GIT" \
-    SOLOPM_FORCE_PROJECT_BOARD_FALLBACK=1 \
-    SOLOPM_DATABASE_PATH="$database_path" \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
+    SUISUI_FORCE_PROJECT_BOARD_FALLBACK=1 \
+    SUISUI_DATABASE_PATH="$database_path" \
+    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
     "$APP_BINARY" >>"$APP_LOG_FILE" 2>&1 &
   app_pid=$!
   wait_for_app_process
@@ -402,23 +402,23 @@ launch_app_for_assistant_queue() {
   PATH="$runtime_fake_git_bin:$PATH" \
     HOME="$UI_HOME" \
     CFFIXED_USER_HOME="$UI_HOME" \
-    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK=1 \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BRANCH="$prepared_branch_name" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD="$visible_commit_head_after" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BASE="$runtime_pull_request_base_branch" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_URL="$runtime_fake_pull_request_url" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_CREATE_LOG="$runtime_fake_github_pr_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG="$runtime_fake_github_review_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_MERGE_LOG="$runtime_fake_github_merge_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_GIT_EXECUTABLE="$runtime_fake_git_bin/git" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_PUSH_LOG="$runtime_fake_git_push_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="$runtime_fake_git_push_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG="$runtime_blocked_external_write_log" \
+    SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK=1 \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_EXPECTED_BRANCH="$prepared_branch_name" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD="$visible_commit_head_after" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_EXPECTED_BASE="$runtime_pull_request_base_branch" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_CREATE_URL="$runtime_fake_pull_request_url" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_CREATE_LOG="$runtime_fake_github_pr_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_REVIEW_LOG="$runtime_fake_github_review_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_MERGE_LOG="$runtime_fake_github_merge_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_GIT_EXECUTABLE="$runtime_fake_git_bin/git" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_PUSH_LOG="$runtime_fake_git_push_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="$runtime_fake_git_push_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG="$runtime_blocked_external_write_log" \
     REAL_GIT="$REAL_GIT" \
-    SOLOPM_FORCE_PROJECT_BOARD_FALLBACK=1 \
-    SOLOPM_DATABASE_PATH="$database_path" \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="assistant-queue" \
+    SUISUI_FORCE_PROJECT_BOARD_FALLBACK=1 \
+    SUISUI_DATABASE_PATH="$database_path" \
+    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="assistant-queue" \
     "$APP_BINARY" >>"$APP_LOG_FILE" 2>&1 &
   app_pid=$!
   wait_for_app_process
@@ -456,8 +456,8 @@ waitForAXMarkerContaining() {
   fi
 
   while true; do
-    error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-development-pr-ax-marker-error.XXXXXX")"
-    SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
+    error_file="$(mktemp "${TMPDIR:-/tmp}/suisui-development-pr-ax-marker-error.XXXXXX")"
+    SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
       /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" "$APP_NAME" "$identifier_fragment" "$required_text" \
       >/dev/null 2>"$error_file" &
     checker_pid=$!
@@ -521,8 +521,8 @@ pressButtonContainingBounded() {
   local status
 
   while true; do
-    error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-development-pr-ax-button-error.XXXXXX")"
-    SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
+    error_file="$(mktemp "${TMPDIR:-/tmp}/suisui-development-pr-ax-button-error.XXXXXX")"
+    SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
       /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" "$APP_NAME" "$fragment" \
       >/dev/null 2>"$error_file" &
     checker_pid=$!
@@ -704,9 +704,9 @@ waitForAXSubtreeMarkerContaining() {
   local status
 
   while true; do
-    error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-development-pr-ax-marker-error.XXXXXX")"
-    SOLOPM_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
-      SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
+    error_file="$(mktemp "${TMPDIR:-/tmp}/suisui-development-pr-ax-marker-error.XXXXXX")"
+    SUISUI_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
+      SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
       /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" "$APP_NAME" "$identifier_fragment" "$required_text" \
       >/dev/null 2>"$error_file" &
     checker_pid=$!
@@ -800,7 +800,7 @@ sql_escape() {
 
 make_runtime_smoke_bookmark_base64() {
   local workspace="$1"
-  printf 'solopm-runtime-development-pr-smoke:%s' "$workspace" | base64 | tr -d '\n'
+  printf 'suisui-runtime-development-pr-smoke:%s' "$workspace" | base64 | tr -d '\n'
 }
 
 fixture_git() {
@@ -838,8 +838,8 @@ BASH
 
   cat >>"$runtime_fake_git_bin/git" <<'BASH'
 REAL_GIT="${REAL_GIT:-$default_real_git}"
-SOLOPM_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="${SOLOPM_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG:-$default_fake_push_log}"
-SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG="${SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG:-$default_blocked_external_write_log}"
+SUISUI_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="${SUISUI_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG:-$default_fake_push_log}"
+SUISUI_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG="${SUISUI_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG:-$default_blocked_external_write_log}"
 
 args=("$@")
 git_global_args=()
@@ -874,8 +874,8 @@ command_name="${args[$index]:-}"
 command_args=("${args[@]:$((index + 1))}")
 
 if [[ "$command_name" == "push" ]]; then
-  expected_branch="${SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BRANCH:-}"
-  expected_head="${SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD:-}"
+  expected_branch="${SUISUI_RUNTIME_DEVELOPMENT_PR_EXPECTED_BRANCH:-}"
+  expected_head="${SUISUI_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD:-}"
   if [[ -z "$expected_branch" && -r "$expected_branch_file" ]]; then
     expected_branch="$(<"$expected_branch_file")"
   fi
@@ -890,17 +890,17 @@ if [[ "$command_name" == "push" ]]; then
       printf 'args=%s\n' "$*"
       printf 'branch=%s\n' "$expected_branch"
       printf 'head=%s\n' "$head_oid"
-    } >>"$SOLOPM_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG"
+    } >>"$SUISUI_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG"
     printf 'fake branch push %s\n' "$expected_refspec"
     exit 0
   fi
-  printf 'blocked publish command: %s\n' "$*" >>"$SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG"
+  printf 'blocked publish command: %s\n' "$*" >>"$SUISUI_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG"
   exit 42
 fi
 
 if [[ "$command_name" == "ls-remote" ]]; then
-  expected_branch="${SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_BRANCH:-}"
-  expected_head="${SOLOPM_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD:-}"
+  expected_branch="${SUISUI_RUNTIME_DEVELOPMENT_PR_EXPECTED_BRANCH:-}"
+  expected_head="${SUISUI_RUNTIME_DEVELOPMENT_PR_EXPECTED_HEAD:-}"
   if [[ -z "$expected_branch" && -r "$expected_branch_file" ]]; then
     expected_branch="$(<"$expected_branch_file")"
   fi
@@ -912,7 +912,7 @@ if [[ "$command_name" == "ls-remote" ]]; then
     printf '%s\trefs/heads/%s\n' "$expected_head" "$expected_branch"
     exit 0
   fi
-  printf 'blocked ls-remote command: %s\n' "$*" >>"$SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG"
+  printf 'blocked ls-remote command: %s\n' "$*" >>"$SUISUI_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG"
   exit 42
 fi
 
@@ -925,8 +925,8 @@ BASH
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG:?blocked external write log is required}"
-printf 'blocked external tool: %s %s\n' "$(basename "$0")" "$*" >>"$SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG"
+: "${SUISUI_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG:?blocked external write log is required}"
+printf 'blocked external tool: %s %s\n' "$(basename "$0")" "$*" >>"$SUISUI_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG"
 exit 43
 BASH
     chmod +x "$runtime_fake_git_bin/$blocked_tool"
@@ -938,11 +938,11 @@ seed_git_repository() {
     fixture_git -C "$UI_WORKSPACE" init >/dev/null
     fixture_git -C "$UI_WORKSPACE" checkout -B main >/dev/null
   fi
-  fixture_git -C "$UI_WORKSPACE" config user.name "SoloPM Runtime Smoke" >/dev/null
-  fixture_git -C "$UI_WORKSPACE" config user.email "runtime-smoke@solopm.local" >/dev/null
+  fixture_git -C "$UI_WORKSPACE" config user.name "Suisui Runtime Smoke" >/dev/null
+  fixture_git -C "$UI_WORKSPACE" config user.email "runtime-smoke@suisui.local" >/dev/null
   fixture_git -C "$UI_WORKSPACE" add README.md
   fixture_git -C "$UI_WORKSPACE" commit -m "Seed runtime development UI repo" >/dev/null
-  fixture_git -C "$UI_WORKSPACE" remote add origin "https://github.com/albert-einshutoin/soloPM.git" >/dev/null
+  fixture_git -C "$UI_WORKSPACE" remote add origin "https://github.com/albert-einshutoin/suisui.git" >/dev/null
 }
 
 seed_development_project() {
@@ -1126,8 +1126,8 @@ verify_runtime_fake_publish_tools_block_bypass() {
   : >"$runtime_blocked_external_write_log"
   if PATH="$runtime_fake_git_bin:$PATH" \
     REAL_GIT="$REAL_GIT" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="$runtime_fake_git_push_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG="$runtime_blocked_external_write_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="$runtime_fake_git_push_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG="$runtime_blocked_external_write_log" \
     "$git_command" -C "$UI_WORKSPACE" "$push_command" -u blocked-remote "feature/blocked" >/dev/null 2>&1; then
     echo "BLOCKER: fake publish wrapper allowed global -C publish bypass" >&2
     return 1
@@ -1140,8 +1140,8 @@ verify_runtime_fake_publish_tools_block_bypass() {
   : >"$runtime_blocked_external_write_log"
   if PATH="$runtime_fake_git_bin:$PATH" \
     REAL_GIT="$REAL_GIT" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="$runtime_fake_git_push_log" \
-    SOLOPM_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG="$runtime_blocked_external_write_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_FAKE_PUSH_LOG="$runtime_fake_git_push_log" \
+    SUISUI_RUNTIME_DEVELOPMENT_PR_BLOCKED_EXTERNAL_WRITE_LOG="$runtime_blocked_external_write_log" \
     "$git_command" -c core.hooksPath=/dev/null "$push_command" -u blocked-remote "feature/blocked" >/dev/null 2>&1; then
     echo "BLOCKER: fake publish wrapper allowed global -c publish bypass" >&2
     return 1
@@ -1155,7 +1155,7 @@ verify_runtime_fake_publish_tools_block_bypass() {
 }
 
 verify_visible_queue_handoff() {
-  local branch_fragment="feature/solopm-$seed_project_id-$seed_task_id"
+  local branch_fragment="feature/suisui-$seed_project_id-$seed_task_id"
   local queue_sql
   queue_sql="
 SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END
@@ -1270,7 +1270,7 @@ verify_visible_assistant_queue_prepare_execution() {
   local branch_fragment
   local current_branch
   escaped_item_id="$(sql_escape "$queued_item_id")"
-  branch_fragment="feature/solopm-$seed_project_id-$seed_task_id"
+  branch_fragment="feature/suisui-$seed_project_id-$seed_task_id"
   approval_sql="
 SELECT CASE WHEN state='approved' AND approval_json IS NOT NULL THEN 1 ELSE 0 END
 FROM assistant_queue_items
@@ -2277,8 +2277,8 @@ ensure_no_existing_app_process
 install_runtime_fake_publish_tools
 
 failure_reason="approved project directory fixture XCTest failed"
-if ! SOLOPM_RUNTIME_DEVELOPMENT_PR_WORKSPACE_ROOT="$WORKSPACE_ROOT" \
-  SOLOPM_RUNTIME_DEVELOPMENT_PR_KEEP_WORKSPACE="$KEEP_WORKSPACE" \
+if ! SUISUI_RUNTIME_DEVELOPMENT_PR_WORKSPACE_ROOT="$WORKSPACE_ROOT" \
+  SUISUI_RUNTIME_DEVELOPMENT_PR_KEEP_WORKSPACE="$KEEP_WORKSPACE" \
   swift test --filter DevelopmentAutomationRuntimeSmokeTests/testApprovedProjectDirectoryCanEditVerifyCommitAndPreparePullRequestBranch --quiet >"$OUTPUT_FILE" 2>&1; then
   cat "$OUTPUT_FILE" >&2
   write_artifact "failed" "development PR fixture flow failed"
@@ -2287,7 +2287,7 @@ if ! SOLOPM_RUNTIME_DEVELOPMENT_PR_WORKSPACE_ROOT="$WORKSPACE_ROOT" \
 fi
 cat "$OUTPUT_FILE"
 
-failure_reason="SoloPM app bundle build failed"
+failure_reason="Suisui app bundle build failed"
 ./script/build_and_run.sh --build-only
 
 if [[ ! -d "$APP_BUNDLE" ]]; then

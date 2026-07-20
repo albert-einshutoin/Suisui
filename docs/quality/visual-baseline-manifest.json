@@ -3,7 +3,7 @@
   "artifactRoot": "docs/release/evidence/ui-screenshots",
   "baselineRoot": "docs/quality/visual-baselines",
   "baselineContext": {
-    "sourceCommit": "14d1013d841e3bfe2ac560f9cd21787c62b3cc6b",
+    "sourceCommit": "ada855ce7e9143244adbe8677f2f19f5b5d2b906",
     "normalRoute": "normal",
     "locale": "en-US",
     "timeZoneIdentifier": "UTC",
@@ -32,12 +32,12 @@
       "themes": ["light", "dark", "system"],
       "viewport": {
         "width": 1024,
-        "height": 724
+        "height": 676
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "project-board-detail",
       "requiredVisibleTextLines": [
-        "Confirm project board to task",
+        "project board to task card to",
         "In Progress High",
         "2026-07-10"
       ],
@@ -53,7 +53,7 @@
       "themes": ["light", "dark", "system"],
       "viewport": {
         "width": 1024,
-        "height": 724
+        "height": 676
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "inbox-workflow",
@@ -69,7 +69,7 @@
       "themes": ["light", "dark", "system"],
       "viewport": {
         "width": 1024,
-        "height": 724
+        "height": 676
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "today-workflow",
@@ -85,7 +85,7 @@
       "themes": ["light", "dark"],
       "viewport": {
         "width": 1024,
-        "height": 724
+        "height": 676
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "inbox-voice-intake-detail",
@@ -100,7 +100,7 @@
       "themes": ["light", "dark"],
       "viewport": {
         "width": 1024,
-        "height": 724
+        "height": 676
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "projects-portfolio-overview",
@@ -115,7 +115,7 @@
       "themes": ["light", "dark"],
       "viewport": {
         "width": 1024,
-        "height": 724
+        "height": 676
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "schedule-mini-calendar",
@@ -130,7 +130,7 @@
       "themes": ["light", "dark"],
       "viewport": {
         "width": 1024,
-        "height": 724
+        "height": 676
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "schedule-workload-attention-banner",
@@ -145,7 +145,7 @@
       "themes": ["light", "dark"],
       "viewport": {
         "width": 1024,
-        "height": 724
+        "height": 676
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "done-workflow",
@@ -160,7 +160,7 @@
       "themes": ["light", "dark", "system"],
       "viewport": {
         "width": 720,
-        "height": 712
+        "height": 676
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "settings-status-overview",
@@ -176,7 +176,7 @@
       "themes": ["light", "dark"],
       "viewport": {
         "width": 720,
-        "height": 712
+        "height": 676
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "settings-google-calendar-id-save-flow",
@@ -191,7 +191,7 @@
       "themes": ["light", "dark", "system"],
       "viewport": {
         "width": 720,
-        "height": 712
+        "height": 676
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "settings-theme-picker",
@@ -207,7 +207,7 @@
       "themes": ["light", "dark", "system"],
       "viewport": {
         "width": 720,
-        "height": 712
+        "height": 676
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "mcp-paid-execution-boundary-row",

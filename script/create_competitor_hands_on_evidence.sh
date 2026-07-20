@@ -31,10 +31,10 @@ release_candidate_source_commit() {
   # commit itself.
   commit="$(
     git -C "$ROOT_DIR" log -1 --format=%h -- \
-      Sources/SoloPMApp \
-      Sources/SoloPMCore \
-      Sources/SoloPMCLI \
-      Sources/SoloPMExternalConnectors \
+      Sources/SuisuiApp \
+      Sources/SuisuiCore \
+      Sources/SuisuiCLI \
+      Sources/SuisuiExternalConnectors \
       Package.swift \
       packaging/app_metadata.env 2>/dev/null || true
   )"
@@ -113,7 +113,7 @@ is_boilerplate_competitor_value() {
     "hands on todoist quick add board list drag movement today upcoming observation"|\
     "hands on linear project issue detail keyboard command and triage observation"|\
     "hands on motion scheduling risk deadline change and recommendation explanation observation"|\
-    "solopm public alpha behavior to ship based on the benchmark"|\
+    "suisui public alpha behavior to ship based on the benchmark"|\
     "public alpha behavior observed during the hands on pass that should ship"|\
     "behavior to defer until stronger reliability or demand evidence exists"|\
     "behavior observed but deferred until stronger reliability or demand evidence exists"|\
@@ -466,7 +466,7 @@ write_pending_evidence() {
     printf '%s\n' '- [ ] Todoist: use Quick Add, date/priority/project/section capture, board/list switching, drag movement, and Today/Upcoming scan.'
     printf '%s\n' '- [ ] Linear: create a project and issue, move issue status, open details/sidebar, use keyboard command flow, and process one triage-like item.'
     printf '%s\n' '- [ ] Motion: create dated/prioritized tasks, inspect scheduling/risk surfaces, adjust a deadline, and record how recommendations are explained.'
-    printf '%s\n' '- [ ] No external SaaS sync or team workflow was added to SoloPM public alpha scope because of this benchmark.'
+    printf '%s\n' '- [ ] No external SaaS sync or team workflow was added to Suisui public alpha scope because of this benchmark.'
     printf '\n'
     printf '%s\n' '## Ship / Defer / Reject Delta'
     printf '\n'
@@ -523,7 +523,7 @@ write_hands_on_worksheet() {
     printf '%s\n' '- [ ] Todoist: capture with Quick Add, set date/priority/project/section, switch board/list, drag a task, and scan Today/Upcoming.'
     printf '%s\n' '- [ ] Linear: create a project and issue, move status, inspect details/sidebar density, use the command or keyboard flow, and process one triage-like item.'
     printf '%s\n' '- [ ] Motion: create due/prioritized tasks, inspect schedule/risk surfaces, adjust a deadline, and record whether recommendation reasoning is understandable.'
-    printf '%s\n' '- [ ] No external SaaS sync or team workflow was added to SoloPM public alpha scope.'
+    printf '%s\n' '- [ ] No external SaaS sync or team workflow was added to Suisui public alpha scope.'
     printf '\n'
     printf '%s\n' '## Competitor Observations'
     printf '\n'
@@ -636,7 +636,7 @@ write_competitor_evidence_command() {
     printf 'EXPECTED_SOURCE_COMMIT=%q\n' "$SOURCE_COMMIT"
     printf '%s\n' 'release_candidate_source_commit() {'
     printf '%s\n' '  local commit'
-    printf '%s\n' '  commit="$(git log -1 --format=%h -- Sources/SoloPMApp Sources/SoloPMCore Sources/SoloPMCLI Sources/SoloPMExternalConnectors Package.swift packaging/app_metadata.env 2>/dev/null || true)"'
+    printf '%s\n' '  commit="$(git log -1 --format=%h -- Sources/SuisuiApp Sources/SuisuiCore Sources/SuisuiCLI Sources/SuisuiExternalConnectors Package.swift packaging/app_metadata.env 2>/dev/null || true)"'
     printf '%s\n' '  if [[ -n "$commit" ]]; then printf "%s" "$commit"; else git rev-parse --short HEAD 2>/dev/null || printf unknown; fi'
     printf '%s\n' '}'
     printf '%s\n' 'CURRENT_SOURCE_COMMIT="$(release_candidate_source_commit)"'
@@ -777,7 +777,7 @@ write_passed_evidence() {
     printf -- '- Todoist: passed - %s\n' "$TODOIST_NOTE"
     printf -- '- Linear: passed - %s\n' "$LINEAR_NOTE"
     printf -- '- Motion: passed - %s\n' "$MOTION_NOTE"
-    printf '%s\n' '- No external SaaS sync or team workflow was added to SoloPM public alpha scope because of this benchmark.'
+    printf '%s\n' '- No external SaaS sync or team workflow was added to Suisui public alpha scope because of this benchmark.'
     printf '\n'
     printf '%s\n' '## Ship / Defer / Reject Delta'
     printf '\n'
@@ -819,7 +819,7 @@ write_hands_on_benchmark() {
     printf -- '- Todoist: %s\n' "$TODOIST_NOTE"
     printf -- '- Linear: %s\n' "$LINEAR_NOTE"
     printf -- '- Motion: %s\n' "$MOTION_NOTE"
-    printf -- '- Public alpha scope: No external SaaS sync or team workflow was added to SoloPM public alpha scope because of this benchmark.\n'
+    printf -- '- Public alpha scope: No external SaaS sync or team workflow was added to Suisui public alpha scope because of this benchmark.\n'
     printf '\n'
     printf '%s\n' '## Ship / Defer / Reject'
     printf '\n'
@@ -829,7 +829,7 @@ write_hands_on_benchmark() {
     printf '\n'
     printf '%s\n' '## Release Fit Closure'
     printf '\n'
-    printf '%s\n' 'SoloPM remains scoped to personal, local-first project/task execution for the public alpha. The benchmark only changes release scope when the observed behavior improves the Inbox -> Board/Today -> Inspector loop without adding external SaaS sync, team workflow, or autonomous scheduling surprises.'
+    printf '%s\n' 'Suisui remains scoped to personal, local-first project/task execution for the public alpha. The benchmark only changes release scope when the observed behavior improves the Inbox -> Board/Today -> Inspector loop without adding external SaaS sync, team workflow, or autonomous scheduling surprises.'
   } >"$BENCHMARK_FILE"
 }
 

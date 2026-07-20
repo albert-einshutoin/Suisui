@@ -2,11 +2,11 @@
 
 Generated with `script/capture_ui_evidence.sh`.
 
-- Generated at: `2026-07-18T12:27:47Z`
-- Source commit: `14d1013d`
-- App bundle: `dist/SoloPM.app`
+- Generated at: `2026-07-19T19:23:03Z`
+- Source commit: `9a134f75`
+- App bundle: `dist/Suisui.app`
 - Visual baseline manifest: `docs/quality/visual-baseline-manifest.json`
-- Viewport contract: `SOLOPM_VISUAL_BASELINE_VIEWPORT=1024x724`, `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT=720x712`, `SOLOPM_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT=760x640`
+- Viewport contract: `SUISUI_VISUAL_BASELINE_VIEWPORT=1024x676`, `SUISUI_SETTINGS_VISUAL_BASELINE_VIEWPORT=720x676`, `SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT=760x640`
 - Runtime context: locale `en-US`, timezone `UTC`, reference instant `2026-07-10T12:00:00Z`
 - Launch mode: normal `ProjectBoardView` route with explicit selected destination; recovery flags are excluded from release evidence.
 - Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`
@@ -73,5 +73,5 @@ Generated with `script/capture_ui_evidence.sh`.
 - API keys and provider tokens are not read, written, logged, rendered, or captured unmasked.
 - Run `script/capture_ui_evidence.sh --doctor` first to verify required commands and Screen Recording visible-pixel capture without writing release evidence.
 - The capture host must grant Screen Recording permission through System Settings > Privacy & Security > Screen Recording / Screen & System Audio Recording to the terminal/Codex app; otherwise the script fails before treating screenshots as evidence.
-- If capture still fails, rerun with `SOLOPM_UI_EVIDENCE_KEEP_HOME=1` to keep the isolated HOME for database and preference inspection.
+- If capture still fails, rerun with `SUISUI_UI_EVIDENCE_KEEP_HOME=1` to keep the isolated HOME for database and preference inspection.
 - VoiceOver focus order still requires a manual assistive-technology pass.

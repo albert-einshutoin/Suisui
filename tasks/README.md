@@ -1,4 +1,4 @@
-# SoloPM Development Tasks
+# Suisui Development Tasks
 
 このディレクトリは [docs/tech_stack.md](../docs/tech_stack.md) を実装計画に落としたものです。各 Phase は、そのまま GitHub Issue / Pull Request に分解できる粒度を目標にします。
 

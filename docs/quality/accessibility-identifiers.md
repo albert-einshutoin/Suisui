@@ -2,7 +2,7 @@
 
 Status: Phase 14 source contract
 
-SoloPM uses accessibility identifiers as stable test and assistive-technology anchors. They are not user-facing copy, and they must stay predictable across localization, theme, and data changes.
+Suisui uses accessibility identifiers as stable test and assistive-technology anchors. They are not user-facing copy, and they must stay predictable across localization, theme, and data changes.
 
 ## Naming Contract
 

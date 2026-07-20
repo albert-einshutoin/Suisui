@@ -2,7 +2,7 @@
 
 Status: design proposal. Drafted 2026-07-07.
 
-This document extends `docs/product/pricing.md`. That document defines the infrastructure plans (Free / Sync / Pro / Founder / Team) and keeps the principle "SoloPM should not pay for general LLM inference … unless a later hosted AI plan is explicitly introduced." This document is that explicit introduction: it defines how a managed AI offering is packaged, metered, and kept profitable without breaking the local-first and BYOK promises.
+This document extends `docs/product/pricing.md`. That document defines the infrastructure plans (Free / Sync / Pro / Founder / Team) and keeps the principle "Suisui should not pay for general LLM inference … unless a later hosted AI plan is explicitly introduced." This document is that explicit introduction: it defines how a managed AI offering is packaged, metered, and kept profitable without breaking the local-first and BYOK promises.
 
 ## Two-Axis Model
 
@@ -37,7 +37,7 @@ Most of the client-side plumbing already exists and should be reused, not rebuil
 
 | Concern | Existing asset |
 | --- | --- |
-| Billing modes | `AssistantQueueCostBillingMode`: `localOnly` / `userProviderBilled` / `soloPMManaged` |
+| Billing modes | `AssistantQueueCostBillingMode`: `localOnly` / `userProviderBilled` / `suisuiManaged` |
 | Pre-run cost estimate | `AssistantQueueCostRateCard` + `AssistantQueueCostPreview` (approval gate blocks `wouldExceedLimit`) |
 | Rate card delivery | `ManagedAICostRateCardConfiguration` — injected at runtime so price changes never require an app release. Extend from environment variables to a signed remote JSON catalog. |
 | Token measurement | All LLM providers parse `input_tokens` / `output_tokens` from responses (`measured` / `estimated` / `unknown` states) |
@@ -49,7 +49,7 @@ Most of the client-side plumbing already exists and should be reused, not rebuil
 
 1. **Model catalog metadata** — `LLMProviderCatalogEntry` gains `inputCentsPerMillion`, `outputCentsPerMillion`, `contextWindowTokens`, and capability tags (fast / cheap / accurate). Prerequisite for both the picker and auto mode.
 2. **Multi-model picker + auto mode** — user selects a model or `auto` per workspace.
-3. **Cloud Relay metering (authoritative)** — managed AI calls providers with SoloPM-owned keys, so the key must live server-side (Cloud Relay, already a Pro feature in `pricing.md`) and the relay must meter usage server-side. The client ledger stays as the user-facing display; the relay record is the billing source of truth (client-only metering is tamperable).
+3. **Cloud Relay metering (authoritative)** — managed AI calls providers with Suisui-owned keys, so the key must live server-side (Cloud Relay, already a Pro feature in `pricing.md`) and the relay must meter usage server-side. The client ledger stays as the user-facing display; the relay record is the billing source of truth (client-only metering is tamperable).
 4. **Stripe integration** — subscription (seats) + metered usage item (overage); organization invoicing for Team.
 5. **Profitability reporting** — ledger/relay aggregates grouped by model and period vs. plan revenue; margin dashboard for operations.
 6. **Org budget controls** — the existing four-tier caps re-scoped to organization budgets for Team admins.
@@ -70,7 +70,7 @@ Worked example (Anthropic list prices as of 2026-06; all provider prices live in
 
 - One plan generation, Sonnet-class, ~3K input / ~0.8K output tokens ≈ **$0.021**
 - The same operation routed to Haiku-class ≈ **$0.003** (~1/7)
-- Prompt caching: SoloPM's prompt prefix (system + tool schema + knowledge frames) is stable, so cache reads price input at ~0.1x; with ~70% of input cached, input cost drops ~65%
+- Prompt caching: Suisui's prompt prefix (system + tool schema + knowledge frames) is stable, so cache reads price input at ~0.1x; with ~70% of input cached, input cost drops ~65%
 
 Consequence: $3 of included credits covers roughly 150 Sonnet-class operations, or on the order of 1,000 operations under auto routing with caching. A heavy user doing 500 Sonnet-class operations/month would cost ~$10.5 — unprofitable on a $10 plan — which is why auto + caching are launch requirements for managed AI, not follow-ups.
 

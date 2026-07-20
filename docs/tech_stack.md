@@ -1,4 +1,4 @@
-# SoloPM Tech Stack
+# Suisui Tech Stack
 
 Last updated: 2026-06-30
 Verified against public docs: 2026-06-17  
@@ -49,7 +49,7 @@ Xcode 27 beta / Swift 6.4 は最新ではあるが、MVP本番基準にしない
 
 ## 1. 技術選定の結論
 
-SoloPM の MVP は、**Swift ネイティブ + OS ネイティブ機能 + 軽量 OSS** を中心に構成する。
+Suisui の MVP は、**Swift ネイティブ + OS ネイティブ機能 + 軽量 OSS** を中心に構成する。
 
 目的は、AI エージェント基盤を大きく作ることではなく、以下の体験を最短で成立させること。
 
@@ -94,7 +94,7 @@ MVP の基本方針は以下。
 
 ### 2.1 OS ネイティブを優先する
 
-SoloPM は Mac 用アプリなので、macOS が既に持つ機能を最大限使う。
+Suisui は Mac 用アプリなので、macOS が既に持つ機能を最大限使う。
 
 理由はコスト・安定性・配布サイズ・ユーザー信頼のすべてに効くため。
 
@@ -136,7 +136,7 @@ Anthropic API Key
 Gemini API Key
 ```
 
-SoloPM 側が AI 推論コストを抱えないことで、Obsidian 型の無料・支援・高度機能課金モデルと相性が良くなる。
+Suisui 側が AI 推論コストを抱えないことで、Obsidian 型の無料・支援・高度機能課金モデルと相性が良くなる。
 
 ### 2.4 MVP では Agentic Search / 本格 RAG を避ける
 
@@ -157,7 +157,7 @@ Knowledge Frame
 ## 3. MVP アーキテクチャ
 
 ```text
-SoloPM.app
+Suisui.app
 ├─ SwiftUI App
 │  ├─ Menu Bar Panel
 │  ├─ Voice Capture Overlay
@@ -214,7 +214,7 @@ SoloPM.app
 
 ## 4.1 採用: Xcode 26.5 stable + Swift 6 language mode + SwiftUI
 
-SoloPM は macOS 専用であり、Apple Calendar、Apple Reminders、通知、Keychain、音声、ファイル権限に深く触るため、SwiftUI ネイティブが最も軽い。
+Suisui は macOS 専用であり、Apple Calendar、Apple Reminders、通知、Keychain、音声、ファイル権限に深く触るため、SwiftUI ネイティブが最も軽い。
 
 2026年6月時点では、**本番MVPは Xcode 26.5 stable / Swift compiler 6.3 / Swift 6 language mode** を基準にする。Swift単体ツールチェーンやCLI検証では Swift 6.3.2 も使用可能。Xcode 27 beta / Swift 6.4 は最新だが beta のため本番基準から外す。
 
@@ -230,7 +230,7 @@ SoloPM は macOS 専用であり、Apple Calendar、Apple Reminders、通知、K
 
 ### 不採用: Electron
 
-Electron は Web UI とマルチプラットフォームには強いが、SoloPM の MVP では避ける。
+Electron は Web UI とマルチプラットフォームには強いが、Suisui の MVP では避ける。
 
 理由:
 
@@ -379,7 +379,7 @@ Gemini Direct adapter は Google Gemini API の native `models/{model}:generateC
 
 Groq OpenAI-compatible adapter は Groq公式の `https://api.groq.com/openai/v1` base URL と `chat/completions` request pathを専用presetで固定し、既定 model id は production model の `llama-3.3-70b-versatile` にする。Settings では Groq API key を Keychain の `groq_api_key`、Groq base URL を app settings に保存し、OpenAI / OpenRouter のAPI keyや課金経路と混ぜない。
 
-OpenCode Local adapter はクラウドAPI providerではなく、ユーザーが選んだ `opencode` executable / workspace / model id を使う local subprocess providerとして扱う。SoloPMはOpenCode credentials storeの `~/.local/share/opencode/auth.json` を直接読まず、Settingsで明示承認された場合だけ `opencode run --model ... --dir ...` をtimeout付きで起動し、stdoutがAction Plan JSONとしてschema validationを通った場合だけPlanningResponseにする。
+OpenCode Local adapter はクラウドAPI providerではなく、ユーザーが選んだ `opencode` executable / workspace / model id を使う local subprocess providerとして扱う。SuisuiはOpenCode credentials storeの `~/.local/share/opencode/auth.json` を直接読まず、Settingsで明示承認された場合だけ `opencode run --model ... --dir ...` をtimeout付きで起動し、stdoutがAction Plan JSONとしてschema validationを通った場合だけPlanningResponseにする。
 
 ```text
 LLMProvider
@@ -405,12 +405,12 @@ LLMProvider
 | P1 | Anthropic Messages API | Claude ユーザー対応 |
 | P1 | Gemini Direct API | Google ecosystem 対応 |
 | P2 | Gemini OpenAI-compatible API | 既存OpenAI互換clientを使うユーザー向け |
-| P2 | OpenCode local adapter | 開発者向け。CLI/subprocess連携で、認証ファイルはSoloPMが読まない |
+| P2 | OpenCode local adapter | 開発者向け。CLI/subprocess連携で、認証ファイルはSuisuiが読まない |
 | P2 | Apple Foundation Models | macOS 26+ / Apple Intelligence利用可能時のOSネイティブ推論。MVPコアではなく実験的に使う |
 
 ### 7.1.1 Later: Apple Foundation Models framework
 
-Apple Foundation Models は、macOS 26+ でオンデバイスLLMにSwift APIからアクセスできるため、SoloPMの「ローカル・低コスト」思想と相性が良い。ただし、Apple Intelligence availability、OS version、端末条件に依存するため、MVPの必須LLMにはしない。
+Apple Foundation Models は、macOS 26+ でオンデバイスLLMにSwift APIからアクセスできるため、Suisuiの「ローカル・低コスト」思想と相性が良い。ただし、Apple Intelligence availability、OS version、端末条件に依存するため、MVPの必須LLMにはしない。
 
 使いどころ:
 
@@ -888,7 +888,7 @@ Free:
 - ローカル基本機能
 - BYOK
 - Apple Calendar / Reminders / Notifications
-- SoloPM 中継型のローカル tool 実行
+- Suisui 中継型のローカル tool 実行
 - External MCP registration / diagnostics
 
 Founder:
@@ -908,7 +908,7 @@ Pro later:
 - PC未起動時のタスク作成
 - iOS / Web / macOS access
 - docs-scoped automation
-- SoloPM Harness
+- Suisui Harness
 - advanced MCP execution
 ```
 
@@ -937,7 +937,7 @@ Pro later:
 
 ## 15.1 変動費を持たない構成
 
-| 領域 | 技術 | SoloPM 側コスト |
+| 領域 | 技術 | Suisui 側コスト |
 |---|---|---:|
 | STT | SpeechAnalyzer / WhisperKit / whisper.cpp | 0 |
 | TTS | Local Kokoro + AVAudioPlayer preview | 0 service cost |

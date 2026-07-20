@@ -109,14 +109,14 @@ write_worksheet() {
     printf '%s\n' '- [ ] Production Sparkle feed URL and public EdDSA key are configured.'
     printf '%s\n' '- [ ] Release app is signed, notarized, and stapled.'
     printf '%s\n' '- [ ] DMG and Sparkle artifacts were generated from this source commit.'
-    printf '%s\n' '- [ ] Release appcast verifies with `SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml`.'
+    printf '%s\n' '- [ ] Release appcast verifies with `SUISUI_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml`.'
     printf '\n'
     printf '%s\n' '## Manual Release Checks To Perform'
     printf '\n'
-    printf '%s\n' '- [ ] Release-machine launch: open `dist/SoloPM.app` after signing/notarization.'
+    printf '%s\n' '- [ ] Release-machine launch: open `dist/Suisui.app` after signing/notarization.'
     printf '%s\n' '- [ ] Checksum verification: verify the DMG SHA-256 against the generated `.sha256` file.'
     printf '%s\n' '- [ ] Clean DMG install: download/open the DMG in a clean user or VM.'
-    printf '%s\n' '- [ ] Applications folder install: drag SoloPM to `/Applications` and launch it there.'
+    printf '%s\n' '- [ ] Applications folder install: drag Suisui to `/Applications` and launch it there.'
     printf '%s\n' '- [ ] Gatekeeper acceptance: confirm `spctl` or Finder launch accepts the stapled app.'
     printf '%s\n' '- [ ] Clean environment launch: first launch succeeds in the clean user or VM.'
     printf '%s\n' '- [ ] Launch at Login toggle: Settings toggles Launch at Login on and off in the signed app.'
@@ -278,12 +278,12 @@ write_command() {
     printf '%s\n' '  fi'
     printf '%s\n' '  source "$release_config_file"'
     printf '%s\n' 'done'
-    printf '%s\n' 'export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"'
+    printf '%s\n' 'export SUISUI_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"'
     printf '\n'
     printf '%s\n' '# Verify release-machine signing, notarization, and Sparkle setup before validating manual evidence.'
     printf '%s\n' './script/verify_signing_setup.sh'
-    printf '%s\n' 'SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh'
-    printf '%s\n' 'SOLOPM_BUILD_CONFIGURATION=release SOLOPM_SPARKLE_CONFIG_QUIET=1 ./script/validate_sparkle_release_config.sh'
+    printf '%s\n' 'SUISUI_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh'
+    printf '%s\n' 'SUISUI_BUILD_CONFIGURATION=release SUISUI_SPARKLE_CONFIG_QUIET=1 ./script/validate_sparkle_release_config.sh'
     printf '\n'
     printf '%s\n' '# Validate the filled release-machine evidence command before writing tracked evidence.'
     write_release_evidence_invocation "--validate-only"
@@ -297,7 +297,7 @@ write_command() {
     write_release_evidence_invocation "--force"
     printf '\n'
     printf '%s\n' '# Run final release-machine preflight after evidence is written.'
-    printf '%s\n' 'SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh'
+    printf '%s\n' 'SUISUI_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh'
   } >"$COMMAND_FILE"
 
   chmod +x "$COMMAND_FILE"

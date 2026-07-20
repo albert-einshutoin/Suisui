@@ -4,7 +4,7 @@ Status: assessment. Drafted 2026-07-07.
 
 ## Current state
 
-SoloPM's SQLite stores are synchronous classes guarded by `NSLock`
+Suisui's SQLite stores are synchronous classes guarded by `NSLock`
 (`@unchecked Sendable`), called both from background contexts and from
 `@MainActor` view models. The launch path already protects first paint:
 `prepareProjectBoardRuntimeBundle` opens and migrates the database off the
@@ -15,7 +15,7 @@ actions) run store work on detached tasks or utility queues.
 What still runs on the main actor synchronously:
 
 - `ProjectBoardViewModel.load()` and mutation methods (create/update/move),
-  re-invoked on every `soloPMProjectBoardDidChange` notification.
+  re-invoked on every `suisuiProjectBoardDidChange` notification.
 - Settings readiness refreshes that read stores after the settings window
   opens.
 - Menu bar summary refresh when the panel opens (single aggregate query).

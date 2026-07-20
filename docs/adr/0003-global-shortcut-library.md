@@ -6,7 +6,7 @@ Status: Accepted
 
 ## Context
 
-SoloPM needs a process-wide global shortcut for Voice Command, with `Option + Space` as the fixed first-release shortcut. It must not require Input Monitoring, must not create duplicate Voice windows, and must report registration conflicts truthfully.
+Suisui needs a process-wide global shortcut for Voice Command, with `Option + Space` as the fixed first-release shortcut. It must not require Input Monitoring, must not create duplicate Voice windows, and must report registration conflicts truthfully.
 
 ## Decision
 

@@ -17,22 +17,22 @@ BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:?BUNDLE_IDENTIFIER is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
-TIMEOUT_SECONDS="${SOLOPM_RUNTIME_VOICE_REVIEW_TIMEOUT_SECONDS:-35}"
-AX_ATTEMPT_SECONDS="${SOLOPM_RUNTIME_VOICE_REVIEW_AX_ATTEMPT_SECONDS:-5}"
-KEEP_DATABASE="${SOLOPM_RUNTIME_VOICE_REVIEW_KEEP_DATABASE:-0}"
+TIMEOUT_SECONDS="${SUISUI_RUNTIME_VOICE_REVIEW_TIMEOUT_SECONDS:-35}"
+AX_ATTEMPT_SECONDS="${SUISUI_RUNTIME_VOICE_REVIEW_AX_ATTEMPT_SECONDS:-5}"
+KEEP_DATABASE="${SUISUI_RUNTIME_VOICE_REVIEW_KEEP_DATABASE:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
-WINDOW_HEIGHT="${SOLOPM_RUNTIME_VOICE_REVIEW_WINDOW_HEIGHT:-640}"
+WINDOW_HEIGHT="${SUISUI_RUNTIME_VOICE_REVIEW_WINDOW_HEIGHT:-640}"
 daily_planning_seed_task_id=""
 
 # shellcheck source=/dev/null
 source "$AX_HELPERS"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "SOLOPM_RUNTIME_VOICE_REVIEW_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "SUISUI_RUNTIME_VOICE_REVIEW_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 if [[ ! "$AX_ATTEMPT_SECONDS" =~ ^[0-9]+$ || "$AX_ATTEMPT_SECONDS" -lt 1 ]]; then
-  echo "SOLOPM_RUNTIME_VOICE_REVIEW_AX_ATTEMPT_SECONDS must be a positive integer" >&2
+  echo "SUISUI_RUNTIME_VOICE_REVIEW_AX_ATTEMPT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
@@ -43,8 +43,8 @@ fi
 
 cd "$ROOT_DIR"
 mkdir -p "$ROOT_DIR/.tmp"
-tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-voice-review.XXXXXX")"
-database_path="$tmp_dir/SoloPM-runtime-voice-review.sqlite"
+tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/suisui-runtime-voice-review.XXXXXX")"
+database_path="$tmp_dir/Suisui-runtime-voice-review.sqlite"
 settings_suite_name="$BUNDLE_IDENTIFIER.runtime-voice-review.$(/usr/bin/uuidgen | tr '[:upper:]' '[:lower:]')"
 settings_suite_names=()
 app_launch_pid=""
@@ -83,7 +83,7 @@ trap cleanup EXIT
 
 wait_for_osascript_attempt() {
   local osascript_pid="$1"
-  local ax_attempt_seconds="${SOLOPM_RUNTIME_VOICE_REVIEW_AX_ATTEMPT_SECONDS:-5}"
+  local ax_attempt_seconds="${SUISUI_RUNTIME_VOICE_REVIEW_AX_ATTEMPT_SECONDS:-5}"
   local attempt_deadline=$((SECONDS + ax_attempt_seconds))
   while kill -0 "$osascript_pid" >/dev/null 2>&1; do
     if [[ "$SECONDS" -ge "$attempt_deadline" ]]; then
@@ -167,14 +167,14 @@ launch_app_for_voice_review() {
   local locale="$1"
   local width="$2"
   terminate_app
-  database_path="$tmp_dir/SoloPM-runtime-voice-review-$locale.sqlite"
+  database_path="$tmp_dir/Suisui-runtime-voice-review-$locale.sqlite"
   settings_suite_name="$BUNDLE_IDENTIFIER.runtime-voice-review.$locale.$(/usr/bin/uuidgen | tr '[:upper:]' '[:lower:]')"
   settings_suite_names+=("$settings_suite_name")
-  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_DATABASE_PATH="$database_path" \
-    SOLOPM_APP_SETTINGS_SUITE_NAME="$settings_suite_name" \
-    SOLOPM_OPEN_VOICE_COMMAND_ON_LAUNCH=1 \
-    SOLOPM_LANGUAGE_PREFERENCE="$locale" \
+  SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_DATABASE_PATH="$database_path" \
+    SUISUI_APP_SETTINGS_SUITE_NAME="$settings_suite_name" \
+    SUISUI_OPEN_VOICE_COMMAND_ON_LAUNCH=1 \
+    SUISUI_LANGUAGE_PREFERENCE="$locale" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_launch_pid=$!
   app_launch_identity="$(ax_wait_for_owned_process_identity "$app_launch_pid" "$APP_BINARY" 3)" || {

@@ -20,7 +20,7 @@ Do not set `Status: passed` until every competitor path below is verified for 2-
 - [ ] Todoist: use Quick Add, date/priority/project/section capture, board/list switching, drag movement, and Today/Upcoming scan.
 - [ ] Linear: create a project and issue, move issue status, open details/sidebar, use keyboard command flow, and process one triage-like item.
 - [ ] Motion: create dated/prioritized tasks, inspect scheduling/risk surfaces, adjust a deadline, and record how recommendations are explained.
-- [ ] No external SaaS sync or team workflow was added to SoloPM public alpha scope because of this benchmark.
+- [ ] No external SaaS sync or team workflow was added to Suisui public alpha scope because of this benchmark.
 
 ## Ship / Defer / Reject Delta
 

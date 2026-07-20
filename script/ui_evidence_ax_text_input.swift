@@ -11,10 +11,10 @@ guard CommandLine.arguments.count == 4,
 let pid = pid_t(rawPID)
 let marker = CommandLine.arguments[2]
 let replacement = CommandLine.arguments[3]
-let maxNodes = Int(ProcessInfo.processInfo.environment["SOLOPM_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
+let maxNodes = Int(ProcessInfo.processInfo.environment["SUISUI_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
 
 guard AXIsProcessTrusted() else {
-    fputs("Accessibility permission is required to type into SoloPM fields.\n", stderr)
+    fputs("Accessibility permission is required to type into Suisui fields.\n", stderr)
     exit(2)
 }
 
@@ -220,7 +220,7 @@ while cursor < queue.count && visitedCount < maxNodes {
 }
 
 if visitedCount >= maxNodes {
-    fputs("AX text field scan reached SOLOPM_UI_EVIDENCE_AX_MAX_NODES=\(maxNodes).\n", stderr)
+    fputs("AX text field scan reached SUISUI_UI_EVIDENCE_AX_MAX_NODES=\(maxNodes).\n", stderr)
 }
 fputs("Missing AX text field marker: \(marker).\n", stderr)
 exit(1)

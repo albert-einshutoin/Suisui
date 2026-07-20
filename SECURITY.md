@@ -1,6 +1,6 @@
 # Security Policy
 
-SoloPM is local-first and review-before-write. The MVP must avoid dangerous operations by default.
+Suisui is local-first and review-before-write. The MVP must avoid dangerous operations by default.
 
 ## Supported Versions
 
@@ -32,7 +32,7 @@ Write operations must go through a review and approval flow.
 
 ## LLM And Local Data
 
-SoloPM should make the LLM send context inspectable before execution. Local audit logs remain local. The app must not upload local files, secrets, transcripts, or project data except through explicit user-approved provider requests.
+Suisui should make the LLM send context inspectable before execution. Local audit logs remain local. The app must not upload local files, secrets, transcripts, or project data except through explicit user-approved provider requests.
 
 ## Reporting
 

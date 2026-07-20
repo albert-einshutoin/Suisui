@@ -7,20 +7,20 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 SPARKLE_ENV_FILE="$ROOT_DIR/packaging/sparkle.env"
 
-BUILD_AND_RUN_TMP_ROOT="${SOLOPM_TMP_ROOT:-$ROOT_DIR/.tmp}"
+BUILD_AND_RUN_TMP_ROOT="${SUISUI_TMP_ROOT:-$ROOT_DIR/.tmp}"
 BUILD_AND_RUN_TMPDIR_CREATED=0
 
 mkdir -p "$BUILD_AND_RUN_TMP_ROOT"
-if [[ -n "${SOLOPM_TMPDIR:-}" ]]; then
-  BUILD_AND_RUN_TMPDIR="${SOLOPM_TMPDIR%/}"
+if [[ -n "${SUISUI_TMPDIR:-}" ]]; then
+  BUILD_AND_RUN_TMPDIR="${SUISUI_TMPDIR%/}"
 else
-  BUILD_AND_RUN_TMPDIR="$(mktemp -d "$BUILD_AND_RUN_TMP_ROOT/solopm-build-and-run-tmp.XXXXXX")"
+  BUILD_AND_RUN_TMPDIR="$(mktemp -d "$BUILD_AND_RUN_TMP_ROOT/suisui-build-and-run-tmp.XXXXXX")"
   BUILD_AND_RUN_TMPDIR_CREATED=1
 fi
 
 export TMPDIR="$BUILD_AND_RUN_TMPDIR/"
 export SWIFTPM_MODULECACHE_OVERRIDE="${SWIFTPM_MODULECACHE_OVERRIDE:-$ROOT_DIR/.build/module-cache}"
-SWIFTPM_CACHE_PATH="${SOLOPM_SWIFTPM_CACHE_PATH:-$ROOT_DIR/.build/swiftpm-cache}"
+SWIFTPM_CACHE_PATH="${SUISUI_SWIFTPM_CACHE_PATH:-$ROOT_DIR/.build/swiftpm-cache}"
 mkdir -p "$TMPDIR" "$SWIFTPM_MODULECACHE_OVERRIDE" "$SWIFTPM_CACHE_PATH"
 SWIFT_BUILD_ARGS=(
   --cache-path "$SWIFTPM_CACHE_PATH"
@@ -41,27 +41,29 @@ if [[ -f "$SPARKLE_ENV_FILE" ]]; then
 fi
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
+SWIFT_PRODUCT_NAME="${SWIFT_PRODUCT_NAME:-$APP_NAME}"
 BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:?BUNDLE_IDENTIFIER is required}"
 APP_CATEGORY="${APP_CATEGORY:?APP_CATEGORY is required}"
 MARKETING_VERSION="${MARKETING_VERSION:?MARKETING_VERSION is required}"
 CURRENT_PROJECT_VERSION="${CURRENT_PROJECT_VERSION:?CURRENT_PROJECT_VERSION is required}"
 MIN_SYSTEM_VERSION="${MIN_SYSTEM_VERSION:?MIN_SYSTEM_VERSION is required}"
 COPYRIGHT="${COPYRIGHT:?COPYRIGHT is required}"
-BUILD_CONFIGURATION="${SOLOPM_BUILD_CONFIGURATION:-debug}"
-SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
-SPARKLE_PUBLIC_ED_KEY="${SOLOPM_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
-LOCAL_LICENSE_PUBLIC_KEY_BASE64="${SOLOPM_LOCAL_LICENSE_PUBLIC_KEY_BASE64:-${SOLOPM_LOCAL_LICENSE_PUBLIC_KEY:-}}"
+BUILD_CONFIGURATION="${SUISUI_BUILD_CONFIGURATION:-debug}"
+RELEASE_BUILD_PURPOSE="${SUISUI_RELEASE_BUILD_PURPOSE:-distribution}"
+SPARKLE_FEED_URL="${SUISUI_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
+SPARKLE_PUBLIC_ED_KEY="${SUISUI_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
+LOCAL_LICENSE_PUBLIC_KEY_BASE64="${SUISUI_LOCAL_LICENSE_PUBLIC_KEY_BASE64:-${SUISUI_LOCAL_LICENSE_PUBLIC_KEY:-}}"
 # SwiftUI cold launch can exceed 12s on release evidence machines; keep the
 # default aligned with runtime smoke waits while
-# preserving SOLOPM_VERIFY_TIMEOUT_SECONDS for faster local overrides.
-VERIFY_TIMEOUT_SECONDS="${SOLOPM_VERIFY_TIMEOUT_SECONDS:-30}"
-PROJECT_BOARD_WINDOW_NAME="${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}"
+# preserving SUISUI_VERIFY_TIMEOUT_SECONDS for faster local overrides.
+VERIFY_TIMEOUT_SECONDS="${SUISUI_VERIFY_TIMEOUT_SECONDS:-30}"
+PROJECT_BOARD_WINDOW_NAME="${SUISUI_PROJECT_BOARD_WINDOW_NAME:-$APP_NAME}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 VERIFY_ROOT="$BUILD_AND_RUN_TMPDIR/verify"
 VERIFY_HOME="$VERIFY_ROOT/home"
 VERIFY_CFFIXED_USER_HOME="$VERIFY_ROOT/cfixed-user-home"
 VERIFY_TMPDIR="$VERIFY_ROOT/tmp"
-VERIFY_DATABASE_PATH="$VERIFY_ROOT/solopm.sqlite3"
+VERIFY_DATABASE_PATH="$VERIFY_ROOT/suisui.sqlite3"
 VERIFY_SQLITE3="${SQLITE3:-sqlite3}"
 BOOTSTRAP_LAUNCH_PID=""
 BOOTSTRAP_APP_PID=""
@@ -69,7 +71,7 @@ APP_LAUNCH_PID=""
 APP_PID=""
 VERIFY_LAUNCH_PID=""
 BUILD_AND_RUN_LOCK_DIR="$BUILD_AND_RUN_TMP_ROOT/build_and_run.lock"
-BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS="${SOLOPM_BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS:-120}"
+BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS="${SUISUI_BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS:-120}"
 BUILD_AND_RUN_LOCK_ACQUIRED=0
 
 DIST_DIR="$ROOT_DIR/dist"
@@ -80,8 +82,8 @@ APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
-APP_LOCALIZATION_SOURCE="$ROOT_DIR/Sources/SoloPMApp/Resources"
-APP_ICON_SOURCE="$ROOT_DIR/packaging/SoloPM.icns"
+APP_LOCALIZATION_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Resources"
+APP_ICON_SOURCE="$ROOT_DIR/packaging/Suisui.icns"
 
 if [[ ! -r "$AX_HELPERS" ]]; then
   echo "missing accessibility helpers: $AX_HELPERS" >&2
@@ -94,12 +96,12 @@ source "$AX_HELPERS"
 cd "$ROOT_DIR"
 
 if [[ ! "$VERIFY_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$VERIFY_TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "SOLOPM_VERIFY_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "SUISUI_VERIFY_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
 if [[ ! "$BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "SOLOPM_BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "SUISUI_BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
@@ -143,7 +145,7 @@ terminate_owned_verify_process() {
 
   # `$!` belongs to the env launcher, not necessarily the app. It is still an
   # owned child of this shell, so reap it separately without using a global
-  # name-based kill that could touch another SoloPM process.
+  # name-based kill that could touch another Suisui process.
   if [[ -n "$launch_pid" && "$launch_pid" != "$app_pid" ]] && kill -0 "$launch_pid" >/dev/null 2>&1; then
     kill "$launch_pid" >/dev/null 2>&1 || true
     deadline=$((SECONDS + 3))
@@ -156,7 +158,7 @@ terminate_owned_verify_process() {
   if [[ -n "$launch_pid" ]]; then
     wait "$launch_pid" >/dev/null 2>&1 || true
   fi
-  printf "OK: SoloPM %s process cleanup complete (launch_pid=%s app_pid=%s)\n" "$label" "${launch_pid:-none}" "${app_pid:-none}"
+  printf "OK: Suisui %s process cleanup complete (launch_pid=%s app_pid=%s)\n" "$label" "${launch_pid:-none}" "${app_pid:-none}"
 }
 
 cleanup_build_and_run() {
@@ -207,7 +209,7 @@ terminate_existing_dist_app_for_interactive_mode() {
     process_identity="$(dist_app_process_identity "$app_pid")" || continue
 
     # Recheck immediately before every signal. Name-only process discovery is
-    # intentionally insufficient because another SoloPM binary belongs to the
+    # intentionally insufficient because another Suisui binary belongs to the
     # user, not to this dist rebuild.
     if ! dist_app_process_matches_identity "$app_pid" "$process_identity"; then
       continue
@@ -259,7 +261,7 @@ acquire_build_and_run_lock() {
   while ! mkdir "$BUILD_AND_RUN_LOCK_DIR" >/dev/null 2>&1; do
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: timed out waiting for build/run lock: $BUILD_AND_RUN_LOCK_DIR" >&2
-      echo "NEXT: wait for the other SoloPM build/run command to finish, or remove the lock only after confirming no build_and_run.sh process is active." >&2
+      echo "NEXT: wait for the other Suisui build/run command to finish, or remove the lock only after confirming no build_and_run.sh process is active." >&2
       return 1
     fi
     sleep 1
@@ -268,29 +270,50 @@ acquire_build_and_run_lock() {
 }
 
 trap cleanup_build_and_run EXIT INT TERM
-acquire_build_and_run_lock
 
-stop_existing_dist_apps_for_mode
-
-SOLOPM_SPARKLE_CONFIG_QUIET=1 "$ROOT_DIR/script/validate_sparkle_release_config.sh"
-
-case "$BUILD_CONFIGURATION" in
-  debug)
-    swift build "${SWIFT_BUILD_ARGS[@]}" --product "$APP_NAME"
-    BUILD_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" --show-bin-path)"
+case "$RELEASE_BUILD_PURPOSE" in
+  distribution)
     ;;
-  release)
-    swift build "${SWIFT_BUILD_ARGS[@]}" -c release --product "$APP_NAME"
-    BUILD_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" -c release --show-bin-path)"
+  performance)
+    # Performance CI needs the optimized executable and real app bundle, but
+    # must not fabricate production Sparkle credentials. Keep this exception
+    # build-only so no runnable/package workflow can bypass distribution checks.
+    if [[ "$BUILD_CONFIGURATION" != "release" || ( "$MODE" != "--build-only" && "$MODE" != "build" ) ]]; then
+      echo "BLOCKER: release performance build purpose requires --build-only with release configuration" >&2
+      exit 2
+    fi
     ;;
   *)
-    echo "SOLOPM_BUILD_CONFIGURATION must be debug or release" >&2
+    echo "BLOCKER: SUISUI_RELEASE_BUILD_PURPOSE must be distribution or performance" >&2
     exit 2
     ;;
 esac
 
-BUILD_BINARY="$BUILD_DIR/$APP_NAME"
-RESOURCE_BUNDLE="$BUILD_DIR/SoloPM_SoloPMCore.bundle"
+acquire_build_and_run_lock
+
+stop_existing_dist_apps_for_mode
+
+if [[ "$RELEASE_BUILD_PURPOSE" == "distribution" ]]; then
+  SUISUI_SPARKLE_CONFIG_QUIET=1 "$ROOT_DIR/script/validate_sparkle_release_config.sh"
+fi
+
+case "$BUILD_CONFIGURATION" in
+  debug)
+    swift build "${SWIFT_BUILD_ARGS[@]}" --product "$SWIFT_PRODUCT_NAME"
+    BUILD_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" --show-bin-path)"
+    ;;
+  release)
+    swift build "${SWIFT_BUILD_ARGS[@]}" -c release --product "$SWIFT_PRODUCT_NAME"
+    BUILD_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" -c release --show-bin-path)"
+    ;;
+  *)
+    echo "SUISUI_BUILD_CONFIGURATION must be debug or release" >&2
+    exit 2
+    ;;
+esac
+
+BUILD_BINARY="$BUILD_DIR/$SWIFT_PRODUCT_NAME"
+RESOURCE_BUNDLE="$BUILD_DIR/Suisui_SuisuiCore.bundle"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS"
@@ -313,7 +336,7 @@ if [[ ! -f "$APP_ICON_SOURCE" ]]; then
   exit 2
 fi
 mkdir -p "$APP_RESOURCES"
-cp "$APP_ICON_SOURCE" "$APP_RESOURCES/SoloPM.icns"
+cp "$APP_ICON_SOURCE" "$APP_RESOURCES/Suisui.icns"
 
 while IFS= read -r -d '' framework_path; do
   mkdir -p "$APP_FRAMEWORKS"
@@ -339,7 +362,7 @@ done < <(find "$BUILD_DIR" -maxdepth 1 -type f -name "*.dylib" -print0)
   printf '%s\n' '  <key>CFBundleName</key>'
   printf '  <string>%s</string>\n' "$APP_NAME"
   printf '%s\n' '  <key>CFBundleIconFile</key>'
-  printf '%s\n' '  <string>SoloPM.icns</string>'
+  printf '%s\n' '  <string>Suisui.icns</string>'
   printf '%s\n' '  <key>CFBundlePackageType</key>'
   printf '%s\n' '  <string>APPL</string>'
   printf '%s\n' '  <key>CFBundleShortVersionString</key>'
@@ -362,8 +385,8 @@ done < <(find "$BUILD_DIR" -maxdepth 1 -type f -name "*.dylib" -print0)
   printf '%s\n' '  <key>NSQuitAlwaysKeepsWindows</key>'
   printf '%s\n' '  <false/>'
   printf '%s\n' '  <key>NSMicrophoneUsageDescription</key>'
-  printf '%s\n' '  <string>SoloPM uses the microphone when you explicitly start voice capture.</string>'
-  printf '%s\n' '  <key>SoloPMLocalLicensePublicKey</key>'
+  printf '%s\n' '  <string>Suisui uses the microphone when you explicitly start voice capture.</string>'
+  printf '%s\n' '  <key>SuisuiLocalLicensePublicKey</key>'
   printf '  <string>%s</string>\n' "$(xml_escape "$LOCAL_LICENSE_PUBLIC_KEY_BASE64")"
   printf '%s\n' '  <key>NSHumanReadableCopyright</key>'
   printf '  <string>%s</string>\n' "$COPYRIGHT"
@@ -412,9 +435,9 @@ launch_verify_process() {
     HOME="$VERIFY_HOME" \
     CFFIXED_USER_HOME="$VERIFY_CFFIXED_USER_HOME" \
     TMPDIR="$VERIFY_TMPDIR" \
-    SOLOPM_DATABASE_PATH="$VERIFY_DATABASE_PATH" \
-    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="$selected_destination" \
+    SUISUI_DATABASE_PATH="$VERIFY_DATABASE_PATH" \
+    SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="$selected_destination" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
   # `/usr/bin/env` may remain as the background job while the app is its child;
   # the caller must resolve and own the actual executable PID before checking UI.
@@ -434,7 +457,7 @@ resolve_verify_app_pid() {
 
 wait_for_app_process() {
   if ax_wait_for_pid_owned_process "$APP_NAME" "$APP_PID" "$VERIFY_TIMEOUT_SECONDS" "$APP_BINARY"; then
-    printf "OK: SoloPM verify process launched (pid=%s)\n" "$APP_PID"
+    printf "OK: Suisui verify process launched (pid=%s)\n" "$APP_PID"
     return 0
   fi
   ax_report_failure "launch" "process did not appear for pid=$APP_PID within ${VERIFY_TIMEOUT_SECONDS}s"
@@ -565,7 +588,7 @@ case "$MODE" in
       ax_report_failure "launch" "bootstrap app process was not alive for pid=$BOOTSTRAP_APP_PID"
       exit 1
     fi
-    printf "OK: SoloPM bootstrap process launched (launch_pid=%s app_pid=%s)\n" "$BOOTSTRAP_LAUNCH_PID" "$BOOTSTRAP_APP_PID"
+    printf "OK: Suisui bootstrap process launched (launch_pid=%s app_pid=%s)\n" "$BOOTSTRAP_LAUNCH_PID" "$BOOTSTRAP_APP_PID"
     wait_for_verify_database
     terminate_owned_verify_process "bootstrap" "$BOOTSTRAP_LAUNCH_PID" "$BOOTSTRAP_APP_PID"
     BOOTSTRAP_LAUNCH_PID=""

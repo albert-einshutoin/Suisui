@@ -1,6 +1,6 @@
 # Phase 5: Packaging
 
-目的は、SoloPM を最初の public alpha として配布できる品質に整えること。機能追加ではなく、署名、notarization、自動更新、ライセンス、プライバシー、リリース手順を固める。
+目的は、Suisui を最初の public alpha として配布できる品質に整えること。機能追加ではなく、署名、notarization、自動更新、ライセンス、プライバシー、リリース手順を固める。
 
 ## Scope
 

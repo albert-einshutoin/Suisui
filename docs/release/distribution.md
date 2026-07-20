@@ -1,6 +1,6 @@
 # Distribution Packaging
 
-SoloPM public alpha の標準配布物は `DMG` とする。Mac ユーザーが Finder 上で `SoloPM.app` を `Applications` に移せるように、DMG には `/Applications` への symlink を含める。
+Suisui public alpha の標準配布物は `DMG` とする。Mac ユーザーが Finder 上で `Suisui.app` を `Applications` に移せるように、DMG には `/Applications` への symlink を含める。
 
 初回Productionリリースの対応環境はmacOS 14以降のApple Silicon（`arm64`）とする。Intel Macは対象外であり、配布ページとリリースノートにも同じ条件を明記する。`packaging/app_metadata.env`の`SUPPORTED_ARCHITECTURES`と実バイナリのsliceは、署名前に`script/verify_release_architecture.sh`で完全一致を検証する。Universal 2へ移行するときは、Intel環境の起動・更新・性能証跡を追加してから対応契約を変更する。
 
@@ -10,10 +10,10 @@ Sparkle appcast 用、またはapp bundleのnotarization submission用には ZIP
 
 ## Build Package
 
-署名済み、notarized、staple済みの`dist/SoloPM.app`を作った後に実行する。通常実行では、作成したDMGを`notarytool submit --wait`へ送信し、DMG自体のstaple/validateとGatekeeper assessmentが成功した後でchecksumとpackage evidenceを確定する。
+署名済み、notarized、staple済みの`dist/Suisui.app`を作った後に実行する。通常実行では、作成したDMGを`notarytool submit --wait`へ送信し、DMG自体のstaple/validateとGatekeeper assessmentが成功した後でchecksumとpackage evidenceを確定する。
 
 ```bash
-SOLOPM_PACKAGE_FORMAT=all ./script/package_release.sh
+SUISUI_PACKAGE_FORMAT=all ./script/package_release.sh
 ```
 
 出力先は `dist/releases/`。
@@ -21,32 +21,32 @@ SOLOPM_PACKAGE_FORMAT=all ./script/package_release.sh
 Production DMGの公証後には`*.dmg.notarization.json`も生成する。この非機密sidecarはnotary submission ID、`Accepted`状態、stapler/Gatekeeper結果、staple後DMGのSHA-256を保持し、最終preflightで配布DMGと再照合する。
 
 ```text
-SoloPM-0.1.0+1.dmg
-SoloPM-0.1.0+1.dmg.sha256
-SoloPM-0.1.0+1.dmg.package-evidence.json
-SoloPM-0.1.0+1.zip
-SoloPM-0.1.0+1.zip.sha256
-SoloPM-0.1.0+1.zip.package-evidence.json
+Suisui-0.1.0+1.dmg
+Suisui-0.1.0+1.dmg.sha256
+Suisui-0.1.0+1.dmg.package-evidence.json
+Suisui-0.1.0+1.zip
+Suisui-0.1.0+1.zip.sha256
+Suisui-0.1.0+1.zip.package-evidence.json
 ```
 
 ユーザー向け配布は DMG、Sparkle appcast は ZIP を参照する。release evidence は DMG checksum に明示的に紐づける。
 
 ```bash
 source packaging/app_metadata.env
-export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
+export SUISUI_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
 ```
 
 署名環境がない開発機で packaging smoke だけ確認する場合は、明示的に署名要求を外す。
 
 ```bash
-SOLOPM_REQUIRE_SIGNED_PACKAGE=0 \
-SOLOPM_REQUIRE_NOTARIZED_PACKAGE=0 \
+SUISUI_REQUIRE_SIGNED_PACKAGE=0 \
+SUISUI_REQUIRE_NOTARIZED_PACKAGE=0 \
 ./script/package_release.sh
 ```
 
-smoke modeは`dist/SoloPM.app`を変更せず、一時コピーにだけrelease stripとSparkle開発資産のpruneを適用する。一時コピーは終了時に削除され、元bundleが署名済みでも署名を破壊しない。
+smoke modeは`dist/Suisui.app`を変更せず、一時コピーにだけrelease stripとSparkle開発資産のpruneを適用する。一時コピーは終了時に削除され、元bundleが署名済みでも署名を破壊しない。
 
-release artifact を作る通常実行では、`SOLOPM_REQUIRE_SIGNED_PACKAGE=1` と `SOLOPM_REQUIRE_NOTARIZED_PACKAGE=1` が既定値になる。つまり `codesign --verify`、`xcrun stapler validate`、`spctl -a -vv` を通らない app bundle からは配布用 DMG / ZIP を作らない。
+release artifact を作る通常実行では、`SUISUI_REQUIRE_SIGNED_PACKAGE=1` と `SUISUI_REQUIRE_NOTARIZED_PACKAGE=1` が既定値になる。つまり `codesign --verify`、`xcrun stapler validate`、`spctl -a -vv` を通らない app bundle からは配布用 DMG / ZIP を作らない。
 
 DMG工程は次の順序をfail-closedで固定する。
 
@@ -74,6 +74,6 @@ clean 環境で以下を確認する。
 
 1. DMG を download する。
 2. checksum が release notes と一致する。
-3. DMG を開き、`SoloPM.app` と `Applications` symlink が見える。
-4. `SoloPM.app` を Applications に移動する。
+3. DMG を開き、`Suisui.app` と `Applications` symlink が見える。
+4. `Suisui.app` を Applications に移動する。
 5. 初回起動時に Gatekeeper で拒否されない。

@@ -1,4 +1,4 @@
-# SoloPM Product Roadmap
+# Suisui Product Roadmap
 
 This roadmap fixes the product order for the current public-alpha work: Personal MVP first, Business MVP after the personal voice-task loop is proven.
 
@@ -10,7 +10,7 @@ This roadmap fixes the product order for the current public-alpha work: Personal
 
 ## Personal MVP
 
-Goal: prove that a single user can speak work into SoloPM and get reliable task, project, schedule, reminder, and approval state without team setup.
+Goal: prove that a single user can speak work into Suisui and get reliable task, project, schedule, reminder, and approval state without team setup.
 
 Core scope:
 
@@ -47,7 +47,7 @@ Scope:
 
 ## Business MVP
 
-Goal: make SoloPM usable for small companies where task quality depends on internal documents, governance, and shared execution policy.
+Goal: make Suisui usable for small companies where task quality depends on internal documents, governance, and shared execution policy.
 
 Scope:
 
@@ -61,17 +61,17 @@ Scope:
 
 ## Cross-Product Boundary
 
-SoloPM should not absorb every adjacent product.
+Suisui should not absorb every adjacent product.
 
-- SoloPM owns voice-first task organization, approval queues, personal automation, and later business governance.
+- Suisui owns voice-first task organization, approval queues, personal automation, and later business governance.
 - KnowledgeBase owns small-business internal document search and web voice customer support.
 - QZT owns seekable, verifiable evidence storage.
 - Memory Pager owns memory extraction, ranking, retrieval, and context assembly.
 
-The products can share identity, billing, EvidenceRef, and connector contracts, but the first SoloPM MVP must remain useful without KnowledgeBase, QZT, or Memory Pager running.
+The products can share identity, billing, EvidenceRef, and connector contracts, but the first Suisui MVP must remain useful without KnowledgeBase, QZT, or Memory Pager running.
 
 ## Tracking
 
-- Roadmap tracker: https://github.com/albert-einshutoin/soloPM/issues/50
-- Cross-product boundary: https://github.com/albert-einshutoin/soloPM/issues/41
-- Business knowledge-work milestone: https://github.com/albert-einshutoin/soloPM/milestone/3
+- Roadmap tracker: https://github.com/albert-einshutoin/suisui/issues/50
+- Cross-product boundary: https://github.com/albert-einshutoin/suisui/issues/41
+- Business knowledge-work milestone: https://github.com/albert-einshutoin/suisui/milestone/3

@@ -6,10 +6,10 @@ Phase16は、機能追加よりも導入、説明、権限、サポート、フ�
 
 ## Product Bar
 
-- 初回起動時に、SoloPMの役割、local-first境界、review-before-execution、AI provider設定、VoiceOver task listingの価値が短く理解できる。
+- 初回起動時に、Suisuiの役割、local-first境界、review-before-execution、AI provider設定、VoiceOver task listingの価値が短く理解できる。
 - macOS permission、Keychain、Google OAuth、Gemini API keyなどの認証/権限が、どの操作で必要か、なぜ必要か、失敗時にどう直すかをアプリ内またはdocsから辿れる。
 - Public Alphaの対象workflow、known limitations、feedback方法、support expectationsがREADMEとrelease notesに一致している。
-- 問題報告は、secretや個人タスク内容を漏らさず、macOS version、SoloPM version/build、provider設定状態、再現手順、redacted diagnosticsを含められる。
+- 問題報告は、secretや個人タスク内容を漏らさず、macOS version、Suisui version/build、provider設定状態、再現手順、redacted diagnosticsを含められる。
 - OSSとして、Issue template、security policy、contributing guide、roadmapが現在のalpha範囲に合っている。
 
 ## Non-Goals
@@ -33,11 +33,11 @@ Priority: High
 
 ### Context
 
-SoloPMは機能が多く、初回ユーザーは何から始めるか迷いやすい。最初に価値を感じるには、タスク列挙、音声/テキスト入力、review-before-execution、Project Boardの基本導線を短く案内する必要がある。
+Suisuiは機能が多く、初回ユーザーは何から始めるか迷いやすい。最初に価値を感じるには、タスク列挙、音声/テキスト入力、review-before-execution、Project Boardの基本導線を短く案内する必要がある。
 
 ### Scope
 
-- 対象: `Sources/SoloPMApp`, onboarding state、README、public alpha docs
+- 対象: `Sources/SuisuiApp`, onboarding state、README、public alpha docs
 - first-run onboardingを、通常利用を邪魔しない軽量な導線として実装する。
 - VoiceOver/keyboardでもonboardingを閉じられるようにする。
 
@@ -111,7 +111,7 @@ Priority: High
 
 ### Context
 
-Public Alphaでは、不具合報告の質が改善速度を決める。ただし、SoloPMは個人タスクやAPI keyを扱うため、診断情報はredactedでなければならない。
+Public Alphaでは、不具合報告の質が改善速度を決める。ただし、Suisuiは個人タスクやAPI keyを扱うため、診断情報はredactedでなければならない。
 
 ### Scope
 
@@ -121,7 +121,7 @@ Public Alphaでは、不具合報告の質が改善速度を決める。ただ�
 ### Tests First
 
 - [ ] diagnostics exportがAPI key、OAuth token、task detail raw textを含まないunit testを追加する。
-- [ ] issue templateにmacOS version、SoloPM version/build、provider、reproduction steps、redacted logs欄があることをsource testで固定する。
+- [ ] issue templateにmacOS version、Suisui version/build、provider、reproduction steps、redacted logs欄があることをsource testで固定する。
 - [ ] diagnostics exportが明示操作なしに自動送信されないことをsource testで固定する。
 
 ### Implementation Steps
@@ -221,7 +221,7 @@ Priority: Middle
 
 ### Context
 
-SoloPMをOSSとして価値提供するには、ユーザーがバグ修正、docs改善、provider追加提案を出せる導線が必要。ただしsecret handlingやmacOS権限周りは危険なので、貢献範囲とreview policyを明確にする。
+SuisuiをOSSとして価値提供するには、ユーザーがバグ修正、docs改善、provider追加提案を出せる導線が必要。ただしsecret handlingやmacOS権限周りは危険なので、貢献範囲とreview policyを明確にする。
 
 ### Scope
 

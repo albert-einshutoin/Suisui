@@ -41,7 +41,7 @@
 
 ### P1-003: Prompt template for planning
 
-- [x] system prompt に SoloPM の役割、MVP の禁止操作、ActionPlan schema を含める。
+- [x] system prompt に Suisui の役割、MVP の禁止操作、ActionPlan schema を含める。
 - [x] user input、timezone、current date、available tools、Knowledge Frame candidates を分けて渡す設計にする。
 - [x] 曖昧な日時は勝手に確定せず `requiresUserConfirmation` にする。
 - [x] テスト: prompt builder が current date と timezone を含むことを確認する。

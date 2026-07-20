@@ -3,22 +3,22 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-DEFAULT_VOICE_CACHE_ROOT="$HOME/Library/Application Support/SoloPM/VoiceModels"
-VOICE_CACHE_ROOT="${SOLOPM_LOCAL_VOICE_CACHE_ROOT:-$DEFAULT_VOICE_CACHE_ROOT}"
-WHISPER_EXECUTABLE="${SOLOPM_WHISPER_CPP_EXECUTABLE:-}"
-STT_SAMPLE_WAV="${SOLOPM_STT_SAMPLE_WAV:-}"
-STT_LANGUAGE="${SOLOPM_STT_LANGUAGE:-ja}"
-KOKORO_EXECUTABLE="${SOLOPM_KOKORO_EXECUTABLE:-}"
-TTS_LANGUAGES="${SOLOPM_TTS_LANGUAGES:-ja en}"
-TTS_JA_VOICE="${SOLOPM_TTS_JA_VOICE_ID:-jf_alpha}"
-TTS_EN_VOICE="${SOLOPM_TTS_EN_VOICE_ID:-af_heart}"
-LEGACY_TTS_LANGUAGE="${SOLOPM_TTS_LANGUAGE:-}"
-LEGACY_TTS_VOICE="${SOLOPM_TTS_VOICE:-}"
-TTS_PROMPT="${SOLOPM_LOCAL_VOICE_TTS_PROMPT:-}"
-OUTPUT_DIR="${SOLOPM_LOCAL_VOICE_SMOKE_OUTPUT_DIR:-$ROOT_DIR/.tmp/local-voice-runtime-smoke}"
-EVIDENCE_FILE="${SOLOPM_LOCAL_VOICE_EVIDENCE_FILE:-}"
-STT_EXPECTED_TRANSCRIPT_CONTAINS="${SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS:-}"
-TIMEOUT_SECONDS="${SOLOPM_LOCAL_VOICE_TIMEOUT_SECONDS:-120}"
+DEFAULT_VOICE_CACHE_ROOT="$HOME/Library/Application Support/Suisui/VoiceModels"
+VOICE_CACHE_ROOT="${SUISUI_LOCAL_VOICE_CACHE_ROOT:-$DEFAULT_VOICE_CACHE_ROOT}"
+WHISPER_EXECUTABLE="${SUISUI_WHISPER_CPP_EXECUTABLE:-}"
+STT_SAMPLE_WAV="${SUISUI_STT_SAMPLE_WAV:-}"
+STT_LANGUAGE="${SUISUI_STT_LANGUAGE:-ja}"
+KOKORO_EXECUTABLE="${SUISUI_KOKORO_EXECUTABLE:-}"
+TTS_LANGUAGES="${SUISUI_TTS_LANGUAGES:-ja en}"
+TTS_JA_VOICE="${SUISUI_TTS_JA_VOICE_ID:-jf_alpha}"
+TTS_EN_VOICE="${SUISUI_TTS_EN_VOICE_ID:-af_heart}"
+LEGACY_TTS_LANGUAGE="${SUISUI_TTS_LANGUAGE:-}"
+LEGACY_TTS_VOICE="${SUISUI_TTS_VOICE:-}"
+TTS_PROMPT="${SUISUI_LOCAL_VOICE_TTS_PROMPT:-}"
+OUTPUT_DIR="${SUISUI_LOCAL_VOICE_SMOKE_OUTPUT_DIR:-$ROOT_DIR/.tmp/local-voice-runtime-smoke}"
+EVIDENCE_FILE="${SUISUI_LOCAL_VOICE_EVIDENCE_FILE:-}"
+STT_EXPECTED_TRANSCRIPT_CONTAINS="${SUISUI_STT_EXPECTED_TRANSCRIPT_CONTAINS:-}"
+TIMEOUT_SECONDS="${SUISUI_LOCAL_VOICE_TIMEOUT_SECONDS:-120}"
 MODE_LABEL="full STT+TTS"
 STT_ONLY_MODE=0
 
@@ -38,30 +38,30 @@ usage() {
 usage: script/check_local_voice_runtime_smoke.sh
        script/check_local_voice_runtime_smoke.sh --stt-only
 
-Runs fail-closed local STT/TTS runtime proof for the cached SoloPM voice models.
+Runs fail-closed local STT/TTS runtime proof for the cached Suisui voice models.
 `--stt-only` runs only the whisper.cpp smoke needed to advance Issue #13
 without claiming Kokoro TTS proof for Issue #14 or full release closeout.
 
 Required environment for all modes:
-  SOLOPM_WHISPER_CPP_EXECUTABLE   Absolute path to whisper-cli
-  SOLOPM_STT_SAMPLE_WAV           Japanese or English sample WAV for local STT
+  SUISUI_WHISPER_CPP_EXECUTABLE   Absolute path to whisper-cli
+  SUISUI_STT_SAMPLE_WAV           Japanese or English sample WAV for local STT
 
 Required environment for default full STT+TTS mode:
-  SOLOPM_KOKORO_EXECUTABLE        Absolute path to the Kokoro runtime
+  SUISUI_KOKORO_EXECUTABLE        Absolute path to the Kokoro runtime
                                       Evidence mode requires the checked-in
                                       script/kokoro_tts_runtime.py wrapper.
 
 Optional environment:
-  SOLOPM_LOCAL_VOICE_CACHE_ROOT   Defaults to ~/Library/Application Support/SoloPM/VoiceModels
-  SOLOPM_LOCAL_VOICE_SMOKE_OUTPUT_DIR
-  SOLOPM_STT_LANGUAGE             ja, en, or auto. Defaults to ja.
-  SOLOPM_TTS_LANGUAGES            Space-separated ja/en list. Defaults to "ja en".
-  SOLOPM_TTS_JA_VOICE_ID          Defaults to jf_alpha.
-  SOLOPM_TTS_EN_VOICE_ID          Defaults to af_heart.
-  SOLOPM_LOCAL_VOICE_TTS_PROMPT   Optional prompt override for all TTS languages.
-  SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS
-  SOLOPM_LOCAL_VOICE_EVIDENCE_FILE
-  SOLOPM_LOCAL_VOICE_TIMEOUT_SECONDS
+  SUISUI_LOCAL_VOICE_CACHE_ROOT   Defaults to ~/Library/Application Support/Suisui/VoiceModels
+  SUISUI_LOCAL_VOICE_SMOKE_OUTPUT_DIR
+  SUISUI_STT_LANGUAGE             ja, en, or auto. Defaults to ja.
+  SUISUI_TTS_LANGUAGES            Space-separated ja/en list. Defaults to "ja en".
+  SUISUI_TTS_JA_VOICE_ID          Defaults to jf_alpha.
+  SUISUI_TTS_EN_VOICE_ID          Defaults to af_heart.
+  SUISUI_LOCAL_VOICE_TTS_PROMPT   Optional prompt override for all TTS languages.
+  SUISUI_STT_EXPECTED_TRANSCRIPT_CONTAINS
+  SUISUI_LOCAL_VOICE_EVIDENCE_FILE
+  SUISUI_LOCAL_VOICE_TIMEOUT_SECONDS
 USAGE
 }
 
@@ -71,10 +71,10 @@ local_voice_evidence_source_commit() {
   # release-document edits do not stale a valid STT/TTS runtime capture.
   commit="$(
     git -C "$ROOT_DIR" log -1 --format=%h -- \
-      Sources/SoloPMCore/Voice \
-      Sources/SoloPMCore/App/AppSettings.swift \
-      Sources/SoloPMCore/App/DailyPlanningReviewReadout.swift \
-      Sources/SoloPMApp \
+      Sources/SuisuiCore/Voice \
+      Sources/SuisuiCore/App/AppSettings.swift \
+      Sources/SuisuiCore/App/DailyPlanningReviewReadout.swift \
+      Sources/SuisuiApp \
       Package.swift \
       packaging/app_metadata.env \
       script/kokoro_tts_runtime.py \
@@ -236,7 +236,7 @@ check_output_dir_policy() {
     "$ROOT_DIR"/*)
       local relative_output_dir="${output_dir#"$ROOT_DIR"/}"
       if ! git -C "$ROOT_DIR" check-ignore -q "$relative_output_dir/sentinel"; then
-        blocker "SOLOPM_LOCAL_VOICE_SMOKE_OUTPUT_DIR inside repo must be ignored by git"
+        blocker "SUISUI_LOCAL_VOICE_SMOKE_OUTPUT_DIR inside repo must be ignored by git"
       fi
       ;;
   esac
@@ -259,21 +259,21 @@ check_evidence_file_policy() {
   EVIDENCE_FILE="$evidence_file"
 
   if [[ -z "$STT_EXPECTED_TRANSCRIPT_CONTAINS" ]]; then
-    blocker "SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS is required when writing local voice runtime evidence"
+    blocker "SUISUI_STT_EXPECTED_TRANSCRIPT_CONTAINS is required when writing local voice runtime evidence"
   fi
   if [[ "$STT_ONLY_MODE" -eq 0 ]]; then
     if ! has_tts_language ja || ! has_tts_language en; then
-      blocker "SOLOPM_LOCAL_VOICE_EVIDENCE_FILE requires SOLOPM_TTS_LANGUAGES to include both ja and en"
+      blocker "SUISUI_LOCAL_VOICE_EVIDENCE_FILE requires SUISUI_TTS_LANGUAGES to include both ja and en"
     fi
   fi
   case "$evidence_file" in
     "$ROOT_DIR/docs/release/evidence/"*.md) ;;
-    *) blocker "SOLOPM_LOCAL_VOICE_EVIDENCE_FILE must point to docs/release/evidence/*.md" ;;
+    *) blocker "SUISUI_LOCAL_VOICE_EVIDENCE_FILE must point to docs/release/evidence/*.md" ;;
   esac
   if [[ "$STT_ONLY_MODE" -eq 1 ]]; then
     case "$(basename "$evidence_file")" in
       *stt-only*.md) ;;
-      *) blocker "SOLOPM_LOCAL_VOICE_EVIDENCE_FILE in --stt-only mode must use an explicit *stt-only*.md filename and must not overwrite local-voice-runtime.md" ;;
+      *) blocker "SUISUI_LOCAL_VOICE_EVIDENCE_FILE in --stt-only mode must use an explicit *stt-only*.md filename and must not overwrite local-voice-runtime.md" ;;
     esac
   fi
 }
@@ -284,7 +284,7 @@ check_reference_kokoro_runtime_for_evidence() {
   fi
 
   if [[ "$KOKORO_EXECUTABLE" != "$KOKORO_RUNTIME_WRAPPER" ]]; then
-    blocker "SOLOPM_LOCAL_VOICE_EVIDENCE_FILE requires SOLOPM_KOKORO_EXECUTABLE to be the checked-in reference wrapper script/kokoro_tts_runtime.py"
+    blocker "SUISUI_LOCAL_VOICE_EVIDENCE_FILE requires SUISUI_KOKORO_EXECUTABLE to be the checked-in reference wrapper script/kokoro_tts_runtime.py"
   fi
   if [[ ! -x "$KOKORO_RUNTIME_WRAPPER" || -d "$KOKORO_RUNTIME_WRAPPER" ]]; then
     blocker "checked-in Kokoro reference wrapper is missing or not executable: $KOKORO_RUNTIME_WRAPPER_RELATIVE"
@@ -361,11 +361,11 @@ tts_prompt_for_language() {
 
 case "$STT_LANGUAGE" in
   ja|en|auto) ;;
-  *) blocker "SOLOPM_STT_LANGUAGE must be ja, en, or auto" ;;
+  *) blocker "SUISUI_STT_LANGUAGE must be ja, en, or auto" ;;
 esac
 
 if ! [[ "$TIMEOUT_SECONDS" =~ ^[0-9]+$ && "$TIMEOUT_SECONDS" -gt 0 ]]; then
-  blocker "SOLOPM_LOCAL_VOICE_TIMEOUT_SECONDS must be a positive integer"
+  blocker "SUISUI_LOCAL_VOICE_TIMEOUT_SECONDS must be a positive integer"
 fi
 
 # Collect all prerequisite problems before exiting so release operators know
@@ -382,12 +382,12 @@ if [[ "$STT_ONLY_MODE" -eq 0 ]]; then
 
   read -r -a tts_languages <<<"$TTS_LANGUAGES" || true
   if [[ "${#tts_languages[@]}" -eq 0 ]]; then
-    blocker "SOLOPM_TTS_LANGUAGES must include ja, en, or both"
+    blocker "SUISUI_TTS_LANGUAGES must include ja, en, or both"
   fi
   for language in "${tts_languages[@]}"; do
     case "$language" in
       ja|en) ;;
-      *) blocker "SOLOPM_TTS_LANGUAGES entries must be ja or en" ;;
+      *) blocker "SUISUI_TTS_LANGUAGES entries must be ja or en" ;;
     esac
     voice_id="$(tts_voice_for_language "$language")"
     if [[ "$voice_id" =~ [[:space:]] ]]; then
@@ -531,7 +531,7 @@ write_local_voice_runtime_evidence() {
 if [[ -n "$EVIDENCE_FILE" ]]; then
   write_local_voice_runtime_evidence
   if [[ "$STT_ONLY_MODE" -eq 1 ]]; then
-    printf '%s\n' 'OK: SOLOPM_LOCAL_VOICE_EVIDENCE_FILE in --stt-only mode must state that TTS was not verified'
+    printf '%s\n' 'OK: SUISUI_LOCAL_VOICE_EVIDENCE_FILE in --stt-only mode must state that TTS was not verified'
     printf '%s\n' 'OK: STT-only smoke cannot prove #14 / full release closeout'
   fi
   printf 'OK: local voice runtime evidence written: %s\n' "$(relative_or_redacted_path "$EVIDENCE_FILE")"

@@ -1,6 +1,6 @@
 # Phase 8: SaaS Connectors
 
-目的は、SoloPM の local-first 体験を保ちながら、必要な外部 SaaS へ draft / approval-first で接続すること。OAuth scope、token storage、write confirmation を厳格に扱う。
+目的は、Suisui の local-first 体験を保ちながら、必要な外部 SaaS へ draft / approval-first で接続すること。OAuth scope、token storage、write confirmation を厳格に扱う。
 
 ## Scope
 
@@ -68,7 +68,7 @@
 - [x] task / project の write mapping を設定 UI で確認できるようにする。
 - [x] 自動同期ではなく明示的な export / create から始める。
 - [x] テスト: mapping missing、approval missing、API failure を確認する。
-- [x] 完了条件: Notion 側の構造差分を SoloPM core に漏らさない。
+- [x] 完了条件: Notion 側の構造差分を Suisui core に漏らさない。
 
 ### P8-007: Connector health dashboard
 
@@ -88,12 +88,12 @@
 
 ## Implementation Notes
 
-- Production connector protocols live in `Sources/SoloPMExternalConnectors/SaaSConnectors.swift`.
-- テスト: `Tests/SoloPMCoreTests/SaaSConnectorTests.swift`
-- Test doubles live under `Tests/SoloPMCoreTests/SaaSConnectorTests.swift` and are only linked through the test target.
+- Production connector protocols live in `Sources/SuisuiExternalConnectors/SaaSConnectors.swift`.
+- テスト: `Tests/SuisuiCoreTests/SaaSConnectorTests.swift`
+- Test doubles live under `Tests/SuisuiCoreTests/SaaSConnectorTests.swift` and are only linked through the test target.
 - OAuth token の secret material は `SecretStore` 経由で保存し、metadata には `SecretKey` reference、scope、expiry のみを保持する。
-- Google Calendar / Gmail / Slack / Google Drive / Notion は `SoloPMExternalConnectors` target の production protocol / connector boundary として実装し、本番 API adapter は Phase8 foundation の外側で差し替える。
-- Public alpha の `SoloPM` app / `solopm-cli` は `SoloPMExternalConnectors` に依存せず、外部 SaaS 連携を runtime から除外する。
+- Google Calendar / Gmail / Slack / Google Drive / Notion は `SuisuiExternalConnectors` target の production protocol / connector boundary として実装し、本番 API adapter は Phase8 foundation の外側で差し替える。
+- Public alpha の `Suisui` app / `suisui-cli` は `SuisuiExternalConnectors` に依存せず、外部 SaaS 連携を runtime から除外する。
 - Gmail は draft create のみを公開し、send scope / send operation は持たない。
 - Slack は draft と post を分け、post は explicit approval 必須にする。自動投稿は実装していない。
 - Drive は selected folder id 以外への write を拒否する。

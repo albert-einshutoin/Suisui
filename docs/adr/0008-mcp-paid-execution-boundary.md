@@ -5,7 +5,7 @@ Status: Accepted
 
 ## Context
 
-External MCP support expands SoloPM beyond local built-in tools. Phase 11 defines `advancedMCPExecution` as a paid feature, but MCP registrations and connection diagnostics are still useful for setup, OSS contribution, and troubleshooting before a user upgrades.
+External MCP support expands Suisui beyond local built-in tools. Phase 11 defines `advancedMCPExecution` as a paid feature, but MCP registrations and connection diagnostics are still useful for setup, OSS contribution, and troubleshooting before a user upgrades.
 
 The paid boundary must not weaken the existing safety model. A paid plan should unlock the ability to execute eligible external MCP tools, not bypass disabled, dangerous, or missing-approval checks. Because external MCP servers can execute arbitrary server-side code, `read` and `draft` risk labels still require explicit user approval before `tools/call`.
 
@@ -42,5 +42,5 @@ After the paid gate passes, keep the normal permission checks:
 ## Links
 
 - Related task: tasks/Phase11-ProviderSyncUXProductization.md
-- Related implementation: Sources/SoloPMCore/ExternalMCP/MCPExecution.swift
-- Related tests: Tests/SoloPMCoreTests/ExternalMCPTests.swift
+- Related implementation: Sources/SuisuiCore/ExternalMCP/MCPExecution.swift
+- Related tests: Tests/SuisuiCoreTests/ExternalMCPTests.swift

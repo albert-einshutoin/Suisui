@@ -1,7 +1,7 @@
-# SoloPM TAKT Automation
+# Suisui TAKT Automation
 
 This directory configures local subscription-only TAKT/devloopd automation for
-SoloPM. Planning and final arbitration use Codex, implementation and scoped
+Suisui. Planning and final arbitration use Codex, implementation and scoped
 verification fixes use Cursor Agent, and mergeability/security review uses agy.
 OpenCode is intentionally not configured because this project must remain
 operable when the OpenCode token allowance is exhausted.
@@ -9,12 +9,12 @@ operable when the OpenCode token allowance is exhausted.
 ## Prerequisites
 
 Install and authenticate `takt`, `devloopd`, `codex`, `cursor-agent`, `agy`,
-`gh`, and `jq`. Run commands from the SoloPM repository root.
+`gh`, and `jq`. Run commands from the Suisui repository root.
 
 Set the repository once per shell when auto-detection is not enough:
 
 ```bash
-export TAKT_LOOP_REPO=albert-einshutoin/soloPM
+export TAKT_LOOP_REPO=albert-einshutoin/suisui
 ```
 
 `TAKT_LOOP_*` is the automation environment prefix.

@@ -9,49 +9,49 @@ mkdir -p "$BUILD_DIR"
 CORE_SOURCES=()
 while IFS= read -r source_file; do
   CORE_SOURCES+=("$source_file")
-done < <(find "$ROOT_DIR/Sources/SoloPMCore" -name '*.swift' -print | sort)
+done < <(find "$ROOT_DIR/Sources/SuisuiCore" -name '*.swift' -print | sort)
 
 APP_SOURCES=()
 while IFS= read -r source_file; do
   APP_SOURCES+=("$source_file")
-done < <(find "$ROOT_DIR/Sources/SoloPMApp" -name '*.swift' -print | sort)
+done < <(find "$ROOT_DIR/Sources/SuisuiApp" -name '*.swift' -print | sort)
 
 swiftc \
   -emit-module \
-  -emit-module-path "$BUILD_DIR/SoloPMCore.swiftmodule" \
+  -emit-module-path "$BUILD_DIR/SuisuiCore.swiftmodule" \
   -emit-library \
   -enable-testing \
-  -module-name SoloPMCore \
+  -module-name SuisuiCore \
   "${CORE_SOURCES[@]}" \
   -lsqlite3 \
-  -o "$BUILD_DIR/libSoloPMCore.dylib"
+  -o "$BUILD_DIR/libSuisuiCore.dylib"
 
 swiftc \
   -parse-as-library \
   -typecheck \
   -I "$BUILD_DIR" \
   -L "$BUILD_DIR" \
-  -lSoloPMCore \
+  -lSuisuiCore \
   "${APP_SOURCES[@]}"
 
 swiftc \
   -parse-as-library \
   -I "$BUILD_DIR" \
   -L "$BUILD_DIR" \
-  -lSoloPMCore \
+  -lSuisuiCore \
   -Xlinker -rpath \
   -Xlinker "$BUILD_DIR" \
   "${APP_SOURCES[@]}" \
-  -o "$BUILD_DIR/SoloPMApp"
+  -o "$BUILD_DIR/SuisuiApp"
 
 swiftc \
   -parse-as-library \
   -I "$BUILD_DIR" \
   -L "$BUILD_DIR" \
-  -lSoloPMCore \
+  -lSuisuiCore \
   -Xlinker -rpath \
   -Xlinker "$BUILD_DIR" \
-  "$ROOT_DIR/Tests/Manual/SoloPMCoreManualTests.swift" \
-  -o "$BUILD_DIR/SoloPMCoreManualTests"
+  "$ROOT_DIR/Tests/Manual/SuisuiCoreManualTests.swift" \
+  -o "$BUILD_DIR/SuisuiCoreManualTests"
 
-"$BUILD_DIR/SoloPMCoreManualTests"
+"$BUILD_DIR/SuisuiCoreManualTests"

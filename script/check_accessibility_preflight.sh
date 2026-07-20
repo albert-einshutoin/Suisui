@@ -81,7 +81,7 @@ REQUIRED_FUNCTIONAL_SURFACE_ANCHORS=(
   "project-board::inline-task-due"
   "project-board::inline-task-create"
   "project-board::inline-task-cancel"
-  "project-board::.help(\"Creates the task in the local SoloPM database\")"
+  "project-board::.help(\"Creates the task in the local Suisui database\")"
   "project-board::.help(\"Cancels task creation and returns focus to the board column\")"
   "project-board::project-board-task-auto-execution-review"
   "project-board::.accessibilityHint(\"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings.\")"
@@ -98,7 +98,7 @@ REQUIRED_FUNCTIONAL_SURFACE_ANCHORS=(
   "project-board::task-inspector-delete"
   "project-board::task-inspector-delete-confirmation-cancel"
   "project-board::.help(\"Applies the local next-step suggestion to the selected task\")"
-  "project-board::.help(\"Saves edits to the selected task in the local SoloPM database\")"
+  "project-board::.help(\"Saves edits to the selected task in the local Suisui database\")"
   "project-board::.help(\"Prepares review-only local automation for the selected task\")"
   "project-board::.help(\"Runs the reviewed local task step after explicit user approval\")"
   "project-board::.help(\"Deletes the selected task after confirmation\")"
@@ -111,9 +111,9 @@ REQUIRED_FUNCTIONAL_SURFACE_ANCHORS=(
   "project-board::project-inspector-archive"
   "project-board::project-inspector-delete"
   "project-board::.help(\"Applies the local next-step suggestion to the selected project\")"
-  "project-board::.help(\"Saves edits to the selected project in the local SoloPM database\")"
-  "project-board::.help(\"Restores the selected project to active views in the local SoloPM database\")"
-  "project-board::.help(\"Completes the selected project in the local SoloPM database\")"
+  "project-board::.help(\"Saves edits to the selected project in the local Suisui database\")"
+  "project-board::.help(\"Restores the selected project to active views in the local Suisui database\")"
+  "project-board::.help(\"Completes the selected project in the local Suisui database\")"
   "project-board::.help(\"Archives the selected project after confirmation\")"
   "project-board::.help(\"Deletes the selected project after confirmation\")"
   "project-board::project-overview-task-open-"
@@ -156,8 +156,8 @@ REQUIRED_FUNCTIONAL_SURFACE_ANCHORS=(
   "project-board::.keyboardShortcut(\"4\", modifiers: [.command])"
 )
 REQUIRED_SOURCE_OWNER_ASSERTIONS=(
-  "Sources/SoloPMApp/SoloPMApp.swift::.keyboardShortcut(\",\", modifiers: [.command])"
-  "Sources/SoloPMApp/Views/MenuBarPanel.swift::.keyboardShortcut(.return, modifiers: [.command])"
+  "Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\",\", modifiers: [.command])"
+  "Sources/SuisuiApp/Views/MenuBarPanel.swift::.keyboardShortcut(.return, modifiers: [.command])"
 )
 
 usage() {
@@ -250,7 +250,7 @@ cleanup_launched_app() {
 trap cleanup_launched_app EXIT INT TERM
 
 project_board_surface_source_files() {
-  find "$ROOT_DIR/Sources/SoloPMApp/Views" -type f \
+  find "$ROOT_DIR/Sources/SuisuiApp/Views" -type f \
     \( -name 'ProjectBoard*.swift' -o -name 'ProjectWorkflow*.swift' -o -name 'TaskInspector*.swift' \) \
     -print | LC_ALL=C sort
 }
@@ -376,7 +376,7 @@ activate_app() {
   # Keep activation inside System Events so LaunchServices does not start or
   # block on a second app instance outside the isolated launch environment.
   # The AX scan must target the exact PID launched by this script, otherwise
-  # a stray SoloPM window owned by a developer or a prior step would be
+  # a stray Suisui window owned by a developer or a prior step would be
   # inspected in place of the release candidate.
   /usr/bin/osascript - "$APP_NAME" "${APP_LAUNCH_PID:-}" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
@@ -714,7 +714,7 @@ if [[ "$LAUNCH_APP" -eq 1 ]]; then
   # shellcheck source=/dev/null
   source "$LAUNCH_ENV_FILE"
   set +a
-  export SOLOPM_RUNTIME_CRUD_RECOVERY_MODE=1
+  export SUISUI_RUNTIME_CRUD_RECOVERY_MODE=1
   "$APP_BINARY" >/dev/null 2>&1 &
   APP_LAUNCH_PID=$!
   activate_app

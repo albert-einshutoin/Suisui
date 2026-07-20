@@ -16,25 +16,26 @@ APP_NAME="${APP_NAME:?APP_NAME is required}"
 BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:-}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-TIMEOUT_SECONDS="${SOLOPM_PERFORMANCE_TIMEOUT_SECONDS:-30}"
-OUTPUT_DIR="${SOLOPM_PERFORMANCE_OUTPUT_DIR:-$ROOT_DIR/.tmp/release-launch-performance}"
-PERFORMANCE_HOME="${SOLOPM_PERFORMANCE_HOME:-$OUTPUT_DIR/home}"
-PERFORMANCE_DATABASE_PATH="${SOLOPM_PERFORMANCE_DATABASE_PATH:-$PERFORMANCE_HOME/Library/Application Support/SoloPM/SoloPM.sqlite}"
+TIMEOUT_SECONDS="${SUISUI_PERFORMANCE_TIMEOUT_SECONDS:-30}"
+OUTPUT_DIR="${SUISUI_PERFORMANCE_OUTPUT_DIR:-$ROOT_DIR/.tmp/release-launch-performance}"
+PERFORMANCE_HOME="${SUISUI_PERFORMANCE_HOME:-$OUTPUT_DIR/home}"
+PERFORMANCE_DATABASE_PATH="${SUISUI_PERFORMANCE_DATABASE_PATH:-$PERFORMANCE_HOME/Library/Application Support/Suisui/Suisui.sqlite}"
 SUMMARY_FILE="$OUTPUT_DIR/summary.md"
 SAMPLES_FILE="$OUTPUT_DIR/samples.tsv"
+TIMELINE_FILE="$OUTPUT_DIR/launch-timeline.tsv"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}"
 AX_MARKER_HELPER="${AX_MARKER_HELPER:-$ROOT_DIR/script/ui_evidence_ax_marker_check.swift}"
 AX_PRESS_ELEMENT_HELPER_EXECUTABLE="$OUTPUT_DIR/ui-evidence-ax-press-element.$$"
 AX_MARKER_HELPER_EXECUTABLE="$OUTPUT_DIR/ui-evidence-ax-marker-checker.$$"
-SOLOPM_PERFORMANCE_PROFILE="${SOLOPM_PERFORMANCE_PROFILE:-release}"
+SUISUI_PERFORMANCE_PROFILE="${SUISUI_PERFORMANCE_PROFILE:-release}"
 
-case "$SOLOPM_PERFORMANCE_PROFILE" in
+case "$SUISUI_PERFORMANCE_PROFILE" in
   release)
     # Release profile keeps the build aligned with release-machine evidence and
     # the stricter Sparkle requirements already enforced by the release path.
     DEFAULT_BUILD_CONFIGURATION=release
-    DEFAULT_COLD_LAUNCH_BUDGET_MS=15000
+    DEFAULT_COLD_LAUNCH_BUDGET_MS=1000
     DEFAULT_DESTINATION_SWITCH_BUDGET_MS=3000
     ;;
   debug)
@@ -45,13 +46,13 @@ case "$SOLOPM_PERFORMANCE_PROFILE" in
     DEFAULT_DESTINATION_SWITCH_BUDGET_MS=5000
     ;;
   *)
-    echo "BLOCKER: SOLOPM_PERFORMANCE_PROFILE must be release or debug" >&2
+    echo "BLOCKER: SUISUI_PERFORMANCE_PROFILE must be release or debug" >&2
     exit 2
     ;;
 esac
 
-PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE="${SOLOPM_PERFORMANCE_BUILD_CONFIGURATION:-}"
-if [[ "$SOLOPM_PERFORMANCE_PROFILE" == "release" && -n "$PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE" && "$PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE" != "release" ]]; then
+PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE="${SUISUI_PERFORMANCE_BUILD_CONFIGURATION:-}"
+if [[ "$SUISUI_PERFORMANCE_PROFILE" == "release" && -n "$PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE" && "$PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE" != "release" ]]; then
   # Release safety stays strict here so release evidence cannot be weakened by
   # a debug build override hiding launch behavior differences.
   echo "BLOCKER: release performance profile requires release build configuration" >&2
@@ -59,8 +60,8 @@ if [[ "$SOLOPM_PERFORMANCE_PROFILE" == "release" && -n "$PERFORMANCE_BUILD_CONFI
 fi
 
 BUILD_CONFIGURATION="${PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE:-$DEFAULT_BUILD_CONFIGURATION}"
-MAX_COLD_LAUNCH_MS="${SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS:-$DEFAULT_COLD_LAUNCH_BUDGET_MS}"
-MAX_DESTINATION_SWITCH_MS="${SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS:-$DEFAULT_DESTINATION_SWITCH_BUDGET_MS}"
+MAX_COLD_LAUNCH_MS="${SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS:-$DEFAULT_COLD_LAUNCH_BUDGET_MS}"
+MAX_DESTINATION_SWITCH_MS="${SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS:-$DEFAULT_DESTINATION_SWITCH_BUDGET_MS}"
 
 require_positive_integer_budget() {
   local name="$1"
@@ -75,7 +76,7 @@ reject_relaxed_release_budget() {
   local name="$1"
   local value="$2"
   local default_value="$3"
-  if [[ "$SOLOPM_PERFORMANCE_PROFILE" == "release" && "$value" -gt "$default_value" ]]; then
+  if [[ "$SUISUI_PERFORMANCE_PROFILE" == "release" && "$value" -gt "$default_value" ]]; then
     # Release evidence must not be made easier by env overrides; lower values are
     # allowed because they are stricter and preserve the release baseline.
     echo "BLOCKER: release performance budget override cannot exceed default $name budget (${default_value}ms)" >&2
@@ -83,8 +84,8 @@ reject_relaxed_release_budget() {
   fi
 }
 
-require_positive_integer_budget "SOLOPM_PERFORMANCE_MAX_COLD_LAUNCH_MS" "$MAX_COLD_LAUNCH_MS"
-require_positive_integer_budget "SOLOPM_PERFORMANCE_MAX_DESTINATION_SWITCH_MS" "$MAX_DESTINATION_SWITCH_MS"
+require_positive_integer_budget "SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS" "$MAX_COLD_LAUNCH_MS"
+require_positive_integer_budget "SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS" "$MAX_DESTINATION_SWITCH_MS"
 reject_relaxed_release_budget "cold launch" "$MAX_COLD_LAUNCH_MS" "$DEFAULT_COLD_LAUNCH_BUDGET_MS"
 reject_relaxed_release_budget "destination switch" "$MAX_DESTINATION_SWITCH_MS" "$DEFAULT_DESTINATION_SWITCH_BUDGET_MS"
 
@@ -95,10 +96,16 @@ mkdir -p "$(dirname "$PERFORMANCE_DATABASE_PATH")"
 # shellcheck source=/dev/null
 source "$AX_HELPERS"
 
+# A one-second product SLO needs finer sampling than the conservative shared
+# smoke default. This changes only observer cadence, never the product budget.
+AX_WAIT_POLL_INTERVAL_SECONDS=0.05
+export AX_WAIT_POLL_INTERVAL_SECONDS
+
 APP_PID=""
 APP_LAUNCH_PID=""
 APP_IDENTITY=""
 APP_LAUNCH_IDENTITY=""
+TRACK_LAUNCH_MILESTONES=0
 
 now_ms() {
   /usr/bin/perl -MTime::HiRes=time -e 'printf "%d\n", time() * 1000'
@@ -133,7 +140,7 @@ prepare_ax_helpers() {
 
 activate_app() {
   # Target the process we launched. Addressing the application by name can make
-  # LaunchServices start or activate a different SoloPM instance and invalidate
+  # LaunchServices start or activate a different Suisui instance and invalidate
   # both the isolated database and the performance sample.
   /usr/bin/osascript - "$APP_PID" "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
@@ -170,9 +177,14 @@ APPLESCRIPT
 open_app() {
   # Direct launch retains the deterministic HOME/SQLite/selection contract;
   # unlike LaunchServices it cannot silently drop normal-route environment.
+  local timeline_path=""
+  if [[ "$TRACK_LAUNCH_MILESTONES" == "1" ]]; then
+    timeline_path="$TIMELINE_FILE"
+  fi
   /usr/bin/env -i PATH="$PATH" TMPDIR="$OUTPUT_DIR" HOME="$PERFORMANCE_HOME" CFFIXED_USER_HOME="$PERFORMANCE_HOME" \
-    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$PERFORMANCE_DATABASE_PATH" \
-    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="today" \
+    SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 SUISUI_DATABASE_PATH="$PERFORMANCE_DATABASE_PATH" \
+    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="today" \
+    SUISUI_LAUNCH_TIMELINE_PATH="$timeline_path" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
   APP_LAUNCH_PID=$!
   APP_LAUNCH_IDENTITY="$(ax_wait_for_owned_process_identity "$APP_LAUNCH_PID" "$APP_BINARY" 3)" || {
@@ -189,11 +201,33 @@ open_app() {
     return 1
   }
   ax_wait_for_pid_owned_process "$APP_NAME" "$APP_PID" "$TIMEOUT_SECONDS" "$APP_BINARY"
-  activate_app
+}
+
+wait_for_launch_milestone() {
+  local label="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local timestamp=""
+  while true; do
+    timestamp="$(awk -F '\t' -v label="$label" '$1 == label { print $2; exit }' "$TIMELINE_FILE" 2>/dev/null || true)"
+    if [[ "$timestamp" =~ ^[0-9]+$ ]]; then
+      printf '%s\n' "$timestamp"
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      ax_emit_failure_category "product-marker" "performance-launch-milestone-unavailable"
+      echo "BLOCKER: app did not emit launch milestone: $label" >&2
+      return 1
+    fi
+    sleep 0.05
+  done
 }
 
 wait_for_visible_window() {
-  if ! ax_wait_for_pid_owned_window "$APP_NAME" "$APP_PID" "" "$TIMEOUT_SECONDS" "" "$APP_BINARY"; then
+  local probe_file="$OUTPUT_DIR/wait-visible-window.txt"
+  # Reuse the compiled AX probe and its explicit any-window token to detect an
+  # owned window at sub-second cadence. The shared AppleScript helper polls at
+  # one-second intervals and would otherwise dominate a one-second launch SLO.
+  if ! ax_wait_for_ax_identifier "$APP_NAME" "__AX_ANY_WINDOW__" "$TIMEOUT_SECONDS" "$ROOT_DIR" "$probe_file" "" "$APP_PID"; then
     ax_emit_failure_category "window" "performance-window-unavailable"
     echo "BLOCKER: $APP_NAME did not publish a visible window for launched pid $APP_PID within ${TIMEOUT_SECONDS}s" >&2
     return 1
@@ -383,7 +417,7 @@ trap cleanup EXIT
   printf '%s\n' '# Release Launch Performance Smoke'
   printf '\n'
   printf 'Generated at: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-  printf 'Performance profile: `%s`\n' "$SOLOPM_PERFORMANCE_PROFILE"
+  printf 'Performance profile: `%s`\n' "$SUISUI_PERFORMANCE_PROFILE"
   printf 'Build configuration: `%s`\n' "$BUILD_CONFIGURATION"
   printf 'Default cold launch budget: `%sms`\n' "$MAX_COLD_LAUNCH_MS"
   printf 'Default destination switch budget: `%sms`\n' "$MAX_DESTINATION_SWITCH_MS"
@@ -394,17 +428,34 @@ printf '%s\t%s\n' "label" "elapsed_ms" >"$SAMPLES_FILE"
 
 terminate_app
 prepare_ax_helpers
-SOLOPM_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
+if [[ "$SUISUI_PERFORMANCE_PROFILE" == "release" ]]; then
+  SUISUI_RELEASE_BUILD_PURPOSE=performance \
+    SUISUI_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
+else
+  SUISUI_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
+fi
 prepare_production_fixture
 
 launch_start_ms="$(now_ms)"
+rm -f "$TIMELINE_FILE"
+TRACK_LAUNCH_MILESTONES=1
 open_app
+visible_window_ms="$(wait_for_launch_milestone "window-visible")"
+command_ready_ms="$(wait_for_launch_milestone "command-ready")"
+today_ready_ms="$(wait_for_launch_milestone "today-ready")"
+# AX markers remain mandatory proof that the app-owned readiness milestones
+# correspond to real, operable UI rather than optimistic instrumentation.
 wait_for_visible_window
 wait_for_marker "project-board-command-palette"
 wait_for_marker "today-workflow"
-launch_end_ms="$(now_ms)"
-record_sample "cold-launch-visible-window" "$launch_start_ms" "$launch_end_ms" "$MAX_COLD_LAUNCH_MS"
+record_sample "cold-launch-visible-window" "$launch_start_ms" "$visible_window_ms"
+record_sample "cold-launch-command-ready" "$launch_start_ms" "$command_ready_ms" "$MAX_COLD_LAUNCH_MS"
+record_sample "cold-launch-today-ready" "$launch_start_ms" "$today_ready_ms"
 
+# Activation is intentionally outside the cold-launch sample. The product is
+# already command-ready; this only gives the AX destination benchmark a stable
+# foreground window without charging automation setup to launch latency.
+activate_app
 measure_destination "destination-inbox" "sidebar-destination-inbox" "Inbox" "inbox-workflow"
 # Assistant Queue is intentionally nested under Review in the four-area IA.
 # Measure both real user transitions so this gate cannot silently restore the

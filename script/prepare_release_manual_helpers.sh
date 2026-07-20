@@ -9,10 +9,10 @@ release_candidate_source_commit() {
   # should follow the release-candidate app/runtime source, not helper commits.
   commit="$(
     git -C "$ROOT_DIR" log -1 --format=%h -- \
-      Sources/SoloPMApp \
-      Sources/SoloPMCore \
-      Sources/SoloPMCLI \
-      Sources/SoloPMExternalConnectors \
+      Sources/SuisuiApp \
+      Sources/SuisuiCore \
+      Sources/SuisuiCLI \
+      Sources/SuisuiExternalConnectors \
       Package.swift \
       packaging/app_metadata.env 2>/dev/null || true
   )"
@@ -167,7 +167,7 @@ if [[ "$PRUNE_STALE" -eq 1 ]]; then
 fi
 
 printf '%s\n' 'NEXT: VoiceOver starts on the prepared Project Board; the beige `VoiceOver Review Project` screen is expected and waits for manual operation.'
-printf '%s\n' 'NEXT: launch it with `set -a; source .tmp/voiceover-review/launch.env; set +a; ./dist/SoloPM.app/Contents/MacOS/SoloPM`.'
+printf '%s\n' 'NEXT: launch it with `set -a; source .tmp/voiceover-review/launch.env; set +a; ./dist/Suisui.app/Contents/MacOS/Suisui`.'
 printf '%s\n' 'NEXT: press Command-F5 (or Fn-Command-F5), move with Control-Option-Right/Left Arrow, and activate with Control-Option-Space.'
 printf '%s\n' 'NEXT: fill each worksheet, set `Status: completed`, and change every completed `[ ]` to `[x]`; keep the explanatory text.'
 printf '%s\n' 'NEXT: run each generated command with `--validate-only` before write mode. Competitor and release-machine commands read values directly from their worksheet.'
