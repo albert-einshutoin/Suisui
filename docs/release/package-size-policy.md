@@ -5,7 +5,8 @@ SoloPMの配布物は、初回導入が軽く、必要な高度機能はユー�
 ## Production budget
 
 - `SoloPM.app`: file payload合計50 MiB以下。`script/check_release_bundle_inventory.sh`が超過をfail closedにする。
-- ZIP: 6 MiB以下。DMG: 9 MiB以下。`script/check_release_artifact_size.sh`が形式別に検証し、必要な変更は`SOLOPM_MAX_ZIP_ARTIFACT_BYTES`または`SOLOPM_MAX_DMG_ARTIFACT_BYTES`をPRで明示して更新する。
+- ZIP: 7.5 MiB以下。DMG: 9 MiB以下。`script/check_release_artifact_size.sh`が形式別に検証し、必要な変更は`SOLOPM_MAX_ZIP_ARTIFACT_BYTES`または`SOLOPM_MAX_DMG_ARTIFACT_BYTES`をPRで明示して更新する。
+- 正式な多解像度アプリアイコンは1024pxキャンバスと全macOS表現を維持しつつ、視覚上十分な512px相当に最適化した。ZIP実測値7,443,842 bytesを根拠に上限を7.5 MiBとし、約420 KiBを超える追加回帰は拒否する。
 - Release evidence: app bundle、main binary、ZIP/DMGの実測bytesとstrip/pruning modeを記録する。
 - Review threshold: 新規依存または新規リソースがapp bundleを5 MiB以上増やす変更は、PRに代替案、ユーザー価値、更新・脆弱性対応責任を記載する。
 - `.build`や開発者cacheの容量を、ユーザーへ配るapp bundleの容量として扱わない。
@@ -33,8 +34,9 @@ Sparkleの`Resources`、`Updater.app`、`XPCServices`は更新ランタイムな
 2. `prepare_release_bundle.sh`でmain binaryをstripし、Sparkle開発資産を削除する。
 3. `check_release_bundle_inventory.sh`で容量、最大ファイル、モデル非同梱を検証する。
 4. nested codeを内側から署名し、appをDeveloper ID署名する。
-5. notarizationとstapleを行う。
-6. `package_release.sh`でclean ZIP/DMGを生成し、サイズ証跡とchecksumを保存する。
+5. appのnotarizationとstapleを行う。
+6. `package_release.sh`でclean ZIP/DMGを生成し、配布DMG自体をnotarize/staple/Gatekeeper検証する。
+7. DMG検証成功後にのみ、artifactのサイズ証跡とchecksumを保存する。
 
 署名後のapp bundleはパッケージ生成時に変更しない。unsigned smokeでは`dist/SoloPM.app`を一時ディレクトリへ複製し、そのコピーだけをstrip/pruneする。内容変更が必要になった場合は、Release buildの準備から署名・公証をやり直す。
 

@@ -317,11 +317,13 @@ require_file "$ROOT_DIR/packaging/notarization.env.example" "notarization env ex
 require_executable "$ROOT_DIR/script/create_release_evidence.sh" "release evidence script"
 require_executable "$ROOT_DIR/script/sign_app.sh" "signing script"
 require_executable "$ROOT_DIR/script/notarize_app.sh" "notarization script"
+require_executable "$ROOT_DIR/script/notarize_release_dmg.sh" "release DMG notarization script"
 require_executable "$ROOT_DIR/script/package_release.sh" "packaging script"
 require_executable "$ROOT_DIR/script/check_release_bundle_inventory.sh" "release bundle inventory script"
 require_executable "$ROOT_DIR/script/check_release_artifact_size.sh" "release artifact size script"
 require_executable "$ROOT_DIR/script/verify_package_evidence_metrics.sh" "package evidence metrics verifier"
 require_executable "$ROOT_DIR/script/verify_appcast.sh" "appcast verification script"
+require_executable "$ROOT_DIR/script/verify_dmg_notarization_evidence.sh" "DMG notarization evidence verifier"
 require_executable "$ROOT_DIR/script/validate_sparkle_release_config.sh" "Sparkle release config validator"
 require_command codesign
 require_command security
@@ -755,6 +757,32 @@ require_app_signature_identity() {
   fi
 }
 
+require_release_dmg_notarization() {
+  local package_file="$1"
+
+  case "$package_file" in
+    *.dmg)
+      ;;
+    *)
+      return
+      ;;
+  esac
+
+  if ! xcrun stapler validate "$package_file" >/dev/null 2>&1; then
+    add_blocker "release DMG is not stapled or stapler validation failed: $package_file"
+  fi
+
+  # Gatekeeper must assess the downloaded container, not only the nested app.
+  if ! spctl -a -t open --context context:primary-signature -vv "$package_file" >/dev/null 2>&1; then
+    add_blocker "release DMG failed Gatekeeper assessment: $package_file"
+  fi
+
+  notarization_evidence_output=""
+  if ! notarization_evidence_output="$("$ROOT_DIR/script/verify_dmg_notarization_evidence.sh" "$package_file" 2>&1)"; then
+    add_blocker "release DMG structured notarization evidence failed: $notarization_evidence_output"
+  fi
+}
+
 require_evidence_artifact_sha256() {
   local evidence_sha
   local evidence_path
@@ -818,6 +846,10 @@ require_evidence_artifact_sha256() {
     if [[ "$actual_package_sha" != "$package_sha" ]]; then
       add_blocker "release artifact SHA-256 does not match checksum file: expected '$package_sha', got '$actual_package_sha'"
     fi
+  fi
+
+  if [[ -f "$package_file" ]]; then
+    require_release_dmg_notarization "$package_file"
   fi
 
   if [[ "$evidence_sha" != "$package_sha" ]]; then
@@ -964,7 +996,7 @@ fi
 
 if [[ -f "$RELEASE_APPCAST_FILE" ]]; then
   appcast_validation_output=""
-  if ! appcast_validation_output="$(SOLOPM_REQUIRE_RELEASE_APPCAST=1 "$ROOT_DIR/script/verify_appcast.sh" "$RELEASE_APPCAST_FILE" 2>&1)"; then
+  if ! appcast_validation_output="$(SOLOPM_REQUIRE_RELEASE_APPCAST=1 SOLOPM_VERIFY_REMOTE_SPARKLE="$ONLINE_PREFLIGHT" "$ROOT_DIR/script/verify_appcast.sh" "$RELEASE_APPCAST_FILE" 2>&1)"; then
     add_blocker "release appcast verification failed: $RELEASE_APPCAST_FILE: $appcast_validation_output"
   fi
 else

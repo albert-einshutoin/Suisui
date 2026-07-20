@@ -39,14 +39,15 @@ Generated helpers:
 
 Required manual work:
 
-1. Open the candidate from `.tmp/voiceover-review/launch.env` or rerun the launch command printed by `./script/prepare_release_manual_helpers.sh`.
-2. With actual VoiceOver enabled, verify Project board -> card -> Inline Task Composer -> inspector focus order.
-3. Verify the Inbox voice triage detail announces transcript, interpretation, metadata, memo editing, and triage actions.
-4. Verify the Today assistant rail announces next action, task detail, focus, schedule, edit, subtask, and reminder draft controls.
-5. Run the approved execution path for the reviewed task and confirm the redacted execution receipt records the reviewed task title and detail.
-6. Fill `.tmp/voiceover-review/voiceover-worksheet.md` with concrete observations. Do not use placeholders such as `TBD`, `Verified`, `OK`, or `No issues`.
-7. Run the generated command in validate-only mode first.
-8. Run the generated command in write mode only after validation succeeds.
+1. Open the candidate with `set -a; source .tmp/voiceover-review/launch.env; set +a; ./dist/SoloPM.app/Contents/MacOS/SoloPM`, or rerun `./script/prepare_voiceover_review_candidate.sh --skip-build`.
+2. The beige `VoiceOver Review Project` screen is the prepared candidate and waits for manual input. Press Command-F5 (or Fn-Command-F5) to enable VoiceOver. Move with Control-Option-Right/Left Arrow and activate with Control-Option-Space.
+3. With actual VoiceOver enabled, verify Project board -> card -> Inline Task Composer -> inspector focus order.
+4. Verify the Inbox voice triage detail announces transcript, interpretation, metadata, memo editing, and triage actions.
+5. Verify the Today assistant rail announces next action, task detail, focus, schedule, edit, subtask, and reminder draft controls.
+6. Run the approved execution path for the reviewed task and confirm the redacted execution receipt records the reviewed task title and detail.
+7. Fill `.tmp/voiceover-review/voiceover-worksheet.md` with concrete observations, set `Status: completed`, and change every completed `[ ]` to `[x]`. Keep its explanatory text. Do not use placeholders such as `TBD`, `Verified`, `OK`, or `No issues`.
+8. Run the generated command in validate-only mode first.
+9. Run the generated command in write mode only after validation succeeds.
 
 Release-ready evidence requirements:
 
@@ -70,6 +71,32 @@ Commit only after the VoiceOver section is green:
 git add docs/release/evidence/accessibility-voiceover.md
 git commit -m "docs: record current voiceover release evidence"
 ```
+
+## Local STT / TTS runtime
+
+Goal: prove real on-device whisper.cpp transcription and Kokoro Japanese/English speech generation using checksum-verified models. This is separate from VoiceOver and still requires listening to Settings -> Voice -> Test Play in the release candidate.
+
+Required local inputs:
+
+- `whisper-cli` executable
+- a real WAV containing known words; avoid committing personal recordings
+- `ggml-tiny.bin` at `~/Library/Application Support/SoloPM/VoiceModels/whisper.cpp/`
+- `kokoro-v1_0.pth` at `~/Library/Application Support/SoloPM/VoiceModels/Kokoro/`
+- the checked-in `script/kokoro_tts_runtime.py` wrapper and its documented Python dependencies
+
+Run the full release proof from the repository root:
+
+```bash
+export SOLOPM_WHISPER_CPP_EXECUTABLE="/absolute/path/to/whisper-cli"
+export SOLOPM_STT_SAMPLE_WAV="/absolute/path/to/non-sensitive-sample.wav"
+export SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS="<words actually spoken in the WAV>"
+export SOLOPM_KOKORO_EXECUTABLE="$PWD/script/kokoro_tts_runtime.py"
+export SOLOPM_TTS_LANGUAGES="ja en"
+export SOLOPM_LOCAL_VOICE_EVIDENCE_FILE="docs/release/evidence/local-voice-runtime.md"
+./script/check_local_voice_runtime_smoke.sh
+```
+
+After it passes, listen to `.tmp/local-voice-runtime-smoke/kokoro-ja.wav` and `kokoro-en.wav`, then open SoloPM Settings -> Voice and run Test Play in the release candidate. Confirm intelligible output, correct Japanese/English selection, and no unexpected network request. Do not commit the WAV, model, executable, cache, or raw recording. Rerun `./script/release_readiness_report.sh` after reviewing the generated path-redacted evidence.
 
 ## Google Calendar live sync
 
@@ -134,8 +161,8 @@ Generated helpers:
 Required manual work:
 
 1. Spend 2-4 hours total across Notion, Todoist, Linear, and Motion.
-2. Fill `.tmp/competitor-hands-on/hands-on-worksheet.md` with concrete setup, capture, status movement, recommendation, and repeated-operation observations.
-3. Fill `.tmp/competitor-hands-on/competitor-benchmark-pending-<release-candidate-source-commit>.md` with final hands-on findings and Ship / Defer / Reject deltas.
+2. Fill `.tmp/competitor-hands-on/hands-on-worksheet.md` with context, per-product observations, measurements, and Ship / Defer / Reject deltas. Set `Status: completed` and change every completed `[ ]` to `[x]`; keep the explanatory text.
+3. Do not edit the pending benchmark preview. The hands-on worksheet is the single source; the generated command reads it and creates both final evidence and benchmark output without duplicate entry.
 4. Run the generated command in validate-only mode first.
 5. Run the generated command in write mode only after validation succeeds.
 
@@ -201,7 +228,7 @@ SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/generate_appcast.sh
 SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml
 ```
 
-Then fill `.tmp/release-machine/release-machine-worksheet.md` while checking the signed/notarized app. The note must name the observed proof for each checked flag:
+Then fill `.tmp/release-machine/release-machine-worksheet.md` while checking the signed/notarized app. Set `Status: completed`, change every completed `[ ]` to `[x]`, and keep the explanatory text. The generated command reads the worksheet directly, so the observations do not need to be entered again. The note must name the observed proof for each checked flag:
 
 - release-machine launch
 - checksum verification
@@ -225,17 +252,12 @@ Verification:
 
 ```bash
 ./.tmp/release-machine/create-release-evidence-command.sh --validate-only
-./.tmp/release-machine/create-release-evidence-command.sh --force
+./.tmp/release-machine/create-release-evidence-command.sh
 SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh
 SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/release_readiness_report.sh
 ```
 
-Commit only after release environment and readiness are green:
-
-```bash
-git add packaging/release-evidence.json
-git commit -m "release: record signed release machine evidence"
-```
+`packaging/release-evidence.json` is release-machine local-only evidence and is intentionally ignored. Do not add or commit it. Keep secrets, notarization identifiers, local user paths, and clean-user details on the release machine. If external auditability is needed, attach only a redacted summary plus artifact checksum to the GitHub Release or the release closeout Issue; never attach the local env files or the raw release evidence.
 
 ## Final release check
 

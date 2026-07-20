@@ -6,6 +6,37 @@ import ImageIO
 import XCTest
 
 final class ReleasePipelineTests: XCTestCase {
+    func testBuildAndRunBundlesCustomMacOSAppIcon() throws {
+        let script = try readPackageFile("script/build_and_run.sh")
+        let generator = try readPackageFile("script/generate_app_icon.sh")
+        let artifactSizeGate = try readPackageFile("script/check_release_artifact_size.sh")
+        let bundleMetadataVerifier = try readPackageFile("script/verify_bundle_metadata.sh")
+        let packageSizePolicy = try readPackageFile("docs/release/package-size-policy.md")
+        let masterURL = packageRoot().appendingPathComponent("packaging/SoloPM-AppIcon-1024.png")
+        let iconURL = packageRoot().appendingPathComponent("packaging/SoloPM.icns")
+
+        let imageSource = try XCTUnwrap(CGImageSourceCreateWithURL(masterURL as CFURL, nil))
+        let properties = try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any])
+        XCTAssertEqual(properties[kCGImagePropertyPixelWidth] as? Int, 1024)
+        XCTAssertEqual(properties[kCGImagePropertyPixelHeight] as? Int, 1024)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: iconURL.path))
+        let iconBytes = try XCTUnwrap(
+            FileManager.default.attributesOfItem(atPath: iconURL.path)[.size] as? NSNumber
+        ).intValue
+        XCTAssertLessThanOrEqual(iconBytes, 1_300_000)
+        XCTAssertTrue(generator.contains("icon_16x16.png"))
+        XCTAssertTrue(generator.contains("icon_512x512@2x.png"))
+        XCTAssertTrue(generator.contains("iconutil -c icns"))
+        XCTAssertTrue(script.contains("APP_ICON_SOURCE=\"$ROOT_DIR/packaging/SoloPM.icns\""))
+        XCTAssertTrue(script.contains("cp \"$APP_ICON_SOURCE\" \"$APP_RESOURCES/SoloPM.icns\""))
+        XCTAssertTrue(script.contains("<key>CFBundleIconFile</key>"))
+        XCTAssertTrue(script.contains("<string>SoloPM.icns</string>"))
+        XCTAssertTrue(bundleMetadataVerifier.contains("CFBundleIconFile"))
+        XCTAssertTrue(bundleMetadataVerifier.contains("missing bundled app icon"))
+        XCTAssertTrue(artifactSizeGate.contains("SOLOPM_MAX_ZIP_ARTIFACT_BYTES:-7864320"))
+        XCTAssertTrue(packageSizePolicy.contains("視覚上十分な512px相当に最適化"))
+    }
+
     func testAccessibilitySourceAnchorCountContractAllowsCoverageGrowth() throws {
         let output = "OK: accessibility source anchors are present (92 anchors)\n"
 
@@ -136,6 +167,76 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("signature is missing hardened runtime"))
     }
 
+    func testReleaseDMGNotarizationSubmitsStaplesValidatesAndAssessesOutermostArtifact() throws {
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-release-dmg-notarization-\(UUID().uuidString)", isDirectory: true)
+        let fakeBinDirectory = fixtureDirectory.appendingPathComponent("bin", isDirectory: true)
+        let artifactURL = fixtureDirectory.appendingPathComponent("SoloPM-fixture.dmg")
+        let commandLogURL = fixtureDirectory.appendingPathComponent("commands.log")
+        try FileManager.default.createDirectory(at: fakeBinDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+        try Data("fixture-dmg".utf8).write(to: artifactURL)
+
+        let xcrun = """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf 'xcrun %s\\n' "$*" >>"$SOLOPM_NOTARIZATION_FIXTURE_LOG"
+        if [[ "$1 $2" == "notarytool submit" ]]; then
+          printf '{"id":"fixture-submission-id","status":"Accepted"}\\n'
+        fi
+        """
+        let spctl = """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf 'spctl %s\\n' "$*" >>"$SOLOPM_NOTARIZATION_FIXTURE_LOG"
+        """
+        for (name, contents) in [("xcrun", xcrun), ("spctl", spctl)] {
+            let url = fakeBinDirectory.appendingPathComponent(name)
+            try contents.write(to: url, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        }
+
+        let path = "\(fakeBinDirectory.path):/usr/bin:/bin:/usr/sbin:/sbin"
+        let result = try runScript(
+            "script/notarize_release_dmg.sh",
+            arguments: [artifactURL.path],
+            environment: [
+                "PATH": path,
+                "SOLOPM_NOTARY_PROFILE": "fixture-profile",
+                "SOLOPM_NOTARIZATION_FIXTURE_LOG": commandLogURL.path
+            ]
+        )
+        let commands = try String(contentsOf: commandLogURL, encoding: .utf8)
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(commands.contains("xcrun notarytool submit \(artifactURL.path) --keychain-profile fixture-profile --wait --output-format json"))
+        XCTAssertTrue(commands.contains("xcrun stapler staple \(artifactURL.path)"))
+        XCTAssertTrue(commands.contains("xcrun stapler validate \(artifactURL.path)"))
+        XCTAssertTrue(commands.contains("spctl -a -t open --context context:primary-signature -vv \(artifactURL.path)"))
+        XCTAssertLessThan(
+            try XCTUnwrap(commands.range(of: "notarytool submit")).lowerBound,
+            try XCTUnwrap(commands.range(of: "stapler staple")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(commands.range(of: "stapler validate")).lowerBound,
+            try XCTUnwrap(commands.range(of: "spctl -a -t open")).lowerBound
+        )
+    }
+
+    func testReleasePackagingNotarizesDMGBeforeChecksumAndEvidence() throws {
+        let packageScript = try readPackageFile("script/package_release.sh")
+        let verifier = try readPackageFile("script/verify_release_environment.sh")
+
+        XCTAssertTrue(packageScript.contains("notarize_release_dmg.sh\" \"$DMG_PATH\""))
+        XCTAssertLessThan(
+            try XCTUnwrap(packageScript.range(of: "notarize_release_dmg.sh\" \"$DMG_PATH\"")).lowerBound,
+            try XCTUnwrap(packageScript.range(of: "create_checksum \"$DMG_PATH\"")).lowerBound
+        )
+        XCTAssertTrue(verifier.contains("notarize_release_dmg.sh"))
+        XCTAssertTrue(verifier.contains("xcrun stapler validate \"$package_file\""))
+        XCTAssertTrue(verifier.contains("spctl -a -t open --context context:primary-signature -vv \"$package_file\""))
+    }
+
     func testNotarizationSetupVerifierChecksProfileWithoutSecrets() throws {
         let script = try readPackageFile("script/verify_notarization_setup.sh")
 
@@ -187,6 +288,41 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Developer ID Application:"))
         XCTAssertTrue(script.contains("SOLOPM_SIGNING_IDENTITY must be a Developer ID Application identity"))
         XCTAssertTrue(script.contains("security find-identity -p codesigning -v"))
+    }
+
+    func testHardenedRuntimeGrantsAudioInputOnlyToMainApp() throws {
+        let entitlementsData = try Data(
+            contentsOf: packageRoot().appendingPathComponent("packaging/SoloPM.entitlements")
+        )
+        let entitlements = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: entitlementsData, format: nil)
+                as? [String: Any]
+        )
+        let signingScript = try readPackageFile("script/sign_app.sh")
+
+        XCTAssertEqual(entitlements["com.apple.security.device.audio-input"] as? Bool, true)
+        XCTAssertTrue(signingScript.contains("NESTED_CODESIGN_ARGS=("))
+        XCTAssertTrue(signingScript.contains("APP_CODESIGN_ARGS=("))
+        XCTAssertTrue(signingScript.contains("codesign \"${NESTED_CODESIGN_ARGS[@]}\" \"$nested_code\""))
+        XCTAssertTrue(signingScript.contains("codesign \"${APP_CODESIGN_ARGS[@]}\" \"$APP_BUNDLE\""))
+        XCTAssertTrue(signingScript.contains("verify_release_architecture.sh\" \"$APP_BUNDLE\""))
+        XCTAssertLessThan(
+            try XCTUnwrap(signingScript.range(of: "check_release_bundle_inventory.sh")).lowerBound,
+            try XCTUnwrap(signingScript.range(of: "verify_release_architecture.sh")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(signingScript.range(of: "verify_release_architecture.sh")).lowerBound,
+            try XCTUnwrap(signingScript.range(of: "codesign \"${NESTED_CODESIGN_ARGS[@]}\"")).lowerBound
+        )
+
+        let nestedArgumentsStart = try XCTUnwrap(
+            signingScript.range(of: "NESTED_CODESIGN_ARGS=(")
+        ).lowerBound
+        let nestedArgumentsEnd = try XCTUnwrap(
+            signingScript.range(of: "APP_CODESIGN_ARGS=(")
+        ).lowerBound
+        let nestedArguments = nestedArgumentsStart..<nestedArgumentsEnd
+        XCTAssertFalse(signingScript[nestedArguments].contains("--entitlements"))
     }
 
     func testReleaseMachineLocalDoctorRunsNonSecretDiagnostics() throws {
@@ -630,11 +766,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(worksheet.contains("Run `.build/test-release-machine-create-evidence-command.sh` only after every checked item above is true."))
         XCTAssertTrue(worksheet.contains("The generated command validates the filled evidence, writes `packaging/release-evidence.json`, then reruns the online release environment preflight."))
         XCTAssertFalse(worksheet.contains("Status: passed"))
+        XCTAssertTrue(worksheet.contains("Keep this instruction text; completion is determined by `Status: completed`, every `[x]` check, and every required observation."))
 
         let command = try String(contentsOf: commandURL, encoding: .utf8)
         XCTAssertTrue(command.contains("# Generated by script/prepare_release_machine_evidence.sh."))
-        XCTAssertTrue(command.contains("# Fill \(worksheetURL.path) while reviewing, then replace every placeholder below."))
-        XCTAssertTrue(command.contains("# This command must fail if placeholders are not replaced."))
+        XCTAssertTrue(command.contains("# Fill \(worksheetURL.path) while reviewing; this command reads the completed worksheet directly."))
+        XCTAssertTrue(command.contains("# Keep worksheet instructions, set Status: completed, check every item, and fill every required value."))
         XCTAssertTrue(command.contains("REPO_ROOT="))
         XCTAssertTrue(command.contains("cd \"$REPO_ROOT\""))
         XCTAssertTrue(command.contains("EXPECTED_SOURCE_COMMIT=\(currentShortCommit)"))
@@ -646,9 +783,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(command.contains("RELEASE_MACHINE_WORKSHEET_FILE=\(worksheetURL.path)"))
         XCTAssertTrue(command.contains("verify_release_machine_worksheet_for_evidence()"))
         XCTAssertTrue(command.contains("Status: completed"))
+        XCTAssertFalse(command.contains("remove pending/template instructions before writing evidence"))
         XCTAssertTrue(command.contains("Release candidate source commit: \\`$EXPECTED_SOURCE_COMMIT\\`"))
-        XCTAssertTrue(command.contains("Status:[[:space:]]*pending"))
-        XCTAssertTrue(command.contains("^## Closeout$"))
+        XCTAssertFalse(command.contains("Status:[[:space:]]*pending"))
+        XCTAssertFalse(command.contains("^## Closeout$"))
         XCTAssertTrue(command.contains("grep -F -- \"- [ ]\" \"$RELEASE_MACHINE_WORKSHEET_FILE\""))
         XCTAssertTrue(command.contains("release-machine worksheet is missing, stale, or incomplete"))
         XCTAssertTrue(command.contains("release_machine_worksheet_value_is_placeholder_or_boilerplate()"))
@@ -673,6 +811,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(command.contains("SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh"))
         XCTAssertTrue(command.contains("SOLOPM_BUILD_CONFIGURATION=release SOLOPM_SPARKLE_CONFIG_QUIET=1 ./script/validate_sparkle_release_config.sh"))
         XCTAssertTrue(command.contains("Validate the filled release-machine evidence command before writing tracked evidence."))
+        XCTAssertTrue(command.contains("usage: $0 [--validate-only]"))
+        XCTAssertTrue(command.contains("VALIDATE_ONLY=0"))
+        XCTAssertTrue(command.contains("if [[ \"$VALIDATE_ONLY\" == 1 ]]; then"))
+        XCTAssertTrue(command.contains("Release evidence validation passed; packaging/release-evidence.json was not written."))
         XCTAssertTrue(command.contains("./script/create_release_evidence.sh --validate-only \\"))
         XCTAssertTrue(command.contains("./script/create_release_evidence.sh --force \\"))
         XCTAssertTrue(command.contains("Run final release-machine preflight after evidence is written."))
@@ -685,8 +827,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(command.contains("--clean-environment-launch \\"))
         XCTAssertTrue(command.contains("--login-item-toggle \\"))
         XCTAssertTrue(command.contains("--sparkle-appcast-metadata \\"))
-        XCTAssertTrue(command.contains("--manual-environment \"<macOS version, hardware, clean user or VM/install context>\" \\"))
-        XCTAssertTrue(command.contains("--checked-by \"<reviewer name>\" \\"))
+        XCTAssertTrue(command.contains("--manual-environment \"$WORKSHEET_MANUAL_ENVIRONMENT\" \\"))
+        XCTAssertTrue(command.contains("--checked-by \"$WORKSHEET_REVIEWER\" \\"))
         XCTAssertTrue(command.contains("Launch at Login toggle on/off"))
         XCTAssertTrue(command.contains("Sparkle appcast metadata"))
         let setupRange = try XCTUnwrap(command.range(of: "Verify release-machine signing, notarization, and Sparkle setup before validating manual evidence."))
@@ -713,6 +855,38 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] `.tmp/release-machine/create-release-evidence-command.sh` runs signing, online notarization, and release Sparkle setup verifiers before `create_release_evidence.sh --validate-only`."))
         XCTAssertTrue(phase.contains("[x] `script/create_release_evidence.sh --validate-only` validates the filled release-machine command without writing `packaging/release-evidence.json`."))
         XCTAssertTrue(phase.contains("[x] `.tmp/release-machine/create-release-evidence-command.sh` runs `SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh` after writing release evidence so release-machine operators see the final gate before rerunning the readiness report."))
+    }
+
+    func testManualReviewHelpersUseWorksheetsAsSingleSourceAndKeepInstructions() throws {
+        let voiceOver = try readPackageFile("script/prepare_voiceover_review_candidate.sh")
+        let competitor = try readPackageFile("script/create_competitor_hands_on_evidence.sh")
+        let releaseMachine = try readPackageFile("script/prepare_release_machine_evidence.sh")
+        let helper = try readPackageFile("script/prepare_release_manual_helpers.sh")
+        let runbook = try readPackageFile("docs/release/manual-unblockers.md")
+
+        XCTAssertTrue(voiceOver.contains("Press Command-F5 to turn VoiceOver on or off"))
+        XCTAssertTrue(voiceOver.contains("Control-Option-Right Arrow"))
+        XCTAssertTrue(voiceOver.contains("Control-Option-Space"))
+        XCTAssertTrue(voiceOver.contains("Keep this instruction text"))
+        XCTAssertFalse(voiceOver.contains("remove pending/template instructions before writing evidence"))
+
+        XCTAssertTrue(competitor.contains("The worksheet is the single source of competitor observations"))
+        XCTAssertTrue(competitor.contains("WORKSHEET_NOTION_NOTE"))
+        XCTAssertTrue(competitor.contains("--notion-note \"$WORKSHEET_NOTION_NOTE\""))
+        XCTAssertFalse(competitor.contains("remove pending/template instructions before writing evidence"))
+
+        XCTAssertTrue(releaseMachine.contains("The worksheet is the single source of release-machine observations"))
+        XCTAssertTrue(releaseMachine.contains("WORKSHEET_MANUAL_ENVIRONMENT"))
+        XCTAssertTrue(releaseMachine.contains("--manual-environment \"$WORKSHEET_MANUAL_ENVIRONMENT\""))
+        XCTAssertFalse(releaseMachine.contains("remove pending/template instructions before writing evidence"))
+
+        XCTAssertTrue(helper.contains("NEXT: VoiceOver starts on the prepared Project Board"))
+        XCTAssertTrue(runbook.contains("## Local STT / TTS runtime"))
+        XCTAssertTrue(runbook.contains("SOLOPM_STT_SAMPLE_WAV"))
+        XCTAssertFalse(runbook.contains("git add packaging/release-evidence.json"))
+        XCTAssertTrue(runbook.contains("release-machine local-only"))
+        XCTAssertTrue(runbook.contains("./.tmp/release-machine/create-release-evidence-command.sh\n"))
+        XCTAssertFalse(runbook.contains("./.tmp/release-machine/create-release-evidence-command.sh --force"))
     }
 
     func testLocalVisualQAArtifactsAndMacMetadataAreIgnored() throws {
@@ -4839,16 +5013,12 @@ final class ReleasePipelineTests: XCTestCase {
         let pendingBenchmark = try String(contentsOf: pendingBenchmarkURL, encoding: .utf8)
         XCTAssertTrue(pendingBenchmark.contains("# Competitor Benchmark Pending Worksheet"))
         XCTAssertTrue(pendingBenchmark.contains("Status: pending"))
-        XCTAssertTrue(pendingBenchmark.contains("This file is not release evidence."))
+        XCTAssertTrue(pendingBenchmark.contains("This file is a read-only pending preview."))
         XCTAssertTrue(pendingBenchmark.contains("Source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(pendingBenchmark.contains("Evidence output: `\(pendingURL.path)`"))
         XCTAssertTrue(pendingBenchmark.contains("Passed benchmark output: `\(pendingBenchmarkURL.path)`"))
-        XCTAssertTrue(pendingBenchmark.contains("## Hands-On Findings To Fill"))
-        XCTAssertTrue(pendingBenchmark.contains("- [ ] Notion:"))
-        XCTAssertTrue(pendingBenchmark.contains("- [ ] Todoist:"))
-        XCTAssertTrue(pendingBenchmark.contains("- [ ] Linear:"))
-        XCTAssertTrue(pendingBenchmark.contains("- [ ] Motion:"))
-        XCTAssertTrue(pendingBenchmark.contains("## Ship / Defer / Reject To Fill"))
+        XCTAssertTrue(pendingBenchmark.contains("## Next Step"))
+        XCTAssertTrue(pendingBenchmark.contains("the single source of manual observations"))
         XCTAssertFalse(pendingBenchmark.contains("Status: passed"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: benchmarkURL.path))
         let worksheet = try String(contentsOf: worksheetURL, encoding: .utf8)
@@ -4871,7 +5041,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(worksheet.contains("Status: passed"))
         let generatedCommand = try String(contentsOf: commandURL, encoding: .utf8)
         XCTAssertTrue(generatedCommand.contains("# Generated by script/create_competitor_hands_on_evidence.sh."))
-        XCTAssertTrue(generatedCommand.contains("# Fill \(worksheetURL.path) while reviewing, then replace every placeholder below."))
+        XCTAssertTrue(generatedCommand.contains("# Fill \(worksheetURL.path) while reviewing; this command reads the completed worksheet directly."))
         XCTAssertTrue(generatedCommand.contains("REPO_ROOT="))
         XCTAssertTrue(generatedCommand.contains("cd \"$REPO_ROOT\""))
         XCTAssertTrue(generatedCommand.contains("EXPECTED_SOURCE_COMMIT=\(currentShortCommit)"))
@@ -4880,37 +5050,33 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(generatedCommand.contains("competitor hands-on evidence command requires a clean tracked source tree"))
         XCTAssertTrue(generatedCommand.contains("competitor hands-on evidence command was generated for source commit"))
         XCTAssertTrue(generatedCommand.contains("COMPETITOR_WORKSHEET_FILE=\(worksheetURL.path)"))
-        XCTAssertTrue(generatedCommand.contains("COMPETITOR_BENCHMARK_WORKSHEET_FILE=\(pendingBenchmarkURL.path)"))
         XCTAssertTrue(generatedCommand.contains("verify_competitor_worksheet_for_evidence()"))
-        XCTAssertTrue(generatedCommand.contains("verify_competitor_benchmark_worksheet_for_evidence()"))
         XCTAssertTrue(generatedCommand.contains("Status: completed"))
         XCTAssertTrue(generatedCommand.contains("Release candidate source commit: \\`$EXPECTED_SOURCE_COMMIT\\`"))
-        XCTAssertTrue(generatedCommand.contains("Source commit: \\`$EXPECTED_SOURCE_COMMIT\\`"))
         XCTAssertTrue(generatedCommand.contains("grep -F -- \"- [ ]\" \"$COMPETITOR_WORKSHEET_FILE\""))
-        XCTAssertTrue(generatedCommand.contains("grep -F -- \"- [ ]\" \"$COMPETITOR_BENCHMARK_WORKSHEET_FILE\""))
         XCTAssertTrue(generatedCommand.contains("competitor_worksheet_value_is_placeholder_or_boilerplate()"))
         XCTAssertTrue(generatedCommand.contains("fill %s with concrete competitor hands-on observation."))
-        XCTAssertTrue(generatedCommand.contains("fill %s with concrete competitor benchmark observation."))
         XCTAssertTrue(generatedCommand.contains("competitor hands-on worksheet is missing, stale, or incomplete"))
-        XCTAssertTrue(generatedCommand.contains("competitor benchmark worksheet is missing, stale, or incomplete"))
         XCTAssertTrue(generatedCommand.contains("Reviewer"))
         XCTAssertTrue(generatedCommand.contains("Elapsed hands-on time with per-competitor timing"))
         XCTAssertTrue(generatedCommand.contains("Ship"))
         let worksheetCheckRange = try XCTUnwrap(generatedCommand.range(of: "verify_competitor_worksheet_for_evidence"))
-        let benchmarkWorksheetCheckRange = try XCTUnwrap(generatedCommand.range(of: "verify_competitor_benchmark_worksheet_for_evidence"))
         let validateCommandRange = try XCTUnwrap(generatedCommand.range(of: "# Validate the filled competitor hands-on command before writing tracked evidence."))
         XCTAssertLessThan(worksheetCheckRange.lowerBound, validateCommandRange.lowerBound)
-        XCTAssertLessThan(benchmarkWorksheetCheckRange.lowerBound, validateCommandRange.lowerBound)
         XCTAssertTrue(generatedCommand.contains("# Validate the filled competitor hands-on command before writing tracked evidence."))
+        XCTAssertTrue(generatedCommand.contains("usage: $0 [--validate-only]"))
+        XCTAssertTrue(generatedCommand.contains("VALIDATE_ONLY=0"))
+        XCTAssertTrue(generatedCommand.contains("if [[ \"$VALIDATE_ONLY\" == 1 ]]; then"))
+        XCTAssertTrue(generatedCommand.contains("Competitor evidence validation passed; tracked evidence and benchmark were not written."))
         XCTAssertTrue(generatedCommand.contains("./script/create_competitor_hands_on_evidence.sh --validate-only \\"))
         XCTAssertTrue(generatedCommand.contains("./script/create_competitor_hands_on_evidence.sh --passed \\"))
-        XCTAssertTrue(generatedCommand.contains("--checked-by \"<reviewer name>\" \\"))
-        XCTAssertTrue(generatedCommand.contains("--environment \"<macOS/browser versions, competitor app/account tiers, and paid trial details>\" \\"))
-        XCTAssertTrue(generatedCommand.contains("--hands-on-duration \"<2-4h total, including Notion/Todoist/Linear/Motion timing>\" \\"))
-        XCTAssertTrue(generatedCommand.contains("--notion-note \"<hands-on Notion project database, board, task, and artifact observation>\" \\"))
-        XCTAssertTrue(generatedCommand.contains("--todoist-note \"<hands-on Todoist quick add, board/list, drag movement, Today/Upcoming observation>\" \\"))
-        XCTAssertTrue(generatedCommand.contains("--linear-note \"<hands-on Linear project, issue detail, keyboard command, and triage observation>\" \\"))
-        XCTAssertTrue(generatedCommand.contains("--motion-note \"<hands-on Motion scheduling, risk, deadline change, and recommendation explanation observation>\" \\"))
+        XCTAssertTrue(generatedCommand.contains("--checked-by \"$WORKSHEET_REVIEWER\" \\"))
+        XCTAssertTrue(generatedCommand.contains("--environment \"$WORKSHEET_ENVIRONMENT\" \\"))
+        XCTAssertTrue(generatedCommand.contains("--hands-on-duration \"$WORKSHEET_HANDS_ON_DURATION\" \\"))
+        XCTAssertTrue(generatedCommand.contains("--notion-note \"$WORKSHEET_NOTION_NOTE\" \\"))
+        XCTAssertTrue(generatedCommand.contains("--todoist-note \"$WORKSHEET_TODOIST_NOTE\" \\"))
+        XCTAssertTrue(generatedCommand.contains("--linear-note \"$WORKSHEET_LINEAR_NOTE\" \\"))
+        XCTAssertTrue(generatedCommand.contains("--motion-note \"$WORKSHEET_MOTION_NOTE\" \\"))
         XCTAssertTrue(generatedCommand.contains("--output \(pendingURL.path) \\"))
         XCTAssertTrue(generatedCommand.contains("--benchmark-output \(pendingBenchmarkURL.path) \\"))
         XCTAssertTrue(generatedCommand.contains("--confirm-manual-hands-on"))
@@ -4959,6 +5125,21 @@ final class ReleasePipelineTests: XCTestCase {
         - Elapsed hands-on time with per-competitor timing: 2h 15m total: Notion 35m, Todoist 30m, Linear 35m, Motion 35m
         - Screenshot or note locations kept outside release evidence: local reviewer notes only
 
+        ## Competitor Paths
+
+        - [x] Notion: create a project database and review the board flow.
+        - [x] Todoist: capture and move a task through the tested views.
+        - [x] Linear: create and triage an issue with keyboard commands.
+        - [x] Motion: inspect scheduling and deadline recommendations.
+        - [x] No external SaaS sync or team workflow was added to SoloPM public alpha scope.
+
+        ## Competitor Observations
+
+        - Notion observation: Board setup was flexible but required schema decisions before capture.
+        - Todoist observation: Quick Add was fast and board movement stayed easy to understand.
+        - Linear observation: Keyboard triage was fast but team concepts added density.
+        - Motion observation: Scheduling was useful only when deadline impact was explained.
+
         ## Measurements
 
         - Setup steps before first useful task: Notion required schema setup; Todoist was fastest for capture.
@@ -4973,10 +5154,14 @@ final class ReleasePipelineTests: XCTestCase {
         - Reject: Team cycles, initiatives, and external SaaS sync for public alpha.
         """.write(to: worksheetURL, atomically: true, encoding: .utf8)
 
-        let missingBenchmarkWorksheetResult = try runTool(["bash", commandURL.path])
-        XCTAssertNotEqual(missingBenchmarkWorksheetResult.exitCode, 0)
-        XCTAssertTrue(missingBenchmarkWorksheetResult.output.contains("competitor benchmark worksheet is missing, stale, or incomplete"))
-        XCTAssertFalse(missingBenchmarkWorksheetResult.output.contains("--checked-by must name the actual reviewer"))
+        let worksheetDrivenCommandResult = try runTool(["bash", commandURL.path])
+        if worksheetDrivenCommandResult.exitCode != 0 {
+            XCTAssertTrue(
+                worksheetDrivenCommandResult.output.contains("competitor hands-on evidence command requires a clean tracked source tree"),
+                worksheetDrivenCommandResult.output
+            )
+        }
+        XCTAssertFalse(worksheetDrivenCommandResult.output.contains("competitor benchmark worksheet is missing, stale, or incomplete"))
 
         let unsafePassedResult = try runScript(
             "script/create_competitor_hands_on_evidence.sh",
@@ -5790,7 +5975,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("pressButtonUntilSQLiteValue \"created project\" \"project-board-add-project\" \"projects-hub-compact-add-project\""))
         XCTAssertTrue(script.contains("created_project_id=\"$(wait_for_nonempty_value \"created project id\""))
         XCTAssertGreaterThanOrEqual(script.components(separatedBy: "launch_app_for_seed_project \"$created_project_id\"").count - 1, 2)
-        XCTAssertTrue(script.contains("pressButtonContaining \"project-board-inspector-toggle\""))
+        XCTAssertTrue(script.contains("if ! textFieldContainingExists \"$inspector_field\"; then"))
+        XCTAssertTrue(script.contains("pressButtonUntilTextFieldContaining \"project-board-inspector-toggle\" \"$inspector_field\""))
         XCTAssertTrue(script.contains("launch_app_for_seed_project \"$created_project_id\" \"$created_task_id\"\nwaitForTextFieldContaining \"task-inspector-title\""))
         XCTAssertTrue(script.contains("value of attribute \"AXIdentifier\" of axItem as text"))
         XCTAssertTrue(script.contains("set frontmost to true"))
@@ -7079,8 +7265,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
         XCTAssertTrue(script.contains("DEFAULT_DATABASE_PATH=\"$ROOT_DIR/.tmp/voiceover-review/SoloPM-voiceover-review.sqlite\""))
         XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
-        XCTAssertTrue(script.contains("/usr/bin/open \"${open_args[@]}\""))
-        XCTAssertTrue(script.contains("--env"))
+        XCTAssertTrue(script.contains("/usr/bin/nohup /usr/bin/env \"${launch_environment[@]}\" \"$APP_BINARY\" >/dev/null 2>&1 &"))
+        XCTAssertTrue(script.contains("app_pid=$!"))
         XCTAssertFalse(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
         XCTAssertTrue(script.contains("\"SOLOPM_DATABASE_PATH=$database_path\""))
         XCTAssertTrue(script.contains("wait_for_visible_windows()"))
@@ -7097,7 +7283,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Confirm the approved execution receipt announces the reviewed task title and detail after the plan runs."))
         XCTAssertTrue(script.contains("VoiceOver review artifact"))
         XCTAssertTrue(script.contains("SELECT CASE WHEN count(*) = 7 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"))
-        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=project:$seed_project_id"))
+        XCTAssertTrue(script.contains("printf 'SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=%q\\n' \"project:$seed_project_id\""))
         XCTAssertTrue(script.contains("printf 'SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1\\n'"))
         XCTAssertFalse(script.contains("printf 'SOLOPM_LAUNCH_RECOVERY_MODE=1\\n'"))
         XCTAssertTrue(script.contains("evidence_command_file=\"$ROOT_DIR/.tmp/voiceover-review/create-evidence-command.sh\""))
@@ -7157,11 +7343,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("No unlabeled primary CRUD controls"))
         XCTAssertTrue(script.contains("| `approved-execution-receipt` | Task content execution | Confirm VoiceOver announces the redacted receipt with reviewed task title and detail after approved execution. |"))
         XCTAssertTrue(script.contains("launch_voiceover_candidate_for_evidence()"))
-        XCTAssertTrue(script.contains("/usr/bin/open -n -F \"$REPO_ROOT/dist/$APP_NAME.app\" \\"))
-        XCTAssertTrue(script.contains("--env SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \\"))
-        XCTAssertFalse(script.contains("--env SOLOPM_LAUNCH_RECOVERY_MODE=1 \\"))
-        XCTAssertTrue(script.contains("--env \"SOLOPM_DATABASE_PATH=$EXPECTED_DATABASE_PATH\" \\"))
-        XCTAssertTrue(script.contains("--env \"SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$EXPECTED_SELECTED_DESTINATION\""))
+        XCTAssertTrue(script.contains("/usr/bin/env \\"))
+        XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \\"))
+        XCTAssertFalse(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1 \\"))
+        XCTAssertTrue(script.contains("\"SOLOPM_DATABASE_PATH=$EXPECTED_DATABASE_PATH\" \\"))
+        XCTAssertTrue(script.contains("\"SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$EXPECTED_SELECTED_DESTINATION\" \\"))
+        XCTAssertTrue(script.contains("CANDIDATE_APP_PID=$!"))
         XCTAssertTrue(script.contains("wait_for_voiceover_candidate_process"))
         XCTAssertTrue(script.contains("wait_for_voiceover_candidate_windows"))
         XCTAssertFalse(script.contains("tell application \"$APP_NAME\" to activate"))
@@ -14132,7 +14319,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(packageScript.contains("check_release_artifact_size.sh"))
         XCTAssertLessThan(
             try XCTUnwrap(signingScript.range(of: "prepare_release_bundle.sh")).lowerBound,
-            try XCTUnwrap(signingScript.range(of: "codesign \"${CODESIGN_ARGS[@]}\"")).lowerBound
+            try XCTUnwrap(signingScript.range(of: "codesign \"${APP_CODESIGN_ARGS[@]}\" \"$APP_BUNDLE\"")).lowerBound
         )
         XCTAssertLessThan(
             try XCTUnwrap(packageScript.range(of: "check_release_artifact_size.sh\" \"$DMG_PATH")).lowerBound,

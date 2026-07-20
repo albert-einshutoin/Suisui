@@ -81,6 +81,7 @@ APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_LOCALIZATION_SOURCE="$ROOT_DIR/Sources/SoloPMApp/Resources"
+APP_ICON_SOURCE="$ROOT_DIR/packaging/SoloPM.icns"
 
 if [[ ! -r "$AX_HELPERS" ]]; then
   echo "missing accessibility helpers: $AX_HELPERS" >&2
@@ -307,6 +308,13 @@ fi
 
 copy_app_localizations
 
+if [[ ! -f "$APP_ICON_SOURCE" ]]; then
+  echo "missing macOS app icon: $APP_ICON_SOURCE" >&2
+  exit 2
+fi
+mkdir -p "$APP_RESOURCES"
+cp "$APP_ICON_SOURCE" "$APP_RESOURCES/SoloPM.icns"
+
 while IFS= read -r -d '' framework_path; do
   mkdir -p "$APP_FRAMEWORKS"
   /usr/bin/ditto "$framework_path" "$APP_FRAMEWORKS/$(basename "$framework_path")"
@@ -330,6 +338,8 @@ done < <(find "$BUILD_DIR" -maxdepth 1 -type f -name "*.dylib" -print0)
   printf '  <string>%s</string>\n' "$APP_NAME"
   printf '%s\n' '  <key>CFBundleName</key>'
   printf '  <string>%s</string>\n' "$APP_NAME"
+  printf '%s\n' '  <key>CFBundleIconFile</key>'
+  printf '%s\n' '  <string>SoloPM.icns</string>'
   printf '%s\n' '  <key>CFBundlePackageType</key>'
   printf '%s\n' '  <string>APPL</string>'
   printf '%s\n' '  <key>CFBundleShortVersionString</key>'

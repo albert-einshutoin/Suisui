@@ -33,6 +33,7 @@ assert_eq() {
 
 assert_metadata_matches() {
   local label="$1"
+  local icon_file
 
   assert_eq "$(read_key CFBundleExecutable)" "$APP_NAME" "$label CFBundleExecutable"
   assert_eq "$(read_key CFBundleIdentifier)" "$BUNDLE_IDENTIFIER" "$label CFBundleIdentifier"
@@ -44,6 +45,12 @@ assert_metadata_matches() {
   assert_eq "$(read_key LSApplicationCategoryType)" "$APP_CATEGORY" "$label LSApplicationCategoryType"
   assert_eq "$(read_key LSMinimumSystemVersion)" "$MIN_SYSTEM_VERSION" "$label LSMinimumSystemVersion"
   assert_eq "$(read_key NSHumanReadableCopyright)" "$COPYRIGHT" "$label NSHumanReadableCopyright"
+  icon_file="$(read_key CFBundleIconFile)"
+  assert_eq "$icon_file" "SoloPM.icns" "$label CFBundleIconFile"
+  if [[ ! -s "$ROOT_DIR/dist/$APP_NAME.app/Contents/Resources/$icon_file" ]]; then
+    echo "$label missing bundled app icon: Contents/Resources/$icon_file" >&2
+    exit 1
+  fi
 }
 
 build_bundle debug

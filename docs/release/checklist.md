@@ -389,6 +389,7 @@ Use [public-alpha.md](public-alpha.md) as the base. Include artifact names, chec
 ## Manual Checks
 
 - Launch signed and notarized app on the release machine.
+- Confirm the downloadable DMG itself passed notary submission, stapling validation, and `spctl -t open` assessment before recording its checksum.
 - Download DMG in a clean environment.
 - Verify checksum.
 - Drag app to Applications.

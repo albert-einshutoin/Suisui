@@ -181,6 +181,10 @@ if [[ "$PACKAGE_FORMAT" == "dmg" || "$PACKAGE_FORMAT" == "all" ]]; then
     -ov \
     -format UDZO \
     "$DMG_PATH"
+  if [[ "$REQUIRE_NOTARIZED_PACKAGE" == "1" ]]; then
+    "$ROOT_DIR/script/notarize_release_dmg.sh" "$DMG_PATH"
+    "$ROOT_DIR/script/verify_dmg_notarization_evidence.sh" "$DMG_PATH"
+  fi
   "$ROOT_DIR/script/check_release_artifact_size.sh" "$DMG_PATH" "dmg"
   create_checksum "$DMG_PATH"
   create_package_evidence "$DMG_PATH" "dmg"

@@ -182,6 +182,7 @@ launch_app_for_database_migration() {
 launch_app_for_seed_project() {
   local seed_project_id="$1"
   local selected_task_id="${2:-}"
+  local inspector_field="project-inspector-title"
   terminate_app
   if [[ -n "$selected_task_id" ]]; then
     /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
@@ -200,10 +201,15 @@ launch_app_for_seed_project() {
   wait_for_app_process
   activate_app
   wait_for_visible_windows
-  # Inspectors are intentionally explicit after the adaptive-inspector renewal.
-  # Exercise the visible Details command instead of reviving the removed
-  # selection-implies-open behavior in either the product or this harness.
-  pressButtonContaining "project-board-inspector-toggle"
+  if [[ -n "$selected_task_id" ]]; then
+    inspector_field="task-inspector-title"
+  fi
+  # Scene/AppStorage presentation intent survives the repeated launches in this
+  # isolated HOME. Inspect the postcondition first so a blind toggle cannot
+  # close an inspector that SwiftUI has already restored from the prior phase.
+  if ! textFieldContainingExists "$inspector_field"; then
+    pressButtonUntilTextFieldContaining "project-board-inspector-toggle" "$inspector_field"
+  fi
 }
 
 launch_app_for_crud_mutation() {

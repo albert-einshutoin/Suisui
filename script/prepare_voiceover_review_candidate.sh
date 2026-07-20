@@ -167,6 +167,14 @@ write_voiceover_review_worksheet() {
     printf '\n'
     printf '%s\n' 'This worksheet is not release evidence. Fill it during the real manual VoiceOver pass, then run the generated evidence command.'
     printf '\n'
+    printf '%s\n' '## Start Here After The Beige Project Screen Appears'
+    printf '\n'
+    printf '%s\n' '1. Keep the beige `VoiceOver Review Project` window open; it is the prepared review candidate, not a completion screen.'
+    printf '%s\n' '2. Press Command-F5 to turn VoiceOver on or off. On keyboards where F5 controls hardware, use Fn-Command-F5.'
+    printf '%s\n' '3. Move through controls with Control-Option-Right Arrow and Control-Option-Left Arrow. Activate the announced control with Control-Option-Space.'
+    printf '%s\n' '4. Start with the sidebar, open `VoiceOver Review Project`, then follow every check below. Record what VoiceOver actually announced.'
+    printf '%s\n' '5. If the app is closed, rerun `./script/prepare_voiceover_review_candidate.sh --skip-build`, or use the exact launch command printed by that script.'
+    printf '\n'
     printf '%s\n' '## Manual VoiceOver Checks'
     printf '\n'
     printf '%s\n' '- [ ] Project navigation: sidebar Inbox, Today, Projects, and selected review project navigation are announced in order.'
@@ -221,7 +229,7 @@ write_voiceover_review_worksheet() {
     printf '\n'
     printf '%s\n' '1. Change `Status: pending` to `Status: completed` after the real VoiceOver pass is complete.'
     printf '%s\n' '2. Fill every VoiceOver observation with concrete behavior from this candidate app.'
-    printf '%s\n' '3. Remove unchecked `[ ]`, pending, and template/instructional text before running the generated command.'
+    printf '%s\n' '3. Change every completed check from `[ ]` to `[x]`. Keep this instruction text; completion is determined by `Status: completed`, every `[x]` check, and every required observation.'
   } >"$output_path"
 }
 
@@ -361,15 +369,17 @@ write_voiceover_evidence_command() {
     printf '%s\n' '    exit 2'
     printf '%s\n' '  fi'
     printf '%s\n' ''
-    printf '%s\n' '  if grep -Eq "(Status:[[:space:]]*pending|To Fill|^## Closeout$|This worksheet is not release evidence|Replace every placeholder|not release evidence|<VoiceOver observation|placeholder)" "$VOICEOVER_WORKSHEET_FILE"; then'
-    printf '%s\n' '    printf "BLOCKER: VoiceOver worksheet is missing, stale, or incomplete: remove pending/template instructions before writing evidence.\n" >&2'
-    printf '%s\n' '    exit 2'
-    printf '%s\n' '  fi'
-    printf '%s\n' ''
     printf '%s\n' '  if grep -F -- "- [ ]" "$VOICEOVER_WORKSHEET_FILE" >/dev/null; then'
     printf '%s\n' '    printf "BLOCKER: VoiceOver worksheet is missing, stale, or incomplete: unchecked VoiceOver items remain.\n" >&2'
     printf '%s\n' '    exit 2'
     printf '%s\n' '  fi'
+    printf '%s\n' ''
+    printf '%s\n' '  for required_check in "Project navigation:" "Project board detail:" "Open task:" "Inline Task Composer:" "Status controls:" "Task inspector:" "Inbox voice triage:" "Today rail actions:" "Save Changes:" "Task content execution:" "Delete Task confirmation:" "No keyboard trap:" "No unlabeled primary CRUD controls:"; do'
+    printf '%s\n' '    if ! grep -F -- "- [x] $required_check" "$VOICEOVER_WORKSHEET_FILE" >/dev/null; then'
+    printf '%s\n' '      printf "BLOCKER: VoiceOver worksheet is missing, stale, or incomplete: required checked item is missing: %s\n" "$required_check" >&2'
+    printf '%s\n' '      exit 2'
+    printf '%s\n' '    fi'
+    printf '%s\n' '  done'
     printf '%s\n' ''
     printf '%s\n' '  voiceover_worksheet_value_is_placeholder_or_boilerplate() {'
     printf '%s\n' '    local normalized'
@@ -525,10 +535,12 @@ write_voiceover_evidence_command() {
     printf '\n'
     printf '%s\n' 'launch_voiceover_candidate_for_evidence() {'
     printf '%s\n' '  terminate_voiceover_candidate'
-    printf '%s\n' '  /usr/bin/open -n -F "$REPO_ROOT/dist/$APP_NAME.app" \'
-    printf '%s\n' '    --env SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \'
-    printf '%s\n' '    --env "SOLOPM_DATABASE_PATH=$EXPECTED_DATABASE_PATH" \'
-    printf '%s\n' '    --env "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$EXPECTED_SELECTED_DESTINATION"'
+    printf '%s\n' '  /usr/bin/env \'
+    printf '%s\n' '    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \'
+    printf '%s\n' '    "SOLOPM_DATABASE_PATH=$EXPECTED_DATABASE_PATH" \'
+    printf '%s\n' '    "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$EXPECTED_SELECTED_DESTINATION" \'
+    printf '%s\n' '    "$APP_BINARY" &'
+    printf '%s\n' '  CANDIDATE_APP_PID=$!'
     printf '%s\n' '  wait_for_voiceover_candidate_process'
     printf '%s\n' '  activate_voiceover_candidate'
     printf '%s\n' '  wait_for_voiceover_candidate_windows'
@@ -657,19 +669,18 @@ wait_for_database_table() {
 
 open_candidate_app() {
   local selected_destination="${1:-}"
-  local open_args=(
-    -n
-    -F
-    "$APP_BUNDLE"
-    --env
+  local launch_environment=(
     SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1
-    --env
     "SOLOPM_DATABASE_PATH=$database_path"
   )
   if [[ -n "$selected_destination" ]]; then
-    open_args+=(--env "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$selected_destination")
+    launch_environment+=("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$selected_destination")
   fi
-  /usr/bin/open "${open_args[@]}"
+  # Own the candidate PID directly. LaunchServices can reuse or create a
+  # menu-bar-only instance while another SoloPM process is still retiring,
+  # leaving the reviewer with no Project Board window.
+  /usr/bin/nohup /usr/bin/env "${launch_environment[@]}" "$APP_BINARY" >/dev/null 2>&1 &
+  app_pid=$!
 }
 
 seed_voiceover_review_data() {
@@ -901,6 +912,12 @@ printf 'Launch env: %s\n' "$launch_env_file"
 printf 'Pending evidence: %s\n' "$pending_evidence_file"
 printf 'Worksheet: %s\n' "$worksheet_file"
 printf 'Evidence command: %s\n' "$evidence_command_file"
+printf '\n'
+printf '%s\n' 'NEXT: the beige `VoiceOver Review Project` screen is the prepared candidate; it will wait for your manual review.'
+printf '%s\n' 'NEXT: press Command-F5 (or Fn-Command-F5) to enable VoiceOver.'
+printf '%s\n' 'NEXT: use Control-Option-Right/Left Arrow to move and Control-Option-Space to activate.'
+printf 'NEXT: fill the worksheet without deleting its instructions: %s\n' "$worksheet_file"
+printf 'NEXT: after Status: completed, all checks are [x], and all observations are filled, run: %s --validate-only\n' "$evidence_command_file"
 
 if [[ "$launch_app" -eq 1 ]]; then
   open_candidate_app "project:$seed_project_id"
@@ -910,5 +927,5 @@ if [[ "$launch_app" -eq 1 ]]; then
   printf 'App launched for manual VoiceOver review with SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:%s"\n' "$seed_project_id"
 else
   printf 'Launch skipped. To open the same candidate manually, run:\n'
-  printf '/usr/bin/open -n -F %q --env SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 --env %q --env %q\n' "$APP_BUNDLE" "SOLOPM_DATABASE_PATH=$database_path" "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=project:$seed_project_id"
+  printf 'set -a; source %q; set +a; %q\n' "$launch_env_file" "$APP_BINARY"
 fi

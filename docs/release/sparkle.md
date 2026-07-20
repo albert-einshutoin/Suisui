@@ -42,6 +42,8 @@ Sparkle tools が SwiftPM artifact 配下にある場合、`script/generate_appc
 
 release appcast は generated `dist/releases/appcast.xml` を対象にし、sample placeholder signature や example URL が残っていないことを確認する。`SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX` は environment か `packaging/sparkle.env` に production HTTPS artifact URL prefix を設定する。release appcast verification は appcast が指す ZIP artifact、`.sha256`、`.package-evidence.json` も同じ release directory から検証する。
 
+最終オンラインpreflightでは、Sparkleの`sign_update --verify`でZIPのEdDSA署名を暗号学的に検証し、本番feedとenclosureをHTTPSで取得して、公開ZIPのSHA-256がローカルの確定artifactと一致することも確認する。単に`edSignature`属性が存在するだけではProduction証跡として扱わない。
+
 ```bash
 SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/generate_appcast.sh
 SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml
