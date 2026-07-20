@@ -1,8 +1,10 @@
-# Suisui（すいすい）
+<div align="center">
+  <img src="packaging/Suisui-AppIcon-1024.png" alt="Suisuiロゴ" width="180">
+  <h1>Suisui（すいすい）</h1>
+  <p><strong>声から、仕事がすいすい進む。</strong></p>
+</div>
 
 [English README](README.md)
-
-**声から、仕事がすいすい進む。**
 
 Suisuiは、声や文章で伝えた仕事をプロジェクト、タスク、予定、リマインダー、通知、ローカル文書へ整理するmacOS向けのAIパーソナルプロジェクトマネージャーです。AIが勝手に書き込むのではなく、提案を人が確認し、**承認後に実行**することを基本にしています。
 
@@ -14,6 +16,7 @@ Suisuiは、声や文章で伝えた仕事をプロジェクト、タスク、�
 
 ### 1. 必要な環境
 
+- Apple Silicon搭載Mac
 - macOS 14以降
 - Xcode Command Line ToolsまたはXcode
 - Git
@@ -21,8 +24,8 @@ Suisuiは、声や文章で伝えた仕事をプロジェクト、タスク、�
 ### 2. 起動する
 
 ```sh
-git clone https://github.com/albert-einshutoin/suisui.git
-cd suisui
+git clone https://github.com/albert-einshutoin/Suisui.git
+cd Suisui
 ./script/build_and_run.sh
 ```
 
@@ -44,7 +47,7 @@ cd suisui
 - **Schedule**: 予定と時間軸を確認する場所
 - **Done**: 完了した仕事と次のフォローアップを振り返る場所
 - **Voice Command**: 音声から計画案を作る場所
-- **設定**: AI、STT、TTS、権限、表示、言語を整える場所
+- **設定**: AI、STT、TTS、連携、MCP、権限、表示、言語を整える場所
 
 ## 最初のワークフロー
 
@@ -80,14 +83,14 @@ cd suisui
 - Markdown成果物を安全な保存先へ下書きする
 - 期限超過やフォローアップ候補を見つける
 - ローカルの監査ログで、承認済み操作の履歴を確認する
+- ローカル外部MCPサーバーを登録し、ツール権限、レビュー、監査の境界内で利用する
 - 日本語と英語を切り替える
 
 ## まだできないこと
 
 - チーム、組織、権限管理、共有ワークスペース
 - 複数端末間のクラウド同期
-- GitHub、Gmail、Slack、Google Drive、Notionなど外部SaaSへの直接接続
-- 外部MCPサーバーの実行
+- GitHub、Gmail、Slack、Google Drive、Notionなどを、サポート対象のSaaS連携として直接利用すること
 - 大規模な全文RAGや知識インデックス
 - メール送信、Slack投稿、破壊的なファイル操作の自動実行
 
@@ -98,6 +101,8 @@ cd suisui
 - Developer ID署名とApple Notarizationは、証明書とnotary profileを設定したリリース用Macで行います。
 - Sparkle更新には、署名済みappcastとKeychain内のEdDSAキーが必要です。
 - 自動アクセシビリティ検査に加え、リリース候補ごとの手動VoiceOver確認が必要です。
+
+ローカル外部MCPサーバーの登録、ツール権限、レビュー、監査の基盤は実装されています。ただし、接続先ランタイム、認証情報、明示的な承認境界が必要であり、個別SaaSをパブリックアルファのサポート対象として保証するものではありません。
 
 「実装済み」「実行環境で確認済み」「配布準備完了」は別の状態です。最新の判定と未完了の手動作業は[リリースチェックリスト](docs/release/checklist.md)を確認してください。
 
@@ -119,3 +124,7 @@ swift build --product suisui-cli
 ```
 
 プロダクトの方向性は[ロードマップ](docs/product/roadmap.md)、アルファ版の対象範囲は[日本語パブリックアルファノート](docs/release/public-alpha-ja.md)に記載しています。
+
+## プラットフォームの現在地
+
+現在の配布対象はApple Silicon向けmacOSアプリです。Swift Packageには、将来のクライアントでプラットフォーム中立なタスク・同期契約を共有するための`SuisuiCore`、`SuisuiiOS`、`SuisuiWeb`基盤も含まれます。これは、単体のiOS版やWeb版が公開済みであることを意味しません。

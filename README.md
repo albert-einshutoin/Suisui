@@ -1,57 +1,134 @@
-# Suisui
+<div align="center">
+  <img src="packaging/Suisui-AppIcon-1024.png" alt="Suisui logo" width="180">
+  <h1>Suisui</h1>
+  <p><strong>Speak it. Review it. Move it.</strong></p>
+  <p>A local-first AI secretary and personal project manager for macOS.</p>
+</div>
 
 [日本語版 README](README.ja.md)
 
-**Speak it. Review it. Move it.**
+Suisui turns voice or text into reviewable projects, tasks, schedules, reminders, and local work artifacts. It keeps the user in control: proposed changes are shown first and only approved actions are executed.
 
-Suisui is a macOS-first AI personal project manager that turns voice or text into projects, tasks, calendar events, reminders, notifications, and local work artifacts after user review.
+Suisui is currently preparing its first public alpha for individual developers, creators, freelancers, and small-business operators who want to manage planning, deadlines, deliverables, and follow-up in one place.
 
 ![Suisui public alpha preview](docs/assets/screenshots/suisui-alpha-preview.svg)
 
 ## Public Alpha
 
-Suisui is preparing its first public alpha. The current build is intended for local-first evaluation by individual developers and makers who want a voice-first workflow for project planning and deadline follow-up.
-
-The product specification lives in [docs/README.md](docs/README.md), the product roadmap lives in [docs/product/roadmap.md](docs/product/roadmap.md), the technical baseline lives in [docs/tech_stack.md](docs/tech_stack.md), and the release runbook lives in [docs/release/checklist.md](docs/release/checklist.md).
+The current release target is the **Personal MVP**: a dependable local-first loop for one person to capture, review, organize, and follow up on work. The later **Business MVP** adds organizations, roles, shared policy, knowledge integrations, and audit export without blocking the first personal release.
 
 ## MVP Scope
 
-Suisui ships the Personal MVP first. The smallest MVP is a local-first voice-task loop for one user: capture work by voice or text, clarify missing details, create reviewed tasks/projects/schedule artifacts, and prevent forgotten work.
+The public alpha focuses on the macOS app, local work management, approval-first AI assistance, Apple service adapters, reviewed file creation, and release-quality safety checks. See the [roadmap](docs/product/roadmap.md) for the boundary between Personal MVP, personal automation and sync, and Business MVP.
 
-- macOS menu bar app
-- voice / text input
-- LLM-generated Action Plan
-- review-before-write execution
-- local Project / Task / Knowledge storage
-- Apple Calendar / Reminders / Notifications adapters
-- Markdown artifact creation
-- deadline watcher and overdue notification foundation
-- Keychain-backed secret boundary
-- local audit logs with redaction
-- Developer ID signing, notarization, DMG packaging, and Sparkle update foundation
+## Get Started in 5 Minutes
 
-The Business MVP is a later target. Organizations, roles, tenant policies, KnowledgeBase integration, QZT evidence refs, Memory Pager context assembly, cloud execution policy, and audit export must not block the first personal release.
+### Requirements
+
+- Apple Silicon Mac
+- macOS 14 or later
+- Xcode Command Line Tools or Xcode
+- Git
+
+### Build and Launch
+
+```sh
+git clone https://github.com/albert-einshutoin/Suisui.git
+cd Suisui
+./script/build_and_run.sh
+```
+
+To launch the app with the product-path smoke check:
+
+```sh
+./script/build_and_run.sh --verify
+```
+
+After launch, type a request in **Inbox** or open **Voice Command** and speak. Review the proposed plan, edit it if needed, and approve only the actions you want Suisui to perform.
+
+Suisui follows the macOS language by default. You can pin the app to English or Japanese from **Settings > Appearance > Language**.
+
+## Product Areas
+
+- **Inbox** — capture work from text or voice.
+- **Today** — see priorities, due work, and next actions.
+- **Projects** — organize projects, tasks, milestones, and documents.
+- **Schedule** — review plans, workload, and calendar items on a timeline.
+- **Done** — review completed work and follow-up candidates.
+- **Voice Command** — turn speech into a reviewable Action Plan.
+- **Settings** — configure AI, speech, integrations, MCP, permissions, appearance, and language.
+
+## Core Workflow
+
+1. Enter a request such as “Prepare the release by next Friday.”
+2. Suisui asks for missing details and drafts a project, tasks, and due dates.
+3. Review the content, destination, schedule, and operations that would run.
+4. Edit the proposal or approve it.
+5. Only approved actions are written to local data or permitted services.
+
+## What Suisui Can Do
+
+- Create Action Plans from voice or text.
+- Manage work through Inbox, Today, Projects, Schedule, and Done.
+- Review AI proposals before changing projects or tasks.
+- Draft Apple Calendar, Reminders, and Notifications actions within granted permissions.
+- Create Markdown deliverables in reviewed local destinations without silently overwriting files.
+- Surface overdue work, workload, and follow-up candidates.
+- Record redacted local audit history and execution receipts.
+- Register local external MCP servers with explicit tool permissions, review gates, and audit history.
+- Support Japanese and English UI.
+- Provide a read-only `suisui-cli` for local inspection and diagnostics.
+
+## Setup
+
+### AI Provider
+
+Choose a provider in **Settings > AI** and save your API key. Secrets are stored in macOS Keychain and must not be written in plaintext to logs, SQLite, UserDefaults, fixtures, screenshots, or crash reports.
+
+### Speech
+
+- **STT:** configure whisper.cpp and a compatible local model.
+- **TTS:** configure Kokoro and a compatible local model.
+- Speech models are not bundled. Select their file or directory from Settings.
+- Voice Command requires microphone permission from macOS.
+
+### Apple Services and Integrations
+
+Calendar, Reminders, and Notifications require the corresponding macOS permissions. Suisui does not run an operation when permission is missing and instead explains what needs to be enabled.
+
+Advanced connector and MCP foundations are present, but support depends on the configured runtime, credentials, and the explicit review boundary. Credential-backed Google Calendar production evidence is tracked separately from local implementation.
 
 ## Known Limitations
 
-- External MCP servers are not part of the public alpha runtime.
-- SaaS connectors such as GitHub, Gmail, Slack, Google Drive, and Notion are not enabled.
-- Full RAG / WeKnora-style knowledge indexing is out of scope for alpha.
-- Team, cloud sync, and shared workspace features are not implemented.
-- Release signing and notarization require a Developer ID Application certificate and Apple notary profile on the release machine.
-- Sparkle update checks require a signed appcast and Sparkle EdDSA key stored in Keychain.
+- Team accounts, organizations, roles, and shared workspaces are not implemented.
+- Multi-device cloud sync is not part of the public alpha.
+- General SaaS connections such as GitHub, Gmail, Slack, Google Drive, and Notion are not enabled as supported public-alpha integrations.
+- Full-text RAG and large knowledge indexes are out of scope for the alpha.
+- Automatic email sending, Slack posting, and destructive file operations are not supported.
+- Local STT/TTS models must be installed separately.
+- AI-backed features require your provider credentials and network access.
+- Developer ID signing, notarization, and Sparkle publishing require release-machine credentials.
+- Automated accessibility checks do not replace the manual VoiceOver pass required for each release candidate.
+
+Implementation complete, runtime verified, and release ready are separate states. See the [Release Checklist](docs/release/checklist.md) for the current gates and remaining manual work.
+
+## Platform Status
+
+The shipped product surface is the macOS app. The Swift package also contains `SuisuiCore`, `SuisuiiOS`, and `SuisuiWeb` foundations so future clients can reuse platform-neutral task and sync contracts. These modules are foundations, not a claim that standalone iOS or web apps are publicly available.
+
+See the [multiplatform direction](docs/product/multiplatform-automation.md), [roadmap](docs/product/roadmap.md), and [technical baseline](docs/tech_stack.md).
 
 ## Development
 
-Suisui follows GitHub Flow and TDD. Work should start from the current target branch using a short-lived feature branch, then return by pull request:
+Suisui follows GitHub Flow and TDD. Start work from an up-to-date `main` branch and use a short-lived feature branch:
 
 ```sh
-git checkout main
+git switch main
 git pull --ff-only
-git checkout -b feature/short-name
+git switch -c feature/short-name
 ```
 
-Local verification:
+Run the shared verification entry points:
 
 ```sh
 ./scripts/ci.sh
@@ -60,20 +137,12 @@ swift build --product suisui-cli
 .build/debug/suisui-cli --help
 ```
 
-`./scripts/ci.sh` is the shared non-GUI verification entrypoint for local development and GitHub Actions. `./script/build_and_run.sh --verify` additionally launches the app and is intended for local macOS UI smoke checks.
+`./scripts/ci.sh` is the non-GUI verification entry point used locally and in GitHub Actions. `./script/build_and_run.sh --verify` launches the normal Project Board with isolated test state and verifies the owned window, accessibility surface, and product markers. Recovery-only diagnostics are not product or release proof.
 
-`./script/build_and_run.sh --verify` is product-path proof: it launches the normal ProjectBoard with isolated `HOME`, `CFFIXED_USER_HOME`, SQLite, and keychain-disabled settings, then checks the PID-owned window and the native-toolbar `project-board-command-palette`, `project-board-sidebar`, and `project-board-detail` product markers. Failures use the machine-readable categories `launch`, `window`, `accessibility`, or `product-marker`.
+Contributor guidance is in [CONTRIBUTING.md](CONTRIBUTING.md). Product and engineering documents are indexed from [docs/README.md](docs/README.md).
 
-Recovery diagnostics are a separate contract for designated diagnostic scripts. Those scripts may use `SUISUI_LAUNCH_RECOVERY_MODE=1` and related recovery flags to inspect a degraded or recovery-only surface. Recovery success is diagnostic evidence, not product or release proof; release evidence must pass the normal `--verify` path. Today, Inbox, accessible CRUD, layout, launch-performance, and UI screenshot release flows launch the normal `ProjectBoardView` route with an explicit selected destination instead.
+## Privacy and Security
 
-Release verification starts from the [Release Checklist](docs/release/checklist.md).
+Suisui is local-first. Project data stays on the Mac unless the user chooses an AI provider or connector. Context sent outside the Mac is scoped and redacted, and write operations remain approval-gated.
 
-## Release Checklist
-
-The public alpha release order is test, build, sign, notarize, package, checksum, appcast, tag, and release notes. The full checklist, rollback path, and known issues template are in [docs/release/checklist.md](docs/release/checklist.md).
-
-## Security
-
-API keys and provider tokens must be stored in macOS Keychain. Secrets must not be written to logs, SQLite settings, UserDefaults, fixtures, screenshots, or crash reports.
-
-See [SECURITY.md](SECURITY.md) and [Privacy / Security](docs/release/privacy-security.md).
+See [SECURITY.md](SECURITY.md) and [Privacy & Security](docs/release/privacy-security.md). Please report public-alpha feedback through [GitHub Issues](https://github.com/albert-einshutoin/Suisui/issues) without attaching API keys, customer data, or private project content.
