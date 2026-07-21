@@ -23,6 +23,8 @@ Suisui will:
 - Disable built-in tools at process launch, reject any tool lifecycle or approval request, and interrupt the turn fail-closed.
 - Record Codex usage as `userProviderBilled`; it is never added to Suisui-managed AI cost.
 
+The tool-free profile is the mandatory default for Personal Preview voice-task planning, not a permanent claim that Codex can never delegate work. A future task-bound delegation feature must use a separate capability profile, threat model, approval contract, receipt type, and release gate; it must not widen this profile in place.
+
 ## Options Considered
 
 ### Dedicated local Codex App Server provider — Accepted
@@ -59,5 +61,6 @@ Suisui will:
 
 - Phase task: `tasks/Phase11-ProviderSyncUXProductization.md#p11-016-codex-app-server-user-subscription-provider`
 - Implementation plan: `docs/superpowers/plans/2026-07-21-codex-app-server-subscription-provider.md`
+- Stable hardening follow-up: https://github.com/albert-einshutoin/Suisui/issues/343
 - Provider catalog: `Sources/SuisuiCore/Planning/LLMProviderCatalog.swift`
 - Codex App Server protocol: https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md

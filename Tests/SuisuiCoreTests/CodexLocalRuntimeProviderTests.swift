@@ -1,8 +1,45 @@
+import Darwin
 import Foundation
 import XCTest
 @testable import SuisuiCore
 
 final class CodexLocalRuntimeProviderTests: XCTestCase {
+    func testLiveAuthStoreAccessIsObservableUnderChildPIDWhenExplicitlyAudited() async throws {
+        guard ProcessInfo.processInfo.environment["SUISUI_CODEX_AUTH_ACCESS_AUDIT"] == "1" else {
+            throw XCTSkip("Run through check_codex_auth_access_evidence.sh with root filesystem tracing.")
+        }
+        let wrapperPath = try XCTUnwrap(
+            ProcessInfo.processInfo.environment["SUISUI_CODEX_AUTH_ACCESS_AUDIT_WRAPPER"]
+        )
+        try "\(Darwin.getpid())\n".write(
+            toFile: wrapperPath + ".parent-pid",
+            atomically: true,
+            encoding: .utf8
+        )
+        let transport = CodexAppServerStdioTransport(
+            process: ProcessCodexAppServerProcess(
+                configuration: CodexAppServerLaunchConfiguration(executablePath: wrapperPath)
+            )
+        )
+        let account = CodexAppServerAccountClient(transport: transport)
+
+        do {
+            try await account.initialize(clientVersion: "auth-access-audit")
+            let snapshot = try await account.readAccount(refresh: true)
+            guard case .ready = snapshot.readiness else {
+                XCTFail("Codex account is not ready: \(snapshot.readiness)")
+                await transport.shutdown()
+                return
+            }
+            let models = try await account.listModels()
+            XCTAssertFalse(models.isEmpty)
+            await transport.shutdown()
+        } catch {
+            await transport.shutdown()
+            throw error
+        }
+    }
+
     func testLiveSubscriptionAccountModelAndCancelableLoginWhenExplicitlyEnabled() async throws {
         guard ProcessInfo.processInfo.environment["SUISUI_CODEX_LIVE_TEST"] == "1" else {
             throw XCTSkip("Set SUISUI_CODEX_LIVE_TEST=1 to probe the current Mac user's Codex account.")

@@ -24,6 +24,34 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         XCTAssertFalse(source.contains("FileHandle(forReadingFrom:"))
     }
 
+    func testAuthAccessEvidenceScriptRequiresPIDClassifiedRootTraceAndFailsClosed() throws {
+        let root = repositoryRoot()
+        let script = try String(
+            contentsOf: root.appendingPathComponent("script/check_codex_auth_access_evidence.sh"),
+            encoding: .utf8
+        )
+        let wrapperSource = try String(
+            contentsOf: root.appendingPathComponent("script/codex_auth_access_audit_wrapper.c"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(script.contains("SUISUI_CODEX_RUN_AUTH_ACCESS_EVIDENCE"))
+        XCTAssertTrue(script.contains("/usr/bin/fs_usage"))
+        XCTAssertTrue(script.contains("fs_usage -e -w -f pathname -t 12"))
+        XCTAssertTrue(script.contains("/usr/bin/clang"))
+        XCTAssertTrue(script.contains("parent_pid"))
+        XCTAssertTrue(script.contains("child_pid"))
+        XCTAssertTrue(script.contains("parent_auth_access_count"))
+        XCTAssertTrue(script.contains("child_auth_access_count"))
+        XCTAssertTrue(script.contains("unexpected_auth_access_count"))
+        XCTAssertTrue(script.contains("auth_path_suffix=\".codex/auth.json\""))
+        XCTAssertTrue(script.contains("source_commit"))
+        XCTAssertFalse(script.contains("cat \"$auth_path\""))
+        XCTAssertTrue(wrapperSource.contains("getpid()"))
+        XCTAssertTrue(wrapperSource.contains("execv("))
+        XCTAssertFalse(wrapperSource.contains("auth.json"))
+    }
+
     private func repositoryRoot() -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
