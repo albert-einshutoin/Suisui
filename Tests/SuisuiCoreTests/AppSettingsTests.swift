@@ -60,6 +60,27 @@ final class AppSettingsTests: XCTestCase {
         )
     }
 
+    func testCodexLocalSettingsDefaultOffAndRoundTripWithoutCredentials() throws {
+        XCTAssertNil(AppSettings.default.codexExecutablePath)
+        XCTAssertNil(AppSettings.default.codexModelID)
+        XCTAssertFalse(AppSettings.default.isCodexLocalExecutionApproved)
+
+        let settings = AppSettings(
+            codexExecutablePath: " /opt/homebrew/bin/codex ",
+            codexModelID: " gpt-5.4 ",
+            isCodexLocalExecutionApproved: true
+        ).normalizedForRuntime
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertEqual(decoded.codexExecutablePath, "/opt/homebrew/bin/codex")
+        XCTAssertEqual(decoded.codexModelID, "gpt-5.4")
+        XCTAssertTrue(decoded.isCodexLocalExecutionApproved)
+        let encoded = String(decoding: data, as: UTF8.self)
+        XCTAssertFalse(encoded.contains("accessToken"))
+        XCTAssertFalse(encoded.contains("refreshToken"))
+    }
+
     func testInvalidTimeZoneProducesValidationIssue() {
         let settings = AppSettings(timeZoneIdentifier: "Invalid/Timezone")
 

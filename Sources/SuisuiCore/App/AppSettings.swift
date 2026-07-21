@@ -21,6 +21,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var openCodeWorkspacePath: String?
     public var openCodeModelID: String?
     public var isOpenCodeLocalExecutionApproved: Bool
+    public var codexExecutablePath: String?
+    public var codexModelID: String?
+    public var isCodexLocalExecutionApproved: Bool
     public var isLowLatencyVoiceAgentModeEnabled: Bool
     public var isLowLatencyVoiceAgentAlwaysOnRecordingEnabled: Bool
     public var isLowLatencyVoiceAgentCloudFallbackEnabled: Bool
@@ -48,6 +51,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case openCodeWorkspacePath
         case openCodeModelID
         case isOpenCodeLocalExecutionApproved
+        case codexExecutablePath
+        case codexModelID
+        case isCodexLocalExecutionApproved
         case isLowLatencyVoiceAgentModeEnabled
         case isLowLatencyVoiceAgentAlwaysOnRecordingEnabled
         case isLowLatencyVoiceAgentCloudFallbackEnabled
@@ -76,6 +82,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         openCodeWorkspacePath: String? = nil,
         openCodeModelID: String? = nil,
         isOpenCodeLocalExecutionApproved: Bool = false,
+        codexExecutablePath: String? = nil,
+        codexModelID: String? = nil,
+        isCodexLocalExecutionApproved: Bool = false,
         // Realtime voice is privacy- and cost-sensitive, so all recording and
         // paid/cloud escalation paths start as explicit opt-ins.
         isLowLatencyVoiceAgentModeEnabled: Bool = false,
@@ -104,6 +113,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.openCodeWorkspacePath = openCodeWorkspacePath
         self.openCodeModelID = openCodeModelID
         self.isOpenCodeLocalExecutionApproved = isOpenCodeLocalExecutionApproved
+        self.codexExecutablePath = codexExecutablePath
+        self.codexModelID = codexModelID
+        self.isCodexLocalExecutionApproved = isCodexLocalExecutionApproved
         self.isLowLatencyVoiceAgentModeEnabled = isLowLatencyVoiceAgentModeEnabled
         self.isLowLatencyVoiceAgentAlwaysOnRecordingEnabled = isLowLatencyVoiceAgentAlwaysOnRecordingEnabled
         self.isLowLatencyVoiceAgentCloudFallbackEnabled = isLowLatencyVoiceAgentCloudFallbackEnabled
@@ -138,6 +150,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.openCodeWorkspacePath = try container.decodeIfPresent(String.self, forKey: .openCodeWorkspacePath)
         self.openCodeModelID = try container.decodeIfPresent(String.self, forKey: .openCodeModelID)
         self.isOpenCodeLocalExecutionApproved = try container.decodeIfPresent(Bool.self, forKey: .isOpenCodeLocalExecutionApproved) ?? false
+        self.codexExecutablePath = try container.decodeIfPresent(String.self, forKey: .codexExecutablePath)
+        self.codexModelID = try container.decodeIfPresent(String.self, forKey: .codexModelID)
+        self.isCodexLocalExecutionApproved = try container.decodeIfPresent(Bool.self, forKey: .isCodexLocalExecutionApproved) ?? false
         self.isLowLatencyVoiceAgentModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .isLowLatencyVoiceAgentModeEnabled) ?? false
         self.isLowLatencyVoiceAgentAlwaysOnRecordingEnabled = try container.decodeIfPresent(Bool.self, forKey: .isLowLatencyVoiceAgentAlwaysOnRecordingEnabled) ?? false
         self.isLowLatencyVoiceAgentCloudFallbackEnabled = try container.decodeIfPresent(Bool.self, forKey: .isLowLatencyVoiceAgentCloudFallbackEnabled) ?? false
@@ -167,6 +182,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encodeIfPresent(openCodeWorkspacePath, forKey: .openCodeWorkspacePath)
         try container.encodeIfPresent(openCodeModelID, forKey: .openCodeModelID)
         try container.encode(isOpenCodeLocalExecutionApproved, forKey: .isOpenCodeLocalExecutionApproved)
+        try container.encodeIfPresent(codexExecutablePath, forKey: .codexExecutablePath)
+        try container.encodeIfPresent(codexModelID, forKey: .codexModelID)
+        try container.encode(isCodexLocalExecutionApproved, forKey: .isCodexLocalExecutionApproved)
         try container.encode(isLowLatencyVoiceAgentModeEnabled, forKey: .isLowLatencyVoiceAgentModeEnabled)
         try container.encode(isLowLatencyVoiceAgentAlwaysOnRecordingEnabled, forKey: .isLowLatencyVoiceAgentAlwaysOnRecordingEnabled)
         try container.encode(isLowLatencyVoiceAgentCloudFallbackEnabled, forKey: .isLowLatencyVoiceAgentCloudFallbackEnabled)
@@ -211,6 +229,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
         if let openCodeModelID = copy.openCodeModelID?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.openCodeModelID = openCodeModelID.isEmpty ? nil : openCodeModelID
+        }
+        if let codexExecutablePath = copy.codexExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            copy.codexExecutablePath = codexExecutablePath.isEmpty ? nil : codexExecutablePath
+        }
+        if let codexModelID = copy.codexModelID?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            copy.codexModelID = codexModelID.isEmpty ? nil : codexModelID
         }
         // Runtime starts low-latency listening only from an explicit user
         // action. Persisted or future always-on flags cannot make launch record.
