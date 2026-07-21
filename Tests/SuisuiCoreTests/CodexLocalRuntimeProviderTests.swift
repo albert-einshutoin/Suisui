@@ -3,6 +3,65 @@ import XCTest
 @testable import SuisuiCore
 
 final class CodexLocalRuntimeProviderTests: XCTestCase {
+    func testLiveSubscriptionAccountModelAndCancelableLoginWhenExplicitlyEnabled() async throws {
+        guard ProcessInfo.processInfo.environment["SUISUI_CODEX_LIVE_TEST"] == "1" else {
+            throw XCTSkip("Set SUISUI_CODEX_LIVE_TEST=1 to probe the current Mac user's Codex account.")
+        }
+        let executablePath = try XCTUnwrap(ProcessInfo.processInfo.environment["SUISUI_CODEX_EXECUTABLE"])
+        _ = try CodexAppServerRuntimeConfiguration.validate(
+            executablePath: executablePath,
+            reportedVersion: try await ProcessCodexVersionReporter().versionOutput(executablePath: executablePath)
+        )
+        let transport = CodexAppServerStdioTransport(
+            process: ProcessCodexAppServerProcess(
+                configuration: CodexAppServerLaunchConfiguration(executablePath: executablePath)
+            )
+        )
+        let account = CodexAppServerAccountClient(transport: transport)
+
+        do {
+            try await account.initialize(clientVersion: "live-smoke")
+            let snapshot = try await account.readAccount(refresh: false)
+            guard case .ready = snapshot.readiness else {
+                XCTFail("Codex account is not ready: \(snapshot.readiness)")
+                await transport.shutdown()
+                return
+            }
+            let models = try await account.listModels()
+            XCTAssertFalse(models.isEmpty)
+
+            // Starting and immediately cancelling verifies the public login
+            // contract without opening a browser or replacing the active login.
+            let attempt = try await account.startLogin(.chatGPTBrowser)
+            XCTAssertTrue(["chatgpt.com", "auth.openai.com"].contains(attempt.authorizationURL.host))
+            try await account.cancelLogin(id: attempt.id)
+            await transport.shutdown()
+        } catch {
+            await transport.shutdown()
+            throw error
+        }
+    }
+
+    func testLiveSubscriptionGeneratesToolFreeActionPlanWhenExplicitlyEnabled() async throws {
+        guard ProcessInfo.processInfo.environment["SUISUI_CODEX_LIVE_TEST"] == "1" else {
+            throw XCTSkip("Set SUISUI_CODEX_LIVE_TEST=1 to use the current Mac user's Codex allowance.")
+        }
+        let executablePath = try XCTUnwrap(ProcessInfo.processInfo.environment["SUISUI_CODEX_EXECUTABLE"])
+        let provider = CodexLocalRuntimeProvider(
+            executablePath: executablePath,
+            modelID: nil,
+            isExecutionApproved: true,
+            clientVersion: "live-smoke"
+        )
+
+        let response = try await provider.generatePlan(for: PlanningRequest(
+            userInput: "明日の午前10時に見積もりを確認するタスクを作成"
+        ))
+
+        XCTAssertNotNil(response.actionPlan)
+        XCTAssertTrue(response.validationResult.isValid, "\(response.validationResult.issues)")
+    }
+
     func testExplicitApprovalIsRequiredBeforeVersionProbeOrProcessLaunch() async {
         let reporter = RecordingVersionReporter()
         let provider = CodexLocalRuntimeProvider(

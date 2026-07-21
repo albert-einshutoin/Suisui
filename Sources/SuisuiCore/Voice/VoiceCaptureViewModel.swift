@@ -1745,6 +1745,17 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
 
         let model = response.model ?? ExecutionReceiptModel(provider: response.providerID, name: "unknown")
+        if response.providerID == "codex.local" {
+            // Codex runs on the Mac, but its model usage is billed against the
+            // user's ChatGPT/Codex allowance. Do not classify it as free local
+            // inference or add it to Suisui-managed cost.
+            return .userProviderBilled(
+                provider: model.provider,
+                modelName: model.name,
+                note: "User's ChatGPT Codex allowance. No Suisui managed charge.",
+                observedUsage: observedUsage
+            )
+        }
         if isLocalProvider(response.providerID) {
             return .localOnly(model: model, observedUsage: observedUsage)
         }

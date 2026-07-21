@@ -1,6 +1,6 @@
 # Suisui Threat Model
 
-Verified: 2026-07-07
+Verified: 2026-07-21
 
 This document records what Suisui protects, where trust boundaries sit, and which existing controls map to which threats. It complements [SECURITY.md](../../SECURITY.md) (policy and reporting) and [docs/sync/cloud-sync-foundation.md](../sync/cloud-sync-foundation.md) (the E2EE sync boundary). It describes the current local-first macOS app plus the planned sync/relay surfaces; it is not a compliance artifact.
 
@@ -38,6 +38,7 @@ Out of scope (assumed trusted or handled elsewhere):
 4. **Notification and speech surfaces.** Lock screen, Notification Center, and TTS output are readable by bystanders, so they are count-only or redacted.
 5. **External MCP servers and connectors.** User-registered processes with their own environments; treated as semi-trusted executors behind review-before-write.
 6. **Future cloud relay / sync backend.** Sees only the encrypted ledger envelope defined in the sync foundation document, never plaintext content or credentials.
+7. **Codex App Server child process.** For Codex Local, the user-selected executable owns ChatGPT authentication and its credential store. Suisui communicates only over a dedicated stdio JSON-RPC channel and never reads, copies, logs, or syncs `~/.codex/auth.json` or token fields.
 
 ## Data Flows Across Boundaries
 
@@ -51,6 +52,7 @@ Out of scope (assumed trusted or handled elsewhere):
 | App → audit_logs table | Action metadata | Secret-pattern redaction before insert; parameterized SQL |
 | App → sync ledger (planned) | Encrypted payload envelope | XChaCha20-Poly1305 payloads, key IDs only, per the sync foundation doc |
 | Sparkle → app | Update artifacts | EdDSA appcast signature verification |
+| App → local Codex App Server | Explicit planning prompt, model selection, typed account/readiness state | Absolute executable path plus minimum-version gate; allowlisted child environment; short-lived process and scratch workspace per request; shell/file/web/MCP features disabled before initialize; approval or tool lifecycle interrupts the turn and fails closed |
 
 ## Threat Actors
 
@@ -74,6 +76,9 @@ Out of scope (assumed trusted or handled elsewhere):
 | Cloud operator reading synced content | E2EE sync design: `EncryptedSyncPayload` envelope, key IDs instead of key material, no plaintext domain payloads server-side |
 | Update tampering | Sparkle EdDSA-signed appcast; signing keys kept out of the repository |
 | Audit log poisoning with secrets | Key/token/authorization patterns redacted before audit rows are written |
+| Codex credential duplication | Production login types expose browser/device login only; no token-injection type; Suisui rejects an executable path targeting `auth.json` and stores no account email |
+| Malicious App Server tool request | Command, file-change, permission, web, MCP, and dynamic-tool lifecycle messages are never approved; the turn is interrupted and planning fails |
+| Codex workspace policy denial | Account errors naming organization/workspace policy are mapped to a stable administrator-disabled state instead of triggering repeated login |
 
 ## Residual Risks
 
@@ -82,6 +87,8 @@ Out of scope (assumed trusted or handled elsewhere):
 - **Clipboard and screenshot exposure.** Task content copied to the clipboard or captured in screen shares leaves every control above; no clipboard scrubbing exists.
 - **Prompt injection.** Review-before-write limits blast radius but a user who approves a poisoned plan still executes it.
 - **External MCP servers.** They run with the user's privileges; Suisui constrains what it asks them to do, not what they can do.
+- **Local child-process trust.** A malicious binary selected as `codex` executes with the user's privileges. Settings requires an absolute executable path and explicit approval, but code-signature pinning is not yet implemented.
+- **Enterprise compliance identity.** `clientInfo.name` is `suisui`; Enterprise support must not be claimed until OpenAI registers the client or the limitation for unregistered clients in Compliance Logs is documented and accepted.
 
 ## Review Cadence
 

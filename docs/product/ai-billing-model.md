@@ -16,6 +16,7 @@ Billing separates into two orthogonal axes because they have different cost stru
 Rules:
 
 - BYOK stays free on every plan. Managed AI never becomes a requirement for core functionality.
+- Codex Local is a third custody path: Codex owns the user's ChatGPT login and consumes that user's Codex allowance. It is recorded as `userProviderBilled`; it is neither BYOK API spend nor Suisui Managed AI spend.
 - Managed AI is an add-on available on any paid plan, plus small included credit allotments to create the habit.
 - AI credits are denominated in currency (cents), not tokens. Model prices change; the rate card converts credits to tokens at request time. The existing ledger already records `cost_cents`, so no schema change is needed.
 
@@ -44,6 +45,10 @@ Most of the client-side plumbing already exists and should be reused, not rebuil
 | Usage ledger | `managed_ai_usage_ledger` (SQLite) with idempotent digests (double-charge protection) and daily/monthly/workspace aggregates |
 | Spending caps | Per-run / daily / monthly / workspace caps in `ManagedAIBillingSettings`, enforced before execution, already exposed in Settings |
 | Entitlements | `FeatureGate` model from `pricing.md` — add `managedAI` plus a credit-balance entitlement |
+
+### Codex Local subscription accounting
+
+Codex Local launches the user-selected `codex` executable on that Mac and delegates authentication to Codex App Server. A successful request can consume the ChatGPT account's Codex allowance or credits under OpenAI's plan rules. Suisui therefore shows a provider-billed receipt with the provider and model, but does not estimate a currency amount, add the request to `managed_ai_usage_ledger`, or present ChatGPT entitlement as OpenAI API credit. Rate-limit state is informational and comes from App Server; Suisui does not independently calculate or sell that allowance.
 
 ## What Must Be Built
 

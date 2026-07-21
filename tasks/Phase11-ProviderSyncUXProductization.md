@@ -125,13 +125,13 @@
 
 - [x] `codexLocal` をAPI key providerとは別の、Macローカル・Codex管理認証・ユーザーprovider課金として型定義する。
 - [x] SuisuiがCodexのaccess token、refresh token、`~/.codex/auth.json`を読まない境界をADR 0011に固定する。
-- [ ] 対応最低versionで `account/read`、`account/login/start`、`model/list`、`thread/start`、`turn/start` がfixtureとlive smokeの両方で成立する。
+- [x] 対応最低versionで `account/read`、`account/login/start`、`model/list`、`thread/start`、`turn/start` がfixtureとlive smokeの両方で成立する。
 - [ ] Suisui parent processが`auth.json`を直接openせず、認証所有者であるCodex child processだけがアクセスすることをruntime testで証明する。
-- [ ] 内部token注入modeをproduction型から表現不能にする。
-- [ ] command、file change、permission requestを承認せずturnをinterruptしてfail closedにする。
-- [ ] Receiptを`userProviderBilled`として記録し、Suisui managed costへ合算しない。
-- [ ] Codexがworkspace policyで無効な場合は、再ログインloopではなく管理者policyエラーを表示する。
-- [ ] shell、file、web、MCP toolをturn開始前に無効化し、adversarial promptとlive smokeでtool lifecycleが発生しないことを証明する。証明できないversionではSettings公開をNO-GOにする。
+- [x] 内部token注入modeをproduction型から表現不能にする。
+- [x] command、file change、permission requestを承認せずturnをinterruptしてfail closedにする。
+- [x] Receiptを`userProviderBilled`として記録し、Suisui managed costへ合算しない。
+- [x] Codexがworkspace policyで無効な場合は、再ログインloopではなく管理者policyエラーを表示する。
+- [x] shell、file、web、MCP toolをturn開始前に無効化し、adversarial promptとlive smokeでtool lifecycleが発生しないことを証明する。証明できないversionではSettings公開をNO-GOにする。
 - [ ] Enterprise対応を表明する前に`clientInfo.name = "suisui"`のknown-client登録、または未登録clientのCompliance Logs制約を製品文書へ明記する。
 - [ ] 完了条件: 上記GO gateがすべてgreenになった場合だけSettingsへ表示し、ユーザー自身のCodex枠で音声タスクのAction Planを生成できる。
 

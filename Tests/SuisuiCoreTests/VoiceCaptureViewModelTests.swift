@@ -566,6 +566,36 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertTrue(preview?.allowsApprovalAndRun ?? false)
     }
 
+    func testCodexLocalSubscriptionIsProviderBilledNotLocalOnly() async {
+        let response = PlanningResponse(
+            providerID: "codex.local",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-codex-subscription",
+                userInput: "Create a task",
+                summary: "Create task",
+                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: []),
+            model: ExecutionReceiptModel(provider: "codex.local", name: "gpt-5.4")
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: response)
+        )
+
+        viewModel.updateDraftText("Create a task")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        let preview = viewModel.assistantQueueItem?.costPreview
+        XCTAssertEqual(preview?.billingMode, .userProviderBilled)
+        XCTAssertNil(preview?.estimatedCostCents)
+        XCTAssertEqual(preview?.model?.provider, "codex.local")
+    }
+
     func testGeneratePlanAppliesManagedAIBillingPerRunCapToManagedCostPreview() async {
         let response = PlanningResponse(
             providerID: "suisui.managed",
