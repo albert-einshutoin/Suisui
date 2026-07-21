@@ -23,6 +23,14 @@ if [[ "$codex_executable" != /* || ! -x "$codex_executable" ]]; then
   exit 1
 fi
 
+codex_version_output="$("$codex_executable" --version 2>/dev/null || true)"
+if [[ "$codex_version_output" =~ ^codex-cli[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?)$ ]]; then
+  codex_version="${BASH_REMATCH[1]}"
+else
+  echo "Codex version output is unavailable or has an unsupported format." >&2
+  exit 1
+fi
+
 audit_dir="$(mktemp -d "${TMPDIR:-/tmp}/suisui-codex-auth-audit.XXXXXX")"
 wrapper_path="$audit_dir/codex-auth-audit-wrapper"
 test_log="$audit_dir/test.log"
@@ -145,14 +153,25 @@ if [[ "$unexpected_auth_access_count" -ne 0 ]]; then
   exit 1
 fi
 
-source_commit="$(git -C "$ROOT_DIR" log -1 --format=%H -- Sources Package.swift)"
+product_source_commit="$(git -C "$ROOT_DIR" log -1 --format=%H -- Sources Package.swift)"
+audit_harness_commit="$(
+  git -C "$ROOT_DIR" log -1 --format=%H -- \
+    script/check_codex_auth_access_evidence.sh \
+    script/codex_auth_access_audit_wrapper.c
+)"
+if [[ -z "$product_source_commit" || -z "$audit_harness_commit" ]]; then
+  echo "Product or audit-harness source commit is unavailable." >&2
+  exit 1
+fi
 generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 evidence_output="${SUISUI_CODEX_AUTH_ACCESS_EVIDENCE_OUTPUT:-$ROOT_DIR/.tmp/codex-auth-access-evidence.json}"
 mkdir -p "$(dirname "$evidence_output")"
 printf '{\n' >"$evidence_output"
-printf '  "schemaVersion": 1,\n' >>"$evidence_output"
+printf '  "schemaVersion": 2,\n' >>"$evidence_output"
 printf '  "status": "passed",\n' >>"$evidence_output"
-printf '  "sourceCommit": "%s",\n' "$source_commit" >>"$evidence_output"
+printf '  "productSourceCommit": "%s",\n' "$product_source_commit" >>"$evidence_output"
+printf '  "auditHarnessCommit": "%s",\n' "$audit_harness_commit" >>"$evidence_output"
+printf '  "codexVersion": "%s",\n' "$codex_version" >>"$evidence_output"
 printf '  "generatedAt": "%s",\n' "$generated_at" >>"$evidence_output"
 printf '  "credentialPathClass": "codex_user_auth_store",\n' >>"$evidence_output"
 printf '  "parentPID": %s,\n' "$parent_pid" >>"$evidence_output"
