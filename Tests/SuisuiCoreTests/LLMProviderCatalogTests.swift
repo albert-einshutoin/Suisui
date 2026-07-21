@@ -77,6 +77,7 @@ final class LLMProviderCatalogTests: XCTestCase {
                 .claudeMessages,
                 .geminiDirect,
                 .groqOpenAICompatible,
+                .codexLocal,
                 .opencodeLocal,
                 .openRouterCompatible,
                 .ollamaCompatible
@@ -110,8 +111,8 @@ final class LLMProviderCatalogTests: XCTestCase {
         XCTAssertEqual(entry.requestFamily, .codexAppServer)
         XCTAssertNil(entry.apiKeySecretKey)
         XCTAssertTrue(entry.requiresExplicitLocalExecutionApproval)
-        XCTAssertFalse(entry.isAvailableInCurrentBuild)
-        XCTAssertFalse(LLMProviderCatalog.settingsSelectableIDs.contains(.codexLocal))
+        XCTAssertTrue(entry.isAvailableInCurrentBuild)
+        XCTAssertTrue(LLMProviderCatalog.settingsSelectableIDs.contains(.codexLocal))
     }
 
     func testUnavailableLLMProviderFailsClosedWithoutDelegatingToDefaultProvider() async {

@@ -211,9 +211,9 @@ public enum LLMProviderCatalog {
         ),
         LLMProviderCatalogEntry(
             id: .codexLocal,
-            displayName: "Codex Local (ChatGPT)",
-            isAvailableInCurrentBuild: false,
-            unavailableReason: unavailableReason,
+            displayName: "Codex Local (ChatGPT Preview)",
+            isAvailableInCurrentBuild: true,
+            unavailableReason: nil,
             apiKeySecretKey: nil,
             baseURL: nil,
             defaultModelID: "",

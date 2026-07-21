@@ -85,14 +85,27 @@ public actor CodexAppServerAccountClient: CodexAccountServicing {
     }
 
     public func readAccount(refresh _: Bool = false) async throws -> CodexAccountSnapshot {
-        let response = try await transport.request(
-            method: CodexAppServerMethod.accountRead,
-            // Codex owns normal token refresh. Suisui intentionally avoids the
-            // similarly named proactive-refresh wire field to keep credential
-            // concepts out of its encoded traffic and diagnostics.
-            params: .object([:]),
-            timeout: 10
-        )
+        let response: CodexRawJSONRPCResponse
+        do {
+            response = try await transport.request(
+                method: CodexAppServerMethod.accountRead,
+                // Codex owns normal token refresh. Suisui intentionally avoids the
+                // similarly named proactive-refresh wire field to keep credential
+                // concepts out of its encoded traffic and diagnostics.
+                params: .object([:]),
+                timeout: 10
+            )
+        } catch let CodexAppServerTransportError.remote(code, message) {
+            if Self.isWorkspacePolicyDenial(code: code, message: message) {
+                // A policy denial is stable account state. Returning it as readiness
+                // prevents the UI from trapping users in a futile re-login loop.
+                return CodexAccountSnapshot(account: nil, readiness: .workspaceDisabled)
+            }
+            if code == 401 {
+                return CodexAccountSnapshot(account: nil, readiness: .signedOut)
+            }
+            throw CodexAppServerTransportError.remote(code: code, message: message)
+        }
         let decoded: CodexAccountReadResponse = try decode(response.result)
         guard let account = decoded.account else {
             return CodexAccountSnapshot(account: nil, readiness: .signedOut)
@@ -259,6 +272,16 @@ public actor CodexAppServerAccountClient: CodexAccountServicing {
               allowedHosts.contains(host) else {
             throw CodexAccountClientError.unsafeAuthenticationURL
         }
+    }
+
+    private static func isWorkspacePolicyDenial(code: Int, message: String) -> Bool {
+        let normalized = message.lowercased()
+        let namesWorkspaceBoundary = normalized.contains("workspace") || normalized.contains("organization")
+        let namesPolicyDenial = normalized.contains("disabled")
+            || normalized.contains("policy")
+            || normalized.contains("administrator")
+            || normalized.contains("admin")
+        return code == 403 || (namesWorkspaceBoundary && namesPolicyDenial)
     }
 
     private func decode<T: Decodable>(_ value: JSONValue) throws -> T {

@@ -81,6 +81,28 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertFalse(encoded.contains("refreshToken"))
     }
 
+    func testCodexLocalSelectionRequiresAbsoluteExecutableAndApproval() {
+        let missing = AppSettings(aiProvider: .codexLocal)
+        XCTAssertEqual(
+            Set(missing.validate().map(\.field)),
+            Set(["codexExecutablePath", "isCodexLocalExecutionApproved"])
+        )
+
+        let ready = AppSettings(
+            aiProvider: .codexLocal,
+            codexExecutablePath: "/opt/homebrew/bin/codex",
+            isCodexLocalExecutionApproved: true
+        )
+        XCTAssertTrue(ready.validate().isEmpty)
+
+        let credentialPath = AppSettings(
+            aiProvider: .codexLocal,
+            codexExecutablePath: "/Users/example/.codex/auth.json",
+            isCodexLocalExecutionApproved: true
+        )
+        XCTAssertEqual(credentialPath.validate().first?.field, "codexExecutablePath")
+    }
+
     func testInvalidTimeZoneProducesValidationIssue() {
         let settings = AppSettings(timeZoneIdentifier: "Invalid/Timezone")
 

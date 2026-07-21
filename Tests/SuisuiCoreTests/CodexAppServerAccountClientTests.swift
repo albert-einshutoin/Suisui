@@ -105,6 +105,24 @@ final class CodexAppServerAccountClientTests: XCTestCase {
             XCTAssertEqual(error, .loginTimedOut)
         }
     }
+
+    func testAccountReadMapsWorkspacePolicyFailureWithoutStartingLoginLoop() async throws {
+        let transport = RecordingCodexTransport(
+            responses: [:],
+            failures: [
+                CodexAppServerMethod.accountRead: [
+                    .remote(code: -32_000, message: "Codex is disabled by your workspace administrator policy.")
+                ]
+            ]
+        )
+        let client = CodexAppServerAccountClient(transport: transport)
+
+        let snapshot = try await client.readAccount(refresh: false)
+
+        XCTAssertEqual(snapshot.readiness, .workspaceDisabled)
+        let requests = await transport.requests
+        XCTAssertEqual(requests.map(\.method), [CodexAppServerMethod.accountRead])
+    }
 }
 
 private actor RecordingCodexTransport: CodexAppServerTransport {
@@ -114,13 +132,18 @@ private actor RecordingCodexTransport: CodexAppServerTransport {
     }
 
     private var responses: [String: [JSONValue]]
+    private var failures: [String: [CodexAppServerTransportError]]
     private let stream: AsyncStream<CodexJSONRPCNotification>
     private let continuation: AsyncStream<CodexJSONRPCNotification>.Continuation
     private(set) var requests: [Request] = []
     private(set) var encodedTraffic = ""
 
-    init(responses: [String: [JSONValue]]) {
+    init(
+        responses: [String: [JSONValue]],
+        failures: [String: [CodexAppServerTransportError]] = [:]
+    ) {
         self.responses = responses
+        self.failures = failures
         (stream, continuation) = AsyncStream.makeStream(of: CodexJSONRPCNotification.self)
     }
 
@@ -129,6 +152,11 @@ private actor RecordingCodexTransport: CodexAppServerTransport {
     func request(method: String, params: JSONValue?, timeout _: TimeInterval) async throws -> CodexRawJSONRPCResponse {
         requests.append(Request(method: method, params: params))
         encodedTraffic += method + String(describing: params)
+        if var queuedFailures = failures[method], !queuedFailures.isEmpty {
+            let error = queuedFailures.removeFirst()
+            failures[method] = queuedFailures
+            throw error
+        }
         guard var queued = responses[method], !queued.isEmpty else {
             throw CodexAppServerTransportError.streamClosed
         }

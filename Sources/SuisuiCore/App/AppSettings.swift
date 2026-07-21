@@ -331,6 +331,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
         } else {
             appendOptionalOpenCodeLocalIssues(to: &issues)
         }
+        if aiProvider == .codexLocal {
+            appendCodexLocalIssues(to: &issues)
+        } else {
+            appendOptionalCodexLocalIssues(to: &issues)
+        }
         appendWhisperCppExecutablePathIssue(to: &issues, isRequired: sttProvider == .localWhisperCpp)
         appendKokoroExecutablePathIssue(to: &issues)
         appendTTSSelectionIssues(to: &issues)
@@ -431,6 +436,60 @@ public struct AppSettings: Codable, Equatable, Sendable {
         appendOpenCodeExecutablePathIssue(to: &issues, isRequired: false)
         appendOpenCodeWorkspacePathIssue(to: &issues, isRequired: false)
         appendOpenCodeModelIDIssue(to: &issues, isRequired: false)
+    }
+
+    private func appendCodexLocalIssues(to issues: inout [ValidationIssue]) {
+        appendCodexExecutablePathIssue(to: &issues, isRequired: true)
+        appendCodexModelIDIssue(to: &issues)
+        if !isCodexLocalExecutionApproved {
+            issues.append(ValidationIssue(
+                field: "isCodexLocalExecutionApproved",
+                message: "Codex local execution requires explicit approval.",
+                severity: .error
+            ))
+        }
+    }
+
+    private func appendOptionalCodexLocalIssues(to issues: inout [ValidationIssue]) {
+        appendCodexExecutablePathIssue(to: &issues, isRequired: false)
+        appendCodexModelIDIssue(to: &issues)
+    }
+
+    private func appendCodexExecutablePathIssue(to issues: inout [ValidationIssue], isRequired: Bool) {
+        let path = codexExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !path.isEmpty else {
+            if isRequired {
+                issues.append(ValidationIssue(
+                    field: "codexExecutablePath",
+                    message: "Codex executable path is required.",
+                    severity: .error
+                ))
+            }
+            return
+        }
+        if path.hasSuffix("/auth.json") || path == "auth.json" {
+            issues.append(ValidationIssue(
+                field: "codexExecutablePath",
+                message: "Codex executable path must not point to auth.json.",
+                severity: .error
+            ))
+        } else if !NSString(string: path).isAbsolutePath {
+            issues.append(ValidationIssue(
+                field: "codexExecutablePath",
+                message: "Codex executable path must be absolute.",
+                severity: .error
+            ))
+        }
+    }
+
+    private func appendCodexModelIDIssue(to issues: inout [ValidationIssue]) {
+        guard let modelID = codexModelID, !modelID.isEmpty,
+              modelID.rangeOfCharacter(from: .whitespacesAndNewlines) != nil else { return }
+        issues.append(ValidationIssue(
+            field: "codexModelID",
+            message: "Codex model id cannot contain whitespace.",
+            severity: .error
+        ))
     }
 
     private func appendOpenCodeExecutablePathIssue(to issues: inout [ValidationIssue], isRequired: Bool) {
@@ -1736,6 +1795,23 @@ public final class AppSettingsViewModel: ObservableObject {
         clearMessages()
     }
 
+    public func setCodexExecutablePath(_ path: String) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.codexExecutablePath = trimmed.isEmpty ? nil : trimmed
+        clearMessages()
+    }
+
+    public func setCodexModelID(_ modelID: String) {
+        let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.codexModelID = trimmed.isEmpty ? nil : trimmed
+        clearMessages()
+    }
+
+    public func setCodexLocalExecutionApproved(_ isApproved: Bool) {
+        settings.isCodexLocalExecutionApproved = isApproved
+        clearMessages()
+    }
+
     public func setLowLatencyVoiceAgentModeEnabled(_ isEnabled: Bool) {
         settings.isLowLatencyVoiceAgentModeEnabled = isEnabled
         clearMessages()
@@ -2356,7 +2432,8 @@ public final class AppSettingsViewModel: ObservableObject {
 
         switch provider {
         case .codexLocal:
-            return "Not available"
+            if settings.codexExecutablePath == nil { return "Setup required" }
+            return settings.isCodexLocalExecutionApproved ? "Ready to connect" : "Approval required"
         case .openaiResponses:
             return openAIAPIKeyStatusLabel
         case .claudeMessages:
@@ -2392,7 +2469,13 @@ public final class AppSettingsViewModel: ObservableObject {
 
         switch provider {
         case .codexLocal:
-            return .unavailable(reason: LLMProviderCatalog.entry(for: provider).unavailableReason ?? "Not available in this build.")
+            if settings.codexExecutablePath == nil {
+                return .needsAction(reason: "Set the absolute Codex executable path.")
+            }
+            if !settings.isCodexLocalExecutionApproved {
+                return .needsAction(reason: "Review the local process boundary and approve execution.")
+            }
+            return .ready
         case .opencodeLocal:
             if settings.openCodeExecutablePath == nil {
                 return .needsAction(reason: "Set the OpenCode executable path.")
@@ -2459,7 +2542,7 @@ public final class AppSettingsViewModel: ObservableObject {
 
         switch provider {
         case .codexLocal:
-            return LLMProviderCatalog.entry(for: provider).unavailableReason ?? "Not available in this build."
+            return "Uses the current Mac user's Codex-managed ChatGPT login and subscription; Suisui never stores its tokens."
         case .openaiResponses:
             return "Smoke: \(providerSmokeDisplayLabel(openAIProviderSmokeStatusLabel))"
         case .claudeMessages:
@@ -2485,6 +2568,14 @@ public final class AppSettingsViewModel: ObservableObject {
         }
 
         switch provider {
+        case .codexLocal:
+            if settings.codexExecutablePath == nil {
+                return "Set the absolute Codex executable path."
+            }
+            if !settings.isCodexLocalExecutionApproved {
+                return "Review the tool-free local process boundary and approve execution."
+            }
+            return "Generate a reviewed plan; sign in through Codex if prompted."
         case .opencodeLocal:
             if settings.openCodeExecutablePath == nil {
                 return "Set the OpenCode executable path."
