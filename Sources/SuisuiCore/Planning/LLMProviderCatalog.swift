@@ -6,6 +6,7 @@ public enum LLMProviderID: String, CaseIterable, Codable, Equatable, Hashable, S
     case geminiDirect
     case geminiOpenAICompatible
     case groqOpenAICompatible
+    case codexLocal
     case opencodeLocal
     case openRouterCompatible
     case ollamaCompatible
@@ -61,7 +62,26 @@ public enum LLMRequestFamily: String, Codable, Equatable, Sendable {
     case openAIChatCompletions
     case anthropicMessages
     case geminiGenerateContent
+    case codexAppServer
     case opencodeLocalCLI
+}
+
+public enum LLMProviderAuthMode: String, Codable, Equatable, Sendable {
+    case apiKey
+    case providerManagedSubscription
+    case localProviderStore
+    case none
+}
+
+public enum LLMProviderExecutionLocation: String, Codable, Equatable, Sendable {
+    case userMac
+    case providerCloud
+}
+
+public enum LLMProviderBillingMode: String, Codable, Equatable, Sendable {
+    case suisuiManaged
+    case userProviderBilled
+    case localOnly
 }
 
 public struct LLMProviderCatalogEntry: Identifiable, Equatable, Sendable {
@@ -75,6 +95,10 @@ public struct LLMProviderCatalogEntry: Identifiable, Equatable, Sendable {
     public var requestFamily: LLMRequestFamily
     public var supportsStreaming: Bool
     public var supportsStructuredOutput: Bool
+    public var authMode: LLMProviderAuthMode
+    public var executionLocation: LLMProviderExecutionLocation
+    public var billingMode: LLMProviderBillingMode
+    public var requiresExplicitLocalExecutionApproval: Bool
 
     public init(
         id: LLMProviderID,
@@ -86,7 +110,11 @@ public struct LLMProviderCatalogEntry: Identifiable, Equatable, Sendable {
         defaultModelID: String,
         requestFamily: LLMRequestFamily,
         supportsStreaming: Bool,
-        supportsStructuredOutput: Bool
+        supportsStructuredOutput: Bool,
+        authMode: LLMProviderAuthMode,
+        executionLocation: LLMProviderExecutionLocation,
+        billingMode: LLMProviderBillingMode,
+        requiresExplicitLocalExecutionApproval: Bool = false
     ) {
         self.id = id
         self.displayName = displayName
@@ -98,6 +126,10 @@ public struct LLMProviderCatalogEntry: Identifiable, Equatable, Sendable {
         self.requestFamily = requestFamily
         self.supportsStreaming = supportsStreaming
         self.supportsStructuredOutput = supportsStructuredOutput
+        self.authMode = authMode
+        self.executionLocation = executionLocation
+        self.billingMode = billingMode
+        self.requiresExplicitLocalExecutionApproval = requiresExplicitLocalExecutionApproval
     }
 }
 
@@ -115,7 +147,10 @@ public enum LLMProviderCatalog {
             defaultModelID: "gpt-5.5",
             requestFamily: .openAIResponses,
             supportsStreaming: true,
-            supportsStructuredOutput: true
+            supportsStructuredOutput: true,
+            authMode: .apiKey,
+            executionLocation: .providerCloud,
+            billingMode: .userProviderBilled
         ),
         LLMProviderCatalogEntry(
             id: .claudeMessages,
@@ -126,7 +161,10 @@ public enum LLMProviderCatalog {
             defaultModelID: "claude-fable-5",
             requestFamily: .anthropicMessages,
             supportsStreaming: true,
-            supportsStructuredOutput: true
+            supportsStructuredOutput: true,
+            authMode: .apiKey,
+            executionLocation: .providerCloud,
+            billingMode: .userProviderBilled
         ),
         LLMProviderCatalogEntry(
             id: .geminiDirect,
@@ -137,7 +175,10 @@ public enum LLMProviderCatalog {
             defaultModelID: "gemini-3.5-flash",
             requestFamily: .geminiGenerateContent,
             supportsStreaming: true,
-            supportsStructuredOutput: true
+            supportsStructuredOutput: true,
+            authMode: .apiKey,
+            executionLocation: .providerCloud,
+            billingMode: .userProviderBilled
         ),
         LLMProviderCatalogEntry(
             id: .geminiOpenAICompatible,
@@ -149,7 +190,10 @@ public enum LLMProviderCatalog {
             defaultModelID: "gemini-3.5-flash",
             requestFamily: .openAIChatCompletions,
             supportsStreaming: true,
-            supportsStructuredOutput: false
+            supportsStructuredOutput: false,
+            authMode: .apiKey,
+            executionLocation: .providerCloud,
+            billingMode: .userProviderBilled
         ),
         LLMProviderCatalogEntry(
             id: .groqOpenAICompatible,
@@ -160,7 +204,26 @@ public enum LLMProviderCatalog {
             defaultModelID: "llama-3.3-70b-versatile",
             requestFamily: .openAIChatCompletions,
             supportsStreaming: true,
-            supportsStructuredOutput: false
+            supportsStructuredOutput: false,
+            authMode: .apiKey,
+            executionLocation: .providerCloud,
+            billingMode: .userProviderBilled
+        ),
+        LLMProviderCatalogEntry(
+            id: .codexLocal,
+            displayName: "Codex Local (ChatGPT)",
+            isAvailableInCurrentBuild: false,
+            unavailableReason: unavailableReason,
+            apiKeySecretKey: nil,
+            baseURL: nil,
+            defaultModelID: "",
+            requestFamily: .codexAppServer,
+            supportsStreaming: true,
+            supportsStructuredOutput: true,
+            authMode: .providerManagedSubscription,
+            executionLocation: .userMac,
+            billingMode: .userProviderBilled,
+            requiresExplicitLocalExecutionApproval: true
         ),
         LLMProviderCatalogEntry(
             id: .opencodeLocal,
@@ -171,7 +234,11 @@ public enum LLMProviderCatalog {
             defaultModelID: "anthropic/claude-sonnet-4-5",
             requestFamily: .opencodeLocalCLI,
             supportsStreaming: false,
-            supportsStructuredOutput: false
+            supportsStructuredOutput: false,
+            authMode: .localProviderStore,
+            executionLocation: .userMac,
+            billingMode: .userProviderBilled,
+            requiresExplicitLocalExecutionApproval: true
         ),
         LLMProviderCatalogEntry(
             id: .openRouterCompatible,
@@ -182,7 +249,10 @@ public enum LLMProviderCatalog {
             defaultModelID: "openai/gpt-latest",
             requestFamily: .openAIChatCompletions,
             supportsStreaming: true,
-            supportsStructuredOutput: false
+            supportsStructuredOutput: false,
+            authMode: .apiKey,
+            executionLocation: .providerCloud,
+            billingMode: .userProviderBilled
         ),
         LLMProviderCatalogEntry(
             id: .ollamaCompatible,
@@ -193,7 +263,10 @@ public enum LLMProviderCatalog {
             defaultModelID: "llama3.2",
             requestFamily: .openAIChatCompletions,
             supportsStreaming: true,
-            supportsStructuredOutput: false
+            supportsStructuredOutput: false,
+            authMode: .none,
+            executionLocation: .userMac,
+            billingMode: .localOnly
         )
     ]
 
@@ -224,7 +297,10 @@ public enum LLMProviderCatalog {
             defaultModelID: "",
             requestFamily: .openAIResponses,
             supportsStreaming: false,
-            supportsStructuredOutput: false
+            supportsStructuredOutput: false,
+            authMode: .none,
+            executionLocation: .providerCloud,
+            billingMode: .localOnly
         )
     }
 }

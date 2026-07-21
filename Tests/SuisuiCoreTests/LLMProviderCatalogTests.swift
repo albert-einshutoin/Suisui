@@ -24,6 +24,7 @@ final class LLMProviderCatalogTests: XCTestCase {
                 .geminiDirect,
                 .geminiOpenAICompatible,
                 .groqOpenAICompatible,
+                .codexLocal,
                 .opencodeLocal,
                 .openRouterCompatible,
                 .ollamaCompatible
@@ -95,8 +96,22 @@ final class LLMProviderCatalogTests: XCTestCase {
         XCTAssertEqual(LLMProviderCatalog.entry(for: .geminiDirect).apiKeySecretKey, .geminiAPIKey)
         XCTAssertEqual(LLMProviderCatalog.entry(for: .geminiOpenAICompatible).apiKeySecretKey, .geminiAPIKey)
         XCTAssertEqual(LLMProviderCatalog.entry(for: .groqOpenAICompatible).apiKeySecretKey, .groqAPIKey)
+        XCTAssertNil(LLMProviderCatalog.entry(for: .codexLocal).apiKeySecretKey)
         XCTAssertNil(LLMProviderCatalog.entry(for: .opencodeLocal).apiKeySecretKey)
         XCTAssertNil(LLMProviderCatalog.entry(for: .ollamaCompatible).apiKeySecretKey)
+    }
+
+    func testCodexLocalDeclaresUserSubscriptionAndMacLocalBoundary() {
+        let entry = LLMProviderCatalog.entry(for: .codexLocal)
+
+        XCTAssertEqual(entry.authMode, .providerManagedSubscription)
+        XCTAssertEqual(entry.executionLocation, .userMac)
+        XCTAssertEqual(entry.billingMode, .userProviderBilled)
+        XCTAssertEqual(entry.requestFamily, .codexAppServer)
+        XCTAssertNil(entry.apiKeySecretKey)
+        XCTAssertTrue(entry.requiresExplicitLocalExecutionApproval)
+        XCTAssertFalse(entry.isAvailableInCurrentBuild)
+        XCTAssertFalse(LLMProviderCatalog.settingsSelectableIDs.contains(.codexLocal))
     }
 
     func testUnavailableLLMProviderFailsClosedWithoutDelegatingToDefaultProvider() async {

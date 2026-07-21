@@ -835,7 +835,7 @@ public struct ProviderSecretReadinessSnapshot: Equatable, Sendable {
             return gemini
         case .groqOpenAICompatible:
             return groq
-        case .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
+        case .codexLocal, .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
             return .missing
         }
     }
@@ -1211,7 +1211,7 @@ public final class AppSettingsViewModel: ObservableObject {
             groqAPIKeyReadinessState = state
             groqAPIKeyStatusLabel = Self.statusLabel(for: state)
             groqProviderSmokeStatusLabel = Self.providerSmokeStatusLabel(for: state)
-        case .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
+        case .codexLocal, .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
             return
         }
     }
@@ -1228,7 +1228,7 @@ public final class AppSettingsViewModel: ObservableObject {
             return .geminiAPIKey
         case .groqOpenAICompatible:
             return .groqAPIKey
-        case .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
+        case .codexLocal, .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
             return nil
         }
     }
@@ -2331,6 +2331,8 @@ public final class AppSettingsViewModel: ObservableObject {
         }
 
         switch provider {
+        case .codexLocal:
+            return "Not available"
         case .openaiResponses:
             return openAIAPIKeyStatusLabel
         case .claudeMessages:
@@ -2365,6 +2367,8 @@ public final class AppSettingsViewModel: ObservableObject {
         }
 
         switch provider {
+        case .codexLocal:
+            return .unavailable(reason: LLMProviderCatalog.entry(for: provider).unavailableReason ?? "Not available in this build.")
         case .opencodeLocal:
             if settings.openCodeExecutablePath == nil {
                 return .needsAction(reason: "Set the OpenCode executable path.")
@@ -2430,6 +2434,8 @@ public final class AppSettingsViewModel: ObservableObject {
         }
 
         switch provider {
+        case .codexLocal:
+            return LLMProviderCatalog.entry(for: provider).unavailableReason ?? "Not available in this build."
         case .openaiResponses:
             return "Smoke: \(providerSmokeDisplayLabel(openAIProviderSmokeStatusLabel))"
         case .claudeMessages:
@@ -2509,7 +2515,7 @@ public final class AppSettingsViewModel: ObservableObject {
             return groqAPIKeyReadinessState
         case .openRouterCompatible:
             return openRouterAPIKeyReadinessState
-        case .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
+        case .codexLocal, .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
             return .missing
         }
     }

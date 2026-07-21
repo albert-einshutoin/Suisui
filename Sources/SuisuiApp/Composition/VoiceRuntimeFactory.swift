@@ -168,6 +168,12 @@ extension AppRuntimeFactory {
 
     private static func makeLLMProvider(settings: AppSettings, secretStore: any SecretStore) -> any LLMProvider {
         switch settings.normalizedForRuntime.aiProvider {
+        case .codexLocal:
+            let entry = LLMProviderCatalog.entry(for: .codexLocal)
+            return UnavailableLLMProvider(
+                providerID: .codexLocal,
+                reason: entry.unavailableReason ?? LLMProviderCatalog.unavailableReason
+            )
         case .openaiResponses:
             let entry = LLMProviderCatalog.entry(for: .openaiResponses)
             let configuration = OpenAIResponsesConfiguration(model: entry.defaultModelID)

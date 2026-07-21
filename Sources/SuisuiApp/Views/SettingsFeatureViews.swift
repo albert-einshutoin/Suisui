@@ -1167,6 +1167,8 @@ extension SettingsAIFeatureView {
     @ViewBuilder
     var selectedProviderConfigurationFields: some View {
         switch settingsViewModel.settings.aiProvider {
+        case .codexLocal:
+            unavailableProviderSettingsFields
         case .openaiResponses:
             openAIProviderSettingsFields
         case .geminiOpenAICompatible:
