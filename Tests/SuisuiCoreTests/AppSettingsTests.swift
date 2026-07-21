@@ -1223,7 +1223,7 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertEqual(
             viewModel.selectableAIProviders,
-            [.openaiResponses, .claudeMessages, .geminiDirect, .groqOpenAICompatible, .opencodeLocal, .openRouterCompatible, .ollamaCompatible]
+            [.openaiResponses, .claudeMessages, .geminiDirect, .groqOpenAICompatible, .codexLocal, .opencodeLocal, .openRouterCompatible, .ollamaCompatible]
         )
 
         viewModel.setAIProvider(.geminiOpenAICompatible)
