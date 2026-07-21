@@ -138,6 +138,7 @@ private actor RecordingCodexTransport: CodexAppServerTransport {
     }
 
     func notify(method _: String, params _: JSONValue?) async throws {}
+    func respond(id _: Int64, result _: JSONValue) async throws {}
     func notifications() async -> AsyncStream<CodexJSONRPCNotification> { stream }
     func shutdown() async { continuation.finish() }
     func emit(_ notification: CodexJSONRPCNotification) { continuation.yield(notification) }

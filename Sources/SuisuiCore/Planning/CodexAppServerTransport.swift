@@ -36,6 +36,7 @@ public protocol CodexAppServerTransport: Sendable {
     func start() async throws
     func request(method: String, params: JSONValue?, timeout: TimeInterval) async throws -> CodexRawJSONRPCResponse
     func notify(method: String, params: JSONValue?) async throws
+    func respond(id: Int64, result: JSONValue) async throws
     func notifications() async -> AsyncStream<CodexJSONRPCNotification>
     func shutdown() async
 }
@@ -49,8 +50,7 @@ public actor CodexAppServerStdioTransport: CodexAppServerTransport {
     private let process: any CodexAppServerProcess
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
-    private let notificationStream: AsyncStream<CodexJSONRPCNotification>
-    private let notificationContinuation: AsyncStream<CodexJSONRPCNotification>.Continuation
+    private var notificationContinuations: [UUID: AsyncStream<CodexJSONRPCNotification>.Continuation] = [:]
     private var nextRequestID: Int64 = 1
     private var pending: [Int64: PendingRequest] = [:]
     private var readerTask: Task<Void, Never>?
@@ -59,7 +59,6 @@ public actor CodexAppServerStdioTransport: CodexAppServerTransport {
 
     public init(process: any CodexAppServerProcess) {
         self.process = process
-        (notificationStream, notificationContinuation) = AsyncStream.makeStream(of: CodexJSONRPCNotification.self)
     }
 
     public func start() async throws {
@@ -128,8 +127,20 @@ public actor CodexAppServerStdioTransport: CodexAppServerTransport {
         try await process.writeLine(data)
     }
 
+    public func respond(id: Int64, result: JSONValue) async throws {
+        try await start()
+        let data = try encoder.encode(WireResponse(id: id, result: result)) + Data([0x0A])
+        try await process.writeLine(data)
+    }
+
     public func notifications() async -> AsyncStream<CodexJSONRPCNotification> {
-        notificationStream
+        let id = UUID()
+        let (stream, continuation) = AsyncStream.makeStream(of: CodexJSONRPCNotification.self)
+        notificationContinuations[id] = continuation
+        continuation.onTermination = { [weak self] _ in
+            Task { await self?.removeNotificationSubscriber(id: id) }
+        }
+        return stream
     }
 
     public func shutdown() async {
@@ -137,7 +148,7 @@ public actor CodexAppServerStdioTransport: CodexAppServerTransport {
         stopped = true
         readerTask?.cancel()
         readerTask = nil
-        notificationContinuation.finish()
+        finishNotificationStreams()
         failAll(with: CodexAppServerTransportError.streamClosed)
         await process.stop()
     }
@@ -152,9 +163,10 @@ public actor CodexAppServerStdioTransport: CodexAppServerTransport {
         }
 
         if let method = message.method {
-            notificationContinuation.yield(
-                CodexJSONRPCNotification(id: message.id, method: method, params: message.params)
-            )
+            let notification = CodexJSONRPCNotification(id: message.id, method: method, params: message.params)
+            for continuation in notificationContinuations.values {
+                continuation.yield(notification)
+            }
             return
         }
 
@@ -187,7 +199,7 @@ public actor CodexAppServerStdioTransport: CodexAppServerTransport {
     private func finish(with error: any Error) {
         guard !stopped else { return }
         stopped = true
-        notificationContinuation.finish()
+        finishNotificationStreams()
         failAll(with: error)
         Task { [process] in await process.stop() }
     }
@@ -198,6 +210,16 @@ public actor CodexAppServerStdioTransport: CodexAppServerTransport {
         for request in requests {
             request.continuation.resume(throwing: error)
         }
+    }
+
+    private func removeNotificationSubscriber(id: UUID) {
+        notificationContinuations.removeValue(forKey: id)
+    }
+
+    private func finishNotificationStreams() {
+        let continuations = notificationContinuations.values
+        notificationContinuations.removeAll()
+        for continuation in continuations { continuation.finish() }
     }
 }
 
@@ -210,7 +232,26 @@ public struct CodexAppServerLaunchConfiguration: Equatable, Sendable {
         self.executablePath = executablePath
         // These stable feature gates are the primary protection against exposing
         // coding tools to ordinary voice-task prompts.
-        arguments = ["--disable", "shell_tool", "--disable", "unified_exec", "app-server", "--listen", "stdio://"]
+        arguments = [
+            "--disable", "shell_tool",
+            "--disable", "unified_exec",
+            "--disable", "apps",
+            "--disable", "browser_use",
+            "--disable", "browser_use_external",
+            "--disable", "browser_use_full_cdp_access",
+            "--disable", "computer_use",
+            "--disable", "image_generation",
+            "--disable", "in_app_browser",
+            "--disable", "multi_agent",
+            "--disable", "plugins",
+            "--disable", "remote_plugin",
+            "--disable", "tool_call_mcp_elicitation",
+            "--disable", "tool_suggest",
+            "--disable", "workspace_dependencies",
+            "-c", "web_search=\"disabled\"",
+            "-c", "mcp_servers={}",
+            "app-server", "--listen", "stdio://"
+        ]
         let allowedKeys: Set<String> = ["HOME", "PATH", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "USER", "LOGNAME"]
         environment = parentEnvironment.filter { allowedKeys.contains($0.key) }
     }
@@ -350,6 +391,12 @@ private struct WireNotification: Encodable {
     let jsonrpc = "2.0"
     let method: String
     let params: JSONValue?
+}
+
+private struct WireResponse: Encodable {
+    let jsonrpc = "2.0"
+    let id: Int64
+    let result: JSONValue
 }
 
 private struct WireInbound: Decodable {

@@ -7,7 +7,9 @@ final class CodexAppServerTransportTests: XCTestCase {
         let process = ScriptedCodexProcess()
         let transport = CodexAppServerStdioTransport(process: process)
         let notificationStream = await transport.notifications()
+        let secondNotificationStream = await transport.notifications()
         let notificationTask = Task { try await notificationStream.firstValue() }
+        let secondNotificationTask = Task { try await secondNotificationStream.firstValue() }
 
         async let account = transport.request(method: CodexAppServerMethod.accountRead, params: .object([:]), timeout: 1)
         async let models = transport.request(method: CodexAppServerMethod.modelList, params: .object([:]), timeout: 1)
@@ -19,7 +21,9 @@ final class CodexAppServerTransportTests: XCTestCase {
         XCTAssertEqual(accountResponse.result, .object(["source": .string("account")]))
         XCTAssertEqual(modelResponse.result, .object(["source": .string("models")]))
         let notification = try await notificationTask.value
+        let secondNotification = try await secondNotificationTask.value
         XCTAssertEqual(notification.method, "account/updated")
+        XCTAssertEqual(secondNotification, notification)
         await transport.shutdown()
     }
 
@@ -61,14 +65,27 @@ final class CodexAppServerTransportTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            launch.arguments,
-            ["--disable", "shell_tool", "--disable", "unified_exec", "app-server", "--listen", "stdio://"]
+            Array(launch.arguments.suffix(7)),
+            ["-c", "web_search=\"disabled\"", "-c", "mcp_servers={}", "app-server", "--listen", "stdio://"]
         )
+        XCTAssertTrue(launch.arguments.containsSubsequence(["--disable", "shell_tool"]))
+        XCTAssertTrue(launch.arguments.containsSubsequence(["--disable", "unified_exec"]))
+        XCTAssertTrue(launch.arguments.containsSubsequence(["--disable", "browser_use"]))
+        XCTAssertTrue(launch.arguments.containsSubsequence(["--disable", "plugins"]))
         XCTAssertEqual(launch.environment, [
             "HOME": "/Users/example",
             "PATH": "/usr/bin:/bin",
             "LANG": "ja_JP.UTF-8"
         ])
+    }
+}
+
+private extension Array where Element: Equatable {
+    func containsSubsequence(_ subsequence: [Element]) -> Bool {
+        guard !subsequence.isEmpty, subsequence.count <= count else { return false }
+        return indices.dropLast(subsequence.count - 1).contains { index in
+            Array(self[index..<(index + subsequence.count)]) == subsequence
+        }
     }
 }
 
