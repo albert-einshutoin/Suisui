@@ -1416,7 +1416,11 @@ extension SettingsAIFeatureView {
             approvedExecutable: settingsViewModel.settings.isCodexLocalExecutionApproved
                 ? settingsViewModel.settings.approvedCodexExecutable
                 : nil,
-            onDisconnect: { settingsViewModel.setCodexLocalExecutionApproved(false) }
+            onDisconnect: {
+                // The view model rolls back approval state and publishes an
+                // error if persistence fails, so UI and runtime stay aligned.
+                try? settingsViewModel.disconnectCodexAndSave()
+            }
         )
 
         VStack(alignment: .leading, spacing: 6) {

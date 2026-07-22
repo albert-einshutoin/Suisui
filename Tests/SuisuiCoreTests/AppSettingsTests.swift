@@ -131,6 +131,34 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertNil(viewModel.settings.approvedCodexExecutable)
     }
 
+    @MainActor
+    func testDisconnectCodexPersistsRevocationImmediately() throws {
+        let suiteName = "Suisui.CodexDisconnect.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let approved = try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
+        try store.save(AppSettings(
+            aiProvider: .codexLocal,
+            codexExecutablePath: "/usr/bin/true",
+            isCodexLocalExecutionApproved: true,
+            approvedCodexExecutable: approved
+        ))
+        let viewModel = AppSettingsViewModel(
+            settingsStore: store,
+            secretStore: InMemorySecretStore(),
+            refreshProviderSecretStatusesOnInit: false
+        )
+
+        try viewModel.disconnectCodexAndSave()
+
+        XCTAssertFalse(viewModel.settings.isCodexLocalExecutionApproved)
+        XCTAssertNil(viewModel.settings.approvedCodexExecutable)
+        let persisted = try store.load()
+        XCTAssertFalse(persisted.isCodexLocalExecutionApproved)
+        XCTAssertNil(persisted.approvedCodexExecutable)
+    }
+
     func testInvalidTimeZoneProducesValidationIssue() {
         let settings = AppSettings(timeZoneIdentifier: "Invalid/Timezone")
 

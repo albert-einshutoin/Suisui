@@ -1,6 +1,14 @@
 import Combine
 import Foundation
 
+public extension Notification.Name {
+    /// Invalidates in-memory Codex account and planning operations whenever
+    /// the user changes the provider or the executable approval boundary.
+    static let suisuiCodexExecutionApprovalDidChange = Notification.Name(
+        "dev.suisui.codexExecutionApprovalDidChange"
+    )
+}
+
 public struct AppSettings: Codable, Equatable, Sendable {
     public var aiProvider: AIProvider
     public var sttProvider: STTProvider
@@ -1663,9 +1671,14 @@ public final class AppSettingsViewModel: ObservableObject {
             return
         }
 
+        let previousProvider = settings.aiProvider
         settings.aiProvider = provider
         if provider == .opencodeLocal, settings.openCodeModelID == nil {
             settings.openCodeModelID = LLMProviderCatalog.entry(for: .opencodeLocal).defaultModelID
+        }
+        if previousProvider != provider,
+           previousProvider == .codexLocal || provider == .codexLocal {
+            CodexExecutionApprovalChanges.invalidate()
         }
         clearMessages()
     }
@@ -1816,10 +1829,22 @@ public final class AppSettingsViewModel: ObservableObject {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         let nextPath = trimmed.isEmpty ? nil : trimmed
         if settings.codexExecutablePath != nextPath {
+            let previousSettings = settings
             settings.isCodexLocalExecutionApproved = false
             settings.approvedCodexExecutable = nil
+            settings.codexExecutablePath = nextPath
+            do {
+                // Persist security-sensitive revocation immediately so an
+                // already-open Voice window cannot reload stale approval.
+                try settingsStore.save(settings)
+                CodexExecutionApprovalChanges.invalidate()
+            } catch {
+                settings = previousSettings
+                errorMessage = Self.settingsSaveFailureMessage
+                successMessage = nil
+                return
+            }
         }
-        settings.codexExecutablePath = nextPath
         clearMessages()
     }
 
@@ -1831,9 +1856,12 @@ public final class AppSettingsViewModel: ObservableObject {
 
     public func setCodexLocalExecutionApproved(_ isApproved: Bool) {
         guard isApproved else {
-            settings.isCodexLocalExecutionApproved = false
-            settings.approvedCodexExecutable = nil
-            clearMessages()
+            do {
+                try disconnectCodexAndSave()
+            } catch {
+                errorMessage = Self.settingsSaveFailureMessage
+                successMessage = nil
+            }
             return
         }
         do {
@@ -1842,6 +1870,7 @@ public final class AppSettingsViewModel: ObservableObject {
                 executablePath: path
             )
             settings.isCodexLocalExecutionApproved = true
+            CodexExecutionApprovalChanges.invalidate()
             clearMessages()
         } catch {
             settings.isCodexLocalExecutionApproved = false
@@ -1849,6 +1878,22 @@ public final class AppSettingsViewModel: ObservableObject {
             errorMessage = "Select a valid executable Codex CLI file before approving local execution."
             successMessage = nil
         }
+    }
+
+    public func disconnectCodexAndSave() throws {
+        let previousSettings = settings
+        settings.isCodexLocalExecutionApproved = false
+        settings.approvedCodexExecutable = nil
+        do {
+            try settingsStore.save(settings)
+        } catch {
+            settings = previousSettings
+            errorMessage = Self.settingsSaveFailureMessage
+            successMessage = nil
+            throw error
+        }
+        CodexExecutionApprovalChanges.invalidate()
+        clearMessages()
     }
 
     public func setLowLatencyVoiceAgentModeEnabled(_ isEnabled: Bool) {
