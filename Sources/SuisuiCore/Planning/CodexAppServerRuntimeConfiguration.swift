@@ -110,17 +110,18 @@ public struct CodexAppServerVersion: Comparable, Equatable, Hashable, Sendable {
     }
 
     public static func parse(_ output: String) -> Self? {
-        let pattern = #"(?<![0-9.])([0-9]+)\.([0-9]+)\.([0-9]+)(?![0-9.])"#
+        let normalized = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pattern = #"^codex-cli ([0-9]+)\.([0-9]+)\.([0-9]+)$"#
         guard let expression = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let range = NSRange(output.startIndex..<output.endIndex, in: output)
-        let matches = expression.matches(in: output, range: range)
+        let range = NSRange(normalized.startIndex..<normalized.endIndex, in: normalized)
+        let matches = expression.matches(in: normalized, range: range)
         guard matches.count == 1, let match = matches.first,
-              let majorRange = Range(match.range(at: 1), in: output),
-              let minorRange = Range(match.range(at: 2), in: output),
-              let patchRange = Range(match.range(at: 3), in: output),
-              let major = Int(output[majorRange]),
-              let minor = Int(output[minorRange]),
-              let patch = Int(output[patchRange]) else {
+              let majorRange = Range(match.range(at: 1), in: normalized),
+              let minorRange = Range(match.range(at: 2), in: normalized),
+              let patchRange = Range(match.range(at: 3), in: normalized),
+              let major = Int(normalized[majorRange]),
+              let minor = Int(normalized[minorRange]),
+              let patch = Int(normalized[patchRange]) else {
             return nil
         }
         return Self(major: major, minor: minor, patch: patch)

@@ -57,6 +57,16 @@ final class CodexAppServerRuntimeConfigurationTests: XCTestCase {
         XCTAssertNil(CodexAppServerVersion.parse("0.144.1 and 0.145.0"))
     }
 
+    func testVersionParserRequiresExactStableCodexCLIOutput() {
+        XCTAssertEqual(
+            CodexAppServerVersion.parse("codex-cli 0.144.1\n"),
+            CodexAppServerVersion(major: 0, minor: 144, patch: 1)
+        )
+        XCTAssertNil(CodexAppServerVersion.parse("codex-cli 0.144.1-beta"))
+        XCTAssertNil(CodexAppServerVersion.parse("codex-cli 0.144.1+local"))
+        XCTAssertNil(CodexAppServerVersion.parse("prefix 0.144.1 suffix"))
+    }
+
     func testApprovalNeverTargetsAuthStoreDirectlyOrThroughResolvedTarget() throws {
         XCTAssertThrowsError(try CodexAppServerRuntimeConfiguration.approve(
             executablePath: "/Users/example/.codex/auth.json",
