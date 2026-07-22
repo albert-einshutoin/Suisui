@@ -45,8 +45,9 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
             throw XCTSkip("Set SUISUI_CODEX_LIVE_TEST=1 to probe the current Mac user's Codex account.")
         }
         let executablePath = try XCTUnwrap(ProcessInfo.processInfo.environment["SUISUI_CODEX_EXECUTABLE"])
+        let approvedExecutable = try CodexAppServerRuntimeConfiguration.approve(executablePath: executablePath)
         _ = try CodexAppServerRuntimeConfiguration.validate(
-            executablePath: executablePath,
+            approvedExecutable: approvedExecutable,
             reportedVersion: try await ProcessCodexVersionReporter().versionOutput(executablePath: executablePath)
         )
         let transport = CodexAppServerStdioTransport(
@@ -84,10 +85,10 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
             throw XCTSkip("Set SUISUI_CODEX_LIVE_TEST=1 to use the current Mac user's Codex allowance.")
         }
         let executablePath = try XCTUnwrap(ProcessInfo.processInfo.environment["SUISUI_CODEX_EXECUTABLE"])
+        let approvedExecutable = try CodexAppServerRuntimeConfiguration.approve(executablePath: executablePath)
         let provider = CodexLocalRuntimeProvider(
-            executablePath: executablePath,
+            approvedExecutable: approvedExecutable,
             modelID: nil,
-            isExecutionApproved: true,
             clientVersion: "live-smoke"
         )
 
@@ -102,9 +103,8 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
     func testExplicitApprovalIsRequiredBeforeVersionProbeOrProcessLaunch() async {
         let reporter = RecordingVersionReporter()
         let provider = CodexLocalRuntimeProvider(
-            executablePath: "/usr/bin/true",
+            approvedExecutable: nil,
             modelID: nil,
-            isExecutionApproved: false,
             clientVersion: "1.0",
             versionReporter: reporter
         )
@@ -121,6 +121,24 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
         }
         let callCount = await reporter.callCount
         XCTAssertEqual(callCount, 0)
+    }
+
+    func testAccountEntryPointsCannotProbeVersionWithoutApprovedExecutable() async {
+        for operation in ["check account", "sign in", "sign out"] {
+            let reporter = RecordingVersionReporter()
+            let resolver = CodexApprovedRuntimeResolver(versionReporter: reporter)
+
+            do {
+                _ = try await resolver.resolve(approvedExecutable: nil)
+                XCTFail("Expected approval error for \(operation)")
+            } catch let error as CodexAppServerRuntimeConfigurationError {
+                XCTAssertEqual(error, .executionApprovalRequired, operation)
+            } catch {
+                XCTFail("Unexpected error for \(operation): \(error)")
+            }
+            let callCount = await reporter.callCount
+            XCTAssertEqual(callCount, 0, operation)
+        }
     }
 }
 

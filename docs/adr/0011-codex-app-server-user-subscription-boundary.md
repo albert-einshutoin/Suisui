@@ -17,11 +17,16 @@ Suisui will:
 
 - Launch one `codex app-server --listen stdio://` child for the current OS-user and workspace boundary.
 - Use only the documented JSON-RPC subset needed for account state, model discovery, and ephemeral Action Plan generation.
+- Require an explicit approval bound to the executable's resolved path and filesystem identity. A path, symlink target, inode, modification time, or size change invalidates approval before even a version probe can run.
+- Accept only Codex `0.144.1` in Personal Preview. A new version requires matching generated-schema fixtures, adversarial protocol tests, and release evidence before it enters the allowlist.
 - Let Codex own browser login, token storage, token refresh, workspace policy, and rate-limit accounting.
 - Never read or copy `~/.codex/auth.json`, access tokens, refresh tokens, or API keys.
 - Keep `codexLocal` unavailable and absent from Settings until the product GO gates in `P11-016` pass.
 - Disable built-in tools at process launch, reject any tool lifecycle or approval request, and interrupt the turn fail-closed.
 - Record Codex usage as `userProviderBilled`; it is never added to Suisui-managed AI cost.
+- Constrain the final planning message with the checked-in Action Plan `outputSchema`, then independently validate it with `ActionPlanResponseParser`.
+- Treat primary rate-limit exhaustion as provider readiness, so no planning thread starts while usage is exhausted.
+- Separate a Suisui disconnect (revoking local execution approval) from Codex logout. Logout is available only for a verified ChatGPT account and requires confirmation that it changes Codex-managed state on the Mac.
 
 The tool-free profile is the mandatory default for Personal Preview voice-task planning, not a permanent claim that Codex can never delegate work. A future task-bound delegation feature must use a separate capability profile, threat model, approval contract, receipt type, and release gate; it must not widen this profile in place.
 

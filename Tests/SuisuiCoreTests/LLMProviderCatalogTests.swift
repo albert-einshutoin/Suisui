@@ -2,6 +2,17 @@ import XCTest
 @testable import SuisuiCore
 
 final class LLMProviderCatalogTests: XCTestCase {
+    func testRuntimeProviderIdentifiersResolveThroughCatalog() {
+        XCTAssertEqual(
+            LLMProviderCatalog.entry(forRuntimeProviderID: "codex.local")?.billingMode,
+            .userProviderBilled
+        )
+        XCTAssertEqual(
+            LLMProviderCatalog.entry(forRuntimeProviderID: "ollama.chat")?.billingMode,
+            .localOnly
+        )
+        XCTAssertNil(LLMProviderCatalog.entry(forRuntimeProviderID: "unknown.local-looking-provider"))
+    }
     func testCatalogDefinesEntryForEveryProviderID() {
         let ids = LLMProviderCatalog.allEntries.map(\.id)
 

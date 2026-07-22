@@ -282,6 +282,26 @@ public enum LLMProviderCatalog {
         entry(for: id).isAvailableInCurrentBuild
     }
 
+    public static func entry(forRuntimeProviderID runtimeProviderID: String) -> LLMProviderCatalogEntry? {
+        guard let id = runtimeProviderIDs[runtimeProviderID] else { return nil }
+        return entry(for: id)
+    }
+
+    /// Runtime adapters retain stable receipt identifiers that predate the typed
+    /// catalog. Keeping the bridge here prevents billing and execution policy
+    /// from growing provider-specific string heuristics at call sites.
+    private static let runtimeProviderIDs: [String: LLMProviderID] = [
+        "openai.responses": .openaiResponses,
+        "claude.messages": .claudeMessages,
+        "gemini.direct": .geminiDirect,
+        "openai.chat_completions": .openaiResponses,
+        "groq.chat": .groqOpenAICompatible,
+        "codex.local": .codexLocal,
+        "opencode.local": .opencodeLocal,
+        "openrouter.chat": .openRouterCompatible,
+        "ollama.chat": .ollamaCompatible,
+    ]
+
     private static let entriesByID: [LLMProviderID: LLMProviderCatalogEntry] = Dictionary(
         uniqueKeysWithValues: allEntries.map { ($0.id, $0) }
     )

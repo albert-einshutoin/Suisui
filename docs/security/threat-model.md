@@ -52,7 +52,7 @@ Out of scope (assumed trusted or handled elsewhere):
 | App → audit_logs table | Action metadata | Secret-pattern redaction before insert; parameterized SQL |
 | App → sync ledger (planned) | Encrypted payload envelope | XChaCha20-Poly1305 payloads, key IDs only, per the sync foundation doc |
 | Sparkle → app | Update artifacts | EdDSA appcast signature verification |
-| App → local Codex App Server | Explicit planning prompt, model selection, typed account/readiness state | Absolute executable path plus minimum-version gate; allowlisted child environment; short-lived process and scratch workspace per request; shell/file/web/MCP features disabled before initialize; approval or tool lifecycle interrupts the turn and fails closed |
+| App → local Codex App Server | Explicit planning prompt, model selection, typed account/readiness state | User approval bound to resolved path/device/inode/mtime/size; regular-file and permission preflight before any `--version` execution; Personal Preview exact-version allowlist; allowlisted child environment; short-lived process and scratch workspace per request; shell/file/web/MCP features disabled before initialize; approval or tool lifecycle interrupts the turn and fails closed |
 
 ## Threat Actors
 

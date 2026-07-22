@@ -48,34 +48,56 @@ public struct ProcessCodexVersionReporter: CodexVersionReporting {
     }
 }
 
+public struct CodexApprovedRuntimeResolver: Sendable {
+    private let versionReporter: any CodexVersionReporting
+
+    public init(versionReporter: any CodexVersionReporting = ProcessCodexVersionReporter()) {
+        self.versionReporter = versionReporter
+    }
+
+    public func resolve(
+        approvedExecutable: ApprovedCodexExecutable?
+    ) async throws -> CodexAppServerRuntimeConfiguration {
+        // This sequencing is shared by Planning and every account operation so
+        // a UI route cannot accidentally turn `--version` into an approval bypass.
+        let executable = try CodexAppServerRuntimeConfiguration.preflight(
+            approvedExecutable: approvedExecutable
+        )
+        let versionOutput = try await versionReporter.versionOutput(
+            executablePath: executable.resolvedPath
+        )
+        return try CodexAppServerRuntimeConfiguration.validate(
+            approvedExecutable: approvedExecutable,
+            reportedVersion: versionOutput
+        )
+    }
+}
+
 /// Owns one short-lived App Server per planning request. This avoids sharing
 /// authentication/process state across workspaces and guarantees cleanup even
 /// when parsing or a provider policy check fails.
 public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
     public let providerID = "codex.local"
 
-    private let executablePath: String?
+    private let approvedExecutable: ApprovedCodexExecutable?
     private let modelID: String?
-    private let isExecutionApproved: Bool
     private let clientVersion: String
     private let scratchRoot: URL
-    private let versionReporter: any CodexVersionReporting
+    private let runtimeResolver: CodexApprovedRuntimeResolver
 
     public init(
-        executablePath: String?,
+        approvedExecutable: ApprovedCodexExecutable?,
         modelID: String?,
-        isExecutionApproved: Bool,
         clientVersion: String,
         scratchRoot: URL = FileManager.default.temporaryDirectory
             .appendingPathComponent("suisui-codex-planning", isDirectory: true),
         versionReporter: any CodexVersionReporting = ProcessCodexVersionReporter()
     ) {
-        self.executablePath = executablePath
+        self.approvedExecutable = approvedExecutable
         self.modelID = modelID
-        self.isExecutionApproved = isExecutionApproved
         self.clientVersion = clientVersion
         self.scratchRoot = scratchRoot
-        self.versionReporter = versionReporter
+        self.runtimeResolver = CodexApprovedRuntimeResolver(versionReporter: versionReporter)
     }
 
     public func generatePlan(for request: PlanningRequest) async throws -> PlanningResponse {
@@ -86,21 +108,11 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
         for request: PlanningRequest,
         onTextDelta: @escaping @Sendable (String) -> Void
     ) async throws -> PlanningResponse {
-        guard isExecutionApproved else {
-            throw LLMProviderError.executionNotApproved("Review the Codex executable and approve local execution in Settings.")
-        }
-        guard let executablePath else {
-            throw LLMProviderError.executionNotApproved("Select an absolute Codex executable path in Settings.")
-        }
-
-        let versionOutput = try await versionReporter.versionOutput(executablePath: executablePath)
+        // Preflight and approval identity matching must happen before even the
+        // version probe because `--version` is already arbitrary local execution.
         let runtime: CodexAppServerRuntimeConfiguration
         do {
-            runtime = try CodexAppServerRuntimeConfiguration.validate(
-                executablePath: executablePath,
-                reportedVersion: versionOutput,
-                fileManager: FileManager.default
-            )
+            runtime = try await runtimeResolver.resolve(approvedExecutable: approvedExecutable)
         } catch {
             throw LLMProviderError.executionNotApproved("The selected Codex executable is missing, unsafe, or unsupported.")
         }

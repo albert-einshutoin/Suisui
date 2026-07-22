@@ -64,34 +64,40 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertNil(AppSettings.default.codexExecutablePath)
         XCTAssertNil(AppSettings.default.codexModelID)
         XCTAssertFalse(AppSettings.default.isCodexLocalExecutionApproved)
+        XCTAssertNil(AppSettings.default.approvedCodexExecutable)
 
+        let approved = try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
         let settings = AppSettings(
-            codexExecutablePath: " /opt/homebrew/bin/codex ",
+            codexExecutablePath: "/usr/bin/true",
             codexModelID: " gpt-5.4 ",
-            isCodexLocalExecutionApproved: true
+            isCodexLocalExecutionApproved: true,
+            approvedCodexExecutable: approved
         ).normalizedForRuntime
         let data = try JSONEncoder().encode(settings)
         let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
 
-        XCTAssertEqual(decoded.codexExecutablePath, "/opt/homebrew/bin/codex")
+        XCTAssertEqual(decoded.codexExecutablePath, "/usr/bin/true")
         XCTAssertEqual(decoded.codexModelID, "gpt-5.4")
         XCTAssertTrue(decoded.isCodexLocalExecutionApproved)
+        XCTAssertEqual(decoded.approvedCodexExecutable, approved)
         let encoded = String(decoding: data, as: UTF8.self)
         XCTAssertFalse(encoded.contains("accessToken"))
         XCTAssertFalse(encoded.contains("refreshToken"))
     }
 
-    func testCodexLocalSelectionRequiresAbsoluteExecutableAndApproval() {
+    func testCodexLocalSelectionRequiresAbsoluteExecutableAndApproval() throws {
         let missing = AppSettings(aiProvider: .codexLocal)
         XCTAssertEqual(
             Set(missing.validate().map(\.field)),
             Set(["codexExecutablePath", "isCodexLocalExecutionApproved"])
         )
 
+        let approved = try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
         let ready = AppSettings(
             aiProvider: .codexLocal,
-            codexExecutablePath: "/opt/homebrew/bin/codex",
-            isCodexLocalExecutionApproved: true
+            codexExecutablePath: "/usr/bin/true",
+            isCodexLocalExecutionApproved: true,
+            approvedCodexExecutable: approved
         )
         XCTAssertTrue(ready.validate().isEmpty)
 
@@ -101,6 +107,28 @@ final class AppSettingsTests: XCTestCase {
             isCodexLocalExecutionApproved: true
         )
         XCTAssertEqual(credentialPath.validate().first?.field, "codexExecutablePath")
+    }
+
+    @MainActor
+    func testChangingCodexExecutableInvalidatesBoundApproval() throws {
+        let suiteName = "Suisui.CodexApprovalBinding.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            refreshProviderSecretStatusesOnInit: false
+        )
+
+        viewModel.setCodexExecutablePath("/usr/bin/true")
+        viewModel.setCodexLocalExecutionApproved(true)
+        XCTAssertTrue(viewModel.settings.isCodexLocalExecutionApproved)
+        XCTAssertNotNil(viewModel.settings.approvedCodexExecutable)
+
+        viewModel.setCodexExecutablePath("/usr/bin/false")
+
+        XCTAssertFalse(viewModel.settings.isCodexLocalExecutionApproved)
+        XCTAssertNil(viewModel.settings.approvedCodexExecutable)
     }
 
     func testInvalidTimeZoneProducesValidationIssue() {

@@ -21,6 +21,9 @@ final class CodexAppServerAccountClientTests: XCTestCase {
                     ]),
                     "requiresOpenaiAuth": .bool(true)
                 ])
+            ],
+            CodexAppServerMethod.accountRateLimitsRead: [
+                rateLimitResponse(usedPercent: 20, resetsAt: 1_800_000_000)
             ]
         ])
         let client = CodexAppServerAccountClient(transport: transport)
@@ -123,6 +126,67 @@ final class CodexAppServerAccountClientTests: XCTestCase {
         let requests = await transport.requests
         XCTAssertEqual(requests.map(\.method), [CodexAppServerMethod.accountRead])
     }
+
+    func testAccountReadMapsExhaustedPrimaryRateLimitIntoReadiness() async throws {
+        let resetAt = 1_800_000_000.0
+        let transport = RecordingCodexTransport(responses: [
+            CodexAppServerMethod.accountRead: [chatGPTAccountResponse()],
+            CodexAppServerMethod.accountRateLimitsRead: [
+                rateLimitResponse(usedPercent: 100, resetsAt: resetAt)
+            ],
+        ])
+        let client = CodexAppServerAccountClient(transport: transport)
+
+        let snapshot = try await client.readAccount(refresh: true)
+
+        XCTAssertEqual(snapshot.readiness, .usageLimited(resetAt: Date(timeIntervalSince1970: resetAt)))
+        let requests = await transport.requests
+        XCTAssertEqual(requests.map(\.method), [
+            CodexAppServerMethod.accountRead,
+            CodexAppServerMethod.accountRateLimitsRead,
+        ])
+    }
+
+    func testLogoutDoesNotMutateUnsupportedCodexAccount() async throws {
+        let transport = RecordingCodexTransport(responses: [
+            CodexAppServerMethod.accountRead: [
+                .object([
+                    "account": .object(["type": .string("apiKey")]),
+                    "requiresOpenaiAuth": .bool(false),
+                ]),
+            ],
+        ])
+        let client = CodexAppServerAccountClient(transport: transport)
+
+        await XCTAssertThrowsCodexAccountError(try await client.logoutChatGPTAccountOnly()) { error in
+            XCTAssertEqual(error, .logoutRequiresChatGPTAccount)
+        }
+
+        let requests = await transport.requests
+        XCTAssertEqual(requests.map(\.method), [CodexAppServerMethod.accountRead])
+    }
+}
+
+private func chatGPTAccountResponse() -> JSONValue {
+    .object([
+        "account": .object([
+            "type": .string("chatgpt"),
+            "email": .string("private@example.com"),
+            "planType": .string("plus"),
+        ]),
+        "requiresOpenaiAuth": .bool(true),
+    ])
+}
+
+private func rateLimitResponse(usedPercent: Double, resetsAt: Double) -> JSONValue {
+    .object([
+        "rateLimits": .object([
+            "primary": .object([
+                "usedPercent": .number(usedPercent),
+                "resetsAt": .number(resetsAt),
+            ]),
+        ]),
+    ])
 }
 
 private actor RecordingCodexTransport: CodexAppServerTransport {

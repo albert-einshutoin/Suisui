@@ -11,6 +11,20 @@ public enum CodexAccountReadiness: Equatable, Sendable {
     case unavailable(redactedReason: String)
 }
 
+public extension CodexAccountReadiness {
+    var isReady: Bool {
+        if case .ready = self { return true }
+        return false
+    }
+}
+
+public extension CodexAccount {
+    var isChatGPTAccount: Bool {
+        if case .chatGPT = self { return true }
+        return false
+    }
+}
+
 public struct CodexAccountSnapshot: Equatable, Sendable {
     public let account: CodexAccount?
     public let readiness: CodexAccountReadiness
@@ -39,6 +53,7 @@ public enum CodexAccountClientError: Error, Equatable, Sendable {
     case loginFailed(redactedReason: String)
     case loginTimedOut
     case staleLoginID
+    case logoutRequiresChatGPTAccount
 }
 
 public protocol CodexAccountServicing: Sendable {
@@ -112,6 +127,16 @@ public actor CodexAppServerAccountClient: CodexAccountServicing {
         }
         switch account {
         case let .chatGPT(_, plan):
+            // Subscription availability is part of readiness, not a cosmetic
+            // Settings label. Planning must fail deterministically before it
+            // consumes a turn when the primary usage window is exhausted.
+            let rateLimits = try await readRateLimits()
+            if let usedPercent = rateLimits.usedPercent, usedPercent >= 100 {
+                return CodexAccountSnapshot(
+                    account: account,
+                    readiness: .usageLimited(resetAt: rateLimits.resetsAt)
+                )
+            }
             return CodexAccountSnapshot(account: account, readiness: .ready(plan: plan))
         case let .unsupported(type):
             return CodexAccountSnapshot(
@@ -175,6 +200,14 @@ public actor CodexAppServerAccountClient: CodexAccountServicing {
         }
         loginWaiters.removeAll()
         activeLoginIDs.removeAll()
+    }
+
+    public func logoutChatGPTAccountOnly() async throws {
+        let snapshot = try await readAccount(refresh: true)
+        guard snapshot.account?.isChatGPTAccount == true else {
+            throw CodexAccountClientError.logoutRequiresChatGPTAccount
+        }
+        try await logout()
     }
 
     public func readRateLimits() async throws -> CodexRateLimitSnapshot {

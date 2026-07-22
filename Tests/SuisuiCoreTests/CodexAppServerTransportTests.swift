@@ -28,7 +28,7 @@ final class CodexAppServerTransportTests: XCTestCase {
     }
 
     func testRequestTimesOutAndDoesNotAcceptLateResponse() async throws {
-        let process = SilentCodexProcess()
+        let process = LateThenResponsiveCodexProcess()
         let transport = CodexAppServerStdioTransport(process: process)
 
         await XCTAssertThrowsErrorAsync(
@@ -36,6 +36,14 @@ final class CodexAppServerTransportTests: XCTestCase {
         ) { error in
             XCTAssertEqual(error as? CodexAppServerTransportError, .timeout(method: CodexAppServerMethod.accountRead))
         }
+        try await Task.sleep(nanoseconds: 40_000_000)
+        let response = try await transport.request(
+            method: CodexAppServerMethod.modelList,
+            params: nil,
+            timeout: 1
+        )
+        XCTAssertEqual(response.id, 2)
+        XCTAssertEqual(response.result, .object(["accepted": .bool(true)]))
         await transport.shutdown()
     }
 
@@ -120,7 +128,7 @@ private actor ScriptedCodexProcess: CodexAppServerProcess {
     func stop() async { continuation.finish() }
 }
 
-private actor SilentCodexProcess: CodexAppServerProcess {
+private actor LateThenResponsiveCodexProcess: CodexAppServerProcess {
     private let stream: AsyncThrowingStream<Data, Error>
     private let continuation: AsyncThrowingStream<Data, Error>.Continuation
 
@@ -129,7 +137,19 @@ private actor SilentCodexProcess: CodexAppServerProcess {
     }
 
     func start() async throws {}
-    func writeLine(_: Data) async throws {}
+    func writeLine(_ data: Data) async throws {
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let id = try XCTUnwrap((object["id"] as? NSNumber)?.int64Value)
+        let continuation = continuation
+        if id == 1 {
+            Task {
+                try? await Task.sleep(nanoseconds: 25_000_000)
+                continuation.yield(Data(#"{"jsonrpc":"2.0","id":1,"result":{"late":true}}"#.utf8))
+            }
+        } else {
+            continuation.yield(Data("{\"jsonrpc\":\"2.0\",\"id\":\(id),\"result\":{\"accepted\":true}}".utf8))
+        }
+    }
     func inboundLines() async -> AsyncThrowingStream<Data, Error> { stream }
     func redactedStderr() async -> String { "" }
     func stop() async { continuation.finish() }

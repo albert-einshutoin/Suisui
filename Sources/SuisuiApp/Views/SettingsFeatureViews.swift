@@ -1381,8 +1381,6 @@ extension SettingsAIFeatureView {
 
     @ViewBuilder
     var codexProviderSettingsFields: some View {
-        CodexAccountSettingsView(executablePath: settingsViewModel.settings.codexExecutablePath)
-
         TextField(
             "Codex Executable",
             text: Binding(
@@ -1413,6 +1411,13 @@ extension SettingsAIFeatureView {
         }
         .accessibilityIdentifier("settings-codex-local-execution-approval")
         .accessibilityHint("Allows Suisui to launch the selected Codex executable with coding and external tools disabled.")
+
+        CodexAccountSettingsView(
+            approvedExecutable: settingsViewModel.settings.isCodexLocalExecutionApproved
+                ? settingsViewModel.settings.approvedCodexExecutable
+                : nil,
+            onDisconnect: { settingsViewModel.setCodexLocalExecutionApproved(false) }
+        )
 
         VStack(alignment: .leading, spacing: 6) {
             Label("Uses your Mac user's Codex-managed ChatGPT login and Codex allowance.", systemImage: "person.crop.circle.badge.checkmark")

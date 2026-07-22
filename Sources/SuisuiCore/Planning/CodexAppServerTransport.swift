@@ -53,6 +53,7 @@ public actor CodexAppServerStdioTransport: CodexAppServerTransport {
     private var notificationContinuations: [UUID: AsyncStream<CodexJSONRPCNotification>.Continuation] = [:]
     private var nextRequestID: Int64 = 1
     private var pending: [Int64: PendingRequest] = [:]
+    private var timedOutRequestIDs: Set<Int64> = []
     private var readerTask: Task<Void, Never>?
     private var started = false
     private var stopped = false
@@ -175,6 +176,12 @@ public actor CodexAppServerStdioTransport: CodexAppServerTransport {
             return
         }
         guard let request = pending.removeValue(forKey: id) else {
+            if timedOutRequestIDs.remove(id) != nil {
+                // A timed-out response is stale but not a protocol violation.
+                // Keeping it distinct from a truly unknown/duplicate ID makes
+                // future warm sessions safe without weakening correlation.
+                return
+            }
             finish(with: CodexAppServerTransportError.duplicateResponseID(id))
             return
         }
@@ -189,6 +196,7 @@ public actor CodexAppServerStdioTransport: CodexAppServerTransport {
 
     private func timeoutRequest(id: Int64, method: String) {
         guard let request = pending.removeValue(forKey: id) else { return }
+        timedOutRequestIDs.insert(id)
         request.continuation.resume(throwing: CodexAppServerTransportError.timeout(method: method))
     }
 
@@ -278,7 +286,8 @@ public final class ProcessCodexAppServerProcess: CodexAppServerProcess, @uncheck
     private let stream: AsyncThrowingStream<Data, Error>
     private let continuation: AsyncThrowingStream<Data, Error>.Continuation
     private var outputBuffer = Data()
-    private var stderrBuffer = ""
+    private var stderrBuffer = Data()
+    private static let maximumStderrBytes = 64 * 1_024
     private var isStarted = false
 
     public init(
@@ -324,13 +333,15 @@ public final class ProcessCodexAppServerProcess: CodexAppServerProcess, @uncheck
     }
 
     public func writeLine(_ data: Data) async throws {
-        try input.fileHandleForWriting.write(contentsOf: data)
+        try lock.withCodexLock {
+            try input.fileHandleForWriting.write(contentsOf: data)
+        }
     }
 
     public func inboundLines() async -> AsyncThrowingStream<Data, Error> { stream }
 
     public func redactedStderr() async -> String {
-        lock.withCodexLock { stderrBuffer }
+        lock.withCodexLock { String(decoding: stderrBuffer, as: UTF8.self) }
     }
 
     public func stop() async {
@@ -375,7 +386,12 @@ public final class ProcessCodexAppServerProcess: CodexAppServerProcess, @uncheck
     private func consumeStderr(_ data: Data) {
         guard !data.isEmpty else { return }
         let text = redactor.redact(String(decoding: data, as: UTF8.self)).text
-        lock.withCodexLock { stderrBuffer.append(text) }
+        lock.withCodexLock {
+            stderrBuffer.append(contentsOf: text.utf8)
+            if stderrBuffer.count > Self.maximumStderrBytes {
+                stderrBuffer.removeFirst(stderrBuffer.count - Self.maximumStderrBytes)
+            }
+        }
     }
 }
 #endif

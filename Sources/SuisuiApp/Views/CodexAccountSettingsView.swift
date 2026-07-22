@@ -4,33 +4,58 @@ import SuisuiCore
 
 @MainActor
 struct CodexAccountSettingsView: View {
-    let executablePath: String?
+    let approvedExecutable: ApprovedCodexExecutable?
+    let onDisconnect: () -> Void
     @StateObject private var model = CodexAccountSettingsViewModel()
+    @State private var isPresentingCodexSignOutConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             LabeledContent("Codex Account", value: model.statusLabel)
-            HStack {
-                Button("Check Account") {
-                    Task { await model.checkAccount(executablePath: executablePath) }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Button("Check Account") {
+                        Task { await model.checkAccount(approvedExecutable: approvedExecutable) }
+                    }
+                    .accessibilityIdentifier("settings-codex-check-account")
+                    Button("Sign in with ChatGPT") {
+                        Task { await model.signIn(approvedExecutable: approvedExecutable) }
+                    }
+                    .accessibilityIdentifier("settings-codex-sign-in")
+                    .accessibilityHint("Opens an allowed OpenAI or ChatGPT authentication page in the default browser.")
                 }
-                .accessibilityIdentifier("settings-codex-check-account")
-                Button("Sign in with ChatGPT") {
-                    Task { await model.signIn(executablePath: executablePath) }
+                HStack {
+                    Button("Disconnect from Suisui") {
+                        onDisconnect()
+                    }
+                    .accessibilityIdentifier("settings-codex-disconnect")
+                    .accessibilityHint("Stops Suisui from launching Codex without changing the Codex account on this Mac.")
+                    Button("Sign out of Codex on this Mac", role: .destructive) {
+                        isPresentingCodexSignOutConfirmation = true
+                    }
+                    .accessibilityIdentifier("settings-codex-sign-out")
+                    .disabled(!model.canSignOutChatGPTAccount)
                 }
-                .accessibilityIdentifier("settings-codex-sign-in")
-                .accessibilityHint("Opens an allowed OpenAI or ChatGPT authentication page in the default browser.")
-                Button("Sign Out", role: .destructive) {
-                    Task { await model.signOut(executablePath: executablePath) }
-                }
-                .accessibilityIdentifier("settings-codex-sign-out")
             }
-            .disabled(model.isWorking || executablePath == nil)
+            .disabled(model.isWorking || approvedExecutable == nil)
             if model.isWorking {
                 ProgressView().controlSize(.small)
             }
         }
         .accessibilityIdentifier("codex-account-settings")
+        .onChange(of: approvedExecutable) { _, _ in model.resetForExecutableChange() }
+        .confirmationDialog(
+            "Sign out of Codex on this Mac?",
+            isPresented: $isPresentingCodexSignOutConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Sign out of Codex", role: .destructive) {
+                Task { await model.signOut(approvedExecutable: approvedExecutable) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This changes the Codex-managed ChatGPT login used by the Codex CLI and other local Codex clients. It is not only a Suisui disconnect.")
+        }
     }
 }
 
@@ -38,20 +63,22 @@ struct CodexAccountSettingsView: View {
 private final class CodexAccountSettingsViewModel: ObservableObject {
     @Published private(set) var statusLabel = "Not checked"
     @Published private(set) var isWorking = false
+    @Published private(set) var canSignOutChatGPTAccount = false
     private var activeTransport: CodexAppServerStdioTransport?
 
-    func checkAccount(executablePath: String?) async {
-        await withSession(executablePath: executablePath) { account in
+    func checkAccount(approvedExecutable: ApprovedCodexExecutable?) async {
+        await withSession(approvedExecutable: approvedExecutable) { account in
             let snapshot = try await account.readAccount(refresh: false)
+            self.canSignOutChatGPTAccount = snapshot.account?.isChatGPTAccount == true
             self.present(snapshot.readiness)
         }
     }
 
-    func signIn(executablePath: String?) async {
+    func signIn(approvedExecutable: ApprovedCodexExecutable?) async {
         isWorking = true
         defer { isWorking = false }
         do {
-            let session = try await makeSession(executablePath: executablePath)
+            let session = try await makeSession(approvedExecutable: approvedExecutable)
             activeTransport = session.transport
             let attempt = try await session.account.startLogin(.chatGPTBrowser)
             guard NSWorkspace.shared.open(attempt.authorizationURL) else {
@@ -60,6 +87,7 @@ private final class CodexAccountSettingsViewModel: ObservableObject {
             statusLabel = "Waiting for ChatGPT sign-in"
             let readiness = try await session.account.awaitLogin(id: attempt.id, timeout: 300)
             present(readiness)
+            canSignOutChatGPTAccount = readiness.isReady
             await session.transport.shutdown()
             activeTransport = nil
         } catch {
@@ -69,21 +97,27 @@ private final class CodexAccountSettingsViewModel: ObservableObject {
         }
     }
 
-    func signOut(executablePath: String?) async {
-        await withSession(executablePath: executablePath) { account in
-            try await account.logout()
+    func signOut(approvedExecutable: ApprovedCodexExecutable?) async {
+        await withSession(approvedExecutable: approvedExecutable) { account in
+            try await account.logoutChatGPTAccountOnly()
+            self.canSignOutChatGPTAccount = false
             self.present(.signedOut)
         }
     }
 
+    func resetForExecutableChange() {
+        statusLabel = "Not checked"
+        canSignOutChatGPTAccount = false
+    }
+
     private func withSession(
-        executablePath: String?,
+        approvedExecutable: ApprovedCodexExecutable?,
         operation: (CodexAppServerAccountClient) async throws -> Void
     ) async {
         isWorking = true
         defer { isWorking = false }
         do {
-            let session = try await makeSession(executablePath: executablePath)
+            let session = try await makeSession(approvedExecutable: approvedExecutable)
             do {
                 try await operation(session.account)
                 await session.transport.shutdown()
@@ -96,17 +130,12 @@ private final class CodexAccountSettingsViewModel: ObservableObject {
         }
     }
 
-    private func makeSession(executablePath: String?) async throws -> (
+    private func makeSession(approvedExecutable: ApprovedCodexExecutable?) async throws -> (
         transport: CodexAppServerStdioTransport,
         account: CodexAppServerAccountClient
     ) {
-        guard let executablePath else {
-            throw CodexAppServerRuntimeConfigurationError.absoluteExecutablePathRequired
-        }
-        let output = try await ProcessCodexVersionReporter().versionOutput(executablePath: executablePath)
-        let runtime = try CodexAppServerRuntimeConfiguration.validate(
-            executablePath: executablePath,
-            reportedVersion: output
+        let runtime = try await CodexApprovedRuntimeResolver().resolve(
+            approvedExecutable: approvedExecutable
         )
         let process = ProcessCodexAppServerProcess(
             configuration: CodexAppServerLaunchConfiguration(executablePath: runtime.executablePath)
@@ -134,6 +163,16 @@ private final class CodexAccountSettingsViewModel: ObservableObject {
     }
 
     private func userFacingFailure(_ error: any Error) -> String {
+        if let runtimeError = error as? CodexAppServerRuntimeConfigurationError {
+            switch runtimeError {
+            case .unverifiedVersion:
+                return "Codex version is not yet verified for Suisui"
+            case .approvedExecutableChanged, .executionApprovalRequired:
+                return "Codex executable changed. Review and approve it again"
+            default:
+                return "The selected Codex executable is not safe to run"
+            }
+        }
         if let transportError = error as? CodexAppServerTransportError,
            case let .remote(code, _) = transportError,
            code == 401 {

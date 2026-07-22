@@ -24,6 +24,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var codexExecutablePath: String?
     public var codexModelID: String?
     public var isCodexLocalExecutionApproved: Bool
+    public var approvedCodexExecutable: ApprovedCodexExecutable?
     public var isLowLatencyVoiceAgentModeEnabled: Bool
     public var isLowLatencyVoiceAgentAlwaysOnRecordingEnabled: Bool
     public var isLowLatencyVoiceAgentCloudFallbackEnabled: Bool
@@ -54,6 +55,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case codexExecutablePath
         case codexModelID
         case isCodexLocalExecutionApproved
+        case approvedCodexExecutable
         case isLowLatencyVoiceAgentModeEnabled
         case isLowLatencyVoiceAgentAlwaysOnRecordingEnabled
         case isLowLatencyVoiceAgentCloudFallbackEnabled
@@ -85,6 +87,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         codexExecutablePath: String? = nil,
         codexModelID: String? = nil,
         isCodexLocalExecutionApproved: Bool = false,
+        approvedCodexExecutable: ApprovedCodexExecutable? = nil,
         // Realtime voice is privacy- and cost-sensitive, so all recording and
         // paid/cloud escalation paths start as explicit opt-ins.
         isLowLatencyVoiceAgentModeEnabled: Bool = false,
@@ -116,6 +119,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.codexExecutablePath = codexExecutablePath
         self.codexModelID = codexModelID
         self.isCodexLocalExecutionApproved = isCodexLocalExecutionApproved
+        self.approvedCodexExecutable = approvedCodexExecutable
         self.isLowLatencyVoiceAgentModeEnabled = isLowLatencyVoiceAgentModeEnabled
         self.isLowLatencyVoiceAgentAlwaysOnRecordingEnabled = isLowLatencyVoiceAgentAlwaysOnRecordingEnabled
         self.isLowLatencyVoiceAgentCloudFallbackEnabled = isLowLatencyVoiceAgentCloudFallbackEnabled
@@ -152,7 +156,15 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.isOpenCodeLocalExecutionApproved = try container.decodeIfPresent(Bool.self, forKey: .isOpenCodeLocalExecutionApproved) ?? false
         self.codexExecutablePath = try container.decodeIfPresent(String.self, forKey: .codexExecutablePath)
         self.codexModelID = try container.decodeIfPresent(String.self, forKey: .codexModelID)
-        self.isCodexLocalExecutionApproved = try container.decodeIfPresent(Bool.self, forKey: .isCodexLocalExecutionApproved) ?? false
+        self.approvedCodexExecutable = try container.decodeIfPresent(
+            ApprovedCodexExecutable.self,
+            forKey: .approvedCodexExecutable
+        )
+        // Settings created before approval identity binding fail closed and must
+        // be explicitly re-approved by the user.
+        self.isCodexLocalExecutionApproved = (
+            try container.decodeIfPresent(Bool.self, forKey: .isCodexLocalExecutionApproved) ?? false
+        ) && self.approvedCodexExecutable != nil
         self.isLowLatencyVoiceAgentModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .isLowLatencyVoiceAgentModeEnabled) ?? false
         self.isLowLatencyVoiceAgentAlwaysOnRecordingEnabled = try container.decodeIfPresent(Bool.self, forKey: .isLowLatencyVoiceAgentAlwaysOnRecordingEnabled) ?? false
         self.isLowLatencyVoiceAgentCloudFallbackEnabled = try container.decodeIfPresent(Bool.self, forKey: .isLowLatencyVoiceAgentCloudFallbackEnabled) ?? false
@@ -185,6 +197,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encodeIfPresent(codexExecutablePath, forKey: .codexExecutablePath)
         try container.encodeIfPresent(codexModelID, forKey: .codexModelID)
         try container.encode(isCodexLocalExecutionApproved, forKey: .isCodexLocalExecutionApproved)
+        try container.encodeIfPresent(approvedCodexExecutable, forKey: .approvedCodexExecutable)
         try container.encode(isLowLatencyVoiceAgentModeEnabled, forKey: .isLowLatencyVoiceAgentModeEnabled)
         try container.encode(isLowLatencyVoiceAgentAlwaysOnRecordingEnabled, forKey: .isLowLatencyVoiceAgentAlwaysOnRecordingEnabled)
         try container.encode(isLowLatencyVoiceAgentCloudFallbackEnabled, forKey: .isLowLatencyVoiceAgentCloudFallbackEnabled)
@@ -232,6 +245,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
         if let codexExecutablePath = copy.codexExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.codexExecutablePath = codexExecutablePath.isEmpty ? nil : codexExecutablePath
+        }
+        if copy.codexExecutablePath != copy.approvedCodexExecutable?.path {
+            copy.isCodexLocalExecutionApproved = false
+            copy.approvedCodexExecutable = nil
         }
         if let codexModelID = copy.codexModelID?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.codexModelID = codexModelID.isEmpty ? nil : codexModelID
@@ -441,10 +458,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     private func appendCodexLocalIssues(to issues: inout [ValidationIssue]) {
         appendCodexExecutablePathIssue(to: &issues, isRequired: true)
         appendCodexModelIDIssue(to: &issues)
-        if !isCodexLocalExecutionApproved {
+        if !isCodexLocalExecutionApproved || approvedCodexExecutable?.path != codexExecutablePath {
             issues.append(ValidationIssue(
                 field: "isCodexLocalExecutionApproved",
-                message: "Codex local execution requires explicit approval.",
+                message: "Codex local execution requires approval bound to the selected executable.",
                 severity: .error
             ))
         }
@@ -1797,7 +1814,12 @@ public final class AppSettingsViewModel: ObservableObject {
 
     public func setCodexExecutablePath(_ path: String) {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        settings.codexExecutablePath = trimmed.isEmpty ? nil : trimmed
+        let nextPath = trimmed.isEmpty ? nil : trimmed
+        if settings.codexExecutablePath != nextPath {
+            settings.isCodexLocalExecutionApproved = false
+            settings.approvedCodexExecutable = nil
+        }
+        settings.codexExecutablePath = nextPath
         clearMessages()
     }
 
@@ -1808,8 +1830,25 @@ public final class AppSettingsViewModel: ObservableObject {
     }
 
     public func setCodexLocalExecutionApproved(_ isApproved: Bool) {
-        settings.isCodexLocalExecutionApproved = isApproved
-        clearMessages()
+        guard isApproved else {
+            settings.isCodexLocalExecutionApproved = false
+            settings.approvedCodexExecutable = nil
+            clearMessages()
+            return
+        }
+        do {
+            let path = settings.codexExecutablePath ?? ""
+            settings.approvedCodexExecutable = try CodexAppServerRuntimeConfiguration.approve(
+                executablePath: path
+            )
+            settings.isCodexLocalExecutionApproved = true
+            clearMessages()
+        } catch {
+            settings.isCodexLocalExecutionApproved = false
+            settings.approvedCodexExecutable = nil
+            errorMessage = "Select a valid executable Codex CLI file before approving local execution."
+            successMessage = nil
+        }
     }
 
     public func setLowLatencyVoiceAgentModeEnabled(_ isEnabled: Bool) {
