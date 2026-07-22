@@ -219,7 +219,7 @@ public enum LLMProviderCatalog {
             defaultModelID: "",
             requestFamily: .codexAppServer,
             supportsStreaming: true,
-            supportsStructuredOutput: true,
+            supportsStructuredOutput: false,
             authMode: .providerManagedSubscription,
             executionLocation: .userMac,
             billingMode: .userProviderBilled,

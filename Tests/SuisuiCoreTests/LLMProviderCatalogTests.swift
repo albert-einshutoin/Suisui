@@ -122,6 +122,7 @@ final class LLMProviderCatalogTests: XCTestCase {
         XCTAssertEqual(entry.requestFamily, .codexAppServer)
         XCTAssertNil(entry.apiKeySecretKey)
         XCTAssertTrue(entry.requiresExplicitLocalExecutionApproval)
+        XCTAssertFalse(entry.supportsStructuredOutput)
         XCTAssertTrue(entry.isAvailableInCurrentBuild)
         XCTAssertTrue(LLMProviderCatalog.settingsSelectableIDs.contains(.codexLocal))
     }

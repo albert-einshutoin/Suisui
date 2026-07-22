@@ -21,7 +21,8 @@ fi
 # `login status` reports readiness without printing the credential store.
 "$codex_executable" login status
 
-SUISUI_CODEX_LIVE_TEST=1 \
-SUISUI_CODEX_EXECUTABLE="$codex_executable" \
+export SUISUI_CODEX_LIVE_TEST=1
+export SUISUI_CODEX_EXECUTABLE="$codex_executable"
+
 swift test --filter CodexLocalRuntimeProviderTests/testLiveSubscriptionGeneratesToolFreeActionPlanWhenExplicitlyEnabled
 swift test --filter CodexLocalRuntimeProviderTests/testLiveSubscriptionAccountModelAndCancelableLoginWhenExplicitlyEnabled

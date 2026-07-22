@@ -53,7 +53,6 @@ public struct CodexAppServerProvider: StreamingLLMProvider {
         try await validateAccount()
         let modelID = try await selectedModelID()
         let prompt = try (promptBuilder ?? PlanningPromptBuilder.loadDefault()).buildPrompt(for: request)
-        let outputSchema = try JSONDecoder().decode(JSONValue.self, from: ActionPlanSchema.loadData())
         let scratchPath = try validatedScratchPath()
         let events = await transport.notifications()
 
@@ -75,7 +74,6 @@ public struct CodexAppServerProvider: StreamingLLMProvider {
             params: .object([
                 "threadId": .string(threadID),
                 "approvalPolicy": .string("never"),
-                "outputSchema": outputSchema,
                 "input": .array([
                     .object(["type": .string("text"), "text": .string(prompt.user)])
                 ])

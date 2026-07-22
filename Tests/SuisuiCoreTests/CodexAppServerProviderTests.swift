@@ -28,9 +28,6 @@ final class CodexAppServerProviderTests: XCTestCase {
         XCTAssertNil(start.params?["dynamicTools"])
         XCTAssertNil(start.params?["environments"])
         XCTAssertNil(start.params?["selectedCapabilityRoots"])
-        let turn = try XCTUnwrap(requests.first { $0.method == CodexAppServerMethod.turnStart })
-        XCTAssertEqual(turn.params?["outputSchema"]?["type"], .string("object"))
-        XCTAssertEqual(turn.params?["outputSchema"]?["additionalProperties"], .bool(false))
     }
 
     func testCommandApprovalIsCancelledInterruptedAndNeverAcceptedAsPlan() async throws {
