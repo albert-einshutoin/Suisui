@@ -141,8 +141,8 @@ public enum CodexAppServerRuntimeConfigurationError: Error, Equatable, Sendable 
 }
 
 public struct CodexAppServerRuntimeConfiguration: Equatable, Sendable {
-    /// Preview accepts only protocol surfaces covered by checked-in fixtures.
-    /// Adding a version requires updating schemas, adversarial fixtures, and release evidence together.
+    /// The current release accepts only protocol surfaces covered by checked-in contracts.
+    /// Adding a version requires updating schemas, adversarial tests, and release evidence together.
     public static let verifiedVersions: Set<CodexAppServerVersion> = [
         CodexAppServerVersion(major: 0, minor: 144, patch: 1),
     ]
