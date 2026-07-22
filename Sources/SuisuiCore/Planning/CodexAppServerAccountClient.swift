@@ -53,6 +53,7 @@ public enum CodexAccountClientError: Error, Equatable, Sendable {
     case loginFailed(redactedReason: String)
     case loginTimedOut
     case staleLoginID
+    case notificationStreamEnded
     case logoutRequiresChatGPTAccount
 }
 
@@ -77,6 +78,7 @@ public actor CodexAppServerAccountClient: CodexAccountServicing {
     private var activeLoginIDs: Set<String> = []
     private var loginWaiters: [String: LoginWaiter] = [:]
     private var completedLogins: [String: Result<CodexAccountReadiness, CodexAccountClientError>] = [:]
+    private var didEndNotificationStream = false
 
     public init(transport: any CodexAppServerTransport) {
         self.transport = transport
@@ -99,7 +101,24 @@ public actor CodexAppServerAccountClient: CodexAccountServicing {
         try await transport.notify(method: "initialized", params: nil)
     }
 
-    public func readAccount(refresh _: Bool = false) async throws -> CodexAccountSnapshot {
+    public func readAccount(refresh: Bool = false) async throws -> CodexAccountSnapshot {
+        let identity = try await readAccountIdentity(refresh: refresh)
+        guard case let .chatGPT(_, plan)? = identity.account else {
+            return identity
+        }
+        // Quota affects planning readiness, but never changes whether a
+        // verified ChatGPT identity may be explicitly signed out.
+        let rateLimits = try await readRateLimits()
+        if let usedPercent = rateLimits.usedPercent, usedPercent >= 100 {
+            return CodexAccountSnapshot(
+                account: identity.account,
+                readiness: .usageLimited(resetAt: rateLimits.resetsAt)
+            )
+        }
+        return CodexAccountSnapshot(account: identity.account, readiness: .ready(plan: plan))
+    }
+
+    public func readAccountIdentity(refresh _: Bool = false) async throws -> CodexAccountSnapshot {
         let response: CodexRawJSONRPCResponse
         do {
             response = try await transport.request(
@@ -127,16 +146,6 @@ public actor CodexAppServerAccountClient: CodexAccountServicing {
         }
         switch account {
         case let .chatGPT(_, plan):
-            // Subscription availability is part of readiness, not a cosmetic
-            // Settings label. Planning must fail deterministically before it
-            // consumes a turn when the primary usage window is exhausted.
-            let rateLimits = try await readRateLimits()
-            if let usedPercent = rateLimits.usedPercent, usedPercent >= 100 {
-                return CodexAccountSnapshot(
-                    account: account,
-                    readiness: .usageLimited(resetAt: rateLimits.resetsAt)
-                )
-            }
             return CodexAccountSnapshot(account: account, readiness: .ready(plan: plan))
         case let .unsupported(type):
             return CodexAccountSnapshot(
@@ -172,14 +181,21 @@ public actor CodexAppServerAccountClient: CodexAccountServicing {
         if let result = completedLogins.removeValue(forKey: id) {
             return try result.get()
         }
+        guard !didEndNotificationStream else {
+            throw CodexAccountClientError.notificationStreamEnded
+        }
         guard activeLoginIDs.contains(id) else { throw CodexAccountClientError.staleLoginID }
-        return try await withCheckedThrowingContinuation { continuation in
-            loginWaiters[id] = LoginWaiter(continuation: continuation)
-            Task { [weak self] in
-                let nanoseconds = UInt64(max(0, timeout) * 1_000_000_000)
-                try? await Task.sleep(nanoseconds: nanoseconds)
-                await self?.timeoutLogin(id: id)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                loginWaiters[id] = LoginWaiter(continuation: continuation)
+                Task { [weak self] in
+                    let nanoseconds = UInt64(max(0, timeout) * 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: nanoseconds)
+                    await self?.timeoutLogin(id: id)
+                }
             }
+        } onCancel: {
+            Task { await self.cancelLoginWaiter(id: id) }
         }
     }
 
@@ -203,7 +219,7 @@ public actor CodexAppServerAccountClient: CodexAccountServicing {
     }
 
     public func logoutChatGPTAccountOnly() async throws {
-        let snapshot = try await readAccount(refresh: true)
+        let snapshot = try await readAccountIdentity(refresh: true)
         guard snapshot.account?.isChatGPTAccount == true else {
             throw CodexAccountClientError.logoutRequiresChatGPTAccount
         }
@@ -255,6 +271,24 @@ public actor CodexAppServerAccountClient: CodexAccountServicing {
                 guard let self else { return }
                 await self.handle(notification)
             }
+            await self?.notificationStreamDidEnd()
+        }
+    }
+
+    private func cancelLoginWaiter(id: String) {
+        activeLoginIDs.remove(id)
+        completedLogins.removeValue(forKey: id)
+        loginWaiters.removeValue(forKey: id)?.continuation.resume(throwing: CancellationError())
+    }
+
+    private func notificationStreamDidEnd() {
+        didEndNotificationStream = true
+        let waiters = loginWaiters.values
+        loginWaiters.removeAll()
+        activeLoginIDs.removeAll()
+        completedLogins.removeAll()
+        for waiter in waiters {
+            waiter.continuation.resume(throwing: CodexAccountClientError.notificationStreamEnded)
         }
     }
 

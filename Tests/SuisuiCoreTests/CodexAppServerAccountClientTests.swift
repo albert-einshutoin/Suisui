@@ -165,6 +165,76 @@ final class CodexAppServerAccountClientTests: XCTestCase {
         let requests = await transport.requests
         XCTAssertEqual(requests.map(\.method), [CodexAppServerMethod.accountRead])
     }
+
+    func testLogoutDoesNotDependOnPlanningRateLimitReadiness() async throws {
+        let transport = RecordingCodexTransport(responses: [
+            CodexAppServerMethod.accountRead: [chatGPTAccountResponse()],
+            CodexAppServerMethod.accountLogout: [.object([:])]
+        ])
+        let client = CodexAppServerAccountClient(transport: transport)
+
+        try await client.logoutChatGPTAccountOnly()
+
+        let requests = await transport.requests
+        XCTAssertEqual(requests.map(\.method), [
+            CodexAppServerMethod.accountRead,
+            CodexAppServerMethod.accountLogout
+        ])
+        XCTAssertFalse(requests.map(\.method).contains(CodexAppServerMethod.accountRateLimitsRead))
+    }
+
+    func testNotificationStreamEndingFailsPendingLoginImmediately() async throws {
+        let transport = RecordingCodexTransport(responses: [
+            CodexAppServerMethod.accountLoginStart: [
+                .object([
+                    "type": .string("chatgpt"),
+                    "loginId": .string("login-stream"),
+                    "authUrl": .string("https://chatgpt.com/auth")
+                ])
+            ]
+        ])
+        let client = CodexAppServerAccountClient(transport: transport)
+        let attempt = try await client.startLogin(.chatGPTBrowser)
+        let completion = Task { try await client.awaitLogin(id: attempt.id, timeout: 300) }
+
+        await transport.shutdown()
+
+        await XCTAssertThrowsCodexAccountError(try await completion.value) { error in
+            XCTAssertEqual(error, .notificationStreamEnded)
+        }
+    }
+
+    func testCancellingAwaitLoginRemovesWaiterAndIgnoresLateCompletion() async throws {
+        let transport = RecordingCodexTransport(responses: [
+            CodexAppServerMethod.accountLoginStart: [
+                .object([
+                    "type": .string("chatgpt"),
+                    "loginId": .string("login-cancelled"),
+                    "authUrl": .string("https://chatgpt.com/auth")
+                ])
+            ]
+        ])
+        let client = CodexAppServerAccountClient(transport: transport)
+        let attempt = try await client.startLogin(.chatGPTBrowser)
+        let completion = Task { try await client.awaitLogin(id: attempt.id, timeout: 300) }
+
+        completion.cancel()
+
+        do {
+            _ = try await completion.value
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        await transport.emit(CodexJSONRPCNotification(
+            id: nil,
+            method: "account/login/completed",
+            params: .object(["loginId": .string(attempt.id), "success": .bool(true)])
+        ))
+        let requests = await transport.requests
+        XCTAssertFalse(requests.map(\.method).contains(CodexAppServerMethod.accountRead))
+    }
 }
 
 private func chatGPTAccountResponse() -> JSONValue {

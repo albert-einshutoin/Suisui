@@ -16,6 +16,7 @@ fi
 audited_paths=(
   Sources
   Package.swift
+  Tests/SuisuiCoreTests/CodexLocalRuntimeProviderTests.swift
   script/check_codex_auth_access_evidence.sh
   script/codex_auth_access_audit_wrapper.c
 )
@@ -34,10 +35,10 @@ if [[ "$codex_executable" != /* || ! -x "$codex_executable" ]]; then
 fi
 
 codex_version_output="$("$codex_executable" --version 2>/dev/null || true)"
-if [[ "$codex_version_output" =~ ^codex-cli[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?)$ ]]; then
-  codex_version="${BASH_REMATCH[1]}"
+if [[ "$codex_version_output" == "codex-cli 0.144.1" ]]; then
+  codex_version="0.144.1"
 else
-  echo "Codex version output is unavailable or has an unsupported format." >&2
+  echo "Codex version is not the exact Personal Preview verified build: codex-cli 0.144.1." >&2
   exit 1
 fi
 
@@ -175,6 +176,7 @@ fi
 product_source_commit="$(git -C "$ROOT_DIR" log -1 --format=%H -- Sources Package.swift)"
 audit_harness_commit="$(
   git -C "$ROOT_DIR" log -1 --format=%H -- \
+    Tests/SuisuiCoreTests/CodexLocalRuntimeProviderTests.swift \
     script/check_codex_auth_access_evidence.sh \
     script/codex_auth_access_audit_wrapper.c
 )"
@@ -182,15 +184,23 @@ if [[ -z "$product_source_commit" || -z "$audit_harness_commit" ]]; then
   echo "Product or audit-harness source commit is unavailable." >&2
   exit 1
 fi
+audit_harness_sha256_swift_test="$(shasum -a 256 "$ROOT_DIR/Tests/SuisuiCoreTests/CodexLocalRuntimeProviderTests.swift" | awk '{print $1}')"
+audit_harness_sha256_shell_script="$(shasum -a 256 "$ROOT_DIR/script/check_codex_auth_access_evidence.sh" | awk '{print $1}')"
+audit_harness_sha256_native_wrapper="$(shasum -a 256 "$ROOT_DIR/script/codex_auth_access_audit_wrapper.c" | awk '{print $1}')"
 generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 evidence_output="${SUISUI_CODEX_AUTH_ACCESS_EVIDENCE_OUTPUT:-$ROOT_DIR/.tmp/codex-auth-access-evidence.json}"
 mkdir -p "$(dirname "$evidence_output")"
 evidence_temp="$(mktemp "$(dirname "$evidence_output")/.codex-auth-access-evidence.XXXXXX")"
 printf '{\n' >"$evidence_temp"
-printf '  "schemaVersion": 3,\n' >>"$evidence_temp"
+printf '  "schemaVersion": 4,\n' >>"$evidence_temp"
 printf '  "status": "passed",\n' >>"$evidence_temp"
 printf '  "productSourceCommit": "%s",\n' "$product_source_commit" >>"$evidence_temp"
 printf '  "auditHarnessCommit": "%s",\n' "$audit_harness_commit" >>"$evidence_temp"
+printf '  "auditHarnessSHA256": {\n' >>"$evidence_temp"
+printf '    "swiftTest": "%s",\n' "$audit_harness_sha256_swift_test" >>"$evidence_temp"
+printf '    "shellScript": "%s",\n' "$audit_harness_sha256_shell_script" >>"$evidence_temp"
+printf '    "nativeWrapper": "%s"\n' "$audit_harness_sha256_native_wrapper" >>"$evidence_temp"
+printf '  },\n' >>"$evidence_temp"
 printf '  "codexVersion": "%s",\n' "$codex_version" >>"$evidence_temp"
 printf '  "generatedAt": "%s",\n' "$generated_at" >>"$evidence_temp"
 printf '  "credentialPathClass": "codex_user_auth_store",\n' >>"$evidence_temp"

@@ -47,14 +47,17 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         XCTAssertTrue(script.contains("auth_path_suffix=\".codex/auth.json\""))
         XCTAssertTrue(script.contains("product_source_commit"))
         XCTAssertTrue(script.contains("audit_harness_commit"))
+        XCTAssertTrue(script.contains("Tests/SuisuiCoreTests/CodexLocalRuntimeProviderTests.swift"))
+        XCTAssertTrue(script.contains("audit_harness_sha256"))
         XCTAssertTrue(script.contains("codex_version"))
         XCTAssertTrue(script.contains("\"$codex_executable\" --version"))
         XCTAssertTrue(script.contains("trace_status"))
         XCTAssertTrue(script.contains("status --porcelain=v1"))
         XCTAssertTrue(script.contains("mv \"$evidence_temp\" \"$evidence_output\""))
-        XCTAssertTrue(script.contains("\"schemaVersion\": 3"))
+        XCTAssertTrue(script.contains("\"schemaVersion\": 4"))
         XCTAssertTrue(script.contains("\"productSourceCommit\""))
         XCTAssertTrue(script.contains("\"auditHarnessCommit\""))
+        XCTAssertTrue(script.contains("\"auditHarnessSHA256\""))
         XCTAssertTrue(script.contains("\"codexVersion\""))
         XCTAssertTrue(script.contains("\"harnessParentPID\""))
         XCTAssertTrue(script.contains("\"codexChildPID\""))
@@ -63,6 +66,23 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         XCTAssertTrue(wrapperSource.contains("getpid()"))
         XCTAssertTrue(wrapperSource.contains("execv("))
         XCTAssertFalse(wrapperSource.contains("auth.json"))
+    }
+
+    func testAccountSettingsCancelsActiveLoginWhenApprovalChangesOrViewCloses() throws {
+        let root = repositoryRoot()
+        let source = try String(
+            contentsOf: root.appendingPathComponent("Sources/SuisuiApp/Views/CodexAccountSettingsView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(source.contains("activeTask"))
+        XCTAssertTrue(source.contains("activeLoginID"))
+        XCTAssertTrue(source.contains("activeAccountClient"))
+        XCTAssertTrue(source.contains("operationGeneration"))
+        XCTAssertTrue(source.contains("account.cancelLogin(id: loginID)"))
+        XCTAssertTrue(source.contains("await transport.shutdown()"))
+        XCTAssertTrue(source.contains("suisuiCodexExecutionApprovalDidChange"))
+        XCTAssertTrue(source.contains(".onDisappear"))
     }
 
     private func repositoryRoot() -> URL {
