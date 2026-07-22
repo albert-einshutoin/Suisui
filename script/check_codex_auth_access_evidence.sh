@@ -2,7 +2,6 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-
 if [[ "${SUISUI_CODEX_RUN_AUTH_ACCESS_EVIDENCE:-0}" != "1" ]]; then
   echo "Codex auth-access evidence is opt-in and requires an administrator filesystem trace."
   echo "Run with SUISUI_CODEX_RUN_AUTH_ACCESS_EVIDENCE=1 and optionally SUISUI_CODEX_EXECUTABLE=/absolute/path/to/codex."
@@ -11,6 +10,17 @@ fi
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "Codex auth-access evidence requires macOS fs_usage." >&2
+  exit 1
+fi
+
+audited_paths=(
+  Sources
+  Package.swift
+  script/check_codex_auth_access_evidence.sh
+  script/codex_auth_access_audit_wrapper.c
+)
+if [[ -n "$(git -C "$ROOT_DIR" status --porcelain=v1 -- "${audited_paths[@]}")" ]]; then
+  echo "Codex auth-access evidence requires a clean product and audit-harness source tree." >&2
   exit 1
 fi
 
@@ -38,6 +48,7 @@ trace_log="$audit_dir/fs-usage.log"
 auth_lines="$audit_dir/auth-access.log"
 test_pid=""
 trace_pid=""
+evidence_temp=""
 
 cleanup() {
   if [[ -n "$test_pid" ]] && kill -0 "$test_pid" >/dev/null 2>&1; then
@@ -45,6 +56,9 @@ cleanup() {
   fi
   if [[ -n "$trace_pid" ]] && kill -0 "$trace_pid" >/dev/null 2>&1; then
     kill "$trace_pid" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$evidence_temp" ]]; then
+    rm -f "$evidence_temp"
   fi
   rm -rf "$audit_dir"
 }
@@ -125,26 +139,31 @@ touch "${wrapper_path}.ready"
 test_status=0
 wait "$test_pid" || test_status=$?
 test_pid=""
-wait "$trace_pid" || true
+trace_status=0
+wait "$trace_pid" || trace_status=$?
 trace_pid=""
 if [[ "$test_status" -ne 0 ]]; then
   echo "Codex auth-access audit live test failed." >&2
   sed -n '1,200p' "$test_log" >&2
   exit "$test_status"
 fi
+if [[ "$trace_status" -ne 0 ]]; then
+  echo "Codex auth-access filesystem trace failed or ended incompletely." >&2
+  exit "$trace_status"
+fi
 
 auth_path_suffix=".codex/auth.json"
 LC_ALL=C grep -F -- "$auth_path_suffix" "$trace_log" >"$auth_lines" || true
-parent_auth_access_count="$(grep -Ec "\\.${parent_pid}([[:space:]]|$)" "$auth_lines" || true)"
-child_auth_access_count="$(grep -Ec "\\.${child_pid}([[:space:]]|$)" "$auth_lines" || true)"
+harness_parent_auth_access_count="$(grep -Ec "\\.${parent_pid}([[:space:]]|$)" "$auth_lines" || true)"
+codex_child_auth_access_count="$(grep -Ec "\\.${child_pid}([[:space:]]|$)" "$auth_lines" || true)"
 total_auth_access_count="$(wc -l <"$auth_lines" | tr -d '[:space:]')"
-unexpected_auth_access_count=$((total_auth_access_count - parent_auth_access_count - child_auth_access_count))
+unexpected_auth_access_count=$((total_auth_access_count - harness_parent_auth_access_count - codex_child_auth_access_count))
 
-if [[ "$parent_auth_access_count" -ne 0 ]]; then
-  echo "BLOCKER: Suisui parent process accessed the Codex auth store." >&2
+if [[ "$harness_parent_auth_access_count" -ne 0 ]]; then
+  echo "BLOCKER: the Swift test harness parent accessed the Codex auth store." >&2
   exit 1
 fi
-if [[ "$child_auth_access_count" -lt 1 ]]; then
+if [[ "$codex_child_auth_access_count" -lt 1 ]]; then
   echo "BLOCKER: no Codex child auth-store access was observed; evidence is inconclusive." >&2
   exit 1
 fi
@@ -166,20 +185,23 @@ fi
 generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 evidence_output="${SUISUI_CODEX_AUTH_ACCESS_EVIDENCE_OUTPUT:-$ROOT_DIR/.tmp/codex-auth-access-evidence.json}"
 mkdir -p "$(dirname "$evidence_output")"
-printf '{\n' >"$evidence_output"
-printf '  "schemaVersion": 2,\n' >>"$evidence_output"
-printf '  "status": "passed",\n' >>"$evidence_output"
-printf '  "productSourceCommit": "%s",\n' "$product_source_commit" >>"$evidence_output"
-printf '  "auditHarnessCommit": "%s",\n' "$audit_harness_commit" >>"$evidence_output"
-printf '  "codexVersion": "%s",\n' "$codex_version" >>"$evidence_output"
-printf '  "generatedAt": "%s",\n' "$generated_at" >>"$evidence_output"
-printf '  "credentialPathClass": "codex_user_auth_store",\n' >>"$evidence_output"
-printf '  "parentPID": %s,\n' "$parent_pid" >>"$evidence_output"
-printf '  "childPID": %s,\n' "$child_pid" >>"$evidence_output"
-printf '  "parentAuthAccessCount": %s,\n' "$parent_auth_access_count" >>"$evidence_output"
-printf '  "childAuthAccessCount": %s,\n' "$child_auth_access_count" >>"$evidence_output"
-printf '  "unexpectedAuthAccessCount": %s\n' "$unexpected_auth_access_count" >>"$evidence_output"
-printf '}\n' >>"$evidence_output"
+evidence_temp="$(mktemp "$(dirname "$evidence_output")/.codex-auth-access-evidence.XXXXXX")"
+printf '{\n' >"$evidence_temp"
+printf '  "schemaVersion": 3,\n' >>"$evidence_temp"
+printf '  "status": "passed",\n' >>"$evidence_temp"
+printf '  "productSourceCommit": "%s",\n' "$product_source_commit" >>"$evidence_temp"
+printf '  "auditHarnessCommit": "%s",\n' "$audit_harness_commit" >>"$evidence_temp"
+printf '  "codexVersion": "%s",\n' "$codex_version" >>"$evidence_temp"
+printf '  "generatedAt": "%s",\n' "$generated_at" >>"$evidence_temp"
+printf '  "credentialPathClass": "codex_user_auth_store",\n' >>"$evidence_temp"
+printf '  "harnessParentPID": %s,\n' "$parent_pid" >>"$evidence_temp"
+printf '  "codexChildPID": %s,\n' "$child_pid" >>"$evidence_temp"
+printf '  "harnessParentAuthAccessCount": %s,\n' "$harness_parent_auth_access_count" >>"$evidence_temp"
+printf '  "codexChildAuthAccessCount": %s,\n' "$codex_child_auth_access_count" >>"$evidence_temp"
+printf '  "unexpectedAuthAccessCount": %s\n' "$unexpected_auth_access_count" >>"$evidence_temp"
+printf '}\n' >>"$evidence_temp"
+mv "$evidence_temp" "$evidence_output"
+evidence_temp=""
 
 echo "OK: PID-classified Codex auth-access evidence passed."
 echo "evidence=$evidence_output"
