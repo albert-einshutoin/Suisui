@@ -2,6 +2,7 @@ import Foundation
 import SuisuiCore
 
 enum AppRuntimeFactory {
+    private static let externalSideEffectStartupRecovery = ExternalSideEffectStartupRecovery()
     private static let sharedSecretStore: any SecretStore = {
         if ProcessInfo.processInfo.environment["SUISUI_DISABLE_KEYCHAIN_SECRET_STORE"] == "1" {
             return LaunchVerificationSecretStore()
@@ -12,6 +13,10 @@ enum AppRuntimeFactory {
     static func migratedConnection() throws -> SQLiteConnection {
         let connection = try SQLiteConnection(path: applicationDatabaseURL().path)
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        try externalSideEffectStartupRecovery.recoverOnce(
+            journal: SQLiteExternalSideEffectJournal(connection: connection),
+            at: Date()
+        )
         return connection
     }
 

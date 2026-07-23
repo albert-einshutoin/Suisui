@@ -104,6 +104,31 @@ public protocol ExternalSideEffectJournal: Sendable {
     func recoverStartedAsUnknown(at: Date) throws -> Int
 }
 
+public final class ExternalSideEffectStartupRecovery: @unchecked Sendable {
+    private let lock = NSLock()
+    private var didRecover = false
+
+    public init() {}
+
+    @discardableResult
+    public func recoverOnce(
+        journal: any ExternalSideEffectJournal,
+        at: Date
+    ) throws -> Int {
+        // Recovery is a process-start boundary, not a registry-construction
+        // concern. Holding this lock through the short recovery query prevents
+        // concurrent startup surfaces from both classifying live work as stale.
+        lock.lock()
+        defer { lock.unlock() }
+        guard !didRecover else {
+            return 0
+        }
+        let recoveredCount = try journal.recoverStartedAsUnknown(at: at)
+        didRecover = true
+        return recoveredCount
+    }
+}
+
 public final class SQLiteExternalSideEffectJournal: ExternalSideEffectJournal, @unchecked Sendable {
     private let connection: SQLiteConnection
     private let lock = NSLock()

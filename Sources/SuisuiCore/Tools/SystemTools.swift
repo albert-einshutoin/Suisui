@@ -94,7 +94,7 @@ public struct NotificationTool: Tool {
             _ in try context.externalSideEffectRequest(tool: name, arguments: arguments)
         }
         var draft = inputDraft
-        if let request {
+        if draft.identifierHint == nil, let request {
             draft.identifierHint = request.idempotencyKey
         }
         let requestID = draft.identifierHint ?? "notification-request-\(UUID().uuidString)"

@@ -49,7 +49,6 @@ extension AppRuntimeFactory {
         let taskStore = SQLiteTaskStore(connection: connection)
         let artifactStore = SQLiteArtifactStore(connection: connection)
         let sideEffectJournal = SQLiteExternalSideEffectJournal(connection: connection)
-        try sideEffectJournal.recoverStartedAsUnknown(at: Date())
         let registry = try ToolRegistry.phase2MVP(
             projectStore: projectStore,
             taskStore: taskStore,
@@ -209,7 +208,6 @@ extension AppRuntimeFactory {
                 let taskStore = SQLiteTaskStore(connection: connection)
                 let artifactStore = SQLiteArtifactStore(connection: connection)
                 let sideEffectJournal = SQLiteExternalSideEffectJournal(connection: connection)
-                try sideEffectJournal.recoverStartedAsUnknown(at: Date())
                 let registry = try ToolRegistry.phase2MVP(
                     projectStore: projectStore,
                     taskStore: taskStore,

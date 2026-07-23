@@ -235,6 +235,30 @@ final class ExternalSideEffectJournalTests: XCTestCase {
         XCTAssertEqual(retry.attempt, 2)
     }
 
+    func testStartupRecoveryRunsOnceAndDoesNotRewriteLaterLiveRecords() throws {
+        let store = try makeStore()
+        let recovery = ExternalSideEffectStartupRecovery()
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let interruptedRequest = makeRequest(idempotencyKey: "interrupted-key")
+
+        guard case .execute(let interrupted) = try store.claim(interruptedRequest, at: now) else {
+            return XCTFail("Interrupted request must be executable.")
+        }
+        try store.markStarted(id: interrupted.id, at: now)
+
+        XCTAssertEqual(try recovery.recoverOnce(journal: store, at: now), 1)
+        XCTAssertEqual(try store.record(id: interrupted.id)?.state, .unknown)
+
+        let liveRequest = makeRequest(idempotencyKey: "live-key")
+        guard case .execute(let live) = try store.claim(liveRequest, at: now) else {
+            return XCTFail("Live request must be executable.")
+        }
+        try store.markStarted(id: live.id, at: now)
+
+        XCTAssertEqual(try recovery.recoverOnce(journal: store, at: now), 0)
+        XCTAssertEqual(try store.record(id: live.id)?.state, .started)
+    }
+
     func testConcurrentClaimsAllowOneExternalExecution() throws {
         let store = try makeStore()
         let request = makeRequest()
@@ -475,6 +499,34 @@ final class ExternalSideEffectJournalTests: XCTestCase {
         let record = try XCTUnwrap(journal.records(executionID: "execution-1").first)
         XCTAssertEqual(record.state, .unknown)
         XCTAssertEqual(record.externalResourceID, "notification-key")
+    }
+
+    func testNotificationJournalPreservesExplicitCallerIdentifier() throws {
+        let connection = try migratedConnection()
+        let journal = SQLiteExternalSideEffectJournal(connection: connection)
+        let requestStore = SQLiteNotificationRequestStore(connection: connection)
+        let tool = NotificationTool(
+            name: .notificationSchedule,
+            client: InMemoryNotificationClient(),
+            requestStore: requestStore,
+            sideEffectJournal: journal
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "title": .string("Standup"),
+                "id": .string("standup-reminder"),
+                "scheduledAt": .string("2026-06-18T09:00:00Z")
+            ],
+            context: approvedSideEffectContext(idempotencyKey: "notification-journal-key")
+        )
+
+        XCTAssertEqual(result.output["notificationId"], .string("standup-reminder"))
+        XCTAssertEqual(try requestStore.list().first?.requestID, "standup-reminder")
+        XCTAssertEqual(
+            try journal.records(executionID: "execution-1").first?.idempotencyKey,
+            "notification-journal-key"
+        )
     }
 
     func testReminderBulkPartialFailureDoesNotRecreateSucceededItems() throws {
