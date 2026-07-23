@@ -103,6 +103,20 @@ final class CIGateWorkflowTests: XCTestCase {
         )
     }
 
+    func testCompleteSwiftPMRunnerWritesFailedEvidenceWhenDiscoveryFails() throws {
+        let script = try readRepositoryFile("script/run_complete_swiftpm_tests.sh")
+
+        XCTAssertTrue(
+            script.contains(
+                """
+                if [[ "$discovery_status" -ne 0 ]]; then
+                  write_failed_evidence "$baseline_test_count" 0
+                """
+            ),
+            "A discovery/compiler failure must still publish a failed summary and xUnit artifact"
+        )
+    }
+
     func testAutomatedReleasePreflightRequiresTheSameProductionUIGates() throws {
         let preflight = try readRepositoryFile("script/check_automated_release_preflight.sh")
         let readiness = try readRepositoryFile("script/release_readiness_report.sh")
