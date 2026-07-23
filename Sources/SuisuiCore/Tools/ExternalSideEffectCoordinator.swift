@@ -20,13 +20,11 @@ public struct ExternalSideEffectCoordinator: Sendable {
             return result
         case .inProgress(let record):
             throw ToolExecutionError.externalSideEffectInProgress(
-                request.tool,
-                record.idempotencyKey
+                ExternalSideEffectFailureEvidence(record: record)
             )
         case .requiresReconciliation(let record):
             throw ToolExecutionError.externalSideEffectRequiresReconciliation(
-                request.tool,
-                record.idempotencyKey
+                ExternalSideEffectFailureEvidence(record: record)
             )
         case .execute(let prepared):
             return try executeClaimed(
@@ -79,8 +77,12 @@ public struct ExternalSideEffectCoordinator: Sendable {
                 at: at
             )
             throw ToolExecutionError.externalSideEffectRequiresReconciliation(
-                request.tool,
-                request.idempotencyKey
+                failureEvidence(
+                    prepared,
+                    request: request,
+                    externalResourceID: nil,
+                    state: .unknown
+                )
             )
         }
 
@@ -98,8 +100,12 @@ public struct ExternalSideEffectCoordinator: Sendable {
                 at: at
             )
             throw ToolExecutionError.externalSideEffectRequiresReconciliation(
-                request.tool,
-                request.idempotencyKey
+                failureEvidence(
+                    prepared,
+                    request: request,
+                    externalResourceID: resourceID,
+                    state: .unknown
+                )
             )
         }
 
@@ -110,13 +116,45 @@ public struct ExternalSideEffectCoordinator: Sendable {
         if let resourceID {
             result.output["externalResourceId"] = .string(resourceID)
         }
-        try journal.markSucceeded(
-            id: prepared.id,
-            externalResourceID: resourceID,
-            result: result,
-            at: at
-        )
+        do {
+            try journal.markSucceeded(
+                id: prepared.id,
+                externalResourceID: resourceID,
+                result: result,
+                at: at
+            )
+        } catch {
+            try? journal.markUnknown(
+                id: prepared.id,
+                externalResourceID: resourceID,
+                failureCategory: "journal_commit_failed_after_external_success",
+                at: at
+            )
+            throw ToolExecutionError.externalSideEffectRequiresReconciliation(
+                failureEvidence(
+                    prepared,
+                    request: request,
+                    externalResourceID: resourceID,
+                    state: .unknown
+                )
+            )
+        }
         return result
+    }
+
+    private func failureEvidence(
+        _ prepared: ExternalSideEffectRecord,
+        request: ExternalSideEffectRequest,
+        externalResourceID: String?,
+        state: ExternalSideEffectState
+    ) -> ExternalSideEffectFailureEvidence {
+        ExternalSideEffectFailureEvidence(
+            tool: request.tool,
+            idempotencyKey: request.idempotencyKey,
+            journalRecordID: prepared.id,
+            externalResourceID: externalResourceID,
+            state: state
+        )
     }
 
     private static func failureCategory(for error: ToolClientError) -> String {

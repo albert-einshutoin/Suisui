@@ -322,6 +322,38 @@ public struct ToolResult: Equatable, Sendable {
     }
 }
 
+public struct ExternalSideEffectFailureEvidence: Equatable, Sendable {
+    public var tool: ActionTool
+    public var idempotencyKey: String
+    public var journalRecordID: String
+    public var externalResourceID: String?
+    public var state: ExternalSideEffectState
+
+    public init(
+        tool: ActionTool,
+        idempotencyKey: String,
+        journalRecordID: String,
+        externalResourceID: String?,
+        state: ExternalSideEffectState
+    ) {
+        self.tool = tool
+        self.idempotencyKey = idempotencyKey
+        self.journalRecordID = journalRecordID
+        self.externalResourceID = externalResourceID
+        self.state = state
+    }
+
+    public init(record: ExternalSideEffectRecord) {
+        self.init(
+            tool: record.tool,
+            idempotencyKey: record.idempotencyKey,
+            journalRecordID: record.id,
+            externalResourceID: record.externalResourceID,
+            state: record.state
+        )
+    }
+}
+
 public enum ToolExecutionError: Error, Equatable, Sendable {
     case duplicateTool(ActionTool)
     case unknownTool(ActionTool)
@@ -329,8 +361,8 @@ public enum ToolExecutionError: Error, Equatable, Sendable {
     case approvalBindingInvalid(ActionTool)
     case dangerousToolBlocked(ActionTool)
     case sideEffectIdentityMissing(ActionTool)
-    case externalSideEffectInProgress(ActionTool, String)
-    case externalSideEffectRequiresReconciliation(ActionTool, String)
+    case externalSideEffectInProgress(ExternalSideEffectFailureEvidence)
+    case externalSideEffectRequiresReconciliation(ExternalSideEffectFailureEvidence)
     case validationFailed(ActionTool, String)
     case executionFailed(ActionTool, String)
 }
@@ -339,6 +371,16 @@ public extension ToolExecutionError {
     static func validationFailed(_ tool: ActionTool, issues: [ToolInputValidationIssue]) -> ToolExecutionError {
         let message = issues.map(\.message).joined(separator: " ")
         return .validationFailed(tool, message.isEmpty ? "Invalid tool arguments." : message)
+    }
+
+    var externalSideEffectFailureEvidence: ExternalSideEffectFailureEvidence? {
+        switch self {
+        case .externalSideEffectInProgress(let evidence),
+             .externalSideEffectRequiresReconciliation(let evidence):
+            evidence
+        default:
+            nil
+        }
     }
 }
 

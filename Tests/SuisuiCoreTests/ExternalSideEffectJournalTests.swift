@@ -372,6 +372,74 @@ final class ExternalSideEffectJournalTests: XCTestCase {
         XCTAssertEqual(try client.listEvents().first?.draft.idempotencyKey, record.idempotencyKey)
     }
 
+    func testActionExecutorReceiptPreservesUnknownSideEffectEvidence() throws {
+        let connection = try migratedConnection()
+        let journal = SQLiteExternalSideEffectJournal(connection: connection)
+        let client = InMemoryCalendarClient()
+        let registry = try ToolRegistry(tools: [
+            CalendarTool(
+                name: .calendarCreateEvent,
+                client: client,
+                linkStore: SQLiteCalendarLinkStore(connection: connection),
+                sideEffectJournal: journal
+            )
+        ])
+        try connection.execute(
+            """
+            CREATE TRIGGER block_calendar_link_for_receipt
+            BEFORE INSERT ON calendar_links
+            BEGIN
+                SELECT RAISE(FAIL, 'calendar link blocked');
+            END;
+            """
+        )
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var session = ReviewSession(
+            id: "review-calendar-unknown",
+            plan: ActionPlan(
+                id: "plan-calendar-unknown",
+                userInput: "Create deep work event",
+                summary: "Create event",
+                actions: [
+                    PlanAction(
+                        id: "calendar-action-unknown",
+                        tool: .calendarCreateEvent,
+                        arguments: [
+                            "title": .string("Deep work"),
+                            "startAt": .string("2026-06-18T09:00:00Z"),
+                            "endAt": .string("2026-06-18T10:00:00Z"),
+                            "taskId": .number(20)
+                        ]
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        )
+        let approval = try session.approve(issuedAt: now)
+
+        let executed = try ActionExecutor(registry: registry).execute(session, now: now)
+        XCTAssertEqual(executed.executionStatus, .failed)
+        let record = try XCTUnwrap(
+            journal.records(executionID: approval.nonce.uuidString).first
+        )
+        XCTAssertEqual(record.state, .unknown)
+
+        let receipt = ExecutionReceiptFactory.makeReviewReceipt(
+            session: executed,
+            runID: "run-calendar-unknown",
+            model: nil,
+            usage: .unavailable,
+            startedAt: now,
+            finishedAt: now
+        )
+        let evidence = try XCTUnwrap(receipt.actions.first?.externalSideEffectEvidence)
+        XCTAssertEqual(evidence.idempotencyKeys, [record.idempotencyKey])
+        XCTAssertEqual(evidence.externalResourceIDs, [try XCTUnwrap(record.externalResourceID)])
+        XCTAssertEqual(evidence.journalRecordIDs, [record.id])
+        XCTAssertEqual(evidence.journalState, .unknown)
+    }
+
     func testNotificationLocalPersistenceFailureBecomesUnknown() throws {
         let connection = try migratedConnection()
         let journal = SQLiteExternalSideEffectJournal(connection: connection)
