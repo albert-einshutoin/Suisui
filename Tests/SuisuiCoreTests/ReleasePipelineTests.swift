@@ -151,6 +151,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("fixture=temporary-path-redaction status=passed"))
         XCTAssertTrue(result.output.contains("fixture=secret-assignment-redaction status=passed"))
         XCTAssertTrue(result.output.contains("fixture=provider-token-redaction status=passed"))
+        XCTAssertTrue(result.output.contains("fixture=provider-token-boundary status=passed"))
     }
 
     func testGitHubCISeparatesCompleteSwiftPMSuiteFromSupplementalSourceContracts() throws {
