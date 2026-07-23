@@ -3,6 +3,25 @@ import XCTest
 @testable import SuisuiCore
 
 final class CodexAppServerAccountClientTests: XCTestCase {
+    func testInitializeUsesInjectedTimeoutWithoutChangingOtherRequestTimeouts() async throws {
+        let transport = RecordingCodexTransport(responses: [
+            CodexAppServerMethod.initialize: [.object([:])],
+            CodexAppServerMethod.modelList: [
+                .object(["data": .array([])])
+            ],
+        ])
+        let client = CodexAppServerAccountClient(
+            transport: transport,
+            initializationTimeout: 30
+        )
+
+        try await client.initialize(clientVersion: "audit")
+        _ = try await client.listModels()
+
+        let requests = await transport.requests
+        XCTAssertEqual(requests.map(\.timeout), [30, 10])
+    }
+
     func testBrowserLoginReturnsOnlyAllowedURLAndCompletesFromMatchingNotification() async throws {
         let transport = RecordingCodexTransport(responses: [
             CodexAppServerMethod.accountLoginStart: [
@@ -263,6 +282,7 @@ private actor RecordingCodexTransport: CodexAppServerTransport {
     struct Request: Sendable {
         let method: String
         let params: JSONValue?
+        let timeout: TimeInterval
     }
 
     private var responses: [String: [JSONValue]]
@@ -283,8 +303,8 @@ private actor RecordingCodexTransport: CodexAppServerTransport {
 
     func start() async throws {}
 
-    func request(method: String, params: JSONValue?, timeout _: TimeInterval) async throws -> CodexRawJSONRPCResponse {
-        requests.append(Request(method: method, params: params))
+    func request(method: String, params: JSONValue?, timeout: TimeInterval) async throws -> CodexRawJSONRPCResponse {
+        requests.append(Request(method: method, params: params, timeout: timeout))
         encodedTraffic += method + String(describing: params)
         if var queuedFailures = failures[method], !queuedFailures.isEmpty {
             let error = queuedFailures.removeFirst()

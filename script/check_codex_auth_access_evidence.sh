@@ -110,12 +110,12 @@ if [[ "$observed_child_parent" != "$parent_pid" ]]; then
 fi
 
 if sudo -n true >/dev/null 2>&1; then
-  sudo /usr/bin/fs_usage -e -w -f pathname -t 12 >"$trace_log" 2>&1 &
+  sudo /usr/bin/fs_usage -e -w -f pathname -t 45 >"$trace_log" 2>&1 &
 else
   /usr/bin/osascript - "$trace_log" <<'APPLESCRIPT' &
 on run argv
   set tracePath to item 1 of argv
-  set traceCommand to "/usr/bin/fs_usage -e -w -f pathname -t 12 >" & quoted form of tracePath & " 2>&1"
+  set traceCommand to "/usr/bin/fs_usage -e -w -f pathname -t 45 >" & quoted form of tracePath & " 2>&1"
   do shell script traceCommand with administrator privileges
 end run
 APPLESCRIPT

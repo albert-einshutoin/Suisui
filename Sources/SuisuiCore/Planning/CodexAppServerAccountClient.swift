@@ -74,14 +74,19 @@ public actor CodexAppServerAccountClient: CodexAccountServicing {
     }
 
     private let transport: any CodexAppServerTransport
+    private let initializationTimeout: TimeInterval
     private var observerTask: Task<Void, Never>?
     private var activeLoginIDs: Set<String> = []
     private var loginWaiters: [String: LoginWaiter] = [:]
     private var completedLogins: [String: Result<CodexAccountReadiness, CodexAccountClientError>] = [:]
     private var didEndNotificationStream = false
 
-    public init(transport: any CodexAppServerTransport) {
+    public init(
+        transport: any CodexAppServerTransport,
+        initializationTimeout: TimeInterval = 10
+    ) {
         self.transport = transport
+        self.initializationTimeout = initializationTimeout
     }
 
     deinit {
@@ -97,7 +102,11 @@ public actor CodexAppServerAccountClient: CodexAccountServicing {
                 "version": .string(clientVersion)
             ])
         ])
-        _ = try await transport.request(method: CodexAppServerMethod.initialize, params: params, timeout: 10)
+        _ = try await transport.request(
+            method: CodexAppServerMethod.initialize,
+            params: params,
+            timeout: initializationTimeout
+        )
         try await transport.notify(method: "initialized", params: nil)
     }
 

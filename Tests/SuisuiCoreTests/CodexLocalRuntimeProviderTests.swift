@@ -21,7 +21,12 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
                 configuration: CodexAppServerLaunchConfiguration(executablePath: wrapperPath)
             )
         )
-        let account = CodexAppServerAccountClient(transport: transport)
+        // fs_usage can materially delay the first App Server response. This
+        // audit-only budget does not weaken the product runtime's 10-second default.
+        let account = CodexAppServerAccountClient(
+            transport: transport,
+            initializationTimeout: 30
+        )
 
         do {
             try await account.initialize(clientVersion: "auth-access-audit")
