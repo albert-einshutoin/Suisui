@@ -18,6 +18,12 @@ sanitize_swift_output() {
     -e 's#/(Users|Volumes)/[^[:space:]]+#<path>#g' \
     -e 's#/private/var/folders/[^[:space:]]+#<temp-path>#g' \
     -e 's#(/var)?/tmp/[^[:space:]]+#<temp-path>#g' \
+    -e 's#(Authorization[[:space:]]*:[[:space:]]*Bearer)[[:space:]]+[^[:space:]]+#\1 <redacted>#Ig' \
+    -e 's#sk-[A-Za-z0-9_-]{8,}#<redacted>#g' \
+    -e 's#github_pat_[A-Za-z0-9_]{8,}#<redacted>#g' \
+    -e 's#gh[pousr]_[A-Za-z0-9_]{8,}#<redacted>#g' \
+    -e 's#xox[baprs]-[A-Za-z0-9-]{8,}#<redacted>#g' \
+    -e 's#AKIA[0-9A-Z]{16}#<redacted>#g' \
     -e 's#(token|secret|password|api[_-]?key)[[:space:]]*[=:][[:space:]]*[^[:space:]]+#\1=<redacted>#Ig'
 }
 
@@ -190,6 +196,7 @@ run_fixture_self_tests() {
   local mixed_framework_output
   local sanitized_output
   local sanitized_secret_output
+  local sanitized_provider_output
   local fixture_xunit
   if validate_discovered_count 4 3 >/dev/null 2>&1; then
     printf 'fixture=discovery-above-baseline status=passed\n'
@@ -304,6 +311,28 @@ run_fixture_self_tests() {
     return 1
   fi
   printf 'fixture=secret-assignment-redaction status=passed\n'
+
+  sanitized_provider_output="$fixture_dir/sanitized-provider-output.log"
+  printf '%s\n' \
+    'Authorization: Bearer bearer-provider-value' \
+    'Anthropic sk-ant-providerfixture' \
+    'GitHub fine-grained github_pat_providerfixture1234' \
+    'GitHub classic ghp_providerfixture1234' \
+    'Slack xoxb-providerfixture1234' \
+    'AWS AKIAABCDEFGHIJKLMNOP' \
+    | sanitize_swift_output >"$sanitized_provider_output"
+  if grep -Eq 'bearer-provider-value|sk-ant-providerfixture|github_pat_providerfixture1234|ghp_providerfixture1234|xoxb-providerfixture1234|AKIAABCDEFGHIJKLMNOP' \
+    "$sanitized_provider_output"; then
+    rm -rf "$fixture_dir"
+    printf 'fixture=provider-token-redaction status=invalid\n' >&2
+    return 1
+  fi
+  if [[ "$(grep -c '<redacted>' "$sanitized_provider_output")" -ne 6 ]]; then
+    rm -rf "$fixture_dir"
+    printf 'fixture=provider-token-redaction status=invalid\n' >&2
+    return 1
+  fi
+  printf 'fixture=provider-token-redaction status=passed\n'
 
   fixture_xunit="$fixture_dir/test-results.xml"
   write_xunit_summary passed 3 3 3 0 0 "$fixture_xunit"
