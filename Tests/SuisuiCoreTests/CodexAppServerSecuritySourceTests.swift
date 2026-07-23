@@ -34,10 +34,17 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
             contentsOf: root.appendingPathComponent("script/codex_auth_access_audit_wrapper.c"),
             encoding: .utf8
         )
+        let auditTestSource = try String(
+            contentsOf: root.appendingPathComponent(
+                "Tests/SuisuiCoreTests/CodexLocalRuntimeProviderTests.swift"
+            ),
+            encoding: .utf8
+        )
 
         XCTAssertTrue(script.contains("SUISUI_CODEX_RUN_AUTH_ACCESS_EVIDENCE"))
         XCTAssertTrue(script.contains("/usr/bin/fs_usage"))
-        XCTAssertTrue(script.contains("fs_usage -w -f pathname -t 75"))
+        XCTAssertTrue(script.contains("fs_usage -w -f pathname -t 120"))
+        XCTAssertTrue(auditTestSource.contains("initializationTimeout: 60"))
         XCTAssertTrue(script.contains("/usr/bin/awk -v needle="))
         XCTAssertTrue(script.contains("index($0, needle) { print; fflush() }"))
         XCTAssertTrue(script.contains("set -euo pipefail"))

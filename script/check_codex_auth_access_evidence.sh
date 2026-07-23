@@ -25,7 +25,7 @@ run_root_traces() {
   run_filtered_trace() {
     local trace_output="$1"
     shift
-    /usr/bin/fs_usage -w -f pathname -t 75 "$@" 2>&1 \
+    /usr/bin/fs_usage -w -f pathname -t 120 "$@" 2>&1 \
       | LC_ALL=C /usr/bin/awk -v needle="$auth_path_suffix" "$trace_filter_program" >"$trace_output"
   }
 

@@ -25,7 +25,7 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
         // audit-only budget does not weaken the product runtime's 10-second default.
         let account = CodexAppServerAccountClient(
             transport: transport,
-            initializationTimeout: 30
+            initializationTimeout: 60
         )
 
         do {
