@@ -1,6 +1,6 @@
 # Suisui Threat Model
 
-Verified: 2026-07-21
+Verified: 2026-07-24
 
 This document records what Suisui protects, where trust boundaries sit, and which existing controls map to which threats. It complements [SECURITY.md](../../SECURITY.md) (policy and reporting) and [docs/sync/cloud-sync-foundation.md](../sync/cloud-sync-foundation.md) (the E2EE sync boundary). It describes the current local-first macOS app plus the planned sync/relay surfaces; it is not a compliance artifact.
 
@@ -50,6 +50,7 @@ Out of scope (assumed trusted or handled elsewhere):
 | App → Notification Center | Digest and deadline notifications | Count-only bodies; no titles, paths, or customer names |
 | App → TTS / audio out | Spoken summaries | Redaction before synthesis |
 | App → audit_logs table | Action metadata | Secret-pattern redaction before insert; parameterized SQL |
+| Review UI → ActionExecutor → write tool | Canonical reviewed plan, enabled action IDs, typed output references, execution policy, short-lived approval envelope | SHA-256 binding over canonical JSON; session/plan/expiry validation; persistent single-use nonce claim; output references resolved only from prior successful actions; schema validation repeated after resolution; each write tool receives an action/tool/resolved-arguments authorization |
 | App → sync ledger (planned) | Encrypted payload envelope | XChaCha20-Poly1305 payloads, key IDs only, per the sync foundation doc |
 | Sparkle → app | Update artifacts | EdDSA appcast signature verification |
 | App → local Codex App Server | Explicit planning prompt, model selection, typed account/readiness state | User approval bound to resolved path/device/inode/mtime/size; regular-file and permission preflight before any `--version` execution; Personal Preview exact-version allowlist; allowlisted child environment; short-lived process and scratch workspace per request; shell/file/web/MCP features disabled before initialize; approval or tool lifecycle interrupts the turn and fails closed |
@@ -71,6 +72,8 @@ Out of scope (assumed trusted or handled elsewhere):
 | SQL injection via task/knowledge text | Parameterized SQL everywhere (`?` placeholders in all stores; enforced by database parameter-binding tests) |
 | Content leaks through side channels | Redaction before TTS, audit logging, and notifications; digest and weekly-review notifications are count-only by design |
 | Destructive automation (deletes, sends, pushes) | Review-before-write action plans; MVP safety boundaries in SECURITY.md forbid email/Slack sends, file deletion, and Git push |
+| Approval replay or post-approval mutation | `ApprovedExecution` binds the session, plan, action order, tools, risk, enabled set, arguments, typed dependencies, and execution policy. SQLite atomically claims its nonce before execution and never permits reuse after success, failure, crash, or restart. Write tools verify their action/tool/resolved-argument digest instead of accepting a non-nil token. |
+| Dependency substitution after review | Implicit project/task dependencies become typed action-output references before review. Resolution can read only prior successful action output, records digest-only evidence, and must pass the target tool schema immediately before execution. |
 | Voice auto-create bypassing review | Opt-in Settings mode limited to one validated low-risk `task.create` per plan; execution goes through the same audited, receipted ActionExecutor as manual review; result is undoable from the voice window; destructive or external writes always stay pending approval |
 | Lock-screen exposure | Count-only notification bodies ("N overdue", "N completed this week"); titles and paths stay in the board UI |
 | Cloud operator reading synced content | E2EE sync design: `EncryptedSyncPayload` envelope, key IDs instead of key material, no plaintext domain payloads server-side |
