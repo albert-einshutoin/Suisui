@@ -16,6 +16,8 @@ RAW_DISCOVERY_LOG=""
 sanitize_swift_output() {
   sed -E \
     -e 's#/(Users|Volumes)/[^[:space:]]+#<path>#g' \
+    -e 's#/private/var/folders/[^[:space:]]+#<temp-path>#g' \
+    -e 's#(/var)?/tmp/[^[:space:]]+#<temp-path>#g' \
     -e 's#(token|secret|password|api[_-]?key)=[^[:space:]]+#\1=<redacted>#g'
 }
 
@@ -186,6 +188,7 @@ write_failed_evidence() {
 run_fixture_self_tests() {
   local fixture_dir
   local mixed_framework_output
+  local sanitized_output
   local fixture_xunit
   if validate_discovered_count 4 3 >/dev/null 2>&1; then
     printf 'fixture=discovery-above-baseline status=passed\n'
@@ -262,6 +265,24 @@ run_fixture_self_tests() {
     return 1
   fi
   printf 'fixture=mixed-framework-counts status=passed\n'
+
+  sanitized_output="$fixture_dir/sanitized-output.log"
+  printf '%s\n' \
+    'compiler cache /private/var/folders/ab/cd/T/module.cache' \
+    'temporary result /var/tmp/suisui/test-result.json' \
+    'fallback result /tmp/suisui/test-result.json' \
+    | sanitize_swift_output >"$sanitized_output"
+  if grep -Eq '/private/var/folders/|(/var)?/tmp/' "$sanitized_output"; then
+    rm -rf "$fixture_dir"
+    printf 'fixture=temporary-path-redaction status=invalid\n' >&2
+    return 1
+  fi
+  if [[ "$(grep -c '<temp-path>' "$sanitized_output")" -ne 3 ]]; then
+    rm -rf "$fixture_dir"
+    printf 'fixture=temporary-path-redaction status=invalid\n' >&2
+    return 1
+  fi
+  printf 'fixture=temporary-path-redaction status=passed\n'
 
   fixture_xunit="$fixture_dir/test-results.xml"
   write_xunit_summary passed 3 3 3 0 0 "$fixture_xunit"
