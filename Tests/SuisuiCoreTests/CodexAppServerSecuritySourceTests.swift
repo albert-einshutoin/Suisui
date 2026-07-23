@@ -45,8 +45,18 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         XCTAssertTrue(script.contains("/usr/bin/fs_usage"))
         XCTAssertTrue(script.contains("fs_usage -w -f pathname -t 120"))
         XCTAssertTrue(auditTestSource.contains("initializationTimeout: 60"))
-        XCTAssertTrue(script.contains("/usr/bin/awk -v needle="))
+        XCTAssertTrue(script.contains("/usr/bin/awk"))
+        XCTAssertTrue(script.contains("-v needle="))
+        XCTAssertTrue(script.contains("-v ready_path="))
         XCTAssertTrue(script.contains("index($0, needle) { print; fflush() }"))
+        XCTAssertTrue(script.contains("trace_event_pattern="))
+        XCTAssertTrue(script.contains("system_trace_ready"))
+        XCTAssertTrue(script.contains("child_trace_ready"))
+        XCTAssertTrue(script.contains("print \"ready\" > ready_path"))
+        XCTAssertTrue(script.contains("close(ready_path)"))
+        XCTAssertTrue(script.contains(
+            "while [[ ! -s \"$system_trace_ready\" || ! -s \"$child_trace_ready\" ]]"
+        ))
         XCTAssertTrue(script.contains("set -euo pipefail"))
         XCTAssertTrue(script.contains("--run-root-traces"))
         XCTAssertTrue(script.contains("root_trace_command=("))
@@ -67,7 +77,9 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         XCTAssertLessThan(rootProgramDeclaration.lowerBound, rootPipefail.lowerBound)
         XCTAssertLessThan(rootPipefail.lowerBound, rootCommandDeclaration.lowerBound)
         XCTAssertTrue(script.contains("child_trace_log"))
-        XCTAssertTrue(script.contains("run_filtered_trace \"$child_trace_output\" \"$audited_child_pid\""))
+        XCTAssertTrue(script.contains(
+            "run_filtered_trace \"$child_trace_output\" \"$child_trace_ready\" \"$audited_child_pid\""
+        ))
         XCTAssertFalse(script.contains("parent_trace_log"))
         XCTAssertFalse(script.contains("parent_trace_output"))
         XCTAssertTrue(script.contains("/usr/bin/clang"))
@@ -107,7 +119,15 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         let traceWait = try XCTUnwrap(script.range(of: "wait \"$trace_pid\""))
         let authPathDeclaration = try XCTUnwrap(script.range(of: "auth_path_suffix=\".codex/auth.json\""))
         let traceLaunch = try XCTUnwrap(script.range(of: "/usr/bin/fs_usage"))
+        let traceReadinessCheck = try XCTUnwrap(
+            script.range(
+                of: "while [[ ! -s \"$system_trace_ready\" || ! -s \"$child_trace_ready\" ]]"
+            )
+        )
+        let wrapperRelease = try XCTUnwrap(script.range(of: "touch \"${wrapper_path}.ready\""))
         XCTAssertLessThan(authPathDeclaration.lowerBound, traceLaunch.lowerBound)
+        XCTAssertLessThan(traceLaunch.lowerBound, traceReadinessCheck.lowerBound)
+        XCTAssertLessThan(traceReadinessCheck.lowerBound, wrapperRelease.lowerBound)
         XCTAssertLessThan(testWait.lowerBound, coverageCheck.lowerBound)
         XCTAssertLessThan(coverageCheck.lowerBound, traceWait.lowerBound)
         XCTAssertTrue(script.contains("status --porcelain=v1"))

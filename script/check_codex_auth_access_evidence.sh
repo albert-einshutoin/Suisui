@@ -3,18 +3,28 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 auth_path_suffix=".codex/auth.json"
-trace_filter_program='index($0, needle) { print; fflush() }'
+trace_event_pattern='^[0-9][0-9]:[0-9][0-9]:[0-9][0-9]\.[0-9]+[[:space:]]'
+trace_filter_program='
+$0 ~ event_pattern && !ready {
+  print "ready" > ready_path
+  close(ready_path)
+  ready = 1
+}
+index($0, needle) { print; fflush() }'
 
 run_root_traces() {
-  if [[ "$EUID" -ne 0 || "$#" -ne 4 ]]; then
+  if [[ "$EUID" -ne 0 || "$#" -ne 6 ]]; then
     echo "Root trace helper requires root and exact audited arguments." >&2
     return 64
   fi
   local system_trace_output="$1"
   local child_trace_output="$2"
-  local audited_parent_pid="$3"
-  local audited_child_pid="$4"
+  local system_trace_ready="$3"
+  local child_trace_ready="$4"
+  local audited_parent_pid="$5"
+  local audited_child_pid="$6"
   if [[ "$system_trace_output" != /* || "$child_trace_output" != /* ||
+        "$system_trace_ready" != /* || "$child_trace_ready" != /* ||
         ! "$audited_parent_pid" =~ ^[1-9][0-9]*$ || ! "$audited_child_pid" =~ ^[1-9][0-9]*$ ||
         "$audited_parent_pid" == "$audited_child_pid" ]]; then
     echo "Root trace helper received unsafe output paths or process identities." >&2
@@ -23,17 +33,22 @@ run_root_traces() {
 
   run_filtered_trace() {
     local trace_output="$1"
-    shift
+    local trace_ready="$2"
+    shift 2
     /usr/bin/fs_usage -w -f pathname -t 120 "$@" 2>&1 \
-      | LC_ALL=C /usr/bin/awk -v needle="$auth_path_suffix" "$trace_filter_program" >"$trace_output"
+      | LC_ALL=C /usr/bin/awk \
+        -v needle="$auth_path_suffix" \
+        -v event_pattern="$trace_event_pattern" \
+        -v ready_path="$trace_ready" \
+        "$trace_filter_program" >"$trace_output"
   }
 
   # Wide fs_usage output appends a thread ID, not a PID. The child-scoped
   # sampler proves ownership, while system-minus-child proves that neither
   # the harness parent nor another process accessed the credential store.
-  run_filtered_trace "$system_trace_output" -e &
+  run_filtered_trace "$system_trace_output" "$system_trace_ready" -e &
   system_trace_pid=$!
-  run_filtered_trace "$child_trace_output" "$audited_child_pid" &
+  run_filtered_trace "$child_trace_output" "$child_trace_ready" "$audited_child_pid" &
   child_trace_pid=$!
 
   system_trace_status=0
@@ -96,6 +111,8 @@ wrapper_path="$audit_dir/codex-auth-audit-wrapper"
 test_log="$audit_dir/test.log"
 trace_log="$audit_dir/fs-usage.log"
 child_trace_log="$audit_dir/fs-usage-child.log"
+system_trace_ready="$audit_dir/fs-usage.ready"
+child_trace_ready="$audit_dir/fs-usage-child.ready"
 test_pid=""
 trace_pid=""
 evidence_temp=""
@@ -161,8 +178,9 @@ fi
 # The privileged Bash is a new process, so it cannot inherit the parent
 # shell's fail-closed options. Embed them in the audited program itself.
 printf -v root_trace_program \
-  'set -euo pipefail\nauth_path_suffix=%q\ntrace_filter_program=%q\n%s\nrun_root_traces "$@"\n' \
+  'set -euo pipefail\nauth_path_suffix=%q\ntrace_event_pattern=%q\ntrace_filter_program=%q\n%s\nrun_root_traces "$@"\n' \
   "$auth_path_suffix" \
+  "$trace_event_pattern" \
   "$trace_filter_program" \
   "$(declare -f run_root_traces)"
 root_trace_command=(
@@ -174,6 +192,8 @@ root_trace_command=(
   --
   "$trace_log"
   "$child_trace_log"
+  "$system_trace_ready"
+  "$child_trace_ready"
   "$parent_pid"
   "$child_pid"
 )
@@ -193,9 +213,9 @@ fi
 trace_pid=$!
 
 trace_deadline=$((SECONDS + 180))
-while [[ ! -f "$trace_log" || ! -f "$child_trace_log" ]]; do
+while [[ ! -s "$system_trace_ready" || ! -s "$child_trace_ready" ]]; do
   if ! kill -0 "$trace_pid" >/dev/null 2>&1; then
-    echo "Administrator filesystem trace exited before it became ready." >&2
+    echo "Administrator filesystem trace exited before both samplers observed a real event." >&2
     exit 1
   fi
   if (( SECONDS >= trace_deadline )); then
@@ -204,7 +224,8 @@ while [[ ! -f "$trace_log" || ! -f "$child_trace_log" ]]; do
   fi
   sleep 0.1
 done
-sleep 0.5
+# Release Codex only after both samplers observed a formatted fs_usage event.
+# Output-file creation alone happens before the kernel tracer is attached.
 touch "${wrapper_path}.ready"
 
 test_status=0
