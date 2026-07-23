@@ -28,6 +28,30 @@ run_root_capture() {
     return 64
   fi
 
+  validate_capture_channel() {
+    local channel_path="$1"
+    local channel_uid
+    local channel_gid
+    local channel_size
+    local channel_mode
+    if [[ ! -f "$channel_path" || -L "$channel_path" ]]; then
+      return 1
+    fi
+    channel_uid="$(/usr/bin/stat -f %u "$channel_path")"
+    channel_gid="$(/usr/bin/stat -f %g "$channel_path")"
+    channel_size="$(/usr/bin/stat -f %z "$channel_path")"
+    channel_mode="$(/usr/bin/stat -f %Lp "$channel_path")"
+    [[ "$channel_uid" == "$output_uid" &&
+       "$channel_gid" == "$output_gid" &&
+       "$channel_size" -eq 0 &&
+       "$channel_mode" == "600" ]]
+  }
+  if ! validate_capture_channel "$trace_ready" ||
+     ! validate_capture_channel "$trace_stop"; then
+    echo "Root capture helper requires empty caller-owned 0600 IPC channels." >&2
+    return 64
+  fi
+
   # Raw kernel traces can contain unrelated filesystem metadata. Remove them
   # inside the privileged shell unless every completeness check succeeds.
   local capture_succeeded=0
@@ -197,6 +221,16 @@ launch_capture() {
   local trace_diagnostic="$2"
   local trace_ready="$3"
   local trace_stop="$4"
+  if [[ -e "$trace_ready" || -e "$trace_stop" ]]; then
+    echo "Kernel trace IPC channel already exists." >&2
+    exit 1
+  fi
+  # Precreate both IPC channels under the invoking user. The privileged helper
+  # validates their identity before writing, avoiding root-owned marker files
+  # that the unprivileged coordinator cannot reliably observe.
+  : >"$trace_ready"
+  : >"$trace_stop"
+  chmod 0600 "$trace_ready" "$trace_stop"
   capture_sequence=$((capture_sequence + 1))
   local notification_key="com.suisui.codex-auth-audit.$$.${capture_sequence}"
   local root_trace_command=(
@@ -252,7 +286,7 @@ wait_for_capture_ready() {
 finish_capture() {
   local trace_stop="$1"
   local label="$2"
-  touch "$trace_stop"
+  printf 'stop\n' >"$trace_stop"
   local trace_status=0
   wait "$trace_pid" || trace_status=$?
   trace_pid=""
@@ -449,7 +483,7 @@ touch "${wrapper_path}.ready"
 test_status=0
 wait "$test_pid" || test_status=$?
 test_pid=""
-touch "$auth_trace_stop"
+printf 'stop\n' >"$auth_trace_stop"
 trace_status=0
 wait "$trace_pid" || trace_status=$?
 trace_pid=""

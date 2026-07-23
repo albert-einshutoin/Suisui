@@ -56,6 +56,13 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         XCTAssertTrue(script.contains("declare -f run_root_capture"))
         XCTAssertTrue(script.contains("/bin/bash"))
         XCTAssertTrue(script.contains("\n    -c\n"))
+        XCTAssertTrue(script.contains("validate_capture_channel"))
+        XCTAssertTrue(script.contains("stat -f %u"))
+        XCTAssertTrue(script.contains("stat -f %g"))
+        XCTAssertTrue(script.contains("stat -f %z"))
+        XCTAssertTrue(script.contains(": >\"$trace_ready\""))
+        XCTAssertTrue(script.contains(": >\"$trace_stop\""))
+        XCTAssertTrue(script.contains("chmod 0600 \"$trace_ready\" \"$trace_stop\""))
         let rootProgramDeclaration = try XCTUnwrap(
             script.range(of: "printf -v root_trace_program")
         )
@@ -163,7 +170,9 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         XCTAssertLessThan(childPIDWait.lowerBound, wrapperRelease.lowerBound)
 
         let testWait = try XCTUnwrap(script.range(of: "wait \"$test_pid\""))
-        let traceStopPublish = try XCTUnwrap(script.range(of: "touch \"$auth_trace_stop\""))
+        let traceStopPublish = try XCTUnwrap(
+            script.range(of: "printf 'stop\\n' >\"$auth_trace_stop\"")
+        )
         let traceWait = try XCTUnwrap(
             script.range(
                 of: "wait \"$trace_pid\"",
@@ -181,6 +190,7 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         XCTAssertTrue(script.contains("status --porcelain=v1"))
         XCTAssertTrue(script.contains("trace_loss_marker_count"))
         XCTAssertTrue(script.contains("chmod 0600"))
+        XCTAssertFalse(script.contains("touch \"$auth_trace_stop\""))
         XCTAssertTrue(script.contains("unlink \"$calibration_raw_trace\""))
         XCTAssertTrue(script.contains("unlink \"$auth_raw_trace\""))
         XCTAssertTrue(script.contains("mv \"$evidence_temp\" \"$evidence_output\""))
