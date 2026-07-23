@@ -19,7 +19,7 @@ sanitize_swift_output() {
     -e 's#/private/var/folders/[^[:space:]]+#<temp-path>#g' \
     -e 's#(/var)?/tmp/[^[:space:]]+#<temp-path>#g' \
     -e 's#(Authorization[[:space:]]*:[[:space:]]*Bearer)[[:space:]]+[^[:space:]]+#\1 <redacted>#Ig' \
-    -e 's#sk-[A-Za-z0-9_-]{8,}#<redacted>#g' \
+    -e 's#(^|[^[:alnum:]_])sk-[A-Za-z0-9_-]{8,}#\1<redacted>#g' \
     -e 's#github_pat_[A-Za-z0-9_]{8,}#<redacted>#g' \
     -e 's#gh[pousr]_[A-Za-z0-9_]{8,}#<redacted>#g' \
     -e 's#xox[baprs]-[A-Za-z0-9-]{8,}#<redacted>#g' \
@@ -320,6 +320,7 @@ run_fixture_self_tests() {
     'GitHub classic ghp_providerfixture1234' \
     'Slack xoxb-providerfixture1234' \
     'AWS AKIAABCDEFGHIJKLMNOP' \
+    'ordinary risk-assessment and task-completion' \
     | sanitize_swift_output >"$sanitized_provider_output"
   if grep -Eq 'bearer-provider-value|sk-ant-providerfixture|github_pat_providerfixture1234|ghp_providerfixture1234|xoxb-providerfixture1234|AKIAABCDEFGHIJKLMNOP' \
     "$sanitized_provider_output"; then
@@ -333,6 +334,12 @@ run_fixture_self_tests() {
     return 1
   fi
   printf 'fixture=provider-token-redaction status=passed\n'
+  if ! grep -q 'ordinary risk-assessment and task-completion' "$sanitized_provider_output"; then
+    rm -rf "$fixture_dir"
+    printf 'fixture=provider-token-boundary status=invalid\n' >&2
+    return 1
+  fi
+  printf 'fixture=provider-token-boundary status=passed\n'
 
   fixture_xunit="$fixture_dir/test-results.xml"
   write_xunit_summary passed 3 3 3 0 0 "$fixture_xunit"

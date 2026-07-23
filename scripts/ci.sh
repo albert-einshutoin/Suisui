@@ -298,7 +298,7 @@ sanitize_gate_log() {
     -e 's#/private/var/folders/[^[:space:]]+#<temp-path>#g'
     -e 's#(/var)?/tmp/[^[:space:]]+#<temp-path>#g'
     -e 's#(Authorization[[:space:]]*:[[:space:]]*Bearer)[[:space:]]+[^[:space:]]+#\1 <redacted>#Ig'
-    -e 's#sk-[A-Za-z0-9_-]{8,}#<redacted>#g'
+    -e 's#(^|[^[:alnum:]_])sk-[A-Za-z0-9_-]{8,}#\1<redacted>#g'
     -e 's#github_pat_[A-Za-z0-9_]{8,}#<redacted>#g'
     -e 's#gh[pousr]_[A-Za-z0-9_]{8,}#<redacted>#g'
     -e 's#xox[baprs]-[A-Za-z0-9-]{8,}#<redacted>#g'
