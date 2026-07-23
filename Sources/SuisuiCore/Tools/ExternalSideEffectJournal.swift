@@ -154,23 +154,77 @@ public final class SQLiteExternalSideEffectJournal: ExternalSideEffectJournal, @
         defer { lock.unlock() }
 
         if let existing = try recordLocked(idempotencyKey: request.idempotencyKey) {
-            guard existing.tool == request.tool,
-                  existing.canonicalArgumentsDigest == request.canonicalArgumentsDigest else {
-                throw ExternalSideEffectJournalError.idempotencyKeyConflict(request.idempotencyKey)
+            return try claimExisting(existing, for: request, at: at)
+        }
+
+        let id = "side-effect-\(UUID().uuidString)"
+        let timestamp = dateFormatter.string(from: at)
+        let insertedIDs = try retryingDatabaseBusy {
+            try connection.queryStrings(
+                """
+                INSERT INTO external_side_effect_journal (
+                    id,
+                    execution_id,
+                    review_session_id,
+                    action_id,
+                    item_index,
+                    tool,
+                    canonical_arguments_digest,
+                    idempotency_key,
+                    attempt,
+                    state,
+                    prepared_at,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'prepared', ?, ?)
+                ON CONFLICT(idempotency_key) DO NOTHING
+                RETURNING id;
+                """,
+                parameters: [
+                    .text(id),
+                    .text(request.executionID),
+                    .text(request.reviewSessionID),
+                    .text(request.actionID),
+                    .init(request.itemIndex),
+                    .text(request.tool.rawValue),
+                    .blob(request.canonicalArgumentsDigest),
+                    .text(request.idempotencyKey),
+                    .text(timestamp),
+                    .text(timestamp)
+                ]
+            )
+        }
+        if insertedIDs == [id] {
+            return .execute(try requiredRecordLocked(id: id))
+        }
+        guard let existing = try recordLocked(idempotencyKey: request.idempotencyKey) else {
+            throw ExternalSideEffectJournalError.corruptedRecord(id)
+        }
+        return try claimExisting(existing, for: request, at: at)
+    }
+
+    private func claimExisting(
+        _ existing: ExternalSideEffectRecord,
+        for request: ExternalSideEffectRequest,
+        at: Date
+    ) throws -> ExternalSideEffectClaim {
+        guard existing.tool == request.tool,
+              existing.canonicalArgumentsDigest == request.canonicalArgumentsDigest else {
+            throw ExternalSideEffectJournalError.idempotencyKeyConflict(request.idempotencyKey)
+        }
+        switch existing.state {
+        case .succeeded:
+            guard let result = existing.result else {
+                throw ExternalSideEffectJournalError.corruptedRecord(existing.id)
             }
-            switch existing.state {
-            case .succeeded:
-                guard let result = existing.result else {
-                    throw ExternalSideEffectJournalError.corruptedRecord(existing.id)
-                }
-                return .returnSucceeded(result)
-            case .unknown, .compensated:
-                return .requiresReconciliation(existing)
-            case .prepared, .started:
-                return .inProgress(existing)
-            case .failedBeforeSideEffect:
-                let timestamp = dateFormatter.string(from: at)
-                try connection.execute(
+            return .returnSucceeded(result)
+        case .unknown, .compensated:
+            return .requiresReconciliation(existing)
+        case .prepared, .started:
+            return .inProgress(existing)
+        case .failedBeforeSideEffect:
+            let timestamp = dateFormatter.string(from: at)
+            let claimedIDs = try retryingDatabaseBusy {
+                try connection.queryStrings(
                     """
                     UPDATE external_side_effect_journal
                     SET execution_id = ?,
@@ -187,7 +241,8 @@ public final class SQLiteExternalSideEffectJournal: ExternalSideEffectJournal, @
                         failure_category = NULL,
                         reconciliation_result = NULL,
                         result_json = NULL
-                    WHERE id = ? AND state = 'failed_before_side_effect';
+                    WHERE id = ? AND state = 'failed_before_side_effect'
+                    RETURNING id;
                     """,
                     parameters: [
                         .text(request.executionID),
@@ -199,43 +254,48 @@ public final class SQLiteExternalSideEffectJournal: ExternalSideEffectJournal, @
                         .text(existing.id)
                     ]
                 )
+            }
+            if claimedIDs == [existing.id] {
                 return .execute(try requiredRecordLocked(id: existing.id))
             }
+            return try claimExisting(
+                try requiredRecordLocked(id: existing.id),
+                for: request,
+                at: at
+            )
         }
+    }
 
-        let id = "side-effect-\(UUID().uuidString)"
-        let timestamp = dateFormatter.string(from: at)
-        try connection.execute(
-            """
-            INSERT INTO external_side_effect_journal (
-                id,
-                execution_id,
-                review_session_id,
-                action_id,
-                item_index,
-                tool,
-                canonical_arguments_digest,
-                idempotency_key,
-                attempt,
-                state,
-                prepared_at,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'prepared', ?, ?);
-            """,
-            parameters: [
-                .text(id),
-                .text(request.executionID),
-                .text(request.reviewSessionID),
-                .text(request.actionID),
-                .init(request.itemIndex),
-                .text(request.tool.rawValue),
-                .blob(request.canonicalArgumentsDigest),
-                .text(request.idempotencyKey),
-                .text(timestamp),
-                .text(timestamp)
-            ]
-        )
-        return .execute(try requiredRecordLocked(id: id))
+    private func retryingDatabaseBusy<T>(_ operation: () throws -> T) throws -> T {
+        var attempt = 0
+        while true {
+            do {
+                return try operation()
+            } catch {
+                attempt += 1
+                guard isDatabaseBusy(error), attempt < 50 else {
+                    throw error
+                }
+                // Separate SQLite connections can briefly contend for the
+                // writer lock. A bounded retry keeps a valid idempotent claim
+                // from surfacing as a tool failure without hiding other errors.
+                Thread.sleep(forTimeInterval: 0.001)
+            }
+        }
+    }
+
+    private func isDatabaseBusy(_ error: Error) -> Bool {
+        let message: String
+        switch error {
+        case let DatabaseError.executeFailed(value),
+             let DatabaseError.prepareFailed(value),
+             let DatabaseError.stepFailed(value):
+            message = value
+        default:
+            return false
+        }
+        return message.localizedCaseInsensitiveContains("database is locked")
+            || message.localizedCaseInsensitiveContains("database is busy")
     }
 
     public func markStarted(id: String, at: Date) throws {

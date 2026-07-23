@@ -280,6 +280,103 @@ final class ExternalSideEffectJournalTests: XCTestCase {
         XCTAssertEqual(executableCount.value, 1)
     }
 
+    func testConcurrentClaimsAcrossJournalInstancesAreIdempotent() throws {
+        let root = temporaryDirectory()
+        let databaseURL = root.appendingPathComponent("journal.sqlite")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let firstStore = try makeStore(path: databaseURL.path)
+        let secondStore = try makeStore(path: databaseURL.path)
+        let queue = DispatchQueue(label: "cross-instance-journal-claim", attributes: .concurrent)
+
+        for index in 0..<50 {
+            let request = makeRequest(idempotencyKey: "cross-instance-key-\(index)")
+            let group = DispatchGroup()
+            let outcomes = LockedClaimOutcomes()
+
+            for store in [firstStore, secondStore] {
+                group.enter()
+                queue.async {
+                    defer { group.leave() }
+                    do {
+                        outcomes.append(try store.claim(request, at: Date()))
+                    } catch {
+                        outcomes.append(error)
+                    }
+                }
+            }
+            group.wait()
+
+            XCTAssertTrue(outcomes.errors.isEmpty, "Unexpected claim errors: \(outcomes.errors)")
+            XCTAssertEqual(
+                outcomes.claims.filter {
+                    if case .execute = $0 { return true }
+                    return false
+                }.count,
+                1
+            )
+            XCTAssertEqual(
+                outcomes.claims.filter {
+                    if case .inProgress = $0 { return true }
+                    return false
+                }.count,
+                1
+            )
+        }
+    }
+
+    func testConcurrentSafeRetriesAcrossJournalInstancesHaveOneWinner() throws {
+        let root = temporaryDirectory()
+        let databaseURL = root.appendingPathComponent("journal.sqlite")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let firstStore = try makeStore(path: databaseURL.path)
+        let secondStore = try makeStore(path: databaseURL.path)
+        let request = makeRequest(idempotencyKey: "safe-retry-key")
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+        guard case .execute(let firstAttempt) = try firstStore.claim(request, at: now) else {
+            return XCTFail("First claim must be executable.")
+        }
+        try firstStore.markStarted(id: firstAttempt.id, at: now)
+        try firstStore.markFailedBeforeSideEffect(
+            id: firstAttempt.id,
+            failureCategory: "permission_denied",
+            at: now
+        )
+
+        let group = DispatchGroup()
+        let queue = DispatchQueue(label: "cross-instance-safe-retry", attributes: .concurrent)
+        let outcomes = LockedClaimOutcomes()
+        for store in [firstStore, secondStore] {
+            group.enter()
+            queue.async {
+                defer { group.leave() }
+                do {
+                    outcomes.append(try store.claim(request, at: now))
+                } catch {
+                    outcomes.append(error)
+                }
+            }
+        }
+        group.wait()
+
+        XCTAssertTrue(outcomes.errors.isEmpty, "Unexpected claim errors: \(outcomes.errors)")
+        XCTAssertEqual(
+            outcomes.claims.filter {
+                if case .execute = $0 { return true }
+                return false
+            }.count,
+            1
+        )
+        XCTAssertEqual(
+            outcomes.claims.filter {
+                if case .inProgress = $0 { return true }
+                return false
+            }.count,
+            1
+        )
+        XCTAssertEqual(try firstStore.record(id: firstAttempt.id)?.attempt, 2)
+    }
+
     func testBulkItemsRoundTripIndependently() throws {
         let store = try makeStore()
         let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -719,6 +816,36 @@ private final class LockedCounter: @unchecked Sendable {
     func increment() {
         lock.lock()
         storage += 1
+        lock.unlock()
+    }
+}
+
+private final class LockedClaimOutcomes: @unchecked Sendable {
+    private let lock = NSLock()
+    private var claimStorage: [ExternalSideEffectClaim] = []
+    private var errorStorage: [Error] = []
+
+    var claims: [ExternalSideEffectClaim] {
+        lock.lock()
+        defer { lock.unlock() }
+        return claimStorage
+    }
+
+    var errors: [Error] {
+        lock.lock()
+        defer { lock.unlock() }
+        return errorStorage
+    }
+
+    func append(_ claim: ExternalSideEffectClaim) {
+        lock.lock()
+        claimStorage.append(claim)
+        lock.unlock()
+    }
+
+    func append(_ error: Error) {
+        lock.lock()
+        errorStorage.append(error)
         lock.unlock()
     }
 }
