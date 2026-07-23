@@ -155,6 +155,20 @@ run_fixture_self_tests() {
     printf 'fixture=missing-execution-summary status=blocked\n'
   fi
 
+  if validate_skipped_count 6 6 >/dev/null 2>&1; then
+    printf 'fixture=expected-skips status=passed\n'
+  else
+    printf 'fixture=expected-skips status=unexpected-failure\n' >&2
+    return 1
+  fi
+
+  if validate_skipped_count 7 6 >/dev/null 2>&1; then
+    printf 'fixture=skip-growth status=unexpected-pass\n' >&2
+    return 1
+  else
+    printf 'fixture=skip-growth status=blocked\n'
+  fi
+
   fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/suisui-swiftpm-runner-self-test.XXXXXX")"
   fixture_xunit="$fixture_dir/test-results.xml"
   write_xunit_summary passed 3 3 3 0 "$fixture_xunit"
