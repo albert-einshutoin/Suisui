@@ -37,7 +37,7 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
 
         XCTAssertTrue(script.contains("SUISUI_CODEX_RUN_AUTH_ACCESS_EVIDENCE"))
         XCTAssertTrue(script.contains("/usr/bin/fs_usage"))
-        XCTAssertTrue(script.contains("fs_usage -e -w -f pathname -t 12"))
+        XCTAssertTrue(script.contains("fs_usage -e -w -f pathname -t 45"))
         XCTAssertTrue(script.contains("/usr/bin/clang"))
         XCTAssertTrue(script.contains("parent_pid"))
         XCTAssertTrue(script.contains("child_pid"))
