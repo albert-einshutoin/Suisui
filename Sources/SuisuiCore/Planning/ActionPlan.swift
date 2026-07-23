@@ -354,6 +354,7 @@ public enum JSONValue: Codable, Equatable, Sendable {
     case object([String: JSONValue])
     case array([JSONValue])
     case null
+    case actionOutput(ActionOutputReference)
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
@@ -367,7 +368,14 @@ public enum JSONValue: Codable, Equatable, Sendable {
         } else if let value = try? container.decode(String.self) {
             self = .string(value)
         } else if let value = try? container.decode([String: JSONValue].self) {
-            self = .object(value)
+            if value.count == 3,
+               value["$type"] == .string("actionOutput"),
+               case .string(let actionID)? = value["actionID"],
+               case .string(let key)? = value["key"] {
+                self = .actionOutput(ActionOutputReference(actionID: actionID, key: key))
+            } else {
+                self = .object(value)
+            }
         } else {
             self = .array(try container.decode([JSONValue].self))
         }
@@ -389,6 +397,18 @@ public enum JSONValue: Codable, Equatable, Sendable {
             try container.encode(value)
         case .null:
             try container.encodeNil()
+        case .actionOutput(let reference):
+            try container.encode(reference.canonicalObject)
         }
+    }
+}
+
+private extension ActionOutputReference {
+    var canonicalObject: [String: JSONValue] {
+        [
+            "$type": .string("actionOutput"),
+            "actionID": .string(actionID),
+            "key": .string(key)
+        ]
     }
 }

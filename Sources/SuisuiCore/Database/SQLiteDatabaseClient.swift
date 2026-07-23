@@ -131,6 +131,10 @@ public final class SQLiteConnection {
         sqlite3_close(database)
     }
 
+    public var numberOfChanges: Int {
+        Int(sqlite3_changes(database))
+    }
+
     public func execute(_ sql: String) throws {
         var errorMessage: UnsafeMutablePointer<Int8>?
         let status = sqlite3_exec(database, sql, nil, nil, &errorMessage)
@@ -981,6 +985,25 @@ public enum CoreMigrations {
                     return
                 }
                 try connection.execute("ALTER TABLE tasks ADD COLUMN recurrence TEXT;")
+            },
+            DatabaseMigration(id: "0023_create_approval_execution_nonces") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS approval_execution_nonces (
+                        nonce TEXT PRIMARY KEY NOT NULL,
+                        approval_id TEXT NOT NULL,
+                        session_id TEXT NOT NULL,
+                        plan_id TEXT NOT NULL,
+                        canonical_plan_digest BLOB NOT NULL CHECK(length(canonical_plan_digest) = 32),
+                        state TEXT NOT NULL CHECK(state IN ('started', 'completed', 'failed', 'unknown')),
+                        claimed_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_approval_execution_nonces_approval_id
+                    ON approval_execution_nonces(approval_id);
+                    """
+                )
             },
         ]
     }

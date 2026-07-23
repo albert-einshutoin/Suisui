@@ -1,6 +1,6 @@
 import Foundation
 
-public enum ActionExecutorFailurePolicy: Equatable, Sendable {
+public enum ActionExecutorFailurePolicy: String, Codable, Equatable, Sendable {
     case stopOnFailure
     case continueOnFailure
 }
@@ -8,23 +8,30 @@ public enum ActionExecutorFailurePolicy: Equatable, Sendable {
 public enum ActionExecutorError: Error, Equatable, Sendable {
     case approvalRequired
     case approvalBlocked(String)
+    case invalidApproval(ApprovedExecutionValidationError)
+    case approvalReplayDetected(UUID)
     case noEnabledActions
     case validationFailed([ToolInputValidationIssue])
+    case dependencyResolutionFailed(actionID: String, reference: ActionOutputReference)
+    case invalidActionGraph(String)
 }
 
 public struct ActionExecutor: Sendable {
     private let registry: ToolRegistry
     private let auditLogger: (any AuditLogger)?
     private let redactor: DeveloperSecretRedactor
+    private let replayStore: any ApprovalReplayStore
 
     public init(
         registry: ToolRegistry,
         auditLogger: (any AuditLogger)? = nil,
-        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
+        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
+        replayStore: any ApprovalReplayStore = ProcessLocalApprovalReplayStore()
     ) {
         self.registry = registry
         self.auditLogger = auditLogger
         self.redactor = redactor
+        self.replayStore = replayStore
     }
 
     public func validationIssues(for session: ReviewSession) -> [ToolInputValidationIssue] {
@@ -33,16 +40,44 @@ public struct ActionExecutor: Sendable {
 
     public func execute(
         _ session: ReviewSession,
-        failurePolicy: ActionExecutorFailurePolicy = .stopOnFailure,
         now: Date = Date()
     ) throws -> ReviewSession {
-        try preflight(session)
+        let approval = try preflight(session, now: now)
+        if let approval {
+            guard try replayStore.claim(approval, at: now) else {
+                throw ActionExecutorError.approvalReplayDetected(approval.nonce)
+            }
+        }
+
+        do {
+            let executed = try executeClaimed(session, approval: approval, now: now)
+            if let approval {
+                try replayStore.finish(
+                    nonce: approval.nonce,
+                    state: executed.executionStatus == .completed ? .completed : .failed,
+                    at: now
+                )
+            }
+            return executed
+        } catch {
+            if let approval {
+                try? replayStore.finish(nonce: approval.nonce, state: .unknown, at: now)
+            }
+            throw error
+        }
+    }
+
+    private func executeClaimed(
+        _ session: ReviewSession,
+        approval: ApprovedExecution?,
+        now: Date
+    ) throws -> ReviewSession {
 
         var working = session
         working.executionStatus = .executing
         try recordReviewEvent(action: "execution.start", status: .started, session: working)
 
-        var latestProjectID: JSONValue?
+        var actionOutputs: [String: [String: JSONValue]] = [:]
         var hasFailure = false
 
         for item in working.items {
@@ -57,7 +92,7 @@ public struct ActionExecutor: Sendable {
                 continue
             }
 
-            if failurePolicy == .stopOnFailure, hasFailure {
+            if working.executionPolicy == .stopOnFailure, hasFailure {
                 working.markAction(id: item.id, status: .skipped)
                 recordToolEventOrMarkAuditFailure(
                     tool: item.editedAction.tool,
@@ -68,15 +103,49 @@ public struct ActionExecutor: Sendable {
                 continue
             }
 
-            var action = item.editedAction
-            injectDependencies(into: &action, latestProjectID: latestProjectID)
+            let action = item.editedAction
             working.markAction(id: item.id, status: .executing)
 
             do {
                 let tool = try registry.tool(named: action.tool)
-                let result = try tool.execute(
+                let resolution = try resolve(
                     arguments: action.arguments,
-                    context: ToolExecutionContext(approvalToken: working.approvalToken, now: now, source: .reviewUI)
+                    actionID: action.id,
+                    outputs: actionOutputs
+                )
+                let resolvedArguments = resolution.arguments
+                let resolvedValidationIssues = tool.inputSchema.validate(
+                    arguments: resolvedArguments,
+                    tool: action.tool,
+                    actionID: action.id
+                )
+                guard resolvedValidationIssues.isEmpty else {
+                    throw ToolExecutionError.validationFailed(action.tool, issues: resolvedValidationIssues)
+                }
+                working.resolvedActionEvidence.append(
+                    ResolvedActionEvidence(
+                        actionID: action.id,
+                        resolvedArgumentsDigest: try CanonicalJSONEncoder
+                            .digest(.object(resolvedArguments))
+                            .lowercaseHexString,
+                        dependencies: resolution.dependencies
+                    )
+                )
+                let authorization = try approval.map {
+                    try ToolActionAuthorization(
+                        approval: $0,
+                        actionID: action.id,
+                        tool: action.tool,
+                        arguments: resolvedArguments
+                    )
+                }
+                let result = try tool.execute(
+                    arguments: resolvedArguments,
+                    context: ToolExecutionContext(
+                        authorization: authorization,
+                        now: now,
+                        source: .reviewUI
+                    )
                 )
                 let actionStatus = Self.actionExecutionStatus(for: result.status)
                 if result.status == .failed {
@@ -97,8 +166,8 @@ public struct ActionExecutor: Sendable {
                     session: &working
                 )
 
-                if result.status == .succeeded, action.tool == .projectCreate, let projectID = result.output["projectId"] {
-                    latestProjectID = projectID
+                if result.status == .succeeded {
+                    actionOutputs[action.id] = result.output
                 }
             } catch {
                 hasFailure = true
@@ -127,10 +196,12 @@ public struct ActionExecutor: Sendable {
         return working
     }
 
-    private func preflight(_ session: ReviewSession) throws {
+    private func preflight(_ session: ReviewSession, now: Date) throws -> ApprovedExecution? {
         guard !session.enabledItems.isEmpty else {
             throw ActionExecutorError.noEnabledActions
         }
+
+        try validateActionGraph(session)
 
         let validationIssues = validationIssues(for: session)
         guard validationIssues.isEmpty else {
@@ -142,44 +213,168 @@ public struct ActionExecutor: Sendable {
             throw ActionExecutorError.approvalBlocked(reason)
         case .pending:
             throw ActionExecutorError.approvalRequired
-        case .approved, .notRequired:
-            return
+        case .approved(let approval):
+            do {
+                try approval.validate(
+                    for: session.approvalBinding,
+                    sessionID: session.id,
+                    now: now
+                )
+            } catch let error as ApprovedExecutionValidationError {
+                throw ActionExecutorError.invalidApproval(error)
+            }
+            return approval
+        case .notRequired:
+            return nil
         }
     }
 
-    private func injectDependencies(into action: inout PlanAction, latestProjectID: JSONValue?) {
-        guard let latestProjectID else {
-            return
+    private func validateActionGraph(_ session: ReviewSession) throws {
+        let actionIDs = session.items.map(\.id)
+        guard Set(actionIDs).count == actionIDs.count else {
+            throw ActionExecutorError.invalidActionGraph("Action IDs must be unique.")
         }
+        let actionIndex = Dictionary(uniqueKeysWithValues: actionIDs.enumerated().map { ($0.element, $0.offset) })
+        let enabledActionIDs = Set(session.enabledItems.map(\.id))
 
-        switch action.tool {
-        case .taskCreate:
-            if action.arguments["projectId"] == nil {
-                action.arguments["projectId"] = latestProjectID
-            }
-        case .taskBulkCreate:
-            guard case .array(let values)? = action.arguments["tasks"] else {
-                return
-            }
-            action.arguments["tasks"] = .array(values.map { value in
-                guard case .object(var object) = value else {
-                    return value
+        for (consumerIndex, item) in session.items.enumerated() where item.isEnabled {
+            for reference in actionOutputReferences(in: .object(item.editedAction.arguments)) {
+                guard let sourceIndex = actionIndex[reference.actionID] else {
+                    throw ActionExecutorError.invalidActionGraph(
+                        "Action \(item.id) references missing action \(reference.actionID)."
+                    )
                 }
-                if object["projectId"] == nil {
-                    object["projectId"] = latestProjectID
+                guard sourceIndex < consumerIndex else {
+                    throw ActionExecutorError.invalidActionGraph(
+                        "Action \(item.id) references an action that does not precede it."
+                    )
                 }
-                return .object(object)
-            })
-        default:
-            return
+                guard enabledActionIDs.contains(reference.actionID) else {
+                    throw ActionExecutorError.invalidActionGraph(
+                        "Action \(item.id) references disabled action \(reference.actionID)."
+                    )
+                }
+            }
+        }
+    }
+
+    private func actionOutputReferences(in value: JSONValue) -> [ActionOutputReference] {
+        switch value {
+        case .actionOutput(let reference):
+            return [reference]
+        case .object(let object):
+            return object.keys.sorted().flatMap { key in
+                object[key].map(actionOutputReferences(in:)) ?? []
+            }
+        case .array(let values):
+            return values.flatMap(actionOutputReferences(in:))
+        case .string, .number, .bool, .null:
+            return []
+        }
+    }
+
+    private func resolve(
+        arguments: [String: JSONValue],
+        actionID: String,
+        outputs: [String: [String: JSONValue]]
+    ) throws -> (
+        arguments: [String: JSONValue],
+        dependencies: [ActionDependencyResolutionEvidence]
+    ) {
+        var resolvedArguments: [String: JSONValue] = [:]
+        var dependencies: [ActionDependencyResolutionEvidence] = []
+        for key in arguments.keys.sorted() {
+            guard let value = arguments[key] else {
+                continue
+            }
+            let resolution = try resolve(
+                value: value,
+                path: key,
+                actionID: actionID,
+                outputs: outputs
+            )
+            resolvedArguments[key] = resolution.value
+            dependencies.append(contentsOf: resolution.dependencies)
+        }
+        return (resolvedArguments, dependencies)
+    }
+
+    private func resolve(
+        value: JSONValue,
+        path: String,
+        actionID: String,
+        outputs: [String: [String: JSONValue]]
+    ) throws -> (
+        value: JSONValue,
+        dependencies: [ActionDependencyResolutionEvidence]
+    ) {
+        switch value {
+        case .actionOutput(let reference):
+            guard let resolved = outputs[reference.actionID]?[reference.key] else {
+                throw ActionExecutorError.dependencyResolutionFailed(
+                    actionID: actionID,
+                    reference: reference
+                )
+            }
+            return (
+                resolved,
+                [
+                    ActionDependencyResolutionEvidence(
+                        argumentPath: path,
+                        sourceActionID: reference.actionID,
+                        outputKey: reference.key,
+                        resolvedValueDigest: try CanonicalJSONEncoder
+                            .digest(resolved)
+                            .lowercaseHexString
+                    )
+                ]
+            )
+        case .object(let object):
+            var resolvedObject: [String: JSONValue] = [:]
+            var dependencies: [ActionDependencyResolutionEvidence] = []
+            for key in object.keys.sorted() {
+                guard let child = object[key] else {
+                    continue
+                }
+                let resolution = try resolve(
+                    value: child,
+                    path: "\(path).\(key)",
+                    actionID: actionID,
+                    outputs: outputs
+                )
+                resolvedObject[key] = resolution.value
+                dependencies.append(contentsOf: resolution.dependencies)
+            }
+            return (.object(resolvedObject), dependencies)
+        case .array(let values):
+            var resolvedValues: [JSONValue] = []
+            var dependencies: [ActionDependencyResolutionEvidence] = []
+            for (index, child) in values.enumerated() {
+                let resolution = try resolve(
+                    value: child,
+                    path: "\(path)[\(index)]",
+                    actionID: actionID,
+                    outputs: outputs
+                )
+                resolvedValues.append(resolution.value)
+                dependencies.append(contentsOf: resolution.dependencies)
+            }
+            return (.array(resolvedValues), dependencies)
+        case .string, .number, .bool, .null:
+            return (value, [])
         }
     }
 
     private static func failureRecovery(for error: Error) -> ReviewActionFailureRecovery {
+        if error is ActionExecutorError {
+            return .notRetryable
+        }
+
         if let executionError = error as? ToolExecutionError {
             switch executionError {
             case .validationFailed,
                  .approvalRequired,
+                 .approvalBindingInvalid,
                  .dangerousToolBlocked,
                  .unknownTool,
                  .duplicateTool:
@@ -292,6 +487,8 @@ public struct ActionExecutor: Sendable {
             return "Tool \(tool.rawValue) is not available."
         case ToolExecutionError.approvalRequired(let tool):
             return "Approval is required before running \(tool.rawValue)."
+        case ToolExecutionError.approvalBindingInvalid(let tool):
+            return "Approval no longer matches \(tool.rawValue). Review the action again."
         case ToolExecutionError.dangerousToolBlocked(let tool):
             return "Tool \(tool.rawValue) is blocked for safety."
         case ToolExecutionError.validationFailed(let tool, let message):

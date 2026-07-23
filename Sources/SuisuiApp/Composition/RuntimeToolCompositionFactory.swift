@@ -196,6 +196,7 @@ extension AppRuntimeFactory {
             logger: (any AuditLogger)?,
             receiptStore: (any ExecutionReceiptStore)?,
             registry: ToolRegistry,
+            replayStore: any ApprovalReplayStore,
             reviewRuntimeValidationMessage: String?
         ) = {
             do {
@@ -282,17 +283,33 @@ extension AppRuntimeFactory {
                     logger: auditLogger
                 ))
                 let receiptStore = try makeExecutionReceiptStore()
-                return (auditLogger, receiptStore, registry, nil)
+                return (
+                    auditLogger,
+                    receiptStore,
+                    registry,
+                    SQLiteApprovalReplayStore(connection: connection),
+                    nil
+                )
             } catch {
                 let baseMessage = "Review execution tools are unavailable because audit logging or local data stores could not be opened."
                 let unavailableRegistry = unavailableReviewRegistry(for: plan, message: baseMessage)
-                return (nil, nil, unavailableRegistry.registry, unavailableRegistry.message)
+                return (
+                    nil,
+                    nil,
+                    unavailableRegistry.registry,
+                    ProcessLocalApprovalReplayStore(),
+                    unavailableRegistry.message
+                )
             }
         }()
 
         return ReviewSessionViewModel(
             plan: plan,
-            executor: ActionExecutor(registry: runtime.registry, auditLogger: runtime.logger),
+            executor: ActionExecutor(
+                registry: runtime.registry,
+                auditLogger: runtime.logger,
+                replayStore: runtime.replayStore
+            ),
             auditLogger: runtime.logger,
             executionReceiptStore: runtime.receiptStore,
             runtimeValidationMessage: runtime.reviewRuntimeValidationMessage

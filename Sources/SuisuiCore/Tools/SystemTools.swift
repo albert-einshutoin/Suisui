@@ -18,7 +18,7 @@ public struct NotificationTool: Tool {
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
-        try enforcePermission(context: context)
+        try enforcePermission(arguments: arguments, context: context)
         try validateRequiredArguments(arguments)
 
         let args = ToolArguments(arguments, tool: name)
@@ -139,7 +139,7 @@ public struct CalendarTool: Tool {
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
-        try enforcePermission(context: context)
+        try enforcePermission(arguments: arguments, context: context)
         try validateRequiredArguments(arguments)
 
         let args = ToolArguments(arguments, tool: name)
@@ -263,7 +263,7 @@ public struct ReminderTool: Tool {
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
-        try enforcePermission(context: context)
+        try enforcePermission(arguments: arguments, context: context)
         try validateRequiredArguments(arguments)
 
         let args = ToolArguments(arguments, tool: name)
@@ -357,7 +357,7 @@ public struct FileSystemTool: Tool {
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
-        try enforcePermission(context: context)
+        try enforcePermission(arguments: arguments, context: context)
         try validateRequiredArguments(arguments)
 
         let args = ToolArguments(arguments, tool: name)
@@ -492,7 +492,7 @@ public struct MailDraftTool: Tool {
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
-        try enforcePermission(context: context)
+        try enforcePermission(arguments: arguments, context: context)
         try validateRequiredArguments(arguments)
 
         let args = ToolArguments(arguments, tool: name)

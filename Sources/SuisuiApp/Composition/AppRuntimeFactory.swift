@@ -141,6 +141,8 @@ extension JSONValue {
             "list"
         case .null:
             "null"
+        case .actionOutput(let reference):
+            "output(\(reference.actionID).\(reference.key))"
         }
     }
 }

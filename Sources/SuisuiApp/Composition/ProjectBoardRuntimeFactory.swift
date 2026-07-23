@@ -108,7 +108,11 @@ extension AppRuntimeFactory {
             let registry = try makeRuntimeToolRegistry(connection: connection, auditLogger: auditLogger)
             return AssistantQueueExecutionCoordinator(
                 queueStore: assistantQueueStore,
-                executor: ActionExecutor(registry: registry, auditLogger: auditLogger),
+                executor: ActionExecutor(
+                    registry: registry,
+                    auditLogger: auditLogger,
+                    replayStore: SQLiteApprovalReplayStore(connection: connection)
+                ),
                 executionReceiptStore: executionReceiptStore,
                 managedAIUsageLedgerStore: SQLiteManagedAIUsageLedgerStore(connection: connection),
                 managedAIBillingSettingsProvider: { loadRuntimeAppSettings().managedAIBilling }

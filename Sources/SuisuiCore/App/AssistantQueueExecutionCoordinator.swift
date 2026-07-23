@@ -87,11 +87,7 @@ public struct AssistantQueueExecutionCoordinator {
         let runID = runIDProvider()
         var session = ReviewSession(plan: plan, createdAt: startedAt)
         if session.canApprove {
-            try session.approve(token: ApprovalToken(
-                id: "assistant-queue-execution:\(id):\(UUID().uuidString)",
-                sessionID: session.id,
-                approvedAt: startedAt
-            ))
+            try session.approve(issuedAt: startedAt)
         }
 
         let executedSession: ReviewSession

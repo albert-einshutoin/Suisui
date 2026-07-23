@@ -18,7 +18,7 @@ public struct ProjectTool: Tool {
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
-        try enforcePermission(context: context)
+        try enforcePermission(arguments: arguments, context: context)
         try validateRequiredArguments(arguments)
 
         let args = ToolArguments(arguments, tool: name)
@@ -129,7 +129,7 @@ public struct TaskTool: Tool {
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
-        try enforcePermission(context: context)
+        try enforcePermission(arguments: arguments, context: context)
         try validateRequiredArguments(arguments)
 
         let args = ToolArguments(arguments, tool: name)
@@ -336,7 +336,7 @@ public struct KnowledgeFrameTool: Tool {
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
-        try enforcePermission(context: context)
+        try enforcePermission(arguments: arguments, context: context)
         try validateRequiredArguments(arguments)
 
         let args = ToolArguments(arguments, tool: name)

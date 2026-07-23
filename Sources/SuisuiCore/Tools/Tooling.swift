@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 public struct ToolInputSchema: Equatable, Sendable {
@@ -146,28 +147,86 @@ public enum ToolPermissionLevel: String, Equatable, Sendable {
     case dangerous
 }
 
-public struct ApprovalToken: Equatable, Sendable {
-    public var id: String
-    public var sessionID: String
-    public var approvedAt: Date
+public struct ToolActionAuthorization: Equatable, Sendable {
+    public let approval: ApprovedExecution
+    public let actionID: String
+    public let tool: ActionTool
+    public let resolvedArgumentsDigest: Data
 
-    public init(id: String, sessionID: String, approvedAt: Date = Date()) {
-        self.id = id
-        self.sessionID = sessionID
-        self.approvedAt = approvedAt
+    init(
+        approval: ApprovedExecution,
+        actionID: String,
+        tool: ActionTool,
+        arguments: [String: JSONValue]
+    ) throws {
+        self.approval = approval
+        self.actionID = actionID
+        self.tool = tool
+        self.resolvedArgumentsDigest = try Self.digest(arguments: arguments)
+    }
+
+    public func validate(
+        tool expectedTool: ActionTool,
+        arguments: [String: JSONValue],
+        now: Date
+    ) throws {
+        guard approval.enabledActionIDs.contains(actionID),
+              tool == expectedTool,
+              now >= approval.issuedAt,
+              now < approval.expiresAt,
+              resolvedArgumentsDigest == (try Self.digest(arguments: arguments)) else {
+            throw ToolExecutionError.approvalBindingInvalid(expectedTool)
+        }
+    }
+
+    private static func digest(arguments: [String: JSONValue]) throws -> Data {
+        Data(SHA256.hash(data: try CanonicalJSONEncoder.encode(.object(arguments))))
     }
 }
 
 public struct ToolExecutionContext: Sendable {
-    public var approvalToken: ApprovalToken?
+    public var authorization: ToolActionAuthorization?
     public var now: Date
     public var source: ToolExecutionSource
+#if DEBUG
+    // Existing unit checks exercise individual tools without constructing a
+    // review session. This internal-only bridge is absent from release builds.
+    internal var debugApprovalToken: ApprovalToken?
+#endif
 
-    public init(approvalToken: ApprovalToken? = nil, now: Date = Date(), source: ToolExecutionSource) {
-        self.approvalToken = approvalToken
+    public init(
+        authorization: ToolActionAuthorization? = nil,
+        now: Date = Date(),
+        source: ToolExecutionSource
+    ) {
+        self.authorization = authorization
         self.now = now
         self.source = source
+#if DEBUG
+        self.debugApprovalToken = nil
+#endif
     }
+
+    public var approvalToken: ApprovalToken? {
+#if DEBUG
+        authorization?.approval ?? debugApprovalToken
+#else
+        authorization?.approval
+#endif
+    }
+
+#if DEBUG
+    internal init(
+        approvalToken: ApprovalToken,
+        now: Date = Date(),
+        source: ToolExecutionSource
+    ) {
+        self.authorization = nil
+        self.now = now
+        self.source = source
+        self.debugApprovalToken = approvalToken
+    }
+#endif
 }
 
 public enum ToolExecutionSource: String, Equatable, Sendable {
@@ -210,6 +269,7 @@ public enum ToolExecutionError: Error, Equatable, Sendable {
     case duplicateTool(ActionTool)
     case unknownTool(ActionTool)
     case approvalRequired(ActionTool)
+    case approvalBindingInvalid(ActionTool)
     case dangerousToolBlocked(ActionTool)
     case validationFailed(ActionTool, String)
     case executionFailed(ActionTool, String)
@@ -232,14 +292,20 @@ public protocol Tool: Sendable {
 }
 
 public extension Tool {
-    func enforcePermission(context: ToolExecutionContext) throws {
+    func enforcePermission(arguments: [String: JSONValue], context: ToolExecutionContext) throws {
         switch permissionLevel {
         case .read, .draft:
             return
         case .writeWithApproval:
-            guard context.approvalToken != nil else {
+#if DEBUG
+            if context.debugApprovalToken != nil {
+                return
+            }
+#endif
+            guard let authorization = context.authorization else {
                 throw ToolExecutionError.approvalRequired(name)
             }
+            try authorization.validate(tool: name, arguments: arguments, now: context.now)
         case .dangerous:
             throw ToolExecutionError.dangerousToolBlocked(name)
         }
@@ -384,6 +450,11 @@ private extension JSONValue {
     }
 
     func matchesSchemaType(_ expectedType: String) -> Bool {
+        // Typed references are validated against the target schema immediately
+        // after resolution, when their concrete value is available.
+        if case .actionOutput = self {
+            return true
+        }
         let alternatives = expectedType
             .split(separator: "|")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }

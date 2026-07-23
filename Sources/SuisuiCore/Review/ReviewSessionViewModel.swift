@@ -80,8 +80,7 @@ public final class ReviewSessionViewModel: ObservableObject {
             throw ReviewSessionError.approvalNotRequired
         }
 
-        let token = ApprovalToken(id: UUID().uuidString, sessionID: session.id)
-        try session.approve(token: token)
+        try session.approve()
         recordAudit(action: "session.approve", status: .succeeded)
     }
 
@@ -116,12 +115,17 @@ public final class ReviewSessionViewModel: ObservableObject {
                 self.auditErrorMessage = auditErrorMessage
             }
             recordExecutionReceipt(for: executedSession, startedAt: startedAt, finishedAt: Date())
+            session.requestFreshApproval()
         } catch {
             errorMessage = Self.userFacingErrorMessage(for: error)
             recordAudit(action: "session.execute", status: .failed)
             var failedSession = session
             failedSession.executionStatus = .failed
             recordExecutionReceipt(for: failedSession, startedAt: startedAt, finishedAt: Date())
+            // Preflight rejection and unknown execution failures can both leave
+            // the sealed approval unusable. Require an explicit fresh approval
+            // instead of trapping the user behind the consumed/expired nonce.
+            session.requestFreshApproval()
             throw error
         }
     }
@@ -241,6 +245,13 @@ public final class ReviewSessionViewModel: ObservableObject {
             return "Enable at least one action before executing it."
         case ActionExecutorError.validationFailed:
             return "Fix the highlighted action issues before executing."
+        case ActionExecutorError.invalidApproval:
+            return "This approval is no longer valid. Review and approve the plan again."
+        case ActionExecutorError.approvalReplayDetected:
+            return "This approval was already used. Review and approve the plan again."
+        case ActionExecutorError.dependencyResolutionFailed,
+             ActionExecutorError.invalidActionGraph:
+            return "The approved action dependencies are invalid. Review the plan again."
         default:
             return "Review execution could not be completed."
         }

@@ -1443,7 +1443,7 @@ public struct DevelopmentPullRequestReviewGateTool: Tool {
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
-        try enforcePermission(context: context)
+        try enforcePermission(arguments: arguments, context: context)
 
         do {
             let gate = try evaluator.evaluate(arguments: arguments, tool: name)
@@ -1519,7 +1519,7 @@ public struct DevelopmentPullRequestMergeTool: Tool {
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
-        try enforcePermission(context: context)
+        try enforcePermission(arguments: arguments, context: context)
 
         do {
             let gate = try evaluator.evaluate(arguments: arguments, tool: name)
@@ -1653,7 +1653,7 @@ public struct DevelopmentPushWorkflowTool: Tool {
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
-        try enforcePermission(context: context)
+        try enforcePermission(arguments: arguments, context: context)
         try validateRequiredArguments(arguments)
 
         let args = ToolArguments(arguments, tool: name)
@@ -1955,7 +1955,7 @@ public struct DevelopmentPullRequestCreationTool: Tool {
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
-        try enforcePermission(context: context)
+        try enforcePermission(arguments: arguments, context: context)
         try validateRequiredArguments(arguments)
 
         let args = ToolArguments(arguments, tool: name)

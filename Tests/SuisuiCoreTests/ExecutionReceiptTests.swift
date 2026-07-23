@@ -3,6 +3,82 @@ import XCTest
 @testable import SuisuiCore
 
 final class ExecutionReceiptTests: XCTestCase {
+    func testReviewReceiptCarriesApprovedAndResolvedDependencyEvidence() throws {
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .projectCreate,
+                description: "project",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(
+                    tool: .projectCreate,
+                    status: .succeeded,
+                    summary: "created",
+                    output: ["projectId": .string("project-42")]
+                )
+            },
+            StaticTool(
+                name: .taskCreate,
+                description: "task",
+                inputSchema: ToolInputSchema(
+                    required: ["title", "projectId"],
+                    properties: ["title": "string", "projectId": "string"]
+                ),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(tool: .taskCreate, status: .succeeded, summary: "created")
+            }
+        ])
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let actions = [
+            PlanAction(id: "project", tool: .projectCreate, arguments: ["title": .string("Alpha")]),
+            PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+        ]
+        var session = ReviewSession(
+            id: "review-evidence",
+            plan: ActionPlan(
+                id: "plan-evidence",
+                userInput: "Create a project and task",
+                summary: "Create linked work",
+                actions: actions,
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        )
+        let approval = try session.approve(issuedAt: now)
+        let executed = try ActionExecutor(registry: registry).execute(session, now: now)
+
+        let receipt = ExecutionReceiptFactory.makeReviewReceipt(
+            session: executed,
+            runID: "run-evidence",
+            model: nil,
+            usage: .unavailable,
+            startedAt: now,
+            finishedAt: now
+        )
+
+        XCTAssertEqual(receipt.approvalEvidence?.approvalID, approval.approvalID.uuidString)
+        XCTAssertEqual(
+            receipt.approvalEvidence?.canonicalPlanDigest,
+            approval.canonicalPlanDigest.lowercaseHexString
+        )
+        XCTAssertEqual(receipt.resolvedActionEvidence?.count, 2)
+        XCTAssertEqual(
+            receipt.resolvedActionEvidence?.last?.dependencies,
+            [
+                ActionDependencyResolutionEvidence(
+                    argumentPath: "projectId",
+                    sourceActionID: "project",
+                    outputKey: "projectId",
+                    resolvedValueDigest: try CanonicalJSONEncoder
+                        .digest(.string("project-42"))
+                        .lowercaseHexString
+                )
+            ]
+        )
+    }
+
     func testExecutionReceiptRedactorCoversHomeVarAndFileURLLocalPaths() {
         let allowedRoot = packageRootPath
         let allowedFileURL = URL(fileURLWithPath: "\(allowedRoot)/docs/plan.md").absoluteString
@@ -84,7 +160,7 @@ final class ExecutionReceiptTests: XCTestCase {
 
         XCTAssertEqual(receipt.id, "receipt:run-1:review-1")
         XCTAssertEqual(receipt.status, .succeeded)
-        XCTAssertEqual(receipt.approvalID, "approval-1")
+        XCTAssertNotNil(receipt.approvalID.flatMap(UUID.init(uuidString:)))
         XCTAssertEqual(receipt.model, ExecutionReceiptModel(provider: "OpenAI", name: "gpt-5.3"))
         XCTAssertEqual(receipt.usage.totalTokens, 152)
         XCTAssertEqual(receipt.usage.state, .estimated)

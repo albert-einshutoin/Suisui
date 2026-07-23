@@ -215,6 +215,28 @@ public struct ExecutionReceiptQueueApproval: Codable, Equatable, Sendable {
     }
 }
 
+public struct ExecutionReceiptApprovalEvidence: Codable, Equatable, Sendable {
+    public let approvalID: String
+    public let sessionID: String
+    public let planID: String
+    public let canonicalPlanDigest: String
+    public let enabledActionIDs: [String]
+    public let issuedAt: Date
+    public let expiresAt: Date
+    public let nonce: String
+
+    public init(_ approval: ApprovedExecution) {
+        self.approvalID = approval.approvalID.uuidString
+        self.sessionID = approval.sessionID
+        self.planID = approval.planID
+        self.canonicalPlanDigest = approval.canonicalPlanDigest.lowercaseHexString
+        self.enabledActionIDs = approval.enabledActionIDs.sorted()
+        self.issuedAt = approval.issuedAt
+        self.expiresAt = approval.expiresAt
+        self.nonce = approval.nonce.uuidString
+    }
+}
+
 public struct ExecutionReceipt: Codable, Equatable, Sendable {
     public let schemaVersion: Int
     public private(set) var id: String
@@ -222,6 +244,8 @@ public struct ExecutionReceipt: Codable, Equatable, Sendable {
     public private(set) var approvalID: String?
     public private(set) var assistantQueueItemID: String?
     public private(set) var queueApproval: ExecutionReceiptQueueApproval?
+    public private(set) var approvalEvidence: ExecutionReceiptApprovalEvidence?
+    public private(set) var resolvedActionEvidence: [ResolvedActionEvidence]?
     public private(set) var createdAt: Date
     public private(set) var startedAt: Date?
     public private(set) var finishedAt: Date?
@@ -242,6 +266,8 @@ public struct ExecutionReceipt: Codable, Equatable, Sendable {
         approvalID: String? = nil,
         assistantQueueItemID: String? = nil,
         queueApproval: ExecutionReceiptQueueApproval? = nil,
+        approvalEvidence: ExecutionReceiptApprovalEvidence? = nil,
+        resolvedActionEvidence: [ResolvedActionEvidence]? = nil,
         createdAt: Date = Date(),
         startedAt: Date? = nil,
         finishedAt: Date? = nil,
@@ -271,6 +297,8 @@ public struct ExecutionReceipt: Codable, Equatable, Sendable {
                 reviewedContentDigest: approval.reviewedContentDigest
             )
         }
+        self.approvalEvidence = approvalEvidence
+        self.resolvedActionEvidence = resolvedActionEvidence
         self.createdAt = createdAt
         self.startedAt = startedAt
         self.finishedAt = finishedAt
@@ -1223,7 +1251,9 @@ public enum ExecutionReceiptFactory {
         return ExecutionReceipt(
             id: "receipt:\(runID):\(session.id)",
             runID: runID,
-            approvalID: session.approvalToken?.id,
+            approvalID: session.approvalToken?.approvalID.uuidString,
+            approvalEvidence: session.approvalToken.map(ExecutionReceiptApprovalEvidence.init),
+            resolvedActionEvidence: session.resolvedActionEvidence,
             createdAt: finishedAt ?? startedAt ?? Date(),
             startedAt: startedAt,
             finishedAt: finishedAt,
@@ -1450,7 +1480,7 @@ public enum ExecutionReceiptFactory {
         return ExecutionReceipt(
             id: "receipt:\(runID):\(item.id):\(session.id)",
             runID: runID,
-            approvalID: session.approvalToken?.id,
+            approvalID: session.approvalToken?.approvalID.uuidString,
             assistantQueueItemID: item.id,
             queueApproval: item.approval.map { approval in
                 ExecutionReceiptQueueApproval(
@@ -1460,6 +1490,8 @@ public enum ExecutionReceiptFactory {
                     reviewedContentFingerprint: approval.reviewedContentFingerprint
                 )
             },
+            approvalEvidence: session.approvalToken.map(ExecutionReceiptApprovalEvidence.init),
+            resolvedActionEvidence: session.resolvedActionEvidence,
             createdAt: finishedAt ?? startedAt ?? Date(),
             startedAt: startedAt,
             finishedAt: finishedAt,
@@ -2374,7 +2406,7 @@ private extension JSONValue {
             String(value)
         case .bool(let value):
             value ? "true" : "false"
-        case .object, .array, .null:
+        case .object, .array, .null, .actionOutput:
             nil
         }
     }
@@ -2391,7 +2423,7 @@ private extension JSONValue {
             }
         case .bool(let value):
             String(value)
-        case .object, .array, .null:
+        case .object, .array, .null, .actionOutput:
             nil
         }
     }

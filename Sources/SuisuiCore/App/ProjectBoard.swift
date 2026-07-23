@@ -6163,8 +6163,17 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         do {
+            let approval = ApprovalToken(
+                id: approvalToken,
+                sessionID: "project-board-google-calendar-sync"
+            )
             let context = ToolExecutionContext(
-                approvalToken: ApprovalToken(id: approvalToken, sessionID: "project-board-google-calendar-sync"),
+                authorization: try ToolActionAuthorization(
+                    approval: approval,
+                    actionID: "standalone",
+                    tool: .calendarCreateEvent,
+                    arguments: [:]
+                ),
                 source: .reviewUI
             )
             let result = try googleCalendarSync.syncDueTasks(context: context)
