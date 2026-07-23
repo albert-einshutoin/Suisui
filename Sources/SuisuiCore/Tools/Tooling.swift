@@ -189,7 +189,7 @@ public struct ToolExecutionContext: Sendable {
     public var now: Date
     public var source: ToolExecutionSource
 #if DEBUG
-    // Existing unit fixtures exercise individual tools without constructing a
+    // Existing unit checks exercise individual tools without constructing a
     // review session. This internal-only bridge is absent from release builds.
     internal var debugApprovalToken: ApprovalToken?
 #endif
