@@ -393,28 +393,22 @@ swift test --filter CodexLocalRuntimeProviderTests/testLiveAuthStoreAccessIsObse
 test_pid=$!
 
 deadline=$((SECONDS + 30))
-while [[ ! -s "${wrapper_path}.parent-pid" || ! -s "${wrapper_path}.child-pid" ]]; do
+while [[ ! -s "${wrapper_path}.parent-pid" ]]; do
   if ! kill -0 "$test_pid" >/dev/null 2>&1; then
-    echo "Codex auth-access audit test exited before publishing process identities." >&2
+    echo "Codex auth-access audit test exited before publishing its parent identity." >&2
     sed -n '1,160p' "$test_log" >&2
     exit 1
   fi
   if (( SECONDS >= deadline )); then
-    echo "Timed out waiting for PID-scoped Codex audit handshake." >&2
+    echo "Timed out waiting for the Codex audit parent handshake." >&2
     exit 1
   fi
   sleep 0.05
 done
 
 parent_pid="$(tr -d '[:space:]' <"${wrapper_path}.parent-pid")"
-child_pid="$(tr -d '[:space:]' <"${wrapper_path}.child-pid")"
-if [[ ! "$parent_pid" =~ ^[1-9][0-9]*$ || ! "$child_pid" =~ ^[1-9][0-9]*$ || "$parent_pid" == "$child_pid" ]]; then
-  echo "Invalid or non-distinct parent/child PID evidence." >&2
-  exit 1
-fi
-observed_child_parent="$(ps -p "$child_pid" -o ppid= | tr -d '[:space:]')"
-if [[ "$observed_child_parent" != "$parent_pid" ]]; then
-  echo "Codex audit wrapper is not owned by the expected test parent PID." >&2
+if [[ ! "$parent_pid" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Invalid parent PID evidence." >&2
   exit 1
 fi
 
@@ -424,6 +418,32 @@ auth_trace_ready="$audit_dir/auth-access.ready"
 auth_trace_stop="$audit_dir/auth-access.stop"
 launch_capture "$auth_raw_trace" "$auth_trace_diagnostic" "$auth_trace_ready" "$auth_trace_stop"
 wait_for_capture_ready "$auth_trace_ready" "auth-access"
+touch "${wrapper_path}.parent-route-ready"
+
+deadline=$((SECONDS + 30))
+while [[ ! -s "${wrapper_path}.child-pid" ]]; do
+  if ! kill -0 "$test_pid" >/dev/null 2>&1; then
+    echo "Codex auth-access audit test exited before publishing its child identity." >&2
+    sed -n '1,160p' "$test_log" >&2
+    exit 1
+  fi
+  if (( SECONDS >= deadline )); then
+    echo "Timed out waiting for the Codex audit child handshake." >&2
+    exit 1
+  fi
+  sleep 0.05
+done
+
+child_pid="$(tr -d '[:space:]' <"${wrapper_path}.child-pid")"
+if [[ ! "$child_pid" =~ ^[1-9][0-9]*$ || "$parent_pid" == "$child_pid" ]]; then
+  echo "Invalid or non-distinct parent/child PID evidence." >&2
+  exit 1
+fi
+observed_child_parent="$(ps -p "$child_pid" -o ppid= | tr -d '[:space:]')"
+if [[ "$observed_child_parent" != "$parent_pid" ]]; then
+  echo "Codex audit wrapper is not owned by the expected test parent PID." >&2
+  exit 1
+fi
 touch "${wrapper_path}.ready"
 
 test_status=0

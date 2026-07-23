@@ -16,6 +16,20 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
             atomically: true,
             encoding: .utf8
         )
+        let parentRouteReadyPath = wrapperPath + ".parent-route-ready"
+        let parentRouteDeadline = Date().addingTimeInterval(180)
+        // The runtime evidence must cover every Codex-specific production
+        // object, not only the child after Process.start(). The root tracer
+        // releases this gate only after ktrace reports that capture started.
+        while Darwin.access(parentRouteReadyPath, F_OK) != 0 {
+            guard errno == ENOENT else {
+                throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+            }
+            guard Date() < parentRouteDeadline else {
+                throw NSError(domain: NSPOSIXErrorDomain, code: Int(ETIMEDOUT))
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
         let transport = CodexAppServerStdioTransport(
             process: ProcessCodexAppServerProcess(
                 configuration: CodexAppServerLaunchConfiguration(executablePath: wrapperPath)

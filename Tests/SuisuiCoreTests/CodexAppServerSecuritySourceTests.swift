@@ -103,6 +103,65 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         XCTAssertTrue(script.contains("codex_version"))
         XCTAssertTrue(script.contains("\"$codex_executable\" --version"))
         XCTAssertTrue(script.contains("trace_status"))
+        let parentPIDPublish = try XCTUnwrap(
+            auditTestSource.range(of: "wrapperPath + \".parent-pid\"")
+        )
+        let parentRouteWait = try XCTUnwrap(
+            auditTestSource.range(of: "wrapperPath + \".parent-route-ready\"")
+        )
+        let transportCreation = try XCTUnwrap(
+            auditTestSource.range(of: "let transport = CodexAppServerStdioTransport")
+        )
+        let accountCreation = try XCTUnwrap(
+            auditTestSource.range(of: "let account = CodexAppServerAccountClient")
+        )
+        let initializeCall = try XCTUnwrap(
+            auditTestSource.range(of: "try await account.initialize(clientVersion: \"auth-access-audit\")")
+        )
+        XCTAssertLessThan(parentPIDPublish.lowerBound, parentRouteWait.lowerBound)
+        XCTAssertLessThan(parentRouteWait.lowerBound, transportCreation.lowerBound)
+        XCTAssertLessThan(transportCreation.lowerBound, accountCreation.lowerBound)
+        XCTAssertLessThan(accountCreation.lowerBound, initializeCall.lowerBound)
+
+        let parentPIDWait = try XCTUnwrap(
+            script.range(of: "while [[ ! -s \"${wrapper_path}.parent-pid\" ]]")
+        )
+        let authTraceLaunch = try XCTUnwrap(
+            script.range(
+                of: "launch_capture \"$auth_raw_trace\"",
+                range: parentPIDWait.upperBound..<script.endIndex
+            )
+        )
+        let authTraceStarted = try XCTUnwrap(
+            script.range(
+                of: "wait_for_capture_ready \"$auth_trace_ready\" \"auth-access\"",
+                range: authTraceLaunch.upperBound..<script.endIndex
+            )
+        )
+        let parentRouteRelease = try XCTUnwrap(
+            script.range(
+                of: "touch \"${wrapper_path}.parent-route-ready\"",
+                range: authTraceStarted.upperBound..<script.endIndex
+            )
+        )
+        let childPIDWait = try XCTUnwrap(
+            script.range(
+                of: "while [[ ! -s \"${wrapper_path}.child-pid\" ]]",
+                range: parentRouteRelease.upperBound..<script.endIndex
+            )
+        )
+        let wrapperRelease = try XCTUnwrap(
+            script.range(
+                of: "touch \"${wrapper_path}.ready\"",
+                range: childPIDWait.upperBound..<script.endIndex
+            )
+        )
+        XCTAssertLessThan(parentPIDWait.lowerBound, authTraceLaunch.lowerBound)
+        XCTAssertLessThan(authTraceLaunch.lowerBound, authTraceStarted.lowerBound)
+        XCTAssertLessThan(authTraceStarted.lowerBound, parentRouteRelease.lowerBound)
+        XCTAssertLessThan(parentRouteRelease.lowerBound, childPIDWait.lowerBound)
+        XCTAssertLessThan(childPIDWait.lowerBound, wrapperRelease.lowerBound)
+
         let testWait = try XCTUnwrap(script.range(of: "wait \"$test_pid\""))
         let traceStopPublish = try XCTUnwrap(script.range(of: "touch \"$auth_trace_stop\""))
         let traceWait = try XCTUnwrap(
@@ -114,7 +173,6 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         let authPathDeclaration = try XCTUnwrap(script.range(of: "auth_path_suffix=\".codex/auth.json\""))
         let traceLaunch = try XCTUnwrap(script.range(of: "/usr/bin/ktrace dump"))
         let traceReadinessCheck = try XCTUnwrap(script.range(of: "wait_for_capture_ready"))
-        let wrapperRelease = try XCTUnwrap(script.range(of: "touch \"${wrapper_path}.ready\""))
         XCTAssertLessThan(authPathDeclaration.lowerBound, traceLaunch.lowerBound)
         XCTAssertLessThan(traceLaunch.lowerBound, traceReadinessCheck.lowerBound)
         XCTAssertLessThan(traceReadinessCheck.lowerBound, wrapperRelease.lowerBound)
