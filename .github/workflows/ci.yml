@@ -28,8 +28,31 @@ jobs:
       - name: Show toolchain
         run: swift --version
 
-      - name: Verify
+      - name: SwiftPM complete suite
+        env:
+          SUISUI_SWIFTPM_ARTIFACT_DIR: ${{ github.workspace }}/.tmp/ci-artifacts/swiftpm
         run: ./scripts/ci.sh swiftpm
+
+      - name: Upload complete SwiftPM test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swiftpm-tests-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/ci-artifacts/swiftpm
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+
+  source-contracts:
+    name: Source contracts (supplemental)
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify supplemental source contracts
+        run: ./scripts/ci.sh source-contracts
 
   ui-runtime:
     name: UI Runtime (production route)

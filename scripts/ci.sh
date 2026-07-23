@@ -17,7 +17,7 @@ UI_GATE_LOCK_TIMEOUT_SECONDS="${SUISUI_UI_GATE_LOCK_TIMEOUT_SECONDS:-180}"
 UI_GATE_LOCK_ACQUIRED=0
 
 if [[ $# -gt 1 ]]; then
-  echo "usage: $0 [swiftpm|ui-runtime|ui-visual|ui-performance]" >&2
+  echo "usage: $0 [swiftpm|source-contracts|ui-runtime|ui-visual|ui-performance]" >&2
   exit 2
 fi
 if [[ $# -eq 1 || -n "${SUISUI_CI_LANE:-}" ]]; then
@@ -108,13 +108,17 @@ acquire_ui_gate_lock() {
 }
 
 run_pr_gate() {
+  ./script/run_complete_swiftpm_tests.sh
+  swift build
+  swift build --product suisui-cli
+  ./script/build_and_run.sh --build-only
+}
+
+run_source_contract_gates() {
   swift test --filter AppExperienceSourceTests
   swift test --filter QualitySourceContractTests
   script/check_pseudo_voiceover_paths.sh --swift-test
   swift test --filter ProjectBoardStoreTests
-  swift build
-  swift build --product suisui-cli
-  ./script/build_and_run.sh --build-only
 }
 
 run_release_gates() {
@@ -366,6 +370,9 @@ case "$CI_LANE" in
   swiftpm)
     run_pr_gate
     ;;
+  source-contracts)
+    run_source_contract_gates
+    ;;
   ui-runtime)
     acquire_ui_gate_lock
     run_lane_with_artifacts "ui-runtime" run_runtime_gates
@@ -379,7 +386,7 @@ case "$CI_LANE" in
     run_lane_with_artifacts "ui-performance" run_performance_gates
     ;;
   *)
-    echo "usage: $0 [swiftpm|ui-runtime|ui-visual|ui-performance]" >&2
+    echo "usage: $0 [swiftpm|source-contracts|ui-runtime|ui-visual|ui-performance]" >&2
     exit 2
     ;;
 esac
