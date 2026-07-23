@@ -112,6 +112,55 @@ final class ReleasePipelineTests: XCTestCase {
         )
     }
 
+    func testCompleteSwiftPMRunnerRequiresTheFullSuiteAndFailClosedTestCounts() throws {
+        let script = try readPackageFile("script/run_complete_swiftpm_tests.sh")
+
+        XCTAssertTrue(script.contains("swift test list"))
+        XCTAssertTrue(script.contains("swift test"))
+        XCTAssertFalse(script.contains("swift test --filter"))
+        XCTAssertTrue(script.contains("swiftpm-test-summary.env"))
+        XCTAssertTrue(script.contains("test-results.xml"))
+        XCTAssertTrue(script.contains("--xunit-output"))
+        XCTAssertTrue(script.contains("discovered_test_count"))
+        XCTAssertTrue(script.contains("executed_test_count"))
+        XCTAssertTrue(script.contains("skipped_test_count"))
+        XCTAssertTrue(script.contains("baseline_test_count"))
+        XCTAssertTrue(script.contains("BLOCKER: discovered SwiftPM test count"))
+        XCTAssertTrue(script.contains("BLOCKER: executed SwiftPM test count"))
+        XCTAssertTrue(script.contains("run_fixture_self_tests"))
+    }
+
+    func testCompleteSwiftPMRunnerFixtureSelfTestsExerciseCountFailures() throws {
+        let result = try runScript("script/run_complete_swiftpm_tests.sh", arguments: ["--self-test"])
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("OK: complete SwiftPM test runner fixture self-tests passed"))
+        XCTAssertTrue(result.output.contains("fixture=valid status=passed"))
+        XCTAssertTrue(result.output.contains("fixture=zero-target status=blocked"))
+        XCTAssertTrue(result.output.contains("fixture=below-baseline status=blocked"))
+        XCTAssertTrue(result.output.contains("fixture=missing-execution-summary status=blocked"))
+    }
+
+    func testGitHubCISeparatesCompleteSwiftPMSuiteFromSupplementalSourceContracts() throws {
+        let workflow = try readPackageFile(".github/workflows/ci.yml")
+        let script = try readPackageFile("scripts/ci.sh")
+
+        XCTAssertTrue(workflow.contains("name: SwiftPM complete suite"))
+        XCTAssertTrue(workflow.contains("run: ./scripts/ci.sh swiftpm"))
+        XCTAssertTrue(workflow.contains("name: swiftpm-tests-${{ github.run_id }}-${{ github.run_attempt }}"))
+        XCTAssertTrue(workflow.contains("path: .tmp/ci-artifacts/swiftpm"))
+        XCTAssertTrue(workflow.contains("if: always()"))
+        XCTAssertTrue(workflow.contains("name: Source contracts (supplemental)"))
+        XCTAssertTrue(workflow.contains("run: ./scripts/ci.sh source-contracts"))
+        XCTAssertTrue(script.contains("./script/run_complete_swiftpm_tests.sh"))
+        XCTAssertTrue(script.contains("run_source_contract_gates()"))
+        XCTAssertTrue(script.contains("source-contracts)"))
+        XCTAssertLessThan(
+            try XCTUnwrap(script.range(of: "./script/run_complete_swiftpm_tests.sh")).lowerBound,
+            try XCTUnwrap(script.range(of: "swift build")).lowerBound
+        )
+    }
+
     func testCIScriptSeparatesLightweightPRGateFromRuntimeAndVisualGates() throws {
         let script = try readPackageFile("scripts/ci.sh")
         let automatedPreflight = try readPackageFile("script/check_automated_release_preflight.sh")
