@@ -87,6 +87,17 @@ write_xunit_summary() {
   } >"$output_file"
 }
 
+write_failed_evidence() {
+  local baseline_test_count="$1"
+  local discovered_test_count="$2"
+
+  printf 'status=failed\nbaseline_test_count=%s\ndiscovered_test_count=%s\nexecuted_test_count=0\nskipped_test_count=0\n' \
+    "$baseline_test_count" \
+    "$discovered_test_count" \
+    >"$SUMMARY_FILE"
+  write_xunit_summary failed "$baseline_test_count" "$discovered_test_count" 0 0 "$XUNIT_OUTPUT_FILE"
+}
+
 run_fixture_self_tests() {
   local fixture_dir
   local fixture_xunit
@@ -171,6 +182,7 @@ sanitize_swift_output <"$RAW_DISCOVERY_LOG" >"$DISCOVERY_LOG_FILE"
 rm -f "$RAW_DISCOVERY_LOG"
 RAW_DISCOVERY_LOG=""
 if [[ "$discovery_status" -ne 0 ]]; then
+  write_failed_evidence "$baseline_test_count" 0
   cat "$DISCOVERY_LOG_FILE" >&2
   printf 'BLOCKER: SwiftPM test discovery failed\n' >&2
   exit "$discovery_status"
@@ -178,9 +190,7 @@ fi
 
 discovered_test_count="$(awk 'NF { count += 1 } END { print count + 0 }' "$DISCOVERED_TESTS_FILE")"
 if ! validate_test_counts "$discovered_test_count" "$baseline_test_count" "$baseline_test_count" >/dev/null; then
-  printf 'status=failed\nbaseline_test_count=%s\ndiscovered_test_count=%s\nexecuted_test_count=0\nskipped_test_count=0\n' \
-    "$baseline_test_count" "$discovered_test_count" >"$SUMMARY_FILE"
-  write_xunit_summary failed "$baseline_test_count" "$discovered_test_count" 0 0 "$XUNIT_OUTPUT_FILE"
+  write_failed_evidence "$baseline_test_count" "$discovered_test_count"
   exit 1
 fi
 
