@@ -197,8 +197,16 @@ skipped_test_count="$(
   sed -nE 's/.*with ([0-9]+) tests? skipped.*/\1/p' "$TEST_OUTPUT_FILE" | tail -n 1
 )"
 skipped_test_count="${skipped_test_count:-0}"
+count_status=0
+if ! validate_test_counts \
+  "$discovered_test_count" \
+  "$executed_test_count" \
+  "$baseline_test_count" \
+  >/dev/null 2>&1; then
+  count_status=1
+fi
 status_label="passed"
-if [[ "$test_status" -ne 0 ]]; then
+if [[ "$test_status" -ne 0 || "$count_status" -ne 0 ]]; then
   status_label="failed"
 fi
 
@@ -221,6 +229,9 @@ if [[ "$test_status" -ne 0 ]]; then
   printf 'BLOCKER: complete SwiftPM test suite failed with exit code %s\n' "$test_status" >&2
   exit "$test_status"
 fi
-validate_test_counts "$discovered_test_count" "$executed_test_count" "$baseline_test_count"
+if [[ "$count_status" -ne 0 ]]; then
+  validate_test_counts "$discovered_test_count" "$executed_test_count" "$baseline_test_count"
+  exit 1
+fi
 printf 'OK: complete SwiftPM suite passed (%s discovered, %s executed, %s skipped)\n' \
   "$discovered_test_count" "$executed_test_count" "$skipped_test_count"
