@@ -297,7 +297,7 @@ extension AppRuntimeFactory {
                     nil,
                     nil,
                     unavailableRegistry.registry,
-                    InMemoryApprovalReplayStore(),
+                    ProcessLocalApprovalReplayStore(),
                     unavailableRegistry.message
                 )
             }

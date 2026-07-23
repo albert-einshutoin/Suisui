@@ -26,7 +26,7 @@ public struct ActionExecutor: Sendable {
         registry: ToolRegistry,
         auditLogger: (any AuditLogger)? = nil,
         redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
-        replayStore: any ApprovalReplayStore = InMemoryApprovalReplayStore()
+        replayStore: any ApprovalReplayStore = ProcessLocalApprovalReplayStore()
     ) {
         self.registry = registry
         self.auditLogger = auditLogger

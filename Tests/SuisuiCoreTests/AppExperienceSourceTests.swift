@@ -4337,7 +4337,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(reviewFactory.contains("DevelopmentPushWorkflowTool("))
         XCTAssertFalse(reviewFactory.contains("DevelopmentPullRequestCreationTool("))
         XCTAssertFalse(reviewFactory.contains("ToolRegistryFactory.developerMode("))
-        XCTAssertTrue(reviewFactory.contains("return (auditLogger, receiptStore, registry, nil)"))
+        XCTAssertTrue(reviewFactory.contains("SQLiteApprovalReplayStore(connection: connection)"))
+        XCTAssertTrue(reviewFactory.contains("replayStore: runtime.replayStore"))
         XCTAssertTrue(reviewFactory.contains("executionReceiptStore: runtime.receiptStore"))
         XCTAssertTrue(reviewFactory.contains("Review execution tools are unavailable because audit logging or local data stores could not be opened."))
     }

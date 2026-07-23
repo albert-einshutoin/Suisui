@@ -15,7 +15,7 @@ public protocol ApprovalReplayStore: Sendable {
     func state(for nonce: UUID) throws -> ApprovalReplayState?
 }
 
-public final class InMemoryApprovalReplayStore: ApprovalReplayStore, @unchecked Sendable {
+public final class ProcessLocalApprovalReplayStore: ApprovalReplayStore, @unchecked Sendable {
     private let lock = NSLock()
     private var states: [UUID: ApprovalReplayState] = [:]
 

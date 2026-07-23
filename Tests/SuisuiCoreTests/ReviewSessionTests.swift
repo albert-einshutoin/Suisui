@@ -178,7 +178,7 @@ final class ActionExecutorTests: XCTestCase {
             PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
         ]))
         let approval = try session.approve(issuedAt: now)
-        let replayStore = InMemoryApprovalReplayStore()
+        let replayStore = ProcessLocalApprovalReplayStore()
         let executor = ActionExecutor(registry: registry, replayStore: replayStore)
 
         _ = try executor.execute(session, now: now)
