@@ -406,8 +406,8 @@ printf 'calibration_counts=parent:%s,child:%s,unexpected:%s,before:%s,after:%s\n
   "$calibration_unexpected_count" \
   "$calibration_before_count" \
   "$calibration_after_count"
-/usr/bin/unlink "$calibration_raw_trace"
-/usr/bin/unlink "$calibration_trace_diagnostic"
+/bin/unlink "$calibration_raw_trace"
+/bin/unlink "$calibration_trace_diagnostic"
 
 /usr/bin/clang \
   -std=c11 \
@@ -526,8 +526,8 @@ if [[ "$unexpected_auth_access_count" -ne 0 ]]; then
   echo "BLOCKER: auth-store access from an unexpected PID was observed." >&2
   exit 1
 fi
-/usr/bin/unlink "$auth_raw_trace"
-/usr/bin/unlink "$auth_trace_diagnostic"
+/bin/unlink "$auth_raw_trace"
+/bin/unlink "$auth_trace_diagnostic"
 
 product_source_commit="$(git -C "$ROOT_DIR" log -1 --format=%H -- Sources Package.swift)"
 audit_harness_commit="$(
