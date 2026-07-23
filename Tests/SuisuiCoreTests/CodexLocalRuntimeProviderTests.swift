@@ -198,6 +198,65 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
         let isShutdown = await transport.isShutdown
         XCTAssertTrue(isShutdown)
     }
+
+    func testApprovalChangeDuringObserverRegistrationPreventsTransportCreation() async throws {
+        let approved = try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
+        let generation = LockedApprovalGeneration()
+        let transportCreations = LockedCounter()
+        let provider = CodexLocalRuntimeProvider(
+            approvedExecutableProvider: { approved },
+            modelID: nil,
+            clientVersion: "1.0",
+            scratchRoot: FileManager.default.temporaryDirectory,
+            versionReporter: RecordingVersionReporter(),
+            approvalChangeStream: {
+                generation.advance()
+                return AsyncStream { _ in }
+            },
+            approvalGenerationProvider: { generation.current },
+            transportFactory: { _ in
+                transportCreations.increment()
+                return HangingPlanningCodexTransport()
+            }
+        )
+
+        do {
+            _ = try await provider.generatePlan(for: PlanningRequest(userInput: "タスクを追加"))
+            XCTFail("Expected approval invalidation")
+        } catch let error as LLMProviderError {
+            guard case .executionNotApproved = error else {
+                return XCTFail("Expected executionNotApproved, got \(error)")
+            }
+        }
+        XCTAssertEqual(transportCreations.value, 0)
+    }
+
+    func testApprovalChangeBeforeResultAcceptanceRejectsCompletedResponse() async throws {
+        let approved = try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
+        let generations = SequencedApprovalGenerations([0, 0, 0, 1])
+        let transport = HangingPlanningCodexTransport(completesPlan: true)
+        let provider = CodexLocalRuntimeProvider(
+            approvedExecutableProvider: { approved },
+            modelID: nil,
+            clientVersion: "1.0",
+            scratchRoot: FileManager.default.temporaryDirectory,
+            versionReporter: RecordingVersionReporter(),
+            approvalChangeStream: { AsyncStream { _ in } },
+            approvalGenerationProvider: { generations.next() },
+            transportFactory: { _ in transport }
+        )
+
+        do {
+            _ = try await provider.generatePlan(for: PlanningRequest(userInput: "タスクを追加"))
+            XCTFail("Expected approval invalidation")
+        } catch let error as LLMProviderError {
+            guard case .executionNotApproved = error else {
+                return XCTFail("Expected executionNotApproved, got \(error)")
+            }
+        }
+        let isShutdown = await transport.isShutdown
+        XCTAssertTrue(isShutdown)
+    }
 }
 
 private actor RecordingVersionReporter: CodexVersionReporting {
@@ -243,16 +302,76 @@ private final class ControlledApprovalChanges: @unchecked Sendable {
     }
 }
 
+private final class LockedApprovalGeneration: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedValue: UInt64 = 0
+
+    var current: UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedValue
+    }
+
+    func advance() {
+        lock.lock()
+        storedValue &+= 1
+        lock.unlock()
+    }
+}
+
+private final class SequencedApprovalGenerations: @unchecked Sendable {
+    private let lock = NSLock()
+    private let values: [UInt64]
+    private var index = 0
+
+    init(_ values: [UInt64]) {
+        self.values = values
+    }
+
+    func next() -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        let value = values[min(index, values.count - 1)]
+        index += 1
+        return value
+    }
+}
+
+private final class LockedCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedValue = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedValue
+    }
+
+    func increment() {
+        lock.lock()
+        storedValue += 1
+        lock.unlock()
+    }
+}
+
 private actor HangingPlanningCodexTransport: CodexAppServerTransport {
-    private let notificationsStream: AsyncStream<CodexJSONRPCNotification>
-    private let notificationsContinuation: AsyncStream<CodexJSONRPCNotification>.Continuation
+    private let accountNotificationsStream: AsyncStream<CodexJSONRPCNotification>
+    private let accountNotificationsContinuation: AsyncStream<CodexJSONRPCNotification>.Continuation
+    private let planningNotificationsStream: AsyncStream<CodexJSONRPCNotification>
+    private let planningNotificationsContinuation: AsyncStream<CodexJSONRPCNotification>.Continuation
+    private var notificationSubscriberCount = 0
     private var turnStartedContinuation: CheckedContinuation<Void, Never>?
     private var didStartTurn = false
     private(set) var isShutdown = false
     private var requestID: Int64 = 0
+    private let completesPlan: Bool
 
-    init() {
-        (notificationsStream, notificationsContinuation) = AsyncStream.makeStream(
+    init(completesPlan: Bool = false) {
+        self.completesPlan = completesPlan
+        (accountNotificationsStream, accountNotificationsContinuation) = AsyncStream.makeStream(
+            of: CodexJSONRPCNotification.self
+        )
+        (planningNotificationsStream, planningNotificationsContinuation) = AsyncStream.makeStream(
             of: CodexJSONRPCNotification.self
         )
     }
@@ -299,6 +418,28 @@ private actor HangingPlanningCodexTransport: CodexAppServerTransport {
             didStartTurn = true
             turnStartedContinuation?.resume()
             turnStartedContinuation = nil
+            if completesPlan {
+                let continuation = planningNotificationsContinuation
+                Task {
+                    await Task.yield()
+                    continuation.yield(CodexJSONRPCNotification(
+                        id: nil,
+                        method: "item/completed",
+                        params: .object(["item": .object([
+                            "type": .string("agentMessage"),
+                            "text": .string(Self.validActionPlan)
+                        ])])
+                    ))
+                    continuation.yield(CodexJSONRPCNotification(
+                        id: nil,
+                        method: "turn/completed",
+                        params: .object(["turn": .object([
+                            "id": .string("turn-1"),
+                            "status": .string("completed")
+                        ])])
+                    ))
+                }
+            }
             result = .object(["turn": .object(["id": .string("turn-1")])])
         default:
             throw CodexAppServerTransportError.streamClosed
@@ -308,10 +449,16 @@ private actor HangingPlanningCodexTransport: CodexAppServerTransport {
 
     func notify(method _: String, params _: JSONValue?) async throws {}
     func respond(id _: Int64, result _: JSONValue) async throws {}
-    func notifications() async -> AsyncStream<CodexJSONRPCNotification> { notificationsStream }
+    func notifications() async -> AsyncStream<CodexJSONRPCNotification> {
+        notificationSubscriberCount += 1
+        return notificationSubscriberCount == 1
+            ? accountNotificationsStream
+            : planningNotificationsStream
+    }
     func shutdown() async {
         isShutdown = true
-        notificationsContinuation.finish()
+        accountNotificationsContinuation.finish()
+        planningNotificationsContinuation.finish()
     }
 
     func waitUntilTurnStarted() async {
@@ -320,4 +467,6 @@ private actor HangingPlanningCodexTransport: CodexAppServerTransport {
             turnStartedContinuation = continuation
         }
     }
+
+    private static let validActionPlan = #"{"id":"plan-codex-race","userInput":"タスクを追加","summary":"タスクを追加","riskLevel":"write","requiresApproval":true,"actions":[{"id":"action-1","tool":"task.create","riskLevel":"write","requiresUserConfirmation":false,"arguments":{"title":"タスクを追加"}}]}"#
 }

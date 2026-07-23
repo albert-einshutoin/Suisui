@@ -227,6 +227,10 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
         } catch {
             throw LLMProviderError.executionNotApproved("The selected Codex executable is missing, unsafe, or unsupported.")
         }
+        // Register before creating scratch state or a transport. The generation
+        // check immediately below closes changes that happened just before the
+        // observer became active, while the stream covers everything after it.
+        let changes = approvalChangeStream()
         guard approvedExecutableProvider() == approvedExecutable,
               approvalGenerationProvider() == approvalGeneration else {
             throw LLMProviderError.executionNotApproved("Codex approval changed before the local process could start.")
@@ -246,9 +250,6 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
         )
 
         do {
-            // Construct the stream before starting session work so no
-            // invalidation can fall between the generation checks and observer registration.
-            let changes = approvalChangeStream()
             let response = try await withThrowingTaskGroup(of: PlanningResponse.self) { group in
                 group.addTask {
                     try await account.initialize(clientVersion: clientVersion)
@@ -278,6 +279,12 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
                     throw CancellationError()
                 }
                 return first
+            }
+            guard approvedExecutableProvider() == approvedExecutable,
+                  approvalGenerationProvider() == approvalGeneration else {
+                throw LLMProviderError.executionNotApproved(
+                    "Codex approval changed before the planning result was accepted."
+                )
             }
             await transport.shutdown()
             try? FileManager.default.removeItem(at: scratchDirectory)
