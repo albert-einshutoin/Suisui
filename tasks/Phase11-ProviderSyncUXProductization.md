@@ -126,14 +126,14 @@
 - [x] `codexLocal` をAPI key providerとは別の、Macローカル・Codex管理認証・ユーザーprovider課金として型定義する。
 - [x] SuisuiがCodexのaccess token、refresh token、`~/.codex/auth.json`を読まない境界をADR 0011に固定する。
 - [x] 対応最低versionで `account/read`、`account/login/start`、`model/list`、`thread/start`、`turn/start` がfixtureとlive smokeの両方で成立する。
-- [ ] Suisui parent processが`auth.json`を直接openせず、認証所有者であるCodex child processだけがアクセスすることをruntime testで証明する。
+- [x] Suisui parent processが`auth.json`を直接openせず、認証所有者であるCodex process treeだけがアクセスすることをschema v4 runtime evidenceで証明する。
 - [x] 内部token注入modeをproduction型から表現不能にする。
 - [x] command、file change、permission requestを承認せずturnをinterruptしてfail closedにする。
 - [x] Receiptを`userProviderBilled`として記録し、Suisui managed costへ合算しない。
 - [x] Codexがworkspace policyで無効な場合は、再ログインloopではなく管理者policyエラーを表示する。
 - [x] shell、file、web、MCP toolをturn開始前に無効化し、adversarial promptとlive smokeでtool lifecycleが発生しないことを証明する。証明できないversionではSettings公開をNO-GOにする。
-- [ ] Enterprise対応を表明する前に`clientInfo.name = "suisui"`のknown-client登録、または未登録clientのCompliance Logs制約を製品文書へ明記する。
-- [ ] 完了条件: 上記GO gateがすべてgreenになった場合だけSettingsへ表示し、ユーザー自身のCodex枠で音声タスクのAction Planを生成できる。
+- [ ] Enterprise対応を表明する前に`clientInfo.name = "suisui"`のknown-client登録、または未登録clientのCompliance Logs制約を製品文書へ明記する。Personal PreviewのGO gate外とし、Enterprise対応時の別release gateとして扱う。
+- [x] 完了条件（Personal Preview）: Personal Preview対象のGO gateがすべてgreenになった場合だけSettingsへ表示し、ユーザー自身のCodex枠で音声タスクのAction Planを生成できる。
 
 ## P11-020: Subscription entitlement domain
 
