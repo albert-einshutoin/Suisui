@@ -101,6 +101,9 @@ final class CIGateWorkflowTests: XCTestCase {
             script.contains("local output=\"${2:-}\""),
             "stdin mode passes only one argument, so the optional output path must be safe under `set -u`"
         )
+        XCTAssertTrue(script.contains("s#/private/var/folders/[^[:space:]]+#<temp-path>#g"))
+        XCTAssertTrue(script.contains("s#(/var)?/tmp/[^[:space:]]+#<temp-path>#g"))
+        XCTAssertTrue(script.contains("#Ig"))
     }
 
     func testCompleteSwiftPMRunnerWritesFailedEvidenceWhenDiscoveryFails() throws {

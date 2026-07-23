@@ -165,6 +165,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(workflow.contains("run: ./scripts/ci.sh source-contracts"))
         XCTAssertTrue(script.contains("./script/run_complete_swiftpm_tests.sh"))
         XCTAssertTrue(script.contains("run_source_contract_gates()"))
+        XCTAssertTrue(script.contains("run_lane_with_artifacts \"swiftpm\" run_pr_gate"))
+        XCTAssertTrue(script.contains("run_lane_with_artifacts \"source-contracts\" run_source_contract_gates"))
         XCTAssertTrue(script.contains("source-contracts)"))
         XCTAssertLessThan(
             try XCTUnwrap(script.range(of: "./script/run_complete_swiftpm_tests.sh")).lowerBound,
