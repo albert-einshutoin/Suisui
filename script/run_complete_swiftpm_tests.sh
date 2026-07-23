@@ -409,10 +409,18 @@ if ! validate_discovered_count "$discovered_test_count" "$baseline_test_count" >
 fi
 
 test_status=0
+test_publication_status=0
+test_pipeline_statuses=()
 set +e
 swift test 2>&1 | sanitize_swift_output | tee "$TEST_OUTPUT_FILE"
-test_status=${PIPESTATUS[0]}
+test_pipeline_statuses=("${PIPESTATUS[@]}")
 set -e
+test_status="${test_pipeline_statuses[0]}"
+if [[ "${test_pipeline_statuses[1]}" -ne 0 ]]; then
+  test_publication_status="${test_pipeline_statuses[1]}"
+elif [[ "${test_pipeline_statuses[2]}" -ne 0 ]]; then
+  test_publication_status="${test_pipeline_statuses[2]}"
+fi
 
 executed_test_count="$(parse_executed_test_count "$TEST_OUTPUT_FILE" || true)"
 skipped_test_count="$(parse_skipped_test_count "$TEST_OUTPUT_FILE")"
@@ -429,7 +437,7 @@ if ! validate_skipped_count "$skipped_test_count" "$max_skipped_test_count" >/de
   count_status=1
 fi
 status_label="passed"
-if [[ "$test_status" -ne 0 || "$count_status" -ne 0 ]]; then
+if [[ "$test_status" -ne 0 || "$test_publication_status" -ne 0 || "$count_status" -ne 0 ]]; then
   status_label="failed"
 fi
 
@@ -453,6 +461,11 @@ write_xunit_summary \
 if [[ "$test_status" -ne 0 ]]; then
   printf 'BLOCKER: complete SwiftPM test suite failed with exit code %s\n' "$test_status" >&2
   exit "$test_status"
+fi
+if [[ "$test_publication_status" -ne 0 ]]; then
+  printf 'BLOCKER: sanitized SwiftPM evidence publication failed with exit code %s\n' \
+    "$test_publication_status" >&2
+  exit "$test_publication_status"
 fi
 if [[ "$count_status" -ne 0 ]]; then
   validate_test_counts "$discovered_test_count" "$executed_test_count" "$baseline_test_count"
