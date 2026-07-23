@@ -95,9 +95,17 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         XCTAssertTrue(script.contains("calibration_unexpected_count"))
         XCTAssertTrue(script.contains("calibration_before_count"))
         XCTAssertTrue(script.contains("calibration_after_count"))
+        XCTAssertTrue(script.contains(
+            "calibration_expected_total=$((\n  calibration_parent_count"
+        ))
         XCTAssertTrue(script.contains("harness_parent_auth_access_count"))
         XCTAssertTrue(script.contains("codex_child_auth_access_count"))
         XCTAssertTrue(script.contains("unexpected_auth_access_count"))
+        XCTAssertTrue(script.contains(
+            "unexpected_auth_access_count=$((\n  total_auth_access_count"
+        ))
+        XCTAssertFalse(script.contains("calibration_expected_total=$(\n"))
+        XCTAssertFalse(script.contains("unexpected_auth_access_count=$(\n"))
         XCTAssertTrue(script.contains(
             "total_auth_access_count - harness_parent_auth_access_count - codex_child_auth_access_count"
         ))

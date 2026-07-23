@@ -388,9 +388,9 @@ calibration_before_count="$(
 calibration_after_count="$(
   replay_access_count "$calibration_raw_trace" "$calibration_sentinel" calibration-after "$calibration_after_pid"
 )"
-calibration_expected_total=$(
+calibration_expected_total=$((
   calibration_parent_count + calibration_child_count + calibration_unexpected_count
-)
+))
 if [[ "$calibration_parent_count" -lt 1 ||
       "$calibration_child_count" -lt 1 ||
       "$calibration_unexpected_count" -lt 1 ||
@@ -506,9 +506,9 @@ harness_parent_auth_access_count="$(
 codex_child_auth_access_count="$(
   replay_access_count "$auth_raw_trace" "$auth_path_suffix" auth-child "$child_pid"
 )"
-unexpected_auth_access_count=$(
+unexpected_auth_access_count=$((
   total_auth_access_count - harness_parent_auth_access_count - codex_child_auth_access_count
-)
+))
 printf 'sanitized_counts=parent:%s,child:%s,unexpected:%s\n' \
   "$harness_parent_auth_access_count" \
   "$codex_child_auth_access_count" \
