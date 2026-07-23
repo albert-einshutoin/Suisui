@@ -2,6 +2,55 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+auth_path_suffix=".codex/auth.json"
+trace_filter_program='index($0, needle) { print; fflush() }'
+
+if [[ "${1:-}" == "--run-root-traces" ]]; then
+  if [[ "$EUID" -ne 0 || "$#" -ne 6 ]]; then
+    echo "Root trace helper requires root and exact audited arguments." >&2
+    exit 64
+  fi
+  system_trace_output="$2"
+  parent_trace_output="$3"
+  child_trace_output="$4"
+  audited_parent_pid="$5"
+  audited_child_pid="$6"
+  if [[ "$system_trace_output" != /* || "$parent_trace_output" != /* || "$child_trace_output" != /* ||
+        ! "$audited_parent_pid" =~ ^[1-9][0-9]*$ || ! "$audited_child_pid" =~ ^[1-9][0-9]*$ ||
+        "$audited_parent_pid" == "$audited_child_pid" ]]; then
+    echo "Root trace helper received unsafe output paths or process identities." >&2
+    exit 64
+  fi
+
+  run_filtered_trace() {
+    local trace_output="$1"
+    shift
+    /usr/bin/fs_usage -w -f pathname -t 75 "$@" 2>&1 \
+      | LC_ALL=C /usr/bin/awk -v needle="$auth_path_suffix" "$trace_filter_program" >"$trace_output"
+  }
+
+  # Wide fs_usage output appends a thread ID, not a PID. Run PID-scoped
+  # traces beside the system trace so ownership is proven by the sampler
+  # itself while the count difference still detects unexpected processes.
+  run_filtered_trace "$system_trace_output" -e &
+  system_trace_pid=$!
+  run_filtered_trace "$parent_trace_output" "$audited_parent_pid" &
+  parent_trace_pid=$!
+  run_filtered_trace "$child_trace_output" "$audited_child_pid" &
+  child_trace_pid=$!
+
+  system_trace_status=0
+  parent_trace_status=0
+  child_trace_status=0
+  wait "$system_trace_pid" || system_trace_status=$?
+  wait "$parent_trace_pid" || parent_trace_status=$?
+  wait "$child_trace_pid" || child_trace_status=$?
+  if [[ "$system_trace_status" -ne 0 || "$parent_trace_status" -ne 0 || "$child_trace_status" -ne 0 ]]; then
+    exit 1
+  fi
+  exit 0
+fi
+
 if [[ "${SUISUI_CODEX_RUN_AUTH_ACCESS_EVIDENCE:-0}" != "1" ]]; then
   echo "Codex auth-access evidence is opt-in and requires an administrator filesystem trace."
   echo "Run with SUISUI_CODEX_RUN_AUTH_ACCESS_EVIDENCE=1 and optionally SUISUI_CODEX_EXECUTABLE=/absolute/path/to/codex."
@@ -46,7 +95,8 @@ audit_dir="$(mktemp -d "${TMPDIR:-/tmp}/suisui-codex-auth-audit.XXXXXX")"
 wrapper_path="$audit_dir/codex-auth-audit-wrapper"
 test_log="$audit_dir/test.log"
 trace_log="$audit_dir/fs-usage.log"
-auth_lines="$audit_dir/auth-access.log"
+parent_trace_log="$audit_dir/fs-usage-parent.log"
+child_trace_log="$audit_dir/fs-usage-child.log"
 test_pid=""
 trace_pid=""
 evidence_temp=""
@@ -109,19 +159,24 @@ if [[ "$observed_child_parent" != "$parent_pid" ]]; then
   exit 1
 fi
 
-auth_path_suffix=".codex/auth.json"
-trace_filter_program='index($0, needle) { print; fflush() }'
+root_trace_command=(
+  "$ROOT_DIR/script/check_codex_auth_access_evidence.sh"
+  --run-root-traces
+  "$trace_log"
+  "$parent_trace_log"
+  "$child_trace_log"
+  "$parent_pid"
+  "$child_pid"
+)
 if sudo -n true >/dev/null 2>&1; then
-  sudo /usr/bin/fs_usage -e -w -f pathname -t 75 2>&1 \
-    | LC_ALL=C /usr/bin/awk -v needle="$auth_path_suffix" "$trace_filter_program" >"$trace_log" &
+  sudo "${root_trace_command[@]}" &
 else
-  /usr/bin/osascript - "$trace_log" "$auth_path_suffix" <<'APPLESCRIPT' &
+  /usr/bin/osascript - "${root_trace_command[@]}" <<'APPLESCRIPT' &
 on run argv
-  set tracePath to item 1 of argv
-  set authPathSuffix to item 2 of argv
-  set filterProgram to "index($0, needle) { print; fflush() }"
-  set innerCommand to "/usr/bin/fs_usage -e -w -f pathname -t 75 2>&1 | LC_ALL=C /usr/bin/awk -v needle=" & quoted form of authPathSuffix & " " & quoted form of filterProgram & " >" & quoted form of tracePath
-  set traceCommand to "/bin/bash -o pipefail -c " & quoted form of innerCommand
+  set traceCommand to quoted form of item 1 of argv
+  repeat with argumentIndex from 2 to count of argv
+    set traceCommand to traceCommand & " " & quoted form of item argumentIndex of argv
+  end repeat
   do shell script traceCommand with administrator privileges
 end run
 APPLESCRIPT
@@ -129,7 +184,7 @@ fi
 trace_pid=$!
 
 trace_deadline=$((SECONDS + 180))
-while [[ ! -f "$trace_log" ]]; do
+while [[ ! -f "$trace_log" || ! -f "$parent_trace_log" || ! -f "$child_trace_log" ]]; do
   if ! kill -0 "$trace_pid" >/dev/null 2>&1; then
     echo "Administrator filesystem trace exited before it became ready." >&2
     exit 1
@@ -166,10 +221,9 @@ if [[ "$trace_status" -ne 0 ]]; then
   exit "$trace_status"
 fi
 
-LC_ALL=C grep -F -- "$auth_path_suffix" "$trace_log" >"$auth_lines" || true
-harness_parent_auth_access_count="$(grep -Ec "\\.${parent_pid}([[:space:]]|$)" "$auth_lines" || true)"
-codex_child_auth_access_count="$(grep -Ec "\\.${child_pid}([[:space:]]|$)" "$auth_lines" || true)"
-total_auth_access_count="$(wc -l <"$auth_lines" | tr -d '[:space:]')"
+harness_parent_auth_access_count="$(wc -l <"$parent_trace_log" | tr -d '[:space:]')"
+codex_child_auth_access_count="$(wc -l <"$child_trace_log" | tr -d '[:space:]')"
+total_auth_access_count="$(wc -l <"$trace_log" | tr -d '[:space:]')"
 unexpected_auth_access_count=$((total_auth_access_count - harness_parent_auth_access_count - codex_child_auth_access_count))
 
 if [[ "$harness_parent_auth_access_count" -ne 0 ]]; then
