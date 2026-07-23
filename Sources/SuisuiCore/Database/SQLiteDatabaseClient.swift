@@ -1005,6 +1005,46 @@ public enum CoreMigrations {
                     """
                 )
             },
+            DatabaseMigration(id: "0024_create_external_side_effect_journal") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS external_side_effect_journal (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        execution_id TEXT NOT NULL,
+                        review_session_id TEXT NOT NULL,
+                        action_id TEXT NOT NULL,
+                        item_index INTEGER,
+                        tool TEXT NOT NULL,
+                        canonical_arguments_digest BLOB NOT NULL
+                            CHECK(length(canonical_arguments_digest) = 32),
+                        idempotency_key TEXT NOT NULL UNIQUE,
+                        attempt INTEGER NOT NULL CHECK(attempt > 0),
+                        state TEXT NOT NULL CHECK(state IN (
+                            'prepared',
+                            'started',
+                            'succeeded',
+                            'unknown',
+                            'failed_before_side_effect',
+                            'compensated'
+                        )),
+                        external_resource_id TEXT,
+                        prepared_at TEXT NOT NULL,
+                        started_at TEXT,
+                        completed_at TEXT,
+                        updated_at TEXT NOT NULL,
+                        failure_category TEXT,
+                        reconciliation_result TEXT,
+                        result_json BLOB
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_external_side_effect_journal_execution
+                    ON external_side_effect_journal(execution_id, item_index);
+
+                    CREATE INDEX IF NOT EXISTS idx_external_side_effect_journal_reconciliation
+                    ON external_side_effect_journal(state, updated_at);
+                    """
+                )
+            },
         ]
     }
 }
