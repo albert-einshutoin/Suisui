@@ -125,6 +125,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("discovered_test_count"))
         XCTAssertTrue(script.contains("executed_test_count"))
         XCTAssertTrue(script.contains("skipped_test_count"))
+        XCTAssertTrue(script.contains("max_skipped_test_count"))
         XCTAssertTrue(script.contains("baseline_test_count"))
         XCTAssertTrue(script.contains("BLOCKER: discovered SwiftPM test count"))
         XCTAssertTrue(script.contains("BLOCKER: executed SwiftPM test count"))
@@ -139,7 +140,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("fixture=valid status=passed"))
         XCTAssertTrue(result.output.contains("fixture=zero-target status=blocked"))
         XCTAssertTrue(result.output.contains("fixture=below-baseline status=blocked"))
+        XCTAssertTrue(result.output.contains("fixture=partial-execution status=blocked"))
         XCTAssertTrue(result.output.contains("fixture=missing-execution-summary status=blocked"))
+        XCTAssertTrue(result.output.contains("fixture=expected-skips status=passed"))
+        XCTAssertTrue(result.output.contains("fixture=skip-growth status=blocked"))
     }
 
     func testGitHubCISeparatesCompleteSwiftPMSuiteFromSupplementalSourceContracts() throws {

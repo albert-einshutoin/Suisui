@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ARTIFACT_DIR="${SUISUI_SWIFTPM_ARTIFACT_DIR:-$ROOT_DIR/.tmp/ci-artifacts/swiftpm}"
 BASELINE_FILE="${SUISUI_SWIFTPM_TEST_BASELINE_FILE:-$ROOT_DIR/config/quality/swiftpm-test-baseline.txt}"
+MAX_SKIPPED_FILE="${SUISUI_SWIFTPM_MAX_SKIPPED_FILE:-$ROOT_DIR/config/quality/swiftpm-max-skipped-tests.txt}"
 DISCOVERED_TESTS_FILE="$ARTIFACT_DIR/discovered-tests.txt"
 DISCOVERY_LOG_FILE="$ARTIFACT_DIR/discovery.log"
 TEST_OUTPUT_FILE="$ARTIFACT_DIR/test-output.log"
@@ -23,6 +24,16 @@ read_positive_count() {
   local value="$2"
   if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
     printf 'BLOCKER: %s must be a positive integer, got %s\n' "$label" "${value:-<empty>}" >&2
+    return 1
+  fi
+  printf '%s\n' "$value"
+}
+
+read_nonnegative_count() {
+  local label="$1"
+  local value="$2"
+  if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+    printf 'BLOCKER: %s must be a non-negative integer, got %s\n' "$label" "${value:-<empty>}" >&2
     return 1
   fi
   printf '%s\n' "$value"
@@ -67,13 +78,30 @@ validate_test_counts() {
   fi
 }
 
+validate_skipped_count() {
+  local skipped_test_count="$1"
+  local max_skipped_test_count="$2"
+
+  if [[ ! "$skipped_test_count" =~ ^[0-9]+$ ]]; then
+    printf 'BLOCKER: skipped SwiftPM test count must be non-negative, got %s\n' \
+      "${skipped_test_count:-<empty>}" >&2
+    return 1
+  fi
+  if [[ "$skipped_test_count" -gt "$max_skipped_test_count" ]]; then
+    printf 'BLOCKER: skipped SwiftPM test count %s exceeds allowed maximum %s\n' \
+      "$skipped_test_count" "$max_skipped_test_count" >&2
+    return 1
+  fi
+}
+
 write_xunit_summary() {
   local status="$1"
   local baseline_test_count="$2"
   local discovered_test_count="$3"
   local executed_test_count="$4"
   local skipped_test_count="$5"
-  local output_file="$6"
+  local max_skipped_test_count="$6"
+  local output_file="$7"
   local failure_count=0
   local failure_element=""
   if [[ "$status" != "passed" ]]; then
@@ -89,6 +117,7 @@ write_xunit_summary() {
     printf '    <property name="discovered_test_count" value="%s" />\n' "$discovered_test_count"
     printf '    <property name="executed_test_count" value="%s" />\n' "$executed_test_count"
     printf '    <property name="skipped_test_count" value="%s" />\n' "$skipped_test_count"
+    printf '    <property name="max_skipped_test_count" value="%s" />\n' "$max_skipped_test_count"
     printf '%s\n' '  </properties>'
     printf '%s\n' '  <testcase classname="Suisui.CI" name="complete-swiftpm-suite">'
     if [[ -n "$failure_element" ]]; then
@@ -102,12 +131,20 @@ write_xunit_summary() {
 write_failed_evidence() {
   local baseline_test_count="$1"
   local discovered_test_count="$2"
+  local max_skipped_test_count="$3"
 
-  printf 'status=failed\nbaseline_test_count=%s\ndiscovered_test_count=%s\nexecuted_test_count=0\nskipped_test_count=0\n' \
+  printf 'status=failed\nbaseline_test_count=%s\ndiscovered_test_count=%s\nexecuted_test_count=0\nskipped_test_count=0\nmax_skipped_test_count=%s\n' \
     "$baseline_test_count" \
     "$discovered_test_count" \
+    "$max_skipped_test_count" \
     >"$SUMMARY_FILE"
-  write_xunit_summary failed "$baseline_test_count" "$discovered_test_count" 0 0 "$XUNIT_OUTPUT_FILE"
+  write_xunit_summary failed \
+    "$baseline_test_count" \
+    "$discovered_test_count" \
+    0 \
+    0 \
+    "$max_skipped_test_count" \
+    "$XUNIT_OUTPUT_FILE"
 }
 
 run_fixture_self_tests() {
@@ -171,7 +208,7 @@ run_fixture_self_tests() {
 
   fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/suisui-swiftpm-runner-self-test.XXXXXX")"
   fixture_xunit="$fixture_dir/test-results.xml"
-  write_xunit_summary passed 3 3 3 0 "$fixture_xunit"
+  write_xunit_summary passed 3 3 3 0 0 "$fixture_xunit"
   if ! grep -q 'executed_test_count" value="3"' "$fixture_xunit"; then
     rm -rf "$fixture_dir"
     printf 'fixture=xunit-summary status=invalid\n' >&2
@@ -210,6 +247,9 @@ trap 'rm -f "$RAW_DISCOVERY_LOG"' EXIT INT TERM
 baseline_test_count="$(read_positive_count \
   "baseline SwiftPM test count" \
   "$(tr -d '[:space:]' <"$BASELINE_FILE" 2>/dev/null || true)")"
+max_skipped_test_count="$(read_nonnegative_count \
+  "maximum skipped SwiftPM test count" \
+  "$(tr -d '[:space:]' <"$MAX_SKIPPED_FILE" 2>/dev/null || true)")"
 
 cd "$ROOT_DIR"
 
@@ -222,7 +262,7 @@ sanitize_swift_output <"$RAW_DISCOVERY_LOG" >"$DISCOVERY_LOG_FILE"
 rm -f "$RAW_DISCOVERY_LOG"
 RAW_DISCOVERY_LOG=""
 if [[ "$discovery_status" -ne 0 ]]; then
-  write_failed_evidence "$baseline_test_count" 0
+  write_failed_evidence "$baseline_test_count" 0 "$max_skipped_test_count"
   cat "$DISCOVERY_LOG_FILE" >&2
   printf 'BLOCKER: SwiftPM test discovery failed\n' >&2
   exit "$discovery_status"
@@ -230,7 +270,7 @@ fi
 
 discovered_test_count="$(awk 'NF { count += 1 } END { print count + 0 }' "$DISCOVERED_TESTS_FILE")"
 if ! validate_discovered_count "$discovered_test_count" "$baseline_test_count" >/dev/null; then
-  write_failed_evidence "$baseline_test_count" "$discovered_test_count"
+  write_failed_evidence "$baseline_test_count" "$discovered_test_count" "$max_skipped_test_count"
   exit 1
 fi
 
@@ -255,17 +295,21 @@ if ! validate_test_counts \
   >/dev/null 2>&1; then
   count_status=1
 fi
+if ! validate_skipped_count "$skipped_test_count" "$max_skipped_test_count" >/dev/null 2>&1; then
+  count_status=1
+fi
 status_label="passed"
 if [[ "$test_status" -ne 0 || "$count_status" -ne 0 ]]; then
   status_label="failed"
 fi
 
-printf 'status=%s\nbaseline_test_count=%s\ndiscovered_test_count=%s\nexecuted_test_count=%s\nskipped_test_count=%s\n' \
+printf 'status=%s\nbaseline_test_count=%s\ndiscovered_test_count=%s\nexecuted_test_count=%s\nskipped_test_count=%s\nmax_skipped_test_count=%s\n' \
   "$status_label" \
   "$baseline_test_count" \
   "$discovered_test_count" \
   "${executed_test_count:-0}" \
   "$skipped_test_count" \
+  "$max_skipped_test_count" \
   >"$SUMMARY_FILE"
 write_xunit_summary \
   "$status_label" \
@@ -273,6 +317,7 @@ write_xunit_summary \
   "$discovered_test_count" \
   "${executed_test_count:-0}" \
   "$skipped_test_count" \
+  "$max_skipped_test_count" \
   "$XUNIT_OUTPUT_FILE"
 
 if [[ "$test_status" -ne 0 ]]; then
@@ -281,6 +326,7 @@ if [[ "$test_status" -ne 0 ]]; then
 fi
 if [[ "$count_status" -ne 0 ]]; then
   validate_test_counts "$discovered_test_count" "$executed_test_count" "$baseline_test_count"
+  validate_skipped_count "$skipped_test_count" "$max_skipped_test_count"
   exit 1
 fi
 printf 'OK: complete SwiftPM suite passed (%s discovered, %s executed, %s skipped)\n' \
