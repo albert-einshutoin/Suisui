@@ -115,12 +115,17 @@ public final class ReviewSessionViewModel: ObservableObject {
                 self.auditErrorMessage = auditErrorMessage
             }
             recordExecutionReceipt(for: executedSession, startedAt: startedAt, finishedAt: Date())
+            session.requestFreshApproval()
         } catch {
             errorMessage = Self.userFacingErrorMessage(for: error)
             recordAudit(action: "session.execute", status: .failed)
             var failedSession = session
             failedSession.executionStatus = .failed
             recordExecutionReceipt(for: failedSession, startedAt: startedAt, finishedAt: Date())
+            // Preflight rejection and unknown execution failures can both leave
+            // the sealed approval unusable. Require an explicit fresh approval
+            // instead of trapping the user behind the consumed/expired nonce.
+            session.requestFreshApproval()
             throw error
         }
     }

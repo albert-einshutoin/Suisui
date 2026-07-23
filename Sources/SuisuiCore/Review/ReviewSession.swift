@@ -284,6 +284,16 @@ public struct ReviewSession: Equatable, Sendable {
         }
     }
 
+    public mutating func requestFreshApproval() {
+        guard case .approved = approvalState else {
+            return
+        }
+        // A completed, failed, expired, or unknown attempt must never reuse its
+        // sealed nonce. Preserve the reviewed plan, but return its approval gate
+        // to the state derived from the currently enabled actions.
+        refreshApprovalState()
+    }
+
     /// Compatibility entry point for callers that provide approval identity.
     /// The caller's digest and plan fields are never trusted; this session
     /// recomputes and seals its current reviewed binding.

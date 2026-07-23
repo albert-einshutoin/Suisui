@@ -23,6 +23,7 @@ final class ReviewSessionViewModelTests: XCTestCase {
 
         viewModel.updateStringArgument(actionID: "task", key: "title", value: "Review")
         try viewModel.approve()
+        let approvalID = try XCTUnwrap(viewModel.session.approvalToken?.approvalID.uuidString)
         try viewModel.execute()
 
         XCTAssertEqual(viewModel.session.items.first?.editedAction.arguments["title"], .string("Review"))
@@ -31,7 +32,8 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertTrue(logger.recordedEvents.contains { $0.action == "session.approve" })
         XCTAssertEqual(viewModel.lastExecutionReceipt?.status, .succeeded)
         XCTAssertEqual(viewModel.lastExecutionReceipt?.actions.first?.status, .succeeded)
-        XCTAssertEqual(viewModel.lastExecutionReceipt?.approvalID, viewModel.session.approvalToken?.id)
+        XCTAssertEqual(viewModel.lastExecutionReceipt?.approvalID, approvalID)
+        XCTAssertNil(viewModel.session.approvalToken)
         XCTAssertEqual(viewModel.executionReceipts.map(\.id), receiptStore.receipts.map(\.id))
         let receipt = try XCTUnwrap(viewModel.lastExecutionReceipt)
         let receiptAudit = try XCTUnwrap(logger.recordedEvents.last { $0.category == "receipt" && $0.action == "execution.receipt.create" })
@@ -39,6 +41,37 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertEqual(receiptAudit.metadata["run_id"], receipt.runID)
         XCTAssertEqual(receiptAudit.metadata["receipt_status"], ExecutionReceiptStatus.succeeded.rawValue)
         XCTAssertEqual(receiptAudit.metadata["session_id"], viewModel.session.id)
+    }
+
+    func testCompletedExecutionRequestsFreshApprovalWithoutNoOpEdit() throws {
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create",
+                inputSchema: ToolInputSchema(required: ["title"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(tool: .taskCreate, status: .succeeded, summary: "created")
+            }
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+            ]),
+            executor: ActionExecutor(registry: registry)
+        )
+
+        try viewModel.approve()
+        let consumedNonce = try XCTUnwrap(viewModel.session.approvalToken?.nonce)
+        try viewModel.execute()
+
+        XCTAssertTrue(viewModel.canApprove)
+        XCTAssertFalse(viewModel.canExecute)
+        XCTAssertNil(viewModel.session.approvalToken)
+
+        try viewModel.approve()
+        XCTAssertNotEqual(viewModel.session.approvalToken?.nonce, consumedNonce)
+        XCTAssertTrue(viewModel.canExecute)
     }
 
     func testNotificationExecutionReceiptIncludesScheduledNotificationReference() throws {
