@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":91,"method":"item/commandExecution/requestApproval","params":{"threadId":"thread-example","turnId":"turn-example","itemId":"item-command","command":"pwd","cwd":"/tmp","reason":"Need workspace access"}}

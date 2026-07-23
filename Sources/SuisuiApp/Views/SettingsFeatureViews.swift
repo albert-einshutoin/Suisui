@@ -1167,6 +1167,8 @@ extension SettingsAIFeatureView {
     @ViewBuilder
     var selectedProviderConfigurationFields: some View {
         switch settingsViewModel.settings.aiProvider {
+        case .codexLocal:
+            codexProviderSettingsFields
         case .openaiResponses:
             openAIProviderSettingsFields
         case .geminiOpenAICompatible:
@@ -1375,6 +1377,60 @@ extension SettingsAIFeatureView {
         ) {
             Label("Approve OpenCode Local Execution", systemImage: "terminal")
         }
+    }
+
+    @ViewBuilder
+    var codexProviderSettingsFields: some View {
+        TextField(
+            "Codex Executable",
+            text: Binding(
+                get: { settingsViewModel.settings.codexExecutablePath ?? "" },
+                set: { settingsViewModel.setCodexExecutablePath($0) }
+            )
+        )
+        .accessibilityIdentifier("settings-codex-executable-path")
+        .accessibilityHint("Enter an absolute path to the Codex CLI executable, not its authentication files.")
+
+        TextField(
+            "Codex Model ID (optional)",
+            text: Binding(
+                get: { settingsViewModel.settings.codexModelID ?? "" },
+                set: { settingsViewModel.setCodexModelID($0) }
+            )
+        )
+        .accessibilityIdentifier("settings-codex-model-id")
+        .accessibilityHint("Optionally selects a Codex model; leave empty to use the Codex default.")
+
+        Toggle(
+            isOn: Binding(
+                get: { settingsViewModel.settings.isCodexLocalExecutionApproved },
+                set: { settingsViewModel.setCodexLocalExecutionApproved($0) }
+            )
+        ) {
+            Label("Approve Tool-Free Codex Local Execution", systemImage: "lock.shield")
+        }
+        .accessibilityIdentifier("settings-codex-local-execution-approval")
+        .accessibilityHint("Allows Suisui to launch the selected Codex executable with coding and external tools disabled.")
+
+        CodexAccountSettingsView(
+            approvedExecutable: settingsViewModel.settings.isCodexLocalExecutionApproved
+                ? settingsViewModel.settings.approvedCodexExecutable
+                : nil,
+            onDisconnect: {
+                // The view model rolls back approval state and publishes an
+                // error if persistence fails, so UI and runtime stay aligned.
+                try? settingsViewModel.disconnectCodexAndSave()
+            }
+        )
+
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Uses your Mac user's Codex-managed ChatGPT login and Codex allowance.", systemImage: "person.crop.circle.badge.checkmark")
+            Text("Suisui does not read or store Codex tokens. ChatGPT sign-in is handled by the local Codex process.")
+            Text("Shell, file editing, web, app, plugin, and MCP tools are disabled for this voice-task planning path.")
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .accessibilityIdentifier("codex-local-subscription-boundary")
     }
 
     @ViewBuilder

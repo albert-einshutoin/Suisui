@@ -1,6 +1,14 @@
 import Combine
 import Foundation
 
+public extension Notification.Name {
+    /// Invalidates in-memory Codex account and planning operations whenever
+    /// the user changes the provider or the executable approval boundary.
+    static let suisuiCodexExecutionApprovalDidChange = Notification.Name(
+        "dev.suisui.codexExecutionApprovalDidChange"
+    )
+}
+
 public struct AppSettings: Codable, Equatable, Sendable {
     public var aiProvider: AIProvider
     public var sttProvider: STTProvider
@@ -21,6 +29,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var openCodeWorkspacePath: String?
     public var openCodeModelID: String?
     public var isOpenCodeLocalExecutionApproved: Bool
+    public var codexExecutablePath: String?
+    public var codexModelID: String?
+    public var isCodexLocalExecutionApproved: Bool
+    public var approvedCodexExecutable: ApprovedCodexExecutable?
     public var isLowLatencyVoiceAgentModeEnabled: Bool
     public var isLowLatencyVoiceAgentAlwaysOnRecordingEnabled: Bool
     public var isLowLatencyVoiceAgentCloudFallbackEnabled: Bool
@@ -48,6 +60,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case openCodeWorkspacePath
         case openCodeModelID
         case isOpenCodeLocalExecutionApproved
+        case codexExecutablePath
+        case codexModelID
+        case isCodexLocalExecutionApproved
+        case approvedCodexExecutable
         case isLowLatencyVoiceAgentModeEnabled
         case isLowLatencyVoiceAgentAlwaysOnRecordingEnabled
         case isLowLatencyVoiceAgentCloudFallbackEnabled
@@ -76,6 +92,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         openCodeWorkspacePath: String? = nil,
         openCodeModelID: String? = nil,
         isOpenCodeLocalExecutionApproved: Bool = false,
+        codexExecutablePath: String? = nil,
+        codexModelID: String? = nil,
+        isCodexLocalExecutionApproved: Bool = false,
+        approvedCodexExecutable: ApprovedCodexExecutable? = nil,
         // Realtime voice is privacy- and cost-sensitive, so all recording and
         // paid/cloud escalation paths start as explicit opt-ins.
         isLowLatencyVoiceAgentModeEnabled: Bool = false,
@@ -104,6 +124,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.openCodeWorkspacePath = openCodeWorkspacePath
         self.openCodeModelID = openCodeModelID
         self.isOpenCodeLocalExecutionApproved = isOpenCodeLocalExecutionApproved
+        self.codexExecutablePath = codexExecutablePath
+        self.codexModelID = codexModelID
+        self.isCodexLocalExecutionApproved = isCodexLocalExecutionApproved
+        self.approvedCodexExecutable = approvedCodexExecutable
         self.isLowLatencyVoiceAgentModeEnabled = isLowLatencyVoiceAgentModeEnabled
         self.isLowLatencyVoiceAgentAlwaysOnRecordingEnabled = isLowLatencyVoiceAgentAlwaysOnRecordingEnabled
         self.isLowLatencyVoiceAgentCloudFallbackEnabled = isLowLatencyVoiceAgentCloudFallbackEnabled
@@ -138,6 +162,17 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.openCodeWorkspacePath = try container.decodeIfPresent(String.self, forKey: .openCodeWorkspacePath)
         self.openCodeModelID = try container.decodeIfPresent(String.self, forKey: .openCodeModelID)
         self.isOpenCodeLocalExecutionApproved = try container.decodeIfPresent(Bool.self, forKey: .isOpenCodeLocalExecutionApproved) ?? false
+        self.codexExecutablePath = try container.decodeIfPresent(String.self, forKey: .codexExecutablePath)
+        self.codexModelID = try container.decodeIfPresent(String.self, forKey: .codexModelID)
+        self.approvedCodexExecutable = try container.decodeIfPresent(
+            ApprovedCodexExecutable.self,
+            forKey: .approvedCodexExecutable
+        )
+        // Settings created before approval identity binding fail closed and must
+        // be explicitly re-approved by the user.
+        self.isCodexLocalExecutionApproved = (
+            try container.decodeIfPresent(Bool.self, forKey: .isCodexLocalExecutionApproved) ?? false
+        ) && self.approvedCodexExecutable != nil
         self.isLowLatencyVoiceAgentModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .isLowLatencyVoiceAgentModeEnabled) ?? false
         self.isLowLatencyVoiceAgentAlwaysOnRecordingEnabled = try container.decodeIfPresent(Bool.self, forKey: .isLowLatencyVoiceAgentAlwaysOnRecordingEnabled) ?? false
         self.isLowLatencyVoiceAgentCloudFallbackEnabled = try container.decodeIfPresent(Bool.self, forKey: .isLowLatencyVoiceAgentCloudFallbackEnabled) ?? false
@@ -167,6 +202,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encodeIfPresent(openCodeWorkspacePath, forKey: .openCodeWorkspacePath)
         try container.encodeIfPresent(openCodeModelID, forKey: .openCodeModelID)
         try container.encode(isOpenCodeLocalExecutionApproved, forKey: .isOpenCodeLocalExecutionApproved)
+        try container.encodeIfPresent(codexExecutablePath, forKey: .codexExecutablePath)
+        try container.encodeIfPresent(codexModelID, forKey: .codexModelID)
+        try container.encode(isCodexLocalExecutionApproved, forKey: .isCodexLocalExecutionApproved)
+        try container.encodeIfPresent(approvedCodexExecutable, forKey: .approvedCodexExecutable)
         try container.encode(isLowLatencyVoiceAgentModeEnabled, forKey: .isLowLatencyVoiceAgentModeEnabled)
         try container.encode(isLowLatencyVoiceAgentAlwaysOnRecordingEnabled, forKey: .isLowLatencyVoiceAgentAlwaysOnRecordingEnabled)
         try container.encode(isLowLatencyVoiceAgentCloudFallbackEnabled, forKey: .isLowLatencyVoiceAgentCloudFallbackEnabled)
@@ -211,6 +250,16 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
         if let openCodeModelID = copy.openCodeModelID?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.openCodeModelID = openCodeModelID.isEmpty ? nil : openCodeModelID
+        }
+        if let codexExecutablePath = copy.codexExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            copy.codexExecutablePath = codexExecutablePath.isEmpty ? nil : codexExecutablePath
+        }
+        if copy.codexExecutablePath != copy.approvedCodexExecutable?.path {
+            copy.isCodexLocalExecutionApproved = false
+            copy.approvedCodexExecutable = nil
+        }
+        if let codexModelID = copy.codexModelID?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            copy.codexModelID = codexModelID.isEmpty ? nil : codexModelID
         }
         // Runtime starts low-latency listening only from an explicit user
         // action. Persisted or future always-on flags cannot make launch record.
@@ -306,6 +355,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
             appendOpenCodeLocalIssues(to: &issues)
         } else {
             appendOptionalOpenCodeLocalIssues(to: &issues)
+        }
+        if aiProvider == .codexLocal {
+            appendCodexLocalIssues(to: &issues)
+        } else {
+            appendOptionalCodexLocalIssues(to: &issues)
         }
         appendWhisperCppExecutablePathIssue(to: &issues, isRequired: sttProvider == .localWhisperCpp)
         appendKokoroExecutablePathIssue(to: &issues)
@@ -407,6 +461,60 @@ public struct AppSettings: Codable, Equatable, Sendable {
         appendOpenCodeExecutablePathIssue(to: &issues, isRequired: false)
         appendOpenCodeWorkspacePathIssue(to: &issues, isRequired: false)
         appendOpenCodeModelIDIssue(to: &issues, isRequired: false)
+    }
+
+    private func appendCodexLocalIssues(to issues: inout [ValidationIssue]) {
+        appendCodexExecutablePathIssue(to: &issues, isRequired: true)
+        appendCodexModelIDIssue(to: &issues)
+        if !isCodexLocalExecutionApproved || approvedCodexExecutable?.path != codexExecutablePath {
+            issues.append(ValidationIssue(
+                field: "isCodexLocalExecutionApproved",
+                message: "Codex local execution requires approval bound to the selected executable.",
+                severity: .error
+            ))
+        }
+    }
+
+    private func appendOptionalCodexLocalIssues(to issues: inout [ValidationIssue]) {
+        appendCodexExecutablePathIssue(to: &issues, isRequired: false)
+        appendCodexModelIDIssue(to: &issues)
+    }
+
+    private func appendCodexExecutablePathIssue(to issues: inout [ValidationIssue], isRequired: Bool) {
+        let path = codexExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !path.isEmpty else {
+            if isRequired {
+                issues.append(ValidationIssue(
+                    field: "codexExecutablePath",
+                    message: "Codex executable path is required.",
+                    severity: .error
+                ))
+            }
+            return
+        }
+        if path.hasSuffix("/auth.json") || path == "auth.json" {
+            issues.append(ValidationIssue(
+                field: "codexExecutablePath",
+                message: "Codex executable path must not point to auth.json.",
+                severity: .error
+            ))
+        } else if !NSString(string: path).isAbsolutePath {
+            issues.append(ValidationIssue(
+                field: "codexExecutablePath",
+                message: "Codex executable path must be absolute.",
+                severity: .error
+            ))
+        }
+    }
+
+    private func appendCodexModelIDIssue(to issues: inout [ValidationIssue]) {
+        guard let modelID = codexModelID, !modelID.isEmpty,
+              modelID.rangeOfCharacter(from: .whitespacesAndNewlines) != nil else { return }
+        issues.append(ValidationIssue(
+            field: "codexModelID",
+            message: "Codex model id cannot contain whitespace.",
+            severity: .error
+        ))
     }
 
     private func appendOpenCodeExecutablePathIssue(to issues: inout [ValidationIssue], isRequired: Bool) {
@@ -835,7 +943,7 @@ public struct ProviderSecretReadinessSnapshot: Equatable, Sendable {
             return gemini
         case .groqOpenAICompatible:
             return groq
-        case .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
+        case .codexLocal, .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
             return .missing
         }
     }
@@ -1211,7 +1319,7 @@ public final class AppSettingsViewModel: ObservableObject {
             groqAPIKeyReadinessState = state
             groqAPIKeyStatusLabel = Self.statusLabel(for: state)
             groqProviderSmokeStatusLabel = Self.providerSmokeStatusLabel(for: state)
-        case .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
+        case .codexLocal, .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
             return
         }
     }
@@ -1228,7 +1336,7 @@ public final class AppSettingsViewModel: ObservableObject {
             return .geminiAPIKey
         case .groqOpenAICompatible:
             return .groqAPIKey
-        case .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
+        case .codexLocal, .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
             return nil
         }
     }
@@ -1563,9 +1671,14 @@ public final class AppSettingsViewModel: ObservableObject {
             return
         }
 
+        let previousProvider = settings.aiProvider
         settings.aiProvider = provider
         if provider == .opencodeLocal, settings.openCodeModelID == nil {
             settings.openCodeModelID = LLMProviderCatalog.entry(for: .opencodeLocal).defaultModelID
+        }
+        if previousProvider != provider,
+           previousProvider == .codexLocal || provider == .codexLocal {
+            CodexExecutionApprovalChanges.invalidate()
         }
         clearMessages()
     }
@@ -1709,6 +1822,77 @@ public final class AppSettingsViewModel: ObservableObject {
 
     public func setOpenCodeLocalExecutionApproved(_ isApproved: Bool) {
         settings.isOpenCodeLocalExecutionApproved = isApproved
+        clearMessages()
+    }
+
+    public func setCodexExecutablePath(_ path: String) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        let nextPath = trimmed.isEmpty ? nil : trimmed
+        if settings.codexExecutablePath != nextPath {
+            let previousSettings = settings
+            settings.isCodexLocalExecutionApproved = false
+            settings.approvedCodexExecutable = nil
+            settings.codexExecutablePath = nextPath
+            do {
+                // Persist security-sensitive revocation immediately so an
+                // already-open Voice window cannot reload stale approval.
+                try settingsStore.save(settings)
+                CodexExecutionApprovalChanges.invalidate()
+            } catch {
+                settings = previousSettings
+                errorMessage = Self.settingsSaveFailureMessage
+                successMessage = nil
+                return
+            }
+        }
+        clearMessages()
+    }
+
+    public func setCodexModelID(_ modelID: String) {
+        let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.codexModelID = trimmed.isEmpty ? nil : trimmed
+        clearMessages()
+    }
+
+    public func setCodexLocalExecutionApproved(_ isApproved: Bool) {
+        guard isApproved else {
+            do {
+                try disconnectCodexAndSave()
+            } catch {
+                errorMessage = Self.settingsSaveFailureMessage
+                successMessage = nil
+            }
+            return
+        }
+        do {
+            let path = settings.codexExecutablePath ?? ""
+            settings.approvedCodexExecutable = try CodexAppServerRuntimeConfiguration.approve(
+                executablePath: path
+            )
+            settings.isCodexLocalExecutionApproved = true
+            CodexExecutionApprovalChanges.invalidate()
+            clearMessages()
+        } catch {
+            settings.isCodexLocalExecutionApproved = false
+            settings.approvedCodexExecutable = nil
+            errorMessage = "Select a valid executable Codex CLI file before approving local execution."
+            successMessage = nil
+        }
+    }
+
+    public func disconnectCodexAndSave() throws {
+        let previousSettings = settings
+        settings.isCodexLocalExecutionApproved = false
+        settings.approvedCodexExecutable = nil
+        do {
+            try settingsStore.save(settings)
+        } catch {
+            settings = previousSettings
+            errorMessage = Self.settingsSaveFailureMessage
+            successMessage = nil
+            throw error
+        }
+        CodexExecutionApprovalChanges.invalidate()
         clearMessages()
     }
 
@@ -2331,6 +2515,9 @@ public final class AppSettingsViewModel: ObservableObject {
         }
 
         switch provider {
+        case .codexLocal:
+            if settings.codexExecutablePath == nil { return "Setup required" }
+            return settings.isCodexLocalExecutionApproved ? "Ready to connect" : "Approval required"
         case .openaiResponses:
             return openAIAPIKeyStatusLabel
         case .claudeMessages:
@@ -2365,6 +2552,14 @@ public final class AppSettingsViewModel: ObservableObject {
         }
 
         switch provider {
+        case .codexLocal:
+            if settings.codexExecutablePath == nil {
+                return .needsAction(reason: "Set the absolute Codex executable path.")
+            }
+            if !settings.isCodexLocalExecutionApproved {
+                return .needsAction(reason: "Review the local process boundary and approve execution.")
+            }
+            return .ready
         case .opencodeLocal:
             if settings.openCodeExecutablePath == nil {
                 return .needsAction(reason: "Set the OpenCode executable path.")
@@ -2430,6 +2625,8 @@ public final class AppSettingsViewModel: ObservableObject {
         }
 
         switch provider {
+        case .codexLocal:
+            return "Uses the current Mac user's Codex-managed ChatGPT login and subscription; Suisui never stores its tokens."
         case .openaiResponses:
             return "Smoke: \(providerSmokeDisplayLabel(openAIProviderSmokeStatusLabel))"
         case .claudeMessages:
@@ -2455,6 +2652,14 @@ public final class AppSettingsViewModel: ObservableObject {
         }
 
         switch provider {
+        case .codexLocal:
+            if settings.codexExecutablePath == nil {
+                return "Set the absolute Codex executable path."
+            }
+            if !settings.isCodexLocalExecutionApproved {
+                return "Review the tool-free local process boundary and approve execution."
+            }
+            return "Generate a reviewed plan; sign in through Codex if prompted."
         case .opencodeLocal:
             if settings.openCodeExecutablePath == nil {
                 return "Set the OpenCode executable path."
@@ -2509,7 +2714,7 @@ public final class AppSettingsViewModel: ObservableObject {
             return groqAPIKeyReadinessState
         case .openRouterCompatible:
             return openRouterAPIKeyReadinessState
-        case .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
+        case .codexLocal, .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
             return .missing
         }
     }

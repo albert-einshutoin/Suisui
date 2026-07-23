@@ -168,6 +168,8 @@ extension AppRuntimeFactory {
 
     private static func makeLLMProvider(settings: AppSettings, secretStore: any SecretStore) -> any LLMProvider {
         switch settings.normalizedForRuntime.aiProvider {
+        case .codexLocal:
+            return CodexAppServerRuntimeFactory.makeProvider(settings: settings)
         case .openaiResponses:
             let entry = LLMProviderCatalog.entry(for: .openaiResponses)
             let configuration = OpenAIResponsesConfiguration(model: entry.defaultModelID)

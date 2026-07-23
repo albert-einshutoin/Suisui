@@ -1745,7 +1745,19 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
 
         let model = response.model ?? ExecutionReceiptModel(provider: response.providerID, name: "unknown")
-        if isLocalProvider(response.providerID) {
+        let catalogEntry = LLMProviderCatalog.entry(forRuntimeProviderID: response.providerID)
+        if catalogEntry?.id == .codexLocal {
+            // Codex runs on the Mac, but its model usage is billed against the
+            // user's ChatGPT/Codex allowance. Do not classify it as free local
+            // inference or add it to Suisui-managed cost.
+            return .userProviderBilled(
+                provider: model.provider,
+                modelName: model.name,
+                note: "User's ChatGPT Codex allowance. No Suisui managed charge.",
+                observedUsage: observedUsage
+            )
+        }
+        if catalogEntry?.billingMode == .localOnly {
             return .localOnly(model: model, observedUsage: observedUsage)
         }
         if let rateCard = managedCostRateCardProvider(response) {
@@ -1770,10 +1782,6 @@ public final class VoiceCaptureViewModel: ObservableObject {
         )
     }
 
-    private func isLocalProvider(_ providerID: String) -> Bool {
-        let normalized = providerID.lowercased()
-        return normalized.contains("ollama") || normalized.contains("local")
-    }
 }
 
 private enum VoicePlanningLifecycleError: Error, CustomStringConvertible {

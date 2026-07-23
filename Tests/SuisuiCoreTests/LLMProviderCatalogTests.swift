@@ -2,6 +2,17 @@ import XCTest
 @testable import SuisuiCore
 
 final class LLMProviderCatalogTests: XCTestCase {
+    func testRuntimeProviderIdentifiersResolveThroughCatalog() {
+        XCTAssertEqual(
+            LLMProviderCatalog.entry(forRuntimeProviderID: "codex.local")?.billingMode,
+            .userProviderBilled
+        )
+        XCTAssertEqual(
+            LLMProviderCatalog.entry(forRuntimeProviderID: "ollama.chat")?.billingMode,
+            .localOnly
+        )
+        XCTAssertNil(LLMProviderCatalog.entry(forRuntimeProviderID: "unknown.local-looking-provider"))
+    }
     func testCatalogDefinesEntryForEveryProviderID() {
         let ids = LLMProviderCatalog.allEntries.map(\.id)
 
@@ -24,6 +35,7 @@ final class LLMProviderCatalogTests: XCTestCase {
                 .geminiDirect,
                 .geminiOpenAICompatible,
                 .groqOpenAICompatible,
+                .codexLocal,
                 .opencodeLocal,
                 .openRouterCompatible,
                 .ollamaCompatible
@@ -76,6 +88,7 @@ final class LLMProviderCatalogTests: XCTestCase {
                 .claudeMessages,
                 .geminiDirect,
                 .groqOpenAICompatible,
+                .codexLocal,
                 .opencodeLocal,
                 .openRouterCompatible,
                 .ollamaCompatible
@@ -95,8 +108,23 @@ final class LLMProviderCatalogTests: XCTestCase {
         XCTAssertEqual(LLMProviderCatalog.entry(for: .geminiDirect).apiKeySecretKey, .geminiAPIKey)
         XCTAssertEqual(LLMProviderCatalog.entry(for: .geminiOpenAICompatible).apiKeySecretKey, .geminiAPIKey)
         XCTAssertEqual(LLMProviderCatalog.entry(for: .groqOpenAICompatible).apiKeySecretKey, .groqAPIKey)
+        XCTAssertNil(LLMProviderCatalog.entry(for: .codexLocal).apiKeySecretKey)
         XCTAssertNil(LLMProviderCatalog.entry(for: .opencodeLocal).apiKeySecretKey)
         XCTAssertNil(LLMProviderCatalog.entry(for: .ollamaCompatible).apiKeySecretKey)
+    }
+
+    func testCodexLocalDeclaresUserSubscriptionAndMacLocalBoundary() {
+        let entry = LLMProviderCatalog.entry(for: .codexLocal)
+
+        XCTAssertEqual(entry.authMode, .providerManagedSubscription)
+        XCTAssertEqual(entry.executionLocation, .userMac)
+        XCTAssertEqual(entry.billingMode, .userProviderBilled)
+        XCTAssertEqual(entry.requestFamily, .codexAppServer)
+        XCTAssertNil(entry.apiKeySecretKey)
+        XCTAssertTrue(entry.requiresExplicitLocalExecutionApproval)
+        XCTAssertFalse(entry.supportsStructuredOutput)
+        XCTAssertTrue(entry.isAvailableInCurrentBuild)
+        XCTAssertTrue(LLMProviderCatalog.settingsSelectableIDs.contains(.codexLocal))
     }
 
     func testUnavailableLLMProviderFailsClosedWithoutDelegatingToDefaultProvider() async {

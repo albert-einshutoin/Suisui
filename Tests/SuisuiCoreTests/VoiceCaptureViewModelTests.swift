@@ -3,6 +3,34 @@ import XCTest
 
 @MainActor
 final class VoiceCaptureViewModelTests: XCTestCase {
+    func testExistingVoiceViewModelCannotUseCodexAfterApprovalIsRevoked() async throws {
+        let approval = MutableCodexApprovalForVoice(
+            try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
+        )
+        let reporter = VoiceRecordingVersionReporter()
+        let provider = CodexLocalRuntimeProvider(
+            approvedExecutableProvider: { approval.value },
+            modelID: nil,
+            clientVersion: "voice-test",
+            versionReporter: reporter
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+        viewModel.updateDraftText("明日のタスクを追加")
+
+        approval.value = nil
+        await viewModel.generatePlan()
+
+        guard case .failed = viewModel.phase else {
+            return XCTFail("Expected revoked approval to fail the existing Voice runtime")
+        }
+        let callCount = await reporter.callCount
+        XCTAssertEqual(callCount, 0)
+    }
+
     func testGeneratePlanRequiresAValidDraftInEveryIdleState() {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
@@ -564,6 +592,36 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(preview?.executionReceiptUsage.inputTokens, 900)
         XCTAssertEqual(preview?.executionReceiptUsage.outputTokens, 120)
         XCTAssertTrue(preview?.allowsApprovalAndRun ?? false)
+    }
+
+    func testCodexLocalSubscriptionIsProviderBilledNotLocalOnly() async {
+        let response = PlanningResponse(
+            providerID: "codex.local",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-codex-subscription",
+                userInput: "Create a task",
+                summary: "Create task",
+                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: []),
+            model: ExecutionReceiptModel(provider: "codex.local", name: "gpt-5.4")
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: response)
+        )
+
+        viewModel.updateDraftText("Create a task")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        let preview = viewModel.assistantQueueItem?.costPreview
+        XCTAssertEqual(preview?.billingMode, .userProviderBilled)
+        XCTAssertNil(preview?.estimatedCostCents)
+        XCTAssertEqual(preview?.model?.provider, "codex.local")
     }
 
     func testGeneratePlanAppliesManagedAIBillingPerRunCapToManagedCostPreview() async {
@@ -2471,6 +2529,37 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             sttProvider: .localWhisperCpp,
             isLowLatencyVoiceAgentModeEnabled: true
         )
+    }
+}
+
+private final class MutableCodexApprovalForVoice: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedValue: ApprovedCodexExecutable?
+
+    init(_ value: ApprovedCodexExecutable?) {
+        storedValue = value
+    }
+
+    var value: ApprovedCodexExecutable? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return storedValue
+        }
+        set {
+            lock.lock()
+            storedValue = newValue
+            lock.unlock()
+        }
+    }
+}
+
+private actor VoiceRecordingVersionReporter: CodexVersionReporting {
+    private(set) var callCount = 0
+
+    func versionOutput(executablePath _: String) async throws -> String {
+        callCount += 1
+        return "codex-cli 0.144.1"
     }
 }
 
