@@ -18,6 +18,13 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(workflow.components(separatedBy: "runs-on: macos-26").count - 1, 4)
 
         XCTAssertTrue(workflow.contains("./scripts/ci.sh swiftpm"))
+        XCTAssertGreaterThanOrEqual(
+            workflow.components(separatedBy: "fetch-depth: 0").count - 1,
+            2,
+            "Both the complete SwiftPM suite and visual provenance checks need full history"
+        )
+        XCTAssertTrue(workflow.contains("brew install ripgrep"))
+        XCTAssertTrue(workflow.contains("command -v rg"))
         XCTAssertTrue(workflow.contains("./scripts/ci.sh ui-runtime"))
         XCTAssertTrue(workflow.contains("./scripts/ci.sh ui-visual"))
         XCTAssertTrue(workflow.contains("SUISUI_VISUAL_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}"))

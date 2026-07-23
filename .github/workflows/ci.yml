@@ -24,9 +24,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Evidence/provenance tests resolve the latest product source commit,
+          # which cannot be derived from GitHub's depth-1 PR merge checkout.
+          fetch-depth: 0
 
       - name: Show toolchain
-        run: swift --version
+        run: |
+          swift --version
+          if ! command -v rg >/dev/null 2>&1; then
+            brew install ripgrep
+          fi
+          command -v rg
 
       - name: SwiftPM complete suite
         env:
