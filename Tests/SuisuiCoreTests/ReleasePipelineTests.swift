@@ -130,6 +130,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("BLOCKER: discovered SwiftPM test count"))
         XCTAssertTrue(script.contains("BLOCKER: executed SwiftPM test count"))
         XCTAssertTrue(script.contains("run_fixture_self_tests"))
+        XCTAssertTrue(script.contains("s#/private/var/folders/[^[:space:]]+#<temp-path>#g"))
+        XCTAssertTrue(script.contains("s#(/var)?/tmp/[^[:space:]]+#<temp-path>#g"))
     }
 
     func testCompleteSwiftPMRunnerFixtureSelfTestsExerciseCountFailures() throws {
@@ -145,6 +147,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("fixture=expected-skips status=passed"))
         XCTAssertTrue(result.output.contains("fixture=skip-growth status=blocked"))
         XCTAssertTrue(result.output.contains("fixture=mixed-framework-counts status=passed"))
+        XCTAssertTrue(result.output.contains("fixture=temporary-path-redaction status=passed"))
     }
 
     func testGitHubCISeparatesCompleteSwiftPMSuiteFromSupplementalSourceContracts() throws {
