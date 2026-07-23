@@ -292,25 +292,27 @@ run_visual_gates() {
 sanitize_gate_log() {
   local input="$1"
   local output="${2:-}"
+  local sed_arguments=(
+    -E
+    -e 's#/(Users|Volumes)/[^[:space:]]+#<path>#g'
+    -e 's#/private/var/folders/[^[:space:]]+#<temp-path>#g'
+    -e 's#(/var)?/tmp/[^[:space:]]+#<temp-path>#g'
+    -e 's#(token|secret|password|api[_-]?key)[[:space:]]*[=:][[:space:]]*[^[:space:]]+#\1=<redacted>#Ig'
+  )
   # When invoked with `-` as the input path, the sanitizer reads from
   # stdin and writes to stdout so the caller can pipe the lane output
   # through the sanitizer before `tee` exposes it to the Actions job
   # log. The path- and secret-pattern redactions are shared with the
   # file mode so the runtime/file pipelines stay equivalent.
   if [[ "$input" == "-" ]]; then
-    sed -E \
-      -e 's#/(Users|Volumes)/[^[:space:]]+#<path>#g' \
-      -e 's#(token|secret|password|api[_-]?key)=[^[:space:]]+#\1=<redacted>#g'
+    sed "${sed_arguments[@]}"
     return 0
   fi
   if [[ -z "$output" ]]; then
     echo "BLOCKER: sanitize_gate_log output path is required in file mode" >&2
     return 2
   fi
-  sed -E \
-    -e 's#/(Users|Volumes)/[^[:space:]]+#<path>#g' \
-    -e 's#(token|secret|password|api[_-]?key)=[^[:space:]]+#\1=<redacted>#g' \
-    "$input" >"$output"
+  sed "${sed_arguments[@]}" "$input" >"$output"
 }
 
 run_lane_with_artifacts() {
@@ -368,10 +370,10 @@ validate_positive_integer "SUISUI_UI_GATE_LOCK_TIMEOUT_SECONDS" "$UI_GATE_LOCK_T
 
 case "$CI_LANE" in
   swiftpm)
-    run_pr_gate
+    run_lane_with_artifacts "swiftpm" run_pr_gate
     ;;
   source-contracts)
-    run_source_contract_gates
+    run_lane_with_artifacts "source-contracts" run_source_contract_gates
     ;;
   ui-runtime)
     acquire_ui_gate_lock
