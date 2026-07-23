@@ -245,7 +245,7 @@ run_fixture_self_tests() {
   {
     printf '%s\n' "Test Suite 'All tests' passed."
     printf '%s\n' 'Executed 3 tests, with 1 test skipped and 0 failures.'
-    printf '%s\n' '↷ Test "conditional Swift Testing case" skipped: capability unavailable'
+    printf '%s\n' '➜ Test conditionalSwiftTestingCase() skipped: "capability unavailable"'
     printf '%s\n' '✔ Test run with 2 tests in 1 suite passed after 0.001 seconds.'
   } >"$mixed_framework_output"
   if [[ "$(parse_executed_test_count "$mixed_framework_output")" != "5" ]]; then
