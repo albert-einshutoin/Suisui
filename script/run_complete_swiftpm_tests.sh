@@ -28,10 +28,9 @@ read_positive_count() {
   printf '%s\n' "$value"
 }
 
-validate_test_counts() {
+validate_discovered_count() {
   local discovered_test_count="$1"
-  local executed_test_count="$2"
-  local baseline_test_count="$3"
+  local baseline_test_count="$2"
 
   if [[ ! "$discovered_test_count" =~ ^[1-9][0-9]*$ ]]; then
     printf 'BLOCKER: discovered SwiftPM test count must be positive, got %s\n' \
@@ -43,6 +42,14 @@ validate_test_counts() {
       "$discovered_test_count" "$baseline_test_count" >&2
     return 1
   fi
+}
+
+validate_test_counts() {
+  local discovered_test_count="$1"
+  local executed_test_count="$2"
+  local baseline_test_count="$3"
+
+  validate_discovered_count "$discovered_test_count" "$baseline_test_count" || return 1
   if [[ ! "$executed_test_count" =~ ^[1-9][0-9]*$ ]]; then
     printf 'BLOCKER: executed SwiftPM test count must be positive, got %s\n' \
       "${executed_test_count:-<empty>}" >&2
@@ -208,7 +215,7 @@ if [[ "$discovery_status" -ne 0 ]]; then
 fi
 
 discovered_test_count="$(awk 'NF { count += 1 } END { print count + 0 }' "$DISCOVERED_TESTS_FILE")"
-if ! validate_test_counts "$discovered_test_count" "$baseline_test_count" "$baseline_test_count" >/dev/null; then
+if ! validate_discovered_count "$discovered_test_count" "$baseline_test_count" >/dev/null; then
   write_failed_evidence "$baseline_test_count" "$discovered_test_count"
   exit 1
 fi
