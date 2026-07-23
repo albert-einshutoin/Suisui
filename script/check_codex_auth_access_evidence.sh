@@ -160,6 +160,9 @@ if [[ "$observed_child_parent" != "$parent_pid" ]]; then
 fi
 
 root_trace_command=(
+  # Administrator shells can be denied direct execution from removable
+  # volumes; invoke the audited script through the system shell instead.
+  /bin/bash
   "$ROOT_DIR/script/check_codex_auth_access_evidence.sh"
   --run-root-traces
   "$trace_log"

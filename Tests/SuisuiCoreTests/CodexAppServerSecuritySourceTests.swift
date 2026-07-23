@@ -42,6 +42,8 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         XCTAssertTrue(script.contains("index($0, needle) { print; fflush() }"))
         XCTAssertTrue(script.contains("set -euo pipefail"))
         XCTAssertTrue(script.contains("--run-root-traces"))
+        XCTAssertTrue(script.contains("root_trace_command=("))
+        XCTAssertTrue(script.contains("/bin/bash\n  \"$ROOT_DIR/script/check_codex_auth_access_evidence.sh\""))
         XCTAssertTrue(script.contains("parent_trace_log"))
         XCTAssertTrue(script.contains("child_trace_log"))
         XCTAssertTrue(script.contains("run_filtered_trace \"$parent_trace_output\" \"$audited_parent_pid\""))
