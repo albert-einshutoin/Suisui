@@ -124,6 +124,12 @@ public struct CodexAppServerVersion: Comparable, Equatable, Hashable, Sendable {
               let patch = Int(normalized[patchRange]) else {
             return nil
         }
+        // Integer parsing alone would accept non-canonical builds such as
+        // 00.144.1. Reconstructing the literal keeps the product runtime,
+        // audit harness, and documented Personal Preview policy identical.
+        guard normalized == "codex-cli \(major).\(minor).\(patch)" else {
+            return nil
+        }
         return Self(major: major, minor: minor, patch: patch)
     }
 }

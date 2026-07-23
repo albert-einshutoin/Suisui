@@ -65,6 +65,9 @@ final class CodexAppServerRuntimeConfigurationTests: XCTestCase {
         XCTAssertNil(CodexAppServerVersion.parse("codex-cli 0.144.1-beta"))
         XCTAssertNil(CodexAppServerVersion.parse("codex-cli 0.144.1+local"))
         XCTAssertNil(CodexAppServerVersion.parse("prefix 0.144.1 suffix"))
+        XCTAssertNil(CodexAppServerVersion.parse("codex-cli 00.144.1"))
+        XCTAssertNil(CodexAppServerVersion.parse("codex-cli 0.0144.1"))
+        XCTAssertNil(CodexAppServerVersion.parse("codex-cli 0.144.01"))
     }
 
     func testApprovalNeverTargetsAuthStoreDirectlyOrThroughResolvedTarget() throws {
