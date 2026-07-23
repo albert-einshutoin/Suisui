@@ -158,8 +158,10 @@ if [[ "$observed_child_parent" != "$parent_pid" ]]; then
   exit 1
 fi
 
+# The privileged Bash is a new process, so it cannot inherit the parent
+# shell's fail-closed options. Embed them in the audited program itself.
 printf -v root_trace_program \
-  'auth_path_suffix=%q\ntrace_filter_program=%q\n%s\nrun_root_traces "$@"\n' \
+  'set -euo pipefail\nauth_path_suffix=%q\ntrace_filter_program=%q\n%s\nrun_root_traces "$@"\n' \
   "$auth_path_suffix" \
   "$trace_filter_program" \
   "$(declare -f run_root_traces)"

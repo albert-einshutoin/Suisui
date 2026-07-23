@@ -52,6 +52,20 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         XCTAssertTrue(script.contains("root_trace_command=("))
         XCTAssertTrue(script.contains("declare -f run_root_traces"))
         XCTAssertTrue(script.contains("/bin/bash\n  -c"))
+        let rootProgramDeclaration = try XCTUnwrap(
+            script.range(of: "printf -v root_trace_program")
+        )
+        let rootCommandDeclaration = try XCTUnwrap(
+            script.range(of: "root_trace_command=(")
+        )
+        let rootPipefail = try XCTUnwrap(
+            script.range(
+                of: "set -euo pipefail",
+                range: rootProgramDeclaration.lowerBound..<rootCommandDeclaration.lowerBound
+            )
+        )
+        XCTAssertLessThan(rootProgramDeclaration.lowerBound, rootPipefail.lowerBound)
+        XCTAssertLessThan(rootPipefail.lowerBound, rootCommandDeclaration.lowerBound)
         XCTAssertTrue(script.contains("child_trace_log"))
         XCTAssertTrue(script.contains("run_filtered_trace \"$child_trace_output\" \"$audited_child_pid\""))
         XCTAssertFalse(script.contains("parent_trace_log"))
