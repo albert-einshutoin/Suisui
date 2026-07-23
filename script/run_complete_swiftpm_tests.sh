@@ -122,6 +122,13 @@ run_fixture_self_tests() {
     printf 'fixture=below-baseline status=blocked\n'
   fi
 
+  if validate_test_counts 4 3 3 >/dev/null 2>&1; then
+    printf 'fixture=partial-execution status=unexpected-pass\n' >&2
+    return 1
+  else
+    printf 'fixture=partial-execution status=blocked\n'
+  fi
+
   if validate_test_counts 3 "" 3 >/dev/null 2>&1; then
     printf 'fixture=missing-execution-summary status=unexpected-pass\n' >&2
     return 1
