@@ -17,7 +17,7 @@ UI_GATE_LOCK_TIMEOUT_SECONDS="${SUISUI_UI_GATE_LOCK_TIMEOUT_SECONDS:-180}"
 UI_GATE_LOCK_ACQUIRED=0
 
 if [[ $# -gt 1 ]]; then
-  echo "usage: $0 [swiftpm|ui-runtime|ui-visual|ui-performance]" >&2
+  echo "usage: $0 [swiftpm|source-contracts|ui-runtime|ui-visual|ui-performance]" >&2
   exit 2
 fi
 if [[ $# -eq 1 || -n "${SUISUI_CI_LANE:-}" ]]; then
@@ -108,13 +108,18 @@ acquire_ui_gate_lock() {
 }
 
 run_pr_gate() {
+  SUISUI_SWIFTPM_ARTIFACT_DIR="${SUISUI_SWIFTPM_ARTIFACT_DIR:-$CI_ARTIFACT_ROOT/swiftpm}" \
+    ./script/run_complete_swiftpm_tests.sh
+  swift build
+  swift build --product suisui-cli
+  ./script/build_and_run.sh --build-only
+}
+
+run_source_contract_gates() {
   swift test --filter AppExperienceSourceTests
   swift test --filter QualitySourceContractTests
   script/check_pseudo_voiceover_paths.sh --swift-test
   swift test --filter ProjectBoardStoreTests
-  swift build
-  swift build --product suisui-cli
-  ./script/build_and_run.sh --build-only
 }
 
 run_release_gates() {
@@ -288,25 +293,35 @@ run_visual_gates() {
 sanitize_gate_log() {
   local input="$1"
   local output="${2:-}"
+  local sed_arguments=(
+    -E
+    -e 's#/(Users|Volumes)/[^[:space:]]+#<path>#g'
+    -e 's#/private/var/folders/[^[:space:]]+#<temp-path>#g'
+    -e 's#(/var)?/tmp/[^[:space:]]+#<temp-path>#g'
+    -e 's#(Authorization[[:space:]]*:[[:space:]]*Bearer)[[:space:]]+[^[:space:]]+#\1 <redacted>#Ig'
+    -e 's#(^|[^[:alnum:]_])sk-[A-Za-z0-9_-]{8,}#\1<redacted>#g'
+    -e 's#github_pat_[A-Za-z0-9_]{8,}#<redacted>#g'
+    -e 's#gh[pousr]_[A-Za-z0-9_]{8,}#<redacted>#g'
+    -e 's#xox[baprs]-[A-Za-z0-9-]{8,}#<redacted>#g'
+    -e 's#AKIA[0-9A-Z]{16}#<redacted>#g'
+    -e 's#("[[:alnum:]_.-]*(token|secret|password|api[_-]?key)"[[:space:]]*:[[:space:]]*)"[^"]*"#\1"<redacted>"#Ig'
+    -e "s#('[[:alnum:]_.-]*(token|secret|password|api[_-]?key)'[[:space:]]*:[[:space:]]*)'[^']*'#\\1'<redacted>'#Ig"
+    -e 's#([[:alnum:]_.-]*(token|secret|password|api[_-]?key))[[:space:]]*[=:][[:space:]]*[^[:space:]]+#\1=<redacted>#Ig'
+  )
   # When invoked with `-` as the input path, the sanitizer reads from
   # stdin and writes to stdout so the caller can pipe the lane output
   # through the sanitizer before `tee` exposes it to the Actions job
   # log. The path- and secret-pattern redactions are shared with the
   # file mode so the runtime/file pipelines stay equivalent.
   if [[ "$input" == "-" ]]; then
-    sed -E \
-      -e 's#/(Users|Volumes)/[^[:space:]]+#<path>#g' \
-      -e 's#(token|secret|password|api[_-]?key)=[^[:space:]]+#\1=<redacted>#g'
+    sed "${sed_arguments[@]}"
     return 0
   fi
   if [[ -z "$output" ]]; then
     echo "BLOCKER: sanitize_gate_log output path is required in file mode" >&2
     return 2
   fi
-  sed -E \
-    -e 's#/(Users|Volumes)/[^[:space:]]+#<path>#g' \
-    -e 's#(token|secret|password|api[_-]?key)=[^[:space:]]+#\1=<redacted>#g' \
-    "$input" >"$output"
+  sed "${sed_arguments[@]}" "$input" >"$output"
 }
 
 run_lane_with_artifacts() {
@@ -315,6 +330,7 @@ run_lane_with_artifacts() {
   local lane_dir="$CI_ARTIFACT_ROOT/$lane"
   local raw_log="$CI_TMPDIR/$lane.raw.log"
   local status=0
+  local pipeline_statuses=()
   local status_label="passed"
   local category="passed"
   local notice_category=""
@@ -327,8 +343,15 @@ run_lane_with_artifacts() {
   # the single source of truth for both the captured artifact and the
   # GitHub Actions log; the raw log never reaches the public surface.
   (set -e; "$lane_function") 2>&1 | sanitize_gate_log - | tee "$raw_log"
-  status=${PIPESTATUS[0]}
+  pipeline_statuses=("${PIPESTATUS[@]}")
   set -e
+  status="${pipeline_statuses[0]}"
+  if [[ "$status" -eq 0 && "${pipeline_statuses[1]}" -ne 0 ]]; then
+    status="${pipeline_statuses[1]}"
+  fi
+  if [[ "$status" -eq 0 && "${pipeline_statuses[2]}" -ne 0 ]]; then
+    status="${pipeline_statuses[2]}"
+  fi
 
   cp "$raw_log" "$lane_dir/output.log"
   rm -f "$raw_log"
@@ -364,7 +387,10 @@ validate_positive_integer "SUISUI_UI_GATE_LOCK_TIMEOUT_SECONDS" "$UI_GATE_LOCK_T
 
 case "$CI_LANE" in
   swiftpm)
-    run_pr_gate
+    run_lane_with_artifacts "swiftpm" run_pr_gate
+    ;;
+  source-contracts)
+    run_lane_with_artifacts "source-contracts" run_source_contract_gates
     ;;
   ui-runtime)
     acquire_ui_gate_lock
@@ -379,7 +405,7 @@ case "$CI_LANE" in
     run_lane_with_artifacts "ui-performance" run_performance_gates
     ;;
   *)
-    echo "usage: $0 [swiftpm|ui-runtime|ui-visual|ui-performance]" >&2
+    echo "usage: $0 [swiftpm|source-contracts|ui-runtime|ui-visual|ui-performance]" >&2
     exit 2
     ;;
 esac

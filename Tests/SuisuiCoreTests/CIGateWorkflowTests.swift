@@ -18,6 +18,13 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(workflow.components(separatedBy: "runs-on: macos-26").count - 1, 4)
 
         XCTAssertTrue(workflow.contains("./scripts/ci.sh swiftpm"))
+        XCTAssertGreaterThanOrEqual(
+            workflow.components(separatedBy: "fetch-depth: 0").count - 1,
+            2,
+            "Both the complete SwiftPM suite and visual provenance checks need full history"
+        )
+        XCTAssertTrue(workflow.contains("brew install ripgrep"))
+        XCTAssertTrue(workflow.contains("command -v rg"))
         XCTAssertTrue(workflow.contains("./scripts/ci.sh ui-runtime"))
         XCTAssertTrue(workflow.contains("./scripts/ci.sh ui-visual"))
         XCTAssertTrue(workflow.contains("SUISUI_VISUAL_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}"))
@@ -46,7 +53,7 @@ final class CIGateWorkflowTests: XCTestCase {
         let script = try readRepositoryFile("scripts/ci.sh")
 
         XCTAssertTrue(script.contains("CI_LANE=\"${1:-${SUISUI_CI_LANE:-swiftpm}}\""))
-        XCTAssertTrue(script.contains("swiftpm|ui-runtime|ui-visual|ui-performance"))
+        XCTAssertTrue(script.contains("swiftpm|source-contracts|ui-runtime|ui-visual|ui-performance"))
         XCTAssertTrue(script.contains("run_lane_with_artifacts"))
         XCTAssertTrue(script.contains("check_macos_ui_runner_capabilities.sh runtime"))
         XCTAssertTrue(script.contains("./script/build_and_run.sh --verify"))
@@ -94,6 +101,40 @@ final class CIGateWorkflowTests: XCTestCase {
             script.contains("local output=\"${2:-}\""),
             "stdin mode passes only one argument, so the optional output path must be safe under `set -u`"
         )
+        XCTAssertTrue(script.contains("pipeline_statuses=(\"${PIPESTATUS[@]}\")"))
+        XCTAssertTrue(script.contains("pipeline_statuses[1]"))
+        XCTAssertTrue(script.contains("pipeline_statuses[2]"))
+        XCTAssertTrue(script.contains("s#/private/var/folders/[^[:space:]]+#<temp-path>#g"))
+        XCTAssertTrue(script.contains("s#(/var)?/tmp/[^[:space:]]+#<temp-path>#g"))
+        XCTAssertTrue(script.contains("github_pat_"))
+        XCTAssertTrue(script.contains("Authorization"))
+        XCTAssertTrue(
+            script.contains(
+                #"("[[:alnum:]_.-]*(token|secret|password|api[_-]?key)"[[:space:]]*:[[:space:]]*)"[^"]*""#
+            ),
+            "Lane sanitizer must redact double-quoted JSON secret fields before publication"
+        )
+        XCTAssertTrue(
+            script.contains(
+                #"('[[:alnum:]_.-]*(token|secret|password|api[_-]?key)'[[:space:]]*:[[:space:]]*)'[^']*'"#
+            ),
+            "Lane sanitizer must redact single-quoted dictionary secret fields before publication"
+        )
+        XCTAssertTrue(script.contains("#Ig"))
+    }
+
+    func testCompleteSwiftPMRunnerWritesFailedEvidenceWhenDiscoveryFails() throws {
+        let script = try readRepositoryFile("script/run_complete_swiftpm_tests.sh")
+
+        XCTAssertTrue(
+            script.contains(
+                """
+                if [[ "$discovery_status" -ne 0 ]]; then
+                  write_failed_evidence "$baseline_test_count" 0 "$max_skipped_test_count"
+                """
+            ),
+            "A discovery/compiler failure must publish failed evidence with every configured count boundary"
+        )
     }
 
     func testAutomatedReleasePreflightRequiresTheSameProductionUIGates() throws {
@@ -117,6 +158,9 @@ final class CIGateWorkflowTests: XCTestCase {
         let documentation = try readRepositoryFile("docs/quality/ci-ui-gates.md")
 
         XCTAssertTrue(documentation.contains("./scripts/ci.sh swiftpm"))
+        XCTAssertTrue(documentation.contains("./scripts/ci.sh source-contracts"))
+        XCTAssertTrue(documentation.contains("全SwiftPM behavioral test"))
+        XCTAssertTrue(documentation.contains("xUnit"))
         XCTAssertTrue(documentation.contains("./scripts/ci.sh ui-runtime"))
         XCTAssertTrue(documentation.contains("./scripts/ci.sh ui-visual"))
         XCTAssertTrue(documentation.contains("./scripts/ci.sh ui-performance"))

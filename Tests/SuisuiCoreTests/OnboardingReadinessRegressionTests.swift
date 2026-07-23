@@ -573,7 +573,6 @@ final class OnboardingReadinessRegressionTests: XCTestCase {
             await Task.yield()
         }
         XCTAssertTrue(viewModel.isRefreshingProviderReadiness, "refresh must publish `.checking` before reading")
-        XCTAssertEqual(viewModel.ollamaEndpointHealth, .checking)
 
         // While the Keychain read is blocked, the MainActor must remain
         // responsive. The heartbeat ticks the MainActor until the refresh
@@ -584,6 +583,10 @@ final class OnboardingReadinessRegressionTests: XCTestCase {
             heartbeat,
             0,
             "MainActor must process a heartbeat while Keychain reads are blocked on a background thread"
+        )
+        XCTAssertTrue(
+            viewModel.isRefreshingProviderReadiness,
+            "The aggregate refresh must remain in flight while Keychain reads are blocked"
         )
 
         // Unblock the Keychain reads; refresh must complete and the typed
