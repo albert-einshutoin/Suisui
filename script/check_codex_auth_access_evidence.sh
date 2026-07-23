@@ -239,6 +239,10 @@ harness_parent_auth_access_count="$(wc -l <"$parent_trace_log" | tr -d '[:space:
 codex_child_auth_access_count="$(wc -l <"$child_trace_log" | tr -d '[:space:]')"
 total_auth_access_count="$(wc -l <"$trace_log" | tr -d '[:space:]')"
 unexpected_auth_access_count=$((total_auth_access_count - harness_parent_auth_access_count - codex_child_auth_access_count))
+printf 'sanitized_counts=parent:%s,child:%s,unexpected:%s\n' \
+  "$harness_parent_auth_access_count" \
+  "$codex_child_auth_access_count" \
+  "$unexpected_auth_access_count"
 
 if [[ "$harness_parent_auth_access_count" -ne 0 ]]; then
   echo "BLOCKER: the Swift test harness parent accessed the Codex auth store." >&2

@@ -64,6 +64,7 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         XCTAssertTrue(script.contains("unexpected_auth_access_count"))
         XCTAssertTrue(script.contains("wc -l <\"$parent_trace_log\""))
         XCTAssertTrue(script.contains("wc -l <\"$child_trace_log\""))
+        XCTAssertTrue(script.contains("sanitized_counts=parent:%s,child:%s,unexpected:%s"))
         XCTAssertFalse(script.contains("grep -Ec \"\\\\.${parent_pid}"))
         XCTAssertFalse(script.contains("grep -Ec \"\\\\.${child_pid}"))
         XCTAssertTrue(script.contains("auth_path_suffix=\".codex/auth.json\""))
