@@ -100,6 +100,11 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         ))
         XCTAssertTrue(script.contains("harness_parent_auth_access_count"))
         XCTAssertTrue(script.contains("codex_child_auth_access_count"))
+        XCTAssertTrue(script.contains("codex_process_pids=(\"$child_pid\")"))
+        XCTAssertTrue(script.contains("monitor_codex_process_tree"))
+        XCTAssertTrue(script.contains("/usr/bin/pgrep -P \"$ancestor_pid\""))
+        XCTAssertTrue(script.contains("for codex_process_pid in \"${codex_process_pids[@]}\""))
+        XCTAssertTrue(script.contains("kill \"$codex_process_monitor_pid\""))
         XCTAssertTrue(script.contains("unexpected_auth_access_count"))
         XCTAssertTrue(script.contains(
             "unexpected_auth_access_count=$((\n  total_auth_access_count"
@@ -165,17 +170,24 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
                 range: parentRouteRelease.upperBound..<script.endIndex
             )
         )
+        let processTreeMonitor = try XCTUnwrap(
+            script.range(
+                of: "monitor_codex_process_tree",
+                range: childPIDWait.upperBound..<script.endIndex
+            )
+        )
         let wrapperRelease = try XCTUnwrap(
             script.range(
                 of: "touch \"${wrapper_path}.ready\"",
-                range: childPIDWait.upperBound..<script.endIndex
+                range: processTreeMonitor.upperBound..<script.endIndex
             )
         )
         XCTAssertLessThan(parentPIDWait.lowerBound, authTraceLaunch.lowerBound)
         XCTAssertLessThan(authTraceLaunch.lowerBound, authTraceStarted.lowerBound)
         XCTAssertLessThan(authTraceStarted.lowerBound, parentRouteRelease.lowerBound)
         XCTAssertLessThan(parentRouteRelease.lowerBound, childPIDWait.lowerBound)
-        XCTAssertLessThan(childPIDWait.lowerBound, wrapperRelease.lowerBound)
+        XCTAssertLessThan(childPIDWait.lowerBound, processTreeMonitor.lowerBound)
+        XCTAssertLessThan(processTreeMonitor.lowerBound, wrapperRelease.lowerBound)
 
         let testWait = try XCTUnwrap(script.range(of: "wait \"$test_pid\""))
         let traceStopPublish = try XCTUnwrap(
@@ -193,6 +205,7 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         XCTAssertLessThan(authPathDeclaration.lowerBound, traceLaunch.lowerBound)
         XCTAssertLessThan(traceLaunch.lowerBound, traceReadinessCheck.lowerBound)
         XCTAssertLessThan(traceReadinessCheck.lowerBound, wrapperRelease.lowerBound)
+        XCTAssertLessThan(wrapperRelease.lowerBound, testWait.lowerBound)
         XCTAssertLessThan(testWait.lowerBound, traceStopPublish.lowerBound)
         XCTAssertLessThan(traceStopPublish.lowerBound, traceWait.lowerBound)
         XCTAssertTrue(script.contains("status --porcelain=v1"))
@@ -212,6 +225,7 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         XCTAssertTrue(script.contains("\"codexVersion\""))
         XCTAssertTrue(script.contains("\"harnessParentPID\""))
         XCTAssertTrue(script.contains("\"codexChildPID\""))
+        XCTAssertTrue(script.contains("\"codexProcessPIDs\""))
         XCTAssertFalse(script.contains("\"sourceCommit\""))
         XCTAssertFalse(script.contains("cat \"$auth_path\""))
         XCTAssertTrue(wrapperSource.contains("getpid()"))

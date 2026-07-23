@@ -192,6 +192,7 @@ wrapper_path="$audit_dir/codex-auth-audit-wrapper"
 test_log="$audit_dir/test.log"
 test_pid=""
 trace_pid=""
+codex_process_monitor_pid=""
 evidence_temp=""
 capture_sequence=0
 
@@ -201,6 +202,10 @@ cleanup() {
   fi
   if [[ -n "$trace_pid" ]] && kill -0 "$trace_pid" >/dev/null 2>&1; then
     kill "$trace_pid" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$codex_process_monitor_pid" ]] &&
+     kill -0 "$codex_process_monitor_pid" >/dev/null 2>&1; then
+    kill "$codex_process_monitor_pid" >/dev/null 2>&1 || true
   fi
   if [[ -n "$evidence_temp" ]]; then
     rm -f "$evidence_temp"
@@ -327,6 +332,43 @@ replay_access_count() {
     return 1
   fi
   tr -d '[:space:]' <"$count_output"
+}
+
+monitor_codex_process_tree() {
+  local root_pid="$1"
+  local pid_log="$2"
+  local monitor_stop="$3"
+  local observed_pids=("$root_pid")
+
+  # The npm Codex entrypoint keeps a Node launcher at the wrapper PID and
+  # spawns the native runtime below it. Track the full approved process tree
+  # so auth access remains Codex-owned without assuming one packaging layout.
+  while [[ ! -s "$monitor_stop" ]]; do
+    local ancestor_index=0
+    while (( ancestor_index < ${#observed_pids[@]} )); do
+      local ancestor_pid="${observed_pids[$ancestor_index]}"
+      while IFS= read -r descendant_pid; do
+        if [[ ! "$descendant_pid" =~ ^[1-9][0-9]*$ ]]; then
+          echo "Codex process-tree monitor observed an invalid PID." >&2
+          return 1
+        fi
+        local already_observed=0
+        local observed_pid
+        for observed_pid in "${observed_pids[@]}"; do
+          if [[ "$observed_pid" == "$descendant_pid" ]]; then
+            already_observed=1
+            break
+          fi
+        done
+        if [[ "$already_observed" -eq 0 ]]; then
+          observed_pids+=("$descendant_pid")
+          printf '%s\n' "$descendant_pid" >>"$pid_log"
+        fi
+      done < <(/usr/bin/pgrep -P "$ancestor_pid" 2>/dev/null || true)
+      ancestor_index=$((ancestor_index + 1))
+    done
+    sleep 0.01
+  done
 }
 
 open_for_calibration() {
@@ -478,11 +520,29 @@ if [[ "$observed_child_parent" != "$parent_pid" ]]; then
   echo "Codex audit wrapper is not owned by the expected test parent PID." >&2
   exit 1
 fi
+
+codex_process_pid_log="$audit_dir/codex-process-pids"
+codex_process_monitor_stop="$audit_dir/codex-process-monitor.stop"
+printf '%s\n' "$child_pid" >"$codex_process_pid_log"
+: >"$codex_process_monitor_stop"
+monitor_codex_process_tree \
+  "$child_pid" \
+  "$codex_process_pid_log" \
+  "$codex_process_monitor_stop" &
+codex_process_monitor_pid=$!
 touch "${wrapper_path}.ready"
 
 test_status=0
 wait "$test_pid" || test_status=$?
 test_pid=""
+printf 'stop\n' >"$codex_process_monitor_stop"
+codex_process_monitor_status=0
+wait "$codex_process_monitor_pid" || codex_process_monitor_status=$?
+codex_process_monitor_pid=""
+if [[ "$codex_process_monitor_status" -ne 0 ]]; then
+  echo "Codex process-tree monitoring failed or ended incompletely." >&2
+  exit "$codex_process_monitor_status"
+fi
 printf 'stop\n' >"$auth_trace_stop"
 trace_status=0
 wait "$trace_pid" || trace_status=$?
@@ -503,9 +563,30 @@ total_auth_access_count="$(
 harness_parent_auth_access_count="$(
   replay_access_count "$auth_raw_trace" "$auth_path_suffix" auth-parent "$parent_pid"
 )"
-codex_child_auth_access_count="$(
-  replay_access_count "$auth_raw_trace" "$auth_path_suffix" auth-child "$child_pid"
-)"
+codex_process_pids=("$child_pid")
+while IFS= read -r codex_process_pid; do
+  if [[ ! "$codex_process_pid" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Codex process-tree evidence contains an invalid PID." >&2
+    exit 1
+  fi
+  if [[ "$codex_process_pid" != "$child_pid" ]]; then
+    codex_process_pids+=("$codex_process_pid")
+  fi
+done < <(/usr/bin/sort -un "$codex_process_pid_log")
+
+codex_child_auth_access_count=0
+for codex_process_pid in "${codex_process_pids[@]}"; do
+  codex_process_auth_access_count="$(
+    replay_access_count \
+      "$auth_raw_trace" \
+      "$auth_path_suffix" \
+      "auth-codex-$codex_process_pid" \
+      "$codex_process_pid"
+  )"
+  codex_child_auth_access_count=$((
+    codex_child_auth_access_count + codex_process_auth_access_count
+  ))
+done
 unexpected_auth_access_count=$((
   total_auth_access_count - harness_parent_auth_access_count - codex_child_auth_access_count
 ))
@@ -573,6 +654,14 @@ printf '  "generatedAt": "%s",\n' "$generated_at" >>"$evidence_temp"
 printf '  "credentialPathClass": "codex_user_auth_store",\n' >>"$evidence_temp"
 printf '  "harnessParentPID": %s,\n' "$parent_pid" >>"$evidence_temp"
 printf '  "codexChildPID": %s,\n' "$child_pid" >>"$evidence_temp"
+codex_process_pids_json=""
+for codex_process_pid in "${codex_process_pids[@]}"; do
+  if [[ -n "$codex_process_pids_json" ]]; then
+    codex_process_pids_json+=", "
+  fi
+  codex_process_pids_json+="$codex_process_pid"
+done
+printf '  "codexProcessPIDs": [%s],\n' "$codex_process_pids_json" >>"$evidence_temp"
 printf '  "harnessParentAuthAccessCount": %s,\n' "$harness_parent_auth_access_count" >>"$evidence_temp"
 printf '  "codexChildAuthAccessCount": %s,\n' "$codex_child_auth_access_count" >>"$evidence_temp"
 printf '  "unexpectedAuthAccessCount": %s\n' "$unexpected_auth_access_count" >>"$evidence_temp"
