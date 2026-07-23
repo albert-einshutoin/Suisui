@@ -50,7 +50,7 @@ The MVP may create drafts or local plans only after review.
 - opt-inの`script/check_codex_app_server_smoke.sh`は、現在のmacOSユーザー自身のCodex利用枠を消費し得るため、明示的な環境変数がある場合だけ実行する。
 - smokeは最低version、ログイン状態、toolを無効化したAction Plan生成を確認し、標準出力へtokenやaccount emailを出さない。
 - Enterprise対応は`clientInfo.name = "suisui"`のknown-client登録、またはCompliance Logs上の制約を公開文書へ明記するまで対象外とする。
-- `script/check_codex_auth_access_evidence.sh`は、macOSの短時間`fs_usage` traceからauth-store eventだけを抽出し、Suisui parentが0件、Codex childが1件以上、未知PIDが0件であることをPID分類で証明する。全filesystem eventを含み得るraw traceは一時領域だけに置いて終了時に削除し、追跡可能な証拠にはpath class、件数、product source commit、audit harness commit、検証済みCodex versionだけを残す。
+- `script/check_codex_auth_access_evidence.sh`は、macOSで単一の短時間`ktrace`を取得し、同じraw traceを`fs_usage -R`でsystem・Suisui parent・Codex childの各視点から再生する。実監査前には専用sentinelでcapture windowと終了済みPIDの分類を校正し、Suisui parentが0件、Codex childが1件以上、未知PIDが0件である場合だけ証跡を公開する。全filesystem eventを含み得るraw traceは権限を`0600`に制限した一時領域だけに置き、成功・失敗を問わず削除する。追跡可能な証拠にはpath class、件数、capture backend、macOS build、product source commit、audit harness commit、検証済みCodex versionだけを残す。
 
 ## Telemetry
 

@@ -42,26 +42,20 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         )
 
         XCTAssertTrue(script.contains("SUISUI_CODEX_RUN_AUTH_ACCESS_EVIDENCE"))
-        XCTAssertTrue(script.contains("/usr/bin/fs_usage"))
-        XCTAssertTrue(script.contains("fs_usage -w -f pathname -t 120"))
+        XCTAssertTrue(script.contains("/usr/bin/ktrace dump"))
+        XCTAssertTrue(script.contains("C3,S0x040c,S0x040e,S0x040f"))
+        XCTAssertTrue(script.contains("--notify-tracing-started"))
+        XCTAssertTrue(script.contains("/usr/bin/notifyutil -1"))
+        XCTAssertTrue(script.contains("-l fast"))
+        XCTAssertTrue(script.contains("max_raw_trace_bytes"))
+        XCTAssertTrue(script.contains("/usr/bin/fs_usage -w -f pathname -R"))
         XCTAssertTrue(auditTestSource.contains("initializationTimeout: 60"))
-        XCTAssertTrue(script.contains("/usr/bin/awk"))
-        XCTAssertTrue(script.contains("-v needle="))
-        XCTAssertTrue(script.contains("-v ready_path="))
-        XCTAssertTrue(script.contains("index($0, needle) { print; fflush() }"))
-        XCTAssertTrue(script.contains("trace_event_pattern="))
-        XCTAssertTrue(script.contains("system_trace_ready"))
-        XCTAssertTrue(script.contains("child_trace_ready"))
-        XCTAssertTrue(script.contains("print \"ready\" > ready_path"))
-        XCTAssertTrue(script.contains("close(ready_path)"))
-        XCTAssertTrue(script.contains(
-            "while [[ ! -s \"$system_trace_ready\" || ! -s \"$child_trace_ready\" ]]"
-        ))
         XCTAssertTrue(script.contains("set -euo pipefail"))
-        XCTAssertTrue(script.contains("--run-root-traces"))
+        XCTAssertTrue(script.contains("--run-root-capture"))
         XCTAssertTrue(script.contains("root_trace_command=("))
-        XCTAssertTrue(script.contains("declare -f run_root_traces"))
-        XCTAssertTrue(script.contains("/bin/bash\n  -c"))
+        XCTAssertTrue(script.contains("declare -f run_root_capture"))
+        XCTAssertTrue(script.contains("/bin/bash"))
+        XCTAssertTrue(script.contains("\n    -c\n"))
         let rootProgramDeclaration = try XCTUnwrap(
             script.range(of: "printf -v root_trace_program")
         )
@@ -76,25 +70,31 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         )
         XCTAssertLessThan(rootProgramDeclaration.lowerBound, rootPipefail.lowerBound)
         XCTAssertLessThan(rootPipefail.lowerBound, rootCommandDeclaration.lowerBound)
-        XCTAssertTrue(script.contains("child_trace_log"))
-        XCTAssertTrue(script.contains(
-            "run_filtered_trace \"$child_trace_output\" \"$child_trace_ready\" \"$audited_child_pid\""
-        ))
-        XCTAssertFalse(script.contains("parent_trace_log"))
-        XCTAssertFalse(script.contains("parent_trace_output"))
+        XCTAssertEqual(script.components(separatedBy: "/usr/bin/ktrace dump").count - 1, 1)
+        XCTAssertFalse(script.contains("run_filtered_trace"))
+        XCTAssertFalse(script.contains("system_trace_ready"))
+        XCTAssertFalse(script.contains("child_trace_ready"))
         XCTAssertTrue(script.contains("/usr/bin/clang"))
         XCTAssertTrue(script.contains("parent_pid"))
         XCTAssertTrue(script.contains("child_pid"))
+        XCTAssertTrue(script.contains("calibration_sentinel"))
+        XCTAssertTrue(script.contains("calibration_parent_pid"))
+        XCTAssertTrue(script.contains("calibration_child_pid"))
+        XCTAssertTrue(script.contains("calibration_unexpected_pid"))
+        XCTAssertTrue(script.contains("calibration_before_pid"))
+        XCTAssertTrue(script.contains("calibration_after_pid"))
+        XCTAssertTrue(script.contains("calibration_parent_count"))
+        XCTAssertTrue(script.contains("calibration_child_count"))
+        XCTAssertTrue(script.contains("calibration_unexpected_count"))
+        XCTAssertTrue(script.contains("calibration_before_count"))
+        XCTAssertTrue(script.contains("calibration_after_count"))
         XCTAssertTrue(script.contains("harness_parent_auth_access_count"))
         XCTAssertTrue(script.contains("codex_child_auth_access_count"))
         XCTAssertTrue(script.contains("unexpected_auth_access_count"))
-        XCTAssertTrue(script.contains("wc -l <\"$child_trace_log\""))
         XCTAssertTrue(script.contains(
-            "total_auth_access_count - codex_child_auth_access_count"
+            "total_auth_access_count - harness_parent_auth_access_count - codex_child_auth_access_count"
         ))
         XCTAssertTrue(script.contains("sanitized_counts=parent:%s,child:%s,unexpected:%s"))
-        XCTAssertFalse(script.contains("grep -Ec \"\\\\.${parent_pid}"))
-        XCTAssertFalse(script.contains("grep -Ec \"\\\\.${child_pid}"))
         XCTAssertTrue(script.contains("auth_path_suffix=\".codex/auth.json\""))
         XCTAssertTrue(script.contains("product_source_commit"))
         XCTAssertTrue(script.contains("audit_harness_commit"))
@@ -103,34 +103,28 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         XCTAssertTrue(script.contains("codex_version"))
         XCTAssertTrue(script.contains("\"$codex_executable\" --version"))
         XCTAssertTrue(script.contains("trace_status"))
-        XCTAssertTrue(script.contains(
-            """
-            if ! kill -0 "$trace_pid" >/dev/null 2>&1; then
-              trace_pid=""
-              echo "BLOCKER: filesystem trace ended before the audited test completed." >&2
-              exit 1
-            fi
-            """
-        ))
         let testWait = try XCTUnwrap(script.range(of: "wait \"$test_pid\""))
-        let coverageCheck = try XCTUnwrap(
-            script.range(of: "BLOCKER: filesystem trace ended before the audited test completed.")
-        )
-        let traceWait = try XCTUnwrap(script.range(of: "wait \"$trace_pid\""))
-        let authPathDeclaration = try XCTUnwrap(script.range(of: "auth_path_suffix=\".codex/auth.json\""))
-        let traceLaunch = try XCTUnwrap(script.range(of: "/usr/bin/fs_usage"))
-        let traceReadinessCheck = try XCTUnwrap(
+        let traceStopPublish = try XCTUnwrap(script.range(of: "touch \"$auth_trace_stop\""))
+        let traceWait = try XCTUnwrap(
             script.range(
-                of: "while [[ ! -s \"$system_trace_ready\" || ! -s \"$child_trace_ready\" ]]"
+                of: "wait \"$trace_pid\"",
+                range: traceStopPublish.upperBound..<script.endIndex
             )
         )
+        let authPathDeclaration = try XCTUnwrap(script.range(of: "auth_path_suffix=\".codex/auth.json\""))
+        let traceLaunch = try XCTUnwrap(script.range(of: "/usr/bin/ktrace dump"))
+        let traceReadinessCheck = try XCTUnwrap(script.range(of: "wait_for_capture_ready"))
         let wrapperRelease = try XCTUnwrap(script.range(of: "touch \"${wrapper_path}.ready\""))
         XCTAssertLessThan(authPathDeclaration.lowerBound, traceLaunch.lowerBound)
         XCTAssertLessThan(traceLaunch.lowerBound, traceReadinessCheck.lowerBound)
         XCTAssertLessThan(traceReadinessCheck.lowerBound, wrapperRelease.lowerBound)
-        XCTAssertLessThan(testWait.lowerBound, coverageCheck.lowerBound)
-        XCTAssertLessThan(coverageCheck.lowerBound, traceWait.lowerBound)
+        XCTAssertLessThan(testWait.lowerBound, traceStopPublish.lowerBound)
+        XCTAssertLessThan(traceStopPublish.lowerBound, traceWait.lowerBound)
         XCTAssertTrue(script.contains("status --porcelain=v1"))
+        XCTAssertTrue(script.contains("trace_loss_marker_count"))
+        XCTAssertTrue(script.contains("chmod 0600"))
+        XCTAssertTrue(script.contains("unlink \"$calibration_raw_trace\""))
+        XCTAssertTrue(script.contains("unlink \"$auth_raw_trace\""))
         XCTAssertTrue(script.contains("mv \"$evidence_temp\" \"$evidence_output\""))
         XCTAssertTrue(script.contains("\"schemaVersion\": 4"))
         XCTAssertTrue(script.contains("\"productSourceCommit\""))
