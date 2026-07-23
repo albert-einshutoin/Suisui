@@ -46,7 +46,7 @@ final class CIGateWorkflowTests: XCTestCase {
         let script = try readRepositoryFile("scripts/ci.sh")
 
         XCTAssertTrue(script.contains("CI_LANE=\"${1:-${SUISUI_CI_LANE:-swiftpm}}\""))
-        XCTAssertTrue(script.contains("swiftpm|ui-runtime|ui-visual|ui-performance"))
+        XCTAssertTrue(script.contains("swiftpm|source-contracts|ui-runtime|ui-visual|ui-performance"))
         XCTAssertTrue(script.contains("run_lane_with_artifacts"))
         XCTAssertTrue(script.contains("check_macos_ui_runner_capabilities.sh runtime"))
         XCTAssertTrue(script.contains("./script/build_and_run.sh --verify"))
@@ -117,6 +117,9 @@ final class CIGateWorkflowTests: XCTestCase {
         let documentation = try readRepositoryFile("docs/quality/ci-ui-gates.md")
 
         XCTAssertTrue(documentation.contains("./scripts/ci.sh swiftpm"))
+        XCTAssertTrue(documentation.contains("./scripts/ci.sh source-contracts"))
+        XCTAssertTrue(documentation.contains("全SwiftPM behavioral test"))
+        XCTAssertTrue(documentation.contains("xUnit"))
         XCTAssertTrue(documentation.contains("./scripts/ci.sh ui-runtime"))
         XCTAssertTrue(documentation.contains("./scripts/ci.sh ui-visual"))
         XCTAssertTrue(documentation.contains("./scripts/ci.sh ui-performance"))

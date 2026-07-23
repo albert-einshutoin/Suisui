@@ -49,7 +49,7 @@ Local verification:
 ./script/build_and_run.sh --verify
 ```
 
-`./scripts/ci.sh` is the shared CI/local command and intentionally avoids GUI launch. The SwiftPM build and test suite are the current lint gate. A separate formatter is not enforced during alpha because the codebase is still small and relies on focused review plus `git diff --check`; introduce SwiftFormat or SwiftLint only when formatting drift becomes a recurring review cost.
+`./scripts/ci.sh` is the shared CI/local command and intentionally avoids GUI launch. Run `./scripts/ci.sh swiftpm` from a clean commit to execute every discovered SwiftPM test, enforce the committed test-count floor, write sanitized logs plus xUnit evidence, and build the products. `./scripts/ci.sh source-contracts` is the supplemental source/document marker lane; it never substitutes for the complete behavioral suite. A separate formatter is not enforced during alpha because the codebase is still small and relies on focused review plus `git diff --check`; introduce SwiftFormat or SwiftLint only when formatting drift becomes a recurring review cost.
 
 For launch evidence, treat `./script/build_and_run.sh --verify` as the normal ProjectBoard product check. Recovery flags such as `SUISUI_LAUNCH_RECOVERY_MODE=1` belong only to explicit diagnostic workflows; a recovery success must not be reported as product or release proof. Today, Inbox, accessible CRUD, layout, launch-performance, and UI screenshot release checks must use the normal ProjectBoard route, isolated HOME/CFFIXED_USER_HOME/SQLite state, and PID-owned AX checks. Review the emitted `failure_category` value (`launch`, `window`, `accessibility`, or `product-marker`) before deciding what follow-up is required.
 
