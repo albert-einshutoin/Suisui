@@ -144,6 +144,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("fixture=missing-execution-summary status=blocked"))
         XCTAssertTrue(result.output.contains("fixture=expected-skips status=passed"))
         XCTAssertTrue(result.output.contains("fixture=skip-growth status=blocked"))
+        XCTAssertTrue(result.output.contains("fixture=mixed-framework-counts status=passed"))
     }
 
     func testGitHubCISeparatesCompleteSwiftPMSuiteFromSupplementalSourceContracts() throws {

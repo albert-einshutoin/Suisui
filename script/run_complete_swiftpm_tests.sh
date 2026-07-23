@@ -94,6 +94,39 @@ validate_skipped_count() {
   fi
 }
 
+parse_executed_test_count() {
+  local output_file="$1"
+  local xctest_count
+  local swift_testing_count
+
+  xctest_count="$(
+    sed -nE 's/.*Executed ([0-9]+) tests?.*/\1/p' "$output_file" | tail -n 1
+  )"
+  swift_testing_count="$(
+    sed -nE 's/.*Test run with ([0-9]+) tests?.*/\1/p' "$output_file" | tail -n 1
+  )"
+  if [[ -z "$xctest_count" && -z "$swift_testing_count" ]]; then
+    return 1
+  fi
+
+  printf '%s\n' "$((${xctest_count:-0} + ${swift_testing_count:-0}))"
+}
+
+parse_skipped_test_count() {
+  local output_file="$1"
+  local xctest_skipped_count
+  local swift_testing_skipped_count
+
+  xctest_skipped_count="$(
+    sed -nE 's/.*with ([0-9]+) tests? skipped.*/\1/p' "$output_file" | tail -n 1
+  )"
+  # Swift Testing emits one quoted `Test "…" skipped` event per skipped case
+  # instead of including skips in its final run summary, so count those events.
+  swift_testing_skipped_count="$(grep -Ec 'Test ".*" skipped' "$output_file" || true)"
+
+  printf '%s\n' "$((${xctest_skipped_count:-0} + swift_testing_skipped_count))"
+}
+
 write_xunit_summary() {
   local status="$1"
   local baseline_test_count="$2"
@@ -300,12 +333,8 @@ swift test 2>&1 | sanitize_swift_output | tee "$TEST_OUTPUT_FILE"
 test_status=${PIPESTATUS[0]}
 set -e
 
-executed_test_count="$(
-  sed -nE 's/.*Executed ([0-9]+) tests?.*/\1/p' "$TEST_OUTPUT_FILE" | tail -n 1
-)"
-skipped_test_count="$(
-  sed -nE 's/.*with ([0-9]+) tests? skipped.*/\1/p' "$TEST_OUTPUT_FILE" | tail -n 1
-)"
+executed_test_count="$(parse_executed_test_count "$TEST_OUTPUT_FILE" || true)"
+skipped_test_count="$(parse_skipped_test_count "$TEST_OUTPUT_FILE")"
 skipped_test_count="${skipped_test_count:-0}"
 count_status=0
 if ! validate_test_counts \

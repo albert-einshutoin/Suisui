@@ -26,7 +26,7 @@ UI laneは最初にrunner capabilityをfail closedで確認する。
 
 ## Artifacts
 
-SwiftPM jobは証跡のsource commitをPR merge commitから正しく辿るためfull git historyをcheckoutし、security/release scriptsのallowlisted search toolとして`rg`を明示的に用意する。成功・失敗に関係なく、discovered/executed/skipped件数、sanitized test log、test name inventory、実件数をpropertyへ持つxUnit gate summaryを`.tmp/ci-artifacts/swiftpm`へ7日間保存する。0件、committed baseline未満、探索件数より少ない実行件数、`config/quality/swiftpm-max-skipped-tests.txt`の上限を超えたskip、件数を抽出できない結果はfail closedとし、retryでgreenへ変えない。
+SwiftPM jobは証跡のsource commitをPR merge commitから正しく辿るためfull git historyをcheckoutし、security/release scriptsのallowlisted search toolとして`rg`を明示的に用意する。成功・失敗に関係なく、XCTestとSwift Testingの両方を合算したdiscovered/executed/skipped件数、sanitized test log、test name inventory、実件数をpropertyへ持つxUnit gate summaryを`.tmp/ci-artifacts/swiftpm`へ7日間保存する。0件、committed baseline未満、探索件数より少ない実行件数、`config/quality/swiftpm-max-skipped-tests.txt`の上限を超えたskip、件数を抽出できない結果はfail closedとし、retryでgreenへ変えない。
 
 各UI jobも成功・失敗に関係なく`.tmp/ci-artifacts/<lane>`を7日間保存する。対象はcapability summary、sanitized stdout/stderr、allowlist済みAX probe、seed fixtureだけを含むvisual current/diff/metrics/receipt、performance summary/samplesである。実ユーザーのHOME、SQLite、raw unified log、secret、token、API key、絶対pathをartifactへ含めない。
 
