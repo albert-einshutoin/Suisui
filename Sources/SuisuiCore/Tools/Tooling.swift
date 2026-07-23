@@ -188,6 +188,10 @@ public struct ToolExecutionContext: Sendable {
     public var authorization: ToolActionAuthorization?
     public var now: Date
     public var source: ToolExecutionSource
+    public var executionID: String?
+    public var reviewSessionID: String?
+    public var actionID: String?
+    public var idempotencyKey: String?
 #if DEBUG
     // Existing unit checks exercise individual tools without constructing a
     // review session. This internal-only bridge is absent from release builds.
@@ -197,11 +201,19 @@ public struct ToolExecutionContext: Sendable {
     public init(
         authorization: ToolActionAuthorization? = nil,
         now: Date = Date(),
-        source: ToolExecutionSource
+        source: ToolExecutionSource,
+        executionID: String? = nil,
+        reviewSessionID: String? = nil,
+        actionID: String? = nil,
+        idempotencyKey: String? = nil
     ) {
         self.authorization = authorization
         self.now = now
         self.source = source
+        self.executionID = executionID
+        self.reviewSessionID = reviewSessionID
+        self.actionID = actionID
+        self.idempotencyKey = idempotencyKey
 #if DEBUG
         self.debugApprovalToken = nil
 #endif
@@ -219,14 +231,59 @@ public struct ToolExecutionContext: Sendable {
     internal init(
         approvalToken: ApprovalToken,
         now: Date = Date(),
-        source: ToolExecutionSource
+        source: ToolExecutionSource,
+        executionID: String? = nil,
+        reviewSessionID: String? = nil,
+        actionID: String? = nil,
+        idempotencyKey: String? = nil
     ) {
         self.authorization = nil
         self.now = now
         self.source = source
+        self.executionID = executionID
+        self.reviewSessionID = reviewSessionID
+        self.actionID = actionID
+        self.idempotencyKey = idempotencyKey
         self.debugApprovalToken = approvalToken
     }
 #endif
+
+    public func externalSideEffectRequest(
+        tool: ActionTool,
+        arguments: [String: JSONValue],
+        itemIndex: Int? = nil
+    ) throws -> ExternalSideEffectRequest {
+        guard let executionID,
+              let reviewSessionID,
+              let actionID,
+              let idempotencyKey else {
+            throw ToolExecutionError.sideEffectIdentityMissing(tool)
+        }
+        let itemKey = itemIndex.map { "\(idempotencyKey):item:\($0)" } ?? idempotencyKey
+        return ExternalSideEffectRequest(
+            executionID: executionID,
+            reviewSessionID: reviewSessionID,
+            actionID: actionID,
+            itemIndex: itemIndex,
+            tool: tool,
+            canonicalArgumentsDigest: try CanonicalJSONEncoder.digest(.object(arguments)),
+            idempotencyKey: itemKey
+        )
+    }
+
+    public static func externalSideEffectIdempotencyKey(
+        reviewSessionID: String,
+        actionID: String,
+        tool: ActionTool,
+        arguments: [String: JSONValue]
+    ) throws -> String {
+        let argumentsDigest = try CanonicalJSONEncoder.digest(.object(arguments)).lowercaseHexString
+        let material = "\(reviewSessionID)\u{0}\(actionID)\u{0}\(tool.rawValue)\u{0}\(argumentsDigest)"
+        // Google Calendar accepts caller-provided event IDs only in base32hex.
+        // A `suisui` prefix plus a 64-character hexadecimal SHA-256 digest is
+        // valid there and remains suitable for every other adapter.
+        return "suisui\(Data(SHA256.hash(data: Data(material.utf8))).lowercaseHexString)"
+    }
 }
 
 public enum ToolExecutionSource: String, Equatable, Sendable {
@@ -271,6 +328,9 @@ public enum ToolExecutionError: Error, Equatable, Sendable {
     case approvalRequired(ActionTool)
     case approvalBindingInvalid(ActionTool)
     case dangerousToolBlocked(ActionTool)
+    case sideEffectIdentityMissing(ActionTool)
+    case externalSideEffectInProgress(ActionTool, String)
+    case externalSideEffectRequiresReconciliation(ActionTool, String)
     case validationFailed(ActionTool, String)
     case executionFailed(ActionTool, String)
 }

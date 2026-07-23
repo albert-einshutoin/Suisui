@@ -90,6 +90,13 @@ public protocol ExternalSideEffectJournal: Sendable {
     ) throws
     func markFailedBeforeSideEffect(id: String, failureCategory: String, at: Date) throws
     func markCompensated(id: String, reconciliationResult: String, at: Date) throws
+    func reconcileSucceeded(
+        id: String,
+        externalResourceID: String,
+        result: ToolResult,
+        reconciliationResult: String,
+        at: Date
+    ) throws
     func record(id: String) throws -> ExternalSideEffectRecord?
     func records(executionID: String) throws -> [ExternalSideEffectRecord]
     func recordsRequiringReconciliation() throws -> [ExternalSideEffectRecord]
@@ -286,6 +293,35 @@ public final class SQLiteExternalSideEffectJournal: ExternalSideEffectJournal, @
         )
     }
 
+    public func reconcileSucceeded(
+        id: String,
+        externalResourceID: String,
+        result: ToolResult,
+        reconciliationResult: String,
+        at: Date
+    ) throws {
+        let payload = try encoder.encode(ExternalSideEffectResultPayload(result))
+        try transition(
+            id: id,
+            allowedFrom: [.unknown],
+            to: .succeeded,
+            at: at,
+            assignments: """
+            external_resource_id = ?,
+            completed_at = ?,
+            reconciliation_result = ?,
+            result_json = ?,
+            failure_category = NULL
+            """,
+            values: [
+                .text(externalResourceID),
+                .text(dateFormatter.string(from: at)),
+                .text(reconciliationResult),
+                .blob(payload)
+            ]
+        )
+    }
+
     public func record(id: String) throws -> ExternalSideEffectRecord? {
         lock.lock()
         defer { lock.unlock() }
@@ -437,6 +473,44 @@ public final class SQLiteExternalSideEffectJournal: ExternalSideEffectJournal, @
                 result: result
             )
         }
+    }
+}
+
+public struct ExternalSideEffectReconciliationRow: Equatable, Sendable {
+    public var id: String
+    public var tool: ActionTool
+    public var actionID: String
+    public var itemIndex: Int?
+    public var idempotencyKey: String
+    public var externalResourceID: String?
+    public var state: ExternalSideEffectState
+    public var updatedAt: Date
+    public var guidance: String
+
+    public init(record: ExternalSideEffectRecord) {
+        id = record.id
+        tool = record.tool
+        actionID = record.actionID
+        itemIndex = record.itemIndex
+        idempotencyKey = record.idempotencyKey
+        externalResourceID = record.externalResourceID
+        state = record.state
+        updatedAt = record.updatedAt
+        guidance = record.externalResourceID == nil
+            ? "Check the external service before choosing a result. Automatic retry is blocked."
+            : "Verify external resource \(record.externalResourceID ?? "") before retrying or compensating."
+    }
+}
+
+public struct ExternalSideEffectReconciliationReadModel: Sendable {
+    private let journal: any ExternalSideEffectJournal
+
+    public init(journal: any ExternalSideEffectJournal) {
+        self.journal = journal
+    }
+
+    public func load() throws -> [ExternalSideEffectReconciliationRow] {
+        try journal.recordsRequiringReconciliation().map(ExternalSideEffectReconciliationRow.init)
     }
 }
 

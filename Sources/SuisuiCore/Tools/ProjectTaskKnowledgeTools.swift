@@ -437,24 +437,25 @@ public extension ToolRegistry {
         calendarLinkStore: SQLiteCalendarLinkStore? = nil,
         reminderLinkStore: SQLiteReminderLinkStore? = nil,
         artifactStore: SQLiteArtifactStore? = nil,
+        sideEffectJournal: (any ExternalSideEffectJournal)? = nil,
         auditLogger: (any AuditLogger)? = nil
     ) throws -> ToolRegistry {
         var tools = phase2CoreTools(projectStore: projectStore, taskStore: taskStore, knowledgeStore: knowledgeStore)
         let systemTools: [any Tool] = [
-            NotificationTool(name: .notificationSchedule, client: notificationClient, requestStore: notificationRequestStore),
-            NotificationTool(name: .notificationScheduleRelative, client: notificationClient, requestStore: notificationRequestStore),
-            NotificationTool(name: .notificationScheduleOverdueRule, client: notificationClient, requestStore: notificationRequestStore),
+            NotificationTool(name: .notificationSchedule, client: notificationClient, requestStore: notificationRequestStore, sideEffectJournal: sideEffectJournal),
+            NotificationTool(name: .notificationScheduleRelative, client: notificationClient, requestStore: notificationRequestStore, sideEffectJournal: sideEffectJournal),
+            NotificationTool(name: .notificationScheduleOverdueRule, client: notificationClient, requestStore: notificationRequestStore, sideEffectJournal: sideEffectJournal),
             NotificationTool(name: .notificationCancel, client: notificationClient, requestStore: notificationRequestStore),
             NotificationTool(name: .notificationList, client: notificationClient),
-            CalendarTool(name: .calendarCreateEvent, client: calendarClient, linkStore: calendarLinkStore),
-            CalendarTool(name: .calendarCreateDeadline, client: calendarClient, linkStore: calendarLinkStore),
-            CalendarTool(name: .calendarCreateWorkBlock, client: calendarClient, linkStore: calendarLinkStore),
-            ReminderTool(name: .remindersCreate, client: reminderClient, linkStore: reminderLinkStore),
-            ReminderTool(name: .remindersBulkCreate, client: reminderClient, linkStore: reminderLinkStore),
+            CalendarTool(name: .calendarCreateEvent, client: calendarClient, linkStore: calendarLinkStore, sideEffectJournal: sideEffectJournal),
+            CalendarTool(name: .calendarCreateDeadline, client: calendarClient, linkStore: calendarLinkStore, sideEffectJournal: sideEffectJournal),
+            CalendarTool(name: .calendarCreateWorkBlock, client: calendarClient, linkStore: calendarLinkStore, sideEffectJournal: sideEffectJournal),
+            ReminderTool(name: .remindersCreate, client: reminderClient, linkStore: reminderLinkStore, sideEffectJournal: sideEffectJournal),
+            ReminderTool(name: .remindersBulkCreate, client: reminderClient, linkStore: reminderLinkStore, sideEffectJournal: sideEffectJournal),
             ReminderTool(name: .remindersMarkComplete, client: reminderClient, linkStore: reminderLinkStore),
-            FileSystemTool(name: .filesystemCreateDirectory, client: fileAccessClient),
-            FileSystemTool(name: .filesystemCreateMarkdownFile, client: fileAccessClient, artifactStore: artifactStore),
-            FileSystemTool(name: .filesystemCreateArtifactsFromFrame, client: fileAccessClient, artifactStore: artifactStore),
+            FileSystemTool(name: .filesystemCreateDirectory, client: fileAccessClient, sideEffectJournal: sideEffectJournal),
+            FileSystemTool(name: .filesystemCreateMarkdownFile, client: fileAccessClient, artifactStore: artifactStore, sideEffectJournal: sideEffectJournal),
+            FileSystemTool(name: .filesystemCreateArtifactsFromFrame, client: fileAccessClient, artifactStore: artifactStore, sideEffectJournal: sideEffectJournal),
             FileSystemTool(name: .filesystemScanProjectArtifacts, client: fileAccessClient),
             MailDraftTool(client: mailDraftClient)
         ]

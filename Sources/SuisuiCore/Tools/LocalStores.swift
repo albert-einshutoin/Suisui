@@ -1288,7 +1288,15 @@ public final class SQLiteNotificationRequestStore: @unchecked Sendable {
         try connection.execute(
             """
             INSERT INTO notification_requests (request_id, status, title, scheduled_at)
-            VALUES (?, 'pending', ?, ?);
+            VALUES (?, 'pending', ?, ?)
+            ON CONFLICT(request_id) DO UPDATE SET
+                status = 'pending',
+                title = excluded.title,
+                scheduled_at = excluded.scheduled_at,
+                external_notification_id = NULL,
+                failure_reason = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE notification_requests.status = 'failed';
             """,
             parameters: [.text(requestID), .text(title), .text(scheduledAt)]
         )

@@ -144,7 +144,16 @@ public struct ActionExecutor: Sendable {
                     context: ToolExecutionContext(
                         authorization: authorization,
                         now: now,
-                        source: .reviewUI
+                        source: .reviewUI,
+                        executionID: approval?.nonce.uuidString ?? working.id,
+                        reviewSessionID: working.id,
+                        actionID: action.id,
+                        idempotencyKey: try ToolExecutionContext.externalSideEffectIdempotencyKey(
+                            reviewSessionID: working.id,
+                            actionID: action.id,
+                            tool: action.tool,
+                            arguments: resolvedArguments
+                        )
                     )
                 )
                 let actionStatus = Self.actionExecutionStatus(for: result.status)
@@ -376,6 +385,9 @@ public struct ActionExecutor: Sendable {
                  .approvalRequired,
                  .approvalBindingInvalid,
                  .dangerousToolBlocked,
+                 .sideEffectIdentityMissing,
+                 .externalSideEffectInProgress,
+                 .externalSideEffectRequiresReconciliation,
                  .unknownTool,
                  .duplicateTool:
                 return .notRetryable
@@ -491,6 +503,12 @@ public struct ActionExecutor: Sendable {
             return "Approval no longer matches \(tool.rawValue). Review the action again."
         case ToolExecutionError.dangerousToolBlocked(let tool):
             return "Tool \(tool.rawValue) is blocked for safety."
+        case ToolExecutionError.sideEffectIdentityMissing(let tool):
+            return "Execution identity is missing for \(tool.rawValue). Review the action again."
+        case ToolExecutionError.externalSideEffectInProgress(let tool, _):
+            return "\(tool.rawValue) is already in progress. Wait for reconciliation before retrying."
+        case ToolExecutionError.externalSideEffectRequiresReconciliation(let tool, _):
+            return "\(tool.rawValue) may already have changed an external resource. Reconcile it before retrying."
         case ToolExecutionError.validationFailed(let tool, let message):
             return "Invalid arguments for \(tool.rawValue): \(redacted(message))"
         case ToolExecutionError.executionFailed(let tool, let message):

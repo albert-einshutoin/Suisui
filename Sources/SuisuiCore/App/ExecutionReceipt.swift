@@ -159,6 +159,7 @@ public struct ExecutionReceiptActionSummary: Codable, Equatable, Sendable {
     public var outputSummary: String?
     public var errorSummary: String?
     public var failureRecovery: ExecutionReceiptFailureRecovery?
+    public var externalSideEffectEvidence: ExecutionReceiptExternalSideEffectEvidence?
 
     public init(
         id: String,
@@ -167,7 +168,8 @@ public struct ExecutionReceiptActionSummary: Codable, Equatable, Sendable {
         inputPreview: String,
         outputSummary: String? = nil,
         errorSummary: String? = nil,
-        failureRecovery: ExecutionReceiptFailureRecovery? = nil
+        failureRecovery: ExecutionReceiptFailureRecovery? = nil,
+        externalSideEffectEvidence: ExecutionReceiptExternalSideEffectEvidence? = nil
     ) {
         self.id = id
         self.toolName = toolName
@@ -176,6 +178,26 @@ public struct ExecutionReceiptActionSummary: Codable, Equatable, Sendable {
         self.outputSummary = outputSummary
         self.errorSummary = errorSummary
         self.failureRecovery = failureRecovery
+        self.externalSideEffectEvidence = externalSideEffectEvidence
+    }
+}
+
+public struct ExecutionReceiptExternalSideEffectEvidence: Codable, Equatable, Sendable {
+    public var idempotencyKeys: [String]
+    public var externalResourceIDs: [String]
+    public var journalRecordIDs: [String]
+    public var journalState: ExternalSideEffectState
+
+    public init(
+        idempotencyKeys: [String],
+        externalResourceIDs: [String],
+        journalRecordIDs: [String],
+        journalState: ExternalSideEffectState
+    ) {
+        self.idempotencyKeys = idempotencyKeys
+        self.externalResourceIDs = externalResourceIDs
+        self.journalRecordIDs = journalRecordIDs
+        self.journalState = journalState
     }
 }
 
@@ -330,7 +352,21 @@ public struct ExecutionReceipt: Codable, Equatable, Sendable {
                 inputPreview: redactor.redact(action.inputPreview),
                 outputSummary: action.outputSummary.map { redactor.redact($0) },
                 errorSummary: action.errorSummary.map { redactor.redact($0) },
-                failureRecovery: action.failureRecovery
+                failureRecovery: action.failureRecovery,
+                externalSideEffectEvidence: action.externalSideEffectEvidence.map { evidence in
+                    ExecutionReceiptExternalSideEffectEvidence(
+                        idempotencyKeys: evidence.idempotencyKeys.map {
+                            redactor.redact($0, maxLength: 240)
+                        },
+                        externalResourceIDs: evidence.externalResourceIDs.map {
+                            redactor.redact($0, maxLength: 240)
+                        },
+                        journalRecordIDs: evidence.journalRecordIDs.map {
+                            redactor.redact($0, maxLength: 240)
+                        },
+                        journalState: evidence.journalState
+                    )
+                }
             )
         }
         self.visibleSurfaces = visibleSurfaces
@@ -1982,7 +2018,30 @@ public enum ExecutionReceiptFactory {
             inputPreview: actionInputPreview(for: item, redactor: redactor),
             outputSummary: actionOutputSummary(for: item, redactor: redactor),
             errorSummary: item.errorMessage.map { redactor.redact($0) },
-            failureRecovery: executionReceiptFailureRecovery(for: item.failureRecovery)
+            failureRecovery: executionReceiptFailureRecovery(for: item.failureRecovery),
+            externalSideEffectEvidence: externalSideEffectEvidence(for: item.result)
+        )
+    }
+
+    private static func externalSideEffectEvidence(
+        for result: ToolResult?
+    ) -> ExecutionReceiptExternalSideEffectEvidence? {
+        guard let result,
+              let stateRaw = result.output["journalState"]?.receiptStringValue,
+              let state = ExternalSideEffectState(rawValue: stateRaw) else {
+            return nil
+        }
+        return ExecutionReceiptExternalSideEffectEvidence(
+            idempotencyKeys: result.output["idempotencyKeys"]?.receiptIDValues
+                ?? result.output["idempotencyKey"]?.receiptStringValue.map { [$0] }
+                ?? [],
+            externalResourceIDs: result.output["externalResourceIds"]?.receiptIDValues
+                ?? result.output["externalResourceId"]?.receiptStringValue.map { [$0] }
+                ?? [],
+            journalRecordIDs: result.output["journalRecordIds"]?.receiptIDValues
+                ?? result.output["journalRecordId"]?.receiptStringValue.map { [$0] }
+                ?? [],
+            journalState: state
         )
     }
 

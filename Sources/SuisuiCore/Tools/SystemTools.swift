@@ -7,14 +7,21 @@ public struct NotificationTool: Tool {
     public let permissionLevel: ToolPermissionLevel
     private let client: any NotificationClient
     private let requestStore: SQLiteNotificationRequestStore?
+    private let sideEffectJournal: (any ExternalSideEffectJournal)?
 
-    public init(name: ActionTool, client: any NotificationClient, requestStore: SQLiteNotificationRequestStore? = nil) {
+    public init(
+        name: ActionTool,
+        client: any NotificationClient,
+        requestStore: SQLiteNotificationRequestStore? = nil,
+        sideEffectJournal: (any ExternalSideEffectJournal)? = nil
+    ) {
         self.name = name
         self.description = name.rawValue
         self.inputSchema = NotificationTool.schema(for: name)
         self.permissionLevel = name.defaultRiskLevel >= .write ? .writeWithApproval : .read
         self.client = client
         self.requestStore = requestStore
+        self.sideEffectJournal = sideEffectJournal
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -31,7 +38,9 @@ public struct NotificationTool: Tool {
                         body: try args.optionalString("body"),
                         scheduledAt: try args.requiredString("scheduledAt"),
                         identifierHint: try args.optionalString("id")
-                    )
+                    ),
+                    arguments: arguments,
+                    context: context
                 )
             case .notificationScheduleRelative:
                 let offsetSeconds = try args.requiredInt64("offsetSeconds")
@@ -40,11 +49,27 @@ public struct NotificationTool: Tool {
                 }
                 let offset = TimeInterval(offsetSeconds)
                 let scheduledAt = ISO8601DateFormatter().string(from: context.now.addingTimeInterval(offset))
-                return try schedule(NotificationDraft(title: try args.requiredString("title"), body: try args.optionalString("body"), scheduledAt: scheduledAt))
+                return try schedule(
+                    NotificationDraft(
+                        title: try args.requiredString("title"),
+                        body: try args.optionalString("body"),
+                        scheduledAt: scheduledAt
+                    ),
+                    arguments: arguments,
+                    context: context
+                )
             case .notificationScheduleOverdueRule:
                 let taskID = try args.requiredInt64("taskId")
                 let title = try args.optionalString("title") ?? "Task \(taskID) is overdue"
-                return try schedule(NotificationDraft(title: title, body: try args.optionalString("body"), scheduledAt: "overdue-rule:task-\(taskID)"))
+                return try schedule(
+                    NotificationDraft(
+                        title: title,
+                        body: try args.optionalString("body"),
+                        scheduledAt: "overdue-rule:task-\(taskID)"
+                    ),
+                    arguments: arguments,
+                    context: context
+                )
             case .notificationCancel:
                 let id = try args.requiredString("id")
                 try client.cancel(id: id)
@@ -60,8 +85,50 @@ public struct NotificationTool: Tool {
         }
     }
 
-    private func schedule(_ draft: NotificationDraft) throws -> ToolResult {
+    private func schedule(
+        _ inputDraft: NotificationDraft,
+        arguments: [String: JSONValue],
+        context: ToolExecutionContext
+    ) throws -> ToolResult {
+        let request = try sideEffectJournal.map {
+            _ in try context.externalSideEffectRequest(tool: name, arguments: arguments)
+        }
+        var draft = inputDraft
+        if let request {
+            draft.identifierHint = request.idempotencyKey
+        }
         let requestID = draft.identifierHint ?? "notification-request-\(UUID().uuidString)"
+
+        if let sideEffectJournal, let request {
+            do {
+                return try ExternalSideEffectCoordinator(journal: sideEffectJournal).execute(
+                    request: request,
+                    at: context.now,
+                    prepareLocalState: {
+                        try requestStore?.createPending(
+                            requestID: requestID,
+                            title: draft.title,
+                            scheduledAt: draft.scheduledAt
+                        )
+                    },
+                    performExternalWrite: { try client.schedule(draft) },
+                    externalResourceID: \.id,
+                    persistLocalState: { record in
+                        try requestStore?.markScheduled(
+                            requestID: requestID,
+                            externalNotificationID: record.id
+                        )
+                        return scheduledResult(record)
+                    }
+                )
+            } catch let error as ToolClientError {
+                if case .permissionDenied = error {
+                    try markRequestFailedOrThrow(requestID: requestID, reason: error.message)
+                }
+                throw error
+            }
+        }
+
         try requestStore?.createPending(requestID: requestID, title: draft.title, scheduledAt: draft.scheduledAt)
 
         do {
@@ -128,14 +195,21 @@ public struct CalendarTool: Tool {
     public let permissionLevel: ToolPermissionLevel
     private let client: any CalendarClient
     private let linkStore: SQLiteCalendarLinkStore?
+    private let sideEffectJournal: (any ExternalSideEffectJournal)?
 
-    public init(name: ActionTool, client: any CalendarClient, linkStore: SQLiteCalendarLinkStore? = nil) {
+    public init(
+        name: ActionTool,
+        client: any CalendarClient,
+        linkStore: SQLiteCalendarLinkStore? = nil,
+        sideEffectJournal: (any ExternalSideEffectJournal)? = nil
+    ) {
         self.name = name
         self.description = name.rawValue
         self.inputSchema = CalendarTool.schema(for: name)
         self.permissionLevel = .writeWithApproval
         self.client = client
         self.linkStore = linkStore
+        self.sideEffectJournal = sideEffectJournal
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -145,7 +219,7 @@ public struct CalendarTool: Tool {
         let args = ToolArguments(arguments, tool: name)
         let entityReferences = try calendarEntityReferences(args: args)
         do {
-            let draft: CalendarEventDraft
+            var draft: CalendarEventDraft
             switch name {
             case .calendarCreateEvent:
                 draft = try makeEventDraft(args: args)
@@ -166,15 +240,33 @@ public struct CalendarTool: Tool {
                 throw ToolExecutionError.executionFailed(name, "Unsupported calendar tool.")
             }
 
+            if let sideEffectJournal {
+                let request = try context.externalSideEffectRequest(tool: name, arguments: arguments)
+                draft.idempotencyKey = request.idempotencyKey
+                return try ExternalSideEffectCoordinator(journal: sideEffectJournal).execute(
+                    request: request,
+                    at: context.now,
+                    performExternalWrite: { try client.createEvent(draft) },
+                    externalResourceID: { $0.id },
+                    persistLocalState: {
+                        try linkCalendarEventIfNeeded(
+                            record: $0,
+                            entityReferences: entityReferences
+                        )
+                        return calendarResult(
+                            record: $0,
+                            entityReferences: entityReferences
+                        )
+                    }
+                )
+            }
+
+            if let idempotencyKey = context.idempotencyKey {
+                draft.idempotencyKey = idempotencyKey
+            }
             let record = try client.createEvent(draft)
             try linkCalendarEventIfNeeded(record: record, entityReferences: entityReferences)
-            return ToolResult(
-                tool: name,
-                status: .succeeded,
-                summary: "Created calendar event \(record.draft.title)",
-                output: calendarToolOutput(record: record, entityReferences: entityReferences),
-                rollbackMetadata: ["eventId": .string(record.id)]
-            )
+            return calendarResult(record: record, entityReferences: entityReferences)
         } catch let error as ToolClientError {
             throw ToolExecutionError.executionFailed(name, error.message)
         }
@@ -219,6 +311,19 @@ public struct CalendarTool: Tool {
         return output
     }
 
+    private func calendarResult(
+        record: CalendarEventRecord,
+        entityReferences: (projectID: Int64?, taskID: Int64?)
+    ) -> ToolResult {
+        ToolResult(
+            tool: name,
+            status: .succeeded,
+            summary: "Created calendar event \(record.draft.title)",
+            output: calendarToolOutput(record: record, entityReferences: entityReferences),
+            rollbackMetadata: ["eventId": .string(record.id)]
+        )
+    }
+
     private func makeEventDraft(args: ToolArguments) throws -> CalendarEventDraft {
         let startAt = try args.requiredString("startAt")
         let endAt = try args.requiredString("endAt")
@@ -252,14 +357,21 @@ public struct ReminderTool: Tool {
     public let permissionLevel: ToolPermissionLevel
     private let client: any ReminderClient
     private let linkStore: SQLiteReminderLinkStore?
+    private let sideEffectJournal: (any ExternalSideEffectJournal)?
 
-    public init(name: ActionTool, client: any ReminderClient, linkStore: SQLiteReminderLinkStore? = nil) {
+    public init(
+        name: ActionTool,
+        client: any ReminderClient,
+        linkStore: SQLiteReminderLinkStore? = nil,
+        sideEffectJournal: (any ExternalSideEffectJournal)? = nil
+    ) {
         self.name = name
         self.description = name.rawValue
         self.inputSchema = ReminderTool.schema(for: name)
         self.permissionLevel = .writeWithApproval
         self.client = client
         self.linkStore = linkStore
+        self.sideEffectJournal = sideEffectJournal
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -270,9 +382,12 @@ public struct ReminderTool: Tool {
         do {
             switch name {
             case .remindersCreate:
-                let record = try client.create(makeDraft(args))
-                try linkReminderIfNeeded(record: record, args: args)
-                return createdResult(record)
+                return try createReminder(
+                    draft: makeDraft(args),
+                    args: args,
+                    arguments: arguments,
+                    context: context
+                )
             case .remindersBulkCreate:
                 let reminderObjects = try args.objectArray("reminders")
                 guard !reminderObjects.isEmpty else {
@@ -280,15 +395,31 @@ public struct ReminderTool: Tool {
                 }
                 let perReminderArgs = reminderObjects.map { ToolArguments($0, tool: name) }
                 let drafts = try perReminderArgs.map(makeDraft)
-                let records = try drafts.map { try client.create($0) }
-                for (record, reminderArgs) in zip(records, perReminderArgs) {
-                    try linkReminderIfNeeded(record: record, args: reminderArgs)
+                var results: [ToolResult] = []
+                for index in drafts.indices {
+                    results.append(
+                        try createReminder(
+                            draft: drafts[index],
+                            args: perReminderArgs[index],
+                            arguments: reminderObjects[index],
+                            context: context,
+                            itemIndex: index
+                        )
+                    )
                 }
+                let reminderIDs = results.compactMap { outputString($0, key: "reminderId") }
+                let journalRecordIDs = results.compactMap { outputString($0, key: "journalRecordId") }
+                let idempotencyKeys = results.compactMap { outputString($0, key: "idempotencyKey") }
                 return ToolResult(
                     tool: name,
                     status: .succeeded,
-                    summary: "Created \(records.count) reminders",
-                    output: ["reminderIds": JSONValueFactory.strings(records.map(\.id))]
+                    summary: "Created \(reminderIDs.count) reminders",
+                    output: [
+                        "reminderIds": JSONValueFactory.strings(reminderIDs),
+                        "journalRecordIds": JSONValueFactory.strings(journalRecordIDs),
+                        "idempotencyKeys": JSONValueFactory.strings(idempotencyKeys),
+                        "journalState": .string(ExternalSideEffectState.succeeded.rawValue)
+                    ]
                 )
             case .remindersMarkComplete:
                 let record = try client.markComplete(id: try args.requiredString("id"))
@@ -315,6 +446,35 @@ public struct ReminderTool: Tool {
         ReminderDraft(title: try args.requiredString("title"), dueAt: try args.optionalString("dueAt"), listName: try args.optionalString("listName"))
     }
 
+    private func createReminder(
+        draft: ReminderDraft,
+        args: ToolArguments,
+        arguments: [String: JSONValue],
+        context: ToolExecutionContext,
+        itemIndex: Int? = nil
+    ) throws -> ToolResult {
+        guard let sideEffectJournal else {
+            let record = try client.create(draft)
+            try linkReminderIfNeeded(record: record, args: args)
+            return createdResult(record)
+        }
+        let request = try context.externalSideEffectRequest(
+            tool: name,
+            arguments: arguments,
+            itemIndex: itemIndex
+        )
+        return try ExternalSideEffectCoordinator(journal: sideEffectJournal).execute(
+            request: request,
+            at: context.now,
+            performExternalWrite: { try client.create(draft) },
+            externalResourceID: { $0.id },
+            persistLocalState: {
+                try linkReminderIfNeeded(record: $0, args: args)
+                return createdResult($0)
+            }
+        )
+    }
+
     private func createdResult(_ record: ReminderRecord) -> ToolResult {
         ToolResult(
             tool: name,
@@ -323,6 +483,13 @@ public struct ReminderTool: Tool {
             output: ["reminderId": .string(record.id)],
             rollbackMetadata: ["reminderId": .string(record.id)]
         )
+    }
+
+    private func outputString(_ result: ToolResult, key: String) -> String? {
+        guard case .string(let value) = result.output[key] else {
+            return nil
+        }
+        return value
     }
 
     private static func schema(for name: ActionTool) -> ToolInputSchema {
@@ -346,14 +513,21 @@ public struct FileSystemTool: Tool {
     public let permissionLevel: ToolPermissionLevel
     private let client: any FileAccessClient
     private let artifactStore: SQLiteArtifactStore?
+    private let sideEffectJournal: (any ExternalSideEffectJournal)?
 
-    public init(name: ActionTool, client: any FileAccessClient, artifactStore: SQLiteArtifactStore? = nil) {
+    public init(
+        name: ActionTool,
+        client: any FileAccessClient,
+        artifactStore: SQLiteArtifactStore? = nil,
+        sideEffectJournal: (any ExternalSideEffectJournal)? = nil
+    ) {
         self.name = name
         self.description = name.rawValue
         self.inputSchema = FileSystemTool.schema(for: name)
         self.permissionLevel = name.defaultRiskLevel >= .write ? .writeWithApproval : .read
         self.client = client
         self.artifactStore = artifactStore
+        self.sideEffectJournal = sideEffectJournal
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -365,17 +539,46 @@ public struct FileSystemTool: Tool {
         do {
             switch name {
             case .filesystemCreateDirectory:
-                let artifact = try client.createDirectory(relativePath: try args.requiredString("relativePath"))
-                return try artifactResult(artifact, args: args, summary: "Created directory \(artifact.relativePath)")
+                let relativePath = try args.requiredString("relativePath")
+                return try createArtifact(
+                    arguments: arguments,
+                    context: context,
+                    args: args,
+                    externalWrite: { try client.createDirectory(relativePath: relativePath) },
+                    summary: { "Created directory \($0.relativePath)" }
+                )
             case .filesystemCreateMarkdownFile:
-                let artifact = try client.createMarkdownFile(relativePath: try args.requiredString("relativePath"), contents: try args.requiredString("contents"))
-                return try artifactResult(artifact, args: args, summary: "Created file \(artifact.relativePath)")
+                let relativePath = try args.requiredString("relativePath")
+                let contents = try args.requiredString("contents")
+                return try createArtifact(
+                    arguments: arguments,
+                    context: context,
+                    args: args,
+                    externalWrite: {
+                        try client.createMarkdownFile(
+                            relativePath: relativePath,
+                            contents: contents
+                        )
+                    },
+                    summary: { "Created file \($0.relativePath)" }
+                )
             case .filesystemCreateArtifactsFromFrame:
                 let directory = try args.optionalString("directory") ?? "."
                 let filename = "\(Self.slug(try args.requiredString("frameName"))).md"
                 let relativePath = directory == "." ? filename : "\(directory)/\(filename)"
-                let artifact = try client.createMarkdownFile(relativePath: relativePath, contents: try args.requiredString("body"))
-                return try artifactResult(artifact, args: args, summary: "Created frame artifact \(artifact.relativePath)")
+                let contents = try args.requiredString("body")
+                return try createArtifact(
+                    arguments: arguments,
+                    context: context,
+                    args: args,
+                    externalWrite: {
+                        try client.createMarkdownFile(
+                            relativePath: relativePath,
+                            contents: contents
+                        )
+                    },
+                    summary: { "Created frame artifact \($0.relativePath)" }
+                )
             case .filesystemScanProjectArtifacts:
                 let artifacts = try client.scan(relativePath: try args.optionalString("relativePath") ?? ".")
                 return ToolResult(tool: name, status: .succeeded, summary: "\(artifacts.count) artifacts", output: ["count": .number(Double(artifacts.count))])
@@ -385,6 +588,29 @@ public struct FileSystemTool: Tool {
         } catch let error as ToolClientError {
             throw ToolExecutionError.executionFailed(name, error.message)
         }
+    }
+
+    private func createArtifact(
+        arguments: [String: JSONValue],
+        context: ToolExecutionContext,
+        args: ToolArguments,
+        externalWrite: () throws -> FileArtifact,
+        summary: (FileArtifact) -> String
+    ) throws -> ToolResult {
+        guard let sideEffectJournal else {
+            let artifact = try externalWrite()
+            return try artifactResult(artifact, args: args, summary: summary(artifact))
+        }
+        let request = try context.externalSideEffectRequest(tool: name, arguments: arguments)
+        return try ExternalSideEffectCoordinator(journal: sideEffectJournal).execute(
+            request: request,
+            at: context.now,
+            performExternalWrite: externalWrite,
+            externalResourceID: { $0.relativePath },
+            persistLocalState: {
+                try artifactResult($0, args: args, summary: summary($0))
+            }
+        )
     }
 
     private func artifactResult(_ artifact: FileArtifact, args: ToolArguments, summary: String) throws -> ToolResult {
