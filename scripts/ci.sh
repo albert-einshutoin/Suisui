@@ -304,7 +304,9 @@ sanitize_gate_log() {
     -e 's#gh[pousr]_[A-Za-z0-9_]{8,}#<redacted>#g'
     -e 's#xox[baprs]-[A-Za-z0-9-]{8,}#<redacted>#g'
     -e 's#AKIA[0-9A-Z]{16}#<redacted>#g'
-    -e 's#(token|secret|password|api[_-]?key)[[:space:]]*[=:][[:space:]]*[^[:space:]]+#\1=<redacted>#Ig'
+    -e 's#("[[:alnum:]_.-]*(token|secret|password|api[_-]?key)"[[:space:]]*:[[:space:]]*)"[^"]*"#\1"<redacted>"#Ig'
+    -e "s#('[[:alnum:]_.-]*(token|secret|password|api[_-]?key)'[[:space:]]*:[[:space:]]*)'[^']*'#\\1'<redacted>'#Ig"
+    -e 's#([[:alnum:]_.-]*(token|secret|password|api[_-]?key))[[:space:]]*[=:][[:space:]]*[^[:space:]]+#\1=<redacted>#Ig'
   )
   # When invoked with `-` as the input path, the sanitizer reads from
   # stdin and writes to stdout so the caller can pipe the lane output

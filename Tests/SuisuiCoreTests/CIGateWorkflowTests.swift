@@ -108,6 +108,18 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(script.contains("s#(/var)?/tmp/[^[:space:]]+#<temp-path>#g"))
         XCTAssertTrue(script.contains("github_pat_"))
         XCTAssertTrue(script.contains("Authorization"))
+        XCTAssertTrue(
+            script.contains(
+                #"("[[:alnum:]_.-]*(token|secret|password|api[_-]?key)"[[:space:]]*:[[:space:]]*)"[^"]*""#
+            ),
+            "Lane sanitizer must redact double-quoted JSON secret fields before publication"
+        )
+        XCTAssertTrue(
+            script.contains(
+                #"('[[:alnum:]_.-]*(token|secret|password|api[_-]?key)'[[:space:]]*:[[:space:]]*)'[^']*'"#
+            ),
+            "Lane sanitizer must redact single-quoted dictionary secret fields before publication"
+        )
         XCTAssertTrue(script.contains("#Ig"))
     }
 
