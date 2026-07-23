@@ -150,6 +150,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("fixture=mixed-framework-counts status=passed"))
         XCTAssertTrue(result.output.contains("fixture=temporary-path-redaction status=passed"))
         XCTAssertTrue(result.output.contains("fixture=secret-assignment-redaction status=passed"))
+        XCTAssertTrue(result.output.contains("fixture=provider-token-redaction status=passed"))
     }
 
     func testGitHubCISeparatesCompleteSwiftPMSuiteFromSupplementalSourceContracts() throws {

@@ -103,6 +103,8 @@ final class CIGateWorkflowTests: XCTestCase {
         )
         XCTAssertTrue(script.contains("s#/private/var/folders/[^[:space:]]+#<temp-path>#g"))
         XCTAssertTrue(script.contains("s#(/var)?/tmp/[^[:space:]]+#<temp-path>#g"))
+        XCTAssertTrue(script.contains("github_pat_"))
+        XCTAssertTrue(script.contains("Authorization"))
         XCTAssertTrue(script.contains("#Ig"))
     }
 
