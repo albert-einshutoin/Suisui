@@ -5,21 +5,21 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 auth_path_suffix=".codex/auth.json"
 trace_filter_program='index($0, needle) { print; fflush() }'
 
-if [[ "${1:-}" == "--run-root-traces" ]]; then
-  if [[ "$EUID" -ne 0 || "$#" -ne 6 ]]; then
+run_root_traces() {
+  if [[ "$EUID" -ne 0 || "$#" -ne 5 ]]; then
     echo "Root trace helper requires root and exact audited arguments." >&2
-    exit 64
+    return 64
   fi
-  system_trace_output="$2"
-  parent_trace_output="$3"
-  child_trace_output="$4"
-  audited_parent_pid="$5"
-  audited_child_pid="$6"
+  local system_trace_output="$1"
+  local parent_trace_output="$2"
+  local child_trace_output="$3"
+  local audited_parent_pid="$4"
+  local audited_child_pid="$5"
   if [[ "$system_trace_output" != /* || "$parent_trace_output" != /* || "$child_trace_output" != /* ||
         ! "$audited_parent_pid" =~ ^[1-9][0-9]*$ || ! "$audited_child_pid" =~ ^[1-9][0-9]*$ ||
         "$audited_parent_pid" == "$audited_child_pid" ]]; then
     echo "Root trace helper received unsafe output paths or process identities." >&2
-    exit 64
+    return 64
   fi
 
   run_filtered_trace() {
@@ -46,9 +46,14 @@ if [[ "${1:-}" == "--run-root-traces" ]]; then
   wait "$parent_trace_pid" || parent_trace_status=$?
   wait "$child_trace_pid" || child_trace_status=$?
   if [[ "$system_trace_status" -ne 0 || "$parent_trace_status" -ne 0 || "$child_trace_status" -ne 0 ]]; then
-    exit 1
+    return 1
   fi
-  exit 0
+}
+
+if [[ "${1:-}" == "--run-root-traces" ]]; then
+  shift
+  run_root_traces "$@"
+  exit $?
 fi
 
 if [[ "${SUISUI_CODEX_RUN_AUTH_ACCESS_EVIDENCE:-0}" != "1" ]]; then
@@ -159,12 +164,18 @@ if [[ "$observed_child_parent" != "$parent_pid" ]]; then
   exit 1
 fi
 
+printf -v root_trace_program \
+  'auth_path_suffix=%q\ntrace_filter_program=%q\n%s\nrun_root_traces "$@"\n' \
+  "$auth_path_suffix" \
+  "$trace_filter_program" \
+  "$(declare -f run_root_traces)"
 root_trace_command=(
-  # Administrator shells can be denied direct execution from removable
-  # volumes; invoke the audited script through the system shell instead.
+  # Administrator shells cannot open scripts on some removable-volume
+  # configurations. Pass only the audited helper body and inert argv.
   /bin/bash
-  "$ROOT_DIR/script/check_codex_auth_access_evidence.sh"
-  --run-root-traces
+  -c
+  "$root_trace_program"
+  --
   "$trace_log"
   "$parent_trace_log"
   "$child_trace_log"
