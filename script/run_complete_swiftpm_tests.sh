@@ -24,7 +24,9 @@ sanitize_swift_output() {
     -e 's#gh[pousr]_[A-Za-z0-9_]{8,}#<redacted>#g' \
     -e 's#xox[baprs]-[A-Za-z0-9-]{8,}#<redacted>#g' \
     -e 's#AKIA[0-9A-Z]{16}#<redacted>#g' \
-    -e 's#(token|secret|password|api[_-]?key)[[:space:]]*[=:][[:space:]]*[^[:space:]]+#\1=<redacted>#Ig'
+    -e 's#("[[:alnum:]_.-]*(token|secret|password|api[_-]?key)"[[:space:]]*:[[:space:]]*)"[^"]*"#\1"<redacted>"#Ig' \
+    -e "s#('[[:alnum:]_.-]*(token|secret|password|api[_-]?key)'[[:space:]]*:[[:space:]]*)'[^']*'#\\1'<redacted>'#Ig" \
+    -e 's#([[:alnum:]_.-]*(token|secret|password|api[_-]?key))[[:space:]]*[=:][[:space:]]*[^[:space:]]+#\1=<redacted>#Ig'
 }
 
 read_positive_count() {
@@ -196,6 +198,7 @@ run_fixture_self_tests() {
   local mixed_framework_output
   local sanitized_output
   local sanitized_secret_output
+  local sanitized_quoted_secret_output
   local sanitized_provider_output
   local fixture_xunit
   if validate_discovered_count 4 3 >/dev/null 2>&1; then
@@ -312,6 +315,24 @@ run_fixture_self_tests() {
   fi
   printf 'fixture=secret-assignment-redaction status=passed\n'
 
+  sanitized_quoted_secret_output="$fixture_dir/sanitized-quoted-secret-output.log"
+  printf '%s\n' \
+    '{"api_key": "gemini-oauth-secret-value", "refresh_token": "oauth-refresh-secret-value"}' \
+    "{'client_secret': 'client-secret-value'}" \
+    | sanitize_swift_output >"$sanitized_quoted_secret_output"
+  if grep -Eq 'gemini-oauth-secret-value|oauth-refresh-secret-value|client-secret-value' \
+    "$sanitized_quoted_secret_output"; then
+    rm -rf "$fixture_dir"
+    printf 'fixture=quoted-secret-field-redaction status=invalid\n' >&2
+    return 1
+  fi
+  if [[ "$(grep -c '<redacted>' "$sanitized_quoted_secret_output")" -ne 2 ]]; then
+    rm -rf "$fixture_dir"
+    printf 'fixture=quoted-secret-field-redaction status=invalid\n' >&2
+    return 1
+  fi
+  printf 'fixture=quoted-secret-field-redaction status=passed\n'
+
   sanitized_provider_output="$fixture_dir/sanitized-provider-output.log"
   printf '%s\n' \
     'Authorization: Bearer bearer-provider-value' \
@@ -375,7 +396,7 @@ rm -f \
   "$SUMMARY_FILE" \
   "$XUNIT_OUTPUT_FILE" \
   "$LEGACY_SWIFT_TESTING_XUNIT_FILE"
-RAW_DISCOVERY_LOG="$(mktemp "$ARTIFACT_DIR/discovery.raw.XXXXXX")"
+RAW_DISCOVERY_LOG="$(mktemp "${TMPDIR:-/tmp}/suisui-swiftpm-discovery.raw.XXXXXX")"
 trap 'rm -f "$RAW_DISCOVERY_LOG"' EXIT INT TERM
 
 baseline_test_count="$(read_positive_count \

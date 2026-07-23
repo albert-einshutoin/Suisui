@@ -108,7 +108,8 @@ acquire_ui_gate_lock() {
 }
 
 run_pr_gate() {
-  ./script/run_complete_swiftpm_tests.sh
+  SUISUI_SWIFTPM_ARTIFACT_DIR="${SUISUI_SWIFTPM_ARTIFACT_DIR:-$CI_ARTIFACT_ROOT/swiftpm}" \
+    ./script/run_complete_swiftpm_tests.sh
   swift build
   swift build --product suisui-cli
   ./script/build_and_run.sh --build-only

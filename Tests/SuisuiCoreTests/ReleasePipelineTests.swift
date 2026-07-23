@@ -135,6 +135,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("test_pipeline_statuses[2]"))
         XCTAssertTrue(script.contains("s#/private/var/folders/[^[:space:]]+#<temp-path>#g"))
         XCTAssertTrue(script.contains("s#(/var)?/tmp/[^[:space:]]+#<temp-path>#g"))
+        XCTAssertTrue(script.contains("mktemp \"${TMPDIR:-/tmp}/suisui-swiftpm-discovery.raw.XXXXXX\""))
+        XCTAssertFalse(script.contains("mktemp \"$ARTIFACT_DIR/discovery.raw.XXXXXX\""))
         XCTAssertTrue(script.contains("#Ig"))
     }
 
@@ -153,6 +155,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("fixture=mixed-framework-counts status=passed"))
         XCTAssertTrue(result.output.contains("fixture=temporary-path-redaction status=passed"))
         XCTAssertTrue(result.output.contains("fixture=secret-assignment-redaction status=passed"))
+        XCTAssertTrue(result.output.contains("fixture=quoted-secret-field-redaction status=passed"))
         XCTAssertTrue(result.output.contains("fixture=provider-token-redaction status=passed"))
         XCTAssertTrue(result.output.contains("fixture=provider-token-boundary status=passed"))
     }
@@ -169,6 +172,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(workflow.contains("name: Source contracts (supplemental)"))
         XCTAssertTrue(workflow.contains("run: ./scripts/ci.sh source-contracts"))
         XCTAssertTrue(script.contains("./script/run_complete_swiftpm_tests.sh"))
+        XCTAssertTrue(
+            script.contains(
+                "SUISUI_SWIFTPM_ARTIFACT_DIR=\"${SUISUI_SWIFTPM_ARTIFACT_DIR:-$CI_ARTIFACT_ROOT/swiftpm}\""
+            )
+        )
         XCTAssertTrue(script.contains("run_source_contract_gates()"))
         XCTAssertTrue(script.contains("run_lane_with_artifacts \"swiftpm\" run_pr_gate"))
         XCTAssertTrue(script.contains("run_lane_with_artifacts \"source-contracts\" run_source_contract_gates"))
