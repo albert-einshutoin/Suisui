@@ -110,10 +110,10 @@ final class CIGateWorkflowTests: XCTestCase {
             script.contains(
                 """
                 if [[ "$discovery_status" -ne 0 ]]; then
-                  write_failed_evidence "$baseline_test_count" 0
+                  write_failed_evidence "$baseline_test_count" 0 "$max_skipped_test_count"
                 """
             ),
-            "A discovery/compiler failure must still publish a failed summary and xUnit artifact"
+            "A discovery/compiler failure must publish failed evidence with every configured count boundary"
         )
     }
 
