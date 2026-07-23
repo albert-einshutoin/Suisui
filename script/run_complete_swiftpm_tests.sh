@@ -149,6 +149,7 @@ write_failed_evidence() {
 
 run_fixture_self_tests() {
   local fixture_dir
+  local mixed_framework_output
   local fixture_xunit
   if validate_discovered_count 4 3 >/dev/null 2>&1; then
     printf 'fixture=discovery-above-baseline status=passed\n'
@@ -207,6 +208,25 @@ run_fixture_self_tests() {
   fi
 
   fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/suisui-swiftpm-runner-self-test.XXXXXX")"
+  mixed_framework_output="$fixture_dir/mixed-framework-output.log"
+  {
+    printf '%s\n' "Test Suite 'All tests' passed."
+    printf '%s\n' 'Executed 3 tests, with 1 test skipped and 0 failures.'
+    printf '%s\n' '↷ Test "conditional Swift Testing case" skipped: capability unavailable'
+    printf '%s\n' '✔ Test run with 2 tests in 1 suite passed after 0.001 seconds.'
+  } >"$mixed_framework_output"
+  if [[ "$(parse_executed_test_count "$mixed_framework_output")" != "5" ]]; then
+    rm -rf "$fixture_dir"
+    printf 'fixture=mixed-framework-execution status=invalid\n' >&2
+    return 1
+  fi
+  if [[ "$(parse_skipped_test_count "$mixed_framework_output")" != "2" ]]; then
+    rm -rf "$fixture_dir"
+    printf 'fixture=mixed-framework-skips status=invalid\n' >&2
+    return 1
+  fi
+  printf 'fixture=mixed-framework-counts status=passed\n'
+
   fixture_xunit="$fixture_dir/test-results.xml"
   write_xunit_summary passed 3 3 3 0 0 "$fixture_xunit"
   if ! grep -q 'executed_test_count" value="3"' "$fixture_xunit"; then
