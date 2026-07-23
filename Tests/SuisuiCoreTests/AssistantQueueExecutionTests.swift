@@ -1735,7 +1735,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 200) }
         )
 
-        _ = try failingCoordinator.execute(id: approved.id)
+        let failedResult = try failingCoordinator.execute(id: approved.id)
         XCTAssertEqual(try queueStore.get(id: approved.id).state, .failed)
 
         let reopened = try queueStore.transition(id: approved.id) { item in
@@ -1768,6 +1768,8 @@ final class AssistantQueueExecutionTests: XCTestCase {
         let result = try successCoordinator.execute(id: reapproved.id)
 
         XCTAssertEqual(result.item.state, .done)
+        XCTAssertEqual(failedResult.session.id, "assistant-queue-item:\(approved.id)")
+        XCTAssertEqual(result.session.id, failedResult.session.id)
         XCTAssertEqual(try queueStore.get(id: approved.id).state, .done)
         XCTAssertEqual(receiptStore.receipts.map(\.assistantQueueItemID), [approved.id, approved.id])
         XCTAssertEqual(receiptStore.receipts.map(\.status), [.failed, .succeeded])

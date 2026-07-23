@@ -85,7 +85,14 @@ public struct AssistantQueueExecutionCoordinator {
         }
 
         let runID = runIDProvider()
-        var session = ReviewSession(plan: plan, createdAt: startedAt)
+        // Queue retries create a fresh in-memory review session, but external
+        // side-effect idempotency must remain bound to the durable queue item.
+        // Reapproval still issues a new single-use nonce for this execution.
+        var session = ReviewSession(
+            id: "assistant-queue-item:\(running.id)",
+            plan: plan,
+            createdAt: startedAt
+        )
         if session.canApprove {
             try session.approve(issuedAt: startedAt)
         }

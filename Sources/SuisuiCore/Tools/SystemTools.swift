@@ -408,6 +408,7 @@ public struct ReminderTool: Tool {
                     )
                 }
                 let reminderIDs = results.compactMap { outputString($0, key: "reminderId") }
+                let externalResourceIDs = results.compactMap { outputString($0, key: "externalResourceId") }
                 let journalRecordIDs = results.compactMap { outputString($0, key: "journalRecordId") }
                 let idempotencyKeys = results.compactMap { outputString($0, key: "idempotencyKey") }
                 return ToolResult(
@@ -416,6 +417,7 @@ public struct ReminderTool: Tool {
                     summary: "Created \(reminderIDs.count) reminders",
                     output: [
                         "reminderIds": JSONValueFactory.strings(reminderIDs),
+                        "externalResourceIds": JSONValueFactory.strings(externalResourceIDs),
                         "journalRecordIds": JSONValueFactory.strings(journalRecordIDs),
                         "idempotencyKeys": JSONValueFactory.strings(idempotencyKeys),
                         "journalState": .string(ExternalSideEffectState.succeeded.rawValue)

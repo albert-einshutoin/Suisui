@@ -516,6 +516,31 @@ final class ExternalSideEffectJournalTests: XCTestCase {
         XCTAssertEqual(try client.list().count, 2)
     }
 
+    func testReminderBulkSuccessIncludesExternalResourceIDsForReceiptEvidence() throws {
+        let connection = try migratedConnection()
+        let journal = SQLiteExternalSideEffectJournal(connection: connection)
+        let tool = ReminderTool(
+            name: .remindersBulkCreate,
+            client: InMemoryReminderClient(),
+            sideEffectJournal: journal
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "reminders": .array([
+                    .object(["title": .string("Draft")]),
+                    .object(["title": .string("Review")])
+                ])
+            ],
+            context: approvedSideEffectContext(idempotencyKey: "reminder-bulk-success")
+        )
+
+        XCTAssertEqual(
+            result.output["externalResourceIds"],
+            .array([.string("reminder-1"), .string("reminder-2")])
+        )
+    }
+
     func testFileArtifactPersistenceFailureDoesNotOverwriteCreatedFile() throws {
         let connection = try migratedConnection()
         let journal = SQLiteExternalSideEffectJournal(connection: connection)
