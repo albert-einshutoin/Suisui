@@ -120,9 +120,12 @@ parse_skipped_test_count() {
   xctest_skipped_count="$(
     sed -nE 's/.*with ([0-9]+) tests? skipped.*/\1/p' "$output_file" | tail -n 1
   )"
-  # Swift Testing emits one quoted `Test "…" skipped` event per skipped case
-  # instead of including skips in its final run summary, so count those events.
-  swift_testing_skipped_count="$(grep -Ec 'Test ".*" skipped' "$output_file" || true)"
+  # Swift Testing emits one symbol-prefixed `Test … skipped:` event per skipped
+  # case instead of including skips in its final run summary. Requiring both
+  # the line prefix and trailing colon avoids double-counting XCTest summaries.
+  swift_testing_skipped_count="$(
+    grep -Ec '^[^[:alnum:]]*Test .* skipped:' "$output_file" || true
+  )"
 
   printf '%s\n' "$((${xctest_skipped_count:-0} + swift_testing_skipped_count))"
 }
