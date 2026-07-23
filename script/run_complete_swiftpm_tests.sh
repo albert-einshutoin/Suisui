@@ -106,6 +106,13 @@ write_failed_evidence() {
 run_fixture_self_tests() {
   local fixture_dir
   local fixture_xunit
+  if validate_discovered_count 4 3 >/dev/null 2>&1; then
+    printf 'fixture=discovery-above-baseline status=passed\n'
+  else
+    printf 'fixture=discovery-above-baseline status=unexpected-failure\n' >&2
+    return 1
+  fi
+
   if validate_test_counts 3 3 3 >/dev/null 2>&1; then
     printf 'fixture=valid status=passed\n'
   else
