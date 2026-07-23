@@ -109,13 +109,19 @@ if [[ "$observed_child_parent" != "$parent_pid" ]]; then
   exit 1
 fi
 
+auth_path_suffix=".codex/auth.json"
+trace_filter_program='index($0, needle) { print; fflush() }'
 if sudo -n true >/dev/null 2>&1; then
-  sudo /usr/bin/fs_usage -e -w -f pathname -t 75 >"$trace_log" 2>&1 &
+  sudo /usr/bin/fs_usage -e -w -f pathname -t 75 2>&1 \
+    | LC_ALL=C /usr/bin/awk -v needle="$auth_path_suffix" "$trace_filter_program" >"$trace_log" &
 else
-  /usr/bin/osascript - "$trace_log" <<'APPLESCRIPT' &
+  /usr/bin/osascript - "$trace_log" "$auth_path_suffix" <<'APPLESCRIPT' &
 on run argv
   set tracePath to item 1 of argv
-  set traceCommand to "/usr/bin/fs_usage -e -w -f pathname -t 75 >" & quoted form of tracePath & " 2>&1"
+  set authPathSuffix to item 2 of argv
+  set filterProgram to "index($0, needle) { print; fflush() }"
+  set innerCommand to "/usr/bin/fs_usage -e -w -f pathname -t 75 2>&1 | LC_ALL=C /usr/bin/awk -v needle=" & quoted form of authPathSuffix & " " & quoted form of filterProgram & " >" & quoted form of tracePath
+  set traceCommand to "/bin/bash -o pipefail -c " & quoted form of innerCommand
   do shell script traceCommand with administrator privileges
 end run
 APPLESCRIPT
@@ -160,7 +166,6 @@ if [[ "$trace_status" -ne 0 ]]; then
   exit "$trace_status"
 fi
 
-auth_path_suffix=".codex/auth.json"
 LC_ALL=C grep -F -- "$auth_path_suffix" "$trace_log" >"$auth_lines" || true
 harness_parent_auth_access_count="$(grep -Ec "\\.${parent_pid}([[:space:]]|$)" "$auth_lines" || true)"
 codex_child_auth_access_count="$(grep -Ec "\\.${child_pid}([[:space:]]|$)" "$auth_lines" || true)"
