@@ -37,7 +37,7 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
 
         XCTAssertTrue(script.contains("SUISUI_CODEX_RUN_AUTH_ACCESS_EVIDENCE"))
         XCTAssertTrue(script.contains("/usr/bin/fs_usage"))
-        XCTAssertTrue(script.contains("fs_usage -e -w -f pathname -t 45"))
+        XCTAssertTrue(script.contains("fs_usage -e -w -f pathname -t 75"))
         XCTAssertTrue(script.contains("/usr/bin/clang"))
         XCTAssertTrue(script.contains("parent_pid"))
         XCTAssertTrue(script.contains("child_pid"))
@@ -52,6 +52,22 @@ final class CodexAppServerSecuritySourceTests: XCTestCase {
         XCTAssertTrue(script.contains("codex_version"))
         XCTAssertTrue(script.contains("\"$codex_executable\" --version"))
         XCTAssertTrue(script.contains("trace_status"))
+        XCTAssertTrue(script.contains(
+            """
+            if ! kill -0 "$trace_pid" >/dev/null 2>&1; then
+              trace_pid=""
+              echo "BLOCKER: filesystem trace ended before the audited test completed." >&2
+              exit 1
+            fi
+            """
+        ))
+        let testWait = try XCTUnwrap(script.range(of: "wait \"$test_pid\""))
+        let coverageCheck = try XCTUnwrap(
+            script.range(of: "BLOCKER: filesystem trace ended before the audited test completed.")
+        )
+        let traceWait = try XCTUnwrap(script.range(of: "wait \"$trace_pid\""))
+        XCTAssertLessThan(testWait.lowerBound, coverageCheck.lowerBound)
+        XCTAssertLessThan(coverageCheck.lowerBound, traceWait.lowerBound)
         XCTAssertTrue(script.contains("status --porcelain=v1"))
         XCTAssertTrue(script.contains("mv \"$evidence_temp\" \"$evidence_output\""))
         XCTAssertTrue(script.contains("\"schemaVersion\": 4"))

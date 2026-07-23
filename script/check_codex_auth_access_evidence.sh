@@ -110,12 +110,12 @@ if [[ "$observed_child_parent" != "$parent_pid" ]]; then
 fi
 
 if sudo -n true >/dev/null 2>&1; then
-  sudo /usr/bin/fs_usage -e -w -f pathname -t 45 >"$trace_log" 2>&1 &
+  sudo /usr/bin/fs_usage -e -w -f pathname -t 75 >"$trace_log" 2>&1 &
 else
   /usr/bin/osascript - "$trace_log" <<'APPLESCRIPT' &
 on run argv
   set tracePath to item 1 of argv
-  set traceCommand to "/usr/bin/fs_usage -e -w -f pathname -t 45 >" & quoted form of tracePath & " 2>&1"
+  set traceCommand to "/usr/bin/fs_usage -e -w -f pathname -t 75 >" & quoted form of tracePath & " 2>&1"
   do shell script traceCommand with administrator privileges
 end run
 APPLESCRIPT
@@ -140,6 +140,13 @@ touch "${wrapper_path}.ready"
 test_status=0
 wait "$test_pid" || test_status=$?
 test_pid=""
+# A successful trace exit is insufficient if it happened before the audited
+# route finished. Require continuous coverage through the test completion edge.
+if ! kill -0 "$trace_pid" >/dev/null 2>&1; then
+  trace_pid=""
+  echo "BLOCKER: filesystem trace ended before the audited test completed." >&2
+  exit 1
+fi
 trace_status=0
 wait "$trace_pid" || trace_status=$?
 trace_pid=""
