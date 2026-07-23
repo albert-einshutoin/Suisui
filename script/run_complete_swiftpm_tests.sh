@@ -53,6 +53,11 @@ validate_test_counts() {
       "$executed_test_count" "$baseline_test_count" >&2
     return 1
   fi
+  if [[ "$executed_test_count" -lt "$discovered_test_count" ]]; then
+    printf 'BLOCKER: executed SwiftPM test count %s is below discovered count %s\n' \
+      "$executed_test_count" "$discovered_test_count" >&2
+    return 1
+  fi
 }
 
 write_xunit_summary() {
