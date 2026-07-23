@@ -206,6 +206,35 @@ final class ExternalSideEffectJournalTests: XCTestCase {
         }
     }
 
+    func testRecoveryMakesPreparedRecordRetryableAcrossRestart() throws {
+        let root = temporaryDirectory()
+        let databaseURL = root.appendingPathComponent("journal.sqlite")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let request = makeRequest()
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let recordID: String
+
+        do {
+            let store = try makeStore(path: databaseURL.path)
+            guard case .execute(let prepared) = try store.claim(request, at: now) else {
+                return XCTFail("First claim must be executable.")
+            }
+            recordID = prepared.id
+        }
+
+        let reopened = try makeStore(path: databaseURL.path)
+        XCTAssertEqual(try reopened.recoverStartedAsUnknown(at: now), 1)
+        let recovered = try XCTUnwrap(reopened.record(id: recordID))
+        XCTAssertEqual(recovered.state, .failedBeforeSideEffect)
+        XCTAssertEqual(recovered.failureCategory, "process_interrupted_before_start")
+
+        guard case .execute(let retry) = try reopened.claim(request, at: now) else {
+            return XCTFail("A prepared claim interrupted before start must be retryable.")
+        }
+        XCTAssertEqual(retry.id, recordID)
+        XCTAssertEqual(retry.attempt, 2)
+    }
+
     func testConcurrentClaimsAllowOneExternalExecution() throws {
         let store = try makeStore()
         let request = makeRequest()

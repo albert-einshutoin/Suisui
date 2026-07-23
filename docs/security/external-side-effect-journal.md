@@ -24,9 +24,11 @@ prepared -> started -> succeeded
 - `compensated`: a supported external resource was rolled back after explicit
   reconciliation. Re-execution requires a new idempotency identity.
 
-Any `started` row found after process restart is promoted to `unknown`. This
-prefers a visible reconciliation task over a duplicate calendar event,
-reminder, notification, or file.
+After process restart, a `prepared` row is marked
+`failed_before_side_effect` and can be reclaimed because the adapter was never
+allowed to write. A `started` row is promoted to `unknown`. This prefers a
+visible reconciliation task over a duplicate calendar event, reminder,
+notification, or file.
 
 ## Identity and privacy
 

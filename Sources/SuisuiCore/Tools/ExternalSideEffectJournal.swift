@@ -361,11 +361,17 @@ public final class SQLiteExternalSideEffectJournal: ExternalSideEffectJournal, @
         try connection.execute(
             """
             UPDATE external_side_effect_journal
-            SET state = 'unknown',
+            SET state = CASE state
+                    WHEN 'prepared' THEN 'failed_before_side_effect'
+                    ELSE 'unknown'
+                END,
                 completed_at = ?,
                 updated_at = ?,
-                failure_category = 'process_interrupted_after_start'
-            WHERE state = 'started';
+                failure_category = CASE state
+                    WHEN 'prepared' THEN 'process_interrupted_before_start'
+                    ELSE 'process_interrupted_after_start'
+                END
+            WHERE state IN ('prepared', 'started');
             """,
             parameters: [.text(timestamp), .text(timestamp)]
         )
