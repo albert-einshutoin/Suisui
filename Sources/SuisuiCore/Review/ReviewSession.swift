@@ -29,14 +29,14 @@ public enum ReviewActionFailureRecovery: String, Equatable, Sendable {
 }
 
 public struct ReviewActionItem: Identifiable, Equatable, Sendable {
-    public var id: String
-    public var originalAction: PlanAction
-    public var editedAction: PlanAction
-    public var isEnabled: Bool
-    public var executionStatus: ReviewActionExecutionStatus
-    public var result: ToolResult?
-    public var errorMessage: String?
-    public var failureRecovery: ReviewActionFailureRecovery?
+    public fileprivate(set) var id: String
+    public fileprivate(set) var originalAction: PlanAction
+    public fileprivate(set) var editedAction: PlanAction
+    public fileprivate(set) var isEnabled: Bool
+    public fileprivate(set) var executionStatus: ReviewActionExecutionStatus
+    public fileprivate(set) var result: ToolResult?
+    public fileprivate(set) var errorMessage: String?
+    public fileprivate(set) var failureRecovery: ReviewActionFailureRecovery?
 
     public init(action: PlanAction, isEnabled: Bool = true) {
         self.id = action.id
@@ -112,26 +112,43 @@ public enum ReviewSessionError: Error, Equatable, Sendable {
     case approvalBlocked(String)
     case approvalNotRequired
     case approvalRequired
+    case approvalSessionMismatch
+    case invalidApprovalValidity
     case actionNotFound(String)
 }
 
 public struct ReviewSession: Equatable, Sendable {
-    public var id: String
-    public var originalPlan: ActionPlan
-    public var items: [ReviewActionItem]
-    public var approvalState: ApprovalState
-    public var executionStatus: ReviewExecutionStatus
-    public var auditErrorMessage: String?
-    public var createdAt: Date
+    public let id: String
+    public let originalPlan: ActionPlan
+    public private(set) var items: [ReviewActionItem]
+    public private(set) var approvalState: ApprovalState
+    public internal(set) var executionStatus: ReviewExecutionStatus
+    public internal(set) var auditErrorMessage: String?
+    public internal(set) var resolvedActionEvidence: [ResolvedActionEvidence]
+    public let createdAt: Date
+    public let executionPolicy: ActionExecutorFailurePolicy
 
-    public init(id: String = UUID().uuidString, plan: ActionPlan, createdAt: Date = Date()) {
+    public init(
+        id: String = UUID().uuidString,
+        plan: ActionPlan,
+        createdAt: Date = Date(),
+        executionPolicy: ActionExecutorFailurePolicy = .stopOnFailure
+    ) {
+        let normalizedActions = ActionPlanDependencyNormalizer.makeReferencesExplicit(in: plan.actions)
+        var normalizedPlan = plan
+        normalizedPlan.actions = normalizedActions
+        normalizedPlan.riskLevel = normalizedActions.map(\.riskLevel).max() ?? .read
+        normalizedPlan.requiresApproval = normalizedActions.contains { $0.riskLevel >= .write }
+
         self.id = id
-        self.originalPlan = plan
-        self.items = plan.actions.map { ReviewActionItem(action: $0) }
-        self.approvalState = Self.initialApprovalState(for: plan.actions)
+        self.originalPlan = normalizedPlan
+        self.items = normalizedActions.map { ReviewActionItem(action: $0) }
+        self.approvalState = Self.initialApprovalState(for: normalizedActions)
         self.executionStatus = .notStarted
         self.auditErrorMessage = nil
+        self.resolvedActionEvidence = []
         self.createdAt = createdAt
+        self.executionPolicy = executionPolicy
     }
 
     public var enabledItems: [ReviewActionItem] {
@@ -175,6 +192,16 @@ public struct ReviewSession: Equatable, Sendable {
             actions: actions,
             riskLevel: actions.map(\.riskLevel).max() ?? .read,
             requiresApproval: actions.contains { $0.riskLevel >= .write }
+        )
+    }
+
+    public var approvalBinding: ApprovalPlanBinding {
+        ApprovalPlanBinding(
+            planID: originalPlan.id,
+            items: items.map {
+                ApprovalPlanItem(action: $0.editedAction, isEnabled: $0.isEnabled)
+            },
+            executionPolicy: executionPolicy
         )
     }
 
@@ -225,15 +252,51 @@ public struct ReviewSession: Equatable, Sendable {
         refreshApprovalState()
     }
 
-    public mutating func approve(token: ApprovalToken) throws {
+    @discardableResult
+    public mutating func approve(
+        approvalID: UUID = UUID(),
+        issuedAt: Date = Date(),
+        validity: TimeInterval = 300,
+        nonce: UUID = UUID()
+    ) throws -> ApprovedExecution {
         switch approvalState {
         case .pending:
-            approvalState = .approved(token)
+            guard validity > 0 else {
+                throw ReviewSessionError.invalidApprovalValidity
+            }
+            let binding = approvalBinding
+            let approvedExecution = ApprovedExecution(
+                approvalID: approvalID,
+                sessionID: id,
+                planID: binding.planID,
+                canonicalPlanDigest: try binding.digest(),
+                enabledActionIDs: binding.enabledActionIDs,
+                issuedAt: issuedAt,
+                expiresAt: issuedAt.addingTimeInterval(validity),
+                nonce: nonce
+            )
+            approvalState = .approved(approvedExecution)
+            return approvedExecution
         case .blocked(let reason):
             throw ReviewSessionError.approvalBlocked(reason)
         case .notRequired, .approved:
             throw ReviewSessionError.approvalNotRequired
         }
+    }
+
+    /// Compatibility entry point for callers that provide approval identity.
+    /// The caller's digest and plan fields are never trusted; this session
+    /// recomputes and seals its current reviewed binding.
+    public mutating func approve(token: ApprovalToken) throws {
+        guard token.sessionID == id else {
+            throw ReviewSessionError.approvalSessionMismatch
+        }
+        _ = try approve(
+            approvalID: token.approvalID,
+            issuedAt: token.issuedAt,
+            validity: token.expiresAt.timeIntervalSince(token.issuedAt),
+            nonce: token.nonce
+        )
     }
 
     public mutating func cancel() {
@@ -272,6 +335,53 @@ public struct ReviewSession: Equatable, Sendable {
         }
 
         return .notRequired
+    }
+}
+
+private enum ActionPlanDependencyNormalizer {
+    static func makeReferencesExplicit(in actions: [PlanAction]) -> [PlanAction] {
+        var latestProjectCreateActionID: String?
+        return actions.map { sourceAction in
+            var action = sourceAction
+            if let projectActionID = latestProjectCreateActionID {
+                let reference = JSONValue.actionOutput(
+                    ActionOutputReference(actionID: projectActionID, key: "projectId")
+                )
+                switch action.tool {
+                case .taskCreate where action.arguments["projectId"] == nil:
+                    action.arguments["projectId"] = reference
+                case .taskBulkCreate:
+                    action.arguments["tasks"] = explicitBulkTaskReferences(
+                        action.arguments["tasks"],
+                        reference: reference
+                    )
+                default:
+                    break
+                }
+            }
+            if action.tool == .projectCreate {
+                latestProjectCreateActionID = action.id
+            }
+            return action
+        }
+    }
+
+    private static func explicitBulkTaskReferences(
+        _ value: JSONValue?,
+        reference: JSONValue
+    ) -> JSONValue? {
+        guard case .array(let values)? = value else {
+            return value
+        }
+        return .array(values.map { value in
+            guard case .object(var object) = value else {
+                return value
+            }
+            if object["projectId"] == nil {
+                object["projectId"] = reference
+            }
+            return .object(object)
+        })
     }
 }
 
@@ -334,6 +444,8 @@ private extension JSONValue {
             "list"
         case .null:
             "null"
+        case .actionOutput(let reference):
+            "output(\(reference.actionID).\(reference.key))"
         }
     }
 }

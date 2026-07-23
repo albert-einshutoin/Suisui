@@ -2,6 +2,61 @@ import XCTest
 @testable import SuisuiCore
 
 final class ReviewSessionTests: XCTestCase {
+    func testReviewSessionMakesImplicitProjectDependencyExplicitBeforeApproval() throws {
+        let session = ReviewSession(plan: .reviewFixture(actions: [
+            PlanAction(id: "project", tool: .projectCreate, arguments: ["title": .string("Alpha")]),
+            PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+        ]))
+
+        XCTAssertEqual(
+            session.items[1].editedAction.arguments["projectId"],
+            .actionOutput(ActionOutputReference(actionID: "project", key: "projectId"))
+        )
+        XCTAssertEqual(
+            session.originalPlan.actions[1].arguments["projectId"],
+            .actionOutput(ActionOutputReference(actionID: "project", key: "projectId"))
+        )
+    }
+
+    func testReviewSessionIssuesPlanBoundExpiringApproval() throws {
+        let issuedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let approvalID = UUID()
+        let nonce = UUID()
+        var session = ReviewSession(id: "session-1", plan: .reviewFixture(actions: [
+            PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+        ]))
+
+        let approved = try session.approve(
+            approvalID: approvalID,
+            issuedAt: issuedAt,
+            validity: 120,
+            nonce: nonce
+        )
+
+        XCTAssertEqual(approved.approvalID, approvalID)
+        XCTAssertEqual(approved.sessionID, session.id)
+        XCTAssertEqual(approved.planID, session.originalPlan.id)
+        XCTAssertEqual(approved.enabledActionIDs, ["task"])
+        XCTAssertEqual(approved.issuedAt, issuedAt)
+        XCTAssertEqual(approved.expiresAt, issuedAt.addingTimeInterval(120))
+        XCTAssertEqual(approved.nonce, nonce)
+        XCTAssertEqual(approved.canonicalPlanDigest, try session.approvalBinding.digest())
+        XCTAssertEqual(session.approvalState, .approved(approved))
+    }
+
+    func testReviewSessionRejectsCallerTokenForAnotherSession() throws {
+        let issuedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        var session = ReviewSession(id: "session-1", plan: .reviewFixture(actions: [
+            PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+        ]))
+
+        XCTAssertThrowsError(
+            try session.approve(token: ApprovalToken(id: "approval", sessionID: "session-2", approvedAt: issuedAt))
+        ) { error in
+            XCTAssertEqual(error as? ReviewSessionError, .approvalSessionMismatch)
+        }
+    }
+
     func testReviewSessionSupportsDisableEditResetAndApproval() throws {
         let plan = ActionPlan.reviewFixture(actions: [
             PlanAction(id: "project", tool: .projectCreate, arguments: ["title": .string("Alpha")]),
@@ -21,7 +76,8 @@ final class ReviewSessionTests: XCTestCase {
         let token = ApprovalToken(id: "approval-1", sessionID: session.id)
         try session.approve(token: token)
 
-        XCTAssertEqual(session.approvalState, .approved(token))
+        XCTAssertEqual(session.approvalToken?.approvalID, token.approvalID)
+        XCTAssertEqual(session.approvalToken?.sessionID, token.sessionID)
         XCTAssertTrue(session.canExecute)
     }
 
@@ -76,6 +132,195 @@ final class ReviewSessionTests: XCTestCase {
 }
 
 final class ActionExecutorTests: XCTestCase {
+    func testExecutorRejectsExpiredApprovalBeforeCallingTool() throws {
+        let callTracker = ToolCallTracker()
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "write",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                callTracker.markCalled()
+                return ToolResult(tool: .taskCreate, status: .succeeded, summary: "created")
+            }
+        ])
+        let issuedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        var session = ReviewSession(plan: .reviewFixture(actions: [
+            PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+        ]))
+        try session.approve(issuedAt: issuedAt, validity: 30)
+
+        XCTAssertThrowsError(
+            try ActionExecutor(registry: registry).execute(
+                session,
+                now: issuedAt.addingTimeInterval(30)
+            )
+        ) { error in
+            XCTAssertEqual(error as? ActionExecutorError, .invalidApproval(.expired))
+        }
+        XCTAssertFalse(callTracker.wasCalled)
+    }
+
+    func testExecutorConsumesApprovedExecutionNonceOnlyOnce() throws {
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "write",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(tool: .taskCreate, status: .succeeded, summary: "created")
+            }
+        ])
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var session = ReviewSession(plan: .reviewFixture(actions: [
+            PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+        ]))
+        let approval = try session.approve(issuedAt: now)
+        let replayStore = InMemoryApprovalReplayStore()
+        let executor = ActionExecutor(registry: registry, replayStore: replayStore)
+
+        _ = try executor.execute(session, now: now)
+
+        XCTAssertThrowsError(try executor.execute(session, now: now)) { error in
+            XCTAssertEqual(error as? ActionExecutorError, .approvalReplayDetected(approval.nonce))
+        }
+        XCTAssertEqual(try replayStore.state(for: approval.nonce), .completed)
+    }
+
+    func testExecutorResolvesTypedOutputReferenceAndRevalidatesResolvedArguments() throws {
+        let observedArguments = ToolArgumentsRecorder()
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .projectCreate,
+                description: "project",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(
+                    tool: .projectCreate,
+                    status: .succeeded,
+                    summary: "created",
+                    output: ["projectId": .string("project-42")]
+                )
+            },
+            StaticTool(
+                name: .taskCreate,
+                description: "task",
+                inputSchema: ToolInputSchema(
+                    required: ["title", "projectId"],
+                    properties: ["title": "string", "projectId": "string"]
+                ),
+                permissionLevel: .writeWithApproval
+            ) { arguments, _ in
+                observedArguments.record(arguments)
+                return ToolResult(tool: .taskCreate, status: .succeeded, summary: "created")
+            }
+        ])
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var session = ReviewSession(plan: .reviewFixture(actions: [
+            PlanAction(id: "project", tool: .projectCreate, arguments: ["title": .string("Alpha")]),
+            PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+        ]))
+        try session.approve(issuedAt: now)
+
+        let executed = try ActionExecutor(registry: registry).execute(session, now: now)
+
+        XCTAssertEqual(executed.executionStatus, .completed)
+        XCTAssertEqual(observedArguments.arguments?["projectId"], .string("project-42"))
+    }
+
+    func testExecutorFailsClosedWhenResolvedOutputViolatesTargetSchema() throws {
+        let callTracker = ToolCallTracker()
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .projectCreate,
+                description: "project",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(
+                    tool: .projectCreate,
+                    status: .succeeded,
+                    summary: "created",
+                    output: ["projectId": .number(42)]
+                )
+            },
+            StaticTool(
+                name: .taskCreate,
+                description: "task",
+                inputSchema: ToolInputSchema(
+                    required: ["title", "projectId"],
+                    properties: ["title": "string", "projectId": "string"]
+                ),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                callTracker.markCalled()
+                return ToolResult(tool: .taskCreate, status: .succeeded, summary: "created")
+            }
+        ])
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var session = ReviewSession(plan: .reviewFixture(actions: [
+            PlanAction(id: "project", tool: .projectCreate, arguments: ["title": .string("Alpha")]),
+            PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+        ]))
+        try session.approve(issuedAt: now)
+
+        let executed = try ActionExecutor(registry: registry).execute(session, now: now)
+
+        XCTAssertEqual(executed.executionStatus, .failed)
+        XCTAssertEqual(executed.items.map(\.executionStatus), [.succeeded, .failed])
+        XCTAssertFalse(callTracker.wasCalled)
+    }
+
+    func testExecutorRejectsEnabledActionThatReferencesDisabledSourceBeforeSideEffects() throws {
+        let callTracker = ToolCallTracker()
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .projectCreate,
+                description: "project",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                callTracker.markCalled()
+                return ToolResult(
+                    tool: .projectCreate,
+                    status: .succeeded,
+                    summary: "created",
+                    output: ["projectId": .string("project-42")]
+                )
+            },
+            StaticTool(
+                name: .taskCreate,
+                description: "task",
+                inputSchema: ToolInputSchema(
+                    required: ["title", "projectId"],
+                    properties: ["title": "string", "projectId": "string"]
+                ),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                callTracker.markCalled()
+                return ToolResult(tool: .taskCreate, status: .succeeded, summary: "created")
+            }
+        ])
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var session = ReviewSession(plan: .reviewFixture(actions: [
+            PlanAction(id: "project", tool: .projectCreate, arguments: ["title": .string("Alpha")]),
+            PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+        ]))
+        session.setActionEnabled(id: "project", false)
+        try session.approve(issuedAt: now)
+
+        XCTAssertThrowsError(try ActionExecutor(registry: registry).execute(session, now: now)) { error in
+            XCTAssertEqual(
+                error as? ActionExecutorError,
+                .invalidActionGraph("Action task references disabled action project.")
+            )
+        }
+        XCTAssertFalse(callTracker.wasCalled)
+    }
+
     func testExecutorRunsEnabledActionsAndInjectsProjectIDIntoFollowingTasks() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase2)
@@ -353,6 +598,23 @@ private final class ToolCallTracker: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         isCalled = true
+    }
+}
+
+private final class ToolArgumentsRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedArguments: [String: JSONValue]?
+
+    var arguments: [String: JSONValue]? {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedArguments
+    }
+
+    func record(_ arguments: [String: JSONValue]) {
+        lock.lock()
+        defer { lock.unlock() }
+        recordedArguments = arguments
     }
 }
 

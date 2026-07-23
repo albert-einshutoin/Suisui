@@ -4044,7 +4044,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("case developerHarness"))
         XCTAssertFalse(source.contains("case test"))
         XCTAssertTrue(source.contains("case developerTool"))
-        XCTAssertTrue(source.contains("source: ToolExecutionSource)"))
+        XCTAssertTrue(source.contains("source: ToolExecutionSource"))
     }
 
     func testAIProvidersDoNotDefaultToInMemorySecretStore() throws {

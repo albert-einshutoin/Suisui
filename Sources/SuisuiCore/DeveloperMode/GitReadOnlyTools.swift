@@ -342,7 +342,7 @@ public struct GitReadOnlyTool: Tool {
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
-        try enforcePermission(context: context)
+        try enforcePermission(arguments: arguments, context: context)
         try validateRequiredArguments(arguments)
 
         switch name {

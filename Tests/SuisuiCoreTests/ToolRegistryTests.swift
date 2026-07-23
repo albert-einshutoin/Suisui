@@ -116,6 +116,40 @@ final class ToolRegistryTests: XCTestCase {
         XCTAssertEqual(result.status, .succeeded)
     }
 
+    func testWriteToolRejectsArgumentsThatDifferFromBoundApproval() throws {
+        let tool = makeTool(name: .taskCreate, permissionLevel: .writeWithApproval)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let approval = ApprovedExecution(
+            approvalID: UUID(),
+            sessionID: "session-1",
+            planID: "plan-1",
+            canonicalPlanDigest: Data(repeating: 1, count: 32),
+            enabledActionIDs: ["task"],
+            issuedAt: now,
+            expiresAt: now.addingTimeInterval(300),
+            nonce: UUID()
+        )
+        let authorization = try ToolActionAuthorization(
+            approval: approval,
+            actionID: "task",
+            tool: .taskCreate,
+            arguments: ["title": .string("Approved")]
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: ["title": .string("Altered")],
+                context: ToolExecutionContext(
+                    authorization: authorization,
+                    now: now,
+                    source: .reviewUI
+                )
+            )
+        ) { error in
+            XCTAssertEqual(error as? ToolExecutionError, .approvalBindingInvalid(.taskCreate))
+        }
+    }
+
     func testDangerousToolIsBlocked() throws {
         let tool = makeTool(name: .filesystemCreateMarkdownFile, permissionLevel: .dangerous)
 

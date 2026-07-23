@@ -284,6 +284,8 @@ private extension JSONValue {
             "[...]"
         case .null:
             "null"
+        case .actionOutput(let reference):
+            "output(\(reference.actionID).\(reference.key))"
         }
     }
 }

@@ -2,6 +2,40 @@ import XCTest
 @testable import SuisuiCore
 
 final class DatabaseMigrationTests: XCTestCase {
+    func testApprovalReplayStoreRejectsNonceAfterDatabaseReopen() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-approval-replay-\(UUID().uuidString)", isDirectory: true)
+        let databaseURL = root.appendingPathComponent("Suisui.sqlite")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+        let approval = ApprovedExecution(
+            approvalID: UUID(),
+            sessionID: "session-1",
+            planID: "plan-1",
+            canonicalPlanDigest: Data(repeating: 7, count: 32),
+            enabledActionIDs: ["task"],
+            issuedAt: Date(timeIntervalSince1970: 1_800_000_000),
+            expiresAt: Date(timeIntervalSince1970: 1_800_000_300),
+            nonce: UUID()
+        )
+
+        do {
+            let connection = try SQLiteConnection(path: databaseURL.path)
+            try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+            let store = SQLiteApprovalReplayStore(connection: connection)
+            XCTAssertTrue(try store.claim(approval, at: approval.issuedAt))
+            try store.finish(nonce: approval.nonce, state: .completed, at: approval.issuedAt)
+        }
+
+        let reopenedConnection = try SQLiteConnection(path: databaseURL.path)
+        try SQLiteMigrationRunner.migrate(connection: reopenedConnection, migrations: CoreMigrations.current)
+        let reopenedStore = SQLiteApprovalReplayStore(connection: reopenedConnection)
+
+        XCTAssertFalse(try reopenedStore.claim(approval, at: approval.issuedAt))
+        XCTAssertEqual(try reopenedStore.state(for: approval.nonce), .completed)
+    }
+
     func testDatabaseLocationCanUseAbsoluteEnvironmentOverrideForRuntimeSmokeIsolation() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("suisui-db-location-\(UUID().uuidString)", isDirectory: true)
