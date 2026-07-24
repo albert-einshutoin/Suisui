@@ -3,6 +3,38 @@ import XCTest
 @testable import SuisuiCore
 
 final class CodexAppServerRuntimeConfigurationTests: XCTestCase {
+    func testSignatureInspectionRejectsPathSwapAcrossSecurityValidation() {
+        let expected = CodexExecutablePathState(
+            deviceID: 1,
+            inode: 2,
+            fileSize: 3,
+            modificationTimeSeconds: 4,
+            modificationTimeNanoseconds: 5
+        )
+        let replacement = CodexExecutablePathState(
+            deviceID: 1,
+            inode: 99,
+            fileSize: 3,
+            modificationTimeSeconds: 4,
+            modificationTimeNanoseconds: 5
+        )
+        var observedStates = [expected, replacement]
+        var signatureInspectionCount = 0
+
+        let inspection = FileManager.inspectCodeSignatureBoundToPath(
+            expectedState: expected,
+            pathStateProvider: { observedStates.removeFirst() },
+            signatureProvider: {
+                signatureInspectionCount += 1
+                return self.makeSignature()
+            }
+        )
+
+        XCTAssertFalse(inspection.pathRemainedBound)
+        XCTAssertNil(inspection.codeSignature)
+        XCTAssertEqual(signatureInspectionCount, 1)
+    }
+
     func testSystemSignedExecutableExposesIdentityAndIsRejectedByProductionPolicy() throws {
         let fileState = FileManager.default.codexFileState(atPath: "/usr/bin/true")
         let signature = try XCTUnwrap(fileState.identity?.codeSignature)

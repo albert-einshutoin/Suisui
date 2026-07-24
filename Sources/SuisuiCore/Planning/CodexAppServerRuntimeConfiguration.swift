@@ -171,11 +171,57 @@ public struct CodexRuntimeFileState: Equatable, Sendable {
     }
 }
 
+struct CodexExecutablePathState: Equatable {
+    let deviceID: UInt64
+    let inode: UInt64
+    let fileSize: UInt64
+    let modificationTimeSeconds: Int
+    let modificationTimeNanoseconds: Int
+}
+
+private extension CodexExecutablePathState {
+    init(_ state: stat) {
+        self.init(
+            deviceID: UInt64(state.st_dev),
+            inode: UInt64(state.st_ino),
+            fileSize: UInt64(state.st_size),
+            modificationTimeSeconds: state.st_mtimespec.tv_sec,
+            modificationTimeNanoseconds: state.st_mtimespec.tv_nsec
+        )
+    }
+}
+
+struct CodexBoundCodeSignatureInspection {
+    let pathRemainedBound: Bool
+    let codeSignature: CodexCodeSignatureIdentity?
+}
+
 public protocol CodexRuntimeFileInspecting {
     func codexFileState(atPath path: String) -> CodexRuntimeFileState
 }
 
 extension FileManager: CodexRuntimeFileInspecting {
+    static func inspectCodeSignatureBoundToPath(
+        expectedState: CodexExecutablePathState,
+        pathStateProvider: () -> CodexExecutablePathState?,
+        signatureProvider: () -> CodexCodeSignatureIdentity?
+    ) -> CodexBoundCodeSignatureInspection {
+        // Security.framework validates a path rather than our already-open
+        // descriptor. Bracketing that validation rejects signature evidence
+        // whenever the path binding differs across the validation call.
+        guard pathStateProvider() == expectedState else {
+            return CodexBoundCodeSignatureInspection(pathRemainedBound: false, codeSignature: nil)
+        }
+        let codeSignature = signatureProvider()
+        guard pathStateProvider() == expectedState else {
+            return CodexBoundCodeSignatureInspection(pathRemainedBound: false, codeSignature: nil)
+        }
+        return CodexBoundCodeSignatureInspection(
+            pathRemainedBound: true,
+            codeSignature: codeSignature
+        )
+    }
+
     public func codexFileState(atPath path: String) -> CodexRuntimeFileState {
         let resolvedPath = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
         var isDirectory = ObjCBool(false)
@@ -200,9 +246,9 @@ extension FileManager: CodexRuntimeFileInspecting {
             )
         }
         let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        defer { try? handle.close() }
         var descriptorState = stat()
         guard Darwin.fstat(descriptor, &descriptorState) == 0 else {
-            try? handle.close()
             return CodexRuntimeFileState(
                 exists: true,
                 isDirectory: isDirectory.boolValue,
@@ -213,7 +259,6 @@ extension FileManager: CodexRuntimeFileInspecting {
         }
         let isRegularFile = (descriptorState.st_mode & S_IFMT) == S_IFREG
         let contentSHA256 = isRegularFile ? (try? Self.sha256Hex(from: handle)) : nil
-        try? handle.close()
         guard let contentSHA256 else {
             return CodexRuntimeFileState(
                 exists: true,
@@ -223,7 +268,21 @@ extension FileManager: CodexRuntimeFileInspecting {
                 identity: nil
             )
         }
-        let codeSignature = Self.validCodeSignature(atPath: resolvedPath)
+        let descriptorPathState = CodexExecutablePathState(descriptorState)
+        let signatureInspection = Self.inspectCodeSignatureBoundToPath(
+            expectedState: descriptorPathState,
+            pathStateProvider: { Self.pathState(atPath: resolvedPath) },
+            signatureProvider: { Self.validCodeSignature(atPath: resolvedPath) }
+        )
+        guard signatureInspection.pathRemainedBound else {
+            return CodexRuntimeFileState(
+                exists: true,
+                isDirectory: false,
+                isExecutable: false,
+                isRegularFile: isRegularFile,
+                identity: nil
+            )
+        }
         var finalPathState = stat()
         guard Darwin.lstat(resolvedPath, &finalPathState) == 0,
               Self.sameFileState(descriptorState, finalPathState) else {
@@ -243,7 +302,7 @@ extension FileManager: CodexRuntimeFileInspecting {
                 TimeInterval(descriptorState.st_mtimespec.tv_nsec) / 1_000_000_000,
             fileSize: UInt64(descriptorState.st_size),
             contentSHA256: contentSHA256,
-            codeSignature: codeSignature
+            codeSignature: signatureInspection.codeSignature
         )
         return CodexRuntimeFileState(
             exists: true,
@@ -268,6 +327,12 @@ extension FileManager: CodexRuntimeFileInspecting {
             lhs.st_size == rhs.st_size &&
             lhs.st_mtimespec.tv_sec == rhs.st_mtimespec.tv_sec &&
             lhs.st_mtimespec.tv_nsec == rhs.st_mtimespec.tv_nsec
+    }
+
+    private static func pathState(atPath path: String) -> CodexExecutablePathState? {
+        var state = stat()
+        guard Darwin.lstat(path, &state) == 0 else { return nil }
+        return CodexExecutablePathState(state)
     }
 
     private static func validCodeSignature(atPath path: String) -> CodexCodeSignatureIdentity? {

@@ -318,7 +318,6 @@ public final class ProcessCodexAppServerProcess: CodexAppServerProcess, @uncheck
     public func start() async throws {
         try lock.withCodexLock {
             guard !isStarted else { return }
-            process.executableURL = URL(fileURLWithPath: configuration.executablePath)
             process.arguments = configuration.arguments
             process.environment = configuration.environment
             process.standardInput = input
@@ -330,9 +329,16 @@ public final class ProcessCodexAppServerProcess: CodexAppServerProcess, @uncheck
             let verified = try CodexAppServerRuntimeConfiguration.preflight(
                 approvedExecutable: approvedExecutable
             )
-            guard verified.resolvedPath == configuration.executablePath else {
+            let selectedResolvedPath = URL(fileURLWithPath: configuration.executablePath)
+                .resolvingSymlinksInPath()
+                .standardizedFileURL
+                .path
+            guard verified.resolvedPath == selectedResolvedPath else {
                 throw CodexAppServerRuntimeConfigurationError.approvedExecutableChanged
             }
+            // Launch the exact canonical target that preflight verified. The
+            // selected path may legitimately be a package-manager symlink.
+            process.executableURL = URL(fileURLWithPath: verified.resolvedPath)
             do {
                 try process.run()
                 isStarted = true
