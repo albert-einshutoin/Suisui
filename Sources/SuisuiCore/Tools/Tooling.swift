@@ -261,7 +261,7 @@ public struct ToolExecutionContext: Sendable {
             throw ToolExecutionError.sideEffectIdentityMissing(tool)
         }
         let itemKey: String
-        if let itemIndex {
+        if itemIndex != nil {
             guard let itemIdentity, !itemIdentity.isEmpty else {
                 throw ToolExecutionError.sideEffectIdentityMissing(tool)
             }
