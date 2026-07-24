@@ -411,7 +411,9 @@ SQL
 pressButtonContaining() {
   local fragment="$1"
   local fallback_fragment="${2:-}"
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local attempt_timeout_seconds="${3:-$TIMEOUT_SECONDS}"
+  local report_blocker="${4:-1}"
+  local deadline=$((SECONDS + attempt_timeout_seconds))
   while true; do
     if /usr/bin/osascript - "$app_pid" "$APP_NAME" "$fragment" "$fallback_fragment" <<'APPLESCRIPT'
 on run argv
@@ -488,7 +490,9 @@ APPLESCRIPT
       return 0
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: failed to press button in AX tree: $fragment" >&2
+      if [[ "$report_blocker" == "1" ]]; then
+        echo "BLOCKER: failed to press button in AX tree: $fragment" >&2
+      fi
       return 1
     fi
     activate_app
@@ -611,13 +615,17 @@ scrollAXContainerDown() {
 
 waitForTextFieldContaining() {
   local fragment="$1"
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local attempt_timeout_seconds="${2:-$TIMEOUT_SECONDS}"
+  local report_blocker="${3:-1}"
+  local deadline=$((SECONDS + attempt_timeout_seconds))
   while true; do
     if textFieldContainingExists "$fragment"; then
       return 0
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: text field did not appear in AX tree: $fragment" >&2
+      if [[ "$report_blocker" == "1" ]]; then
+        echo "BLOCKER: text field did not appear in AX tree: $fragment" >&2
+      fi
       return 1
     fi
     activate_app
@@ -775,10 +783,12 @@ APPLESCRIPT
 pressButtonUntilTextFieldContaining() {
   local button_fragment="$1"
   local field_fragment="$2"
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local attempt_timeout_seconds="${3:-$TIMEOUT_SECONDS}"
+  local report_blocker="${4:-1}"
+  local deadline=$((SECONDS + attempt_timeout_seconds))
 
   while true; do
-    pressButtonContaining "$button_fragment"
+    pressButtonContaining "$button_fragment" "" "$attempt_timeout_seconds" "$report_blocker" || return 1
 
     # A successful AXPress can consume the phase timeout while SwiftUI is
     # rebuilding its window. Give the resulting form its own bounded window so
@@ -797,7 +807,9 @@ pressButtonUntilTextFieldContaining() {
     done
 
     if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: text field did not appear after pressing '$button_fragment': $field_fragment" >&2
+      if [[ "$report_blocker" == "1" ]]; then
+        echo "BLOCKER: text field did not appear after pressing '$button_fragment': $field_fragment" >&2
+      fi
       return 1
     fi
 
@@ -810,14 +822,16 @@ setTextFieldUntilValueContaining() {
   local field_fragment="$1"
   local replacement="$2"
   local reopen_button_fragment="${3:-}"
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local attempt_timeout_seconds="${4:-$TIMEOUT_SECONDS}"
+  local report_blocker="${5:-1}"
+  local deadline=$((SECONDS + attempt_timeout_seconds))
 
   while true; do
     if ! textFieldContainingExists "$field_fragment"; then
       if [[ -n "$reopen_button_fragment" ]]; then
-        pressButtonUntilTextFieldContaining "$reopen_button_fragment" "$field_fragment" || return 1
+        pressButtonUntilTextFieldContaining "$reopen_button_fragment" "$field_fragment" "$attempt_timeout_seconds" "$report_blocker" || return 1
       else
-        waitForTextFieldContaining "$field_fragment" || return 1
+        waitForTextFieldContaining "$field_fragment" "$attempt_timeout_seconds" "$report_blocker" || return 1
       fi
     fi
 
@@ -826,6 +840,9 @@ setTextFieldUntilValueContaining() {
     # current field if that transient form disappeared.
     if /usr/bin/swift "$AX_TEXT_INPUT_HELPER" "$app_pid" "$field_fragment" "$replacement"; then
       local postcondition_deadline=$((SECONDS + FORM_POSTCONDITION_TIMEOUT_SECONDS))
+      if (( postcondition_deadline > deadline )); then
+        postcondition_deadline="$deadline"
+      fi
       while true; do
         if textFieldContainingExists "$replacement"; then
           return 0
@@ -840,12 +857,87 @@ setTextFieldUntilValueContaining() {
     fi
 
     if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: text field value did not become observable after AX input: $replacement" >&2
+      if [[ "$report_blocker" == "1" ]]; then
+        echo "BLOCKER: text field value did not become observable after AX input: $replacement" >&2
+      fi
       return 1
     fi
 
     printf "INFO: text field value '%s' was not observable after setting '%s'; retrying AX input.\n" "$replacement" "$field_fragment" >&2
     sleep 1
+  done
+}
+
+createInlineTaskUntilSQLiteValue() {
+  local label="$1"
+  local title="$2"
+  local detail="$3"
+  local sql="$4"
+  local expected="$5"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local actual=""
+
+  while true; do
+    actual="$(query_single_value "$sql" || true)"
+    if [[ "$actual" == "$expected" ]]; then
+      printf "OK: %s verified in SQLite (%s)\n" "$label" "$actual"
+      return 0
+    fi
+
+    # SwiftUI can replace the inline form between any two AX operations. Treat
+    # opening, filling, submitting, and the SQLite postcondition as one bounded
+    # transaction so a vanished form restarts from a known product state.
+    if ! setTextFieldUntilValueContaining "inline-task-title" "$title" "project-header-add-task" "$FORM_POSTCONDITION_TIMEOUT_SECONDS" "0"; then
+      if [[ "$SECONDS" -ge "$deadline" ]]; then
+        echo "BLOCKER: $label inline task form did not remain available for its title" >&2
+        return 1
+      fi
+      printf "INFO: inline task form disappeared while setting the title for %s; reopening the full form.\n" "$label" >&2
+      continue
+    fi
+
+    if [[ -n "$detail" ]] &&
+      ! setTextFieldUntilValueContaining "inline-task-detail" "$detail" "" "$FORM_POSTCONDITION_TIMEOUT_SECONDS" "0"; then
+      if [[ "$SECONDS" -ge "$deadline" ]]; then
+        echo "BLOCKER: $label inline task form did not remain available for its detail" >&2
+        return 1
+      fi
+      printf "INFO: inline task form disappeared while setting the detail for %s; reopening the full form.\n" "$label" >&2
+      continue
+    fi
+
+    if ! pressButtonContaining "inline-task-create" "" "$FORM_POSTCONDITION_TIMEOUT_SECONDS" "0"; then
+      if [[ "$SECONDS" -ge "$deadline" ]]; then
+        echo "BLOCKER: $label inline task form did not remain available for submission" >&2
+        return 1
+      fi
+      printf "INFO: inline task form disappeared before submitting %s; reopening the full form.\n" "$label" >&2
+      continue
+    fi
+
+    local postcondition_deadline=$((SECONDS + FORM_POSTCONDITION_TIMEOUT_SECONDS))
+    if (( postcondition_deadline > deadline )); then
+      postcondition_deadline="$deadline"
+    fi
+    while true; do
+      actual="$(query_single_value "$sql" || true)"
+      if [[ "$actual" == "$expected" ]]; then
+        printf "OK: %s verified in SQLite (%s)\n" "$label" "$actual"
+        return 0
+      fi
+      if [[ "$SECONDS" -ge "$postcondition_deadline" ]]; then
+        break
+      fi
+      sleep 1
+    done
+
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: $label SQLite verification failed after inline task form retry: expected '$expected', got '${actual:-<empty>}'" >&2
+      echo "SQL: $sql" >&2
+      return 1
+    fi
+
+    printf "INFO: SQLite postcondition for %s was not met after inline task submission; reopening the full form.\n" "$label" >&2
   done
 }
 
@@ -907,8 +999,7 @@ pressButtonContaining "project-inspector-save"
 verify_single_value "renamed project" "SELECT title FROM projects WHERE id=$created_project_id;" "AX Runtime CRUD Project"
 pressButtonContaining "project-inspector-close"
 
-setTextFieldUntilValueContaining "inline-task-title" "AX Runtime CRUD Task" "project-header-add-task"
-pressButtonUntilSQLiteValue "created task" "inline-task-create" "" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' AND status='backlog' AND source_command='app.project-board';" "1"
+createInlineTaskUntilSQLiteValue "created task" "AX Runtime CRUD Task" "" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' AND status='backlog' AND source_command='app.project-board';" "1"
 created_task_id="$(wait_for_nonempty_value "created task id" "SELECT id FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' ORDER BY id DESC LIMIT 1;")"
 
 pressButtonContaining "task-card-open-details"
@@ -954,10 +1045,7 @@ launch_app_for_seed_project "$created_project_id" "$created_task_id"
 waitForTextFieldContaining "task-inspector-title"
 pressDestructiveButtonUntilSQLiteValue "deleted task" "task-inspector-delete" "task-inspector-delete-confirmation-confirm" "Confirm Delete Task" "" "SELECT count(*) FROM tasks WHERE id=$created_task_id;" "0" "1"
 
-setTextFieldUntilValueContaining "inline-task-title" "AX Runtime Execution Task" "project-header-add-task"
-waitForTextFieldContaining "inline-task-detail"
-setTextFieldUntilValueContaining "inline-task-detail" "Execute this runtime task through the approved plan."
-pressButtonUntilSQLiteValue "created execution task" "inline-task-create" "" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Execution Task' AND detail='Execute this runtime task through the approved plan.' AND status='backlog' AND source_command='app.project-board';" "1"
+createInlineTaskUntilSQLiteValue "created execution task" "AX Runtime Execution Task" "Execute this runtime task through the approved plan." "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Execution Task' AND detail='Execute this runtime task through the approved plan.' AND status='backlog' AND source_command='app.project-board';" "1"
 execution_task_id="$(wait_for_nonempty_value "execution task id" "SELECT id FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Execution Task' ORDER BY id DESC LIMIT 1;")"
 pressButtonContaining "task-card-open-details"
 waitForTextFieldContaining "task-inspector-title"
@@ -980,8 +1068,7 @@ SUISUI_UI_EVIDENCE_AX_SCROLL_EVENTS=4 scrollAXContainerDown "task-inspector"
 waitForAXElementContaining "approved-execution-receipt" "AX Runtime Execution Task" "Execute this runtime task through the approved plan."
 pressButtonContaining "task-inspector-close"
 
-setTextFieldUntilValueContaining "inline-task-title" "AX Runtime Cascade Task" "project-header-add-task"
-pressButtonUntilSQLiteValue "created cascade task" "inline-task-create" "" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' AND status='backlog' AND source_command='app.project-board';" "1"
+createInlineTaskUntilSQLiteValue "created cascade task" "AX Runtime Cascade Task" "" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' AND status='backlog' AND source_command='app.project-board';" "1"
 cascade_task_id="$(wait_for_nonempty_value "cascade task id" "SELECT id FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' ORDER BY id DESC LIMIT 1;")"
 terminate_app
 wait_for_no_app_process
