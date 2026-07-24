@@ -14146,6 +14146,9 @@ final class ReleasePipelineTests: XCTestCase {
         struct TodoistConnector {}
         private struct ArchivedProjectReadOnlyState {}
         static func buildProductionValue() {}
+        var signedCode: SecStaticCode?
+        let createCode = SecStaticCodeCreateWithPath
+        let validateCode = SecStaticCodeCheckValidity
         """.write(to: benignFile, atomically: true, encoding: .utf8)
 
         let markerResult = try runTool(["rg", "-n", pattern, markerFile.path])
