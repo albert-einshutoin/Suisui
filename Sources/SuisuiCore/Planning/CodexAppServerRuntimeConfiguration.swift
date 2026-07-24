@@ -9,15 +9,39 @@ public struct CodexCodeSignatureIdentity: Codable, Equatable, Sendable {
     public let signingIdentifier: String
     public let teamIdentifier: String?
     public let designatedRequirement: String
+    public let isProductionRequirementSatisfied: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case signingIdentifier
+        case teamIdentifier
+        case designatedRequirement
+        case isProductionRequirementSatisfied
+    }
 
     public init(
         signingIdentifier: String,
         teamIdentifier: String?,
-        designatedRequirement: String
+        designatedRequirement: String,
+        isProductionRequirementSatisfied: Bool
     ) {
         self.signingIdentifier = signingIdentifier
         self.teamIdentifier = teamIdentifier
         self.designatedRequirement = designatedRequirement
+        self.isProductionRequirementSatisfied = isProductionRequirementSatisfied
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        signingIdentifier = try container.decode(String.self, forKey: .signingIdentifier)
+        teamIdentifier = try container.decodeIfPresent(String.self, forKey: .teamIdentifier)
+        designatedRequirement = try container.decode(String.self, forKey: .designatedRequirement)
+        // Approvals created before the Apple-anchored requirement was added
+        // must be re-approved; trusting their unverified text fields would
+        // preserve the spoofing gap this evidence closes.
+        isProductionRequirementSatisfied = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .isProductionRequirementSatisfied
+        ) ?? false
     }
 }
 
@@ -283,12 +307,34 @@ extension FileManager: CodexRuntimeFileInspecting {
         return CodexCodeSignatureIdentity(
             signingIdentifier: identifier,
             teamIdentifier: information[kSecCodeInfoTeamIdentifier] as? String,
-            designatedRequirement: requirementText
+            designatedRequirement: requirementText,
+            isProductionRequirementSatisfied: Self.satisfiesProductionRequirement(
+                staticCode,
+                strictFlags: strictFlags
+            )
         )
         #else
         return nil
         #endif
     }
+
+    #if os(macOS)
+    private static func satisfiesProductionRequirement(
+        _ staticCode: SecStaticCode,
+        strictFlags: SecCSFlags
+    ) -> Bool {
+        var requirement: SecRequirement?
+        guard SecRequirementCreateWithString(
+            CodexAppServerRuntimeConfiguration.productionCodeRequirement as CFString,
+            SecCSFlags(),
+            &requirement
+        ) == errSecSuccess,
+        let requirement else {
+            return false
+        }
+        return SecStaticCodeCheckValidity(staticCode, strictFlags, requirement) == errSecSuccess
+    }
+    #endif
 }
 
 public struct CodexAppServerVersion: Comparable, Equatable, Hashable, Sendable {
@@ -356,6 +402,11 @@ public struct CodexAppServerRuntimeConfiguration: Equatable, Sendable {
     /// identity. Package-manager scripts remain available through Developer Mode.
     public static let productionSigningIdentifier = "codex"
     public static let productionTeamIdentifier = "2DC432GLL2"
+    /// Require the real Developer ID chain in addition to the display strings
+    /// exposed by signing metadata. A self-signed certificate can copy an OU
+    /// string, but it cannot satisfy Apple's anchor and Developer ID OIDs.
+    public static let productionCodeRequirement =
+        #"identifier "codex" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = "2DC432GLL2""#
 
     public let executablePath: String
     public let version: CodexAppServerVersion
@@ -464,7 +515,8 @@ public struct CodexAppServerRuntimeConfiguration: Equatable, Sendable {
                 throw CodexAppServerRuntimeConfigurationError.validCodeSignatureRequired
             }
             guard signature.signingIdentifier == productionSigningIdentifier,
-                  signature.teamIdentifier == productionTeamIdentifier else {
+                  signature.teamIdentifier == productionTeamIdentifier,
+                  signature.isProductionRequirementSatisfied else {
                 throw CodexAppServerRuntimeConfigurationError.unexpectedCodeSignature
             }
         }

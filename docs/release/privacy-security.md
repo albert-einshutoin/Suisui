@@ -13,7 +13,7 @@ Suisui public alpha is local-first. The app is designed so users can inspect the
 
 LLM 送信文脈 is limited to the text needed to generate an Action Plan. The app should keep the generated plan visible before execution, and write actions require approval.
 
-Codex Localでは、ユーザーが指定して明示承認したローカル`codex` executableを短時間起動し、ChatGPTログインと利用枠の管理をCodex App Serverへ委譲する。通常モードはOpenAI Team ID `2DC432GLL2`、signing identifier `codex`の有効なmacOS署名を要求する。Developer Modeでは未署名・カスタムbuildを明示承認できるが、Developer Modeを無効にすると承認も失効する。承認はresolved path、device/inode/mtime/sizeに加え、streaming SHA-256、signing identifier、Team ID、designated requirementへ結び付けられ、`--version`とApp Server起動の直前に再検証される。package manager更新やsymlink差し替えを含む不一致は再承認までfail closedとなる。Suisuiは`~/.codex/auth.json`、access token、refresh tokenを読み取らない。画面には接続状態と契約種別を表示できるが、account emailは永続化しない。
+Codex Localでは、ユーザーが指定して明示承認したローカル`codex` executableを短時間起動し、ChatGPTログインと利用枠の管理をCodex App Serverへ委譲する。通常モードはApple trust anchor、Developer ID Application certificate、OpenAI Team ID `2DC432GLL2`、signing identifier `codex`を一体化したmacOS code requirementを要求する。Team IDやidentifierの表示文字列だけでは承認しない。Developer Modeでは未署名・カスタムbuildを明示承認できるが、Developer Modeを無効にすると承認も失効する。承認はresolved path、device/inode/mtime/sizeに加え、streaming SHA-256、signing identifier、Team ID、designated requirement、production requirementの検証結果へ結び付けられ、`--version`とApp Server起動の直前に再検証される。package manager更新やsymlink差し替えを含む不一致は再承認までfail closedとなる。Suisuiは`~/.codex/auth.json`、access token、refresh tokenを読み取らない。画面には接続状態と契約種別を表示できるが、account emailは永続化しない。
 
 ## 送信しない
 
@@ -47,7 +47,7 @@ The MVP may create drafts or local plans only after review.
 ## Codex Local release verification
 
 - 通常テストではfixtureにcredential fieldがなく、production login型からtoken注入を表現できないことを確認する。
-- Stableの署名policyはOpenAI Team ID `2DC432GLL2`とsigning identifier `codex`を固定し、verified version allowlistとは独立して両方を満たすことを確認する。SHA-256または署名identityの不一致時はcredentialやpromptを送る前に停止し、更新されたexecutableは再承認する。
+- Stableの署名policyはApple trust anchorとDeveloper ID Application certificateを要求した上で、OpenAI Team ID `2DC432GLL2`とsigning identifier `codex`を固定し、verified version allowlistとは独立してすべてを満たすことを確認する。SHA-256または署名identityの不一致時はcredentialやpromptを送る前に停止し、更新されたexecutableは再承認する。
 - opt-inの`script/check_codex_app_server_smoke.sh`は、現在のmacOSユーザー自身のCodex利用枠を消費し得るため、明示的な環境変数がある場合だけ実行する。
 - smokeは最低version、ログイン状態、toolを無効化したAction Plan生成を確認し、標準出力へtokenやaccount emailを出さない。
 - Enterprise対応は`clientInfo.name = "suisui"`のknown-client登録、またはCompliance Logs上の制約を公開文書へ明記するまで対象外とする。

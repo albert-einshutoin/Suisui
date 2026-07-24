@@ -9,6 +9,7 @@ final class CodexAppServerRuntimeConfigurationTests: XCTestCase {
 
         XCTAssertFalse(signature.signingIdentifier.isEmpty)
         XCTAssertFalse(signature.designatedRequirement.isEmpty)
+        XCTAssertFalse(signature.isProductionRequirementSatisfied)
         XCTAssertThrowsError(
             try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
         ) { error in
@@ -159,6 +160,26 @@ final class CodexAppServerRuntimeConfigurationTests: XCTestCase {
         }
     }
 
+    func testProductionRejectsMatchingTextIdentityWithoutAppleAnchoredRequirement() throws {
+        let spoofedIdentity = makeSignature(
+            signingIdentifier: "codex",
+            teamIdentifier: "2DC432GLL2",
+            isProductionRequirementSatisfied: false
+        )
+
+        XCTAssertThrowsError(try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: "/Applications/Codex.app/Contents/MacOS/codex",
+            fileManager: StubRuntimeFileInspector(
+                state: makeState(signature: spoofedIdentity)
+            )
+        )) { error in
+            XCTAssertEqual(
+                error as? CodexAppServerRuntimeConfigurationError,
+                .unexpectedCodeSignature
+            )
+        }
+    }
+
     func testPackageManagerUpdateRequiresExplicitReapproval() throws {
         let directory = try temporaryDirectory()
         let executable = directory.appendingPathComponent("codex")
@@ -227,6 +248,23 @@ final class CodexAppServerRuntimeConfigurationTests: XCTestCase {
         )) { error in
             XCTAssertEqual(error as? CodexAppServerRuntimeConfigurationError, .executionApprovalRequired)
         }
+    }
+
+    func testLegacySignatureIdentityRequiresFreshAppleAnchoredVerification() throws {
+        let legacy = """
+        {
+          "signingIdentifier": "codex",
+          "teamIdentifier": "2DC432GLL2",
+          "designatedRequirement": "identifier codex"
+        }
+        """
+
+        let signature = try JSONDecoder().decode(
+            CodexCodeSignatureIdentity.self,
+            from: Data(legacy.utf8)
+        )
+
+        XCTAssertFalse(signature.isProductionRequirementSatisfied)
     }
 
     func testVersionParserRejectsAmbiguousOrIncompleteOutput() {
@@ -301,12 +339,14 @@ final class CodexAppServerRuntimeConfigurationTests: XCTestCase {
     private func makeSignature(
         signingIdentifier: String = "codex",
         teamIdentifier: String? = "2DC432GLL2",
-        designatedRequirement: String = "identifier \"codex\" and anchor apple generic and certificate leaf[subject.OU] = \"2DC432GLL2\""
+        designatedRequirement: String = "identifier \"codex\" and anchor apple generic and certificate leaf[subject.OU] = \"2DC432GLL2\"",
+        isProductionRequirementSatisfied: Bool = true
     ) -> CodexCodeSignatureIdentity {
         CodexCodeSignatureIdentity(
             signingIdentifier: signingIdentifier,
             teamIdentifier: teamIdentifier,
-            designatedRequirement: designatedRequirement
+            designatedRequirement: designatedRequirement,
+            isProductionRequirementSatisfied: isProductionRequirementSatisfied
         )
     }
 
