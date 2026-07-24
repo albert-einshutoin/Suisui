@@ -528,6 +528,58 @@ final class ExternalSideEffectJournalTests: XCTestCase {
         XCTAssertEqual(try journal.records(executionID: "execution-1").count, 1)
     }
 
+    func testReminderLocalPersistenceFailureBecomesUnknownAndRelinkDoesNotDuplicate() throws {
+        let connection = try migratedConnection()
+        let journal = SQLiteExternalSideEffectJournal(connection: connection)
+        let client = InMemoryReminderClient()
+        let tool = ReminderTool(
+            name: .remindersCreate,
+            client: client,
+            linkStore: SQLiteReminderLinkStore(connection: connection),
+            sideEffectJournal: journal
+        )
+        try connection.execute(
+            """
+            CREATE TRIGGER block_reminder_link
+            BEFORE INSERT ON reminder_links
+            BEGIN
+                SELECT RAISE(FAIL, 'reminder link blocked');
+            END;
+            """
+        )
+        let arguments: [String: JSONValue] = [
+            "title": .string("Review draft"),
+            "dueAt": .string("2026-06-18T09:00:00Z"),
+            "listName": .string("Work"),
+            "taskId": .number(20)
+        ]
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: arguments,
+                context: approvedSideEffectContext(idempotencyKey: "reminder-key-v1")
+            )
+        )
+        XCTAssertEqual(try client.list().count, 1)
+        XCTAssertEqual(try journal.records(executionID: "execution-1").first?.state, .unknown)
+
+        try connection.execute("DROP TRIGGER block_reminder_link;")
+        var relinkedArguments = arguments
+        relinkedArguments["taskId"] = .number(21)
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: relinkedArguments,
+                context: approvedSideEffectContext(idempotencyKey: "reminder-key-v2")
+            )
+        ) { error in
+            guard case ToolExecutionError.externalSideEffectRequiresReconciliation = error else {
+                return XCTFail("Expected reconciliation-required error, got \(error).")
+            }
+        }
+        XCTAssertEqual(try client.list().count, 1)
+        XCTAssertEqual(try journal.records(executionID: "execution-1").count, 1)
+    }
+
     func testActionExecutorSuppliesStableIdentityToProductionJournalPath() throws {
         let connection = try migratedConnection()
         let journal = SQLiteExternalSideEffectJournal(connection: connection)
@@ -844,8 +896,26 @@ final class ExternalSideEffectJournalTests: XCTestCase {
             [.succeeded, .unknown]
         )
 
-        XCTAssertThrowsError(try tool.execute(arguments: arguments, context: context))
+        try connection.execute("DROP TRIGGER block_second_reminder_link;")
+        let relinkedArguments: [String: JSONValue] = [
+            "reminders": .array([
+                .object(["title": .string("Draft"), "taskId": .number(10)]),
+                .object(["title": .string("Review"), "taskId": .number(20)])
+            ])
+        ]
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: relinkedArguments,
+                context: approvedSideEffectContext(idempotencyKey: "reminder-bulk-v2")
+            )
+        ) { error in
+            guard case ToolExecutionError.externalSideEffectBatchFailed(let evidence) = error,
+                  evidence.reason == .requiresReconciliation else {
+                return XCTFail("Expected bulk reconciliation error, got \(error).")
+            }
+        }
         XCTAssertEqual(try client.list().count, 2)
+        XCTAssertEqual(try journal.records(executionID: "execution-1").count, 2)
     }
 
     func testReminderBulkEditKeepsSucceededItemIdempotencyKeyStable() throws {

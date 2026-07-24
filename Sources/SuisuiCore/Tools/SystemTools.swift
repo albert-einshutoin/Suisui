@@ -415,7 +415,7 @@ public struct ReminderTool: Tool {
                 }
                 let perReminderArgs = reminderObjects.map { ToolArguments($0, tool: name) }
                 let drafts = try perReminderArgs.map(makeDraft)
-                let itemIdentities = try stableBulkItemIdentities(reminderObjects)
+                let itemIdentities = try stableBulkItemIdentities(drafts)
                 var results: [ToolResult] = []
                 for index in drafts.indices {
                     do {
@@ -508,6 +508,7 @@ public struct ReminderTool: Tool {
         let request = try context.externalSideEffectRequest(
             tool: name,
             arguments: arguments,
+            sideEffectArguments: reminderSideEffectArguments(draft),
             itemIndex: itemIndex,
             itemIdentity: itemIdentity
         )
@@ -524,11 +525,13 @@ public struct ReminderTool: Tool {
     }
 
     private func stableBulkItemIdentities(
-        _ reminderObjects: [[String: JSONValue]]
+        _ drafts: [ReminderDraft]
     ) throws -> [String] {
         var occurrenceCounts: [String: Int] = [:]
-        return try reminderObjects.map { reminder in
-            let digest = try CanonicalJSONEncoder.digest(.object(reminder)).lowercaseHexString
+        return try drafts.map { draft in
+            let digest = try CanonicalJSONEncoder.digest(
+                .object(reminderSideEffectArguments(draft))
+            ).lowercaseHexString
             let occurrence = occurrenceCounts[digest, default: 0]
             occurrenceCounts[digest] = occurrence + 1
             // Equal payloads are semantically indistinguishable, so their
@@ -536,6 +539,16 @@ public struct ReminderTool: Tool {
             // Unrelated inserts, removals, and reordering cannot change it.
             return "\(digest):occurrence:\(occurrence)"
         }
+    }
+
+    private func reminderSideEffectArguments(
+        _ draft: ReminderDraft
+    ) -> [String: JSONValue] {
+        [
+            "title": .string(draft.title),
+            "dueAt": draft.dueAt.map(JSONValue.string) ?? .null,
+            "listName": draft.listName.map(JSONValue.string) ?? .null
+        ]
     }
 
     private func createdResult(_ record: ReminderRecord) -> ToolResult {
