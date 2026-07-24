@@ -273,7 +273,7 @@ public final class SQLiteExternalSideEffectJournal: ExternalSideEffectJournal, @
                 return try operation()
             } catch {
                 attempt += 1
-                guard isDatabaseBusy(error), attempt < 50 else {
+                guard isDatabaseBusy(error), attempt < 250 else {
                     throw error
                 }
                 // Separate SQLite connections can briefly contend for the
@@ -443,24 +443,27 @@ public final class SQLiteExternalSideEffectJournal: ExternalSideEffectJournal, @
         lock.lock()
         defer { lock.unlock() }
         let timestamp = dateFormatter.string(from: at)
-        try connection.execute(
-            """
-            UPDATE external_side_effect_journal
-            SET state = CASE state
-                    WHEN 'prepared' THEN 'failed_before_side_effect'
-                    ELSE 'unknown'
-                END,
-                completed_at = ?,
-                updated_at = ?,
-                failure_category = CASE state
-                    WHEN 'prepared' THEN 'process_interrupted_before_start'
-                    ELSE 'process_interrupted_after_start'
-                END
-            WHERE state IN ('prepared', 'started');
-            """,
-            parameters: [.text(timestamp), .text(timestamp)]
-        )
-        return connection.numberOfChanges
+        let recoveredIDs = try retryingDatabaseBusy {
+            try connection.queryStrings(
+                """
+                UPDATE external_side_effect_journal
+                SET state = CASE state
+                        WHEN 'prepared' THEN 'failed_before_side_effect'
+                        ELSE 'unknown'
+                    END,
+                    completed_at = ?,
+                    updated_at = ?,
+                    failure_category = CASE state
+                        WHEN 'prepared' THEN 'process_interrupted_before_start'
+                        ELSE 'process_interrupted_after_start'
+                    END
+                WHERE state IN ('prepared', 'started')
+                RETURNING id;
+                """,
+                parameters: [.text(timestamp), .text(timestamp)]
+            )
+        }
+        return recoveredIDs.count
     }
 
     private func transition(
@@ -483,18 +486,21 @@ public final class SQLiteExternalSideEffectJournal: ExternalSideEffectJournal, @
         }
         let placeholders = allowedFrom.map { _ in "?" }.joined(separator: ", ")
         let fromValues = allowedFrom.map { SQLiteValue.text($0.rawValue) }
-        try connection.execute(
-            """
-            UPDATE external_side_effect_journal
-            SET state = ?, \(assignments), updated_at = ?
-            WHERE id = ? AND state IN (\(placeholders));
-            """,
-            parameters: [.text(state.rawValue)]
-                + values
-                + [.text(dateFormatter.string(from: at)), .text(id)]
-                + fromValues
-        )
-        guard connection.numberOfChanges == 1 else {
+        let transitionedIDs = try retryingDatabaseBusy {
+            try connection.queryStrings(
+                """
+                UPDATE external_side_effect_journal
+                SET state = ?, \(assignments), updated_at = ?
+                WHERE id = ? AND state IN (\(placeholders))
+                RETURNING id;
+                """,
+                parameters: [.text(state.rawValue)]
+                    + values
+                    + [.text(dateFormatter.string(from: at)), .text(id)]
+                    + fromValues
+            )
+        }
+        guard transitionedIDs == [id] else {
             throw ExternalSideEffectJournalError.invalidTransition(
                 id: id,
                 from: existing.state,

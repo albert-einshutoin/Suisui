@@ -100,6 +100,7 @@ public struct NotificationTool: Tool {
         let requestID = draft.identifierHint ?? "notification-request-\(UUID().uuidString)"
 
         if let sideEffectJournal, let request {
+            var didPrepareRequest = false
             do {
                 return try ExternalSideEffectCoordinator(journal: sideEffectJournal).execute(
                     request: request,
@@ -110,6 +111,7 @@ public struct NotificationTool: Tool {
                             title: draft.title,
                             scheduledAt: draft.scheduledAt
                         )
+                        didPrepareRequest = requestStore != nil
                     },
                     performExternalWrite: { try client.schedule(draft) },
                     externalResourceID: \.id,
@@ -122,7 +124,11 @@ public struct NotificationTool: Tool {
                     }
                 )
             } catch let error as ToolClientError {
-                if case .permissionDenied = error {
+                // A preparation conflict refers to an older active request and
+                // must not rewrite that row as failed. Once this attempt owns
+                // pending state, every known pre-write client failure is safe
+                // to mark failed and retry through the journal.
+                if didPrepareRequest {
                     try markRequestFailedOrThrow(requestID: requestID, reason: error.message)
                 }
                 throw error
@@ -136,9 +142,7 @@ public struct NotificationTool: Tool {
             try requestStore?.markScheduled(requestID: requestID, externalNotificationID: record.id)
             return scheduledResult(record)
         } catch let error as ToolClientError {
-            if case .permissionDenied = error {
-                try markRequestFailedOrThrow(requestID: requestID, reason: error.message)
-            }
+            try markRequestFailedOrThrow(requestID: requestID, reason: error.message)
             throw error
         } catch {
             try markRequestFailedOrThrow(requestID: requestID, reason: String(describing: error))

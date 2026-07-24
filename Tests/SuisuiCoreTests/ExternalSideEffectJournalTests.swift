@@ -377,6 +377,41 @@ final class ExternalSideEffectJournalTests: XCTestCase {
         XCTAssertEqual(try firstStore.record(id: firstAttempt.id)?.attempt, 2)
     }
 
+    func testJournalTransitionRetriesBriefSQLiteWriterContention() throws {
+        let root = temporaryDirectory()
+        let databaseURL = root.appendingPathComponent("journal.sqlite")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let journalConnection = try migratedConnection(path: databaseURL.path)
+        let lockingConnection = try SQLiteConnection(path: databaseURL.path)
+        let store = SQLiteExternalSideEffectJournal(connection: journalConnection)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        guard case .execute(let prepared) = try store.claim(makeRequest(), at: now) else {
+            return XCTFail("First claim must be executable.")
+        }
+        try lockingConnection.execute("BEGIN IMMEDIATE;")
+
+        let transitionStarted = DispatchSemaphore(value: 0)
+        let transitionFinished = expectation(description: "journal transition finished")
+        let errors = LockedErrors()
+        DispatchQueue.global().async {
+            transitionStarted.signal()
+            do {
+                try store.markStarted(id: prepared.id, at: now)
+            } catch {
+                errors.append(error)
+            }
+            transitionFinished.fulfill()
+        }
+
+        transitionStarted.wait()
+        Thread.sleep(forTimeInterval: 0.01)
+        try lockingConnection.execute("COMMIT;")
+        wait(for: [transitionFinished], timeout: 1)
+
+        XCTAssertTrue(errors.values.isEmpty, "Unexpected transition errors: \(errors.values)")
+        XCTAssertEqual(try store.record(id: prepared.id)?.state, .started)
+    }
+
     func testBulkItemsRoundTripIndependently() throws {
         let store = try makeStore()
         let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -626,6 +661,38 @@ final class ExternalSideEffectJournalTests: XCTestCase {
         )
     }
 
+    func testNotificationJournalRetriesKnownPreWriteClientFailure() throws {
+        let connection = try migratedConnection()
+        let journal = SQLiteExternalSideEffectJournal(connection: connection)
+        let requestStore = SQLiteNotificationRequestStore(connection: connection)
+        let client = FailOnceNotificationClient()
+        let tool = NotificationTool(
+            name: .notificationSchedule,
+            client: client,
+            requestStore: requestStore,
+            sideEffectJournal: journal
+        )
+        let arguments: [String: JSONValue] = [
+            "title": .string("Standup"),
+            "id": .string("standup-reminder"),
+            "scheduledAt": .string("2026-06-18T09:00:00Z")
+        ]
+        let context = approvedSideEffectContext(idempotencyKey: "notification-retry-key")
+
+        XCTAssertThrowsError(try tool.execute(arguments: arguments, context: context))
+        XCTAssertEqual(try requestStore.list().first?.status, "failed")
+        XCTAssertEqual(
+            try journal.records(executionID: "execution-1").first?.state,
+            .failedBeforeSideEffect
+        )
+
+        let result = try tool.execute(arguments: arguments, context: context)
+
+        XCTAssertEqual(result.output["notificationId"], .string("standup-reminder"))
+        XCTAssertEqual(try client.listScheduled().count, 1)
+        XCTAssertEqual(try requestStore.list().first?.status, "scheduled")
+    }
+
     func testReminderBulkPartialFailureDoesNotRecreateSucceededItems() throws {
         let connection = try migratedConnection()
         let journal = SQLiteExternalSideEffectJournal(connection: connection)
@@ -847,5 +914,60 @@ private final class LockedClaimOutcomes: @unchecked Sendable {
         lock.lock()
         errorStorage.append(error)
         lock.unlock()
+    }
+}
+
+private final class LockedErrors: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [Error] = []
+
+    var values: [Error] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func append(_ error: Error) {
+        lock.lock()
+        storage.append(error)
+        lock.unlock()
+    }
+}
+
+private final class FailOnceNotificationClient: NotificationClient, @unchecked Sendable {
+    private let lock = NSLock()
+    private var shouldFail = true
+    private var records: [NotificationRecord] = []
+
+    func schedule(_ draft: NotificationDraft) throws -> NotificationRecord {
+        lock.lock()
+        defer { lock.unlock() }
+        if shouldFail {
+            shouldFail = false
+            throw ToolClientError.invalidRequest("Notification schedule is invalid.")
+        }
+        let record = NotificationRecord(
+            id: draft.identifierHint ?? "notification-1",
+            title: draft.title,
+            body: draft.body,
+            scheduledAt: draft.scheduledAt
+        )
+        records.append(record)
+        return record
+    }
+
+    func cancel(id: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let index = records.firstIndex(where: { $0.id == id }) else {
+            throw ToolClientError.notFound("Notification \(id) was not found.")
+        }
+        records.remove(at: index)
+    }
+
+    func listScheduled() throws -> [NotificationRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+        return records
     }
 }
