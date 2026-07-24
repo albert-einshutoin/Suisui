@@ -15,11 +15,21 @@ struct CodexAccountSettingsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Button("Check Account") {
-                        Task { await model.checkAccount(approvedExecutable: approvedExecutable) }
+                        Task {
+                            await model.checkAccount(
+                                approvedExecutable: approvedExecutable,
+                                onIntegrityMismatch: onDisconnect
+                            )
+                        }
                     }
                     .accessibilityIdentifier("settings-codex-check-account")
                     Button("Sign in with ChatGPT") {
-                        Task { await model.signIn(approvedExecutable: approvedExecutable) }
+                        Task {
+                            await model.signIn(
+                                approvedExecutable: approvedExecutable,
+                                onIntegrityMismatch: onDisconnect
+                            )
+                        }
                     }
                     .accessibilityIdentifier("settings-codex-sign-in")
                     .accessibilityHint("Opens an allowed OpenAI or ChatGPT authentication page in the default browser.")
@@ -58,7 +68,12 @@ struct CodexAccountSettingsView: View {
             titleVisibility: .visible
         ) {
             Button("Sign out of Codex", role: .destructive) {
-                Task { await model.signOut(approvedExecutable: approvedExecutable) }
+                Task {
+                    await model.signOut(
+                        approvedExecutable: approvedExecutable,
+                        onIntegrityMismatch: onDisconnect
+                    )
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -77,8 +92,13 @@ private final class CodexAccountSettingsViewModel: ObservableObject {
     private var activeLoginID: String?
     private var activeTask: Task<Void, Never>?
     private var operationGeneration = 0
+    private var onIntegrityMismatch: (() -> Void)?
 
-    func checkAccount(approvedExecutable: ApprovedCodexExecutable?) async {
+    func checkAccount(
+        approvedExecutable: ApprovedCodexExecutable?,
+        onIntegrityMismatch: @escaping () -> Void
+    ) async {
+        self.onIntegrityMismatch = onIntegrityMismatch
         await cancelActiveOperation()
         await withSession(approvedExecutable: approvedExecutable) { account in
             let snapshot = try await account.readAccount(refresh: false)
@@ -87,7 +107,11 @@ private final class CodexAccountSettingsViewModel: ObservableObject {
         }
     }
 
-    func signIn(approvedExecutable: ApprovedCodexExecutable?) async {
+    func signIn(
+        approvedExecutable: ApprovedCodexExecutable?,
+        onIntegrityMismatch: @escaping () -> Void
+    ) async {
+        self.onIntegrityMismatch = onIntegrityMismatch
         await cancelActiveOperation()
         let generation = operationGeneration
         isWorking = true
@@ -137,6 +161,7 @@ private final class CodexAccountSettingsViewModel: ObservableObject {
                 statusLabel = "Not checked"
             }
         } catch {
+            invalidateApprovalIfNeeded(error)
             if operationGeneration == generation {
                 statusLabel = userFacingFailure(error)
             }
@@ -147,7 +172,11 @@ private final class CodexAccountSettingsViewModel: ObservableObject {
         }
     }
 
-    func signOut(approvedExecutable: ApprovedCodexExecutable?) async {
+    func signOut(
+        approvedExecutable: ApprovedCodexExecutable?,
+        onIntegrityMismatch: @escaping () -> Void
+    ) async {
+        self.onIntegrityMismatch = onIntegrityMismatch
         await cancelActiveOperation()
         await withSession(approvedExecutable: approvedExecutable) { account in
             try await account.logoutChatGPTAccountOnly()
@@ -208,6 +237,7 @@ private final class CodexAccountSettingsViewModel: ObservableObject {
             activeTransport = nil
             activeAccountClient = nil
         } catch {
+            invalidateApprovalIfNeeded(error)
             if operationGeneration == generation {
                 statusLabel = userFacingFailure(error)
             }
@@ -231,7 +261,8 @@ private final class CodexAccountSettingsViewModel: ObservableObject {
             approvedExecutable: approvedExecutable
         )
         let process = ProcessCodexAppServerProcess(
-            configuration: CodexAppServerLaunchConfiguration(executablePath: runtime.executablePath)
+            configuration: CodexAppServerLaunchConfiguration(executablePath: runtime.executablePath),
+            approvedExecutable: runtime.approvedExecutable
         )
         let transport = CodexAppServerStdioTransport(process: process)
         let account = CodexAppServerAccountClient(transport: transport)
@@ -287,5 +318,14 @@ private final class CodexAccountSettingsViewModel: ObservableObject {
             return "Signed out"
         }
         return "Could not connect to Codex"
+    }
+
+    private func invalidateApprovalIfNeeded(_ error: any Error) {
+        guard let runtimeError = error as? CodexAppServerRuntimeConfigurationError,
+              runtimeError == .approvedExecutableChanged ||
+              runtimeError == .executionApprovalRequired else {
+            return
+        }
+        onIntegrityMismatch?()
     }
 }

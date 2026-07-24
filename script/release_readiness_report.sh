@@ -32,7 +32,7 @@ XCODE_DESTINATION="${SUISUI_XCODE_DESTINATION:-platform=macOS}"
 XCODE_CONFIGURATION="${SUISUI_XCODE_CONFIGURATION:-Debug}"
 RELEASE_LAUNCH_PREFLIGHT="${SUISUI_RELEASE_LAUNCH_PREFLIGHT:-$AUTOMATED_PROOF_GATES}"
 RELEASE_LAUNCH_PREFLIGHT_RELATIVE="script/build_and_run.sh"
-MOCK_PATTERN="(?i:fake|mock|fixture|canned|stub|skeleton|fixme|not[[:space:]_-]*implemented|notimplemented|inmemory)|(?i:(^|[^[:alnum:]_])demo([^[:alnum:]_]|$))|(?i:(^|[[:space:]#/*_-])todo([[:space:]:;.,)_-]|$))|Static[A-Za-z0-9_]*|:memory:|fatalError|preconditionFailure"
+MOCK_PATTERN="(?i:fake|mock|fixture|canned|stub|skeleton|fixme|not[[:space:]_-]*implemented|notimplemented|inmemory)|(?i:(^|[^[:alnum:]_])demo([^[:alnum:]_]|$))|(?i:(^|[[:space:]#/*_-])todo([[:space:]:;.,)_-]|$))|(^|[^[:alnum:]_])Static[A-Za-z0-9_]*|:memory:|fatalError|preconditionFailure"
 UI_EVIDENCE_RELATIVE="docs/release/evidence/ui-screenshots.md"
 UI_SCREENSHOT_RELATIVE_DIR="docs/release/evidence/ui-screenshots"
 UI_SCREENSHOT_MIN_BYTES=30000

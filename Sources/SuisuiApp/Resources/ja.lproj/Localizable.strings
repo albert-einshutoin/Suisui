@@ -1583,7 +1583,7 @@
 "Create project file" = "プロジェクトファイルを作成";
 "Update project file" = "プロジェクトファイルを更新";
 "Run verification" = "検証を実行";
-"Allows Suisui to launch the selected Codex executable with coding and external tools disabled." = "コーディング機能と外部ツールを無効にした状態で、選択したCodex実行ファイルをSuisuiが起動することを許可します。";
+"Verifies the executable content and OpenAI signing identity before every launch." = "起動のたびに実行ファイルの内容とOpenAIの署名IDを検証します。";
 "Approve Tool-Free Codex Local Execution" = "ツールなしのCodex Local実行を許可";
 "Check Account" = "アカウントを確認";
 "Disconnect from Suisui" = "Suisuiとの接続を解除";
@@ -1600,6 +1600,8 @@
 "This changes the Codex-managed ChatGPT login used by the Codex CLI and other local Codex clients. It is not only a Suisui disconnect." = "これはSuisuiとの接続解除だけではありません。Codex CLIや他のローカルCodexクライアントが使う、Codex管理のChatGPTログインを変更します。";
 "Suisui does not read or store Codex tokens. ChatGPT sign-in is handled by the local Codex process." = "SuisuiはCodexのtokenを読み取り・保存しません。ChatGPTへのサインインはローカルCodex processが処理します。";
 "Uses your Mac user's Codex-managed ChatGPT login and Codex allowance." = "MacユーザーのCodex管理ChatGPTログインとCodex利用枠を使用します。";
+"Normal mode accepts only the signed OpenAI Codex executable. Developer Mode can approve an unsigned or custom build; turning Developer Mode off revokes that approval." = "通常モードではOpenAI署名済みのCodex実行ファイルだけを許可します。未署名またはカスタムビルドは開発者モードで承認でき、開発者モードをオフにすると承認は失効します。";
+"Approval records SHA-256, signing identifier, Team ID, and designated requirement. Codex updates or replacements require approval again." = "承認時にSHA-256、署名ID、Team ID、designated requirementを記録します。Codexの更新や置換後は再承認が必要です。";
 "No memo yet." = "メモはまだありません。";
 "Saved note available." = "保存済みのメモがあります。";
 "Transcript failed. Review the original voice memo before converting." = "文字起こしに失敗しました。タスクへ変換する前に元の音声メモを確認してください。";

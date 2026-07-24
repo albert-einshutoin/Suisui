@@ -67,6 +67,8 @@ public actor CodexAppServerStdioTransport: CodexAppServerTransport {
         guard !stopped else { throw CodexAppServerTransportError.streamClosed }
         do {
             try await process.start()
+        } catch let error as CodexAppServerRuntimeConfigurationError {
+            throw error
         } catch let error as CodexAppServerTransportError {
             throw error
         } catch {
@@ -267,7 +269,11 @@ public struct CodexAppServerLaunchConfiguration: Equatable, Sendable {
 
 #if os(iOS) || targetEnvironment(macCatalyst)
 public actor ProcessCodexAppServerProcess: CodexAppServerProcess {
-    public init(configuration _: CodexAppServerLaunchConfiguration, redactor _: DeveloperSecretRedactor = DeveloperSecretRedactor()) {}
+    public init(
+        configuration _: CodexAppServerLaunchConfiguration,
+        approvedExecutable _: ApprovedCodexExecutable,
+        redactor _: DeveloperSecretRedactor = DeveloperSecretRedactor()
+    ) {}
     public func start() async throws { throw CodexAppServerTransportError.localExecutionUnavailable }
     public func writeLine(_: Data) async throws { throw CodexAppServerTransportError.localExecutionUnavailable }
     public func inboundLines() async -> AsyncThrowingStream<Data, Error> { AsyncThrowingStream { $0.finish() } }
@@ -277,6 +283,7 @@ public actor ProcessCodexAppServerProcess: CodexAppServerProcess {
 #else
 public final class ProcessCodexAppServerProcess: CodexAppServerProcess, @unchecked Sendable {
     private let configuration: CodexAppServerLaunchConfiguration
+    private let approvedExecutable: ApprovedCodexExecutable
     private let redactor: DeveloperSecretRedactor
     private let lock = NSLock()
     private let process = Process()
@@ -292,9 +299,11 @@ public final class ProcessCodexAppServerProcess: CodexAppServerProcess, @uncheck
 
     public init(
         configuration: CodexAppServerLaunchConfiguration,
+        approvedExecutable: ApprovedCodexExecutable,
         redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
     ) {
         self.configuration = configuration
+        self.approvedExecutable = approvedExecutable
         self.redactor = redactor
         (stream, continuation) = AsyncThrowingStream.makeStream(of: Data.self)
     }
@@ -309,21 +318,39 @@ public final class ProcessCodexAppServerProcess: CodexAppServerProcess, @uncheck
     public func start() async throws {
         try lock.withCodexLock {
             guard !isStarted else { return }
-            process.executableURL = URL(fileURLWithPath: configuration.executablePath)
             process.arguments = configuration.arguments
             process.environment = configuration.environment
             process.standardInput = input
             process.standardOutput = output
             process.standardError = errorOutput
-            output.fileHandleForReading.readabilityHandler = { [weak self] handle in
-                self?.consumeOutput(handle.availableData)
+            // Keep this check immediately adjacent to Process.run(). Earlier
+            // approval and version checks do not authorize a path swapped in
+            // during the intervening async account/planning setup.
+            let verified = try CodexAppServerRuntimeConfiguration.preflight(
+                approvedExecutable: approvedExecutable
+            )
+            let selectedResolvedPath = URL(fileURLWithPath: configuration.executablePath)
+                .resolvingSymlinksInPath()
+                .standardizedFileURL
+                .path
+            guard verified.resolvedPath == selectedResolvedPath else {
+                throw CodexAppServerRuntimeConfigurationError.approvedExecutableChanged
             }
-            errorOutput.fileHandleForReading.readabilityHandler = { [weak self] handle in
-                self?.consumeStderr(handle.availableData)
-            }
+            // Launch the exact canonical target that preflight verified. The
+            // selected path may legitimately be a package-manager symlink.
+            process.executableURL = URL(fileURLWithPath: verified.resolvedPath)
             do {
                 try process.run()
                 isStarted = true
+                // Pipe output is buffered between exec and handler
+                // installation, which keeps verification adjacent to launch
+                // without losing an immediate App Server response.
+                output.fileHandleForReading.readabilityHandler = { [weak self] handle in
+                    self?.consumeOutput(handle.availableData)
+                }
+                errorOutput.fileHandleForReading.readabilityHandler = { [weak self] handle in
+                    self?.consumeStderr(handle.availableData)
+                }
             } catch {
                 output.fileHandleForReading.readabilityHandler = nil
                 errorOutput.fileHandleForReading.readabilityHandler = nil

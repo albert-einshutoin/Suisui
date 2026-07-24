@@ -54,7 +54,7 @@ Out of scope (assumed trusted or handled elsewhere):
 | Write tool → Calendar/Reminders/Notifications/filesystem | Approved external mutation plus a digest-only idempotency identity | A SQLite journal claims each item before the external call. External success followed by local persistence failure becomes `unknown`; automatic retry is blocked until reconciliation. Files use exclusive create semantics. |
 | App → sync ledger (planned) | Encrypted payload envelope | XChaCha20-Poly1305 payloads, key IDs only, per the sync foundation doc |
 | Sparkle → app | Update artifacts | EdDSA appcast signature verification |
-| App → local Codex App Server | Explicit planning prompt, model selection, typed account/readiness state | User approval bound to resolved path/device/inode/mtime/size; regular-file and permission preflight before any `--version` execution; Personal Preview exact-version allowlist; allowlisted child environment; short-lived process and scratch workspace per request; shell/file/web/MCP features disabled before initialize; approval or tool lifecycle interrupts the turn and fails closed |
+| App → local Codex App Server | Explicit planning prompt, model selection, typed account/readiness state | User approval bound to resolved path/device/inode/mtime/size, streaming SHA-256, signing identifier, Team ID, designated requirement, and the Apple-anchored production requirement result; the same identity is rechecked before `--version` and immediately before App Server launch; Stable accepts only signing identifier `codex` from OpenAI Team ID `2DC432GLL2` under an Apple Developer ID Application chain; Developer Mode is required for unsigned/custom executables and disabling it revokes that approval; Personal Preview exact-version allowlist; allowlisted child environment; short-lived process and scratch workspace per request; shell/file/web/MCP features disabled before initialize; approval or tool lifecycle interrupts the turn and fails closed |
 
 ## Threat Actors
 
@@ -82,6 +82,7 @@ Out of scope (assumed trusted or handled elsewhere):
 | Update tampering | Sparkle EdDSA-signed appcast; signing keys kept out of the repository |
 | Audit log poisoning with secrets | Key/token/authorization patterns redacted before audit rows are written |
 | Codex credential duplication | Production login types expose browser/device login only; no token-injection type; Suisui rejects an executable path targeting `auth.json` and stores no account email |
+| Codex executable substitution | Approval and both process launch paths compare streaming SHA-256 plus macOS signing identity. Stable compiles and evaluates an Apple-anchored Developer ID requirement that pins OpenAI Team ID `2DC432GLL2` and identifier `codex`; matching metadata strings without that certificate chain are rejected. Security.framework path validation is bracketed by descriptor-identity checks so signature evidence is discarded if the selected path changes during validation. Same-size edits, restored mtimes, symlink retargets, signature changes, and package-manager replacements fail closed until explicit reapproval. |
 | Malicious App Server tool request | Command, file-change, permission, web, MCP, and dynamic-tool lifecycle messages are never approved; the turn is interrupted and planning fails |
 | Codex workspace policy denial | Account errors naming organization/workspace policy are mapped to a stable administrator-disabled state instead of triggering repeated login |
 
@@ -92,7 +93,7 @@ Out of scope (assumed trusted or handled elsewhere):
 - **Clipboard and screenshot exposure.** Task content copied to the clipboard or captured in screen shares leaves every control above; no clipboard scrubbing exists.
 - **Prompt injection.** Review-before-write limits blast radius but a user who approves a poisoned plan still executes it.
 - **External MCP servers.** They run with the user's privileges; Suisui constrains what it asks them to do, not what they can do.
-- **Local child-process trust.** A malicious binary selected as `codex` executes with the user's privileges. Settings requires an absolute executable path and explicit approval, but code-signature pinning is not yet implemented.
+- **Local child-process TOCTOU.** Hashing uses a streaming file read and launch-time path re-resolution, and the signature is validated immediately before each launch. `Process` cannot execute an already-open file descriptor, so a same-user attacker may still race the final check and `exec`. An immutable Application Support snapshot or descriptor-based launcher would narrow this further. Quarantined downloads remain subject to macOS policy; Suisui does not bypass quarantine.
 - **Enterprise compliance identity.** `clientInfo.name` is `suisui`; Enterprise support must not be claimed until OpenAI registers the client or the limitation for unregistered clients in Compliance Logs is documented and accepted.
 
 ## Review Cadence

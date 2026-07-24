@@ -3,6 +3,55 @@ import XCTest
 @testable import SuisuiCore
 
 final class CodexAppServerRuntimeConfigurationTests: XCTestCase {
+    func testSignatureInspectionRejectsPathSwapAcrossSecurityValidation() {
+        let expected = CodexExecutablePathState(
+            deviceID: 1,
+            inode: 2,
+            fileSize: 3,
+            modificationTimeSeconds: 4,
+            modificationTimeNanoseconds: 5
+        )
+        let replacement = CodexExecutablePathState(
+            deviceID: 1,
+            inode: 99,
+            fileSize: 3,
+            modificationTimeSeconds: 4,
+            modificationTimeNanoseconds: 5
+        )
+        var observedStates = [expected, replacement]
+        var signatureInspectionCount = 0
+
+        let inspection = FileManager.inspectCodeSignatureBoundToPath(
+            expectedState: expected,
+            pathStateProvider: { observedStates.removeFirst() },
+            signatureProvider: {
+                signatureInspectionCount += 1
+                return self.makeSignature()
+            }
+        )
+
+        XCTAssertFalse(inspection.pathRemainedBound)
+        XCTAssertNil(inspection.codeSignature)
+        XCTAssertEqual(signatureInspectionCount, 1)
+    }
+
+    func testSystemSignedExecutableExposesIdentityAndIsRejectedByProductionPolicy() throws {
+        let fileState = FileManager.default.codexFileState(atPath: "/usr/bin/true")
+        let signature = try XCTUnwrap(fileState.identity?.codeSignature)
+
+        XCTAssertFalse(signature.signingIdentifier.isEmpty)
+        XCTAssertFalse(signature.designatedRequirement.isEmpty)
+        XCTAssertFalse(signature.isProductionRequirementSatisfied)
+        XCTAssertThrowsError(
+            try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
+        ) { error in
+            XCTAssertEqual(
+                error as? CodexAppServerRuntimeConfigurationError,
+                .unexpectedCodeSignature
+            )
+        }
+    }
+
     func testApprovalRejectsRelativeMissingDirectoryNonRegularAndNonExecutablePaths() throws {
         XCTAssertThrowsError(try CodexAppServerRuntimeConfiguration.approve(executablePath: "codex"))
         XCTAssertThrowsError(try CodexAppServerRuntimeConfiguration.approve(
@@ -17,7 +66,10 @@ final class CodexAppServerRuntimeConfigurationTests: XCTestCase {
     }
 
     func testVerifiedVersionAndApprovedIdentityAreRequired() throws {
-        let approved = try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
+        let approved = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: "/usr/bin/true",
+            trustPolicy: .developerUnsignedAllowed
+        )
         let runtime = try CodexAppServerRuntimeConfiguration.validate(
             approvedExecutable: approved,
             reportedVersion: "codex-cli 0.144.1"
@@ -51,6 +103,202 @@ final class CodexAppServerRuntimeConfigurationTests: XCTestCase {
         }
     }
 
+    func testContentDigestInvalidatesApprovalWhenMetadataIsUnchanged() throws {
+        let original = makeState(contentSHA256: String(repeating: "a", count: 64))
+        let changed = makeState(contentSHA256: String(repeating: "b", count: 64))
+        let approved = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: "/opt/homebrew/bin/codex",
+            fileManager: StubRuntimeFileInspector(state: original)
+        )
+
+        XCTAssertThrowsError(try CodexAppServerRuntimeConfiguration.preflight(
+            approvedExecutable: approved,
+            fileManager: StubRuntimeFileInspector(state: changed)
+        )) { error in
+            XCTAssertEqual(error as? CodexAppServerRuntimeConfigurationError, .approvedExecutableChanged)
+        }
+    }
+
+    func testSameSizeEditWithRestoredModificationTimeInvalidatesApproval() throws {
+        let executable = try temporaryFile(executable: true, contents: Data("first\n".utf8))
+        let approved = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: executable.path,
+            trustPolicy: .developerUnsignedAllowed
+        )
+        let originalDate = Date(timeIntervalSince1970: approved.identity.modificationTime)
+
+        try Data("other\n".utf8).write(to: executable)
+        try FileManager.default.setAttributes([.modificationDate: originalDate], ofItemAtPath: executable.path)
+
+        XCTAssertThrowsError(try CodexAppServerRuntimeConfiguration.preflight(
+            approvedExecutable: approved
+        )) { error in
+            XCTAssertEqual(error as? CodexAppServerRuntimeConfigurationError, .approvedExecutableChanged)
+        }
+    }
+
+    func testSymlinkTargetChangeInvalidatesApproval() throws {
+        let directory = try temporaryDirectory()
+        let first = directory.appendingPathComponent("codex-first")
+        let second = directory.appendingPathComponent("codex-second")
+        let selected = directory.appendingPathComponent("codex")
+        try Data("first\n".utf8).write(to: first)
+        try Data("other\n".utf8).write(to: second)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: first.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: second.path)
+        try FileManager.default.createSymbolicLink(at: selected, withDestinationURL: first)
+        let approved = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: selected.path,
+            trustPolicy: .developerUnsignedAllowed
+        )
+
+        try FileManager.default.removeItem(at: selected)
+        try FileManager.default.createSymbolicLink(at: selected, withDestinationURL: second)
+
+        XCTAssertThrowsError(try CodexAppServerRuntimeConfiguration.preflight(
+            approvedExecutable: approved
+        )) { error in
+            XCTAssertEqual(error as? CodexAppServerRuntimeConfigurationError, .approvedExecutableChanged)
+        }
+    }
+
+    func testProductionRejectsUnsignedExecutableAndDeveloperPolicyRecordsException() throws {
+        let executable = try temporaryFile(executable: true, contents: Data("#!/bin/sh\n".utf8))
+
+        XCTAssertThrowsError(try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: executable.path
+        )) { error in
+            XCTAssertEqual(error as? CodexAppServerRuntimeConfigurationError, .validCodeSignatureRequired)
+        }
+
+        let approved = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: executable.path,
+            trustPolicy: .developerUnsignedAllowed
+        )
+        XCTAssertEqual(approved.trustPolicy, .developerUnsignedAllowed)
+        XCTAssertNil(approved.identity.codeSignature)
+        XCTAssertEqual(approved.identity.contentSHA256.count, 64)
+
+        XCTAssertThrowsError(try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: "/Applications/Other.app/Contents/MacOS/other",
+            fileManager: StubRuntimeFileInspector(
+                state: makeState(signature: makeSignature(teamIdentifier: "OTHERTEAM"))
+            )
+        )) { error in
+            XCTAssertEqual(
+                error as? CodexAppServerRuntimeConfigurationError,
+                .unexpectedCodeSignature
+            )
+        }
+    }
+
+    func testProductionRejectsMatchingTextIdentityWithoutAppleAnchoredRequirement() throws {
+        let spoofedIdentity = makeSignature(
+            signingIdentifier: "codex",
+            teamIdentifier: "2DC432GLL2",
+            isProductionRequirementSatisfied: false
+        )
+
+        XCTAssertThrowsError(try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: "/Applications/Codex.app/Contents/MacOS/codex",
+            fileManager: StubRuntimeFileInspector(
+                state: makeState(signature: spoofedIdentity)
+            )
+        )) { error in
+            XCTAssertEqual(
+                error as? CodexAppServerRuntimeConfigurationError,
+                .unexpectedCodeSignature
+            )
+        }
+    }
+
+    func testPackageManagerUpdateRequiresExplicitReapproval() throws {
+        let directory = try temporaryDirectory()
+        let executable = directory.appendingPathComponent("codex")
+        try Data("version-one\n".utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        let approved = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: executable.path,
+            trustPolicy: .developerUnsignedAllowed
+        )
+
+        let replacement = directory.appendingPathComponent("codex.new")
+        try Data("version-two\n".utf8).write(to: replacement)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: replacement.path)
+        _ = try FileManager.default.replaceItemAt(executable, withItemAt: replacement)
+
+        XCTAssertThrowsError(try CodexAppServerRuntimeConfiguration.preflight(
+            approvedExecutable: approved
+        )) { error in
+            XCTAssertEqual(error as? CodexAppServerRuntimeConfigurationError, .approvedExecutableChanged)
+        }
+        XCTAssertNoThrow(try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: executable.path,
+            trustPolicy: .developerUnsignedAllowed
+        ))
+    }
+
+    func testSigningIdentifierTeamAndRequirementChangesInvalidateApproval() throws {
+        let approved = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: "/opt/homebrew/bin/codex",
+            fileManager: StubRuntimeFileInspector(state: makeState())
+        )
+        let changedSignatures = [
+            makeState(signature: makeSignature(signingIdentifier: "com.example.other")),
+            makeState(signature: makeSignature(teamIdentifier: "OTHERTEAM")),
+            makeState(signature: makeSignature(designatedRequirement: "identifier \"com.example.codex\"")),
+        ]
+
+        for changed in changedSignatures {
+            XCTAssertThrowsError(try CodexAppServerRuntimeConfiguration.preflight(
+                approvedExecutable: approved,
+                fileManager: StubRuntimeFileInspector(state: changed)
+            )) { error in
+                XCTAssertEqual(error as? CodexAppServerRuntimeConfigurationError, .approvedExecutableChanged)
+            }
+        }
+    }
+
+    func testLegacyMetadataOnlyApprovalRequiresFreshApproval() throws {
+        let legacy = """
+        {
+          "path": "/usr/bin/true",
+          "identity": {
+            "resolvedPath": "/usr/bin/true",
+            "deviceID": 1,
+            "inode": 2,
+            "modificationTime": 3,
+            "fileSize": 4
+          },
+          "approvedAt": 0
+        }
+        """
+        let approved = try JSONDecoder().decode(ApprovedCodexExecutable.self, from: Data(legacy.utf8))
+
+        XCTAssertThrowsError(try CodexAppServerRuntimeConfiguration.preflight(
+            approvedExecutable: approved
+        )) { error in
+            XCTAssertEqual(error as? CodexAppServerRuntimeConfigurationError, .executionApprovalRequired)
+        }
+    }
+
+    func testLegacySignatureIdentityRequiresFreshAppleAnchoredVerification() throws {
+        let legacy = """
+        {
+          "signingIdentifier": "codex",
+          "teamIdentifier": "2DC432GLL2",
+          "designatedRequirement": "identifier codex"
+        }
+        """
+
+        let signature = try JSONDecoder().decode(
+            CodexCodeSignatureIdentity.self,
+            from: Data(legacy.utf8)
+        )
+
+        XCTAssertFalse(signature.isProductionRequirementSatisfied)
+    }
+
     func testVersionParserRejectsAmbiguousOrIncompleteOutput() {
         XCTAssertNil(CodexAppServerVersion.parse("0.144"))
         XCTAssertNil(CodexAppServerVersion.parse("codex-cli unknown"))
@@ -81,7 +329,9 @@ final class CodexAppServerRuntimeConfigurationTests: XCTestCase {
             deviceID: 1,
             inode: 2,
             modificationTime: 3,
-            fileSize: 4
+            fileSize: 4,
+            contentSHA256: String(repeating: "a", count: 64),
+            codeSignature: makeSignature()
         )
         XCTAssertThrowsError(try CodexAppServerRuntimeConfiguration.approve(
             executablePath: "/opt/homebrew/bin/codex",
@@ -95,7 +345,12 @@ final class CodexAppServerRuntimeConfigurationTests: XCTestCase {
         ))
     }
 
-    private func makeState(isRegularFile: Bool = true, inode: UInt64 = 2) -> CodexRuntimeFileState {
+    private func makeState(
+        isRegularFile: Bool = true,
+        inode: UInt64 = 2,
+        contentSHA256: String = String(repeating: "a", count: 64),
+        signature: CodexCodeSignatureIdentity? = nil
+    ) -> CodexRuntimeFileState {
         CodexRuntimeFileState(
             exists: true,
             isDirectory: false,
@@ -106,21 +361,42 @@ final class CodexAppServerRuntimeConfigurationTests: XCTestCase {
                 deviceID: 1,
                 inode: inode,
                 modificationTime: 3,
-                fileSize: 4
+                fileSize: 4,
+                contentSHA256: contentSHA256,
+                codeSignature: signature ?? makeSignature()
             )
         )
     }
 
-    private func temporaryFile(executable: Bool) throws -> URL {
+    private func makeSignature(
+        signingIdentifier: String = "codex",
+        teamIdentifier: String? = "2DC432GLL2",
+        designatedRequirement: String = "identifier \"codex\" and anchor apple generic and certificate leaf[subject.OU] = \"2DC432GLL2\"",
+        isProductionRequirementSatisfied: Bool = true
+    ) -> CodexCodeSignatureIdentity {
+        CodexCodeSignatureIdentity(
+            signingIdentifier: signingIdentifier,
+            teamIdentifier: teamIdentifier,
+            designatedRequirement: designatedRequirement,
+            isProductionRequirementSatisfied: isProductionRequirementSatisfied
+        )
+    }
+
+    private func temporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("suisui-codex-runtime-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        return directory
+    }
+
+    private func temporaryFile(executable: Bool, contents: Data = Data()) throws -> URL {
+        let directory = try temporaryDirectory()
         let file = directory.appendingPathComponent("codex")
-        XCTAssertTrue(FileManager.default.createFile(atPath: file.path, contents: Data()))
+        XCTAssertTrue(FileManager.default.createFile(atPath: file.path, contents: contents))
         if executable {
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
         }
-        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
         return file
     }
 }

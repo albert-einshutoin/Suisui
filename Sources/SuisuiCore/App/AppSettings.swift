@@ -254,7 +254,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
         if let codexExecutablePath = copy.codexExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.codexExecutablePath = codexExecutablePath.isEmpty ? nil : codexExecutablePath
         }
-        if copy.codexExecutablePath != copy.approvedCodexExecutable?.path {
+        if copy.codexExecutablePath != copy.approvedCodexExecutable?.path ||
+            copy.approvedCodexExecutable?.identity.hasContentIntegrityEvidence == false ||
+            (
+                copy.approvedCodexExecutable?.trustPolicy == .developerUnsignedAllowed &&
+                !copy.isDeveloperModeEnabled
+            ) {
             copy.isCodexLocalExecutionApproved = false
             copy.approvedCodexExecutable = nil
         }
@@ -1659,6 +1664,27 @@ public final class AppSettingsViewModel: ObservableObject {
     }
 
     public func setDeveloperModeEnabled(_ isEnabled: Bool) {
+        if !isEnabled,
+           settings.approvedCodexExecutable?.trustPolicy == .developerUnsignedAllowed {
+            let previousSettings = settings
+            settings.isDeveloperModeEnabled = false
+            settings.isCodexLocalExecutionApproved = false
+            settings.approvedCodexExecutable = nil
+            do {
+                // Developer Mode is part of the unsigned-executable trust
+                // boundary, so disabling it must revoke persisted approval
+                // before another window can launch the old executable.
+                try settingsStore.save(settings)
+                CodexExecutionApprovalChanges.invalidate()
+            } catch {
+                settings = previousSettings
+                errorMessage = Self.settingsSaveFailureMessage
+                successMessage = nil
+                return
+            }
+            clearMessages()
+            return
+        }
         settings.isDeveloperModeEnabled = isEnabled
         clearMessages()
     }
@@ -1867,7 +1893,10 @@ public final class AppSettingsViewModel: ObservableObject {
         do {
             let path = settings.codexExecutablePath ?? ""
             settings.approvedCodexExecutable = try CodexAppServerRuntimeConfiguration.approve(
-                executablePath: path
+                executablePath: path,
+                trustPolicy: settings.isDeveloperModeEnabled
+                    ? .developerUnsignedAllowed
+                    : .signedProduction
             )
             settings.isCodexLocalExecutionApproved = true
             CodexExecutionApprovalChanges.invalidate()
@@ -1875,7 +1904,13 @@ public final class AppSettingsViewModel: ObservableObject {
         } catch {
             settings.isCodexLocalExecutionApproved = false
             settings.approvedCodexExecutable = nil
-            errorMessage = "Select a valid executable Codex CLI file before approving local execution."
+            if let runtimeError = error as? CodexAppServerRuntimeConfigurationError,
+               runtimeError == .validCodeSignatureRequired ||
+               runtimeError == .unexpectedCodeSignature {
+                errorMessage = "Normal mode requires the signed OpenAI Codex executable. Enable Developer Mode only to approve an unsigned or custom build."
+            } else {
+                errorMessage = "Select a valid executable Codex CLI file before approving local execution."
+            }
             successMessage = nil
         }
     }

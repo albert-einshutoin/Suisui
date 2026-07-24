@@ -86,6 +86,63 @@ final class CodexAppServerTransportTests: XCTestCase {
             "LANG": "ja_JP.UTF-8"
         ])
     }
+
+    func testExecutableSwapAfterVersionCheckFailsBeforeAppServerLaunch() async throws {
+        #if os(macOS)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-codex-launch-integrity-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let executable = directory.appendingPathComponent("codex")
+        let marker = directory.appendingPathComponent("launched")
+        try Data("#!/bin/sh\ntouch \"$1\"\n".utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        let approved = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: executable.path,
+            trustPolicy: .developerUnsignedAllowed
+        )
+
+        try Data("#!/bin/sh\ntouch '\(marker.path)'\n".utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        let process = ProcessCodexAppServerProcess(
+            configuration: CodexAppServerLaunchConfiguration(executablePath: executable.path),
+            approvedExecutable: approved
+        )
+
+        await XCTAssertThrowsErrorAsync(try await process.start()) { error in
+            XCTAssertEqual(
+                error as? CodexAppServerRuntimeConfigurationError,
+                .approvedExecutableChanged
+            )
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
+        #endif
+    }
+
+    func testApprovedSymlinkLaunchesItsVerifiedResolvedTarget() async throws {
+        #if os(macOS)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-codex-symlink-launch-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let executable = directory.appendingPathComponent("codex-target")
+        let selected = directory.appendingPathComponent("codex")
+        try Data("#!/bin/sh\nexit 0\n".utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        try FileManager.default.createSymbolicLink(at: selected, withDestinationURL: executable)
+        let approved = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: selected.path,
+            trustPolicy: .developerUnsignedAllowed
+        )
+        let process = ProcessCodexAppServerProcess(
+            configuration: CodexAppServerLaunchConfiguration(executablePath: selected.path),
+            approvedExecutable: approved
+        )
+
+        try await process.start()
+        await process.stop()
+        #endif
+    }
 }
 
 private extension Array where Element: Equatable {

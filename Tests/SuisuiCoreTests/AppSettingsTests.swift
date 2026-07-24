@@ -66,8 +66,12 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertFalse(AppSettings.default.isCodexLocalExecutionApproved)
         XCTAssertNil(AppSettings.default.approvedCodexExecutable)
 
-        let approved = try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
+        let approved = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: "/usr/bin/true",
+            trustPolicy: .developerUnsignedAllowed
+        )
         let settings = AppSettings(
+            isDeveloperModeEnabled: true,
             codexExecutablePath: "/usr/bin/true",
             codexModelID: " gpt-5.4 ",
             isCodexLocalExecutionApproved: true,
@@ -92,9 +96,13 @@ final class AppSettingsTests: XCTestCase {
             Set(["codexExecutablePath", "isCodexLocalExecutionApproved"])
         )
 
-        let approved = try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
+        let approved = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: "/usr/bin/true",
+            trustPolicy: .developerUnsignedAllowed
+        )
         let ready = AppSettings(
             aiProvider: .codexLocal,
+            isDeveloperModeEnabled: true,
             codexExecutablePath: "/usr/bin/true",
             isCodexLocalExecutionApproved: true,
             approvedCodexExecutable: approved
@@ -121,6 +129,7 @@ final class AppSettingsTests: XCTestCase {
         )
 
         viewModel.setCodexExecutablePath("/usr/bin/true")
+        viewModel.setDeveloperModeEnabled(true)
         viewModel.setCodexLocalExecutionApproved(true)
         XCTAssertTrue(viewModel.settings.isCodexLocalExecutionApproved)
         XCTAssertNotNil(viewModel.settings.approvedCodexExecutable)
@@ -132,14 +141,53 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testUnsignedCodexApprovalRequiresDeveloperModeAndIsRevokedWhenDeveloperModeEnds() throws {
+        let suiteName = "Suisui.CodexUnsignedDeveloperApproval.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-codex-settings-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let executable = directory.appendingPathComponent("codex")
+        try Data("#!/bin/sh\n".utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            refreshProviderSecretStatusesOnInit: false
+        )
+        viewModel.setCodexExecutablePath(executable.path)
+
+        viewModel.setCodexLocalExecutionApproved(true)
+        XCTAssertFalse(viewModel.settings.isCodexLocalExecutionApproved)
+
+        viewModel.setDeveloperModeEnabled(true)
+        viewModel.setCodexLocalExecutionApproved(true)
+        XCTAssertTrue(viewModel.settings.isCodexLocalExecutionApproved)
+        XCTAssertEqual(
+            viewModel.settings.approvedCodexExecutable?.trustPolicy,
+            .developerUnsignedAllowed
+        )
+
+        viewModel.setDeveloperModeEnabled(false)
+        XCTAssertFalse(viewModel.settings.isCodexLocalExecutionApproved)
+        XCTAssertNil(viewModel.settings.approvedCodexExecutable)
+    }
+
+    @MainActor
     func testDisconnectCodexPersistsRevocationImmediately() throws {
         let suiteName = "Suisui.CodexDisconnect.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let store = UserDefaultsAppSettingsStore(defaults: defaults)
-        let approved = try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
+        let approved = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: "/usr/bin/true",
+            trustPolicy: .developerUnsignedAllowed
+        )
         try store.save(AppSettings(
             aiProvider: .codexLocal,
+            isDeveloperModeEnabled: true,
             codexExecutablePath: "/usr/bin/true",
             isCodexLocalExecutionApproved: true,
             approvedCodexExecutable: approved
