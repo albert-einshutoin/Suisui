@@ -94,7 +94,7 @@ final class DatabaseMigrationTests: XCTestCase {
         }
     }
 
-    func testSQLiteConnectionTypedRowsReadOnlyRequestedColumns() throws {
+    func testSQLiteConnectionMaterializedRowsDecodeRequestedColumns() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try connection.execute(
             """
@@ -109,7 +109,9 @@ final class DatabaseMigrationTests: XCTestCase {
             """
         )
 
-        let rows = try connection.query("SELECT id, title, optional_note, payload FROM typed_rows;") { row in
+        let rows = try connection.materializedRows(
+            "SELECT id, title, optional_note, payload FROM typed_rows;"
+        ).map { row in
             (
                 id: try row.int64("id"),
                 title: try row.string("title"),
@@ -125,15 +127,318 @@ final class DatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(rows.first?.payload, Data("safe".utf8))
     }
 
-    func testSQLiteConnectionTypedRowsFailOnMissingColumn() throws {
+    func testSQLiteConnectionMaterializedRowsFailOnMissingColumn() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try connection.execute("CREATE TABLE typed_rows (id INTEGER PRIMARY KEY NOT NULL); INSERT INTO typed_rows (id) VALUES (1);")
 
-        XCTAssertThrowsError(try connection.query("SELECT id FROM typed_rows;") { row in
-            try row.string("title")
-        }) { error in
+        let row = try XCTUnwrap(connection.materializedRows("SELECT id FROM typed_rows;").first)
+        XCTAssertThrowsError(try row.string("title")) { error in
             XCTAssertEqual(error as? DatabaseError, .missingColumn("title"))
         }
+    }
+
+    func testSQLiteConnectionMaterializedRowsPreserveCellTypesAndEmbeddedNUL() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let text = "prefix\u{0}suffix"
+
+        let row = try XCTUnwrap(
+            connection.materializedRows(
+                """
+                SELECT
+                    NULL AS null_value,
+                    '' AS empty_text,
+                    ? AS nul_text,
+                    X'' AS empty_blob,
+                    42 AS integer_value,
+                    1.5 AS real_value,
+                    1 AS bool_value,
+                    '2026-07-24T00:00:00Z' AS date_value;
+                """,
+                parameters: [.text(text)]
+            ).first
+        )
+
+        XCTAssertEqual(try row.cell("null_value"), .null)
+        XCTAssertEqual(try row.cell("empty_text"), .text(""))
+        XCTAssertEqual(try row.cell("nul_text"), .text(text))
+        XCTAssertEqual(try row.cell("empty_blob"), .blob(Data()))
+        XCTAssertEqual(try row.cell("integer_value"), .integer(42))
+        XCTAssertEqual(try row.cell("real_value"), .real(1.5))
+        XCTAssertTrue(try row.bool("bool_value"))
+        let dateFormatter = ISO8601DateFormatter()
+        XCTAssertEqual(
+            try row.date("date_value", using: dateFormatter.date(from:)),
+            dateFormatter.date(from: "2026-07-24T00:00:00Z")
+        )
+        XCTAssertNil(row["null_value"])
+        XCTAssertEqual(row["empty_text"], "")
+    }
+
+    func testSQLiteConnectionMaterializedRowsRejectStorageClassMismatch() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+
+        let row = try XCTUnwrap(connection.materializedRows("SELECT '42' AS value;").first)
+        XCTAssertThrowsError(try row.int64("value")) { error in
+            XCTAssertEqual(
+                error as? DatabaseError,
+                .invalidColumnValue(column: "value", value: "text")
+            )
+        }
+    }
+
+    func testSQLiteConnectionRejectsDuplicateColumnAliases() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+
+        XCTAssertThrowsError(
+            try connection.materializedRows("SELECT 1 AS value, 2 AS value;")
+        ) { error in
+            XCTAssertEqual(error as? DatabaseError, .duplicateColumnName("value"))
+        }
+    }
+
+    func testSQLitePointerBackedRowDecoderDoesNotExist() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot
+                .appendingPathComponent("Sources/SuisuiCore/Database/SQLiteDatabaseClient.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertFalse(source.contains("struct SQLiteRow"))
+        XCTAssertFalse(source.contains("func query<T>"))
+        XCTAssertTrue(source.contains("public struct SQLiteMaterializedRow"))
+    }
+
+    func testSQLiteConnectionConfiguresWritableFilePragmas() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-sqlite-pragmas-\(UUID().uuidString)", isDirectory: true)
+        let databaseURL = root.appendingPathComponent("Suisui.sqlite")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+        let connection = try SQLiteConnection(path: databaseURL.path)
+
+        XCTAssertEqual(try connection.queryStrings("PRAGMA foreign_keys;"), ["1"])
+        XCTAssertEqual(try connection.queryStrings("PRAGMA journal_mode;"), ["wal"])
+        XCTAssertEqual(
+            try connection.queryStrings("PRAGMA busy_timeout;"),
+            [String(SQLiteConnection.busyTimeoutMilliseconds)]
+        )
+        XCTAssertEqual(try connection.queryStrings("PRAGMA synchronous;"), ["1"])
+        XCTAssertEqual(try connection.queryStrings("PRAGMA temp_store;"), ["2"])
+        XCTAssertEqual(
+            try connection.queryStrings("PRAGMA wal_autocheckpoint;"),
+            [String(SQLiteConnection.walAutoCheckpointPages)]
+        )
+    }
+
+    func testSQLiteConnectionSerializesConcurrentTransactions() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try connection.execute("CREATE TABLE counter (value INTEGER NOT NULL); INSERT INTO counter VALUES (0);")
+        let errors = LockedDatabaseErrors()
+
+        DispatchQueue.concurrentPerform(iterations: 1_000) { _ in
+            do {
+                try connection.transaction {
+                    try connection.execute("UPDATE counter SET value = value + 1;")
+                    let value = try connection.queryStrings("SELECT value FROM counter;")
+                    guard value.count == 1 else {
+                        throw DatabaseError.stepFailed("Concurrent read returned an unexpected row count.")
+                    }
+                }
+            } catch {
+                errors.append(error)
+            }
+        }
+
+        XCTAssertTrue(errors.values.isEmpty, "Unexpected transaction errors: \(errors.values)")
+        XCTAssertEqual(try connection.queryStrings("SELECT value FROM counter;"), ["1000"])
+    }
+
+    func testSQLiteConnectionRollsBackTransactionWhenOperationThrows() throws {
+        enum ExpectedFailure: Error {
+            case stop
+        }
+
+        let metrics = LockedDatabaseMetrics()
+        let connection = try SQLiteConnection(path: ":memory:") { metric in
+            metrics.append(metric)
+        }
+        try connection.execute("CREATE TABLE events (value TEXT NOT NULL);")
+
+        XCTAssertThrowsError(
+            try connection.transaction {
+                try connection.execute("INSERT INTO events VALUES ('partial');")
+                throw ExpectedFailure.stop
+            }
+        ) { error in
+            XCTAssertTrue(error is ExpectedFailure)
+        }
+        XCTAssertEqual(try connection.queryStrings("SELECT value FROM events;"), [])
+        XCTAssertTrue(
+            metrics.values.contains {
+                $0.kind == .rollback
+                    && $0.operation == "transaction"
+                    && $0.category == "operation_failed"
+            }
+        )
+    }
+
+    func testSQLiteConnectionKeepsOtherWritesOutsideTransactionBoundary() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try connection.execute("CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL);")
+        let firstWriteCompleted = DispatchSemaphore(value: 0)
+        let finishTransaction = DispatchSemaphore(value: 0)
+        let competingWriteStarted = DispatchSemaphore(value: 0)
+        let group = DispatchGroup()
+        let errors = LockedDatabaseErrors()
+
+        group.enter()
+        DispatchQueue.global().async {
+            defer { group.leave() }
+            do {
+                try connection.transaction {
+                    try connection.execute("INSERT INTO events (label) VALUES ('transaction-first');")
+                    firstWriteCompleted.signal()
+                    finishTransaction.wait()
+                    try connection.execute("INSERT INTO events (label) VALUES ('transaction-second');")
+                }
+            } catch {
+                errors.append(error)
+            }
+        }
+        firstWriteCompleted.wait()
+
+        group.enter()
+        DispatchQueue.global().async {
+            defer { group.leave() }
+            competingWriteStarted.signal()
+            do {
+                try connection.execute("INSERT INTO events (label) VALUES ('competing');")
+            } catch {
+                errors.append(error)
+            }
+        }
+        competingWriteStarted.wait()
+        Thread.sleep(forTimeInterval: 0.01)
+        finishTransaction.signal()
+        group.wait()
+
+        XCTAssertTrue(errors.values.isEmpty, "Unexpected transaction errors: \(errors.values)")
+        XCTAssertEqual(
+            try connection.queryStrings("SELECT label FROM events ORDER BY id;"),
+            ["transaction-first", "transaction-second", "competing"]
+        )
+    }
+
+    func testSQLiteConnectionRejectsNestedTransactions() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+
+        XCTAssertThrowsError(
+            try connection.transaction {
+                try connection.transaction {}
+            }
+        ) { error in
+            XCTAssertEqual(error as? DatabaseError, .nestedTransaction)
+        }
+    }
+
+    func testSQLiteConnectionBusyTimeoutRecoversFromBriefExternalWriter() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-sqlite-busy-recovery-\(UUID().uuidString)", isDirectory: true)
+        let databaseURL = root.appendingPathComponent("Suisui.sqlite")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let lockingConnection = try SQLiteConnection(path: databaseURL.path)
+        let writingConnection = try SQLiteConnection(path: databaseURL.path)
+        try lockingConnection.execute("CREATE TABLE events (value TEXT NOT NULL);")
+        try lockingConnection.execute("BEGIN IMMEDIATE;")
+        let errors = LockedDatabaseErrors()
+        let finished = expectation(description: "writer recovers before timeout")
+
+        DispatchQueue.global().async {
+            defer { finished.fulfill() }
+            do {
+                try writingConnection.execute("INSERT INTO events VALUES ('written');")
+            } catch {
+                errors.append(error)
+            }
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+        try lockingConnection.execute("COMMIT;")
+        wait(for: [finished], timeout: 2)
+
+        XCTAssertTrue(errors.values.isEmpty, "Unexpected busy errors: \(errors.values)")
+        XCTAssertEqual(try lockingConnection.queryStrings("SELECT value FROM events;"), ["written"])
+    }
+
+    func testSQLiteConnectionClassifiesBusyTimeout() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-sqlite-busy-timeout-\(UUID().uuidString)", isDirectory: true)
+        let databaseURL = root.appendingPathComponent("Suisui.sqlite")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let lockingConnection = try SQLiteConnection(path: databaseURL.path)
+        let writingConnection = try SQLiteConnection(path: databaseURL.path)
+        try lockingConnection.execute("CREATE TABLE events (value TEXT NOT NULL);")
+        try lockingConnection.execute("BEGIN IMMEDIATE;")
+
+        XCTAssertThrowsError(
+            try writingConnection.execute("INSERT INTO events VALUES ('blocked');")
+        ) { error in
+            guard case DatabaseError.busyTimeout = error else {
+                return XCTFail("Expected classified busy timeout, got \(error).")
+            }
+        }
+        try lockingConnection.execute("ROLLBACK;")
+    }
+
+    func testSQLiteDatabaseWorkerCancellationRollsBackTransaction() async throws {
+        let metrics = LockedDatabaseMetrics()
+        let connection = try SQLiteConnection(path: ":memory:") { metric in
+            metrics.append(metric)
+        }
+        let worker = SQLiteDatabaseWorker(connection: connection)
+        try await worker.run { connection in
+            try connection.execute("CREATE TABLE events (value TEXT NOT NULL);")
+        }
+        let writeStarted = expectation(description: "transaction inserted before cancellation")
+        let finishOperation = DispatchSemaphore(value: 0)
+        let task = Task {
+            try await worker.transaction { connection in
+                try connection.execute("INSERT INTO events VALUES ('partial');")
+                writeStarted.fulfill()
+                finishOperation.wait()
+            }
+        }
+
+        await fulfillment(of: [writeStarted], timeout: 1)
+        task.cancel()
+        finishOperation.signal()
+        do {
+            try await task.value
+            XCTFail("Cancelled database transaction must not commit.")
+        } catch is CancellationError {
+            // Expected: the worker checks cancellation before COMMIT.
+        }
+
+        let values = try await worker.run { connection in
+            try connection.queryStrings("SELECT value FROM events;")
+        }
+        XCTAssertEqual(values, [])
+        XCTAssertTrue(
+            metrics.values.contains {
+                $0.kind == .rollback
+                    && $0.operation == "transaction"
+                    && $0.category == "cancelled"
+            }
+        )
+        XCTAssertTrue(metrics.values.contains { $0.kind == .lockWait })
+        XCTAssertTrue(metrics.values.contains { $0.kind == .operationDuration })
+        XCTAssertFalse(metrics.values.contains { $0.operation.contains("INSERT") })
     }
 
     func testPhase0MigrationsAreIdempotent() throws {
@@ -526,5 +831,39 @@ final class DatabaseMigrationTests: XCTestCase {
 
     private func indexNames(on table: String, connection: SQLiteConnection) throws -> Set<String> {
         Set(try connection.queryRows("PRAGMA index_list(\(table));").compactMap { $0["name"] })
+    }
+}
+
+private final class LockedDatabaseErrors: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [Error] = []
+
+    var values: [Error] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func append(_ error: Error) {
+        lock.lock()
+        storage.append(error)
+        lock.unlock()
+    }
+}
+
+private final class LockedDatabaseMetrics: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [SQLiteDatabaseMetric] = []
+
+    var values: [SQLiteDatabaseMetric] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func append(_ metric: SQLiteDatabaseMetric) {
+        lock.lock()
+        storage.append(metric)
+        lock.unlock()
     }
 }

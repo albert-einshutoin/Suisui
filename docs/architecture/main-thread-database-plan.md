@@ -1,6 +1,11 @@
 # Main-Thread Database Access: Assessment and Migration Plan
 
-Status: assessment. Drafted 2026-07-07.
+Status: foundation implemented by ADR 0012. Drafted 2026-07-07, updated 2026-07-24.
+
+The connection-level serialization, WAL/busy policy, cancellation-aware
+`SQLiteDatabaseWorker`, and non-escapable row boundary described below now
+exist. Store-by-store async migration remains follow-up work; ADR 0012 is the
+authoritative ownership decision.
 
 ## Current state
 

@@ -326,7 +326,7 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
         return trimmed
     }
 
-    private static func record(row: [String: String]) throws -> InboxCaptureRecord {
+    private static func record(row: SQLiteMaterializedRow) throws -> InboxCaptureRecord {
         let sourceKind = try enumValue(
             InboxCaptureSourceKind.self,
             rawValue: requiredString(row["source_kind"], column: "inbox_capture_records.source_kind"),

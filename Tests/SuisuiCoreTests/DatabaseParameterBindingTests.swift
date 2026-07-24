@@ -30,7 +30,9 @@ final class DatabaseParameterBindingTests: XCTestCase {
             ]
         )
 
-        let rows = try connection.query("SELECT title, note, score, payload FROM bound_rows;") { row in
+        let rows = try connection.materializedRows(
+            "SELECT title, note, score, payload FROM bound_rows;"
+        ).map { row in
             (
                 title: try row.string("title"),
                 note: try row.optionalString("note"),
@@ -74,7 +76,7 @@ final class DatabaseParameterBindingTests: XCTestCase {
             parameters: [.text("empty"), .blob(Data())]
         )
 
-        let payloads = try connection.query("SELECT payload FROM bound_rows;") { row in
+        let payloads = try connection.materializedRows("SELECT payload FROM bound_rows;").map { row in
             try row.optionalData("payload")
         }
         XCTAssertEqual(payloads, [Data()])

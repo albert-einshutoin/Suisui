@@ -548,7 +548,7 @@ public final class SQLiteKnowledgeVectorIndex: CandidateKnowledgeVectorIndex, @u
         try KnowledgeVectorValidator.validateProviderID(vector.providerID)
     }
 
-    private func vector(row: [String: String]) throws -> KnowledgeEmbeddingVector {
+    private func vector(row: SQLiteMaterializedRow) throws -> KnowledgeEmbeddingVector {
         let dimensions = try KnowledgeSQL.requiredInt(
             row["dimensions"],
             column: "knowledge_frame_vectors.dimensions"
