@@ -4351,6 +4351,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("appendingPathComponent(\"ExecutionReceipts\", isDirectory: true)"))
     }
 
+    func testExternalSideEffectRecoveryRunsAtDatabaseStartupNotRegistryConstruction() throws {
+        let appRuntime = try readPackageFile("Sources/SuisuiApp/Composition/AppRuntimeFactory.swift")
+        let registryRuntime = try readPackageFile("Sources/SuisuiApp/Composition/RuntimeToolCompositionFactory.swift")
+
+        XCTAssertTrue(appRuntime.contains("externalSideEffectStartupRecovery.recoverOnce("))
+        XCTAssertTrue(appRuntime.contains("SQLiteMigrationRunner.migrate("))
+        XCTAssertFalse(registryRuntime.contains("recoverStartedAsUnknown("))
+        XCTAssertFalse(registryRuntime.contains("recoverOnce("))
+    }
+
     func testUnavailableReviewRegistryDoesNotSilentlyDropRegistrationFailures() throws {
         let appSource = try readAppShellSource()
 

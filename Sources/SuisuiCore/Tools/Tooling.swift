@@ -188,6 +188,10 @@ public struct ToolExecutionContext: Sendable {
     public var authorization: ToolActionAuthorization?
     public var now: Date
     public var source: ToolExecutionSource
+    public var executionID: String?
+    public var reviewSessionID: String?
+    public var actionID: String?
+    public var idempotencyKey: String?
 #if DEBUG
     // Existing unit checks exercise individual tools without constructing a
     // review session. This internal-only bridge is absent from release builds.
@@ -197,11 +201,19 @@ public struct ToolExecutionContext: Sendable {
     public init(
         authorization: ToolActionAuthorization? = nil,
         now: Date = Date(),
-        source: ToolExecutionSource
+        source: ToolExecutionSource,
+        executionID: String? = nil,
+        reviewSessionID: String? = nil,
+        actionID: String? = nil,
+        idempotencyKey: String? = nil
     ) {
         self.authorization = authorization
         self.now = now
         self.source = source
+        self.executionID = executionID
+        self.reviewSessionID = reviewSessionID
+        self.actionID = actionID
+        self.idempotencyKey = idempotencyKey
 #if DEBUG
         self.debugApprovalToken = nil
 #endif
@@ -219,14 +231,89 @@ public struct ToolExecutionContext: Sendable {
     internal init(
         approvalToken: ApprovalToken,
         now: Date = Date(),
-        source: ToolExecutionSource
+        source: ToolExecutionSource,
+        executionID: String? = nil,
+        reviewSessionID: String? = nil,
+        actionID: String? = nil,
+        idempotencyKey: String? = nil
     ) {
         self.authorization = nil
         self.now = now
         self.source = source
+        self.executionID = executionID
+        self.reviewSessionID = reviewSessionID
+        self.actionID = actionID
+        self.idempotencyKey = idempotencyKey
         self.debugApprovalToken = approvalToken
     }
 #endif
+
+    public func externalSideEffectRequest(
+        tool: ActionTool,
+        arguments: [String: JSONValue],
+        sideEffectArguments: [String: JSONValue]? = nil,
+        itemIndex: Int? = nil,
+        itemIdentity: String? = nil
+    ) throws -> ExternalSideEffectRequest {
+        guard let executionID,
+              let reviewSessionID,
+              let actionID,
+              let idempotencyKey else {
+            throw ToolExecutionError.sideEffectIdentityMissing(tool)
+        }
+        let canonicalArguments = sideEffectArguments ?? arguments
+        let itemKey: String
+        if itemIndex != nil {
+            guard let itemIdentity, !itemIdentity.isEmpty else {
+                throw ToolExecutionError.sideEffectIdentityMissing(tool)
+            }
+            // Bulk items must not inherit the action-level arguments digest or
+            // their current array position. The adapter supplies a stable
+            // content-occurrence identity so sibling edits and reordering do
+            // not duplicate already-succeeded external writes.
+            itemKey = try Self.externalSideEffectIdempotencyKey(
+                reviewSessionID: reviewSessionID,
+                actionID: "\(actionID):item:\(itemIdentity)",
+                tool: tool,
+                arguments: canonicalArguments
+            )
+        } else if sideEffectArguments != nil {
+            // Some actions carry local linkage metadata in addition to the
+            // external payload. Re-approval after changing only that metadata
+            // must still claim the original external side effect.
+            itemKey = try Self.externalSideEffectIdempotencyKey(
+                reviewSessionID: reviewSessionID,
+                actionID: actionID,
+                tool: tool,
+                arguments: canonicalArguments
+            )
+        } else {
+            itemKey = idempotencyKey
+        }
+        return ExternalSideEffectRequest(
+            executionID: executionID,
+            reviewSessionID: reviewSessionID,
+            actionID: actionID,
+            itemIndex: itemIndex,
+            tool: tool,
+            canonicalArgumentsDigest: try CanonicalJSONEncoder.digest(.object(canonicalArguments)),
+            idempotencyKey: itemKey
+        )
+    }
+
+    public static func externalSideEffectIdempotencyKey(
+        reviewSessionID: String,
+        actionID: String,
+        tool: ActionTool,
+        arguments: [String: JSONValue]
+    ) throws -> String {
+        let argumentsDigest = try CanonicalJSONEncoder.digest(.object(arguments)).lowercaseHexString
+        let material = "\(reviewSessionID)\u{0}\(actionID)\u{0}\(tool.rawValue)\u{0}\(argumentsDigest)"
+        // Google Calendar accepts caller-provided event IDs only in base32hex.
+        // A `suisui` prefix plus a 64-character hexadecimal SHA-256 digest is
+        // valid there and remains suitable for every other adapter.
+        return "suisui\(Data(SHA256.hash(data: Data(material.utf8))).lowercaseHexString)"
+    }
 }
 
 public enum ToolExecutionSource: String, Equatable, Sendable {
@@ -265,12 +352,70 @@ public struct ToolResult: Equatable, Sendable {
     }
 }
 
+public struct ExternalSideEffectFailureEvidence: Equatable, Sendable {
+    public var tool: ActionTool
+    public var idempotencyKey: String
+    public var journalRecordID: String
+    public var externalResourceID: String?
+    public var state: ExternalSideEffectState
+
+    public init(
+        tool: ActionTool,
+        idempotencyKey: String,
+        journalRecordID: String,
+        externalResourceID: String?,
+        state: ExternalSideEffectState
+    ) {
+        self.tool = tool
+        self.idempotencyKey = idempotencyKey
+        self.journalRecordID = journalRecordID
+        self.externalResourceID = externalResourceID
+        self.state = state
+    }
+
+    public init(record: ExternalSideEffectRecord) {
+        self.init(
+            tool: record.tool,
+            idempotencyKey: record.idempotencyKey,
+            journalRecordID: record.id,
+            externalResourceID: record.externalResourceID,
+            state: record.state
+        )
+    }
+}
+
+public enum ExternalSideEffectBatchFailureReason: Equatable, Sendable {
+    case executionFailed(String)
+    case inProgress
+    case requiresReconciliation
+}
+
+public struct ExternalSideEffectBatchFailureEvidence: Equatable, Sendable {
+    public var tool: ActionTool
+    public var reason: ExternalSideEffectBatchFailureReason
+    public var records: [ExternalSideEffectFailureEvidence]
+
+    public init(
+        tool: ActionTool,
+        reason: ExternalSideEffectBatchFailureReason,
+        records: [ExternalSideEffectFailureEvidence]
+    ) {
+        self.tool = tool
+        self.reason = reason
+        self.records = records
+    }
+}
+
 public enum ToolExecutionError: Error, Equatable, Sendable {
     case duplicateTool(ActionTool)
     case unknownTool(ActionTool)
     case approvalRequired(ActionTool)
     case approvalBindingInvalid(ActionTool)
     case dangerousToolBlocked(ActionTool)
+    case sideEffectIdentityMissing(ActionTool)
+    case externalSideEffectInProgress(ExternalSideEffectFailureEvidence)
+    case externalSideEffectRequiresReconciliation(ExternalSideEffectFailureEvidence)
+    case externalSideEffectBatchFailed(ExternalSideEffectBatchFailureEvidence)
     case validationFailed(ActionTool, String)
     case executionFailed(ActionTool, String)
 }
@@ -279,6 +424,23 @@ public extension ToolExecutionError {
     static func validationFailed(_ tool: ActionTool, issues: [ToolInputValidationIssue]) -> ToolExecutionError {
         let message = issues.map(\.message).joined(separator: " ")
         return .validationFailed(tool, message.isEmpty ? "Invalid tool arguments." : message)
+    }
+
+    var externalSideEffectFailureEvidence: ExternalSideEffectFailureEvidence? {
+        switch self {
+        case .externalSideEffectInProgress(let evidence),
+             .externalSideEffectRequiresReconciliation(let evidence):
+            evidence
+        default:
+            nil
+        }
+    }
+
+    var externalSideEffectBatchFailureEvidence: ExternalSideEffectBatchFailureEvidence? {
+        guard case .externalSideEffectBatchFailed(let evidence) = self else {
+            return nil
+        }
+        return evidence
     }
 }
 

@@ -1285,13 +1285,27 @@ public final class SQLiteNotificationRequestStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        try connection.execute(
+        let claimedRequestIDs = try connection.queryStrings(
             """
             INSERT INTO notification_requests (request_id, status, title, scheduled_at)
-            VALUES (?, 'pending', ?, ?);
+            VALUES (?, 'pending', ?, ?)
+            ON CONFLICT(request_id) DO UPDATE SET
+                status = 'pending',
+                title = excluded.title,
+                scheduled_at = excluded.scheduled_at,
+                external_notification_id = NULL,
+                failure_reason = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE notification_requests.status = 'failed'
+            RETURNING request_id;
             """,
             parameters: [.text(requestID), .text(title), .text(scheduledAt)]
         )
+        guard claimedRequestIDs == [requestID] else {
+            // Reusing an active request identifier could duplicate the external
+            // notification. Only a terminal failed request is safe to retry.
+            throw ToolClientError.conflict("Notification request \(requestID) is already active.")
+        }
         return try getLocked(requestID: requestID)
     }
 

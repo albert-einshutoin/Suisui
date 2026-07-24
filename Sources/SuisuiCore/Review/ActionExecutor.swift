@@ -144,7 +144,16 @@ public struct ActionExecutor: Sendable {
                     context: ToolExecutionContext(
                         authorization: authorization,
                         now: now,
-                        source: .reviewUI
+                        source: .reviewUI,
+                        executionID: approval?.nonce.uuidString ?? working.id,
+                        reviewSessionID: working.id,
+                        actionID: action.id,
+                        idempotencyKey: try ToolExecutionContext.externalSideEffectIdempotencyKey(
+                            reviewSessionID: working.id,
+                            actionID: action.id,
+                            tool: action.tool,
+                            arguments: resolvedArguments
+                        )
                     )
                 )
                 let actionStatus = Self.actionExecutionStatus(for: result.status)
@@ -171,10 +180,15 @@ public struct ActionExecutor: Sendable {
                 }
             } catch {
                 hasFailure = true
+                let errorMessage = userFacingToolErrorMessage(for: error)
                 working.markAction(
                     id: item.id,
                     status: .failed,
-                    errorMessage: userFacingToolErrorMessage(for: error),
+                    result: Self.externalSideEffectFailureResult(
+                        for: error,
+                        summary: errorMessage
+                    ),
+                    errorMessage: errorMessage,
                     failureRecovery: Self.failureRecovery(for: error)
                 )
                 recordToolEventOrMarkAuditFailure(
@@ -376,9 +390,21 @@ public struct ActionExecutor: Sendable {
                  .approvalRequired,
                  .approvalBindingInvalid,
                  .dangerousToolBlocked,
+                 .sideEffectIdentityMissing,
+                 .externalSideEffectInProgress,
+                 .externalSideEffectRequiresReconciliation,
                  .unknownTool,
                  .duplicateTool:
                 return .notRetryable
+            case .externalSideEffectBatchFailed(let evidence):
+                switch evidence.reason {
+                case .inProgress, .requiresReconciliation:
+                    return .notRetryable
+                case .executionFailed(let message):
+                    return message.localizedCaseInsensitiveContains("permission")
+                        ? .notRetryable
+                        : .retryable
+                }
             case .executionFailed(_, let message):
                 return message.localizedCaseInsensitiveContains("permission")
                     ? .notRetryable
@@ -388,6 +414,51 @@ public struct ActionExecutor: Sendable {
 
         let message = String(describing: error)
         return message.localizedCaseInsensitiveContains("permission") ? .notRetryable : .retryable
+    }
+
+    private static func externalSideEffectFailureResult(
+        for error: Error,
+        summary: String
+    ) -> ToolResult? {
+        if let evidence = (error as? ToolExecutionError)?
+            .externalSideEffectBatchFailureEvidence,
+           let aggregateState = evidence.records.last?.state {
+            return ToolResult(
+                tool: evidence.tool,
+                status: .failed,
+                summary: summary,
+                output: [
+                    "idempotencyKeys": JSONValueFactory.strings(
+                        evidence.records.map(\.idempotencyKey)
+                    ),
+                    "journalRecordIds": JSONValueFactory.strings(
+                        evidence.records.map(\.journalRecordID)
+                    ),
+                    "externalResourceIds": JSONValueFactory.strings(
+                        evidence.records.compactMap(\.externalResourceID)
+                    ),
+                    "journalState": .string(aggregateState.rawValue)
+                ]
+            )
+        }
+        guard let evidence = (error as? ToolExecutionError)?
+            .externalSideEffectFailureEvidence else {
+            return nil
+        }
+        var output: [String: JSONValue] = [
+            "idempotencyKey": .string(evidence.idempotencyKey),
+            "journalRecordId": .string(evidence.journalRecordID),
+            "journalState": .string(evidence.state.rawValue)
+        ]
+        if let externalResourceID = evidence.externalResourceID {
+            output["externalResourceId"] = .string(externalResourceID)
+        }
+        return ToolResult(
+            tool: evidence.tool,
+            status: .failed,
+            summary: summary,
+            output: output
+        )
     }
 
     private static func actionExecutionStatus(for status: ToolExecutionStatus) -> ReviewActionExecutionStatus {
@@ -491,6 +562,21 @@ public struct ActionExecutor: Sendable {
             return "Approval no longer matches \(tool.rawValue). Review the action again."
         case ToolExecutionError.dangerousToolBlocked(let tool):
             return "Tool \(tool.rawValue) is blocked for safety."
+        case ToolExecutionError.sideEffectIdentityMissing(let tool):
+            return "Execution identity is missing for \(tool.rawValue). Review the action again."
+        case ToolExecutionError.externalSideEffectInProgress(let evidence):
+            return "\(evidence.tool.rawValue) is already in progress. Wait for reconciliation before retrying."
+        case ToolExecutionError.externalSideEffectRequiresReconciliation(let evidence):
+            return "\(evidence.tool.rawValue) may already have changed an external resource. Reconcile it before retrying."
+        case ToolExecutionError.externalSideEffectBatchFailed(let evidence):
+            switch evidence.reason {
+            case .inProgress:
+                return "\(evidence.tool.rawValue) is already in progress. Wait for reconciliation before retrying."
+            case .requiresReconciliation:
+                return "\(evidence.tool.rawValue) may already have changed external resources. Reconcile them before retrying."
+            case .executionFailed(let message):
+                return "\(evidence.tool.rawValue) failed: \(redacted(message))"
+            }
         case ToolExecutionError.validationFailed(let tool, let message):
             return "Invalid arguments for \(tool.rawValue): \(redacted(message))"
         case ToolExecutionError.executionFailed(let tool, let message):

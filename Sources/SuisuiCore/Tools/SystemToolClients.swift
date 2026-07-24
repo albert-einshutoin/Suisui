@@ -195,7 +195,17 @@ public final class LocalFileAccessClient: FileAccessClient, @unchecked Sendable 
         }
 
         try fileManager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try contents.write(to: target, atomically: true, encoding: .utf8)
+        do {
+            // `.withoutOverwriting` maps the final create to O_EXCL semantics.
+            // The earlier existence check improves the error message, while this
+            // option closes the check-then-write race between concurrent actions.
+            try Data(contents.utf8).write(to: target, options: .withoutOverwriting)
+        } catch {
+            if fileManager.fileExists(atPath: target.path) {
+                throw ToolClientError.conflict("File already exists: \(relativePath)")
+            }
+            throw error
+        }
         return makeArtifact(for: target, kind: "markdown")
     }
 

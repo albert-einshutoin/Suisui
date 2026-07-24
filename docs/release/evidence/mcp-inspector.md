@@ -1,8 +1,8 @@
 # MCP Inspector Evidence
 
-Generated: 2026-07-23T19:51:33Z
+Generated: 2026-07-23T23:32:14Z
 
-- Source commit: `445be575`
+- Source commit: `fbc7323b`
 
 Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and Suisui's local JSON-RPC smoke checks.
 

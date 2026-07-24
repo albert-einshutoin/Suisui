@@ -100,6 +100,54 @@ final class SystemToolTests: XCTestCase {
         XCTAssertEqual(request.externalNotificationID, "standup-reminder")
     }
 
+    func testNotificationToolRejectsDuplicateActiveRequestBeforeSchedulingAgain() throws {
+        let connection = try migratedConnection()
+        let requestStore = SQLiteNotificationRequestStore(connection: connection)
+        let client = InMemoryNotificationClient()
+        let tool = NotificationTool(name: .notificationSchedule, client: client, requestStore: requestStore)
+        let arguments: [String: JSONValue] = [
+            "title": .string("Standup"),
+            "id": .string("standup-reminder"),
+            "scheduledAt": .string("2026-06-18T09:00:00Z")
+        ]
+
+        _ = try tool.execute(arguments: arguments, context: approvedContext())
+
+        XCTAssertThrowsError(try tool.execute(arguments: arguments, context: approvedContext())) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(
+                    .notificationSchedule,
+                    "Notification request standup-reminder is already active."
+                )
+            )
+        }
+        XCTAssertEqual(try client.listScheduled().count, 1)
+    }
+
+    func testNotificationRequestStoreRetriesFailedRequest() throws {
+        let connection = try migratedConnection()
+        let requestStore = SQLiteNotificationRequestStore(connection: connection)
+        _ = try requestStore.createPending(
+            requestID: "standup-reminder",
+            title: "Original",
+            scheduledAt: "2026-06-18T09:00:00Z"
+        )
+        _ = try requestStore.markFailed(requestID: "standup-reminder", reason: "Permission denied")
+
+        let retried = try requestStore.createPending(
+            requestID: "standup-reminder",
+            title: "Retry",
+            scheduledAt: "2026-06-18T10:00:00Z"
+        )
+
+        XCTAssertEqual(retried.status, "pending")
+        XCTAssertEqual(retried.title, "Retry")
+        XCTAssertEqual(retried.scheduledAt, "2026-06-18T10:00:00Z")
+        XCTAssertNil(retried.externalNotificationID)
+        XCTAssertNil(retried.failureReason)
+    }
+
     func testNotificationRequestStoreRejectsCorruptedTitleInsteadOfReturningEmptyRequest() throws {
         let connection = try migratedConnection()
         let requestStore = SQLiteNotificationRequestStore(connection: connection)

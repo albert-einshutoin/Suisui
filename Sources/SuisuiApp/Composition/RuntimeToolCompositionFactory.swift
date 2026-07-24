@@ -48,6 +48,7 @@ extension AppRuntimeFactory {
         let projectStore = SQLiteProjectStore(connection: connection)
         let taskStore = SQLiteTaskStore(connection: connection)
         let artifactStore = SQLiteArtifactStore(connection: connection)
+        let sideEffectJournal = SQLiteExternalSideEffectJournal(connection: connection)
         let registry = try ToolRegistry.phase2MVP(
             projectStore: projectStore,
             taskStore: taskStore,
@@ -61,6 +62,7 @@ extension AppRuntimeFactory {
             calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
             reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
             artifactStore: artifactStore,
+            sideEffectJournal: sideEffectJournal,
             auditLogger: auditLogger
         )
         // Queue execution bridges project-panel approvals to local GitHub Flow
@@ -205,6 +207,7 @@ extension AppRuntimeFactory {
                 let projectStore = SQLiteProjectStore(connection: connection)
                 let taskStore = SQLiteTaskStore(connection: connection)
                 let artifactStore = SQLiteArtifactStore(connection: connection)
+                let sideEffectJournal = SQLiteExternalSideEffectJournal(connection: connection)
                 let registry = try ToolRegistry.phase2MVP(
                     projectStore: projectStore,
                     taskStore: taskStore,
@@ -218,6 +221,7 @@ extension AppRuntimeFactory {
                     calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
                     reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
                     artifactStore: artifactStore,
+                    sideEffectJournal: sideEffectJournal,
                     auditLogger: auditLogger
                 )
                 try registry.register(AuditedTool(
