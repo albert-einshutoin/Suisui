@@ -534,41 +534,43 @@ public final class SQLiteExternalSideEffectJournal: ExternalSideEffectJournal, @
         _ sql: String,
         parameters: [SQLiteValue] = []
     ) throws -> [ExternalSideEffectRecord] {
-        try connection.query(sql, parameters: parameters) { row in
-            let stateRaw = try row.string("state")
-            let toolRaw = try row.string("tool")
-            guard let state = ExternalSideEffectState(rawValue: stateRaw),
-                  let tool = ActionTool(rawValue: toolRaw),
-                  let preparedAt = self.dateFormatter.date(from: try row.string("prepared_at")),
-                  let updatedAt = self.dateFormatter.date(from: try row.string("updated_at")) else {
-                throw ExternalSideEffectJournalError.corruptedRecord(try row.string("id"))
+        try retryingDatabaseBusy {
+            try connection.query(sql, parameters: parameters) { row in
+                let stateRaw = try row.string("state")
+                let toolRaw = try row.string("tool")
+                guard let state = ExternalSideEffectState(rawValue: stateRaw),
+                      let tool = ActionTool(rawValue: toolRaw),
+                      let preparedAt = self.dateFormatter.date(from: try row.string("prepared_at")),
+                      let updatedAt = self.dateFormatter.date(from: try row.string("updated_at")) else {
+                    throw ExternalSideEffectJournalError.corruptedRecord(try row.string("id"))
+                }
+                let result: ToolResult?
+                if let data = try row.optionalData("result_json") {
+                    result = try self.decoder.decode(ExternalSideEffectResultPayload.self, from: data).toolResult
+                } else {
+                    result = nil
+                }
+                return ExternalSideEffectRecord(
+                    id: try row.string("id"),
+                    executionID: try row.string("execution_id"),
+                    reviewSessionID: try row.string("review_session_id"),
+                    actionID: try row.string("action_id"),
+                    itemIndex: try row.optionalInt64("item_index").map(Int.init),
+                    tool: tool,
+                    canonicalArgumentsDigest: try row.data("canonical_arguments_digest"),
+                    idempotencyKey: try row.string("idempotency_key"),
+                    attempt: Int(try row.int64("attempt")),
+                    state: state,
+                    externalResourceID: try row.optionalString("external_resource_id"),
+                    preparedAt: preparedAt,
+                    startedAt: try row.optionalString("started_at").flatMap(self.dateFormatter.date(from:)),
+                    completedAt: try row.optionalString("completed_at").flatMap(self.dateFormatter.date(from:)),
+                    updatedAt: updatedAt,
+                    failureCategory: try row.optionalString("failure_category"),
+                    reconciliationResult: try row.optionalString("reconciliation_result"),
+                    result: result
+                )
             }
-            let result: ToolResult?
-            if let data = try row.optionalData("result_json") {
-                result = try self.decoder.decode(ExternalSideEffectResultPayload.self, from: data).toolResult
-            } else {
-                result = nil
-            }
-            return ExternalSideEffectRecord(
-                id: try row.string("id"),
-                executionID: try row.string("execution_id"),
-                reviewSessionID: try row.string("review_session_id"),
-                actionID: try row.string("action_id"),
-                itemIndex: try row.optionalInt64("item_index").map(Int.init),
-                tool: tool,
-                canonicalArgumentsDigest: try row.data("canonical_arguments_digest"),
-                idempotencyKey: try row.string("idempotency_key"),
-                attempt: Int(try row.int64("attempt")),
-                state: state,
-                externalResourceID: try row.optionalString("external_resource_id"),
-                preparedAt: preparedAt,
-                startedAt: try row.optionalString("started_at").flatMap(self.dateFormatter.date(from:)),
-                completedAt: try row.optionalString("completed_at").flatMap(self.dateFormatter.date(from:)),
-                updatedAt: updatedAt,
-                failureCategory: try row.optionalString("failure_category"),
-                reconciliationResult: try row.optionalString("reconciliation_result"),
-                result: result
-            )
         }
     }
 }

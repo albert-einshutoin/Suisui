@@ -412,6 +412,48 @@ final class ExternalSideEffectJournalTests: XCTestCase {
         XCTAssertEqual(try store.record(id: prepared.id)?.state, .started)
     }
 
+    func testJournalClaimRetriesBriefSQLiteReadContention() throws {
+        let root = temporaryDirectory()
+        let databaseURL = root.appendingPathComponent("journal.sqlite")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let journalConnection = try migratedConnection(path: databaseURL.path)
+        let lockingConnection = try SQLiteConnection(path: databaseURL.path)
+        let store = SQLiteExternalSideEffectJournal(connection: journalConnection)
+        let request = makeRequest(idempotencyKey: "read-contention-key")
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        guard case .execute = try store.claim(request, at: now) else {
+            return XCTFail("First claim must be executable.")
+        }
+        try lockingConnection.execute("BEGIN EXCLUSIVE;")
+
+        let claimStarted = DispatchSemaphore(value: 0)
+        let claimFinished = expectation(description: "journal claim finished")
+        let outcomes = LockedClaimOutcomes()
+        DispatchQueue.global().async {
+            claimStarted.signal()
+            do {
+                outcomes.append(try store.claim(request, at: now))
+            } catch {
+                outcomes.append(error)
+            }
+            claimFinished.fulfill()
+        }
+
+        claimStarted.wait()
+        Thread.sleep(forTimeInterval: 0.01)
+        try lockingConnection.execute("COMMIT;")
+        wait(for: [claimFinished], timeout: 1)
+
+        XCTAssertTrue(outcomes.errors.isEmpty, "Unexpected claim errors: \(outcomes.errors)")
+        XCTAssertEqual(
+            outcomes.claims.filter {
+                if case .inProgress = $0 { return true }
+                return false
+            }.count,
+            1
+        )
+    }
+
     func testBulkItemsRoundTripIndependently() throws {
         let store = try makeStore()
         let now = Date(timeIntervalSince1970: 1_800_000_000)
