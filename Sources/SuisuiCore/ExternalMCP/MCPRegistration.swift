@@ -299,7 +299,7 @@ public final class SQLiteMCPServerRegistrationStore: MCPServerRegistrationStore,
         return (Int(maxValue ?? "-1") ?? -1) + 1
     }
 
-    private static func registration(row: [String: String]) throws -> MCPServerRegistration {
+    private static func registration(row: SQLiteMaterializedRow) throws -> MCPServerRegistration {
         let id = try requiredColumn("id", in: row)
         let displayName = try requiredColumn("display_name", in: row)
         let command = try requiredColumn("command", in: row)
@@ -318,7 +318,7 @@ public final class SQLiteMCPServerRegistrationStore: MCPServerRegistrationStore,
         )
     }
 
-    private static func requiredColumn(_ column: String, in row: [String: String]) throws -> String {
+    private static func requiredColumn(_ column: String, in row: SQLiteMaterializedRow) throws -> String {
         guard let value = row[column] else {
             throw LocalStoreDecodingError.missingRequiredColumn(column: "mcp_server_registrations.\(column)")
         }

@@ -535,7 +535,7 @@ public final class SQLiteExternalSideEffectJournal: ExternalSideEffectJournal, @
         parameters: [SQLiteValue] = []
     ) throws -> [ExternalSideEffectRecord] {
         try retryingDatabaseBusy {
-            try connection.query(sql, parameters: parameters) { row in
+            try connection.materializedRows(sql, parameters: parameters).map { row in
                 let stateRaw = try row.string("state")
                 let toolRaw = try row.string("tool")
                 guard let state = ExternalSideEffectState(rawValue: stateRaw),

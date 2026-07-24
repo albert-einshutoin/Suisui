@@ -7126,8 +7126,14 @@ public final class ProjectBoardViewModel: ObservableObject {
                  .prepareFailed(let detail), .stepFailed(let detail),
                  .missingColumn(let detail):
                 message = detail
+            case .busyTimeout(let operation):
+                message = "The local database stayed busy during \(operation). Try again."
+            case .duplicateColumnName(let column):
+                message = "The local database query returned duplicate column \(column)."
             case .invalidColumnValue(let column, let value):
                 message = "\(column) contains invalid value \(value)."
+            case .nestedTransaction:
+                message = "A nested local database transaction was rejected."
             }
             return UserFacingErrorMessageSanitizer.message(from: message, fallback: fallback)
         }

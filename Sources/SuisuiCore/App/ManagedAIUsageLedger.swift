@@ -315,7 +315,7 @@ public final class SQLiteManagedAIUsageLedgerStore: ManagedAIUsageLedgerStore, @
         )
     }
 
-    private func entry(row: [String: String]) throws -> ManagedAIUsageLedgerEntry {
+    private func entry(row: SQLiteMaterializedRow) throws -> ManagedAIUsageLedgerEntry {
         guard let rawBillingMode = row["billing_mode"],
               let billingMode = AssistantQueueCostBillingMode(rawValue: rawBillingMode) else {
             throw ManagedAIUsageLedgerStoreError.invalidStoredValue(column: "billing_mode", value: row["billing_mode"] ?? "")

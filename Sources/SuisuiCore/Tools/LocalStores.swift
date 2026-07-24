@@ -1592,7 +1592,7 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
 }
 
 private extension ProjectRecord {
-    init(row: [String: String]) throws {
+    init(row: SQLiteMaterializedRow) throws {
         let status = try StoreFieldValidation.persistedProjectStatus(
             try SQL.requiredString(row["status"], column: "projects.status"),
             column: "projects.status"
@@ -1613,7 +1613,7 @@ private extension ProjectRecord {
         )
     }
 
-    init(projectBoardRow row: [String: String]) throws {
+    init(projectBoardRow row: SQLiteMaterializedRow) throws {
         let status = try StoreFieldValidation.persistedProjectStatus(
             try SQL.requiredString(row["status"], column: "projects.status"),
             column: "projects.status"
@@ -1640,7 +1640,7 @@ private extension ProjectRecord {
 }
 
 private extension TaskRecord {
-    init(row: [String: String]) throws {
+    init(row: SQLiteMaterializedRow) throws {
         let status = try StoreFieldValidation.persistedTaskStatus(
             try SQL.requiredString(row["status"], column: "tasks.status"),
             column: "tasks.status"
@@ -1662,7 +1662,7 @@ private extension TaskRecord {
 }
 
 private extension KnowledgeFrameRecord {
-    init(row: [String: String]) throws {
+    init(row: SQLiteMaterializedRow) throws {
         self.init(
             id: try SQL.requiredInt64(row["id"], column: "knowledge_frames.id"),
             name: try SQL.requiredString(row["name"], column: "knowledge_frames.name"),
@@ -1676,7 +1676,7 @@ private extension KnowledgeFrameRecord {
 }
 
 private extension NotificationRequestRecord {
-    init(row: [String: String]) throws {
+    init(row: SQLiteMaterializedRow) throws {
         let status = try StoreFieldValidation.persistedNotificationStatus(
             try SQL.requiredString(row["status"], column: "notification_requests.status"),
             column: "notification_requests.status"
@@ -1694,7 +1694,7 @@ private extension NotificationRequestRecord {
 }
 
 private extension CalendarLinkRecord {
-    init(row: [String: String]) throws {
+    init(row: SQLiteMaterializedRow) throws {
         self.init(
             id: try SQL.requiredInt64(row["id"], column: "calendar_links.id"),
             eventID: try SQL.requiredString(row["event_id"], column: "calendar_links.event_id"),
@@ -1706,7 +1706,7 @@ private extension CalendarLinkRecord {
 }
 
 private extension ExternalTaskLinkRecord {
-    init(row: [String: String]) throws {
+    init(row: SQLiteMaterializedRow) throws {
         self.init(
             id: try SQL.requiredInt64(row["id"], column: "external_task_links.id"),
             providerID: try SQL.requiredString(row["provider_id"], column: "external_task_links.provider_id"),
@@ -1719,7 +1719,7 @@ private extension ExternalTaskLinkRecord {
 }
 
 private extension ReminderLinkRecord {
-    init(row: [String: String]) throws {
+    init(row: SQLiteMaterializedRow) throws {
         self.init(
             id: try SQL.requiredInt64(row["id"], column: "reminder_links.id"),
             reminderID: try SQL.requiredString(row["reminder_id"], column: "reminder_links.reminder_id"),

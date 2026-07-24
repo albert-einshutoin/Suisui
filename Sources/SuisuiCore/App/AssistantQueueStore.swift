@@ -838,7 +838,7 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
             let placeholders = Array(repeating: "?", count: stateValues.count).joined(separator: ", ")
             return "WHERE state IN (\(placeholders))"
         } ?? ""
-        let rows = try connection.query(
+        let rows = try connection.materializedRows(
             """
             SELECT
                 id,
@@ -858,7 +858,7 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
             LIMIT ?;
             """,
             parameters: stateValues.map { .text($0) } + [.integer(Int64(filter.limit))]
-        ) { row in
+        ).map { row in
             try readModelRow(row: row, receipt: latestReceipts[try row.string("id")])
         }
         // SQLite returns the latest bounded window; UI ordering still follows the
@@ -868,7 +868,7 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
     }
 
     private func readModelRow(
-        row: SQLiteRow,
+        row: SQLiteMaterializedRow,
         receipt: AssistantQueueReceiptSummary?
     ) throws -> AssistantQueueReadModelRow {
         let id = try row.string("id")
@@ -1236,7 +1236,7 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
         return try connection.queryStrings("SELECT changes();").first == "1"
     }
 
-    private func item(row: [String: String]) throws -> AssistantQueueItem {
+    private func item(row: SQLiteMaterializedRow) throws -> AssistantQueueItem {
         let state = try enumValue(
             AssistantQueueState.self,
             rawValue: requiredString(row["state"], column: "assistant_queue_items.state"),

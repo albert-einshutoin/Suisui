@@ -132,7 +132,7 @@ public final class SQLiteProjectMilestoneStore: @unchecked Sendable {
 }
 
 private extension ProjectMilestoneRecord {
-    init(row: [String: String]) throws {
+    init(row: SQLiteMaterializedRow) throws {
         self.init(
             id: try MilestoneSQL.requiredInt64(row["id"], column: "project_milestones.id"),
             projectID: try MilestoneSQL.requiredInt64(row["project_id"], column: "project_milestones.project_id"),

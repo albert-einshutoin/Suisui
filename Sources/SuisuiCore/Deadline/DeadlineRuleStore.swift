@@ -94,7 +94,7 @@ public final class SQLiteDeadlineRuleStore: @unchecked Sendable {
 }
 
 private extension DeadlineRule {
-    init(row: [String: String]) throws {
+    init(row: SQLiteMaterializedRow) throws {
         let id = try SQL.requiredInt64(row["id"], column: "deadline_rules.id")
         let targetType = try SQL.requiredString(row["target_type"], column: "deadline_rules.target_type")
         let targetID = try SQL.requiredInt64(row["target_id"], column: "deadline_rules.target_id")

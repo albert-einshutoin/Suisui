@@ -1,18 +1,73 @@
 import Foundation
 import SQLite3
 
-public enum DatabaseError: Error, Equatable {
+public enum DatabaseError: Error, Equatable, Sendable {
     case openFailed(String)
     case executeFailed(String)
     case prepareFailed(String)
     case stepFailed(String)
+    case busyTimeout(operation: String)
     case missingColumn(String)
+    case duplicateColumnName(String)
     case invalidColumnValue(column: String, value: String)
+    case nestedTransaction
 }
 
-public struct SQLiteRow {
-    fileprivate let statement: OpaquePointer?
-    fileprivate let columnIndexes: [String: Int32]
+public enum SQLiteCell: Equatable, Sendable {
+    case null
+    case integer(Int64)
+    case real(Double)
+    case text(String)
+    case blob(Data)
+
+    fileprivate var storageClass: String {
+        switch self {
+        case .null:
+            "null"
+        case .integer:
+            "integer"
+        case .real:
+            "real"
+        case .text:
+            "text"
+        case .blob:
+            "blob"
+        }
+    }
+
+    fileprivate var legacyString: String? {
+        switch self {
+        case .null:
+            nil
+        case .integer(let value):
+            String(value)
+        case .real(let value):
+            String(value)
+        case .text(let value):
+            value
+        case .blob(let value):
+            String(decoding: value, as: UTF8.self)
+        }
+    }
+}
+
+public struct SQLiteMaterializedRow: Equatable, Sendable {
+    public let cells: [String: SQLiteCell]
+
+    public init(cells: [String: SQLiteCell]) {
+        self.cells = cells
+    }
+
+    public subscript(column: String) -> String? {
+        cells[column]?.legacyString
+    }
+
+    public func cell(_ column: String) throws -> SQLiteCell {
+        guard let value = cells[column] else {
+            throw DatabaseError.missingColumn(column)
+        }
+        return value
+    }
 
     public func string(_ column: String) throws -> String {
         guard let value = try optionalString(column) else {
@@ -22,13 +77,14 @@ public struct SQLiteRow {
     }
 
     public func optionalString(_ column: String) throws -> String? {
-        let index = try columnIndex(column)
-        guard sqlite3_column_type(statement, index) != SQLITE_NULL,
-              let text = sqlite3_column_text(statement, index) else {
+        switch try cell(column) {
+        case .null:
             return nil
+        case .text(let value):
+            return value
+        case let value:
+            throw DatabaseError.invalidColumnValue(column: column, value: value.storageClass)
         }
-        let cString = UnsafeRawPointer(text).assumingMemoryBound(to: CChar.self)
-        return String(cString: cString)
     }
 
     public func int64(_ column: String) throws -> Int64 {
@@ -39,18 +95,52 @@ public struct SQLiteRow {
     }
 
     public func optionalInt64(_ column: String) throws -> Int64? {
-        let index = try columnIndex(column)
-        guard sqlite3_column_type(statement, index) != SQLITE_NULL else {
+        switch try cell(column) {
+        case .null:
             return nil
+        case .integer(let value):
+            return value
+        case let value:
+            throw DatabaseError.invalidColumnValue(column: column, value: value.storageClass)
         }
-        if sqlite3_column_type(statement, index) == SQLITE_INTEGER {
-            return sqlite3_column_int64(statement, index)
-        }
-        let rawValue = try optionalString(column) ?? ""
-        guard let value = Int64(rawValue) else {
-            throw DatabaseError.invalidColumnValue(column: column, value: rawValue)
+    }
+
+    public func double(_ column: String) throws -> Double {
+        guard let value = try optionalDouble(column) else {
+            throw DatabaseError.missingColumn(column)
         }
         return value
+    }
+
+    public func optionalDouble(_ column: String) throws -> Double? {
+        switch try cell(column) {
+        case .null:
+            return nil
+        case .real(let value):
+            return value
+        case let value:
+            throw DatabaseError.invalidColumnValue(column: column, value: value.storageClass)
+        }
+    }
+
+    public func bool(_ column: String) throws -> Bool {
+        guard let value = try optionalBool(column) else {
+            throw DatabaseError.missingColumn(column)
+        }
+        return value
+    }
+
+    public func optionalBool(_ column: String) throws -> Bool? {
+        switch try cell(column) {
+        case .null:
+            return nil
+        case .integer(0):
+            return false
+        case .integer(1):
+            return true
+        case let value:
+            throw DatabaseError.invalidColumnValue(column: column, value: value.storageClass)
+        }
     }
 
     public func data(_ column: String) throws -> Data {
@@ -61,21 +151,37 @@ public struct SQLiteRow {
     }
 
     public func optionalData(_ column: String) throws -> Data? {
-        let index = try columnIndex(column)
-        guard sqlite3_column_type(statement, index) != SQLITE_NULL else {
+        switch try cell(column) {
+        case .null:
             return nil
+        case .blob(let value):
+            return value
+        case let value:
+            throw DatabaseError.invalidColumnValue(column: column, value: value.storageClass)
         }
-        guard let bytes = sqlite3_column_blob(statement, index) else {
-            return Data()
-        }
-        return Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, index)))
     }
 
-    private func columnIndex(_ column: String) throws -> Int32 {
-        guard let index = columnIndexes[column] else {
+    public func date(
+        _ column: String,
+        using parser: (String) -> Date?
+    ) throws -> Date {
+        guard let value = try optionalDate(column, using: parser) else {
             throw DatabaseError.missingColumn(column)
         }
-        return index
+        return value
+    }
+
+    public func optionalDate(
+        _ column: String,
+        using parser: (String) -> Date?
+    ) throws -> Date? {
+        guard let value = try optionalString(column) else {
+            return nil
+        }
+        guard let date = parser(value) else {
+            throw DatabaseError.invalidColumnValue(column: column, value: "text")
+        }
+        return date
     }
 }
 
@@ -111,140 +217,216 @@ public enum SQLiteValue: Equatable, Sendable {
     }
 }
 
-public final class SQLiteConnection {
+public struct SQLiteDatabaseMetric: Equatable, Sendable {
+    public enum Kind: String, Equatable, Sendable {
+        case lockWait
+        case operationDuration
+        case rollback
+    }
+
+    public let kind: Kind
+    public let operation: String
+    public let durationMilliseconds: Double?
+    public let category: String?
+
+    public init(
+        kind: Kind,
+        operation: String,
+        durationMilliseconds: Double? = nil,
+        category: String? = nil
+    ) {
+        self.kind = kind
+        self.operation = operation
+        self.durationMilliseconds = durationMilliseconds
+        self.category = category
+    }
+}
+
+public final class SQLiteConnection: @unchecked Sendable {
+    public static let busyTimeoutMilliseconds: Int32 = 250
+    public static let walAutoCheckpointPages = 1_000
+
     private var database: OpaquePointer?
+    private let accessLock = NSRecursiveLock()
+    private var accessDepth = 0
+    private var transactionDepth = 0
+    private let metricSink: (@Sendable (SQLiteDatabaseMetric) -> Void)?
     // sqlite3_bind copies bound buffers when given SQLITE_TRANSIENT, so Swift
     // strings and Data can be released as soon as the bind call returns.
     private static let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-    public init(path: String, readOnly: Bool = false) throws {
-        let flags = readOnly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
+    public init(
+        path: String,
+        readOnly: Bool = false,
+        metricSink: (@Sendable (SQLiteDatabaseMetric) -> Void)? = nil
+    ) throws {
+        self.metricSink = metricSink
+        let flags = (readOnly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE)
+            | SQLITE_OPEN_FULLMUTEX
         let status = sqlite3_open_v2(path, &database, flags, nil)
         guard status == SQLITE_OK else {
             let message = database.map { String(cString: sqlite3_errmsg($0)) } ?? "Unknown SQLite open error."
             throw DatabaseError.openFailed(message)
         }
-        try enableForeignKeys()
+        try configure(path: path, readOnly: readOnly)
     }
 
     deinit {
+        accessLock.lock()
         sqlite3_close(database)
+        accessLock.unlock()
     }
 
     public var numberOfChanges: Int {
-        Int(sqlite3_changes(database))
+        withAccessLock(operation: "number_of_changes") {
+            Int(sqlite3_changes(database))
+        }
     }
 
     public func execute(_ sql: String) throws {
+        try withAccessLock(operation: "execute") {
+            try executeUnlocked(sql)
+        }
+    }
+
+    private func executeUnlocked(_ sql: String) throws {
         var errorMessage: UnsafeMutablePointer<Int8>?
         let status = sqlite3_exec(database, sql, nil, nil, &errorMessage)
 
         guard status == SQLITE_OK else {
             let message = errorMessage.map { String(cString: $0) } ?? "Unknown SQLite execution error."
             sqlite3_free(errorMessage)
-            throw DatabaseError.executeFailed(message)
+            throw classifiedError(status: status, operation: "execute", fallback: .executeFailed(message))
         }
     }
 
     /// Executes a single statement with `?` placeholders bound to `parameters`.
     /// Binding happens inside SQLite, so values never require manual escaping.
     public func execute(_ sql: String, parameters: [SQLiteValue]) throws {
-        let statement = try prepare(sql, parameters: parameters)
-        defer { sqlite3_finalize(statement) }
+        try withAccessLock(operation: "execute_bound") {
+            let statement = try prepare(sql, parameters: parameters)
+            defer { sqlite3_finalize(statement) }
 
-        let stepStatus = sqlite3_step(statement)
-        guard stepStatus == SQLITE_DONE || stepStatus == SQLITE_ROW else {
-            throw DatabaseError.stepFailed(errorMessage)
+            let stepStatus = sqlite3_step(statement)
+            guard stepStatus == SQLITE_DONE || stepStatus == SQLITE_ROW else {
+                throw classifiedError(
+                    status: stepStatus,
+                    operation: "execute step",
+                    fallback: .stepFailed(errorMessage)
+                )
+            }
         }
     }
 
     public func transaction<T>(_ body: () throws -> T) throws -> T {
-        try execute("BEGIN;")
+        var rollbackCategory: String?
         do {
-            let result = try body()
-            try execute("COMMIT;")
-            return result
+            return try withAccessLock(operation: "transaction") {
+                guard transactionDepth == 0 else {
+                    throw DatabaseError.nestedTransaction
+                }
+                transactionDepth = 1
+                defer { transactionDepth = 0 }
+
+                try executeUnlocked("BEGIN;")
+                do {
+                    let result = try body()
+                    try executeUnlocked("COMMIT;")
+                    return result
+                } catch {
+                    rollbackCategory = Self.rollbackCategory(for: error)
+                    try? executeUnlocked("ROLLBACK;")
+                    throw error
+                }
+            }
         } catch {
-            try? execute("ROLLBACK;")
+            if let rollbackCategory {
+                metricSink?(
+                    SQLiteDatabaseMetric(
+                        kind: .rollback,
+                        operation: "transaction",
+                        category: rollbackCategory
+                    )
+                )
+            }
             throw error
         }
     }
 
     public func queryStrings(_ sql: String, parameters: [SQLiteValue] = []) throws -> [String] {
-        let statement = try prepare(sql, parameters: parameters)
-        defer { sqlite3_finalize(statement) }
+        try withAccessLock(operation: "query_strings") {
+            let statement = try prepare(sql, parameters: parameters)
+            defer { sqlite3_finalize(statement) }
 
-        var results: [String] = []
+            var results: [String] = []
 
-        while true {
-            let stepStatus = sqlite3_step(statement)
+            while true {
+                let stepStatus = sqlite3_step(statement)
 
-            if stepStatus == SQLITE_ROW {
-                if let text = sqlite3_column_text(statement, 0) {
-                    let cString = UnsafeRawPointer(text).assumingMemoryBound(to: CChar.self)
-                    results.append(String(cString: cString))
-                }
-            } else if stepStatus == SQLITE_DONE {
-                return results
-            } else {
-                throw DatabaseError.stepFailed(errorMessage)
-            }
-        }
-    }
-
-    public func queryRows(_ sql: String, parameters: [SQLiteValue] = []) throws -> [[String: String]] {
-        let statement = try prepare(sql, parameters: parameters)
-        defer { sqlite3_finalize(statement) }
-
-        var rows: [[String: String]] = []
-
-        while true {
-            let stepStatus = sqlite3_step(statement)
-
-            if stepStatus == SQLITE_ROW {
-                var row: [String: String] = [:]
-                for index in 0..<sqlite3_column_count(statement) {
-                    let name = String(cString: sqlite3_column_name(statement, index))
-                    if let text = sqlite3_column_text(statement, index) {
-                        let cString = UnsafeRawPointer(text).assumingMemoryBound(to: CChar.self)
-                        row[name] = String(cString: cString)
-                    } else {
-                        row[name] = ""
+                if stepStatus == SQLITE_ROW {
+                    if let value = Self.materializedCell(
+                        statement: statement,
+                        index: 0
+                    ).legacyString {
+                        results.append(value)
                     }
+                } else if stepStatus == SQLITE_DONE {
+                    return results
+                } else {
+                    throw classifiedError(
+                        status: stepStatus,
+                        operation: "query strings step",
+                        fallback: .stepFailed(errorMessage)
+                    )
                 }
-                rows.append(row)
-            } else if stepStatus == SQLITE_DONE {
-                return rows
-            } else {
-                throw DatabaseError.stepFailed(errorMessage)
             }
         }
     }
 
-    public func query<T>(_ sql: String, parameters: [SQLiteValue] = [], _ map: (SQLiteRow) throws -> T) throws -> [T] {
-        let statement = try prepare(sql, parameters: parameters)
-        defer { sqlite3_finalize(statement) }
+    public func materializedRows(
+        _ sql: String,
+        parameters: [SQLiteValue] = []
+    ) throws -> [SQLiteMaterializedRow] {
+        try withAccessLock(operation: "query_materialized") {
+            let statement = try prepare(sql, parameters: parameters)
+            defer { sqlite3_finalize(statement) }
 
-        let row = SQLiteRow(statement: statement, columnIndexes: columnIndexes(for: statement))
-        var results: [T] = []
+            let columns = try columnIndexes(for: statement)
+            var rows: [SQLiteMaterializedRow] = []
 
-        while true {
-            let stepStatus = sqlite3_step(statement)
+            while true {
+                let stepStatus = sqlite3_step(statement)
 
-            if stepStatus == SQLITE_ROW {
-                // Hot list paths use typed row access so they do not allocate a full
-                // [String: String] dictionary for columns the caller never reads.
-                results.append(try map(row))
-            } else if stepStatus == SQLITE_DONE {
-                return results
-            } else {
-                throw DatabaseError.stepFailed(errorMessage)
+                if stepStatus == SQLITE_ROW {
+                    var cells: [String: SQLiteCell] = [:]
+                    for (name, index) in columns {
+                        cells[name] = Self.materializedCell(statement: statement, index: index)
+                    }
+                    rows.append(SQLiteMaterializedRow(cells: cells))
+                } else if stepStatus == SQLITE_DONE {
+                    return rows
+                } else {
+                    throw classifiedError(
+                        status: stepStatus,
+                        operation: "materialized query step",
+                        fallback: .stepFailed(errorMessage)
+                    )
+                }
             }
         }
+    }
+
+    public func queryRows(
+        _ sql: String,
+        parameters: [SQLiteValue] = []
+    ) throws -> [SQLiteMaterializedRow] {
+        try materializedRows(sql, parameters: parameters)
     }
 
     public var lastInsertedRowID: Int64 {
-        sqlite3_last_insert_rowid(database)
+        withAccessLock(operation: "last_inserted_row_id") {
+            sqlite3_last_insert_rowid(database)
+        }
     }
 
     public func tableExists(_ tableName: String) throws -> Bool {
@@ -261,7 +443,11 @@ public final class SQLiteConnection {
 
         guard prepareStatus == SQLITE_OK else {
             sqlite3_finalize(statement)
-            throw DatabaseError.prepareFailed(errorMessage)
+            throw classifiedError(
+                status: prepareStatus,
+                operation: "prepare",
+                fallback: .prepareFailed(errorMessage)
+            )
         }
 
         let expectedCount = Int(sqlite3_bind_parameter_count(statement))
@@ -283,7 +469,17 @@ public final class SQLiteConnection {
             case let .real(value):
                 bindStatus = sqlite3_bind_double(statement, index, value)
             case let .text(value):
-                bindStatus = sqlite3_bind_text(statement, index, value, -1, Self.transientDestructor)
+                // Bind the explicit UTF-8 byte count so embedded NUL remains
+                // data instead of being mistaken for a C-string terminator.
+                bindStatus = value.utf8CString.withUnsafeBufferPointer { buffer in
+                    sqlite3_bind_text(
+                        statement,
+                        index,
+                        buffer.baseAddress,
+                        Int32(buffer.count - 1),
+                        Self.transientDestructor
+                    )
+                }
             case let .blob(value) where value.isEmpty:
                 // An empty Data has no base address; zeroblob keeps the bound
                 // value an empty BLOB instead of collapsing it to NULL.
@@ -307,19 +503,230 @@ public final class SQLiteConnection {
         database.map { String(cString: sqlite3_errmsg($0)) } ?? "Unknown SQLite error."
     }
 
-    private func columnIndexes(for statement: OpaquePointer?) -> [String: Int32] {
+    private func columnIndexes(for statement: OpaquePointer?) throws -> [String: Int32] {
         var indexes: [String: Int32] = [:]
         for index in 0..<sqlite3_column_count(statement) {
             let name = String(cString: sqlite3_column_name(statement, index))
+            guard indexes[name] == nil else {
+                throw DatabaseError.duplicateColumnName(name)
+            }
             indexes[name] = index
         }
         return indexes
     }
 
-    private func enableForeignKeys() throws {
-        let status = sqlite3_exec(database, "PRAGMA foreign_keys = ON;", nil, nil, nil)
+    fileprivate static func materializedCell(
+        statement: OpaquePointer?,
+        index: Int32
+    ) -> SQLiteCell {
+        switch sqlite3_column_type(statement, index) {
+        case SQLITE_NULL:
+            return .null
+        case SQLITE_INTEGER:
+            return .integer(sqlite3_column_int64(statement, index))
+        case SQLITE_FLOAT:
+            return .real(sqlite3_column_double(statement, index))
+        case SQLITE_TEXT:
+            guard let bytes = sqlite3_column_text(statement, index) else {
+                return .text("")
+            }
+            let count = Int(sqlite3_column_bytes(statement, index))
+            let buffer = UnsafeRawBufferPointer(start: bytes, count: count)
+            return .text(String(decoding: buffer, as: UTF8.self))
+        case SQLITE_BLOB:
+            let count = Int(sqlite3_column_bytes(statement, index))
+            guard count > 0, let bytes = sqlite3_column_blob(statement, index) else {
+                return .blob(Data())
+            }
+            return .blob(Data(bytes: bytes, count: count))
+        default:
+            return .null
+        }
+    }
+
+    private func configure(path: String, readOnly: Bool) throws {
+        let timeoutStatus = sqlite3_busy_timeout(database, Self.busyTimeoutMilliseconds)
+        guard timeoutStatus == SQLITE_OK else {
+            throw DatabaseError.openFailed(errorMessage)
+        }
+
+        try configurePragma("foreign_keys", value: "ON")
+        try configurePragma("temp_store", value: "MEMORY")
+        if !readOnly {
+            if path != ":memory:" {
+                try configurePragma("journal_mode", value: "WAL")
+                try configurePragma(
+                    "wal_autocheckpoint",
+                    value: String(Self.walAutoCheckpointPages)
+                )
+            }
+            try configurePragma("synchronous", value: "NORMAL")
+        }
+
+        try verifyPragma("foreign_keys", expected: "1")
+        try verifyPragma("busy_timeout", expected: String(Self.busyTimeoutMilliseconds))
+        try verifyPragma("temp_store", expected: "2")
+        if !readOnly {
+            try verifyPragma("synchronous", expected: "1")
+            if path != ":memory:" {
+                try verifyPragma("journal_mode", expected: "wal")
+                try verifyPragma(
+                    "wal_autocheckpoint",
+                    expected: String(Self.walAutoCheckpointPages)
+                )
+            }
+        }
+    }
+
+    private func configurePragma(_ name: String, value: String) throws {
+        let status = sqlite3_exec(database, "PRAGMA \(name) = \(value);", nil, nil, nil)
         guard status == SQLITE_OK else {
             throw DatabaseError.openFailed(errorMessage)
+        }
+    }
+
+    private func verifyPragma(_ name: String, expected: String) throws {
+        var statement: OpaquePointer?
+        let prepareStatus = sqlite3_prepare_v2(database, "PRAGMA \(name);", -1, &statement, nil)
+        guard prepareStatus == SQLITE_OK else {
+            sqlite3_finalize(statement)
+            throw DatabaseError.openFailed(errorMessage)
+        }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW,
+              let actual = Self.materializedCell(
+                  statement: statement,
+                  index: 0
+              ).legacyString?.lowercased(),
+              actual == expected.lowercased() else {
+            throw DatabaseError.openFailed(
+                "SQLite PRAGMA \(name) did not apply the required value."
+            )
+        }
+    }
+
+    private func classifiedError(
+        status: Int32,
+        operation: String,
+        fallback: DatabaseError
+    ) -> DatabaseError {
+        if status == SQLITE_BUSY || status == SQLITE_LOCKED {
+            return .busyTimeout(operation: operation)
+        }
+        return fallback
+    }
+
+    private static func rollbackCategory(for error: Error) -> String {
+        switch error {
+        case is CancellationError:
+            "cancelled"
+        case DatabaseError.busyTimeout:
+            "busy_timeout"
+        case DatabaseError.nestedTransaction:
+            "nested_transaction"
+        default:
+            "operation_failed"
+        }
+    }
+
+    private func withAccessLock<T>(
+        operation: String,
+        _ body: () throws -> T
+    ) rethrows -> T {
+        let waitStartedAt = ProcessInfo.processInfo.systemUptime
+        accessLock.lock()
+        let acquiredAt = ProcessInfo.processInfo.systemUptime
+        let shouldEmitMetrics = accessDepth == 0
+        accessDepth += 1
+        do {
+            let result = try body()
+            let finishedAt = ProcessInfo.processInfo.systemUptime
+            accessDepth -= 1
+            accessLock.unlock()
+            if shouldEmitMetrics {
+                // Nested connection calls inherit the outer operation's timing.
+                // Emitting only after the outermost unlock keeps metric sinks
+                // outside the SQLite ownership boundary and avoids callback re-entry.
+                emitTimingMetrics(
+                    operation: operation,
+                    waitStartedAt: waitStartedAt,
+                    acquiredAt: acquiredAt,
+                    finishedAt: finishedAt
+                )
+            }
+            return result
+        } catch {
+            let finishedAt = ProcessInfo.processInfo.systemUptime
+            accessDepth -= 1
+            accessLock.unlock()
+            if shouldEmitMetrics {
+                emitTimingMetrics(
+                    operation: operation,
+                    waitStartedAt: waitStartedAt,
+                    acquiredAt: acquiredAt,
+                    finishedAt: finishedAt
+                )
+            }
+            throw error
+        }
+    }
+
+    private func emitTimingMetrics(
+        operation: String,
+        waitStartedAt: TimeInterval,
+        acquiredAt: TimeInterval,
+        finishedAt: TimeInterval
+    ) {
+        guard let metricSink else {
+            return
+        }
+        metricSink(
+            SQLiteDatabaseMetric(
+                kind: .lockWait,
+                operation: operation,
+                durationMilliseconds: (acquiredAt - waitStartedAt) * 1_000
+            )
+        )
+        metricSink(
+            SQLiteDatabaseMetric(
+                kind: .operationDuration,
+                operation: operation,
+                durationMilliseconds: (finishedAt - acquiredAt) * 1_000
+            )
+        )
+    }
+}
+
+public actor SQLiteDatabaseWorker {
+    private let connection: SQLiteConnection
+
+    public init(path: String, readOnly: Bool = false) throws {
+        self.connection = try SQLiteConnection(path: path, readOnly: readOnly)
+    }
+
+    public init(connection: SQLiteConnection) {
+        self.connection = connection
+    }
+
+    public func run<T: Sendable>(
+        _ operation: @Sendable (SQLiteConnection) throws -> T
+    ) throws -> T {
+        try Task.checkCancellation()
+        let result = try operation(connection)
+        try Task.checkCancellation()
+        return result
+    }
+
+    public func transaction<T: Sendable>(
+        _ operation: @Sendable (SQLiteConnection) throws -> T
+    ) throws -> T {
+        try Task.checkCancellation()
+        return try connection.transaction {
+            let result = try operation(connection)
+            // Cancellation is checked before COMMIT so an abandoned task
+            // rolls back instead of publishing a partial user operation.
+            try Task.checkCancellation()
+            return result
         }
     }
 }
@@ -348,17 +755,12 @@ public enum SQLiteMigrationRunner {
         let alreadyApplied = Set(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;"))
 
         for migration in migrations where !alreadyApplied.contains(migration.id) {
-            do {
-                try connection.execute("BEGIN;")
+            try connection.transaction {
                 try migration.apply(connection)
                 try connection.execute(
                     "INSERT INTO schema_migrations (id) VALUES (?);",
                     parameters: [.text(migration.id)]
                 )
-                try connection.execute("COMMIT;")
-            } catch {
-                try? connection.execute("ROLLBACK;")
-                throw error
             }
         }
     }

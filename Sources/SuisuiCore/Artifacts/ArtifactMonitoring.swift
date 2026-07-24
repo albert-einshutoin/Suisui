@@ -540,7 +540,7 @@ public enum WorkspacePathPolicy {
 }
 
 private extension ArtifactRecord {
-    init(row: [String: String]) throws {
+    init(row: SQLiteMaterializedRow) throws {
         let createdState = try ArtifactSQL.createdState(
             try ArtifactSQL.requiredString(row["created_state"], column: "artifacts.created_state"),
             column: "artifacts.created_state"
