@@ -402,16 +402,38 @@ public struct ReminderTool: Tool {
                 let itemIdentities = try stableBulkItemIdentities(reminderObjects)
                 var results: [ToolResult] = []
                 for index in drafts.indices {
-                    results.append(
-                        try createReminder(
-                            draft: drafts[index],
-                            args: perReminderArgs[index],
-                            arguments: reminderObjects[index],
-                            context: context,
-                            itemIndex: index,
-                            itemIdentity: itemIdentities[index]
+                    do {
+                        results.append(
+                            try createReminder(
+                                draft: drafts[index],
+                                args: perReminderArgs[index],
+                                arguments: reminderObjects[index],
+                                context: context,
+                                itemIndex: index,
+                                itemIdentity: itemIdentities[index]
+                            )
                         )
-                    )
+                    } catch {
+                        let completedEvidence = results.compactMap(sideEffectEvidence)
+                        guard !completedEvidence.isEmpty else {
+                            throw error
+                        }
+                        var records = completedEvidence
+                        if let terminalEvidence = (error as? ToolExecutionError)?
+                            .externalSideEffectFailureEvidence {
+                            records.append(terminalEvidence)
+                        }
+                        // A bulk failure must carry evidence from earlier items:
+                        // ActionExecutor only sees the thrown error and otherwise
+                        // cannot account for external writes already completed.
+                        throw ToolExecutionError.externalSideEffectBatchFailed(
+                            ExternalSideEffectBatchFailureEvidence(
+                                tool: name,
+                                reason: batchFailureReason(for: error),
+                                records: records
+                            )
+                        )
+                    }
                 }
                 let reminderIDs = results.compactMap { outputString($0, key: "reminderId") }
                 let externalResourceIDs = results.compactMap { outputString($0, key: "externalResourceId") }
@@ -515,6 +537,37 @@ public struct ReminderTool: Tool {
             return nil
         }
         return value
+    }
+
+    private func sideEffectEvidence(_ result: ToolResult) -> ExternalSideEffectFailureEvidence? {
+        guard let idempotencyKey = outputString(result, key: "idempotencyKey"),
+              let journalRecordID = outputString(result, key: "journalRecordId"),
+              let stateRaw = outputString(result, key: "journalState"),
+              let state = ExternalSideEffectState(rawValue: stateRaw) else {
+            return nil
+        }
+        return ExternalSideEffectFailureEvidence(
+            tool: name,
+            idempotencyKey: idempotencyKey,
+            journalRecordID: journalRecordID,
+            externalResourceID: outputString(result, key: "externalResourceId"),
+            state: state
+        )
+    }
+
+    private func batchFailureReason(for error: Error) -> ExternalSideEffectBatchFailureReason {
+        switch error {
+        case ToolExecutionError.externalSideEffectInProgress:
+            return .inProgress
+        case ToolExecutionError.externalSideEffectRequiresReconciliation:
+            return .requiresReconciliation
+        case ToolExecutionError.executionFailed(_, let message):
+            return .executionFailed(message)
+        case let clientError as ToolClientError:
+            return .executionFailed(clientError.message)
+        default:
+            return .executionFailed("A later reminder could not be completed.")
+        }
     }
 
     private static func schema(for name: ActionTool) -> ToolInputSchema {

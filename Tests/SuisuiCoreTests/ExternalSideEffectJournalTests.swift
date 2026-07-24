@@ -596,6 +596,76 @@ final class ExternalSideEffectJournalTests: XCTestCase {
         XCTAssertEqual(evidence.journalState, .unknown)
     }
 
+    func testActionExecutorReceiptPreservesAllBulkSideEffectsBeforePartialFailure() throws {
+        let connection = try migratedConnection()
+        let journal = SQLiteExternalSideEffectJournal(connection: connection)
+        let registry = try ToolRegistry(tools: [
+            ReminderTool(
+                name: .remindersBulkCreate,
+                client: InMemoryReminderClient(),
+                linkStore: SQLiteReminderLinkStore(connection: connection),
+                sideEffectJournal: journal
+            )
+        ])
+        try connection.execute(
+            """
+            CREATE TRIGGER block_second_reminder_link_for_receipt
+            BEFORE INSERT ON reminder_links
+            WHEN NEW.task_id = 2
+            BEGIN
+                SELECT RAISE(FAIL, 'second reminder link blocked');
+            END;
+            """
+        )
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var session = ReviewSession(
+            id: "review-reminder-bulk-partial",
+            plan: ActionPlan(
+                id: "plan-reminder-bulk-partial",
+                userInput: "Create two reminders",
+                summary: "Create reminders",
+                actions: [
+                    PlanAction(
+                        id: "reminder-bulk-action",
+                        tool: .remindersBulkCreate,
+                        arguments: [
+                            "reminders": .array([
+                                .object(["title": .string("Draft"), "taskId": .number(1)]),
+                                .object(["title": .string("Review"), "taskId": .number(2)])
+                            ])
+                        ]
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        )
+        let approval = try session.approve(issuedAt: now)
+
+        let executed = try ActionExecutor(registry: registry).execute(session, now: now)
+        XCTAssertEqual(executed.executionStatus, .failed)
+        XCTAssertEqual(executed.items.first?.failureRecovery, .notRetryable)
+        let records = try journal.records(executionID: approval.nonce.uuidString)
+        XCTAssertEqual(records.map(\.state), [.succeeded, .unknown])
+
+        let receipt = ExecutionReceiptFactory.makeReviewReceipt(
+            session: executed,
+            runID: "run-reminder-bulk-partial",
+            model: nil,
+            usage: .unavailable,
+            startedAt: now,
+            finishedAt: now
+        )
+        let evidence = try XCTUnwrap(receipt.actions.first?.externalSideEffectEvidence)
+        XCTAssertEqual(evidence.idempotencyKeys, records.map(\.idempotencyKey))
+        XCTAssertEqual(
+            evidence.externalResourceIDs,
+            records.compactMap(\.externalResourceID)
+        )
+        XCTAssertEqual(evidence.journalRecordIDs, records.map(\.id))
+        XCTAssertEqual(evidence.journalState, .unknown)
+    }
+
     func testNotificationLocalPersistenceFailureBecomesUnknown() throws {
         let connection = try migratedConnection()
         let journal = SQLiteExternalSideEffectJournal(connection: connection)

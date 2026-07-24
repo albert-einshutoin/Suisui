@@ -372,6 +372,28 @@ public struct ExternalSideEffectFailureEvidence: Equatable, Sendable {
     }
 }
 
+public enum ExternalSideEffectBatchFailureReason: Equatable, Sendable {
+    case executionFailed(String)
+    case inProgress
+    case requiresReconciliation
+}
+
+public struct ExternalSideEffectBatchFailureEvidence: Equatable, Sendable {
+    public var tool: ActionTool
+    public var reason: ExternalSideEffectBatchFailureReason
+    public var records: [ExternalSideEffectFailureEvidence]
+
+    public init(
+        tool: ActionTool,
+        reason: ExternalSideEffectBatchFailureReason,
+        records: [ExternalSideEffectFailureEvidence]
+    ) {
+        self.tool = tool
+        self.reason = reason
+        self.records = records
+    }
+}
+
 public enum ToolExecutionError: Error, Equatable, Sendable {
     case duplicateTool(ActionTool)
     case unknownTool(ActionTool)
@@ -381,6 +403,7 @@ public enum ToolExecutionError: Error, Equatable, Sendable {
     case sideEffectIdentityMissing(ActionTool)
     case externalSideEffectInProgress(ExternalSideEffectFailureEvidence)
     case externalSideEffectRequiresReconciliation(ExternalSideEffectFailureEvidence)
+    case externalSideEffectBatchFailed(ExternalSideEffectBatchFailureEvidence)
     case validationFailed(ActionTool, String)
     case executionFailed(ActionTool, String)
 }
@@ -399,6 +422,13 @@ public extension ToolExecutionError {
         default:
             nil
         }
+    }
+
+    var externalSideEffectBatchFailureEvidence: ExternalSideEffectBatchFailureEvidence? {
+        guard case .externalSideEffectBatchFailed(let evidence) = self else {
+            return nil
+        }
+        return evidence
     }
 }
 

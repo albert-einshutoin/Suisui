@@ -396,6 +396,15 @@ public struct ActionExecutor: Sendable {
                  .unknownTool,
                  .duplicateTool:
                 return .notRetryable
+            case .externalSideEffectBatchFailed(let evidence):
+                switch evidence.reason {
+                case .inProgress, .requiresReconciliation:
+                    return .notRetryable
+                case .executionFailed(let message):
+                    return message.localizedCaseInsensitiveContains("permission")
+                        ? .notRetryable
+                        : .retryable
+                }
             case .executionFailed(_, let message):
                 return message.localizedCaseInsensitiveContains("permission")
                     ? .notRetryable
@@ -411,6 +420,27 @@ public struct ActionExecutor: Sendable {
         for error: Error,
         summary: String
     ) -> ToolResult? {
+        if let evidence = (error as? ToolExecutionError)?
+            .externalSideEffectBatchFailureEvidence,
+           let aggregateState = evidence.records.last?.state {
+            return ToolResult(
+                tool: evidence.tool,
+                status: .failed,
+                summary: summary,
+                output: [
+                    "idempotencyKeys": JSONValueFactory.strings(
+                        evidence.records.map(\.idempotencyKey)
+                    ),
+                    "journalRecordIds": JSONValueFactory.strings(
+                        evidence.records.map(\.journalRecordID)
+                    ),
+                    "externalResourceIds": JSONValueFactory.strings(
+                        evidence.records.compactMap(\.externalResourceID)
+                    ),
+                    "journalState": .string(aggregateState.rawValue)
+                ]
+            )
+        }
         guard let evidence = (error as? ToolExecutionError)?
             .externalSideEffectFailureEvidence else {
             return nil
@@ -538,6 +568,15 @@ public struct ActionExecutor: Sendable {
             return "\(evidence.tool.rawValue) is already in progress. Wait for reconciliation before retrying."
         case ToolExecutionError.externalSideEffectRequiresReconciliation(let evidence):
             return "\(evidence.tool.rawValue) may already have changed an external resource. Reconcile it before retrying."
+        case ToolExecutionError.externalSideEffectBatchFailed(let evidence):
+            switch evidence.reason {
+            case .inProgress:
+                return "\(evidence.tool.rawValue) is already in progress. Wait for reconciliation before retrying."
+            case .requiresReconciliation:
+                return "\(evidence.tool.rawValue) may already have changed external resources. Reconcile them before retrying."
+            case .executionFailed(let message):
+                return "\(evidence.tool.rawValue) failed: \(redacted(message))"
+            }
         case ToolExecutionError.validationFailed(let tool, let message):
             return "Invalid arguments for \(tool.rawValue): \(redacted(message))"
         case ToolExecutionError.executionFailed(let tool, let message):
