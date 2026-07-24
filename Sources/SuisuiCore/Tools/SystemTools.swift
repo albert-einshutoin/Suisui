@@ -245,7 +245,11 @@ public struct CalendarTool: Tool {
             }
 
             if let sideEffectJournal {
-                let request = try context.externalSideEffectRequest(tool: name, arguments: arguments)
+                let request = try context.externalSideEffectRequest(
+                    tool: name,
+                    arguments: arguments,
+                    sideEffectArguments: calendarSideEffectArguments(draft)
+                )
                 draft.idempotencyKey = request.idempotencyKey
                 return try ExternalSideEffectCoordinator(journal: sideEffectJournal).execute(
                     request: request,
@@ -274,6 +278,18 @@ public struct CalendarTool: Tool {
         } catch let error as ToolClientError {
             throw ToolExecutionError.executionFailed(name, error.message)
         }
+    }
+
+    private func calendarSideEffectArguments(
+        _ draft: CalendarEventDraft
+    ) -> [String: JSONValue] {
+        [
+            "title": .string(draft.title),
+            "startAt": .string(draft.startAt),
+            "endAt": .string(draft.endAt),
+            "isAllDay": .bool(draft.isAllDay),
+            "notes": draft.notes.map(JSONValue.string) ?? .null
+        ]
     }
 
     private func calendarEntityReferences(args: ToolArguments) throws -> (projectID: Int64?, taskID: Int64?) {

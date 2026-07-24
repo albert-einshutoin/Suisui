@@ -467,19 +467,23 @@ final class ExternalSideEffectJournalTests: XCTestCase {
             "endAt": .string("2026-06-18T10:00:00Z"),
             "taskId": .number(20)
         ]
-        let context = approvedSideEffectContext(idempotencyKey: "calendar-key")
+        let context = approvedSideEffectContext(idempotencyKey: "calendar-key-v1")
 
         XCTAssertThrowsError(try tool.execute(arguments: arguments, context: context))
         XCTAssertEqual(try client.listEvents().count, 1)
         XCTAssertEqual(try journal.records(executionID: "execution-1").first?.state, .unknown)
 
         try connection.execute("DROP TRIGGER block_calendar_link;")
-        XCTAssertThrowsError(try tool.execute(arguments: arguments, context: context)) { error in
+        var relinkedArguments = arguments
+        relinkedArguments["taskId"] = .number(21)
+        let relinkedContext = approvedSideEffectContext(idempotencyKey: "calendar-key-v2")
+        XCTAssertThrowsError(try tool.execute(arguments: relinkedArguments, context: relinkedContext)) { error in
             guard case ToolExecutionError.externalSideEffectRequiresReconciliation = error else {
                 return XCTFail("Expected reconciliation-required error, got \(error).")
             }
         }
         XCTAssertEqual(try client.listEvents().count, 1)
+        XCTAssertEqual(try journal.records(executionID: "execution-1").count, 1)
     }
 
     func testActionExecutorSuppliesStableIdentityToProductionJournalPath() throws {

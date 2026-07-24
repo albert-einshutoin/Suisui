@@ -251,6 +251,7 @@ public struct ToolExecutionContext: Sendable {
     public func externalSideEffectRequest(
         tool: ActionTool,
         arguments: [String: JSONValue],
+        sideEffectArguments: [String: JSONValue]? = nil,
         itemIndex: Int? = nil,
         itemIdentity: String? = nil
     ) throws -> ExternalSideEffectRequest {
@@ -260,6 +261,7 @@ public struct ToolExecutionContext: Sendable {
               let idempotencyKey else {
             throw ToolExecutionError.sideEffectIdentityMissing(tool)
         }
+        let canonicalArguments = sideEffectArguments ?? arguments
         let itemKey: String
         if itemIndex != nil {
             guard let itemIdentity, !itemIdentity.isEmpty else {
@@ -273,7 +275,17 @@ public struct ToolExecutionContext: Sendable {
                 reviewSessionID: reviewSessionID,
                 actionID: "\(actionID):item:\(itemIdentity)",
                 tool: tool,
-                arguments: arguments
+                arguments: canonicalArguments
+            )
+        } else if sideEffectArguments != nil {
+            // Some actions carry local linkage metadata in addition to the
+            // external payload. Re-approval after changing only that metadata
+            // must still claim the original external side effect.
+            itemKey = try Self.externalSideEffectIdempotencyKey(
+                reviewSessionID: reviewSessionID,
+                actionID: actionID,
+                tool: tool,
+                arguments: canonicalArguments
             )
         } else {
             itemKey = idempotencyKey
@@ -284,7 +296,7 @@ public struct ToolExecutionContext: Sendable {
             actionID: actionID,
             itemIndex: itemIndex,
             tool: tool,
-            canonicalArgumentsDigest: try CanonicalJSONEncoder.digest(.object(arguments)),
+            canonicalArgumentsDigest: try CanonicalJSONEncoder.digest(.object(canonicalArguments)),
             idempotencyKey: itemKey
         )
     }
