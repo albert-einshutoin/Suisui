@@ -268,7 +268,7 @@ public final class SQLiteConnection: @unchecked Sendable {
             let message = database.map { String(cString: sqlite3_errmsg($0)) } ?? "Unknown SQLite open error."
             throw DatabaseError.openFailed(message)
         }
-        try configure(path: path, readOnly: readOnly)
+        try configure(readOnly: readOnly)
     }
 
     deinit {
@@ -544,16 +544,20 @@ public final class SQLiteConnection: @unchecked Sendable {
         }
     }
 
-    private func configure(path: String, readOnly: Bool) throws {
+    private func configure(readOnly: Bool) throws {
         let timeoutStatus = sqlite3_busy_timeout(database, Self.busyTimeoutMilliseconds)
         guard timeoutStatus == SQLITE_OK else {
             throw DatabaseError.openFailed(errorMessage)
         }
 
+        // SQLite reports an empty main filename for transient databases. Use
+        // the opened handle as the source of truth instead of parsing input paths.
+        let isFileBacked = sqlite3_db_filename(database, "main")
+            .map { !String(cString: $0).isEmpty } ?? false
         try configurePragma("foreign_keys", value: "ON")
         try configurePragma("temp_store", value: "MEMORY")
         if !readOnly {
-            if path != ":memory:" {
+            if isFileBacked {
                 try configurePragma("journal_mode", value: "WAL")
                 try configurePragma(
                     "wal_autocheckpoint",
@@ -568,7 +572,7 @@ public final class SQLiteConnection: @unchecked Sendable {
         try verifyPragma("temp_store", expected: "2")
         if !readOnly {
             try verifyPragma("synchronous", expected: "1")
-            if path != ":memory:" {
+            if isFileBacked {
                 try verifyPragma("journal_mode", expected: "wal")
                 try verifyPragma(
                     "wal_autocheckpoint",

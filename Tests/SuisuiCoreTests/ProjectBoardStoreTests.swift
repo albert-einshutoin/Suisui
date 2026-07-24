@@ -7546,7 +7546,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertFalse(columns.contains("title"))
         XCTAssertFalse(columns.contains("detail"))
         XCTAssertEqual(notificationRows.count, 1)
-        XCTAssertEqual(notificationRows.first?["last_reviewed_at"], "")
+        XCTAssertNil(notificationRows.first?["last_reviewed_at"])
         XCTAssertEqual(notificationRows.first?["last_notified_day"], "2026-06-20")
     }
 
