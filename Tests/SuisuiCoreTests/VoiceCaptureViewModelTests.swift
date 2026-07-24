@@ -5,7 +5,10 @@ import XCTest
 final class VoiceCaptureViewModelTests: XCTestCase {
     func testExistingVoiceViewModelCannotUseCodexAfterApprovalIsRevoked() async throws {
         let approval = MutableCodexApprovalForVoice(
-            try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
+            try CodexAppServerRuntimeConfiguration.approve(
+                executablePath: "/usr/bin/true",
+                trustPolicy: .developerUnsignedAllowed
+            )
         )
         let reporter = VoiceRecordingVersionReporter()
         let provider = CodexLocalRuntimeProvider(
@@ -2557,7 +2560,7 @@ private final class MutableCodexApprovalForVoice: @unchecked Sendable {
 private actor VoiceRecordingVersionReporter: CodexVersionReporting {
     private(set) var callCount = 0
 
-    func versionOutput(executablePath _: String) async throws -> String {
+    func versionOutput(approvedExecutable _: ApprovedCodexExecutable) async throws -> String {
         callCount += 1
         return "codex-cli 0.144.1"
     }

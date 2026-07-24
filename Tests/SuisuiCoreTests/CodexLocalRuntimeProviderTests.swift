@@ -4,6 +4,39 @@ import XCTest
 @testable import SuisuiCore
 
 final class CodexLocalRuntimeProviderTests: XCTestCase {
+    func testExecutableSwapAfterApprovalFailsBeforeVersionProbeLaunch() async throws {
+        #if os(macOS)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-codex-version-integrity-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let executable = directory.appendingPathComponent("codex")
+        let marker = directory.appendingPathComponent("version-probe-launched")
+        try Data("#!/bin/sh\necho 'codex-cli 0.144.1'\n".utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        let approved = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: executable.path,
+            trustPolicy: .developerUnsignedAllowed
+        )
+
+        try Data("#!/bin/sh\ntouch '\(marker.path)'\n".utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+
+        do {
+            _ = try await ProcessCodexVersionReporter().versionOutput(
+                approvedExecutable: approved
+            )
+            XCTFail("Expected the changed executable to be rejected")
+        } catch {
+            XCTAssertEqual(
+                error as? CodexAppServerRuntimeConfigurationError,
+                .approvedExecutableChanged
+            )
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
+        #endif
+    }
+
     func testLiveAuthStoreAccessIsObservableUnderChildPIDWhenExplicitlyAudited() async throws {
         guard ProcessInfo.processInfo.environment["SUISUI_CODEX_AUTH_ACCESS_AUDIT"] == "1" else {
             throw XCTSkip("Run through check_codex_auth_access_evidence.sh with root filesystem tracing.")
@@ -30,9 +63,14 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
             }
             try await Task.sleep(nanoseconds: 50_000_000)
         }
+        let approvedWrapper = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: wrapperPath,
+            trustPolicy: .developerUnsignedAllowed
+        )
         let transport = CodexAppServerStdioTransport(
             process: ProcessCodexAppServerProcess(
-                configuration: CodexAppServerLaunchConfiguration(executablePath: wrapperPath)
+                configuration: CodexAppServerLaunchConfiguration(executablePath: wrapperPath),
+                approvedExecutable: approvedWrapper
             )
         )
         // fs_usage can materially delay the first App Server response. This
@@ -64,14 +102,20 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
             throw XCTSkip("Set SUISUI_CODEX_LIVE_TEST=1 to probe the current Mac user's Codex account.")
         }
         let executablePath = try XCTUnwrap(ProcessInfo.processInfo.environment["SUISUI_CODEX_EXECUTABLE"])
-        let approvedExecutable = try CodexAppServerRuntimeConfiguration.approve(executablePath: executablePath)
+        let approvedExecutable = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: executablePath,
+            trustPolicy: .developerUnsignedAllowed
+        )
         _ = try CodexAppServerRuntimeConfiguration.validate(
             approvedExecutable: approvedExecutable,
-            reportedVersion: try await ProcessCodexVersionReporter().versionOutput(executablePath: executablePath)
+            reportedVersion: try await ProcessCodexVersionReporter().versionOutput(
+                approvedExecutable: approvedExecutable
+            )
         )
         let transport = CodexAppServerStdioTransport(
             process: ProcessCodexAppServerProcess(
-                configuration: CodexAppServerLaunchConfiguration(executablePath: executablePath)
+                configuration: CodexAppServerLaunchConfiguration(executablePath: executablePath),
+                approvedExecutable: approvedExecutable
             )
         )
         let account = CodexAppServerAccountClient(transport: transport)
@@ -104,7 +148,10 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
             throw XCTSkip("Set SUISUI_CODEX_LIVE_TEST=1 to use the current Mac user's Codex allowance.")
         }
         let executablePath = try XCTUnwrap(ProcessInfo.processInfo.environment["SUISUI_CODEX_EXECUTABLE"])
-        let approvedExecutable = try CodexAppServerRuntimeConfiguration.approve(executablePath: executablePath)
+        let approvedExecutable = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: executablePath,
+            trustPolicy: .developerUnsignedAllowed
+        )
         let provider = CodexLocalRuntimeProvider(
             approvedExecutable: approvedExecutable,
             modelID: nil,
@@ -142,6 +189,45 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
         XCTAssertEqual(callCount, 0)
     }
 
+    func testIntegrityMismatchRequestsPersistedApprovalInvalidationBeforeVersionProbe() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-codex-invalidation-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let executable = directory.appendingPathComponent("codex")
+        try Data("#!/bin/sh\necho first\n".utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        let approved = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: executable.path,
+            trustPolicy: .developerUnsignedAllowed
+        )
+        try Data("#!/bin/sh\necho other\n".utf8).write(to: executable)
+        let invalidations = LockedCounter()
+        let reporter = RecordingVersionReporter()
+        let provider = CodexLocalRuntimeProvider(
+            approvedExecutableProvider: { approved },
+            modelID: nil,
+            clientVersion: "1.0",
+            scratchRoot: FileManager.default.temporaryDirectory,
+            versionReporter: reporter,
+            approvalChangeStream: { AsyncStream { _ in } },
+            approvalInvalidator: { invalidations.increment() },
+            transportFactory: { _ in HangingPlanningCodexTransport() }
+        )
+
+        do {
+            _ = try await provider.generatePlan(for: PlanningRequest(userInput: "タスクを追加"))
+            XCTFail("Expected integrity mismatch")
+        } catch let error as LLMProviderError {
+            guard case .executionNotApproved = error else {
+                return XCTFail("Expected executionNotApproved, got \(error)")
+            }
+        }
+        XCTAssertEqual(invalidations.value, 1)
+        let versionProbeCount = await reporter.callCount
+        XCTAssertEqual(versionProbeCount, 0)
+    }
+
     func testAccountEntryPointsCannotProbeVersionWithoutApprovedExecutable() async {
         for operation in ["check account", "sign in", "sign out"] {
             let reporter = RecordingVersionReporter()
@@ -163,7 +249,10 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
     func testRequestRechecksCurrentApprovalInsteadOfUsingConstructionSnapshot() async throws {
         let reporter = RecordingVersionReporter()
         let approval = LockedCodexApproval(
-            try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
+            try CodexAppServerRuntimeConfiguration.approve(
+                executablePath: "/usr/bin/true",
+                trustPolicy: .developerUnsignedAllowed
+            )
         )
         let provider = CodexLocalRuntimeProvider(
             approvedExecutableProvider: { approval.value },
@@ -187,7 +276,10 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
 
     func testApprovalChangeStopsRunningPlanningTransport() async throws {
         let reporter = RecordingVersionReporter()
-        let approved = try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
+        let approved = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: "/usr/bin/true",
+            trustPolicy: .developerUnsignedAllowed
+        )
         let changes = ControlledApprovalChanges()
         let transport = HangingPlanningCodexTransport()
         let provider = CodexLocalRuntimeProvider(
@@ -219,7 +311,10 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
     }
 
     func testApprovalChangeDuringObserverRegistrationPreventsTransportCreation() async throws {
-        let approved = try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
+        let approved = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: "/usr/bin/true",
+            trustPolicy: .developerUnsignedAllowed
+        )
         let generation = LockedApprovalGeneration()
         let transportCreations = LockedCounter()
         let provider = CodexLocalRuntimeProvider(
@@ -251,7 +346,10 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
     }
 
     func testApprovalChangeBeforeResultAcceptanceRejectsCompletedResponse() async throws {
-        let approved = try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
+        let approved = try CodexAppServerRuntimeConfiguration.approve(
+            executablePath: "/usr/bin/true",
+            trustPolicy: .developerUnsignedAllowed
+        )
         let generations = SequencedApprovalGenerations([0, 0, 0, 1])
         let transport = HangingPlanningCodexTransport(completesPlan: true)
         let provider = CodexLocalRuntimeProvider(
@@ -280,7 +378,7 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
 
 private actor RecordingVersionReporter: CodexVersionReporting {
     private(set) var callCount = 0
-    func versionOutput(executablePath _: String) async throws -> String {
+    func versionOutput(approvedExecutable _: ApprovedCodexExecutable) async throws -> String {
         callCount += 1
         return "codex-cli 0.144.1"
     }

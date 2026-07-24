@@ -2,13 +2,13 @@ import Darwin
 import Foundation
 
 public protocol CodexVersionReporting: Sendable {
-    func versionOutput(executablePath: String) async throws -> String
+    func versionOutput(approvedExecutable: ApprovedCodexExecutable) async throws -> String
 }
 
 public struct ProcessCodexVersionReporter: CodexVersionReporting {
     public init() {}
 
-    public func versionOutput(executablePath: String) async throws -> String {
+    public func versionOutput(approvedExecutable: ApprovedCodexExecutable) async throws -> String {
         try await Task.detached(priority: .userInitiated) {
             #if os(iOS) || targetEnvironment(macCatalyst)
             throw CodexAppServerTransportError.localExecutionUnavailable
@@ -16,13 +16,18 @@ public struct ProcessCodexVersionReporter: CodexVersionReporting {
             let process = Process()
             let output = Pipe()
             let errorOutput = Pipe()
-            process.executableURL = URL(fileURLWithPath: executablePath)
             process.arguments = ["--version"]
-            process.environment = CodexAppServerLaunchConfiguration(
-                executablePath: executablePath
-            ).environment
             process.standardOutput = output
             process.standardError = errorOutput
+            // Revalidate after Process setup so the integrity check stays next
+            // to the first executable action (`--version`) as well.
+            let executable = try CodexAppServerRuntimeConfiguration.preflight(
+                approvedExecutable: approvedExecutable
+            )
+            process.executableURL = URL(fileURLWithPath: executable.resolvedPath)
+            process.environment = CodexAppServerLaunchConfiguration(
+                executablePath: executable.resolvedPath
+            ).environment
             do {
                 try process.run()
             } catch {
@@ -63,9 +68,7 @@ public struct CodexApprovedRuntimeResolver: Sendable {
         let executable = try CodexAppServerRuntimeConfiguration.preflight(
             approvedExecutable: approvedExecutable
         )
-        let versionOutput = try await versionReporter.versionOutput(
-            executablePath: executable.resolvedPath
-        )
+        let versionOutput = try await versionReporter.versionOutput(approvedExecutable: executable)
         return try CodexAppServerRuntimeConfiguration.validate(
             approvedExecutable: approvedExecutable,
             reportedVersion: versionOutput
@@ -149,7 +152,8 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
     private let runtimeResolver: CodexApprovedRuntimeResolver
     private let approvalChangeStream: @Sendable () -> AsyncStream<Void>
     private let approvalGenerationProvider: @Sendable () -> UInt64
-    private let transportFactory: @Sendable (String) -> any CodexAppServerTransport
+    private let approvalInvalidator: @Sendable () -> Void
+    private let transportFactory: @Sendable (ApprovedCodexExecutable) -> any CodexAppServerTransport
 
     public init(
         approvedExecutable: ApprovedCodexExecutable?,
@@ -157,7 +161,10 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
         clientVersion: String,
         scratchRoot: URL = FileManager.default.temporaryDirectory
             .appendingPathComponent("suisui-codex-planning", isDirectory: true),
-        versionReporter: any CodexVersionReporting = ProcessCodexVersionReporter()
+        versionReporter: any CodexVersionReporting = ProcessCodexVersionReporter(),
+        approvalInvalidator: @escaping @Sendable () -> Void = {
+            CodexExecutionApprovalChanges.invalidate()
+        }
     ) {
         self.approvedExecutableProvider = { approvedExecutable }
         self.modelID = modelID
@@ -166,6 +173,7 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
         self.runtimeResolver = CodexApprovedRuntimeResolver(versionReporter: versionReporter)
         self.approvalChangeStream = { CodexExecutionApprovalChanges.stream() }
         self.approvalGenerationProvider = { CodexExecutionApprovalGeneration.shared.current() }
+        self.approvalInvalidator = approvalInvalidator
         self.transportFactory = Self.makeProductionTransport
     }
 
@@ -175,7 +183,10 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
         clientVersion: String,
         scratchRoot: URL = FileManager.default.temporaryDirectory
             .appendingPathComponent("suisui-codex-planning", isDirectory: true),
-        versionReporter: any CodexVersionReporting = ProcessCodexVersionReporter()
+        versionReporter: any CodexVersionReporting = ProcessCodexVersionReporter(),
+        approvalInvalidator: @escaping @Sendable () -> Void = {
+            CodexExecutionApprovalChanges.invalidate()
+        }
     ) {
         self.approvedExecutableProvider = approvedExecutableProvider
         self.modelID = modelID
@@ -184,6 +195,7 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
         self.runtimeResolver = CodexApprovedRuntimeResolver(versionReporter: versionReporter)
         self.approvalChangeStream = { CodexExecutionApprovalChanges.stream() }
         self.approvalGenerationProvider = { CodexExecutionApprovalGeneration.shared.current() }
+        self.approvalInvalidator = approvalInvalidator
         self.transportFactory = Self.makeProductionTransport
     }
 
@@ -197,7 +209,10 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
         approvalGenerationProvider: @escaping @Sendable () -> UInt64 = {
             CodexExecutionApprovalGeneration.shared.current()
         },
-        transportFactory: @escaping @Sendable (String) -> any CodexAppServerTransport
+        approvalInvalidator: @escaping @Sendable () -> Void = {
+            CodexExecutionApprovalChanges.invalidate()
+        },
+        transportFactory: @escaping @Sendable (ApprovedCodexExecutable) -> any CodexAppServerTransport
     ) {
         self.approvedExecutableProvider = approvedExecutableProvider
         self.modelID = modelID
@@ -206,6 +221,7 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
         self.runtimeResolver = CodexApprovedRuntimeResolver(versionReporter: versionReporter)
         self.approvalChangeStream = approvalChangeStream
         self.approvalGenerationProvider = approvalGenerationProvider
+        self.approvalInvalidator = approvalInvalidator
         self.transportFactory = transportFactory
     }
 
@@ -225,6 +241,9 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
         do {
             runtime = try await runtimeResolver.resolve(approvedExecutable: approvedExecutable)
         } catch {
+            if Self.isExecutableIntegrityMismatch(error) {
+                approvalInvalidator()
+            }
             throw LLMProviderError.executionNotApproved("The selected Codex executable is missing, unsafe, or unsupported.")
         }
         // Register before creating scratch state or a transport. The generation
@@ -238,7 +257,7 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
 
         let scratchDirectory = scratchRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: scratchDirectory, withIntermediateDirectories: true)
-        let transport = transportFactory(runtime.executablePath)
+        let transport = transportFactory(runtime.approvedExecutable)
         let account = CodexAppServerAccountClient(transport: transport)
         let provider = CodexAppServerProvider(
             transport: transport,
@@ -292,14 +311,30 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
         } catch {
             await transport.shutdown()
             try? FileManager.default.removeItem(at: scratchDirectory)
+            if Self.isExecutableIntegrityMismatch(error) {
+                approvalInvalidator()
+            }
             throw error
         }
     }
 
-    private static func makeProductionTransport(executablePath: String) -> any CodexAppServerTransport {
+    private static func isExecutableIntegrityMismatch(_ error: any Error) -> Bool {
+        guard let runtimeError = error as? CodexAppServerRuntimeConfigurationError else {
+            return false
+        }
+        return runtimeError == .approvedExecutableChanged ||
+            runtimeError == .executionApprovalRequired
+    }
+
+    private static func makeProductionTransport(
+        approvedExecutable: ApprovedCodexExecutable
+    ) -> any CodexAppServerTransport {
         CodexAppServerStdioTransport(
             process: ProcessCodexAppServerProcess(
-                configuration: CodexAppServerLaunchConfiguration(executablePath: executablePath)
+                configuration: CodexAppServerLaunchConfiguration(
+                    executablePath: approvedExecutable.resolvedPath
+                ),
+                approvedExecutable: approvedExecutable
             )
         )
     }

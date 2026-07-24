@@ -1,4 +1,32 @@
+import CryptoKit
+import Darwin
 import Foundation
+#if os(macOS)
+import Security
+#endif
+
+public struct CodexCodeSignatureIdentity: Codable, Equatable, Sendable {
+    public let signingIdentifier: String
+    public let teamIdentifier: String?
+    public let designatedRequirement: String
+
+    public init(
+        signingIdentifier: String,
+        teamIdentifier: String?,
+        designatedRequirement: String
+    ) {
+        self.signingIdentifier = signingIdentifier
+        self.teamIdentifier = teamIdentifier
+        self.designatedRequirement = designatedRequirement
+    }
+}
+
+public enum CodexExecutableTrustPolicy: String, Codable, Equatable, Sendable {
+    /// Normal product operation requires a valid macOS code signature.
+    case signedProduction
+    /// Unsigned scripts and package-manager shims are restricted to Developer Mode.
+    case developerUnsignedAllowed
+}
 
 public struct CodexExecutableIdentity: Codable, Equatable, Sendable {
     public let resolvedPath: String
@@ -6,19 +34,55 @@ public struct CodexExecutableIdentity: Codable, Equatable, Sendable {
     public let inode: UInt64
     public let modificationTime: TimeInterval
     public let fileSize: UInt64
+    public let contentSHA256: String
+    public let codeSignature: CodexCodeSignatureIdentity?
+
+    private enum CodingKeys: String, CodingKey {
+        case resolvedPath
+        case deviceID
+        case inode
+        case modificationTime
+        case fileSize
+        case contentSHA256
+        case codeSignature
+    }
 
     public init(
         resolvedPath: String,
         deviceID: UInt64,
         inode: UInt64,
         modificationTime: TimeInterval,
-        fileSize: UInt64
+        fileSize: UInt64,
+        contentSHA256: String = "",
+        codeSignature: CodexCodeSignatureIdentity? = nil
     ) {
         self.resolvedPath = resolvedPath
         self.deviceID = deviceID
         self.inode = inode
         self.modificationTime = modificationTime
         self.fileSize = fileSize
+        self.contentSHA256 = contentSHA256
+        self.codeSignature = codeSignature
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        resolvedPath = try container.decode(String.self, forKey: .resolvedPath)
+        deviceID = try container.decode(UInt64.self, forKey: .deviceID)
+        inode = try container.decode(UInt64.self, forKey: .inode)
+        modificationTime = try container.decode(TimeInterval.self, forKey: .modificationTime)
+        fileSize = try container.decode(UInt64.self, forKey: .fileSize)
+        // A metadata-only approval from an older build must decode so Settings
+        // can revoke it cleanly, but it is never considered launchable.
+        contentSHA256 = try container.decodeIfPresent(String.self, forKey: .contentSHA256) ?? ""
+        codeSignature = try container.decodeIfPresent(
+            CodexCodeSignatureIdentity.self,
+            forKey: .codeSignature
+        )
+    }
+
+    public var hasContentIntegrityEvidence: Bool {
+        contentSHA256.count == 64 && contentSHA256.allSatisfy(\.isHexDigit)
     }
 }
 
@@ -26,13 +90,38 @@ public struct ApprovedCodexExecutable: Codable, Equatable, Sendable {
     public let path: String
     public let identity: CodexExecutableIdentity
     public let approvedAt: Date
+    public let trustPolicy: CodexExecutableTrustPolicy
 
     public var resolvedPath: String { identity.resolvedPath }
 
-    public init(path: String, identity: CodexExecutableIdentity, approvedAt: Date) {
+    private enum CodingKeys: String, CodingKey {
+        case path
+        case identity
+        case approvedAt
+        case trustPolicy
+    }
+
+    public init(
+        path: String,
+        identity: CodexExecutableIdentity,
+        approvedAt: Date,
+        trustPolicy: CodexExecutableTrustPolicy = .signedProduction
+    ) {
         self.path = path
         self.identity = identity
         self.approvedAt = approvedAt
+        self.trustPolicy = trustPolicy
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = try container.decode(String.self, forKey: .path)
+        identity = try container.decode(CodexExecutableIdentity.self, forKey: .identity)
+        approvedAt = try container.decode(Date.self, forKey: .approvedAt)
+        trustPolicy = try container.decodeIfPresent(
+            CodexExecutableTrustPolicy.self,
+            forKey: .trustPolicy
+        ) ?? .signedProduction
     }
 }
 
@@ -67,7 +156,7 @@ extension FileManager: CodexRuntimeFileInspecting {
         let resolvedPath = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
         var isDirectory = ObjCBool(false)
         let exists = fileExists(atPath: resolvedPath, isDirectory: &isDirectory)
-        guard exists, let attributes = try? attributesOfItem(atPath: resolvedPath) else {
+        guard exists else {
             return CodexRuntimeFileState(
                 exists: exists,
                 isDirectory: isDirectory.boolValue,
@@ -76,13 +165,61 @@ extension FileManager: CodexRuntimeFileInspecting {
                 identity: nil
             )
         }
-        let isRegularFile = attributes[.type] as? FileAttributeType == .typeRegular
+        let descriptor = Darwin.open(resolvedPath, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+        guard descriptor >= 0 else {
+            return CodexRuntimeFileState(
+                exists: true,
+                isDirectory: isDirectory.boolValue,
+                isExecutable: isExecutableFile(atPath: resolvedPath),
+                isRegularFile: false,
+                identity: nil
+            )
+        }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        var descriptorState = stat()
+        guard Darwin.fstat(descriptor, &descriptorState) == 0 else {
+            try? handle.close()
+            return CodexRuntimeFileState(
+                exists: true,
+                isDirectory: isDirectory.boolValue,
+                isExecutable: isExecutableFile(atPath: resolvedPath),
+                isRegularFile: false,
+                identity: nil
+            )
+        }
+        let isRegularFile = (descriptorState.st_mode & S_IFMT) == S_IFREG
+        let contentSHA256 = isRegularFile ? (try? Self.sha256Hex(from: handle)) : nil
+        try? handle.close()
+        guard let contentSHA256 else {
+            return CodexRuntimeFileState(
+                exists: true,
+                isDirectory: isDirectory.boolValue,
+                isExecutable: isExecutableFile(atPath: resolvedPath),
+                isRegularFile: isRegularFile,
+                identity: nil
+            )
+        }
+        let codeSignature = Self.validCodeSignature(atPath: resolvedPath)
+        var finalPathState = stat()
+        guard Darwin.lstat(resolvedPath, &finalPathState) == 0,
+              Self.sameFileState(descriptorState, finalPathState) else {
+            return CodexRuntimeFileState(
+                exists: true,
+                isDirectory: false,
+                isExecutable: false,
+                isRegularFile: isRegularFile,
+                identity: nil
+            )
+        }
         let identity = CodexExecutableIdentity(
             resolvedPath: resolvedPath,
-            deviceID: (attributes[.systemNumber] as? NSNumber)?.uint64Value ?? 0,
-            inode: (attributes[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0,
-            modificationTime: (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0,
-            fileSize: (attributes[.size] as? NSNumber)?.uint64Value ?? 0
+            deviceID: UInt64(descriptorState.st_dev),
+            inode: UInt64(descriptorState.st_ino),
+            modificationTime: TimeInterval(descriptorState.st_mtimespec.tv_sec) +
+                TimeInterval(descriptorState.st_mtimespec.tv_nsec) / 1_000_000_000,
+            fileSize: UInt64(descriptorState.st_size),
+            contentSHA256: contentSHA256,
+            codeSignature: codeSignature
         )
         return CodexRuntimeFileState(
             exists: true,
@@ -91,6 +228,66 @@ extension FileManager: CodexRuntimeFileInspecting {
             isRegularFile: isRegularFile,
             identity: identity
         )
+    }
+
+    private static func sha256Hex(from handle: FileHandle) throws -> String {
+        var hasher = SHA256()
+        while let chunk = try handle.read(upToCount: 1024 * 1024), !chunk.isEmpty {
+            hasher.update(data: chunk)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func sameFileState(_ lhs: stat, _ rhs: stat) -> Bool {
+        lhs.st_dev == rhs.st_dev &&
+            lhs.st_ino == rhs.st_ino &&
+            lhs.st_size == rhs.st_size &&
+            lhs.st_mtimespec.tv_sec == rhs.st_mtimespec.tv_sec &&
+            lhs.st_mtimespec.tv_nsec == rhs.st_mtimespec.tv_nsec
+    }
+
+    private static func validCodeSignature(atPath path: String) -> CodexCodeSignatureIdentity? {
+        #if os(macOS)
+        var staticCode: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(
+            URL(fileURLWithPath: path) as CFURL,
+            SecCSFlags(),
+            &staticCode
+        ) == errSecSuccess, let staticCode else {
+            return nil
+        }
+        let strictFlags = SecCSFlags(rawValue: kSecCSStrictValidate | kSecCSCheckAllArchitectures)
+        guard SecStaticCodeCheckValidity(staticCode, strictFlags, nil) == errSecSuccess else {
+            return nil
+        }
+        var signingInformation: CFDictionary?
+        guard SecCodeCopySigningInformation(
+            staticCode,
+            SecCSFlags(rawValue: kSecCSSigningInformation),
+            &signingInformation
+        ) == errSecSuccess,
+        let information = signingInformation as? [CFString: Any],
+        let identifier = information[kSecCodeInfoIdentifier] as? String else {
+            return nil
+        }
+        var requirement: SecRequirement?
+        guard SecCodeCopyDesignatedRequirement(staticCode, SecCSFlags(), &requirement) == errSecSuccess,
+              let requirement else {
+            return nil
+        }
+        var requirementText: CFString?
+        guard SecRequirementCopyString(requirement, SecCSFlags(), &requirementText) == errSecSuccess,
+              let requirementText = requirementText as String? else {
+            return nil
+        }
+        return CodexCodeSignatureIdentity(
+            signingIdentifier: identifier,
+            teamIdentifier: information[kSecCodeInfoTeamIdentifier] as? String,
+            designatedRequirement: requirementText
+        )
+        #else
+        return nil
+        #endif
     }
 }
 
@@ -141,6 +338,8 @@ public enum CodexAppServerRuntimeConfigurationError: Error, Equatable, Sendable 
     case executableIsDirectory
     case executableMustBeRegularFile
     case executablePermissionRequired
+    case validCodeSignatureRequired
+    case unexpectedCodeSignature
     case executionApprovalRequired
     case approvedExecutableChanged
     case invalidVersionOutput
@@ -153,17 +352,32 @@ public struct CodexAppServerRuntimeConfiguration: Equatable, Sendable {
     public static let verifiedVersions: Set<CodexAppServerVersion> = [
         CodexAppServerVersion(major: 0, minor: 144, patch: 1),
     ]
+    /// OpenAI's notarized macOS Codex distribution is the only Stable signing
+    /// identity. Package-manager scripts remain available through Developer Mode.
+    public static let productionSigningIdentifier = "codex"
+    public static let productionTeamIdentifier = "2DC432GLL2"
 
     public let executablePath: String
     public let version: CodexAppServerVersion
+    public let approvedExecutable: ApprovedCodexExecutable
 
     public static func approve(
         executablePath: String,
         approvedAt: Date = Date(),
+        trustPolicy: CodexExecutableTrustPolicy = .signedProduction,
         fileManager: any CodexRuntimeFileInspecting = FileManager.default
     ) throws -> ApprovedCodexExecutable {
-        let candidate = try preflight(executablePath: executablePath, fileManager: fileManager)
-        return ApprovedCodexExecutable(path: candidate.path, identity: candidate.identity, approvedAt: approvedAt)
+        let candidate = try preflight(
+            executablePath: executablePath,
+            trustPolicy: trustPolicy,
+            fileManager: fileManager
+        )
+        return ApprovedCodexExecutable(
+            path: candidate.path,
+            identity: candidate.identity,
+            approvedAt: approvedAt,
+            trustPolicy: trustPolicy
+        )
     }
 
     public static func preflight(
@@ -173,7 +387,22 @@ public struct CodexAppServerRuntimeConfiguration: Equatable, Sendable {
         guard let approvedExecutable else {
             throw CodexAppServerRuntimeConfigurationError.executionApprovalRequired
         }
-        let candidate = try preflight(executablePath: approvedExecutable.path, fileManager: fileManager)
+        guard approvedExecutable.identity.hasContentIntegrityEvidence else {
+            throw CodexAppServerRuntimeConfigurationError.executionApprovalRequired
+        }
+        let candidate: ApprovedCodexExecutable
+        do {
+            candidate = try preflight(
+                executablePath: approvedExecutable.path,
+                trustPolicy: approvedExecutable.trustPolicy,
+                fileManager: fileManager
+            )
+        } catch {
+            // Once an approval exists, disappearance, permission changes,
+            // signature failures, and content changes all invalidate that
+            // approval instead of preserving a stale persisted capability.
+            throw CodexAppServerRuntimeConfigurationError.approvedExecutableChanged
+        }
         guard candidate.identity == approvedExecutable.identity else {
             throw CodexAppServerRuntimeConfigurationError.approvedExecutableChanged
         }
@@ -195,11 +424,16 @@ public struct CodexAppServerRuntimeConfiguration: Equatable, Sendable {
                 verified: verifiedVersions
             )
         }
-        return Self(executablePath: executable.resolvedPath, version: version)
+        return Self(
+            executablePath: executable.resolvedPath,
+            version: version,
+            approvedExecutable: executable
+        )
     }
 
     private static func preflight(
         executablePath: String,
+        trustPolicy: CodexExecutableTrustPolicy,
         fileManager: any CodexRuntimeFileInspecting
     ) throws -> ApprovedCodexExecutable {
         let trimmedPath = executablePath.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -222,7 +456,24 @@ public struct CodexAppServerRuntimeConfiguration: Equatable, Sendable {
         guard fileState.isExecutable else {
             throw CodexAppServerRuntimeConfigurationError.executablePermissionRequired
         }
-        return ApprovedCodexExecutable(path: trimmedPath, identity: identity, approvedAt: .distantPast)
+        guard identity.hasContentIntegrityEvidence else {
+            throw CodexAppServerRuntimeConfigurationError.executableMustBeRegularFile
+        }
+        if trustPolicy == .signedProduction {
+            guard let signature = identity.codeSignature else {
+                throw CodexAppServerRuntimeConfigurationError.validCodeSignatureRequired
+            }
+            guard signature.signingIdentifier == productionSigningIdentifier,
+                  signature.teamIdentifier == productionTeamIdentifier else {
+                throw CodexAppServerRuntimeConfigurationError.unexpectedCodeSignature
+            }
+        }
+        return ApprovedCodexExecutable(
+            path: trimmedPath,
+            identity: identity,
+            approvedAt: .distantPast,
+            trustPolicy: trustPolicy
+        )
     }
 
     private static func rejectCredentialStorePath(_ path: String) throws {
