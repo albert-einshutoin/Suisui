@@ -251,7 +251,8 @@ public struct ToolExecutionContext: Sendable {
     public func externalSideEffectRequest(
         tool: ActionTool,
         arguments: [String: JSONValue],
-        itemIndex: Int? = nil
+        itemIndex: Int? = nil,
+        itemIdentity: String? = nil
     ) throws -> ExternalSideEffectRequest {
         guard let executionID,
               let reviewSessionID,
@@ -261,13 +262,16 @@ public struct ToolExecutionContext: Sendable {
         }
         let itemKey: String
         if let itemIndex {
-            // Bulk items must not inherit the action-level arguments digest:
-            // editing a sibling would otherwise change every item key and
-            // duplicate already-succeeded external writes. The index keeps
-            // identical sibling payloads distinct.
+            guard let itemIdentity, !itemIdentity.isEmpty else {
+                throw ToolExecutionError.sideEffectIdentityMissing(tool)
+            }
+            // Bulk items must not inherit the action-level arguments digest or
+            // their current array position. The adapter supplies a stable
+            // content-occurrence identity so sibling edits and reordering do
+            // not duplicate already-succeeded external writes.
             itemKey = try Self.externalSideEffectIdempotencyKey(
                 reviewSessionID: reviewSessionID,
-                actionID: "\(actionID):item:\(itemIndex)",
+                actionID: "\(actionID):item:\(itemIdentity)",
                 tool: tool,
                 arguments: arguments
             )

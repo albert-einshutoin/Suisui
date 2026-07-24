@@ -399,6 +399,7 @@ public struct ReminderTool: Tool {
                 }
                 let perReminderArgs = reminderObjects.map { ToolArguments($0, tool: name) }
                 let drafts = try perReminderArgs.map(makeDraft)
+                let itemIdentities = try stableBulkItemIdentities(reminderObjects)
                 var results: [ToolResult] = []
                 for index in drafts.indices {
                     results.append(
@@ -407,7 +408,8 @@ public struct ReminderTool: Tool {
                             args: perReminderArgs[index],
                             arguments: reminderObjects[index],
                             context: context,
-                            itemIndex: index
+                            itemIndex: index,
+                            itemIdentity: itemIdentities[index]
                         )
                     )
                 }
@@ -457,7 +459,8 @@ public struct ReminderTool: Tool {
         args: ToolArguments,
         arguments: [String: JSONValue],
         context: ToolExecutionContext,
-        itemIndex: Int? = nil
+        itemIndex: Int? = nil,
+        itemIdentity: String? = nil
     ) throws -> ToolResult {
         guard let sideEffectJournal else {
             let record = try client.create(draft)
@@ -467,7 +470,8 @@ public struct ReminderTool: Tool {
         let request = try context.externalSideEffectRequest(
             tool: name,
             arguments: arguments,
-            itemIndex: itemIndex
+            itemIndex: itemIndex,
+            itemIdentity: itemIdentity
         )
         return try ExternalSideEffectCoordinator(journal: sideEffectJournal).execute(
             request: request,
@@ -479,6 +483,21 @@ public struct ReminderTool: Tool {
                 return createdResult($0)
             }
         )
+    }
+
+    private func stableBulkItemIdentities(
+        _ reminderObjects: [[String: JSONValue]]
+    ) throws -> [String] {
+        var occurrenceCounts: [String: Int] = [:]
+        return try reminderObjects.map { reminder in
+            let digest = try CanonicalJSONEncoder.digest(.object(reminder)).lowercaseHexString
+            let occurrence = occurrenceCounts[digest, default: 0]
+            occurrenceCounts[digest] = occurrence + 1
+            // Equal payloads are semantically indistinguishable, so their
+            // occurrence within the equal-payload group is the stable identity.
+            // Unrelated inserts, removals, and reordering cannot change it.
+            return "\(digest):occurrence:\(occurrence)"
+        }
     }
 
     private func createdResult(_ record: ReminderRecord) -> ToolResult {

@@ -735,7 +735,7 @@ final class ExternalSideEffectJournalTests: XCTestCase {
     func testReminderBulkEditKeepsSucceededItemIdempotencyKeyStable() throws {
         let connection = try migratedConnection()
         let journal = SQLiteExternalSideEffectJournal(connection: connection)
-        let client = FailOnceReminderClient(failingTitle: "Review")
+        let client = FailOnceReminderClient(failingTitle: "Ship")
         let tool = ReminderTool(
             name: .remindersBulkCreate,
             client: client,
@@ -744,7 +744,8 @@ final class ExternalSideEffectJournalTests: XCTestCase {
         let initialArguments: [String: JSONValue] = [
             "reminders": .array([
                 .object(["title": .string("Draft")]),
-                .object(["title": .string("Review")])
+                .object(["title": .string("Review")]),
+                .object(["title": .string("Ship")])
             ])
         ]
 
@@ -754,23 +755,23 @@ final class ExternalSideEffectJournalTests: XCTestCase {
                 context: approvedSideEffectContext(idempotencyKey: "bulk-action-key-v1")
             )
         )
-        XCTAssertEqual(try client.list().map(\.title), ["Draft"])
+        XCTAssertEqual(try client.list().map(\.title), ["Draft", "Review"])
 
         let result = try tool.execute(
             arguments: [
                 "reminders": .array([
-                    .object(["title": .string("Draft")]),
-                    .object(["title": .string("Review updated")])
+                    .object(["title": .string("Review")]),
+                    .object(["title": .string("Ship updated")])
                 ])
             ],
             context: approvedSideEffectContext(idempotencyKey: "bulk-action-key-v2")
         )
 
         XCTAssertEqual(result.status, .succeeded)
-        XCTAssertEqual(try client.list().map(\.title), ["Draft", "Review updated"])
+        XCTAssertEqual(try client.list().map(\.title), ["Draft", "Review", "Ship updated"])
         let journalRecords = try journal.records(executionID: "execution-1")
-        XCTAssertEqual(journalRecords.count, 3)
-        XCTAssertEqual(journalRecords.filter { $0.state == .succeeded }.count, 2)
+        XCTAssertEqual(journalRecords.count, 4)
+        XCTAssertEqual(journalRecords.filter { $0.state == .succeeded }.count, 3)
         XCTAssertEqual(journalRecords.filter { $0.state == .failedBeforeSideEffect }.count, 1)
     }
 
