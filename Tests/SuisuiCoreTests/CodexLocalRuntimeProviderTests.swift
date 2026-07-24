@@ -248,6 +248,7 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
 
     func testRequestRechecksCurrentApprovalInsteadOfUsingConstructionSnapshot() async throws {
         let reporter = RecordingVersionReporter()
+        let invalidations = LockedCounter()
         let approval = LockedCodexApproval(
             try CodexAppServerRuntimeConfiguration.approve(
                 executablePath: "/usr/bin/true",
@@ -258,7 +259,8 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
             approvedExecutableProvider: { approval.value },
             modelID: nil,
             clientVersion: "1.0",
-            versionReporter: reporter
+            versionReporter: reporter,
+            approvalInvalidator: { invalidations.increment() }
         )
         approval.value = nil
 
@@ -272,6 +274,7 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
         }
         let callCount = await reporter.callCount
         XCTAssertEqual(callCount, 0)
+        XCTAssertEqual(invalidations.value, 0)
     }
 
     func testApprovalChangeStopsRunningPlanningTransport() async throws {

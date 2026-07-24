@@ -322,8 +322,9 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
         guard let runtimeError = error as? CodexAppServerRuntimeConfigurationError else {
             return false
         }
-        return runtimeError == .approvedExecutableChanged ||
-            runtimeError == .executionApprovalRequired
+        // A missing approval can also mean the user switched away from Codex.
+        // Only evidence that the approved file changed revokes persisted state.
+        return runtimeError == .approvedExecutableChanged
     }
 
     private static func makeProductionTransport(
