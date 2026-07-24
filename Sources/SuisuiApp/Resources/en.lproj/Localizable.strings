@@ -1583,7 +1583,7 @@
 "Create project file" = "Create project file";
 "Update project file" = "Update project file";
 "Run verification" = "Run verification";
-"Allows Suisui to launch the selected Codex executable with coding and external tools disabled." = "Allows Suisui to launch the selected Codex executable with coding and external tools disabled.";
+"Verifies the executable content and OpenAI signing identity before every launch." = "Verifies the executable content and OpenAI signing identity before every launch.";
 "Approve Tool-Free Codex Local Execution" = "Approve Tool-Free Codex Local Execution";
 "Check Account" = "Check Account";
 "Disconnect from Suisui" = "Disconnect from Suisui";
@@ -1600,6 +1600,8 @@
 "This changes the Codex-managed ChatGPT login used by the Codex CLI and other local Codex clients. It is not only a Suisui disconnect." = "This changes the Codex-managed ChatGPT login used by the Codex CLI and other local Codex clients. It is not only a Suisui disconnect.";
 "Suisui does not read or store Codex tokens. ChatGPT sign-in is handled by the local Codex process." = "Suisui does not read or store Codex tokens. ChatGPT sign-in is handled by the local Codex process.";
 "Uses your Mac user's Codex-managed ChatGPT login and Codex allowance." = "Uses your Mac user's Codex-managed ChatGPT login and Codex allowance.";
+"Normal mode accepts only the signed OpenAI Codex executable. Developer Mode can approve an unsigned or custom build; turning Developer Mode off revokes that approval." = "Normal mode accepts only the signed OpenAI Codex executable. Developer Mode can approve an unsigned or custom build; turning Developer Mode off revokes that approval.";
+"Approval records SHA-256, signing identifier, Team ID, and designated requirement. Codex updates or replacements require approval again." = "Approval records SHA-256, signing identifier, Team ID, and designated requirement. Codex updates or replacements require approval again.";
 "No memo yet." = "No memo yet.";
 "Saved note available." = "Saved note available.";
 "Transcript failed. Review the original voice memo before converting." = "Transcript failed. Review the original voice memo before converting.";

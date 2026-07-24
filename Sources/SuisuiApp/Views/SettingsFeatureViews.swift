@@ -1410,7 +1410,7 @@ extension SettingsAIFeatureView {
             Label("Approve Tool-Free Codex Local Execution", systemImage: "lock.shield")
         }
         .accessibilityIdentifier("settings-codex-local-execution-approval")
-        .accessibilityHint("Allows Suisui to launch the selected Codex executable with coding and external tools disabled.")
+        .accessibilityHint("Verifies the executable content and OpenAI signing identity before every launch.")
 
         CodexAccountSettingsView(
             approvedExecutable: settingsViewModel.settings.isCodexLocalExecutionApproved
@@ -1425,6 +1425,8 @@ extension SettingsAIFeatureView {
 
         VStack(alignment: .leading, spacing: 6) {
             Label("Uses your Mac user's Codex-managed ChatGPT login and Codex allowance.", systemImage: "person.crop.circle.badge.checkmark")
+            Text("Normal mode accepts only the signed OpenAI Codex executable. Developer Mode can approve an unsigned or custom build; turning Developer Mode off revokes that approval.")
+            Text("Approval records SHA-256, signing identifier, Team ID, and designated requirement. Codex updates or replacements require approval again.")
             Text("Suisui does not read or store Codex tokens. ChatGPT sign-in is handled by the local Codex process.")
             Text("Shell, file editing, web, app, plugin, and MCP tools are disabled for this voice-task planning path.")
         }

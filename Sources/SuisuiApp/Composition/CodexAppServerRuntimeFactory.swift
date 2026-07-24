@@ -14,7 +14,21 @@ enum CodexAppServerRuntimeFactory {
                 return current.approvedCodexExecutable
             },
             modelID: normalized.codexModelID,
-            clientVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+            clientVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
+            approvalInvalidator: {
+                let store = UserDefaultsAppSettingsStore()
+                guard var current = try? store.load(),
+                      current.approvedCodexExecutable != nil else {
+                    CodexExecutionApprovalChanges.invalidate()
+                    return
+                }
+                current.isCodexLocalExecutionApproved = false
+                current.approvedCodexExecutable = nil
+                // A failed save must still stop in-memory operations. The next
+                // launch will re-run identity verification and fail closed.
+                try? store.save(current)
+                CodexExecutionApprovalChanges.invalidate()
+            }
         )
     }
 }
