@@ -3,28 +3,20 @@ import XCTest
 @testable import SuisuiCore
 
 final class CodexAppServerRuntimeConfigurationTests: XCTestCase {
-    func testSignedOpenAIDistributionWhenExplicitlyProvided() throws {
-        guard let executablePath = ProcessInfo.processInfo.environment[
-            "SUISUI_SIGNED_CODEX_EXECUTABLE"
-        ] else {
-            throw XCTSkip("Set SUISUI_SIGNED_CODEX_EXECUTABLE to verify an installed signed Codex binary.")
+    func testSystemSignedExecutableExposesIdentityAndIsRejectedByProductionPolicy() throws {
+        let fileState = FileManager.default.codexFileState(atPath: "/usr/bin/true")
+        let signature = try XCTUnwrap(fileState.identity?.codeSignature)
+
+        XCTAssertFalse(signature.signingIdentifier.isEmpty)
+        XCTAssertFalse(signature.designatedRequirement.isEmpty)
+        XCTAssertThrowsError(
+            try CodexAppServerRuntimeConfiguration.approve(executablePath: "/usr/bin/true")
+        ) { error in
+            XCTAssertEqual(
+                error as? CodexAppServerRuntimeConfigurationError,
+                .unexpectedCodeSignature
+            )
         }
-
-        let approved = try CodexAppServerRuntimeConfiguration.approve(
-            executablePath: executablePath
-        )
-
-        XCTAssertEqual(
-            approved.identity.codeSignature?.signingIdentifier,
-            CodexAppServerRuntimeConfiguration.productionSigningIdentifier
-        )
-        XCTAssertEqual(
-            approved.identity.codeSignature?.teamIdentifier,
-            CodexAppServerRuntimeConfiguration.productionTeamIdentifier
-        )
-        XCTAssertFalse(
-            try XCTUnwrap(approved.identity.codeSignature?.designatedRequirement).isEmpty
-        )
     }
 
     func testApprovalRejectsRelativeMissingDirectoryNonRegularAndNonExecutablePaths() throws {
