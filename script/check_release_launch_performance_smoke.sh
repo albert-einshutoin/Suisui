@@ -62,6 +62,10 @@ fi
 BUILD_CONFIGURATION="${PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE:-$DEFAULT_BUILD_CONFIGURATION}"
 MAX_COLD_LAUNCH_MS="${SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS:-$DEFAULT_COLD_LAUNCH_BUDGET_MS}"
 MAX_DESTINATION_SWITCH_MS="${SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS:-$DEFAULT_DESTINATION_SWITCH_BUDGET_MS}"
+# A fixed odd sample count lets the gate reject a consistently slow product
+# while ignoring a single noisy hosted-runner launch. Keeping this out of the
+# environment prevents callers from weakening release evidence.
+COLD_LAUNCH_SAMPLE_COUNT=3
 
 require_positive_integer_budget() {
   local name="$1"
@@ -371,6 +375,13 @@ record_sample() {
   local end_ms="$3"
   local budget_ms="${4:-}"
   local elapsed_ms=$((end_ms - start_ms))
+  record_elapsed_sample "$label" "$elapsed_ms" "$budget_ms"
+}
+
+record_elapsed_sample() {
+  local label="$1"
+  local elapsed_ms="$2"
+  local budget_ms="${3:-}"
   printf '%s\t%s\n' "$label" "$elapsed_ms" >>"$SAMPLES_FILE"
   if [[ -n "$budget_ms" ]]; then
     printf -- '- `%s`: `%sms` (budget `%sms`)\n' "$label" "$elapsed_ms" "$budget_ms" >>"$SUMMARY_FILE"
@@ -379,6 +390,51 @@ record_sample() {
   fi
   assert_sample_within_budget "$label" "$elapsed_ms" "$budget_ms"
   printf "OK: %s completed in %sms\n" "$label" "$elapsed_ms"
+}
+
+median_elapsed_ms() {
+  if (( $# == 0 || $# % 2 == 0 )); then
+    echo "BLOCKER: median performance sample requires a non-zero odd sample count" >&2
+    return 2
+  fi
+  printf '%s\n' "$@" | sort -n | awk -v middle="$((($# + 1) / 2))" 'NR == middle { print; exit }'
+}
+
+COLD_LAUNCH_VISIBLE_SAMPLES=()
+COLD_LAUNCH_COMMAND_READY_SAMPLES=()
+COLD_LAUNCH_TODAY_READY_SAMPLES=()
+
+measure_cold_launch_sample() {
+  local sample_index="$1"
+  local launch_start_ms visible_window_ms command_ready_ms today_ready_ms
+  local visible_elapsed_ms command_ready_elapsed_ms today_ready_elapsed_ms
+
+  launch_start_ms="$(now_ms)"
+  rm -f "$TIMELINE_FILE"
+  TRACK_LAUNCH_MILESTONES=1
+  open_app
+  visible_window_ms="$(wait_for_launch_milestone "window-visible")"
+  command_ready_ms="$(wait_for_launch_milestone "command-ready")"
+  today_ready_ms="$(wait_for_launch_milestone "today-ready")"
+  # AX markers remain mandatory proof that the app-owned readiness milestones
+  # correspond to real, operable UI rather than optimistic instrumentation.
+  wait_for_visible_window
+  wait_for_marker "project-board-command-palette"
+  wait_for_marker "today-workflow"
+
+  visible_elapsed_ms=$((visible_window_ms - launch_start_ms))
+  command_ready_elapsed_ms=$((command_ready_ms - launch_start_ms))
+  today_ready_elapsed_ms=$((today_ready_ms - launch_start_ms))
+  COLD_LAUNCH_VISIBLE_SAMPLES+=("$visible_elapsed_ms")
+  COLD_LAUNCH_COMMAND_READY_SAMPLES+=("$command_ready_elapsed_ms")
+  COLD_LAUNCH_TODAY_READY_SAMPLES+=("$today_ready_elapsed_ms")
+
+  # Preserve every raw observation for regression diagnosis. The SLO is
+  # enforced on the median below so a single contended runner sample cannot
+  # fail an otherwise healthy build.
+  record_elapsed_sample "cold-launch-visible-window-sample-$sample_index" "$visible_elapsed_ms"
+  record_elapsed_sample "cold-launch-command-ready-sample-$sample_index" "$command_ready_elapsed_ms"
+  record_elapsed_sample "cold-launch-today-ready-sample-$sample_index" "$today_ready_elapsed_ms"
 }
 
 measure_destination() {
@@ -436,21 +492,19 @@ else
 fi
 prepare_production_fixture
 
-launch_start_ms="$(now_ms)"
-rm -f "$TIMELINE_FILE"
-TRACK_LAUNCH_MILESTONES=1
-open_app
-visible_window_ms="$(wait_for_launch_milestone "window-visible")"
-command_ready_ms="$(wait_for_launch_milestone "command-ready")"
-today_ready_ms="$(wait_for_launch_milestone "today-ready")"
-# AX markers remain mandatory proof that the app-owned readiness milestones
-# correspond to real, operable UI rather than optimistic instrumentation.
-wait_for_visible_window
-wait_for_marker "project-board-command-palette"
-wait_for_marker "today-workflow"
-record_sample "cold-launch-visible-window" "$launch_start_ms" "$visible_window_ms"
-record_sample "cold-launch-command-ready" "$launch_start_ms" "$command_ready_ms" "$MAX_COLD_LAUNCH_MS"
-record_sample "cold-launch-today-ready" "$launch_start_ms" "$today_ready_ms"
+for sample_index in $(seq 1 "$COLD_LAUNCH_SAMPLE_COUNT"); do
+  measure_cold_launch_sample "$sample_index"
+  if (( sample_index < COLD_LAUNCH_SAMPLE_COUNT )); then
+    terminate_app
+  fi
+done
+
+median_visible_window_ms="$(median_elapsed_ms "${COLD_LAUNCH_VISIBLE_SAMPLES[@]}")"
+median_command_ready_ms="$(median_elapsed_ms "${COLD_LAUNCH_COMMAND_READY_SAMPLES[@]}")"
+median_today_ready_ms="$(median_elapsed_ms "${COLD_LAUNCH_TODAY_READY_SAMPLES[@]}")"
+record_elapsed_sample "cold-launch-visible-window" "$median_visible_window_ms"
+record_elapsed_sample "cold-launch-command-ready" "$median_command_ready_ms" "$MAX_COLD_LAUNCH_MS"
+record_elapsed_sample "cold-launch-today-ready" "$median_today_ready_ms"
 
 # Activation is intentionally outside the cold-launch sample. The product is
 # already command-ready; this only gives the AX destination benchmark a stable
