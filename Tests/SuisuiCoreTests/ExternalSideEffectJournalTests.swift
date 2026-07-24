@@ -732,6 +732,48 @@ final class ExternalSideEffectJournalTests: XCTestCase {
         XCTAssertEqual(try client.list().count, 2)
     }
 
+    func testReminderBulkEditKeepsSucceededItemIdempotencyKeyStable() throws {
+        let connection = try migratedConnection()
+        let journal = SQLiteExternalSideEffectJournal(connection: connection)
+        let client = FailOnceReminderClient(failingTitle: "Review")
+        let tool = ReminderTool(
+            name: .remindersBulkCreate,
+            client: client,
+            sideEffectJournal: journal
+        )
+        let initialArguments: [String: JSONValue] = [
+            "reminders": .array([
+                .object(["title": .string("Draft")]),
+                .object(["title": .string("Review")])
+            ])
+        ]
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: initialArguments,
+                context: approvedSideEffectContext(idempotencyKey: "bulk-action-key-v1")
+            )
+        )
+        XCTAssertEqual(try client.list().map(\.title), ["Draft"])
+
+        let result = try tool.execute(
+            arguments: [
+                "reminders": .array([
+                    .object(["title": .string("Draft")]),
+                    .object(["title": .string("Review updated")])
+                ])
+            ],
+            context: approvedSideEffectContext(idempotencyKey: "bulk-action-key-v2")
+        )
+
+        XCTAssertEqual(result.status, .succeeded)
+        XCTAssertEqual(try client.list().map(\.title), ["Draft", "Review updated"])
+        let journalRecords = try journal.records(executionID: "execution-1")
+        XCTAssertEqual(journalRecords.count, 3)
+        XCTAssertEqual(journalRecords.filter { $0.state == .succeeded }.count, 2)
+        XCTAssertEqual(journalRecords.filter { $0.state == .failedBeforeSideEffect }.count, 1)
+    }
+
     func testReminderBulkSuccessIncludesExternalResourceIDsForReceiptEvidence() throws {
         let connection = try migratedConnection()
         let journal = SQLiteExternalSideEffectJournal(connection: connection)
@@ -966,6 +1008,53 @@ private final class FailOnceNotificationClient: NotificationClient, @unchecked S
     }
 
     func listScheduled() throws -> [NotificationRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+        return records
+    }
+}
+
+private final class FailOnceReminderClient: ReminderClient, @unchecked Sendable {
+    private let lock = NSLock()
+    private let failingTitle: String
+    private var didFail = false
+    private var nextID = 1
+    private var records: [ReminderRecord] = []
+
+    init(failingTitle: String) {
+        self.failingTitle = failingTitle
+    }
+
+    func create(_ draft: ReminderDraft) throws -> ReminderRecord {
+        lock.lock()
+        defer { lock.unlock() }
+        if draft.title == failingTitle, !didFail {
+            didFail = true
+            throw ToolClientError.invalidRequest("Reminder is invalid.")
+        }
+        let record = ReminderRecord(
+            id: "reminder-\(nextID)",
+            title: draft.title,
+            dueAt: draft.dueAt,
+            listName: draft.listName,
+            isCompleted: false
+        )
+        nextID += 1
+        records.append(record)
+        return record
+    }
+
+    func markComplete(id: String) throws -> ReminderRecord {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let index = records.firstIndex(where: { $0.id == id }) else {
+            throw ToolClientError.notFound("Reminder \(id) was not found.")
+        }
+        records[index].isCompleted = true
+        return records[index]
+    }
+
+    func list() throws -> [ReminderRecord] {
         lock.lock()
         defer { lock.unlock() }
         return records

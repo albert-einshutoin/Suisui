@@ -259,7 +259,21 @@ public struct ToolExecutionContext: Sendable {
               let idempotencyKey else {
             throw ToolExecutionError.sideEffectIdentityMissing(tool)
         }
-        let itemKey = itemIndex.map { "\(idempotencyKey):item:\($0)" } ?? idempotencyKey
+        let itemKey: String
+        if let itemIndex {
+            // Bulk items must not inherit the action-level arguments digest:
+            // editing a sibling would otherwise change every item key and
+            // duplicate already-succeeded external writes. The index keeps
+            // identical sibling payloads distinct.
+            itemKey = try Self.externalSideEffectIdempotencyKey(
+                reviewSessionID: reviewSessionID,
+                actionID: "\(actionID):item:\(itemIndex)",
+                tool: tool,
+                arguments: arguments
+            )
+        } else {
+            itemKey = idempotencyKey
+        }
         return ExternalSideEffectRequest(
             executionID: executionID,
             reviewSessionID: reviewSessionID,
