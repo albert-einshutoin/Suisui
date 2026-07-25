@@ -86,6 +86,18 @@ final class TaskContextFactPolicyTests: XCTestCase {
         XCTAssertFalse(reason.contains(candidate.value))
     }
 
+    func testGivenShortProviderKeyWhenEvaluateThenProhibits() {
+        let candidate = makeCandidate(
+            kind: .constraint,
+            value: "Use sk-12345678",
+            author: .userExplicit
+        )
+
+        guard case .prohibit = policy.evaluate(candidate) else {
+            return XCTFail("Expected short provider key to remain prohibited.")
+        }
+    }
+
     func testGivenOrdinaryWordEndingInSKWhenEvaluateThenDoesNotTreatItAsSecret() {
         let candidate = makeCandidate(
             kind: .constraint,
