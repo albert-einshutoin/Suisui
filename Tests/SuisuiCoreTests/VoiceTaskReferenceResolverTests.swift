@@ -45,6 +45,45 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(selected, reason: .selectedTask))
     }
 
+    func testGivenSelectedTaskAndJapaneseTaskDemonstrativeThenUsesSelection() throws {
+        let selected = ConversationResolvedTarget.task(id: 423, projectID: 7)
+        let unrelated = ConversationResolvedTarget.task(id: 424, projectID: 7)
+        let unrelatedFact = try TaskContextFact(
+            sessionID: sessionID,
+            kind: .task,
+            scope: .task(424),
+            state: .confirmed,
+            value: "Unrelated task",
+            sourceTurnID: sourceTurnID,
+            confidence: 1,
+            author: .userExplicit,
+            createdAt: now.addingTimeInterval(-30)
+        )
+        let candidates = [
+            candidate(taskID: 423, projectID: 7, title: "Selected task"),
+            candidate(taskID: 424, projectID: 7, title: "Unrelated task"),
+        ]
+
+        for utterance in [
+            "このタスクを完了にして",
+            "そのタスクを完了にして",
+            "あのタスクを完了にして",
+        ] {
+            XCTAssertEqual(
+                resolver.resolve(
+                    request(
+                        utterance: utterance,
+                        selectedTask: selected,
+                        candidates: candidates,
+                        confirmedFacts: [unrelatedFact]
+                    )
+                ),
+                .resolved(selected, reason: .selectedTask),
+                "\(utterance) must not resolve \(unrelated)"
+            )
+        }
+    }
+
     func testGivenNamedCandidateWithoutOrdinalFingerprintThenResolvesName() {
         let target = ConversationResolvedTarget.task(id: 422, projectID: 7)
         let candidates = [

@@ -511,6 +511,12 @@ public struct VoiceTaskReferenceResolver: Sendable {
     private func isAnaphoricReference(_ value: String) -> Bool {
         isJapaneseAnaphor("それ", in: value)
             || isJapaneseAnaphor("あれ", in: value)
+            // Japanese demonstratives attach directly to the target noun.
+            // Treating them as selection evidence prevents an unrelated
+            // confirmed fact from silently winning the fallback chain.
+            || value.contains("このタスク")
+            || value.contains("そのタスク")
+            || value.contains("あのタスク")
             || matches(#"\b(?:that|this|this one|that one)\b"#, in: value)
     }
 
