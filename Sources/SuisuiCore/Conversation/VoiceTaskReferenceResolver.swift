@@ -521,10 +521,17 @@ public struct VoiceTaskReferenceResolver: Sendable {
         // "delete Release because that task..." without treating the
         // incidental Release in "delete this task after Release" as a target.
         return matches(
-            #"^(?:(?:please|(?:could|can|would)\s+you(?:\s+please)?)\s+)?(?:open|show|delete|complete|finish|update|rename|move|archive)\s+(?:(?:the\s+)?(?:task|project)\s+)?\#(escapedTitle)(?=(?:\s+please)?$|[,;:]?\s+(?:because|since|as|so\s+that|after|before|when|while|if|in|within|under|to|into|from)\b)"#,
+            #"^\#(Self.englishPoliteCommandPrefixPattern)\#(Self.englishTargetOperationPattern)\s+(?:(?:the\s+)?(?:task|project)\s+)?\#(escapedTitle)(?=(?:\s+please)?$|[,;:]?\s+(?:because|since|as|so\s+that|after|before|when|while|if|in|within|under|to|into|from)\b)"#,
             in: normalizedUtterance
         )
     }
+
+    // These fragments are shared by all English target-position checks so
+    // politeness variants and supported operations cannot drift apart.
+    private static let englishPoliteCommandPrefixPattern =
+        #"(?:(?:please|(?:could|can|would)\s+you(?:\s+please)?)\s+)?"#
+    private static let englishTargetOperationPattern =
+        #"(?:open|show|delete|complete|finish|update|rename|move|archive)"#
 
     private static let genericReferenceTitles: Set<String> = [
         "it",
@@ -601,7 +608,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
         // An explicit direct-object qualifier is stronger than a noun that
         // merely appears inside the target's title ("project Task Force").
         if matches(
-            #"^(?:(?:open|show|delete|rename|update|move|archive)\s+(?:the\s+)?)?project\b"#,
+            #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?)?project\b"#,
             in: normalizedUtterance
         ) {
             return .project
@@ -660,7 +667,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
         // a subordinate clause such as "so that we unblock the project" can
         // turn a preceding task command into a project mutation.
         matches(
-            #"^(?:(?:please|(?:could|can|would)\s+you(?:\s+please)?)\s+)?(?:(?:open|show|delete|complete|finish|update|rename|move|archive)\s+(?:the\s+)?)?(?:this|that|current)(?:\s+(?!(?:we|i|you|they|he|she|it|the|a|an|so|which|who|to|for|because)\b)[\p{L}\p{N}_-]+){0,3}\s+project\b"#,
+            #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?)?(?:the\s+)?(?:this|that|current)(?:\s+(?!(?:we|i|you|they|he|she|it|the|a|an|so|which|who|to|for|because)\b)[\p{L}\p{N}_-]+){0,3}\s+project\b"#,
             in: value
         )
             || value.contains("このプロジェクト")

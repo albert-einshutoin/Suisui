@@ -195,15 +195,22 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             candidate(taskID: 427, projectID: 23, title: "Task Force"),
         ]
 
-        XCTAssertEqual(
-            resolver.resolve(
-                request(
-                    utterance: "open project Task Force",
-                    candidates: candidates
-                )
-            ),
-            .resolved(project, reason: .uniqueCandidate)
-        )
+        for utterance in [
+            "open project Task Force",
+            "please delete project Task Force",
+            "could you open project Task Force",
+        ] {
+            XCTAssertEqual(
+                resolver.resolve(
+                    request(
+                        utterance: utterance,
+                        candidates: candidates
+                    )
+                ),
+                .resolved(project, reason: .uniqueCandidate),
+                utterance
+            )
+        }
     }
 
     func testGivenSelectedProjectWhenResolveThenUsesProjectSelection() {
@@ -375,6 +382,9 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             "delete this old project",
             "please delete this old project",
             "could you please delete this old project",
+            "current project",
+            "the current project",
+            "open the current project",
         ] {
             XCTAssertEqual(
                 resolver.resolve(
