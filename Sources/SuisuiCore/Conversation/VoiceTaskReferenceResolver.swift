@@ -521,7 +521,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
         // "delete Release because that task..." without treating the
         // incidental Release in "delete this task after Release" as a target.
         if matches(
-            #"^\#(Self.englishPoliteCommandPrefixPattern)\#(Self.englishTargetOperationPattern)\s+(?:(?:the\s+)?(?:task|project)\s+)?\#(escapedTitle)(?=(?:\s+please)?$|[,;:]?\s+(?:because|since|as|so\s+that|after|before|when|while|if|in|within|under|to|into|from)\b)"#,
+            #"^\#(Self.englishPoliteCommandPrefixPattern)\#(Self.englishTargetOperationPattern)\s+(?:(?:the\s+)?(?:task|project)\s+)?\#(escapedTitle)(?=\#(Self.englishDirectNamedCommandTailPattern))"#,
             in: normalizedUtterance
         ) {
             return true
@@ -570,7 +570,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
             for: normalize(candidate.title)
         )
         return matches(
-            #"^\#(Self.englishPoliteCommandPrefixPattern)\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?\#(noun)\s+\#(escapedTitle)(?=(?:\s+please)?$|[,;:]?\s+(?:because|since|as|so\s+that|after|before|when|while|if|in|within|under|to|into|from)\b)"#,
+            #"^\#(Self.englishPoliteCommandPrefixPattern)\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?\#(noun)\s+\#(escapedTitle)(?=\#(Self.englishDirectNamedCommandTailPattern))"#,
             in: normalizedUtterance
         )
     }
@@ -581,6 +581,8 @@ public struct VoiceTaskReferenceResolver: Sendable {
         #"(?:(?:please|(?:could|can|would)\s+you(?:\s+please)?)\s+)?"#
     private static let englishTargetOperationPattern =
         #"(?:open|show|delete|complete|finish|update|rename|move|archive)"#
+    private static let englishDirectNamedCommandTailPattern =
+        #"(?:\s+please)?[.!?]?$|[,;:]?\s+(?:because|since|as|so\s+that|after|before|when|while|if|in|within|under|to|into|from)\b"#
 
     private static let genericReferenceTitles: Set<String> = [
         "it",

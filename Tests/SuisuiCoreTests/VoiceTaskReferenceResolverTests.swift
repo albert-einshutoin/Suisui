@@ -1348,6 +1348,27 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(named, reason: .uniqueCandidate))
     }
 
+    func testGivenNamedCommandWithTerminalPunctuationThenResolvesTarget() {
+        let named = ConversationResolvedTarget.task(id: 7361, projectID: 12)
+        let candidates = [
+            candidate(taskID: 7361, projectID: 12, title: "Release"),
+        ]
+
+        for utterance in [
+            "delete Release.",
+            "could you archive Release?",
+            "delete Release please!",
+        ] {
+            XCTAssertEqual(
+                resolver.resolve(
+                    request(utterance: utterance, candidates: candidates)
+                ),
+                .resolved(named, reason: .uniqueCandidate),
+                utterance
+            )
+        }
+    }
+
     func testGivenContextualReferenceTitleCollisionThenUsesSelection() {
         let selected = ConversationResolvedTarget.task(id: 737, projectID: 12)
         let candidates = [
