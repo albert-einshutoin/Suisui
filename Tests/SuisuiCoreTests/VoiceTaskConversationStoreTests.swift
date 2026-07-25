@@ -76,9 +76,10 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
         let (connection, store) = try makeStore()
         var session = makeSession()
         try store.createSession(session)
+        let expectedUpdatedAt = session.updatedAt
         try session.pause(at: Date(timeIntervalSince1970: 1_800_000_010))
 
-        try store.updateSession(session)
+        try store.updateSession(session, expectedUpdatedAt: expectedUpdatedAt)
 
         XCTAssertEqual(try store.loadSession(id: session.id), session)
         XCTAssertEqual(
@@ -87,10 +88,11 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
         )
     }
 
-    func testUpdatingRetainedSessionPreservesPersistedTurnCursor() throws {
+    func testUpdatingRetainedSessionAfterTurnFailsOptimisticLock() throws {
         let (_, store) = try makeStore()
         var retainedSession = makeSession()
         try store.createSession(retainedSession)
+        let expectedUpdatedAt = retainedSession.updatedAt
         let turn = try makeTurn(
             sessionID: retainedSession.id,
             createdAt: Date(timeIntervalSince1970: 1_800_000_010)
@@ -101,35 +103,44 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
             at: Date(timeIntervalSince1970: 1_800_000_020)
         )
 
-        try store.updateSession(retainedSession)
-
-        let restored = try XCTUnwrap(store.loadSession(id: retainedSession.id))
-        XCTAssertEqual(restored.title, "Renamed after turn")
-        XCTAssertEqual(restored.lastTurnAt, turn.createdAt)
-        XCTAssertEqual(restored.updatedAt, retainedSession.updatedAt)
-    }
-
-    func testUpdatingSessionOlderThanPersistedTurnFailsClosed() throws {
-        let (_, store) = try makeStore()
-        var retainedSession = makeSession()
-        try store.createSession(retainedSession)
-        let turn = try makeTurn(
-            sessionID: retainedSession.id,
-            createdAt: Date(timeIntervalSince1970: 1_800_000_010)
-        )
-        try store.saveTurn(turn)
-        try retainedSession.updateTitle(
-            "Stale rename",
-            at: Date(timeIntervalSince1970: 1_800_000_005)
-        )
-
-        XCTAssertThrowsError(try store.updateSession(retainedSession)) { error in
+        XCTAssertThrowsError(
+            try store.updateSession(retainedSession, expectedUpdatedAt: expectedUpdatedAt)
+        ) { error in
             XCTAssertEqual(
                 error as? VoiceTaskConversationStoreError,
                 .staleSession(retainedSession.id)
             )
         }
         XCTAssertEqual(try store.loadSession(id: retainedSession.id)?.lastTurnAt, turn.createdAt)
+    }
+
+    func testLaterMutationFromStaleSnapshotCannotUndoPausedState() throws {
+        let (_, store) = try makeStore()
+        let baseSession = makeSession()
+        try store.createSession(baseSession)
+        var pausedSession = baseSession
+        try pausedSession.pause(at: Date(timeIntervalSince1970: 1_800_000_010))
+        try store.updateSession(
+            pausedSession,
+            expectedUpdatedAt: baseSession.updatedAt
+        )
+        var staleSession = baseSession
+        try staleSession.updateTitle(
+            "Stale rename",
+            at: Date(timeIntervalSince1970: 1_800_000_020)
+        )
+
+        XCTAssertThrowsError(
+            try store.updateSession(staleSession, expectedUpdatedAt: baseSession.updatedAt)
+        ) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationStoreError,
+                .staleSession(baseSession.id)
+            )
+        }
+        let restored = try XCTUnwrap(store.loadSession(id: baseSession.id))
+        XCTAssertEqual(restored.state, .paused)
+        XCTAssertEqual(restored.title, baseSession.title)
     }
 
     func testSavingTurnForMissingSessionFailsClosed() throws {

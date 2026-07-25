@@ -62,7 +62,10 @@ public struct VoiceTaskConversationDeleteResult: Equatable, Sendable {
 
 public protocol VoiceTaskConversationStore: Sendable {
     func createSession(_ session: VoiceTaskConversationSession) throws
-    func updateSession(_ session: VoiceTaskConversationSession) throws
+    func updateSession(
+        _ session: VoiceTaskConversationSession,
+        expectedUpdatedAt: Date
+    ) throws
     func loadSession(id: UUID) throws -> VoiceTaskConversationSession?
     func saveTurn(_ turn: VoiceTaskConversationTurn) throws
     func listTurns(

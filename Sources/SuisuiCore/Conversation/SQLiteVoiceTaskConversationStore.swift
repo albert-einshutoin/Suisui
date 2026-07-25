@@ -43,7 +43,10 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
         )
     }
 
-    public func updateSession(_ session: VoiceTaskConversationSession) throws {
+    public func updateSession(
+        _ session: VoiceTaskConversationSession,
+        expectedUpdatedAt: Date
+    ) throws {
         lock.lock()
         defer { lock.unlock() }
 
@@ -51,15 +54,15 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
             guard let storedSession = try loadSessionUnlocked(id: session.id) else {
                 throw VoiceTaskConversationStoreError.missingSession(session.id)
             }
-            guard session.updatedAt >= storedSession.updatedAt else {
+            let expectedTime = try Self.timeValue(expectedUpdatedAt)
+            guard storedSession.updatedAt == expectedUpdatedAt,
+                  session.updatedAt >= expectedUpdatedAt
+            else {
                 throw VoiceTaskConversationStoreError.staleSession(session.id)
             }
-            // Callers can retain the value originally passed to createSession while
-            // saveTurn advances the persisted cursor. Never let that stale value
-            // erase the durable Turn boundary during an unrelated metadata update.
-            let persistedLastTurnAt = [session.lastTurnAt, storedSession.lastTurnAt]
-                .compactMap { $0 }
-                .max()
+            // The compare-and-swap predicate is part of the write, not only the
+            // preceding read. This keeps a later writer from accepting a stale
+            // whole-session snapshot and silently reverting another mutation.
             try connection.execute(
                 """
                 UPDATE voice_task_conversation_sessions
@@ -70,7 +73,7 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                     resume_summary = ?,
                     updated_at = ?,
                     last_turn_at = ?
-                WHERE id = ?;
+                WHERE id = ? AND updated_at = ?;
                 """,
                 parameters: [
                     .text(session.state.rawValue),
@@ -79,8 +82,9 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                     SQLiteValue(session.activeTaskID),
                     SQLiteValue(session.resumeSummary),
                     .real(try Self.timeValue(session.updatedAt)),
-                    try Self.optionalTimeValue(persistedLastTurnAt),
+                    try Self.optionalTimeValue(session.lastTurnAt),
                     .text(session.id.uuidString),
+                    .real(expectedTime),
                 ]
             )
         }
