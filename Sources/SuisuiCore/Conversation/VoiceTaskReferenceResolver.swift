@@ -144,8 +144,8 @@ public struct VoiceTaskReferenceResolver: Sendable {
         }) else {
             return .unavailable(.invalidCandidateOrdering)
         }
-        if !request.candidates.isEmpty {
-            guard request.candidateOrderingFingerprint
+        if let candidateOrderingFingerprint = request.candidateOrderingFingerprint {
+            guard candidateOrderingFingerprint
                 == Self.orderingFingerprint(for: request.candidates)
             else {
                 return .unavailable(.invalidCandidateOrdering)
@@ -425,8 +425,13 @@ public struct VoiceTaskReferenceResolver: Sendable {
 
     private static let genericReferenceTitles: Set<String> = [
         "that",
+        "this",
         "this one",
         "that one",
+        "this task",
+        "that task",
+        "this project",
+        "that project",
         "task",
         "project",
         "それ",
@@ -496,7 +501,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
     private func isAnaphoricReference(_ value: String) -> Bool {
         isJapaneseAnaphor("それ", in: value)
             || isJapaneseAnaphor("あれ", in: value)
-            || matches(#"\b(?:that|this one|that one)\b"#, in: value)
+            || matches(#"\b(?:that|this|this one|that one)\b"#, in: value)
     }
 
     private func mentionsProjectReference(_ value: String) -> Bool {

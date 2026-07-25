@@ -32,6 +32,36 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(selected, reason: .selectedTask))
     }
 
+    func testGivenSelectedTaskAndThisTaskReferenceThenUsesSelection() {
+        let selected = ConversationResolvedTarget.task(id: 421, projectID: 7)
+        let result = resolver.resolve(
+            request(
+                utterance: "complete this task",
+                selectedTask: selected,
+                candidates: [candidate(taskID: 421, projectID: 7, title: "Write notes")]
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(selected, reason: .selectedTask))
+    }
+
+    func testGivenNamedCandidateWithoutOrdinalFingerprintThenResolvesName() {
+        let target = ConversationResolvedTarget.task(id: 422, projectID: 7)
+        let candidates = [
+            candidate(taskID: 422, projectID: 7, title: "Ship release"),
+        ]
+        let request = VoiceTaskReferenceRequest(
+            sessionID: sessionID,
+            utterance: "open Ship release",
+            candidates: candidates
+        )
+
+        XCTAssertEqual(
+            resolver.resolve(request),
+            .resolved(target, reason: .uniqueCandidate)
+        )
+    }
+
     func testGivenSelectedProjectWhenResolveThenUsesProjectSelection() {
         let selected = ConversationResolvedTarget.project(id: 17)
         let candidate = ConversationReferenceCandidate(
