@@ -35,11 +35,26 @@ final class VoiceTaskConversationDomainTests: XCTestCase {
             entryPoint: .voiceCommand,
             createdAt: createdAt
         )
-        try session.archive(at: createdAt.addingTimeInterval(10))
+        try session.pause(at: createdAt.addingTimeInterval(10))
+        try session.archive(at: createdAt.addingTimeInterval(20))
 
-        XCTAssertThrowsError(try session.resume(at: createdAt.addingTimeInterval(20))) { error in
+        XCTAssertThrowsError(try session.resume(at: createdAt.addingTimeInterval(30))) { error in
             XCTAssertEqual(error as? VoiceTaskConversationDomainError, .invalidStateTransition)
         }
+    }
+
+    func testGivenActiveSessionWhenArchiveThenRejectsSkippedPauseTransition() {
+        var session = VoiceTaskConversationSession(
+            id: sessionID,
+            title: "Release planning",
+            entryPoint: .voiceCommand,
+            createdAt: createdAt
+        )
+
+        XCTAssertThrowsError(try session.archive(at: createdAt.addingTimeInterval(10))) { error in
+            XCTAssertEqual(error as? VoiceTaskConversationDomainError, .invalidStateTransition)
+        }
+        XCTAssertEqual(session.state, .active)
     }
 
     func testGivenBlankConfirmedTextWhenCreateTurnThenRejects() {

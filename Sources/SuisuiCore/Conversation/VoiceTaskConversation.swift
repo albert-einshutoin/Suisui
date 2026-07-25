@@ -78,7 +78,7 @@ public struct VoiceTaskConversationSession: Identifiable, Codable, Equatable, Se
     }
 
     public mutating func archive(at date: Date = Date()) throws {
-        guard state == .active || state == .paused else {
+        guard state == .paused else {
             throw VoiceTaskConversationDomainError.invalidStateTransition
         }
         try advance(to: .archived, at: date)
