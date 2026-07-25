@@ -169,7 +169,10 @@ public struct VoiceTaskReferenceResolver: Sendable {
         let ordinal = ordinalIndex(in: normalizedUtterance)
         let requestedTargetKind = requestedTargetKind(in: normalizedUtterance)
         let isAnaphoric = isAnaphoricReference(normalizedUtterance)
+        // The noun identifies the target kind even when a modifier separates
+        // the demonstrative from it ("this old project").
         let isProjectReference = mentionsProjectReference(normalizedUtterance)
+            || (requestedTargetKind == .project && isAnaphoric)
         let isRecentActionReference = mentionsRecentAction(normalizedUtterance)
         let namedCandidateMatches = request.candidates.filter {
             requestedTargetKind.matches($0.target)
@@ -426,11 +429,19 @@ public struct VoiceTaskReferenceResolver: Sendable {
             )
         }
 
-        // Japanese titles generally have no whitespace token boundary. Exact
-        // matches remain safe, while short substrings must clarify instead of
-        // selecting a different word that happens to contain the title.
-        return normalizedTitle.count >= 3
-            && normalizedUtterance.contains(normalizedTitle)
+        // Japanese titles generally have no whitespace token boundary. For
+        // short titles, a command particle supplies the boundary without
+        // accepting prefixes inside a longer word (for example, 会 in 会議).
+        if normalizedTitle.count < 3 {
+            let escapedTitle = NSRegularExpression.escapedPattern(
+                for: normalizedTitle
+            )
+            return matches(
+                #"(?<![\p{L}\p{N}_])\#(escapedTitle)(?=$|[\sをにのはがへでと、。！？])"#,
+                in: normalizedUtterance
+            )
+        }
+        return normalizedUtterance.contains(normalizedTitle)
     }
 
     private static let genericReferenceTitles: Set<String> = [

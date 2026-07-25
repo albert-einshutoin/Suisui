@@ -230,6 +230,25 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .needsClarification([projectCandidate]))
     }
 
+    func testGivenModifiedProjectAnaphorWithProjectSelectionThenUsesProject() {
+        let selectedProject = ConversationResolvedTarget.project(id: 181)
+        let candidate = ConversationReferenceCandidate(
+            target: selectedProject,
+            title: "Archive",
+            stableSortKey: "project-181"
+        )
+
+        let result = resolver.resolve(
+            request(
+                utterance: "delete this old project",
+                selectedProject: selectedProject,
+                candidates: [candidate]
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(selectedProject, reason: .selectedProject))
+    }
+
     func testGivenPreviousTaskActionWhenProjectQualifiedPronounThenDoesNotUseTask() throws {
         let link = try ConversationActionLink(
             sessionID: sessionID,
@@ -667,6 +686,31 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
 
         let result = resolver.resolve(
             request(utterance: "会議を開いて", candidates: candidates)
+        )
+
+        XCTAssertEqual(result, .needsClarification(candidates))
+    }
+
+    func testGivenShortJapaneseTitleAtParticleBoundaryThenResolvesName() {
+        let target = ConversationResolvedTarget.task(id: 746, projectID: 12)
+        let candidates = [
+            candidate(taskID: 746, projectID: 12, title: "会議"),
+        ]
+
+        let result = resolver.resolve(
+            request(utterance: "会議を開いて", candidates: candidates)
+        )
+
+        XCTAssertEqual(result, .resolved(target, reason: .uniqueCandidate))
+    }
+
+    func testGivenShortJapaneseTitleInsideLongerTitleThenDoesNotResolve() {
+        let candidates = [
+            candidate(taskID: 747, projectID: 12, title: "会議"),
+        ]
+
+        let result = resolver.resolve(
+            request(utterance: "定例会議を開いて", candidates: candidates)
         )
 
         XCTAssertEqual(result, .needsClarification(candidates))
