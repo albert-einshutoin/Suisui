@@ -508,6 +508,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
         "that project",
         "task",
         "project",
+        "これ",
         "それ",
         "あれ",
         "タスク",
@@ -573,7 +574,8 @@ public struct VoiceTaskReferenceResolver: Sendable {
     }
 
     private func isAnaphoricReference(_ value: String) -> Bool {
-        isJapaneseAnaphor("それ", in: value)
+        isJapaneseAnaphor("これ", in: value)
+            || isJapaneseAnaphor("それ", in: value)
             || isJapaneseAnaphor("あれ", in: value)
             // Japanese demonstratives attach directly to the target noun.
             // Treating them as selection evidence prevents an unrelated
@@ -605,13 +607,12 @@ public struct VoiceTaskReferenceResolver: Sendable {
     }
 
     private func mentionsRecentAction(_ value: String) -> Bool {
-        let isJapaneseCreatedReference = value.contains("さっき")
-            && (
-                value.contains("追加")
-                    || value.contains("作成")
-                    || value.contains("作った")
-                    || matches(#"\b(?:added|created)\b"#, in: value)
-            )
+        // The creation verb must belong to the clause introduced by さっき.
+        // A later operation such as メモを追加して is not creation evidence.
+        let isJapaneseCreatedReference = matches(
+            #"さっき\s*(?:(?:追加|作成)\s*した|作った|(?:added|created)\s*した)"#,
+            in: value
+        )
         return isJapaneseCreatedReference
             || matches(
                 #"\b(?:task|one|item|thing|what)\s+(?:that\s+)?(?:(?:we|i)\s+)?just\s+(?:added|created)\b"#,

@@ -65,6 +65,7 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         ]
 
         for utterance in [
+            "これを完了にして",
             "このタスクを完了にして",
             "そのタスクを完了にして",
             "あのタスクを完了にして",
@@ -509,6 +510,35 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         )
 
         XCTAssertEqual(result, .needsClarification(candidates))
+    }
+
+    func testGivenViewedSelectedTaskWithAddOperationThenDoesNotUseCreatedLink() throws {
+        let selected = ConversationResolvedTarget.task(id: 4321, projectID: 8)
+        let created = ConversationResolvedTarget.task(id: 4322, projectID: 8)
+        let link = try ConversationActionLink(
+            sessionID: sessionID,
+            sourceTurnID: sourceTurnID,
+            taskID: 4322,
+            operation: .taskCreated,
+            reviewedFingerprint: "reviewed",
+            createdAt: now.addingTimeInterval(-5)
+        )
+        let candidates = [
+            candidate(taskID: 4321, projectID: 8, title: "Viewed task"),
+            candidate(taskID: 4322, projectID: 8, title: "Created task"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "さっき見たこのタスクにメモを追加して",
+                selectedTask: selected,
+                previousActionLink: link,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(selected, reason: .selectedTask))
+        XCTAssertNotEqual(result, .resolved(created, reason: .previousActionLink))
     }
 
     func testGivenStableThirdCandidateWhenResolveThenReturnsThirdTask() throws {
