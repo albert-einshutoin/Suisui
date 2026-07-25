@@ -371,6 +371,25 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertNotEqual(result, .resolved(selected, reason: .selectedTask))
     }
 
+    func testGivenJapaneseAnaphorOnlyAfterPunctuationThenDoesNotUseSelection() {
+        let selected = ConversationResolvedTarget.task(id: 457, projectID: 17)
+        let candidates = [
+            candidate(taskID: 457, projectID: 17, title: "Selected task"),
+            candidate(taskID: 458, projectID: 17, title: "Other task"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "期限切れタスクを削除して、それは不要です",
+                selectedTask: selected,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification(candidates))
+        XCTAssertNotEqual(result, .resolved(selected, reason: .selectedTask))
+    }
+
     func testGivenModifiedTaskAnaphorThenUsesSelectionOverModifierTitle() {
         let selected = ConversationResolvedTarget.task(id: 455, projectID: 17)
         let modifierTitle = ConversationResolvedTarget.task(id: 456, projectID: 17)
@@ -1597,6 +1616,42 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertNotEqual(
             result,
             .resolved(.task(id: 745, projectID: 12), reason: .uniqueCandidate)
+        )
+    }
+
+    func testGivenPostfixKindQualifierThenResolvesMatchingTargetKind() {
+        let taskCandidate = candidate(
+            taskID: 7452,
+            projectID: 12,
+            title: "Alpha"
+        )
+        let projectCandidate = ConversationReferenceCandidate(
+            target: .project(id: 122),
+            title: "Alpha",
+            stableSortKey: "project-122"
+        )
+        let candidates = [taskCandidate, projectCandidate]
+
+        XCTAssertEqual(
+            resolver.resolve(
+                request(
+                    utterance: "open the Alpha project",
+                    candidates: candidates
+                )
+            ),
+            .resolved(.project(id: 122), reason: .uniqueCandidate)
+        )
+        XCTAssertEqual(
+            resolver.resolve(
+                request(
+                    utterance: "delete the Alpha task",
+                    candidates: candidates
+                )
+            ),
+            .resolved(
+                .task(id: 7452, projectID: 12),
+                reason: .uniqueCandidate
+            )
         )
     }
 

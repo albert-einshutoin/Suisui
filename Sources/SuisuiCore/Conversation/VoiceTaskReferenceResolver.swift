@@ -515,6 +515,18 @@ public struct VoiceTaskReferenceResolver: Sendable {
         if normalizedUtterance == normalizedTitle {
             return true
         }
+        // With a definite article, an ordinal target is conversational
+        // evidence rather than a literal title ("the second task"). Without
+        // the article, titles such as "Second task" remain valid names.
+        if matches(
+            #"^(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|[0-9]+(?:st|nd|rd|th)?)\s+(?:task|project|one|item)\b"#,
+            in: normalizedTitle
+        ), matches(
+            #"^\#(Self.englishPoliteCommandPrefixPattern)\#(Self.englishTargetOperationPattern)\s+the\s+\#(NSRegularExpression.escapedPattern(for: normalizedTitle))\b"#,
+            in: normalizedUtterance
+        ) {
+            return false
+        }
         let escapedTitle = NSRegularExpression.escapedPattern(
             for: normalizedTitle
         )
@@ -525,7 +537,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
         // "delete Release because that task..." without treating the
         // incidental Release in "delete this task after Release" as a target.
         if matches(
-            #"^\#(Self.englishPoliteCommandPrefixPattern)\#(Self.englishTargetOperationPattern)\s+(?:(?:the\s+)?(?:task|project)\s+)?\#(escapedTitle)(?=\#(Self.englishDirectNamedCommandTailPattern))"#,
+            #"^\#(Self.englishPoliteCommandPrefixPattern)\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?(?:(?:task|project)\s+)?\#(escapedTitle)(?:\s+(?:task|project))?(?=\#(Self.englishDirectNamedCommandTailPattern))"#,
             in: normalizedUtterance
         ) {
             return true
@@ -574,7 +586,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
             for: normalize(candidate.title)
         )
         return matches(
-            #"^\#(Self.englishPoliteCommandPrefixPattern)\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?\#(noun)\s+\#(escapedTitle)(?=\#(Self.englishDirectNamedCommandTailPattern))"#,
+            #"^\#(Self.englishPoliteCommandPrefixPattern)\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?(?:\#(noun)\s+\#(escapedTitle)|\#(escapedTitle)\s+\#(noun))(?=\#(Self.englishDirectNamedCommandTailPattern))"#,
             in: normalizedUtterance
         )
     }
@@ -754,15 +766,19 @@ public struct VoiceTaskReferenceResolver: Sendable {
     }
 
     private func isAnaphoricReference(_ value: String) -> Bool {
-        isJapaneseAnaphor("これ", in: value)
-            || isJapaneseAnaphor("それ", in: value)
-            || isJapaneseAnaphor("あれ", in: value)
+        let japanesePrimaryClause = value.split(
+            maxSplits: 1,
+            whereSeparator: { "、。！？".contains($0) }
+        ).first.map(String.init) ?? value
+        return isJapaneseAnaphor("これ", in: japanesePrimaryClause)
+            || isJapaneseAnaphor("それ", in: japanesePrimaryClause)
+            || isJapaneseAnaphor("あれ", in: japanesePrimaryClause)
             // Japanese demonstratives attach directly to the target noun.
             // Treating them as selection evidence prevents an unrelated
             // confirmed fact from silently winning the fallback chain.
-            || value.contains("このタスク")
-            || value.contains("そのタスク")
-            || value.contains("あのタスク")
+            || japanesePrimaryClause.contains("このタスク")
+            || japanesePrimaryClause.contains("そのタスク")
+            || japanesePrimaryClause.contains("あのタスク")
             || matches(
                 #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+)?(?:the\s+)?current\s+task\b"#,
                 in: value
