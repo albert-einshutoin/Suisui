@@ -72,6 +72,26 @@ final class VoiceTaskConversationDomainTests: XCTestCase {
         }
     }
 
+    func testGivenNonUserTurnWhenConfirmedTextIsPresentThenRejectsProvenanceMismatch() {
+        for author in [VoiceTaskConversationTurnAuthor.assistant, .system] {
+            XCTAssertThrowsError(
+                try VoiceTaskConversationTurn(
+                    id: turnID,
+                    sessionID: sessionID,
+                    author: author,
+                    rawTranscript: nil,
+                    userConfirmedText: "Ship by July 31",
+                    createdAt: createdAt
+                )
+            ) { error in
+                XCTAssertEqual(
+                    error as? VoiceTaskConversationDomainError,
+                    .confirmedTextRequiresUserAuthor
+                )
+            }
+        }
+    }
+
     func testGivenConfidenceOutsideClosedRangeWhenCreateFactThenRejects() {
         for confidence in [-0.01, 1.01, .infinity, .nan] {
             XCTAssertThrowsError(
@@ -201,11 +221,11 @@ final class VoiceTaskConversationDomainTests: XCTestCase {
                 sessionID: sessionID,
                 target: .task(42),
                 sourceTurnID: turnID,
-                ordinal: -1,
-                orderingFingerprint: "sha256:reference-order",
-                expiresAt: nil,
-                createdAt: createdAt
-            )
+            ordinal: -1,
+            orderingFingerprint: "sha256:reference-order",
+            expiresAt: createdAt.addingTimeInterval(60),
+            createdAt: createdAt
+        )
         ) { error in
             XCTAssertEqual(error as? VoiceTaskConversationDomainError, .invalidReferenceOrdinal)
         }

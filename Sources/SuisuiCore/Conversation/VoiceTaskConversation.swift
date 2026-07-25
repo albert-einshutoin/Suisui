@@ -3,6 +3,7 @@ import Foundation
 public enum VoiceTaskConversationDomainError: Error, Equatable, Sendable {
     case invalidStateTransition
     case blankConfirmedText
+    case confirmedTextRequiresUserAuthor
     case invalidConfidence
     case cyclicSupersession
     case expiredReference
@@ -202,6 +203,9 @@ public struct VoiceTaskConversationTurn: Identifiable, Codable, Equatable, Senda
         {
             throw VoiceTaskConversationDomainError.blankConfirmedText
         }
+        guard userConfirmedText == nil || author == .user else {
+            throw VoiceTaskConversationDomainError.confirmedTextRequiresUserAuthor
+        }
 
         self.id = id
         self.sessionID = sessionID
@@ -257,7 +261,7 @@ public struct ConversationReference: Identifiable, Codable, Equatable, Sendable 
     public let sourceTurnID: UUID
     public let ordinal: Int
     public let orderingFingerprint: String
-    public let expiresAt: Date?
+    public let expiresAt: Date
     public let createdAt: Date
 
     public init(
@@ -267,7 +271,7 @@ public struct ConversationReference: Identifiable, Codable, Equatable, Sendable 
         sourceTurnID: UUID,
         ordinal: Int,
         orderingFingerprint: String,
-        expiresAt: Date?,
+        expiresAt: Date,
         createdAt: Date = Date()
     ) throws {
         guard ordinal >= 0 else {
@@ -279,7 +283,7 @@ public struct ConversationReference: Identifiable, Codable, Equatable, Sendable 
         guard !orderingFingerprint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw VoiceTaskConversationDomainError.blankFingerprint
         }
-        guard expiresAt.map({ $0 > createdAt }) ?? true else {
+        guard expiresAt > createdAt else {
             throw VoiceTaskConversationDomainError.invalidReferenceExpiration
         }
         self.id = id
@@ -295,7 +299,7 @@ public struct ConversationReference: Identifiable, Codable, Equatable, Sendable 
     public func requireEligible(at date: Date = Date()) throws {
         // An expired ordinal must never be reinterpreted against a newer candidate
         // list; callers have to ask the user to clarify instead.
-        guard expiresAt.map({ date < $0 }) ?? true else {
+        guard date < expiresAt else {
             throw VoiceTaskConversationDomainError.expiredReference
         }
     }
@@ -320,7 +324,7 @@ public struct ConversationReference: Identifiable, Codable, Equatable, Sendable 
             sourceTurnID: values.decode(UUID.self, forKey: .sourceTurnID),
             ordinal: values.decode(Int.self, forKey: .ordinal),
             orderingFingerprint: values.decode(String.self, forKey: .orderingFingerprint),
-            expiresAt: values.decodeIfPresent(Date.self, forKey: .expiresAt),
+            expiresAt: values.decode(Date.self, forKey: .expiresAt),
             createdAt: values.decode(Date.self, forKey: .createdAt)
         )
     }
