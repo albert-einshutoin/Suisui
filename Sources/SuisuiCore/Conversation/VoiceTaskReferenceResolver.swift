@@ -459,16 +459,18 @@ public struct VoiceTaskReferenceResolver: Sendable {
     private func requestedTargetKind(
         in normalizedUtterance: String
     ) -> RequestedTargetKind {
+        // A task may legitimately be qualified by its containing project
+        // ("second task in project Alpha"), so the leaf target wins.
+        if matches(#"\btask\b"#, in: normalizedUtterance)
+            || normalizedUtterance.contains("タスク")
+        {
+            return .task
+        }
         if matches(#"\bproject\b"#, in: normalizedUtterance)
             || normalizedUtterance.contains("プロジェクト")
             || normalizedUtterance.contains("案件")
         {
             return .project
-        }
-        if matches(#"\btask\b"#, in: normalizedUtterance)
-            || normalizedUtterance.contains("タスク")
-        {
-            return .task
         }
         return .any
     }
@@ -499,7 +501,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
             )
         return isJapaneseCreatedReference
             || matches(
-                #"\b(?:task|one|item|thing|what)\s+(?:we\s+)?just\s+(?:added|created)\b"#,
+                #"\b(?:task|one|item|thing|what)\s+(?:that\s+)?(?:we\s+)?just\s+(?:added|created)\b"#,
                 in: value
             )
     }

@@ -164,6 +164,33 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(target, reason: .previousActionLink))
     }
 
+    func testGivenRelativeClauseCreatedTaskWhenResolveThenUsesActionLinkOverSelection() throws {
+        let selected = ConversationResolvedTarget.task(id: 432, projectID: 8)
+        let created = ConversationResolvedTarget.task(id: 433, projectID: 8)
+        let link = try ConversationActionLink(
+            sessionID: sessionID,
+            sourceTurnID: sourceTurnID,
+            taskID: 433,
+            reviewedFingerprint: "reviewed",
+            createdAt: now.addingTimeInterval(-5)
+        )
+        let candidates = [
+            candidate(taskID: 432, projectID: 8, title: "Selected task"),
+            candidate(taskID: 433, projectID: 8, title: "Created task"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "delete the task that we just created",
+                selectedTask: selected,
+                previousActionLink: link,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(created, reason: .previousActionLink))
+    }
+
     func testGivenRecentlyViewedJapaneseReferenceThenDoesNotUseCreatedTaskLink() throws {
         let link = try ConversationActionLink(
             sessionID: sessionID,
@@ -286,6 +313,38 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         )
 
         XCTAssertEqual(result, .needsClarification(projectCandidates))
+    }
+
+    func testGivenOrdinalTaskInsideNamedProjectWhenResolveThenUsesTaskKind() throws {
+        let candidates = [
+            candidate(taskID: 27, projectID: 24, title: "First task"),
+            candidate(taskID: 28, projectID: 24, title: "Second task"),
+            ConversationReferenceCandidate(
+                target: .project(id: 24),
+                title: "Alpha",
+                stableSortKey: "project-24"
+            ),
+        ]
+        let fingerprint = VoiceTaskReferenceResolver.orderingFingerprint(for: candidates)
+        let reference = try ordinalReference(
+            target: .task(28),
+            ordinal: 1,
+            fingerprint: fingerprint
+        )
+
+        let result = resolver.resolve(
+            request(
+                utterance: "open the second task in project Alpha",
+                ordinalReference: reference,
+                candidateOrderingFingerprint: fingerprint,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(
+            result,
+            .resolved(.task(id: 28, projectID: 24), reason: .stableOrdinal)
+        )
     }
 
     func testGivenReorderedCandidatesWhenResolveThirdThenRequiresClarification() throws {
