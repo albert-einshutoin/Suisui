@@ -261,6 +261,17 @@ public struct VoiceTaskReferenceResolver: Sendable {
             return resolveCandidate(candidate, reason: .previousActionLink)
         }
 
+        if isRecentActionReference {
+            // "Just created" claims require an Action Link. Falling through
+            // to a selected task or remembered fact could redirect a
+            // destructive command to an unrelated target.
+            return .needsClarification(
+                request.candidates.filter {
+                    requestedTargetKind.matches($0.target)
+                }
+            )
+        }
+
         if let ordinal {
             return resolveOrdinal(
                 ordinal,
@@ -551,7 +562,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
             )
         return isJapaneseCreatedReference
             || matches(
-                #"\b(?:task|one|item|thing|what)\s+(?:that\s+)?(?:we\s+)?just\s+(?:added|created)\b"#,
+                #"\b(?:task|one|item|thing|what)\s+(?:that\s+)?(?:(?:we|i)\s+)?just\s+(?:added|created)\b"#,
                 in: value
             )
     }

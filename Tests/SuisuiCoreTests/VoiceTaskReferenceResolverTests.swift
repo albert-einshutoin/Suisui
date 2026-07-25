@@ -328,6 +328,65 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(created, reason: .previousActionLink))
     }
 
+    func testGivenFirstPersonCreatedTaskWhenResolveThenUsesActionLinkOverSelection() throws {
+        let selected = ConversationResolvedTarget.task(id: 436, projectID: 8)
+        let created = ConversationResolvedTarget.task(id: 437, projectID: 8)
+        let link = try ConversationActionLink(
+            sessionID: sessionID,
+            sourceTurnID: sourceTurnID,
+            taskID: 437,
+            operation: .taskCreated,
+            reviewedFingerprint: "reviewed",
+            createdAt: now.addingTimeInterval(-5)
+        )
+        let candidates = [
+            candidate(taskID: 436, projectID: 8, title: "Selected task"),
+            candidate(taskID: 437, projectID: 8, title: "Created task"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "delete the task that I just created",
+                selectedTask: selected,
+                previousActionLink: link,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(created, reason: .previousActionLink))
+    }
+
+    func testGivenRecentCreationReferenceWithoutActionLinkThenDoesNotUseFact() throws {
+        let unrelated = ConversationResolvedTarget.task(id: 438, projectID: 8)
+        let unrelatedCandidate = candidate(
+            taskID: 438,
+            projectID: 8,
+            title: "Unrelated task"
+        )
+        let unrelatedFact = try TaskContextFact(
+            sessionID: sessionID,
+            kind: .task,
+            scope: .task(438),
+            state: .confirmed,
+            value: "Unrelated task",
+            sourceTurnID: sourceTurnID,
+            confidence: 1,
+            author: .userExplicit,
+            createdAt: now.addingTimeInterval(-30)
+        )
+
+        let result = resolver.resolve(
+            request(
+                utterance: "delete the task we just created",
+                candidates: [unrelatedCandidate],
+                confirmedFacts: [unrelatedFact]
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification([unrelatedCandidate]))
+        XCTAssertNotEqual(result, .resolved(unrelated, reason: .confirmedFact))
+    }
+
     func testGivenUpdatedTaskLinkWhenReferenceClaimsCreationThenClarifies() throws {
         let link = try ConversationActionLink(
             sessionID: sessionID,
