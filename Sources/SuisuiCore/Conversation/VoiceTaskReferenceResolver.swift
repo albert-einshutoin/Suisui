@@ -511,59 +511,26 @@ public struct VoiceTaskReferenceResolver: Sendable {
         if normalizedUtterance == normalizedTitle {
             return true
         }
-        let verbs = [
-            "open",
-            "show",
-            "delete",
-            "complete",
-            "finish",
-            "update",
-            "rename",
-            "move",
-            "archive",
-        ]
-        let commandPrefixes = [
-            "",
-            "please ",
-            "could you ",
-            "could you please ",
-            "can you ",
-            "can you please ",
-            "would you ",
-            "would you please ",
-        ]
-        let qualifiers = ["", "the task ", "task ", "the project ", "project "]
-        let containmentSuffixes = [
-            "",
-            " in this project",
-            " in that project",
-            " in the project",
-            " in current project",
-            " within this project",
-            " within that project",
-            " under this project",
-            " under that project",
-        ]
-        let politeSuffixes = ["", " please"]
+        let escapedTitle = NSRegularExpression.escapedPattern(
+            for: normalizedTitle
+        )
         // Contextual pronouns outrank incidental words. A title containing
-        // "this"/"that" remains usable when it is the complete command object.
-        // Bounded politeness forms keep that exact-object guarantee without
-        // treating an incidental title mention as the mutation target.
-        return commandPrefixes.contains { commandPrefix in
-            verbs.contains { verb in
-                qualifiers.contains { qualifier in
-                    containmentSuffixes.contains { containmentSuffix in
-                        politeSuffixes.contains { politeSuffix in
-                            normalizedUtterance
-                                == "\(commandPrefix)\(verb) \(qualifier)\(normalizedTitle)\(containmentSuffix)\(politeSuffix)"
-                        }
-                    }
-                }
-            }
-        }
+        // "this"/"that" remains usable when it begins the direct command
+        // object. The boundary permits only a complete command, a bounded
+        // subordinate clause, or container metadata. This preserves
+        // "delete Release because that task..." without treating the
+        // incidental Release in "delete this task after Release" as a target.
+        return matches(
+            #"^(?:(?:please|(?:could|can|would)\s+you(?:\s+please)?)\s+)?(?:open|show|delete|complete|finish|update|rename|move|archive)\s+(?:(?:the\s+)?(?:task|project)\s+)?\#(escapedTitle)(?=(?:\s+please)?$|[,;:]?\s+(?:because|since|as|so\s+that|after|before|when|while|if|in|within|under|to|into|from)\b)"#,
+            in: normalizedUtterance
+        )
     }
 
     private static let genericReferenceTitles: Set<String> = [
+        "it",
+        "one",
+        "item",
+        "thing",
         "that",
         "this",
         "this one",
@@ -572,6 +539,14 @@ public struct VoiceTaskReferenceResolver: Sendable {
         "that task",
         "this project",
         "that project",
+        "current",
+        "current one",
+        "current item",
+        "current thing",
+        "current task",
+        "current project",
+        "the current task",
+        "the current project",
         "task",
         "project",
         "これ",

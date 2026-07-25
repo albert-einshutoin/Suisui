@@ -1080,6 +1080,48 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertNotEqual(result, .resolved(incidental, reason: .uniqueCandidate))
     }
 
+    func testGivenNamedDirectObjectAndTrailingAnaphorThenUsesNamedTarget() {
+        let selected = ConversationResolvedTarget.task(id: 735, projectID: 12)
+        let named = ConversationResolvedTarget.task(id: 736, projectID: 12)
+        let candidates = [
+            candidate(taskID: 735, projectID: 12, title: "Selected"),
+            candidate(taskID: 736, projectID: 12, title: "Release"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "delete Release because that task is obsolete",
+                selectedTask: selected,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(named, reason: .uniqueCandidate))
+    }
+
+    func testGivenContextualReferenceTitleCollisionThenUsesSelection() {
+        let selected = ConversationResolvedTarget.task(id: 737, projectID: 12)
+        let candidates = [
+            candidate(taskID: 737, projectID: 12, title: "Selected"),
+            candidate(taskID: 738, projectID: 12, title: "Current task"),
+            candidate(taskID: 739, projectID: 12, title: "It"),
+        ]
+
+        for utterance in ["delete current task", "delete it"] {
+            XCTAssertEqual(
+                resolver.resolve(
+                    request(
+                        utterance: utterance,
+                        selectedTask: selected,
+                        candidates: candidates
+                    )
+                ),
+                .resolved(selected, reason: .selectedTask),
+                utterance
+            )
+        }
+    }
+
     func testGivenTaskTitleThatOneThingWhenResolveThenNamedTaskBeatsSelection() {
         let selected = ConversationResolvedTarget.task(id: 741, projectID: 12)
         let named = ConversationResolvedTarget.task(id: 742, projectID: 12)
