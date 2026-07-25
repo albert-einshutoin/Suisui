@@ -83,7 +83,10 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             "move it to project Alpha",
             "move it into project Alpha",
             "move it from project Alpha",
+            "move it to this project",
+            "delete it from this project",
             "それをAlphaプロジェクトに移動して",
+            "それをこのプロジェクトに移動して",
         ] {
             XCTAssertEqual(
                 resolver.resolve(

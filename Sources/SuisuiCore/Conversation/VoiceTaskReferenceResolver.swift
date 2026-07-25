@@ -171,8 +171,14 @@ public struct VoiceTaskReferenceResolver: Sendable {
         let isAnaphoric = isAnaphoricReference(normalizedUtterance)
         // The noun identifies the target kind even when a modifier separates
         // the demonstrative from it ("this old project").
-        let isProjectReference = mentionsProjectReference(normalizedUtterance)
-            || (requestedTargetKind == .project && isAnaphoric)
+        let isProjectContainerClause = mentionsProjectContainerClause(
+            normalizedUtterance
+        )
+        let isProjectReference = !isProjectContainerClause
+            && (
+                mentionsProjectReference(normalizedUtterance)
+                    || (requestedTargetKind == .project && isAnaphoric)
+            )
         let isRecentActionReference = mentionsRecentAction(normalizedUtterance)
         let lexicalNamedCandidateMatches = request.candidates.filter {
             requestedTargetKind.matches($0.target)
@@ -609,13 +615,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
         // A trailing containment or destination clause describes where the
         // direct object lives or moves; it does not turn that object into a
         // project.
-        if matches(
-            #"\b(?:in|within|under|to|into|from)\s+(?:(?:this|that|the|current)\s+)?project\b"#,
-            in: normalizedUtterance
-        ) || matches(
-            #"(?:プロジェクト|案件)(?:へ|に)(?:移動|動か)"#,
-            in: normalizedUtterance
-        ) {
+        if mentionsProjectContainerClause(normalizedUtterance) {
             return .any
         }
         if matches(#"\bproject\b"#, in: normalizedUtterance)
@@ -665,6 +665,16 @@ public struct VoiceTaskReferenceResolver: Sendable {
             || value.contains("この案件")
             || value.contains("その案件")
             || value.contains("あの案件")
+    }
+
+    private func mentionsProjectContainerClause(_ value: String) -> Bool {
+        matches(
+            #"\b(?:in|within|under|to|into|from)\s+(?:(?:this|that|the|current)\s+)?project\b"#,
+            in: value
+        ) || matches(
+            #"(?:プロジェクト|案件)(?:へ|に)(?:移動|動か)"#,
+            in: value
+        )
     }
 
     private func mentionsRecentAction(_ value: String) -> Bool {
