@@ -166,7 +166,6 @@ public struct VoiceTaskReferenceResolver: Sendable {
         }
 
         let normalizedUtterance = normalize(request.utterance)
-        let ordinal = ordinalIndex(in: normalizedUtterance)
         let requestedTargetKind = requestedTargetKind(in: normalizedUtterance)
         let isAnaphoric = isAnaphoricReference(normalizedUtterance)
         // The noun identifies the target kind even when a modifier separates
@@ -174,6 +173,12 @@ public struct VoiceTaskReferenceResolver: Sendable {
         let isProjectContainerClause = mentionsProjectContainerClause(
             normalizedUtterance
         )
+        // An ordinal inside a destination/source project clause describes the
+        // container. It must not outrank the direct-object pronoun and turn a
+        // task mutation into a project mutation.
+        let ordinal = isAnaphoric && isProjectContainerClause
+            ? nil
+            : ordinalIndex(in: normalizedUtterance)
         let isProjectReference = !isProjectContainerClause
             && (
                 mentionsProjectReference(normalizedUtterance)
@@ -680,6 +685,9 @@ public struct VoiceTaskReferenceResolver: Sendable {
             in: value
         ) || matches(
             #"(?:プロジェクト|案件)(?:へ|に)(?:移動|動か)"#,
+            in: value
+        ) || matches(
+            #"(?:プロジェクト|案件)(?:から|内(?:の|で)?|にある|の中(?:から|の|で)?)(?:これ|それ|あれ|(?:この|その|あの)?(?:タスク|もの))(?:を|に|は|が|へ)?"#,
             in: value
         )
     }
