@@ -233,6 +233,73 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(named, reason: .uniqueCandidate))
     }
 
+    func testGivenTaskTitleContainingProjectWhenResolveThenDoesNotUseProjectSelection() {
+        let selectedProject = ConversationResolvedTarget.project(id: 12)
+        let named = ConversationResolvedTarget.task(id: 75, projectID: 12)
+        let candidates = [
+            ConversationReferenceCandidate(
+                target: selectedProject,
+                title: "Launch",
+                stableSortKey: "project-12"
+            ),
+            candidate(taskID: 75, projectID: 12, title: "Projector setup"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "open Projector setup",
+                selectedProject: selectedProject,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(named, reason: .uniqueCandidate))
+    }
+
+    func testGivenNamedTaskContainingRecentActionWordsThenDoesNotUsePreviousAction() throws {
+        let link = try ConversationActionLink(
+            sessionID: sessionID,
+            sourceTurnID: sourceTurnID,
+            taskID: 76,
+            reviewedFingerprint: "reviewed",
+            createdAt: now.addingTimeInterval(-5)
+        )
+        let named = ConversationResolvedTarget.task(id: 77, projectID: 12)
+        let candidates = [
+            candidate(taskID: 76, projectID: 12, title: "Previous"),
+            candidate(taskID: 77, projectID: 12, title: "Just Added Checklist"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "open Just Added Checklist",
+                previousActionLink: link,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(named, reason: .uniqueCandidate))
+    }
+
+    func testGivenJapaneseTitleStartingWithSoreThenDoesNotUseSelection() {
+        let selected = ConversationResolvedTarget.task(id: 78, projectID: 12)
+        let named = ConversationResolvedTarget.task(id: 79, projectID: 12)
+        let candidates = [
+            candidate(taskID: 78, projectID: 12, title: "Selected"),
+            candidate(taskID: 79, projectID: 12, title: "それでもやる"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "それでもやる",
+                selectedTask: selected,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(named, reason: .uniqueCandidate))
+    }
+
     func testGivenExpiredReferenceWhenResolveThenDoesNotUseIt() throws {
         let candidate = candidate(taskID: 81, projectID: 13, title: "Expired")
         let fingerprint = VoiceTaskReferenceResolver.orderingFingerprint(for: [candidate])

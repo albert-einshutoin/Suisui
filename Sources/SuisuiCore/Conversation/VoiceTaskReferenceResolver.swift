@@ -368,23 +368,36 @@ public struct VoiceTaskReferenceResolver: Sendable {
     }
 
     private func isAnaphoricReference(_ value: String) -> Bool {
-        value.contains("それ")
-            || value.contains("あれ")
+        isJapaneseAnaphor("それ", in: value)
+            || isJapaneseAnaphor("あれ", in: value)
             || matches(#"\b(?:that|this one|that one)\b"#, in: value)
     }
 
     private func mentionsProjectReference(_ value: String) -> Bool {
-        value.contains("project")
-            || value.contains("プロジェクト")
+        matches(#"\b(?:this|that|current)\s+project\b"#, in: value)
+            || value.contains("このプロジェクト")
+            || value.contains("そのプロジェクト")
+            || value.contains("あのプロジェクト")
             || value.contains("この案件")
+            || value.contains("その案件")
+            || value.contains("あの案件")
     }
 
     private func mentionsRecentAction(_ value: String) -> Bool {
         value.contains("さっき")
-            || value.contains("just added")
-            || value.contains("just created")
-            || value.contains("we just added")
-            || value.contains("we just created")
+            || matches(
+                #"\b(?:task|one|item|thing|what)\s+(?:we\s+)?just\s+(?:added|created)\b"#,
+                in: value
+            )
+    }
+
+    private func isJapaneseAnaphor(_ anaphor: String, in value: String) -> Bool {
+        if value == anaphor {
+            return true
+        }
+        return ["を", "に", "の", "は", "が", "へ"].contains {
+            value.contains(anaphor + $0)
+        }
     }
 
     private func matches(_ pattern: String, in value: String) -> Bool {
