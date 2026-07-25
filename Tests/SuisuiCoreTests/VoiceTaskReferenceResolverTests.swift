@@ -67,6 +67,30 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         }
     }
 
+    func testGivenSelectedTaskAndDestinationProjectWhenMoveItThenKeepsTaskTarget() {
+        let selectedTask = ConversationResolvedTarget.task(id: 438, projectID: 7)
+        let destinationProject = ConversationResolvedTarget.project(id: 18)
+        let candidates = [
+            candidate(taskID: 438, projectID: 7, title: "Selected task"),
+            ConversationReferenceCandidate(
+                target: destinationProject,
+                title: "Alpha",
+                stableSortKey: "project-18"
+            ),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "move it to project Alpha",
+                selectedTask: selectedTask,
+                selectedProject: destinationProject,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(selectedTask, reason: .selectedTask))
+    }
+
     func testGivenSelectedTaskAndCurrentTaskReferenceThenUsesSelection() {
         let selected = ConversationResolvedTarget.task(id: 425, projectID: 7)
         let result = resolver.resolve(

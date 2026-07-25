@@ -606,10 +606,11 @@ public struct VoiceTaskReferenceResolver: Sendable {
         {
             return .task
         }
-        // A trailing containment clause describes where the direct object
-        // lives; it does not turn that object into a project.
+        // A trailing containment or destination clause describes where the
+        // direct object lives or moves; it does not turn that object into a
+        // project.
         if matches(
-            #"\b(?:in|within|under)\s+(?:(?:this|that|the|current)\s+)?project\b"#,
+            #"\b(?:in|within|under|to)\s+(?:(?:this|that|the|current)\s+)?project\b"#,
             in: normalizedUtterance
         ) {
             return .any
