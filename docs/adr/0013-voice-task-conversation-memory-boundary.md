@@ -30,7 +30,9 @@ Provider固有の会話履歴をsource of truthにすると、Provider変更、�
    supersessionを持つ。confidenceは有限な`0.0...1.0`に限定し、supersession cycle
    を拒否する。
 5. `ConversationActionLink` はreview済みfingerprintとAction Plan、Queue、Task、
-   ReceiptのIDを結び、会話から実行結果までの因果関係を保持する。
+   ReceiptのID、操作種別を結び、会話から実行結果までの因果関係を保持する。
+   「直前に作成したTask」のような参照は`taskCreated`の証拠があるLinkだけを使い、
+   既存Linkの`unspecified`を作成操作とは推測しない。
 
 raw transcriptから`TaskContextFact.value`への自動コピーは行わない。Factは明示的な
 変換・確認処理で新規作成し、`userExplicit`と`providerInferred`をauthorで区別する。

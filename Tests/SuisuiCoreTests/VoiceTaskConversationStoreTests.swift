@@ -416,6 +416,7 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
             assistantQueueItemID: "queue-1",
             taskID: 42,
             executionReceiptID: "receipt-1",
+            operation: .taskCreated,
             reviewedFingerprint: "reviewed-v1",
             createdAt: turn.createdAt
         )
@@ -427,6 +428,10 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
         XCTAssertEqual(try connection.queryStrings("SELECT target_kind FROM voice_task_conversation_references;"), ["task"])
         XCTAssertEqual(try connection.queryStrings("SELECT scope_kind FROM task_context_facts;"), ["task"])
         XCTAssertEqual(try connection.queryStrings("SELECT action_plan_id FROM conversation_action_links;"), ["plan-1"])
+        XCTAssertEqual(
+            try connection.queryStrings("SELECT operation_kind FROM conversation_action_links;"),
+            ["task_created"]
+        )
     }
 
     func testDeletingTaskPreservesFactScopeAndTaskOnlyActionLinkIdentifiers() throws {

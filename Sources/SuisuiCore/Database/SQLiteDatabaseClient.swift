@@ -1629,6 +1629,21 @@ public enum CoreMigrations {
                     """
                 )
             },
+            DatabaseMigration(id: "0026_add_conversation_action_link_operation") { connection in
+                try connection.execute(
+                    """
+                    ALTER TABLE conversation_action_links
+                    ADD COLUMN operation_kind TEXT NOT NULL DEFAULT 'unspecified'
+                        CHECK(operation_kind IN (
+                            'unspecified',
+                            'task_created',
+                            'task_updated',
+                            'task_completed',
+                            'task_deleted'
+                        ));
+                    """
+                )
+            },
         ]
     }
 }

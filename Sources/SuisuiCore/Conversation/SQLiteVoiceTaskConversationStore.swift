@@ -367,10 +367,11 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                 assistant_queue_item_id,
                 task_id,
                 execution_receipt_id,
+                operation_kind,
                 reviewed_fingerprint,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             parameters: [
                 .text(link.id.uuidString),
@@ -380,6 +381,7 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                 SQLiteValue(link.assistantQueueItemID),
                 SQLiteValue(link.taskID),
                 SQLiteValue(link.executionReceiptID),
+                .text(link.operation.rawValue),
                 .text(link.reviewedFingerprint),
                 .real(try Self.timeValue(link.createdAt)),
             ]

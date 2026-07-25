@@ -46,6 +46,48 @@ final class DatabaseMigrationTests: XCTestCase {
         )
     }
 
+    func testActionLinkOperationMigrationPreservesExistingLinksAsUnspecified() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeOperationKind = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0026_add_conversation_action_link_operation"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeOperationKind
+        )
+        try connection.execute(
+            """
+            INSERT INTO voice_task_conversation_sessions (
+                id, state, title, entry_point, created_at, updated_at
+            )
+            VALUES ('session-1', 'active', 'Session', 'voice_command', 1, 1);
+            INSERT INTO voice_task_conversation_turns (
+                id, session_id, author, confirmed_text, created_at
+            )
+            VALUES ('turn-1', 'session-1', 'user', 'Create task', 1);
+            INSERT INTO conversation_action_links (
+                id, session_id, source_turn_id, task_id,
+                reviewed_fingerprint, created_at
+            )
+            VALUES ('link-1', 'session-1', 'turn-1', 1, 'reviewed', 1);
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT operation_kind FROM conversation_action_links WHERE id = 'link-1';"
+            ),
+            ["unspecified"]
+        )
+    }
+
     func testApprovalReplayStoreRejectsNonceAfterDatabaseReopen() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("suisui-approval-replay-\(UUID().uuidString)", isDirectory: true)
