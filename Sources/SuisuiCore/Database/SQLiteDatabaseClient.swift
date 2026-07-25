@@ -1538,6 +1538,7 @@ public enum CoreMigrations {
                             'preference'
                         )),
                         scope_kind TEXT NOT NULL CHECK(scope_kind IN ('session', 'project', 'task')),
+                        scope_target_id INTEGER,
                         project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
                         task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
                         state TEXT NOT NULL CHECK(state IN (
@@ -1556,9 +1557,25 @@ public enum CoreMigrations {
                         )),
                         supersedes_fact_id TEXT REFERENCES task_context_facts(id) ON DELETE SET NULL,
                         created_at REAL NOT NULL,
+                        CHECK(scope_target_id IS NULL OR scope_target_id > 0),
                         CHECK(project_id IS NULL OR project_id > 0),
                         CHECK(task_id IS NULL OR task_id > 0),
-                        CHECK(NOT (project_id IS NOT NULL AND task_id IS NOT NULL))
+                        CHECK(
+                            (scope_kind = 'session'
+                                AND scope_target_id IS NULL
+                                AND project_id IS NULL
+                                AND task_id IS NULL)
+                            OR
+                            (scope_kind = 'project'
+                                AND scope_target_id > 0
+                                AND task_id IS NULL
+                                AND (project_id IS NULL OR project_id = scope_target_id))
+                            OR
+                            (scope_kind = 'task'
+                                AND scope_target_id > 0
+                                AND project_id IS NULL
+                                AND (task_id IS NULL OR task_id = scope_target_id))
+                        )
                     );
 
                     CREATE TABLE IF NOT EXISTS conversation_action_links (
@@ -1567,7 +1584,7 @@ public enum CoreMigrations {
                         source_turn_id TEXT NOT NULL,
                         action_plan_id TEXT,
                         assistant_queue_item_id TEXT,
-                        task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+                        task_id INTEGER CHECK(task_id IS NULL OR task_id > 0),
                         execution_receipt_id TEXT,
                         reviewed_fingerprint TEXT NOT NULL
                             CHECK(length(trim(reviewed_fingerprint)) > 0),
@@ -1577,7 +1594,13 @@ public enum CoreMigrations {
                             ON DELETE CASCADE,
                         FOREIGN KEY(source_turn_id)
                             REFERENCES voice_task_conversation_turns(id)
-                            ON DELETE CASCADE
+                            ON DELETE CASCADE,
+                        CHECK(
+                            action_plan_id IS NOT NULL
+                            OR assistant_queue_item_id IS NOT NULL
+                            OR task_id IS NOT NULL
+                            OR execution_receipt_id IS NOT NULL
+                        )
                     );
 
                     CREATE INDEX IF NOT EXISTS idx_voice_task_conversation_sessions_state_updated
@@ -1597,6 +1620,9 @@ public enum CoreMigrations {
 
                     CREATE INDEX IF NOT EXISTS idx_task_context_facts_session_state
                     ON task_context_facts(session_id, state, created_at DESC);
+
+                    CREATE INDEX IF NOT EXISTS idx_task_context_facts_stable_scope
+                    ON task_context_facts(scope_kind, scope_target_id, state);
 
                     CREATE INDEX IF NOT EXISTS idx_voice_task_conversation_action_links_turn
                     ON conversation_action_links(source_turn_id);

@@ -66,6 +66,11 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
             guard session.lastTurnAt == storedSession.lastTurnAt else {
                 throw VoiceTaskConversationStoreError.turnCursorRequiresSaveTurn(session.id)
             }
+            guard try projectExists(session.activeProjectID),
+                  try taskExists(session.activeTaskID)
+            else {
+                throw VoiceTaskConversationStoreError.staleSession(session.id)
+            }
             // The compare-and-swap predicate is part of the write, not only the
             // preceding read. This keeps a later writer from accepting a stale
             // whole-session snapshot and silently reverting another mutation.
@@ -315,6 +320,7 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                 session_id,
                 kind,
                 scope_kind,
+                scope_target_id,
                 project_id,
                 task_id,
                 state,
@@ -325,13 +331,14 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                 supersedes_fact_id,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             parameters: [
                 .text(fact.id.uuidString),
                 .text(fact.sessionID.uuidString),
                 .text(fact.kind.rawValue),
                 .text(scope.kind),
+                SQLiteValue(scope.stableTargetID),
                 SQLiteValue(scope.projectID),
                 SQLiteValue(scope.taskID),
                 .text(fact.state.rawValue),
@@ -558,6 +565,26 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
         )).isEmpty
     }
 
+    private func projectExists(_ id: Int64?) throws -> Bool {
+        guard let id else {
+            return true
+        }
+        return !(try connection.queryStrings(
+            "SELECT id FROM projects WHERE id = ? LIMIT 1;",
+            parameters: [.integer(id)]
+        )).isEmpty
+    }
+
+    private func taskExists(_ id: Int64?) throws -> Bool {
+        guard let id else {
+            return true
+        }
+        return !(try connection.queryStrings(
+            "SELECT id FROM tasks WHERE id = ? LIMIT 1;",
+            parameters: [.integer(id)]
+        )).isEmpty
+    }
+
     private func requireTurn(_ turnID: UUID, in sessionID: UUID) throws {
         let storedSessionID = try connection.queryStrings(
             "SELECT session_id FROM voice_task_conversation_turns WHERE id = ? LIMIT 1;",
@@ -597,14 +624,14 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
 
     private func scopeColumns(
         _ scope: TaskContextFactScope
-    ) -> (kind: String, projectID: Int64?, taskID: Int64?) {
+    ) -> (kind: String, stableTargetID: Int64?, projectID: Int64?, taskID: Int64?) {
         switch scope {
         case .session:
-            ("session", nil, nil)
+            ("session", nil, nil, nil)
         case .project(let id):
-            ("project", id, nil)
+            ("project", id, id, nil)
         case .task(let id):
-            ("task", nil, id)
+            ("task", id, nil, id)
         }
     }
 

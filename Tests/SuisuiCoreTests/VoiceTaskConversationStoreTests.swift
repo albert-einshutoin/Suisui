@@ -429,6 +429,101 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
         XCTAssertEqual(try connection.queryStrings("SELECT action_plan_id FROM conversation_action_links;"), ["plan-1"])
     }
 
+    func testDeletingTaskPreservesFactScopeAndTaskOnlyActionLinkIdentifiers() throws {
+        let (connection, store) = try makeStore()
+        let session = makeSession()
+        try store.createSession(session)
+        let turn = try makeTurn(sessionID: session.id)
+        try store.saveTurn(turn)
+        try connection.execute(
+            """
+            INSERT INTO projects (id, title, status, created_at, updated_at)
+            VALUES (61, 'Stable scope', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+            INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+            VALUES (62, 61, 'Delete target', 'planned', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+            """
+        )
+        let fact = try TaskContextFact(
+            sessionID: session.id,
+            kind: .constraint,
+            scope: .task(62),
+            state: .confirmed,
+            value: "Keep provenance",
+            sourceTurnID: turn.id,
+            confidence: 1,
+            author: .userExplicit,
+            createdAt: turn.createdAt
+        )
+        let link = try ConversationActionLink(
+            sessionID: session.id,
+            sourceTurnID: turn.id,
+            taskID: 62,
+            reviewedFingerprint: "stable-task-link",
+            createdAt: turn.createdAt
+        )
+        try store.saveFact(fact)
+        try store.saveActionLink(link)
+
+        try connection.execute("DELETE FROM tasks WHERE id = 62;")
+
+        let factRow = try XCTUnwrap(
+            try connection.materializedRows(
+                """
+                SELECT scope_kind, scope_target_id, task_id
+                FROM task_context_facts
+                WHERE id = ?;
+                """,
+                parameters: [.text(fact.id.uuidString)]
+            ).first
+        )
+        XCTAssertEqual(try factRow.string("scope_kind"), "task")
+        XCTAssertEqual(try factRow.int64("scope_target_id"), 62)
+        XCTAssertNil(try factRow.optionalInt64("task_id"))
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT task_id FROM conversation_action_links WHERE id = ?;",
+                parameters: [.text(link.id.uuidString)]
+            ),
+            ["62"]
+        )
+    }
+
+    func testDeletedActiveTaskCannotBeRestoredByRetainedSessionSnapshot() throws {
+        let (connection, store) = try makeStore()
+        try connection.execute(
+            """
+            INSERT INTO projects (id, title, status, created_at, updated_at)
+            VALUES (71, 'Active context', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+            INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+            VALUES (72, 71, 'Removed context', 'planned', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+            """
+        )
+        var retainedSession = VoiceTaskConversationSession(
+            title: "Scoped session",
+            entryPoint: .taskInspector,
+            activeProjectID: 71,
+            activeTaskID: 72,
+            createdAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        try store.createSession(retainedSession)
+        let expectedUpdatedAt = retainedSession.updatedAt
+        try connection.execute("DELETE FROM tasks WHERE id = 72;")
+        try retainedSession.updateTitle(
+            "Must not restore deleted task",
+            at: Date(timeIntervalSince1970: 1_800_000_001)
+        )
+
+        XCTAssertThrowsError(
+            try store.updateSession(retainedSession, expectedUpdatedAt: expectedUpdatedAt)
+        ) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationStoreError,
+                .staleSession(retainedSession.id)
+            )
+        }
+        XCTAssertNil(try store.loadSession(id: retainedSession.id)?.activeTaskID)
+    }
+
     func testRawTranscriptDeletionDoesNotDeleteConfirmedTextOrSession() throws {
         let (connection, store) = try makeStore()
         let session = makeSession()
