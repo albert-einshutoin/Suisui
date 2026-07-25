@@ -45,6 +45,28 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(selected, reason: .selectedTask))
     }
 
+    func testGivenSelectedTaskAndDirectObjectItThenUsesSelection() {
+        let selected = ConversationResolvedTarget.task(id: 428, projectID: 7)
+        let candidates = [
+            candidate(taskID: 428, projectID: 7, title: "Selected task"),
+            candidate(taskID: 429, projectID: 7, title: "Other task"),
+        ]
+
+        for utterance in ["complete it", "delete it"] {
+            XCTAssertEqual(
+                resolver.resolve(
+                    request(
+                        utterance: utterance,
+                        selectedTask: selected,
+                        candidates: candidates
+                    )
+                ),
+                .resolved(selected, reason: .selectedTask),
+                utterance
+            )
+        }
+    }
+
     func testGivenSelectedTaskAndCurrentTaskReferenceThenUsesSelection() {
         let selected = ConversationResolvedTarget.task(id: 425, projectID: 7)
         let result = resolver.resolve(

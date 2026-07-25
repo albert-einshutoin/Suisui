@@ -617,6 +617,12 @@ public struct VoiceTaskReferenceResolver: Sendable {
             || value.contains("そのタスク")
             || value.contains("あのタスク")
             || matches(#"\bcurrent\s+task\b"#, in: value)
+            // English "it" is only selection evidence when it is the direct
+            // object of a supported target operation, not wherever it appears.
+            || matches(
+                #"\b(?:open|show|delete|complete|finish|update|rename|move)\s+it\b"#,
+                in: value
+            )
             // Bare "that"/"this" inside relative clauses or due-date phrases
             // is not target evidence. A target noun, "one", or object position
             // at the end of the utterance is required.
