@@ -984,6 +984,29 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .needsClarification(candidates))
     }
 
+    func testGivenNamedTaskWithContainingProjectClauseThenResolvesTask() {
+        let selectedProject = ConversationResolvedTarget.project(id: 12)
+        let named = ConversationResolvedTarget.task(id: 748, projectID: 12)
+        let candidates = [
+            ConversationReferenceCandidate(
+                target: selectedProject,
+                title: "Launch",
+                stableSortKey: "project-12"
+            ),
+            candidate(taskID: 748, projectID: 12, title: "Alpha"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "delete Alpha in that project",
+                selectedProject: selectedProject,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(named, reason: .uniqueCandidate))
+    }
+
     func testGivenTaskTitleContainingProjectWhenResolveThenDoesNotUseProjectSelection() {
         let selectedProject = ConversationResolvedTarget.project(id: 12)
         let named = ConversationResolvedTarget.task(id: 75, projectID: 12)

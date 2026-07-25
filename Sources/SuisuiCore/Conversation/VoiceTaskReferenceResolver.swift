@@ -490,11 +490,26 @@ public struct VoiceTaskReferenceResolver: Sendable {
             "move",
         ]
         let qualifiers = ["", "the task ", "task ", "the project ", "project "]
+        let containmentSuffixes = [
+            "",
+            " in this project",
+            " in that project",
+            " in the project",
+            " in current project",
+            " within this project",
+            " within that project",
+            " under this project",
+            " under that project",
+        ]
         // Contextual pronouns outrank incidental words. A title containing
         // "this"/"that" remains usable when it is the direct command object.
+        // A trailing containment clause is metadata about that object.
         return verbs.contains { verb in
             qualifiers.contains { qualifier in
-                normalizedUtterance == "\(verb) \(qualifier)\(normalizedTitle)"
+                containmentSuffixes.contains { suffix in
+                    normalizedUtterance
+                        == "\(verb) \(qualifier)\(normalizedTitle)\(suffix)"
+                }
             }
         }
     }
@@ -573,6 +588,14 @@ public struct VoiceTaskReferenceResolver: Sendable {
             || normalizedUtterance.contains("タスク")
         {
             return .task
+        }
+        // A trailing containment clause describes where the direct object
+        // lives; it does not turn that object into a project.
+        if matches(
+            #"\b(?:in|within|under)\s+(?:(?:this|that|the|current)\s+)?project\b"#,
+            in: normalizedUtterance
+        ) {
+            return .any
         }
         if matches(#"\bproject\b"#, in: normalizedUtterance)
             || normalizedUtterance.contains("プロジェクト")
