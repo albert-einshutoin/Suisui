@@ -248,14 +248,13 @@ public struct VoiceTaskReferenceResolver: Sendable {
                     candidates: request.candidates
                 )
             }
-            if isAnaphoric, let selectedProject = request.selectedProject {
-                guard requestedTargetKind.matches(selectedProject) else {
-                    return .needsClarification(
-                        request.candidates.filter {
-                            requestedTargetKind.matches($0.target)
-                        }
-                    )
-                }
+            // A Task-qualified container phrase must continue to Task Action
+            // Links or clarification instead of being consumed by the
+            // containing Project selection.
+            if isAnaphoric,
+               requestedTargetKind != .task,
+               let selectedProject = request.selectedProject
+            {
                 // A live selection is stronger evidence than a generic
                 // previous-action link. This matters for bare "it", where no
                 // target noun exists to enter the project-specific branch.
@@ -722,6 +721,12 @@ public struct VoiceTaskReferenceResolver: Sendable {
     private func requestedTargetKind(
         in normalizedUtterance: String
     ) -> RequestedTargetKind {
+        // A Japanese Project prefix can qualify a leaf Task through
+        // possessive or locative grammar. Classify the leaf before the leading
+        // Project phrase can reuse an unrelated selected Project.
+        if mentionsJapaneseProjectTaskContainer(normalizedUtterance) {
+            return .task
+        }
         // An explicit direct-object qualifier is stronger than a noun that
         // merely appears inside the target's title ("project Task Force").
         if matches(
@@ -740,15 +745,6 @@ public struct VoiceTaskReferenceResolver: Sendable {
             in: normalizedUtterance
         ) {
             return .project
-        }
-        // A possessive Project prefix names the container, while the leaf noun
-        // remains the mutation target. Classify it before generic Project
-        // anaphors can reuse the selected Project.
-        if matches(
-            #"^(?:(?:この|その|あの)\s*)?(?:プロジェクト|案件)の(?:(?:この|その|あの)\s*)?タスク(?:を|は|が|に|へ)"#,
-            in: normalizedUtterance
-        ) {
-            return .task
         }
         // Infer an English Task kind only from the command object. A Task may
         // still be qualified by its containing project ("second task in
@@ -846,11 +842,15 @@ public struct VoiceTaskReferenceResolver: Sendable {
         ) || matches(
             #"(?:プロジェクト|案件)(?:へ|に)(?:移動|動か)"#,
             in: value
-        ) || matches(
-            #"(?:(?:この|その|あの)\s*)?(?:プロジェクト|案件)の(?:(?:この|その|あの)\s*)?(?:タスク|もの)(?:を|に|は|が|へ)?"#,
+        ) || mentionsJapaneseProjectTaskContainer(value)
+    }
+
+    private func mentionsJapaneseProjectTaskContainer(_ value: String) -> Bool {
+        matches(
+            #"^(?:(?:この|その|あの)\s*)?(?:プロジェクト|案件)の(?:(?:この|その|あの)\s*)?(?:タスク|もの)(?:を|に|は|が|へ)?"#,
             in: value
         ) || matches(
-            #"(?:プロジェクト|案件)(?:から|内(?:の|で)?|にある|の中(?:から|の|で)?)(?:これ|それ|あれ|(?:この|その|あの)?(?:タスク|もの))(?:を|に|は|が|へ)?"#,
+            #"^[^、。！？]*?(?:プロジェクト|案件)(?:から|内(?:の|で)?|にある|の中(?:から|の|で)?)(?:これ|それ|あれ|(?:この|その|あの)?(?:タスク|もの))(?:を|に|は|が|へ)?"#,
             in: value
         )
     }

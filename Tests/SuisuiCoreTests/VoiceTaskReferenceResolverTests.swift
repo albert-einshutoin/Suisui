@@ -111,6 +111,42 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         }
     }
 
+    func testGivenLocativeProjectPrefixThenUsesTaskActionLink() throws {
+        let selectedProject = ConversationResolvedTarget.project(id: 181)
+        let linkedTask = ConversationResolvedTarget.task(id: 439, projectID: 181)
+        let link = try ConversationActionLink(
+            sessionID: sessionID,
+            sourceTurnID: sourceTurnID,
+            taskID: 439,
+            operation: .taskCreated,
+            reviewedFingerprint: "reviewed",
+            createdAt: now.addingTimeInterval(-5)
+        )
+        let candidates = [
+            candidate(taskID: 439, projectID: 181, title: "Linked task"),
+            ConversationReferenceCandidate(
+                target: selectedProject,
+                title: "Launch",
+                stableSortKey: "project-181"
+            ),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "このプロジェクトにあるそれを完了して",
+                selectedProject: selectedProject,
+                previousActionLink: link,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(linkedTask, reason: .previousActionLink))
+        XCTAssertNotEqual(
+            result,
+            .resolved(selectedProject, reason: .selectedProject)
+        )
+    }
+
     func testGivenSelectedTaskAndCurrentTaskReferenceThenUsesSelection() {
         let selected = ConversationResolvedTarget.task(id: 425, projectID: 7)
         let result = resolver.resolve(
