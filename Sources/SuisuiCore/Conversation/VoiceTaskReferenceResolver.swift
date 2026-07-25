@@ -166,16 +166,24 @@ public struct VoiceTaskReferenceResolver: Sendable {
         let isProjectReference = mentionsProjectReference(normalizedUtterance)
         let isRecentActionReference = mentionsRecentAction(normalizedUtterance)
 
-        // A spoken ordinal or explicit recent-action phrase has its own stable
-        // evidence. It must not be silently redirected to the current selection.
-        if ordinal == nil, !isRecentActionReference {
-            if isProjectReference, let selectedProject = request.selectedProject {
+        if ordinal == nil, isProjectReference {
+            if let selectedProject = request.selectedProject {
                 return resolveKnownTarget(
                     selectedProject,
                     reason: .selectedProject,
                     candidates: request.candidates
                 )
             }
+            // An explicit project qualifier must never fall through to a Task
+            // selection or Task-only Action Link.
+            return .needsClarification(
+                request.candidates.filter(\.target.isProject)
+            )
+        }
+
+        // A spoken ordinal or explicit recent-action phrase has its own stable
+        // evidence. It must not be silently redirected to the current selection.
+        if ordinal == nil, !isRecentActionReference {
             if isAnaphoric, let selectedTask = request.selectedTask {
                 return resolveKnownTarget(
                     selectedTask,
@@ -293,9 +301,20 @@ public struct VoiceTaskReferenceResolver: Sendable {
         for request: VoiceTaskReferenceRequest
     ) -> [ConversationReferenceCandidate] {
         var result: [ConversationReferenceCandidate] = []
+        let sessionFacts = request.confirmedFacts.filter {
+            $0.sessionID == request.sessionID
+        }
+        do {
+            try TaskContextFact.validateSupersessionGraph(sessionFacts)
+        } catch {
+            return []
+        }
+        let supersededFactIDs = Set(
+            sessionFacts.compactMap(\.supersedesFactID)
+        )
 
-        for fact in request.confirmedFacts
-            where fact.sessionID == request.sessionID && fact.state == .confirmed
+        for fact in sessionFacts
+            where fact.state == .confirmed && !supersededFactIDs.contains(fact.id)
         {
             let matches: [ConversationReferenceCandidate]
             switch fact.scope {
@@ -345,7 +364,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
         if let ordinal = englishOrdinals.first(where: {
             normalizedUtterance == $0.0
                 || matches(
-                    #"\b\#(NSRegularExpression.escapedPattern(for: $0.0))\s+(?:one|task|item)\b"#,
+                    #"\b\#(NSRegularExpression.escapedPattern(for: $0.0))\s+(?:one|task|item|project)\b"#,
                     in: normalizedUtterance
                 )
         }) {
@@ -354,7 +373,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
 
         for pattern in [
             #"([0-9]+)\s*(?:つ目|番目)"#,
-            #"\b([0-9]+)(?:st|nd|rd|th)\s+(?:one|task|item)\b"#,
+            #"\b([0-9]+)(?:st|nd|rd|th)\s+(?:one|task|item|project)\b"#,
             #"^([0-9]+)(?:st|nd|rd|th)$"#,
         ] {
             if let oneBased = firstPositiveIntegerCapture(

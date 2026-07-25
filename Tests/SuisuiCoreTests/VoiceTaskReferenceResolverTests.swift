@@ -74,6 +74,58 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(selectedProject, reason: .selectedProject))
     }
 
+    func testGivenOnlyTaskSelectionWhenProjectQualifiedPronounThenClarifiesProject() {
+        let selectedTask = ConversationResolvedTarget.task(id: 46, projectID: 18)
+        let projectCandidate = ConversationReferenceCandidate(
+            target: .project(id: 18),
+            title: "Launch",
+            stableSortKey: "project-18"
+        )
+        let candidates = [
+            candidate(taskID: 46, projectID: 18, title: "Selected task"),
+            projectCandidate,
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "that project",
+                selectedTask: selectedTask,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification([projectCandidate]))
+    }
+
+    func testGivenPreviousTaskActionWhenProjectQualifiedPronounThenDoesNotUseTask() throws {
+        let link = try ConversationActionLink(
+            sessionID: sessionID,
+            sourceTurnID: sourceTurnID,
+            taskID: 47,
+            reviewedFingerprint: "reviewed",
+            createdAt: now.addingTimeInterval(-5)
+        )
+        let projectCandidate = ConversationReferenceCandidate(
+            target: .project(id: 19),
+            title: "Launch",
+            stableSortKey: "project-19"
+        )
+        let candidates = [
+            candidate(taskID: 47, projectID: 19, title: "Previous task"),
+            projectCandidate,
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "that project",
+                previousActionLink: link,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification([projectCandidate]))
+    }
+
     func testGivenPreviousActionLinkWhenSoreReferenceThenResolvesCreatedTask() throws {
         let link = try ConversationActionLink(
             sessionID: sessionID,
@@ -121,6 +173,44 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             result,
             .resolved(.task(id: 53, projectID: 9), reason: .stableOrdinal)
         )
+    }
+
+    func testGivenStableThirdProjectWhenResolveThenOrdinalBeatsCurrentSelection() throws {
+        let candidates = [
+            ConversationReferenceCandidate(
+                target: .project(id: 21),
+                title: "First",
+                stableSortKey: "project-21"
+            ),
+            ConversationReferenceCandidate(
+                target: .project(id: 22),
+                title: "Second",
+                stableSortKey: "project-22"
+            ),
+            ConversationReferenceCandidate(
+                target: .project(id: 23),
+                title: "Third",
+                stableSortKey: "project-23"
+            ),
+        ]
+        let fingerprint = VoiceTaskReferenceResolver.orderingFingerprint(for: candidates)
+        let reference = try ordinalReference(
+            target: .project(23),
+            ordinal: 2,
+            fingerprint: fingerprint
+        )
+
+        let result = resolver.resolve(
+            request(
+                utterance: "the third project",
+                selectedProject: .project(id: 21),
+                ordinalReference: reference,
+                candidateOrderingFingerprint: fingerprint,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(.project(id: 23), reason: .stableOrdinal))
     }
 
     func testGivenReorderedCandidatesWhenResolveThirdThenRequiresClarification() throws {
@@ -403,6 +493,87 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         )
 
         XCTAssertEqual(result, .resolved(target, reason: .confirmedFact))
+    }
+
+    func testGivenConfirmedFactSupersededByCorrectionThenUsesReplacementOnly() throws {
+        let oldFact = try TaskContextFact(
+            id: UUID(uuidString: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")!,
+            sessionID: sessionID,
+            kind: .task,
+            scope: .task(102),
+            state: .confirmed,
+            value: "Old task",
+            sourceTurnID: sourceTurnID,
+            confidence: 1,
+            author: .userExplicit,
+            createdAt: now.addingTimeInterval(-60)
+        )
+        let replacement = try TaskContextFact(
+            sessionID: sessionID,
+            kind: .task,
+            scope: .task(103),
+            state: .confirmed,
+            value: "Corrected task",
+            sourceTurnID: sourceTurnID,
+            confidence: 1,
+            author: .userExplicit,
+            supersedesFactID: oldFact.id,
+            createdAt: now.addingTimeInterval(-30)
+        )
+        let target = ConversationResolvedTarget.task(id: 103, projectID: 15)
+
+        let result = resolver.resolve(
+            request(
+                utterance: "that task",
+                candidates: [
+                    candidate(taskID: 102, projectID: 15, title: "Old task"),
+                    candidate(taskID: 103, projectID: 15, title: "Corrected task"),
+                ],
+                confirmedFacts: [oldFact, replacement]
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(target, reason: .confirmedFact))
+    }
+
+    func testGivenConfirmedFactSupersededByRetractionThenDoesNotReuseOldScope() throws {
+        let oldFact = try TaskContextFact(
+            id: UUID(uuidString: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")!,
+            sessionID: sessionID,
+            kind: .task,
+            scope: .task(104),
+            state: .confirmed,
+            value: "Retracted task",
+            sourceTurnID: sourceTurnID,
+            confidence: 1,
+            author: .userExplicit,
+            createdAt: now.addingTimeInterval(-60)
+        )
+        let retraction = try TaskContextFact(
+            sessionID: sessionID,
+            kind: .task,
+            scope: .task(104),
+            state: .retracted,
+            value: "Retracted",
+            sourceTurnID: sourceTurnID,
+            confidence: 1,
+            author: .userExplicit,
+            supersedesFactID: oldFact.id,
+            createdAt: now.addingTimeInterval(-30)
+        )
+        let candidates = [
+            candidate(taskID: 104, projectID: 15, title: "Retracted task"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "that task",
+                candidates: candidates,
+                confirmedFacts: [oldFact, retraction]
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification(candidates))
     }
 
     func testGivenSameInputWhenResolveRepeatedlyThenCandidateOrderAndResultStayStable() {
