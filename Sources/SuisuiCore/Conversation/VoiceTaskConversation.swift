@@ -16,6 +16,9 @@ public enum VoiceTaskConversationDomainError: Error, Equatable, Sendable {
     case invalidReferenceTarget
     case invalidReferenceExpiration
     case duplicateFactIdentifier
+    case invalidFactEvidenceDigest
+    case invalidFactExpiration
+    case incompatibleFactTransition
 }
 
 public enum VoiceTaskConversationSessionState: String, Codable, Equatable, Hashable, Sendable {
@@ -379,7 +382,13 @@ public struct ConversationReference: Identifiable, Codable, Equatable, Sendable 
 public enum TaskContextFactKind: String, Codable, Equatable, Hashable, Sendable {
     case goal
     case constraint
+    case acceptanceCriterion = "acceptance_criterion"
+    case decision
+    case openQuestion = "open_question"
+    case followUp = "follow_up"
     case dueDate = "due_date"
+    case dueDateReason = "due_date_reason"
+    case priorityReason = "priority_reason"
     case project
     case task
     case preference
@@ -396,12 +405,50 @@ public enum TaskContextFactState: String, Codable, Equatable, Hashable, Sendable
     case confirmed
     case superseded
     case retracted
+    case rejected
+    case expired
 }
 
-public enum TaskContextFactAuthor: String, Codable, Equatable, Hashable, Sendable {
-    case userExplicit = "user_explicit"
-    case providerInferred = "provider_inferred"
-    case systemDerived = "system_derived"
+public enum TaskContextFactAuthor: Equatable, Hashable, Sendable {
+    case userExplicit
+    case providerInferred
+    case deterministic
+
+    public var rawValue: String {
+        switch self {
+        case .userExplicit:
+            "user_explicit"
+        case .providerInferred:
+            "provider_inferred"
+        case .deterministic:
+            "deterministic"
+        }
+    }
+}
+
+extension TaskContextFactAuthor: Codable {
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        switch try container.decode(String.self) {
+        case "user_explicit":
+            self = .userExplicit
+        case "provider_inferred":
+            self = .providerInferred
+        case "deterministic", "system_derived":
+            // Decode the legacy spelling so persisted pre-policy payloads remain readable.
+            self = .deterministic
+        default:
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown Task Context fact author."
+            )
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
@@ -414,9 +461,14 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
     /// model deliberately has no API that derives it from a raw transcript.
     public let value: String
     public let sourceTurnID: UUID
+    /// SHA-256 of the minimal user-visible source excerpt. Keeping the digest
+    /// instead of raw audio/transcript evidence prevents Task Context from
+    /// becoming a second transcript store.
+    public let sourceExcerptDigest: String
     public let confidence: Double
     public let author: TaskContextFactAuthor
     public let supersedesFactID: UUID?
+    public let expiresAt: Date?
     public let createdAt: Date
 
     public init(
@@ -427,9 +479,11 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
         state: TaskContextFactState,
         value: String,
         sourceTurnID: UUID,
+        sourceExcerptDigest: String,
         confidence: Double,
         author: TaskContextFactAuthor,
         supersedesFactID: UUID? = nil,
+        expiresAt: Date? = nil,
         createdAt: Date = Date()
     ) throws {
         guard confidence.isFinite, (0 ... 1).contains(confidence) else {
@@ -441,6 +495,21 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
         guard supersedesFactID != id else {
             throw VoiceTaskConversationDomainError.cyclicSupersession
         }
+        let normalizedDigest = sourceExcerptDigest.lowercased()
+        guard normalizedDigest.count == 64,
+              normalizedDigest.unicodeScalars.allSatisfy({
+                  ("0" ... "9").contains(Character($0))
+                      || ("a" ... "f").contains(Character($0))
+              })
+        else {
+            throw VoiceTaskConversationDomainError.invalidFactEvidenceDigest
+        }
+        guard createdAt.timeIntervalSinceReferenceDate.isFinite,
+              expiresAt?.timeIntervalSinceReferenceDate.isFinite ?? true,
+              expiresAt.map({ $0 > createdAt }) ?? true
+        else {
+            throw VoiceTaskConversationDomainError.invalidFactExpiration
+        }
 
         self.id = id
         self.sessionID = sessionID
@@ -449,10 +518,16 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
         self.state = state
         self.value = value
         self.sourceTurnID = sourceTurnID
+        self.sourceExcerptDigest = normalizedDigest
         self.confidence = confidence
         self.author = author
         self.supersedesFactID = supersedesFactID
+        self.expiresAt = expiresAt
         self.createdAt = createdAt
+    }
+
+    public func isEligibleForLongTermContext(at date: Date = Date()) -> Bool {
+        state == .confirmed && (expiresAt.map { date < $0 } ?? true)
     }
 
     public static func validateSupersessionGraph(_ facts: [TaskContextFact]) throws {
@@ -488,9 +563,11 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
         case state
         case value
         case sourceTurnID
+        case sourceExcerptDigest
         case confidence
         case author
         case supersedesFactID
+        case expiresAt
         case createdAt
     }
 
@@ -504,9 +581,11 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
             state: values.decode(TaskContextFactState.self, forKey: .state),
             value: values.decode(String.self, forKey: .value),
             sourceTurnID: values.decode(UUID.self, forKey: .sourceTurnID),
+            sourceExcerptDigest: values.decode(String.self, forKey: .sourceExcerptDigest),
             confidence: values.decode(Double.self, forKey: .confidence),
             author: values.decode(TaskContextFactAuthor.self, forKey: .author),
             supersedesFactID: values.decodeIfPresent(UUID.self, forKey: .supersedesFactID),
+            expiresAt: values.decodeIfPresent(Date.self, forKey: .expiresAt),
             createdAt: values.decode(Date.self, forKey: .createdAt)
         )
     }

@@ -418,13 +418,21 @@ public struct VoiceTaskReferenceResolver: Sendable {
         let supersededFactIDs = Set(
             sessionFacts
                 .filter {
-                    $0.state == .confirmed || $0.state == .retracted
+                    [
+                        .confirmed,
+                        .superseded,
+                        .retracted,
+                        .rejected,
+                        .expired,
+                    ].contains($0.state)
                 }
                 .compactMap(\.supersedesFactID)
         )
+        let currentDate = now()
 
         for fact in sessionFacts
-            where fact.state == .confirmed && !supersededFactIDs.contains(fact.id)
+            where fact.isEligibleForLongTermContext(at: currentDate)
+                && !supersededFactIDs.contains(fact.id)
         {
             let matches: [ConversationReferenceCandidate]
             switch fact.scope {

@@ -326,12 +326,14 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                 state,
                 value,
                 source_turn_id,
+                source_excerpt_digest,
                 confidence,
                 author,
                 supersedes_fact_id,
+                expires_at,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             parameters: [
                 .text(fact.id.uuidString),
@@ -344,9 +346,11 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                 .text(fact.state.rawValue),
                 .text(fact.value),
                 .text(fact.sourceTurnID.uuidString),
+                .text(fact.sourceExcerptDigest),
                 .real(fact.confidence),
                 .text(fact.author.rawValue),
                 SQLiteValue(fact.supersedesFactID?.uuidString),
+                try Self.optionalTimeValue(fact.expiresAt),
                 .real(try Self.timeValue(fact.createdAt)),
             ]
         )

@@ -405,8 +405,10 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
             state: .confirmed,
             value: "Ship after signing",
             sourceTurnID: turn.id,
+            sourceExcerptDigest: String(repeating: "a", count: 64),
             confidence: 1,
             author: .userExplicit,
+            expiresAt: turn.createdAt.addingTimeInterval(3_600),
             createdAt: turn.createdAt
         )
         let actionLink = try ConversationActionLink(
@@ -427,6 +429,14 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
 
         XCTAssertEqual(try connection.queryStrings("SELECT target_kind FROM voice_task_conversation_references;"), ["task"])
         XCTAssertEqual(try connection.queryStrings("SELECT scope_kind FROM task_context_facts;"), ["task"])
+        XCTAssertEqual(
+            try connection.queryStrings("SELECT source_excerpt_digest FROM task_context_facts;"),
+            [String(repeating: "a", count: 64)]
+        )
+        XCTAssertEqual(
+            try connection.queryStrings("SELECT expires_at FROM task_context_facts;"),
+            [String(turn.createdAt.addingTimeInterval(3_600).timeIntervalSinceReferenceDate)]
+        )
         XCTAssertEqual(try connection.queryStrings("SELECT action_plan_id FROM conversation_action_links;"), ["plan-1"])
         XCTAssertEqual(
             try connection.queryStrings("SELECT operation_kind FROM conversation_action_links;"),
@@ -455,6 +465,7 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
             state: .confirmed,
             value: "Keep provenance",
             sourceTurnID: turn.id,
+            sourceExcerptDigest: String(repeating: "b", count: 64),
             confidence: 1,
             author: .userExplicit,
             createdAt: turn.createdAt
@@ -585,6 +596,7 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
             state: .confirmed,
             value: "Release safely",
             sourceTurnID: turn.id,
+            sourceExcerptDigest: String(repeating: "c", count: 64),
             confidence: 1,
             author: .userExplicit,
             createdAt: turn.createdAt

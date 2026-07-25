@@ -205,6 +205,7 @@ final class VoiceTaskConversationDomainTests: XCTestCase {
             state: .confirmed,
             value: turn.userConfirmedText!,
             sourceTurnID: turn.id,
+            sourceExcerptDigest: String(repeating: "a", count: 64),
             confidence: 1,
             author: .userExplicit,
             createdAt: createdAt
@@ -256,6 +257,49 @@ final class VoiceTaskConversationDomainTests: XCTestCase {
         }
     }
 
+    func testFactEvidenceDigestAndExpirationAreValidated() {
+        XCTAssertThrowsError(
+            try TaskContextFact(
+                sessionID: sessionID,
+                kind: .goal,
+                scope: .task(42),
+                state: .proposed,
+                value: "Ship safely",
+                sourceTurnID: turnID,
+                sourceExcerptDigest: "not-a-sha256-digest",
+                confidence: 1,
+                author: .userExplicit,
+                createdAt: createdAt
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationDomainError,
+                .invalidFactEvidenceDigest
+            )
+        }
+
+        XCTAssertThrowsError(
+            try TaskContextFact(
+                sessionID: sessionID,
+                kind: .goal,
+                scope: .task(42),
+                state: .confirmed,
+                value: "Ship safely",
+                sourceTurnID: turnID,
+                sourceExcerptDigest: String(repeating: "a", count: 64),
+                confidence: 1,
+                author: .userExplicit,
+                expiresAt: createdAt,
+                createdAt: createdAt
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationDomainError,
+                .invalidFactExpiration
+            )
+        }
+    }
+
     private func makeFact(
         id: UUID,
         confidence: Double = 0.8,
@@ -269,6 +313,7 @@ final class VoiceTaskConversationDomainTests: XCTestCase {
             state: .confirmed,
             value: "Release by July 31",
             sourceTurnID: turnID,
+            sourceExcerptDigest: String(repeating: "b", count: 64),
             confidence: confidence,
             author: .providerInferred,
             supersedesFactID: supersedesFactID,

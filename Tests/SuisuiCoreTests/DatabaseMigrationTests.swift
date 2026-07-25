@@ -88,6 +88,80 @@ final class DatabaseMigrationTests: XCTestCase {
         )
     }
 
+    func testTaskContextFactPolicyMigrationPreservesLegacyFactsAndAddsEvidenceSchema() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeFactPolicy = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0027_add_task_context_fact_policy"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeFactPolicy
+        )
+        try connection.execute(
+            """
+            INSERT INTO voice_task_conversation_sessions (
+                id, state, title, entry_point, created_at, updated_at
+            )
+            VALUES ('session-1', 'active', 'Session', 'voice_command', 1, 1);
+            INSERT INTO voice_task_conversation_turns (
+                id, session_id, author, confirmed_text, created_at
+            )
+            VALUES ('turn-1', 'session-1', 'user', 'Remember release', 1);
+            INSERT INTO task_context_facts (
+                id, session_id, kind, scope_kind, state, value,
+                source_turn_id, confidence, author, created_at
+            )
+            VALUES (
+                'fact-1', 'session-1', 'goal', 'session', 'confirmed',
+                'Legacy release goal', 'turn-1', 1, 'system_derived', 1
+            );
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+
+        let legacy = try XCTUnwrap(
+            try connection.materializedRows(
+                """
+                SELECT value, author, source_excerpt_digest, expires_at
+                FROM task_context_facts
+                WHERE id = 'fact-1';
+                """
+            ).first
+        )
+        XCTAssertEqual(try legacy.string("value"), "Legacy release goal")
+        XCTAssertEqual(try legacy.string("author"), "deterministic")
+        XCTAssertNil(try legacy.optionalString("source_excerpt_digest"))
+        XCTAssertNil(try legacy.optionalDouble("expires_at"))
+
+        try connection.execute(
+            """
+            INSERT INTO task_context_facts (
+                id, session_id, kind, scope_kind, scope_target_id, state, value,
+                source_turn_id, source_excerpt_digest, confidence, author,
+                expires_at, created_at
+            )
+            VALUES (
+                'fact-2', 'session-1', 'acceptance_criterion', 'task', 42,
+                'rejected', 'Signed artifact exists', 'turn-1',
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                1, 'deterministic', 100, 2
+            );
+            """
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT kind || ':' || state FROM task_context_facts WHERE id = 'fact-2';"
+            ),
+            ["acceptance_criterion:rejected"]
+        )
+    }
+
     func testApprovalReplayStoreRejectsNonceAfterDatabaseReopen() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("suisui-approval-replay-\(UUID().uuidString)", isDirectory: true)
