@@ -47,36 +47,43 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
         lock.lock()
         defer { lock.unlock() }
 
-        guard try sessionExists(session.id) else {
-            throw VoiceTaskConversationStoreError.missingSession(session.id)
+        try connection.transaction {
+            guard let storedSession = try loadSessionUnlocked(id: session.id) else {
+                throw VoiceTaskConversationStoreError.missingSession(session.id)
+            }
+            guard session.updatedAt >= storedSession.updatedAt else {
+                throw VoiceTaskConversationStoreError.staleSession(session.id)
+            }
+            // Callers can retain the value originally passed to createSession while
+            // saveTurn advances the persisted cursor. Never let that stale value
+            // erase the durable Turn boundary during an unrelated metadata update.
+            let persistedLastTurnAt = [session.lastTurnAt, storedSession.lastTurnAt]
+                .compactMap { $0 }
+                .max()
+            try connection.execute(
+                """
+                UPDATE voice_task_conversation_sessions
+                SET state = ?,
+                    title = ?,
+                    active_project_id = ?,
+                    active_task_id = ?,
+                    resume_summary = ?,
+                    updated_at = ?,
+                    last_turn_at = ?
+                WHERE id = ?;
+                """,
+                parameters: [
+                    .text(session.state.rawValue),
+                    .text(session.title),
+                    SQLiteValue(session.activeProjectID),
+                    SQLiteValue(session.activeTaskID),
+                    SQLiteValue(session.resumeSummary),
+                    .real(try Self.timeValue(session.updatedAt)),
+                    try Self.optionalTimeValue(persistedLastTurnAt),
+                    .text(session.id.uuidString),
+                ]
+            )
         }
-        try connection.execute(
-            """
-            UPDATE voice_task_conversation_sessions
-            SET state = ?,
-                title = ?,
-                entry_point = ?,
-                active_project_id = ?,
-                active_task_id = ?,
-                resume_summary = ?,
-                created_at = ?,
-                updated_at = ?,
-                last_turn_at = ?
-            WHERE id = ?;
-            """,
-            parameters: [
-                .text(session.state.rawValue),
-                .text(session.title),
-                .text(session.entryPoint.rawValue),
-                SQLiteValue(session.activeProjectID),
-                SQLiteValue(session.activeTaskID),
-                SQLiteValue(session.resumeSummary),
-                .real(try Self.timeValue(session.createdAt)),
-                .real(try Self.timeValue(session.updatedAt)),
-                try Self.optionalTimeValue(session.lastTurnAt),
-                .text(session.id.uuidString),
-            ]
-        )
     }
 
     public func loadSession(id: UUID) throws -> VoiceTaskConversationSession? {
@@ -89,15 +96,14 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
         lock.lock()
         defer { lock.unlock() }
 
-        guard var session = try loadSessionUnlocked(id: turn.sessionID) else {
-            throw VoiceTaskConversationStoreError.missingSession(turn.sessionID)
-        }
-        try session.recordTurn(at: turn.createdAt)
-
         // A Turn and the Session resume cursor are one logical write. Keeping
         // them in one transaction prevents restart from exposing a Turn that
         // the Session metadata claims never happened.
         try connection.transaction {
+            guard var session = try loadSessionUnlocked(id: turn.sessionID) else {
+                throw VoiceTaskConversationStoreError.missingSession(turn.sessionID)
+            }
+            try session.recordTurn(at: turn.createdAt)
             try connection.execute(
                 """
                 INSERT INTO voice_task_conversation_turns (
