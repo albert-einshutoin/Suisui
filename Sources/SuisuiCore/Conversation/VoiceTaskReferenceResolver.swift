@@ -654,7 +654,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
         let locatedOrdinals = englishOrdinals.compactMap {
             ordinal -> (location: Int, ordinal: Int)? in
             guard let expression = try? NSRegularExpression(
-                pattern: #"\b\#(NSRegularExpression.escapedPattern(for: ordinal.0))\s+\#(targetNounPattern)\b"#
+                pattern: #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+)?(?:the\s+)?\#(NSRegularExpression.escapedPattern(for: ordinal.0))\s+\#(targetNounPattern)\b"#
             ),
             let match = expression.firstMatch(
                 in: normalizedUtterance,
@@ -675,7 +675,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
         }
 
         if let oneBased = firstPositiveIntegerCapture(
-            #"\b([0-9]+)(?:st|nd|rd|th)\s+\#(targetNounPattern)\b"#,
+            #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+)?(?:the\s+)?([0-9]+)(?:st|nd|rd|th)\s+\#(targetNounPattern)\b"#,
             in: normalizedUtterance
         ) {
             return oneBased - 1
@@ -687,7 +687,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
             return nil
         }
         for pattern in [
-            #"([0-9]+)\s*(?:つ目|番目)"#,
+            #"^([0-9]+)\s*(?:つ目|番目)"#,
             #"^([0-9]+)(?:st|nd|rd|th)$"#,
         ] {
             if let oneBased = firstPositiveIntegerCapture(
@@ -706,7 +706,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
         // An explicit direct-object qualifier is stronger than a noun that
         // merely appears inside the target's title ("project Task Force").
         if matches(
-            #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?)?project\b"#,
+            #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?)?(?:the\s+)?(?:(?:this|that|current)(?:\s+(?!(?:we|i|you|they|he|she|it|the|a|an|so|which|who|to|for|because)\b)[\p{L}\p{N}_-]+){0,3}\s+)?project\b"#,
             in: normalizedUtterance
         ) {
             return .project
@@ -797,12 +797,12 @@ public struct VoiceTaskReferenceResolver: Sendable {
         // It must also modify a task-like referent; creation of a memo or
         // another nested object must not steal the selected task.
         let isJapaneseCreatedReference = matches(
-            #"さっき\s*(?:(?:追加|作成)\s*した|作った|(?:added|created)\s*した)\s*(?:(?:この|その|あの)?(?:もの|タスク|プロジェクト|案件)|\b(?:task|project|one|item|thing)\b)"#,
+            #"^さっき\s*(?:(?:追加|作成)\s*した|作った|(?:added|created)\s*した)\s*(?:(?:この|その|あの)?(?:もの|タスク|プロジェクト|案件)|\b(?:task|project|one|item|thing)\b)"#,
             in: value
         )
         return isJapaneseCreatedReference
             || matches(
-                #"\b(?:task|one|item|thing|what)\s+(?:that\s+)?(?:(?:we|i)\s+)?just\s+(?:added|created)\b"#,
+                #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+)?(?:the\s+)?(?:task|one|item|thing|what)\s+(?:that\s+)?(?:(?:we|i)\s+)?just\s+(?:added|created)\b"#,
                 in: value
             )
     }

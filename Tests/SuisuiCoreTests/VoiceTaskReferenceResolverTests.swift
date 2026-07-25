@@ -272,6 +272,31 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(selectedProject, reason: .selectedProject))
     }
 
+    func testGivenDirectProjectAndTrailingTaskNounThenUsesSelectedProject() {
+        let selectedTask = ConversationResolvedTarget.task(id: 451, projectID: 17)
+        let selectedProject = ConversationResolvedTarget.project(id: 17)
+        let candidates = [
+            candidate(taskID: 451, projectID: 17, title: "Alpha"),
+            ConversationReferenceCandidate(
+                target: selectedProject,
+                title: "Launch",
+                stableSortKey: "project-17"
+            ),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "delete this project because task Alpha is obsolete",
+                selectedTask: selectedTask,
+                selectedProject: selectedProject,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(selectedProject, reason: .selectedProject))
+        XCTAssertNotEqual(result, .resolved(selectedTask, reason: .selectedTask))
+    }
+
     func testGivenSelectedTaskInsideCurrentProjectWhenResolveThenKeepsTaskTarget() {
         let selectedTask = ConversationResolvedTarget.task(id: 452, projectID: 17)
         let selectedProject = ConversationResolvedTarget.project(id: 17)
@@ -550,6 +575,35 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         )
 
         XCTAssertEqual(result, .resolved(created, reason: .previousActionLink))
+    }
+
+    func testGivenRecentActionInTrailingClauseThenKeepsDirectSelectedTask() throws {
+        let selected = ConversationResolvedTarget.task(id: 4381, projectID: 8)
+        let created = ConversationResolvedTarget.task(id: 4382, projectID: 8)
+        let link = try ConversationActionLink(
+            sessionID: sessionID,
+            sourceTurnID: sourceTurnID,
+            taskID: 4382,
+            operation: .taskCreated,
+            reviewedFingerprint: "reviewed",
+            createdAt: now.addingTimeInterval(-5)
+        )
+        let candidates = [
+            candidate(taskID: 4381, projectID: 8, title: "Selected task"),
+            candidate(taskID: 4382, projectID: 8, title: "Created task"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "delete this task because the task we just created is obsolete",
+                selectedTask: selected,
+                previousActionLink: link,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(selected, reason: .selectedTask))
+        XCTAssertNotEqual(result, .resolved(created, reason: .previousActionLink))
     }
 
     func testGivenFirstPersonCreatedTaskWhenResolveThenUsesActionLinkOverSelection() throws {
@@ -945,6 +999,36 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             ),
             .resolved(secondTask, reason: .stableOrdinal)
         )
+    }
+
+    func testGivenOrdinalInTrailingClauseThenKeepsDirectSelectedTask() throws {
+        let selected = ConversationResolvedTarget.task(id: 31, projectID: 24)
+        let first = ConversationResolvedTarget.task(id: 32, projectID: 24)
+        let candidates = [
+            candidate(taskID: 32, projectID: 24, title: "First task"),
+            candidate(taskID: 31, projectID: 24, title: "Selected task"),
+        ]
+        let fingerprint = VoiceTaskReferenceResolver.orderingFingerprint(
+            for: candidates
+        )
+        let reference = try ordinalReference(
+            target: .task(32),
+            ordinal: 0,
+            fingerprint: fingerprint
+        )
+
+        let result = resolver.resolve(
+            request(
+                utterance: "delete this task after the first task",
+                selectedTask: selected,
+                ordinalReference: reference,
+                candidateOrderingFingerprint: fingerprint,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(selected, reason: .selectedTask))
+        XCTAssertNotEqual(result, .resolved(first, reason: .stableOrdinal))
     }
 
     func testGivenReorderedCandidatesWhenResolveThirdThenRequiresClarification() throws {
