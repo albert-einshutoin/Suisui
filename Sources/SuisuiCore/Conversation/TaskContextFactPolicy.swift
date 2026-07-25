@@ -239,15 +239,21 @@ public struct TaskContextFactPolicy: Sendable {
 
     private static func containsSecretOrRawPath(_ value: String) -> Bool {
         let lowered = value.lowercased()
+        let redactionReport = DeveloperSecretRedactor().redact(value).report
+        if redactionReport.matchedPatternNames.contains(where: { $0 != "openai" }) {
+            return true
+        }
         // A provider key needs a token boundary and realistic length. Plain
-        // substring matching would reject ordinary words such as "risk-based".
+        // substring matching would reject ordinary words such as "risk-based";
+        // the shared redactor still owns all other credential formats.
         let providerKeyPattern = #"(?i)(?:^|[^a-z0-9])sk-[a-z0-9][a-z0-9_-]{7,}"#
-        if value.range(of: providerKeyPattern, options: .regularExpression) != nil {
+        if redactionReport.matchedPatternNames.contains("openai"),
+           value.range(of: providerKeyPattern, options: .regularExpression) != nil
+        {
             return true
         }
         let highSignalMarkers = [
-            "ghp_", "github_pat_", "akia", "bearer ",
-            "api_key=", "apikey=", "password=", "authorization:",
+            "bearer ", "authorization:",
             "file://", "/users/", "/private/", "/volumes/",
         ]
         return highSignalMarkers.contains { lowered.contains($0) }

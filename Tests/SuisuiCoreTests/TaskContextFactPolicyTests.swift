@@ -86,6 +86,25 @@ final class TaskContextFactPolicyTests: XCTestCase {
         XCTAssertFalse(reason.contains(candidate.value))
     }
 
+    func testGivenAssignedCredentialWhenEvaluateThenProhibitsWithoutEchoingValue() {
+        for value in [
+            "token: example-credential",
+            "secret = example-credential",
+            "password=example-credential",
+        ] {
+            let candidate = makeCandidate(
+                kind: .constraint,
+                value: value,
+                author: .userExplicit
+            )
+
+            guard case let .prohibit(reason) = policy.evaluate(candidate) else {
+                return XCTFail("Expected assigned credential to be prohibited.")
+            }
+            XCTAssertFalse(reason.contains(value))
+        }
+    }
+
     func testGivenShortProviderKeyWhenEvaluateThenProhibits() {
         let candidate = makeCandidate(
             kind: .constraint,
