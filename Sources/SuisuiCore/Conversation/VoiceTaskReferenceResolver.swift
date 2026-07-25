@@ -290,15 +290,17 @@ public struct VoiceTaskReferenceResolver: Sendable {
             )
         }
 
-        let factCandidates = confirmedFactCandidates(
-            for: request,
-            targetKind: requestedTargetKind
-        )
-        if factCandidates.count == 1, let candidate = factCandidates.first {
-            return resolveCandidate(candidate, reason: .confirmedFact)
-        }
-        if factCandidates.count > 1 {
-            return .needsClarification(factCandidates)
+        if isAnaphoric {
+            let factCandidates = confirmedFactCandidates(
+                for: request,
+                targetKind: requestedTargetKind
+            )
+            if factCandidates.count == 1, let candidate = factCandidates.first {
+                return resolveCandidate(candidate, reason: .confirmedFact)
+            }
+            if factCandidates.count > 1 {
+                return .needsClarification(factCandidates)
+            }
         }
 
         return .needsClarification(request.candidates)

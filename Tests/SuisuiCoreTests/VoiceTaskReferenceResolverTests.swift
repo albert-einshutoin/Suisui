@@ -1091,6 +1091,33 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(target, reason: .confirmedFact))
     }
 
+    func testGivenNoContextualReferenceWhenResolveThenDoesNotUseConfirmedFact() throws {
+        let fact = try TaskContextFact(
+            sessionID: sessionID,
+            kind: .task,
+            scope: .task(109),
+            state: .confirmed,
+            value: "Remembered task",
+            sourceTurnID: sourceTurnID,
+            confidence: 1,
+            author: .userExplicit,
+            createdAt: now.addingTimeInterval(-30)
+        )
+        let candidates = [
+            candidate(taskID: 109, projectID: 15, title: "Remembered task"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "delete overdue items",
+                candidates: candidates,
+                confirmedFacts: [fact]
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification(candidates))
+    }
+
     func testGivenConfirmedFactSupersededByCorrectionThenUsesReplacementOnly() throws {
         let oldFact = try TaskContextFact(
             id: UUID(uuidString: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")!,
