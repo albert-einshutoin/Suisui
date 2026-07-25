@@ -672,8 +672,11 @@ public struct VoiceTaskReferenceResolver: Sendable {
     }
 
     private func mentionsProjectContainerClause(_ value: String) -> Bool {
+        // English project names may appear on either side of the noun
+        // ("project Alpha" / "the Alpha project"). Both forms describe the
+        // selected task's container or destination, not a new action target.
         matches(
-            #"\b(?:in|within|under|to|into|from)\s+(?:(?:this|that|the|current)\s+)?project\b"#,
+            #"\b(?:in|within|under|to|into|from)\s+(?:(?:this|that|the|current)\s+)?(?:project\b|[\p{L}\p{N}_-]+(?:\s+[\p{L}\p{N}_-]+){0,3}\s+project\b)"#,
             in: value
         ) || matches(
             #"(?:プロジェクト|案件)(?:へ|に)(?:移動|動か)"#,
