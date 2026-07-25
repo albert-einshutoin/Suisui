@@ -162,10 +162,25 @@ public struct VoiceTaskReferenceResolver: Sendable {
 
         let normalizedUtterance = normalize(request.utterance)
         let ordinal = ordinalIndex(in: normalizedUtterance)
-        let ordinalTargetKind = ordinalTargetKind(in: normalizedUtterance)
+        let requestedTargetKind = requestedTargetKind(in: normalizedUtterance)
         let isAnaphoric = isAnaphoricReference(normalizedUtterance)
         let isProjectReference = mentionsProjectReference(normalizedUtterance)
         let isRecentActionReference = mentionsRecentAction(normalizedUtterance)
+        let namedCandidateMatches = request.candidates.filter {
+            isStrongNamedCandidate($0, in: normalizedUtterance)
+        }
+
+        // A full candidate name is stronger evidence than pronouns contained
+        // inside that name (for example, "open That One Thing").
+        if ordinal == nil,
+           namedCandidateMatches.count == 1,
+           let candidate = namedCandidateMatches.first
+        {
+            return resolveCandidate(candidate, reason: .uniqueCandidate)
+        }
+        if ordinal == nil, namedCandidateMatches.count > 1 {
+            return .needsClarification(namedCandidateMatches)
+        }
 
         if ordinal == nil, isProjectReference {
             if let selectedProject = request.selectedProject {
@@ -212,26 +227,15 @@ public struct VoiceTaskReferenceResolver: Sendable {
         if let ordinal {
             return resolveOrdinal(
                 ordinal,
-                targetKind: ordinalTargetKind,
+                targetKind: requestedTargetKind,
                 request: request
             )
         }
 
-        let titleMatches = request.candidates.filter {
-            let normalizedTitle = normalize($0.title)
-            return !normalizedTitle.isEmpty
-                && (normalizedUtterance == normalizedTitle
-                    || (normalizedTitle.count >= 3
-                        && normalizedUtterance.contains(normalizedTitle)))
-        }
-        if titleMatches.count == 1, let candidate = titleMatches.first {
-            return resolveCandidate(candidate, reason: .uniqueCandidate)
-        }
-        if titleMatches.count > 1 {
-            return .needsClarification(titleMatches)
-        }
-
-        let factCandidates = confirmedFactCandidates(for: request)
+        let factCandidates = confirmedFactCandidates(
+            for: request,
+            targetKind: requestedTargetKind
+        )
         if factCandidates.count == 1, let candidate = factCandidates.first {
             return resolveCandidate(candidate, reason: .confirmedFact)
         }
@@ -244,7 +248,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
 
     private func resolveOrdinal(
         _ ordinal: Int,
-        targetKind: OrdinalTargetKind,
+        targetKind: RequestedTargetKind,
         request: VoiceTaskReferenceRequest
     ) -> VoiceTaskReferenceResolution {
         guard let reference = request.ordinalReference else {
@@ -308,7 +312,8 @@ public struct VoiceTaskReferenceResolver: Sendable {
     }
 
     private func confirmedFactCandidates(
-        for request: VoiceTaskReferenceRequest
+        for request: VoiceTaskReferenceRequest,
+        targetKind: RequestedTargetKind
     ) -> [ConversationReferenceCandidate] {
         var result: [ConversationReferenceCandidate] = []
         let sessionFacts = request.confirmedFacts.filter {
@@ -340,7 +345,10 @@ public struct VoiceTaskReferenceResolver: Sendable {
                 }
             }
 
-            for candidate in matches where !result.contains(candidate) {
+            for candidate in matches
+                where targetKind.matches(candidate.target)
+                    && !result.contains(candidate)
+            {
                 result.append(candidate)
             }
         }
@@ -357,6 +365,50 @@ public struct VoiceTaskReferenceResolver: Sendable {
             .lowercased()
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    private func isStrongNamedCandidate(
+        _ candidate: ConversationReferenceCandidate,
+        in normalizedUtterance: String
+    ) -> Bool {
+        let normalizedTitle = normalize(candidate.title)
+        guard !normalizedTitle.isEmpty,
+              !Self.genericReferenceTitles.contains(normalizedTitle)
+        else {
+            return false
+        }
+        if normalizedUtterance == normalizedTitle {
+            return true
+        }
+
+        if normalizedTitle.unicodeScalars.allSatisfy(\.isASCII) {
+            let escapedTitle = NSRegularExpression.escapedPattern(
+                for: normalizedTitle
+            )
+            // Phrase boundaries prevent short titles such as "App" from
+            // resolving inside unrelated words such as "apply".
+            return matches(
+                #"(?<![\p{L}\p{N}_])\#(escapedTitle)(?![\p{L}\p{N}_])"#,
+                in: normalizedUtterance
+            )
+        }
+
+        // Japanese titles generally have no whitespace token boundary, so a
+        // normalized substring remains the deterministic matching rule.
+        return normalizedUtterance.contains(normalizedTitle)
+    }
+
+    private static let genericReferenceTitles: Set<String> = [
+        "that",
+        "this one",
+        "that one",
+        "task",
+        "project",
+        "それ",
+        "あれ",
+        "タスク",
+        "プロジェクト",
+        "案件",
+    ]
 
     private func ordinalIndex(in normalizedUtterance: String) -> Int? {
         let englishOrdinals: [(String, Int)] = [
@@ -396,7 +448,9 @@ public struct VoiceTaskReferenceResolver: Sendable {
         return nil
     }
 
-    private func ordinalTargetKind(in normalizedUtterance: String) -> OrdinalTargetKind {
+    private func requestedTargetKind(
+        in normalizedUtterance: String
+    ) -> RequestedTargetKind {
         if matches(#"\bproject\b"#, in: normalizedUtterance)
             || normalizedUtterance.contains("プロジェクト")
             || normalizedUtterance.contains("案件")
@@ -473,7 +527,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
     }
 }
 
-private enum OrdinalTargetKind {
+private enum RequestedTargetKind {
     case any
     case task
     case project

@@ -358,6 +358,37 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(named, reason: .uniqueCandidate))
     }
 
+    func testGivenTaskTitleThatOneThingWhenResolveThenNamedTaskBeatsSelection() {
+        let selected = ConversationResolvedTarget.task(id: 741, projectID: 12)
+        let named = ConversationResolvedTarget.task(id: 742, projectID: 12)
+        let candidates = [
+            candidate(taskID: 741, projectID: 12, title: "Selected"),
+            candidate(taskID: 742, projectID: 12, title: "That One Thing"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "open That One Thing",
+                selectedTask: selected,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(named, reason: .uniqueCandidate))
+    }
+
+    func testGivenShortCandidateTitleInsideAnotherWordThenDoesNotResolve() {
+        let candidates = [
+            candidate(taskID: 743, projectID: 12, title: "App"),
+        ]
+
+        let result = resolver.resolve(
+            request(utterance: "apply the update", candidates: candidates)
+        )
+
+        XCTAssertEqual(result, .needsClarification(candidates))
+    }
+
     func testGivenTaskTitleContainingProjectWhenResolveThenDoesNotUseProjectSelection() {
         let selectedProject = ConversationResolvedTarget.project(id: 12)
         let named = ConversationResolvedTarget.task(id: 75, projectID: 12)
@@ -605,6 +636,37 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
                 utterance: "that task",
                 candidates: candidates,
                 confirmedFacts: [oldFact, retraction]
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification(candidates))
+    }
+
+    func testGivenTaskQualifiedReferenceWithOnlyProjectFactThenDoesNotResolveProject() throws {
+        let projectFact = try TaskContextFact(
+            sessionID: sessionID,
+            kind: .project,
+            scope: .project(106),
+            state: .confirmed,
+            value: "Project scope",
+            sourceTurnID: sourceTurnID,
+            confidence: 1,
+            author: .userExplicit,
+            createdAt: now.addingTimeInterval(-30)
+        )
+        let candidates = [
+            ConversationReferenceCandidate(
+                target: .project(id: 106),
+                title: "Project scope",
+                stableSortKey: "project-106"
+            ),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "that task",
+                candidates: candidates,
+                confirmedFacts: [projectFact]
             )
         )
 
