@@ -2,6 +2,50 @@ import XCTest
 @testable import SuisuiCore
 
 final class DatabaseMigrationTests: XCTestCase {
+    func testConversationMigrationUpgradesDatabaseAt0024AndPreservesExistingTasks() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeConversation = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0025_create_voice_task_conversations"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: migrationsBeforeConversation)
+        try connection.execute(
+            """
+            INSERT INTO projects (id, title, status, created_at, updated_at)
+            VALUES (901, 'Existing project', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+            INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+            VALUES (902, 901, 'Existing task', 'planned', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        XCTAssertEqual(
+            try connection.queryStrings("SELECT title FROM tasks WHERE id = 902;"),
+            ["Existing task"]
+        )
+        XCTAssertTrue(try connection.tableExists("voice_task_conversation_sessions"))
+    }
+
+    func testConversationMigrationIsIdempotent() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT id
+                FROM schema_migrations
+                WHERE id = '0025_create_voice_task_conversations';
+                """
+            ),
+            ["0025_create_voice_task_conversations"]
+        )
+    }
+
     func testApprovalReplayStoreRejectsNonceAfterDatabaseReopen() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("suisui-approval-replay-\(UUID().uuidString)", isDirectory: true)

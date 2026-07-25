@@ -1451,6 +1451,184 @@ public enum CoreMigrations {
                     """
                 )
             },
+            DatabaseMigration(id: "0025_create_voice_task_conversations") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS voice_task_conversation_sessions (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        state TEXT NOT NULL CHECK(state IN ('active', 'paused', 'archived')),
+                        title TEXT NOT NULL,
+                        entry_point TEXT NOT NULL CHECK(entry_point IN (
+                            'voice_command',
+                            'inbox_voice',
+                            'task_inspector',
+                            'project_workspace'
+                        )),
+                        active_project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                        active_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+                        resume_summary TEXT,
+                        created_at REAL NOT NULL,
+                        updated_at REAL NOT NULL,
+                        last_turn_at REAL
+                    );
+
+                    CREATE TABLE IF NOT EXISTS voice_task_conversation_turns (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        session_id TEXT NOT NULL,
+                        author TEXT NOT NULL CHECK(author IN ('user', 'assistant', 'system')),
+                        raw_transcript TEXT,
+                        confirmed_text TEXT,
+                        created_at REAL NOT NULL,
+                        FOREIGN KEY(session_id)
+                            REFERENCES voice_task_conversation_sessions(id)
+                            ON DELETE CASCADE,
+                        CHECK(confirmed_text IS NULL OR (
+                            author = 'user' AND length(trim(confirmed_text)) > 0
+                        ))
+                    );
+
+                    CREATE TABLE IF NOT EXISTS voice_task_conversation_references (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        session_id TEXT NOT NULL,
+                        source_turn_id TEXT NOT NULL,
+                        target_kind TEXT NOT NULL CHECK(target_kind IN (
+                            'project',
+                            'task',
+                            'action_plan',
+                            'assistant_queue_item',
+                            'execution_receipt'
+                        )),
+                        target_integer_id INTEGER,
+                        target_text_id TEXT,
+                        ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
+                        ordering_fingerprint TEXT NOT NULL
+                            CHECK(length(trim(ordering_fingerprint)) > 0),
+                        expires_at REAL NOT NULL,
+                        created_at REAL NOT NULL,
+                        FOREIGN KEY(session_id)
+                            REFERENCES voice_task_conversation_sessions(id)
+                            ON DELETE CASCADE,
+                        FOREIGN KEY(source_turn_id)
+                            REFERENCES voice_task_conversation_turns(id)
+                            ON DELETE CASCADE,
+                        CHECK(
+                            (target_kind IN ('project', 'task')
+                                AND target_integer_id > 0
+                                AND target_text_id IS NULL)
+                            OR
+                            (target_kind IN (
+                                'action_plan',
+                                'assistant_queue_item',
+                                'execution_receipt'
+                            )
+                                AND target_integer_id IS NULL
+                                AND length(trim(target_text_id)) > 0)
+                        )
+                    );
+
+                    CREATE TABLE IF NOT EXISTS task_context_facts (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        session_id TEXT NOT NULL,
+                        kind TEXT NOT NULL CHECK(kind IN (
+                            'goal',
+                            'constraint',
+                            'due_date',
+                            'project',
+                            'task',
+                            'preference'
+                        )),
+                        scope_kind TEXT NOT NULL CHECK(scope_kind IN ('session', 'project', 'task')),
+                        scope_target_id INTEGER,
+                        project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                        task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+                        state TEXT NOT NULL CHECK(state IN (
+                            'proposed',
+                            'confirmed',
+                            'superseded',
+                            'retracted'
+                        )),
+                        value TEXT NOT NULL CHECK(length(trim(value)) > 0),
+                        source_turn_id TEXT REFERENCES voice_task_conversation_turns(id) ON DELETE SET NULL,
+                        confidence REAL NOT NULL CHECK(confidence >= 0.0 AND confidence <= 1.0),
+                        author TEXT NOT NULL CHECK(author IN (
+                            'user_explicit',
+                            'provider_inferred',
+                            'system_derived'
+                        )),
+                        supersedes_fact_id TEXT REFERENCES task_context_facts(id) ON DELETE SET NULL,
+                        created_at REAL NOT NULL,
+                        CHECK(scope_target_id IS NULL OR scope_target_id > 0),
+                        CHECK(project_id IS NULL OR project_id > 0),
+                        CHECK(task_id IS NULL OR task_id > 0),
+                        CHECK(
+                            (scope_kind = 'session'
+                                AND scope_target_id IS NULL
+                                AND project_id IS NULL
+                                AND task_id IS NULL)
+                            OR
+                            (scope_kind = 'project'
+                                AND scope_target_id > 0
+                                AND task_id IS NULL
+                                AND (project_id IS NULL OR project_id = scope_target_id))
+                            OR
+                            (scope_kind = 'task'
+                                AND scope_target_id > 0
+                                AND project_id IS NULL
+                                AND (task_id IS NULL OR task_id = scope_target_id))
+                        )
+                    );
+
+                    CREATE TABLE IF NOT EXISTS conversation_action_links (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        session_id TEXT NOT NULL,
+                        source_turn_id TEXT NOT NULL,
+                        action_plan_id TEXT,
+                        assistant_queue_item_id TEXT,
+                        task_id INTEGER CHECK(task_id IS NULL OR task_id > 0),
+                        execution_receipt_id TEXT,
+                        reviewed_fingerprint TEXT NOT NULL
+                            CHECK(length(trim(reviewed_fingerprint)) > 0),
+                        created_at REAL NOT NULL,
+                        FOREIGN KEY(session_id)
+                            REFERENCES voice_task_conversation_sessions(id)
+                            ON DELETE CASCADE,
+                        FOREIGN KEY(source_turn_id)
+                            REFERENCES voice_task_conversation_turns(id)
+                            ON DELETE CASCADE,
+                        CHECK(
+                            action_plan_id IS NOT NULL
+                            OR assistant_queue_item_id IS NOT NULL
+                            OR task_id IS NOT NULL
+                            OR execution_receipt_id IS NOT NULL
+                        )
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_voice_task_conversation_sessions_state_updated
+                    ON voice_task_conversation_sessions(state, updated_at DESC);
+
+                    CREATE INDEX IF NOT EXISTS idx_voice_task_conversation_turns_page
+                    ON voice_task_conversation_turns(session_id, created_at DESC, id DESC);
+
+                    CREATE INDEX IF NOT EXISTS idx_voice_task_conversation_references_expiry
+                    ON voice_task_conversation_references(session_id, expires_at);
+
+                    CREATE INDEX IF NOT EXISTS idx_task_context_facts_task_state
+                    ON task_context_facts(task_id, state);
+
+                    CREATE INDEX IF NOT EXISTS idx_task_context_facts_project_state
+                    ON task_context_facts(project_id, state);
+
+                    CREATE INDEX IF NOT EXISTS idx_task_context_facts_session_state
+                    ON task_context_facts(session_id, state, created_at DESC);
+
+                    CREATE INDEX IF NOT EXISTS idx_task_context_facts_stable_scope
+                    ON task_context_facts(scope_kind, scope_target_id, state);
+
+                    CREATE INDEX IF NOT EXISTS idx_voice_task_conversation_action_links_turn
+                    ON conversation_action_links(source_turn_id);
+                    """
+                )
+            },
         ]
     }
 }
