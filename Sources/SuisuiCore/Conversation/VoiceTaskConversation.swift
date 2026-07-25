@@ -18,6 +18,7 @@ public enum VoiceTaskConversationDomainError: Error, Equatable, Sendable {
     case duplicateFactIdentifier
     case invalidFactEvidenceDigest
     case invalidFactExpiration
+    case invalidFactScope
     case incompatibleFactTransition
 }
 
@@ -494,6 +495,16 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
         }
         guard supersedesFactID != id else {
             throw VoiceTaskConversationDomainError.cyclicSupersession
+        }
+        // Session-wide memory is deliberately excluded: every durable Fact
+        // must stay anchored to one persisted Task or Project identifier.
+        switch scope {
+        case .session:
+            throw VoiceTaskConversationDomainError.invalidFactScope
+        case .project(let id), .task(let id):
+            guard id > 0 else {
+                throw VoiceTaskConversationDomainError.invalidFactScope
+            }
         }
         let normalizedDigest = sourceExcerptDigest.lowercased()
         guard normalizedDigest.count == 64,

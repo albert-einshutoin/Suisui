@@ -59,6 +59,18 @@ final class TaskContextFactPolicyTests: XCTestCase {
         XCTAssertFalse(reason.contains(fact.value))
     }
 
+    func testGivenDeterministicObjectiveWhenEvaluateThenRequiresConfirmation() {
+        let candidate = makeCandidate(
+            kind: .goal,
+            value: "Derived objective",
+            author: .deterministic
+        )
+
+        guard case .requireConfirmation = policy.evaluate(candidate) else {
+            return XCTFail("Expected deterministic Fact to require confirmation.")
+        }
+    }
+
     func testGivenSecretLikeValueWhenEvaluateThenProhibitsWithoutEchoingSecret() {
         let secret = "sk-example-do-not-persist-1234567890"
         let candidate = makeCandidate(
@@ -72,6 +84,18 @@ final class TaskContextFactPolicyTests: XCTestCase {
         }
         XCTAssertFalse(reason.contains(secret))
         XCTAssertFalse(reason.contains(candidate.value))
+    }
+
+    func testGivenOrdinaryWordEndingInSKWhenEvaluateThenDoesNotTreatItAsSecret() {
+        let candidate = makeCandidate(
+            kind: .constraint,
+            value: "Use a risk-based rollout",
+            author: .userExplicit
+        )
+
+        guard case .saveCandidate = policy.evaluate(candidate) else {
+            return XCTFail("Expected an ordinary word to remain saveable.")
+        }
     }
 
     func testGivenConflictingDecisionWhenEvaluateThenRequiresConfirmation() {
@@ -99,6 +123,7 @@ final class TaskContextFactPolicyTests: XCTestCase {
         )
         let replacement = try makeFact(
             state: .proposed,
+            scope: .task(43),
             value: "Launch Friday",
             sourceTurnID: replacementTurnID,
             digest: String(repeating: "c", count: 64)
@@ -117,6 +142,7 @@ final class TaskContextFactPolicyTests: XCTestCase {
         XCTAssertNotEqual(supersession.id, old.id)
         XCTAssertEqual(corrected.state, .confirmed)
         XCTAssertEqual(corrected.value, replacement.value)
+        XCTAssertEqual(corrected.scope, replacement.scope)
         XCTAssertEqual(corrected.sourceTurnID, replacementTurnID)
         XCTAssertEqual(corrected.supersedesFactID, old.id)
         XCTAssertNotEqual(corrected.id, replacement.id)
@@ -264,6 +290,24 @@ final class TaskContextFactPolicyTests: XCTestCase {
         }
     }
 
+    func testGivenNonPositiveScopeIdentifierWhenEvaluateThenProhibits() {
+        for scope in [
+            TaskContextFactScope.task(0),
+            .project(-1),
+        ] {
+            let candidate = makeCandidate(
+                kind: .goal,
+                scope: scope,
+                value: "Invalid scope",
+                author: .userExplicit
+            )
+
+            guard case .prohibit = policy.evaluate(candidate) else {
+                return XCTFail("Expected \(scope) to be prohibited.")
+            }
+        }
+    }
+
     private func makeCandidate(
         kind: TaskContextFactKind,
         scope: TaskContextFactScope = .task(42),
@@ -294,6 +338,7 @@ final class TaskContextFactPolicyTests: XCTestCase {
 
     private func makeFact(
         state: TaskContextFactState,
+        scope: TaskContextFactScope = .task(42),
         value: String = "Release after signing",
         sourceTurnID: UUID? = nil,
         digest: String? = nil,
@@ -302,7 +347,7 @@ final class TaskContextFactPolicyTests: XCTestCase {
         try TaskContextFact(
             sessionID: sessionID,
             kind: .constraint,
-            scope: .task(42),
+            scope: scope,
             state: state,
             value: value,
             sourceTurnID: sourceTurnID ?? turnID,

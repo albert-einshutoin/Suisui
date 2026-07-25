@@ -120,6 +120,9 @@ public struct TaskContextFactPolicy: Sendable {
         if candidate.author == .providerInferred {
             return .requireConfirmation(fact, reason: "provider inference requires confirmation")
         }
+        if candidate.author == .deterministic {
+            return .requireConfirmation(fact, reason: "deterministic inference requires confirmation")
+        }
         if candidate.kind == .decision {
             return .requireConfirmation(fact, reason: "long-term decision requires confirmation")
         }
@@ -185,7 +188,6 @@ public struct TaskContextFactPolicy: Sendable {
               replacement.state == .proposed,
               old.sessionID == replacement.sessionID,
               old.kind == replacement.kind,
-              old.scope == replacement.scope,
               date >= old.createdAt,
               date >= replacement.createdAt
         else {
@@ -237,8 +239,14 @@ public struct TaskContextFactPolicy: Sendable {
 
     private static func containsSecretOrRawPath(_ value: String) -> Bool {
         let lowered = value.lowercased()
+        // A provider key needs a token boundary and realistic length. Plain
+        // substring matching would reject ordinary words such as "risk-based".
+        let providerKeyPattern = #"(?i)(?:^|[^a-z0-9])sk-[a-z0-9][a-z0-9_-]{11,}"#
+        if value.range(of: providerKeyPattern, options: .regularExpression) != nil {
+            return true
+        }
         let highSignalMarkers = [
-            "sk-", "ghp_", "github_pat_", "akia", "bearer ",
+            "ghp_", "github_pat_", "akia", "bearer ",
             "api_key=", "apikey=", "password=", "authorization:",
             "file://", "/users/", "/private/", "/volumes/",
         ]
