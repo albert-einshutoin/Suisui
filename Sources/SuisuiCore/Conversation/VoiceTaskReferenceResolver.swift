@@ -182,12 +182,16 @@ public struct VoiceTaskReferenceResolver: Sendable {
         // A full candidate name is stronger evidence than pronouns contained
         // inside that name (for example, "open That One Thing").
         if ordinal == nil,
+           !isRecentActionReference,
            namedCandidateMatches.count == 1,
            let candidate = namedCandidateMatches.first
         {
             return resolveCandidate(candidate, reason: .uniqueCandidate)
         }
-        if ordinal == nil, namedCandidateMatches.count > 1 {
+        if ordinal == nil,
+           !isRecentActionReference,
+           namedCandidateMatches.count > 1
+        {
             return .needsClarification(namedCandidateMatches)
         }
 
@@ -374,7 +378,11 @@ public struct VoiceTaskReferenceResolver: Sendable {
             return []
         }
         let supersededFactIDs = Set(
-            sessionFacts.compactMap(\.supersedesFactID)
+            sessionFacts
+                .filter {
+                    $0.state == .confirmed || $0.state == .retracted
+                }
+                .compactMap(\.supersedesFactID)
         )
 
         for fact in sessionFacts

@@ -356,6 +356,34 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(created, reason: .previousActionLink))
     }
 
+    func testGivenRecentCreationReferenceAndIncidentalTitleThenUsesActionLink() throws {
+        let created = ConversationResolvedTarget.task(id: 439, projectID: 8)
+        let incidental = ConversationResolvedTarget.task(id: 440, projectID: 8)
+        let link = try ConversationActionLink(
+            sessionID: sessionID,
+            sourceTurnID: sourceTurnID,
+            taskID: 439,
+            operation: .taskCreated,
+            reviewedFingerprint: "reviewed",
+            createdAt: now.addingTimeInterval(-5)
+        )
+        let candidates = [
+            candidate(taskID: 439, projectID: 8, title: "Created task"),
+            candidate(taskID: 440, projectID: 8, title: "Release"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "delete the task we just created for Release",
+                previousActionLink: link,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(created, reason: .previousActionLink))
+        XCTAssertNotEqual(result, .resolved(incidental, reason: .uniqueCandidate))
+    }
+
     func testGivenRecentCreationReferenceWithoutActionLinkThenDoesNotUseFact() throws {
         let unrelated = ConversationResolvedTarget.task(id: 438, projectID: 8)
         let unrelatedCandidate = candidate(
@@ -1048,6 +1076,47 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
                     candidate(taskID: 103, projectID: 15, title: "Corrected task"),
                 ],
                 confirmedFacts: [oldFact, replacement]
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(target, reason: .confirmedFact))
+    }
+
+    func testGivenConfirmedFactWithProposedReplacementThenKeepsConfirmedFact() throws {
+        let oldFact = try TaskContextFact(
+            id: UUID(uuidString: "cccccccc-cccc-cccc-cccc-cccccccccccc")!,
+            sessionID: sessionID,
+            kind: .task,
+            scope: .task(107),
+            state: .confirmed,
+            value: "Confirmed task",
+            sourceTurnID: sourceTurnID,
+            confidence: 1,
+            author: .userExplicit,
+            createdAt: now.addingTimeInterval(-60)
+        )
+        let proposal = try TaskContextFact(
+            sessionID: sessionID,
+            kind: .task,
+            scope: .task(108),
+            state: .proposed,
+            value: "Proposed task",
+            sourceTurnID: sourceTurnID,
+            confidence: 0.6,
+            author: .providerInferred,
+            supersedesFactID: oldFact.id,
+            createdAt: now.addingTimeInterval(-30)
+        )
+        let target = ConversationResolvedTarget.task(id: 107, projectID: 15)
+
+        let result = resolver.resolve(
+            request(
+                utterance: "that task",
+                candidates: [
+                    candidate(taskID: 107, projectID: 15, title: "Confirmed task"),
+                    candidate(taskID: 108, projectID: 15, title: "Proposed task"),
+                ],
+                confirmedFacts: [oldFact, proposal]
             )
         )
 
