@@ -162,6 +162,59 @@ final class DatabaseMigrationTests: XCTestCase {
         )
     }
 
+    func testTaskContextEvidenceTombstoneMigrationPreservesTurnIdentifierAfterConversationDeletion() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsThroughFactPolicy = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0028_preserve_task_context_fact_evidence_tombstones"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsThroughFactPolicy
+        )
+        try connection.execute(
+            """
+            INSERT INTO voice_task_conversation_sessions (
+                id, state, title, entry_point, created_at, updated_at
+            )
+            VALUES ('session-tombstone', 'active', 'Session', 'voice_command', 1, 1);
+            INSERT INTO voice_task_conversation_turns (
+                id, session_id, author, confirmed_text, created_at
+            )
+            VALUES (
+                'turn-tombstone', 'session-tombstone', 'user',
+                'Confirmed evidence', 1
+            );
+            INSERT INTO task_context_facts (
+                id, session_id, kind, scope_kind, scope_target_id, state, value,
+                source_turn_id, source_excerpt_digest, confidence, author, created_at
+            )
+            VALUES (
+                'fact-tombstone', 'session-tombstone', 'goal', 'task', 42,
+                'confirmed', 'Ship safely', 'turn-tombstone',
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                1, 'user_explicit', 1
+            );
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        try connection.execute(
+            "DELETE FROM voice_task_conversation_sessions WHERE id = 'session-tombstone';"
+        )
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT source_turn_id FROM task_context_facts WHERE id = 'fact-tombstone';"
+            ),
+            ["turn-tombstone"]
+        )
+    }
+
     func testApprovalReplayStoreRejectsNonceAfterDatabaseReopen() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("suisui-approval-replay-\(UUID().uuidString)", isDirectory: true)

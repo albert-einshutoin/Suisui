@@ -411,7 +411,8 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
             author: .userExplicit,
             expiresAt: turn.createdAt.addingTimeInterval(3_600),
             createdAt: turn.createdAt
-            )
+            ),
+            store: store
         )
         let fact = factHistory.confirmed
         let actionLink = try ConversationActionLink(
@@ -446,7 +447,7 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
             try connection.queryStrings(
                 "SELECT source_excerpt_digest FROM task_context_facts WHERE state = 'confirmed';"
             ),
-            [String(repeating: "a", count: 64)]
+            [fact.sourceExcerptDigest]
         )
         XCTAssertEqual(
             try connection.queryStrings(
@@ -487,7 +488,8 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
             confidence: 1,
             author: .userExplicit,
             createdAt: turn.createdAt
-            )
+            ),
+            store: store
         )
         let fact = factHistory.confirmed
         let link = try ConversationActionLink(
@@ -589,7 +591,103 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
         XCTAssertEqual(try store.loadSession(id: session.id)?.id, session.id)
     }
 
-    func testSessionDeletionCascadesConversationRowsButPreservesFactAndTask() throws {
+    func testStoreIssuesEvidenceOnlyForPersistedConfirmedExcerpt() throws {
+        let (_, store) = try makeStore()
+        let session = makeSession()
+        try store.createSession(session)
+        let turn = try makeTurn(sessionID: session.id)
+        try store.saveTurn(turn)
+
+        let evidence = try store.verifyFactSourceEvidence(
+            sessionID: session.id,
+            turnID: turn.id,
+            sourceExcerpt: "Sign the release"
+        )
+        let candidate = TaskContextFactCandidate(
+            sessionID: session.id,
+            kind: .goal,
+            scope: .task(52),
+            scopeAssessment: .unique,
+            value: "Release safely",
+            sourceEvidence: evidence,
+            confidence: 1,
+            author: .userExplicit,
+            conflictingConfirmedFactIDs: [],
+            contentCategory: .taskContext,
+            createdAt: turn.createdAt
+        )
+
+        guard case let .saveCandidate(fact) = TaskContextFactPolicy().evaluate(candidate) else {
+            return XCTFail("Expected verified evidence to authorize a candidate.")
+        }
+        XCTAssertNoThrow(
+            try TaskContextFactPolicy().persistenceWrite(for: fact)
+        )
+        XCTAssertThrowsError(
+            try store.verifyFactSourceEvidence(
+                sessionID: session.id,
+                turnID: turn.id,
+                sourceExcerpt: "A different statement"
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationStoreError,
+                .invalidFactSourceEvidence(turn.id)
+            )
+        }
+    }
+
+    func testStoreRejectsEvidenceIssuedByDifferentStoreWithMatchingIdentifiers() throws {
+        let (_, trustedStore) = try makeStore()
+        let (_, foreignStore) = try makeStore()
+        let session = makeSession()
+        let trustedTurn = try makeTurn(sessionID: session.id)
+        let foreignTurn = try VoiceTaskConversationTurn(
+            id: trustedTurn.id,
+            sessionID: session.id,
+            author: .user,
+            userConfirmedText: "Fabricated evidence",
+            createdAt: trustedTurn.createdAt
+        )
+        try trustedStore.createSession(session)
+        try trustedStore.saveTurn(trustedTurn)
+        try foreignStore.createSession(session)
+        try foreignStore.saveTurn(foreignTurn)
+        let foreignEvidence = try foreignStore.verifyFactSourceEvidence(
+            sessionID: session.id,
+            turnID: foreignTurn.id,
+            sourceExcerpt: "Fabricated evidence"
+        )
+        let candidate = TaskContextFactCandidate(
+            sessionID: session.id,
+            kind: .goal,
+            scope: .task(52),
+            scopeAssessment: .unique,
+            value: "Release safely",
+            sourceEvidence: foreignEvidence,
+            confidence: 1,
+            author: .userExplicit,
+            conflictingConfirmedFactIDs: [],
+            contentCategory: .taskContext,
+            createdAt: trustedTurn.createdAt
+        )
+        guard case let .saveCandidate(fact) = TaskContextFactPolicy().evaluate(candidate) else {
+            return XCTFail("Expected policy evaluation before the Store binding check.")
+        }
+
+        XCTAssertThrowsError(
+            try trustedStore.saveFact(
+                try TaskContextFactPolicy().persistenceWrite(for: fact)
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationStoreError,
+                .invalidFactSourceEvidence(trustedTurn.id)
+            )
+        }
+    }
+
+    func testSessionDeletionCascadesConversationRowsButPreservesFactEvidenceAndTask() throws {
         let (connection, store) = try makeStore()
         let session = makeSession()
         try store.createSession(session)
@@ -626,7 +724,8 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
             confidence: 1,
             author: .userExplicit,
             createdAt: turn.createdAt
-            )
+            ),
+            store: store
         )
         let fact = factHistory.confirmed
         try store.saveFact(
@@ -653,16 +752,40 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
         XCTAssertEqual(result.actionLinksDeleted, 1)
         XCTAssertEqual(try connection.queryStrings("SELECT id FROM tasks WHERE id = 52;"), ["52"])
         XCTAssertEqual(
-            try connection.queryStrings("SELECT id FROM task_context_facts WHERE id = ?;", parameters: [.text(fact.id.uuidString)]),
-            [fact.id.uuidString]
+            try connection.queryStrings(
+                """
+                SELECT source_turn_id || ':' || source_excerpt_digest
+                FROM task_context_facts
+                WHERE id = ?;
+                """,
+                parameters: [.text(fact.id.uuidString)]
+            ),
+            ["\(turn.id.uuidString):\(fact.sourceExcerptDigest)"]
+        )
+
+        let reopenedStore = SQLiteVoiceTaskConversationStore(connection: connection)
+        let retracted = try reopenedStore.retractFact(
+            factID: fact.id,
+            at: fact.createdAt.addingTimeInterval(1)
         )
         XCTAssertEqual(
-            try connection.materializedRows(
-                "SELECT source_turn_id FROM task_context_facts WHERE id = ?;",
-                parameters: [.text(fact.id.uuidString)]
-            ).first?.cells["source_turn_id"],
-            .null
+            try connection.queryStrings(
+                "SELECT state FROM task_context_facts WHERE id = ?;",
+                parameters: [.text(retracted.id.uuidString)]
+            ),
+            [TaskContextFactState.retracted.rawValue]
         )
+        XCTAssertThrowsError(
+            try reopenedStore.retractFact(
+                factID: fact.id,
+                at: fact.createdAt.addingTimeInterval(2)
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationDomainError,
+                .incompatibleFactTransition
+            )
+        }
     }
 
     func testSupersessionWriteRollsBackBothFactsWhenCorrectedInsertFails() throws {
@@ -691,11 +814,17 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
                 confidence: 1,
                 author: .userExplicit,
                 createdAt: turn.createdAt
-            )
+            ),
+            store: store
         )
         let policy = TaskContextFactPolicy()
         try store.saveFact(try policy.persistenceWrite(for: oldHistory.proposed))
         try store.saveFact(try policy.persistenceWrite(for: oldHistory.confirmed))
+        let replacementEvidence = try store.verifyFactSourceEvidence(
+            sessionID: session.id,
+            turnID: turn.id,
+            sourceExcerpt: "Sign the release"
+        )
 
         let replacementCandidate = TaskContextFactCandidate(
             sessionID: session.id,
@@ -703,8 +832,7 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
             scope: .task(42),
             scopeAssessment: .unique,
             value: "Launch Friday",
-            sourceTurnID: turn.id,
-            sourceExcerptDigest: String(repeating: "e", count: 64),
+            sourceEvidence: replacementEvidence,
             confidence: 1,
             author: .userExplicit,
             conflictingConfirmedFactIDs: [oldHistory.confirmed.id],
@@ -797,17 +925,22 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
     }
 
     private func policyConfirmationHistory(
-        _ proposed: TaskContextFact
+        _ proposed: TaskContextFact,
+        store: SQLiteVoiceTaskConversationStore
     ) throws -> (proposed: TaskContextFact, confirmed: TaskContextFact) {
         let policy = TaskContextFactPolicy()
+        let evidence = try store.verifyFactSourceEvidence(
+            sessionID: proposed.sessionID,
+            turnID: proposed.sourceTurnID,
+            sourceExcerpt: "Sign the release"
+        )
         let candidate = TaskContextFactCandidate(
             sessionID: proposed.sessionID,
             kind: proposed.kind,
             scope: proposed.scope,
             scopeAssessment: .unique,
             value: proposed.value,
-            sourceTurnID: proposed.sourceTurnID,
-            sourceExcerptDigest: proposed.sourceExcerptDigest,
+            sourceEvidence: evidence,
             confidence: proposed.confidence,
             author: proposed.author,
             conflictingConfirmedFactIDs: [],
@@ -815,7 +948,14 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
             createdAt: proposed.createdAt,
             expiresAt: proposed.expiresAt
         )
-        let authorized = try policy.reauthorize(proposed, from: candidate)
+        let authorized: TaskContextFact
+        switch policy.evaluate(candidate) {
+        case let .saveCandidate(fact),
+             let .requireConfirmation(fact, _):
+            authorized = fact
+        case .prohibit:
+            throw VoiceTaskConversationDomainError.unauthorizedFactPersistence
+        }
         let confirmed = try policy.confirm(authorized, at: proposed.createdAt)
         return (authorized, confirmed)
     }

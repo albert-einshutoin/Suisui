@@ -18,14 +18,13 @@ public enum TaskContextFactContentCategory: String, Codable, Equatable, Sendable
     case binary
 }
 
-public struct TaskContextFactCandidate: Codable, Equatable, Sendable {
+public struct TaskContextFactCandidate: Equatable, Sendable {
     public let sessionID: UUID
     public let kind: TaskContextFactKind
     public let scope: TaskContextFactScope
     public let scopeAssessment: TaskContextFactScopeAssessment
     public let value: String
-    public let sourceTurnID: UUID?
-    public let sourceExcerptDigest: String?
+    public let sourceEvidence: TaskContextFactSourceEvidence?
     public let confidence: Double
     public let author: TaskContextFactAuthor
     public let conflictingConfirmedFactIDs: [UUID]
@@ -39,8 +38,7 @@ public struct TaskContextFactCandidate: Codable, Equatable, Sendable {
         scope: TaskContextFactScope,
         scopeAssessment: TaskContextFactScopeAssessment,
         value: String,
-        sourceTurnID: UUID?,
-        sourceExcerptDigest: String?,
+        sourceEvidence: TaskContextFactSourceEvidence?,
         confidence: Double,
         author: TaskContextFactAuthor,
         conflictingConfirmedFactIDs: [UUID],
@@ -53,14 +51,21 @@ public struct TaskContextFactCandidate: Codable, Equatable, Sendable {
         self.scope = scope
         self.scopeAssessment = scopeAssessment
         self.value = value
-        self.sourceTurnID = sourceTurnID
-        self.sourceExcerptDigest = sourceExcerptDigest
+        self.sourceEvidence = sourceEvidence
         self.confidence = confidence
         self.author = author
         self.conflictingConfirmedFactIDs = conflictingConfirmedFactIDs
         self.contentCategory = contentCategory
         self.createdAt = createdAt
         self.expiresAt = expiresAt
+    }
+
+    public var sourceTurnID: UUID? {
+        sourceEvidence?.turnID
+    }
+
+    public var sourceExcerptDigest: String? {
+        sourceEvidence?.excerptDigest
     }
 }
 
@@ -74,9 +79,11 @@ public enum TaskContextFactStorageDecision: Equatable, Sendable {
 /// so prohibited or hand-constructed Facts cannot cross the write boundary.
 public struct TaskContextFactWrite: Equatable, Sendable {
     public let fact: TaskContextFact
+    let storeIdentifier: UUID
 
-    fileprivate init(fact: TaskContextFact) {
+    fileprivate init(fact: TaskContextFact, storeIdentifier: UUID) {
         self.fact = fact
+        self.storeIdentifier = storeIdentifier
     }
 }
 
@@ -84,13 +91,16 @@ public struct TaskContextFactWrite: Equatable, Sendable {
 public struct TaskContextFactSupersessionWrite: Equatable, Sendable {
     public let superseded: TaskContextFact
     public let corrected: TaskContextFact
+    let storeIdentifier: UUID
 
     fileprivate init(
         superseded: TaskContextFact,
-        corrected: TaskContextFact
+        corrected: TaskContextFact,
+        storeIdentifier: UUID
     ) {
         self.superseded = superseded
         self.corrected = corrected
+        self.storeIdentifier = storeIdentifier
     }
 }
 
@@ -121,8 +131,8 @@ public struct TaskContextFactPolicy: Sendable {
         guard !Self.containsSecretOrRawPath(candidate.value) else {
             return .prohibit(reason: "secret or local data is prohibited from Task Context")
         }
-        guard let sourceTurnID = candidate.sourceTurnID,
-              let sourceExcerptDigest = candidate.sourceExcerptDigest
+        guard let sourceEvidence = candidate.sourceEvidence,
+              sourceEvidence.sessionID == candidate.sessionID
         else {
             return .prohibit(reason: "source evidence is required")
         }
@@ -135,13 +145,16 @@ public struct TaskContextFactPolicy: Sendable {
                 scope: candidate.scope,
                 state: .proposed,
                 value: candidate.value,
-                sourceTurnID: sourceTurnID,
-                sourceExcerptDigest: sourceExcerptDigest,
+                sourceTurnID: sourceEvidence.turnID,
+                sourceExcerptDigest: sourceEvidence.excerptDigest,
                 confidence: candidate.confidence,
                 author: candidate.author,
                 expiresAt: candidate.expiresAt,
                 createdAt: candidate.createdAt
-            ).authorizingPersistence(using: TaskContextFactAuthorizationToken())
+            ).authorizingPersistence(
+                using: TaskContextFactAuthorizationToken(),
+                sourceStoreIdentifier: sourceEvidence.storeIdentifier
+            )
         } catch {
             return .prohibit(reason: "candidate failed Task Context validation")
         }
@@ -183,11 +196,15 @@ public struct TaskContextFactPolicy: Sendable {
     ) throws -> TaskContextFactWrite {
         guard fact.persistenceAuthorized,
               fact.sourceEvidenceVerified,
+              let storeIdentifier = fact.sourceStoreIdentifier,
               !fact.requiresAtomicSupersession
         else {
             throw VoiceTaskConversationDomainError.unauthorizedFactPersistence
         }
-        return TaskContextFactWrite(fact: fact)
+        return TaskContextFactWrite(
+            fact: fact,
+            storeIdentifier: storeIdentifier
+        )
     }
 
     public func persistenceSupersessionWrite(
@@ -198,6 +215,8 @@ public struct TaskContextFactPolicy: Sendable {
               corrected.persistenceAuthorized,
               superseded.sourceEvidenceVerified,
               corrected.sourceEvidenceVerified,
+              let storeIdentifier = superseded.sourceStoreIdentifier,
+              corrected.sourceStoreIdentifier == storeIdentifier,
               superseded.requiresAtomicSupersession,
               corrected.requiresAtomicSupersession,
               superseded.state == .superseded,
@@ -212,7 +231,29 @@ public struct TaskContextFactPolicy: Sendable {
         }
         return TaskContextFactSupersessionWrite(
             superseded: superseded,
-            corrected: corrected
+            corrected: corrected,
+            storeIdentifier: storeIdentifier
+        )
+    }
+
+    /// Restores the non-serializable Store binding from a verified persisted
+    /// record. The Store calls this only after decoding a confirmed Fact from
+    /// its own database, so a deleted conversation Turn never needs to be
+    /// recreated merely to record the user's later withdrawal.
+    func reauthorizePersistedConfirmedFact(
+        _ fact: TaskContextFact,
+        sourceStoreIdentifier: UUID
+    ) throws -> TaskContextFact {
+        guard !fact.persistenceAuthorized,
+              fact.sourceEvidenceVerified,
+              fact.state == .confirmed,
+              fact.supersedesFactID != nil
+        else {
+            throw VoiceTaskConversationDomainError.unauthorizedFactPersistence
+        }
+        return fact.authorizingPersistence(
+            using: TaskContextFactAuthorizationToken(),
+            sourceStoreIdentifier: sourceStoreIdentifier
         )
     }
 
@@ -260,7 +301,13 @@ public struct TaskContextFactPolicy: Sendable {
             throw VoiceTaskConversationDomainError.unauthorizedFactPersistence
         }
 
-        return fact.authorizingPersistence(using: TaskContextFactAuthorizationToken())
+        guard let storeIdentifier = candidate.sourceEvidence?.storeIdentifier else {
+            throw VoiceTaskConversationDomainError.unauthorizedFactPersistence
+        }
+        return fact.authorizingPersistence(
+            using: TaskContextFactAuthorizationToken(),
+            sourceStoreIdentifier: storeIdentifier
+        )
     }
 
     /// Replays the confirmed predecessor and expiry transition so a serialized
@@ -289,7 +336,43 @@ public struct TaskContextFactPolicy: Sendable {
         guard factMatches(expected, expired) else {
             throw VoiceTaskConversationDomainError.unauthorizedFactPersistence
         }
-        return expired.authorizingPersistence(using: TaskContextFactAuthorizationToken())
+        return expired.authorizingPersistence(
+            using: TaskContextFactAuthorizationToken(),
+            sourceStoreIdentifier: authorizedConfirmed.sourceStoreIdentifier
+        )
+    }
+
+    /// Replays the complete proposal-confirmation-retraction chain before
+    /// restoring persistence authority. This keeps user withdrawal append-only
+    /// without trusting authorization serialized alongside the payload.
+    public func reauthorizeRetraction(
+        _ retracted: TaskContextFact,
+        confirmed: TaskContextFact,
+        proposed: TaskContextFact,
+        candidate: TaskContextFactCandidate
+    ) throws -> TaskContextFact {
+        guard !retracted.persistenceAuthorized,
+              retracted.sourceEvidenceVerified,
+              retracted.state == .retracted,
+              retracted.supersedesFactID == confirmed.id
+        else {
+            throw VoiceTaskConversationDomainError.unauthorizedFactPersistence
+        }
+        let authorizedConfirmed = confirmed.persistenceAuthorized
+            ? confirmed
+            : try reauthorize(
+                confirmed,
+                from: candidate,
+                predecessor: proposed
+            )
+        let expected = try retract(authorizedConfirmed, at: retracted.createdAt)
+        guard factMatches(expected, retracted) else {
+            throw VoiceTaskConversationDomainError.unauthorizedFactPersistence
+        }
+        return retracted.authorizingPersistence(
+            using: TaskContextFactAuthorizationToken(),
+            sourceStoreIdentifier: authorizedConfirmed.sourceStoreIdentifier
+        )
     }
 
     /// Replays both sides of a correction. Returning both capabilities together
@@ -337,10 +420,12 @@ public struct TaskContextFactPolicy: Sendable {
         return (
             superseded.authorizingPersistence(
                 using: TaskContextFactAuthorizationToken(),
+                sourceStoreIdentifier: expected.0.sourceStoreIdentifier,
                 requiresAtomicSupersession: true
             ),
             corrected.authorizingPersistence(
                 using: TaskContextFactAuthorizationToken(),
+                sourceStoreIdentifier: expected.1.sourceStoreIdentifier,
                 requiresAtomicSupersession: true
             )
         )
@@ -375,6 +460,19 @@ public struct TaskContextFactPolicy: Sendable {
         return try transition(fact, to: .rejected, at: date)
     }
 
+    public func retract(
+        _ fact: TaskContextFact,
+        at date: Date
+    ) throws -> TaskContextFact {
+        guard fact.persistenceAuthorized,
+              fact.state == .confirmed,
+              date >= fact.createdAt
+        else {
+            throw VoiceTaskConversationDomainError.incompatibleFactTransition
+        }
+        return try transition(fact, to: .retracted, at: date)
+    }
+
     public func expire(
         _ fact: TaskContextFact,
         at date: Date
@@ -398,6 +496,8 @@ public struct TaskContextFactPolicy: Sendable {
               replacement.state == .proposed,
               old.persistenceAuthorized,
               replacement.persistenceAuthorized,
+              let storeIdentifier = old.sourceStoreIdentifier,
+              replacement.sourceStoreIdentifier == storeIdentifier,
               old.sessionID == replacement.sessionID,
               old.kind == replacement.kind,
               old.scope == replacement.scope,
@@ -413,6 +513,7 @@ public struct TaskContextFactPolicy: Sendable {
             at: date
         ).authorizingPersistence(
             using: TaskContextFactAuthorizationToken(),
+            sourceStoreIdentifier: storeIdentifier,
             requiresAtomicSupersession: true
         )
         let corrected = try TaskContextFact(
@@ -430,6 +531,7 @@ public struct TaskContextFactPolicy: Sendable {
             createdAt: date
         ).authorizingPersistence(
             using: TaskContextFactAuthorizationToken(),
+            sourceStoreIdentifier: storeIdentifier,
             requiresAtomicSupersession: true
         )
         return (supersession, corrected)
@@ -457,7 +559,10 @@ public struct TaskContextFactPolicy: Sendable {
             supersedesFactID: fact.id,
             expiresAt: expiration,
             createdAt: date
-        ).authorizingPersistence(using: TaskContextFactAuthorizationToken())
+        ).authorizingPersistence(
+            using: TaskContextFactAuthorizationToken(),
+            sourceStoreIdentifier: fact.sourceStoreIdentifier
+        )
     }
 
     private func evaluatedFact(

@@ -1679,7 +1679,9 @@ public enum CoreMigrations {
                             'expired'
                         )),
                         value TEXT NOT NULL CHECK(length(trim(value)) > 0),
-                        source_turn_id TEXT REFERENCES voice_task_conversation_turns(id) ON DELETE SET NULL,
+                        source_turn_id TEXT
+                            REFERENCES voice_task_conversation_turns(id)
+                            ON DELETE SET NULL,
                         source_excerpt_digest TEXT CHECK(
                             source_excerpt_digest IS NULL
                             OR (
@@ -1762,6 +1764,148 @@ public enum CoreMigrations {
 
                     DROP TABLE task_context_facts;
                     ALTER TABLE task_context_facts_policy RENAME TO task_context_facts;
+
+                    CREATE INDEX idx_task_context_facts_task_state
+                    ON task_context_facts(task_id, state);
+
+                    CREATE INDEX idx_task_context_facts_project_state
+                    ON task_context_facts(project_id, state);
+
+                    CREATE INDEX idx_task_context_facts_session_state
+                    ON task_context_facts(session_id, state, created_at DESC);
+
+                    CREATE INDEX idx_task_context_facts_stable_scope
+                    ON task_context_facts(scope_kind, scope_target_id, state);
+                    """
+                )
+            },
+            DatabaseMigration(
+                id: "0028_preserve_task_context_fact_evidence_tombstones"
+            ) { connection in
+                try connection.execute(
+                    """
+                    PRAGMA defer_foreign_keys = ON;
+
+                    CREATE TABLE task_context_facts_evidence_tombstones (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        session_id TEXT NOT NULL,
+                        kind TEXT NOT NULL CHECK(kind IN (
+                            'goal',
+                            'constraint',
+                            'acceptance_criterion',
+                            'decision',
+                            'open_question',
+                            'follow_up',
+                            'due_date',
+                            'due_date_reason',
+                            'priority_reason',
+                            'project',
+                            'task',
+                            'preference'
+                        )),
+                        scope_kind TEXT NOT NULL
+                            CHECK(scope_kind IN ('session', 'project', 'task')),
+                        scope_target_id INTEGER,
+                        project_id INTEGER
+                            REFERENCES projects(id) ON DELETE SET NULL,
+                        task_id INTEGER
+                            REFERENCES tasks(id) ON DELETE SET NULL,
+                        state TEXT NOT NULL CHECK(state IN (
+                            'proposed',
+                            'confirmed',
+                            'superseded',
+                            'retracted',
+                            'rejected',
+                            'expired'
+                        )),
+                        value TEXT NOT NULL CHECK(length(trim(value)) > 0),
+                        -- Fact retention is independent from conversation
+                        -- retention. Keep only the Turn identifier and digest
+                        -- as an evidence tombstone, never transcript content.
+                        source_turn_id TEXT,
+                        source_excerpt_digest TEXT CHECK(
+                            source_excerpt_digest IS NULL
+                            OR (
+                                length(source_excerpt_digest) = 64
+                                AND source_excerpt_digest NOT GLOB '*[^0-9a-f]*'
+                            )
+                        ),
+                        confidence REAL NOT NULL
+                            CHECK(confidence >= 0.0 AND confidence <= 1.0),
+                        author TEXT NOT NULL CHECK(author IN (
+                            'user_explicit',
+                            'provider_inferred',
+                            'deterministic'
+                        )),
+                        supersedes_fact_id TEXT
+                            REFERENCES task_context_facts_evidence_tombstones(id)
+                            ON DELETE SET NULL,
+                        expires_at REAL,
+                        created_at REAL NOT NULL,
+                        CHECK(expires_at IS NULL OR expires_at > created_at),
+                        CHECK(scope_target_id IS NULL OR scope_target_id > 0),
+                        CHECK(project_id IS NULL OR project_id > 0),
+                        CHECK(task_id IS NULL OR task_id > 0),
+                        CHECK(
+                            (scope_kind = 'session'
+                                AND scope_target_id IS NULL
+                                AND project_id IS NULL
+                                AND task_id IS NULL)
+                            OR
+                            (scope_kind = 'project'
+                                AND scope_target_id > 0
+                                AND task_id IS NULL
+                                AND (project_id IS NULL
+                                    OR project_id = scope_target_id))
+                            OR
+                            (scope_kind = 'task'
+                                AND scope_target_id > 0
+                                AND project_id IS NULL
+                                AND (task_id IS NULL
+                                    OR task_id = scope_target_id))
+                        )
+                    );
+
+                    INSERT INTO task_context_facts_evidence_tombstones (
+                        id,
+                        session_id,
+                        kind,
+                        scope_kind,
+                        scope_target_id,
+                        project_id,
+                        task_id,
+                        state,
+                        value,
+                        source_turn_id,
+                        source_excerpt_digest,
+                        confidence,
+                        author,
+                        supersedes_fact_id,
+                        expires_at,
+                        created_at
+                    )
+                    SELECT
+                        id,
+                        session_id,
+                        kind,
+                        scope_kind,
+                        scope_target_id,
+                        project_id,
+                        task_id,
+                        state,
+                        value,
+                        source_turn_id,
+                        source_excerpt_digest,
+                        confidence,
+                        author,
+                        supersedes_fact_id,
+                        expires_at,
+                        created_at
+                    FROM task_context_facts;
+
+                    DROP TABLE task_context_facts;
+                    ALTER TABLE task_context_facts_evidence_tombstones
+                    RENAME TO task_context_facts;
 
                     CREATE INDEX idx_task_context_facts_task_state
                     ON task_context_facts(task_id, state);

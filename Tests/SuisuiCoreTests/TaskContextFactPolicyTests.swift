@@ -3,6 +3,22 @@ import XCTest
 
 final class TaskContextFactPolicyTests: XCTestCase {
     private let policy = TaskContextFactPolicy()
+    private lazy var evidenceStore: SQLiteVoiceTaskConversationStore = {
+        let connection = try! SQLiteConnection(path: ":memory:")
+        try! SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        let store = SQLiteVoiceTaskConversationStore(connection: connection)
+        let session = VoiceTaskConversationSession(
+            id: sessionID,
+            title: "Evidence fixture",
+            entryPoint: .voiceCommand,
+            createdAt: createdAt
+        )
+        try! store.createSession(session)
+        return store
+    }()
     private let sessionID = UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
     private let turnID = UUID(uuidString: "20000000-0000-0000-0000-000000000001")!
     private let digest = String(repeating: "a", count: 64)
@@ -21,7 +37,10 @@ final class TaskContextFactPolicyTests: XCTestCase {
         XCTAssertEqual(fact.state, .proposed)
         XCTAssertEqual(fact.scope, .task(42))
         XCTAssertEqual(fact.sourceTurnID, turnID)
-        XCTAssertEqual(fact.sourceExcerptDigest, digest)
+        XCTAssertEqual(
+            fact.sourceExcerptDigest,
+            candidate.sourceEvidence?.excerptDigest
+        )
     }
 
     func testGivenExplicitTaskContextKindsWhenEvaluateThenSavesCandidates() {
@@ -161,14 +180,12 @@ final class TaskContextFactPolicyTests: XCTestCase {
         let old = try makeFact(
             state: .confirmed,
             value: "Launch Thursday",
-            sourceTurnID: oldTurnID,
-            digest: String(repeating: "b", count: 64)
+            sourceTurnID: oldTurnID
         )
         let replacement = try makeFact(
             state: .proposed,
             value: "Launch Friday",
-            sourceTurnID: replacementTurnID,
-            digest: String(repeating: "c", count: 64)
+            sourceTurnID: replacementTurnID
         )
 
         let (supersession, corrected) = try policy.supersede(
@@ -349,7 +366,6 @@ final class TaskContextFactPolicyTests: XCTestCase {
             value: "Launch Friday",
             author: .userExplicit,
             sourceTurnID: UUID(),
-            sourceExcerptDigest: String(repeating: "d", count: 64),
             candidateCreatedAt: createdAt.addingTimeInterval(2)
         )
         guard case let .saveCandidate(replacement) = policy.evaluate(replacementCandidate) else {
@@ -565,6 +581,54 @@ final class TaskContextFactPolicyTests: XCTestCase {
         XCTAssertTrue(confirmed.isEligibleForLongTermContext(at: confirmed.createdAt))
     }
 
+    func testGivenConfirmedFactWhenRetractThenPreservesAppendOnlyHistory() throws {
+        let proposed = try makeFact(state: .proposed)
+        let confirmed = try policy.confirm(
+            proposed,
+            at: createdAt.addingTimeInterval(1)
+        )
+
+        let retracted = try policy.retract(
+            confirmed,
+            at: createdAt.addingTimeInterval(2)
+        )
+
+        XCTAssertEqual(retracted.state, .retracted)
+        XCTAssertEqual(retracted.supersedesFactID, confirmed.id)
+        XCTAssertNotEqual(retracted.id, confirmed.id)
+        XCTAssertFalse(retracted.isEligibleForLongTermContext(at: retracted.createdAt))
+        XCTAssertNoThrow(try policy.persistenceWrite(for: retracted))
+    }
+
+    func testGivenSerializedRetractionWhenReauthorizeThenRestoresWriteCapability() throws {
+        let candidate = makeCandidate(
+            kind: .constraint,
+            value: "Release after signing",
+            author: .userExplicit
+        )
+        guard case let .saveCandidate(proposed) = policy.evaluate(candidate) else {
+            return XCTFail("Expected an authorized proposal.")
+        }
+        let confirmed = try policy.confirm(
+            proposed,
+            at: createdAt.addingTimeInterval(1)
+        )
+        let retracted = try policy.retract(
+            confirmed,
+            at: createdAt.addingTimeInterval(2)
+        )
+
+        let restored = try policy.reauthorizeRetraction(
+            roundTrip(retracted),
+            confirmed: roundTrip(confirmed),
+            proposed: roundTrip(proposed),
+            candidate: candidate
+        )
+
+        XCTAssertEqual(restored, retracted)
+        XCTAssertNoThrow(try policy.persistenceWrite(for: restored))
+    }
+
     func testGivenInferredDueDateReasonWhenEvaluateThenRequiresConfirmation() {
         let candidate = makeCandidate(
             kind: .dueDateReason,
@@ -614,7 +678,6 @@ final class TaskContextFactPolicyTests: XCTestCase {
         value: String,
         author: TaskContextFactAuthor,
         sourceTurnID: UUID? = nil,
-        sourceExcerptDigest: String? = nil,
         includeEvidence: Bool = true,
         scopeAssessment: TaskContextFactScopeAssessment = .unique,
         conflictingConfirmedFactIDs: [UUID] = [],
@@ -628,8 +691,9 @@ final class TaskContextFactPolicyTests: XCTestCase {
             scope: scope,
             scopeAssessment: scopeAssessment,
             value: value,
-            sourceTurnID: includeEvidence ? (sourceTurnID ?? turnID) : nil,
-            sourceExcerptDigest: includeEvidence ? (sourceExcerptDigest ?? digest) : nil,
+            sourceEvidence: includeEvidence
+                ? verifiedEvidence(turnID: sourceTurnID ?? turnID)
+                : nil,
             confidence: author == .providerInferred ? 0.7 : 1,
             author: author,
             conflictingConfirmedFactIDs: conflictingConfirmedFactIDs,
@@ -651,18 +715,18 @@ final class TaskContextFactPolicyTests: XCTestCase {
         scope: TaskContextFactScope = .task(42),
         value: String = "Release after signing",
         sourceTurnID: UUID? = nil,
-        digest: String? = nil,
         expiresAt: Date? = nil,
         authorized: Bool = true
     ) throws -> TaskContextFact {
+        let evidence = verifiedEvidence(turnID: sourceTurnID ?? turnID)
         let fact = try TaskContextFact(
             sessionID: sessionID,
             kind: .constraint,
             scope: scope,
             state: authorized ? .proposed : state,
             value: value,
-            sourceTurnID: sourceTurnID ?? turnID,
-            sourceExcerptDigest: digest ?? self.digest,
+            sourceTurnID: evidence.turnID,
+            sourceExcerptDigest: evidence.excerptDigest,
             confidence: 1,
             author: .userExplicit,
             expiresAt: expiresAt,
@@ -677,8 +741,7 @@ final class TaskContextFactPolicyTests: XCTestCase {
             scope: fact.scope,
             scopeAssessment: .unique,
             value: fact.value,
-            sourceTurnID: fact.sourceTurnID,
-            sourceExcerptDigest: fact.sourceExcerptDigest,
+            sourceEvidence: evidence,
             confidence: fact.confidence,
             author: fact.author,
             conflictingConfirmedFactIDs: [],
@@ -697,5 +760,31 @@ final class TaskContextFactPolicyTests: XCTestCase {
         case .retracted, .superseded, .expired:
             throw VoiceTaskConversationDomainError.incompatibleFactTransition
         }
+    }
+
+    private func verifiedEvidence(
+        turnID: UUID
+    ) -> TaskContextFactSourceEvidence {
+        let excerpt = "Confirmed evidence for \(turnID.uuidString)"
+        if let evidence = try? evidenceStore.verifyFactSourceEvidence(
+            sessionID: sessionID,
+            turnID: turnID,
+            sourceExcerpt: excerpt
+        ) {
+            return evidence
+        }
+        let turn = try! VoiceTaskConversationTurn(
+            id: turnID,
+            sessionID: sessionID,
+            author: .user,
+            userConfirmedText: excerpt,
+            createdAt: createdAt
+        )
+        try! evidenceStore.saveTurn(turn)
+        return try! evidenceStore.verifyFactSourceEvidence(
+            sessionID: sessionID,
+            turnID: turnID,
+            sourceExcerpt: excerpt
+        )
     }
 }

@@ -476,6 +476,7 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
     public let expiresAt: Date?
     public let createdAt: Date
     let persistenceAuthorized: Bool
+    let sourceStoreIdentifier: UUID?
     let requiresAtomicSupersession: Bool
 
     public init(
@@ -543,6 +544,7 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
         self.expiresAt = expiresAt
         self.createdAt = createdAt
         persistenceAuthorized = false
+        sourceStoreIdentifier = nil
         requiresAtomicSupersession = false
     }
 
@@ -555,12 +557,14 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
 
     func authorizingPersistence(
         using _: TaskContextFactAuthorizationToken,
+        sourceStoreIdentifier: UUID? = nil,
         requiresAtomicSupersession: Bool = false
     ) -> TaskContextFact {
         TaskContextFact(
             validated: self,
             sourceEvidenceVerified: sourceEvidenceVerified,
             persistenceAuthorized: true,
+            sourceStoreIdentifier: sourceStoreIdentifier ?? self.sourceStoreIdentifier,
             requiresAtomicSupersession: requiresAtomicSupersession
         )
     }
@@ -570,6 +574,7 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
         scope: TaskContextFactScope? = nil,
         sourceEvidenceVerified: Bool,
         persistenceAuthorized: Bool,
+        sourceStoreIdentifier: UUID? = nil,
         requiresAtomicSupersession: Bool = false
     ) {
         id = fact.id
@@ -587,6 +592,7 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
         expiresAt = fact.expiresAt
         createdAt = fact.createdAt
         self.persistenceAuthorized = persistenceAuthorized
+        self.sourceStoreIdentifier = sourceStoreIdentifier
         self.requiresAtomicSupersession = requiresAtomicSupersession
     }
 
@@ -688,6 +694,7 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
                 && decodedDigest != nil
                 && (declaredEvidenceState ?? true),
             persistenceAuthorized: false,
+            sourceStoreIdentifier: nil,
             requiresAtomicSupersession: false
         )
     }

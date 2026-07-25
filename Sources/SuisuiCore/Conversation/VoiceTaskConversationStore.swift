@@ -9,6 +9,7 @@ public enum VoiceTaskConversationStoreError: Error, Equatable, Sendable {
     case turnCursorRequiresSaveTurn(UUID)
     case missingTurn(UUID)
     case missingFact(UUID)
+    case invalidFactSourceEvidence(UUID)
     case corruptRow(entity: String, identifier: String)
 }
 
@@ -80,6 +81,15 @@ public protocol VoiceTaskConversationStore: Sendable {
         before: VoiceTaskConversationTurnCursor?,
         limit: Int
     ) throws -> VoiceTaskConversationTurnPage
+    func verifyFactSourceEvidence(
+        sessionID: UUID,
+        turnID: UUID,
+        sourceExcerpt: String
+    ) throws -> TaskContextFactSourceEvidence
+    func retractFact(
+        factID: UUID,
+        at date: Date
+    ) throws -> TaskContextFact
     func saveReference(_ reference: ConversationReference) throws
     func saveFact(_ write: TaskContextFactWrite) throws
     func saveSupersession(_ write: TaskContextFactSupersessionWrite) throws
