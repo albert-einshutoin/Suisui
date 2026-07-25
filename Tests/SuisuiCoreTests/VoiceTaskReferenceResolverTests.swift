@@ -148,6 +148,7 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             sessionID: sessionID,
             sourceTurnID: sourceTurnID,
             taskID: 43,
+            operation: .taskCreated,
             reviewedFingerprint: "reviewed",
             createdAt: now.addingTimeInterval(-5)
         )
@@ -171,6 +172,7 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             sessionID: sessionID,
             sourceTurnID: sourceTurnID,
             taskID: 433,
+            operation: .taskCreated,
             reviewedFingerprint: "reviewed",
             createdAt: now.addingTimeInterval(-5)
         )
@@ -189,6 +191,60 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         )
 
         XCTAssertEqual(result, .resolved(created, reason: .previousActionLink))
+    }
+
+    func testGivenUpdatedTaskLinkWhenReferenceClaimsCreationThenClarifies() throws {
+        let link = try ConversationActionLink(
+            sessionID: sessionID,
+            sourceTurnID: sourceTurnID,
+            taskID: 434,
+            operation: .taskUpdated,
+            reviewedFingerprint: "reviewed",
+            createdAt: now.addingTimeInterval(-5)
+        )
+        let candidates = [
+            candidate(taskID: 434, projectID: 8, title: "Updated task"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "the task we just created",
+                previousActionLink: link,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification(candidates))
+    }
+
+    func testGivenProjectCreationReferenceWithTaskLinkThenClarifiesProject() throws {
+        let link = try ConversationActionLink(
+            sessionID: sessionID,
+            sourceTurnID: sourceTurnID,
+            taskID: 435,
+            operation: .taskCreated,
+            reviewedFingerprint: "reviewed",
+            createdAt: now.addingTimeInterval(-5)
+        )
+        let projectCandidate = ConversationReferenceCandidate(
+            target: .project(id: 8),
+            title: "Launch",
+            stableSortKey: "project-8"
+        )
+        let candidates = [
+            candidate(taskID: 435, projectID: 8, title: "Created task"),
+            projectCandidate,
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "さっき作ったプロジェクトを開いて",
+                previousActionLink: link,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification([projectCandidate]))
     }
 
     func testGivenRecentlyViewedJapaneseReferenceThenDoesNotUseCreatedTaskLink() throws {
@@ -634,6 +690,7 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             sessionID: sessionID,
             sourceTurnID: sourceTurnID,
             taskID: 91,
+            operation: .taskCreated,
             reviewedFingerprint: "reviewed",
             createdAt: now.addingTimeInterval(-5)
         )

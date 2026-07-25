@@ -512,6 +512,14 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
+public enum ConversationActionLinkOperation: String, Codable, Equatable, Sendable {
+    case unspecified
+    case taskCreated = "task_created"
+    case taskUpdated = "task_updated"
+    case taskCompleted = "task_completed"
+    case taskDeleted = "task_deleted"
+}
+
 public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
     public let sessionID: UUID
@@ -520,6 +528,7 @@ public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable
     public let assistantQueueItemID: String?
     public let taskID: Int64?
     public let executionReceiptID: String?
+    public let operation: ConversationActionLinkOperation
     public let reviewedFingerprint: String
     public let createdAt: Date
 
@@ -531,6 +540,7 @@ public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable
         assistantQueueItemID: String? = nil,
         taskID: Int64? = nil,
         executionReceiptID: String? = nil,
+        operation: ConversationActionLinkOperation = .unspecified,
         reviewedFingerprint: String,
         createdAt: Date = Date()
     ) throws {
@@ -561,6 +571,7 @@ public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable
         self.assistantQueueItemID = assistantQueueItemID
         self.taskID = taskID
         self.executionReceiptID = executionReceiptID
+        self.operation = operation
         self.reviewedFingerprint = reviewedFingerprint
         self.createdAt = createdAt
     }
@@ -573,6 +584,7 @@ public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable
         case assistantQueueItemID
         case taskID
         case executionReceiptID
+        case operation
         case reviewedFingerprint
         case createdAt
     }
@@ -587,6 +599,10 @@ public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable
             assistantQueueItemID: values.decodeIfPresent(String.self, forKey: .assistantQueueItemID),
             taskID: values.decodeIfPresent(Int64.self, forKey: .taskID),
             executionReceiptID: values.decodeIfPresent(String.self, forKey: .executionReceiptID),
+            operation: try values.decodeIfPresent(
+                ConversationActionLinkOperation.self,
+                forKey: .operation
+            ) ?? .unspecified,
             reviewedFingerprint: values.decode(String.self, forKey: .reviewedFingerprint),
             createdAt: values.decode(Date.self, forKey: .createdAt)
         )

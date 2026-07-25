@@ -227,6 +227,24 @@ public struct VoiceTaskReferenceResolver: Sendable {
             }) else {
                 return .unavailable(.staleTarget(.task(id: taskID, projectID: nil)))
             }
+            guard requestedTargetKind.matches(candidate.target) else {
+                return .needsClarification(
+                    request.candidates.filter {
+                        requestedTargetKind.matches($0.target)
+                    }
+                )
+            }
+            // "Just created" is stronger than a generic previous-action
+            // reference and must be backed by creation-specific evidence.
+            guard !isRecentActionReference
+                || previousActionLink.operation == .taskCreated
+            else {
+                return .needsClarification(
+                    request.candidates.filter {
+                        requestedTargetKind.matches($0.target)
+                    }
+                )
+            }
             return resolveCandidate(candidate, reason: .previousActionLink)
         }
 
