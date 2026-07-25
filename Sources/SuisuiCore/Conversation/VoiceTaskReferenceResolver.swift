@@ -210,6 +210,13 @@ public struct VoiceTaskReferenceResolver: Sendable {
         // evidence. It must not be silently redirected to the current selection.
         if ordinal == nil, !isRecentActionReference {
             if isAnaphoric, let selectedTask = request.selectedTask {
+                guard requestedTargetKind.matches(selectedTask) else {
+                    return .needsClarification(
+                        request.candidates.filter {
+                            requestedTargetKind.matches($0.target)
+                        }
+                    )
+                }
                 return resolveKnownTarget(
                     selectedTask,
                     reason: .selectedTask,
