@@ -767,7 +767,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
             // is not target evidence. A target noun, "one", or object position
             // at the direct command object is required.
             || matches(
-                #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?)?(?:this|that)\s+(?:task|project|one|item|thing)\b"#,
+                #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?)?(?:this|that|current)(?:\s+(?!(?:we|i|you|they|he|she|it|the|a|an|so|which|who|to|for|because|since|after|before|when|while|if)\b)[\p{L}\p{N}_-]+){0,3}\s+(?:task|project|one|item|thing)\b"#,
                 in: value
             )
             || matches(
