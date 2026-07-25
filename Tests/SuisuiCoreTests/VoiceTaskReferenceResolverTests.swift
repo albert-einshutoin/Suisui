@@ -79,16 +79,25 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             ),
         ]
 
-        let result = resolver.resolve(
-            request(
-                utterance: "move it to project Alpha",
-                selectedTask: selectedTask,
-                selectedProject: destinationProject,
-                candidates: candidates
+        for utterance in [
+            "move it to project Alpha",
+            "move it into project Alpha",
+            "move it from project Alpha",
+            "それをAlphaプロジェクトに移動して",
+        ] {
+            XCTAssertEqual(
+                resolver.resolve(
+                    request(
+                        utterance: utterance,
+                        selectedTask: selectedTask,
+                        selectedProject: destinationProject,
+                        candidates: candidates
+                    )
+                ),
+                .resolved(selectedTask, reason: .selectedTask),
+                utterance
             )
-        )
-
-        XCTAssertEqual(result, .resolved(selectedTask, reason: .selectedTask))
+        }
     }
 
     func testGivenSelectedTaskAndCurrentTaskReferenceThenUsesSelection() {

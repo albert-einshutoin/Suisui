@@ -610,7 +610,10 @@ public struct VoiceTaskReferenceResolver: Sendable {
         // direct object lives or moves; it does not turn that object into a
         // project.
         if matches(
-            #"\b(?:in|within|under|to)\s+(?:(?:this|that|the|current)\s+)?project\b"#,
+            #"\b(?:in|within|under|to|into|from)\s+(?:(?:this|that|the|current)\s+)?project\b"#,
+            in: normalizedUtterance
+        ) || matches(
+            #"(?:プロジェクト|案件)(?:へ|に)(?:移動|動か)"#,
             in: normalizedUtterance
         ) {
             return .any
