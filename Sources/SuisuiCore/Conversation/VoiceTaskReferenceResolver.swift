@@ -151,6 +151,11 @@ public struct VoiceTaskReferenceResolver: Sendable {
                 return .unavailable(.invalidCandidateOrdering)
             }
         }
+        guard request.selectedTask?.isTask ?? true,
+              request.selectedProject?.isProject ?? true
+        else {
+            return .unavailable(.unsupportedReferenceTarget)
+        }
 
         if let explicitTarget = request.explicitTarget {
             return resolveKnownTarget(
@@ -167,7 +172,8 @@ public struct VoiceTaskReferenceResolver: Sendable {
         let isProjectReference = mentionsProjectReference(normalizedUtterance)
         let isRecentActionReference = mentionsRecentAction(normalizedUtterance)
         let namedCandidateMatches = request.candidates.filter {
-            isStrongNamedCandidate($0, in: normalizedUtterance)
+            requestedTargetKind.matches($0.target)
+                && isStrongNamedCandidate($0, in: normalizedUtterance)
         }
 
         // A full candidate name is stronger evidence than pronouns contained
@@ -392,9 +398,11 @@ public struct VoiceTaskReferenceResolver: Sendable {
             )
         }
 
-        // Japanese titles generally have no whitespace token boundary, so a
-        // normalized substring remains the deterministic matching rule.
-        return normalizedUtterance.contains(normalizedTitle)
+        // Japanese titles generally have no whitespace token boundary. Exact
+        // matches remain safe, while short substrings must clarify instead of
+        // selecting a different word that happens to contain the title.
+        return normalizedTitle.count >= 3
+            && normalizedUtterance.contains(normalizedTitle)
     }
 
     private static let genericReferenceTitles: Set<String> = [
@@ -482,7 +490,14 @@ public struct VoiceTaskReferenceResolver: Sendable {
     }
 
     private func mentionsRecentAction(_ value: String) -> Bool {
-        value.contains("さっき")
+        let isJapaneseCreatedReference = value.contains("さっき")
+            && (
+                value.contains("追加")
+                    || value.contains("作成")
+                    || value.contains("作った")
+                    || matches(#"\b(?:added|created)\b"#, in: value)
+            )
+        return isJapaneseCreatedReference
             || matches(
                 #"\b(?:task|one|item|thing|what)\s+(?:we\s+)?just\s+(?:added|created)\b"#,
                 in: value

@@ -74,6 +74,23 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(selectedProject, reason: .selectedProject))
     }
 
+    func testGivenMalformedProjectSelectionWhenResolveThenFailsClosed() {
+        let task = ConversationResolvedTarget.task(id: 451, projectID: 17)
+        let candidates = [
+            candidate(taskID: 451, projectID: 17, title: "Selected task"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "that project",
+                selectedProject: task,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .unavailable(.unsupportedReferenceTarget))
+    }
+
     func testGivenOnlyTaskSelectionWhenProjectQualifiedPronounThenClarifiesProject() {
         let selectedTask = ConversationResolvedTarget.task(id: 46, projectID: 18)
         let projectCandidate = ConversationReferenceCandidate(
@@ -145,6 +162,29 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         )
 
         XCTAssertEqual(result, .resolved(target, reason: .previousActionLink))
+    }
+
+    func testGivenRecentlyViewedJapaneseReferenceThenDoesNotUseCreatedTaskLink() throws {
+        let link = try ConversationActionLink(
+            sessionID: sessionID,
+            sourceTurnID: sourceTurnID,
+            taskID: 431,
+            reviewedFingerprint: "reviewed",
+            createdAt: now.addingTimeInterval(-5)
+        )
+        let candidates = [
+            candidate(taskID: 431, projectID: 8, title: "Created task"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "さっき見たものを削除して",
+                previousActionLink: link,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification(candidates))
     }
 
     func testGivenStableThirdCandidateWhenResolveThenReturnsThirdTask() throws {
@@ -384,6 +424,30 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
 
         let result = resolver.resolve(
             request(utterance: "apply the update", candidates: candidates)
+        )
+
+        XCTAssertEqual(result, .needsClarification(candidates))
+    }
+
+    func testGivenShortJapaneseTitleInsideAnotherWordThenDoesNotResolve() {
+        let candidates = [
+            candidate(taskID: 744, projectID: 12, title: "会"),
+        ]
+
+        let result = resolver.resolve(
+            request(utterance: "会議を開いて", candidates: candidates)
+        )
+
+        XCTAssertEqual(result, .needsClarification(candidates))
+    }
+
+    func testGivenProjectQualifiedTaskTitleWhenResolveThenDoesNotResolveTask() {
+        let candidates = [
+            candidate(taskID: 745, projectID: 12, title: "Alpha"),
+        ]
+
+        let result = resolver.resolve(
+            request(utterance: "open project Alpha", candidates: candidates)
         )
 
         XCTAssertEqual(result, .needsClarification(candidates))
