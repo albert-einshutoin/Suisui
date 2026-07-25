@@ -45,6 +45,22 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(selected, reason: .selectedTask))
     }
 
+    func testGivenSelectedTaskAndCurrentTaskReferenceThenUsesSelection() {
+        let selected = ConversationResolvedTarget.task(id: 425, projectID: 7)
+        let result = resolver.resolve(
+            request(
+                utterance: "delete the current task",
+                selectedTask: selected,
+                candidates: [
+                    candidate(taskID: 425, projectID: 7, title: "Selected"),
+                    candidate(taskID: 426, projectID: 7, title: "Current"),
+                ]
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(selected, reason: .selectedTask))
+    }
+
     func testGivenSelectedTaskAndJapaneseTaskDemonstrativeThenUsesSelection() throws {
         let selected = ConversationResolvedTarget.task(id: 423, projectID: 7)
         let unrelated = ConversationResolvedTarget.task(id: 424, projectID: 7)
@@ -99,6 +115,28 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(
             resolver.resolve(request),
             .resolved(target, reason: .uniqueCandidate)
+        )
+    }
+
+    func testGivenExplicitProjectQualifierAndTaskWordInTitleThenResolvesProject() {
+        let project = ConversationResolvedTarget.project(id: 23)
+        let candidates = [
+            ConversationReferenceCandidate(
+                target: project,
+                title: "Task Force",
+                stableSortKey: "project-23"
+            ),
+            candidate(taskID: 427, projectID: 23, title: "Task Force"),
+        ]
+
+        XCTAssertEqual(
+            resolver.resolve(
+                request(
+                    utterance: "open project Task Force",
+                    candidates: candidates
+                )
+            ),
+            .resolved(project, reason: .uniqueCandidate)
         )
     }
 
@@ -299,6 +337,34 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         )
 
         XCTAssertEqual(result, .resolved(target, reason: .previousActionLink))
+    }
+
+    func testGivenJapaneseMemoCreationClauseThenKeepsSelectedTask() throws {
+        let selected = ConversationResolvedTarget.task(id: 430, projectID: 8)
+        let previouslyCreated = ConversationResolvedTarget.task(id: 431, projectID: 8)
+        let link = try ConversationActionLink(
+            sessionID: sessionID,
+            sourceTurnID: sourceTurnID,
+            taskID: 431,
+            operation: .taskCreated,
+            reviewedFingerprint: "reviewed",
+            createdAt: now.addingTimeInterval(-5)
+        )
+
+        let result = resolver.resolve(
+            request(
+                utterance: "さっき追加したメモをこのタスクから削除して",
+                selectedTask: selected,
+                previousActionLink: link,
+                candidates: [
+                    candidate(taskID: 430, projectID: 8, title: "Selected task"),
+                    candidate(taskID: 431, projectID: 8, title: "Created task"),
+                ]
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(selected, reason: .selectedTask))
+        XCTAssertNotEqual(result, .resolved(previouslyCreated, reason: .previousActionLink))
     }
 
     func testGivenRelativeClauseCreatedTaskWhenResolveThenUsesActionLinkOverSelection() throws {

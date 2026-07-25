@@ -559,6 +559,14 @@ public struct VoiceTaskReferenceResolver: Sendable {
     private func requestedTargetKind(
         in normalizedUtterance: String
     ) -> RequestedTargetKind {
+        // An explicit direct-object qualifier is stronger than a noun that
+        // merely appears inside the target's title ("project Task Force").
+        if matches(
+            #"^(?:(?:open|show|delete|rename|update|move|archive)\s+(?:the\s+)?)?project\b"#,
+            in: normalizedUtterance
+        ) {
+            return .project
+        }
         // A task may legitimately be qualified by its containing project
         // ("second task in project Alpha"), so the leaf target wins.
         if matches(#"\btask\b"#, in: normalizedUtterance)
@@ -585,6 +593,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
             || value.contains("このタスク")
             || value.contains("そのタスク")
             || value.contains("あのタスク")
+            || matches(#"\bcurrent\s+task\b"#, in: value)
             // Bare "that"/"this" inside relative clauses or due-date phrases
             // is not target evidence. A target noun, "one", or object position
             // at the end of the utterance is required.
@@ -610,9 +619,10 @@ public struct VoiceTaskReferenceResolver: Sendable {
 
     private func mentionsRecentAction(_ value: String) -> Bool {
         // The creation verb must belong to the clause introduced by さっき.
-        // A later operation such as メモを追加して is not creation evidence.
+        // It must also modify a task-like referent; creation of a memo or
+        // another nested object must not steal the selected task.
         let isJapaneseCreatedReference = matches(
-            #"さっき\s*(?:(?:追加|作成)\s*した|作った|(?:added|created)\s*した)"#,
+            #"さっき\s*(?:(?:追加|作成)\s*した|作った|(?:added|created)\s*した)\s*(?:(?:この|その|あの)?(?:もの|タスク|プロジェクト|案件)|\b(?:task|project|one|item|thing)\b)"#,
             in: value
         )
         return isJapaneseCreatedReference
