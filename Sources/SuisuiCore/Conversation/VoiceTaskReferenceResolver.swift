@@ -360,19 +360,15 @@ public struct VoiceTaskReferenceResolver: Sendable {
         }
         guard ordinal == reference.ordinal,
               request.candidateOrderingFingerprint == reference.orderingFingerprint,
-              request.candidates.indices.contains(ordinal)
+              targetKindCandidates.indices.contains(ordinal)
         else {
             return .needsClarification(targetKindCandidates)
         }
 
-        let candidate = request.candidates[ordinal]
-        guard targetKind.matches(candidate.target) else {
-            return .needsClarification(
-                request.candidates.filter {
-                    targetKind.matches($0.target)
-                }
-            )
-        }
+        // Spoken ordinals are relative to the qualified noun ("second Task"),
+        // so selection and bounds checks must use that same filtered ordering.
+        // The persisted target below still fails closed if the list changed.
+        let candidate = targetKindCandidates[ordinal]
         guard candidate.target.matches(reference.target) else {
             return .needsClarification(targetKindCandidates)
         }
