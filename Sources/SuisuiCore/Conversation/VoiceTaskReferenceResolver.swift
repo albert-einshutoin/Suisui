@@ -332,9 +332,10 @@ public struct VoiceTaskReferenceResolver: Sendable {
             }
         }
 
-        let fallbackCandidates = isProjectContainerClause
-            ? request.candidates.filter { !$0.target.isProject }
-            : request.candidates
+        let fallbackCandidates = request.candidates.filter {
+            requestedTargetKind.matches($0.target)
+                && (!isProjectContainerClause || !$0.target.isProject)
+        }
         return .needsClarification(fallbackCandidates)
     }
 
@@ -707,15 +708,19 @@ public struct VoiceTaskReferenceResolver: Sendable {
         // An explicit direct-object qualifier is stronger than a noun that
         // merely appears inside the target's title ("project Task Force").
         if matches(
-            #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?)?(?:the\s+)?(?:(?:this|that|current)(?:\s+(?!(?:we|i|you|they|he|she|it|the|a|an|so|which|who|to|for|because)\b)[\p{L}\p{N}_-]+){0,3}\s+)?project\b"#,
+            #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?)?(?:the\s+)?(?:(?:this|that|current)(?:\s+(?!(?:we|i|you|they|he|she|it|the|a|an|so|which|who|to|for|because)\b)[\p{L}\p{N}_-]+){0,3}\s+|(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|[0-9]+(?:st|nd|rd|th)?)\s+)?project\b"#,
             in: normalizedUtterance
         ) {
             return .project
         }
-        // A task may legitimately be qualified by its containing project
-        // ("second task in project Alpha"), so the leaf target wins.
-        if matches(#"\btask\b"#, in: normalizedUtterance)
-            || normalizedUtterance.contains("タスク")
+        // Infer an English Task kind only from the command object. A Task may
+        // still be qualified by its containing project ("second task in
+        // project Alpha"), but a Task noun in a trailing clause must not
+        // constrain the mutation target.
+        if matches(
+            #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?)?(?:the\s+)?(?:(?:this|that|current)(?:\s+(?!(?:we|i|you|they|he|she|it|the|a|an|so|which|who|to|for|because|since|after|before|when|while|if)\b)[\p{L}\p{N}_-]+){0,3}\s+|(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|[0-9]+(?:st|nd|rd|th)?)\s+)?task\b"#,
+            in: normalizedUtterance
+        ) || normalizedUtterance.contains("タスク")
         {
             return .task
         }
@@ -725,8 +730,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
         if mentionsProjectContainerClause(normalizedUtterance) {
             return .any
         }
-        if matches(#"\bproject\b"#, in: normalizedUtterance)
-            || normalizedUtterance.contains("プロジェクト")
+        if normalizedUtterance.contains("プロジェクト")
             || normalizedUtterance.contains("案件")
         {
             return .project

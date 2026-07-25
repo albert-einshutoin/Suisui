@@ -1550,7 +1550,38 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             request(utterance: "open project Alpha", candidates: candidates)
         )
 
-        XCTAssertEqual(result, .needsClarification(candidates))
+        XCTAssertEqual(result, .needsClarification([]))
+        XCTAssertNotEqual(
+            result,
+            .resolved(.task(id: 745, projectID: 12), reason: .uniqueCandidate)
+        )
+    }
+
+    func testGivenTypeOnlyCommandThenClarificationMatchesRequestedKind() {
+        let taskCandidate = candidate(
+            taskID: 7451,
+            projectID: 12,
+            title: "Task candidate"
+        )
+        let projectCandidate = ConversationReferenceCandidate(
+            target: .project(id: 121),
+            title: "Project candidate",
+            stableSortKey: "project-121"
+        )
+        let candidates = [taskCandidate, projectCandidate]
+
+        XCTAssertEqual(
+            resolver.resolve(
+                request(utterance: "open the project", candidates: candidates)
+            ),
+            .needsClarification([projectCandidate])
+        )
+        XCTAssertEqual(
+            resolver.resolve(
+                request(utterance: "delete the task", candidates: candidates)
+            ),
+            .needsClarification([taskCandidate])
+        )
     }
 
     func testGivenNamedTaskWithContainingProjectClauseThenResolvesTask() {
@@ -1946,7 +1977,11 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             )
         )
 
-        XCTAssertEqual(result, .needsClarification(candidates))
+        XCTAssertEqual(result, .needsClarification([]))
+        XCTAssertNotEqual(
+            result,
+            .resolved(.project(id: 106), reason: .confirmedFact)
+        )
     }
 
     func testGivenSameInputWhenResolveRepeatedlyThenCandidateOrderAndResultStayStable() {
