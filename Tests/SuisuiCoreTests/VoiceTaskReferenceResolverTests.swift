@@ -184,6 +184,23 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         )
     }
 
+    func testGivenASCIITitleBeforeJapaneseParticleThenResolvesName() {
+        let target = ConversationResolvedTarget.task(id: 429, projectID: 7)
+        let candidates = [
+            candidate(taskID: 429, projectID: 7, title: "Release"),
+        ]
+
+        XCTAssertEqual(
+            resolver.resolve(
+                request(
+                    utterance: "Releaseを削除して",
+                    candidates: candidates
+                )
+            ),
+            .resolved(target, reason: .uniqueCandidate)
+        )
+    }
+
     func testGivenExplicitProjectQualifierAndTaskWordInTitleThenResolvesProject() {
         let project = ConversationResolvedTarget.project(id: 23)
         let candidates = [
@@ -877,6 +894,56 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(
             result,
             .resolved(.task(id: 28, projectID: 24), reason: .stableOrdinal)
+        )
+    }
+
+    func testGivenTaskOrdinalBeforeProjectContainerWhenResolveThenUsesTaskOrdinal() throws {
+        let firstTask = ConversationResolvedTarget.task(id: 29, projectID: 24)
+        let secondTask = ConversationResolvedTarget.task(id: 30, projectID: 24)
+        let candidates = [
+            candidate(taskID: 29, projectID: 24, title: "Alpha task"),
+            candidate(taskID: 30, projectID: 24, title: "Beta task"),
+            ConversationReferenceCandidate(
+                target: .project(id: 24),
+                title: "Project Alpha",
+                stableSortKey: "project-24"
+            ),
+        ]
+        let fingerprint = VoiceTaskReferenceResolver.orderingFingerprint(for: candidates)
+        let firstReference = try ordinalReference(
+            target: .task(29),
+            ordinal: 0,
+            fingerprint: fingerprint
+        )
+        let secondReference = try ordinalReference(
+            target: .task(30),
+            ordinal: 1,
+            fingerprint: fingerprint
+        )
+
+        XCTAssertEqual(
+            resolver.resolve(
+                request(
+                    utterance: "delete the first task from this project",
+                    selectedTask: secondTask,
+                    ordinalReference: firstReference,
+                    candidateOrderingFingerprint: fingerprint,
+                    candidates: candidates
+                )
+            ),
+            .resolved(firstTask, reason: .stableOrdinal)
+        )
+        XCTAssertEqual(
+            resolver.resolve(
+                request(
+                    utterance: "move the second task to the first project",
+                    selectedTask: firstTask,
+                    ordinalReference: secondReference,
+                    candidateOrderingFingerprint: fingerprint,
+                    candidates: candidates
+                )
+            ),
+            .resolved(secondTask, reason: .stableOrdinal)
         )
     }
 

@@ -173,12 +173,14 @@ public struct VoiceTaskReferenceResolver: Sendable {
         let isProjectContainerClause = mentionsProjectContainerClause(
             normalizedUtterance
         )
-        // An ordinal inside a destination/source project clause describes the
-        // container. It must not outrank the direct-object pronoun and turn a
-        // task mutation into a project mutation.
-        let ordinal = isAnaphoric && isProjectContainerClause
-            ? nil
-            : ordinalIndex(in: normalizedUtterance)
+        // Bind ordinals to the requested leaf kind. This keeps "first task"
+        // authoritative in "... from this project", while ignoring "first
+        // project" when a pronoun is the actual mutation target.
+        let ordinal = ordinalIndex(
+            in: normalizedUtterance,
+            targetKind: requestedTargetKind,
+            isProjectContainerClause: isProjectContainerClause
+        )
         let isProjectReference = !isProjectContainerClause
             && (
                 mentionsProjectReference(normalizedUtterance)
@@ -483,9 +485,11 @@ public struct VoiceTaskReferenceResolver: Sendable {
                 for: normalizedTitle
             )
             // Phrase boundaries prevent short titles such as "App" from
-            // resolving inside unrelated words such as "apply".
+            // resolving inside unrelated words such as "apply". Japanese
+            // command particles remain valid boundaries for mixed-language
+            // utterances such as "Releaseを削除して".
             return matches(
-                #"(?<![\p{L}\p{N}_])\#(escapedTitle)(?![\p{L}\p{N}_])"#,
+                #"(?<![\p{L}\p{N}_])\#(escapedTitle)(?=$|[\sをにのはがへでと、。！？]|[^\p{L}\p{N}_])"#,
                 in: normalizedUtterance
             )
         }
@@ -564,7 +568,11 @@ public struct VoiceTaskReferenceResolver: Sendable {
         "案件",
     ]
 
-    private func ordinalIndex(in normalizedUtterance: String) -> Int? {
+    private func ordinalIndex(
+        in normalizedUtterance: String,
+        targetKind: RequestedTargetKind,
+        isProjectContainerClause: Bool
+    ) -> Int? {
         let englishOrdinals: [(String, Int)] = [
             ("first", 0),
             ("second", 1),
@@ -577,19 +585,63 @@ public struct VoiceTaskReferenceResolver: Sendable {
             ("ninth", 8),
             ("tenth", 9),
         ]
-        if let ordinal = englishOrdinals.first(where: {
+        if let exact = englishOrdinals.first(where: {
             normalizedUtterance == $0.0
-                || matches(
-                    #"\b\#(NSRegularExpression.escapedPattern(for: $0.0))\s+(?:one|task|item|project)\b"#,
-                    in: normalizedUtterance
-                )
         }) {
-            return ordinal.1
+            return exact.1
         }
 
+        let targetNounPattern: String
+        switch targetKind {
+        case .task:
+            targetNounPattern = #"(?:one|task|item)"#
+        case .project:
+            targetNounPattern = #"project"#
+        case .any:
+            // A project noun in a container clause is metadata about the
+            // direct object, not the object selected by the ordinal.
+            targetNounPattern = isProjectContainerClause
+                ? #"(?:one|task|item)"#
+                : #"(?:one|task|item|project)"#
+        }
+
+        let locatedOrdinals = englishOrdinals.compactMap {
+            ordinal -> (location: Int, ordinal: Int)? in
+            guard let expression = try? NSRegularExpression(
+                pattern: #"\b\#(NSRegularExpression.escapedPattern(for: ordinal.0))\s+\#(targetNounPattern)\b"#
+            ),
+            let match = expression.firstMatch(
+                in: normalizedUtterance,
+                range: NSRange(
+                    normalizedUtterance.startIndex...,
+                    in: normalizedUtterance
+                )
+            )
+            else {
+                return nil
+            }
+            return (match.range.location, ordinal.1)
+        }
+        if let firstMention = locatedOrdinals.min(by: {
+            $0.location < $1.location
+        }) {
+            return firstMention.ordinal
+        }
+
+        if let oneBased = firstPositiveIntegerCapture(
+            #"\b([0-9]+)(?:st|nd|rd|th)\s+\#(targetNounPattern)\b"#,
+            in: normalizedUtterance
+        ) {
+            return oneBased - 1
+        }
+
+        let canUseUnqualifiedNumericOrdinal =
+            targetKind != .any || !isProjectContainerClause
+        guard canUseUnqualifiedNumericOrdinal else {
+            return nil
+        }
         for pattern in [
             #"([0-9]+)\s*(?:つ目|番目)"#,
-            #"\b([0-9]+)(?:st|nd|rd|th)\s+(?:one|task|item|project)\b"#,
             #"^([0-9]+)(?:st|nd|rd|th)$"#,
         ] {
             if let oneBased = firstPositiveIntegerCapture(
