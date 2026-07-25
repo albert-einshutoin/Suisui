@@ -724,6 +724,41 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(created, reason: .previousActionLink))
     }
 
+    func testGivenDemonstrativeRecentCreationThenUsesActionLinkOverSelection() throws {
+        let selected = ConversationResolvedTarget.task(id: 434, projectID: 8)
+        let created = ConversationResolvedTarget.task(id: 435, projectID: 8)
+        let link = try ConversationActionLink(
+            sessionID: sessionID,
+            sourceTurnID: sourceTurnID,
+            taskID: 435,
+            operation: .taskCreated,
+            reviewedFingerprint: "reviewed",
+            createdAt: now.addingTimeInterval(-5)
+        )
+        let candidates = [
+            candidate(taskID: 434, projectID: 8, title: "Selected task"),
+            candidate(taskID: 435, projectID: 8, title: "Created task"),
+        ]
+
+        for utterance in [
+            "delete this task we just created",
+            "delete that one we just added",
+        ] {
+            XCTAssertEqual(
+                resolver.resolve(
+                    request(
+                        utterance: utterance,
+                        selectedTask: selected,
+                        previousActionLink: link,
+                        candidates: candidates
+                    )
+                ),
+                .resolved(created, reason: .previousActionLink),
+                utterance
+            )
+        }
+    }
+
     func testGivenRecentActionInTrailingClauseThenKeepsDirectSelectedTask() throws {
         let selected = ConversationResolvedTarget.task(id: 4381, projectID: 8)
         let created = ConversationResolvedTarget.task(id: 4382, projectID: 8)

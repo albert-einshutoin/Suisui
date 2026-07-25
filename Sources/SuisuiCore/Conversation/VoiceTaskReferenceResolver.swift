@@ -850,8 +850,11 @@ public struct VoiceTaskReferenceResolver: Sendable {
             in: value
         )
         return isJapaneseCreatedReference
+            // Demonstratives describe the newly created referent here rather
+            // than the current selection. Recognizing them before selection
+            // prevents destructive commands from targeting an unrelated Task.
             || matches(
-                #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+)?(?:the\s+)?(?:task|one|item|thing|what)\s+(?:that\s+)?(?:(?:we|i)\s+)?just\s+(?:added|created)\b"#,
+                #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+)?(?:(?:the|this|that)\s+)?(?:task|one|item|thing|what)\s+(?:that\s+)?(?:(?:we|i)\s+)?just\s+(?:added|created)\b"#,
                 in: value
             )
     }
