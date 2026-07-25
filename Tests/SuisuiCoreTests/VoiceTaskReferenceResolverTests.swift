@@ -1052,15 +1052,25 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             candidate(taskID: 742, projectID: 12, title: "That One Thing"),
         ]
 
-        let result = resolver.resolve(
-            request(
-                utterance: "open That One Thing",
-                selectedTask: selected,
-                candidates: candidates
+        for utterance in [
+            "open That One Thing",
+            "please delete That One Thing",
+            "could you please delete That One Thing",
+            "delete That One Thing please",
+            "please delete the task That One Thing",
+        ] {
+            XCTAssertEqual(
+                resolver.resolve(
+                    request(
+                        utterance: utterance,
+                        selectedTask: selected,
+                        candidates: candidates
+                    )
+                ),
+                .resolved(named, reason: .uniqueCandidate),
+                utterance
             )
-        )
-
-        XCTAssertEqual(result, .resolved(named, reason: .uniqueCandidate))
+        }
     }
 
     func testGivenShortCandidateTitleInsideAnotherWordThenDoesNotResolve() {

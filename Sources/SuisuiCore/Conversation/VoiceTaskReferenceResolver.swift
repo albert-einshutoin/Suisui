@@ -521,6 +521,16 @@ public struct VoiceTaskReferenceResolver: Sendable {
             "rename",
             "move",
         ]
+        let commandPrefixes = [
+            "",
+            "please ",
+            "could you ",
+            "could you please ",
+            "can you ",
+            "can you please ",
+            "would you ",
+            "would you please ",
+        ]
         let qualifiers = ["", "the task ", "task ", "the project ", "project "]
         let containmentSuffixes = [
             "",
@@ -533,14 +543,20 @@ public struct VoiceTaskReferenceResolver: Sendable {
             " under this project",
             " under that project",
         ]
+        let politeSuffixes = ["", " please"]
         // Contextual pronouns outrank incidental words. A title containing
-        // "this"/"that" remains usable when it is the direct command object.
-        // A trailing containment clause is metadata about that object.
-        return verbs.contains { verb in
-            qualifiers.contains { qualifier in
-                containmentSuffixes.contains { suffix in
-                    normalizedUtterance
-                        == "\(verb) \(qualifier)\(normalizedTitle)\(suffix)"
+        // "this"/"that" remains usable when it is the complete command object.
+        // Bounded politeness forms keep that exact-object guarantee without
+        // treating an incidental title mention as the mutation target.
+        return commandPrefixes.contains { commandPrefix in
+            verbs.contains { verb in
+                qualifiers.contains { qualifier in
+                    containmentSuffixes.contains { containmentSuffix in
+                        politeSuffixes.contains { politeSuffix in
+                            normalizedUtterance
+                                == "\(commandPrefix)\(verb) \(qualifier)\(normalizedTitle)\(containmentSuffix)\(politeSuffix)"
+                        }
+                    }
                 }
             }
         }
