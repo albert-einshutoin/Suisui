@@ -174,10 +174,15 @@ public struct VoiceTaskReferenceResolver: Sendable {
         let isProjectReference = mentionsProjectReference(normalizedUtterance)
             || (requestedTargetKind == .project && isAnaphoric)
         let isRecentActionReference = mentionsRecentAction(normalizedUtterance)
-        let namedCandidateMatches = request.candidates.filter {
+        let lexicalNamedCandidateMatches = request.candidates.filter {
             requestedTargetKind.matches($0.target)
                 && isStrongNamedCandidate($0, in: normalizedUtterance)
         }
+        let namedCandidateMatches = isAnaphoric
+            ? lexicalNamedCandidateMatches.filter {
+                isDirectNamedCommand($0, in: normalizedUtterance)
+            }
+            : lexicalNamedCandidateMatches
 
         // A full candidate name is stronger evidence than pronouns contained
         // inside that name (for example, "open That One Thing").
@@ -462,6 +467,34 @@ public struct VoiceTaskReferenceResolver: Sendable {
             )
         }
         return normalizedUtterance.contains(normalizedTitle)
+    }
+
+    private func isDirectNamedCommand(
+        _ candidate: ConversationReferenceCandidate,
+        in normalizedUtterance: String
+    ) -> Bool {
+        let normalizedTitle = normalize(candidate.title)
+        if normalizedUtterance == normalizedTitle {
+            return true
+        }
+        let verbs = [
+            "open",
+            "show",
+            "delete",
+            "complete",
+            "finish",
+            "update",
+            "rename",
+            "move",
+        ]
+        let qualifiers = ["", "the task ", "task ", "the project ", "project "]
+        // Contextual pronouns outrank incidental words. A title containing
+        // "this"/"that" remains usable when it is the direct command object.
+        return verbs.contains { verb in
+            qualifiers.contains { qualifier in
+                normalizedUtterance == "\(verb) \(qualifier)\(normalizedTitle)"
+            }
+        }
     }
 
     private static let genericReferenceTitles: Set<String> = [

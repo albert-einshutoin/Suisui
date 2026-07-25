@@ -788,6 +788,26 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .needsClarification(candidates))
     }
 
+    func testGivenSelectedTaskAndIncidentalTitleThenUsesSelection() {
+        let selected = ConversationResolvedTarget.task(id: 733, projectID: 12)
+        let incidental = ConversationResolvedTarget.task(id: 734, projectID: 12)
+        let candidates = [
+            candidate(taskID: 733, projectID: 12, title: "Selected"),
+            candidate(taskID: 734, projectID: 12, title: "Release"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "delete this task after Release",
+                selectedTask: selected,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(selected, reason: .selectedTask))
+        XCTAssertNotEqual(result, .resolved(incidental, reason: .uniqueCandidate))
+    }
+
     func testGivenTaskTitleThatOneThingWhenResolveThenNamedTaskBeatsSelection() {
         let selected = ConversationResolvedTarget.task(id: 741, projectID: 12)
         let named = ConversationResolvedTarget.task(id: 742, projectID: 12)
