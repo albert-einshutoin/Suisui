@@ -241,7 +241,7 @@ public struct TaskContextFactPolicy: Sendable {
         let lowered = value.lowercased()
         // A provider key needs a token boundary and realistic length. Plain
         // substring matching would reject ordinary words such as "risk-based".
-        let providerKeyPattern = #"(?i)(?:^|[^a-z0-9])sk-[a-z0-9_-]{8,}"#
+        let providerKeyPattern = #"(?i)(?:^|[^a-z0-9])sk-[a-z0-9][a-z0-9_-]{7,}"#
         if value.range(of: providerKeyPattern, options: .regularExpression) != nil {
             return true
         }

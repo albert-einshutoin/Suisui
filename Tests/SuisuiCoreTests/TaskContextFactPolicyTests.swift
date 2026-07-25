@@ -110,6 +110,18 @@ final class TaskContextFactPolicyTests: XCTestCase {
         }
     }
 
+    func testGivenSymbolOnlyProviderKeyPlaceholderWhenEvaluateThenDoesNotTreatItAsSecret() {
+        let candidate = makeCandidate(
+            kind: .constraint,
+            value: "Document the placeholder sk-________",
+            author: .userExplicit
+        )
+
+        guard case .saveCandidate = policy.evaluate(candidate) else {
+            return XCTFail("Expected a symbol-only placeholder to remain saveable.")
+        }
+    }
+
     func testGivenConflictingDecisionWhenEvaluateThenRequiresConfirmation() {
         let candidate = makeCandidate(
             kind: .decision,
