@@ -6,6 +6,7 @@ public enum VoiceTaskConversationStoreError: Error, Equatable, Sendable {
     case missingSession(UUID)
     case nonEmptyNewSession(UUID)
     case staleSession(UUID)
+    case turnCursorRequiresSaveTurn(UUID)
     case missingTurn(UUID)
     case missingFact(UUID)
     case corruptRow(entity: String, identifier: String)

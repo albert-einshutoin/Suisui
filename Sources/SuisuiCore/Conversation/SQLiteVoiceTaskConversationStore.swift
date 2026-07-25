@@ -63,6 +63,9 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
             else {
                 throw VoiceTaskConversationStoreError.staleSession(session.id)
             }
+            guard session.lastTurnAt == storedSession.lastTurnAt else {
+                throw VoiceTaskConversationStoreError.turnCursorRequiresSaveTurn(session.id)
+            }
             // The compare-and-swap predicate is part of the write, not only the
             // preceding read. This keeps a later writer from accepting a stale
             // whole-session snapshot and silently reverting another mutation.
@@ -85,7 +88,7 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                     SQLiteValue(session.activeTaskID),
                     SQLiteValue(session.resumeSummary),
                     .real(try Self.timeValue(session.updatedAt)),
-                    try Self.optionalTimeValue(session.lastTurnAt),
+                    try Self.optionalTimeValue(storedSession.lastTurnAt),
                     .text(session.id.uuidString),
                     .real(expectedTime),
                 ]
