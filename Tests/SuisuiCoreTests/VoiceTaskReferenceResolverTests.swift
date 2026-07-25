@@ -297,6 +297,25 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertNotEqual(result, .resolved(selectedTask, reason: .selectedTask))
     }
 
+    func testGivenDemonstrativeOnlyInTrailingClauseThenDoesNotUseSelection() {
+        let selected = ConversationResolvedTarget.task(id: 453, projectID: 17)
+        let candidates = [
+            candidate(taskID: 453, projectID: 17, title: "Selected task"),
+            candidate(taskID: 454, projectID: 17, title: "Overdue item"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "delete overdue items before this task",
+                selectedTask: selected,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification(candidates))
+        XCTAssertNotEqual(result, .resolved(selected, reason: .selectedTask))
+    }
+
     func testGivenSelectedTaskInsideCurrentProjectWhenResolveThenKeepsTaskTarget() {
         let selectedTask = ConversationResolvedTarget.task(id: 452, projectID: 17)
         let selectedProject = ConversationResolvedTarget.project(id: 17)
