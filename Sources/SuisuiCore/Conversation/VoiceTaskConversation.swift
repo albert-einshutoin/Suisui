@@ -283,7 +283,9 @@ public struct ConversationReference: Identifiable, Codable, Equatable, Sendable 
         guard !orderingFingerprint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw VoiceTaskConversationDomainError.blankFingerprint
         }
-        guard expiresAt > createdAt else {
+        guard expiresAt.timeIntervalSinceReferenceDate.isFinite,
+              expiresAt > createdAt
+        else {
             throw VoiceTaskConversationDomainError.invalidReferenceExpiration
         }
         self.id = id

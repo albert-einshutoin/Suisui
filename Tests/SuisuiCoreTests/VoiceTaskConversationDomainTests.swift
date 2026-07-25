@@ -231,6 +231,20 @@ final class VoiceTaskConversationDomainTests: XCTestCase {
         }
 
         XCTAssertThrowsError(
+            try ConversationReference(
+                sessionID: sessionID,
+                target: .task(42),
+                sourceTurnID: turnID,
+                ordinal: 0,
+                orderingFingerprint: "sha256:reference-order",
+                expiresAt: Date(timeIntervalSinceReferenceDate: .infinity),
+                createdAt: createdAt
+            )
+        ) { error in
+            XCTAssertEqual(error as? VoiceTaskConversationDomainError, .invalidReferenceExpiration)
+        }
+
+        XCTAssertThrowsError(
             try ConversationActionLink(
                 sessionID: sessionID,
                 sourceTurnID: turnID,
