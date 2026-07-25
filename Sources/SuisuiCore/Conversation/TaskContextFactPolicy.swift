@@ -80,6 +80,20 @@ public struct TaskContextFactWrite: Equatable, Sendable {
     }
 }
 
+/// Atomic Store capability for the two records produced by a correction.
+public struct TaskContextFactSupersessionWrite: Equatable, Sendable {
+    public let superseded: TaskContextFact
+    public let corrected: TaskContextFact
+
+    fileprivate init(
+        superseded: TaskContextFact,
+        corrected: TaskContextFact
+    ) {
+        self.superseded = superseded
+        self.corrected = corrected
+    }
+}
+
 /// Only policy code in this file can construct this token. Keeping the token
 /// separate from the Fact prevents other SuisuiCore components and tests from
 /// blessing hand-built or prohibited payloads.
@@ -167,10 +181,39 @@ public struct TaskContextFactPolicy: Sendable {
     public func persistenceWrite(
         for fact: TaskContextFact
     ) throws -> TaskContextFactWrite {
-        guard fact.persistenceAuthorized, fact.sourceEvidenceVerified else {
+        guard fact.persistenceAuthorized,
+              fact.sourceEvidenceVerified,
+              !fact.requiresAtomicSupersession
+        else {
             throw VoiceTaskConversationDomainError.unauthorizedFactPersistence
         }
         return TaskContextFactWrite(fact: fact)
+    }
+
+    public func persistenceSupersessionWrite(
+        superseded: TaskContextFact,
+        corrected: TaskContextFact
+    ) throws -> TaskContextFactSupersessionWrite {
+        guard superseded.persistenceAuthorized,
+              corrected.persistenceAuthorized,
+              superseded.sourceEvidenceVerified,
+              corrected.sourceEvidenceVerified,
+              superseded.requiresAtomicSupersession,
+              corrected.requiresAtomicSupersession,
+              superseded.state == .superseded,
+              corrected.state == .confirmed,
+              superseded.sessionID == corrected.sessionID,
+              superseded.kind == corrected.kind,
+              superseded.scope == corrected.scope,
+              superseded.supersedesFactID == corrected.supersedesFactID,
+              superseded.createdAt == corrected.createdAt
+        else {
+            throw VoiceTaskConversationDomainError.unauthorizedFactPersistence
+        }
+        return TaskContextFactSupersessionWrite(
+            superseded: superseded,
+            corrected: corrected
+        )
     }
 
     /// Re-evaluates serialized confirmation work before restoring its write
@@ -292,8 +335,14 @@ public struct TaskContextFactPolicy: Sendable {
             throw VoiceTaskConversationDomainError.unauthorizedFactPersistence
         }
         return (
-            superseded.authorizingPersistence(using: TaskContextFactAuthorizationToken()),
-            corrected.authorizingPersistence(using: TaskContextFactAuthorizationToken())
+            superseded.authorizingPersistence(
+                using: TaskContextFactAuthorizationToken(),
+                requiresAtomicSupersession: true
+            ),
+            corrected.authorizingPersistence(
+                using: TaskContextFactAuthorizationToken(),
+                requiresAtomicSupersession: true
+            )
         )
     }
 
@@ -358,7 +407,14 @@ public struct TaskContextFactPolicy: Sendable {
             throw VoiceTaskConversationDomainError.incompatibleFactTransition
         }
 
-        let supersession = try transition(old, to: .superseded, at: date)
+        let supersession = try transition(
+            old,
+            to: .superseded,
+            at: date
+        ).authorizingPersistence(
+            using: TaskContextFactAuthorizationToken(),
+            requiresAtomicSupersession: true
+        )
         let corrected = try TaskContextFact(
             sessionID: replacement.sessionID,
             kind: replacement.kind,
@@ -372,7 +428,10 @@ public struct TaskContextFactPolicy: Sendable {
             supersedesFactID: old.id,
             expiresAt: replacement.expiresAt,
             createdAt: date
-        ).authorizingPersistence(using: TaskContextFactAuthorizationToken())
+        ).authorizingPersistence(
+            using: TaskContextFactAuthorizationToken(),
+            requiresAtomicSupersession: true
+        )
         return (supersession, corrected)
     }
 
@@ -451,6 +510,20 @@ public struct TaskContextFactPolicy: Sendable {
             "bearer ", "authorization:",
             "file://", "/users/", "/private/", "/volumes/",
         ]
-        return highSignalMarkers.contains { lowered.contains($0) }
+        if highSignalMarkers.contains(where: { lowered.contains($0) }) {
+            return true
+        }
+        // Task Context is cross-platform even though Suisui currently runs on
+        // macOS. Detect generic POSIX, drive-letter, and UNC absolute paths so
+        // content cannot become persistable merely because it came from a
+        // Linux or Windows workspace.
+        let absolutePathPatterns = [
+            #"(?:^|[^a-zA-Z0-9/%])/(?:$|[^/\s]+(?:/[^/\s]*)*)"#,
+            #"(?:^|[^a-zA-Z0-9\\])[a-zA-Z]:\\(?:[^\\\r\n]+\\)*[^\\\r\n]*"#,
+            #"(?:^|[^a-zA-Z0-9\\])\\\\[^\\\s]+\\[^\\\s]+"#,
+        ]
+        return absolutePathPatterns.contains { pattern in
+            value.range(of: pattern, options: .regularExpression) != nil
+        }
     }
 }

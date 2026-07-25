@@ -665,6 +665,104 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
         )
     }
 
+    func testSupersessionWriteRollsBackBothFactsWhenCorrectedInsertFails() throws {
+        let (connection, store) = try makeStore()
+        let session = makeSession()
+        try store.createSession(session)
+        let turn = try makeTurn(sessionID: session.id)
+        try store.saveTurn(turn)
+        try connection.execute(
+            """
+            INSERT INTO projects (id, title, status, created_at, updated_at)
+            VALUES (41, 'Release', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+            INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+            VALUES (42, 41, 'Launch', 'planned', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+            """
+        )
+        let oldHistory = try policyConfirmationHistory(
+            TaskContextFact(
+                sessionID: session.id,
+                kind: .constraint,
+                scope: .task(42),
+                state: .proposed,
+                value: "Launch Thursday",
+                sourceTurnID: turn.id,
+                sourceExcerptDigest: String(repeating: "d", count: 64),
+                confidence: 1,
+                author: .userExplicit,
+                createdAt: turn.createdAt
+            )
+        )
+        let policy = TaskContextFactPolicy()
+        try store.saveFact(try policy.persistenceWrite(for: oldHistory.proposed))
+        try store.saveFact(try policy.persistenceWrite(for: oldHistory.confirmed))
+
+        let replacementCandidate = TaskContextFactCandidate(
+            sessionID: session.id,
+            kind: .constraint,
+            scope: .task(42),
+            scopeAssessment: .unique,
+            value: "Launch Friday",
+            sourceTurnID: turn.id,
+            sourceExcerptDigest: String(repeating: "e", count: 64),
+            confidence: 1,
+            author: .userExplicit,
+            conflictingConfirmedFactIDs: [oldHistory.confirmed.id],
+            contentCategory: .taskContext,
+            createdAt: turn.createdAt.addingTimeInterval(1)
+        )
+        guard case let .requireConfirmation(replacement, _) = policy.evaluate(
+            replacementCandidate
+        ) else {
+            return XCTFail("Expected conflicting replacement to require confirmation.")
+        }
+        try store.saveFact(try policy.persistenceWrite(for: replacement))
+        let correction = try policy.supersede(
+            oldHistory.confirmed,
+            with: replacement,
+            at: turn.createdAt.addingTimeInterval(2)
+        )
+        let batch = try policy.persistenceSupersessionWrite(
+            superseded: correction.0,
+            corrected: correction.1
+        )
+        try connection.execute(
+            """
+            CREATE TRIGGER fail_corrected_fact
+            BEFORE INSERT ON task_context_facts
+            WHEN NEW.id = '\(correction.1.id.uuidString)'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced corrected insert failure');
+            END;
+            """
+        )
+
+        XCTAssertThrowsError(try store.saveSupersession(batch))
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT id FROM task_context_facts WHERE id IN (?, ?);",
+                parameters: [
+                    .text(correction.0.id.uuidString),
+                    .text(correction.1.id.uuidString),
+                ]
+            ),
+            []
+        )
+
+        try connection.execute("DROP TRIGGER fail_corrected_fact;")
+        try store.saveSupersession(batch)
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT COUNT(*) FROM task_context_facts WHERE id IN (?, ?);",
+                parameters: [
+                    .text(correction.0.id.uuidString),
+                    .text(correction.1.id.uuidString),
+                ]
+            ),
+            ["2"]
+        )
+    }
+
     private func makeStore() throws -> (SQLiteConnection, SQLiteVoiceTaskConversationStore) {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)

@@ -329,6 +329,34 @@ final class VoiceTaskConversationDomainTests: XCTestCase {
         XCTAssertFalse(roundTripped.isEligibleForLongTermContext(at: createdAt))
     }
 
+    func testLegacySessionScopedFactDecodesReadOnlyAndCannotEnterLongTermContext() throws {
+        let fact = try makeFact(id: factID)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        var payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: try encoder.encode(fact)
+            ) as? [String: Any]
+        )
+        payload["scope"] = try JSONSerialization.jsonObject(
+            with: encoder.encode(TaskContextFactScope.session)
+        )
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(
+            TaskContextFact.self,
+            from: JSONSerialization.data(withJSONObject: payload)
+        )
+
+        XCTAssertEqual(decoded.scope, .session)
+        XCTAssertFalse(decoded.sourceEvidenceVerified)
+        XCTAssertFalse(decoded.isEligibleForLongTermContext(at: createdAt))
+        XCTAssertThrowsError(
+            try TaskContextFactPolicy().persistenceWrite(for: decoded)
+        )
+    }
+
     private func makeFact(
         id: UUID,
         confidence: Double = 0.8,

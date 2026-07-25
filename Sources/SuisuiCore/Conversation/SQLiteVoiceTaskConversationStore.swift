@@ -305,7 +305,21 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
     public func saveFact(_ write: TaskContextFactWrite) throws {
         lock.lock()
         defer { lock.unlock() }
-        let fact = write.fact
+        try insertFact(write.fact)
+    }
+
+    public func saveSupersession(
+        _ write: TaskContextFactSupersessionWrite
+    ) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        try connection.transaction {
+            try insertFact(write.superseded)
+            try insertFact(write.corrected)
+        }
+    }
+
+    private func insertFact(_ fact: TaskContextFact) throws {
         try requireTurn(fact.sourceTurnID, in: fact.sessionID)
         if let supersededID = fact.supersedesFactID {
             guard try factExists(supersededID) else {

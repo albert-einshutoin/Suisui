@@ -397,8 +397,14 @@ final class TaskContextFactPolicyTests: XCTestCase {
             replacementProposed: restoredReplacement,
             replacementCandidate: replacementCandidate
         )
-        XCTAssertNoThrow(try policy.persistenceWrite(for: restoredCorrection.0))
-        XCTAssertNoThrow(try policy.persistenceWrite(for: restoredCorrection.1))
+        XCTAssertThrowsError(try policy.persistenceWrite(for: restoredCorrection.0))
+        XCTAssertThrowsError(try policy.persistenceWrite(for: restoredCorrection.1))
+        XCTAssertNoThrow(
+            try policy.persistenceSupersessionWrite(
+                superseded: restoredCorrection.0,
+                corrected: restoredCorrection.1
+            )
+        )
     }
 
     func testGivenRejectedFactWhenAssembleContextThenIsNotEligible() throws {
@@ -500,6 +506,47 @@ final class TaskContextFactPolicyTests: XCTestCase {
 
             guard case .prohibit = policy.evaluate(candidate) else {
                 return XCTFail("Expected \(category) to be prohibited.")
+            }
+        }
+    }
+
+    func testGivenCrossPlatformAbsolutePathWhenEvaluateThenProhibits() {
+        for value in [
+            "/",
+            "Inspect /tmp",
+            "Read /secret.txt",
+            "Read /home/alice/repo/config.json",
+            "Inspect /tmp/suisui.log",
+            "Resolve path:/tmp/secret.txt",
+            "Open `/tmp/secret.txt`",
+            "Inspect [/home/alice/key]",
+            #"Open C:\Users\alice\repo\config.json"#,
+            #"Resolve path:C:\Users\alice\repo\config.json"#,
+            #"Read \\server\share\private.txt"#,
+            #"Inspect [\\server\share\private.txt]"#,
+        ] {
+            let candidate = makeCandidate(
+                kind: .constraint,
+                value: value,
+                author: .userExplicit
+            )
+
+            guard case .prohibit = policy.evaluate(candidate) else {
+                return XCTFail("Expected absolute path to be prohibited.")
+            }
+        }
+    }
+
+    func testGivenPercentageOrFrequencyWhenEvaluateThenDoesNotTreatAsPath() {
+        for value in ["Reach 80%/90%", "Run at 1%/day"] {
+            let candidate = makeCandidate(
+                kind: .constraint,
+                value: value,
+                author: .userExplicit
+            )
+
+            guard case .saveCandidate = policy.evaluate(candidate) else {
+                return XCTFail("Expected percentage or frequency to remain persistable.")
             }
         }
     }

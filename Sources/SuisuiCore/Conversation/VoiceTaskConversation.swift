@@ -476,6 +476,7 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
     public let expiresAt: Date?
     public let createdAt: Date
     let persistenceAuthorized: Bool
+    let requiresAtomicSupersession: Bool
 
     public init(
         id: UUID = UUID(),
@@ -542,33 +543,39 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
         self.expiresAt = expiresAt
         self.createdAt = createdAt
         persistenceAuthorized = false
+        requiresAtomicSupersession = false
     }
 
     public func isEligibleForLongTermContext(at date: Date = Date()) -> Bool {
         sourceEvidenceVerified
+            && scope != .session
             && state == .confirmed
             && (expiresAt.map { date < $0 } ?? true)
     }
 
     func authorizingPersistence(
-        using _: TaskContextFactAuthorizationToken
+        using _: TaskContextFactAuthorizationToken,
+        requiresAtomicSupersession: Bool = false
     ) -> TaskContextFact {
         TaskContextFact(
             validated: self,
             sourceEvidenceVerified: sourceEvidenceVerified,
-            persistenceAuthorized: true
+            persistenceAuthorized: true,
+            requiresAtomicSupersession: requiresAtomicSupersession
         )
     }
 
     private init(
         validated fact: TaskContextFact,
+        scope: TaskContextFactScope? = nil,
         sourceEvidenceVerified: Bool,
-        persistenceAuthorized: Bool
+        persistenceAuthorized: Bool,
+        requiresAtomicSupersession: Bool = false
     ) {
         id = fact.id
         sessionID = fact.sessionID
         kind = fact.kind
-        scope = fact.scope
+        self.scope = scope ?? fact.scope
         state = fact.state
         value = fact.value
         sourceTurnID = fact.sourceTurnID
@@ -580,6 +587,7 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
         expiresAt = fact.expiresAt
         createdAt = fact.createdAt
         self.persistenceAuthorized = persistenceAuthorized
+        self.requiresAtomicSupersession = requiresAtomicSupersession
     }
 
     public static func == (lhs: TaskContextFact, rhs: TaskContextFact) -> Bool {
@@ -647,11 +655,18 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
             String.self,
             forKey: .sourceExcerptDigest
         )
+        let decodedScope = try values.decode(
+            TaskContextFactScope.self,
+            forKey: .scope
+        )
         let base = try TaskContextFact(
             id: values.decode(UUID.self, forKey: .id),
             sessionID: values.decode(UUID.self, forKey: .sessionID),
             kind: values.decode(TaskContextFactKind.self, forKey: .kind),
-            scope: values.decode(TaskContextFactScope.self, forKey: .scope),
+            // Legacy session-scoped Facts are reconstructed below as
+            // read-only, unverified records. A temporary valid scope lets the
+            // common initializer continue validating every other field.
+            scope: decodedScope == .session ? .task(1) : decodedScope,
             state: values.decode(TaskContextFactState.self, forKey: .state),
             value: values.decode(String.self, forKey: .value),
             sourceTurnID: values.decode(UUID.self, forKey: .sourceTurnID),
@@ -668,9 +683,12 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
         )
         self = TaskContextFact(
             validated: base,
-            sourceEvidenceVerified: decodedDigest != nil
+            scope: decodedScope,
+            sourceEvidenceVerified: decodedScope != .session
+                && decodedDigest != nil
                 && (declaredEvidenceState ?? true),
-            persistenceAuthorized: false
+            persistenceAuthorized: false,
+            requiresAtomicSupersession: false
         )
     }
 
