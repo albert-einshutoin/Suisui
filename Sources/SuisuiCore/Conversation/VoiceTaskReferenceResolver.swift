@@ -531,8 +531,18 @@ public struct VoiceTaskReferenceResolver: Sendable {
         // subordinate clause, or container metadata. This preserves
         // "delete Release because that task..." without treating the
         // incidental Release in "delete this task after Release" as a target.
-        return matches(
+        if matches(
             #"^\#(Self.englishPoliteCommandPrefixPattern)\#(Self.englishTargetOperationPattern)\s+(?:(?:the\s+)?(?:task|project)\s+)?\#(escapedTitle)(?=(?:\s+please)?$|[,;:]?\s+(?:because|since|as|so\s+that|after|before|when|while|if|in|within|under|to|into|from)\b)"#,
+            in: normalizedUtterance
+        ) {
+            return true
+        }
+        // Japanese places the direct object before the operation. Requiring
+        // the object marker and a supported operation keeps a later mention
+        // from outranking selection while preserving an explicitly named
+        // target before a trailing anaphoric explanation.
+        return matches(
+            #"^\#(escapedTitle)を(?:開|表示|削除|完了|終了|更新|編集|名前(?:を)?変更|移動|動か|アーカイブ|保管)"#,
             in: normalizedUtterance
         )
     }

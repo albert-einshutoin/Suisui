@@ -1408,6 +1408,25 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(target, reason: .uniqueCandidate))
     }
 
+    func testGivenNamedJapaneseObjectAndTrailingAnaphorThenUsesNamedTask() {
+        let selected = ConversationResolvedTarget.task(id: 7461, projectID: 12)
+        let named = ConversationResolvedTarget.task(id: 7462, projectID: 12)
+        let candidates = [
+            candidate(taskID: 7461, projectID: 12, title: "選択中"),
+            candidate(taskID: 7462, projectID: 12, title: "会議"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "会議を削除して、これは不要です",
+                selectedTask: selected,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(named, reason: .uniqueCandidate))
+    }
+
     func testGivenShortJapaneseTitleInsideLongerTitleThenDoesNotResolve() {
         let candidates = [
             candidate(taskID: 747, projectID: 12, title: "会議"),
