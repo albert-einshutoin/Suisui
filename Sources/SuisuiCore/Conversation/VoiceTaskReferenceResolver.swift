@@ -766,10 +766,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
     }
 
     private func isAnaphoricReference(_ value: String) -> Bool {
-        let japanesePrimaryClause = value.split(
-            maxSplits: 1,
-            whereSeparator: { "、。！？".contains($0) }
-        ).first.map(String.init) ?? value
+        let japanesePrimaryClause = primaryJapaneseClause(in: value)
         return isJapaneseAnaphor("これ", in: japanesePrimaryClause)
             || isJapaneseAnaphor("それ", in: japanesePrimaryClause)
             || isJapaneseAnaphor("あれ", in: japanesePrimaryClause)
@@ -803,19 +800,27 @@ public struct VoiceTaskReferenceResolver: Sendable {
     }
 
     private func mentionsProjectReference(_ value: String) -> Bool {
+        let japanesePrimaryClause = primaryJapaneseClause(in: value)
         // Anchor English project anaphors to the command object. Without this,
         // a subordinate clause such as "so that we unblock the project" can
         // turn a preceding task command into a project mutation.
-        matches(
+        return matches(
             #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?)?(?:the\s+)?(?:this|that|current)(?:\s+(?!(?:we|i|you|they|he|she|it|the|a|an|so|which|who|to|for|because)\b)[\p{L}\p{N}_-]+){0,3}\s+project\b"#,
             in: value
         )
-            || value.contains("このプロジェクト")
-            || value.contains("そのプロジェクト")
-            || value.contains("あのプロジェクト")
-            || value.contains("この案件")
-            || value.contains("その案件")
-            || value.contains("あの案件")
+            || japanesePrimaryClause.contains("このプロジェクト")
+            || japanesePrimaryClause.contains("そのプロジェクト")
+            || japanesePrimaryClause.contains("あのプロジェクト")
+            || japanesePrimaryClause.contains("この案件")
+            || japanesePrimaryClause.contains("その案件")
+            || japanesePrimaryClause.contains("あの案件")
+    }
+
+    private func primaryJapaneseClause(in value: String) -> String {
+        value.split(
+            maxSplits: 1,
+            whereSeparator: { "、。！？".contains($0) }
+        ).first.map(String.init) ?? value
     }
 
     private func mentionsProjectContainerClause(_ value: String) -> Bool {

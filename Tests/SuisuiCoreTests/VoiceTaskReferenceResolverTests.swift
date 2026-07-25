@@ -390,6 +390,34 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertNotEqual(result, .resolved(selected, reason: .selectedTask))
     }
 
+    func testGivenTrailingJapaneseProjectReferenceThenKeepsSelectedTask() {
+        let selectedTask = ConversationResolvedTarget.task(id: 459, projectID: 17)
+        let selectedProject = ConversationResolvedTarget.project(id: 17)
+        let candidates = [
+            candidate(taskID: 459, projectID: 17, title: "Selected task"),
+            ConversationReferenceCandidate(
+                target: selectedProject,
+                title: "Launch",
+                stableSortKey: "project-17"
+            ),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "これを削除して、そのプロジェクトは不要だから",
+                selectedTask: selectedTask,
+                selectedProject: selectedProject,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(selectedTask, reason: .selectedTask))
+        XCTAssertNotEqual(
+            result,
+            .resolved(selectedProject, reason: .selectedProject)
+        )
+    }
+
     func testGivenModifiedTaskAnaphorThenUsesSelectionOverModifierTitle() {
         let selected = ConversationResolvedTarget.task(id: 455, projectID: 17)
         let modifierTitle = ConversationResolvedTarget.task(id: 456, projectID: 17)
