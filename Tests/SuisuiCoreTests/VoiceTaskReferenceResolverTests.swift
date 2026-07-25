@@ -264,6 +264,34 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(selectedTask, reason: .selectedTask))
     }
 
+    func testGivenGenericTaskObjectsAndNamedContainerProjectThenClarifiesTasks() {
+        let taskCandidates = [
+            candidate(taskID: 453, projectID: 17, title: "Overdue one"),
+            candidate(taskID: 454, projectID: 17, title: "Overdue two"),
+        ]
+        let project = ConversationReferenceCandidate(
+            target: .project(id: 17),
+            title: "Alpha",
+            stableSortKey: "project-17"
+        )
+
+        for utterance in [
+            "delete overdue tasks in project Alpha",
+            "move overdue items to project Alpha",
+        ] {
+            XCTAssertEqual(
+                resolver.resolve(
+                    request(
+                        utterance: utterance,
+                        candidates: taskCandidates + [project]
+                    )
+                ),
+                .needsClarification(taskCandidates),
+                utterance
+            )
+        }
+    }
+
     func testGivenMalformedProjectSelectionWhenResolveThenFailsClosed() {
         let task = ConversationResolvedTarget.task(id: 451, projectID: 17)
         let candidates = [

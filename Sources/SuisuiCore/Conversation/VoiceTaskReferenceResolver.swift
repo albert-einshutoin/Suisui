@@ -184,11 +184,14 @@ public struct VoiceTaskReferenceResolver: Sendable {
             requestedTargetKind.matches($0.target)
                 && isStrongNamedCandidate($0, in: normalizedUtterance)
         }
+        let broadNamedCandidateMatches = isProjectContainerClause
+            ? lexicalNamedCandidateMatches.filter { !$0.target.isProject }
+            : lexicalNamedCandidateMatches
         let namedCandidateMatches = isAnaphoric
-            ? lexicalNamedCandidateMatches.filter {
+            ? broadNamedCandidateMatches.filter {
                 isDirectNamedCommand($0, in: normalizedUtterance)
             }
-            : lexicalNamedCandidateMatches
+            : broadNamedCandidateMatches
         let directNamedCandidateMatches = lexicalNamedCandidateMatches.filter {
             isDirectNamedCommand($0, in: normalizedUtterance)
         }
@@ -326,7 +329,10 @@ public struct VoiceTaskReferenceResolver: Sendable {
             }
         }
 
-        return .needsClarification(request.candidates)
+        let fallbackCandidates = isProjectContainerClause
+            ? request.candidates.filter { !$0.target.isProject }
+            : request.candidates
+        return .needsClarification(fallbackCandidates)
     }
 
     private func resolveOrdinal(
