@@ -72,6 +72,36 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
         XCTAssertEqual(try reopenedStore.listTurns(sessionID: session.id, before: nil, limit: 10), [firstTurn])
     }
 
+    func testCreatingSessionWithExistingTurnCursorFailsClosed() throws {
+        let (connection, store) = try makeStore()
+        var session = makeSession()
+        try session.recordTurn(at: Date(timeIntervalSince1970: 1_800_000_001))
+
+        XCTAssertThrowsError(try store.createSession(session)) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationStoreError,
+                .nonEmptyNewSession(session.id)
+            )
+        }
+        XCTAssertEqual(
+            try connection.queryStrings("SELECT id FROM voice_task_conversation_sessions;"),
+            []
+        )
+    }
+
+    func testTurnAtCurrentSessionTimestampStillAdvancesPersistedVersion() throws {
+        let (_, store) = try makeStore()
+        let session = makeSession()
+        try store.createSession(session)
+        let turn = try makeTurn(sessionID: session.id, createdAt: session.updatedAt)
+
+        try store.saveTurn(turn)
+
+        let restored = try XCTUnwrap(store.loadSession(id: session.id))
+        XCTAssertEqual(restored.lastTurnAt, turn.createdAt)
+        XCTAssertGreaterThan(restored.updatedAt, session.updatedAt)
+    }
+
     func testUpdatingSessionPersistsLifecycleState() throws {
         let (connection, store) = try makeStore()
         var session = makeSession()

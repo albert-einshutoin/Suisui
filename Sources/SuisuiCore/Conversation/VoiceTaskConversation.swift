@@ -125,9 +125,24 @@ public struct VoiceTaskConversationSession: Identifiable, Codable, Equatable, Se
         guard state == .active else {
             throw VoiceTaskConversationDomainError.invalidStateTransition
         }
-        try requireMonotonic(date)
+        let previousTurnAt = lastTurnAt ?? createdAt
+        guard date >= previousTurnAt else {
+            throw VoiceTaskConversationDomainError.nonMonotonicTimestamp
+        }
+        let previousUpdateValue = updatedAt.timeIntervalSinceReferenceDate
+        let turnValue = date.timeIntervalSinceReferenceDate
+        guard previousUpdateValue.isFinite, turnValue.isFinite else {
+            throw VoiceTaskConversationDomainError.nonMonotonicTimestamp
+        }
         lastTurnAt = date
-        updatedAt = date
+        let nextVersion = previousUpdateValue.nextUp
+        guard nextVersion.isFinite else {
+            throw VoiceTaskConversationDomainError.nonMonotonicTimestamp
+        }
+        // `updatedAt` is also the persisted optimistic-lock version. Turn
+        // chronology follows `lastTurnAt`, while every write advances the version
+        // even when multiple Turns share one clock instant.
+        updatedAt = max(date, Date(timeIntervalSinceReferenceDate: nextVersion))
     }
 
     public mutating func updateTitle(

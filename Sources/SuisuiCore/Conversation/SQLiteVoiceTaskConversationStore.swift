@@ -22,6 +22,9 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
     public func createSession(_ session: VoiceTaskConversationSession) throws {
         lock.lock()
         defer { lock.unlock() }
+        guard session.lastTurnAt == nil else {
+            throw VoiceTaskConversationStoreError.nonEmptyNewSession(session.id)
+        }
 
         try connection.execute(
             """
