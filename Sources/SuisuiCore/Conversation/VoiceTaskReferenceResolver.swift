@@ -520,6 +520,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
             "update",
             "rename",
             "move",
+            "archive",
         ]
         let commandPrefixes = [
             "",

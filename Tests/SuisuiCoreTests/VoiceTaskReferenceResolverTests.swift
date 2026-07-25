@@ -1109,6 +1109,29 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         }
     }
 
+    func testGivenProjectTitleThatOneThingWhenArchiveThenNamedProjectBeatsSelection() {
+        let selectedTask = ConversationResolvedTarget.task(id: 749, projectID: 12)
+        let namedProject = ConversationResolvedTarget.project(id: 13)
+        let candidates = [
+            candidate(taskID: 749, projectID: 12, title: "Selected"),
+            ConversationReferenceCandidate(
+                target: namedProject,
+                title: "That One Thing",
+                stableSortKey: "project-13"
+            ),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "archive That One Thing",
+                selectedTask: selectedTask,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(namedProject, reason: .uniqueCandidate))
+    }
+
     func testGivenShortCandidateTitleInsideAnotherWordThenDoesNotResolve() {
         let candidates = [
             candidate(taskID: 743, projectID: 12, title: "App"),
