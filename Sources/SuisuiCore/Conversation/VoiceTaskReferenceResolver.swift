@@ -169,17 +169,17 @@ public struct VoiceTaskReferenceResolver: Sendable {
         // A spoken ordinal or explicit recent-action phrase has its own stable
         // evidence. It must not be silently redirected to the current selection.
         if ordinal == nil, !isRecentActionReference {
-            if isAnaphoric, let selectedTask = request.selectedTask {
-                return resolveKnownTarget(
-                    selectedTask,
-                    reason: .selectedTask,
-                    candidates: request.candidates
-                )
-            }
             if isProjectReference, let selectedProject = request.selectedProject {
                 return resolveKnownTarget(
                     selectedProject,
                     reason: .selectedProject,
+                    candidates: request.candidates
+                )
+            }
+            if isAnaphoric, let selectedTask = request.selectedTask {
+                return resolveKnownTarget(
+                    selectedTask,
+                    reason: .selectedTask,
                     candidates: request.candidates
                 )
             }
@@ -343,28 +343,34 @@ public struct VoiceTaskReferenceResolver: Sendable {
             ("tenth", 9),
         ]
         if let ordinal = englishOrdinals.first(where: {
-            normalizedUtterance.contains($0.0)
+            normalizedUtterance == $0.0
+                || matches(
+                    #"\b\#(NSRegularExpression.escapedPattern(for: $0.0))\s+(?:one|task|item)\b"#,
+                    in: normalizedUtterance
+                )
         }) {
             return ordinal.1
         }
 
-        let pattern = #"([0-9]+)\s*(?:つ目|番目|st|nd|rd|th)"#
-        guard let expression = try? NSRegularExpression(pattern: pattern),
-              let match = expression.firstMatch(
-                  in: normalizedUtterance,
-                  range: NSRange(normalizedUtterance.startIndex..., in: normalizedUtterance)
-              ),
-              let numberRange = Range(match.range(at: 1), in: normalizedUtterance),
-              let oneBased = Int(normalizedUtterance[numberRange]),
-              oneBased > 0
-        else {
-            return nil
+        for pattern in [
+            #"([0-9]+)\s*(?:つ目|番目)"#,
+            #"\b([0-9]+)(?:st|nd|rd|th)\s+(?:one|task|item)\b"#,
+            #"^([0-9]+)(?:st|nd|rd|th)$"#,
+        ] {
+            if let oneBased = firstPositiveIntegerCapture(
+                pattern,
+                in: normalizedUtterance
+            ) {
+                return oneBased - 1
+            }
         }
-        return oneBased - 1
+        return nil
     }
 
     private func isAnaphoricReference(_ value: String) -> Bool {
-        ["それ", "あれ", "that", "this one", "that one"].contains(where: value.contains)
+        value.contains("それ")
+            || value.contains("あれ")
+            || matches(#"\b(?:that|this one|that one)\b"#, in: value)
     }
 
     private func mentionsProjectReference(_ value: String) -> Bool {
@@ -379,6 +385,34 @@ public struct VoiceTaskReferenceResolver: Sendable {
             || value.contains("just created")
             || value.contains("we just added")
             || value.contains("we just created")
+    }
+
+    private func matches(_ pattern: String, in value: String) -> Bool {
+        guard let expression = try? NSRegularExpression(pattern: pattern) else {
+            return false
+        }
+        return expression.firstMatch(
+            in: value,
+            range: NSRange(value.startIndex..., in: value)
+        ) != nil
+    }
+
+    private func firstPositiveIntegerCapture(
+        _ pattern: String,
+        in value: String
+    ) -> Int? {
+        guard let expression = try? NSRegularExpression(pattern: pattern),
+              let match = expression.firstMatch(
+                  in: value,
+                  range: NSRange(value.startIndex..., in: value)
+              ),
+              let numberRange = Range(match.range(at: 1), in: value),
+              let number = Int(value[numberRange]),
+              number > 0
+        else {
+            return nil
+        }
+        return number
     }
 }
 

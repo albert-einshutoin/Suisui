@@ -50,6 +50,30 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(selected, reason: .selectedProject))
     }
 
+    func testGivenTaskAndProjectSelectionsWhenProjectQualifiedPronounThenUsesProject() {
+        let selectedTask = ConversationResolvedTarget.task(id: 45, projectID: 17)
+        let selectedProject = ConversationResolvedTarget.project(id: 17)
+        let candidates = [
+            candidate(taskID: 45, projectID: 17, title: "Selected task"),
+            ConversationReferenceCandidate(
+                target: selectedProject,
+                title: "Launch",
+                stableSortKey: "project-17"
+            ),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "that project",
+                selectedTask: selectedTask,
+                selectedProject: selectedProject,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(selectedProject, reason: .selectedProject))
+    }
+
     func testGivenPreviousActionLinkWhenSoreReferenceThenResolvesCreatedTask() throws {
         let link = try ConversationActionLink(
             sessionID: sessionID,
@@ -130,6 +154,33 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .needsClarification(reorderedCandidates))
     }
 
+    func testGivenTaskTitleStartingWithOrdinalWordWhenResolveThenUsesNamedTask() throws {
+        let candidates = [
+            candidate(taskID: 54, projectID: 9, title: "Other"),
+            candidate(taskID: 55, projectID: 9, title: "First aid"),
+        ]
+        let fingerprint = VoiceTaskReferenceResolver.orderingFingerprint(for: candidates)
+        let priorOrdinal = try ordinalReference(
+            target: .task(54),
+            ordinal: 0,
+            fingerprint: fingerprint
+        )
+
+        let result = resolver.resolve(
+            request(
+                utterance: "open First aid",
+                ordinalReference: priorOrdinal,
+                candidateOrderingFingerprint: fingerprint,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(
+            result,
+            .resolved(.task(id: 55, projectID: 9), reason: .uniqueCandidate)
+        )
+    }
+
     func testGivenDeletedTaskWhenResolveThenReturnsUnavailable() {
         let target = ConversationResolvedTarget.task(id: 61, projectID: 10)
         let result = resolver.resolve(
@@ -161,6 +212,25 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         )
 
         XCTAssertEqual(result, .needsClarification(candidates))
+    }
+
+    func testGivenTaskTitleContainingThatWhenResolveThenDoesNotUseSelection() {
+        let selected = ConversationResolvedTarget.task(id: 73, projectID: 12)
+        let named = ConversationResolvedTarget.task(id: 74, projectID: 12)
+        let candidates = [
+            candidate(taskID: 73, projectID: 12, title: "Selected"),
+            candidate(taskID: 74, projectID: 12, title: "Thatched Roof"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "open Thatched Roof",
+                selectedTask: selected,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(named, reason: .uniqueCandidate))
     }
 
     func testGivenExpiredReferenceWhenResolveThenDoesNotUseIt() throws {
