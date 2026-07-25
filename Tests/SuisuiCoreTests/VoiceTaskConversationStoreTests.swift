@@ -398,11 +398,12 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
             expiresAt: turn.createdAt.addingTimeInterval(3_600),
             createdAt: turn.createdAt
         )
-        let fact = try TaskContextFact(
+        let factHistory = try policyConfirmationHistory(
+            TaskContextFact(
             sessionID: session.id,
             kind: .constraint,
             scope: .task(42),
-            state: .confirmed,
+            state: .proposed,
             value: "Ship after signing",
             sourceTurnID: turn.id,
             sourceExcerptDigest: String(repeating: "a", count: 64),
@@ -410,7 +411,9 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
             author: .userExplicit,
             expiresAt: turn.createdAt.addingTimeInterval(3_600),
             createdAt: turn.createdAt
+            )
         )
+        let fact = factHistory.confirmed
         let actionLink = try ConversationActionLink(
             sessionID: session.id,
             sourceTurnID: turn.id,
@@ -424,17 +427,31 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
         )
 
         try store.saveReference(reference)
-        try store.saveFact(fact)
+        try store.saveFact(
+            try TaskContextFactPolicy().persistenceWrite(for: factHistory.proposed)
+        )
+        try store.saveFact(
+            try TaskContextFactPolicy().persistenceWrite(for: fact)
+        )
         try store.saveActionLink(actionLink)
 
         XCTAssertEqual(try connection.queryStrings("SELECT target_kind FROM voice_task_conversation_references;"), ["task"])
-        XCTAssertEqual(try connection.queryStrings("SELECT scope_kind FROM task_context_facts;"), ["task"])
         XCTAssertEqual(
-            try connection.queryStrings("SELECT source_excerpt_digest FROM task_context_facts;"),
+            try connection.queryStrings(
+                "SELECT scope_kind FROM task_context_facts WHERE state = 'confirmed';"
+            ),
+            ["task"]
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT source_excerpt_digest FROM task_context_facts WHERE state = 'confirmed';"
+            ),
             [String(repeating: "a", count: 64)]
         )
         XCTAssertEqual(
-            try connection.queryStrings("SELECT expires_at FROM task_context_facts;"),
+            try connection.queryStrings(
+                "SELECT expires_at FROM task_context_facts WHERE state = 'confirmed';"
+            ),
             [String(turn.createdAt.addingTimeInterval(3_600).timeIntervalSinceReferenceDate)]
         )
         XCTAssertEqual(try connection.queryStrings("SELECT action_plan_id FROM conversation_action_links;"), ["plan-1"])
@@ -458,18 +475,21 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
             VALUES (62, 61, 'Delete target', 'planned', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
             """
         )
-        let fact = try TaskContextFact(
+        let factHistory = try policyConfirmationHistory(
+            TaskContextFact(
             sessionID: session.id,
             kind: .constraint,
             scope: .task(62),
-            state: .confirmed,
+            state: .proposed,
             value: "Keep provenance",
             sourceTurnID: turn.id,
             sourceExcerptDigest: String(repeating: "b", count: 64),
             confidence: 1,
             author: .userExplicit,
             createdAt: turn.createdAt
+            )
         )
+        let fact = factHistory.confirmed
         let link = try ConversationActionLink(
             sessionID: session.id,
             sourceTurnID: turn.id,
@@ -477,7 +497,12 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
             reviewedFingerprint: "stable-task-link",
             createdAt: turn.createdAt
         )
-        try store.saveFact(fact)
+        try store.saveFact(
+            try TaskContextFactPolicy().persistenceWrite(for: factHistory.proposed)
+        )
+        try store.saveFact(
+            try TaskContextFactPolicy().persistenceWrite(for: fact)
+        )
         try store.saveActionLink(link)
 
         try connection.execute("DELETE FROM tasks WHERE id = 62;")
@@ -589,19 +614,27 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
                 createdAt: turn.createdAt
             )
         )
-        let fact = try TaskContextFact(
+        let factHistory = try policyConfirmationHistory(
+            TaskContextFact(
             sessionID: session.id,
             kind: .goal,
             scope: .task(52),
-            state: .confirmed,
+            state: .proposed,
             value: "Release safely",
             sourceTurnID: turn.id,
             sourceExcerptDigest: String(repeating: "c", count: 64),
             confidence: 1,
             author: .userExplicit,
             createdAt: turn.createdAt
+            )
         )
-        try store.saveFact(fact)
+        let fact = factHistory.confirmed
+        try store.saveFact(
+            try TaskContextFactPolicy().persistenceWrite(for: factHistory.proposed)
+        )
+        try store.saveFact(
+            try TaskContextFactPolicy().persistenceWrite(for: fact)
+        )
         try store.saveActionLink(
             ConversationActionLink(
                 sessionID: session.id,
@@ -663,6 +696,30 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
             userConfirmedText: "Sign the release",
             createdAt: createdAt
         )
+    }
+
+    private func policyConfirmationHistory(
+        _ proposed: TaskContextFact
+    ) throws -> (proposed: TaskContextFact, confirmed: TaskContextFact) {
+        let policy = TaskContextFactPolicy()
+        let candidate = TaskContextFactCandidate(
+            sessionID: proposed.sessionID,
+            kind: proposed.kind,
+            scope: proposed.scope,
+            scopeAssessment: .unique,
+            value: proposed.value,
+            sourceTurnID: proposed.sourceTurnID,
+            sourceExcerptDigest: proposed.sourceExcerptDigest,
+            confidence: proposed.confidence,
+            author: proposed.author,
+            conflictingConfirmedFactIDs: [],
+            contentCategory: .taskContext,
+            createdAt: proposed.createdAt,
+            expiresAt: proposed.expiresAt
+        )
+        let authorized = try policy.reauthorize(proposed, from: candidate)
+        let confirmed = try policy.confirm(authorized, at: proposed.createdAt)
+        return (authorized, confirmed)
     }
 
     private func sessionWithRecordedTurn(

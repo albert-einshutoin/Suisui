@@ -81,7 +81,7 @@ public protocol VoiceTaskConversationStore: Sendable {
         limit: Int
     ) throws -> VoiceTaskConversationTurnPage
     func saveReference(_ reference: ConversationReference) throws
-    func saveFact(_ fact: TaskContextFact) throws
+    func saveFact(_ write: TaskContextFactWrite) throws
     func saveActionLink(_ link: ConversationActionLink) throws
     func deleteSession(
         id: UUID,

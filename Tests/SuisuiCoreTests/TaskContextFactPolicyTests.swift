@@ -166,7 +166,6 @@ final class TaskContextFactPolicyTests: XCTestCase {
         )
         let replacement = try makeFact(
             state: .proposed,
-            scope: .task(43),
             value: "Launch Friday",
             sourceTurnID: replacementTurnID,
             digest: String(repeating: "c", count: 64)
@@ -189,6 +188,217 @@ final class TaskContextFactPolicyTests: XCTestCase {
         XCTAssertEqual(corrected.sourceTurnID, replacementTurnID)
         XCTAssertEqual(corrected.supersedesFactID, old.id)
         XCTAssertNotEqual(corrected.id, replacement.id)
+    }
+
+    func testGivenCrossTaskCorrectionWhenSupersedeThenRejectsTransition() throws {
+        let old = try makeFact(state: .confirmed, scope: .task(42))
+        let replacement = try makeFact(state: .proposed, scope: .task(43))
+
+        XCTAssertThrowsError(
+            try policy.supersede(
+                old,
+                with: replacement,
+                at: createdAt.addingTimeInterval(10)
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationDomainError,
+                .incompatibleFactTransition
+            )
+        }
+    }
+
+    func testGivenUntrustedFactWhenRequestPersistenceWriteThenRejects() throws {
+        let fact = try makeFact(state: .proposed, authorized: false)
+
+        XCTAssertThrowsError(try policy.persistenceWrite(for: fact)) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationDomainError,
+                .unauthorizedFactPersistence
+            )
+        }
+    }
+
+    func testGivenPolicyCandidateWhenRequestPersistenceWriteThenReturnsCapability() throws {
+        let candidate = makeCandidate(
+            kind: .goal,
+            value: "Ship safely",
+            author: .userExplicit
+        )
+        guard case let .saveCandidate(fact) = policy.evaluate(candidate) else {
+            return XCTFail("Expected policy-authorized candidate.")
+        }
+
+        let write = try policy.persistenceWrite(for: fact)
+
+        XCTAssertEqual(write.fact, fact)
+    }
+
+    func testGivenSerializedPolicyFactWhenReauthorizeThenConfirmationCanContinue() throws {
+        let candidate = makeCandidate(
+            kind: .constraint,
+            value: "Confirm this provider constraint",
+            author: .providerInferred
+        )
+        guard case let .requireConfirmation(fact, _) = policy.evaluate(candidate) else {
+            return XCTFail("Expected provider inference to require confirmation.")
+        }
+        let restored = try JSONDecoder().decode(
+            TaskContextFact.self,
+            from: JSONEncoder().encode(fact)
+        )
+        XCTAssertEqual(restored, fact)
+
+        let reauthorized = try policy.reauthorize(restored, from: candidate)
+        let confirmed = try policy.confirm(
+            reauthorized,
+            at: createdAt.addingTimeInterval(1)
+        )
+
+        XCTAssertEqual(confirmed.state, .confirmed)
+        XCTAssertNoThrow(try policy.persistenceWrite(for: confirmed))
+
+        let restoredConfirmed = try JSONDecoder().decode(
+            TaskContextFact.self,
+            from: JSONEncoder().encode(confirmed)
+        )
+        let reauthorizedConfirmed = try policy.reauthorize(
+            restoredConfirmed,
+            from: candidate,
+            predecessor: restored
+        )
+        XCTAssertNoThrow(
+            try policy.supersede(
+                reauthorizedConfirmed,
+                with: reauthorized,
+                at: createdAt.addingTimeInterval(2)
+            )
+        )
+    }
+
+    func testGivenProhibitedCandidateWhenReauthorizeThenRejects() throws {
+        let fact = try makeFact(state: .proposed, authorized: false)
+        let prohibited = makeCandidate(
+            kind: .constraint,
+            value: fact.value,
+            author: .userExplicit,
+            contentCategory: .health
+        )
+
+        XCTAssertThrowsError(try policy.reauthorize(fact, from: prohibited)) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationDomainError,
+                .unauthorizedFactPersistence
+            )
+        }
+    }
+
+    func testGivenHandBuiltSupersessionWhenReauthorizeThenRejects() throws {
+        let candidate = makeCandidate(
+            kind: .constraint,
+            value: "Do not forge history",
+            author: .userExplicit
+        )
+        let forged = try TaskContextFact(
+            sessionID: candidate.sessionID,
+            kind: candidate.kind,
+            scope: candidate.scope,
+            state: .proposed,
+            value: candidate.value,
+            sourceTurnID: try XCTUnwrap(candidate.sourceTurnID),
+            sourceExcerptDigest: try XCTUnwrap(candidate.sourceExcerptDigest),
+            confidence: candidate.confidence,
+            author: candidate.author,
+            supersedesFactID: UUID(),
+            createdAt: candidate.createdAt
+        )
+
+        XCTAssertThrowsError(try policy.reauthorize(forged, from: candidate)) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationDomainError,
+                .unauthorizedFactPersistence
+            )
+        }
+    }
+
+    func testGivenSerializedTransitionsWhenReauthorizeThenAllHistoryRemainsPersistable() throws {
+        let oldCandidate = makeCandidate(
+            kind: .constraint,
+            value: "Launch Thursday",
+            author: .userExplicit,
+            expiresAt: createdAt.addingTimeInterval(5)
+        )
+        guard case let .saveCandidate(oldProposed) = policy.evaluate(oldCandidate) else {
+            return XCTFail("Expected an authorized old proposal.")
+        }
+        let oldConfirmed = try policy.confirm(
+            oldProposed,
+            at: createdAt.addingTimeInterval(1)
+        )
+        let rejected = try policy.reject(
+            oldProposed,
+            at: createdAt.addingTimeInterval(1)
+        )
+        let expired = try policy.expire(
+            oldConfirmed,
+            at: createdAt.addingTimeInterval(5)
+        )
+
+        let replacementCandidate = makeCandidate(
+            kind: .constraint,
+            value: "Launch Friday",
+            author: .userExplicit,
+            sourceTurnID: UUID(),
+            sourceExcerptDigest: String(repeating: "d", count: 64),
+            candidateCreatedAt: createdAt.addingTimeInterval(2)
+        )
+        guard case let .saveCandidate(replacement) = policy.evaluate(replacementCandidate) else {
+            return XCTFail("Expected an authorized replacement proposal.")
+        }
+        let correction = try policy.supersede(
+            oldConfirmed,
+            with: replacement,
+            at: createdAt.addingTimeInterval(3)
+        )
+
+        let restoredOldProposed = try roundTrip(oldProposed)
+        let restoredOldConfirmed = try roundTrip(oldConfirmed)
+        let restoredRejected = try roundTrip(rejected)
+        let restoredExpired = try roundTrip(expired)
+        let restoredReplacement = try roundTrip(replacement)
+        let restoredSuperseded = try roundTrip(correction.0)
+        let restoredCorrected = try roundTrip(correction.1)
+
+        XCTAssertNoThrow(
+            try policy.persistenceWrite(
+                for: policy.reauthorize(
+                    restoredRejected,
+                    from: oldCandidate,
+                    predecessor: restoredOldProposed
+                )
+            )
+        )
+        XCTAssertNoThrow(
+            try policy.persistenceWrite(
+                for: policy.reauthorizeExpiration(
+                    restoredExpired,
+                    confirmed: restoredOldConfirmed,
+                    proposed: restoredOldProposed,
+                    candidate: oldCandidate
+                )
+            )
+        )
+        let restoredCorrection = try policy.reauthorizeSupersession(
+            superseded: restoredSuperseded,
+            corrected: restoredCorrected,
+            oldConfirmed: restoredOldConfirmed,
+            oldProposed: restoredOldProposed,
+            oldCandidate: oldCandidate,
+            replacementProposed: restoredReplacement,
+            replacementCandidate: replacementCandidate
+        )
+        XCTAssertNoThrow(try policy.persistenceWrite(for: restoredCorrection.0))
+        XCTAssertNoThrow(try policy.persistenceWrite(for: restoredCorrection.1))
     }
 
     func testGivenRejectedFactWhenAssembleContextThenIsNotEligible() throws {
@@ -361,7 +571,9 @@ final class TaskContextFactPolicyTests: XCTestCase {
         includeEvidence: Bool = true,
         scopeAssessment: TaskContextFactScopeAssessment = .unique,
         conflictingConfirmedFactIDs: [UUID] = [],
-        contentCategory: TaskContextFactContentCategory = .taskContext
+        contentCategory: TaskContextFactContentCategory = .taskContext,
+        candidateCreatedAt: Date? = nil,
+        expiresAt: Date? = nil
     ) -> TaskContextFactCandidate {
         TaskContextFactCandidate(
             sessionID: sessionID,
@@ -375,7 +587,15 @@ final class TaskContextFactPolicyTests: XCTestCase {
             author: author,
             conflictingConfirmedFactIDs: conflictingConfirmedFactIDs,
             contentCategory: contentCategory,
-            createdAt: createdAt
+            createdAt: candidateCreatedAt ?? createdAt,
+            expiresAt: expiresAt
+        )
+    }
+
+    private func roundTrip(_ fact: TaskContextFact) throws -> TaskContextFact {
+        try JSONDecoder().decode(
+            TaskContextFact.self,
+            from: JSONEncoder().encode(fact)
         )
     }
 
@@ -385,13 +605,14 @@ final class TaskContextFactPolicyTests: XCTestCase {
         value: String = "Release after signing",
         sourceTurnID: UUID? = nil,
         digest: String? = nil,
-        expiresAt: Date? = nil
+        expiresAt: Date? = nil,
+        authorized: Bool = true
     ) throws -> TaskContextFact {
-        try TaskContextFact(
+        let fact = try TaskContextFact(
             sessionID: sessionID,
             kind: .constraint,
             scope: scope,
-            state: state,
+            state: authorized ? .proposed : state,
             value: value,
             sourceTurnID: sourceTurnID ?? turnID,
             sourceExcerptDigest: digest ?? self.digest,
@@ -400,5 +621,34 @@ final class TaskContextFactPolicyTests: XCTestCase {
             expiresAt: expiresAt,
             createdAt: createdAt
         )
+        guard authorized else {
+            return fact
+        }
+        let candidate = TaskContextFactCandidate(
+            sessionID: fact.sessionID,
+            kind: fact.kind,
+            scope: fact.scope,
+            scopeAssessment: .unique,
+            value: fact.value,
+            sourceTurnID: fact.sourceTurnID,
+            sourceExcerptDigest: fact.sourceExcerptDigest,
+            confidence: fact.confidence,
+            author: fact.author,
+            conflictingConfirmedFactIDs: [],
+            contentCategory: .taskContext,
+            createdAt: fact.createdAt,
+            expiresAt: fact.expiresAt
+        )
+        let authorizedFact = try policy.reauthorize(fact, from: candidate)
+        switch state {
+        case .proposed:
+            return authorizedFact
+        case .confirmed:
+            return try policy.confirm(authorizedFact, at: createdAt)
+        case .rejected:
+            return try policy.reject(authorizedFact, at: createdAt)
+        case .retracted, .superseded, .expired:
+            throw VoiceTaskConversationDomainError.incompatibleFactTransition
+        }
     }
 }

@@ -300,6 +300,35 @@ final class VoiceTaskConversationDomainTests: XCTestCase {
         }
     }
 
+    func testLegacyFactPayloadDecodesAsUnverifiedAndCannotEnterLongTermContext() throws {
+        let fact = try makeFact(id: factID)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let encoded = try encoder.encode(fact)
+        var payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        payload.removeValue(forKey: "sourceExcerptDigest")
+        payload.removeValue(forKey: "sourceEvidenceVerified")
+        payload["author"] = "system_derived"
+
+        let legacyData = try JSONSerialization.data(withJSONObject: payload)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(TaskContextFact.self, from: legacyData)
+
+        XCTAssertEqual(decoded.author, .deterministic)
+        XCTAssertFalse(decoded.sourceEvidenceVerified)
+        XCTAssertFalse(decoded.isEligibleForLongTermContext(at: createdAt))
+
+        let roundTripped = try decoder.decode(
+            TaskContextFact.self,
+            from: encoder.encode(decoded)
+        )
+        XCTAssertFalse(roundTripped.sourceEvidenceVerified)
+        XCTAssertFalse(roundTripped.isEligibleForLongTermContext(at: createdAt))
+    }
+
     private func makeFact(
         id: UUID,
         confidence: Double = 0.8,

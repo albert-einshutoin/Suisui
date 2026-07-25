@@ -20,6 +20,7 @@ public enum VoiceTaskConversationDomainError: Error, Equatable, Sendable {
     case invalidFactExpiration
     case invalidFactScope
     case incompatibleFactTransition
+    case unauthorizedFactPersistence
 }
 
 public enum VoiceTaskConversationSessionState: String, Codable, Equatable, Hashable, Sendable {
@@ -466,11 +467,15 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
     /// instead of raw audio/transcript evidence prevents Task Context from
     /// becoming a second transcript store.
     public let sourceExcerptDigest: String
+    /// Legacy payloads without an excerpt digest remain readable for migration
+    /// but can never become long-term context or an authorized Store write.
+    public let sourceEvidenceVerified: Bool
     public let confidence: Double
     public let author: TaskContextFactAuthor
     public let supersedesFactID: UUID?
     public let expiresAt: Date?
     public let createdAt: Date
+    let persistenceAuthorized: Bool
 
     public init(
         id: UUID = UUID(),
@@ -530,15 +535,68 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
         self.value = value
         self.sourceTurnID = sourceTurnID
         self.sourceExcerptDigest = normalizedDigest
+        sourceEvidenceVerified = true
         self.confidence = confidence
         self.author = author
         self.supersedesFactID = supersedesFactID
         self.expiresAt = expiresAt
         self.createdAt = createdAt
+        persistenceAuthorized = false
     }
 
     public func isEligibleForLongTermContext(at date: Date = Date()) -> Bool {
-        state == .confirmed && (expiresAt.map { date < $0 } ?? true)
+        sourceEvidenceVerified
+            && state == .confirmed
+            && (expiresAt.map { date < $0 } ?? true)
+    }
+
+    func authorizingPersistence(
+        using _: TaskContextFactAuthorizationToken
+    ) -> TaskContextFact {
+        TaskContextFact(
+            validated: self,
+            sourceEvidenceVerified: sourceEvidenceVerified,
+            persistenceAuthorized: true
+        )
+    }
+
+    private init(
+        validated fact: TaskContextFact,
+        sourceEvidenceVerified: Bool,
+        persistenceAuthorized: Bool
+    ) {
+        id = fact.id
+        sessionID = fact.sessionID
+        kind = fact.kind
+        scope = fact.scope
+        state = fact.state
+        value = fact.value
+        sourceTurnID = fact.sourceTurnID
+        sourceExcerptDigest = fact.sourceExcerptDigest
+        self.sourceEvidenceVerified = sourceEvidenceVerified
+        confidence = fact.confidence
+        author = fact.author
+        supersedesFactID = fact.supersedesFactID
+        expiresAt = fact.expiresAt
+        createdAt = fact.createdAt
+        self.persistenceAuthorized = persistenceAuthorized
+    }
+
+    public static func == (lhs: TaskContextFact, rhs: TaskContextFact) -> Bool {
+        lhs.id == rhs.id
+            && lhs.sessionID == rhs.sessionID
+            && lhs.kind == rhs.kind
+            && lhs.scope == rhs.scope
+            && lhs.state == rhs.state
+            && lhs.value == rhs.value
+            && lhs.sourceTurnID == rhs.sourceTurnID
+            && lhs.sourceExcerptDigest == rhs.sourceExcerptDigest
+            && lhs.sourceEvidenceVerified == rhs.sourceEvidenceVerified
+            && lhs.confidence == rhs.confidence
+            && lhs.author == rhs.author
+            && lhs.supersedesFactID == rhs.supersedesFactID
+            && lhs.expiresAt == rhs.expiresAt
+            && lhs.createdAt == rhs.createdAt
     }
 
     public static func validateSupersessionGraph(_ facts: [TaskContextFact]) throws {
@@ -575,6 +633,7 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
         case value
         case sourceTurnID
         case sourceExcerptDigest
+        case sourceEvidenceVerified
         case confidence
         case author
         case supersedesFactID
@@ -584,7 +643,11 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        try self.init(
+        let decodedDigest = try values.decodeIfPresent(
+            String.self,
+            forKey: .sourceExcerptDigest
+        )
+        let base = try TaskContextFact(
             id: values.decode(UUID.self, forKey: .id),
             sessionID: values.decode(UUID.self, forKey: .sessionID),
             kind: values.decode(TaskContextFactKind.self, forKey: .kind),
@@ -592,13 +655,43 @@ public struct TaskContextFact: Identifiable, Codable, Equatable, Sendable {
             state: values.decode(TaskContextFactState.self, forKey: .state),
             value: values.decode(String.self, forKey: .value),
             sourceTurnID: values.decode(UUID.self, forKey: .sourceTurnID),
-            sourceExcerptDigest: values.decode(String.self, forKey: .sourceExcerptDigest),
+            sourceExcerptDigest: decodedDigest ?? String(repeating: "0", count: 64),
             confidence: values.decode(Double.self, forKey: .confidence),
             author: values.decode(TaskContextFactAuthor.self, forKey: .author),
             supersedesFactID: values.decodeIfPresent(UUID.self, forKey: .supersedesFactID),
             expiresAt: values.decodeIfPresent(Date.self, forKey: .expiresAt),
             createdAt: values.decode(Date.self, forKey: .createdAt)
         )
+        let declaredEvidenceState = try values.decodeIfPresent(
+            Bool.self,
+            forKey: .sourceEvidenceVerified
+        )
+        self = TaskContextFact(
+            validated: base,
+            sourceEvidenceVerified: decodedDigest != nil
+                && (declaredEvidenceState ?? true),
+            persistenceAuthorized: false
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(sessionID, forKey: .sessionID)
+        try values.encode(kind, forKey: .kind)
+        try values.encode(scope, forKey: .scope)
+        try values.encode(state, forKey: .state)
+        try values.encode(value, forKey: .value)
+        try values.encode(sourceTurnID, forKey: .sourceTurnID)
+        if sourceEvidenceVerified {
+            try values.encode(sourceExcerptDigest, forKey: .sourceExcerptDigest)
+        }
+        try values.encode(sourceEvidenceVerified, forKey: .sourceEvidenceVerified)
+        try values.encode(confidence, forKey: .confidence)
+        try values.encode(author, forKey: .author)
+        try values.encodeIfPresent(supersedesFactID, forKey: .supersedesFactID)
+        try values.encodeIfPresent(expiresAt, forKey: .expiresAt)
+        try values.encode(createdAt, forKey: .createdAt)
     }
 }
 
