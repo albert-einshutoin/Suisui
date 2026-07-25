@@ -485,19 +485,17 @@ public struct VoiceTaskReferenceResolver: Sendable {
             )
         }
 
-        // Japanese titles generally have no whitespace token boundary. For
-        // short titles, a command particle supplies the boundary without
-        // accepting prefixes inside a longer word (for example, 会 in 会議).
-        if normalizedTitle.count < 3 {
-            let escapedTitle = NSRegularExpression.escapedPattern(
-                for: normalizedTitle
-            )
-            return matches(
-                #"(?<![\p{L}\p{N}_])\#(escapedTitle)(?=$|[\sをにのはがへでと、。！？])"#,
-                in: normalizedUtterance
-            )
-        }
-        return normalizedUtterance.contains(normalizedTitle)
+        // Japanese titles generally have no whitespace token boundary. A
+        // command particle supplies the trailing boundary for every title
+        // length, preventing matches inside longer compounds such as
+        // "会議室" in "会議室予約".
+        let escapedTitle = NSRegularExpression.escapedPattern(
+            for: normalizedTitle
+        )
+        return matches(
+            #"(?<![\p{L}\p{N}_])\#(escapedTitle)(?=$|[\sをにのはがへでと、。！？])"#,
+            in: normalizedUtterance
+        )
     }
 
     private func isDirectNamedCommand(

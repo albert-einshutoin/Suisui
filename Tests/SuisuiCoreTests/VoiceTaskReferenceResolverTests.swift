@@ -1104,6 +1104,18 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .needsClarification(candidates))
     }
 
+    func testGivenLongJapaneseTitleInsideCompoundThenDoesNotResolve() {
+        let candidates = [
+            candidate(taskID: 749, projectID: 12, title: "会議室"),
+        ]
+
+        let result = resolver.resolve(
+            request(utterance: "会議室予約を削除して", candidates: candidates)
+        )
+
+        XCTAssertEqual(result, .needsClarification(candidates))
+    }
+
     func testGivenProjectQualifiedTaskTitleWhenResolveThenDoesNotResolveTask() {
         let candidates = [
             candidate(taskID: 745, projectID: 12, title: "Alpha"),
