@@ -213,6 +213,41 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(.project(id: 23), reason: .stableOrdinal))
     }
 
+    func testGivenProjectQualifiedOrdinalPointingAtTaskThenClarifiesProjects() throws {
+        let projectCandidates = [
+            ConversationReferenceCandidate(
+                target: .project(id: 24),
+                title: "First project",
+                stableSortKey: "project-24"
+            ),
+            ConversationReferenceCandidate(
+                target: .project(id: 25),
+                title: "Second project",
+                stableSortKey: "project-25"
+            ),
+        ]
+        let candidates = projectCandidates + [
+            candidate(taskID: 26, projectID: 25, title: "Third task"),
+        ]
+        let fingerprint = VoiceTaskReferenceResolver.orderingFingerprint(for: candidates)
+        let staleReference = try ordinalReference(
+            target: .task(26),
+            ordinal: 2,
+            fingerprint: fingerprint
+        )
+
+        let result = resolver.resolve(
+            request(
+                utterance: "the third project",
+                ordinalReference: staleReference,
+                candidateOrderingFingerprint: fingerprint,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification(projectCandidates))
+    }
+
     func testGivenReorderedCandidatesWhenResolveThirdThenRequiresClarification() throws {
         let originalCandidates = [
             candidate(taskID: 51, projectID: 9, title: "First"),

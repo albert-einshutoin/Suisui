@@ -162,6 +162,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
 
         let normalizedUtterance = normalize(request.utterance)
         let ordinal = ordinalIndex(in: normalizedUtterance)
+        let ordinalTargetKind = ordinalTargetKind(in: normalizedUtterance)
         let isAnaphoric = isAnaphoricReference(normalizedUtterance)
         let isProjectReference = mentionsProjectReference(normalizedUtterance)
         let isRecentActionReference = mentionsRecentAction(normalizedUtterance)
@@ -211,6 +212,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
         if let ordinal {
             return resolveOrdinal(
                 ordinal,
+                targetKind: ordinalTargetKind,
                 request: request
             )
         }
@@ -242,6 +244,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
 
     private func resolveOrdinal(
         _ ordinal: Int,
+        targetKind: OrdinalTargetKind,
         request: VoiceTaskReferenceRequest
     ) -> VoiceTaskReferenceResolution {
         guard let reference = request.ordinalReference else {
@@ -264,6 +267,13 @@ public struct VoiceTaskReferenceResolver: Sendable {
         }
 
         let candidate = request.candidates[ordinal]
+        guard targetKind.matches(candidate.target) else {
+            return .needsClarification(
+                request.candidates.filter {
+                    targetKind.matches($0.target)
+                }
+            )
+        }
         guard candidate.target.matches(reference.target) else {
             return .needsClarification(request.candidates)
         }
@@ -386,6 +396,21 @@ public struct VoiceTaskReferenceResolver: Sendable {
         return nil
     }
 
+    private func ordinalTargetKind(in normalizedUtterance: String) -> OrdinalTargetKind {
+        if matches(#"\bproject\b"#, in: normalizedUtterance)
+            || normalizedUtterance.contains("プロジェクト")
+            || normalizedUtterance.contains("案件")
+        {
+            return .project
+        }
+        if matches(#"\btask\b"#, in: normalizedUtterance)
+            || normalizedUtterance.contains("タスク")
+        {
+            return .task
+        }
+        return .any
+    }
+
     private func isAnaphoricReference(_ value: String) -> Bool {
         isJapaneseAnaphor("それ", in: value)
             || isJapaneseAnaphor("あれ", in: value)
@@ -448,6 +473,23 @@ public struct VoiceTaskReferenceResolver: Sendable {
     }
 }
 
+private enum OrdinalTargetKind {
+    case any
+    case task
+    case project
+
+    func matches(_ target: ConversationResolvedTarget) -> Bool {
+        switch self {
+        case .any:
+            true
+        case .task:
+            target.isTask
+        case .project:
+            target.isProject
+        }
+    }
+}
+
 private extension ConversationResolvedTarget {
     var stableIdentityKey: String {
         switch self {
@@ -485,6 +527,13 @@ private extension ConversationResolvedTarget {
 
     var isProject: Bool {
         guard case .project = self else {
+            return false
+        }
+        return true
+    }
+
+    var isTask: Bool {
+        guard case .task = self else {
             return false
         }
         return true
