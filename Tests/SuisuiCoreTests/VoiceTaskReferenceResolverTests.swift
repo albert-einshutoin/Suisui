@@ -248,6 +248,28 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(selected, reason: .selectedProject))
     }
 
+    func testGivenJapaneseProjectTargetAndTrailingTaskNounThenUsesProject() {
+        let selectedProject = ConversationResolvedTarget.project(id: 173)
+        let candidates = [
+            ConversationReferenceCandidate(
+                target: selectedProject,
+                title: "Launch",
+                stableSortKey: "project-173"
+            ),
+            candidate(taskID: 174, projectID: 173, title: "Task candidate"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "このプロジェクトにはタスクがないので削除して",
+                selectedProject: selectedProject,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(selectedProject, reason: .selectedProject))
+    }
+
     func testGivenBareAnaphorAndSelectedProjectThenSelectionBeatsTaskLink() throws {
         let selectedProject = ConversationResolvedTarget.project(id: 171)
         let linkedTask = ConversationResolvedTarget.task(id: 172, projectID: 171)
@@ -989,6 +1011,27 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         )
 
         XCTAssertEqual(result, .needsClarification(projectCandidates))
+    }
+
+    func testGivenProjectOrdinalWithoutReferenceThenClarifiesProjectsOnly() {
+        let projectCandidate = ConversationReferenceCandidate(
+            target: .project(id: 251),
+            title: "Project",
+            stableSortKey: "project-251"
+        )
+        let candidates = [
+            candidate(taskID: 252, projectID: 251, title: "Task"),
+            projectCandidate,
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "the second project",
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification([projectCandidate]))
     }
 
     func testGivenOrdinalTaskInsideNamedProjectWhenResolveThenUsesTaskKind() throws {

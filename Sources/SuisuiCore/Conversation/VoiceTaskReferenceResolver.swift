@@ -344,8 +344,11 @@ public struct VoiceTaskReferenceResolver: Sendable {
         targetKind: RequestedTargetKind,
         request: VoiceTaskReferenceRequest
     ) -> VoiceTaskReferenceResolution {
+        let targetKindCandidates = request.candidates.filter {
+            targetKind.matches($0.target)
+        }
         guard let reference = request.ordinalReference else {
-            return .needsClarification(request.candidates)
+            return .needsClarification(targetKindCandidates)
         }
         guard reference.sessionID == request.sessionID else {
             return .unavailable(.staleReference)
@@ -360,7 +363,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
               request.candidateOrderingFingerprint == reference.orderingFingerprint,
               request.candidates.indices.contains(ordinal)
         else {
-            return .needsClarification(request.candidates)
+            return .needsClarification(targetKindCandidates)
         }
 
         let candidate = request.candidates[ordinal]
@@ -372,7 +375,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
             )
         }
         guard candidate.target.matches(reference.target) else {
-            return .needsClarification(request.candidates)
+            return .needsClarification(targetKindCandidates)
         }
         return resolveCandidate(candidate, reason: .stableOrdinal)
     }
@@ -713,6 +716,17 @@ public struct VoiceTaskReferenceResolver: Sendable {
         ) {
             return .project
         }
+        // Japanese places the target before the operation. Prefer the leading
+        // target phrase so a noun in a reason clause cannot change its kind.
+        if matches(
+            #"^(?:(?:この|その|あの)\s*)?(?:プロジェクト|案件)(?:を|は|が|に|へ)"#,
+            in: normalizedUtterance
+        ) || matches(
+            #"^さっき.*(?:プロジェクト|案件)(?:を|は|が|に|へ)"#,
+            in: normalizedUtterance
+        ) {
+            return .project
+        }
         // Infer an English Task kind only from the command object. A Task may
         // still be qualified by its containing project ("second task in
         // project Alpha"), but a Task noun in a trailing clause must not
@@ -720,7 +734,13 @@ public struct VoiceTaskReferenceResolver: Sendable {
         if matches(
             #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?)?(?:the\s+)?(?:(?:this|that|current)(?:\s+(?!(?:we|i|you|they|he|she|it|the|a|an|so|which|who|to|for|because|since|after|before|when|while|if)\b)[\p{L}\p{N}_-]+){0,3}\s+|(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|[0-9]+(?:st|nd|rd|th)?)\s+)?task\b"#,
             in: normalizedUtterance
-        ) || normalizedUtterance.contains("タスク")
+        ) || matches(
+            #"^(?:(?:この|その|あの)\s*)?タスク(?:を|は|が|に|へ)"#,
+            in: normalizedUtterance
+        ) || matches(
+            #"^さっき.*タスク(?:を|は|が|に|へ)"#,
+            in: normalizedUtterance
+        )
         {
             return .task
         }
@@ -729,11 +749,6 @@ public struct VoiceTaskReferenceResolver: Sendable {
         // project.
         if mentionsProjectContainerClause(normalizedUtterance) {
             return .any
-        }
-        if normalizedUtterance.contains("プロジェクト")
-            || normalizedUtterance.contains("案件")
-        {
-            return .project
         }
         return .any
     }
