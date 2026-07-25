@@ -371,15 +371,51 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             stableSortKey: "project-181"
         )
 
+        for utterance in [
+            "delete this old project",
+            "please delete this old project",
+            "could you please delete this old project",
+        ] {
+            XCTAssertEqual(
+                resolver.resolve(
+                    request(
+                        utterance: utterance,
+                        selectedProject: selectedProject,
+                        candidates: [candidate]
+                    )
+                ),
+                .resolved(selectedProject, reason: .selectedProject),
+                utterance
+            )
+        }
+    }
+
+    func testGivenIncidentalProjectClauseWhenDeletingThisThenDoesNotSelectProject() {
+        let selectedTask = ConversationResolvedTarget.task(id: 462, projectID: 18)
+        let selectedProject = ConversationResolvedTarget.project(id: 18)
+        let candidates = [
+            candidate(taskID: 462, projectID: 18, title: "Selected task"),
+            ConversationReferenceCandidate(
+                target: selectedProject,
+                title: "Launch",
+                stableSortKey: "project-18"
+            ),
+        ]
+
         let result = resolver.resolve(
             request(
-                utterance: "delete this old project",
+                utterance: "delete this so that we unblock the project",
+                selectedTask: selectedTask,
                 selectedProject: selectedProject,
-                candidates: [candidate]
+                candidates: candidates
             )
         )
 
-        XCTAssertEqual(result, .resolved(selectedProject, reason: .selectedProject))
+        XCTAssertEqual(result, .needsClarification(candidates))
+        XCTAssertNotEqual(
+            result,
+            .resolved(selectedProject, reason: .selectedProject)
+        )
     }
 
     func testGivenPreviousTaskActionWhenProjectQualifiedPronounThenDoesNotUseTask() throws {

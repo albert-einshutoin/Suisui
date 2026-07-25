@@ -680,8 +680,11 @@ public struct VoiceTaskReferenceResolver: Sendable {
     }
 
     private func mentionsProjectReference(_ value: String) -> Bool {
+        // Anchor English project anaphors to the command object. Without this,
+        // a subordinate clause such as "so that we unblock the project" can
+        // turn a preceding task command into a project mutation.
         matches(
-            #"\b(?:this|that|current)(?:\s+[\p{L}\p{N}_-]+){0,3}\s+project\b"#,
+            #"^(?:(?:please|(?:could|can|would)\s+you(?:\s+please)?)\s+)?(?:(?:open|show|delete|complete|finish|update|rename|move|archive)\s+(?:the\s+)?)?(?:this|that|current)(?:\s+(?!(?:we|i|you|they|he|she|it|the|a|an|so|which|who|to|for|because)\b)[\p{L}\p{N}_-]+){0,3}\s+project\b"#,
             in: value
         )
             || value.contains("このプロジェクト")
