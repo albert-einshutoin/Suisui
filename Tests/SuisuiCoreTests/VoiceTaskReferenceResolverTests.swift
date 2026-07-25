@@ -1199,6 +1199,23 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         }
     }
 
+    func testGivenArchiveItWithSelectionThenUsesSelectedTask() {
+        let selected = ConversationResolvedTarget.task(id: 740, projectID: 12)
+        let candidates = [
+            candidate(taskID: 740, projectID: 12, title: "Selected"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "archive it",
+                selectedTask: selected,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(selected, reason: .selectedTask))
+    }
+
     func testGivenTaskTitleThatOneThingWhenResolveThenNamedTaskBeatsSelection() {
         let selected = ConversationResolvedTarget.task(id: 741, projectID: 12)
         let named = ConversationResolvedTarget.task(id: 742, projectID: 12)
@@ -1368,6 +1385,26 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         )
 
         XCTAssertEqual(result, .resolved(named, reason: .uniqueCandidate))
+    }
+
+    func testGivenProjectTitleContainingTaskWhenResolveThenUsesNamedProject() {
+        let namedProject = ConversationResolvedTarget.project(id: 14)
+        let candidates = [
+            ConversationReferenceCandidate(
+                target: namedProject,
+                title: "Task Force",
+                stableSortKey: "project-14"
+            ),
+        ]
+
+        let result = resolver.resolve(
+            request(utterance: "open Task Force", candidates: candidates)
+        )
+
+        XCTAssertEqual(
+            result,
+            .resolved(namedProject, reason: .uniqueCandidate)
+        )
     }
 
     func testGivenNamedTaskContainingRecentActionWordsThenDoesNotUsePreviousAction() throws {

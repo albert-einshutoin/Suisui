@@ -187,9 +187,15 @@ public struct VoiceTaskReferenceResolver: Sendable {
                     || (requestedTargetKind == .project && isAnaphoric)
             )
         let isRecentActionReference = mentionsRecentAction(normalizedUtterance)
-        let lexicalNamedCandidateMatches = request.candidates.filter {
+        let allLexicalNamedCandidateMatches = request.candidates.filter {
+            isStrongNamedCandidate($0, in: normalizedUtterance)
+        }
+        let explicitDirectTargetKind = explicitDirectTargetKind(
+            in: normalizedUtterance,
+            candidates: allLexicalNamedCandidateMatches
+        )
+        let lexicalNamedCandidateMatches = allLexicalNamedCandidateMatches.filter {
             requestedTargetKind.matches($0.target)
-                && isStrongNamedCandidate($0, in: normalizedUtterance)
         }
         let broadNamedCandidateMatches = isProjectContainerClause
             ? lexicalNamedCandidateMatches.filter { !$0.target.isProject }
@@ -199,8 +205,9 @@ public struct VoiceTaskReferenceResolver: Sendable {
                 isDirectNamedCommand($0, in: normalizedUtterance)
             }
             : broadNamedCandidateMatches
-        let directNamedCandidateMatches = lexicalNamedCandidateMatches.filter {
+        let directNamedCandidateMatches = allLexicalNamedCandidateMatches.filter {
             isDirectNamedCommand($0, in: normalizedUtterance)
+                && (explicitDirectTargetKind?.matches($0.target) ?? true)
         }
 
         // A direct command object is the strongest lexical evidence. Resolve it
@@ -530,6 +537,45 @@ public struct VoiceTaskReferenceResolver: Sendable {
         )
     }
 
+    private func explicitDirectTargetKind(
+        in normalizedUtterance: String,
+        candidates: [ConversationReferenceCandidate]
+    ) -> RequestedTargetKind? {
+        // Treat a leading kind word as a qualifier only when the remaining
+        // direct object is itself a candidate title. Otherwise names such as
+        // "Task Force" must remain whole instead of being parsed as
+        // "task" + "Force".
+        for (noun, kind) in [
+            ("task", RequestedTargetKind.task),
+            ("project", RequestedTargetKind.project),
+        ] {
+            if candidates.contains(where: {
+                isDirectQualifiedNamedCommand(
+                    $0,
+                    noun: noun,
+                    in: normalizedUtterance
+                )
+            }) {
+                return kind
+            }
+        }
+        return nil
+    }
+
+    private func isDirectQualifiedNamedCommand(
+        _ candidate: ConversationReferenceCandidate,
+        noun: String,
+        in normalizedUtterance: String
+    ) -> Bool {
+        let escapedTitle = NSRegularExpression.escapedPattern(
+            for: normalize(candidate.title)
+        )
+        return matches(
+            #"^\#(Self.englishPoliteCommandPrefixPattern)\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?\#(noun)\s+\#(escapedTitle)(?=(?:\s+please)?$|[,;:]?\s+(?:because|since|as|so\s+that|after|before|when|while|if|in|within|under|to|into|from)\b)"#,
+            in: normalizedUtterance
+        )
+    }
+
     // These fragments are shared by all English target-position checks so
     // politeness variants and supported operations cannot drift apart.
     private static let englishPoliteCommandPrefixPattern =
@@ -701,7 +747,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
             // English "it" is only selection evidence when it is the direct
             // object of a supported target operation, not wherever it appears.
             || matches(
-                #"\b(?:open|show|delete|complete|finish|update|rename|move)\s+it\b"#,
+                #"\b\#(Self.englishTargetOperationPattern)\s+it\b"#,
                 in: value
             )
             // Bare "that"/"this" inside relative clauses or due-date phrases
