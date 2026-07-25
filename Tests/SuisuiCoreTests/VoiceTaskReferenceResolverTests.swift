@@ -190,15 +190,21 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             candidate(taskID: 429, projectID: 7, title: "Release"),
         ]
 
-        XCTAssertEqual(
-            resolver.resolve(
-                request(
-                    utterance: "Releaseを削除して",
-                    candidates: candidates
-                )
-            ),
-            .resolved(target, reason: .uniqueCandidate)
-        )
+        for utterance in [
+            "Releaseを削除して",
+            "Release を削除して",
+        ] {
+            XCTAssertEqual(
+                resolver.resolve(
+                    request(
+                        utterance: utterance,
+                        candidates: candidates
+                    )
+                ),
+                .resolved(target, reason: .uniqueCandidate),
+                utterance
+            )
+        }
     }
 
     func testGivenExplicitProjectQualifierAndTaskWordInTitleThenResolvesProject() {

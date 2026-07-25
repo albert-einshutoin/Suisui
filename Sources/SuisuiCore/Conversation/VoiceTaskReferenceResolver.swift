@@ -542,12 +542,14 @@ public struct VoiceTaskReferenceResolver: Sendable {
         ) {
             return true
         }
-        // Japanese places the direct object before the operation. Requiring
-        // the object marker and a supported operation keeps a later mention
-        // from outranking selection while preserving an explicitly named
-        // target before a trailing anaphoric explanation.
+        // Japanese places the direct object before the operation. Speech
+        // transcription may insert whitespace before the object marker, so
+        // accept only that harmless separator while still requiring the
+        // marker and a supported operation. This keeps a later mention from
+        // outranking selection while preserving an explicitly named target
+        // before a trailing anaphoric explanation.
         return matches(
-            #"^\#(escapedTitle)を(?:開|表示|削除|完了|終了|更新|編集|名前(?:を)?変更|移動|動か|アーカイブ|保管)"#,
+            #"^\#(escapedTitle)\s*を(?:開|表示|削除|完了|終了|更新|編集|名前(?:を)?変更|移動|動か|アーカイブ|保管)"#,
             in: normalizedUtterance
         )
     }
