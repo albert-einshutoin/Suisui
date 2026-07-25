@@ -248,6 +248,39 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(selected, reason: .selectedProject))
     }
 
+    func testGivenBareAnaphorAndSelectedProjectThenSelectionBeatsTaskLink() throws {
+        let selectedProject = ConversationResolvedTarget.project(id: 171)
+        let linkedTask = ConversationResolvedTarget.task(id: 172, projectID: 171)
+        let candidates = [
+            ConversationReferenceCandidate(
+                target: selectedProject,
+                title: "Launch",
+                stableSortKey: "project-171"
+            ),
+            candidate(taskID: 172, projectID: 171, title: "Previous task"),
+        ]
+        let link = try ConversationActionLink(
+            sessionID: sessionID,
+            sourceTurnID: sourceTurnID,
+            taskID: 172,
+            operation: .taskUpdated,
+            reviewedFingerprint: "reviewed",
+            createdAt: now.addingTimeInterval(-5)
+        )
+
+        let result = resolver.resolve(
+            request(
+                utterance: "delete it",
+                selectedProject: selectedProject,
+                previousActionLink: link,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(selectedProject, reason: .selectedProject))
+        XCTAssertNotEqual(result, .resolved(linkedTask, reason: .previousActionLink))
+    }
+
     func testGivenTaskAndProjectSelectionsWhenProjectQualifiedPronounThenUsesProject() {
         let selectedTask = ConversationResolvedTarget.task(id: 45, projectID: 17)
         let selectedProject = ConversationResolvedTarget.project(id: 17)

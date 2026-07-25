@@ -276,6 +276,23 @@ public struct VoiceTaskReferenceResolver: Sendable {
                     candidates: request.candidates
                 )
             }
+            if isAnaphoric, let selectedProject = request.selectedProject {
+                guard requestedTargetKind.matches(selectedProject) else {
+                    return .needsClarification(
+                        request.candidates.filter {
+                            requestedTargetKind.matches($0.target)
+                        }
+                    )
+                }
+                // A live selection is stronger evidence than a generic
+                // previous-action link. This matters for bare "it", where no
+                // target noun exists to enter the project-specific branch.
+                return resolveKnownTarget(
+                    selectedProject,
+                    reason: .selectedProject,
+                    candidates: request.candidates
+                )
+            }
         }
 
         if isRecentActionReference || (isAnaphoric && request.selectedTask == nil),
