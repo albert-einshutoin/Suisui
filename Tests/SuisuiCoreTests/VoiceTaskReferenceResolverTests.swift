@@ -441,6 +441,25 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .needsClarification([projectCandidate]))
     }
 
+    func testGivenRecentProjectReferenceWithSelectionThenDoesNotUseSelection() {
+        let selectedProject = ConversationResolvedTarget.project(id: 81)
+        let projectCandidate = ConversationReferenceCandidate(
+            target: selectedProject,
+            title: "Selected project",
+            stableSortKey: "project-81"
+        )
+
+        let result = resolver.resolve(
+            request(
+                utterance: "さっき作ったこのプロジェクトを削除して",
+                selectedProject: selectedProject,
+                candidates: [projectCandidate]
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification([projectCandidate]))
+    }
+
     func testGivenRecentlyViewedJapaneseReferenceThenDoesNotUseCreatedTaskLink() throws {
         let link = try ConversationActionLink(
             sessionID: sessionID,
@@ -705,6 +724,40 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         )
 
         XCTAssertEqual(result, .resolved(named, reason: .uniqueCandidate))
+    }
+
+    func testGivenRelativeClauseThatWithSelectionThenDoesNotUseSelection() {
+        let selected = ConversationResolvedTarget.task(id: 731, projectID: 12)
+        let candidates = [
+            candidate(taskID: 731, projectID: 12, title: "Selected"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "delete the task that is overdue",
+                selectedTask: selected,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification(candidates))
+    }
+
+    func testGivenDueDateThisWithSelectionThenDoesNotUseSelection() {
+        let selected = ConversationResolvedTarget.task(id: 732, projectID: 12)
+        let candidates = [
+            candidate(taskID: 732, projectID: 12, title: "Selected"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "open the task due this Friday",
+                selectedTask: selected,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification(candidates))
     }
 
     func testGivenTaskTitleThatOneThingWhenResolveThenNamedTaskBeatsSelection() {

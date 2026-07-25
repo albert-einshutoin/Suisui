@@ -193,6 +193,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
 
         if ordinal == nil,
            isProjectReference,
+           !isRecentActionReference,
            requestedTargetKind != .task
         {
             if let selectedProject = request.selectedProject {
@@ -539,11 +540,21 @@ public struct VoiceTaskReferenceResolver: Sendable {
             || value.contains("このタスク")
             || value.contains("そのタスク")
             || value.contains("あのタスク")
-            || matches(#"\b(?:that|this|this one|that one)\b"#, in: value)
+            // Bare "that"/"this" inside relative clauses or due-date phrases
+            // is not target evidence. A target noun, "one", or object position
+            // at the end of the utterance is required.
+            || matches(
+                #"\b(?:this|that)\s+(?:task|project|one|item|thing)\b"#,
+                in: value
+            )
+            || matches(#"\b(?:this|that)\b$"#, in: value)
     }
 
     private func mentionsProjectReference(_ value: String) -> Bool {
-        matches(#"\b(?:this|that|current)\s+project\b"#, in: value)
+        matches(
+            #"\b(?:this|that|current)(?:\s+[\p{L}\p{N}_-]+){0,3}\s+project\b"#,
+            in: value
+        )
             || value.contains("このプロジェクト")
             || value.contains("そのプロジェクト")
             || value.contains("あのプロジェクト")
