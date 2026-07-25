@@ -820,6 +820,52 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         )
     }
 
+    func testGivenExactTaskTitleContainingReferenceWordsWhenResolveThenUsesNamedTask() throws {
+        let candidates = [
+            candidate(taskID: 56, projectID: 9, title: "Other"),
+            candidate(taskID: 57, projectID: 9, title: "First task"),
+            candidate(taskID: 58, projectID: 9, title: "Task we just added"),
+        ]
+        let fingerprint = VoiceTaskReferenceResolver.orderingFingerprint(for: candidates)
+        let priorOrdinal = try ordinalReference(
+            target: .task(56),
+            ordinal: 0,
+            fingerprint: fingerprint
+        )
+        let previousAction = try ConversationActionLink(
+            sessionID: sessionID,
+            sourceTurnID: sourceTurnID,
+            taskID: 56,
+            reviewedFingerprint: "reviewed",
+            createdAt: now.addingTimeInterval(-5)
+        )
+
+        let ordinalResult = resolver.resolve(
+            request(
+                utterance: "delete First task",
+                ordinalReference: priorOrdinal,
+                candidateOrderingFingerprint: fingerprint,
+                candidates: candidates
+            )
+        )
+        let recentActionResult = resolver.resolve(
+            request(
+                utterance: "delete Task we just added",
+                previousActionLink: previousAction,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(
+            ordinalResult,
+            .resolved(.task(id: 57, projectID: 9), reason: .uniqueCandidate)
+        )
+        XCTAssertEqual(
+            recentActionResult,
+            .resolved(.task(id: 58, projectID: 9), reason: .uniqueCandidate)
+        )
+    }
+
     func testGivenDeletedTaskWhenResolveThenReturnsUnavailable() {
         let target = ConversationResolvedTarget.task(id: 61, projectID: 10)
         let result = resolver.resolve(

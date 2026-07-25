@@ -183,9 +183,26 @@ public struct VoiceTaskReferenceResolver: Sendable {
                 isDirectNamedCommand($0, in: normalizedUtterance)
             }
             : lexicalNamedCandidateMatches
+        let directNamedCandidateMatches = lexicalNamedCandidateMatches.filter {
+            isDirectNamedCommand($0, in: normalizedUtterance)
+        }
 
-        // A full candidate name is stronger evidence than pronouns contained
-        // inside that name (for example, "open That One Thing").
+        // A direct command object is the strongest lexical evidence. Resolve it
+        // before conversational-reference parsing so legitimate names such as
+        // "First task" and "Task we just added" are not treated as ordinal or
+        // recent-action references.
+        if directNamedCandidateMatches.count == 1,
+           let candidate = directNamedCandidateMatches.first
+        {
+            return resolveCandidate(candidate, reason: .uniqueCandidate)
+        }
+        if directNamedCandidateMatches.count > 1 {
+            return .needsClarification(directNamedCandidateMatches)
+        }
+
+        // A full candidate name is stronger evidence than incidental lexical
+        // overlap, provided the utterance does not explicitly request a
+        // conversational reference.
         if ordinal == nil,
            !isRecentActionReference,
            namedCandidateMatches.count == 1,
