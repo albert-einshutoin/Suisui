@@ -143,6 +143,24 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
         XCTAssertEqual(restored.title, baseSession.title)
     }
 
+    func testSessionUpdateRequiresVersionTimestampToAdvance() throws {
+        let (_, store) = try makeStore()
+        var session = makeSession()
+        try store.createSession(session)
+        let originalTitle = session.title
+        try session.updateTitle("Same-version rename", at: session.updatedAt)
+
+        XCTAssertThrowsError(
+            try store.updateSession(session, expectedUpdatedAt: session.updatedAt)
+        ) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationStoreError,
+                .staleSession(session.id)
+            )
+        }
+        XCTAssertEqual(try store.loadSession(id: session.id)?.title, originalTitle)
+    }
+
     func testSavingTurnForMissingSessionFailsClosed() throws {
         let (_, store) = try makeStore()
         let missingSessionID = UUID()

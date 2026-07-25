@@ -56,7 +56,7 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
             }
             let expectedTime = try Self.timeValue(expectedUpdatedAt)
             guard storedSession.updatedAt == expectedUpdatedAt,
-                  session.updatedAt >= expectedUpdatedAt
+                  session.updatedAt > expectedUpdatedAt
             else {
                 throw VoiceTaskConversationStoreError.staleSession(session.id)
             }
