@@ -741,6 +741,15 @@ public struct VoiceTaskReferenceResolver: Sendable {
         ) {
             return .project
         }
+        // A possessive Project prefix names the container, while the leaf noun
+        // remains the mutation target. Classify it before generic Project
+        // anaphors can reuse the selected Project.
+        if matches(
+            #"^(?:(?:この|その|あの)\s*)?(?:プロジェクト|案件)の(?:(?:この|その|あの)\s*)?タスク(?:を|は|が|に|へ)"#,
+            in: normalizedUtterance
+        ) {
+            return .task
+        }
         // Infer an English Task kind only from the command object. A Task may
         // still be qualified by its containing project ("second task in
         // project Alpha"), but a Task noun in a trailing clause must not
@@ -810,12 +819,12 @@ public struct VoiceTaskReferenceResolver: Sendable {
             #"^\#(Self.englishPoliteCommandPrefixPattern)(?:\#(Self.englishTargetOperationPattern)\s+(?:the\s+)?)?(?:the\s+)?(?:this|that|current)(?:\s+(?!(?:we|i|you|they|he|she|it|the|a|an|so|which|who|to|for|because)\b)[\p{L}\p{N}_-]+){0,3}\s+project\b"#,
             in: value
         )
-            || japanesePrimaryClause.contains("このプロジェクト")
-            || japanesePrimaryClause.contains("そのプロジェクト")
-            || japanesePrimaryClause.contains("あのプロジェクト")
-            || japanesePrimaryClause.contains("この案件")
-            || japanesePrimaryClause.contains("その案件")
-            || japanesePrimaryClause.contains("あの案件")
+            || japanesePrimaryClause.hasPrefix("このプロジェクト")
+            || japanesePrimaryClause.hasPrefix("そのプロジェクト")
+            || japanesePrimaryClause.hasPrefix("あのプロジェクト")
+            || japanesePrimaryClause.hasPrefix("この案件")
+            || japanesePrimaryClause.hasPrefix("その案件")
+            || japanesePrimaryClause.hasPrefix("あの案件")
     }
 
     private func primaryJapaneseClause(in value: String) -> String {
@@ -826,14 +835,19 @@ public struct VoiceTaskReferenceResolver: Sendable {
     }
 
     private func mentionsProjectContainerClause(_ value: String) -> Bool {
-        // English project names may appear on either side of the noun
-        // ("project Alpha" / "the Alpha project"). Both forms describe the
-        // selected task's container or destination, not a new action target.
+        // Project container grammar prevents a containing Project from
+        // becoming the mutation target. English names may appear on either
+        // side of the noun, while Japanese may use possessive or locative
+        // particles. Both forms describe the selected Task's container or
+        // destination, not a new action target.
         matches(
             #"\b(?:in|within|under|to|into|from)\s+(?:(?:this|that|the|current)\s+)?(?:project\b|[\p{L}\p{N}_-]+(?:\s+[\p{L}\p{N}_-]+){0,3}\s+project\b)"#,
             in: value
         ) || matches(
             #"(?:プロジェクト|案件)(?:へ|に)(?:移動|動か)"#,
+            in: value
+        ) || matches(
+            #"(?:(?:この|その|あの)\s*)?(?:プロジェクト|案件)の(?:(?:この|その|あの)\s*)?(?:タスク|もの)(?:を|に|は|が|へ)?"#,
             in: value
         ) || matches(
             #"(?:プロジェクト|案件)(?:から|内(?:の|で)?|にある|の中(?:から|の|で)?)(?:これ|それ|あれ|(?:この|その|あの)?(?:タスク|もの))(?:を|に|は|が|へ)?"#,
@@ -863,7 +877,11 @@ public struct VoiceTaskReferenceResolver: Sendable {
         if value == anaphor {
             return true
         }
-        return ["を", "に", "の", "は", "が", "へ"].contains {
+        // A direct-target particle makes a bare demonstrative selection
+        // evidence even after a container phrase. Deliberately exclude the
+        // possessive particle so temporal phrases such as "それの後に" cannot
+        // redirect a later destructive command.
+        return ["を", "に", "は", "が", "へ"].contains {
             value.contains(anaphor + $0)
         }
     }

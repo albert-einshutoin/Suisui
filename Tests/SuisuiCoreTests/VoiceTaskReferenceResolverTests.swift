@@ -276,6 +276,33 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(selectedProject, reason: .selectedProject))
     }
 
+    func testGivenJapaneseProjectPossessiveTaskThenClarifiesTasks() {
+        let selectedProject = ConversationResolvedTarget.project(id: 175)
+        let taskCandidates = [
+            candidate(taskID: 176, projectID: 175, title: "First task"),
+            candidate(taskID: 177, projectID: 175, title: "Second task"),
+        ]
+        let projectCandidate = ConversationReferenceCandidate(
+            target: selectedProject,
+            title: "Launch",
+            stableSortKey: "project-175"
+        )
+
+        let result = resolver.resolve(
+            request(
+                utterance: "このプロジェクトのタスクを削除して",
+                selectedProject: selectedProject,
+                candidates: taskCandidates + [projectCandidate]
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification(taskCandidates))
+        XCTAssertNotEqual(
+            result,
+            .resolved(selectedProject, reason: .selectedProject)
+        )
+    }
+
     func testGivenBareAnaphorAndSelectedProjectThenSelectionBeatsTaskLink() throws {
         let selectedProject = ConversationResolvedTarget.project(id: 171)
         let linkedTask = ConversationResolvedTarget.task(id: 172, projectID: 171)
@@ -394,6 +421,27 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
 
         XCTAssertEqual(result, .needsClarification(candidates))
         XCTAssertNotEqual(result, .resolved(selected, reason: .selectedTask))
+    }
+
+    func testGivenJapaneseTemporalAnaphorBeforeNamedCommandThenDoesNotUseSelection() {
+        let selected = ConversationResolvedTarget.task(id: 4571, projectID: 17)
+        let meeting = ConversationResolvedTarget.task(id: 4572, projectID: 17)
+        let candidates = [
+            candidate(taskID: 4571, projectID: 17, title: "Selected task"),
+            candidate(taskID: 4572, projectID: 17, title: "会議"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "それの後に 会議を削除して",
+                selectedTask: selected,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification(candidates))
+        XCTAssertNotEqual(result, .resolved(selected, reason: .selectedTask))
+        XCTAssertNotEqual(result, .resolved(meeting, reason: .uniqueCandidate))
     }
 
     func testGivenTrailingJapaneseProjectReferenceThenKeepsSelectedTask() {
