@@ -194,17 +194,6 @@ public struct VoiceTaskReferenceResolver: Sendable {
             in: normalizedUtterance,
             candidates: allLexicalNamedCandidateMatches
         )
-        let lexicalNamedCandidateMatches = allLexicalNamedCandidateMatches.filter {
-            requestedTargetKind.matches($0.target)
-        }
-        let broadNamedCandidateMatches = isProjectContainerClause
-            ? lexicalNamedCandidateMatches.filter { !$0.target.isProject }
-            : lexicalNamedCandidateMatches
-        let namedCandidateMatches = isAnaphoric
-            ? broadNamedCandidateMatches.filter {
-                isDirectNamedCommand($0, in: normalizedUtterance)
-            }
-            : broadNamedCandidateMatches
         let directNamedCandidateMatches = allLexicalNamedCandidateMatches.filter {
             isDirectNamedCommand($0, in: normalizedUtterance)
                 && (explicitDirectTargetKind?.matches($0.target) ?? true)
@@ -221,23 +210,6 @@ public struct VoiceTaskReferenceResolver: Sendable {
         }
         if directNamedCandidateMatches.count > 1 {
             return .needsClarification(directNamedCandidateMatches)
-        }
-
-        // A full candidate name is stronger evidence than incidental lexical
-        // overlap, provided the utterance does not explicitly request a
-        // conversational reference.
-        if ordinal == nil,
-           !isRecentActionReference,
-           namedCandidateMatches.count == 1,
-           let candidate = namedCandidateMatches.first
-        {
-            return resolveCandidate(candidate, reason: .uniqueCandidate)
-        }
-        if ordinal == nil,
-           !isRecentActionReference,
-           namedCandidateMatches.count > 1
-        {
-            return .needsClarification(namedCandidateMatches)
         }
 
         if ordinal == nil,

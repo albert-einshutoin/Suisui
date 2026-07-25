@@ -1313,6 +1313,22 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertNotEqual(result, .resolved(incidental, reason: .uniqueCandidate))
     }
 
+    func testGivenOnlyIncidentalNamedCandidateThenRequiresClarification() {
+        let candidates = [
+            candidate(taskID: 7331, projectID: 12, title: "Selected"),
+            candidate(taskID: 7332, projectID: 12, title: "Release"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "complete the task after Release",
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification(candidates))
+    }
+
     func testGivenNamedDirectObjectAndTrailingAnaphorThenUsesNamedTarget() {
         let selected = ConversationResolvedTarget.task(id: 735, projectID: 12)
         let named = ConversationResolvedTarget.task(id: 736, projectID: 12)
