@@ -64,6 +64,42 @@ public struct VoiceTaskConversationSession: Identifiable, Codable, Equatable, Se
         lastTurnAt = nil
     }
 
+    /// Rehydrates a validated persisted session without making lifecycle fields
+    /// publicly writable. SQLite corruption must cross the same timestamp
+    /// boundary as Codable restoration instead of creating an impossible state.
+    public init(
+        restoringID id: UUID,
+        state: VoiceTaskConversationSessionState,
+        title: String,
+        entryPoint: VoiceTaskConversationEntryPoint,
+        activeProjectID: Int64?,
+        activeTaskID: Int64?,
+        resumeSummary: String?,
+        createdAt: Date,
+        updatedAt: Date,
+        lastTurnAt: Date?
+    ) throws {
+        guard createdAt.timeIntervalSinceReferenceDate.isFinite,
+              updatedAt.timeIntervalSinceReferenceDate.isFinite,
+              lastTurnAt?.timeIntervalSinceReferenceDate.isFinite ?? true,
+              updatedAt >= createdAt,
+              lastTurnAt.map({ $0 >= createdAt && $0 <= updatedAt }) ?? true
+        else {
+            throw VoiceTaskConversationDomainError.nonMonotonicTimestamp
+        }
+
+        self.id = id
+        self.state = state
+        self.title = title
+        self.entryPoint = entryPoint
+        self.activeProjectID = activeProjectID
+        self.activeTaskID = activeTaskID
+        self.resumeSummary = resumeSummary
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.lastTurnAt = lastTurnAt
+    }
+
     public mutating func pause(at date: Date = Date()) throws {
         guard state == .active else {
             throw VoiceTaskConversationDomainError.invalidStateTransition
@@ -152,25 +188,18 @@ public struct VoiceTaskConversationSession: Identifiable, Codable, Equatable, Se
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        let createdAt = try values.decode(Date.self, forKey: .createdAt)
-        let updatedAt = try values.decode(Date.self, forKey: .updatedAt)
-        let lastTurnAt = try values.decodeIfPresent(Date.self, forKey: .lastTurnAt)
-        guard updatedAt >= createdAt,
-              lastTurnAt.map({ $0 >= createdAt && $0 <= updatedAt }) ?? true
-        else {
-            throw VoiceTaskConversationDomainError.nonMonotonicTimestamp
-        }
-
-        id = try values.decode(UUID.self, forKey: .id)
-        state = try values.decode(VoiceTaskConversationSessionState.self, forKey: .state)
-        title = try values.decode(String.self, forKey: .title)
-        entryPoint = try values.decode(VoiceTaskConversationEntryPoint.self, forKey: .entryPoint)
-        activeProjectID = try values.decodeIfPresent(Int64.self, forKey: .activeProjectID)
-        activeTaskID = try values.decodeIfPresent(Int64.self, forKey: .activeTaskID)
-        resumeSummary = try values.decodeIfPresent(String.self, forKey: .resumeSummary)
-        self.createdAt = createdAt
-        self.updatedAt = updatedAt
-        self.lastTurnAt = lastTurnAt
+        try self.init(
+            restoringID: values.decode(UUID.self, forKey: .id),
+            state: values.decode(VoiceTaskConversationSessionState.self, forKey: .state),
+            title: values.decode(String.self, forKey: .title),
+            entryPoint: values.decode(VoiceTaskConversationEntryPoint.self, forKey: .entryPoint),
+            activeProjectID: values.decodeIfPresent(Int64.self, forKey: .activeProjectID),
+            activeTaskID: values.decodeIfPresent(Int64.self, forKey: .activeTaskID),
+            resumeSummary: values.decodeIfPresent(String.self, forKey: .resumeSummary),
+            createdAt: values.decode(Date.self, forKey: .createdAt),
+            updatedAt: values.decode(Date.self, forKey: .updatedAt),
+            lastTurnAt: values.decodeIfPresent(Date.self, forKey: .lastTurnAt)
+        )
     }
 }
 
