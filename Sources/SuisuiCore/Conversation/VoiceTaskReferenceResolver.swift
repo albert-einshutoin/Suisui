@@ -188,7 +188,10 @@ public struct VoiceTaskReferenceResolver: Sendable {
             return .needsClarification(namedCandidateMatches)
         }
 
-        if ordinal == nil, isProjectReference {
+        if ordinal == nil,
+           isProjectReference,
+           requestedTargetKind != .task
+        {
             if let selectedProject = request.selectedProject {
                 return resolveKnownTarget(
                     selectedProject,
@@ -567,7 +570,7 @@ public struct VoiceTaskReferenceResolver: Sendable {
     }
 }
 
-private enum RequestedTargetKind {
+private enum RequestedTargetKind: Equatable {
     case any
     case task
     case project
