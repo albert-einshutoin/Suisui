@@ -19,6 +19,13 @@ SECRET_PATTERNS = [
     ),
 ]
 PATH_PATTERN = re.compile(r"/(?:Users|Volumes)/[^\s]+")
+XCTEST_SUMMARY_PATTERN = re.compile(
+    r"Executed\s+(\d+)\s+tests?,\s+with\s+"
+    r"(?:(\d+)\s+tests?\s+skipped\s+and\s+)?(\d+)\s+failures"
+)
+SWIFT_TESTING_SUMMARY_PATTERN = re.compile(
+    r"Test run with\s+(\d+)\s+tests?\s+in\s+\d+\s+suites?"
+)
 
 
 class RunnerSetupError(RuntimeError):
@@ -86,7 +93,7 @@ def _quality_commands() -> List[List[str]]:
     ]
 
 
-def _run(repo: Path, argv: List[str]) -> Tuple[int, float]:
+def _run(repo: Path, argv: List[str]) -> Tuple[int, float, str]:
     started = time.monotonic()
     result = subprocess.run(
         argv,
@@ -98,7 +105,35 @@ def _run(repo: Path, argv: List[str]) -> Tuple[int, float]:
     )
     duration = time.monotonic() - started
     print(_sanitize(result.stdout), end="")
-    return result.returncode, duration
+    return result.returncode, duration, result.stdout
+
+
+def _test_counts(output: str) -> Tuple[int, int, int]:
+    xctest_matches = [
+        (int(executed), int(skipped or 0), int(failures))
+        for executed, skipped, failures in XCTEST_SUMMARY_PATTERN.findall(output)
+    ]
+    if xctest_matches:
+        xctest_executed = max(executed for executed, _, _ in xctest_matches)
+        xctest_skipped = max(
+            skipped
+            for executed, skipped, _ in xctest_matches
+            if executed == xctest_executed
+        )
+        xctest_failures = max(
+            failures
+            for executed, _, failures in xctest_matches
+            if executed == xctest_executed
+        )
+    else:
+        xctest_executed = 0
+        xctest_skipped = 0
+        xctest_failures = 0
+    swift_testing_matches = [
+        int(executed) for executed in SWIFT_TESTING_SUMMARY_PATTERN.findall(output)
+    ]
+    swift_testing_executed = max(swift_testing_matches, default=0)
+    return xctest_executed + swift_testing_executed, xctest_skipped, xctest_failures
 
 
 def _write_report(path: Path, report: dict) -> None:
@@ -116,6 +151,7 @@ def _base_report(status: str, commands: List[dict], duration: float) -> dict:
         "commands": commands,
         "qualityCommands": _quality_commands(),
         "targetCount": len(commands),
+        "executedTestCount": 0,
         "successCount": 0,
         "failureCount": 0,
         "skippedCount": 0,
@@ -153,8 +189,9 @@ def main() -> int:
     repo = Path(arguments.repo).resolve()
     results = []
     quality_failed = False
+    selection_setup_error = None
     for argv in _quality_commands():
-        status, duration = _run(repo, argv)
+        status, duration, _ = _run(repo, argv)
         results.append(
             {
                 "category": "quality",
@@ -169,25 +206,55 @@ def main() -> int:
 
     if not quality_failed:
         for command in commands:
-            status, duration = _run(repo, list(command["argv"]))
+            status, duration, output = _run(repo, list(command["argv"]))
+            executed_count, skipped_count, reported_failure_count = _test_counts(output)
+            test_failure_count = (
+                max(1, reported_failure_count) if status != 0 else reported_failure_count
+            )
             result = dict(command)
             result["status"] = "passed" if status == 0 else "failed"
             result["durationSeconds"] = round(duration, 3)
+            result["executedTestCount"] = executed_count
+            result["skippedCount"] = skipped_count
+            result["failureCount"] = test_failure_count
+            result["successCount"] = max(
+                0,
+                executed_count - skipped_count - reported_failure_count,
+            )
             results.append(result)
+            if status == 0 and executed_count == 0:
+                selection_setup_error = (
+                    "selected test filter executed zero tests: " + str(command["target"])
+                )
+                result["status"] = "setup-failed"
+                break
 
     test_results = [result for result in results if result["category"] != "quality"]
     duration = time.monotonic() - started
-    failure_count = sum(result["status"] == "failed" for result in test_results)
-    success_count = sum(result["status"] == "passed" for result in test_results)
+    failure_count = sum(result.get("failureCount", 0) for result in test_results)
+    executed_test_count = sum(result.get("executedTestCount", 0) for result in test_results)
+    skipped_count = sum(result.get("skippedCount", 0) for result in test_results)
+    success_count = sum(result.get("successCount", 0) for result in test_results)
     report = _base_report(
-        "failed" if quality_failed or failure_count else "passed",
+        (
+            "setup-failed"
+            if selection_setup_error
+            else "failed" if quality_failed or failure_count else "passed"
+        ),
         commands,
         duration,
     )
     report["commands"] = results
+    report["executedTestCount"] = executed_test_count
     report["successCount"] = success_count
-    report["failureCount"] = failure_count + int(quality_failed)
+    report["skippedCount"] = skipped_count
+    report["failureCount"] = failure_count + int(quality_failed or selection_setup_error is not None)
+    if selection_setup_error:
+        report["failureReason"] = selection_setup_error
     _write_report(report_path, report)
+    if selection_setup_error:
+        print("BLOCKER:", selection_setup_error, file=sys.stderr)
+        return 2
     return 1 if quality_failed or failure_count else 0
 
 

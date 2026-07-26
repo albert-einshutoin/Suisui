@@ -8,6 +8,7 @@ STARTED_AT="$(date +%s)"
 SWIFTPM_STATUS=0
 SOURCE_CONTRACT_STATUS=0
 SECURITY_STATUS=0
+COUNT_STATUS=0
 
 mkdir -p "$ARTIFACT_ROOT" "$(dirname "$REPORT_PATH")"
 cd "$ROOT_DIR" || exit 2
@@ -34,9 +35,16 @@ DISCOVERED_TEST_COUNT="$(read_count discovered_test_count)"
 EXECUTED_TEST_COUNT="$(read_count executed_test_count)"
 SKIPPED_TEST_COUNT="$(read_count skipped_test_count)"
 
-python3 - "$REPORT_PATH" "$DURATION_SECONDS" "$DISCOVERED_TEST_COUNT" \
+if [[ "$SWIFTPM_STATUS" -eq 0 ]] \
+  && [[ "$DISCOVERED_TEST_COUNT" -le 0 || "$EXECUTED_TEST_COUNT" -le 0 \
+    || "$EXECUTED_TEST_COUNT" -gt "$DISCOVERED_TEST_COUNT" ]]; then
+  echo "BLOCKER: full test count evidence is missing or invalid" >&2
+  COUNT_STATUS=1
+fi
+
+if ! python3 - "$REPORT_PATH" "$DURATION_SECONDS" "$DISCOVERED_TEST_COUNT" \
   "$EXECUTED_TEST_COUNT" "$SKIPPED_TEST_COUNT" "$SWIFTPM_STATUS" \
-  "$SOURCE_CONTRACT_STATUS" "$SECURITY_STATUS" <<'PY'
+  "$SOURCE_CONTRACT_STATUS" "$SECURITY_STATUS" "$COUNT_STATUS" <<'PY'
 import json
 import os
 import sys
@@ -51,8 +59,14 @@ from pathlib import Path
     swiftpm_status,
     source_status,
     security_status,
+    count_status,
 ) = sys.argv[1:]
-statuses = [int(swiftpm_status), int(source_status), int(security_status)]
+statuses = [
+    int(swiftpm_status),
+    int(source_status),
+    int(security_status),
+    int(count_status),
+]
 report = {
     "schemaVersion": 1,
     "strategy": "full",
@@ -70,11 +84,17 @@ report = {
         "swiftpm": int(swiftpm_status),
         "sourceContracts": int(source_status),
         "security": int(security_status),
+        "testCountEvidence": int(count_status),
     },
 }
 Path(report_path).write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
+then
+  echo "BLOCKER: full execution report could not be written" >&2
+  exit 1
+fi
 
-if [[ "$SWIFTPM_STATUS" -ne 0 || "$SOURCE_CONTRACT_STATUS" -ne 0 || "$SECURITY_STATUS" -ne 0 ]]; then
+if [[ "$SWIFTPM_STATUS" -ne 0 || "$SOURCE_CONTRACT_STATUS" -ne 0 \
+  || "$SECURITY_STATUS" -ne 0 || "$COUNT_STATUS" -ne 0 ]]; then
   exit 1
 fi

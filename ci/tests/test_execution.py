@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -49,6 +50,38 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "setup-failed")
         self.assertEqual(report["successCount"], 0)
 
+    def test_selected_runner_treats_zero_executed_tests_as_setup_failure(self) -> None:
+        result, report = self._run_selected_with_fake_toolchain(
+            "Executed 0 tests, with 0 failures (0 unexpected)\n"
+        )
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertEqual(report["status"], "setup-failed")
+        self.assertIn("zero tests", report["failureReason"])
+
+    def test_selected_runner_reports_actual_test_counts_instead_of_filter_count(self) -> None:
+        result, report = self._run_selected_with_fake_toolchain(
+            "Executed 3 tests, with 1 test skipped and 0 failures (0 unexpected)\n"
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(report.get("targetCount"), 1)
+        self.assertEqual(report.get("executedTestCount"), 3)
+        self.assertEqual(report.get("successCount"), 2)
+        self.assertEqual(report.get("skippedCount"), 1)
+
+    def test_selected_runner_reports_actual_failure_and_success_counts(self) -> None:
+        result, report = self._run_selected_with_fake_toolchain(
+            "Executed 4 tests, with 1 test skipped and 2 failures (0 unexpected)\n",
+            test_exit_code=1,
+        )
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(report.get("executedTestCount"), 4)
+        self.assertEqual(report.get("successCount"), 1)
+        self.assertEqual(report.get("failureCount"), 2)
+        self.assertEqual(report.get("skippedCount"), 1)
+
     def test_full_runner_is_independent_from_planner_and_runs_canonical_gates(self) -> None:
         self.assertTrue(FULL_RUNNER.exists(), "independent full runner must exist")
         contents = FULL_RUNNER.read_text(encoding="utf-8")
@@ -57,6 +90,8 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn("./scripts/ci.sh source-contracts", contents)
         self.assertIn("./script/check_security_regressions.sh", contents)
         self.assertIn("int(executed) - int(skipped)", contents)
+        self.assertIn("BLOCKER: full execution report could not be written", contents)
+        self.assertIn("full test count evidence is missing or invalid", contents)
         self.assertNotIn("impact/analyze", contents)
         self.assertNotIn("ci/config", contents)
         self.assertNotIn("ci/tests", contents)
@@ -140,6 +175,7 @@ class ExecutionContractTests(unittest.TestCase):
             "status": "passed",
             "durationSeconds": 12,
             "targetCount": 4,
+            "executedTestCount": 18,
             "failureCount": 0,
         }
         full = {
@@ -176,7 +212,8 @@ class ExecutionContractTests(unittest.TestCase):
             comparison = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual(comparison["durationReductionPercent"], 80.0)
             self.assertTrue(comparison["fullOnlyFailure"])
-            self.assertEqual(comparison["selectedTestCount"], 4)
+            self.assertEqual(comparison["selectedTestCount"], 18)
+            self.assertEqual(comparison["selectedTargetCount"], 4)
             self.assertEqual(comparison["fullTestCount"], 100)
 
     def _run_selected(self, plan: dict):
@@ -196,6 +233,76 @@ class ExecutionContractTests(unittest.TestCase):
                     "--dry-run",
                 ],
                 cwd=str(REPOSITORY_ROOT),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertTrue(report_path.exists(), result.stdout + result.stderr)
+            return result, json.loads(report_path.read_text(encoding="utf-8"))
+
+    def _run_selected_with_fake_toolchain(
+        self,
+        test_output: str,
+        *,
+        test_exit_code: int = 0,
+    ):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository = root / "repo"
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            repository.mkdir()
+            for relative_path in [
+                "script/build_and_run.sh",
+                "script/check_security_regressions.sh",
+                "scripts/ci.sh",
+            ]:
+                script = repository / relative_path
+                script.parent.mkdir(parents=True, exist_ok=True)
+                script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+                script.chmod(0o755)
+            swift = fake_bin / "swift"
+            swift.write_text(
+                "#!/bin/sh\n"
+                "if [ \"${1:-}\" = test ]; then\n"
+                "  printf '%s' \"${FAKE_SWIFT_TEST_OUTPUT:-}\"\n"
+                "  exit \"${FAKE_SWIFT_TEST_EXIT_CODE:-0}\"\n"
+                "fi\n"
+                "exit 0\n",
+                encoding="utf-8",
+            )
+            swift.chmod(0o755)
+            plan_path = root / "plan.json"
+            report_path = root / "execution.json"
+            plan_path.write_text(
+                json.dumps(
+                    {
+                        "strategy": "selective",
+                        "unitTestTargets": ["WidgetTests"],
+                        "integrationTestTargets": [],
+                        "smokeTestTargets": [],
+                        "e2eTestTargets": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            environment = os.environ.copy()
+            environment["PATH"] = str(fake_bin) + os.pathsep + environment["PATH"]
+            environment["FAKE_SWIFT_TEST_OUTPUT"] = test_output
+            environment["FAKE_SWIFT_TEST_EXIT_CODE"] = str(test_exit_code)
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SELECTED_RUNNER),
+                    "--plan",
+                    str(plan_path),
+                    "--report",
+                    str(report_path),
+                    "--repo",
+                    str(repository),
+                ],
+                cwd=str(REPOSITORY_ROOT),
+                env=environment,
                 text=True,
                 capture_output=True,
                 check=False,
