@@ -387,17 +387,7 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                     persisted.supersedesFactID ?? factID
                 )
             }
-            let successorCount = try scalarCount(
-                """
-                SELECT COUNT(*)
-                FROM task_context_facts
-                WHERE supersedes_fact_id = ?;
-                """,
-                parameters: [.text(factID.uuidString)]
-            )
-            guard successorCount == 0 else {
-                throw VoiceTaskConversationDomainError.incompatibleFactTransition
-            }
+            try requireNoPersistedSuccessor(of: factID)
             let policy = TaskContextFactPolicy()
             let authorized = try policy.reauthorizePersistedConfirmedFact(
                 persisted,
@@ -418,7 +408,12 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                 write.fact.sourceTurnID
             )
         }
-        try insertFact(write.fact)
+        try connection.transaction {
+            if let predecessorID = write.fact.supersedesFactID {
+                try requireNoPersistedSuccessor(of: predecessorID)
+            }
+            try insertFact(write.fact)
+        }
     }
 
     public func saveSupersession(
@@ -432,6 +427,13 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
             )
         }
         try connection.transaction {
+            guard let predecessorID = write.superseded.supersedesFactID else {
+                throw VoiceTaskConversationDomainError.incompatibleFactTransition
+            }
+            // A correction intentionally appends two records for one
+            // predecessor. Check once before either insert so retries or
+            // competing corrections cannot fork the append-only history.
+            try requireNoPersistedSuccessor(of: predecessorID)
             try insertFact(write.superseded)
             try insertFact(write.corrected)
         }
@@ -869,6 +871,20 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
         parameters: [SQLiteValue]
     ) throws -> Int {
         Int(try connection.queryStrings(sql, parameters: parameters).first ?? "0") ?? 0
+    }
+
+    private func requireNoPersistedSuccessor(of factID: UUID) throws {
+        let successorCount = try scalarCount(
+            """
+            SELECT COUNT(*)
+            FROM task_context_facts
+            WHERE supersedes_fact_id = ?;
+            """,
+            parameters: [.text(factID.uuidString)]
+        )
+        guard successorCount == 0 else {
+            throw VoiceTaskConversationDomainError.incompatibleFactTransition
+        }
     }
 
     private func targetColumns(

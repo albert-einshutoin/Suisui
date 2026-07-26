@@ -1921,6 +1921,61 @@ public enum CoreMigrations {
                     """
                 )
             },
+            DatabaseMigration(
+                id: "0029_index_task_context_fact_successors"
+            ) { connection in
+                let invalidForks = try connection.queryStrings(
+                    """
+                    SELECT child.supersedes_fact_id
+                    FROM task_context_facts AS child
+                    JOIN task_context_facts AS parent
+                      ON parent.id = child.supersedes_fact_id
+                    WHERE child.supersedes_fact_id IS NOT NULL
+                    GROUP BY child.supersedes_fact_id
+                    HAVING COUNT(*) > 1
+                       AND NOT (
+                            COUNT(*) = 2
+                            AND SUM(CASE WHEN child.state = 'superseded' THEN 1 ELSE 0 END) = 1
+                            AND SUM(CASE WHEN child.state = 'confirmed' THEN 1 ELSE 0 END) = 1
+                            AND MIN(child.created_at) = MAX(child.created_at)
+                            AND SUM(
+                                CASE WHEN
+                                    child.session_id = parent.session_id
+                                    AND child.kind = parent.kind
+                                    AND child.scope_kind = parent.scope_kind
+                                    AND child.scope_target_id IS parent.scope_target_id
+                                    AND child.project_id IS parent.project_id
+                                    AND child.task_id IS parent.task_id
+                                THEN 1 ELSE 0 END
+                            ) = 2
+                            AND SUM(
+                                CASE WHEN
+                                    child.state = 'superseded'
+                                    AND child.value = parent.value
+                                    AND child.source_turn_id IS parent.source_turn_id
+                                    AND child.source_excerpt_digest IS parent.source_excerpt_digest
+                                    AND child.confidence = parent.confidence
+                                    AND child.author = parent.author
+                                THEN 1 ELSE 0 END
+                            ) = 1
+                       );
+                    """
+                )
+                guard invalidForks.isEmpty else {
+                    // Earlier Store versions could append competing successors.
+                    // Refuse to bless an ambiguous long-term context rather than
+                    // silently choosing which user fact remains authoritative.
+                    throw DatabaseError.executeFailed(
+                        "Legacy Task Context history contains incompatible successors."
+                    )
+                }
+                try connection.execute(
+                    """
+                    CREATE INDEX idx_task_context_facts_supersedes
+                    ON task_context_facts(supersedes_fact_id);
+                    """
+                )
+            },
         ]
     }
 }

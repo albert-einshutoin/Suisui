@@ -215,6 +215,122 @@ final class DatabaseMigrationTests: XCTestCase {
         )
     }
 
+    func testTaskContextSuccessorLookupMigrationAddsIndex() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeSuccessorIndex = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0029_index_task_context_fact_successors"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeSuccessorIndex
+        )
+        XCTAssertFalse(
+            Set(
+                try connection.queryRows(
+                    "PRAGMA index_list(task_context_facts);"
+                ).compactMap { $0["name"] }
+            ).contains("idx_task_context_facts_supersedes")
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+
+        XCTAssertTrue(
+            Set(
+                try connection.queryRows(
+                    "PRAGMA index_list(task_context_facts);"
+                ).compactMap { $0["name"] }
+            ).contains("idx_task_context_facts_supersedes")
+        )
+    }
+
+    func testTaskContextSuccessorLookupMigrationRejectsLegacyForkedHistory() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeSuccessorIndex = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0029_index_task_context_fact_successors"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeSuccessorIndex
+        )
+        try connection.execute(
+            """
+            INSERT INTO task_context_facts (
+                id, session_id, kind, scope_kind, scope_target_id, state,
+                value, source_turn_id, source_excerpt_digest, confidence,
+                author, supersedes_fact_id, created_at
+            )
+            VALUES
+                ('legacy-parent', 'session', 'constraint', 'task', 42, 'confirmed',
+                 'Original', 'turn', NULL, 1.0, 'user_explicit', NULL, 1.0),
+                ('legacy-branch-a', 'session', 'constraint', 'task', 42, 'confirmed',
+                 'Branch A', 'turn', NULL, 1.0, 'user_explicit', 'legacy-parent', 2.0),
+                ('legacy-branch-b', 'session', 'constraint', 'task', 42, 'confirmed',
+                 'Branch B', 'turn', NULL, 1.0, 'user_explicit', 'legacy-parent', 3.0);
+            """
+        )
+
+        XCTAssertThrowsError(
+            try SQLiteMigrationRunner.migrate(
+                connection: connection,
+                migrations: CoreMigrations.current
+            )
+        )
+        XCTAssertFalse(
+            try connection.queryStrings(
+                "SELECT id FROM schema_migrations WHERE id = '0029_index_task_context_fact_successors';"
+            ).contains("0029_index_task_context_fact_successors")
+        )
+    }
+
+    func testTaskContextSuccessorLookupMigrationAcceptsAtomicCorrectionPair() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeSuccessorIndex = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0029_index_task_context_fact_successors"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeSuccessorIndex
+        )
+        try connection.execute(
+            """
+            INSERT INTO task_context_facts (
+                id, session_id, kind, scope_kind, scope_target_id, state,
+                value, source_turn_id, source_excerpt_digest, confidence,
+                author, supersedes_fact_id, created_at
+            )
+            VALUES
+                ('correction-parent', 'session', 'constraint', 'task', 42, 'confirmed',
+                 'Original', 'turn', NULL, 1.0, 'user_explicit', NULL, 1.0),
+                ('correction-marker', 'session', 'constraint', 'task', 42, 'superseded',
+                 'Original', 'turn', NULL, 1.0, 'user_explicit', 'correction-parent', 2.0),
+                ('correction-value', 'session', 'constraint', 'task', 42, 'confirmed',
+                 'Corrected', 'replacement-turn', NULL, 1.0, 'user_explicit',
+                 'correction-parent', 2.0);
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT id FROM schema_migrations WHERE id = '0029_index_task_context_fact_successors';"
+            ),
+            ["0029_index_task_context_fact_successors"]
+        )
+    }
+
     func testApprovalReplayStoreRejectsNonceAfterDatabaseReopen() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("suisui-approval-replay-\(UUID().uuidString)", isDirectory: true)

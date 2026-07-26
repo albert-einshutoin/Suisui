@@ -891,6 +891,168 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
         )
     }
 
+    func testStoreRejectsSecondConfirmationSuccessorForSameProposal() throws {
+        let (connection, store) = try makeStore()
+        let session = makeSession()
+        try store.createSession(session)
+        let turn = try makeTurn(sessionID: session.id)
+        try store.saveTurn(turn)
+        try connection.execute(
+            """
+            INSERT INTO projects (id, title, status, created_at, updated_at)
+            VALUES (51, 'Release', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+            INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+            VALUES (52, 51, 'Ship', 'planned', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+            """
+        )
+        let history = try policyConfirmationHistory(
+            TaskContextFact(
+                sessionID: session.id,
+                kind: .goal,
+                scope: .task(52),
+                state: .proposed,
+                value: "Release safely",
+                sourceTurnID: turn.id,
+                sourceExcerptDigest: String(repeating: "e", count: 64),
+                confidence: 1,
+                author: .userExplicit,
+                createdAt: turn.createdAt
+            ),
+            store: store
+        )
+        let policy = TaskContextFactPolicy()
+        let secondConfirmation = try policy.confirm(
+            history.proposed,
+            at: turn.createdAt.addingTimeInterval(1)
+        )
+
+        try store.saveFact(try policy.persistenceWrite(for: history.proposed))
+        try store.saveFact(try policy.persistenceWrite(for: history.confirmed))
+        XCTAssertThrowsError(
+            try store.saveFact(
+                try policy.persistenceWrite(for: secondConfirmation)
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationDomainError,
+                .incompatibleFactTransition
+            )
+        }
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT COUNT(*)
+                FROM task_context_facts
+                WHERE supersedes_fact_id = ?;
+                """,
+                parameters: [.text(history.proposed.id.uuidString)]
+            ),
+            ["1"]
+        )
+    }
+
+    func testStoreRejectsSecondSupersessionForSameConfirmedFact() throws {
+        let (connection, store) = try makeStore()
+        let session = makeSession()
+        try store.createSession(session)
+        let turn = try makeTurn(sessionID: session.id)
+        try store.saveTurn(turn)
+        try connection.execute(
+            """
+            INSERT INTO projects (id, title, status, created_at, updated_at)
+            VALUES (51, 'Release', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+            INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+            VALUES (52, 51, 'Ship', 'planned', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+            """
+        )
+        let oldHistory = try policyConfirmationHistory(
+            TaskContextFact(
+                sessionID: session.id,
+                kind: .constraint,
+                scope: .task(52),
+                state: .proposed,
+                value: "Launch Thursday",
+                sourceTurnID: turn.id,
+                sourceExcerptDigest: String(repeating: "f", count: 64),
+                confidence: 1,
+                author: .userExplicit,
+                createdAt: turn.createdAt
+            ),
+            store: store
+        )
+        let policy = TaskContextFactPolicy()
+        try store.saveFact(try policy.persistenceWrite(for: oldHistory.proposed))
+        try store.saveFact(try policy.persistenceWrite(for: oldHistory.confirmed))
+        let replacementEvidence = try store.verifyFactSourceEvidence(
+            sessionID: session.id,
+            turnID: turn.id,
+            sourceExcerpt: "Sign the release"
+        )
+        func replacement(_ value: String, offset: TimeInterval) throws -> TaskContextFact {
+            let candidate = TaskContextFactCandidate(
+                sessionID: session.id,
+                kind: .constraint,
+                scope: .task(52),
+                scopeAssessment: .unique,
+                value: value,
+                sourceEvidence: replacementEvidence,
+                confidence: 1,
+                author: .userExplicit,
+                conflictingConfirmedFactIDs: [oldHistory.confirmed.id],
+                contentCategory: .taskContext,
+                createdAt: turn.createdAt.addingTimeInterval(offset)
+            )
+            guard case let .requireConfirmation(fact, _) = policy.evaluate(candidate) else {
+                throw VoiceTaskConversationDomainError.incompatibleFactTransition
+            }
+            try store.saveFact(try policy.persistenceWrite(for: fact))
+            return fact
+        }
+        let friday = try replacement("Launch Friday", offset: 1)
+        let saturday = try replacement("Launch Saturday", offset: 2)
+        let first = try policy.supersede(
+            oldHistory.confirmed,
+            with: friday,
+            at: turn.createdAt.addingTimeInterval(3)
+        )
+        let second = try policy.supersede(
+            oldHistory.confirmed,
+            with: saturday,
+            at: turn.createdAt.addingTimeInterval(4)
+        )
+
+        try store.saveSupersession(
+            try policy.persistenceSupersessionWrite(
+                superseded: first.0,
+                corrected: first.1
+            )
+        )
+        XCTAssertThrowsError(
+            try store.saveSupersession(
+                try policy.persistenceSupersessionWrite(
+                    superseded: second.0,
+                    corrected: second.1
+                )
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationDomainError,
+                .incompatibleFactTransition
+            )
+        }
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT COUNT(*)
+                FROM task_context_facts
+                WHERE supersedes_fact_id = ?;
+                """,
+                parameters: [.text(oldHistory.confirmed.id.uuidString)]
+            ),
+            ["2"]
+        )
+    }
+
     private func makeStore() throws -> (SQLiteConnection, SQLiteVoiceTaskConversationStore) {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)

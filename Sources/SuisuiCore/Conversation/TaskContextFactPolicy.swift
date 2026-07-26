@@ -618,6 +618,13 @@ public struct TaskContextFactPolicy: Sendable {
         if highSignalMarkers.contains(where: { lowered.contains($0) }) {
             return true
         }
+        // Voice input commonly expresses credentials as natural language
+        // instead of key/value syntax. Keep these patterns here, after the
+        // shared redactor, so phrases such as "password is ..." cannot cross
+        // the Task Context persistence boundary merely by omitting "=".
+        if containsSpokenCredentialValue(value) {
+            return true
+        }
         // Task Context is cross-platform even though Suisui currently runs on
         // macOS. Detect generic POSIX, drive-letter, and UNC absolute paths so
         // content cannot become persistable merely because it came from a
@@ -630,5 +637,168 @@ public struct TaskContextFactPolicy: Sendable {
         return absolutePathPatterns.contains { pattern in
             value.range(of: pattern, options: .regularExpression) != nil
         }
+    }
+
+    private static func containsSpokenCredentialValue(_ value: String) -> Bool {
+        let englishCredential = #"(?:api[\s_-]?keys?|access[\s_-]?tokens?|auth(?:entication|orization)?[\s_-]?(?:keys?|tokens?|codes?)|private[\s_-]?keys?|verification[\s_-]?codes?|confirmation[\s_-]?codes?|recovery[\s_-]?codes?|2fa[\s_-]?codes?|one[\s_-]?time[\s_-]?codes?|otps?|tokens?|passwords?|passcodes?|passphrases?|credentials?|secrets?|pins?)"#
+        let englishNonPINCredential = #"(?:api[\s_-]?keys?|access[\s_-]?tokens?|auth(?:entication|orization)?[\s_-]?(?:keys?|tokens?|codes?)|private[\s_-]?keys?|verification[\s_-]?codes?|confirmation[\s_-]?codes?|recovery[\s_-]?codes?|2fa[\s_-]?codes?|one[\s_-]?time[\s_-]?codes?|otps?|tokens?|passwords?|passcodes?|passphrases?|credentials?|secrets?)"#
+        let japaneseCredential = #"(?:api\s*キー|アクセス\s*トークン|認証\s*トークン|認証\s*コード|確認\s*コード|ワンタイム\s*パスワード|(?<![a-z0-9])otp(?![a-z0-9])|トークン|パスワード|パスコード|パスフレーズ|暗証番号|認証情報|秘密鍵|シークレット)"#
+        let spokenNumber = #"(?:zero|oh|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand)"#
+        let assignedPINValue = #"(?:[\p{L}\p{Nd}_-]*\p{Nd}[\p{L}\p{Nd}_-]*|"#
+            + spokenNumber + #"(?:[-\s]+"# + spokenNumber + #"){0,7})"#
+        let englishCredentialScope = #"(?:\s+(?:for|of)\s+(?:the\s+|our\s+|my\s+|your\s+|their\s+)?[a-z0-9_@.'-]+(?:\s+[a-z0-9_@.'-]+){0,7})?"#
+        let englishRelativeClause = #"(?:\s+(?:(?:that|which)\s+)?(?:i|we|you|they)\s+(?:use|need|have)|\s+to\s+(?:use|deploy|rotate))?"#
+        let credentialAssignmentPatterns = [
+            #"\b"# + englishCredential
+                + #"\b(?:'s)?"# + englishCredentialScope
+                + englishRelativeClause + englishCredentialScope
+                + #"(?:\s+value)?"#
+                + #"\s+(?:is|are|was|were|equals?|should\s+be|must\s+be|will\s+be)\s+\S+"#,
+            #"\b(?:the\s+|our\s+|my\s+|your\s+|their\s+)?"# + englishCredential
+                + #"'s\s+\S+"#,
+            #"\b"# + englishCredential
+                + #"\b"# + englishCredentialScope + #"\s*(?::|=)\s*\S+"#,
+            #"^\s*use\s+(?:the\s+|my\s+)?"# + englishCredential
+                + #"\s+(?!authentication\b|authorization\b|bucket\b|budget\b|count\b|flow\b|handling\b|management\b|policy\b|reset\b|rotation\b|storage\b|support\b|validation\b)\S+[.!]?\s*$"#,
+            #"\b(?:set|change|update|assign)\s+(?:the\s+|my\s+)?"# + englishCredential
+                + englishCredentialScope + #"\s+(?:to|as)\s+\S+"#,
+            #"\b(?:set|change|update|assign)\s+(?:the\s+|my\s+)?"# + englishCredential
+                + #"\s+(?!authentication\b|authorization\b|daily\b|friday\b|monday\b|monthly\b|policy\b|reset\b|rotation\b|saturday\b|sunday\b|thursday\b|today\b|tomorrow\b|tuesday\b|wednesday\b|weekly\b)\S+[.!]?\s*$"#,
+            #"\b(?:i|we|you|they)\s+(?:set|changed|updated|assigned)\s+"#
+                + #"(?:the\s+|my\s+|our\s+|your\s+|their\s+)?"# + englishCredential
+                + englishCredentialScope + #"\s+(?:to|as)\s+\S+"#,
+            #"\b"# + englishCredential
+                + #"\s+(?:has|have|had)\s+been\s+(?:set|changed|updated|assigned)"#
+                + #"\s+(?:to|as)\s+\S+"#,
+            #"\b(?:use|set|store|save)\s+\S+\s+(?:as|for)\s+(?:the\s+|my\s+)?"#
+                + englishCredential + #"\b"#,
+            #"\S+\s+(?:is|was|equals?|as|should\s+be|must\s+be|will\s+be)\s+"#
+                + #"(?:the\s+|our\s+|my\s+|your\s+|their\s+)?"#
+                + englishCredential + englishCredentialScope + #"[.!]?\s*$"#,
+            // Speech recognition may drop the delimiter in "password: value".
+            // Treat it as an assignment only when the entire utterance is the
+            // credential label plus one value, never from a word inside a task.
+            #"^\s*(?:(?:remember|note|record)\s+)?(?:the\s+|our\s+|my\s+|your\s+|their\s+)?"#
+                + englishNonPINCredential
+                + #"\s+(?!authentication\b|authorization\b|bucket\b|budget\b|count\b|expires?\b|flow\b|handling\b|length\b|management\b|must\b|policy\b|reset\b|rotation\b|santa\b|should\b|storage\b|support\b|this\b|urgent\b|validation\b)"#
+                + #"[^\s.!?]{3,}(?:\s+[^\s.!?]{2,}){0,3}[.!]?\s*$"#,
+            #"^\s*"# + japaneseCredential
+                + #"\s+[^\s。.!?]{3,}(?:\s+[^\s。.!?]{2,}){0,3}[。.!]?\s*$"#,
+            #"\b"# + englishNonPINCredential + #"\s+"# + assignedPINValue
+                + #"\b[.!]?\s*$"#,
+            // A PIN may be alphabetic. An explicit assignment delimiter is
+            // sufficient evidence of a credential value without guessing its shape.
+            #"\bpins?\b(?:\s+(?:code|number))?\s*(?::|=)\s*\S+"#,
+            #"\bpins?\b(?:\s+(?:code|number))?(?:\s+(?:for|of)\s+(?:the\s+)?[a-z0-9_-]+(?:\s+[a-z0-9_-]+){0,2})?\s+(?:is|are|was|were|equals?|should\s+be)\b"#,
+            #"\bpins?\b(?:\s+(?:code|number))?\s+(?:is\s+|was\s+|has\s+been\s+)?"#
+                + #"(?:set|changed|updated|assigned)\s+(?:to|as)\s+\S+"#,
+            #"^\s*(?:the\s+|my\s+)?pins?\b(?:\s+(?:code|number))?\s+"# + spokenNumber
+                + #"(?:[-\s]+"# + spokenNumber + #"){0,7}[.!]?\s*$"#,
+            #"^\s*(?:the\s+|my\s+)?pins?\b(?:\s+(?:code|number))?\s+"#
+                + assignedPINValue + #"[.!]?\s*$"#,
+            #"^\s*(?:the\s+|my\s+)?pins?\b(?:\s+(?:code|number))?\s+"#
+                + #"(?!issue\b|release\b|task\b|this\b|today\b|tomorrow\b)[a-z][a-z0-9_-]{3,}[.!]?\s*$"#,
+            #"\bpins?\b(?:\s+(?:code|number))?(?:\s+(?:for|of)\s+(?:the\s+)?[a-z0-9_-]+){0,2}\s*(?:(?:is|are|was|were|equals?|should\s+be|:|=)\s*)?[0-9](?:[ -]?[0-9]){2,}\b"#,
+            #"\b[0-9](?:[ -]?[0-9]){2,}\s+(?:is|was|equals?|as)\s+(?:my\s+|the\s+)?pins?\b"#,
+            #"\b(?:set|change|update)\s+(?:the\s+|my\s+)?pins?\s+(?:to|as)\s+"#
+                + assignedPINValue + #"\b"#,
+            #"\buse\s+"# + assignedPINValue + #"\s+for\s+(?:the\s+|my\s+)?pins?\b"#,
+            #"[PpＰｐ][IiＩｉ][NnＮｎ](?:\s*コード)?\s*(?:は|が|を|:|：|=)\s*\S+"#,
+            #"[PpＰｐ][IiＩｉ][NnＮｎ]\s*コード\s*"# + assignedPINValue,
+            #"トークン\s*(?:は|が|を|:|：|=)\s*\S+"#,
+            #"シークレット\s*(?:は|が|を|:|：|=)\s*\S+"#,
+            #"\S+\s*を\s*"# + japaneseCredential
+                + #"\s*(?:に\s*(?:する|設定|変更|更新|使用)|として\s*(?:使う|使用する))"#,
+            #"\S+\s*(?:が|は)\s*"# + japaneseCredential
+                + #"\s*(?:です|である|となる)?[。.!]?\s*$"#,
+            japaneseCredential + #"(?:\s*の\s*値)?\s*(?:は|が|を|:|：|=)\s*\S+"#,
+            japaneseCredential + #"\s+"# + assignedPINValue,
+        ]
+        let hasCredentialAssignment = credentialAssignmentPatterns.contains(where: {
+            value.range(of: $0, options: [.regularExpression, .caseInsensitive]) != nil
+        })
+        guard hasCredentialAssignment else {
+            return false
+        }
+
+        // Assignment-shaped wording can also describe a value-free requirement,
+        // such as "password is required". Permit only anchored requirement
+        // grammars so an appended secret cannot hide behind a benign first clause.
+        let englishState = #"(?:required|needed|optional|available|configured|disabled|enabled|encrypted|expired|managed|missing|rotated|stored|supported|valid|invalid)"#
+        let englishTopic = #"(?:authentication|authorization|exchange|flow|handling|management|policy|refresh|reset|rotation|storage|support|validation)"#
+        let contextWord = #"(?:authentication|authorization|build|deployment|development|environment|integration|keychain|production|release|runtime|security|staging|workflow)"#
+        let englishOwner = #"(?:the\s+|our\s+|my\s+|your\s+|their\s+)?"#
+        let englishPurpose = #"(?:\s+to\s+(?:(?:log|sign)\s+(?:in|into|on)|(?:authenticate|build|connect|deploy|release|run)|access\s+(?:the\s+)?(?:build|deployment|environment|integration|production|release|runtime|staging)|(?:reset|verify)\s+(?:the\s+)?(?:account|identity|login|user)))?"#
+        let englishStateQualifier = #"(?:\s+(?:at\s+rest|in\s+transit|in\s+(?:the\s+)?(?:system\s+)?keychain))?"#
+        let englishContext = #"(?:\s+(?:for|during|in)\s+(?:the\s+)?"# + contextWord
+            + #"(?:\s+"# + contextWord + #")*)?"# + englishPurpose
+        let japaneseState = #"(?:必要|必須|設定済み?|未設定|有効|無効|暗号化済み?|管理済み?|保存済み?)"#
+        let safeRequirementPatterns = [
+            #"^\s*"# + englishOwner + englishCredential + englishCredentialScope
+                + #"\s+(?:is|was|are|were|should\s+be|must\s+be|will\s+be)\s+"#
+                + englishState
+                + englishContext + englishStateQualifier + #"[.!]?\s*$"#,
+            #"^\s*"# + englishOwner + englishCredential + englishCredentialScope
+                + #"\s+(?:is|was|are|were|should\s+be|must\s+be|will\s+be)\s+not\s+"#
+                + englishState
+                + englishContext + englishStateQualifier + #"[.!]?\s*$"#,
+            #"^\s*(?:the\s+)?pins?\s+(?:code|number)\s+"#
+                + #"(?:is|was|should\s+be|must\s+be|will\s+be)\s+"#
+                + englishState + englishContext + #"[.!]?\s*$"#,
+            #"^\s*(?:do|will)\s+(?:we|you|they)\s+(?:need|require|use)\s+"#
+                + #"(?:an?\s+|the\s+)?"# + englishCredential
+                + englishContext + #"\?\s*$"#,
+            #"^\s*(?:use|support|implement|document)\s+(?:the\s+)?"#
+                + englishCredential + #"\s+"# + englishTopic
+                + #"(?:\s+(?:flow|policy|process|support|handling))?[.!]?\s*$"#,
+            #"^\s*(?:use|support|implement|design|require)\s+token[-\s]+based\s+"#
+                + #"(?:authentication|authorization)(?:\s+(?:flow|policy|process))?[.!]?\s*$"#,
+            #"^\s*(?:the\s+)?"# + englishCredential + #"\s+"# + englishTopic
+                + #"\s+(?:is|was|are|were|should\s+be)\s+"# + englishState
+                + englishContext + #"[.!]?\s*$"#,
+            #"^\s*(?:the\s+)?passwords?\s+(?:must|should)\s+"#
+                + #"(?:contain|include|have)\s+(?:at\s+least\s+)?\d+\s+"#
+                + #"(?:characters|chars|letters|digits|symbols)[.!]?\s*$"#,
+            #"^\s*(?:the\s+)?passwords?\s+(?:is|are|should\s+be|must\s+be)\s+"#
+                + #"(?:at\s+least\s+)?\d+\s+(?:characters|letters|digits|symbols)"#
+                + #"[.!]?\s*$"#,
+            #"^\s*"# + englishOwner + englishCredential + englishCredentialScope
+                + #"\s+(?:is|are|should\s+be|must\s+be|will\s+be)\s+"#
+                + #"(?:rotated|refreshed|replaced)\s+every\s+\d+\s+"#
+                + #"(?:hours?|days?|weeks?|months?)[.!]?\s*$"#,
+            #"^\s*(?:implement|design|build|test|review|fix|update|document|support)"#
+                + #"\s+(?:the\s+)?"# + englishCredential + #"\s+"# + englishTopic
+                + #"(?:\s+(?:screen|flow|policy|process|support|handling|view|interface|workflow|feature|test|tests)){0,2}[.!]?\s*$"#,
+            #"^\s*(?:store|save)\s+(?:the\s+)?"# + englishCredential
+                + #"\s+(?:in|with)\s+(?:keychain|secret\s+manager|secure\s+storage)[.!]?\s*$"#,
+            #"^\s*(?:rotate|refresh|revoke|replace|generate|delete)\s+(?:the\s+)?"#
+                + englishCredential
+                + #"(?:\s+every\s+\d+\s+(?:hours?|days?|weeks?|months?))?[.!]?\s*$"#,
+            #"^\s*"# + japaneseCredential + #"\s*(?:は|が)\s*"#
+                + japaneseState + #"(?:です|である|となる)?[。！!]?\s*$"#,
+            #"^\s*"# + japaneseCredential + #"\s*(?:は|が)\s*\d+\s*文字以上[。！!]?\s*$"#,
+            #"^\s*[PpＰｐ][IiＩｉ][NnＮｎ]\s*コード\s*(?:は|が)\s*"#
+                + japaneseState + #"(?:です|である|となる)?[。！!]?\s*$"#,
+            #"^\s*"# + japaneseCredential + #"\s*(?:は|が)\s*"#
+                + #"(?:必要|必須)(?:です)?(?:か|でしょうか)[？?]\s*$"#,
+            #"^\s*"# + japaneseCredential
+                + #"\s*(?:の\s*)?(?:再設定|ローテーション|管理|保存|暗号化|更新|認証|検証)"#
+                + #"\s*(?:が|は)?\s*"# + japaneseState
+                + #"(?:です|である|となる)?[。！!]?\s*$"#,
+            #"^\s*"# + japaneseCredential + #"\s*(?:を|の)?\s*"#
+                + #"(?:再設定|ローテーション|管理|保存|暗号化|更新|認証|検証)"#
+                + #"(?:画面|フロー|ポリシー|処理|機能|対応)?\s*(?:を)?\s*"#
+                + #"(?:実装|設計|構築|テスト|レビュー|修正|更新|文書化|確認)?"#
+                + #"(?:する|します|してください|が必要)?[。！!]?\s*$"#,
+        ]
+        if safeRequirementPatterns.contains(where: {
+            value.range(of: $0, options: [.regularExpression, .caseInsensitive]) != nil
+        }) {
+            return false
+        }
+
+        // Task Context is durable. Once a credential assignment is recognized,
+        // fail closed unless the entire sentence is a value-free requirement.
+        return true
     }
 }
