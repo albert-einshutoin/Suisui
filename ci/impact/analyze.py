@@ -152,6 +152,15 @@ def analyze(
     projects = detect_projects(repo)
     smoke_targets = list(config["smokeTestTargets"])
     normalized_changes, change_error = _validate_changes(changes)
+    if force_full_reason:
+        return _full_plan(
+            base_revision=base_revision,
+            head_revision=head_revision,
+            changes=normalized_changes or [],
+            projects=projects,
+            reason=force_full_reason,
+            smoke_targets=smoke_targets,
+        )
     if normalized_changes is None:
         return _full_plan(
             base_revision=base_revision,
@@ -159,15 +168,6 @@ def analyze(
             changes=[],
             projects=projects,
             reason=change_error or "changed file discovery failed",
-            smoke_targets=smoke_targets,
-        )
-    if force_full_reason:
-        return _full_plan(
-            base_revision=base_revision,
-            head_revision=head_revision,
-            changes=normalized_changes,
-            projects=projects,
-            reason=force_full_reason,
             smoke_targets=smoke_targets,
         )
     dangerous_reason = first_force_full_reason(normalized_changes, config)
@@ -239,20 +239,10 @@ def analyze(
             if not isinstance(package_graph, dict):
                 raise SwiftAnalysisError("Swift dependency graph is invalid")
             target_graph = parse_target_graph(package_graph)
-            changed_targets = {
-                target
-                for path in swift_paths
-                for target in [target_for_path(path, target_graph)]
-                if target is not None
-            }
-            if len(changed_targets) != len(
-                {
-                    path
-                    for path in swift_paths
-                    if path.startswith("Sources/") or path.startswith("Tests/")
-                }
-            ) and not changed_targets:
+            mapped_targets = [target_for_path(path, target_graph) for path in swift_paths]
+            if any(target is None for target in mapped_targets):
                 raise SwiftAnalysisError("changed Swift module could not be identified")
+            changed_targets = {target for target in mapped_targets if target is not None}
             affected_modules = reverse_dependency_closure(changed_targets, target_graph)
             selection = select_tests(repo, swift_paths)
             unit_targets.update(selection["unitTestTargets"])
@@ -369,6 +359,11 @@ def main() -> int:
     try:
         if arguments.changed_files_json:
             changes = load_json(Path(arguments.changed_files_json).resolve())
+        elif arguments.force_full_reason:
+            # Branch, schedule, release, and manual lanes are full by policy;
+            # requiring a diff here would make an unavailable base obscure that
+            # explicit reason without improving the validation decision.
+            changes = []
         else:
             discovered = collect_changes(repo, arguments.base_revision, arguments.head_revision)
             base_revision = str(discovered["baseRevision"])

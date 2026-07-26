@@ -124,6 +124,23 @@ class ImpactAnalysisTests(unittest.TestCase):
         self.assertEqual(plan["strategy"], "full")
         self.assertIn("dependency graph", plan["fallbackReason"])
 
+    def test_one_unmapped_module_in_a_mixed_change_forces_full(self) -> None:
+        self._write("Sources/Unknown/Other.swift", "struct Other {}\n")
+        self._write(
+            "Tests/SuisuiCoreTests/OtherTests.swift",
+            "final class OtherTests { let subject = Other() }\n",
+        )
+
+        plan = self._analyze(
+            [
+                {"status": "M", "path": "Sources/SuisuiCore/App/Widget.swift"},
+                {"status": "M", "path": "Sources/Unknown/Other.swift"},
+            ]
+        )
+
+        self.assertEqual(plan["strategy"], "full")
+        self.assertIn("module could not be identified", plan["fallbackReason"])
+
     def test_force_full_is_branch_independent(self) -> None:
         plan = self._analyze(
             [{"status": "M", "path": "docs/guide.md"}],
@@ -131,6 +148,44 @@ class ImpactAnalysisTests(unittest.TestCase):
         )
 
         self.assertEqual(plan["strategy"], "full")
+        self.assertEqual(plan["fallbackReason"], "scheduled validation")
+
+    def test_force_full_does_not_require_a_nonempty_diff(self) -> None:
+        plan = self._analyze([], force_full_reason="manual complete validation")
+
+        self.assertEqual(plan["strategy"], "full")
+        self.assertEqual(plan["fallbackReason"], "manual complete validation")
+
+    def test_force_full_cli_does_not_require_git_history(self) -> None:
+        graph_path = self.repo / "package-graph.json"
+        output_path = self.repo / "plan.json"
+        graph_path.write_text(json.dumps(self.package_graph), encoding="utf-8")
+        result = subprocess.run(
+            [
+                "python3",
+                str(ANALYZER),
+                "--repo",
+                str(self.repo),
+                "--base-revision",
+                "unavailable-base",
+                "--head-revision",
+                "unavailable-head",
+                "--swift-package-graph-json",
+                str(graph_path),
+                "--config",
+                str(CONFIG),
+                "--output",
+                str(output_path),
+                "--force-full-reason",
+                "scheduled validation",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        plan = json.loads(output_path.read_text(encoding="utf-8"))
         self.assertEqual(plan["fallbackReason"], "scheduled validation")
 
     def _analyze(

@@ -19,6 +19,7 @@ class GitChangeParserTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("rename-copy-delete: passed", result.stdout)
         self.assertIn("malformed-input: passed", result.stdout)
+        self.assertIn("fetch-ref-normalization: passed", result.stdout)
 
 
 if __name__ == "__main__":

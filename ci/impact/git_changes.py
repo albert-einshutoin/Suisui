@@ -54,6 +54,13 @@ def _run(repo: Path, arguments: List[str]) -> subprocess.CompletedProcess:
     )
 
 
+def _origin_fetch_ref(base_revision: str) -> str:
+    for prefix in ("refs/remotes/origin/", "refs/heads/", "origin/"):
+        if base_revision.startswith(prefix):
+            return base_revision[len(prefix) :]
+    return base_revision
+
+
 def collect_changes(repo: Path, base_revision: str, head_revision: str) -> Dict[str, object]:
     shallow_path = _run(repo, ["git", "rev-parse", "--git-path", "shallow"])
     if shallow_path.returncode != 0:
@@ -68,7 +75,10 @@ def collect_changes(repo: Path, base_revision: str, head_revision: str) -> Dict[
 
     merge_base = _run(repo, ["git", "merge-base", base_revision, head_revision])
     if merge_base.returncode != 0:
-        fetch_base = _run(repo, ["git", "fetch", "--no-tags", "origin", base_revision])
+        fetch_base = _run(
+            repo,
+            ["git", "fetch", "--no-tags", "origin", _origin_fetch_ref(base_revision)],
+        )
         if fetch_base.returncode != 0:
             raise GitChangeError("base revision fetch failed")
         merge_base = _run(repo, ["git", "merge-base", base_revision, head_revision])
@@ -114,9 +124,14 @@ def _self_test() -> int:
         parse_name_status_z(b"R100\0only-one-path\0")
     except GitChangeError:
         print("malformed-input: passed")
-        return 0
-    print("malformed-input: failed", file=sys.stderr)
-    return 1
+    else:
+        print("malformed-input: failed", file=sys.stderr)
+        return 1
+    assert _origin_fetch_ref("origin/main") == "main"
+    assert _origin_fetch_ref("refs/remotes/origin/release/1") == "release/1"
+    assert _origin_fetch_ref("deadbeef") == "deadbeef"
+    print("fetch-ref-normalization: passed")
+    return 0
 
 
 def main() -> int:
