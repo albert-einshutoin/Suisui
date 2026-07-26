@@ -11,6 +11,7 @@ SELECTED_RUNNER = REPOSITORY_ROOT / "ci" / "run-selected.py"
 FULL_RUNNER = REPOSITORY_ROOT / "ci" / "run-full.sh"
 ORCHESTRATOR = REPOSITORY_ROOT / "ci" / "run-pr-ci.sh"
 PLAN_EXPORTER = REPOSITORY_ROOT / "ci" / "export-plan.py"
+PLAN_ESCALATOR = REPOSITORY_ROOT / "ci" / "escalate-plan.py"
 
 
 class ExecutionContractTests(unittest.TestCase):
@@ -167,6 +168,69 @@ class ExecutionContractTests(unittest.TestCase):
             self.assertNotIn("shadow_full", exported)
             self.assertIn("ui_runtime=true", exported)
             self.assertIn("ui_visual=false", exported)
+
+    def test_plan_escalator_records_full_fallback_and_all_ui_targets(self) -> None:
+        plan = {
+            "strategy": "selective",
+            "fallback": False,
+            "fallbackReason": None,
+            "e2eTestTargets": [],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            plan_path = Path(directory) / "plan.json"
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(PLAN_ESCALATOR),
+                    "--plan",
+                    str(plan_path),
+                    "--reason",
+                    "selected test runner setup failed",
+                ],
+                cwd=str(REPOSITORY_ROOT),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            escalated = json.loads(plan_path.read_text(encoding="utf-8"))
+            self.assertEqual(escalated["strategy"], "full")
+            self.assertTrue(escalated["fallback"])
+            self.assertEqual(
+                escalated["fallbackReason"],
+                "selected test runner setup failed",
+            )
+            self.assertEqual(
+                escalated["e2eTestTargets"],
+                ["ui-runtime", "ui-visual", "ui-performance"],
+            )
+            output_path = Path(directory) / "outputs.txt"
+            export_result = subprocess.run(
+                [
+                    "python3",
+                    str(PLAN_EXPORTER),
+                    "--plan",
+                    str(plan_path),
+                    "--github-output",
+                    str(output_path),
+                ],
+                cwd=str(REPOSITORY_ROOT),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(
+                export_result.returncode,
+                0,
+                export_result.stdout + export_result.stderr,
+            )
+            exported = output_path.read_text(encoding="utf-8")
+            self.assertIn("strategy=full", exported)
+            self.assertIn("ui_runtime=true", exported)
+            self.assertIn("ui_visual=true", exported)
+            self.assertIn("ui_performance=true", exported)
 
     def _run_selected(self, plan: dict):
         with tempfile.TemporaryDirectory() as directory:

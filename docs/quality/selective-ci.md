@@ -88,6 +88,8 @@ JSON planは `.tmp/ci-impact/test-plan.json`、実行履歴は `.tmp/ci-impact/e
 
 source/test削除、未分類file、base/merge-base/diff/shallow recovery失敗、manifest/graph/config/JSON解析失敗、unsupported adapter、存在しない変更source、対象test 0件、filterが実行0件、実行件数の解析不能も全件になる。
 
+選択runnerのsetup失敗は、完全SwiftPMを実行するだけでなくJSON plan自体を`full`へ昇格し、fallback理由と全UI gateを後続jobへ渡す。これにより、実行0件などで選択結果の信頼性が失われた後に、狭いE2E対象だけが残ることを防ぐ。
+
 誤判定を見つけた場合は、見逃した失敗を再現するfixtureを先に追加し、原因に応じて危険ルール、integration/E2E rule、dependency解析、test対応を更新する。選択率を上げるために不確かなfallbackを削除しない。
 
 ## 実行範囲の運用

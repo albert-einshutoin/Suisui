@@ -129,6 +129,13 @@ python3 "$ROOT_DIR/ci/run-selected.py" \
 SELECTED_STATUS=$?
 if [[ "$SELECTED_STATUS" -eq 2 ]]; then
   echo "Fallback reason: selected test runner setup failed" >&2
+  if ! python3 "$ROOT_DIR/ci/escalate-plan.py" \
+    --plan "$PLAN_PATH" \
+    --reason "selected test runner setup failed"; then
+    # An invalid generated plan must make the output exporter choose its
+    # complete-validation defaults instead of preserving narrow UI targets.
+    rm -f "$PLAN_PATH"
+  fi
   "$ROOT_DIR/ci/run-full.sh"
   FULL_STATUS=$?
   [[ "$FULL_STATUS" -eq 0 ]] || exit "$FULL_STATUS"

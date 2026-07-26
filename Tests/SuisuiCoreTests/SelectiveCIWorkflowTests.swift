@@ -58,6 +58,7 @@ final class SelectiveCIWorkflowTests: XCTestCase {
         XCTAssertFalse(fullRunner.contains("impact/analyze"))
         XCTAssertFalse(fullRunner.contains("ci/config"))
         XCTAssertTrue(orchestrator.contains("selected test runner setup failed"))
+        XCTAssertTrue(orchestrator.contains("escalate-plan.py"))
         XCTAssertTrue(orchestrator.contains("\"$ROOT_DIR/ci/run-full.sh\""))
     }
 
