@@ -29,9 +29,17 @@ class ImpactAnalysisTests(unittest.TestCase):
             "targets": [
                 {"name": "SuisuiCore", "type": "regular", "dependencies": []},
                 {
+                    "name": "SuisuiExternalConnectors",
+                    "type": "regular",
+                    "dependencies": [{"byName": ["SuisuiCore", None]}],
+                },
+                {
                     "name": "SuisuiCoreTests",
                     "type": "test",
-                    "dependencies": [{"byName": ["SuisuiCore", None]}],
+                    "dependencies": [
+                        {"byName": ["SuisuiCore", None]},
+                        {"byName": ["SuisuiExternalConnectors", None]},
+                    ],
                 },
             ]
         }
@@ -43,7 +51,10 @@ class ImpactAnalysisTests(unittest.TestCase):
         plan = self._analyze([{"status": "M", "path": "Sources/SuisuiCore/App/Widget.swift"}])
 
         self.assertEqual(plan["strategy"], "selective")
-        self.assertEqual(plan["affectedModules"], ["SuisuiCore", "SuisuiCoreTests"])
+        self.assertEqual(
+            plan["affectedModules"],
+            ["SuisuiCore", "SuisuiCoreTests", "SuisuiExternalConnectors"],
+        )
         self.assertIn("WidgetTests", plan["unitTestTargets"])
         self.assertEqual(
             plan["e2eTestTargets"],
@@ -127,6 +138,59 @@ class ImpactAnalysisTests(unittest.TestCase):
 
         self.assertEqual(plan["strategy"], "full")
         self.assertIn("security", plan["fallbackReason"])
+
+    def test_rename_from_core_preserves_old_path_e2e_targets(self) -> None:
+        self._write(
+            "Sources/SuisuiExternalConnectors/RenamedWidget.swift",
+            "struct RenamedWidget {}\n",
+        )
+        self._write(
+            "Tests/SuisuiCoreTests/RenamedWidgetTests.swift",
+            "final class RenamedWidgetTests { let subject = RenamedWidget() }\n",
+        )
+
+        plan = self._analyze(
+            [
+                {
+                    "status": "R100",
+                    "oldPath": "Sources/SuisuiCore/App/Widget.swift",
+                    "path": "Sources/SuisuiExternalConnectors/RenamedWidget.swift",
+                }
+            ]
+        )
+
+        self.assertEqual(plan["strategy"], "selective")
+        self.assertEqual(
+            plan["e2eTestTargets"],
+            ["ui-performance", "ui-runtime", "ui-visual"],
+        )
+
+    def test_rename_from_connector_preserves_old_path_integration_targets(self) -> None:
+        self._write("Sources/SuisuiCore/App/RenamedConnector.swift", "struct RenamedConnector {}\n")
+        self._write(
+            "Tests/SuisuiCoreTests/RenamedConnectorTests.swift",
+            "final class RenamedConnectorTests { let subject = RenamedConnector() }\n",
+        )
+
+        plan = self._analyze(
+            [
+                {
+                    "status": "R100",
+                    "oldPath": "Sources/SuisuiExternalConnectors/Connector.swift",
+                    "path": "Sources/SuisuiCore/App/RenamedConnector.swift",
+                }
+            ]
+        )
+
+        self.assertEqual(plan["strategy"], "selective")
+        self.assertEqual(
+            plan["integrationTestTargets"],
+            [
+                "ExternalConnectorExposurePolicyTests",
+                "ExternalMCPTests",
+                "SaaSConnectorTests",
+            ],
+        )
 
     def test_multiple_project_types_are_detected_and_unsupported_mix_forces_full(self) -> None:
         self._write("package.json", '{"scripts":{"test":"vitest"}}\n')

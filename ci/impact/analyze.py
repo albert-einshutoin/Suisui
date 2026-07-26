@@ -75,13 +75,18 @@ def first_force_full_reason(changes: List[dict], config: dict) -> Optional[str]:
 def matching_targets(changes: List[dict], rules: List[dict]) -> List[str]:
     targets = set()
     for change in changes:
-        path = change["path"]
+        paths = [change["path"]]
+        old_path = change.get("oldPath")
+        if isinstance(old_path, str):
+            # A move across module boundaries can retain impact from both the
+            # source and destination, so integration/E2E rules inspect both.
+            paths.append(old_path)
         for rule in rules:
             pattern = rule.get("pattern")
             rule_targets = rule.get("targets")
             if not isinstance(pattern, str) or not isinstance(rule_targets, list):
                 raise ConfigurationError("impact target rule is invalid")
-            if fnmatch.fnmatchcase(path, pattern):
+            if any(fnmatch.fnmatchcase(path, pattern) for path in paths):
                 if not all(isinstance(target, str) and target for target in rule_targets):
                     raise ConfigurationError("impact target rule contains an invalid target")
                 targets.update(rule_targets)
