@@ -294,13 +294,13 @@ public struct VoiceTaskContextAssembler: Sendable {
                 actionPlan: nil
             )
         )
-        guard minimumJSON.count <= budget.maximumCharacters else {
+        guard serializedSize(minimumJSON) <= budget.maximumCharacters else {
             throw VoiceTaskContextAssemblyError.insufficientCharacterBudget(
-                minimum: minimumJSON.count
+                minimum: serializedSize(minimumJSON)
             )
         }
 
-        if json.count > budget.maximumCharacters {
+        if serializedSize(json) > budget.maximumCharacters {
             let totalRemovalCount = turns.count
                 + facts.count
                 + tasks.count
@@ -328,7 +328,7 @@ public struct VoiceTaskContextAssembler: Sendable {
                     tasks: candidate.tasks,
                     actionPlan: candidate.actionPlan
                 ))
-                if candidateJSON.count <= budget.maximumCharacters {
+                if serializedSize(candidateJSON) <= budget.maximumCharacters {
                     upperBound = midpoint
                 } else {
                     lowerBound = midpoint + 1
@@ -377,7 +377,7 @@ public struct VoiceTaskContextAssembler: Sendable {
             scopeIdentity: scopeIdentity,
             selectedSourceIDs: selectedSourceIDs,
             json: json,
-            characterCount: json.count
+            characterCount: serializedSize(json)
         )
         return VoiceTaskContextAssembly(
             scopeIdentity: scopeIdentity,
@@ -388,7 +388,7 @@ public struct VoiceTaskContextAssembler: Sendable {
             includedFactCount: facts.count,
             includedTaskCount: tasks.count,
             includedActionPlanCount: actionPlan == nil ? 0 : 1,
-            characterCount: json.count,
+            characterCount: serializedSize(json),
             isTruncated: stableExclusions.contains {
                 [.turnBudgetExceeded, .characterBudgetExceeded].contains($0.reason)
             }
@@ -499,8 +499,8 @@ public struct VoiceTaskContextAssembler: Sendable {
         currentScope: VoiceTaskContextScope,
         exclusions: inout [VoiceTaskContextExclusion]
     ) -> [TaskRecord] {
-        var selected: [TaskRecord] = []
-        for task in candidates.sorted(by: { $0.id < $1.id }) {
+        var selectedByID: [Int64: TaskRecord] = [:]
+        for task in candidates.sorted(by: stableTaskLessThan) {
             guard taskIsIncluded(task, in: currentScope) else {
                 exclusions.append(
                     VoiceTaskContextExclusion(
@@ -511,9 +511,17 @@ public struct VoiceTaskContextAssembler: Sendable {
                 )
                 continue
             }
-            selected.append(task)
+            if let previous = selectedByID.updateValue(task, forKey: task.id) {
+                exclusions.append(
+                    VoiceTaskContextExclusion(
+                        sourceID: taskSourceID(previous.id),
+                        sourceKind: .task,
+                        reason: .duplicateSource
+                    )
+                )
+            }
         }
-        return selected
+        return selectedByID.values.sorted(by: stableTaskLessThan)
     }
 
     private func scopedActionPlan(
@@ -876,6 +884,31 @@ public struct VoiceTaskContextAssembler: Sendable {
             : lhs.createdAt < rhs.createdAt
     }
 
+    private func stableTaskLessThan(_ lhs: TaskRecord, _ rhs: TaskRecord) -> Bool {
+        lhs.id == rhs.id
+            ? stableTaskTieBreaker(lhs) < stableTaskTieBreaker(rhs)
+            : lhs.id < rhs.id
+    }
+
+    private func stableTaskTieBreaker(_ task: TaskRecord) -> String {
+        [
+            task.projectID.map(String.init),
+            task.title,
+            task.status,
+            task.dueAt,
+            task.completedAt,
+            task.priority,
+            task.sourceCommand,
+            task.detail,
+            task.updatedAt,
+            task.recurrence,
+        ]
+        .map { value in
+            value.map { "\($0.utf8.count):\($0)" } ?? "nil"
+        }
+        .joined(separator: "|")
+    }
+
     private func stableExclusionLessThan(
         _ lhs: VoiceTaskContextExclusion,
         _ rhs: VoiceTaskContextExclusion
@@ -887,6 +920,13 @@ public struct VoiceTaskContextAssembler: Sendable {
             return lhs.sourceID < rhs.sourceID
         }
         return lhs.reason.rawValue < rhs.reason.rawValue
+    }
+
+    private func serializedSize(_ json: String) -> Int {
+        // Provider transport and token cost scale with encoded bytes, while
+        // String.count can collapse arbitrarily many combining marks into one
+        // grapheme and let an attacker bypass the context budget.
+        json.utf8.count
     }
 }
 

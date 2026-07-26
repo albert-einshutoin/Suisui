@@ -116,6 +116,28 @@ final class VoiceTaskContextAssemblerTests: XCTestCase {
         XCTAssertFalse(assembly.isTruncated)
     }
 
+    func testGivenCombiningMarksWhenAssembleThenEnforcesUTF8PayloadBudget() throws {
+        let minimum = try VoiceTaskContextAssembler().assemble(
+            input(),
+            budget: VoiceTaskContextBudget(maximumTurns: 1, maximumCharacters: 4_000)
+        ).characterCount
+        let oversized = "a" + String(repeating: "\u{0301}", count: 5_000)
+
+        let assembly = try VoiceTaskContextAssembler().assemble(
+            input(turns: [turn(id: 1, text: oversized, offset: 1)]),
+            budget: VoiceTaskContextBudget(
+                maximumTurns: 1,
+                maximumCharacters: minimum + 200
+            )
+        )
+        let json = try jsonText(assembly)
+
+        XCTAssertLessThanOrEqual(json.utf8.count, minimum + 200)
+        XCTAssertEqual(assembly.characterCount, json.utf8.count)
+        XCTAssertEqual(assembly.includedTurnCount, 0)
+        XCTAssertTrue(assembly.isTruncated)
+    }
+
     func testGivenManyProjectTasksWhenCharacterBudgetIsTightThenAssemblyRemainsResponsive() throws {
         let tasks = (1...3_000).map { index in
             TaskRecord(
@@ -148,6 +170,45 @@ final class VoiceTaskContextAssemblerTests: XCTestCase {
         XCTAssertLessThan(start.duration(to: clock.now), .seconds(2))
         XCTAssertLessThanOrEqual(assembly.characterCount, 300)
         XCTAssertTrue(assembly.isTruncated)
+    }
+
+    func testGivenDuplicateTaskIDWhenAssembleThenKeepsOneDeterministicTask() throws {
+        let first = TaskRecord(
+            id: taskID,
+            projectID: projectID,
+            title: "Alpha task",
+            status: "open",
+            dueAt: nil,
+            priority: nil,
+            sourceCommand: nil
+        )
+        let duplicate = TaskRecord(
+            id: taskID,
+            projectID: projectID,
+            title: "Zulu task",
+            status: "open",
+            dueAt: nil,
+            priority: nil,
+            sourceCommand: nil
+        )
+
+        let assembly = try VoiceTaskContextAssembler().assemble(
+            input(tasks: [duplicate, first]),
+            budget: VoiceTaskContextBudget(maximumTurns: 1, maximumCharacters: 4_000)
+        )
+
+        XCTAssertEqual(assembly.includedTaskCount, 1)
+        XCTAssertEqual(
+            assembly.selectedSourceIDs.filter { $0 == "task:\(taskID)" }.count,
+            1
+        )
+        XCTAssertTrue(try jsonText(assembly).contains("Zulu task"))
+        XCTAssertTrue(
+            assembly.exclusions.contains {
+                $0.sourceID == "task:\(taskID)"
+                    && $0.reason == .duplicateSource
+            }
+        )
     }
 
     func testGivenTightCharacterBudgetWhenAssembleThenRemovesOtherContextBeforeConfirmedUserTurn() throws {
