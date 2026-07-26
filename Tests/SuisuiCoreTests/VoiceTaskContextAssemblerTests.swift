@@ -98,6 +98,29 @@ final class VoiceTaskContextAssemblerTests: XCTestCase {
         )
     }
 
+    func testGivenSameTaskIDInOtherProjectWhenAssembleThenExcludesTurnBeforeRedaction() throws {
+        let outside = VoiceTaskContextTurn(
+            id: uuid(10),
+            scope: .task(id: taskID, projectID: 99),
+            kind: .userConfirmed,
+            text: "other project",
+            createdAt: now
+        )
+
+        let assembly = try VoiceTaskContextAssembler().assemble(
+            input(turns: [outside]),
+            budget: VoiceTaskContextBudget(maximumTurns: 5, maximumCharacters: 4_000)
+        )
+
+        XCTAssertFalse(try jsonText(assembly).contains("other project"))
+        XCTAssertTrue(
+            assembly.exclusions.contains {
+                $0.sourceID == outside.id.uuidString
+                    && $0.reason == .outsideScope
+            }
+        )
+    }
+
     func testGivenCandidateAndConfirmedFactsWhenAssembleThenIncludesConfirmedOnly() throws {
         let confirmed = try fact(id: 1, state: .confirmed, value: "Ship Friday")
         let candidate = try fact(id: 2, state: .proposed, value: "Maybe Saturday")
@@ -155,6 +178,33 @@ final class VoiceTaskContextAssemblerTests: XCTestCase {
                     && $0.reason == .factNoLongerCurrent
             }
         )
+    }
+
+    func testGivenOutsideScopeReplacementWhenAssembleThenDoesNotInvalidateCurrentFact() throws {
+        let current = try fact(id: 1, state: .confirmed, value: "Current constraint")
+        let outsideReplacement = try TaskContextFact(
+            id: uuid(2),
+            sessionID: current.sessionID,
+            kind: current.kind,
+            scope: .project(99),
+            state: .confirmed,
+            value: "Outside replacement",
+            sourceTurnID: uuid(802),
+            sourceExcerptDigest: String(repeating: "c", count: 64),
+            confidence: 1,
+            author: .userExplicit,
+            supersedesFactID: current.id,
+            createdAt: now.addingTimeInterval(2)
+        )
+
+        let assembly = try VoiceTaskContextAssembler().assemble(
+            input(facts: [outsideReplacement, current]),
+            budget: VoiceTaskContextBudget(maximumTurns: 5, maximumCharacters: 4_000)
+        )
+        let output = try jsonText(assembly)
+
+        XCTAssertTrue(output.contains("Current constraint"))
+        XCTAssertFalse(output.contains("Outside replacement"))
     }
 
     func testGivenSecretLikeTextWhenAssembleThenRedactsOutputAndReasons() throws {

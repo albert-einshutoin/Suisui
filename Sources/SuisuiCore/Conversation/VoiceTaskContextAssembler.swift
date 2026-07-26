@@ -433,8 +433,17 @@ public struct VoiceTaskContextAssembler: Sendable {
         referenceDate: Date,
         exclusions: inout [VoiceTaskContextExclusion]
     ) -> [TaskContextFact] {
+        let scopedCandidates = candidates
+            .sorted(by: stableFactLessThan)
+            .filter { fact in
+                guard scope(fact.scope, isIncludedIn: currentScope) else {
+                    exclusions.append(exclusion(for: fact, reason: .outsideScope))
+                    return false
+                }
+                return true
+            }
         let noLongerCurrentIDs = Set(
-            candidates.compactMap { fact -> UUID? in
+            scopedCandidates.compactMap { fact -> UUID? in
                 guard [.confirmed, .superseded, .retracted, .expired].contains(fact.state) else {
                     return nil
                 }
@@ -442,11 +451,7 @@ public struct VoiceTaskContextAssembler: Sendable {
             }
         )
         var selected: [TaskContextFact] = []
-        for fact in candidates.sorted(by: stableFactLessThan) {
-            guard scope(fact.scope, isIncludedIn: currentScope) else {
-                exclusions.append(exclusion(for: fact, reason: .outsideScope))
-                continue
-            }
+        for fact in scopedCandidates {
             guard fact.state == .confirmed else {
                 exclusions.append(exclusion(for: fact, reason: .factNotConfirmed))
                 continue
@@ -534,10 +539,11 @@ public struct VoiceTaskContextAssembler: Sendable {
         ):
             candidateProject == currentProject
         case let (
-            .task(currentTask, _),
-            .task(candidateTask, _)
+            .task(currentTask, currentProject),
+            .task(candidateTask, candidateProject)
         ):
             currentTask == candidateTask
+                && (currentProject == nil || currentProject == candidateProject)
         case let (
             .task(_, currentProject),
             .project(candidateProject)
