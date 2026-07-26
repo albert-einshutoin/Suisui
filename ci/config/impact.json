@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "supportedAdapters": [
+    "swift"
+  ],
+  "smokeTestTargets": [
+    "DevelopmentAutomationRuntimeSmokeTests"
+  ],
+  "documentationTestTargets": [
+    "Phase5DocumentationTests",
+    "PublicBrandSurfaceTests"
+  ],
+  "integrationRules": [
+    {
+      "pattern": "Sources/SuisuiExternalConnectors/**",
+      "targets": [
+        "ExternalConnectorExposurePolicyTests",
+        "ExternalMCPTests",
+        "SaaSConnectorTests"
+      ]
+    },
+    {
+      "pattern": "Sources/SuisuiGoogleCalendarRuntime/**",
+      "targets": [
+        "GoogleCalendarAppRuntimeTests"
+      ]
+    },
+    {
+      "pattern": "Sources/SuisuiCore/ExternalMCP/**",
+      "targets": [
+        "ExternalMCPTests"
+      ]
+    }
+  ],
+  "e2eRules": [
+    {
+      "pattern": "Sources/SuisuiApp/**",
+      "targets": [
+        "ui-runtime",
+        "ui-visual",
+        "ui-performance"
+      ]
+    }
+  ],
+  "forceFullRules": [
+    {
+      "pattern": ".github/**",
+      "reason": "CI configuration changed"
+    },
+    {
+      "pattern": "ci/**",
+      "reason": "impact analyzer or selective CI configuration changed"
+    },
+    {
+      "pattern": "Package.swift",
+      "reason": "build or dependency configuration changed"
+    },
+    {
+      "pattern": "Package.resolved",
+      "reason": "dependency lock file changed"
+    },
+    {
+      "pattern": ".swift-version",
+      "reason": "compiler configuration changed"
+    },
+    {
+      "pattern": ".env*",
+      "reason": "environment definition changed"
+    },
+    {
+      "pattern": "Dockerfile*",
+      "reason": "container configuration changed"
+    },
+    {
+      "pattern": "Sources/SuisuiCore/Database/**",
+      "reason": "shared persistence or migration code changed"
+    },
+    {
+      "pattern": "Sources/SuisuiCore/Security/**",
+      "reason": "authentication, authorization, or security code changed"
+    },
+    {
+      "pattern": "Sources/SuisuiCore/Permissions/**",
+      "reason": "shared permission logic changed"
+    },
+    {
+      "pattern": "Sources/SuisuiCore/Resources/Schemas/**",
+      "reason": "API or serialization schema changed"
+    },
+    {
+      "pattern": "Tests/SuisuiCoreTests/Support/**",
+      "reason": "shared test support changed"
+    },
+    {
+      "pattern": "script/**",
+      "reason": "shared build, test, release, or runtime script changed"
+    },
+    {
+      "pattern": "scripts/**",
+      "reason": "shared CI runner changed"
+    },
+    {
+      "pattern": "config/**",
+      "reason": "shared test or quality configuration changed"
+    }
+  ]
+}
