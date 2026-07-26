@@ -100,6 +100,50 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertTrue(redacted.contains(allowedFileURL))
     }
 
+    func testExecutionReceiptRedactorPreservesProseAfterExtensionlessMarkdownPath() {
+        let redactor = ExecutionReceiptRedactor()
+
+        let redacted = redactor.redactPreservingWhitespace(
+            "Open `/Users/alice/work` after review"
+        )
+        let pathWithSpaces = redactor.redactPreservingWhitespace(
+            "Open `/Users/alice/Client Alpha` after review"
+        )
+
+        XCTAssertEqual(redacted, "Open `[REDACTED_LOCAL_PATH]` after review")
+        XCTAssertEqual(pathWithSpaces, "Open `[REDACTED_LOCAL_PATH]` after review")
+    }
+
+    func testExecutionReceiptRedactorFailsClosedForUnquotedExtensionlessPath() {
+        let redactor = ExecutionReceiptRedactor()
+
+        let extensionless = redactor.redactPreservingWhitespace(
+            "Open /Users/alice/work after review"
+        )
+        let pathWithSpaces = redactor.redactPreservingWhitespace(
+            "Open /Users/alice/My Project/plan.md after review"
+        )
+
+        XCTAssertEqual(extensionless, "Open [REDACTED_LOCAL_PATH]")
+        XCTAssertEqual(pathWithSpaces, "Open [REDACTED_LOCAL_PATH] after review")
+    }
+
+    func testExecutionReceiptRedactorFailsClosedForAmbiguousSpaceContainingExtensionlessPath() {
+        let redactor = ExecutionReceiptRedactor()
+
+        let redacted = redactor.redactPreservingWhitespace(
+            "Open /Users/alice/Client Alpha/private notes"
+        )
+        let connectorInsidePath = redactor.redactPreservingWhitespace(
+            "Open /Users/alice/Research and Development/private"
+        )
+
+        XCTAssertEqual(redacted, "Open [REDACTED_LOCAL_PATH]")
+        XCTAssertEqual(connectorInsidePath, "Open [REDACTED_LOCAL_PATH]")
+        XCTAssertFalse(redacted.contains("Alpha/private"))
+        XCTAssertFalse(connectorInsidePath.contains("Development/private"))
+    }
+
     func testReviewExecutionReceiptRedactsSecretsAndDisallowedLocalPaths() throws {
         let allowedRoot = packageRootPath
         let providerKey = "sk-" + "proj-user-secret"

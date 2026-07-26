@@ -82,4 +82,13 @@ final class PlanningPromptBuilderTests: XCTestCase {
         XCTAssertTrue(prompt.system.contains("git.status"))
         XCTAssertFalse(prompt.system.contains("\"task.create\""))
     }
+
+    func testPromptOmitsVoiceTaskContextForExistingRequests() throws {
+        let prompt = try PlanningPromptBuilder.loadDefault().buildPrompt(
+            for: PlanningRequest(userInput: "Create a task")
+        )
+
+        XCTAssertFalse(prompt.user.contains("Voice task context"))
+        XCTAssertFalse(prompt.system.contains("untrusted voice task context"))
+    }
 }

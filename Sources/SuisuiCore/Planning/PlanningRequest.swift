@@ -6,19 +6,22 @@ public struct PlanningRequest: Equatable, Sendable {
     public var timeZoneIdentifier: String
     public var availableTools: [ActionTool]
     public var knowledgeFrameCandidates: [KnowledgeFrameCandidate]
+    public var voiceTaskContext: VoiceTaskProviderContext?
 
     public init(
         userInput: String,
         currentDate: Date = Date(),
         timeZoneIdentifier: String = TimeZone.current.identifier,
         availableTools: [ActionTool] = ActionTool.defaultPlanningTools,
-        knowledgeFrameCandidates: [KnowledgeFrameCandidate] = []
+        knowledgeFrameCandidates: [KnowledgeFrameCandidate] = [],
+        voiceTaskContext: VoiceTaskProviderContext? = nil
     ) {
         self.userInput = userInput
         self.currentDate = currentDate
         self.timeZoneIdentifier = timeZoneIdentifier
         self.availableTools = availableTools
         self.knowledgeFrameCandidates = knowledgeFrameCandidates
+        self.voiceTaskContext = voiceTaskContext
     }
 }
 

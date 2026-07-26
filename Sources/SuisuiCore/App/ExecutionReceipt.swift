@@ -1091,7 +1091,16 @@ public struct ExecutionReceiptRedactor: Sendable {
 
     public func redact(_ value: String, maxLength: Int = 1_200) -> String {
         let secretRedacted = secretRedactor.redact(value).text
-        return redactDisallowedLocalPaths(in: secretRedacted).receiptPreview(maxLength: maxLength)
+        return redactDisallowedLocalPaths(in: secretRedacted)
+        .receiptPreview(maxLength: maxLength)
+    }
+
+    /// Redacts the same secret and local-path classes without rewriting layout.
+    /// Provider context can contain Markdown or code where whitespace carries
+    /// meaning, so its separate aggregate budget owns any later truncation.
+    public func redactPreservingWhitespace(_ value: String) -> String {
+        let secretRedacted = secretRedactor.redact(value).text
+        return redactDisallowedLocalPaths(in: secretRedacted)
     }
 
     private func redactDisallowedLocalPaths(in value: String) -> String {
@@ -1135,7 +1144,15 @@ public struct ExecutionReceiptRedactor: Sendable {
                 ? starts[index + 1]
                 : value.endIndex
             var end = firstLocalPathTerminator(in: value, from: start, upperBound: searchEnd) ?? searchEnd
-            end = pathExtensionEnd(in: value[start..<end]) ?? end
+            let candidate = value[start..<end]
+            if let extensionEnd = pathExtensionEnd(in: candidate) {
+                // A recognized extension lets us safely retain spaces that are
+                // part of a path while preserving any prose that follows it.
+                end = extensionEnd
+            }
+            // Whitespace and natural-language words are both valid path
+            // content. Extensionless candidates therefore retain the detected
+            // delimiter or search end and fail closed instead of leaking suffixes.
             return start < end ? start..<end : nil
         }
     }
@@ -1177,7 +1194,9 @@ public struct ExecutionReceiptRedactor: Sendable {
         upperBound: String.Index
     ) -> String.Index? {
         var index = start
-        let terminators = CharacterSet(charactersIn: "\n\r,;\")'")
+        // Backticks delimit Markdown code spans. Treating them as path content
+        // would redact unrelated prose after an extensionless path.
+        let terminators = CharacterSet(charactersIn: "\n\r,;\")'`")
         while index < upperBound {
             let scalar = value[index].unicodeScalars.first
             if let scalar, terminators.contains(scalar) {
