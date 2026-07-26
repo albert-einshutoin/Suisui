@@ -120,7 +120,6 @@ def _full_plan(
         "smokeTestTargets": smoke_targets,
         "fallback": True,
         "fallbackReason": reason,
-        "shadowFull": False,
     }
 
 
@@ -297,9 +296,6 @@ def analyze(
         "smokeTestTargets": smoke_targets,
         "fallback": False,
         "fallbackReason": None,
-        # Shadow full is explicit policy data, not a date-based switch. Removing
-        # it requires reviewed comparison evidence and a config change.
-        "shadowFull": True,
     }
 
 

@@ -20,7 +20,6 @@ def _safe_output_value(value: object) -> str:
 def _defaults() -> Dict[str, str]:
     return {
         "strategy": "full",
-        "shadow_full": "false",
         "ui_runtime": "true",
         "ui_visual": "true",
         "ui_performance": "true",
@@ -33,20 +32,16 @@ def export_values(plan_path: Path) -> Dict[str, str]:
         plan = json.loads(plan_path.read_text(encoding="utf-8"))
         strategy = plan["strategy"]
         targets = plan["e2eTestTargets"]
-        shadow_full = plan["shadowFull"]
         fallback_reason = plan.get("fallbackReason")
         if strategy not in {"selective", "full"}:
             raise ValueError("invalid strategy")
         if not isinstance(targets, list) or not all(isinstance(item, str) for item in targets):
             raise ValueError("invalid E2E targets")
-        if not isinstance(shadow_full, bool):
-            raise ValueError("invalid shadow flag")
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         return _defaults()
 
     values = {
         "strategy": strategy,
-        "shadow_full": str(shadow_full).lower(),
         "fallback_reason": _safe_output_value(fallback_reason or ""),
     }
     for target, output_name in E2E_OUTPUTS.items():
@@ -65,7 +60,6 @@ def main() -> int:
     with output_path.open("a", encoding="utf-8") as output:
         for key in [
             "strategy",
-            "shadow_full",
             "ui_runtime",
             "ui_visual",
             "ui_performance",

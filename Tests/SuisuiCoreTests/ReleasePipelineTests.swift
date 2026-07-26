@@ -168,7 +168,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(workflow.contains("name: SwiftPM complete suite"))
         XCTAssertTrue(workflow.contains("run: ./ci/run-full.sh"))
         XCTAssertTrue(fullRunner.contains("./scripts/ci.sh swiftpm"))
-        XCTAssertTrue(workflow.contains("name: shadow-full-${{ github.run_id }}-${{ github.run_attempt }}"))
+        XCTAssertTrue(workflow.contains("name: complete-validation-${{ github.run_id }}-${{ github.run_attempt }}"))
         XCTAssertTrue(workflow.contains(".tmp/ci-artifacts/swiftpm"))
         XCTAssertTrue(workflow.contains("if: always()"))
         XCTAssertTrue(fullRunner.contains("./scripts/ci.sh source-contracts"))

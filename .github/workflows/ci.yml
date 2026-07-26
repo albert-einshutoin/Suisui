@@ -7,6 +7,10 @@ on:
       - main
       - develop
       - 'release/**'
+    tags:
+      - 'v*'
+  release:
+    types: [published]
   merge_group:
   schedule:
     # 03:17 JST. The off-hour minute avoids the busiest top-of-hour window.
@@ -23,17 +27,19 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # A tag push and the corresponding Release publication are distinct complete
+  # verification events. Include the event so one cannot cancel the other.
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   test_strategy:
     name: SwiftPM macOS (selected or full)
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: macos-26
     timeout-minutes: 40
     outputs:
       strategy: ${{ steps.plan_outputs.outputs.strategy }}
-      shadow_full: ${{ steps.plan_outputs.outputs.shadow_full }}
       ui_runtime: ${{ steps.plan_outputs.outputs.ui_runtime }}
       ui_visual: ${{ steps.plan_outputs.outputs.ui_visual }}
       ui_performance: ${{ steps.plan_outputs.outputs.ui_performance }}
@@ -72,22 +78,14 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
           HEAD_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
-          EVENT_NAME: ${{ github.event_name }}
           SUISUI_CI_TEST_PLAN: ${{ github.workspace }}/.tmp/ci-impact/test-plan.json
           SUISUI_CI_EXECUTION_REPORT: ${{ github.workspace }}/.tmp/ci-impact/execution.json
           SUISUI_CI_IMPACT_ARTIFACT_DIR: ${{ github.workspace }}/.tmp/ci-impact
           SUISUI_SWIFTPM_ARTIFACT_DIR: ${{ github.workspace }}/.tmp/ci-artifacts/swiftpm
         run: |
-          if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            ./ci/run-pr-ci.sh \
-              --base-revision "origin/$BASE_REF" \
-              --head-revision "$HEAD_REVISION"
-          else
-            ./ci/run-pr-ci.sh \
-              --base-revision "$HEAD_REVISION" \
-              --head-revision "$HEAD_REVISION" \
-              --force-full-reason "$EVENT_NAME complete validation policy"
-          fi
+          ./ci/run-pr-ci.sh \
+            --base-revision "origin/$BASE_REF" \
+            --head-revision "$HEAD_REVISION"
 
       - name: Export fail-closed job outputs
         id: plan_outputs
@@ -100,7 +98,6 @@ jobs:
             --github-output "$GITHUB_OUTPUT"; then
             {
               echo "strategy=full"
-              echo "shadow_full=false"
               echo "ui_runtime=true"
               echo "ui_visual=true"
               echo "ui_performance=true"
@@ -120,20 +117,19 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
-  shadow_full:
-    name: Shadow full SwiftPM (rollout comparison)
-    needs: test_strategy
-    if: ${{ always() && github.event_name == 'pull_request' && needs.test_strategy.outputs.strategy == 'selective' && needs.test_strategy.outputs.shadow_full == 'true' }}
+  full_validation:
+    name: Complete validation
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: macos-26
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
-      - name: Checkout tested revision
+      - name: Checkout tested revision with full history
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Restore Swift build cache without a competing save
-        uses: actions/cache/restore@v4
+      - name: Restore bounded Swift build cache
+        uses: actions/cache@v4
         with:
           path: |
             .build
@@ -143,8 +139,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-swift-6-
 
-      - name: Show required tools
+      - name: Show toolchain
         run: |
+          swift --version
+          python3 --version
           if ! command -v rg >/dev/null 2>&1; then
             brew install ripgrep
           fi
@@ -161,7 +159,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: shadow-full-${{ github.run_id }}-${{ github.run_attempt }}
+          name: complete-validation-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             .tmp/ci-impact/full-execution.json
             .tmp/ci-artifacts/swiftpm
@@ -171,8 +169,10 @@ jobs:
 
   ui-runtime:
     name: UI Runtime (production route)
-    needs: test_strategy
-    if: ${{ always() && needs.test_strategy.outputs.ui_runtime == 'true' }}
+    needs:
+      - test_strategy
+      - full_validation
+    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_runtime == 'true') }}
     runs-on: macos-26
     timeout-minutes: 60
     steps:
@@ -207,8 +207,10 @@ jobs:
 
   ui-visual:
     name: UI Visual (live baseline)
-    needs: test_strategy
-    if: ${{ always() && needs.test_strategy.outputs.ui_visual == 'true' }}
+    needs:
+      - test_strategy
+      - full_validation
+    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_visual == 'true') }}
     runs-on: macos-26
     timeout-minutes: 60
     steps:
@@ -246,8 +248,10 @@ jobs:
 
   ui-performance:
     name: UI Performance (production route)
-    needs: test_strategy
-    if: ${{ always() && needs.test_strategy.outputs.ui_performance == 'true' }}
+    needs:
+      - test_strategy
+      - full_validation
+    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}
     runs-on: macos-26
     timeout-minutes: 30
     steps:
@@ -283,43 +287,3 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 7
-
-  comparison:
-    name: Compare selective and full results
-    needs:
-      - test_strategy
-      - shadow_full
-    if: ${{ always() && github.event_name == 'pull_request' && needs.test_strategy.outputs.strategy == 'selective' && needs.test_strategy.outputs.shadow_full == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout comparison tool
-        uses: actions/checkout@v4
-
-      - name: Download selective evidence
-        uses: actions/download-artifact@v4
-        with:
-          name: impact-ci-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .tmp/evidence/selective
-
-      - name: Download full evidence
-        uses: actions/download-artifact@v4
-        with:
-          name: shadow-full-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .tmp/evidence/full
-
-      - name: Compare selective and full results
-        run: |
-          ./ci/compare-runs.py \
-            --selective .tmp/evidence/selective/ci-impact/execution.json \
-            --full .tmp/evidence/full/ci-impact/full-execution.json \
-            --output .tmp/ci-impact/comparison.json
-
-      - name: Upload comparison evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: impact-comparison-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .tmp/ci-impact/comparison.json
-          if-no-files-found: error
-          retention-days: 30

@@ -7,12 +7,16 @@ final class SelectiveCIWorkflowTests: XCTestCase {
 
         XCTAssertTrue(workflow.contains("pull_request:"))
         XCTAssertTrue(workflow.contains("branches:\n      - main\n      - develop\n      - 'release/**'"))
+        XCTAssertTrue(workflow.contains("tags:\n      - 'v*'"))
+        XCTAssertTrue(workflow.contains("release:\n    types: [published]"))
+        XCTAssertTrue(workflow.contains("github.event_name }}-${{ github.event.pull_request.number || github.ref"))
         XCTAssertTrue(workflow.contains("schedule:"))
         XCTAssertTrue(workflow.contains("cron: '17 18 * * *'"))
         XCTAssertTrue(workflow.contains("./ci/run-pr-ci.sh"))
-        XCTAssertTrue(workflow.contains("force-full-reason"))
-        XCTAssertTrue(workflow.contains("Shadow full SwiftPM (rollout comparison)"))
-        XCTAssertTrue(workflow.contains("needs.test_strategy.outputs.shadow_full == 'true'"))
+        XCTAssertTrue(workflow.contains("name: Complete validation"))
+        XCTAssertTrue(workflow.contains("run: ./ci/run-full.sh"))
+        XCTAssertFalse(workflow.contains("Shadow full SwiftPM"))
+        XCTAssertFalse(workflow.contains("Compare selective and full results"))
         XCTAssertTrue(workflow.contains("synthesized pull-request merge revision"))
         XCTAssertFalse(workflow.contains("ref: ${{ github.event.pull_request.head.sha"))
         XCTAssertFalse(workflow.contains("pull_request_target:"))
@@ -28,8 +32,7 @@ final class SelectiveCIWorkflowTests: XCTestCase {
         XCTAssertTrue(workflow.contains("needs.test_strategy.outputs.ui_runtime == 'true'"))
         XCTAssertTrue(workflow.contains("needs.test_strategy.outputs.ui_visual == 'true'"))
         XCTAssertTrue(workflow.contains("needs.test_strategy.outputs.ui_performance == 'true'"))
-        XCTAssertTrue(workflow.contains("name: Compare selective and full results"))
-        XCTAssertTrue(workflow.contains("./ci/compare-runs.py"))
+        XCTAssertFalse(workflow.contains("./ci/compare-runs.py"))
     }
 
     func testImpactPolicyAndIndependentFullRunnerAreSourceControlledContracts() throws {
@@ -69,12 +72,11 @@ final class SelectiveCIWorkflowTests: XCTestCase {
             "./ci/run-pr-ci.sh",
             "./ci/run-full.sh",
             "ci/config/impact.json",
-            "shadow full",
             "誤判定",
             "キャッシュ",
             "毎日 03:17 JST",
-            "比較指標",
-            "fullOnlyFailure",
+            "release tag",
+            "GitHub Release",
             "oldPath",
             "executedTestCount",
             "filterが実行0件"

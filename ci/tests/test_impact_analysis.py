@@ -71,6 +71,44 @@ class ImpactAnalysisTests(unittest.TestCase):
         self.assertEqual(plan["strategy"], "selective")
         self.assertIn("WidgetTests", plan["unitTestTargets"])
 
+    def test_documentation_only_change_selects_contracts_and_smoke_without_e2e(self) -> None:
+        plan = self._analyze([{"status": "M", "path": "docs/quality/guide.md"}])
+
+        self.assertEqual(plan["strategy"], "selective")
+        self.assertEqual(
+            plan["unitTestTargets"],
+            ["Phase5DocumentationTests", "PublicBrandSurfaceTests"],
+        )
+        self.assertEqual(plan["integrationTestTargets"], [])
+        self.assertEqual(plan["e2eTestTargets"], [])
+        self.assertEqual(
+            plan["smokeTestTargets"],
+            ["DevelopmentAutomationRuntimeSmokeTests"],
+        )
+
+    def test_non_desktop_swift_change_selects_referencing_test_without_desktop_e2e(self) -> None:
+        self._write(
+            "Sources/SuisuiWeb/WebPresenter.swift",
+            "struct WebPresenter {}\n",
+        )
+        self._write(
+            "Tests/SuisuiCoreTests/WebPresenterTests.swift",
+            "final class WebPresenterTests { let subject = WebPresenter() }\n",
+        )
+        graph = {
+            "targets": self.package_graph["targets"]
+            + [{"name": "SuisuiWeb", "type": "regular", "dependencies": []}]
+        }
+
+        plan = self._analyze(
+            [{"status": "M", "path": "Sources/SuisuiWeb/WebPresenter.swift"}],
+            package_graph=graph,
+        )
+
+        self.assertEqual(plan["strategy"], "selective")
+        self.assertEqual(plan["unitTestTargets"], ["WebPresenterTests"])
+        self.assertEqual(plan["e2eTestTargets"], [])
+
     def test_dangerous_shared_change_forces_full(self) -> None:
         self._write("Package.resolved", "{}\n")
 
@@ -79,6 +117,15 @@ class ImpactAnalysisTests(unittest.TestCase):
         self.assertEqual(plan["strategy"], "full")
         self.assertTrue(plan["fallback"])
         self.assertIn("dependency", plan["fallbackReason"])
+
+    def test_release_packaging_change_forces_full(self) -> None:
+        self._write("packaging/app_metadata.env", "MARKETING_VERSION=0.2.0\n")
+
+        plan = self._analyze([{"status": "M", "path": "packaging/app_metadata.env"}])
+
+        self.assertEqual(plan["strategy"], "full")
+        self.assertTrue(plan["fallback"])
+        self.assertIn("release", plan["fallbackReason"])
 
     def test_unmapped_source_change_forces_full_instead_of_zero_targets(self) -> None:
         self._write("Sources/SuisuiCore/App/Unreferenced.swift", "let answer = 42\n")

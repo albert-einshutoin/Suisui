@@ -80,6 +80,10 @@
       "reason": "container configuration changed"
     },
     {
+      "pattern": "packaging/**",
+      "reason": "release metadata, signing, or packaging configuration changed"
+    },
+    {
       "pattern": "Sources/SuisuiCore/Database/**",
       "reason": "shared persistence or migration code changed"
     },
