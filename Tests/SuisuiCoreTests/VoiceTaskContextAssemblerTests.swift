@@ -180,7 +180,8 @@ final class VoiceTaskContextAssemblerTests: XCTestCase {
             status: "open",
             dueAt: nil,
             priority: nil,
-            sourceCommand: nil
+            sourceCommand: nil,
+            updatedAt: "2026-07-26 02:00:00"
         )
         let duplicate = TaskRecord(
             id: taskID,
@@ -189,7 +190,8 @@ final class VoiceTaskContextAssemblerTests: XCTestCase {
             status: "open",
             dueAt: nil,
             priority: nil,
-            sourceCommand: nil
+            sourceCommand: nil,
+            updatedAt: "2026-07-26 01:00:00"
         )
 
         let assembly = try VoiceTaskContextAssembler().assemble(
@@ -202,7 +204,7 @@ final class VoiceTaskContextAssemblerTests: XCTestCase {
             assembly.selectedSourceIDs.filter { $0 == "task:\(taskID)" }.count,
             1
         )
-        XCTAssertTrue(try jsonText(assembly).contains("Zulu task"))
+        XCTAssertTrue(try jsonText(assembly).contains("Alpha task"))
         XCTAssertTrue(
             assembly.exclusions.contains {
                 $0.sourceID == "task:\(taskID)"

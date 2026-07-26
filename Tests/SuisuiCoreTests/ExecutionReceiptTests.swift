@@ -110,6 +110,20 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertEqual(redacted, "Open `[REDACTED_LOCAL_PATH]` after review")
     }
 
+    func testExecutionReceiptRedactorPreservesProseAfterUnquotedExtensionlessPath() {
+        let redactor = ExecutionReceiptRedactor()
+
+        let extensionless = redactor.redactPreservingWhitespace(
+            "Open /Users/alice/work after review"
+        )
+        let pathWithSpaces = redactor.redactPreservingWhitespace(
+            "Open /Users/alice/My Project/plan.md after review"
+        )
+
+        XCTAssertEqual(extensionless, "Open [REDACTED_LOCAL_PATH] after review")
+        XCTAssertEqual(pathWithSpaces, "Open [REDACTED_LOCAL_PATH] after review")
+    }
+
     func testReviewExecutionReceiptRedactsSecretsAndDisallowedLocalPaths() throws {
         let allowedRoot = packageRootPath
         let providerKey = "sk-" + "proj-user-secret"

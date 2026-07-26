@@ -1143,7 +1143,16 @@ public struct ExecutionReceiptRedactor: Sendable {
                 ? starts[index + 1]
                 : value.endIndex
             var end = firstLocalPathTerminator(in: value, from: start, upperBound: searchEnd) ?? searchEnd
-            end = pathExtensionEnd(in: value[start..<end]) ?? end
+            let candidate = value[start..<end]
+            if let extensionEnd = pathExtensionEnd(in: candidate) {
+                // A recognized extension lets us safely retain spaces that are
+                // part of a path while preserving any prose that follows it.
+                end = extensionEnd
+            } else if let whitespaceEnd = candidate.firstIndex(where: \.isWhitespace) {
+                // Without a delimiter or extension, consuming whitespace is
+                // ambiguous and risks deleting the rest of the user's prose.
+                end = whitespaceEnd
+            }
             return start < end ? start..<end : nil
         }
     }

@@ -926,9 +926,15 @@ public struct VoiceTaskContextAssembler: Sendable {
     }
 
     private func stableTaskLessThan(_ lhs: TaskRecord, _ rhs: TaskRecord) -> Bool {
-        lhs.id == rhs.id
-            ? stableTaskTieBreaker(lhs) < stableTaskTieBreaker(rhs)
-            : lhs.id < rhs.id
+        guard lhs.id == rhs.id else {
+            return lhs.id < rhs.id
+        }
+        if lhs.updatedAt != rhs.updatedAt {
+            // SQLite emits UTC timestamps in a lexically sortable format. Put
+            // the newest duplicate last so updateValue retains current state.
+            return (lhs.updatedAt ?? "") < (rhs.updatedAt ?? "")
+        }
+        return stableTaskTieBreaker(lhs) < stableTaskTieBreaker(rhs)
     }
 
     private func stableTaskTieBreaker(_ task: TaskRecord) -> String {
