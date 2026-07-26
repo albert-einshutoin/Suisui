@@ -435,7 +435,7 @@ public struct VoiceTaskContextAssembler: Sendable {
     ) -> [TaskContextFact] {
         let noLongerCurrentIDs = Set(
             candidates.compactMap { fact -> UUID? in
-                guard [.superseded, .retracted, .expired].contains(fact.state) else {
+                guard [.confirmed, .superseded, .retracted, .expired].contains(fact.state) else {
                     return nil
                 }
                 return fact.supersedesFactID

@@ -124,6 +124,39 @@ final class VoiceTaskContextAssemblerTests: XCTestCase {
         )
     }
 
+    func testGivenConfirmedReplacementWhenAssembleThenExcludesSupersededConfirmedFact() throws {
+        let old = try fact(id: 1, state: .confirmed, value: "Ship Friday")
+        let replacement = try TaskContextFact(
+            id: uuid(2),
+            sessionID: old.sessionID,
+            kind: old.kind,
+            scope: old.scope,
+            state: .confirmed,
+            value: "Ship Monday",
+            sourceTurnID: uuid(802),
+            sourceExcerptDigest: String(repeating: "b", count: 64),
+            confidence: 1,
+            author: .userExplicit,
+            supersedesFactID: old.id,
+            createdAt: now.addingTimeInterval(2)
+        )
+
+        let assembly = try VoiceTaskContextAssembler().assemble(
+            input(facts: [old, replacement]),
+            budget: VoiceTaskContextBudget(maximumTurns: 5, maximumCharacters: 4_000)
+        )
+        let payload = try payloadObject(assembly)
+        let selectedFacts = try XCTUnwrap(payload["facts"] as? [[String: Any]])
+
+        XCTAssertEqual(selectedFacts.compactMap { $0["value"] as? String }, ["Ship Monday"])
+        XCTAssertTrue(
+            assembly.exclusions.contains {
+                $0.sourceID == old.id.uuidString
+                    && $0.reason == .factNoLongerCurrent
+            }
+        )
+    }
+
     func testGivenSecretLikeTextWhenAssembleThenRedactsOutputAndReasons() throws {
         let secret = "password=context-secret"
         let task = TaskRecord(
