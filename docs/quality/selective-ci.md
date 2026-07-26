@@ -13,7 +13,8 @@ planner自体のテスト、設定、出力検証が壊れた場合も完全検�
 ## CIの3レーン
 
 - Pull Request: `ci/impact/analyze.py` がmerge-baseからrename/copyを含むNUL区切り差分を取得し、`selective` または `full` のJSON planを出す。rename/copyでは移動先だけでなく`oldPath`も危険変更・integration・E2Eルールへ照合する。選択対象に関係なくSwift build、CLI build、app build-only、source contract、security scan、`DevelopmentAutomationRuntimeSmokeTests`を実行する。
-- main・develop・`release/**`・merge queue・手動実行・schedule: 差分に依存せず `./ci/run-full.sh` と全UI gateを実行する。
+- main・develop・`release/**`・merge queue・手動実行・schedule: 差分に依存せず、plannerから独立した `./ci/run-full.sh` と全UI gateを実行する。
+- version/release: `v*` のrelease tag作成時とGitHub Release公開時は、変更影響判定を使わず完全SwiftPM、source contract、security、全UI gateを実行する。
 - release前: 既存のautomated release preflightが完全SwiftPM、runtime、visual、performanceを再実行する。選択的planはrelease証跡を代替しない。
 
 定期完全検証は毎日 03:17 JST（GitHub Actionsでは前日18:17 UTC）に実行する。
@@ -89,23 +90,17 @@ source/test削除、未分類file、base/merge-base/diff/shallow recovery失敗�
 
 誤判定を見つけた場合は、見逃した失敗を再現するfixtureを先に追加し、原因に応じて危険ルール、integration/E2E rule、dependency解析、test対応を更新する。選択率を上げるために不確かなfallbackを削除しない。
 
-## 段階導入と比較指標
+## 実行範囲の運用
 
-導入期間中の選択可能PRでは、必須の選択レーンと `shadow full` を並行実行する。日数だけでshadowを自動解除しない。`.tmp/ci-impact/comparison.json` に次の比較指標を保存する。
+PRでは選択planが指定したunit、integration、E2Eと常時smokeだけを実行する。選択実行の裏で全件を重複実行しない。これにより、docs-onlyやdesktop UIと無関係なtarget変更で、全SwiftPMや全UI gateのコストを再投入しない。
 
-- 選択/全件の実行時間と削減率
-- selected target数、選択側の`executedTestCount`、full実行test数
-- 双方のfailure件数
-- `fullOnlyFailure`（選択は成功したがfullだけ失敗）
-- strategy、fallback reason、総compute秒
-
-`fullOnlyFailure` が1件でもあれば正式採用を止め、fixtureとruleを修正する。十分なPR母数、fallback率、判定失敗率、flaky率、コスト実績をレビューした後にだけ `shadowFull` policyを変更する。正式採用後もmain、release前、毎日scheduleは完全検証を維持する。
+品質は重複実行ではなく、fail-closed判定と完全検証イベントで担保する。planner/config/testの失敗、未分類、対象0件などはPR内で全件へフォールバックする。さらにmain、release branch、release tag、GitHub Release、release前preflight、毎日schedule、手動実行では完全検証を維持する。
 
 ## キャッシュとコスト
 
-cache keyはOS、CPU architecture、Swift major、`Package.swift`/`Package.resolved` hash、impact config/analyzer hashを含む。最初のstrategy jobだけがcacheを保存し、並列UI/shadow jobはrestore-onlyにして競合saveと余分な転送を避ける。cache hitは成功条件ではなく、破損時は通常build/testが失敗する。
+cache keyはOS、CPU architecture、Swift major、`Package.swift`/`Package.resolved` hash、impact config/analyzer hashを含む。PR strategyまたは完全検証jobだけがcacheを保存し、並列UI jobはrestore-onlyにして競合saveと余分な転送を避ける。cache hitは成功条件ではなく、破損時は通常build/testが失敗する。
 
-ローカルのキャッシュを消すには、実行中のSwiftPM processがないことを確認してからリポジトリ内の `.build/` を削除する。GitHub Actions cacheはRepository SettingsのActions cachesから対象keyを削除する。共有runnerで無制限に並列化せず、UI gateはplanで必要な種類だけ起動する。実行時間だけでなくartifactの `totalComputeSeconds` も比較する。
+ローカルのキャッシュを消すには、実行中のSwiftPM processがないことを確認してからリポジトリ内の `.build/` を削除する。GitHub Actions cacheはRepository SettingsのActions cachesから対象keyを削除する。共有runnerで無制限に並列化せず、PRのUI gateはplanで必要な種類だけ起動する。
 
 ## 出力とセキュリティ
 
