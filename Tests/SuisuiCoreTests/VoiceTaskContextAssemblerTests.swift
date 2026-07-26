@@ -104,6 +104,52 @@ final class VoiceTaskContextAssemblerTests: XCTestCase {
         XCTAssertTrue(assembly.exclusions.contains { $0.reason == .characterBudgetExceeded })
     }
 
+    func testGivenLongConfirmedTurnWithinBudgetWhenAssembleThenDoesNotSilentlyTruncateField() throws {
+        let longText = String(repeating: "a", count: 1_300)
+
+        let assembly = try VoiceTaskContextAssembler().assemble(
+            input(turns: [turn(id: 1, text: longText, offset: 1)]),
+            budget: VoiceTaskContextBudget(maximumTurns: 5, maximumCharacters: 4_000)
+        )
+
+        XCTAssertTrue(try jsonText(assembly).contains(longText))
+        XCTAssertFalse(assembly.isTruncated)
+    }
+
+    func testGivenManyProjectTasksWhenCharacterBudgetIsTightThenAssemblyRemainsResponsive() throws {
+        let tasks = (1...3_000).map { index in
+            TaskRecord(
+                id: Int64(index),
+                projectID: projectID,
+                title: "Task \(index) " + String(repeating: "x", count: 80),
+                status: "open",
+                dueAt: nil,
+                priority: nil,
+                sourceCommand: nil
+            )
+        }
+        let projectInput = VoiceTaskContextInput(
+            scope: .project(projectID),
+            turns: [],
+            facts: [],
+            tasks: tasks,
+            currentActionPlan: nil,
+            providerNeeded: true,
+            referenceDate: now
+        )
+        let clock = ContinuousClock()
+        let start = clock.now
+
+        let assembly = try VoiceTaskContextAssembler().assemble(
+            projectInput,
+            budget: VoiceTaskContextBudget(maximumTurns: 5, maximumCharacters: 300)
+        )
+
+        XCTAssertLessThan(start.duration(to: clock.now), .seconds(2))
+        XCTAssertLessThanOrEqual(assembly.characterCount, 300)
+        XCTAssertTrue(assembly.isTruncated)
+    }
+
     func testGivenTightCharacterBudgetWhenAssembleThenRemovesOtherContextBeforeConfirmedUserTurn() throws {
         let confirmedTurn = turn(
             id: 1,

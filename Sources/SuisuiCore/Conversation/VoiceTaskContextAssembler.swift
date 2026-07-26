@@ -277,7 +277,7 @@ public struct VoiceTaskContextAssembler: Sendable {
             turns.removeAll { !selectedIDs.contains($0.id) }
         }
 
-        var payload = makePayload(
+        let payload = makePayload(
             scopeIdentity: scopeIdentity,
             turns: turns,
             facts: facts,
@@ -300,65 +300,68 @@ public struct VoiceTaskContextAssembler: Sendable {
             )
         }
 
-        while json.count > budget.maximumCharacters {
-            if let removalIndex = unprotectedTurnRemovalIndex(
-                in: turns,
-                protectedTurnID: currentConfirmedTurnID
-            ) {
-                exclusions.append(
-                    exclusion(
-                        for: turns.remove(at: removalIndex),
-                        reason: .characterBudgetExceeded
-                    )
+        if json.count > budget.maximumCharacters {
+            let totalRemovalCount = turns.count
+                + facts.count
+                + tasks.count
+                + (actionPlan == nil ? 0 : 1)
+            var lowerBound = 1
+            var upperBound = totalRemovalCount
+
+            // Serialized size decreases monotonically as removal priority
+            // advances. Binary search keeps expensive redaction/encoding passes
+            // logarithmic even when a project supplies thousands of candidates.
+            while lowerBound < upperBound {
+                let midpoint = lowerBound + (upperBound - lowerBound) / 2
+                let candidate = characterBudgetSelection(
+                    removing: midpoint,
+                    from: turns,
+                    facts: facts,
+                    tasks: tasks,
+                    actionPlan: actionPlan,
+                    protectedTurnID: currentConfirmedTurnID
                 )
-            } else if !tasks.isEmpty {
-                let removed = tasks.removeLast()
-                exclusions.append(
-                    VoiceTaskContextExclusion(
-                        sourceID: taskSourceID(removed.id),
-                        sourceKind: .task,
-                        reason: .characterBudgetExceeded
-                    )
-                )
-            } else if !facts.isEmpty {
-                let removed = facts.removeFirst()
-                exclusions.append(
-                    VoiceTaskContextExclusion(
-                        sourceID: removed.id.uuidString,
-                        sourceKind: .fact,
-                        reason: .characterBudgetExceeded
-                    )
-                )
-            } else if let removed = actionPlan {
-                actionPlan = nil
-                exclusions.append(
-                    VoiceTaskContextExclusion(
-                        sourceID: actionPlanSourceID(removed.id),
-                        sourceKind: .actionPlan,
-                        reason: .characterBudgetExceeded
-                    )
-                )
-            } else if let removalIndex = turns.indices.first {
-                exclusions.append(
-                    exclusion(
-                        for: turns.remove(at: removalIndex),
-                        reason: .characterBudgetExceeded
-                    )
-                )
-            } else {
-                throw VoiceTaskContextAssemblyError.insufficientCharacterBudget(
-                    minimum: minimumJSON.count
-                )
+                let candidateJSON = try serialize(makePayload(
+                    scopeIdentity: scopeIdentity,
+                    turns: candidate.turns,
+                    facts: candidate.facts,
+                    tasks: candidate.tasks,
+                    actionPlan: candidate.actionPlan
+                ))
+                if candidateJSON.count <= budget.maximumCharacters {
+                    upperBound = midpoint
+                } else {
+                    lowerBound = midpoint + 1
+                }
             }
 
-            payload = makePayload(
+            let selected = characterBudgetSelection(
+                removing: lowerBound,
+                from: turns,
+                facts: facts,
+                tasks: tasks,
+                actionPlan: actionPlan,
+                protectedTurnID: currentConfirmedTurnID
+            )
+            exclusions.append(contentsOf: characterBudgetExclusions(
+                removing: lowerBound,
+                from: turns,
+                facts: facts,
+                tasks: tasks,
+                actionPlan: actionPlan,
+                protectedTurnID: currentConfirmedTurnID
+            ))
+            turns = selected.turns
+            facts = selected.facts
+            tasks = selected.tasks
+            actionPlan = selected.actionPlan
+            json = try serialize(makePayload(
                 scopeIdentity: scopeIdentity,
                 turns: turns,
                 facts: facts,
                 tasks: tasks,
                 actionPlan: actionPlan
-            )
-            json = try serialize(payload)
+            ))
         }
 
         let turnSourceIDs = turns.map { $0.id.uuidString }
@@ -612,11 +615,117 @@ public struct VoiceTaskContextAssembler: Sendable {
         return selected
     }
 
-    private func unprotectedTurnRemovalIndex(
-        in turns: [VoiceTaskContextTurn],
+    private func characterBudgetSelection(
+        removing removalCount: Int,
+        from turns: [VoiceTaskContextTurn],
+        facts: [TaskContextFact],
+        tasks: [TaskRecord],
+        actionPlan: VoiceTaskContextActionPlan?,
         protectedTurnID: UUID?
-    ) -> Int? {
-        turns.firstIndex { $0.id != protectedTurnID }
+    ) -> CharacterBudgetSelection {
+        let counts = characterBudgetRemovalCounts(
+            removalCount,
+            turns: turns,
+            facts: facts,
+            tasks: tasks,
+            actionPlan: actionPlan,
+            protectedTurnID: protectedTurnID
+        )
+        let unprotectedTurns = turns.filter { $0.id != protectedTurnID }
+        var removedTurnIDs = Set(
+            unprotectedTurns.prefix(counts.unprotectedTurns).map(\.id)
+        )
+        if counts.protectedTurn == 1, let protectedTurnID {
+            removedTurnIDs.insert(protectedTurnID)
+        }
+        return CharacterBudgetSelection(
+            turns: turns.filter { !removedTurnIDs.contains($0.id) },
+            facts: Array(facts.dropFirst(counts.facts)),
+            tasks: Array(tasks.dropLast(counts.tasks)),
+            actionPlan: counts.actionPlan == 1 ? nil : actionPlan
+        )
+    }
+
+    private func characterBudgetExclusions(
+        removing removalCount: Int,
+        from turns: [VoiceTaskContextTurn],
+        facts: [TaskContextFact],
+        tasks: [TaskRecord],
+        actionPlan: VoiceTaskContextActionPlan?,
+        protectedTurnID: UUID?
+    ) -> [VoiceTaskContextExclusion] {
+        let counts = characterBudgetRemovalCounts(
+            removalCount,
+            turns: turns,
+            facts: facts,
+            tasks: tasks,
+            actionPlan: actionPlan,
+            protectedTurnID: protectedTurnID
+        )
+        let unprotectedTurns = turns.filter { $0.id != protectedTurnID }
+        var exclusions = unprotectedTurns
+            .prefix(counts.unprotectedTurns)
+            .map { exclusion(for: $0, reason: .characterBudgetExceeded) }
+        exclusions.append(contentsOf: tasks.suffix(counts.tasks).map {
+            VoiceTaskContextExclusion(
+                sourceID: taskSourceID($0.id),
+                sourceKind: .task,
+                reason: .characterBudgetExceeded
+            )
+        })
+        exclusions.append(contentsOf: facts.prefix(counts.facts).map {
+            exclusion(for: $0, reason: .characterBudgetExceeded)
+        })
+        if counts.actionPlan == 1, let actionPlan {
+            exclusions.append(
+                VoiceTaskContextExclusion(
+                    sourceID: actionPlanSourceID(actionPlan.id),
+                    sourceKind: .actionPlan,
+                    reason: .characterBudgetExceeded
+                )
+            )
+        }
+        if counts.protectedTurn == 1,
+           let protectedTurnID,
+           let protectedTurn = turns.first(where: { $0.id == protectedTurnID }) {
+            exclusions.append(
+                exclusion(for: protectedTurn, reason: .characterBudgetExceeded)
+            )
+        }
+        return exclusions
+    }
+
+    private func characterBudgetRemovalCounts(
+        _ removalCount: Int,
+        turns: [VoiceTaskContextTurn],
+        facts: [TaskContextFact],
+        tasks: [TaskRecord],
+        actionPlan: VoiceTaskContextActionPlan?,
+        protectedTurnID: UUID?
+    ) -> CharacterBudgetRemovalCounts {
+        var remaining = removalCount
+        let unprotectedTurnCount = turns.lazy
+            .filter { $0.id != protectedTurnID }
+            .count
+        let removedUnprotectedTurns = min(remaining, unprotectedTurnCount)
+        remaining -= removedUnprotectedTurns
+        let removedTasks = min(remaining, tasks.count)
+        remaining -= removedTasks
+        let removedFacts = min(remaining, facts.count)
+        remaining -= removedFacts
+        let removedActionPlan = min(remaining, actionPlan == nil ? 0 : 1)
+        remaining -= removedActionPlan
+        let removedProtectedTurn = min(
+            remaining,
+            protectedTurnID == nil ? 0 : 1
+        )
+        return CharacterBudgetRemovalCounts(
+            unprotectedTurns: removedUnprotectedTurns,
+            tasks: removedTasks,
+            facts: removedFacts,
+            actionPlan: removedActionPlan,
+            protectedTurn: removedProtectedTurn
+        )
     }
 
     private func makePayload(
@@ -632,28 +741,28 @@ public struct VoiceTaskContextAssembler: Sendable {
                 ProviderTurn(
                     id: $0.id.uuidString,
                     kind: $0.kind.rawValue,
-                    text: redactor.redact($0.text)
+                    text: redactor.redact($0.text, maxLength: .max)
                 )
             },
             facts: facts.map {
                 ProviderFact(
                     id: $0.id.uuidString,
                     kind: $0.kind.rawValue,
-                    value: redactor.redact($0.value)
+                    value: redactor.redact($0.value, maxLength: .max)
                 )
             },
             tasks: tasks.map {
                 ProviderTask(
                     id: $0.id,
                     projectID: $0.projectID,
-                    title: redactor.redact($0.title, maxLength: 300),
-                    detail: $0.detail.map { redactor.redact($0) }
+                    title: redactor.redact($0.title, maxLength: .max),
+                    detail: $0.detail.map { redactor.redact($0, maxLength: .max) }
                 )
             },
             actionPlan: actionPlan.map {
                 ProviderActionPlan(
                     id: actionPlanSourceID($0.id),
-                    summary: redactor.redact($0.summary)
+                    summary: redactor.redact($0.summary, maxLength: .max)
                 )
             }
         )
@@ -777,6 +886,21 @@ public struct VoiceTaskContextAssembler: Sendable {
         }
         return lhs.reason.rawValue < rhs.reason.rawValue
     }
+}
+
+private struct CharacterBudgetRemovalCounts {
+    var unprotectedTurns: Int
+    var tasks: Int
+    var facts: Int
+    var actionPlan: Int
+    var protectedTurn: Int
+}
+
+private struct CharacterBudgetSelection {
+    var turns: [VoiceTaskContextTurn]
+    var facts: [TaskContextFact]
+    var tasks: [TaskRecord]
+    var actionPlan: VoiceTaskContextActionPlan?
 }
 
 private struct ProviderPayload: Encodable {
