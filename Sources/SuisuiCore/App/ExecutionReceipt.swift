@@ -1078,6 +1078,15 @@ public struct ExecutionReceiptRedactionPolicy: Equatable, Sendable {
 }
 
 public struct ExecutionReceiptRedactor: Sendable {
+    private static let unquotedProseBoundaryWords: Set<String> = [
+        "after",
+        "before",
+        "then",
+        "and",
+        "or",
+        "but"
+    ]
+
     private let secretRedactor: DeveloperSecretRedactor
     private let policy: ExecutionReceiptRedactionPolicy
 
@@ -1165,13 +1174,42 @@ public struct ExecutionReceiptRedactor: Sendable {
                 // part of a path while preserving any prose that follows it.
                 end = extensionEnd
             } else if preserveTrailingProse,
-                      let whitespaceEnd = candidate.firstIndex(where: \.isWhitespace) {
-                // Without a delimiter or extension, consuming whitespace is
-                // ambiguous and risks deleting the rest of the user's prose.
-                end = whitespaceEnd
+                      let proseBoundary = unquotedProseBoundary(in: candidate) {
+                // Only a small set of explicit connective words is accepted as
+                // prose evidence. Ambiguous whitespace otherwise fails closed,
+                // because exposing a path suffix is worse than over-redaction.
+                end = proseBoundary
             }
             return start < end ? start..<end : nil
         }
+    }
+
+    private func unquotedProseBoundary(in candidate: Substring) -> String.Index? {
+        var searchStart = candidate.startIndex
+
+        while let whitespaceStart = candidate[searchStart...].firstIndex(where: \.isWhitespace) {
+            var wordStart = whitespaceStart
+            while wordStart < candidate.endIndex, candidate[wordStart].isWhitespace {
+                wordStart = candidate.index(after: wordStart)
+            }
+            guard wordStart < candidate.endIndex else {
+                return nil
+            }
+
+            var wordEnd = wordStart
+            while wordEnd < candidate.endIndex, candidate[wordEnd].isLetter {
+                wordEnd = candidate.index(after: wordEnd)
+            }
+            let word = candidate[wordStart..<wordEnd].lowercased()
+            if Self.unquotedProseBoundaryWords.contains(word) {
+                return whitespaceStart
+            }
+            searchStart = wordEnd > wordStart
+                ? wordEnd
+                : candidate.index(after: wordStart)
+        }
+
+        return nil
     }
 
     private func localPathStartIndexes(in value: String) -> [String.Index] {

@@ -106,8 +106,12 @@ final class ExecutionReceiptTests: XCTestCase {
         let redacted = redactor.redactPreservingWhitespace(
             "Open `/Users/alice/work` after review"
         )
+        let pathWithSpaces = redactor.redactPreservingWhitespace(
+            "Open `/Users/alice/Client Alpha` after review"
+        )
 
         XCTAssertEqual(redacted, "Open `[REDACTED_LOCAL_PATH]` after review")
+        XCTAssertEqual(pathWithSpaces, "Open `[REDACTED_LOCAL_PATH]` after review")
     }
 
     func testExecutionReceiptRedactorPreservesProseAfterUnquotedExtensionlessPath() {
@@ -122,6 +126,17 @@ final class ExecutionReceiptTests: XCTestCase {
 
         XCTAssertEqual(extensionless, "Open [REDACTED_LOCAL_PATH] after review")
         XCTAssertEqual(pathWithSpaces, "Open [REDACTED_LOCAL_PATH] after review")
+    }
+
+    func testExecutionReceiptRedactorFailsClosedForAmbiguousSpaceContainingExtensionlessPath() {
+        let redactor = ExecutionReceiptRedactor()
+
+        let redacted = redactor.redactPreservingWhitespace(
+            "Open /Users/alice/Client Alpha/private notes"
+        )
+
+        XCTAssertEqual(redacted, "Open [REDACTED_LOCAL_PATH]")
+        XCTAssertFalse(redacted.contains("Alpha/private"))
     }
 
     func testReviewExecutionReceiptRedactsSecretsAndDisallowedLocalPaths() throws {
