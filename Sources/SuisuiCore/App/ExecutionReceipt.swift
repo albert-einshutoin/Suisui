@@ -1094,6 +1094,14 @@ public struct ExecutionReceiptRedactor: Sendable {
         return redactDisallowedLocalPaths(in: secretRedacted).receiptPreview(maxLength: maxLength)
     }
 
+    /// Redacts the same secret and local-path classes without rewriting layout.
+    /// Provider context can contain Markdown or code where whitespace carries
+    /// meaning, so its separate aggregate budget owns any later truncation.
+    public func redactPreservingWhitespace(_ value: String) -> String {
+        let secretRedacted = secretRedactor.redact(value).text
+        return redactDisallowedLocalPaths(in: secretRedacted)
+    }
+
     private func redactDisallowedLocalPaths(in value: String) -> String {
         guard !value.isEmpty else {
             return value

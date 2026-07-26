@@ -415,6 +415,41 @@ final class VoiceTaskContextAssemblerTests: XCTestCase {
         )
     }
 
+    func testGivenDuplicateFactIDWhenAssembleThenKeepsOneDeterministicFact() throws {
+        let first = try fact(id: 1, state: .confirmed, value: "Alpha fact")
+        let duplicate = try TaskContextFact(
+            id: first.id,
+            sessionID: first.sessionID,
+            kind: first.kind,
+            scope: first.scope,
+            state: first.state,
+            value: "Zulu fact",
+            sourceTurnID: uuid(899),
+            sourceExcerptDigest: String(repeating: "f", count: 64),
+            confidence: first.confidence,
+            author: first.author,
+            createdAt: first.createdAt
+        )
+
+        let assembly = try VoiceTaskContextAssembler().assemble(
+            input(facts: [duplicate, first]),
+            budget: VoiceTaskContextBudget(maximumTurns: 5, maximumCharacters: 4_000)
+        )
+
+        XCTAssertEqual(assembly.includedFactCount, 1)
+        XCTAssertEqual(
+            assembly.selectedSourceIDs.filter { $0 == first.id.uuidString }.count,
+            1
+        )
+        XCTAssertTrue(try jsonText(assembly).contains("Zulu fact"))
+        XCTAssertTrue(
+            assembly.exclusions.contains {
+                $0.sourceID == first.id.uuidString
+                    && $0.reason == .duplicateSource
+            }
+        )
+    }
+
     func testGivenOutsideScopeReplacementWhenAssembleThenDoesNotInvalidateCurrentFact() throws {
         let current = try fact(id: 1, state: .confirmed, value: "Current constraint")
         let outsideReplacement = try TaskContextFact(
@@ -492,6 +527,35 @@ final class VoiceTaskContextAssemblerTests: XCTestCase {
         XCTAssertTrue(prompt.user.contains("Voice task context"))
         XCTAssertTrue(prompt.user.contains("\\u0060\\u0060\\u0060"))
         XCTAssertNoThrow(try payloadObject(assembly))
+    }
+
+    func testGivenWhitespaceSensitiveContextWhenAssembleThenPreservesStructure() throws {
+        let turnText = "First line\n  indented second line"
+        let taskDetail = "- first item\n  - nested item"
+        let task = TaskRecord(
+            id: taskID,
+            projectID: projectID,
+            title: "Structured task",
+            status: "open",
+            dueAt: nil,
+            priority: nil,
+            sourceCommand: nil,
+            detail: taskDetail
+        )
+
+        let assembly = try VoiceTaskContextAssembler().assemble(
+            input(
+                turns: [turn(id: 1, text: turnText, offset: 1)],
+                tasks: [task]
+            ),
+            budget: VoiceTaskContextBudget(maximumTurns: 5, maximumCharacters: 4_000)
+        )
+        let payload = try payloadObject(assembly)
+        let turns = try XCTUnwrap(payload["turns"] as? [[String: Any]])
+        let tasks = try XCTUnwrap(payload["tasks"] as? [[String: Any]])
+
+        XCTAssertEqual(turns.first?["text"] as? String, turnText)
+        XCTAssertEqual(tasks.first?["detail"] as? String, taskDetail)
     }
 
     func testGivenSameInputWhenAssembleRepeatedlyThenOutputOrderIsStable() throws {

@@ -457,8 +457,15 @@ public struct VoiceTaskContextAssembler: Sendable {
                 }
                 return true
             }
+        var candidatesByID: [UUID: TaskContextFact] = [:]
+        for fact in scopedCandidates {
+            if let previous = candidatesByID.updateValue(fact, forKey: fact.id) {
+                exclusions.append(exclusion(for: previous, reason: .duplicateSource))
+            }
+        }
+        let uniqueCandidates = candidatesByID.values.sorted(by: stableFactLessThan)
         let noLongerCurrentIDs = Set(
-            scopedCandidates.compactMap { fact -> UUID? in
+            uniqueCandidates.compactMap { fact -> UUID? in
                 guard fact.sourceEvidenceVerified,
                       [.confirmed, .superseded, .retracted, .expired].contains(fact.state)
                 else {
@@ -468,7 +475,7 @@ public struct VoiceTaskContextAssembler: Sendable {
             }
         )
         var selected: [TaskContextFact] = []
-        for fact in scopedCandidates {
+        for fact in uniqueCandidates {
             guard fact.state != .expired else {
                 exclusions.append(exclusion(for: fact, reason: .factExpired))
                 continue
@@ -751,28 +758,28 @@ public struct VoiceTaskContextAssembler: Sendable {
                 ProviderTurn(
                     id: $0.id.uuidString,
                     kind: $0.kind.rawValue,
-                    text: redactor.redact($0.text, maxLength: .max)
+                    text: redactor.redactPreservingWhitespace($0.text)
                 )
             },
             facts: facts.map {
                 ProviderFact(
                     id: $0.id.uuidString,
                     kind: $0.kind.rawValue,
-                    value: redactor.redact($0.value, maxLength: .max)
+                    value: redactor.redactPreservingWhitespace($0.value)
                 )
             },
             tasks: tasks.map {
                 ProviderTask(
                     id: $0.id,
                     projectID: $0.projectID,
-                    title: redactor.redact($0.title, maxLength: .max),
-                    detail: $0.detail.map { redactor.redact($0, maxLength: .max) }
+                    title: redactor.redactPreservingWhitespace($0.title),
+                    detail: $0.detail.map(redactor.redactPreservingWhitespace)
                 )
             },
             actionPlan: actionPlan.map {
                 ProviderActionPlan(
                     id: actionPlanSourceID($0.id),
-                    summary: redactor.redact($0.summary, maxLength: .max)
+                    summary: redactor.redactPreservingWhitespace($0.summary)
                 )
             }
         )
@@ -879,9 +886,43 @@ public struct VoiceTaskContextAssembler: Sendable {
         _ lhs: TaskContextFact,
         _ rhs: TaskContextFact
     ) -> Bool {
-        lhs.createdAt == rhs.createdAt
-            ? lhs.id.uuidString < rhs.id.uuidString
-            : lhs.createdAt < rhs.createdAt
+        if lhs.createdAt != rhs.createdAt {
+            return lhs.createdAt < rhs.createdAt
+        }
+        if lhs.id != rhs.id {
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+        return stableFactTieBreaker(lhs) < stableFactTieBreaker(rhs)
+    }
+
+    private func stableFactTieBreaker(_ fact: TaskContextFact) -> String {
+        stableFieldsKey([
+            fact.sessionID.uuidString,
+            fact.kind.rawValue,
+            stableFactScopeKey(fact.scope),
+            fact.state.rawValue,
+            fact.value,
+            fact.sourceTurnID.uuidString,
+            fact.sourceExcerptDigest,
+            String(fact.sourceEvidenceVerified),
+            String(fact.confidence.bitPattern),
+            fact.author.rawValue,
+            fact.supersedesFactID?.uuidString,
+            fact.expiresAt.map {
+                String($0.timeIntervalSinceReferenceDate.bitPattern)
+            },
+        ])
+    }
+
+    private func stableFactScopeKey(_ scope: TaskContextFactScope) -> String {
+        switch scope {
+        case .session:
+            "session"
+        case .project(let id):
+            "project:\(id)"
+        case .task(let id):
+            "task:\(id)"
+        }
     }
 
     private func stableTaskLessThan(_ lhs: TaskRecord, _ rhs: TaskRecord) -> Bool {
@@ -891,7 +932,7 @@ public struct VoiceTaskContextAssembler: Sendable {
     }
 
     private func stableTaskTieBreaker(_ task: TaskRecord) -> String {
-        [
+        stableFieldsKey([
             task.projectID.map(String.init),
             task.title,
             task.status,
@@ -902,8 +943,11 @@ public struct VoiceTaskContextAssembler: Sendable {
             task.detail,
             task.updatedAt,
             task.recurrence,
-        ]
-        .map { value in
+        ])
+    }
+
+    private func stableFieldsKey(_ values: [String?]) -> String {
+        values.map { value in
             value.map { "\($0.utf8.count):\($0)" } ?? "nil"
         }
         .joined(separator: "|")
