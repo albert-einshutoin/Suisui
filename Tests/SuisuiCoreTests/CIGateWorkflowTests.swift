@@ -4,6 +4,7 @@ import XCTest
 final class CIGateWorkflowTests: XCTestCase {
     func testWorkflowDefinesStableProductionUIGatesOnPinnedMacOSRunner() throws {
         let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let fullRunner = try readRepositoryFile("ci/run-full.sh")
 
         XCTAssertTrue(workflow.contains("pull_request:"))
         XCTAssertTrue(workflow.contains("push:"))
@@ -17,7 +18,8 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(workflow.contains("name: UI Performance (production route)"))
         XCTAssertGreaterThanOrEqual(workflow.components(separatedBy: "runs-on: macos-26").count - 1, 4)
 
-        XCTAssertTrue(workflow.contains("./scripts/ci.sh swiftpm"))
+        XCTAssertTrue(workflow.contains("run: ./ci/run-full.sh"))
+        XCTAssertTrue(fullRunner.contains("./scripts/ci.sh swiftpm"))
         XCTAssertGreaterThanOrEqual(
             workflow.components(separatedBy: "fetch-depth: 0").count - 1,
             2,

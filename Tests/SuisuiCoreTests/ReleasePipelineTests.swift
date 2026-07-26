@@ -163,14 +163,17 @@ final class ReleasePipelineTests: XCTestCase {
     func testGitHubCISeparatesCompleteSwiftPMSuiteFromSupplementalSourceContracts() throws {
         let workflow = try readPackageFile(".github/workflows/ci.yml")
         let script = try readPackageFile("scripts/ci.sh")
+        let fullRunner = try readPackageFile("ci/run-full.sh")
 
         XCTAssertTrue(workflow.contains("name: SwiftPM complete suite"))
-        XCTAssertTrue(workflow.contains("run: ./scripts/ci.sh swiftpm"))
-        XCTAssertTrue(workflow.contains("name: swiftpm-tests-${{ github.run_id }}-${{ github.run_attempt }}"))
-        XCTAssertTrue(workflow.contains("path: .tmp/ci-artifacts/swiftpm"))
+        XCTAssertTrue(workflow.contains("run: ./ci/run-full.sh"))
+        XCTAssertTrue(fullRunner.contains("./scripts/ci.sh swiftpm"))
+        XCTAssertTrue(workflow.contains("name: complete-validation-${{ github.run_id }}-${{ github.run_attempt }}"))
+        XCTAssertTrue(workflow.contains(".tmp/ci-artifacts/swiftpm"))
         XCTAssertTrue(workflow.contains("if: always()"))
-        XCTAssertTrue(workflow.contains("name: Source contracts (supplemental)"))
-        XCTAssertTrue(workflow.contains("run: ./scripts/ci.sh source-contracts"))
+        XCTAssertTrue(fullRunner.contains("./scripts/ci.sh source-contracts"))
+        XCTAssertFalse(fullRunner.contains("impact/analyze"))
+        XCTAssertFalse(fullRunner.contains("ci/config"))
         XCTAssertTrue(script.contains("./script/run_complete_swiftpm_tests.sh"))
         XCTAssertTrue(
             script.contains(

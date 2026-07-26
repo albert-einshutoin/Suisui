@@ -6,32 +6,143 @@ on:
     branches:
       - main
       - develop
+      - 'release/**'
+    tags:
+      - 'v*'
+  release:
+    types: [published]
   merge_group:
+  schedule:
+    # 03:17 JST. The off-hour minute avoids the busiest top-of-hour window.
+    - cron: '17 18 * * *'
   workflow_dispatch:
+    inputs:
+      full-validation:
+        description: Run the complete validation suite
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # A tag push and the corresponding Release publication are distinct complete
+  # verification events. Include the event so one cannot cancel the other.
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  swiftpm:
-    name: SwiftPM macOS
+  test_strategy:
+    name: SwiftPM macOS (selected or full)
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 40
+    outputs:
+      strategy: ${{ steps.plan_outputs.outputs.strategy }}
+      ui_runtime: ${{ steps.plan_outputs.outputs.ui_runtime }}
+      ui_visual: ${{ steps.plan_outputs.outputs.ui_visual }}
+      ui_performance: ${{ steps.plan_outputs.outputs.ui_performance }}
+      fallback_reason: ${{ steps.plan_outputs.outputs.fallback_reason }}
     steps:
-      - name: Checkout
+      - name: Checkout tested revision with full history
         uses: actions/checkout@v4
         with:
-          # Evidence/provenance tests resolve the latest product source commit,
-          # which cannot be derived from GitHub's depth-1 PR merge checkout.
+          # Merge-base, rename/copy detection, and evidence provenance all need
+          # complete history. On pull requests, the default checkout is GitHub's
+          # synthesized pull-request merge revision, while HEAD_REVISION below
+          # remains the contributor head used only for analysis and provenance.
           fetch-depth: 0
+
+      - name: Restore bounded Swift build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/.cache/org.swift.swiftpm
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-${{ runner.arch }}-swift-6-${{ hashFiles('Package.resolved', 'Package.swift') }}-${{ hashFiles('ci/config/**', 'ci/impact/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-swift-6-
 
       - name: Show toolchain
         run: |
           swift --version
+          python3 --version
+          if ! command -v rg >/dev/null 2>&1; then
+            brew install ripgrep
+          fi
+          command -v rg
+
+      - name: Decide and execute test strategy
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+          SUISUI_CI_TEST_PLAN: ${{ github.workspace }}/.tmp/ci-impact/test-plan.json
+          SUISUI_CI_EXECUTION_REPORT: ${{ github.workspace }}/.tmp/ci-impact/execution.json
+          SUISUI_CI_IMPACT_ARTIFACT_DIR: ${{ github.workspace }}/.tmp/ci-impact
+          SUISUI_SWIFTPM_ARTIFACT_DIR: ${{ github.workspace }}/.tmp/ci-artifacts/swiftpm
+        run: |
+          ./ci/run-pr-ci.sh \
+            --base-revision "origin/$BASE_REF" \
+            --head-revision "$HEAD_REVISION"
+
+      - name: Export fail-closed job outputs
+        id: plan_outputs
+        if: always()
+        env:
+          PLAN_PATH: ${{ github.workspace }}/.tmp/ci-impact/test-plan.json
+        run: |
+          if ! python3 ./ci/export-plan.py \
+            --plan "$PLAN_PATH" \
+            --github-output "$GITHUB_OUTPUT"; then
+            {
+              echo "strategy=full"
+              echo "ui_runtime=true"
+              echo "ui_visual=true"
+              echo "ui_performance=true"
+              echo "fallback_reason=plan exporter failed"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload strategy and execution history
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: impact-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/ci-impact
+            .tmp/ci-artifacts/swiftpm
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+  full_validation:
+    name: Complete validation
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - name: Checkout tested revision with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore bounded Swift build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/.cache/org.swift.swiftpm
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-${{ runner.arch }}-swift-6-${{ hashFiles('Package.resolved', 'Package.swift') }}-${{ hashFiles('ci/config/**', 'ci/impact/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-swift-6-
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          python3 --version
           if ! command -v rg >/dev/null 2>&1; then
             brew install ripgrep
           fi
@@ -39,37 +150,45 @@ jobs:
 
       - name: SwiftPM complete suite
         env:
+          SUISUI_CI_EXECUTION_REPORT: ${{ github.workspace }}/.tmp/ci-impact/full-execution.json
+          SUISUI_CI_IMPACT_ARTIFACT_DIR: ${{ github.workspace }}/.tmp/ci-impact
           SUISUI_SWIFTPM_ARTIFACT_DIR: ${{ github.workspace }}/.tmp/ci-artifacts/swiftpm
-        run: ./scripts/ci.sh swiftpm
+        run: ./ci/run-full.sh
 
       - name: Upload complete SwiftPM test evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: swiftpm-tests-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .tmp/ci-artifacts/swiftpm
+          name: complete-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/ci-impact/full-execution.json
+            .tmp/ci-artifacts/swiftpm
           if-no-files-found: error
           include-hidden-files: true
-          retention-days: 7
-
-  source-contracts:
-    name: Source contracts (supplemental)
-    runs-on: macos-26
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Verify supplemental source contracts
-        run: ./scripts/ci.sh source-contracts
+          retention-days: 14
 
   ui-runtime:
     name: UI Runtime (production route)
+    needs:
+      - test_strategy
+      - full_validation
+    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_runtime == 'true') }}
     runs-on: macos-26
     timeout-minutes: 60
     steps:
-      - name: Checkout
+      - name: Checkout tested revision
         uses: actions/checkout@v4
+
+      - name: Restore Swift build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .build
+            ~/.cache/org.swift.swiftpm
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-${{ runner.arch }}-swift-6-${{ hashFiles('Package.resolved', 'Package.swift') }}-${{ hashFiles('ci/config/**', 'ci/impact/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-swift-6-
 
       - name: Verify production runtime
         env:
@@ -88,22 +207,32 @@ jobs:
 
   ui-visual:
     name: UI Visual (live baseline)
+    needs:
+      - test_strategy
+      - full_validation
+    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_visual == 'true') }}
     runs-on: macos-26
     timeout-minutes: 60
     steps:
-      - name: Checkout
+      - name: Checkout tested revision
         uses: actions/checkout@v4
         with:
-          # The visual receipt is bound to the PR head's latest product change.
-          # Full history is required because harness-only follow-up commits can
-          # place that product commit deeper than the merge checkout's parents.
           fetch-depth: 0
+
+      - name: Restore Swift build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .build
+            ~/.cache/org.swift.swiftpm
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-${{ runner.arch }}-swift-6-${{ hashFiles('Package.resolved', 'Package.swift') }}-${{ hashFiles('ci/config/**', 'ci/impact/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-swift-6-
 
       - name: Capture and compare live UI
         env:
           SUISUI_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
-          # actions/checkout uses an ephemeral pull-request merge commit. Bind
-          # visual evidence to the stable head ref's latest product change.
           SUISUI_VISUAL_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}
         run: ./scripts/ci.sh ui-visual
 
@@ -119,11 +248,26 @@ jobs:
 
   ui-performance:
     name: UI Performance (production route)
+    needs:
+      - test_strategy
+      - full_validation
+    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}
     runs-on: macos-26
     timeout-minutes: 30
     steps:
-      - name: Checkout
+      - name: Checkout tested revision
         uses: actions/checkout@v4
+
+      - name: Restore Swift build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .build
+            ~/.cache/org.swift.swiftpm
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-${{ runner.arch }}-swift-6-${{ hashFiles('Package.resolved', 'Package.swift') }}-${{ hashFiles('ci/config/**', 'ci/impact/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-swift-6-
 
       - name: Measure production runtime
         env:

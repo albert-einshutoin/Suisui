@@ -1435,6 +1435,52 @@ open_settings_sync_tab() {
   wait_for_window_capture_metadata "Sync" >/dev/null
 }
 
+prepare_named_evidence_window() {
+  local window_name="$1"
+  local label="$2"
+  local marker_spec="$3"
+  local window_attempt
+  local readiness_diagnostic
+
+  # The process-level readiness probe can succeed on the Project Board while a
+  # separately-created Settings or Voice Command window is still publishing.
+  # Reacquire the named window after AX marker traversal; hosted WindowServer
+  # has twice withdrawn that auxiliary window between the first probe and the
+  # capture, so retry the complete owned-process launch instead of accepting a
+  # stale window or weakening the visual gate.
+  for ((window_attempt = 1; window_attempt <= EVIDENCE_ROUTE_ATTEMPTS; window_attempt++)); do
+    readiness_diagnostic="$EVIDENCE_TMPDIR/named-evidence-window.$$.attempt-$window_attempt.err"
+    : >"$readiness_diagnostic"
+    stop_evidence_app
+    write_appearance_preference "$APPEARANCE_OVERRIDE"
+
+    if open_evidence_app 2>>"$readiness_diagnostic" \
+      && wait_for_process 2>>"$readiness_diagnostic"; then
+      activate_evidence_app
+      sleep 1.0
+      if wait_for_window_capture_metadata "$window_name" > /dev/null 2>>"$readiness_diagnostic" \
+        && position_window_for_capture "$window_name" "$readiness_diagnostic" 2>>"$readiness_diagnostic" \
+        && wait_for_project_board_destination "$label" "$marker_spec" 2>>"$readiness_diagnostic" \
+        && position_window_for_capture "$window_name" "$readiness_diagnostic" 2>>"$readiness_diagnostic"; then
+        rm -f "$readiness_diagnostic"
+        return 0
+      fi
+    fi
+
+    if [[ "$window_attempt" -lt "$EVIDENCE_ROUTE_ATTEMPTS" ]]; then
+      echo "INFO: retrying named evidence window after readiness failure" >&2
+      emit_evidence_app_diagnostic
+      rm -f "$readiness_diagnostic"
+      continue
+    fi
+
+    /bin/cat "$readiness_diagnostic" >&2
+    emit_evidence_app_diagnostic
+    rm -f "$readiness_diagnostic"
+    return 1
+  done
+}
+
 capture_settings_overview() {
   local appearance="$1"
   local output_path="$2"
@@ -1443,16 +1489,7 @@ capture_settings_overview() {
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="Overview"
   VOICE_COMMAND_WINDOW_OVERRIDE=""
-  stop_evidence_app
-  write_appearance_preference "$appearance"
-  open_evidence_app
-  wait_for_process
-  activate_evidence_app
-  sleep 1.0
-  open_settings_overview_tab
-  position_window_for_capture "Overview"
-  wait_for_project_board_destination "Settings overview" "settings-status-overview=>"
-  sleep 1.0
+  prepare_named_evidence_window "Overview" "Settings overview" "settings-status-overview=>"
 
   capture_visible_window "$appearance Settings overview" "$output_path" "Overview" "settings-status-overview"
 }
@@ -1465,15 +1502,7 @@ capture_settings_sync() {
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="Sync"
   VOICE_COMMAND_WINDOW_OVERRIDE=""
-  stop_evidence_app
-  write_appearance_preference "$appearance"
-  open_evidence_app
-  wait_for_process
-  activate_evidence_app
-  sleep 1.0
-  open_settings_sync_tab
-  position_window_for_capture "Sync"
-  wait_for_project_board_destination "Settings integrations" "settings-google-calendar-id-save-flow=>"
+  prepare_named_evidence_window "Sync" "Settings integrations" "settings-google-calendar-id-save-flow=>"
   scroll_ax_target_into_view "settings-google-calendar-id-save-flow" "Settings integrations"
   sleep 1.0
 
@@ -1488,16 +1517,7 @@ capture_settings_appearance() {
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="Appearance"
   VOICE_COMMAND_WINDOW_OVERRIDE=""
-  stop_evidence_app
-  write_appearance_preference "$appearance"
-  open_evidence_app
-  wait_for_process
-  activate_evidence_app
-  sleep 1.0
-  open_settings_appearance_tab
-  position_window_for_capture "Appearance"
-  wait_for_project_board_destination "Settings appearance" "settings-theme-picker=>"
-  sleep 1.0
+  prepare_named_evidence_window "Appearance" "Settings appearance" "settings-theme-picker=>"
 
   capture_visible_window "$appearance Settings appearance" "$output_path" "Appearance" "settings-theme-picker"
 }
@@ -1510,15 +1530,7 @@ capture_mcp_settings_appearance() {
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="MCP"
   VOICE_COMMAND_WINDOW_OVERRIDE=""
-  stop_evidence_app
-  write_appearance_preference "$appearance"
-  open_evidence_app
-  wait_for_process
-  activate_evidence_app
-  sleep 1.0
-  open_mcp_settings_tab
-  position_window_for_capture "MCP"
-  wait_for_project_board_destination "MCP settings" "mcp-paid-execution-boundary-row=>"
+  prepare_named_evidence_window "MCP" "MCP settings" "mcp-paid-execution-boundary-row=>"
   scroll_ax_target_into_view "mcp-paid-execution-boundary-row" "MCP settings"
   sleep 1.0
 
@@ -1652,14 +1664,7 @@ capture_voice_command_appearance() {
   SETTINGS_WINDOW_OVERRIDE=""
   SETTINGS_TAB_OVERRIDE=""
   VOICE_COMMAND_WINDOW_OVERRIDE=1
-  stop_evidence_app
-  write_appearance_preference "$appearance"
-  open_evidence_app
-  wait_for_process
-  activate_evidence_app
-  sleep 1.0
-  wait_for_window_capture_metadata "Voice Command" >/dev/null
-  wait_for_project_board_destination "Voice Command" "$VOICE_COMMAND_TARGET_MARKERS"
+  prepare_named_evidence_window "Voice Command" "Voice Command" "$VOICE_COMMAND_TARGET_MARKERS"
 
   capture_visible_window "$appearance Voice Command" "$output_path" "Voice Command" "voice-command-root"
 }
