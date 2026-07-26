@@ -29,6 +29,41 @@ final class VoiceTaskContextAssemblerTests: XCTestCase {
         )
     }
 
+    func testGivenDuplicateTurnIDWhenAssembleThenDeduplicatesBeforeTurnBudget() throws {
+        let duplicateID = uuid(1)
+        let turns = [
+            VoiceTaskContextTurn(
+                id: duplicateID,
+                scope: .task(id: taskID, projectID: projectID),
+                kind: .userConfirmed,
+                text: "older duplicate",
+                createdAt: now.addingTimeInterval(1)
+            ),
+            VoiceTaskContextTurn(
+                id: duplicateID,
+                scope: .task(id: taskID, projectID: projectID),
+                kind: .userConfirmed,
+                text: "latest duplicate",
+                createdAt: now.addingTimeInterval(2)
+            ),
+        ]
+
+        let assembly = try VoiceTaskContextAssembler().assemble(
+            input(turns: turns),
+            budget: VoiceTaskContextBudget(maximumTurns: 1, maximumCharacters: 4_000)
+        )
+
+        XCTAssertEqual(assembly.includedTurnCount, 1)
+        XCTAssertTrue(try jsonText(assembly).contains("latest duplicate"))
+        XCTAssertFalse(try jsonText(assembly).contains("older duplicate"))
+        XCTAssertTrue(
+            assembly.exclusions.contains {
+                $0.sourceID == duplicateID.uuidString
+                    && $0.reason == .duplicateSource
+            }
+        )
+    }
+
     func testGivenCurrentConfirmedUserTextWhenTurnBudgetIsTightThenPrioritizesIt() throws {
         let turns = [
             turn(id: 1, text: "confirmed user intent", offset: 1, kind: .userConfirmed),
@@ -392,6 +427,32 @@ final class VoiceTaskContextAssemblerTests: XCTestCase {
         XCTAssertFalse(output.contains("Outside"))
         XCTAssertEqual(assembly.includedTaskCount, 1)
         XCTAssertEqual(assembly.includedActionPlanCount, 1)
+    }
+
+    func testGivenSecretLikeActionPlanIDWhenAssembleThenUsesOpaqueSourceIdentifier() throws {
+        let secretID = "plan-password=hidden-/Users/private/plan.json"
+        let plan = VoiceTaskContextActionPlan(
+            id: secretID,
+            scope: .task(id: taskID, projectID: projectID),
+            summary: "Current plan",
+            createdAt: now
+        )
+
+        let assembly = try VoiceTaskContextAssembler().assemble(
+            input(currentActionPlan: plan),
+            budget: VoiceTaskContextBudget(maximumTurns: 5, maximumCharacters: 4_000)
+        )
+        let combined = [
+            try jsonText(assembly),
+            assembly.selectedSourceIDs.joined(separator: " "),
+            assembly.exclusions.map(\.sourceID).joined(separator: " "),
+        ].joined(separator: "\n")
+
+        XCTAssertFalse(combined.contains(secretID))
+        XCTAssertFalse(combined.contains("password=hidden"))
+        XCTAssertTrue(
+            assembly.selectedSourceIDs.first?.hasPrefix("action-plan:sha256:") ?? false
+        )
     }
 
     private func input(

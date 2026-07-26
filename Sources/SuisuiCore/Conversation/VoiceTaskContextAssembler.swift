@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 public struct VoiceTaskContextBudget: Equatable, Sendable {
@@ -122,6 +123,7 @@ public enum VoiceTaskContextExclusionReason: String, Codable, Equatable, Hashabl
     case factExpired = "fact_expired"
     case factUnverified = "fact_unverified"
     case factNoLongerCurrent = "fact_no_longer_current"
+    case duplicateSource = "duplicate_source"
     case turnBudgetExceeded = "turn_budget_exceeded"
     case characterBudgetExceeded = "character_budget_exceeded"
     case providerNotNeeded = "provider_not_needed"
@@ -420,7 +422,7 @@ public struct VoiceTaskContextAssembler: Sendable {
         currentScope: VoiceTaskContextScope,
         exclusions: inout [VoiceTaskContextExclusion]
     ) -> [VoiceTaskContextTurn] {
-        var selected: [VoiceTaskContextTurn] = []
+        var selectedByID: [UUID: VoiceTaskContextTurn] = [:]
         for turn in candidates.sorted(by: stableTurnLessThan) {
             guard scope(turn.scope, isIncludedIn: currentScope) else {
                 exclusions.append(exclusion(for: turn, reason: .outsideScope))
@@ -430,9 +432,11 @@ public struct VoiceTaskContextAssembler: Sendable {
                 exclusions.append(exclusion(for: turn, reason: .emptyContent))
                 continue
             }
-            selected.append(turn)
+            if let previous = selectedByID.updateValue(turn, forKey: turn.id) {
+                exclusions.append(exclusion(for: previous, reason: .duplicateSource))
+            }
         }
-        return selected
+        return selectedByID.values.sorted(by: stableTurnLessThan)
     }
 
     private func scopedFacts(
@@ -644,7 +648,7 @@ public struct VoiceTaskContextAssembler: Sendable {
             },
             actionPlan: actionPlan.map {
                 ProviderActionPlan(
-                    id: $0.id,
+                    id: actionPlanSourceID($0.id),
                     summary: redactor.redact($0.summary)
                 )
             }
@@ -729,7 +733,10 @@ public struct VoiceTaskContextAssembler: Sendable {
     }
 
     private func actionPlanSourceID(_ id: String) -> String {
-        "action-plan:\(id)"
+        let digest = SHA256.hash(data: Data(id.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return "action-plan:sha256:\(digest)"
     }
 
     private func stableTurnLessThan(
@@ -737,8 +744,12 @@ public struct VoiceTaskContextAssembler: Sendable {
         _ rhs: VoiceTaskContextTurn
     ) -> Bool {
         lhs.createdAt == rhs.createdAt
-            ? lhs.id.uuidString < rhs.id.uuidString
+            ? stableTurnTieBreaker(lhs) < stableTurnTieBreaker(rhs)
             : lhs.createdAt < rhs.createdAt
+    }
+
+    private func stableTurnTieBreaker(_ turn: VoiceTaskContextTurn) -> String {
+        "\(turn.id.uuidString)|\(turn.kind.rawValue)|\(turn.text)"
     }
 
     private func stableFactLessThan(
