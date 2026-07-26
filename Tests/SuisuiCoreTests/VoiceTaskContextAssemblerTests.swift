@@ -69,6 +69,46 @@ final class VoiceTaskContextAssemblerTests: XCTestCase {
         XCTAssertTrue(assembly.exclusions.contains { $0.reason == .characterBudgetExceeded })
     }
 
+    func testGivenTightCharacterBudgetWhenAssembleThenRemovesOtherContextBeforeConfirmedUserTurn() throws {
+        let confirmedTurn = turn(
+            id: 1,
+            text: "Keep this confirmed intent",
+            offset: 1,
+            kind: .userConfirmed
+        )
+        let confirmedOnly = try VoiceTaskContextAssembler().assemble(
+            input(turns: [confirmedTurn]),
+            budget: VoiceTaskContextBudget(maximumTurns: 1, maximumCharacters: 4_000)
+        )
+        let extraTask = TaskRecord(
+            id: taskID,
+            projectID: projectID,
+            title: String(repeating: "large task context ", count: 40),
+            status: "open",
+            dueAt: nil,
+            priority: nil,
+            sourceCommand: nil
+        )
+
+        let assembly = try VoiceTaskContextAssembler().assemble(
+            input(turns: [confirmedTurn], tasks: [extraTask]),
+            budget: VoiceTaskContextBudget(
+                maximumTurns: 1,
+                maximumCharacters: confirmedOnly.characterCount
+            )
+        )
+
+        XCTAssertTrue(try jsonText(assembly).contains("Keep this confirmed intent"))
+        XCTAssertEqual(assembly.includedTurnCount, 1)
+        XCTAssertEqual(assembly.includedTaskCount, 0)
+        XCTAssertTrue(
+            assembly.exclusions.contains {
+                $0.sourceKind == .task
+                    && $0.reason == .characterBudgetExceeded
+            }
+        )
+    }
+
     func testGivenOtherProjectTaskWhenAssembleThenExcludesBeforeRedaction() throws {
         let secret = "password=outside-project-secret"
         let outside = VoiceTaskContextTurn(

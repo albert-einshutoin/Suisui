@@ -144,14 +144,14 @@ public struct VoiceTaskContextExclusion: Codable, Equatable, Sendable {
 }
 
 public struct VoiceTaskProviderContext: Equatable, Sendable {
-    public var scopeIdentity: VoiceTaskContextScopeIdentity
-    public var selectedSourceIDs: [String]
+    public let scopeIdentity: VoiceTaskContextScopeIdentity
+    public let selectedSourceIDs: [String]
     /// Valid, sorted-key JSON. This remains separate from the system message so
     /// user-authored task detail cannot become an instruction by concatenation.
-    public var json: String
-    public var characterCount: Int
+    public let json: String
+    public let characterCount: Int
 
-    public init(
+    fileprivate init(
         scopeIdentity: VoiceTaskContextScopeIdentity,
         selectedSourceIDs: [String],
         json: String,
@@ -164,7 +164,8 @@ public struct VoiceTaskProviderContext: Equatable, Sendable {
     }
 
     public var fencedJSON: String {
-        "```json\n\(json)\n```"
+        let fenceSafeJSON = json.replacingOccurrences(of: "`", with: "\\u0060")
+        return "```json\n\(fenceSafeJSON)\n```"
     }
 }
 
@@ -298,7 +299,7 @@ public struct VoiceTaskContextAssembler: Sendable {
         }
 
         while json.count > budget.maximumCharacters {
-            if let removalIndex = turnRemovalIndex(
+            if let removalIndex = unprotectedTurnRemovalIndex(
                 in: turns,
                 protectedTurnID: currentConfirmedTurnID
             ) {
@@ -332,6 +333,13 @@ public struct VoiceTaskContextAssembler: Sendable {
                     VoiceTaskContextExclusion(
                         sourceID: actionPlanSourceID(removed.id),
                         sourceKind: .actionPlan,
+                        reason: .characterBudgetExceeded
+                    )
+                )
+            } else if let removalIndex = turns.indices.first {
+                exclusions.append(
+                    exclusion(
+                        for: turns.remove(at: removalIndex),
                         reason: .characterBudgetExceeded
                     )
                 )
@@ -596,12 +604,11 @@ public struct VoiceTaskContextAssembler: Sendable {
         return selected
     }
 
-    private func turnRemovalIndex(
+    private func unprotectedTurnRemovalIndex(
         in turns: [VoiceTaskContextTurn],
         protectedTurnID: UUID?
     ) -> Int? {
         turns.firstIndex { $0.id != protectedTurnID }
-            ?? turns.indices.first
     }
 
     private func makePayload(
