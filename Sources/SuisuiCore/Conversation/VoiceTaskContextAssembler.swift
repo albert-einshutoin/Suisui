@@ -464,6 +464,10 @@ public struct VoiceTaskContextAssembler: Sendable {
         )
         var selected: [TaskContextFact] = []
         for fact in scopedCandidates {
+            guard fact.state != .expired else {
+                exclusions.append(exclusion(for: fact, reason: .factExpired))
+                continue
+            }
             guard fact.state == .confirmed else {
                 exclusions.append(exclusion(for: fact, reason: .factNotConfirmed))
                 continue

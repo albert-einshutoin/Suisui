@@ -222,6 +222,20 @@ final class VoiceTaskContextAssemblerTests: XCTestCase {
         )
     }
 
+    func testGivenExpiredFactStateWhenAssembleThenReportsExpiredExclusionReason() throws {
+        let expired = try fact(id: 4, state: .expired, value: "Old deadline")
+
+        let assembly = try VoiceTaskContextAssembler().assemble(
+            input(facts: [expired]),
+            budget: VoiceTaskContextBudget(maximumTurns: 5, maximumCharacters: 4_000)
+        )
+
+        XCTAssertEqual(
+            assembly.exclusions.filter { $0.sourceKind == .fact }.map(\.reason),
+            [.factExpired]
+        )
+    }
+
     func testGivenConfirmedReplacementWhenAssembleThenExcludesSupersededConfirmedFact() throws {
         let old = try fact(id: 1, state: .confirmed, value: "Ship Friday")
         let replacement = try TaskContextFact(
