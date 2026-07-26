@@ -12,7 +12,7 @@ planner自体のテスト、設定、出力検証が壊れた場合も完全検�
 
 ## CIの3レーン
 
-- Pull Request: `ci/impact/analyze.py` がmerge-baseからrename/copyを含むNUL区切り差分を取得し、`selective` または `full` のJSON planを出す。選択対象に関係なくSwift build、CLI build、app build-only、source contract、security scan、`DevelopmentAutomationRuntimeSmokeTests`を実行する。
+- Pull Request: `ci/impact/analyze.py` がmerge-baseからrename/copyを含むNUL区切り差分を取得し、`selective` または `full` のJSON planを出す。rename/copyでは移動先だけでなく`oldPath`も危険変更・integration・E2Eルールへ照合する。選択対象に関係なくSwift build、CLI build、app build-only、source contract、security scan、`DevelopmentAutomationRuntimeSmokeTests`を実行する。
 - main・develop・`release/**`・merge queue・手動実行・schedule: 差分に依存せず `./ci/run-full.sh` と全UI gateを実行する。
 - release前: 既存のautomated release preflightが完全SwiftPM、runtime、visual、performanceを再実行する。選択的planはrelease証跡を代替しない。
 
@@ -27,7 +27,7 @@ planner自体のテスト、設定、出力検証が壊れた場合も完全検�
 5. Package.swiftの依存関係を逆向きに辿り、影響moduleを記録する。
 6. integration/E2E path ruleを加える。
 7. 常時smokeを加える。
-8. 変更があるのに安全なunit targetが0件、未分類、削除、graph不完全なら `full` にする。
+8. 変更があるのに安全なunit targetが0件、未分類、削除、graph不完全、またはfilterが実行0件なら `full` にする。
 
 単純なpath一致はintegration/E2Eや危険変更の補完にのみ使う。Swiftのunit testは宣言symbol参照とSwiftPM graphの両方で判定する。削除済みpathは存在を前提とする解析へ渡さない。
 
@@ -35,7 +35,7 @@ planner自体のテスト、設定、出力検証が壊れた場合も完全検�
 
 manifest検出はSwiftPM、JavaScript/Node、Python、Go、Rust/Cargo、JVM/Maven/Gradleに対応する。現在、選択実行まで安全性を検証済みのアダプターはSwiftPMである。ほかのmanifestが混在した場合は「unsupported adapter」として全テストへフォールバックする。これは未対応言語を無視して成功させないための意図的な境界である。
 
-SwiftPMアダプターはproject/target検出、dependency graph、宣言symbol参照による関連test選択、`swift test --filter <allowlisted-target>`、build、SwiftPM cache、危険ルールを提供する。
+SwiftPMアダプターはproject/target検出、dependency graph、宣言symbol参照による関連test選択、`swift test --filter <allowlisted-target>`、build、SwiftPM cache、危険ルールを提供する。SwiftPMが一致しないfilterを終了コード0で返す場合があるため、runnerは出力から実行件数を検証し、0件や解析不能を成功扱いしない。
 
 ## アダプターの追加
 
@@ -79,13 +79,13 @@ python3 -m unittest discover -s ci/tests -v
   --force-full-reason "manual complete validation"
 ```
 
-JSON planは `.tmp/ci-impact/test-plan.json`、実行履歴は `.tmp/ci-impact/execution.json` に出る。CIログではbase/head、project、adapter、変更file、影響module、unit/integration/E2E/smoke件数、strategy、fallback reasonを確認する。
+JSON planは `.tmp/ci-impact/test-plan.json`、実行履歴は `.tmp/ci-impact/execution.json` に出る。CIログではbase/head、project、adapter、変更file、影響module、unit/integration/E2E/smoke件数、strategy、fallback reasonを確認する。executionの`targetCount`はfilter数、`executedTestCount`はSwiftPM出力から検証した実テスト件数である。
 
 ## 全テストへのフォールバック
 
 `ci/config/impact.json` が危険変更の単一source of truthである。CI/planner/config、dependency manifest/lock、compiler/build/test設定、DB/migration、schema/serialization、security、permission、共通test support、共通scriptは全件になる。
 
-source/test削除、未分類file、base/merge-base/diff/shallow recovery失敗、manifest/graph/config/JSON解析失敗、unsupported adapter、存在しない変更source、対象test 0件も全件になる。
+source/test削除、未分類file、base/merge-base/diff/shallow recovery失敗、manifest/graph/config/JSON解析失敗、unsupported adapter、存在しない変更source、対象test 0件、filterが実行0件、実行件数の解析不能も全件になる。
 
 誤判定を見つけた場合は、見逃した失敗を再現するfixtureを先に追加し、原因に応じて危険ルール、integration/E2E rule、dependency解析、test対応を更新する。選択率を上げるために不確かなfallbackを削除しない。
 
@@ -94,7 +94,7 @@ source/test削除、未分類file、base/merge-base/diff/shallow recovery失敗�
 導入期間中の選択可能PRでは、必須の選択レーンと `shadow full` を並行実行する。日数だけでshadowを自動解除しない。`.tmp/ci-impact/comparison.json` に次の比較指標を保存する。
 
 - 選択/全件の実行時間と削減率
-- selected target数とfull実行test数
+- selected target数、選択側の`executedTestCount`、full実行test数
 - 双方のfailure件数
 - `fullOnlyFailure`（選択は成功したがfullだけ失敗）
 - strategy、fallback reason、総compute秒

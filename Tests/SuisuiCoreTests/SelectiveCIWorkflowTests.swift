@@ -74,7 +74,10 @@ final class SelectiveCIWorkflowTests: XCTestCase {
             "キャッシュ",
             "毎日 03:17 JST",
             "比較指標",
-            "fullOnlyFailure"
+            "fullOnlyFailure",
+            "oldPath",
+            "executedTestCount",
+            "filterが実行0件"
         ] {
             XCTAssertTrue(documentation.contains(marker), "selective CI guide must include \(marker)")
         }
