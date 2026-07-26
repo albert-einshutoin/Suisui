@@ -1091,7 +1091,11 @@ public struct ExecutionReceiptRedactor: Sendable {
 
     public func redact(_ value: String, maxLength: Int = 1_200) -> String {
         let secretRedacted = secretRedactor.redact(value).text
-        return redactDisallowedLocalPaths(in: secretRedacted).receiptPreview(maxLength: maxLength)
+        return redactDisallowedLocalPaths(
+            in: secretRedacted,
+            preserveTrailingProse: false
+        )
+        .receiptPreview(maxLength: maxLength)
     }
 
     /// Redacts the same secret and local-path classes without rewriting layout.
@@ -1099,15 +1103,24 @@ public struct ExecutionReceiptRedactor: Sendable {
     /// meaning, so its separate aggregate budget owns any later truncation.
     public func redactPreservingWhitespace(_ value: String) -> String {
         let secretRedacted = secretRedactor.redact(value).text
-        return redactDisallowedLocalPaths(in: secretRedacted)
+        return redactDisallowedLocalPaths(
+            in: secretRedacted,
+            preserveTrailingProse: true
+        )
     }
 
-    private func redactDisallowedLocalPaths(in value: String) -> String {
+    private func redactDisallowedLocalPaths(
+        in value: String,
+        preserveTrailingProse: Bool
+    ) -> String {
         guard !value.isEmpty else {
             return value
         }
 
-        let ranges = localPathRanges(in: value)
+        let ranges = localPathRanges(
+            in: value,
+            preserveTrailingProse: preserveTrailingProse
+        )
         guard !ranges.isEmpty else {
             return value
         }
@@ -1132,7 +1145,10 @@ public struct ExecutionReceiptRedactor: Sendable {
         }
     }
 
-    private func localPathRanges(in value: String) -> [Range<String.Index>] {
+    private func localPathRanges(
+        in value: String,
+        preserveTrailingProse: Bool
+    ) -> [Range<String.Index>] {
         let starts = localPathStartIndexes(in: value)
         guard !starts.isEmpty else {
             return []
@@ -1148,7 +1164,8 @@ public struct ExecutionReceiptRedactor: Sendable {
                 // A recognized extension lets us safely retain spaces that are
                 // part of a path while preserving any prose that follows it.
                 end = extensionEnd
-            } else if let whitespaceEnd = candidate.firstIndex(where: \.isWhitespace) {
+            } else if preserveTrailingProse,
+                      let whitespaceEnd = candidate.firstIndex(where: \.isWhitespace) {
                 // Without a delimiter or extension, consuming whitespace is
                 // ambiguous and risks deleting the rest of the user's prose.
                 end = whitespaceEnd
