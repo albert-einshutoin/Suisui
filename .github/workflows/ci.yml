@@ -39,12 +39,13 @@ jobs:
       ui_performance: ${{ steps.plan_outputs.outputs.ui_performance }}
       fallback_reason: ${{ steps.plan_outputs.outputs.fallback_reason }}
     steps:
-      - name: Checkout exact source revision with full history
+      - name: Checkout tested revision with full history
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           # Merge-base, rename/copy detection, and evidence provenance all need
-          # complete history. The analyzer still fails closed if it is missing.
+          # complete history. On pull requests, the default checkout is GitHub's
+          # synthesized pull-request merge revision, while HEAD_REVISION below
+          # remains the contributor head used only for analysis and provenance.
           fetch-depth: 0
 
       - name: Restore bounded Swift build cache
@@ -126,10 +127,9 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 35
     steps:
-      - name: Checkout exact PR head
+      - name: Checkout tested revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Restore Swift build cache without a competing save
@@ -176,10 +176,8 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 60
     steps:
-      - name: Checkout exact source revision
+      - name: Checkout tested revision
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Restore Swift build cache
         uses: actions/cache/restore@v4
@@ -214,10 +212,9 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 60
     steps:
-      - name: Checkout exact source revision
+      - name: Checkout tested revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Restore Swift build cache
@@ -254,10 +251,8 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 30
     steps:
-      - name: Checkout exact source revision
+      - name: Checkout tested revision
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Restore Swift build cache
         uses: actions/cache/restore@v4
@@ -300,8 +295,6 @@ jobs:
     steps:
       - name: Checkout comparison tool
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Download selective evidence
         uses: actions/download-artifact@v4

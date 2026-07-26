@@ -46,6 +46,10 @@ class ImpactAnalysisTests(unittest.TestCase):
         self.assertEqual(plan["affectedModules"], ["SuisuiCore", "SuisuiCoreTests"])
         self.assertIn("WidgetTests", plan["unitTestTargets"])
         self.assertEqual(
+            plan["e2eTestTargets"],
+            ["ui-performance", "ui-runtime", "ui-visual"],
+        )
+        self.assertEqual(
             plan["smokeTestTargets"],
             ["DevelopmentAutomationRuntimeSmokeTests"],
         )
@@ -103,6 +107,26 @@ class ImpactAnalysisTests(unittest.TestCase):
         self.assertEqual(plan["strategy"], "selective")
         self.assertEqual(plan["changedFiles"][0]["oldPath"], "Sources/SuisuiCore/App/OldWidget.swift")
         self.assertIn("RenamedWidgetTests", plan["unitTestTargets"])
+
+    def test_rename_from_dangerous_path_forces_full_using_old_path(self) -> None:
+        self._write("Sources/SuisuiCore/App/RenamedSecurity.swift", "struct RenamedSecurity {}\n")
+        self._write(
+            "Tests/SuisuiCoreTests/RenamedSecurityTests.swift",
+            "final class RenamedSecurityTests { let subject = RenamedSecurity() }\n",
+        )
+
+        plan = self._analyze(
+            [
+                {
+                    "status": "R100",
+                    "oldPath": "Sources/SuisuiCore/Security/SecurityPolicy.swift",
+                    "path": "Sources/SuisuiCore/App/RenamedSecurity.swift",
+                }
+            ]
+        )
+
+        self.assertEqual(plan["strategy"], "full")
+        self.assertIn("security", plan["fallbackReason"])
 
     def test_multiple_project_types_are_detected_and_unsupported_mix_forces_full(self) -> None:
         self._write("package.json", '{"scripts":{"test":"vitest"}}\n')

@@ -54,7 +54,12 @@ def load_config(path: Path) -> dict:
 
 def first_force_full_reason(changes: List[dict], config: dict) -> Optional[str]:
     for change in changes:
-        path = change.get("path", "")
+        paths = [change.get("path", "")]
+        old_path = change.get("oldPath")
+        if isinstance(old_path, str):
+            # A rename must not make a dangerous source path disappear from the
+            # policy evaluation merely because its destination is innocuous.
+            paths.append(old_path)
         for rule in config["forceFullRules"]:
             if not isinstance(rule, dict):
                 return "impact configuration contains an invalid full-test rule"
@@ -62,7 +67,7 @@ def first_force_full_reason(changes: List[dict], config: dict) -> Optional[str]:
             reason = rule.get("reason")
             if not isinstance(pattern, str) or not isinstance(reason, str):
                 return "impact configuration contains an invalid full-test rule"
-            if fnmatch.fnmatchcase(path, pattern):
+            if any(fnmatch.fnmatchcase(path, pattern) for path in paths):
                 return reason
     return None
 

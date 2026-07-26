@@ -34,6 +34,14 @@
   ],
   "e2eRules": [
     {
+      "pattern": "Sources/SuisuiCore/**",
+      "targets": [
+        "ui-runtime",
+        "ui-visual",
+        "ui-performance"
+      ]
+    },
+    {
       "pattern": "Sources/SuisuiApp/**",
       "targets": [
         "ui-runtime",

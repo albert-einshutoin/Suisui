@@ -13,6 +13,8 @@ final class SelectiveCIWorkflowTests: XCTestCase {
         XCTAssertTrue(workflow.contains("force-full-reason"))
         XCTAssertTrue(workflow.contains("Shadow full SwiftPM (rollout comparison)"))
         XCTAssertTrue(workflow.contains("needs.test_strategy.outputs.shadow_full == 'true'"))
+        XCTAssertTrue(workflow.contains("synthesized pull-request merge revision"))
+        XCTAssertFalse(workflow.contains("ref: ${{ github.event.pull_request.head.sha"))
         XCTAssertFalse(workflow.contains("pull_request_target:"))
     }
 
@@ -42,7 +44,8 @@ final class SelectiveCIWorkflowTests: XCTestCase {
             "\"e2eRules\"",
             "\"Package.resolved\"",
             "\"Sources/SuisuiCore/Database/**\"",
-            "\"Sources/SuisuiCore/Security/**\""
+            "\"Sources/SuisuiCore/Security/**\"",
+            "\"pattern\": \"Sources/SuisuiCore/**\""
         ] {
             XCTAssertTrue(config.contains(marker), "impact policy must include \(marker)")
         }
