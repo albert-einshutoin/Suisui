@@ -205,6 +205,7 @@ final class VoiceTaskConversationDomainTests: XCTestCase {
             state: .confirmed,
             value: turn.userConfirmedText!,
             sourceTurnID: turn.id,
+            sourceExcerptDigest: String(repeating: "a", count: 64),
             confidence: 1,
             author: .userExplicit,
             createdAt: createdAt
@@ -256,6 +257,106 @@ final class VoiceTaskConversationDomainTests: XCTestCase {
         }
     }
 
+    func testFactEvidenceDigestAndExpirationAreValidated() {
+        XCTAssertThrowsError(
+            try TaskContextFact(
+                sessionID: sessionID,
+                kind: .goal,
+                scope: .task(42),
+                state: .proposed,
+                value: "Ship safely",
+                sourceTurnID: turnID,
+                sourceExcerptDigest: "not-a-sha256-digest",
+                confidence: 1,
+                author: .userExplicit,
+                createdAt: createdAt
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationDomainError,
+                .invalidFactEvidenceDigest
+            )
+        }
+
+        XCTAssertThrowsError(
+            try TaskContextFact(
+                sessionID: sessionID,
+                kind: .goal,
+                scope: .task(42),
+                state: .confirmed,
+                value: "Ship safely",
+                sourceTurnID: turnID,
+                sourceExcerptDigest: String(repeating: "a", count: 64),
+                confidence: 1,
+                author: .userExplicit,
+                expiresAt: createdAt,
+                createdAt: createdAt
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationDomainError,
+                .invalidFactExpiration
+            )
+        }
+    }
+
+    func testLegacyFactPayloadDecodesAsUnverifiedAndCannotEnterLongTermContext() throws {
+        let fact = try makeFact(id: factID)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let encoded = try encoder.encode(fact)
+        var payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        payload.removeValue(forKey: "sourceExcerptDigest")
+        payload.removeValue(forKey: "sourceEvidenceVerified")
+        payload["author"] = "system_derived"
+
+        let legacyData = try JSONSerialization.data(withJSONObject: payload)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(TaskContextFact.self, from: legacyData)
+
+        XCTAssertEqual(decoded.author, .deterministic)
+        XCTAssertFalse(decoded.sourceEvidenceVerified)
+        XCTAssertFalse(decoded.isEligibleForLongTermContext(at: createdAt))
+
+        let roundTripped = try decoder.decode(
+            TaskContextFact.self,
+            from: encoder.encode(decoded)
+        )
+        XCTAssertFalse(roundTripped.sourceEvidenceVerified)
+        XCTAssertFalse(roundTripped.isEligibleForLongTermContext(at: createdAt))
+    }
+
+    func testLegacySessionScopedFactDecodesReadOnlyAndCannotEnterLongTermContext() throws {
+        let fact = try makeFact(id: factID)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        var payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: try encoder.encode(fact)
+            ) as? [String: Any]
+        )
+        payload["scope"] = try JSONSerialization.jsonObject(
+            with: encoder.encode(TaskContextFactScope.session)
+        )
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(
+            TaskContextFact.self,
+            from: JSONSerialization.data(withJSONObject: payload)
+        )
+
+        XCTAssertEqual(decoded.scope, .session)
+        XCTAssertFalse(decoded.sourceEvidenceVerified)
+        XCTAssertFalse(decoded.isEligibleForLongTermContext(at: createdAt))
+        XCTAssertThrowsError(
+            try TaskContextFactPolicy().persistenceWrite(for: decoded)
+        )
+    }
+
     private func makeFact(
         id: UUID,
         confidence: Double = 0.8,
@@ -269,6 +370,7 @@ final class VoiceTaskConversationDomainTests: XCTestCase {
             state: .confirmed,
             value: "Release by July 31",
             sourceTurnID: turnID,
+            sourceExcerptDigest: String(repeating: "b", count: 64),
             confidence: confidence,
             author: .providerInferred,
             supersedesFactID: supersedesFactID,

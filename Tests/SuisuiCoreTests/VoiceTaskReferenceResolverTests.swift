@@ -173,6 +173,7 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             state: .confirmed,
             value: "Unrelated task",
             sourceTurnID: sourceTurnID,
+            sourceExcerptDigest: String(repeating: "a", count: 64),
             confidence: 1,
             author: .userExplicit,
             createdAt: now.addingTimeInterval(-30)
@@ -942,6 +943,7 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             state: .confirmed,
             value: "Unrelated task",
             sourceTurnID: sourceTurnID,
+            sourceExcerptDigest: String(repeating: "b", count: 64),
             confidence: 1,
             author: .userExplicit,
             createdAt: now.addingTimeInterval(-30)
@@ -2066,6 +2068,7 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             state: .confirmed,
             value: "Current task",
             sourceTurnID: sourceTurnID,
+            sourceExcerptDigest: String(repeating: "c", count: 64),
             confidence: 1,
             author: .userExplicit,
             createdAt: now.addingTimeInterval(-30)
@@ -2091,6 +2094,7 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             state: .confirmed,
             value: "Remembered task",
             sourceTurnID: sourceTurnID,
+            sourceExcerptDigest: String(repeating: "d", count: 64),
             confidence: 1,
             author: .userExplicit,
             createdAt: now.addingTimeInterval(-30)
@@ -2119,6 +2123,7 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             state: .confirmed,
             value: "Old task",
             sourceTurnID: sourceTurnID,
+            sourceExcerptDigest: String(repeating: "e", count: 64),
             confidence: 1,
             author: .userExplicit,
             createdAt: now.addingTimeInterval(-60)
@@ -2130,6 +2135,7 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             state: .confirmed,
             value: "Corrected task",
             sourceTurnID: sourceTurnID,
+            sourceExcerptDigest: String(repeating: "f", count: 64),
             confidence: 1,
             author: .userExplicit,
             supersedesFactID: oldFact.id,
@@ -2160,6 +2166,7 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             state: .confirmed,
             value: "Confirmed task",
             sourceTurnID: sourceTurnID,
+            sourceExcerptDigest: String(repeating: "a", count: 64),
             confidence: 1,
             author: .userExplicit,
             createdAt: now.addingTimeInterval(-60)
@@ -2171,6 +2178,7 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             state: .proposed,
             value: "Proposed task",
             sourceTurnID: sourceTurnID,
+            sourceExcerptDigest: String(repeating: "b", count: 64),
             confidence: 0.6,
             author: .providerInferred,
             supersedesFactID: oldFact.id,
@@ -2192,6 +2200,35 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertEqual(result, .resolved(target, reason: .confirmedFact))
     }
 
+    func testGivenExpiredConfirmedFactWhenResolveThenDoesNotReuseScope() throws {
+        let fact = try TaskContextFact(
+            sessionID: sessionID,
+            kind: .task,
+            scope: .task(110),
+            state: .confirmed,
+            value: "Expired task context",
+            sourceTurnID: sourceTurnID,
+            sourceExcerptDigest: String(repeating: "f", count: 64),
+            confidence: 1,
+            author: .userExplicit,
+            expiresAt: now.addingTimeInterval(-1),
+            createdAt: now.addingTimeInterval(-60)
+        )
+        let candidates = [
+            candidate(taskID: 110, projectID: 15, title: "Expired task context"),
+        ]
+
+        let result = resolver.resolve(
+            request(
+                utterance: "that task",
+                candidates: candidates,
+                confirmedFacts: [fact]
+            )
+        )
+
+        XCTAssertEqual(result, .needsClarification(candidates))
+    }
+
     func testGivenConfirmedFactSupersededByRetractionThenDoesNotReuseOldScope() throws {
         let oldFact = try TaskContextFact(
             id: UUID(uuidString: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")!,
@@ -2201,6 +2238,7 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             state: .confirmed,
             value: "Retracted task",
             sourceTurnID: sourceTurnID,
+            sourceExcerptDigest: String(repeating: "c", count: 64),
             confidence: 1,
             author: .userExplicit,
             createdAt: now.addingTimeInterval(-60)
@@ -2212,6 +2250,7 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             state: .retracted,
             value: "Retracted",
             sourceTurnID: sourceTurnID,
+            sourceExcerptDigest: String(repeating: "d", count: 64),
             confidence: 1,
             author: .userExplicit,
             supersedesFactID: oldFact.id,
@@ -2240,6 +2279,7 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
             state: .confirmed,
             value: "Project scope",
             sourceTurnID: sourceTurnID,
+            sourceExcerptDigest: String(repeating: "e", count: 64),
             confidence: 1,
             author: .userExplicit,
             createdAt: now.addingTimeInterval(-30)

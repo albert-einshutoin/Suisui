@@ -1,10 +1,34 @@
+import CryptoKit
 import Foundation
+
+/// Store-issued proof that an excerpt belongs to a persisted, user-confirmed
+/// conversation Turn. Only this SQLite-backed verifier can construct it, so an
+/// arbitrary digest cannot become Task Context persistence authorization.
+public struct TaskContextFactSourceEvidence: Equatable, Sendable {
+    public let sessionID: UUID
+    public let turnID: UUID
+    public let excerptDigest: String
+    let storeIdentifier: UUID
+
+    fileprivate init(
+        sessionID: UUID,
+        turnID: UUID,
+        excerptDigest: String,
+        storeIdentifier: UUID
+    ) {
+        self.sessionID = sessionID
+        self.turnID = turnID
+        self.excerptDigest = excerptDigest
+        self.storeIdentifier = storeIdentifier
+    }
+}
 
 public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore, @unchecked Sendable {
     public static let maximumPageSize = 500
 
     private let connection: SQLiteConnection
     private let lock = NSLock()
+    private let storeIdentifier = UUID()
 
     public init(connection: SQLiteConnection) {
         self.connection = connection
@@ -302,15 +326,126 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
         )
     }
 
-    public func saveFact(_ fact: TaskContextFact) throws {
+    public func verifyFactSourceEvidence(
+        sessionID: UUID,
+        turnID: UUID,
+        sourceExcerpt: String
+    ) throws -> TaskContextFactSourceEvidence {
         lock.lock()
         defer { lock.unlock() }
-        try requireTurn(fact.sourceTurnID, in: fact.sessionID)
+        let excerpt = sourceExcerpt
+        guard !excerpt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw VoiceTaskConversationStoreError.invalidFactSourceEvidence(turnID)
+        }
+        guard let row = try connection.materializedRows(
+            """
+            SELECT session_id, author, confirmed_text
+            FROM voice_task_conversation_turns
+            WHERE id = ?
+            LIMIT 1;
+            """,
+            parameters: [.text(turnID.uuidString)]
+        ).first else {
+            throw VoiceTaskConversationStoreError.missingTurn(turnID)
+        }
+        guard try row.string("session_id") == sessionID.uuidString,
+              try row.string("author") == VoiceTaskConversationTurnAuthor.user.rawValue,
+              let confirmedText = try row.optionalString("confirmed_text"),
+              confirmedText.contains(excerpt)
+        else {
+            throw VoiceTaskConversationStoreError.invalidFactSourceEvidence(turnID)
+        }
+
+        // Hash only the minimal confirmed excerpt. The raw transcript and the
+        // confirmed sentence stay in the conversation store and never enter
+        // the durable Task Context payload.
+        let digest = SHA256.hash(data: Data(excerpt.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return TaskContextFactSourceEvidence(
+            sessionID: sessionID,
+            turnID: turnID,
+            excerptDigest: digest,
+            storeIdentifier: storeIdentifier
+        )
+    }
+
+    public func retractFact(
+        factID: UUID,
+        at date: Date
+    ) throws -> TaskContextFact {
+        lock.lock()
+        defer { lock.unlock() }
+        return try connection.transaction {
+            guard let persisted = try loadFactUnlocked(id: factID) else {
+                throw VoiceTaskConversationStoreError.missingFact(factID)
+            }
+            guard let proposalID = persisted.supersedesFactID,
+                  try factExists(proposalID)
+            else {
+                throw VoiceTaskConversationStoreError.missingFact(
+                    persisted.supersedesFactID ?? factID
+                )
+            }
+            try requireNoPersistedSuccessor(of: factID)
+            let policy = TaskContextFactPolicy()
+            let authorized = try policy.reauthorizePersistedConfirmedFact(
+                persisted,
+                sourceStoreIdentifier: storeIdentifier
+            )
+            let retracted = try policy.retract(authorized, at: date)
+            let write = try policy.persistenceWrite(for: retracted)
+            try insertFact(write.fact)
+            return retracted
+        }
+    }
+
+    public func saveFact(_ write: TaskContextFactWrite) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard write.storeIdentifier == storeIdentifier else {
+            throw VoiceTaskConversationStoreError.invalidFactSourceEvidence(
+                write.fact.sourceTurnID
+            )
+        }
+        try connection.transaction {
+            if let predecessorID = write.fact.supersedesFactID {
+                try requireNoPersistedSuccessor(of: predecessorID)
+            }
+            try insertFact(write.fact)
+        }
+    }
+
+    public func saveSupersession(
+        _ write: TaskContextFactSupersessionWrite
+    ) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard write.storeIdentifier == storeIdentifier else {
+            throw VoiceTaskConversationStoreError.invalidFactSourceEvidence(
+                write.corrected.sourceTurnID
+            )
+        }
+        try connection.transaction {
+            guard let predecessorID = write.superseded.supersedesFactID else {
+                throw VoiceTaskConversationDomainError.incompatibleFactTransition
+            }
+            // A correction intentionally appends two records for one
+            // predecessor. Check once before either insert so retries or
+            // competing corrections cannot fork the append-only history.
+            try requireNoPersistedSuccessor(of: predecessorID)
+            try insertFact(write.superseded)
+            try insertFact(write.corrected)
+        }
+    }
+
+    private func insertFact(_ fact: TaskContextFact) throws {
         if let supersededID = fact.supersedesFactID {
             guard try factExists(supersededID) else {
                 throw VoiceTaskConversationStoreError.missingFact(supersededID)
             }
         }
+        try requirePersistableFactEvidence(fact)
 
         let scope = scopeColumns(fact.scope)
         try connection.execute(
@@ -326,12 +461,14 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                 state,
                 value,
                 source_turn_id,
+                source_excerpt_digest,
                 confidence,
                 author,
                 supersedes_fact_id,
+                expires_at,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             parameters: [
                 .text(fact.id.uuidString),
@@ -344,9 +481,11 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                 .text(fact.state.rawValue),
                 .text(fact.value),
                 .text(fact.sourceTurnID.uuidString),
+                .text(fact.sourceExcerptDigest),
                 .real(fact.confidence),
                 .text(fact.author.rawValue),
                 SQLiteValue(fact.supersedesFactID?.uuidString),
+                try Self.optionalTimeValue(fact.expiresAt),
                 .real(try Self.timeValue(fact.createdAt)),
             ]
         )
@@ -567,6 +706,102 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
         )).isEmpty
     }
 
+    private func loadFactUnlocked(id: UUID) throws -> TaskContextFact? {
+        guard let row = try connection.materializedRows(
+            """
+            SELECT
+                id,
+                session_id,
+                kind,
+                scope_kind,
+                scope_target_id,
+                state,
+                value,
+                source_turn_id,
+                source_excerpt_digest,
+                confidence,
+                author,
+                supersedes_fact_id,
+                expires_at,
+                created_at
+            FROM task_context_facts
+            WHERE id = ?
+            LIMIT 1;
+            """,
+            parameters: [.text(id.uuidString)]
+        ).first else {
+            return nil
+        }
+        do {
+            guard let storedID = UUID(uuidString: try row.string("id")),
+                  let sessionID = UUID(uuidString: try row.string("session_id")),
+                  let kind = TaskContextFactKind(rawValue: try row.string("kind")),
+                  let state = TaskContextFactState(rawValue: try row.string("state")),
+                  let sourceTurnID = UUID(
+                    uuidString: try row.string("source_turn_id")
+                  ),
+                  let sourceDigest = try row.optionalString(
+                    "source_excerpt_digest"
+                  ),
+                  let author = Self.factAuthor(
+                    rawValue: try row.string("author")
+                  )
+            else {
+                throw InvalidConversationRow()
+            }
+            let scopeTargetID = try row.optionalInt64("scope_target_id")
+            let scope: TaskContextFactScope
+            switch (try row.string("scope_kind"), scopeTargetID) {
+            case ("project", let target?):
+                scope = .project(target)
+            case ("task", let target?):
+                scope = .task(target)
+            default:
+                throw InvalidConversationRow()
+            }
+            let supersedesFactID = try row.optionalString(
+                "supersedes_fact_id"
+            ).flatMap(UUID.init(uuidString:))
+            return try TaskContextFact(
+                id: storedID,
+                sessionID: sessionID,
+                kind: kind,
+                scope: scope,
+                state: state,
+                value: try row.string("value"),
+                sourceTurnID: sourceTurnID,
+                sourceExcerptDigest: sourceDigest,
+                confidence: try row.double("confidence"),
+                author: author,
+                supersedesFactID: supersedesFactID,
+                expiresAt: try Self.optionalDate(
+                    from: row.optionalDouble("expires_at")
+                ),
+                createdAt: try Self.date(from: row.double("created_at"))
+            )
+        } catch {
+            throw VoiceTaskConversationStoreError.corruptRow(
+                entity: "task_context_fact",
+                identifier: id.uuidString
+            )
+        }
+    }
+
+    private static func factAuthor(
+        rawValue: String
+    ) -> TaskContextFactAuthor? {
+        switch rawValue {
+        case TaskContextFactAuthor.userExplicit.rawValue:
+            .userExplicit
+        case TaskContextFactAuthor.providerInferred.rawValue:
+            .providerInferred
+        case TaskContextFactAuthor.deterministic.rawValue:
+            .deterministic
+        default:
+            nil
+        }
+    }
+
     private func projectExists(_ id: Int64?) throws -> Bool {
         guard let id else {
             return true
@@ -600,11 +835,56 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
         }
     }
 
+    private func requirePersistableFactEvidence(_ fact: TaskContextFact) throws {
+        let storedSessionID = try connection.queryStrings(
+            "SELECT session_id FROM voice_task_conversation_turns WHERE id = ? LIMIT 1;",
+            parameters: [.text(fact.sourceTurnID.uuidString)]
+        ).first
+        if storedSessionID == fact.sessionID.uuidString {
+            return
+        }
+
+        // Conversation retention may remove the source Turn while preserving
+        // long-term Task Context. A later append-only transition is permitted
+        // only when it carries the exact evidence tombstone of its persisted
+        // predecessor; new evidence still requires a live confirmed Turn.
+        guard let predecessorID = fact.supersedesFactID,
+              let predecessor = try connection.materializedRows(
+                """
+                SELECT session_id, source_turn_id, source_excerpt_digest
+                FROM task_context_facts
+                WHERE id = ?
+                LIMIT 1;
+                """,
+                parameters: [.text(predecessorID.uuidString)]
+              ).first,
+              try predecessor.string("session_id") == fact.sessionID.uuidString,
+              try predecessor.string("source_turn_id") == fact.sourceTurnID.uuidString,
+              try predecessor.string("source_excerpt_digest") == fact.sourceExcerptDigest
+        else {
+            throw VoiceTaskConversationStoreError.missingTurn(fact.sourceTurnID)
+        }
+    }
+
     private func scalarCount(
         _ sql: String,
         parameters: [SQLiteValue]
     ) throws -> Int {
         Int(try connection.queryStrings(sql, parameters: parameters).first ?? "0") ?? 0
+    }
+
+    private func requireNoPersistedSuccessor(of factID: UUID) throws {
+        let successorCount = try scalarCount(
+            """
+            SELECT COUNT(*)
+            FROM task_context_facts
+            WHERE supersedes_fact_id = ?;
+            """,
+            parameters: [.text(factID.uuidString)]
+        )
+        guard successorCount == 0 else {
+            throw VoiceTaskConversationDomainError.incompatibleFactTransition
+        }
     }
 
     private func targetColumns(

@@ -88,6 +88,249 @@ final class DatabaseMigrationTests: XCTestCase {
         )
     }
 
+    func testTaskContextFactPolicyMigrationPreservesLegacyFactsAndAddsEvidenceSchema() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeFactPolicy = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0027_add_task_context_fact_policy"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeFactPolicy
+        )
+        try connection.execute(
+            """
+            INSERT INTO voice_task_conversation_sessions (
+                id, state, title, entry_point, created_at, updated_at
+            )
+            VALUES ('session-1', 'active', 'Session', 'voice_command', 1, 1);
+            INSERT INTO voice_task_conversation_turns (
+                id, session_id, author, confirmed_text, created_at
+            )
+            VALUES ('turn-1', 'session-1', 'user', 'Remember release', 1);
+            INSERT INTO task_context_facts (
+                id, session_id, kind, scope_kind, state, value,
+                source_turn_id, confidence, author, created_at
+            )
+            VALUES (
+                'fact-1', 'session-1', 'goal', 'session', 'confirmed',
+                'Legacy release goal', 'turn-1', 1, 'system_derived', 1
+            );
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+
+        let legacy = try XCTUnwrap(
+            try connection.materializedRows(
+                """
+                SELECT value, author, source_excerpt_digest, expires_at
+                FROM task_context_facts
+                WHERE id = 'fact-1';
+                """
+            ).first
+        )
+        XCTAssertEqual(try legacy.string("value"), "Legacy release goal")
+        XCTAssertEqual(try legacy.string("author"), "deterministic")
+        XCTAssertNil(try legacy.optionalString("source_excerpt_digest"))
+        XCTAssertNil(try legacy.optionalDouble("expires_at"))
+
+        try connection.execute(
+            """
+            INSERT INTO task_context_facts (
+                id, session_id, kind, scope_kind, scope_target_id, state, value,
+                source_turn_id, source_excerpt_digest, confidence, author,
+                expires_at, created_at
+            )
+            VALUES (
+                'fact-2', 'session-1', 'acceptance_criterion', 'task', 42,
+                'rejected', 'Signed artifact exists', 'turn-1',
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                1, 'deterministic', 100, 2
+            );
+            """
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT kind || ':' || state FROM task_context_facts WHERE id = 'fact-2';"
+            ),
+            ["acceptance_criterion:rejected"]
+        )
+    }
+
+    func testTaskContextEvidenceTombstoneMigrationPreservesTurnIdentifierAfterConversationDeletion() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsThroughFactPolicy = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0028_preserve_task_context_fact_evidence_tombstones"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsThroughFactPolicy
+        )
+        try connection.execute(
+            """
+            INSERT INTO voice_task_conversation_sessions (
+                id, state, title, entry_point, created_at, updated_at
+            )
+            VALUES ('session-tombstone', 'active', 'Session', 'voice_command', 1, 1);
+            INSERT INTO voice_task_conversation_turns (
+                id, session_id, author, confirmed_text, created_at
+            )
+            VALUES (
+                'turn-tombstone', 'session-tombstone', 'user',
+                'Confirmed evidence', 1
+            );
+            INSERT INTO task_context_facts (
+                id, session_id, kind, scope_kind, scope_target_id, state, value,
+                source_turn_id, source_excerpt_digest, confidence, author, created_at
+            )
+            VALUES (
+                'fact-tombstone', 'session-tombstone', 'goal', 'task', 42,
+                'confirmed', 'Ship safely', 'turn-tombstone',
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                1, 'user_explicit', 1
+            );
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        try connection.execute(
+            "DELETE FROM voice_task_conversation_sessions WHERE id = 'session-tombstone';"
+        )
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT source_turn_id FROM task_context_facts WHERE id = 'fact-tombstone';"
+            ),
+            ["turn-tombstone"]
+        )
+    }
+
+    func testTaskContextSuccessorLookupMigrationAddsIndex() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeSuccessorIndex = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0029_index_task_context_fact_successors"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeSuccessorIndex
+        )
+        XCTAssertFalse(
+            Set(
+                try connection.queryRows(
+                    "PRAGMA index_list(task_context_facts);"
+                ).compactMap { $0["name"] }
+            ).contains("idx_task_context_facts_supersedes")
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+
+        XCTAssertTrue(
+            Set(
+                try connection.queryRows(
+                    "PRAGMA index_list(task_context_facts);"
+                ).compactMap { $0["name"] }
+            ).contains("idx_task_context_facts_supersedes")
+        )
+    }
+
+    func testTaskContextSuccessorLookupMigrationRejectsLegacyForkedHistory() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeSuccessorIndex = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0029_index_task_context_fact_successors"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeSuccessorIndex
+        )
+        try connection.execute(
+            """
+            INSERT INTO task_context_facts (
+                id, session_id, kind, scope_kind, scope_target_id, state,
+                value, source_turn_id, source_excerpt_digest, confidence,
+                author, supersedes_fact_id, created_at
+            )
+            VALUES
+                ('legacy-parent', 'session', 'constraint', 'task', 42, 'confirmed',
+                 'Original', 'turn', NULL, 1.0, 'user_explicit', NULL, 1.0),
+                ('legacy-branch-a', 'session', 'constraint', 'task', 42, 'confirmed',
+                 'Branch A', 'turn', NULL, 1.0, 'user_explicit', 'legacy-parent', 2.0),
+                ('legacy-branch-b', 'session', 'constraint', 'task', 42, 'confirmed',
+                 'Branch B', 'turn', NULL, 1.0, 'user_explicit', 'legacy-parent', 3.0);
+            """
+        )
+
+        XCTAssertThrowsError(
+            try SQLiteMigrationRunner.migrate(
+                connection: connection,
+                migrations: CoreMigrations.current
+            )
+        )
+        XCTAssertFalse(
+            try connection.queryStrings(
+                "SELECT id FROM schema_migrations WHERE id = '0029_index_task_context_fact_successors';"
+            ).contains("0029_index_task_context_fact_successors")
+        )
+    }
+
+    func testTaskContextSuccessorLookupMigrationAcceptsAtomicCorrectionPair() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeSuccessorIndex = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0029_index_task_context_fact_successors"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeSuccessorIndex
+        )
+        try connection.execute(
+            """
+            INSERT INTO task_context_facts (
+                id, session_id, kind, scope_kind, scope_target_id, state,
+                value, source_turn_id, source_excerpt_digest, confidence,
+                author, supersedes_fact_id, created_at
+            )
+            VALUES
+                ('correction-parent', 'session', 'constraint', 'task', 42, 'confirmed',
+                 'Original', 'turn', NULL, 1.0, 'user_explicit', NULL, 1.0),
+                ('correction-marker', 'session', 'constraint', 'task', 42, 'superseded',
+                 'Original', 'turn', NULL, 1.0, 'user_explicit', 'correction-parent', 2.0),
+                ('correction-value', 'session', 'constraint', 'task', 42, 'confirmed',
+                 'Corrected', 'replacement-turn', NULL, 1.0, 'user_explicit',
+                 'correction-parent', 2.0);
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT id FROM schema_migrations WHERE id = '0029_index_task_context_fact_successors';"
+            ),
+            ["0029_index_task_context_fact_successors"]
+        )
+    }
+
     func testApprovalReplayStoreRejectsNonceAfterDatabaseReopen() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("suisui-approval-replay-\(UUID().uuidString)", isDirectory: true)
