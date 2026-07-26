@@ -100,6 +100,16 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertTrue(redacted.contains(allowedFileURL))
     }
 
+    func testExecutionReceiptRedactorPreservesProseAfterExtensionlessMarkdownPath() {
+        let redactor = ExecutionReceiptRedactor()
+
+        let redacted = redactor.redactPreservingWhitespace(
+            "Open `/Users/alice/work` after review"
+        )
+
+        XCTAssertEqual(redacted, "Open `[REDACTED_LOCAL_PATH]` after review")
+    }
+
     func testReviewExecutionReceiptRedactsSecretsAndDisallowedLocalPaths() throws {
         let allowedRoot = packageRootPath
         let providerKey = "sk-" + "proj-user-secret"

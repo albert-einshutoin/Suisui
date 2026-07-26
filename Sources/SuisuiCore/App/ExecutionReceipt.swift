@@ -1185,7 +1185,9 @@ public struct ExecutionReceiptRedactor: Sendable {
         upperBound: String.Index
     ) -> String.Index? {
         var index = start
-        let terminators = CharacterSet(charactersIn: "\n\r,;\")'")
+        // Backticks delimit Markdown code spans. Treating them as path content
+        // would redact unrelated prose after an extensionless path.
+        let terminators = CharacterSet(charactersIn: "\n\r,;\")'`")
         while index < upperBound {
             let scalar = value[index].unicodeScalars.first
             if let scalar, terminators.contains(scalar) {
