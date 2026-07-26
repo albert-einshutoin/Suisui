@@ -5652,6 +5652,34 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("visual-owned-pid-unavailable"))
     }
 
+    func testUIScreenshotCaptureRetriesNamedWindowReadinessAfterMarkerValidation() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+        let helperStart = try XCTUnwrap(script.range(of: "prepare_named_evidence_window()"))
+        let helperEnd = try XCTUnwrap(
+            script.range(
+                of: "\ncapture_settings_overview()",
+                range: helperStart.upperBound..<script.endIndex
+            )
+        )
+        let helper = String(script[helperStart.lowerBound..<helperEnd.lowerBound])
+
+        XCTAssertTrue(helper.contains("for ((window_attempt = 1; window_attempt <= EVIDENCE_ROUTE_ATTEMPTS; window_attempt++))"))
+        XCTAssertTrue(helper.contains("wait_for_window_capture_metadata \"$window_name\""))
+        XCTAssertTrue(helper.contains("wait_for_project_board_destination \"$label\" \"$marker_spec\""))
+        XCTAssertEqual(
+            helper.components(separatedBy: "position_window_for_capture \"$window_name\"").count - 1,
+            2,
+            "named evidence windows must be reacquired after marker traversal before capture"
+        )
+        XCTAssertTrue(helper.contains("retrying named evidence window after readiness failure"))
+        XCTAssertTrue(script.contains(
+            "prepare_named_evidence_window \"Voice Command\" \"Voice Command\" \"$VOICE_COMMAND_TARGET_MARKERS\""
+        ))
+        XCTAssertTrue(script.contains(
+            "prepare_named_evidence_window \"Appearance\" \"Settings appearance\" \"settings-theme-picker=>\""
+        ))
+    }
+
     func testPhase12UIScreenshotEvidenceCoversNewCockpitScreens() throws {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
         let releaseReport = try readPackageFile("script/release_readiness_report.sh")
