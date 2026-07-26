@@ -315,6 +315,45 @@ final class VoiceTaskContextAssemblerTests: XCTestCase {
         )
     }
 
+    func testGivenUnverifiedLegacyReplacementWhenAssembleThenKeepsVerifiedCurrentFact() throws {
+        let current = try fact(id: 1, state: .confirmed, value: "Ship Friday")
+        let replacement = try TaskContextFact(
+            id: uuid(2),
+            sessionID: current.sessionID,
+            kind: current.kind,
+            scope: current.scope,
+            state: .confirmed,
+            value: "Unverified replacement",
+            sourceTurnID: uuid(802),
+            sourceExcerptDigest: String(repeating: "b", count: 64),
+            confidence: 1,
+            author: .userExplicit,
+            supersedesFactID: current.id,
+            createdAt: now.addingTimeInterval(2)
+        )
+        let legacyReplacement = try legacyUnverifiedFact(replacement)
+
+        let assembly = try VoiceTaskContextAssembler().assemble(
+            input(facts: [current, legacyReplacement]),
+            budget: VoiceTaskContextBudget(maximumTurns: 5, maximumCharacters: 4_000)
+        )
+
+        XCTAssertTrue(try jsonText(assembly).contains("Ship Friday"))
+        XCTAssertFalse(try jsonText(assembly).contains("Unverified replacement"))
+        XCTAssertTrue(
+            assembly.exclusions.contains {
+                $0.sourceID == legacyReplacement.id.uuidString
+                    && $0.reason == .factUnverified
+            }
+        )
+        XCTAssertFalse(
+            assembly.exclusions.contains {
+                $0.sourceID == current.id.uuidString
+                    && $0.reason == .factNoLongerCurrent
+            }
+        )
+    }
+
     func testGivenOutsideScopeReplacementWhenAssembleThenDoesNotInvalidateCurrentFact() throws {
         let current = try fact(id: 1, state: .confirmed, value: "Current constraint")
         let outsideReplacement = try TaskContextFact(
@@ -574,6 +613,22 @@ final class VoiceTaskContextAssemblerTests: XCTestCase {
 
     private func jsonText(_ assembly: VoiceTaskContextAssembly) throws -> String {
         try XCTUnwrap(assembly.providerContext?.json)
+    }
+
+    private func legacyUnverifiedFact(_ fact: TaskContextFact) throws -> TaskContextFact {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        var payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoder.encode(fact)) as? [String: Any]
+        )
+        payload.removeValue(forKey: "sourceExcerptDigest")
+        payload.removeValue(forKey: "sourceEvidenceVerified")
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(
+            TaskContextFact.self,
+            from: JSONSerialization.data(withJSONObject: payload)
+        )
     }
 
     private func payloadObject(_ assembly: VoiceTaskContextAssembly) throws -> [String: Any] {

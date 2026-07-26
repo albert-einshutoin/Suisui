@@ -459,7 +459,9 @@ public struct VoiceTaskContextAssembler: Sendable {
             }
         let noLongerCurrentIDs = Set(
             scopedCandidates.compactMap { fact -> UUID? in
-                guard [.confirmed, .superseded, .retracted, .expired].contains(fact.state) else {
+                guard fact.sourceEvidenceVerified,
+                      [.confirmed, .superseded, .retracted, .expired].contains(fact.state)
+                else {
                     return nil
                 }
                 return fact.supersedesFactID
