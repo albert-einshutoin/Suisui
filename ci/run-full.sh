@@ -10,7 +10,7 @@ SOURCE_CONTRACT_STATUS=0
 SECURITY_STATUS=0
 
 mkdir -p "$ARTIFACT_ROOT" "$(dirname "$REPORT_PATH")"
-cd "$ROOT_DIR"
+cd "$ROOT_DIR" || exit 2
 
 SUISUI_SWIFTPM_ARTIFACT_DIR="${SUISUI_SWIFTPM_ARTIFACT_DIR:-$ROOT_DIR/.tmp/ci-artifacts/swiftpm}" \
   ./scripts/ci.sh swiftpm || SWIFTPM_STATUS=$?
@@ -61,7 +61,7 @@ report = {
     "branch": os.environ.get("GITHUB_REF_NAME", ""),
     "discoveredTestCount": int(discovered),
     "executedTestCount": int(executed),
-    "successCount": int(executed) if statuses[0] == 0 else 0,
+    "successCount": max(0, int(executed) - int(skipped)) if statuses[0] == 0 else 0,
     "failureCount": sum(status != 0 for status in statuses),
     "skippedCount": int(skipped),
     "durationSeconds": int(duration),

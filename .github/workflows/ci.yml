@@ -27,17 +27,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-strategy:
+  test_strategy:
     name: SwiftPM macOS (selected or full)
     runs-on: macos-26
     timeout-minutes: 40
     outputs:
-      strategy: ${{ steps.plan-outputs.outputs.strategy }}
-      shadow-full: ${{ steps.plan-outputs.outputs.shadow_full }}
-      ui-runtime: ${{ steps.plan-outputs.outputs.ui_runtime }}
-      ui-visual: ${{ steps.plan-outputs.outputs.ui_visual }}
-      ui-performance: ${{ steps.plan-outputs.outputs.ui_performance }}
-      fallback-reason: ${{ steps.plan-outputs.outputs.fallback_reason }}
+      strategy: ${{ steps.plan_outputs.outputs.strategy }}
+      shadow_full: ${{ steps.plan_outputs.outputs.shadow_full }}
+      ui_runtime: ${{ steps.plan_outputs.outputs.ui_runtime }}
+      ui_visual: ${{ steps.plan_outputs.outputs.ui_visual }}
+      ui_performance: ${{ steps.plan_outputs.outputs.ui_performance }}
+      fallback_reason: ${{ steps.plan_outputs.outputs.fallback_reason }}
     steps:
       - name: Checkout exact source revision with full history
         uses: actions/checkout@v4
@@ -89,7 +89,7 @@ jobs:
           fi
 
       - name: Export fail-closed job outputs
-        id: plan-outputs
+        id: plan_outputs
         if: always()
         env:
           PLAN_PATH: ${{ github.workspace }}/.tmp/ci-impact/test-plan.json
@@ -119,10 +119,10 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
-  shadow-full:
+  shadow_full:
     name: Shadow full SwiftPM (rollout comparison)
-    needs: test-strategy
-    if: ${{ always() && github.event_name == 'pull_request' && needs.test-strategy.outputs.strategy == 'selective' && needs.test-strategy.outputs.shadow-full == 'true' }}
+    needs: test_strategy
+    if: ${{ always() && github.event_name == 'pull_request' && needs.test_strategy.outputs.strategy == 'selective' && needs.test_strategy.outputs.shadow_full == 'true' }}
     runs-on: macos-26
     timeout-minutes: 35
     steps:
@@ -171,8 +171,8 @@ jobs:
 
   ui-runtime:
     name: UI Runtime (production route)
-    needs: test-strategy
-    if: ${{ always() && needs.test-strategy.outputs.ui-runtime == 'true' }}
+    needs: test_strategy
+    if: ${{ always() && needs.test_strategy.outputs.ui_runtime == 'true' }}
     runs-on: macos-26
     timeout-minutes: 60
     steps:
@@ -209,8 +209,8 @@ jobs:
 
   ui-visual:
     name: UI Visual (live baseline)
-    needs: test-strategy
-    if: ${{ always() && needs.test-strategy.outputs.ui-visual == 'true' }}
+    needs: test_strategy
+    if: ${{ always() && needs.test_strategy.outputs.ui_visual == 'true' }}
     runs-on: macos-26
     timeout-minutes: 60
     steps:
@@ -249,8 +249,8 @@ jobs:
 
   ui-performance:
     name: UI Performance (production route)
-    needs: test-strategy
-    if: ${{ always() && needs.test-strategy.outputs.ui-performance == 'true' }}
+    needs: test_strategy
+    if: ${{ always() && needs.test_strategy.outputs.ui_performance == 'true' }}
     runs-on: macos-26
     timeout-minutes: 30
     steps:
@@ -292,9 +292,9 @@ jobs:
   comparison:
     name: Compare selective and full results
     needs:
-      - test-strategy
-      - shadow-full
-    if: ${{ always() && github.event_name == 'pull_request' && needs.test-strategy.outputs.strategy == 'selective' && needs.test-strategy.outputs.shadow-full == 'true' }}
+      - test_strategy
+      - shadow_full
+    if: ${{ always() && github.event_name == 'pull_request' && needs.test_strategy.outputs.strategy == 'selective' && needs.test_strategy.outputs.shadow_full == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

@@ -56,6 +56,7 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn("./scripts/ci.sh swiftpm", contents)
         self.assertIn("./scripts/ci.sh source-contracts", contents)
         self.assertIn("./script/check_security_regressions.sh", contents)
+        self.assertIn("int(executed) - int(skipped)", contents)
         self.assertNotIn("impact/analyze", contents)
         self.assertNotIn("ci/config", contents)
         self.assertNotIn("ci/tests", contents)

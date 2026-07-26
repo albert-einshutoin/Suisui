@@ -65,7 +65,7 @@ if [[ -z "$BASE_REVISION" || -z "$HEAD_REVISION" ]]; then
 fi
 
 mkdir -p "$(dirname "$PLAN_PATH")" "$(dirname "$SELECTED_REPORT_PATH")"
-cd "$ROOT_DIR"
+cd "$ROOT_DIR" || exit 2
 
 python3 -m unittest discover -s ci/tests -v
 PLANNER_TEST_STATUS=$?

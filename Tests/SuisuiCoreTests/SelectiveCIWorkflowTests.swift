@@ -12,7 +12,7 @@ final class SelectiveCIWorkflowTests: XCTestCase {
         XCTAssertTrue(workflow.contains("./ci/run-pr-ci.sh"))
         XCTAssertTrue(workflow.contains("force-full-reason"))
         XCTAssertTrue(workflow.contains("Shadow full SwiftPM (rollout comparison)"))
-        XCTAssertTrue(workflow.contains("needs.test-strategy.outputs.shadow-full == 'true'"))
+        XCTAssertTrue(workflow.contains("needs.test_strategy.outputs.shadow_full == 'true'"))
         XCTAssertFalse(workflow.contains("pull_request_target:"))
     }
 
@@ -23,9 +23,9 @@ final class SelectiveCIWorkflowTests: XCTestCase {
         XCTAssertTrue(workflow.contains("uses: actions/cache/restore@v4"))
         XCTAssertTrue(workflow.contains("${{ runner.os }}-${{ runner.arch }}-swift-6-"))
         XCTAssertTrue(workflow.contains("hashFiles('Package.resolved', 'Package.swift')"))
-        XCTAssertTrue(workflow.contains("needs.test-strategy.outputs.ui-runtime == 'true'"))
-        XCTAssertTrue(workflow.contains("needs.test-strategy.outputs.ui-visual == 'true'"))
-        XCTAssertTrue(workflow.contains("needs.test-strategy.outputs.ui-performance == 'true'"))
+        XCTAssertTrue(workflow.contains("needs.test_strategy.outputs.ui_runtime == 'true'"))
+        XCTAssertTrue(workflow.contains("needs.test_strategy.outputs.ui_visual == 'true'"))
+        XCTAssertTrue(workflow.contains("needs.test_strategy.outputs.ui_performance == 'true'"))
         XCTAssertTrue(workflow.contains("name: Compare selective and full results"))
         XCTAssertTrue(workflow.contains("./ci/compare-runs.py"))
     }
