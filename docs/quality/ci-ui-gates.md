@@ -1,5 +1,9 @@
 # CI UI quality gates
 
+変更影響分析、選択的SwiftPM test、fail-closed full fallback、shadow比較の運用は
+[`selective-ci.md`](./selective-ci.md) を参照する。本書のproduction UI evidence契約は、
+選択的CIでも全件CIでも変わらない。
+
 Suisuiは、source/unit/buildだけでは検出できない通常製品routeの退行を、独立したmacOS UI gateで検証する。GitHub Actionsは描画差分を安定させるため`macos-26`へ固定し、次の5 checkを常に別jobとして返す。
 
 | Check | ローカル再現コマンド | 証明する内容 |
