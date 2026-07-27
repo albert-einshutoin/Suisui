@@ -331,6 +331,52 @@ final class DatabaseMigrationTests: XCTestCase {
         )
     }
 
+    func testTaskWaitingMigrationFollowsCurrentMainAndPreservesExistingTasks() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeTaskWaiting = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0030_add_task_waiting_on"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeTaskWaiting
+        )
+        try connection.execute(
+            """
+            INSERT INTO projects (id, title, status, created_at, updated_at)
+            VALUES (901, 'Existing project', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+            INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+            VALUES (902, 901, 'Existing task', 'planned', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        let columns = Set(
+            try connection.queryRows("PRAGMA table_info(tasks);")
+                .compactMap { $0["name"] }
+        )
+        let indexes = Set(
+            try connection.queryRows("PRAGMA index_list(tasks);")
+                .compactMap { $0["name"] }
+        )
+        XCTAssertTrue(columns.contains("waiting_on"))
+        XCTAssertTrue(columns.contains("waiting_since"))
+        XCTAssertTrue(indexes.contains("idx_tasks_waiting_on"))
+        XCTAssertEqual(
+            try connection.queryStrings("SELECT title FROM tasks WHERE id = 902;"),
+            ["Existing task"]
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT id FROM schema_migrations WHERE id = '0030_add_task_waiting_on';"
+            ),
+            ["0030_add_task_waiting_on"]
+        )
+    }
+
     func testApprovalReplayStoreRejectsNonceAfterDatabaseReopen() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("suisui-approval-replay-\(UUID().uuidString)", isDirectory: true)
