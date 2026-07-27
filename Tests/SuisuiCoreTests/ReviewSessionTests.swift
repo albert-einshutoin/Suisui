@@ -171,6 +171,24 @@ final class ReviewSessionTests: XCTestCase {
 
         XCTAssertTrue(item.argumentDisplayFields().isEmpty)
     }
+
+    func testArgumentDisplayFieldsClassifyBooleanValuesAsFlags() throws {
+        let plan = ActionPlan.reviewFixture(actions: [
+            PlanAction(
+                id: "write",
+                tool: .taskCreate,
+                arguments: ["requiresApproval": .bool(true)]
+            )
+        ])
+        let session = ReviewSession(plan: plan)
+        let item = try XCTUnwrap(session.items.first)
+
+        let field = try XCTUnwrap(item.argumentDisplayFields().first)
+
+        XCTAssertEqual(field.key, "requiresApproval")
+        XCTAssertEqual(field.rawValue, "true")
+        XCTAssertEqual(field.kind, .flag)
+    }
 }
 
 final class ActionExecutorTests: XCTestCase {

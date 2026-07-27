@@ -156,7 +156,7 @@ public extension PlanAction {
                     key: key,
                     labelKey: key.reviewFieldLabelKey,
                     rawValue: value.reviewDisplayValue.normalizedSingleLine,
-                    kind: key.reviewFieldKind
+                    kind: value.reviewFieldKind(fallback: key.reviewFieldKind)
                 )
             }
             .sorted { lhs, rhs in
@@ -502,6 +502,17 @@ private extension ActionTool {
 }
 
 private extension JSONValue {
+    /// The value type is authoritative when it carries approval semantics.
+    /// Boolean argument keys are open-ended across tools, so a key-only table
+    /// can never classify every flag and would leak `true` / `false` into the
+    /// human review surface.
+    func reviewFieldKind(fallback: ReviewActionField.Kind) -> ReviewActionField.Kind {
+        if case .bool = self {
+            return .flag
+        }
+        return fallback
+    }
+
     var reviewDisplayValue: String {
         switch self {
         case .string(let value):

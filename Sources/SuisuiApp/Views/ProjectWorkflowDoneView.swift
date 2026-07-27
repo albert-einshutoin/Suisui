@@ -519,8 +519,8 @@ private struct DoneTaskHistoryRow: View {
             // `completedAt` is a stored ISO8601 instant. Printing it verbatim
             // showed the user "2026-07-09T12:00:00Z" — a UTC machine string on
             // the one screen that exists to celebrate finished work.
-            return String(
-                format: String(localized: "%@ completed at %@"),
+            return localizedDisplay(
+                "%@ completed at %@",
                 projectTitle,
                 SuisuiTimestampDisplay.absolute(
                     completedAt,
@@ -529,7 +529,7 @@ private struct DoneTaskHistoryRow: View {
                 )
             )
         }
-        return String(format: String(localized: "%@ completed"), projectTitle)
+        return localizedDisplay("%@ completed", projectTitle)
     }
 }
 

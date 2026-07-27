@@ -1514,7 +1514,9 @@ extension SettingsAIFeatureView {
         // A hardcoded "USD %.2f" ignores the user's grouping separator and
         // decimal mark. The cap is genuinely denominated in USD, so the
         // currency stays fixed while the presentation follows the locale.
-        return (Decimal(cents) / 100).formatted(.currency(code: "USD"))
+        return (Decimal(cents) / 100).formatted(
+            .currency(code: "USD").locale(localizedDisplayLocale())
+        )
     }
 
     func handleVoiceModelAction(_ row: VoiceModelReadinessRow) {
