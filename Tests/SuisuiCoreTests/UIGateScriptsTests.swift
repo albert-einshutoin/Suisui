@@ -581,6 +581,12 @@ final class UIGateScriptsTests: XCTestCase {
         let outputDirectory = fixtureDirectory.appendingPathComponent(".build/output", isDirectory: true)
         try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: baselineDirectory, withIntermediateDirectories: true)
+        // The production contract creates children only after the trusted
+        // repository-private .build or .tmp anchor already exists.
+        try FileManager.default.createDirectory(
+            at: outputDirectory.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
 
         let checkedInGate = packageRoot().appendingPathComponent("script/check_ci_visual_gate.sh")
@@ -621,6 +627,91 @@ final class UIGateScriptsTests: XCTestCase {
         let resourceValues = try privateManifest.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
         XCTAssertEqual(resourceValues.isRegularFile, true)
         XCTAssertEqual(resourceValues.isSymbolicLink, false)
+    }
+
+    func testVisualGateRejectsExternalOutputBeforeWritingSummarySentinel() throws {
+        let externalOutput = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-external-visual-output-\(UUID().uuidString)", isDirectory: true)
+        let summary = externalOutput.appendingPathComponent("ui-visual-gate-summary.env")
+        try FileManager.default.createDirectory(at: externalOutput, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: externalOutput) }
+        try "external-output-sentinel\n".write(to: summary, atomically: true, encoding: .utf8)
+
+        let result = try runVisualGateEarlyBlock(outputDirectory: externalOutput)
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.contains("failure_reason=unsafe-output-directory"), result.output)
+        XCTAssertEqual(try String(contentsOf: summary, encoding: .utf8), "external-output-sentinel\n")
+    }
+
+    func testVisualGateRejectsOutputAncestorSymlinkEscapeBeforeCreatingTail() throws {
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-ci-visual-output-link-\(UUID().uuidString)", isDirectory: true)
+        let externalDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-external-visual-link-\(UUID().uuidString)", isDirectory: true)
+        let externalSentinel = externalDirectory.appendingPathComponent("sentinel.txt")
+        let outputLink = fixtureDirectory.appendingPathComponent("output-link")
+        let escapedOutput = outputLink.appendingPathComponent("nested", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: externalDirectory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: fixtureDirectory)
+            try? FileManager.default.removeItem(at: externalDirectory)
+        }
+        try "ancestor-symlink-sentinel\n".write(to: externalSentinel, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(at: outputLink, withDestinationURL: externalDirectory)
+
+        let result = try runVisualGateEarlyBlock(outputDirectory: escapedOutput)
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.contains("failure_reason=unsafe-output-directory"), result.output)
+        XCTAssertEqual(try String(contentsOf: externalSentinel, encoding: .utf8), "ancestor-symlink-sentinel\n")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: externalDirectory.appendingPathComponent("nested").path))
+    }
+
+    func testVisualGateRejectsSummarySymlinkWithoutTouchingTarget() throws {
+        let outputDirectory = packageRoot()
+            .appendingPathComponent(".build/test-ci-visual-summary-link-\(UUID().uuidString)", isDirectory: true)
+        let externalTarget = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-visual-summary-target-\(UUID().uuidString).env")
+        let summary = outputDirectory.appendingPathComponent("ui-visual-gate-summary.env")
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: outputDirectory)
+            try? FileManager.default.removeItem(at: externalTarget)
+        }
+        try "summary-symlink-sentinel\n".write(to: externalTarget, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(at: summary, withDestinationURL: externalTarget)
+
+        let result = try runVisualGateEarlyBlock(outputDirectory: outputDirectory)
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.contains("failure_reason=unsafe-summary-file"), result.output)
+        XCTAssertEqual(try String(contentsOf: externalTarget, encoding: .utf8), "summary-symlink-sentinel\n")
+        XCTAssertEqual(
+            try FileManager.default.destinationOfSymbolicLink(atPath: summary.path),
+            externalTarget.path
+        )
+    }
+
+    func testVisualGateRejectsNonRegularSummaryWithoutReplacingIt() throws {
+        let outputDirectory = packageRoot()
+            .appendingPathComponent(".build/test-ci-visual-summary-directory-\(UUID().uuidString)", isDirectory: true)
+        let summaryDirectory = outputDirectory
+            .appendingPathComponent("ui-visual-gate-summary.env", isDirectory: true)
+        let sentinel = summaryDirectory.appendingPathComponent("sentinel.txt")
+        try FileManager.default.createDirectory(at: summaryDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: outputDirectory) }
+        try "summary-directory-sentinel\n".write(to: sentinel, atomically: true, encoding: .utf8)
+
+        let result = try runVisualGateEarlyBlock(outputDirectory: outputDirectory)
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.contains("failure_reason=unsafe-summary-file"), result.output)
+        var isDirectory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: summaryDirectory.path, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue)
+        XCTAssertEqual(try String(contentsOf: sentinel, encoding: .utf8), "summary-directory-sentinel\n")
     }
 
     func testVisualGateCapturesAllBaselinesBeforeFreshReceiptComparison() throws {
@@ -890,6 +981,19 @@ final class UIGateScriptsTests: XCTestCase {
     private func writeExecutable(_ contents: String, to url: URL) throws {
         try contents.write(to: url, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+    }
+
+    private func runVisualGateEarlyBlock(
+        outputDirectory: URL
+    ) throws -> (exitCode: Int32, output: String) {
+        try runTool(
+            [
+                "/bin/bash",
+                packageRoot().appendingPathComponent("script/check_ci_visual_gate.sh").path,
+                "unsupported"
+            ],
+            environment: ["SUISUI_CI_VISUAL_GATE_OUTPUT_DIR": outputDirectory.path]
+        )
     }
 
     private func runCapabilityDimensionParser(summary: String) throws -> (exitCode: Int32, output: String) {
