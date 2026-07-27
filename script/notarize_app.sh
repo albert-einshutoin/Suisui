@@ -78,12 +78,20 @@ mkdir -p "$NOTARY_DIR"
 COPYFILE_DISABLE=1 ditto -c -k --keepParent --norsrc --noextattr "$APP_BUNDLE" "$SUBMISSION_ZIP"
 
 set +e
-xcrun notarytool submit "$SUBMISSION_ZIP" --keychain-profile "$NOTARY_PROFILE" --wait 2>&1 | tee "$SUBMISSION_LOG"
+xcrun notarytool submit "$SUBMISSION_ZIP" \
+  --keychain-profile "$NOTARY_PROFILE" \
+  --wait \
+  --output-format json 2>&1 | tee "$SUBMISSION_LOG"
 submit_status="${PIPESTATUS[0]}"
 set -e
 
-if [[ "$submit_status" -ne 0 ]]; then
-  submission_id="$(awk '/id: / { print $2; exit }' "$SUBMISSION_LOG" || true)"
+submission_id="$(plutil -extract id raw -o - "$SUBMISSION_LOG" 2>/dev/null || true)"
+submission_status_value="$(plutil -extract status raw -o - "$SUBMISSION_LOG" 2>/dev/null || true)"
+
+# notarytool may exit successfully after waiting even when Apple marks the
+# submission Invalid. Gate stapling on the response status as well as the
+# process exit code so a rejected archive can never advance as release-ready.
+if [[ "$submit_status" -ne 0 || "$submission_status_value" != "Accepted" ]]; then
   if [[ -n "$submission_id" ]]; then
     echo "Notarization failed. Fetch details with:" >&2
     echo "xcrun notarytool log $submission_id --keychain-profile $NOTARY_PROFILE" >&2
@@ -91,7 +99,13 @@ if [[ "$submit_status" -ne 0 ]]; then
     echo "Notarization failed before a submission id was returned." >&2
     echo "If a submission id exists, run: xcrun notarytool log <submission-id> --keychain-profile $NOTARY_PROFILE" >&2
   fi
-  exit "$submit_status"
+  if [[ -n "$submission_status_value" ]]; then
+    echo "Notarization status: $submission_status_value" >&2
+  fi
+  if [[ "$submit_status" -ne 0 ]]; then
+    exit "$submit_status"
+  fi
+  exit 2
 fi
 
 xcrun stapler staple "$APP_BUNDLE"
