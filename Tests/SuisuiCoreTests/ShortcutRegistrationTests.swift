@@ -30,7 +30,11 @@ final class ShortcutRegistrationTests: XCTestCase {
             )
         )
 
-        XCTAssertFalse(viewModel.canRegister)
+        // A conflict must stay recoverable. Disabling both buttons stranded the
+        // user on a dead shortcut with nothing to press.
+        XCTAssertTrue(viewModel.canRegister)
+        XCTAssertTrue(viewModel.isRetryingRegistration)
+        XCTAssertNotNil(viewModel.recoveryHint)
         XCTAssertEqual(viewModel.statusLabel, "Conflict")
         XCTAssertTrue(viewModel.showsInAppFallback)
     }

@@ -160,8 +160,32 @@ public final class ShortcutSettingsViewModel: ObservableObject {
         return modifiers.isEmpty ? state.voiceCaptureShortcut.key.capitalized : "\(modifiers) + \(state.voiceCaptureShortcut.key.capitalized)"
     }
 
+    /// A conflicting or unavailable registration is still retryable: the usual
+    /// cause is another launcher already holding Option+Space, and the user's
+    /// fix is to quit or rebind that app and try again. Treating those states
+    /// as unregisterable left both buttons disabled and the shortcut dead with
+    /// no way out of the screen.
     public var canRegister: Bool {
-        state.status == .notRegistered
+        state.status != .registered
+    }
+
+    /// Distinguishes a first-time registration from recovering a failed one so
+    /// the button can say what it will actually do.
+    public var isRetryingRegistration: Bool {
+        state.status == .conflict || state.status == .unavailable
+    }
+
+    /// Advice attached to a failed registration. The status detail explains
+    /// what went wrong; this explains what the user can do about it.
+    public var recoveryHint: String? {
+        switch state.status {
+        case .conflict:
+            "Quit or rebind the other app, then retry. The in-app shortcut keeps working meanwhile."
+        case .unavailable:
+            "Retry after checking macOS keyboard settings. The in-app shortcut keeps working meanwhile."
+        case .registered, .notRegistered:
+            nil
+        }
     }
 
     public var canUnregister: Bool {

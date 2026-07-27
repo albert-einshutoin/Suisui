@@ -289,3 +289,19 @@ Outcomeまで追跡されない」は**仮説の正否にかかわらず必ず�
 `Waiting on` の設定・解除は**押せるボタンとして存在するようになった**。4週間の
 計測では、Task生成数だけでなく `setTaskWaiting` の利用と待ちの解除率を見ること。
 納品/検収の状態は引き続き未実装。
+
+### グローバルショートカットの競合からの回復 (2026-07-27)
+
+`⌥Space` が他アプリ（Alfred / Raycast 等）に取られている場合、状態は `.conflict`
+になるが `canRegister`（`.notRegistered` のみ true）も `canUnregister`
+（`.registered` のみ true）も false になり、**Register / Disable の両ボタンが
+無効のまま、死んだショートカットだけが残る**行き止まりだった。
+
+- `canRegister` を「`.registered` 以外」に変更し、競合・利用不可からの再試行を
+  可能にした（`SystemShortcutClient` 側は `hotKeyRef == nil` のため実際に
+  `RegisterEventHotKey` を再実行する）。
+- `isRetryingRegistration` / `recoveryHint` を追加し、ボタン文言を
+  `Retry Global Shortcut` に切り替え、「競合アプリを終了するか割り当てを変更して
+  から再試行。その間もアプリ内ショートカットは使える」と次の操作を示す。
+
+任意キーへのリマップ（キーレコーダーUI + キーコード変換 + 永続化）は未実装。

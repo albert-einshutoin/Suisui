@@ -2010,3 +2010,6 @@
 "Opens the task so you can follow up or clear the wait." = "タスクを開いて、催促するか待ちを解除できます。";
 "%d day" = "%d 日";
 "%d days" = "%d 日";
+"Retry Global Shortcut" = "グローバルショートカットを再試行";
+"Quit or rebind the other app, then retry. The in-app shortcut keeps working meanwhile." = "競合しているアプリを終了するか割り当てを変更してから再試行してください。その間もアプリ内ショートカットは使えます。";
+"Retry after checking macOS keyboard settings. The in-app shortcut keeps working meanwhile." = "macOSのキーボード設定を確認してから再試行してください。その間もアプリ内ショートカットは使えます。";

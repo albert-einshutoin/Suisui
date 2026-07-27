@@ -367,16 +367,30 @@ struct SettingsAIFeatureView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
+                    if let recoveryHint = context.shortcutSettingsViewModel.recoveryHint {
+                        Label(localizedSettingsDisplay(recoveryHint), systemImage: "arrow.clockwise")
+                            .font(.caption)
+                            .foregroundStyle(SuisuiTone.attention.color)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("settings-global-voice-shortcut-recovery")
+                    }
+
                     HStack {
-                        Button("Register Global Shortcut") {
+                        Button(
+                            context.shortcutSettingsViewModel.isRetryingRegistration
+                                ? "Retry Global Shortcut"
+                                : "Register Global Shortcut"
+                        ) {
                             context.shortcutSettingsViewModel.registerDefaultVoiceCaptureShortcut()
                         }
                         .disabled(!context.shortcutSettingsViewModel.canRegister)
+                        .accessibilityIdentifier("settings-global-voice-shortcut-register")
 
                         Button("Disable Global Shortcut") {
                             context.shortcutSettingsViewModel.unregisterVoiceCaptureShortcut()
                         }
                         .disabled(!context.shortcutSettingsViewModel.canUnregister)
+                        .accessibilityIdentifier("settings-global-voice-shortcut-disable")
                     }
                 }
                 .accessibilityIdentifier("settings-global-voice-shortcut")
