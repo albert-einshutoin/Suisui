@@ -20,6 +20,33 @@ public struct InspectorPresentationIntent: Equatable, Sendable {
     )
 }
 
+/// Carries a selected task only while Project Inspector owns the interaction.
+/// Encoding every lifecycle exit here prevents a previous task from silently
+/// becoming the target of a later approval-gated development operation.
+public struct ProjectInspectorDevelopmentContext: Equatable, Sendable {
+    public enum Event: Equatable, Sendable {
+        case openProject(taskID: Int64?)
+        case dismissInspector
+        case destinationChanged
+        case openTaskInspector
+    }
+
+    public private(set) var taskID: Int64?
+
+    public init(taskID: Int64? = nil) {
+        self.taskID = taskID
+    }
+
+    public mutating func handle(_ event: Event) {
+        switch event {
+        case .openProject(let taskID):
+            self.taskID = taskID
+        case .dismissInspector, .destinationChanged, .openTaskInspector:
+            taskID = nil
+        }
+    }
+}
+
 /// Pure policy separating per-scene user intent from effective presentation.
 /// Route or selection invalidation only affects visibility. Crossing from wide
 /// into compact mode dismisses passive wide-window intent, while a fresh

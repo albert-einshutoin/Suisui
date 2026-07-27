@@ -1358,9 +1358,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("private func reportWindowWidthIfChanged()"))
         XCTAssertTrue(boardSource.contains("requestInspectorPresentation()"))
         XCTAssertTrue(boardSource.contains("private func openProjectInspector()"))
-        XCTAssertTrue(boardSource.contains("@State private var projectInspectorDevelopmentTaskID: Int64?"))
-        XCTAssertTrue(boardSource.contains("projectInspectorDevelopmentTaskID = viewModel.selectedTaskID"))
-        XCTAssertTrue(boardSource.contains("developmentTaskID: projectInspectorDevelopmentTaskID"))
+        XCTAssertTrue(boardSource.contains("@State private var projectInspectorDevelopmentContext = ProjectInspectorDevelopmentContext()"))
+        XCTAssertTrue(boardSource.contains(".openProject(taskID: viewModel.selectedTaskID)"))
+        XCTAssertTrue(boardSource.contains("developmentTaskID: projectInspectorDevelopmentContext.taskID"))
+        XCTAssertTrue(boardSource.contains("projectInspectorDevelopmentContext.handle(.dismissInspector)"))
+        XCTAssertTrue(boardSource.contains("projectInspectorDevelopmentContext.handle(.destinationChanged)"))
+        XCTAssertTrue(boardSource.contains("projectInspectorDevelopmentContext.handle(.openTaskInspector)"))
         XCTAssertTrue(boardSource.contains("viewModel.selectedTaskID = nil"))
         XCTAssertTrue(boardSource.contains("InspectorPresentationPolicy.intentAfterResize("))
         XCTAssertTrue(boardSource.contains("dismissInspector()"))
@@ -6963,6 +6966,7 @@ final class AppExperienceSourceTests: XCTestCase {
             #"\bMenu\("((?:[^"\\]|\\.)*)""#,
             #"\bSection\("((?:[^"\\]|\\.)*)""#,
             #"\bGroupBox\("((?:[^"\\]|\\.)*)""#,
+            #"\bLabeledContent\("((?:[^"\\]|\\.)*)""#,
             #"\.navigationTitle\("((?:[^"\\]|\\.)*)"\)"#,
             #"\.help\("((?:[^"\\]|\\.)*)"\)"#,
             #"\.accessibilityLabel\("((?:[^"\\]|\\.)*)"\)"#,

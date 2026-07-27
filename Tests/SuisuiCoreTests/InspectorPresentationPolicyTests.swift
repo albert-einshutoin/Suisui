@@ -2,6 +2,27 @@ import XCTest
 @testable import SuisuiCore
 
 final class InspectorPresentationPolicyTests: XCTestCase {
+    func testProjectDevelopmentContextExistsOnlyForCurrentInspectorSession() {
+        var context = ProjectInspectorDevelopmentContext()
+
+        context.handle(.openProject(taskID: 41))
+        XCTAssertEqual(context.taskID, 41)
+
+        context.handle(.dismissInspector)
+        XCTAssertNil(context.taskID)
+
+        context.handle(.openProject(taskID: 42))
+        context.handle(.destinationChanged)
+        XCTAssertNil(context.taskID)
+
+        context.handle(.openProject(taskID: 43))
+        context.handle(.openTaskInspector)
+        XCTAssertNil(context.taskID)
+
+        context.handle(.openProject(taskID: nil))
+        XCTAssertNil(context.taskID)
+    }
+
     func testCompactWindowsStartClosedAndRequireExplicitPresentation() {
         for width in [960.0, 1_024.0] {
             XCTAssertFalse(

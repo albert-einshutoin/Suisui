@@ -88,6 +88,7 @@
 "Connect with OAuth authorization" = "Connect with OAuth authorization";
 "Connect Google Calendar with OAuth before loading calendars." = "Connect Google Calendar with OAuth before loading calendars.";
 "Current manual ID: %@" = "Current manual ID: %@";
+"Current" = "Current";
 "Deletes local Google Calendar OAuth metadata and Keychain tokens without changing tasks." = "Deletes local Google Calendar OAuth metadata and Keychain tokens without changing tasks.";
 "Disconnect" = "Disconnect";
 "Disconnect Google Calendar" = "Disconnect Google Calendar";
@@ -1381,6 +1382,7 @@
 "Light day" = "Light day";
 "Open day" = "Open day";
 "Development Automation" = "Development Automation";
+"Development Task" = "Development Task";
 "Branch Preview" = "Branch Preview";
 "Prepare Tool" = "Prepare Tool";
 "Allowed file operations" = "Allowed file operations";
@@ -1584,6 +1586,7 @@
 "Run verification" = "Run verification";
 "Verifies the executable content and OpenAI signing identity before every launch." = "Verifies the executable content and OpenAI signing identity before every launch.";
 "Approve Tool-Free Codex Local Execution" = "Approve Tool-Free Codex Local Execution";
+"Codex Account" = "Codex Account";
 "Check Account" = "Check Account";
 "Disconnect from Suisui" = "Disconnect from Suisui";
 "Enter an absolute path to the Codex CLI executable, not its authentication files." = "Enter an absolute path to the Codex CLI executable, not its authentication files.";

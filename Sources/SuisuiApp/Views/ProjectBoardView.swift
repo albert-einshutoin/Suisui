@@ -86,7 +86,7 @@ struct ProjectBoardView: View {
     @State private var projectBoardWindowWidth: CGFloat = 0
     @State private var allowsCompactInspectorPresentation = false
     @State private var isCompactInspectorSheetPresented = false
-    @State private var projectInspectorDevelopmentTaskID: Int64?
+    @State private var projectInspectorDevelopmentContext = ProjectInspectorDevelopmentContext()
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var toolbarLayoutRefreshToken = 0
     @State private var isTerminalPanelPresented = false
@@ -798,7 +798,7 @@ struct ProjectBoardView: View {
                 ProjectInspectorView(
                     project: project,
                     viewModel: viewModel,
-                    developmentTaskID: projectInspectorDevelopmentTaskID,
+                    developmentTaskID: projectInspectorDevelopmentContext.taskID,
                     onReviewDevelopmentAutomation: presentDevelopmentAutomationReview,
                     onClose: dismissInspector
                 )
@@ -834,12 +834,15 @@ struct ProjectBoardView: View {
         // Project and task details are mutually exclusive inspector surfaces,
         // but development automation still needs the task the user was acting
         // on. Preserve only that context before changing the rendered surface.
-        projectInspectorDevelopmentTaskID = viewModel.selectedTaskID
+        projectInspectorDevelopmentContext.handle(
+            .openProject(taskID: viewModel.selectedTaskID)
+        )
         viewModel.selectedTaskID = nil
         requestInspectorPresentation()
     }
 
     private func openTaskInspector(_ taskID: Int64) {
+        projectInspectorDevelopmentContext.handle(.openTaskInspector)
         viewModel.selectedTaskID = taskID
         requestInspectorPresentation()
     }
@@ -865,6 +868,7 @@ struct ProjectBoardView: View {
     }
 
     private func dismissInspector() {
+        projectInspectorDevelopmentContext.handle(.dismissInspector)
         isCompactInspectorSheetPresented = false
         userRequestedInspector = false
         persistPrimaryPresentationStateIfNeeded()
@@ -1178,6 +1182,7 @@ struct ProjectBoardView: View {
     }
 
     private func applySelectedDestination(_ destination: ProjectBoardSidebarDestination?) {
+        projectInspectorDevelopmentContext.handle(.destinationChanged)
         switch destination {
         case .project(let projectID):
             viewModel.selectedProjectID = projectID

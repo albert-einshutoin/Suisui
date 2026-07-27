@@ -88,6 +88,7 @@
 "Connect with OAuth authorization" = "OAuth認証で接続";
 "Connect Google Calendar with OAuth before loading calendars." = "カレンダー一覧を読み込む前にOAuthでGoogle Calendarへ接続してください。";
 "Current manual ID: %@" = "現在の手入力ID: %@";
+"Current" = "現在";
 "Deletes local Google Calendar OAuth metadata and Keychain tokens without changing tasks." = "タスクを変更せず、ローカルのGoogle Calendar OAuthメタデータとKeychainトークンを削除します。";
 "Disconnect" = "切断";
 "Disconnect Google Calendar" = "Google Calendarを切断";
@@ -1385,6 +1386,7 @@
 "Light day" = "軽い日";
 "Open day" = "空き日";
 "Development Automation" = "開発自動化";
+"Development Task" = "開発タスク";
 "Branch Preview" = "ブランチプレビュー";
 "Prepare Tool" = "準備ツール";
 "Allowed file operations" = "許可されたファイル操作";
@@ -1588,6 +1590,7 @@
 "Run verification" = "検証を実行";
 "Verifies the executable content and OpenAI signing identity before every launch." = "起動のたびに実行ファイルの内容とOpenAIの署名IDを検証します。";
 "Approve Tool-Free Codex Local Execution" = "ツールなしのCodex Local実行を許可";
+"Codex Account" = "Codexアカウント";
 "Check Account" = "アカウントを確認";
 "Disconnect from Suisui" = "Suisuiとの接続を解除";
 "Enter an absolute path to the Codex CLI executable, not its authentication files." = "認証ファイルではなく、Codex CLI実行ファイルの絶対パスを入力します。";
