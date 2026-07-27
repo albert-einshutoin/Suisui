@@ -453,7 +453,7 @@ final class VisualCaptureStabilityTests: XCTestCase {
         emit_evidence_app_diagnostic() { echo "diagnostic:$readiness_failure:$EVIDENCE_APP_PID:$EVIDENCE_APP_IDENTITY"; }
         scroll_ax_target_into_view() { echo "scroll:$EVIDENCE_APP_PID:$EVIDENCE_APP_IDENTITY"; }
         capture_visible_window() { echo "capture:$EVIDENCE_APP_PID:$EVIDENCE_APP_IDENTITY"; }
-        capture_project_board_destination light schedule /tmp/output.png fixture 'target=>ready' '' '' target
+        capture_project_board_destination light schedule /tmp/output.png fixture 'target=>ready' '' target target
         """
         return try run(["/bin/bash", "-c", fixture])
     }
