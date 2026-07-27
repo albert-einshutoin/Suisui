@@ -7,7 +7,7 @@ public struct ProjectBoardCompactNavigationPresentation: Equatable, Sendable {
     public let label: Label
     public let badgeCount: Int?
 
-    public init(label: Label, badgeCount: Int? = nil) {
+    init(label: Label, badgeCount: Int? = nil) {
         self.label = label
         self.badgeCount = badgeCount
     }
@@ -19,18 +19,21 @@ public struct ProjectBoardCompactNavigationPresentation: Equatable, Sendable {
         switch route {
         case .primary(.review):
             return ProjectBoardCompactNavigationPresentation(label: .localized("Review"))
-        case .review(.schedule):
-            return ProjectBoardCompactNavigationPresentation(label: .localized("Schedule"))
-        case .review(.completed):
-            return ProjectBoardCompactNavigationPresentation(label: .localized("Completed"))
-        case .review(.automationActivity):
-            return ProjectBoardCompactNavigationPresentation(label: .localized("Automation Activity"))
-        case .review(.assistantQueue):
-            return ProjectBoardCompactNavigationPresentation(
-                label: .localized("Assistant Queue"),
-                badgeCount: assistantQueueCount > 0 ? assistantQueueCount : nil
-            )
-        default:
+        case .review(let destination):
+            switch destination {
+            case .schedule:
+                return ProjectBoardCompactNavigationPresentation(label: .localized("Schedule"))
+            case .completed:
+                return ProjectBoardCompactNavigationPresentation(label: .localized("Completed"))
+            case .automationActivity:
+                return ProjectBoardCompactNavigationPresentation(label: .localized("Automation Activity"))
+            case .assistantQueue:
+                return ProjectBoardCompactNavigationPresentation(
+                    label: .localized("Assistant Queue"),
+                    badgeCount: assistantQueueCount > 0 ? assistantQueueCount : nil
+                )
+            }
+        case .primary, .project, .smartList:
             return ProjectBoardCompactNavigationPresentation(label: .localized("Review"))
         }
     }

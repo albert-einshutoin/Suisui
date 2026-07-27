@@ -2,19 +2,25 @@
 import XCTest
 
 final class ProjectBoardCompactNavigationPresentationTests: XCTestCase {
-    func testReviewMapsEveryReviewDestinationToItsLocalizedLabel() {
-        let cases: [(BoardRoute, String)] = [
-            (.primary(.review), "Review"),
-            (.review(.schedule), "Schedule"),
-            (.review(.completed), "Completed"),
-            (.review(.automationActivity), "Automation Activity"),
-            (.review(.assistantQueue), "Assistant Queue"),
-        ]
+    private let reviewLabelsByDestination: [ReviewRoute: String] = [
+        .schedule: "Schedule",
+        .completed: "Completed",
+        .automationActivity: "Automation Activity",
+        .assistantQueue: "Assistant Queue",
+    ]
 
-        for (route, expectedLabel) in cases {
+    func testReviewFixtureCoversEveryDestination() {
+        XCTAssertEqual(reviewLabelsByDestination.count, ReviewRoute.allCases.count)
+        XCTAssertEqual(Set(reviewLabelsByDestination.keys), Set(ReviewRoute.allCases))
+    }
+
+    func testReviewMapsEveryReviewDestinationToItsLocalizedLabel() throws {
+        for destination in ReviewRoute.allCases {
+            let expectedLabel = try XCTUnwrap(reviewLabelsByDestination[destination])
+
             XCTAssertEqual(
                 ProjectBoardCompactNavigationPresentation.review(
-                    route: route,
+                    route: .review(destination),
                     assistantQueueCount: 0
                 ),
                 ProjectBoardCompactNavigationPresentation(
@@ -22,6 +28,18 @@ final class ProjectBoardCompactNavigationPresentationTests: XCTestCase {
                 )
             )
         }
+    }
+
+    func testReviewPrimaryRouteUsesLocalizedReviewLabel() {
+        XCTAssertEqual(
+            ProjectBoardCompactNavigationPresentation.review(
+                route: .primary(.review),
+                assistantQueueCount: 0
+            ),
+            ProjectBoardCompactNavigationPresentation(
+                label: .localized("Review")
+            )
+        )
     }
 
     func testReviewShowsPositiveAssistantQueueBadge() {
@@ -111,6 +129,22 @@ final class ProjectBoardCompactNavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testProjectsUsesFirstProjectWhenIDsAreDuplicated() {
+        XCTAssertEqual(
+            ProjectBoardCompactNavigationPresentation.projects(
+                route: .project(42),
+                projects: [
+                    makeProject(id: 42, title: "First project"),
+                    makeProject(id: 42, title: "Second project"),
+                ],
+                smartLists: []
+            ),
+            ProjectBoardCompactNavigationPresentation(
+                label: .verbatim("First project")
+            )
+        )
+    }
+
     func testProjectsUsesLocalizedPresetSmartListName() {
         let preset = SmartList.presets[0]
 
@@ -154,6 +188,32 @@ final class ProjectBoardCompactNavigationPresentationTests: XCTestCase {
             ),
             ProjectBoardCompactNavigationPresentation(
                 label: .localized("Smart List Not Found")
+            )
+        )
+    }
+
+    func testProjectsUsesFirstSmartListWhenIDsAreDuplicated() {
+        let smartLists = [
+            SmartList(
+                id: "duplicate",
+                name: "First smart list",
+                criteria: SmartListCriteria()
+            ),
+            SmartList(
+                id: "duplicate",
+                name: "Second smart list",
+                criteria: SmartListCriteria()
+            ),
+        ]
+
+        XCTAssertEqual(
+            ProjectBoardCompactNavigationPresentation.projects(
+                route: .smartList("duplicate"),
+                projects: [],
+                smartLists: smartLists
+            ),
+            ProjectBoardCompactNavigationPresentation(
+                label: .verbatim("First smart list")
             )
         )
     }
