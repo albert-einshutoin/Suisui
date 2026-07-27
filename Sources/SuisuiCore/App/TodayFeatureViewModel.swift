@@ -53,7 +53,7 @@ public final class TodayFeatureViewModel: ObservableObject {
                     catchUpCount: readModels.sidebarMetrics.catchUpCount,
                     missedTaskReview: readModels.missedTaskReview,
                     projectTitlesByTaskID: Self.projectTitlesByTaskID(
-                        tasks: readModels.todayWorkflowSnapshot.plan.tasks,
+                        todayTasks: readModels.todayWorkflowSnapshot.plan.tasks,
                         // ProjectBoard publishes the snapshot before rebuilding
                         // derived models. Reading it at this transaction boundary
                         // avoids publishing the intermediate old-model/new-snapshot pair.
@@ -192,7 +192,7 @@ public final class TodayFeatureViewModel: ObservableObject {
             catchUpCount: board.derivedReadModels.sidebarMetrics.catchUpCount,
             missedTaskReview: board.derivedReadModels.missedTaskReview,
             projectTitlesByTaskID: projectTitlesByTaskID(
-                tasks: snapshot.plan.tasks,
+                todayTasks: snapshot.plan.tasks,
                 projects: board.snapshot.projects
             ),
             showsCompletedWorkflowTasks: board.showsCompletedWorkflowTasks,
@@ -204,15 +204,15 @@ public final class TodayFeatureViewModel: ObservableObject {
     }
 
     private static func projectTitlesByTaskID(
-        tasks: [ProjectBoardTask],
+        todayTasks: [ProjectBoardTask],
         projects: [ProjectBoardProject]
     ) -> [Int64: String] {
         let titlesByProjectID = Dictionary(
             uniqueKeysWithValues: projects.map { ($0.id, $0.title) }
         )
-        // Cache only titles rendered by Today so unrelated board mutations do
-        // not invalidate this feature's read state.
-        return Dictionary(uniqueKeysWithValues: tasks.map { task in
+        // Cache only titles rendered by Today. This keeps project renames
+        // reactive without making the feature observe the full board facade.
+        return Dictionary(uniqueKeysWithValues: todayTasks.map { task in
             (task.id, titlesByProjectID[task.projectID] ?? "Unknown Project")
         })
     }
