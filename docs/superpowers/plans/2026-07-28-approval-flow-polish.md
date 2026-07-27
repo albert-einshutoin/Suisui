@@ -615,7 +615,7 @@ public struct ProjectBoardCompactNavigationPresentation: Equatable, Sendable {
     public let label: Label
     public let badgeCount: Int?
 
-    public init(label: Label, badgeCount: Int? = nil) {
+    init(label: Label, badgeCount: Int? = nil) {
         self.label = label
         self.badgeCount = badgeCount
     }
@@ -624,17 +624,20 @@ public struct ProjectBoardCompactNavigationPresentation: Equatable, Sendable {
         switch route {
         case .primary(.review):
             return Self(label: .localized("Review"))
-        case .review(.schedule):
-            return Self(label: .localized("Schedule"))
-        case .review(.completed):
-            return Self(label: .localized("Completed"))
-        case .review(.automationActivity):
-            return Self(label: .localized("Automation Activity"))
-        case .review(.assistantQueue):
-            return Self(
-                label: .localized("Assistant Queue"),
-                badgeCount: assistantQueueCount > 0 ? assistantQueueCount : nil
-            )
+        case .review(let destination):
+            switch destination {
+            case .schedule:
+                return Self(label: .localized("Schedule"))
+            case .completed:
+                return Self(label: .localized("Completed"))
+            case .automationActivity:
+                return Self(label: .localized("Automation Activity"))
+            case .assistantQueue:
+                return Self(
+                    label: .localized("Assistant Queue"),
+                    badgeCount: assistantQueueCount > 0 ? assistantQueueCount : nil
+                )
+            }
         case .primary, .project, .smartList:
             return Self(label: .localized("Review"))
         }
@@ -668,6 +671,12 @@ public struct ProjectBoardCompactNavigationPresentation: Equatable, Sendable {
     }
 }
 ```
+
+Keep the initializer internal so callers cannot bypass the route factories and
+construct invalid badge or localization states. The inner `ReviewRoute` switch
+must remain exhaustive without `default`; compare the explicit review fixture
+keys with `ReviewRoute.allCases` so a future destination cannot silently fall
+back to Review.
 
 - [ ] **Step 4: Run GREEN tests**
 
