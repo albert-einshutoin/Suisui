@@ -77,7 +77,12 @@ struct ProjectBoardReviewHubView<Content: View>: View {
     }
 
     private var compactNavigation: some View {
-        HStack {
+        let presentation = ProjectBoardCompactNavigationPresentation.review(
+            route: route,
+            assistantQueueCount: assistantQueueCount
+        )
+
+        return HStack {
             Menu {
                 compactDestination(
                     .schedule,
@@ -100,12 +105,36 @@ struct ProjectBoardReviewHubView<Content: View>: View {
                     accessibilityIdentifier: "review-hub-compact-destination-assistant-queue"
                 )
             } label: {
-                Label("Choose Review View", systemImage: "sidebar.left")
+                compactLabel(presentation)
             }
             .accessibilityIdentifier("review-hub-compact-navigation")
             Spacer()
         }
         .padding(10)
+    }
+
+    @ViewBuilder
+    private func compactLabel(
+        _ presentation: ProjectBoardCompactNavigationPresentation
+    ) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "sidebar.left")
+                .accessibilityHidden(true)
+            // The policy keeps fixed labels localizable while preserving
+            // user-authored text verbatim.
+            switch presentation.label {
+            case .localized(let key):
+                Text(LocalizedStringKey(key))
+            case .verbatim(let value):
+                Text(verbatim: value)
+            }
+            if let count = presentation.badgeCount {
+                Text(verbatim: "\(count)")
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private func compactDestination(
