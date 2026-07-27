@@ -10,9 +10,11 @@ struct AssistantQueueWorkflowView: View {
         viewModel.assistantQueueSnapshot
     }
 
+    // "waiting" and "blocked" are adjectives, so this needs no plural form —
+    // only the app-language-aware lookup the rest of the surface uses.
     private var subtitle: String {
-        String(
-            format: String(localized: "%d waiting, %d blocked"),
+        localizedDisplay(
+            "%d waiting, %d blocked",
             snapshot.waitingReviewCount,
             snapshot.blockedCount
         )
@@ -36,8 +38,14 @@ struct AssistantQueueWorkflowView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("assistant-queue-boundary-note")
 
-            AssistantQueueTriageControls(viewModel: viewModel)
-            AssistantQueueBatchToolbar(viewModel: viewModel)
+            // Keep triage reachable when the selected filter has no matches;
+            // otherwise the user cannot switch back to a populated view.
+            if snapshot.totalCount > 0 {
+                AssistantQueueTriageControls(viewModel: viewModel)
+                if !viewModel.assistantQueueSelectedItemIDs.isEmpty {
+                    AssistantQueueBatchToolbar(viewModel: viewModel)
+                }
+            }
 
             if viewModel.openRescheduleSuggestionIDs.count >= 2 {
                 Button {
@@ -53,11 +61,21 @@ struct AssistantQueueWorkflowView: View {
             }
 
             if snapshot.rows.isEmpty {
-                ContentUnavailableView(
-                    "Assistant Queue is clear",
-                    systemImage: "tray.full",
-                    description: Text("Voice plans, automation drafts, and connector writes appear here before execution.")
-                )
+                Group {
+                    if snapshot.totalCount > 0 {
+                        ContentUnavailableView(
+                            "No matching tasks",
+                            systemImage: "line.3.horizontal.decrease.circle",
+                            description: Text("Choose another filter to see queued work.")
+                        )
+                    } else {
+                        ContentUnavailableView(
+                            "Assistant Queue is clear",
+                            systemImage: "tray.full",
+                            description: Text("Voice plans, automation drafts, and connector writes appear here before execution.")
+                        )
+                    }
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
@@ -145,7 +163,7 @@ private struct AssistantQueueBatchToolbar: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(String(format: String(localized: "%d selected"), selectedCount))
+            Text(localizedDisplay("%d selected", selectedCount))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 

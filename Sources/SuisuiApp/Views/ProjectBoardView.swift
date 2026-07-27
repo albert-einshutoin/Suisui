@@ -405,14 +405,12 @@ struct ProjectBoardView: View {
             )
         }
         .background(
-            // Hidden button so ⌘K opens the palette without disturbing the
-            // pinned toolbar structure. Hidden views stay out of the AX tree.
-            Button("") {
-                isCommandPaletteVisible = true
-            }
-            .keyboardShortcut("k", modifiers: [.command])
-            .hidden()
-            .accessibilityHidden(true)
+            ProjectBoardKeyboardShortcutBridge(
+                openCommandPalette: { isCommandPaletteVisible = true },
+                selectDestination: {
+                    boardRouteBinding.wrappedValue = .primary($0)
+                }
+            )
         )
         .overlay {
             ZStack {
@@ -2225,6 +2223,31 @@ extension ProjectTaskStatus {
             return nil
         }
         return Self.allCases[nextIndex]
+    }
+}
+
+/// Non-rendering commands for shortcuts that must stay available regardless of
+/// sidebar focus. Explicit buttons keep every route statically auditable while
+/// isolating their generic types from the already-large board view body.
+private struct ProjectBoardKeyboardShortcutBridge: View {
+    let openCommandPalette: () -> Void
+    let selectDestination: (BoardPrimaryDestination) -> Void
+
+    var body: some View {
+        ZStack {
+            Button("", action: openCommandPalette)
+                .keyboardShortcut("k", modifiers: [.command])
+            Button("") { selectDestination(.today) }
+                .keyboardShortcut("1", modifiers: [.command])
+            Button("") { selectDestination(.inbox) }
+                .keyboardShortcut("2", modifiers: [.command])
+            Button("") { selectDestination(.projects) }
+                .keyboardShortcut("3", modifiers: [.command])
+            Button("") { selectDestination(.review) }
+                .keyboardShortcut("4", modifiers: [.command])
+        }
+        .hidden()
+        .accessibilityHidden(true)
     }
 }
 

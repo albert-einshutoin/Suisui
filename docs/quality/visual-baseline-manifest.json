@@ -3,7 +3,7 @@
   "artifactRoot": "docs/release/evidence/ui-screenshots",
   "baselineRoot": "docs/quality/visual-baselines",
   "baselineContext": {
-    "sourceCommit": "970a0e636eee17aae5a41783247b1728db4cc32a",
+    "sourceCommit": "e96bc951315fafa12da07ecc998b095c649ab67d",
     "normalRoute": "normal",
     "locale": "en-US",
     "timeZoneIdentifier": "UTC",
@@ -39,7 +39,7 @@
       "requiredVisibleTextLines": [
         "project board to task card to",
         "In Progress High",
-        "2026-07-10"
+        "Jul 10"
       ],
       "artifacts": {
         "light": "project-board-light.png",

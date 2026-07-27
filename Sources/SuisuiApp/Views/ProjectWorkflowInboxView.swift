@@ -17,13 +17,17 @@ struct InboxWorkflowView: View {
 
     private var subtitle: String {
         if viewModel.showsCompletedWorkflowTasks {
-            return String(
-                format: String(localized: "%d inbox items, including %d done"),
-                tasks.count,
+            return localizedDisplay(
+                "%@, including %d done",
+                localizedCount(tasks.count, one: "%d inbox item", other: "%d inbox items"),
                 viewModel.completedInboxTaskCount
             )
         }
-        return String(format: String(localized: "%d unprocessed captured items"), tasks.count)
+        return localizedCount(
+            tasks.count,
+            one: "%d unprocessed captured item",
+            other: "%d unprocessed captured items"
+        )
     }
 
     var body: some View {
@@ -311,8 +315,8 @@ private struct InboxActionPanel: View {
         } label: {
             Label("Make Task", systemImage: "checkmark.circle")
         }
-        .keyboardShortcut("1", modifiers: [.command])
-        .help("Make selected Inbox item a task")
+        .keyboardShortcut("1", modifiers: [.command, .control])
+        .help("Make selected Inbox item a task (Control-Command-1)")
         .accessibilityIdentifier("inbox-action-make-task")
         .accessibilityHint("Classifies the selected Inbox item as a task in the local database.")
         Button {
@@ -320,8 +324,8 @@ private struct InboxActionPanel: View {
         } label: {
             Label("Make Project", systemImage: "folder.badge.plus")
         }
-        .keyboardShortcut("2", modifiers: [.command])
-        .help("Make selected Inbox item a project")
+        .keyboardShortcut("2", modifiers: [.command, .control])
+        .help("Make selected Inbox item a project (Control-Command-2)")
         .accessibilityIdentifier("inbox-action-make-project")
         .accessibilityHint("Creates a local project from the selected Inbox item.")
         Button {
@@ -329,8 +333,8 @@ private struct InboxActionPanel: View {
         } label: {
             Label("Schedule Today", systemImage: "calendar.badge.plus")
         }
-        .keyboardShortcut("3", modifiers: [.command])
-        .help("Schedule selected Inbox item for today")
+        .keyboardShortcut("3", modifiers: [.command, .control])
+        .help("Schedule selected Inbox item for today (Control-Command-3)")
         .accessibilityIdentifier("inbox-action-schedule-today")
         .accessibilityHint("Sets the selected Inbox item due date to today.")
         Button {
@@ -338,8 +342,8 @@ private struct InboxActionPanel: View {
         } label: {
             Label("Review Later", systemImage: "clock")
         }
-        .keyboardShortcut("4", modifiers: [.command])
-        .help("Review selected Inbox item later")
+        .keyboardShortcut("4", modifiers: [.command, .control])
+        .help("Review selected Inbox item later (Control-Command-4)")
         .accessibilityIdentifier("inbox-action-review-later")
         .accessibilityHint("Leaves the selected Inbox item for later review.")
     }

@@ -16,7 +16,7 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(cardSource.contains("recurrenceValue.map"))
         XCTAssertTrue(cardSource.contains("localizedDisplay(task.status.title)"))
         XCTAssertTrue(cardSource.contains("localizedDisplay(task.priority.label)"))
-        XCTAssertTrue(cardSource.contains("task.dueLabel.map(localizedDisplay) ?? localizedDisplay(\"No due date\")"))
+        XCTAssertTrue(cardSource.contains("localizedTaskDueLabel(task) ?? localizedDisplay(\"No due date\")"))
         XCTAssertTrue(cardSource.contains("Button(action: onOpenDetails) {\n                TaskCardSelectableSummary("))
         XCTAssertTrue(cardSource.contains(".accessibilityElement(children: .combine)"))
         XCTAssertTrue(cardSource.contains(".accessibilityLabel(\"Open task \\(task.title)\")"))
@@ -111,7 +111,7 @@ final class ProjectBoardMetadataLayoutSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("private var localizedPriorityValue: String"))
         XCTAssertTrue(source.contains("localizedDisplay(task.priority.label)"))
         XCTAssertTrue(source.contains("private var localizedDueValue: String"))
-        XCTAssertTrue(source.contains("task.dueLabel.map(localizedDisplay) ?? localizedDisplay(\"No due date\")"))
+        XCTAssertTrue(source.contains("localizedTaskDueLabel(task) ?? localizedDisplay(\"No due date\")"))
         XCTAssertTrue(source.contains("Text(verbatim: value)"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"task-card-metadata-strip-\\(task.id)\")"))
     }

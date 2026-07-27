@@ -101,6 +101,10 @@ enum SuisuiControlDensity {
 /// the same meaning renders the same color on every screen and in both themes.
 enum SuisuiTone {
     case neutral
+    /// General warning that needs user action. Signal Amber remains reserved
+    /// for assistant guidance so ordinary settings problems cannot look like
+    /// an AI recommendation.
+    case caution
     case attention
     case danger
     case positive
@@ -109,6 +113,8 @@ enum SuisuiTone {
         switch self {
         case .neutral:
             Color(nsColor: .secondaryLabelColor)
+        case .caution:
+            Color(nsColor: .systemOrange)
         case .attention:
             SuisuiBrand.signalAmber
         case .danger:

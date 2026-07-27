@@ -233,13 +233,10 @@ struct ScheduleWorkflowView: View {
     }
 
     private func scheduleDateKey(for date: Date) -> String {
-        let formatter = DateFormatter()
-        let calendar = VisualEvidenceRuntimeContext.runtimeCalendar()
-        formatter.calendar = calendar
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+        SuisuiTimestampDisplay.dayKey(
+            date,
+            calendar: VisualEvidenceRuntimeContext.runtimeCalendar()
+        )
     }
 }
 
@@ -331,11 +328,25 @@ private struct ScheduleMiniCalendarPanel: View {
     }
 
     private func selectedSummary(for day: DailyWorkloadDay) -> String {
-        String(
-            format: String(localized: "Selected %@ with %d open tasks and %d attention signals."),
-            day.dateKey,
-            day.openTaskCount,
-            day.overdueTaskCount + day.blockedTaskCount
+        // `dateKey` is the machine grouping key (`2026-07-10`); the header is
+        // read by a person, so it gets the locale-formatted day and singular
+        // noun forms instead of "Selected 2026-07-10 with 1 open tasks".
+        let calendar = VisualEvidenceRuntimeContext.runtimeCalendar()
+        let openCount = day.openTaskCount
+        let attentionCount = day.overdueTaskCount + day.blockedTaskCount
+        return localizedDisplay(
+            "Selected %@ with %@ and %@.",
+            SuisuiTimestampDisplay.absolute(
+                day.date,
+                calendar: calendar,
+                locale: localizedDisplayLocale()
+            ),
+            localizedCount(openCount, one: "%d open task", other: "%d open tasks"),
+            localizedCount(
+                attentionCount,
+                one: "%d attention signal",
+                other: "%d attention signals"
+            )
         )
     }
 
@@ -398,13 +409,15 @@ private struct ScheduleMiniCalendarDayChip: View {
     }
 
     private var shortDateLabel: String {
-        let formatter = DateFormatter()
+        // `"E d"` is a fixed English pattern; the shared helper resolves the
+        // locale-correct weekday/day order instead and reuses one cached
+        // formatter rather than allocating one per row per redraw.
         let calendar = VisualEvidenceRuntimeContext.runtimeCalendar()
-        formatter.calendar = calendar
-        formatter.locale = calendar.locale ?? .current
-        formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = "E d"
-        return formatter.string(from: day.date)
+        return SuisuiTimestampDisplay.weekdayAndDay(
+            day.date,
+            calendar: calendar,
+            locale: localizedDisplayLocale()
+        )
     }
 
     private var loadTint: Color {
@@ -758,13 +771,15 @@ private struct WeeklyScheduleDayColumn: View {
     }
 
     private var shortDateLabel: String {
-        let formatter = DateFormatter()
+        // `"E d"` is a fixed English pattern; the shared helper resolves the
+        // locale-correct weekday/day order instead and reuses one cached
+        // formatter rather than allocating one per row per redraw.
         let calendar = VisualEvidenceRuntimeContext.runtimeCalendar()
-        formatter.calendar = calendar
-        formatter.locale = calendar.locale ?? .current
-        formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = "E d"
-        return formatter.string(from: day.date)
+        return SuisuiTimestampDisplay.weekdayAndDay(
+            day.date,
+            calendar: calendar,
+            locale: localizedDisplayLocale()
+        )
     }
 
     private var loadTint: Color {
@@ -1199,13 +1214,15 @@ private struct DailyWorkloadDayCell: View {
     }
 
     private var shortDateLabel: String {
-        let formatter = DateFormatter()
+        // `"E d"` is a fixed English pattern; the shared helper resolves the
+        // locale-correct weekday/day order instead and reuses one cached
+        // formatter rather than allocating one per row per redraw.
         let calendar = VisualEvidenceRuntimeContext.runtimeCalendar()
-        formatter.calendar = calendar
-        formatter.locale = calendar.locale ?? .current
-        formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = "E d"
-        return formatter.string(from: day.date)
+        return SuisuiTimestampDisplay.weekdayAndDay(
+            day.date,
+            calendar: calendar,
+            locale: localizedDisplayLocale()
+        )
     }
 
     private func secondaryMetric(_ label: String, systemImage: String, tint: Color) -> some View {

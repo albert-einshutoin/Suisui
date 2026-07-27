@@ -1049,6 +1049,21 @@ ON inbox_capture_records(task_id);
 "
 }
 
+localized_evidence_day_label() {
+  local stored_day="$1"
+  case "$EVIDENCE_LOCALE" in
+    english)
+      LC_ALL=en_US.UTF-8 /bin/date -j -u -f "%Y-%m-%d" "$stored_day" "+%b %e" \
+        | tr -s ' '
+      ;;
+    japanese)
+      local month="${stored_day:5:2}"
+      local day="${stored_day:8:2}"
+      printf '%d月%d日\n' "$((10#$month))" "$((10#$day))"
+      ;;
+  esac
+}
+
 seed_database() {
   local database_path="$1"
   local today
@@ -1260,6 +1275,11 @@ persist_project_board_selection() {
     echo "seeded project-board evidence tasks have no canonical due date." >&2
     exit 1
   fi
+  # AX readiness must match the human date shown by the app, not the stored
+  # yyyy-MM-dd value. Otherwise improving date readability makes the capture
+  # harness wait forever for text the product correctly stopped exposing.
+  capture_due_label="$(localized_evidence_day_label "$capture_due_date")"
+  review_due_label="$(localized_evidence_day_label "$review_due_date")"
 
   # These values mirror the canonical Localizable.strings entries used by the
   # task metadata accessibility value in each capture locale.
@@ -1285,7 +1305,7 @@ persist_project_board_selection() {
   # Bind title and metadata proof to that exact task button so a hidden child
   # identifier or another card's text cannot authenticate the screenshot.
   PROJECT_BOARD_SELECTED_TASK_OVERRIDE="$review_task_id"
-  PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details-$capture_task_id=>Capture launch screenshots|task-card-open-details-$capture_task_id=>$planned_label, $high_label, $capture_due_date|task-card-open-details-$review_task_id=>Review VoiceOver focus path|task-card-open-details-$review_task_id=>$in_progress_label, $high_label, $review_due_date|task-card-open-details-$unscheduled_task_id=>$planned_label, $medium_label, $no_due_date_label"
+  PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details-$capture_task_id=>Capture launch screenshots|task-card-open-details-$capture_task_id=>$planned_label, $high_label, $capture_due_label|task-card-open-details-$review_task_id=>Review VoiceOver focus path|task-card-open-details-$review_task_id=>$in_progress_label, $high_label, $review_due_label|task-card-open-details-$unscheduled_task_id=>$planned_label, $medium_label, $no_due_date_label"
   INBOX_VOICE_TASK_OVERRIDE="$inbox_voice_task_id"
   INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>Inbox classification actions"
   write_app_preference suisui.projectBoard.selectedDestination "$PROJECT_BOARD_SELECTION_OVERRIDE"
@@ -1644,7 +1664,8 @@ capture_project_board_destination() {
     # exact target helper to settle on the evidence landmark.
     scroll_ax_container_down "$scroll_container_identifier"
     sleep 0.5
-  else
+  fi
+  if [[ -n "$scroll_target_identifier" ]]; then
     scroll_ax_target_into_view "$scroll_target_identifier" "$label"
   fi
   sleep 0.5
@@ -2170,8 +2191,8 @@ if [[ "$SCHEDULE_COCKPIT" == "1" ]]; then
 fi
 
 if [[ "$SCHEDULE_WORKLOAD" == "1" ]]; then
-  capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "" "schedule-workload-attention-banner" "$SCHEDULE_WORKLOAD_DETAIL_MARKERS" workload schedule-workflow
-  capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "" "schedule-workload-attention-banner" "$SCHEDULE_WORKLOAD_DETAIL_MARKERS" workload schedule-workflow
+  capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-day-detail" "schedule-workload-attention-banner" "$SCHEDULE_WORKLOAD_DETAIL_MARKERS" workload schedule-workflow
+  capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-day-detail" "schedule-workload-attention-banner" "$SCHEDULE_WORKLOAD_DETAIL_MARKERS" workload schedule-workflow
 
   GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   write_schedule_workload_evidence_file "$GENERATED_AT" "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT"
@@ -2210,8 +2231,8 @@ capture_project_board_destination light projects "$PROJECTS_OVERVIEW_LIGHT_SCREE
 capture_project_board_destination dark projects "$PROJECTS_OVERVIEW_DARK_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS" "" "" "projects-portfolio-overview"
 capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS" "" "schedule-mini-calendar" "schedule-mini-calendar"
 capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS" "" "schedule-mini-calendar" "schedule-mini-calendar"
-capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "" "schedule-workload-attention-banner" "$SCHEDULE_WORKLOAD_DETAIL_MARKERS" workload schedule-workflow
-capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "" "schedule-workload-attention-banner" "$SCHEDULE_WORKLOAD_DETAIL_MARKERS" workload schedule-workflow
+capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-day-detail" "schedule-workload-attention-banner" "$SCHEDULE_WORKLOAD_DETAIL_MARKERS" workload schedule-workflow
+capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-day-detail" "schedule-workload-attention-banner" "$SCHEDULE_WORKLOAD_DETAIL_MARKERS" workload schedule-workflow
 capture_project_board_destination light done "$DONE_LIGHT_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS" "" "" "done-workflow"
 capture_project_board_destination dark done "$DONE_DARK_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS" "" "" "done-workflow"
 capture_settings_overview light "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT"

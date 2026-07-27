@@ -52,9 +52,11 @@ final class VisualCaptureStabilityTests: XCTestCase {
         XCTAssertTrue(source.contains("SELECT substr(due_at, 1, 10) FROM tasks"))
         XCTAssertTrue(source.contains("title = 'Capture launch screenshots'"))
         XCTAssertTrue(source.contains("task-card-open-details-$capture_task_id=>Capture launch screenshots"))
-        XCTAssertTrue(source.contains("task-card-open-details-$capture_task_id=>$planned_label, $high_label, $capture_due_date"))
+        XCTAssertTrue(source.contains("capture_due_label=\"$(localized_evidence_day_label \"$capture_due_date\")\""))
+        XCTAssertTrue(source.contains("task-card-open-details-$capture_task_id=>$planned_label, $high_label, $capture_due_label"))
         XCTAssertTrue(source.contains("task-card-open-details-$review_task_id=>Review VoiceOver focus path"))
-        XCTAssertTrue(source.contains("task-card-open-details-$review_task_id=>$in_progress_label, $high_label, $review_due_date"))
+        XCTAssertTrue(source.contains("review_due_label=\"$(localized_evidence_day_label \"$review_due_date\")\""))
+        XCTAssertTrue(source.contains("task-card-open-details-$review_task_id=>$in_progress_label, $high_label, $review_due_label"))
         XCTAssertTrue(source.contains("PROJECT_BOARD_SELECTED_TASK_OVERRIDE=\"$review_task_id\""))
         XCTAssertTrue(source.contains("\"$PROJECT_BOARD_SELECTED_TASK_OVERRIDE\" \"\" \"project-board-detail\""))
         XCTAssertFalse(source.contains("task-card-metadata-strip-$unscheduled_task_id=>"))
@@ -451,7 +453,7 @@ final class VisualCaptureStabilityTests: XCTestCase {
         emit_evidence_app_diagnostic() { echo "diagnostic:$readiness_failure:$EVIDENCE_APP_PID:$EVIDENCE_APP_IDENTITY"; }
         scroll_ax_target_into_view() { echo "scroll:$EVIDENCE_APP_PID:$EVIDENCE_APP_IDENTITY"; }
         capture_visible_window() { echo "capture:$EVIDENCE_APP_PID:$EVIDENCE_APP_IDENTITY"; }
-        capture_project_board_destination light schedule /tmp/output.png fixture 'target=>ready' '' '' target
+        capture_project_board_destination light schedule /tmp/output.png fixture 'target=>ready' '' target target
         """
         return try run(["/bin/bash", "-c", fixture])
     }

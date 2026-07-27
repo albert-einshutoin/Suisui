@@ -811,7 +811,11 @@ private struct VoiceCommandInputPrompt: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Inbox captures stay local. Plans wait in Assistant Queue before execution.")
+            // "Assistant Queue" is not a place the user can find: the sidebar
+            // has Today / Inbox / Projects / Review, and the queue lives two
+            // levels inside Review. Name the destination they can actually
+            // click, and keep the queue name attached to it.
+            Text("Inbox captures stay local. Plans wait in Review › Assistant Queue before execution.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1369,12 +1373,24 @@ private struct VoiceIntentPreview: View {
             .help(localizedSettingsDisplay(result.intent.displayName))
     }
 
+    /// A raw model confidence percentage is false precision: nobody can act
+    /// differently on 62% versus 78%, and the number invites trust it has not
+    /// earned. The band says the only thing that changes the user's next move —
+    /// whether this reading needs a second look.
     private var confidenceLabel: some View {
-        Text("\(Int((result.confidence * 100).rounded()))%")
+        Text(localizedSettingsDisplay(confidenceBandTitle))
             .font(.caption)
             .foregroundStyle(result.needsClarification ? SuisuiTone.attention.color : .secondary)
             .lineLimit(1)
             .accessibilityLabel(localizedSettingsDisplay("Voice command confidence"))
+            .accessibilityValue(localizedSettingsDisplay(confidenceBandTitle))
+    }
+
+    private var confidenceBandTitle: String {
+        if result.needsClarification || result.confidence < 0.5 {
+            return "Needs a check"
+        }
+        return result.confidence < 0.8 ? "Likely right" : "Clear reading"
     }
 
     private var reviewLabel: some View {
@@ -1430,10 +1446,11 @@ private struct ActionPlanPreview: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(localizedActionTool(action.tool))
                                 .font(.subheadline)
-                            Text(argumentSummary(action.arguments))
+                            planActionSummary(action)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
+                                .accessibilityLabel(fullArgumentText(action))
                         }
                     }
                 }
@@ -1472,14 +1489,31 @@ private struct ActionPlanPreview: View {
         }
     }
 
-    private func argumentSummary(_ arguments: [String: JSONValue]) -> String {
-        guard !arguments.isEmpty else {
-            return "No arguments"
+    /// The streaming preview used to dump sorted `key: value` pairs straight
+    /// from the JSON arguments, so the first thing a user saw after speaking
+    /// was `dueAt: 2026-07-10T09:00:00Z, projectId: 3`. It now shares the
+    /// approval surface's field vocabulary and date formatting.
+    @ViewBuilder
+    private func planActionSummary(_ action: PlanAction) -> some View {
+        let fields = action.argumentDisplayFields()
+        if fields.isEmpty {
+            Text("No arguments")
+        } else {
+            Text(verbatim: humanArgumentText(fields))
         }
+    }
 
-        return arguments
-            .sorted { $0.key < $1.key }
-            .map { "\($0.key): \($0.value.displayValue)" }
-            .joined(separator: ", ")
+    private func fullArgumentText(_ action: PlanAction) -> String {
+        let fields = action.argumentDisplayFields()
+        guard !fields.isEmpty else {
+            return localizedDisplay("No arguments")
+        }
+        return humanArgumentText(fields)
+    }
+
+    private func humanArgumentText(_ fields: [ReviewActionField]) -> String {
+        fields
+            .map { "\(localizedReviewFieldLabel($0)): \(localizedReviewFieldValue($0))" }
+            .joined(separator: " · ")
     }
 }

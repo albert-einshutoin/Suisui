@@ -439,6 +439,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("review-schedule|review:schedule|sidebar-destination-review|schedule-workflow"))
         XCTAssertTrue(script.contains("review-completed|review:completed|sidebar-destination-review|done-workflow"))
         XCTAssertTrue(script.contains("review-automation|review:automation|sidebar-destination-review|automation-activity-workflow"))
+        XCTAssertTrue(script.contains(#"review-automation:en) printf '%s' "Automation Activity""#))
+        XCTAssertTrue(script.contains(#"review-automation:ja) printf '%s' "自動化アクティビティ""#))
         XCTAssertTrue(script.contains("review-assistant-queue|review:assistant-queue|sidebar-destination-review|assistant-queue-workflow"))
         XCTAssertTrue(script.contains("navigate_to_seed_project()"))
         XCTAssertTrue(script.contains("\"project:$seed_project_id\""))
@@ -564,6 +566,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-sort\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-batch-toolbar\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-select-\\(row.id)\")"))
+        XCTAssertTrue(workflowSource.contains("if snapshot.totalCount > 0 {"))
+        XCTAssertFalse(workflowSource.contains("if !snapshot.rows.isEmpty {\n                AssistantQueueTriageControls"))
         XCTAssertFalse(workflowSource.contains("approveSelectedAssistantQueueItems"))
         XCTAssertFalse(workflowSource.contains("runSelectedAssistantQueueItems"))
         XCTAssertTrue(workflowSource.contains("if let receipt = row.latestReceipt"))
@@ -701,6 +705,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let appearanceSectionSource = try readPackageFile("Sources/SuisuiApp/Views/SettingsAppearanceSection.swift")
         let languagePreferenceSource = try readPackageFile("Sources/SuisuiApp/Views/AppLanguagePreference.swift")
         let localizedDisplaySource = try readPackageFile("Sources/SuisuiApp/LocalizedDisplay.swift")
+        let settingsSource = try readPackageFile("Sources/SuisuiApp/Views/SettingsFeatureViews.swift")
+        let doneSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift")
         let buildScript = try readPackageFile("script/build_and_run.sh")
         let englishStrings = try readPackageFile("Sources/SuisuiApp/Resources/en.lproj/Localizable.strings")
         let japaneseStrings = try readPackageFile("Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings")
@@ -716,6 +722,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(localizedDisplaySource.contains("AppLanguagePreference.storageKey"))
         XCTAssertTrue(localizedDisplaySource.contains("Bundle.main.path(forResource: preference.localeIdentifier, ofType: \"lproj\")"))
         XCTAssertTrue(localizedDisplaySource.contains("localizedString(forKey: key, value: key, table: nil)"))
+        XCTAssertTrue(localizedDisplaySource.contains("func localizedDisplayLocale() -> Locale"))
+        XCTAssertTrue(localizedDisplaySource.contains("return preference.locale"))
+        XCTAssertTrue(localizedDisplaySource.contains("locale: localizedDisplayLocale()"))
+        XCTAssertTrue(settingsSource.contains(".currency(code: \"USD\").locale(localizedDisplayLocale())"))
+        XCTAssertTrue(doneSource.contains("return localizedDisplay("))
+        XCTAssertTrue(doneSource.contains("\"%@ completed at %@\""))
+        XCTAssertTrue(doneSource.contains("localizedDisplay(\"%@ completed\""))
 
         XCTAssertTrue(appSource.contains("@AppStorage(AppLanguagePreference.storageKey) private var languagePreference: AppLanguagePreference = .system"))
         XCTAssertTrue(appSource.contains("private var effectiveLanguagePreference: AppLanguagePreference"))
@@ -866,6 +879,7 @@ final class AppExperienceSourceTests: XCTestCase {
                 // keyboard-command bridges; neither paints a ShapeStyle.
                 allowedNonvisualBackgroundMarkers: [
                     "ProjectBoardToolbarLayoutBridge(",
+                    "ProjectBoardKeyboardShortcutBridge(",
                     ".background(Button("
                 ]
             ),
@@ -2206,13 +2220,13 @@ final class AppExperienceSourceTests: XCTestCase {
             to: "private struct InboxVoiceIntakeDetail"
         )
         XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-make-task\")"))
-        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
+        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"1\", modifiers: [.command, .control])"))
         XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-make-project\")"))
-        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
+        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"2\", modifiers: [.command, .control])"))
         XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-schedule-today\")"))
-        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
+        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"3\", modifiers: [.command, .control])"))
         XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-review-later\")"))
-        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
+        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"4\", modifiers: [.command, .control])"))
         XCTAssertTrue(phase.contains("- [x] Keyboard shortcutがmenu commandまたはfocused actionに接続されていることをsource testで固定する。"))
     }
 
@@ -2403,19 +2417,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(projectsSource.contains("\"Show Archived\""))
     }
 
-    func testPhase12SidebarDoesNotStealInboxCommandNumberShortcuts() throws {
+    func testPrimaryDestinationsOwnCommandNumberShortcutsAndInboxUsesControlCommand() throws {
         let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
         let workflowSource = try readProjectWorkflowSources()
 
-        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
-        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
-        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
-        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
+        XCTAssertTrue(boardSource.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
+        XCTAssertTrue(boardSource.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
+        XCTAssertTrue(boardSource.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
+        XCTAssertTrue(boardSource.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
         XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"5\", modifiers: [.command])"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"1\", modifiers: [.command, .control])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"2\", modifiers: [.command, .control])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"3\", modifiers: [.command, .control])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"4\", modifiers: [.command, .control])"))
         XCTAssertFalse(workflowSource.contains(".keyboardShortcut(\"5\", modifiers: [.command])"))
     }
 
@@ -2584,10 +2598,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-make-project\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-schedule-today\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-review-later\")"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"1\", modifiers: [.command, .control])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"2\", modifiers: [.command, .control])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"3\", modifiers: [.command, .control])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"4\", modifiers: [.command, .control])"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-classification-undo\")"))
 
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-suggestion-panel\")"))
@@ -3361,8 +3375,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-flow-strip\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-flow-chip-\\(block.id)\")"))
         XCTAssertFalse(workflowSource.contains(".accessibilityIdentifier(\"today-flow-optimize\")"))
-        XCTAssertTrue(workflowSource.contains("TodayAISuggestionCard()"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-ai-suggestion-card\")"))
+        // Today must keep exactly one focal "next action" surface. The old
+        // AI suggestion card was a fourth pointer at the same task whose body
+        // only said that more options live in the More menu, so it is gone and
+        // must not come back.
+        XCTAssertFalse(workflowSource.contains("TodayAISuggestionCard"))
+        XCTAssertFalse(workflowSource.contains(".accessibilityIdentifier(\"today-ai-suggestion-card\")"))
+        XCTAssertTrue(workflowSource.contains("TodayAssistantRail"))
         XCTAssertTrue(todayWorkflowSource.contains("let snapshot = viewModel.snapshot"))
         XCTAssertTrue(todayWorkflowSource.contains("mainSurface(snapshot: snapshot, fillsAvailableHeight:"))
         XCTAssertTrue(todayWorkflowSource.contains("TodayAssistantRail("))
@@ -3759,9 +3778,27 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("ActionReviewHeader"))
         XCTAssertTrue(appSource.contains("ReviewActionTitleRow"))
         XCTAssertTrue(appSource.contains("ViewThatFits(in: .horizontal)"))
-        XCTAssertTrue(appSource.contains("argumentDisplaySummary(maxFields: 4, maxValueLength: 96)"))
+        XCTAssertFalse(appSource.contains("argumentDisplaySummary(maxFields: 4, maxValueLength: 96)"))
         XCTAssertTrue(appSource.contains(".help(summary)"))
-        XCTAssertTrue(appSource.contains(".help(argumentSummary.fullText)"))
+        XCTAssertTrue(appSource.contains(".help(localizedFullText)"))
+
+        // Arguments render as labelled fields, never as a raw `key: value`
+        // dump, and the full text is reachable without a mouse hover.
+        XCTAssertTrue(appSource.contains("ReviewActionFieldList("))
+        XCTAssertTrue(appSource.contains("item.argumentDisplayFields()"))
+        XCTAssertTrue(appSource.contains("localizedReviewFieldLabel(field)"))
+        XCTAssertTrue(appSource.contains("localizedReviewFieldValue(field)"))
+        XCTAssertTrue(appSource.contains("private var localizedFullText: String"))
+        XCTAssertTrue(appSource.contains(".accessibilityValue(localizedFullText)"))
+        XCTAssertFalse(appSource.contains(".accessibilityValue(argumentSummary.fullText)"))
+        // Anything writing outside Suisui is shown in full; consent cannot be
+        // asked for behind a "+2 more".
+        XCTAssertTrue(appSource.contains("viewModel.session.originalPlan.riskLevel >= .write"))
+        XCTAssertTrue(appSource.contains("showsEveryFieldInFull ? nil : 2"))
+        // The streaming voice preview shares the same vocabulary instead of
+        // dumping sorted JSON keys.
+        XCTAssertFalse(voiceSource.contains("\\($0.key): \\($0.value.displayValue)"))
+        XCTAssertTrue(voiceSource.contains("action.argumentDisplayFields()"))
         XCTAssertTrue(appSource.contains(".help(currentStringArgument(\"title\"))"))
         XCTAssertTrue(appSource.contains(".fixedSize(horizontal: false, vertical: true)"))
     }
@@ -5490,6 +5527,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("SCHEDULE_WORKLOAD_TARGET_MARKERS=\"schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-mode-workload=>|schedule-mini-calendar=>\""))
         XCTAssertTrue(script.contains("SCHEDULE_WORKLOAD_DETAIL_MARKERS=\"schedule-workload-attention-banner=>|schedule-workload-day-detail=>\""))
         XCTAssertTrue(script.contains("\"$SCHEDULE_WORKLOAD_DETAIL_MARKERS\" workload schedule-workflow"))
+        XCTAssertTrue(script.contains("\"schedule-workload-day-detail\" \"schedule-workload-attention-banner\" \"$SCHEDULE_WORKLOAD_DETAIL_MARKERS\" workload schedule-workflow"))
+        XCTAssertTrue(script.contains("fi\n  if [[ -n \"$scroll_target_identifier\" ]]"))
         XCTAssertTrue(script.contains("ui_evidence_ax_scroll_container.swift"))
         XCTAssertTrue(script.contains("capture_project_board_destination light schedule \"$SCHEDULE_LIGHT_SCREENSHOT\" \"Schedule cockpit\" \"$SCHEDULE_COCKPIT_TARGET_MARKERS\""))
         XCTAssertTrue(script.contains("capture_project_board_destination dark schedule \"$SCHEDULE_DARK_SCREENSHOT\" \"Schedule cockpit\" \"$SCHEDULE_COCKPIT_TARGET_MARKERS\""))

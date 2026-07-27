@@ -163,7 +163,11 @@ struct ProjectBoardReviewHubView<Content: View>: View {
                         .font(.caption.weight(.semibold))
                         .monospacedDigit()
                         .accessibilityLabel(
-                            String(format: String(localized: "%d items need attention"), count)
+                            localizedCount(
+                                count,
+                                one: "%d item needs attention",
+                                other: "%d items need attention"
+                            )
                         )
                 }
             }

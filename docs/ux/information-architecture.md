@@ -11,12 +11,27 @@ the current code (files cited inline); the final section lists honest gaps.
 The main window (`Sources/SuisuiApp/Views/ProjectBoardView.swift`,
 `ProjectWorkflow*.swift`).
 
-Sidebar destinations, in rendered order (`ProjectBoardView.swift`, sidebar
-`List`): **Inbox → Assistant Queue → Today → Catch Up → Schedule → Done**,
-then a **Smart Lists** section, then a **Projects** section (Projects
-overview row, active projects, Completed, Archived). The default destination
-is **Today** (`ProjectBoardSelectionPersistence.swift`: persisted
+The source list owns exactly four stable product areas
+(`ProjectBoardSidebarView.swift`): **Today → Inbox → Projects → Review**.
+Feature-level navigation lives one level in, inside two hubs, so adding a
+workflow cannot grow the top level again:
+
+- **Projects hub** (`ProjectBoardProjectsHubView.swift`): Portfolio, Smart
+  Lists, Active / Completed / Archived projects.
+- **Review hub** (`ProjectBoardReviewHubView.swift`): Plan → Schedule; Work →
+  Completed; Automation → Automation Activity, Assistant Queue.
+
+Both hubs render a second list beside the detail above
+`ProjectBoardHubPresentationPolicy.wideMinimumWidth` (1100 pt) and collapse to
+a "Choose …" menu below it.
+
+The default destination is **Today**
+(`ProjectBoardSelectionPersistence.swift`: persisted
 `defaultRawValue = "today"`; unresolved selections fall back to `.today`).
+
+`⌘1`–`⌘4` select the four primary destinations in rendered order
+(`BoardPrimaryDestination.orderedForKeyboardSelection`, wired in
+`ProjectBoardView.swift`). Inbox classification uses `⌃⌘1`–`⌃⌘4`.
 
 Owns:
 - All task/project reading and mutation surfaces: workflow views per
@@ -48,8 +63,8 @@ Owns:
 Does not do: execution. `VoiceCaptureViewModel.approveAssistantQueueItem`
 only advances queue state and persists it; running an approved item happens
 in the Project Board's Assistant Queue view. The capture placeholder states
-the boundary: "Inbox captures stay local. Plans wait in Assistant Queue
-before execution."
+the boundary: "Inbox captures stay local. Plans wait in Review › Assistant
+Queue before execution."
 
 ### Settings window
 
@@ -192,4 +207,11 @@ notification is currently the entire feature.
 - **Approve and Run are two steps in two windows.** The voice window can
   approve but never run; users must cross to the board's Assistant Queue to
   execute. This is an intentional safety boundary, but the IA cost is a
-  mandatory window switch in the happiest voice path.
+  mandatory window switch in the happiest voice path — and since Assistant
+  Queue moved inside the Review hub, the cost is now a window switch plus two
+  levels of navigation. The capture placeholder names the full path
+  ("Review › Assistant Queue") so the destination is at least findable, but
+  the split itself is still an open product decision.
+- **Assistant Queue is two levels deep.** It is the terminal step of the
+  headline voice flow yet sits under Review → Automation. Nothing in the
+  top-level sidebar names it.
