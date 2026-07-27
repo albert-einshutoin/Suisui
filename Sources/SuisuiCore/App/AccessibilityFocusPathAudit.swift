@@ -116,6 +116,67 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
             "today-rail-task-detail"
         ]
     )
+
+    private static let approvalFlowCommonNodeIDs = [
+        "inbox-selected-context",
+        "inbox-action-grid",
+        "review-hub-compact-navigation",
+        "projects-hub-compact-navigation",
+        "assistant-queue-workflow"
+    ]
+
+    // Assistant Queue renders exactly one primary action for the row's current
+    // state. Separate requirements model the reachable VoiceOver path instead
+    // of requiring Approve, Run, and Reopen in one impossible snapshot.
+    public static let approvalFlowReview = AccessibilityFocusPathRequirement(
+        requiredNodeIDs: approvalFlowCommonNodeIDs + [
+            "assistant-queue-approve",
+            "assistant-queue-more",
+            "assistant-queue-edit",
+            "assistant-queue-edit-reason",
+            "assistant-queue-edit-save",
+            "assistant-queue-edit-cancel"
+        ],
+        dynamicRequiredNodeIDPrefixes: [
+            "assistant-queue-approve",
+            "assistant-queue-more",
+            "assistant-queue-edit",
+            "assistant-queue-edit-reason",
+            "assistant-queue-edit-save",
+            "assistant-queue-edit-cancel"
+        ]
+    )
+
+    public static let approvalFlowExecution = AccessibilityFocusPathRequirement(
+        requiredNodeIDs: approvalFlowCommonNodeIDs + [
+            "assistant-queue-run",
+            "assistant-queue-more",
+            "assistant-queue-edit",
+            "assistant-queue-edit-reason",
+            "assistant-queue-edit-save",
+            "assistant-queue-edit-cancel"
+        ],
+        dynamicRequiredNodeIDPrefixes: [
+            "assistant-queue-run",
+            "assistant-queue-more",
+            "assistant-queue-edit",
+            "assistant-queue-edit-reason",
+            "assistant-queue-edit-save",
+            "assistant-queue-edit-cancel"
+        ]
+    )
+
+    // Failed rows expose Reopen as the safe recovery boundary and no secondary
+    // More menu. Requiring More here would reject the intentional fail-closed
+    // UI and distract from whether the retry path itself remains reachable.
+    public static let approvalFlowRecovery = AccessibilityFocusPathRequirement(
+        requiredNodeIDs: approvalFlowCommonNodeIDs + [
+            "assistant-queue-retry"
+        ],
+        dynamicRequiredNodeIDPrefixes: [
+            "assistant-queue-retry"
+        ]
+    )
 }
 
 public enum AccessibilityFocusPathFindingKind: String, Codable, Equatable, Sendable {
@@ -273,11 +334,36 @@ public struct AccessibilityFocusPathAudit: Sendable {
         // controls. The release contract still names the stable prefix so one
         // dynamic card cannot weaken exact matching for unrelated required ids.
         return firstNodeIndexesByID
-            .filter { nodeID, _ in nodeID.hasPrefix("\(requiredNodeID)-") }
+            .filter { nodeID, _ in
+                matchesDynamicRequiredNodeID(
+                    nodeID,
+                    requiredNodeID: requiredNodeID,
+                    requirements: requirements
+                )
+            }
             .min { lhs, rhs in lhs.value < rhs.value }
             .flatMap { nodeID, index in
                 nodesByID[nodeID].map { ($0, index) }
             }
+    }
+
+    private func matchesDynamicRequiredNodeID(
+        _ nodeID: String,
+        requiredNodeID: String,
+        requirements: AccessibilityFocusPathRequirement
+    ) -> Bool {
+        guard nodeID.hasPrefix("\(requiredNodeID)-") else {
+            return false
+        }
+
+        // Some queue action prefixes are nested (for example, edit and
+        // edit-reason). Assign a runtime id to its most specific requirement
+        // so an edit field cannot masquerade as the missing Edit button.
+        return !requirements.dynamicRequiredNodeIDPrefixes.contains { candidatePrefix in
+            candidatePrefix != requiredNodeID
+                && candidatePrefix.hasPrefix("\(requiredNodeID)-")
+                && nodeID.hasPrefix("\(candidatePrefix)-")
+        }
     }
 
     private func nodeFindings(

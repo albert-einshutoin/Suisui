@@ -79,6 +79,19 @@ REQUIRED_MARKERS=(
   "today-rail-next-action"
   "today-rail-task-detail"
   "today-rail-actions-menu"
+  "inbox-selected-context"
+  "inbox-action-grid"
+  "review-hub-compact-navigation"
+  "projects-hub-compact-navigation"
+  "assistant-queue-workflow"
+  "assistant-queue-approve"
+  "assistant-queue-run"
+  "assistant-queue-retry"
+  "assistant-queue-more"
+  "assistant-queue-edit"
+  "assistant-queue-edit-reason"
+  "assistant-queue-edit-save"
+  "assistant-queue-edit-cancel"
 )
 
 TODAY_UI_ACCESSIBILITY_IDENTIFIERS=(
@@ -98,6 +111,10 @@ TODAY_UI_ACCESSIBILITY_IDENTIFIERS=(
 TODAY_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift"
 SIDEBAR_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectWorkflowViews.swift"
 SIDEBAR_DESTINATION_SOURCE="$ROOT_DIR/Sources/SuisuiCore/App/ProjectBoardSelectionPersistence.swift"
+INBOX_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift"
+ASSISTANT_QUEUE_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectWorkflowAssistantQueueView.swift"
+REVIEW_HUB_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift"
+PROJECTS_HUB_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift"
 
 SOURCES=(
   "$ROOT_DIR/Sources/SuisuiCore/App/AccessibilityFocusPathAudit.swift"
@@ -106,6 +123,10 @@ SOURCES=(
   "$ROOT_DIR/Sources/SuisuiApp/Views/ProjectBoardView.swift"
   "$TODAY_WORKFLOW_SOURCE"
   "$SIDEBAR_WORKFLOW_SOURCE"
+  "$INBOX_WORKFLOW_SOURCE"
+  "$ASSISTANT_QUEUE_WORKFLOW_SOURCE"
+  "$REVIEW_HUB_SOURCE"
+  "$PROJECTS_HUB_SOURCE"
   "$ROOT_DIR/docs/quality/accessibility-focus-paths.md"
 )
 
@@ -163,4 +184,4 @@ if [[ "$RUN_SWIFT_TESTS" -eq 1 ]]; then
   swift test --filter SuisuiHarnessTests
 fi
 
-echo "OK: pseudo VoiceOver focus path contract covers task lifecycle execution and Today cockpit markers"
+echo "OK: pseudo VoiceOver focus path contract covers task lifecycle, Today cockpit, and approval flow markers"

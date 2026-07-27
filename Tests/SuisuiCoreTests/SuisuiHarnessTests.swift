@@ -471,6 +471,64 @@ final class SuisuiHarnessTests: XCTestCase {
         XCTAssertTrue(run.failureReason?.contains("task-auto-execution-run-plan") ?? false)
     }
 
+    func testAccessibilityHarnessAuditsApprovalFlowStageFixtures() {
+        let runner = SuisuiHarnessAccessibilityAuditRunner()
+        let reviewNodes = approvalFlowAccessibilityNodes(
+            primaryID: "assistant-queue-approve-harness-waiting",
+            primaryLabel: "Approve",
+            includesEditPath: true
+        )
+        let executionNodes = approvalFlowAccessibilityNodes(
+            primaryID: "assistant-queue-run-harness-approved",
+            primaryLabel: "Run",
+            includesEditPath: true
+        )
+
+        for fixture in [
+            (name: "Review", nodes: reviewNodes, requirements: AccessibilityFocusPathRequirement.approvalFlowReview),
+            (name: "Execution", nodes: executionNodes, requirements: AccessibilityFocusPathRequirement.approvalFlowExecution)
+        ] {
+            let passingRun = runner.run(
+                id: "run-ax-approval-\(fixture.name.lowercased())",
+                trigger: .local,
+                startedAt: "2026-07-28T00:00:00Z",
+                finishedAt: "2026-07-28T00:00:01Z",
+                nodes: fixture.nodes,
+                requirements: fixture.requirements
+            )
+            XCTAssertEqual(passingRun.status, .passed, fixture.name)
+
+            let missingMoreRun = runner.run(
+                id: "run-ax-approval-\(fixture.name.lowercased())-missing-more",
+                trigger: .local,
+                startedAt: "2026-07-28T00:00:00Z",
+                finishedAt: "2026-07-28T00:00:01Z",
+                nodes: fixture.nodes.filter { !$0.id.hasPrefix("assistant-queue-more-") },
+                requirements: fixture.requirements
+            )
+            XCTAssertEqual(missingMoreRun.status, .failed, fixture.name)
+            XCTAssertEqual(missingMoreRun.diff?.stepID, "focus-path-assistant-queue-more")
+            XCTAssertTrue(missingMoreRun.diff?.actual.contains("missingRequiredNode") ?? false)
+        }
+
+        let recoveryRun = runner.run(
+            id: "run-ax-approval-recovery",
+            trigger: .local,
+            startedAt: "2026-07-28T00:00:00Z",
+            finishedAt: "2026-07-28T00:00:01Z",
+            nodes: approvalFlowAccessibilityNodes(
+                primaryID: "assistant-queue-retry-harness-failed",
+                primaryLabel: "Reopen",
+                includesEditPath: false
+            ),
+            requirements: .approvalFlowRecovery
+        )
+        XCTAssertEqual(recoveryRun.status, .passed)
+        XCTAssertFalse(
+            AccessibilityFocusPathRequirement.approvalFlowRecovery.requiredNodeIDs.contains("assistant-queue-more")
+        )
+    }
+
     func testLocalAndCloudTriggeredRunsShareResultEnvelopeShape() {
         let scenario = SuisuiHarnessScenario.templateCatalog()[0]
         let step = SuisuiHarnessStepResult(
@@ -663,6 +721,75 @@ final class SuisuiHarnessTests: XCTestCase {
             node("project-inspector-delete-confirmation-cancel", role: .button, label: "Cancel Delete Project", help: "Cancels deletion and returns to the inspector."),
             node("project-inspector-delete-confirmation-confirm", role: .button, label: "Confirm Delete Project", help: "Confirms deletion.", confirmsDestructiveAction: true)
         ]
+    }
+
+    private func approvalFlowAccessibilityNodes(
+        primaryID: String,
+        primaryLabel: String,
+        includesEditPath: Bool
+    ) -> [AccessibilityNodeSnapshot] {
+        var nodes = [
+            node("inbox-selected-context", role: .group, label: "Selected Item"),
+            node("inbox-action-grid", role: .group, label: "Inbox classification actions"),
+            node(
+                "review-hub-compact-navigation",
+                role: .button,
+                label: "Review view chooser",
+                help: "Choose Review destination."
+            ),
+            node(
+                "projects-hub-compact-navigation",
+                role: .button,
+                label: "Project view chooser",
+                help: "Choose Project destination."
+            ),
+            node("assistant-queue-workflow", role: .group, label: "Assistant Queue"),
+            node(
+                primaryID,
+                role: .button,
+                label: primaryLabel,
+                help: "Moves this queue item to its next approval stage."
+            )
+        ]
+
+        if includesEditPath {
+            let runtimeSuffix = primaryID.hasPrefix("assistant-queue-approve-")
+                ? "harness-waiting"
+                : "harness-approved"
+            nodes.append(contentsOf: [
+                node(
+                    "assistant-queue-more-\(runtimeSuffix)",
+                    role: .button,
+                    label: "More",
+                    help: "More Assistant Queue actions"
+                ),
+                node(
+                    "assistant-queue-edit-\(runtimeSuffix)",
+                    role: .button,
+                    label: "Edit",
+                    help: "Edit review details before approving this queue item"
+                ),
+                node(
+                    "assistant-queue-edit-reason-\(runtimeSuffix)",
+                    role: .textField,
+                    label: "Review reason"
+                ),
+                node(
+                    "assistant-queue-edit-save-\(runtimeSuffix)",
+                    role: .button,
+                    label: "Save",
+                    help: "Saves edited review details."
+                ),
+                node(
+                    "assistant-queue-edit-cancel-\(runtimeSuffix)",
+                    role: .button,
+                    label: "Cancel",
+                    help: "Discards local edits."
+                )
+            ])
+        }
+
+        return nodes
     }
 
     private func node(

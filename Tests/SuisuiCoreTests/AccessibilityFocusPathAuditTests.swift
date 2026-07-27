@@ -272,6 +272,100 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
         XCTAssertEqual(result.coveredRequiredNodeIDs, AccessibilityFocusPathRequirement.todayEmptyCockpit.requiredNodeIDs)
     }
 
+    func testApprovalFlowRequiresInboxContextCompactNavigationAndQueueActions() {
+        let audit = AccessibilityFocusPathAudit()
+        let reviewNodes = approvalFlowNodes(
+            primaryID: "assistant-queue-approve-visual-waiting",
+            primaryLabel: "Approve",
+            includesEditPath: true
+        )
+        let executionNodes = approvalFlowNodes(
+            primaryID: "assistant-queue-run-visual-approved",
+            primaryLabel: "Run",
+            includesEditPath: true
+        )
+        let recoveryNodes = approvalFlowNodes(
+            primaryID: "assistant-queue-retry-visual-failed",
+            primaryLabel: "Reopen",
+            includesEditPath: false
+        )
+        let stageFixtures: [
+            (
+                name: String,
+                primaryPrefix: String,
+                nodes: [AccessibilityNodeSnapshot],
+                requirements: AccessibilityFocusPathRequirement
+            )
+        ] = [
+            ("Review", "assistant-queue-approve", reviewNodes, .approvalFlowReview),
+            ("Execution", "assistant-queue-run", executionNodes, .approvalFlowExecution),
+            ("Recovery", "assistant-queue-retry", recoveryNodes, .approvalFlowRecovery)
+        ]
+
+        for fixture in stageFixtures {
+            let result = audit.audit(nodes: fixture.nodes, requirements: fixture.requirements)
+            XCTAssertTrue(
+                result.findings.isEmpty,
+                "\(fixture.name): \(result.findings.map(\.message).joined(separator: "\n"))"
+            )
+        }
+
+        for fixture in stageFixtures {
+            let missingPrimary = fixture.nodes.filter {
+                !$0.id.hasPrefix("\(fixture.primaryPrefix)-")
+            }
+            let result = audit.audit(nodes: missingPrimary, requirements: fixture.requirements)
+
+            XCTAssertTrue(
+                result.findings.contains {
+                    $0.nodeID == fixture.primaryPrefix && $0.kind == .missingRequiredNode
+                },
+                "\(fixture.name) must report its missing stage-specific primary action"
+            )
+        }
+
+        for fixture in stageFixtures.prefix(2) {
+            for missingPrefix in ["assistant-queue-more", "assistant-queue-edit"] {
+                let incompleteNodes = fixture.nodes.filter {
+                    $0.id != "\(missingPrefix)-visual-waiting"
+                        && $0.id != "\(missingPrefix)-visual-approved"
+                }
+                let result = audit.audit(nodes: incompleteNodes, requirements: fixture.requirements)
+
+                XCTAssertTrue(
+                    result.findings.contains {
+                        $0.nodeID == missingPrefix && $0.kind == .missingRequiredNode
+                    },
+                    "\(fixture.name) must report a missing \(missingPrefix) path"
+                )
+            }
+        }
+
+        for fixture in stageFixtures {
+            var outOfOrderNodes = fixture.nodes
+            guard
+                let workflowIndex = outOfOrderNodes.firstIndex(where: {
+                    $0.id == "assistant-queue-workflow"
+                }),
+                let primaryIndex = outOfOrderNodes.firstIndex(where: {
+                    $0.id.hasPrefix("\(fixture.primaryPrefix)-")
+                })
+            else {
+                XCTFail("\(fixture.name) fixture must contain its workflow and primary action")
+                continue
+            }
+            outOfOrderNodes.swapAt(workflowIndex, primaryIndex)
+
+            let result = audit.audit(nodes: outOfOrderNodes, requirements: fixture.requirements)
+            XCTAssertTrue(
+                result.findings.contains {
+                    $0.nodeID == fixture.primaryPrefix && $0.kind == .outOfOrderRequiredNode
+                },
+                "\(fixture.name) must report its primary action when focus order skips queue context"
+            )
+        }
+    }
+
     func testPseudoVoiceOverAuditRejectsGenericButtonsWithoutHelp() {
         let result = AccessibilityFocusPathAudit().audit(
             nodes: [
@@ -355,6 +449,75 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
 
         XCTAssertEqual(result.findings.map(\.kind), [.unlabeledRequiredNode])
         XCTAssertEqual(result.findings.first?.nodeID, "approved-execution-receipt")
+    }
+
+    private func approvalFlowNodes(
+        primaryID: String,
+        primaryLabel: String,
+        includesEditPath: Bool
+    ) -> [AccessibilityNodeSnapshot] {
+        var nodes = [
+            node("inbox-selected-context", role: .group, label: "Selected Item"),
+            node("inbox-action-grid", role: .group, label: "Inbox classification actions"),
+            node(
+                "review-hub-compact-navigation",
+                role: .button,
+                label: "Review view chooser",
+                help: "Choose Review destination."
+            ),
+            node(
+                "projects-hub-compact-navigation",
+                role: .button,
+                label: "Project view chooser",
+                help: "Choose Project destination."
+            ),
+            node("assistant-queue-workflow", role: .group, label: "Assistant Queue"),
+            node(
+                primaryID,
+                role: .button,
+                label: primaryLabel,
+                help: "Moves this queue item to its next approval stage."
+            )
+        ]
+
+        if includesEditPath {
+            let runtimeSuffix = primaryID.hasPrefix("assistant-queue-approve-")
+                ? "visual-waiting"
+                : "visual-approved"
+            nodes.append(contentsOf: [
+                node(
+                    "assistant-queue-more-\(runtimeSuffix)",
+                    role: .button,
+                    label: "More",
+                    help: "More Assistant Queue actions"
+                ),
+                node(
+                    "assistant-queue-edit-\(runtimeSuffix)",
+                    role: .button,
+                    label: "Edit",
+                    help: "Edit review details before approving this queue item"
+                ),
+                node(
+                    "assistant-queue-edit-reason-\(runtimeSuffix)",
+                    role: .textField,
+                    label: "Review reason"
+                ),
+                node(
+                    "assistant-queue-edit-save-\(runtimeSuffix)",
+                    role: .button,
+                    label: "Save",
+                    help: "Saves edited review details."
+                ),
+                node(
+                    "assistant-queue-edit-cancel-\(runtimeSuffix)",
+                    role: .button,
+                    label: "Cancel",
+                    help: "Discards local edits."
+                )
+            ])
+        }
+
+        return nodes
     }
 
     private func node(
