@@ -116,6 +116,31 @@ ASSISTANT_QUEUE_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectWorkfl
 REVIEW_HUB_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift"
 PROJECTS_HUB_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift"
 
+INBOX_APPROVAL_FLOW_MARKERS=(
+  '.accessibilityIdentifier("inbox-selected-context")'
+  '.accessibilityIdentifier("inbox-action-grid")'
+)
+
+REVIEW_HUB_APPROVAL_FLOW_MARKERS=(
+  '.accessibilityIdentifier("review-hub-compact-navigation")'
+)
+
+PROJECTS_HUB_APPROVAL_FLOW_MARKERS=(
+  '.accessibilityIdentifier("projects-hub-compact-navigation")'
+)
+
+ASSISTANT_QUEUE_APPROVAL_FLOW_MARKERS=(
+  '.accessibilityIdentifier("assistant-queue-workflow")'
+  '.accessibilityIdentifier("assistant-queue-approve-\(row.id)")'
+  '.accessibilityIdentifier("assistant-queue-run-\(row.id)")'
+  '.accessibilityIdentifier("assistant-queue-retry-\(row.id)")'
+  '.accessibilityIdentifier("assistant-queue-more-\(row.id)")'
+  '.accessibilityIdentifier("assistant-queue-edit-\(row.id)")'
+  '.accessibilityIdentifier("assistant-queue-edit-reason-\(row.id)")'
+  '.accessibilityIdentifier("assistant-queue-edit-save-\(row.id)")'
+  '.accessibilityIdentifier("assistant-queue-edit-cancel-\(row.id)")'
+)
+
 SOURCES=(
   "$ROOT_DIR/Sources/SuisuiCore/App/AccessibilityFocusPathAudit.swift"
   "$ROOT_DIR/Sources/SuisuiCore/App/SuisuiHarness.swift"
@@ -129,6 +154,27 @@ SOURCES=(
   "$PROJECTS_HUB_SOURCE"
   "$ROOT_DIR/docs/quality/accessibility-focus-paths.md"
 )
+
+check_source_markers() {
+  local source_path="$1"
+  local source_label="$2"
+  shift 2
+
+  if [[ ! -f "$source_path" ]]; then
+    echo "BLOCKER: approval flow source is missing: $source_path" >&2
+    return 1
+  fi
+
+  local marker
+  local marker_missing=0
+  for marker in "$@"; do
+    if ! grep -F -- "$marker" "$source_path" >/dev/null; then
+      echo "BLOCKER: approval flow accessibilityIdentifier missing from $source_label: $marker" >&2
+      marker_missing=1
+    fi
+  done
+  return "$marker_missing"
+}
 
 missing=0
 for marker in "${REQUIRED_MARKERS[@]}"; do
@@ -144,6 +190,54 @@ for marker in "${REQUIRED_MARKERS[@]}"; do
     missing=$((missing + 1))
   fi
 done
+
+if ! check_source_markers \
+  "$INBOX_WORKFLOW_SOURCE" \
+  "ProjectWorkflowInboxView.swift" \
+  "${INBOX_APPROVAL_FLOW_MARKERS[@]}"; then
+  missing=$((missing + 1))
+fi
+if ! check_source_markers \
+  "$REVIEW_HUB_SOURCE" \
+  "ProjectBoardReviewHubView.swift" \
+  "${REVIEW_HUB_APPROVAL_FLOW_MARKERS[@]}"; then
+  missing=$((missing + 1))
+fi
+if ! check_source_markers \
+  "$PROJECTS_HUB_SOURCE" \
+  "ProjectBoardProjectsHubView.swift" \
+  "${PROJECTS_HUB_APPROVAL_FLOW_MARKERS[@]}"; then
+  missing=$((missing + 1))
+fi
+if ! check_source_markers \
+  "$ASSISTANT_QUEUE_WORKFLOW_SOURCE" \
+  "ProjectWorkflowAssistantQueueView.swift" \
+  "${ASSISTANT_QUEUE_APPROVAL_FLOW_MARKERS[@]}"; then
+  missing=$((missing + 1))
+fi
+
+MARKER_SELF_TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/suisui-pseudo-voiceover.XXXXXX")"
+MARKER_SELF_TEST_FIXTURE="$MARKER_SELF_TEST_DIR/ProjectWorkflowAssistantQueueView.swift"
+cleanup_marker_self_test() {
+  rm -f -- "$MARKER_SELF_TEST_FIXTURE"
+  rmdir -- "$MARKER_SELF_TEST_DIR" 2>/dev/null || true
+}
+trap cleanup_marker_self_test EXIT
+
+if [[ -f "$ASSISTANT_QUEUE_WORKFLOW_SOURCE" ]]; then
+  # Exercise the same per-file gate against a realistic broken source copy so
+  # refactors cannot accidentally turn the marker scan into an always-pass check.
+  grep -F -v -- \
+    '.accessibilityIdentifier("assistant-queue-run-\(row.id)")' \
+    "$ASSISTANT_QUEUE_WORKFLOW_SOURCE" > "$MARKER_SELF_TEST_FIXTURE"
+  if check_source_markers \
+    "$MARKER_SELF_TEST_FIXTURE" \
+    "negative marker self-test fixture" \
+    "${ASSISTANT_QUEUE_APPROVAL_FLOW_MARKERS[@]}" 2>/dev/null; then
+    echo "BLOCKER: approval flow marker gate accepted a fixture with a missing queue identifier" >&2
+    missing=$((missing + 1))
+  fi
+fi
 
 if [[ ! -f "$TODAY_WORKFLOW_SOURCE" ]]; then
   echo "BLOCKER: Today workflow source is missing: $TODAY_WORKFLOW_SOURCE" >&2

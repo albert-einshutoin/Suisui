@@ -529,6 +529,117 @@ final class SuisuiHarnessTests: XCTestCase {
         )
     }
 
+    func testAccessibilityHarnessRejectsApprovalEvidenceCombinedFromDifferentRows() {
+        let mixedNodes = approvalFlowAccessibilityNodes(
+            primaryID: "assistant-queue-approve-row-a",
+            primaryLabel: "Approve",
+            includesEditPath: true
+        ).map { node -> AccessibilityNodeSnapshot in
+            guard node.id.hasPrefix("assistant-queue-"),
+                  !node.id.hasPrefix("assistant-queue-approve-"),
+                  node.id != "assistant-queue-workflow" else {
+                return node
+            }
+            var mixedNode = node
+            mixedNode.id = node.id.replacingOccurrences(of: "-row-a", with: "-row-b")
+            return mixedNode
+        }
+
+        let run = SuisuiHarnessAccessibilityAuditRunner().run(
+            id: "run-ax-approval-mixed-rows",
+            trigger: .local,
+            startedAt: "2026-07-28T00:00:00Z",
+            finishedAt: "2026-07-28T00:00:01Z",
+            nodes: mixedNodes,
+            requirements: .approvalFlowReview
+        )
+
+        XCTAssertEqual(run.status, .failed)
+        XCTAssertEqual(run.diff?.stepID, "focus-path-assistant-queue-more")
+        XCTAssertTrue(run.diff?.actual.contains("missingRequiredNode") ?? false)
+    }
+
+    func testAccessibilityHarnessReportsNestedPrefixFindingToMostSpecificStep() throws {
+        let requirements = AccessibilityFocusPathRequirement(
+            requiredNodeIDs: [
+                "assistant-queue-edit",
+                "assistant-queue-edit-reason"
+            ],
+            dynamicRequiredNodeIDPrefixes: [
+                "assistant-queue-edit",
+                "assistant-queue-edit-reason"
+            ]
+        )
+        let duplicateNestedNodes = [
+            node(
+                "assistant-queue-edit-row-a",
+                role: .button,
+                label: "Edit",
+                help: "Edit review details."
+            ),
+            node(
+                "assistant-queue-edit-reason-row-a",
+                role: .textField,
+                label: "Review reason"
+            ),
+            node(
+                "assistant-queue-edit-reason-row-a",
+                role: .textField,
+                label: "Duplicate review reason"
+            )
+        ]
+
+        let run = SuisuiHarnessAccessibilityAuditRunner().run(
+            id: "run-ax-nested-prefix-reporting",
+            trigger: .local,
+            startedAt: "2026-07-28T00:00:00Z",
+            finishedAt: "2026-07-28T00:00:01Z",
+            nodes: duplicateNestedNodes,
+            requirements: requirements
+        )
+
+        let editStep = try XCTUnwrap(run.steps.first { $0.id == "focus-path-assistant-queue-edit" })
+        let reasonStep = try XCTUnwrap(
+            run.steps.first { $0.id == "focus-path-assistant-queue-edit-reason" }
+        )
+        XCTAssertFalse(editStep.actual.contains("duplicateNodeID"))
+        XCTAssertTrue(reasonStep.actual.contains("duplicateNodeID"))
+    }
+
+    func testAccessibilityHarnessMapsRoleAndHelpFindingsToRequiredSteps() throws {
+        let nodes = approvalFlowAccessibilityNodes(
+            primaryID: "assistant-queue-approve-harness-contract",
+            primaryLabel: "Approve",
+            includesEditPath: true
+        ).map { node -> AccessibilityNodeSnapshot in
+            var changedNode = node
+            if node.id == "assistant-queue-approve-harness-contract" {
+                changedNode.role = .group
+            } else if node.id == "assistant-queue-more-harness-contract" {
+                changedNode.help = ""
+            }
+            return changedNode
+        }
+
+        let run = SuisuiHarnessAccessibilityAuditRunner().run(
+            id: "run-ax-approval-role-help",
+            trigger: .local,
+            startedAt: "2026-07-28T00:00:00Z",
+            finishedAt: "2026-07-28T00:00:01Z",
+            nodes: nodes,
+            requirements: .approvalFlowReview
+        )
+
+        let approveStep = try XCTUnwrap(
+            run.steps.first { $0.id == "focus-path-assistant-queue-approve" }
+        )
+        let moreStep = try XCTUnwrap(
+            run.steps.first { $0.id == "focus-path-assistant-queue-more" }
+        )
+        XCTAssertTrue(approveStep.actual.contains("wrongRequiredRole"))
+        XCTAssertTrue(moreStep.actual.contains("missingRequiredHelp"))
+    }
+
     func testLocalAndCloudTriggeredRunsShareResultEnvelopeShape() {
         let scenario = SuisuiHarnessScenario.templateCatalog()[0]
         let step = SuisuiHarnessStepResult(
@@ -753,9 +864,10 @@ final class SuisuiHarnessTests: XCTestCase {
         ]
 
         if includesEditPath {
-            let runtimeSuffix = primaryID.hasPrefix("assistant-queue-approve-")
-                ? "harness-waiting"
-                : "harness-approved"
+            let primaryPrefix = primaryID.hasPrefix("assistant-queue-approve-")
+                ? "assistant-queue-approve-"
+                : "assistant-queue-run-"
+            let runtimeSuffix = String(primaryID.dropFirst(primaryPrefix.count))
             nodes.append(contentsOf: [
                 node(
                     "assistant-queue-more-\(runtimeSuffix)",

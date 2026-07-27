@@ -944,12 +944,17 @@ public struct SuisuiHarnessAccessibilityAuditRunner: Sendable {
         for nodeID: String,
         requirements: AccessibilityFocusPathRequirement
     ) -> String? {
+        // Audit matching and harness reporting must agree on nested dynamic
+        // identifiers, otherwise the diff can blame a neighboring control.
+        if let dynamicNodeID = requirements.resolvedDynamicRequiredNodeID(for: nodeID) {
+            return dynamicNodeID
+        }
+
         if requirements.requiredNodeIDs.contains(nodeID) {
             return nodeID
         }
 
-        return requirements.dynamicRequiredNodeIDPrefixes
-            .first { nodeID.hasPrefix("\($0)-") }
+        return nil
     }
 
     private func snapshotStep(

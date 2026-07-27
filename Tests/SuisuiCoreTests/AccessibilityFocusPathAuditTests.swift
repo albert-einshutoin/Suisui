@@ -366,6 +366,149 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
         }
     }
 
+    func testApprovalFlowRejectsEvidenceCombinedFromDifferentQueueRows() {
+        let mixedNodes = approvalFlowNodes(
+            primaryID: "assistant-queue-approve-row-a",
+            primaryLabel: "Approve",
+            includesEditPath: true
+        ).map { node -> AccessibilityNodeSnapshot in
+            guard node.id.hasPrefix("assistant-queue-"),
+                  !node.id.hasPrefix("assistant-queue-approve-"),
+                  node.id != "assistant-queue-workflow" else {
+                return node
+            }
+            var mixedNode = node
+            mixedNode.id = node.id.replacingOccurrences(of: "-row-a", with: "-row-b")
+            return mixedNode
+        }
+
+        let result = AccessibilityFocusPathAudit().audit(
+            nodes: mixedNodes,
+            requirements: .approvalFlowReview
+        )
+
+        XCTAssertTrue(
+            result.findings.contains {
+                $0.nodeID == "assistant-queue-more" && $0.kind == .missingRequiredNode
+            }
+        )
+        XCTAssertFalse(result.coveredRequiredNodeIDs.contains("assistant-queue-more"))
+        XCTAssertTrue(result.coveredRequiredNodeIDs.contains("assistant-queue-approve"))
+    }
+
+    func testDynamicPrefixResolverAssignsNestedExactIDOnlyToMostSpecificRequirement() {
+        let requirements = AccessibilityFocusPathRequirement(
+            requiredNodeIDs: [
+                "assistant-queue-edit",
+                "assistant-queue-edit-reason"
+            ],
+            dynamicRequiredNodeIDPrefixes: [
+                "assistant-queue-edit",
+                "assistant-queue-edit-reason"
+            ]
+        )
+
+        XCTAssertEqual(
+            requirements.resolvedDynamicRequiredNodeID(for: "assistant-queue-edit-reason"),
+            "assistant-queue-edit-reason"
+        )
+
+        let result = AccessibilityFocusPathAudit().audit(
+            nodes: [
+                node(
+                    "assistant-queue-edit-reason",
+                    role: .textField,
+                    label: "Review reason"
+                )
+            ],
+            requirements: requirements
+        )
+
+        XCTAssertEqual(result.coveredRequiredNodeIDs, ["assistant-queue-edit-reason"])
+        XCTAssertEqual(result.findings.map(\.kind), [.missingRequiredNode])
+        XCTAssertEqual(result.findings.first?.nodeID, "assistant-queue-edit")
+    }
+
+    func testAuditDoesNotReuseOneConcreteNodeForRepeatedRequirements() {
+        let result = AccessibilityFocusPathAudit().audit(
+            nodes: [
+                node("shared-required-node", role: .group, label: "Shared landmark")
+            ],
+            requirements: AccessibilityFocusPathRequirement(
+                requiredNodeIDs: ["shared-required-node", "shared-required-node"]
+            )
+        )
+
+        XCTAssertEqual(result.coveredRequiredNodeIDs, ["shared-required-node"])
+        XCTAssertEqual(result.findings.map(\.kind), [.missingRequiredNode])
+        XCTAssertEqual(result.findings.first?.nodeID, "shared-required-node")
+    }
+
+    func testApprovalFlowReportsWrongRequiredRoles() {
+        let wrongRoleNodes = approvalFlowNodes(
+            primaryID: "assistant-queue-approve-role-check",
+            primaryLabel: "Approve",
+            includesEditPath: true
+        ).map { node -> AccessibilityNodeSnapshot in
+            var changedNode = node
+            if node.id == "assistant-queue-approve-role-check" {
+                changedNode.role = .group
+            } else if node.id == "assistant-queue-edit-reason-role-check" {
+                changedNode.role = .button
+            }
+            return changedNode
+        }
+
+        let result = AccessibilityFocusPathAudit().audit(
+            nodes: wrongRoleNodes,
+            requirements: .approvalFlowReview
+        )
+
+        XCTAssertTrue(
+            result.findings.contains {
+                $0.nodeID == "assistant-queue-approve" && $0.kind == .wrongRequiredRole
+            }
+        )
+        XCTAssertTrue(
+            result.findings.contains {
+                $0.nodeID == "assistant-queue-edit-reason" && $0.kind == .wrongRequiredRole
+            }
+        )
+    }
+
+    func testApprovalFlowReportsEmptyRequiredHelpForEveryRequiredHelpControl() {
+        let requirements = AccessibilityFocusPathRequirement.approvalFlowReview
+        let completeNodes = approvalFlowNodes(
+            primaryID: "assistant-queue-approve-help-check",
+            primaryLabel: "Approve",
+            includesEditPath: true
+        )
+
+        for requiredNodeID in requirements.requiredHelpNodeIDs {
+            let nodes = completeNodes.map { node -> AccessibilityNodeSnapshot in
+                let resolvedNodeID = requirements.resolvedDynamicRequiredNodeID(for: node.id)
+                    ?? (requirements.requiredNodeIDs.contains(node.id) ? node.id : nil)
+                guard resolvedNodeID == requiredNodeID else {
+                    return node
+                }
+                var missingHelpNode = node
+                missingHelpNode.help = "   "
+                return missingHelpNode
+            }
+            let result = AccessibilityFocusPathAudit().audit(
+                nodes: nodes,
+                requirements: requirements
+            )
+
+            XCTAssertTrue(
+                result.findings.contains {
+                    $0.nodeID == requiredNodeID && $0.kind == .missingRequiredHelp
+                },
+                "\(requiredNodeID) must report missing required help"
+            )
+        }
+    }
+
     func testPseudoVoiceOverAuditRejectsGenericButtonsWithoutHelp() {
         let result = AccessibilityFocusPathAudit().audit(
             nodes: [
@@ -481,9 +624,10 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
         ]
 
         if includesEditPath {
-            let runtimeSuffix = primaryID.hasPrefix("assistant-queue-approve-")
-                ? "visual-waiting"
-                : "visual-approved"
+            let primaryPrefix = primaryID.hasPrefix("assistant-queue-approve-")
+                ? "assistant-queue-approve-"
+                : "assistant-queue-run-"
+            let runtimeSuffix = String(primaryID.dropFirst(primaryPrefix.count))
             nodes.append(contentsOf: [
                 node(
                     "assistant-queue-more-\(runtimeSuffix)",

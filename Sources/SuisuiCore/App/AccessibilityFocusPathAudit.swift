@@ -40,13 +40,39 @@ public struct AccessibilityNodeSnapshot: Codable, Equatable, Sendable {
 public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
     public var requiredNodeIDs: [String]
     public var dynamicRequiredNodeIDPrefixes: Set<String>
+    public var expectedRolesByNodeID: [String: AccessibilityNodeRole]
+    public var requiredHelpNodeIDs: Set<String>
+    public var dynamicNodeIDGroupAnchor: String?
 
     public init(
         requiredNodeIDs: [String],
-        dynamicRequiredNodeIDPrefixes: Set<String> = []
+        dynamicRequiredNodeIDPrefixes: Set<String> = [],
+        expectedRolesByNodeID: [String: AccessibilityNodeRole] = [:],
+        requiredHelpNodeIDs: Set<String> = [],
+        dynamicNodeIDGroupAnchor: String? = nil
     ) {
         self.requiredNodeIDs = requiredNodeIDs
         self.dynamicRequiredNodeIDPrefixes = dynamicRequiredNodeIDPrefixes
+        self.expectedRolesByNodeID = expectedRolesByNodeID
+        self.requiredHelpNodeIDs = requiredHelpNodeIDs
+        self.dynamicNodeIDGroupAnchor = dynamicNodeIDGroupAnchor
+    }
+
+    func resolvedDynamicRequiredNodeID(for nodeID: String) -> String? {
+        // Longest-prefix ownership prevents nested controls such as edit-reason
+        // from satisfying Edit. Lexical fallback keeps Set iteration from
+        // affecting reporting if future identifiers introduce an equal tie.
+        dynamicRequiredNodeIDPrefixes
+            .filter { prefix in
+                nodeID == prefix || nodeID.hasPrefix("\(prefix)-")
+            }
+            .sorted { lhs, rhs in
+                if lhs.count != rhs.count {
+                    return lhs.count > rhs.count
+                }
+                return lhs < rhs
+            }
+            .first
     }
 
     public static let taskLifecycleAndExecution = AccessibilityFocusPathRequirement(
@@ -144,7 +170,30 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
             "assistant-queue-edit-reason",
             "assistant-queue-edit-save",
             "assistant-queue-edit-cancel"
-        ]
+        ],
+        expectedRolesByNodeID: [
+            "inbox-selected-context": .group,
+            "inbox-action-grid": .group,
+            "review-hub-compact-navigation": .button,
+            "projects-hub-compact-navigation": .button,
+            "assistant-queue-workflow": .group,
+            "assistant-queue-approve": .button,
+            "assistant-queue-more": .button,
+            "assistant-queue-edit": .button,
+            "assistant-queue-edit-reason": .textField,
+            "assistant-queue-edit-save": .button,
+            "assistant-queue-edit-cancel": .button
+        ],
+        requiredHelpNodeIDs: [
+            "review-hub-compact-navigation",
+            "projects-hub-compact-navigation",
+            "assistant-queue-approve",
+            "assistant-queue-more",
+            "assistant-queue-edit",
+            "assistant-queue-edit-save",
+            "assistant-queue-edit-cancel"
+        ],
+        dynamicNodeIDGroupAnchor: "assistant-queue-approve"
     )
 
     public static let approvalFlowExecution = AccessibilityFocusPathRequirement(
@@ -163,7 +212,30 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
             "assistant-queue-edit-reason",
             "assistant-queue-edit-save",
             "assistant-queue-edit-cancel"
-        ]
+        ],
+        expectedRolesByNodeID: [
+            "inbox-selected-context": .group,
+            "inbox-action-grid": .group,
+            "review-hub-compact-navigation": .button,
+            "projects-hub-compact-navigation": .button,
+            "assistant-queue-workflow": .group,
+            "assistant-queue-run": .button,
+            "assistant-queue-more": .button,
+            "assistant-queue-edit": .button,
+            "assistant-queue-edit-reason": .textField,
+            "assistant-queue-edit-save": .button,
+            "assistant-queue-edit-cancel": .button
+        ],
+        requiredHelpNodeIDs: [
+            "review-hub-compact-navigation",
+            "projects-hub-compact-navigation",
+            "assistant-queue-run",
+            "assistant-queue-more",
+            "assistant-queue-edit",
+            "assistant-queue-edit-save",
+            "assistant-queue-edit-cancel"
+        ],
+        dynamicNodeIDGroupAnchor: "assistant-queue-run"
     )
 
     // Failed rows expose Reopen as the safe recovery boundary and no secondary
@@ -175,7 +247,21 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
         ],
         dynamicRequiredNodeIDPrefixes: [
             "assistant-queue-retry"
-        ]
+        ],
+        expectedRolesByNodeID: [
+            "inbox-selected-context": .group,
+            "inbox-action-grid": .group,
+            "review-hub-compact-navigation": .button,
+            "projects-hub-compact-navigation": .button,
+            "assistant-queue-workflow": .group,
+            "assistant-queue-retry": .button
+        ],
+        requiredHelpNodeIDs: [
+            "review-hub-compact-navigation",
+            "projects-hub-compact-navigation",
+            "assistant-queue-retry"
+        ],
+        dynamicNodeIDGroupAnchor: "assistant-queue-retry"
     )
 }
 
@@ -189,6 +275,8 @@ public enum AccessibilityFocusPathFindingKind: String, Codable, Equatable, Senda
     case unlabeledInteractiveNode
     case genericButtonWithoutHelp
     case missingDestructiveConfirmation
+    case wrongRequiredRole
+    case missingRequiredHelp
 }
 
 public struct AccessibilityFocusPathFinding: Codable, Equatable, Sendable {
@@ -260,13 +348,25 @@ public struct AccessibilityFocusPathAudit: Sendable {
         })
         var coveredNodeIDs: [String] = []
         var lastRequiredNodeIndex = -1
+        // One AX target cannot prove two distinct VoiceOver steps even when a
+        // malformed requirement repeats or overlaps identifiers.
+        var usedConcreteNodeIDs = Set<String>()
+        // Approval row controls are rendered per item. Locking their suffix to
+        // the primary action prevents a complete-looking path assembled from
+        // different queue rows.
+        let dynamicNodeIDGroupSuffix = dynamicNodeIDGroupSuffix(
+            requirements: requirements,
+            firstNodeIndexesByID: firstNodeIndexesByID
+        )
 
         for requiredNodeID in requirements.requiredNodeIDs {
             guard let matchedNode = matchedRequiredNode(
                 requiredNodeID,
                 requirements: requirements,
                 nodesByID: nodesByID,
-                firstNodeIndexesByID: firstNodeIndexesByID
+                firstNodeIndexesByID: firstNodeIndexesByID,
+                dynamicNodeIDGroupSuffix: dynamicNodeIDGroupSuffix,
+                usedConcreteNodeIDs: usedConcreteNodeIDs
             ) else {
                 findings.append(AccessibilityFocusPathFinding(
                     kind: .missingRequiredNode,
@@ -276,6 +376,7 @@ public struct AccessibilityFocusPathAudit: Sendable {
                 continue
             }
             let node = matchedNode.node
+            usedConcreteNodeIDs.insert(node.id)
             coveredNodeIDs.append(requiredNodeID)
             if node.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 // Required group/outline nodes such as the project detail region
@@ -286,6 +387,22 @@ public struct AccessibilityFocusPathAudit: Sendable {
                     kind: .unlabeledRequiredNode,
                     nodeID: requiredNodeID,
                     message: "Required accessibility node \(requiredNodeID) needs a label."
+                ))
+            }
+            if let expectedRole = requirements.expectedRolesByNodeID[requiredNodeID],
+               node.role != expectedRole {
+                findings.append(AccessibilityFocusPathFinding(
+                    kind: .wrongRequiredRole,
+                    nodeID: requiredNodeID,
+                    message: "Required accessibility node \(requiredNodeID) must use role \(expectedRole.rawValue), not \(node.role.rawValue)."
+                ))
+            }
+            if requirements.requiredHelpNodeIDs.contains(requiredNodeID),
+               node.help.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                findings.append(AccessibilityFocusPathFinding(
+                    kind: .missingRequiredHelp,
+                    nodeID: requiredNodeID,
+                    message: "Required accessibility node \(requiredNodeID) needs help text."
                 ))
             }
             if matchedNode.index < lastRequiredNodeIndex {
@@ -319,15 +436,33 @@ public struct AccessibilityFocusPathAudit: Sendable {
         _ requiredNodeID: String,
         requirements: AccessibilityFocusPathRequirement,
         nodesByID: [String: AccessibilityNodeSnapshot],
-        firstNodeIndexesByID: [String: Int]
+        firstNodeIndexesByID: [String: Int],
+        dynamicNodeIDGroupSuffix: String?,
+        usedConcreteNodeIDs: Set<String>
     ) -> (node: AccessibilityNodeSnapshot, index: Int)? {
-        if let node = nodesByID[requiredNodeID],
-           let index = firstNodeIndexesByID[requiredNodeID] {
+        guard requirements.dynamicRequiredNodeIDPrefixes.contains(requiredNodeID) else {
+            guard !usedConcreteNodeIDs.contains(requiredNodeID),
+                  let node = nodesByID[requiredNodeID],
+                  let index = firstNodeIndexesByID[requiredNodeID] else {
+                return nil
+            }
             return (node, index)
         }
 
-        guard requirements.dynamicRequiredNodeIDPrefixes.contains(requiredNodeID) else {
-            return nil
+        if requirements.dynamicNodeIDGroupAnchor != nil {
+            // A configured group without a concrete anchor suffix is treated as
+            // uncovered; unrelated rows must not substitute for the anchor.
+            guard let dynamicNodeIDGroupSuffix else {
+                return nil
+            }
+            let concreteNodeID = "\(requiredNodeID)-\(dynamicNodeIDGroupSuffix)"
+            guard !usedConcreteNodeIDs.contains(concreteNodeID),
+                  requirements.resolvedDynamicRequiredNodeID(for: concreteNodeID) == requiredNodeID,
+                  let node = nodesByID[concreteNodeID],
+                  let index = firstNodeIndexesByID[concreteNodeID] else {
+                return nil
+            }
+            return (node, index)
         }
 
         // Runtime SwiftUI AX identifiers include the task id for repeated peer
@@ -335,11 +470,8 @@ public struct AccessibilityFocusPathAudit: Sendable {
         // dynamic card cannot weaken exact matching for unrelated required ids.
         return firstNodeIndexesByID
             .filter { nodeID, _ in
-                matchesDynamicRequiredNodeID(
-                    nodeID,
-                    requiredNodeID: requiredNodeID,
-                    requirements: requirements
-                )
+                !usedConcreteNodeIDs.contains(nodeID)
+                    && requirements.resolvedDynamicRequiredNodeID(for: nodeID) == requiredNodeID
             }
             .min { lhs, rhs in lhs.value < rhs.value }
             .flatMap { nodeID, index in
@@ -347,23 +479,26 @@ public struct AccessibilityFocusPathAudit: Sendable {
             }
     }
 
-    private func matchesDynamicRequiredNodeID(
-        _ nodeID: String,
-        requiredNodeID: String,
-        requirements: AccessibilityFocusPathRequirement
-    ) -> Bool {
-        guard nodeID.hasPrefix("\(requiredNodeID)-") else {
-            return false
+    private func dynamicNodeIDGroupSuffix(
+        requirements: AccessibilityFocusPathRequirement,
+        firstNodeIndexesByID: [String: Int]
+    ) -> String? {
+        guard let anchor = requirements.dynamicNodeIDGroupAnchor else {
+            return nil
         }
-
-        // Some queue action prefixes are nested (for example, edit and
-        // edit-reason). Assign a runtime id to its most specific requirement
-        // so an edit field cannot masquerade as the missing Edit button.
-        return !requirements.dynamicRequiredNodeIDPrefixes.contains { candidatePrefix in
-            candidatePrefix != requiredNodeID
-                && candidatePrefix.hasPrefix("\(requiredNodeID)-")
-                && nodeID.hasPrefix("\(candidatePrefix)-")
+        let anchorPrefix = "\(anchor)-"
+        let concreteAnchorNodeID = firstNodeIndexesByID
+            .filter { nodeID, _ in
+                nodeID.hasPrefix(anchorPrefix)
+                    && nodeID.count > anchorPrefix.count
+                    && requirements.resolvedDynamicRequiredNodeID(for: nodeID) == anchor
+            }
+            .min(by: { lhs, rhs in lhs.value < rhs.value })?
+            .key
+        guard let concreteAnchorNodeID else {
+            return nil
         }
+        return String(concreteAnchorNodeID.dropFirst(anchorPrefix.count))
     }
 
     private func nodeFindings(
