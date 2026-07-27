@@ -50,6 +50,7 @@ private struct InspectorCloseButton: View {
 struct ProjectInspectorView: View {
     let project: ProjectBoardProject
     @ObservedObject var viewModel: ProjectBoardViewModel
+    let developmentTaskID: Int64?
     let onReviewDevelopmentAutomation: (ActionPlan) -> Void
     let onClose: () -> Void
 
@@ -61,11 +62,13 @@ struct ProjectInspectorView: View {
     init(
         project: ProjectBoardProject,
         viewModel: ProjectBoardViewModel,
+        developmentTaskID: Int64?,
         onReviewDevelopmentAutomation: @escaping (ActionPlan) -> Void,
         onClose: @escaping () -> Void
     ) {
         self.project = project
         self.viewModel = viewModel
+        self.developmentTaskID = developmentTaskID
         self.onReviewDevelopmentAutomation = onReviewDevelopmentAutomation
         self.onClose = onClose
         _title = State(initialValue: project.title)
@@ -144,6 +147,7 @@ struct ProjectInspectorView: View {
                 ProjectDevelopmentAutomationPanel(
                     project: project,
                     viewModel: viewModel,
+                    developmentTaskID: developmentTaskID,
                     onReviewDevelopmentAutomation: onReviewDevelopmentAutomation
                 )
             }
@@ -336,6 +340,7 @@ struct ProjectInspectorView: View {
 private struct ProjectDevelopmentAutomationPanel: View {
     let project: ProjectBoardProject
     @ObservedObject var viewModel: ProjectBoardViewModel
+    let developmentTaskID: Int64?
     let onReviewDevelopmentAutomation: (ActionPlan) -> Void
 
     @State private var pullRequestDraftKey: String?
@@ -350,8 +355,15 @@ private struct ProjectDevelopmentAutomationPanel: View {
     @State private var repositoryEditExpectedSHA256 = ""
     @State private var repositoryEditContents = ""
 
+    private var developmentTask: ProjectBoardTask? {
+        guard let developmentTaskID else {
+            return nil
+        }
+        return project.tasks.first { $0.id == developmentTaskID }
+    }
+
     private var readiness: ProjectDevelopmentAutomationReadiness {
-        viewModel.developmentAutomationReadiness(for: project, task: viewModel.selectedTask)
+        viewModel.developmentAutomationReadiness(for: project, task: developmentTask)
     }
 
     private func repositoryRelativePath(for url: URL) -> String {
@@ -368,11 +380,11 @@ private struct ProjectDevelopmentAutomationPanel: View {
     }
 
     private var developmentProgress: ProjectDevelopmentAutomationProgress {
-        viewModel.developmentAutomationProgress(for: project, task: viewModel.selectedTask)
+        viewModel.developmentAutomationProgress(for: project, task: developmentTask)
     }
 
     private var pullRequestDraft: ProjectDevelopmentPullRequestCreationDraft? {
-        viewModel.developmentPullRequestCreationDraft(for: project, task: viewModel.selectedTask)
+        viewModel.developmentPullRequestCreationDraft(for: project, task: developmentTask)
     }
 
     var body: some View {
@@ -392,6 +404,11 @@ private struct ProjectDevelopmentAutomationPanel: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            if let developmentTask {
+                LabeledContent("Development Task", value: developmentTask.title)
+                    .accessibilityIdentifier("project-development-automation-task")
+            }
+
             if let branchNamePreview = readiness.branchNamePreview {
                 LabeledContent("Branch Preview", value: branchNamePreview)
                     .textSelection(.enabled)
@@ -403,7 +420,7 @@ private struct ProjectDevelopmentAutomationPanel: View {
                 .textSelection(.enabled)
 
             Button {
-                guard let plan = viewModel.prepareDevelopmentAutomationReview(for: project, task: viewModel.selectedTask) else {
+                guard let plan = viewModel.prepareDevelopmentAutomationReview(for: project, task: developmentTask) else {
                     return
                 }
                 onReviewDevelopmentAutomation(plan)
@@ -416,7 +433,7 @@ private struct ProjectDevelopmentAutomationPanel: View {
             .accessibilityHint("Opens an approval-gated review for preparing a local development branch.")
 
             Button {
-                _ = viewModel.enqueueDevelopmentAutomationReview(for: project, task: viewModel.selectedTask)
+                _ = viewModel.enqueueDevelopmentAutomationReview(for: project, task: developmentTask)
             } label: {
                 Label("Queue branch automation", systemImage: "tray.and.arrow.down")
             }
@@ -482,7 +499,7 @@ private struct ProjectDevelopmentAutomationPanel: View {
                 Button {
                     _ = viewModel.enqueueDevelopmentRepositoryEditReview(
                         for: project,
-                        task: viewModel.selectedTask,
+                        task: developmentTask,
                         operation: repositoryEditOperation,
                         relativePath: repositoryEditRelativePath,
                         contents: repositoryEditContents,
@@ -498,7 +515,7 @@ private struct ProjectDevelopmentAutomationPanel: View {
             }
 
             Button {
-                _ = viewModel.enqueueDevelopmentVerificationReview(for: project, task: viewModel.selectedTask)
+                _ = viewModel.enqueueDevelopmentVerificationReview(for: project, task: developmentTask)
             } label: {
                 Label("Queue verification review", systemImage: "checkmark.shield")
             }
@@ -523,7 +540,7 @@ private struct ProjectDevelopmentAutomationPanel: View {
                 Button {
                     _ = viewModel.enqueueDevelopmentCommitReview(
                         for: project,
-                        task: viewModel.selectedTask,
+                        task: developmentTask,
                         relativePathsText: commitRelativePaths,
                         commitMessage: commitMessage
                     )
@@ -538,7 +555,7 @@ private struct ProjectDevelopmentAutomationPanel: View {
             .onAppear {
                 syncCommitDraftIfNeeded()
             }
-            .onChange(of: viewModel.selectedTask?.id) { _, _ in
+            .onChange(of: developmentTask?.id) { _, _ in
                 syncCommitDraftIfNeeded()
             }
             .onChange(of: readiness.branchNamePreview) { _, _ in
@@ -546,7 +563,7 @@ private struct ProjectDevelopmentAutomationPanel: View {
             }
 
             Button {
-                _ = viewModel.enqueueDevelopmentPushReview(for: project, task: viewModel.selectedTask)
+                _ = viewModel.enqueueDevelopmentPushReview(for: project, task: developmentTask)
             } label: {
                 Label("Queue branch push review", systemImage: "arrow.up.circle")
             }
@@ -558,7 +575,7 @@ private struct ProjectDevelopmentAutomationPanel: View {
             Button {
                 _ = viewModel.enqueueDevelopmentPullRequestCreationReview(
                     for: project,
-                    task: viewModel.selectedTask
+                    task: developmentTask
                 )
             } label: {
                 Label("Queue pull request creation review", systemImage: "arrow.up.right.square")
@@ -595,7 +612,7 @@ private struct ProjectDevelopmentAutomationPanel: View {
                     Button {
                         _ = viewModel.enqueueDevelopmentPullRequestCreationReview(
                             for: project,
-                            task: viewModel.selectedTask,
+                            task: developmentTask,
                             baseBranch: pullRequestBaseBranch,
                             title: pullRequestTitle,
                             body: pullRequestBody
@@ -743,7 +760,7 @@ private struct ProjectDevelopmentAutomationPanel: View {
                     Button {
                         _ = viewModel.enqueueDevelopmentPullRequestLifecycleReview(
                             for: project,
-                            task: viewModel.selectedTask,
+                            task: developmentTask,
                             operation: .reviewGate
                         )
                     } label: {
@@ -757,7 +774,7 @@ private struct ProjectDevelopmentAutomationPanel: View {
                     Button {
                         _ = viewModel.enqueueDevelopmentPullRequestLifecycleReview(
                             for: project,
-                            task: viewModel.selectedTask,
+                            task: developmentTask,
                             operation: .merge
                         )
                     } label: {
@@ -881,7 +898,7 @@ private struct ProjectDevelopmentAutomationPanel: View {
     private var repositoryEditPreview: ProjectDevelopmentAutomationApprovalPreview? {
         viewModel.developmentRepositoryEditPreview(
             for: project,
-            task: viewModel.selectedTask,
+            task: developmentTask,
             operation: repositoryEditOperation,
             relativePath: repositoryEditRelativePath,
             contents: repositoryEditContents,
@@ -901,7 +918,7 @@ private struct ProjectDevelopmentAutomationPanel: View {
     }
 
     private func syncCommitDraftIfNeeded() {
-        guard let task = viewModel.selectedTask,
+        guard let task = developmentTask,
               let branchName = readiness.branchNamePreview else {
             return
         }

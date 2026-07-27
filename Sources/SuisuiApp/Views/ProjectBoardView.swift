@@ -86,6 +86,7 @@ struct ProjectBoardView: View {
     @State private var projectBoardWindowWidth: CGFloat = 0
     @State private var allowsCompactInspectorPresentation = false
     @State private var isCompactInspectorSheetPresented = false
+    @State private var projectInspectorDevelopmentTaskID: Int64?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var toolbarLayoutRefreshToken = 0
     @State private var isTerminalPanelPresented = false
@@ -797,6 +798,7 @@ struct ProjectBoardView: View {
                 ProjectInspectorView(
                     project: project,
                     viewModel: viewModel,
+                    developmentTaskID: projectInspectorDevelopmentTaskID,
                     onReviewDevelopmentAutomation: presentDevelopmentAutomationReview,
                     onClose: dismissInspector
                 )
@@ -829,6 +831,10 @@ struct ProjectBoardView: View {
     }
 
     private func openProjectInspector() {
+        // Project and task details are mutually exclusive inspector surfaces,
+        // but development automation still needs the task the user was acting
+        // on. Preserve only that context before changing the rendered surface.
+        projectInspectorDevelopmentTaskID = viewModel.selectedTaskID
         viewModel.selectedTaskID = nil
         requestInspectorPresentation()
     }
