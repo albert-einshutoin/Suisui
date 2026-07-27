@@ -109,44 +109,42 @@ private struct FixtureDefinition {
     let id: String
     let planID: String
     let actionID: String
-    let title: String
-    let reason: String
 }
 
 private let waitingFixture = FixtureDefinition(
     id: "visual-waiting",
     planID: "visual-plan-waiting",
-    actionID: "visual-action-waiting",
-    title: "Create launch review task",
-    reason: "Review this local task draft before approval."
+    actionID: "visual-action-waiting"
 )
 
 private let approvedFixture = FixtureDefinition(
     id: "visual-approved",
     planID: "visual-plan-approved",
-    actionID: "visual-action-approved",
-    title: "Create approved follow-up task",
-    reason: "Approved local task draft is ready to run."
+    actionID: "visual-action-approved"
 )
 
 private let failedFixture = FixtureDefinition(
     id: "visual-failed",
     planID: "visual-plan-failed",
-    actionID: "visual-action-failed",
-    title: "Create retry review task",
-    reason: "Failed local task draft is available for recovery review."
+    actionID: "visual-action-failed"
 )
 
 private func waitingItem(for fixture: FixtureDefinition) -> AssistantQueueItem {
     let plan = ActionPlan(
         id: fixture.planID,
-        userInput: fixture.title,
-        summary: fixture.title,
+        userInput: "Prepare local visual evidence",
+        summary: "Prepare local visual evidence",
         actions: [
             PlanAction(
                 id: fixture.actionID,
                 tool: .taskCreate,
-                arguments: ["title": .string(fixture.title)],
+                // All visual states intentionally share one inert local action.
+                // This isolates state presentation from payload wording and
+                // proves that captures never exercise an external connector.
+                arguments: [
+                    "title": .string("Review local visual evidence"),
+                    "detail": .string("Visual fixture only; no external connector is invoked.")
+                ],
                 riskLevel: .write
             )
         ],
@@ -157,7 +155,7 @@ private func waitingItem(for fixture: FixtureDefinition) -> AssistantQueueItem {
         actionPlan: plan,
         sourceTranscript: nil,
         interpretationSummary: "Local visual evidence task draft.",
-        reason: fixture.reason
+        reason: "Review this local visual fixture before approval."
     )
     // The adapter owns every approval-related field. Only the fixture identity
     // is replaced so captures can address stable rows without hand-building

@@ -104,14 +104,123 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
         )
     }
 
+    func testVisualFixtureSeederPersistsExactInertApprovalStatesWithoutDuplicates() throws {
+        let packageRoot = packageRoot()
+        let fixtureDirectory = packageRoot
+            .appendingPathComponent(".build/test-visual-fixture-seeder-\(UUID().uuidString)", isDirectory: true)
+        let evidenceHome = fixtureDirectory.appendingPathComponent("home", isDirectory: true)
+        let databaseURL = evidenceHome.appendingPathComponent("Library/Application Support/Suisui/suisui.sqlite")
+        try FileManager.default.createDirectory(at: evidenceHome, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let seederURL = packageRoot
+            .appendingPathComponent(".build/debug/SuisuiVisualFixtureSeeder")
+        XCTAssertTrue(
+            FileManager.default.isExecutableFile(atPath: seederURL.path),
+            "build SuisuiVisualFixtureSeeder before running its persistence integration test"
+        )
+
+        for _ in 0..<2 {
+            let seed = try runTool([
+                seederURL.path,
+                "--database",
+                databaseURL.path,
+                "--evidence-home",
+                evidenceHome.path
+            ])
+            XCTAssertEqual(seed.exitCode, 0, seed.output)
+        }
+
+        let store = try SQLiteAssistantQueueStore(path: databaseURL.path)
+        let items = try store.list(filter: .all(limit: 100))
+        let itemsByID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+        XCTAssertEqual(Set(itemsByID.keys), ["visual-waiting", "visual-approved", "visual-failed"])
+        XCTAssertEqual(items.count, 3, "rerunning the seeder must update stable rows, not append duplicates")
+        XCTAssertEqual(itemsByID["visual-waiting"]?.state, .waitingReview)
+        XCTAssertEqual(itemsByID["visual-approved"]?.state, .approved)
+        XCTAssertEqual(itemsByID["visual-failed"]?.state, .failed)
+
+        var planIDs = Set<String>()
+        var actionIDs = Set<String>()
+        for item in items {
+            guard case .actionPlan(let plan) = item.payload else {
+                XCTFail("\(item.id) must persist an action-plan payload")
+                continue
+            }
+            let action = try XCTUnwrap(plan.actions.first)
+            XCTAssertEqual(plan.actions.count, 1)
+            XCTAssertEqual(plan.userInput, "Prepare local visual evidence")
+            XCTAssertEqual(plan.summary, "Prepare local visual evidence")
+            XCTAssertEqual(plan.riskLevel, .write)
+            XCTAssertTrue(plan.requiresApproval)
+            XCTAssertEqual(action.tool, .taskCreate)
+            XCTAssertEqual(action.arguments, [
+                "title": .string("Review local visual evidence"),
+                "detail": .string("Visual fixture only; no external connector is invoked.")
+            ])
+            XCTAssertEqual(action.riskLevel, .write)
+            XCTAssertFalse(action.requiresUserConfirmation)
+            XCTAssertEqual(item.riskLevel, .write)
+            XCTAssertEqual(item.reviewReason, "Review this local visual fixture before approval.")
+            XCTAssertEqual(item.interpretationSummary, "Local visual evidence task draft.")
+            planIDs.insert(plan.id)
+            actionIDs.insert(action.id)
+        }
+        XCTAssertEqual(planIDs.count, 3, "only stable plan IDs may differ between fixture payloads")
+        XCTAssertEqual(actionIDs.count, 3, "only stable action IDs may differ between fixture payloads")
+
+        XCTAssertNil(itemsByID["visual-waiting"]?.approval)
+        for id in ["visual-approved", "visual-failed"] {
+            let item = try XCTUnwrap(itemsByID[id])
+            let fingerprint = try XCTUnwrap(item.approval?.reviewedContentFingerprint)
+            XCTAssertEqual(fingerprint.count, 64)
+            XCTAssertTrue(fingerprint.allSatisfy(\.isHexDigit))
+            XCTAssertTrue(AssistantQueueStateMachine.hasCurrentApproval(item))
+        }
+
+        let rowsByID = Dictionary(
+            uniqueKeysWithValues: try store.readModelSnapshot(filter: .all(limit: 100)).rows.map { ($0.id, $0) }
+        )
+        XCTAssertEqual(
+            AssistantQueueRowActionPresentation.make(for: try XCTUnwrap(rowsByID["visual-waiting"])).primaryAction,
+            .approve
+        )
+        XCTAssertEqual(
+            AssistantQueueRowActionPresentation.make(for: try XCTUnwrap(rowsByID["visual-approved"])).primaryAction,
+            .run
+        )
+        XCTAssertEqual(
+            AssistantQueueRowActionPresentation.make(for: try XCTUnwrap(rowsByID["visual-failed"])).primaryAction,
+            .reopen
+        )
+    }
+
     private func visualManifest(named fileName: String) throws -> [String: Any] {
-        let packageRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let packageRoot = packageRoot()
         let data = try Data(
             contentsOf: packageRoot.appendingPathComponent("docs/quality/\(fileName)")
         )
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    private func packageRoot() -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+    }
+
+    private func runTool(_ arguments: [String]) throws -> (exitCode: Int32, output: String) {
+        let process = Process()
+        let pipe = Pipe()
+        process.executableURL = URL(fileURLWithPath: arguments[0])
+        process.arguments = Array(arguments.dropFirst())
+        process.currentDirectoryURL = packageRoot()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        try process.run()
+        process.waitUntilExit()
+        let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        return (process.terminationStatus, output)
     }
 }
