@@ -17,7 +17,9 @@ SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/check_au
 
 Use the latest action summary for the current release-candidate source commit and generated helper paths. Use `Release candidate product source commit`, not the action summary `Source commit`, when filling manual VoiceOver or competitor evidence. The release-candidate source commit can intentionally differ from HEAD when only docs, tests, or release scripts changed after the product source was built.
 
-Use this runbook after `release_readiness_report.sh` is green for automated gates and still reports manual/release-machine blockers. Do not hand-edit passed evidence. The release report rejects hand-written pass files and stale source commits. Run `--validate-only` before writing tracked evidence, then rerun readiness with the current automated preflight evidence.
+Use this runbook after `release_readiness_report.sh` is green for automated gates and still reports manual/release-machine blockers or Product Research advisories. Do not hand-edit passed evidence. The release report rejects hand-written pass files and stale source commits. Run `--validate-only` before writing tracked evidence, then rerun readiness with the current automated preflight evidence.
+
+Competitor hands-on remains advisory for Public Alpha readiness. Missing, malformed, or stale competitor evidence is reported explicitly and keeps Product Research incomplete, but it does not turn an otherwise trustworthy signed Public Alpha into a blocking failure. Manual VoiceOver, signing, notarization, Sparkle, Gatekeeper, security, runtime, and data-integrity failures remain blocking.
 
 Do not ask an LLM, automation, or a generated action summary to create passed evidence for manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, Gatekeeper, clean install, or Launch at Login checks without the real pass. Generated helpers can route the work, but only concrete observations from the real release-candidate app or signed release artifact can unblock these lanes.
 
@@ -183,7 +185,7 @@ Verification:
 SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/release_readiness_report.sh
 ```
 
-Commit only after the competitor section is green:
+Commit only after the competitor advisory is complete:
 
 ```bash
 git add docs/release/evidence/competitor-hands-on.md docs/product/competitor-benchmark.md

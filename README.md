@@ -109,6 +109,7 @@ Advanced connector and MCP foundations are present, but support depends on the c
 - AI-backed features require your provider credentials and network access.
 - Developer ID signing, notarization, and Sparkle publishing require release-machine credentials.
 - Automated accessibility checks do not replace the manual VoiceOver pass required for each release candidate.
+- Competitor hands-on research is advisory for Public Alpha readiness. Pending research is reported as `ready_with_advisories`; it does not replace or weaken distribution, security, runtime, data-integrity, or accessibility gates.
 
 Implementation complete, runtime verified, and release ready are separate states. See the [Release Checklist](docs/release/checklist.md) for the current gates and remaining manual work.
 
