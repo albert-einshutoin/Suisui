@@ -43,6 +43,8 @@
 - `Tests/SuisuiCoreTests/SuisuiHarnessTests.swift`
 - `script/check_pseudo_voiceover_paths.sh`
 - `script/capture_ui_evidence.sh`
+- `script/check_ci_visual_gate.sh`
+- `script/check_visual_regression_smoke.sh`
 - `docs/quality/visual-baseline-manifest.json`
 - `docs/quality/visual-baselines.md`
 
@@ -1450,6 +1452,8 @@ git commit -m "test: enforce approval flow accessibility"
 - Modify: `Package.swift`
 - Create: `Sources/SuisuiVisualFixtureSeeder/main.swift`
 - Modify: `script/capture_ui_evidence.sh`
+- Modify: `script/check_ci_visual_gate.sh`
+- Modify: `script/check_visual_regression_smoke.sh`
 - Modify: `docs/quality/visual-baseline-manifest.json`
 - Create: `docs/quality/visual-baseline-manifest-ja.json`
 - Modify: `docs/quality/visual-baselines.md`
@@ -1706,6 +1710,17 @@ swift test --filter testApprovalFlowScreensExistInBothLocaleManifests
 
 Expected: tests pass and dry-run validates both manifest/capture contracts without product mutation.
 
+Also update the normal CI path to the 39-artifact contract:
+
+- `check_ci_visual_gate.sh` uses one `EXPECTED_SCREENSHOT_COUNT=39` constant for
+  manifest validation, capture validation, and summary output;
+- `check_visual_regression_smoke.sh` derives its default source commit from
+  `Sources`, `Package.swift`, and `script/capture_ui_evidence.sh`, exactly like
+  the capture/receipt provenance contract.
+
+Add source-contract tests for both points and run English/Japanese visual smoke
+without a current-source override so the default provenance path is exercised.
+
 - [ ] **Step 7: Commit source before live capture**
 
 The capture script rejects dirty product sources. Commit the script, tests, and manifests before capture:
@@ -1714,6 +1729,8 @@ The capture script rejects dirty product sources. Commit the script, tests, and 
 git add Package.swift \
   Sources/SuisuiVisualFixtureSeeder/main.swift \
   script/capture_ui_evidence.sh \
+  script/check_ci_visual_gate.sh \
+  script/check_visual_regression_smoke.sh \
   docs/quality/visual-baseline-manifest.json \
   docs/quality/visual-baseline-manifest-ja.json \
   docs/quality/visual-baselines.md \
