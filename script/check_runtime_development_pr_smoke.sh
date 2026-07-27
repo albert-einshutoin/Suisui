@@ -369,7 +369,7 @@ launch_app_for_development_detail() {
   # the seeded task selection and reveal the project automation controls via
   # the same header button before each project-detail runtime step.
   pressButtonContainingBounded "project-header-open-inspector"
-  scrollProjectDetailDown
+  revealProjectAutomationControls
 }
 
 launch_app_for_project_directory_picker() {
@@ -660,6 +660,40 @@ APPLESCRIPT
     wait_for_visible_windows >/dev/null 2>&1 || true
     sleep 1
   done
+}
+
+revealProjectAutomationControls() {
+  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    if not (exists process appName) then error appName & " process is unavailable"
+    tell process appName
+      if not (exists window 1) then error appName & " window is unavailable"
+      set frontmost to true
+      repeat with currentSheet in sheets of window 1
+        set sheetItems to entire contents of currentSheet
+        repeat with sheetItem in sheetItems
+          set itemIdentifier to ""
+          try
+            set itemIdentifier to value of attribute "AXIdentifier" of sheetItem as text
+          end try
+          if itemIdentifier is "project-inspector-title" then
+            set focused of sheetItem to true
+            repeat 6 times
+                key code 48
+                delay 0.1
+            end repeat
+            return
+          end if
+        end repeat
+      end repeat
+    end tell
+  end tell
+  error "project inspector title field is unavailable"
+end run
+APPLESCRIPT
+  sleep 1
 }
 
 scrollProjectDetailDown() {

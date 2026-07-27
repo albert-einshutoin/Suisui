@@ -6371,13 +6371,16 @@ final class ReleasePipelineTests: XCTestCase {
             )
         )
         let revealAutomationControls = try XCTUnwrap(
-            detailLaunchSource.range(of: "scrollProjectDetailDown")
+            detailLaunchSource.range(of: "revealProjectAutomationControls")
         )
         XCTAssertLessThan(
             openAutomationInspector.lowerBound,
             revealAutomationControls.lowerBound,
             "The runtime flow must reveal the lower automation controls after opening the inspector."
         )
+        XCTAssertTrue(script.contains("revealProjectAutomationControls() {"))
+        XCTAssertTrue(script.contains("itemIdentifier is \"project-inspector-title\""))
+        XCTAssertTrue(script.contains("repeat 6 times\n                key code 48"))
         let scrollHelperStart = try XCTUnwrap(
             script.range(of: "scrollProjectDetailDown() {")
         )
