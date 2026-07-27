@@ -2000,3 +2000,14 @@
 "Retry Global Shortcut" = "グローバルショートカットを再試行";
 "Quit or rebind the other app, then retry. The in-app shortcut keeps working meanwhile." = "競合しているアプリを終了するか割り当てを変更してから再試行してください。その間もアプリ内ショートカットは使えます。";
 "Retry after checking macOS keyboard settings. The in-app shortcut keeps working meanwhile." = "macOSのキーボード設定を確認してから再試行してください。その間もアプリ内ショートカットは使えます。";
+
+/* Approval flow context and stage-aware controls. */
+"Selected Item" = "選択中の項目";
+"Select an Inbox item to classify." = "分類する受信箱の項目を選択してください。";
+"Smart List Not Found" = "スマートリストが見つかりません";
+"Transcript failed" = "文字起こしに失敗";
+"Transcript pending" = "文字起こし待ち";
+"AI interpreted" = "AI解釈済み";
+"More Assistant Queue actions" = "Assistant Queueのその他の操作";
+"Choose Review destination." = "レビューの移動先を選択します。";
+"Choose Project destination." = "プロジェクトの移動先を選択します。";

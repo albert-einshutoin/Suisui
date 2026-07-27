@@ -169,6 +169,64 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(block.contains("projects-hub-compact-add-project"))
     }
 
+    func testCompactHubLabelsUseTypedPresentationAndPreserveDestinationParity() throws {
+        let review = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift")
+        let projects = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift")
+
+        let reviewCompactStart = try XCTUnwrap(
+            review.range(of: "private var compactNavigation")
+        )
+        let reviewCompactEnd = try XCTUnwrap(
+            review.range(
+                of: "private func compactDestination",
+                range: reviewCompactStart.upperBound..<review.endIndex
+            )
+        )
+        let reviewCompact = String(
+            review[reviewCompactStart.lowerBound..<reviewCompactEnd.lowerBound]
+        )
+        let projectsCompactStart = try XCTUnwrap(
+            projects.range(of: "private var compactNavigation")
+        )
+        let projectsCompactEnd = try XCTUnwrap(
+            projects.range(
+                of: "private var selectedCustomSmartList",
+                range: projectsCompactStart.upperBound..<projects.endIndex
+            )
+        )
+        let projectsCompact = String(
+            projects[projectsCompactStart.lowerBound..<projectsCompactEnd.lowerBound]
+        )
+
+        XCTAssertTrue(
+            reviewCompact.contains("ProjectBoardCompactNavigationPresentation.review(")
+        )
+        XCTAssertTrue(
+            projectsCompact.contains("ProjectBoardCompactNavigationPresentation.projects(")
+        )
+        XCTAssertTrue(reviewCompact.contains("compactLabel(presentation)"))
+        XCTAssertTrue(projectsCompact.contains("compactLabel(presentation)"))
+        XCTAssertTrue(reviewCompact.contains("case .localized"))
+        XCTAssertTrue(reviewCompact.contains("case .verbatim"))
+        XCTAssertTrue(projectsCompact.contains("case .localized"))
+        XCTAssertTrue(projectsCompact.contains("case .verbatim"))
+        XCTAssertTrue(reviewCompact.contains(".help(\"Choose Review destination.\")"))
+        XCTAssertTrue(projectsCompact.contains(".help(\"Choose Project destination.\")"))
+        XCTAssertTrue(reviewCompact.contains("\"%d item needs attention\""))
+        XCTAssertTrue(reviewCompact.contains("\"%d items need attention\""))
+        XCTAssertFalse(reviewCompact.contains("Label(\"Choose Review View\""))
+        XCTAssertFalse(projectsCompact.contains("Label(\"Choose Project View\""))
+
+        for identifier in [
+            "review-hub-compact-destination-schedule",
+            "review-hub-compact-destination-completed",
+            "review-hub-compact-destination-automation-activity",
+            "review-hub-compact-destination-assistant-queue"
+        ] {
+            XCTAssertTrue(review.contains(identifier))
+        }
+    }
+
     func testProjectsAndReviewHubsExposeRelocatedDestinations() throws {
         let projectsSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift"
@@ -541,12 +599,6 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("viewModel.editAssistantQueueItem("))
         XCTAssertTrue(workflowSource.contains("viewModel.retryAssistantQueueItem(id: row.id)"))
         XCTAssertTrue(workflowSource.contains("viewModel.rejectAssistantQueueItem(id: row.id)"))
-        XCTAssertTrue(workflowSource.contains(".disabled(!row.canRun)"))
-        XCTAssertTrue(workflowSource.contains(".disabled(!row.canApprove)"))
-        XCTAssertTrue(workflowSource.contains(".disabled(!row.canDefer)"))
-        XCTAssertTrue(workflowSource.contains(".disabled(!row.canEdit)"))
-        XCTAssertTrue(workflowSource.contains(".disabled(!row.canRetry)"))
-        XCTAssertTrue(workflowSource.contains(".disabled(!row.canReject)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-run-\\(row.id)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-edit-\\(row.id)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-edit-reason-\\(row.id)\")"))
@@ -586,6 +638,130 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("public func rejectSelectedAssistantQueueItems() -> Bool"))
     }
 
+    func testAssistantQueueRowUsesStageSpecificPrimaryActionAndSecondaryMenu() throws {
+        let source = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectWorkflowAssistantQueueView.swift"
+        )
+
+        let rowStart = try XCTUnwrap(source.range(of: "private struct AssistantQueueRow"))
+        let rowEnd = try XCTUnwrap(
+            source.range(
+                of: "private struct AssistantQueueReceiptSummaryView",
+                range: rowStart.upperBound..<source.endIndex
+            )
+        )
+        let rowSource = String(source[rowStart.lowerBound..<rowEnd.lowerBound])
+        let bodyStart = try XCTUnwrap(rowSource.range(of: "var body: some View"))
+        let presentationStart = try XCTUnwrap(
+            rowSource.range(
+                of: "private var actionPresentation",
+                range: bodyStart.upperBound..<rowSource.endIndex
+            )
+        )
+        let bodySource = String(
+            rowSource[bodyStart.lowerBound..<presentationStart.lowerBound]
+        )
+        let primaryStart = try XCTUnwrap(
+            rowSource.range(
+                of: "private func primaryAction(",
+                range: presentationStart.upperBound..<rowSource.endIndex
+            )
+        )
+        let secondaryStart = try XCTUnwrap(
+            rowSource.range(
+                of: "private func secondaryAction(",
+                range: primaryStart.upperBound..<rowSource.endIndex
+            )
+        )
+        let primarySource = String(
+            rowSource[primaryStart.lowerBound..<secondaryStart.lowerBound]
+        )
+        let secondaryEnd = try XCTUnwrap(
+            rowSource.range(
+                of: "private var approveButton",
+                range: secondaryStart.upperBound..<rowSource.endIndex
+            )
+        )
+        let secondarySource = String(
+            rowSource[secondaryStart.lowerBound..<secondaryEnd.lowerBound]
+        )
+
+        XCTAssertTrue(
+            rowSource.contains("AssistantQueueRowActionPresentation.make(for: row)")
+        )
+        XCTAssertTrue(bodySource.contains("actionPresentation.primaryAction"))
+        XCTAssertTrue(bodySource.contains("actionPresentation.secondaryActions"))
+        XCTAssertTrue(bodySource.contains("Menu {"))
+        XCTAssertTrue(
+            bodySource.contains(
+                "ForEach(actionPresentation.secondaryActions, id: \\.self)"
+            )
+        )
+        XCTAssertTrue(bodySource.contains("secondaryAction(action)"))
+        XCTAssertTrue(bodySource.contains("assistant-queue-more-\\(row.id)"))
+        let approveCase = try XCTUnwrap(primarySource.range(of: "case .approve:"))
+        let runCase = try XCTUnwrap(
+            primarySource.range(
+                of: "case .run:",
+                range: approveCase.upperBound..<primarySource.endIndex
+            )
+        )
+        let reopenCase = try XCTUnwrap(
+            primarySource.range(
+                of: "case .reopen:",
+                range: runCase.upperBound..<primarySource.endIndex
+            )
+        )
+        XCTAssertTrue(
+            primarySource[approveCase.upperBound..<runCase.lowerBound]
+                .contains("approveButton")
+        )
+        XCTAssertTrue(
+            primarySource[runCase.upperBound..<reopenCase.lowerBound]
+                .contains("runButton")
+        )
+        XCTAssertTrue(primarySource[reopenCase.upperBound...].contains("reopenButton"))
+        XCTAssertFalse(primarySource.contains("case .reject:"))
+        XCTAssertTrue(secondarySource.contains("case .edit:"))
+        XCTAssertTrue(secondarySource.contains("case .defer:"))
+        let rejectCase = try XCTUnwrap(secondarySource.range(of: "case .reject:"))
+        let destructiveButton = try XCTUnwrap(
+            secondarySource.range(
+                of: "Button(role: .destructive)",
+                range: rejectCase.upperBound..<secondarySource.endIndex
+            )
+        )
+        let rejectHandler = try XCTUnwrap(
+            secondarySource.range(
+                of: "viewModel.rejectAssistantQueueItem(id: row.id)",
+                range: destructiveButton.upperBound..<secondarySource.endIndex
+            )
+        )
+        XCTAssertLessThan(
+            secondarySource.distance(
+                from: rejectCase.lowerBound,
+                to: rejectHandler.lowerBound
+            ),
+            500
+        )
+        XCTAssertFalse(
+            secondarySource[rejectHandler.upperBound...].contains("case .")
+        )
+        for identifier in [
+            "assistant-queue-run-\\(row.id)",
+            "assistant-queue-approve-\\(row.id)",
+            "assistant-queue-defer-\\(row.id)",
+            "assistant-queue-edit-\\(row.id)",
+            "assistant-queue-retry-\\(row.id)",
+            "assistant-queue-reject-\\(row.id)"
+        ] {
+            XCTAssertTrue(rowSource.contains(identifier))
+        }
+        XCTAssertFalse(rowSource.contains(".disabled(!row.canRun)"))
+        XCTAssertFalse(rowSource.contains(".disabled(!row.canApprove)"))
+        XCTAssertFalse(rowSource.contains(".disabled(!row.canRetry)"))
+    }
+
     func testAssistantQueueTriageLocalizationsDoNotDuplicateSharedKeys() throws {
         let english = try readPackageFile("Sources/SuisuiApp/Resources/en.lproj/Localizable.strings")
         let japanese = try readPackageFile("Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings")
@@ -596,6 +772,39 @@ final class AppExperienceSourceTests: XCTestCase {
             XCTAssertEqual(source.components(separatedBy: "\"Needs action first\" =").count - 1, 1)
             XCTAssertEqual(source.components(separatedBy: "\"Risk high first\" =").count - 1, 1)
             XCTAssertEqual(source.components(separatedBy: "\"Title A-Z\" =").count - 1, 1)
+        }
+    }
+
+    func testApprovalFlowPolishLocalizationsHaveEnglishJapaneseParity() throws {
+        let english = try readPackageFile(
+            "Sources/SuisuiApp/Resources/en.lproj/Localizable.strings"
+        )
+        let japanese = try readPackageFile(
+            "Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings"
+        )
+        let keys = [
+            "Selected Item",
+            "Select an Inbox item to classify.",
+            "Smart List Not Found",
+            "Transcript failed",
+            "Transcript pending",
+            "AI interpreted",
+            "More Assistant Queue actions",
+            "Choose Review destination.",
+            "Choose Project destination."
+        ]
+
+        for key in keys {
+            XCTAssertEqual(
+                localizableDefinitionCount(for: key, in: english),
+                1,
+                "English must define \(key) exactly once"
+            )
+            XCTAssertEqual(
+                localizableDefinitionCount(for: key, in: japanese),
+                1,
+                "Japanese must define \(key) exactly once"
+            )
         }
     }
 
@@ -2453,6 +2662,87 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(feedbackBlock.contains(".accessibilityElement(children: .combine)"))
     }
 
+    func testInboxActionPanelShowsSelectedContextWithoutDuplicatingVoiceMetadata() throws {
+        let source = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift"
+        )
+
+        let context = try XCTUnwrap(source.range(of: "InboxSelectedItemContext("))
+        let voice = try XCTUnwrap(source.range(of: "InboxVoiceIntakeDetail("))
+        let actions = try XCTUnwrap(
+            source.range(of: "LazyVGrid(columns: actionGridColumns")
+        )
+        XCTAssertLessThan(context.lowerBound, voice.lowerBound)
+        XCTAssertLessThan(voice.lowerBound, actions.lowerBound)
+        let contextCall = String(source[context.lowerBound..<voice.lowerBound])
+        let manualSummaryCondition =
+            "manualSummary: task != nil && viewModel.selectedInboxCaptureRecords.isEmpty"
+
+        let contextDefinitionStart = try XCTUnwrap(
+            source.range(of: "private struct InboxSelectedItemContext")
+        )
+        let contextDefinitionEnd = try XCTUnwrap(
+            source.range(
+                of: "private struct InboxVoiceIntakeDetail",
+                range: contextDefinitionStart.upperBound..<source.endIndex
+            )
+        )
+        let contextDefinition = String(
+            source[contextDefinitionStart.lowerBound..<contextDefinitionEnd.lowerBound]
+        )
+        let actionPanelStart = try XCTUnwrap(
+            source.range(of: "private struct InboxActionPanel")
+        )
+        let actionPanelEnd = try XCTUnwrap(
+            source.range(
+                of: "private var actionGridColumns",
+                range: actionPanelStart.upperBound..<source.endIndex
+            )
+        )
+        let actionPanel = String(
+            source[actionPanelStart.lowerBound..<actionPanelEnd.lowerBound]
+        )
+        let selectionChangeStart = try XCTUnwrap(
+            source.range(of: ".onChange(of: viewModel.selectedTaskID)")
+        )
+        let selectionChangeEnd = try XCTUnwrap(
+            source.range(
+                of: "private var mainSurface",
+                range: selectionChangeStart.upperBound..<source.endIndex
+            )
+        )
+        let selectionChange = String(
+            source[selectionChangeStart.lowerBound..<selectionChangeEnd.lowerBound]
+        )
+
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"inbox-selected-context\")"))
+        XCTAssertTrue(source.contains("Select an Inbox item to classify."))
+        XCTAssertTrue(contextDefinition.contains("lineLimit(2)"))
+        XCTAssertTrue(contextDefinition.contains("lineLimit(3)"))
+        XCTAssertTrue(contextDefinition.contains(".accessibilityElement(children: .combine)"))
+        XCTAssertTrue(contextCall.contains(manualSummaryCondition))
+        XCTAssertTrue(
+            actionPanel.contains(".accessibilityLabel(\"Inbox classification actions\")")
+        )
+        XCTAssertTrue(
+            actionPanel.contains(
+                ".accessibilityHint(\"Choose how to classify the selected Inbox item.\")"
+            )
+        )
+        XCTAssertFalse(actionPanel.contains(".accessibilityValue("))
+        XCTAssertFalse(actionPanel.contains("Selected Inbox item:"))
+        XCTAssertFalse(actionPanel.contains("Voice capture metadata available"))
+        XCTAssertFalse(actionPanel.contains("Transcript:"))
+        XCTAssertFalse(actionPanel.contains("Interpretation:"))
+        XCTAssertTrue(
+            selectionChange.contains(
+                "let capture = viewModel.selectedInboxCaptureRecords.first"
+            )
+        )
+        XCTAssertTrue(selectionChange.contains("voiceMemoCaptureID = capture?.id"))
+        XCTAssertTrue(selectionChange.contains("voiceMemoDraft = capture?.memo ?? \"\""))
+    }
+
     func testInboxWorkflowSurfacesVoiceCaptureMetadataWithoutReplacingVoiceCommand() throws {
         let workflowSource = try readProjectWorkflowSources()
         let inboxWorkflowSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift")
@@ -2503,10 +2793,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("onSaveMemo: { memo in"))
         XCTAssertTrue(workflowSource.contains("viewModel.updateSelectedInboxCaptureMemo(memo)"))
         XCTAssertTrue(workflowSource.contains("viewModel.selectedInboxCaptureRecords"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityLabel(panelAccessibilityLabel)"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityValue(panelAccessibilityValue)"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityHint(panelAccessibilityHint)"))
-        XCTAssertTrue(workflowSource.contains("Voice capture metadata available for \\(task.title)"))
+        XCTAssertTrue(
+            inboxWorkflowSource.contains(
+                ".accessibilityLabel(\"Inbox classification actions\")"
+            )
+        )
+        XCTAssertTrue(
+            inboxWorkflowSource.contains(
+                ".accessibilityHint(\"Choose how to classify the selected Inbox item.\")"
+            )
+        )
+        XCTAssertFalse(inboxWorkflowSource.contains(".accessibilityValue(panelAccessibilityValue)"))
+        XCTAssertFalse(inboxWorkflowSource.contains("Voice capture metadata available for \\(task.title)"))
+        XCTAssertTrue(inboxWorkflowSource.contains("InboxSelectedItemContext("))
         XCTAssertTrue(workflowSource.contains("taskTitle: task?.title ?? \"Selected Inbox item\""))
         XCTAssertTrue(workflowSource.contains("LazyVGrid(columns: actionGridColumns"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-grid\")"))
@@ -6493,6 +6792,23 @@ final class AppExperienceSourceTests: XCTestCase {
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func localizableDefinitionCount(for key: String, in source: String) -> Int {
+        source.components(separatedBy: .newlines).reduce(into: 0) { count, rawLine in
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard line.first == "\"",
+                  let closingQuote = line.dropFirst().firstIndex(of: "\"")
+            else {
+                return
+            }
+            let parsedKey = String(line[line.index(after: line.startIndex)..<closingQuote])
+            let suffix = line[line.index(after: closingQuote)...]
+                .trimmingCharacters(in: .whitespaces)
+            if parsedKey == key, suffix.first == "=" {
+                count += 1
+            }
+        }
     }
 
     private func readAppShellSource() throws -> String {
