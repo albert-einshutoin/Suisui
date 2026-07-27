@@ -8943,9 +8943,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SUISUI_VISUAL_EVIDENCE_TIME_ZONE=$EVIDENCE_TIME_ZONE"))
         XCTAssertTrue(script.contains("SUISUI_VISUAL_EVIDENCE_LOCALE_IDENTIFIER=$EVIDENCE_RECEIPT_LOCALE"))
         XCTAssertTrue(script.contains("visual_product_source_is_clean()"))
-        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" diff --quiet -- Sources Package.swift"))
-        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" diff --cached --quiet -- Sources Package.swift"))
-        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" ls-files --others --exclude-standard -- Sources Package.swift"))
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" diff --quiet -- Sources Package.swift script/capture_ui_evidence.sh"))
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" diff --cached --quiet -- Sources Package.swift script/capture_ui_evidence.sh"))
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" ls-files --others --exclude-standard -- Sources Package.swift script/capture_ui_evidence.sh"))
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" log -1 --format=%H \"$source_ref\" --"))
+        XCTAssertTrue(script.contains("Sources Package.swift script/capture_ui_evidence.sh"))
         XCTAssertTrue(script.contains("assert_visual_product_source_is_committed"))
         XCTAssertFalse(script.contains("SUISUI_ALLOW_DIRTY_VISUAL_PRODUCT_SOURCE"))
         XCTAssertTrue(script.contains("today=\"$(/bin/date -j -u -f"))
@@ -9001,9 +9003,28 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("capture_project_board_destination system inbox"))
         XCTAssertTrue(captureScript.contains("INBOX_VOICE_ROUTE_MARKERS=\"inbox-workflow=>$INBOX_ROUTE_LABEL\""))
         XCTAssertTrue(captureScript.contains("inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture"))
+        let inboxVoiceTargetMarkers = try XCTUnwrap(
+            captureScript.split(separator: "\n").first {
+                $0.hasPrefix("  INBOX_VOICE_TARGET_MARKERS=")
+            }
+        )
+        XCTAssertFalse(
+            inboxVoiceTargetMarkers.contains("inbox-action-panel=>Voice capture metadata available for Scheduled manual capture"),
+            "The action panel no longer exposes this text; requiring it blocks every live Inbox Voice capture."
+        )
         XCTAssertTrue(captureScript.contains("inbox-action-panel=>Schedule launch review and capture visual evidence."))
         XCTAssertTrue(captureScript.contains("inbox-action-panel=>Create a task for launch review evidence."))
         XCTAssertTrue(captureScript.contains("inbox-action-panel=>Inbox classification actions"))
+        let assistantQueueRouteMarkers = try XCTUnwrap(
+            captureScript.split(separator: "\n").first {
+                $0.hasPrefix("ASSISTANT_QUEUE_ROUTE_MARKERS=")
+            }
+        )
+        XCTAssertTrue(assistantQueueRouteMarkers.contains("assistant-queue-workflow=>"))
+        XCTAssertFalse(
+            assistantQueueRouteMarkers.contains("review-hub-compact-destination-assistant-queue"),
+            "Closed Menu items are absent from the live AX tree; the selected workflow is the stable route marker."
+        )
         XCTAssertTrue(captureScript.contains("capture_project_board_destination system today"))
         XCTAssertTrue(captureScript.contains("capture_project_board_destination light schedule"))
         XCTAssertTrue(captureScript.contains("capture_project_board_destination dark schedule"))

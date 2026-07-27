@@ -233,9 +233,7 @@ ui_evidence_product_source_commit() {
   local commit
   local source_ref="${SUISUI_VISUAL_SOURCE_REF:-HEAD}"
   commit="$(
-    git -C "$ROOT_DIR" log -1 --format=%H "$source_ref" -- \
-      Sources \
-      Package.swift 2>/dev/null || true
+    git -C "$ROOT_DIR" log -1 --format=%H "$source_ref" -- Sources Package.swift script/capture_ui_evidence.sh 2>/dev/null || true
   )"
   if [[ -n "$commit" ]]; then
     printf '%s\n' "$commit"
@@ -245,17 +243,19 @@ ui_evidence_product_source_commit() {
 }
 
 visual_product_source_is_clean() {
-  git -C "$ROOT_DIR" diff --quiet -- Sources Package.swift \
-    && git -C "$ROOT_DIR" diff --cached --quiet -- Sources Package.swift \
-    && [[ -z "$(git -C "$ROOT_DIR" ls-files --others --exclude-standard -- Sources Package.swift)" ]]
+  # The capture script defines which visible states count as evidence, so a dirty
+  # harness is as provenance-breaking as a dirty app binary.
+  git -C "$ROOT_DIR" diff --quiet -- Sources Package.swift script/capture_ui_evidence.sh \
+    && git -C "$ROOT_DIR" diff --cached --quiet -- Sources Package.swift script/capture_ui_evidence.sh \
+    && [[ -z "$(git -C "$ROOT_DIR" ls-files --others --exclude-standard -- Sources Package.swift script/capture_ui_evidence.sh)" ]]
 }
 
 assert_visual_product_source_is_committed() {
   if visual_product_source_is_clean; then
     return
   fi
-  echo "BLOCKER: visual evidence product source is dirty under Sources or Package.swift" >&2
-  echo "NEXT: commit every product-source change before capture so receipt sourceCommit identifies the binary that produced the screenshots." >&2
+  echo "BLOCKER: visual evidence source is dirty under Sources, Package.swift, or script/capture_ui_evidence.sh" >&2
+  echo "NEXT: commit every evidence-source change before capture so receipt sourceCommit identifies the binary and harness that produced the screenshots." >&2
   return 1
 }
 trap cleanup EXIT
@@ -278,9 +278,7 @@ relative_path() {
 ui_evidence_source_commit() {
   local commit
   commit="$(
-    git -C "$ROOT_DIR" log -1 --format=%h -- \
-      Sources \
-      Package.swift 2>/dev/null || true
+    git -C "$ROOT_DIR" log -1 --format=%h -- Sources Package.swift script/capture_ui_evidence.sh 2>/dev/null || true
   )"
   if [[ -n "$commit" ]]; then
     printf "%s" "$commit"
@@ -1358,7 +1356,7 @@ persist_project_board_selection() {
   PROJECT_BOARD_SELECTED_TASK_OVERRIDE="$review_task_id"
   PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details-$capture_task_id=>Capture launch screenshots|task-card-open-details-$capture_task_id=>$planned_label, $high_label, $capture_due_label|task-card-open-details-$review_task_id=>Review VoiceOver focus path|task-card-open-details-$review_task_id=>$in_progress_label, $high_label, $review_due_label|task-card-open-details-$unscheduled_task_id=>$planned_label, $medium_label, $no_due_date_label"
   INBOX_VOICE_TASK_OVERRIDE="$inbox_voice_task_id"
-  INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>$inbox_label|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>Inbox classification actions"
+  INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>$inbox_label|inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>Inbox classification actions"
   write_app_preference suisui.projectBoard.selectedDestination "$PROJECT_BOARD_SELECTION_OVERRIDE"
 }
 
@@ -2054,8 +2052,8 @@ run_doctor() {
   if visual_product_source_is_clean; then
     echo "OK: visual evidence product source is fully committed"
   else
-    echo "BLOCKER: visual evidence product source is dirty under Sources or Package.swift"
-    echo "NEXT: commit product-source changes before running a mutating capture."
+    echo "BLOCKER: visual evidence source is dirty under Sources, Package.swift, or script/capture_ui_evidence.sh"
+    echo "NEXT: commit evidence-source changes before running a mutating capture."
     blocker_count=$((blocker_count + 1))
   fi
 
@@ -2233,7 +2231,9 @@ SCHEDULE_WORKLOAD_DETAIL_MARKERS="schedule-workload-attention-banner=>|schedule-
 DONE_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL"
 DONE_ANALYTICS_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL|done-completion-heatmap=>|done-productivity-insight=>|done-local-rule-insight=>"
 VOICE_COMMAND_TARGET_MARKERS="voice-command-root=>$VOICE_COMMAND_LABEL"
-ASSISTANT_QUEUE_ROUTE_MARKERS="review-hub-compact-destination-assistant-queue=>|assistant-queue-workflow=>"
+# The compact destination lives inside a closed Menu and is not guaranteed to
+# appear in the AX tree. The selected workflow itself is the stable route proof.
+ASSISTANT_QUEUE_ROUTE_MARKERS="assistant-queue-workflow=>"
 ASSISTANT_QUEUE_WAITING_TARGET_MARKERS="assistant-queue-row-visual-waiting=>|assistant-queue-approve-visual-waiting=>|assistant-queue-more-visual-waiting=>"
 ASSISTANT_QUEUE_APPROVED_TARGET_MARKERS="assistant-queue-row-visual-approved=>|assistant-queue-run-visual-approved=>|assistant-queue-more-visual-approved=>"
 ASSISTANT_QUEUE_FAILED_TARGET_MARKERS="assistant-queue-row-visual-failed=>|assistant-queue-retry-visual-failed=>"
