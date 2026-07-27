@@ -202,7 +202,7 @@ fix shipped in this pass.
 | Projects overviewが全カードに同じ判定ルール文を繰り返していた | ヘッダーの `info.circle` に1回だけ表示。 | `Sources/SuisuiApp/Views/ProjectBoardDetailViews.swift` |
 | Assistant Queueが空でも `0 selected` と無効ボタンを表示していた | 行がない間はtriage/batchツールバーを出さない。 | `Sources/SuisuiApp/Views/ProjectWorkflowAssistantQueueView.swift` |
 | 音声の信頼度を生の `%` で表示していた | 次の操作が変わる3段階（要確認 / ほぼ確実 / 明確に認識）へ。 | `Sources/SuisuiApp/Views/VoiceCaptureView.swift` |
-| 通貨が `USD %.2f` 固定だった | `.formatted(.currency(code: "USD"))` へ。 | `Sources/SuisuiApp/Views/SettingsFeatureViews.swift` |
+| 通貨が `USD %.2f` 固定だった | `.formatted(.currency(code: "USD").locale(localizedDisplayLocale()))` へ変更し、アプリで選択した言語の通貨表示に揃えた。 | `Sources/SuisuiApp/Views/SettingsFeatureViews.swift` |
 | Voice placeholderが存在しない場所「Assistant Queue」を案内していた | 「Review › Assistant Queue」と実際の導線名で表記。 | `Sources/SuisuiApp/Views/VoiceCaptureView.swift` |
 | Localizable.strings に重複キーが78件あった | 値が同一の重複を削除（en 76件 / ja 59件）。 | `Sources/SuisuiApp/Resources/*.lproj/Localizable.strings` |
 
@@ -215,6 +215,16 @@ fix shipped in this pass.
 | Task card metadata chip が `maxWidth: .infinity` の塗りつぶしで入力欄に見える | `ProjectBoardMetadataLayoutSourceTests` が hosted visual runner での描画実績としてこの形を固定している。visual runnerを回せない環境では安全に変更できない。 |
 | グローバルホットキーが ⌥Space 固定でリマップUIがない | ランチャーとの競合時に回避手段がないが、設定UI・永続化・競合検知を含む機能追加になるため別PR。 |
 | 多カウント文字列（`%d tasks, %d open, %d done, …`）の複数形 | 主に分析系・AX文字列。2キー方式では組み合わせ爆発するため `.stringsdict` 導入時にまとめて対応する。 |
+
+### 戦略レビューで除外
+
+| 提案 | 除外理由 |
+| --- | --- |
+| Reviewを `Assistant Queue` 先頭、`Execution Record` へ改名する | 対応Issueと受け入れ基準がなく、選択時の初期画面も変わらないため導線改善にならない。#295が受け入れた `Automation Activity` と完了分析の分離を維持する。 |
+| Doneのstreak・heatmap・best day/timeを削除する | #10と#295で受け入れ済みの生産性分析を失う。Task完了とOutcome達成を区別する#376の方針は、既存分析の削除ではなくOutcome ledgerで実現する。 |
+| Taskへ `waiting_on` / `waiting_since` を直接追加する | #371の順序では#372/#373/#374/#376のWork Graphが先で、#411は待機理由・相手・次回確認日・Commitment・Outcomeを一体で扱う。Task単独の自由記述を先行すると同じ概念を二重実装するため、このPRでは追加しない。 |
+| Onboardingを根拠IssueなしでPromise中心へ全面変更する | 現行のCapture → Today → Completeは到達可能な実装を説明している。Commitment/Outcome UIの受け入れ基準が成立してから、実在する導線に合わせて更新する。 |
+
 ### グローバルショートカットの競合からの回復 (2026-07-27)
 
 `⌥Space` が他アプリ（Alfred / Raycast 等）に取られている場合、状態は `.conflict`
