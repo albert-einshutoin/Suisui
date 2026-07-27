@@ -8741,14 +8741,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual((rasterComparison["maximumMeanAbsoluteError"] as? NSNumber)?.doubleValue, 0.01)
 
         let baselineContext = try XCTUnwrap(manifest["baselineContext"] as? [String: Any])
-        let productCommit = try runTool([
+        let evidenceSourceCommit = try runTool([
             "git", "-C", packageRoot().path, "log", "-1", "--format=%H", "--",
-            "Sources", "Package.swift"
+            "Sources", "Package.swift", "script/capture_ui_evidence.sh"
         ])
-        XCTAssertEqual(productCommit.exitCode, 0, productCommit.output)
+        XCTAssertEqual(evidenceSourceCommit.exitCode, 0, evidenceSourceCommit.output)
         XCTAssertEqual(
             baselineContext["sourceCommit"] as? String,
-            productCommit.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            evidenceSourceCommit.output.trimmingCharacters(in: .whitespacesAndNewlines)
         )
         XCTAssertEqual(baselineContext["locale"] as? String, "en-US")
         XCTAssertEqual(baselineContext["timeZoneIdentifier"] as? String, "UTC")
