@@ -693,15 +693,42 @@ func testInboxActionPanelShowsSelectedContextWithoutDuplicatingVoiceMetadata() t
     let actions = try XCTUnwrap(source.range(of: "LazyVGrid(columns: actionGridColumns"))
     XCTAssertLessThan(context.lowerBound, voice.lowerBound)
     XCTAssertLessThan(voice.lowerBound, actions.lowerBound)
+    let contextCall = String(source[context.lowerBound..<voice.lowerBound])
+
+    let contextDefinitionStart = try XCTUnwrap(
+        source.range(of: "private struct InboxSelectedItemContext")
+    )
+    let contextDefinitionEnd = try XCTUnwrap(
+        source.range(
+            of: "private struct InboxVoiceIntakeDetail",
+            range: contextDefinitionStart.upperBound..<source.endIndex
+        )
+    )
+    let contextDefinition = String(
+        source[contextDefinitionStart.lowerBound..<contextDefinitionEnd.lowerBound]
+    )
+    let selectionChangeStart = try XCTUnwrap(
+        source.range(of: ".onChange(of: viewModel.selectedTaskID)")
+    )
+    let selectionChangeEnd = try XCTUnwrap(
+        source.range(
+            of: "private var mainSurface",
+            range: selectionChangeStart.upperBound..<source.endIndex
+        )
+    )
+    let selectionChange = String(
+        source[selectionChangeStart.lowerBound..<selectionChangeEnd.lowerBound]
+    )
 
     XCTAssertTrue(source.contains(".accessibilityIdentifier(\"inbox-selected-context\")"))
     XCTAssertTrue(source.contains("Select an Inbox item to classify."))
-    XCTAssertTrue(source.contains("lineLimit(2)"))
-    XCTAssertTrue(source.contains("lineLimit(3)"))
-    XCTAssertTrue(source.contains("selectedInboxCaptureRecords.isEmpty"))
+    XCTAssertTrue(contextDefinition.contains("lineLimit(2)"))
+    XCTAssertTrue(contextDefinition.contains("lineLimit(3)"))
+    XCTAssertTrue(contextCall.contains("manualSummary:"))
+    XCTAssertTrue(contextCall.contains("selectedInboxCaptureRecords.isEmpty"))
     XCTAssertFalse(source.contains("summary.accessibilityValue"))
-    XCTAssertTrue(source.contains("voiceMemoDraft = \"\""))
-    XCTAssertTrue(source.contains("voiceMemoCaptureID = nil"))
+    XCTAssertTrue(selectionChange.contains("voiceMemoDraft = \"\""))
+    XCTAssertTrue(selectionChange.contains("voiceMemoCaptureID = nil"))
 }
 ```
 
@@ -855,10 +882,26 @@ func testAssistantQueueRowUsesStageSpecificPrimaryActionAndSecondaryMenu() throw
 
     XCTAssertTrue(source.contains("AssistantQueueRowActionPresentation.make(for: row)"))
     XCTAssertTrue(source.contains("assistant-queue-more-\\(row.id)"))
-    XCTAssertTrue(source.contains("case .approve"))
-    XCTAssertTrue(source.contains("case .run"))
-    XCTAssertTrue(source.contains("case .reopen"))
-    XCTAssertTrue(source.contains("Button(role: .destructive)"))
+    XCTAssertTrue(source.contains("case .approve:"))
+    XCTAssertTrue(source.contains("case .run:"))
+    XCTAssertTrue(source.contains("case .reopen:"))
+    let rejectCase = try XCTUnwrap(source.range(of: "case .reject:"))
+    let destructiveButton = try XCTUnwrap(
+        source.range(
+            of: "Button(role: .destructive)",
+            range: rejectCase.upperBound..<source.endIndex
+        )
+    )
+    let rejectHandler = try XCTUnwrap(
+        source.range(
+            of: "viewModel.rejectAssistantQueueItem(id: row.id)",
+            range: destructiveButton.upperBound..<source.endIndex
+        )
+    )
+    XCTAssertLessThan(
+        source.distance(from: rejectCase.lowerBound, to: rejectHandler.lowerBound),
+        500
+    )
     XCTAssertFalse(source.contains(".disabled(!row.canRun)"))
     XCTAssertFalse(source.contains(".disabled(!row.canApprove)"))
     XCTAssertFalse(source.contains(".disabled(!row.canRetry)"))
