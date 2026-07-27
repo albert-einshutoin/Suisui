@@ -81,9 +81,9 @@ parity assertions for every new key listed across Tasks 3–5.
 The source contracts must scope each assertion to the component or helper that
 owns the behavior. In particular:
 
-- Inbox checks the `manualSummary` task/capture condition as one expression and
-  extracts `panelAccessibilityValue` to reject Transcript / Interpretation
-  duplication;
+- Inbox checks the `manualSummary` task/capture condition as one expression,
+  keeps selected title/detail AX ownership in the context child, and verifies
+  the parent action group exposes no duplicate accessibility value;
 - Queue separately extracts the row body, primary-action switch, and
   secondary-action switch, protects all six existing action identifiers, and
   requires destructive Reject to be the last secondary case;
@@ -733,6 +733,18 @@ func testInboxActionPanelShowsSelectedContextWithoutDuplicatingVoiceMetadata() t
     let contextDefinition = String(
         source[contextDefinitionStart.lowerBound..<contextDefinitionEnd.lowerBound]
     )
+    let actionPanelStart = try XCTUnwrap(
+        source.range(of: "private struct InboxActionPanel")
+    )
+    let actionPanelEnd = try XCTUnwrap(
+        source.range(
+            of: "private var actionGridColumns",
+            range: actionPanelStart.upperBound..<source.endIndex
+        )
+    )
+    let actionPanel = String(
+        source[actionPanelStart.lowerBound..<actionPanelEnd.lowerBound]
+    )
     let selectionChangeStart = try XCTUnwrap(
         source.range(of: ".onChange(of: viewModel.selectedTaskID)")
     )
@@ -750,11 +762,23 @@ func testInboxActionPanelShowsSelectedContextWithoutDuplicatingVoiceMetadata() t
     XCTAssertTrue(source.contains("Select an Inbox item to classify."))
     XCTAssertTrue(contextDefinition.contains("lineLimit(2)"))
     XCTAssertTrue(contextDefinition.contains("lineLimit(3)"))
-    XCTAssertTrue(contextCall.contains("manualSummary:"))
-    XCTAssertTrue(contextCall.contains("selectedInboxCaptureRecords.isEmpty"))
-    XCTAssertFalse(source.contains("summary.accessibilityValue"))
-    XCTAssertTrue(selectionChange.contains("voiceMemoDraft = \"\""))
-    XCTAssertTrue(selectionChange.contains("voiceMemoCaptureID = nil"))
+    XCTAssertTrue(contextDefinition.contains(".accessibilityElement(children: .combine)"))
+    XCTAssertTrue(
+        contextCall.contains(
+            "manualSummary: task != nil && viewModel.selectedInboxCaptureRecords.isEmpty"
+        )
+    )
+    XCTAssertTrue(
+        actionPanel.contains(".accessibilityLabel(\"Inbox classification actions\")")
+    )
+    XCTAssertFalse(actionPanel.contains(".accessibilityValue("))
+    XCTAssertTrue(
+        selectionChange.contains(
+            "let capture = viewModel.selectedInboxCaptureRecords.first"
+        )
+    )
+    XCTAssertTrue(selectionChange.contains("voiceMemoCaptureID = capture?.id"))
+    XCTAssertTrue(selectionChange.contains("voiceMemoDraft = capture?.memo ?? \"\""))
 }
 ```
 
@@ -838,12 +862,22 @@ At the Inbox workflow root:
 
 ```swift
 .onChange(of: viewModel.selectedTaskID) {
-    voiceMemoDraft = ""
-    voiceMemoCaptureID = nil
+    let capture = viewModel.selectedInboxCaptureRecords.first
+    voiceMemoCaptureID = capture?.id
+    voiceMemoDraft = capture?.memo ?? ""
 }
 ```
 
-Preserve the child reset by capture ID and every existing action identifier/shortcut.
+Hydrate instead of clearing unconditionally: SwiftUI may call the child
+`capture.id` observer before the parent selection observer, so clearing in the
+parent can erase the newly loaded saved memo and enable an accidental empty
+save. Preserve the child reset by capture ID and every existing action
+identifier/shortcut.
+
+The selected context child is the only AX owner of title/detail. Keep the parent
+action panel as a container with the generic `Inbox classification actions`
+label, generic classification hint, and identifier; do not attach a duplicate
+title/detail/voice accessibility value.
 
 - [ ] **Step 5: Use the root-owned English and Japanese localization keys**
 
