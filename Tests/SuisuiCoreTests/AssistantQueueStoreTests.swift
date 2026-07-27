@@ -297,6 +297,42 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertFalse(failedRow.canReject)
     }
 
+    func testRowActionPresentationTracksRealStateMachineTransitionsAndHidesRunningReject() throws {
+        let waiting = makeItem(
+            id: "queue-row-action-transitions",
+            state: .waitingReview,
+            summary: "Create transition test task"
+        )
+
+        let waitingRow = try XCTUnwrap(AssistantQueueReadModel.snapshot(from: [waiting]).rows.first)
+        let waitingPresentation = AssistantQueueRowActionPresentation.make(for: waitingRow)
+        XCTAssertEqual(waitingPresentation.primaryAction, .approve)
+        XCTAssertEqual(waitingPresentation.secondaryActions, [.edit, .defer, .reject])
+
+        let approved = try AssistantQueueStateMachine.approve(waiting, reviewerID: "local-user")
+        let approvedRow = try XCTUnwrap(AssistantQueueReadModel.snapshot(from: [approved]).rows.first)
+        let approvedPresentation = AssistantQueueRowActionPresentation.make(for: approvedRow)
+        XCTAssertEqual(approvedPresentation.primaryAction, .run)
+        XCTAssertEqual(approvedPresentation.secondaryActions, [.edit, .defer, .reject])
+
+        let running = try AssistantQueueStateMachine.startRunning(approved)
+        let runningRow = try XCTUnwrap(AssistantQueueReadModel.snapshot(from: [running]).rows.first)
+        XCTAssertTrue(runningRow.canReject)
+        let runningPresentation = AssistantQueueRowActionPresentation.make(for: runningRow)
+        XCTAssertNil(runningPresentation.primaryAction)
+        XCTAssertEqual(
+            runningPresentation.secondaryActions,
+            [],
+            "Reject cannot cancel in-flight coordination, so the UI must not present a false cancellation action."
+        )
+
+        let failed = try AssistantQueueStateMachine.markFailed(running, reason: "Transition test failure.")
+        let failedRow = try XCTUnwrap(AssistantQueueReadModel.snapshot(from: [failed]).rows.first)
+        let failedPresentation = AssistantQueueRowActionPresentation.make(for: failedRow)
+        XCTAssertEqual(failedPresentation.primaryAction, .reopen)
+        XCTAssertEqual(failedPresentation.secondaryActions, [])
+    }
+
     func testReadModelMarksApprovedTaskMutationAutomationRequestRunnable() throws {
         let approvedMutation = try AssistantQueueStateMachine.approve(
             makeAutomationRequestItem(
