@@ -25,20 +25,19 @@ struct DoneWorkflowView: View {
                     Spacer()
                 }
 
-                // Streak, completion heatmap, best weekday, and peak hour were
-                // habit metrics: they measure how much the user moved, not
-                // whether a promise was kept. That is the opposite of what this
-                // product claims to own — completing a task is not the same as
-                // delivering a commitment, and a week spent shipping one
-                // release rendered as "Streak 0". Counts of finished work stay;
-                // the productivity scoring is gone until there is an outcome to
-                // score against.
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 10)], spacing: 10) {
                     DoneStatTile(title: "Completed Tasks", value: analytics.completedTaskCount, systemImage: "checkmark.square")
                     DoneStatTile(title: "Completed Projects", value: analytics.completedProjectCount, systemImage: "folder.badge.checkmark")
                     DoneStatTile(title: "Today", value: analytics.completedTodayCount, systemImage: "sun.max")
                     DoneStatTile(title: "7 Days", value: analytics.completedThisWeekCount, systemImage: "calendar")
+                    DoneStatTile(title: "Streak", value: analytics.streakDays, systemImage: "flame")
                 }
+
+                DoneCompletionHeatmapView(buckets: analytics.completionHeatmapBuckets)
+                DoneProductivityInsightView(
+                    bestWeekdaySummary: analytics.bestWeekdaySummary,
+                    bestHourSummary: analytics.bestHourSummary
+                )
 
                 Label {
                     Text(LocalizedStringKey(analytics.localRuleInsight))
@@ -250,6 +249,242 @@ private struct DoneStatTile: View {
                 .monospacedDigit()
         }
         .frame(minWidth: 112, maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card))
+    }
+}
+
+private struct DoneCompletionHeatmapView: View {
+    let buckets: [DoneAnalyticsDayBucket]
+    private let columns = [
+        GridItem(.adaptive(minimum: 18, maximum: 18), spacing: 4)
+    ]
+
+    private var maxCompletedCount: Int {
+        max(buckets.map(\.completedCount).max() ?? 0, 1)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Label("Completion Heatmap", systemImage: "square.grid.3x3")
+                    .font(.headline)
+                Spacer(minLength: 8)
+                Text("Last 28 days")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 4) {
+                ForEach(buckets, id: \.dayKey) { bucket in
+                    RoundedRectangle(cornerRadius: SuisuiRadius.control)
+                        .fill(heatmapColor(for: bucket.completedCount))
+                        .frame(width: 18, height: 18)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: SuisuiRadius.control)
+                                .stroke(Color.secondary.opacity(0.18), lineWidth: 0.5)
+                        )
+                        .overlay {
+                            if bucket.completedCount > 0 {
+                                Circle()
+                                    .fill(SuisuiTone.neutral.color.opacity(0.72))
+                                    .frame(
+                                        width: heatmapMarkerDiameter(for: bucket.completedCount),
+                                        height: heatmapMarkerDiameter(for: bucket.completedCount)
+                                    )
+                            }
+                        }
+                        .accessibilityIdentifier("done-heatmap-day-\(bucket.dayKey)")
+                        .accessibilityLabel(String(format: String(localized: "Completed tasks on %@"), bucket.dayKey))
+                        .accessibilityValue(String(format: String(localized: "%d tasks"), bucket.completedCount))
+                }
+            }
+
+            HStack(spacing: 6) {
+                Text("Fewer completions")
+                heatmapLegendCell(count: 0)
+                heatmapLegendCell(count: max(maxCompletedCount / 2, 1))
+                heatmapLegendCell(count: maxCompletedCount)
+                Text("More completions")
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("done-heatmap-legend")
+
+            Text("Heatmap intensity is based on local completion history only.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("done-completion-heatmap")
+    }
+
+    private func heatmapColor(for count: Int) -> Color {
+        guard count > 0 else {
+            return Color.secondary.opacity(0.10)
+        }
+        let normalized = min(Double(count) / Double(maxCompletedCount), 1.0)
+        return SuisuiTone.positive.color.opacity(0.25 + normalized * 0.55)
+    }
+
+    private func heatmapMarkerDiameter(for count: Int) -> CGFloat {
+        guard count > 0 else {
+            return 0
+        }
+        let normalized = min(Double(count) / Double(maxCompletedCount), 1.0)
+        return 3 + CGFloat(normalized * 6)
+    }
+
+    private func heatmapLegendCell(count: Int) -> some View {
+        RoundedRectangle(cornerRadius: SuisuiRadius.control)
+            .fill(heatmapColor(for: count))
+            .frame(width: 18, height: 18)
+            .overlay {
+                if count > 0 {
+                    Circle()
+                        .fill(SuisuiTone.neutral.color.opacity(0.72))
+                        .frame(
+                            width: heatmapMarkerDiameter(for: count),
+                            height: heatmapMarkerDiameter(for: count)
+                        )
+                }
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+private struct DoneProductivityInsightView: View {
+    let bestWeekdaySummary: DoneAnalyticsBestWeekdaySummary
+    let bestHourSummary: DoneAnalyticsBestHourSummary
+    @Environment(\.calendar) private var calendar
+    @Environment(\.locale) private var locale
+    @Environment(\.timeZone) private var timeZone
+    private let columns = [
+        GridItem(.adaptive(minimum: 180), spacing: 10, alignment: .top)
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
+            DoneInsightTile(
+                title: "Best Day",
+                value: bestWeekdayValue,
+                detail: bestWeekdayDetail,
+                systemImage: "calendar.badge.clock"
+            )
+            .accessibilityIdentifier("done-best-weekday-summary")
+
+            DoneInsightTile(
+                title: "Peak Time",
+                value: bestHourValue,
+                detail: bestHourDetail,
+                systemImage: "clock.badge.checkmark"
+            )
+            .accessibilityIdentifier("done-best-hour-summary")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("done-productivity-insight")
+    }
+
+    private var bestWeekdayValue: String {
+        guard let weekday = bestWeekdaySummary.weekday else {
+            return String(localized: "No completion history yet")
+        }
+        return Self.weekdayLabel(for: weekday, calendar: calendar, locale: locale, timeZone: timeZone)
+    }
+
+    private var bestWeekdayDetail: String {
+        guard !bestWeekdaySummary.isEmpty else {
+            return String(localized: "Complete tasks to build weekday trends.")
+        }
+        return localizedCount(
+            bestWeekdaySummary.completedCount,
+            one: "%d task completed on this weekday.",
+            other: "%d tasks completed on this weekday."
+        )
+    }
+
+    private var bestHourValue: String {
+        guard let hour = bestHourSummary.hour else {
+            return String(localized: "No peak time yet")
+        }
+        return Self.hourLabel(for: hour)
+    }
+
+    private var bestHourDetail: String {
+        guard !bestHourSummary.isEmpty else {
+            return String(localized: "Completed tasks with timestamps will show hourly trends.")
+        }
+        return localizedDisplay(
+            "%@ around %@, usually %@.",
+            localizedCount(
+                bestHourSummary.completedCount,
+                one: "%d task",
+                other: "%d tasks"
+            ),
+            bestHourValue,
+            localizedTimeOfDayLabel
+        )
+    }
+
+    private var localizedTimeOfDayLabel: String {
+        switch bestHourSummary.timeOfDay {
+        case .morning:
+            return String(localized: "Morning")
+        case .afternoon:
+            return String(localized: "Afternoon")
+        case .evening:
+            return String(localized: "Evening")
+        case .night:
+            return String(localized: "Night")
+        case nil:
+            return String(localized: "No peak time yet")
+        }
+    }
+
+    private static func weekdayLabel(
+        for weekday: Int,
+        calendar: Calendar,
+        locale: Locale,
+        timeZone: TimeZone
+    ) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        let labels = formatter.weekdaySymbols ?? []
+        let labelIndex = weekday - 1
+        return labels.indices.contains(labelIndex) ? labels[labelIndex] : String(localized: "Weekday")
+    }
+
+    private static func hourLabel(for hour: Int) -> String {
+        String(format: "%02d:00", hour)
+    }
+}
+
+private struct DoneInsightTile: View {
+    let title: LocalizedStringKey
+    let value: String
+    let detail: String
+    let systemImage: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(title, systemImage: systemImage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.callout.weight(.semibold))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
         .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card))
     }

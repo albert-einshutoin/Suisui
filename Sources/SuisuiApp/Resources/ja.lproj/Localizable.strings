@@ -934,7 +934,9 @@
 "Complete tasks to build weekday trends." = "タスクを完了すると曜日傾向が作られます。";
 "Completed tasks with timestamps will show hourly trends." = "時刻付きの完了タスクがあると時間帯傾向が表示されます。";
 "%d tasks completed on this weekday." = "この曜日に%d件完了しています。";
+"%d task completed on this weekday." = "この曜日に%d件完了しています。";
 "%d tasks around %@, usually %@." = "%2$@ 前後に%1$d件完了しています。時間帯は通常 %3$@ です。";
+"%@ around %@, usually %@." = "%2$@ 前後に%1$@。時間帯は通常 %3$@ です。";
 "Recent Completed" = "最近の完了";
 "No completed tasks yet" = "完了タスクはまだありません";
 "Tasks appear here after they are completed." = "タスクを完了するとここに表示されます。";
@@ -1691,6 +1693,7 @@
 /* Smart lists and board keyboard shortcuts */
 "Smart Lists" = "スマートリスト";
 "Automation Activity" = "自動化アクティビティ";
+"Choose Schedule, Completed, Automation Activity, or Assistant Queue." = "予定、完了済み、自動化アクティビティ、またはアシスタントキューを選択してください。";
 "Portfolio" = "ポートフォリオ";
 "Projects navigation" = "プロジェクトナビゲーション";
 "Review navigation" = "確認ナビゲーション";
@@ -1703,6 +1706,7 @@
 "Expands overdue and missed work actions without leaving Today." = "今日から離れずに、期限超過や未処理作業の操作を展開します。";
 "Review workload and approval-ready drafts" = "作業量と承認待ちの予定を確認";
 "See completed work and local recap" = "完了した作業と振り返りを確認";
+"Inspect AI usage, receipts, and execution history" = "AI使用量と実行履歴を確認";
 "Approve, defer, reject, or run reviewed work" = "提案を承認・保留・却下・実行";
 "No pending items" = "未処理項目なし";
 "%d items" = "%d 件";
@@ -1890,6 +1894,7 @@
 "Suisui" = "すいすい";
 "Welcome to Suisui" = "すいすいへようこそ";
 "Speak it. Review it. Move it." = "声から、仕事がすいすい進む。";
+"Talk to Suisui. Review the draft, then move your work forward." = "Suisuiに話すだけ。あとは確認して、仕事を前へ。";
 "Suisui can open now, but planning is not ready yet. Review the required item below or finish setup later from Settings." = "Suisuiは今すぐ開けますが、プラン作成の準備ができていません。下の必須項目を確認するか、設定から後でセットアップしてください。";
 "Suisui will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped." = "Suisuiは期限付きの未完了タスクをGoogleカレンダーの予定として作成します。すでにリンク済みのタスクはスキップします。";
 "Execution receipts are unavailable, so Suisui cannot confirm which development approval comes next." = "実行receiptを利用できないため、Suisuiは次の開発承認を確認できません。";
@@ -1992,17 +1997,6 @@
 "Likely right" = "ほぼ確実";
 "Clear reading" = "明確に認識";
 ", " = "、";
-
-/* Review hub, execution record, and onboarding value copy. */
-"Approve and Run" = "承認して実行";
-"Execution Record" = "実行の記録";
-"See what actually ran, with receipts and evidence" = "実際に何が動いたかをreceiptと証跡で確認";
-"Choose Assistant Queue, Schedule, Completed, or Execution Record." = "アシスタントキュー、スケジュール、完了、実行の記録から選択します。";
-"Promise" = "約束";
-"Review and Run" = "確認して実行";
-"Deliver" = "納品";
-"Tell Suisui what you promised someone. It drafts the work, you review and approve it, and Suisui keeps the receipts until the job is delivered." = "誰に何を約束したかを話してください。Suisuiが作業を下書きし、あなたが確認して承認します。納品が終わるまでの記録はSuisuiが残します。";
-
 /* Waiting-on surface. */
 "Waiting on" = "待っている相手";
 "Waiting on (%d)" = "待ち（%d）";

@@ -1921,7 +1921,7 @@ write_done_analytics_evidence_file() {
     printf -- '- Generated at: `%s`\n' "$generated_at"
     printf -- '- Source commit: `%s`\n' "$source_commit"
     printf -- '- Screen Recording preflight: `script/capture_ui_evidence.sh --doctor`\n'
-    printf -- '- Target markers: `done-workflow`, `done-local-rule-insight`\n'
+    printf -- '- Target markers: `done-workflow`, `done-completion-heatmap`, `done-productivity-insight`, `done-local-rule-insight`\n'
     printf '\n'
     printf '%s\n' '## Done Analytics'
     printf '\n'
@@ -2155,7 +2155,7 @@ SCHEDULE_COCKPIT_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedu
 SCHEDULE_WORKLOAD_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-mode-workload=>|schedule-mini-calendar=>"
 SCHEDULE_WORKLOAD_DETAIL_MARKERS="schedule-workload-attention-banner=>|schedule-workload-day-detail=>"
 DONE_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL"
-DONE_ANALYTICS_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL|done-local-rule-insight=>"
+DONE_ANALYTICS_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL|done-completion-heatmap=>|done-productivity-insight=>|done-local-rule-insight=>"
 VOICE_COMMAND_TARGET_MARKERS="voice-command-root=>$VOICE_COMMAND_LABEL"
 
 if [[ "$P0_WORKFLOWS" == "1" ]]; then

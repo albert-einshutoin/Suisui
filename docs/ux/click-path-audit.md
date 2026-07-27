@@ -215,37 +215,6 @@ fix shipped in this pass.
 | Task card metadata chip が `maxWidth: .infinity` の塗りつぶしで入力欄に見える | `ProjectBoardMetadataLayoutSourceTests` が hosted visual runner での描画実績としてこの形を固定している。visual runnerを回せない環境では安全に変更できない。 |
 | グローバルホットキーが ⌥Space 固定でリマップUIがない | ランチャーとの競合時に回避手段がないが、設定UI・永続化・競合検知を含む機能追加になるため別PR。 |
 | 多カウント文字列（`%d tasks, %d open, %d done, …`）の複数形 | 主に分析系・AX文字列。2キー方式では組み合わせ爆発するため `.stringsdict` 導入時にまとめて対応する。 |
-
-## 戦略レビュー反映 (2026-07-27, 第2弾)
-
-事業戦略レポート（Evidence-backed Execution OS / Public Alpha 4週間で Design
-Partner 20人）を基準に前回の指摘を組み替えた結果の修正。判断軸は「moatを可視化
-しているか」と「20人が週次で残るか」の2点。
-
-| 指摘 | 修正内容 | 実装 |
-| --- | --- | --- |
-| Done画面が habit metric（Streak / Heatmap / Best Day / Peak Time）を表示していた | 削除。「TaskをDone ≠ 約束を果たした」が製品の中核主張である以上、活動量スコアは誤ったメンタルモデルを毎日教育してしまう。完了件数のカウントは残す。 | `Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift` |
-| Assistant Queue が Review hub の最後（Automation節）にあり、音声フローの終着点が最も遠かった | `Approve and Run` 節として先頭へ。承認後にRunへ到達できないと、撤退判断のデータ（「Outcomeまで追跡されない」）が導線起因なのか仮説否定なのか区別できなくなる。 | `Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift` |
-| Receipt が「Automation Activity / Inspect AI usage」というIT管理者の言葉で埋まっていた | `Execution Record`（実行の記録）へ改名し `Work` 節へ。Evidence Provenance が moat なら、ユーザーの言葉で名乗る必要がある。 | `ProjectBoardReviewHubView.swift`, `ProjectWorkflowAutomationActivityView.swift` |
-| Onboarding が `Capture → Today → Complete` を教えていた | `Promise → Review and Run → Deliver` へ。前者はレポート §4.1 が「コモディティ化リスク：非常に高い」と判定した機能そのもので、初回30秒で差別化を説明できていなかった。 | `Sources/SuisuiApp/Views/OnboardingWelcomeView.swift` |
-
-### 未着手（意図的）
-
-| 指摘 | 判断 |
-| --- | --- |
-| 「待ち」（誰の返事を待っているか）の可視化 | **最優先の欠落**。受託開発者にとって最頻の停止状態だが、Today にも Overdue にも Done にも出ない。`blocked` はステータス値のみで相手も期限も持てない。ただしDBマイグレーションを伴うため、ビルド検証できない状態では入れない。Public Alpha計測開始前に別PRで必要。 |
-| 納品/検収の状態 | `ArtifactRecord` はファイル存在監視であり、送付・レビュー・修正・検収の状態を持たない。同上。 |
-| 承認画面への Scope / Policy / 取り消し可否 の表示 | Action Authority の本体。#419 / #420 の実装待ち。 |
-| DoneAnalyticsSummary の `streakDays` 等のモデルフィールド | UIからは外したがCore側は残置。削除は `ProjectBoard.swift` とテストに広く波及するため、ビルド検証できる環境で行う。 |
-| ⌥Space のリマップUI | 設定UI・永続化・競合処理を含む機能追加。 |
-
-### 計測上の注意
-
-現行ビルドには Outcome を追跡する導線がないため、撤退条件「Task生成だけ使われ、
-Outcomeまで追跡されない」は**仮説の正否にかかわらず必ず成立する**。4週間の計測を
-始める前に、「待ち」または「納品/検収」のいずれかを押せるボタンとして実装する必要が
-ある。
-
 ## Waiting-on 導線 (2026-07-27, 第3弾)
 
 戦略レビューで「最優先の欠落」と判定した**「待ち」の可視化**を実装した。
