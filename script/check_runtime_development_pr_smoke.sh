@@ -1054,42 +1054,9 @@ on run argv
       key code 36
       delay 0.8
 
-      repeat
-        set didChoose to false
-        repeat with currentWindow in windows
-          try
-            set axItems to entire contents of currentWindow
-            repeat with axItem in axItems
-              set itemRole to ""
-              set itemName to ""
-              set itemTitle to ""
-              set itemDescription to ""
-              try
-                set itemRole to role of axItem as text
-              end try
-              try
-                set itemName to name of axItem as text
-              end try
-              try
-                set itemTitle to value of attribute "AXTitle" of axItem as text
-              end try
-              try
-                set itemDescription to description of axItem as text
-              end try
-              set signalText to itemName & " " & itemTitle & " " & itemDescription
-              if itemRole is "AXButton" and (signalText contains "Choose" or signalText contains "選択") then
-                perform action "AXPress" of axItem
-                set didChoose to true
-                exit repeat
-              end if
-            end repeat
-          end try
-          if didChoose then exit repeat
-        end repeat
-        if didChoose then exit repeat
-        if (current date) > deadlineDate then error "Choose button not found in folder picker"
-        delay 0.2
-      end repeat
+      -- The first Return resolves the Go to Folder path. The second Return
+      -- activates the default Select/Choose action without localized button text.
+      key code 36
       try
         set the clipboard to previousClipboard
       end try

@@ -6376,9 +6376,25 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("project-workspace-current"))
         XCTAssertTrue(
             script.contains(
-                "signalText contains \"Choose\" or signalText contains \"選択\""
+                "activates the default Select/Choose action without localized button text"
             ),
-            "The native folder picker must be operable in both supported app locales."
+            "The native folder picker must not depend on its localized button title."
+        )
+        let folderPickerStart = try XCTUnwrap(
+            script.range(of: "chooseRuntimeProjectWorkspaceViaOpenPanel() {")
+        )
+        let folderPickerTail = script[folderPickerStart.lowerBound...]
+        let folderPickerEnd = try XCTUnwrap(
+            folderPickerTail.range(
+                of: "\n}\n\nverify_visible_project_directory_picker_assignment()"
+            )
+        )
+        let folderPickerSource = String(
+            folderPickerTail[..<folderPickerEnd.lowerBound]
+        )
+        XCTAssertFalse(
+            folderPickerSource.contains("set axItems to entire contents of currentWindow"),
+            "Scanning the complete app AX tree can block behind the native folder picker."
         )
         XCTAssertTrue(script.contains("workspace_path IS NULL AND workspace_bookmark IS NULL"))
         XCTAssertTrue(script.contains("workspace_path='$escaped_workspace' AND workspace_bookmark IS NOT NULL"))
