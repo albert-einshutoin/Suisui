@@ -1077,7 +1077,7 @@ on run argv
                 set itemDescription to description of axItem as text
               end try
               set signalText to itemName & " " & itemTitle & " " & itemDescription
-              if itemRole is "AXButton" and signalText contains "Choose" then
+              if itemRole is "AXButton" and (signalText contains "Choose" or signalText contains "選択") then
                 perform action "AXPress" of axItem
                 set didChoose to true
                 exit repeat

@@ -6374,6 +6374,12 @@ final class ReleasePipelineTests: XCTestCase {
         )
         XCTAssertTrue(script.contains("project-workspace-choose"))
         XCTAssertTrue(script.contains("project-workspace-current"))
+        XCTAssertTrue(
+            script.contains(
+                "signalText contains \"Choose\" or signalText contains \"選択\""
+            ),
+            "The native folder picker must be operable in both supported app locales."
+        )
         XCTAssertTrue(script.contains("workspace_path IS NULL AND workspace_bookmark IS NULL"))
         XCTAssertTrue(script.contains("workspace_path='$escaped_workspace' AND workspace_bookmark IS NOT NULL"))
         XCTAssertTrue(script.contains("visible Project inspector selected project workspace through NSOpenPanel"))
