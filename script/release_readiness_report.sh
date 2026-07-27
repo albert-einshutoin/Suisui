@@ -2,13 +2,103 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+STRICT_PRODUCT_RESEARCH=0
+CLASSIFY_ONLY=0
+CLASSIFY_BLOCKING_COUNT=""
+CLASSIFY_ADVISORY_COUNT=""
+
+require_nonnegative_integer() {
+  local label="$1"
+  local value="$2"
+
+  if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+    printf '%s must be a non-negative integer\n' "$label" >&2
+    exit 64
+  fi
+}
+
+classify_release_readiness_status() {
+  local blocking_count="$1"
+  local advisory_count="$2"
+  local strict_product_research="$3"
+  local effective_blocking_count="$blocking_count"
+
+  # Product research is advisory for Public Alpha, but a dedicated product
+  # review can explicitly promote it without weakening distribution gates.
+  if [[ "$strict_product_research" -eq 1 ]]; then
+    effective_blocking_count=$((effective_blocking_count + advisory_count))
+  fi
+
+  if [[ "$effective_blocking_count" -gt 0 ]]; then
+    printf 'status=blocked\n'
+    return 2
+  fi
+  if [[ "$advisory_count" -gt 0 ]]; then
+    printf 'status=ready_with_advisories\n'
+    return 0
+  fi
+  printf 'status=ready\n'
+}
+
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --strict-product-research)
+      STRICT_PRODUCT_RESEARCH=1
+      shift
+      ;;
+    --classify-only)
+      CLASSIFY_ONLY=1
+      shift
+      ;;
+    --blocking-count)
+      [[ "$#" -ge 2 ]] || {
+        printf '%s requires a value\n' "$1" >&2
+        exit 64
+      }
+      CLASSIFY_BLOCKING_COUNT="$2"
+      shift 2
+      ;;
+    --advisory-count)
+      [[ "$#" -ge 2 ]] || {
+        printf '%s requires a value\n' "$1" >&2
+        exit 64
+      }
+      CLASSIFY_ADVISORY_COUNT="$2"
+      shift 2
+      ;;
+    *)
+      printf 'Unknown argument: %s\n' "$1" >&2
+      exit 64
+      ;;
+  esac
+done
+
+if [[ "$CLASSIFY_ONLY" -eq 1 ]]; then
+  require_nonnegative_integer "--blocking-count" "$CLASSIFY_BLOCKING_COUNT"
+  require_nonnegative_integer "--advisory-count" "$CLASSIFY_ADVISORY_COUNT"
+  classify_release_readiness_status \
+    "$CLASSIFY_BLOCKING_COUNT" \
+    "$CLASSIFY_ADVISORY_COUNT" \
+    "$STRICT_PRODUCT_RESEARCH"
+  exit $?
+fi
+
+if [[ -n "$CLASSIFY_BLOCKING_COUNT" || -n "$CLASSIFY_ADVISORY_COUNT" ]]; then
+  printf '%s\n' '--blocking-count and --advisory-count require --classify-only' >&2
+  exit 64
+fi
+
 BLOCKER_COUNT=0
 BLOCKER_MESSAGES=()
+ADVISORY_COUNT=0
+ADVISORY_MESSAGES=()
 RELEASE_ENVIRONMENT_BLOCKER_MESSAGES=()
 VOICEOVER_ACTION_BLOCKERS=()
-COMPETITOR_ACTION_BLOCKERS=()
+COMPETITOR_ACTION_ADVISORIES=()
+RELEASE_READINESS_SCHEMA_VERSION=1
 APP_METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 RELEASE_ACTIONS_FILE="${SUISUI_RELEASE_ACTIONS_FILE:-}"
+RELEASE_STATUS_JSON_FILE="${SUISUI_RELEASE_STATUS_JSON_FILE:-}"
 VOICEOVER_CLOSEOUT_ISSUE_URL="https://github.com/albert-einshutoin/suisui/issues/244"
 COMPETITOR_CLOSEOUT_ISSUE_URL="https://github.com/albert-einshutoin/suisui/issues/245"
 RELEASE_MACHINE_CLOSEOUT_ISSUE_URL="https://github.com/albert-einshutoin/suisui/issues/246"
@@ -280,6 +370,12 @@ blocker() {
   printf "BLOCKER: %s\n" "$1"
 }
 
+advisory() {
+  ADVISORY_COUNT=$((ADVISORY_COUNT + 1))
+  ADVISORY_MESSAGES+=("$1")
+  printf "ADVISORY: %s\n" "$1"
+}
+
 check_manual_unblocker_runbook_freshness() {
   local runbook="$ROOT_DIR/docs/release/manual-unblockers.md"
   local freshness_blockers=0
@@ -450,6 +546,96 @@ tracked_source_tree_status() {
   fi
 }
 
+release_artifact_identity() {
+  printf '%s %s (%s) [%s]' \
+    "${APP_NAME:-Suisui}" \
+    "${MARKETING_VERSION:-unknown-version}" \
+    "${CURRENT_PROJECT_VERSION:-unknown-build}" \
+    "${BUNDLE_IDENTIFIER:-unknown-bundle}"
+}
+
+json_escape() {
+  local value="$1"
+
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//$'\n'/\\n}"
+  value="${value//$'\r'/\\r}"
+  value="${value//$'\t'/\\t}"
+  printf '%s' "$value"
+}
+
+write_release_status_json() {
+  local status="$1"
+  local json_path="$RELEASE_STATUS_JSON_FILE"
+  local temporary_path
+  local index
+  local advisory_message
+  local effective_blocking_failures=()
+  local manual_external_requirements=()
+
+  if [[ -z "$json_path" ]]; then
+    return 0
+  fi
+  if [[ "$json_path" != /* ]]; then
+    json_path="$ROOT_DIR/$json_path"
+  fi
+
+  mkdir -p "$(dirname "$json_path")"
+  temporary_path="${json_path}.tmp.$$"
+  if [[ "${#BLOCKER_MESSAGES[@]}" -gt 0 ]]; then
+    effective_blocking_failures=("${BLOCKER_MESSAGES[@]}")
+  fi
+  if [[ "${#VOICEOVER_ACTION_BLOCKERS[@]}" -gt 0 ]]; then
+    manual_external_requirements+=("${VOICEOVER_ACTION_BLOCKERS[@]}")
+  fi
+  if [[ "${#COMPETITOR_ACTION_ADVISORIES[@]}" -gt 0 ]]; then
+    manual_external_requirements+=("${COMPETITOR_ACTION_ADVISORIES[@]}")
+  fi
+  if [[ "${#RELEASE_ENVIRONMENT_BLOCKER_MESSAGES[@]}" -gt 0 ]]; then
+    manual_external_requirements+=("${RELEASE_ENVIRONMENT_BLOCKER_MESSAGES[@]}")
+  fi
+  if [[ "$STRICT_PRODUCT_RESEARCH" -eq 1 && "${#ADVISORY_MESSAGES[@]}" -gt 0 ]]; then
+    for advisory_message in "${ADVISORY_MESSAGES[@]}"; do
+      effective_blocking_failures+=("strict product research: $advisory_message")
+    done
+  fi
+  {
+    printf '{\n'
+    printf '  "schemaVersion": %d,\n' "$RELEASE_READINESS_SCHEMA_VERSION"
+    printf '  "status": "%s",\n' "$(json_escape "$status")"
+    printf '  "strictProductResearch": %s,\n' "$([[ "$STRICT_PRODUCT_RESEARCH" -eq 1 ]] && printf true || printf false)"
+    printf '  "sourceCommit": "%s",\n' "$(json_escape "$(source_commit)")"
+    printf '  "releaseCandidateSourceCommit": "%s",\n' "$(json_escape "$(manual_release_evidence_source_commit)")"
+    printf '  "artifactIdentity": "%s",\n' "$(json_escape "$(release_artifact_identity)")"
+    printf '  "blockingFailures": ['
+    for ((index = 0; index < ${#effective_blocking_failures[@]}; index += 1)); do
+      [[ "$index" -eq 0 ]] || printf ','
+      printf '\n    "%s"' "$(json_escape "${effective_blocking_failures[$index]}")"
+    done
+    [[ "${#effective_blocking_failures[@]}" -eq 0 ]] || printf '\n  '
+    printf '],\n'
+    printf '  "advisories": ['
+    for ((index = 0; index < ${#ADVISORY_MESSAGES[@]}; index += 1)); do
+      [[ "$index" -eq 0 ]] || printf ','
+      printf '\n    "%s"' "$(json_escape "${ADVISORY_MESSAGES[$index]}")"
+    done
+    [[ "${#ADVISORY_MESSAGES[@]}" -eq 0 ]] || printf '\n  '
+    printf '],\n'
+    printf '  "manualExternalRequirements": ['
+    for ((index = 0; index < ${#manual_external_requirements[@]}; index += 1)); do
+      [[ "$index" -eq 0 ]] || printf ','
+      printf '\n    "%s"' "$(json_escape "${manual_external_requirements[$index]}")"
+    done
+    [[ "${#manual_external_requirements[@]}" -eq 0 ]] || printf '\n  '
+    printf ']\n'
+    printf '}\n'
+  } >"$temporary_path"
+  mv "$temporary_path" "$json_path"
+
+  printf "Release status JSON written to %s\n" "${json_path#"$ROOT_DIR/"}"
+}
+
 automated_preflight_default_relative_path() {
   local commit
   commit="$(source_commit)"
@@ -519,6 +705,22 @@ blocker_bucket_count() {
   for blocker_message in "${BLOCKER_MESSAGES[@]}"; do
     blocker_bucket="$(blocker_bucket_for_message "$blocker_message")"
     if [[ "$blocker_bucket" == "$expected_bucket" ]]; then
+      ((count += 1))
+    fi
+  done
+
+  printf "%d" "$count"
+}
+
+advisory_bucket_count() {
+  local expected_bucket="$1"
+  local count=0
+  local advisory_message
+  local advisory_bucket
+
+  for advisory_message in "${ADVISORY_MESSAGES[@]}"; do
+    advisory_bucket="$(blocker_bucket_for_message "$advisory_message")"
+    if [[ "$advisory_bucket" == "$expected_bucket" ]]; then
       ((count += 1))
     fi
   done
@@ -613,7 +815,7 @@ write_operator_priority_queue() {
   local phase_manual_item_count
 
   voiceover_count="$(blocker_bucket_count "Manual VoiceOver")"
-  competitor_count="$(blocker_bucket_count "Competitor Hands-On")"
+  competitor_count="$(advisory_bucket_count "Competitor Hands-On")"
   release_machine_count="$(blocker_bucket_count "Release Machine")"
   phase_count="$(blocker_bucket_count "Phase Checklist")"
   release_environment_item_count="${#RELEASE_ENVIRONMENT_BLOCKER_MESSAGES[@]}"
@@ -624,10 +826,13 @@ write_operator_priority_queue() {
     "VoiceOver manual pass" \
     "$voiceover_count" \
     "$(voiceover_priority_next_action)"
-  write_operator_priority_queue_line \
-    "Competitor hands-on pass" \
-    "$competitor_count" \
-    "$(competitor_priority_next_action)"
+  if [[ "$competitor_count" -gt 0 ]]; then
+    printf -- "- [ ] Competitor hands-on pass has %d advisory group(s). Next: %s\n" \
+      "$competitor_count" \
+      "$(competitor_priority_next_action)"
+  else
+    printf -- "- [x] Competitor hands-on pass has no active advisories in this report run.\n"
+  fi
   write_operator_priority_queue_line \
     "Release-machine runbook" \
     "$release_machine_count" \
@@ -657,7 +862,6 @@ write_operator_priority_queue() {
 write_blocker_bucket_summary() {
   local automated_count=0
   local voiceover_count=0
-  local competitor_count=0
   local release_machine_count=0
   local phase_count=0
   local other_count=0
@@ -672,9 +876,6 @@ write_blocker_bucket_summary() {
         ;;
       "Manual VoiceOver")
         ((voiceover_count += 1))
-        ;;
-      "Competitor Hands-On")
-        ((competitor_count += 1))
         ;;
       "Release Machine")
         ((release_machine_count += 1))
@@ -691,7 +892,6 @@ write_blocker_bucket_summary() {
   printf "## Blocker Buckets\n"
   write_blocker_bucket_line "Automated Proof Gates" "$automated_count"
   write_blocker_bucket_line "Manual VoiceOver" "$voiceover_count"
-  write_blocker_bucket_line "Competitor Hands-On" "$competitor_count"
   write_blocker_bucket_line "Release Machine" "$release_machine_count"
   write_blocker_bucket_line "Phase Checklist" "$phase_count"
   write_blocker_bucket_line "Other" "$other_count"
@@ -742,7 +942,7 @@ write_local_product_gate_status() {
     printf -- "- [x] Local product gates are green for this source commit.\n"
     printf -- "- [x] Runtime/product source scan has no mock/fake/fixture/demo markers in Suisui app, CLI, core, or connector targets.\n"
     printf -- "- [x] MCP compliance, SQLite data CRUD, visible-app accessible CRUD, Xcode build, launch, and runtime AX proof are covered by accepted automated preflight evidence.\n"
-    printf -- "- [ ] Remaining gates are manual VoiceOver, competitor hands-on, and release-machine signing/notarization/Sparkle/Gatekeeper evidence.\n"
+    printf -- "- [ ] Remaining blocking gates are manual VoiceOver and release-machine signing/notarization/Sparkle/Gatekeeper evidence; competitor hands-on remains a Product Research advisory.\n"
   else
     printf -- "- [ ] Local product gates are not fully proven for this source commit.\n"
     if ! automated_preflight_evidence_covers "Release CI"; then
@@ -976,7 +1176,7 @@ collect_manual_action_blocker() {
       VOICEOVER_ACTION_BLOCKERS+=("$message")
       ;;
     competitor)
-      COMPETITOR_ACTION_BLOCKERS+=("$message")
+      COMPETITOR_ACTION_ADVISORIES+=("$message")
       ;;
   esac
 }
@@ -993,10 +1193,10 @@ write_manual_evidence_blocker_actions() {
     printf "\n"
   fi
 
-  if [[ "${#COMPETITOR_ACTION_BLOCKERS[@]}" -gt 0 ]]; then
-    printf "## Competitor Hands-On Blockers\n"
+  if [[ "${#COMPETITOR_ACTION_ADVISORIES[@]}" -gt 0 ]]; then
+    printf "## Competitor Hands-On Advisories\n"
     printf -- "- Tracking issue: %s\n" "$COMPETITOR_CLOSEOUT_ISSUE_URL"
-    for manual_blocker in "${COMPETITOR_ACTION_BLOCKERS[@]}"; do
+    for manual_blocker in "${COMPETITOR_ACTION_ADVISORIES[@]}"; do
       printf -- "- [ ] %s\n" "$manual_blocker"
     done
     printf "\n"
@@ -1420,6 +1620,12 @@ write_manual_helper_freshness_actions() {
 write_release_actions() {
   local status="$1"
   local action_path="$RELEASE_ACTIONS_FILE"
+  local effective_blocker_count="$BLOCKER_COUNT"
+  local advisory_message
+
+  if [[ "$STRICT_PRODUCT_RESEARCH" -eq 1 ]]; then
+    effective_blocker_count=$((effective_blocker_count + ADVISORY_COUNT))
+  fi
 
   if [[ -z "$action_path" ]]; then
     return 0
@@ -1433,8 +1639,11 @@ write_release_actions() {
   {
     printf "# Suisui Release Actions\n\n"
     case "$status" in
-      not-ready)
-        printf "Status: not-ready\n"
+      blocked)
+        printf "Status: blocked\n"
+        ;;
+      ready_with_advisories)
+        printf "Status: ready_with_advisories\n"
         ;;
       ready)
         printf "Status: ready\n"
@@ -1444,10 +1653,13 @@ write_release_actions() {
         ;;
     esac
     printf "Generated at: %s\n" "$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf "Report schema version: %d\n" "$RELEASE_READINESS_SCHEMA_VERSION"
     printf "Source commit: %s\n" "$(source_commit)"
     printf "Release-candidate product source commit: %s\n" "$(manual_release_evidence_source_commit)"
+    printf "Artifact identity: %s\n" "$(release_artifact_identity)"
     printf "Tracked source tree: %s\n" "$(tracked_source_tree_status)"
-    printf "Blocker groups: %d\n\n" "$BLOCKER_COUNT"
+    printf "Blocker groups: %d\n\n" "$effective_blocker_count"
+    printf "Advisory groups: %d\n\n" "$ADVISORY_COUNT"
     printf "This file is an action summary, not release evidence.\n"
     printf "It does not mark manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper checks as passed.\n\n"
 
@@ -1480,11 +1692,28 @@ write_release_actions() {
     write_operator_priority_queue
 
     printf "## Current Blocker Groups\n"
-    if [[ "${#BLOCKER_MESSAGES[@]}" -eq 0 ]]; then
+    if [[ "$effective_blocker_count" -eq 0 ]]; then
       printf -- "- [x] No blocker groups were recorded in this report run.\n"
     else
-      for blocker_message in "${BLOCKER_MESSAGES[@]}"; do
-        printf -- "- [ ] %s\n" "$blocker_message"
+      if [[ "${#BLOCKER_MESSAGES[@]}" -gt 0 ]]; then
+        for blocker_message in "${BLOCKER_MESSAGES[@]}"; do
+          printf -- "- [ ] %s\n" "$blocker_message"
+        done
+      fi
+      if [[ "$STRICT_PRODUCT_RESEARCH" -eq 1 && "${#ADVISORY_MESSAGES[@]}" -gt 0 ]]; then
+        for advisory_message in "${ADVISORY_MESSAGES[@]}"; do
+          printf -- "- [ ] strict product research: %s\n" "$advisory_message"
+        done
+      fi
+    fi
+    printf "\n"
+
+    printf "## Current Advisories\n"
+    if [[ "${#ADVISORY_MESSAGES[@]}" -eq 0 ]]; then
+      printf -- "- [x] No advisories were recorded in this report run.\n"
+    else
+      for advisory_message in "${ADVISORY_MESSAGES[@]}"; do
+        printf -- "- [ ] %s\n" "$advisory_message"
       done
     fi
     printf "\n"
@@ -1560,7 +1789,7 @@ write_release_actions() {
     printf -- "- Required evidence stays manual: concrete Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector observations.\n\n"
 
     printf "## Competitor Hands-On\n"
-    printf -- "- Complete the 2-4 hour Notion, Todoist, Linear, and Motion hands-on pass before release.\n"
+    printf -- "- Complete the 2-4 hour Notion, Todoist, Linear, and Motion hands-on pass to close the Product Research advisory; it is not a Public Alpha distribution gate.\n"
     printf -- "- Run \`./script/prepare_release_manual_helpers.sh\` first if you want release-candidate pending helper files for review.\n"
     printf -- "- The competitor helper files include \`.tmp/competitor-hands-on/hands-on-worksheet.md\`, \`.tmp/competitor-hands-on/competitor-benchmark-pending-%s.md\`, and \`.tmp/competitor-hands-on/create-evidence-command.sh\`.\n" "$(manual_release_evidence_source_commit)"
     printf -- "- For this action summary, the expected pending evidence path is \`.tmp/competitor-hands-on/competitor-hands-on-pending-%s.md\`.\n" "$(manual_release_evidence_source_commit)"
@@ -2989,13 +3218,13 @@ fi
 
 section "Competitor hands-on evidence"
 competitor_evidence_file="$ROOT_DIR/$COMPETITOR_EVIDENCE_RELATIVE"
-competitor_evidence_blocker_count=0
+competitor_evidence_advisory_count=0
 competitor_status_passed=0
 competitor_template_pattern='(^|[^[:alnum:]_])(pending|todo|tbd|placeholder|sample|example)([^[:alnum:]_]|$)|replace me|macOS/browser versions|competitor app/account tiers|whether any paid trial'
-competitor_blocker() {
+competitor_advisory() {
   collect_manual_action_blocker "competitor" "$1"
-  blocker "$1"
-  competitor_evidence_blocker_count=$((competitor_evidence_blocker_count + 1))
+  advisory "$1"
+  competitor_evidence_advisory_count=$((competitor_evidence_advisory_count + 1))
 }
 competitor_context_value() {
   local context_label="$1"
@@ -3066,7 +3295,7 @@ competitor_benchmark_source_commit() {
 }
 competitor_benchmark_file="$ROOT_DIR/$COMPETITOR_BENCHMARK_RELATIVE"
 if [[ ! -f "$competitor_evidence_file" ]]; then
-  competitor_blocker "missing competitor hands-on evidence file: $COMPETITOR_EVIDENCE_RELATIVE"
+  competitor_advisory "missing competitor hands-on evidence file: $COMPETITOR_EVIDENCE_RELATIVE"
 else
   grep -Fx "Status: passed" "$competitor_evidence_file" >/dev/null && competitor_status_passed=1
   for required_marker in "${COMPETITOR_REQUIRED_MARKERS[@]}"; do
@@ -3081,20 +3310,20 @@ else
     if [[ "$marker_present" -ne 1 ]]; then
       case "$required_marker" in
         "Status: passed")
-          competitor_blocker "Competitor hands-on evidence is not marked passed"
+          competitor_advisory "Competitor hands-on evidence is not marked passed"
           ;;
         *)
-          competitor_blocker "Competitor hands-on evidence is missing marker: $required_marker"
+          competitor_advisory "Competitor hands-on evidence is missing marker: $required_marker"
           ;;
       esac
     fi
   done
 
   if grep -Eiq "$competitor_template_pattern" "$competitor_evidence_file"; then
-    competitor_blocker "Competitor hands-on evidence still contains pending/template/placeholder text"
+    competitor_advisory "Competitor hands-on evidence still contains pending/template/placeholder text"
   fi
   if grep -F -- '- [ ]' "$competitor_evidence_file" >/dev/null; then
-    competitor_blocker "Competitor hands-on evidence still contains unchecked checklist markers"
+    competitor_advisory "Competitor hands-on evidence still contains unchecked checklist markers"
   fi
 
   for context_label in "${COMPETITOR_REQUIRED_CONTEXT_LABELS[@]}"; do
@@ -3102,7 +3331,7 @@ else
     compact_context_value="$(tr -d '[:space:]' <<<"$context_value")"
 
     if [[ -z "$compact_context_value" ]]; then
-      competitor_blocker "Competitor hands-on evidence missing review context: $context_label"
+      competitor_advisory "Competitor hands-on evidence missing review context: $context_label"
       continue
     fi
 
@@ -3110,15 +3339,15 @@ else
     grep -Eiq "$competitor_template_pattern" <<<"$context_value" && has_template_context=1
     [[ "$context_label" == "Checked by" ]] && is_placeholder_checked_by "$context_value" && has_template_context=1
     if [[ "$has_template_context" -eq 1 ]]; then
-      competitor_blocker "Competitor hands-on evidence has template review context: $context_label"
+      competitor_advisory "Competitor hands-on evidence has template review context: $context_label"
     fi
 
     if [[ "$context_label" == "Check date" ]] && ! is_iso_date "$context_value"; then
-      competitor_blocker "Competitor hands-on evidence has invalid review context date: $context_label"
+      competitor_advisory "Competitor hands-on evidence has invalid review context date: $context_label"
     elif [[ "$context_label" == "Check date" ]] && is_future_date "$context_value"; then
-      competitor_blocker "Competitor hands-on evidence has future review context date: $context_label"
+      competitor_advisory "Competitor hands-on evidence has future review context date: $context_label"
     elif [[ "$context_label" == "Elapsed hands-on time" ]] && ! competitor_hands_on_duration_is_valid "$context_value"; then
-      competitor_blocker "Competitor hands-on evidence has invalid elapsed hands-on time"
+      competitor_advisory "Competitor hands-on evidence has invalid elapsed hands-on time"
     fi
   done
 
@@ -3127,14 +3356,14 @@ else
     compact_note_value="$(tr -d '[:space:]' <<<"$note_value")"
 
     if [[ -z "$compact_note_value" ]]; then
-      competitor_blocker "Competitor hands-on evidence missing concrete note: $note_label"
+      competitor_advisory "Competitor hands-on evidence missing concrete note: $note_label"
       continue
     fi
 
     if grep -Eiq "$competitor_template_pattern" <<<"$note_value"; then
-      competitor_blocker "Competitor hands-on evidence has template concrete note: $note_label"
+      competitor_advisory "Competitor hands-on evidence has template concrete note: $note_label"
     elif is_boilerplate_competitor_value "$note_value"; then
-      competitor_blocker "Competitor hands-on evidence has boilerplate concrete note: $note_label"
+      competitor_advisory "Competitor hands-on evidence has boilerplate concrete note: $note_label"
     fi
   done
 
@@ -3143,55 +3372,55 @@ else
     compact_decision_value="$(tr -d '[:space:]' <<<"$decision_value")"
 
     if [[ -z "$compact_decision_value" ]]; then
-      competitor_blocker "Competitor hands-on evidence missing decision delta: $decision_label"
+      competitor_advisory "Competitor hands-on evidence missing decision delta: $decision_label"
       continue
     fi
 
     if grep -Eiq "$competitor_template_pattern" <<<"$decision_value"; then
-      competitor_blocker "Competitor hands-on evidence has template decision delta: $decision_label"
+      competitor_advisory "Competitor hands-on evidence has template decision delta: $decision_label"
     elif is_boilerplate_competitor_value "$decision_value"; then
-      competitor_blocker "Competitor hands-on evidence has boilerplate decision delta: $decision_label"
+      competitor_advisory "Competitor hands-on evidence has boilerplate decision delta: $decision_label"
     fi
   done
 
   if [[ "$competitor_status_passed" -eq 1 ]]; then
     if ! grep -Fx "$COMPETITOR_GENERATOR_MARKER" "$competitor_evidence_file" >/dev/null; then
-      competitor_blocker "Competitor hands-on evidence was not generated by script/create_competitor_hands_on_evidence.sh"
+      competitor_advisory "Competitor hands-on evidence was not generated by script/create_competitor_hands_on_evidence.sh"
     fi
 
     expected_source_commit="$(manual_release_evidence_source_commit)"
     competitor_source_commit="$(normalize_voiceover_context_value "$(competitor_context_value "Source commit")")"
     if [[ -n "$competitor_source_commit" && "$competitor_source_commit" != "$expected_source_commit" ]]; then
-      competitor_blocker "Competitor hands-on evidence source commit does not match current release-candidate source commit: expected $expected_source_commit"
+      competitor_advisory "Competitor hands-on evidence source commit does not match current release-candidate source commit: expected $expected_source_commit"
     fi
   fi
 
   if manual_failure_note_has_blocker "$competitor_evidence_file" && ! manual_failure_follow_up_is_actionable "$competitor_evidence_file"; then
-    competitor_blocker "Competitor hands-on evidence manual failure note lacks linked regression test or follow-up issue"
+    competitor_advisory "Competitor hands-on evidence manual failure note lacks linked regression test or follow-up issue"
   fi
 fi
 if [[ ! -f "$competitor_benchmark_file" ]]; then
-  competitor_blocker "missing competitor benchmark document: $COMPETITOR_BENCHMARK_RELATIVE"
+  competitor_advisory "missing competitor benchmark document: $COMPETITOR_BENCHMARK_RELATIVE"
 else
   if [[ "$competitor_status_passed" -eq 1 ]]; then
     expected_source_commit="$(manual_release_evidence_source_commit)"
     competitor_benchmark_commit="$(normalize_voiceover_context_value "$(competitor_benchmark_source_commit)")"
     if [[ -n "$competitor_benchmark_commit" && "$competitor_benchmark_commit" != "$expected_source_commit" ]]; then
-      competitor_blocker "Competitor benchmark source commit does not match current release-candidate source commit: expected $expected_source_commit"
+      competitor_advisory "Competitor benchmark source commit does not match current release-candidate source commit: expected $expected_source_commit"
     fi
   fi
 
   if grep -Eiq '(not a full hands-on trial record|release candidate hands-on worksheet|manual evidence to attach after the pass)' "$competitor_benchmark_file"; then
-    competitor_blocker "Competitor benchmark still reads as desk research or a hands-on worksheet"
+    competitor_advisory "Competitor benchmark still reads as desk research or a hands-on worksheet"
   fi
 
   for benchmark_marker in "## Hands-On Findings" "Notion" "Todoist" "Linear" "Motion" "Ship / Defer / Reject"; do
     if ! grep -F "$benchmark_marker" "$competitor_benchmark_file" >/dev/null; then
-      competitor_blocker "Competitor benchmark missing hands-on marker: $benchmark_marker"
+      competitor_advisory "Competitor benchmark missing hands-on marker: $benchmark_marker"
     fi
   done
 fi
-if [[ "$competitor_evidence_blocker_count" -gt 0 ]]; then
+if [[ "$competitor_evidence_advisory_count" -gt 0 ]]; then
   printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass by running ./script/prepare_release_manual_helpers.sh, filling .tmp/competitor-hands-on/hands-on-worksheet.md and .tmp/competitor-hands-on/competitor-benchmark-pending-%s.md, editing/running .tmp/competitor-hands-on/create-evidence-command.sh after replacing placeholders, or running ./script/create_competitor_hands_on_evidence.sh --passed with complete reviewer/date/source/environment context, complete Notion/Todoist/Linear/Motion notes, Ship/Defer/Reject deltas, --benchmark-output docs/product/competitor-benchmark.md, and no pending/template/unchecked markers; the generator also updates docs/product/competitor-benchmark.md from worksheet/desk research to hands-on findings. Track closeout in %s.\n" "$(manual_release_evidence_source_commit)" "$COMPETITOR_CLOSEOUT_ISSUE_URL"
 else
   printf "OK: competitor hands-on evidence covers Notion, Todoist, Linear, Motion, and public alpha scope boundaries\n"
@@ -3296,11 +3525,40 @@ else
 fi
 
 section "Summary"
-if [[ "$BLOCKER_COUNT" -gt 0 ]]; then
-  write_release_actions "not-ready"
-  printf "NOT READY: %d blocker group(s) remain.\n" "$BLOCKER_COUNT"
-  exit 2
-fi
+set +e
+classification_output="$(
+  classify_release_readiness_status \
+    "$BLOCKER_COUNT" \
+    "$ADVISORY_COUNT" \
+    "$STRICT_PRODUCT_RESEARCH" 2>&1
+)"
+classification_status=$?
+set -e
+release_status="${classification_output#status=}"
 
-write_release_actions "ready"
-printf "READY: runtime, task checklist, automated proof gates, and release environment gates passed.\n"
+case "$release_status:$classification_status" in
+  blocked:2)
+    write_release_status_json "blocked"
+    write_release_actions "blocked"
+    if [[ "$BLOCKER_COUNT" -eq 0 && "$STRICT_PRODUCT_RESEARCH" -eq 1 ]]; then
+      printf "NOT READY: strict product research mode promoted %d advisory group(s) to blocking status.\n" "$ADVISORY_COUNT"
+    else
+      printf "NOT READY: %d blocker group(s) and %d advisory group(s) remain.\n" "$BLOCKER_COUNT" "$ADVISORY_COUNT"
+    fi
+    exit 2
+    ;;
+  ready_with_advisories:0)
+    write_release_status_json "ready_with_advisories"
+    write_release_actions "ready_with_advisories"
+    printf "READY WITH ADVISORIES: blocking gates passed; %d product research advisory group(s) remain.\n" "$ADVISORY_COUNT"
+    ;;
+  ready:0)
+    write_release_status_json "ready"
+    write_release_actions "ready"
+    printf "READY: runtime, task checklist, automated proof gates, and release environment gates passed.\n"
+    ;;
+  *)
+    printf "BLOCKER: release readiness classification failed: %s\n" "$classification_output" >&2
+    exit 2
+    ;;
+esac

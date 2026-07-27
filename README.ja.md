@@ -101,6 +101,7 @@ cd Suisui
 - Developer ID署名とApple Notarizationは、証明書とnotary profileを設定したリリース用Macで行います。
 - Sparkle更新には、署名済みappcastとKeychain内のEdDSAキーが必要です。
 - 自動アクセシビリティ検査に加え、リリース候補ごとの手動VoiceOver確認が必要です。
+- 競合製品のhands-on調査はPublic Alphaの配布可否ではadvisoryです。未完了の場合は`ready_with_advisories`と表示し、配布、セキュリティ、runtime、データ完全性、アクセシビリティの必須gateを代替したり緩和したりしません。
 
 ローカル外部MCPサーバーの登録、ツール権限、レビュー、監査の基盤は実装されています。ただし、接続先ランタイム、認証情報、明示的な承認境界が必要であり、個別SaaSをパブリックアルファのサポート対象として保証するものではありません。
 

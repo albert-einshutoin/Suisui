@@ -3600,7 +3600,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actions.contains("- [ ] VoiceOver manual pass clears up to"))
         XCTAssertTrue(actions.contains("Next: fill `.tmp/voiceover-review/voiceover-worksheet.md` during the manual pass, run generated `.tmp/voiceover-review/create-evidence-command.sh` validate-only first, then rerun readiness."))
         XCTAssertTrue(actions.contains("Track closeout in https://github.com/albert-einshutoin/suisui/issues/244."))
-        XCTAssertTrue(actions.contains("- [ ] Competitor hands-on pass clears up to"))
+        XCTAssertTrue(actions.contains("- [ ] Competitor hands-on pass has"))
+        XCTAssertTrue(actions.contains("advisory group(s)"))
         XCTAssertTrue(actions.contains("Next: fill `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/competitor-benchmark-pending-\(commit).md` during the 2-4h pass, complete generated `.tmp/competitor-hands-on/create-evidence-command.sh`, run its validate-only path first, then rerun readiness."))
         XCTAssertTrue(actions.contains("Track closeout in https://github.com/albert-einshutoin/suisui/issues/245."))
         XCTAssertTrue(actions.contains("- Release Machine: https://github.com/albert-einshutoin/suisui/issues/246"))
@@ -5704,7 +5705,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(benchmark.localizedCaseInsensitiveContains("manual evidence to attach after the pass"))
     }
 
-    func testReleaseReadinessReportFailsWhenCompetitorEvidenceLacksConcreteNotes() throws {
+    func testReleaseReadinessReportReportsAdvisoryWhenCompetitorEvidenceLacksConcreteNotes() throws {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-release-readiness-weak-competitor-evidence", isDirectory: true)
         let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
@@ -5805,6 +5806,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains(".tmp/competitor-hands-on/create-evidence-command.sh"))
         XCTAssertTrue(result.output.contains("./script/create_competitor_hands_on_evidence.sh --passed"))
         XCTAssertTrue(result.output.contains("--benchmark-output docs/product/competitor-benchmark.md"))
+        XCTAssertTrue(
+            result.output.contains("ADVISORY: Competitor hands-on evidence has invalid review context date: Check date"),
+            result.output
+        )
+        XCTAssertFalse(
+            result.output.contains("BLOCKER: Competitor hands-on evidence has invalid review context date: Check date"),
+            result.output
+        )
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
@@ -9891,15 +9900,97 @@ final class ReleasePipelineTests: XCTestCase {
         }
     }
 
+    func testReleaseReadinessClassifierReturnsReadyWithAdvisoriesForProductResearchOnly() throws {
+        let classifierURL = packageRoot()
+            .appendingPathComponent("script/release_readiness_report.sh")
+        guard FileManager.default.fileExists(atPath: classifierURL.path) else {
+            XCTFail("release readiness classifier must exist")
+            return
+        }
+
+        let result = try runTool([
+            "bash",
+            classifierURL.path,
+            "--classify-only",
+            "--blocking-count", "0",
+            "--advisory-count", "1",
+        ])
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("status=ready_with_advisories"), result.output)
+    }
+
+    func testReleaseReadinessClassifierBlocksDistributionFailures() throws {
+        let classifierURL = packageRoot()
+            .appendingPathComponent("script/release_readiness_report.sh")
+        let result = try runTool([
+            "bash",
+            classifierURL.path,
+            "--classify-only",
+            "--blocking-count", "1",
+            "--advisory-count", "0",
+        ])
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.contains("status=blocked"), result.output)
+    }
+
+    func testReleaseReadinessClassifierReturnsReadyWhenNoGapsRemain() throws {
+        let classifierURL = packageRoot()
+            .appendingPathComponent("script/release_readiness_report.sh")
+        let result = try runTool([
+            "bash",
+            classifierURL.path,
+            "--classify-only",
+            "--blocking-count", "0",
+            "--advisory-count", "0",
+        ])
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("status=ready"), result.output)
+    }
+
+    func testReleaseReadinessClassifierCanMakeProductResearchStrict() throws {
+        let classifierURL = packageRoot()
+            .appendingPathComponent("script/release_readiness_report.sh")
+        let result = try runTool([
+            "bash",
+            classifierURL.path,
+            "--classify-only",
+            "--blocking-count", "0",
+            "--advisory-count", "1",
+            "--strict-product-research",
+        ])
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.contains("status=blocked"), result.output)
+    }
+
     func testReleaseReadinessReportCanWriteOperatorActionSummaryWithoutPassingManualGates() throws {
         let script = try readPackageFile("script/release_readiness_report.sh")
         let checklist = try readPackageFile("docs/release/checklist.md")
+        let manualUnblockers = try readPackageFile("docs/release/manual-unblockers.md")
+        let gapLedger = try readPackageFile("docs/release/product-out-gap-ledger.md")
+        let readme = try readPackageFile("README.md")
+        let readmeJapanese = try readPackageFile("README.ja.md")
         let phase = try readPackageFile("tasks/Phase10-ReleaseReadinessRuntime.md")
 
         XCTAssertTrue(script.contains("SUISUI_RELEASE_ACTIONS_FILE"))
         XCTAssertTrue(script.contains("# Suisui Release Actions"))
-        XCTAssertTrue(script.contains("Status: not-ready"))
+        XCTAssertTrue(script.contains("Status: blocked"))
         XCTAssertTrue(script.contains("Status: ready"))
+        XCTAssertTrue(script.contains("Status: ready_with_advisories"))
+        XCTAssertTrue(script.contains("ADVISORY_COUNT"))
+        XCTAssertTrue(script.contains("classify_release_readiness_status()"))
+        XCTAssertTrue(script.contains("Advisory groups:"))
+        XCTAssertTrue(checklist.contains("ready_with_advisories"))
+        XCTAssertTrue(checklist.contains("--strict-product-research"))
+        XCTAssertTrue(checklist.contains("SUISUI_RELEASE_STATUS_JSON_FILE"))
+        XCTAssertTrue(manualUnblockers.contains("Competitor hands-on remains advisory for Public Alpha readiness"))
+        XCTAssertTrue(gapLedger.contains("| Competitor hands-on benchmark |"))
+        XCTAssertTrue(gapLedger.contains("| Advisory | Product reviewer |"))
+        XCTAssertTrue(readme.contains("Competitor hands-on research is advisory for Public Alpha readiness"))
+        XCTAssertTrue(readmeJapanese.contains("競合製品のhands-on調査はPublic Alphaの配布可否ではadvisory"))
         XCTAssertTrue(script.contains("Generated at:"))
         XCTAssertTrue(script.contains("Source commit:"))
         XCTAssertTrue(script.contains("Release-candidate product source commit:"))
@@ -9909,7 +10000,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" status --porcelain --untracked-files=no"))
         XCTAssertTrue(script.contains("RELEASE_ENVIRONMENT_BLOCKER_MESSAGES=()"))
         XCTAssertTrue(script.contains("VOICEOVER_ACTION_BLOCKERS=()"))
-        XCTAssertTrue(script.contains("COMPETITOR_ACTION_BLOCKERS=()"))
+        XCTAssertTrue(script.contains("COMPETITOR_ACTION_ADVISORIES=()"))
         XCTAssertTrue(script.contains("collect_release_environment_blockers()"))
         XCTAssertTrue(script.contains("release_environment_route_for_blocker()"))
         XCTAssertTrue(script.contains("write_release_environment_routes()"))
@@ -9924,10 +10015,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Gatekeeper / Stapling"))
         XCTAssertTrue(script.contains("Release Evidence"))
         XCTAssertTrue(script.contains("## Manual VoiceOver Blockers"))
-        XCTAssertTrue(script.contains("## Competitor Hands-On Blockers"))
+        XCTAssertTrue(script.contains("## Competitor Hands-On Advisories"))
         XCTAssertTrue(script.contains("release environment blocker contained a sensitive field"))
-        XCTAssertTrue(phase.contains("[x] VoiceOver / competitor hands-on の手動証跡は `Source commit` を記録し、`Status: passed` の場合は現在のrelease-candidate product source commitと一致しない証跡をrelease blockerにする。"))
-        XCTAssertTrue(phase.contains("[x] competitor benchmark の `Source commit` も `Status: passed` の competitor hands-on 証跡と同じrelease候補commitであることをrelease blockerにする。"))
+        XCTAssertTrue(phase.contains("competitor hands-onの同じ不整合はProduct Research advisoryとして表示する。"))
+        XCTAssertTrue(phase.contains("competitor benchmarkの`Source commit`が`Status: passed`のcompetitor hands-on証跡と同じrelease候補commitでない場合は、Product Research advisoryとして表示する。"))
         XCTAssertTrue(phase.contains("[x] action summary は report生成commit と、手動VoiceOver / competitor hands-on証跡が一致すべき release-candidate product source commit を別々に表示する。"))
         XCTAssertTrue(phase.contains("[x] UI screenshot証跡は `Sources/SuisuiApp` / `Sources/SuisuiCore` / `Package.swift` の最新UI source commitを記録し"))
         XCTAssertTrue(script.contains("Blocker groups:"))
@@ -9945,7 +10036,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("release_environment_item_count"))
         XCTAssertTrue(script.contains("phase_manual_item_count"))
         XCTAssertTrue(script.contains("\"VoiceOver manual pass\""))
-        XCTAssertTrue(script.contains("\"Competitor hands-on pass\""))
+        XCTAssertTrue(script.contains("Competitor hands-on pass has %d advisory group(s)"))
         XCTAssertTrue(script.contains("\"Release-machine runbook\""))
         XCTAssertTrue(script.contains("manual_helper_relative_is_current()"))
         XCTAssertTrue(script.contains("voiceover_review_helpers_are_current()"))
@@ -9967,7 +10058,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("## Blocker Buckets"))
         XCTAssertTrue(script.contains("write_blocker_bucket_line \"Automated Proof Gates\""))
         XCTAssertTrue(script.contains("write_blocker_bucket_line \"Manual VoiceOver\""))
-        XCTAssertTrue(script.contains("write_blocker_bucket_line \"Competitor Hands-On\""))
+        XCTAssertFalse(script.contains("write_blocker_bucket_line \"Competitor Hands-On\""))
+        XCTAssertTrue(script.contains("advisory_bucket_count \"Competitor Hands-On\""))
         XCTAssertTrue(script.contains("write_blocker_bucket_line \"Release Machine\""))
         XCTAssertTrue(script.contains("write_blocker_bucket_line \"Phase Checklist\""))
         XCTAssertTrue(script.contains("phase_manual_gate_route_for_item()"))
@@ -9981,7 +10073,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("## Local Product Gate Status"))
         XCTAssertTrue(script.contains("write_local_product_gate_status"))
         XCTAssertTrue(script.contains("Local product gates are green for this source commit"))
-        XCTAssertTrue(script.contains("Remaining gates are manual VoiceOver, competitor hands-on, and release-machine signing/notarization/Sparkle/Gatekeeper evidence."))
+        XCTAssertTrue(script.contains("Remaining blocking gates are manual VoiceOver and release-machine signing/notarization/Sparkle/Gatekeeper evidence; competitor hands-on remains a Product Research advisory."))
         XCTAssertTrue(script.contains("SUISUI_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh"))
         XCTAssertTrue(script.contains("automated_preflight_default_relative_path()"))
         XCTAssertTrue(script.contains("automated_preflight_default_evidence_path()"))
@@ -10054,9 +10146,9 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(checklist.contains("SUISUI_RELEASE_ACTIONS_FILE=.tmp/release-actions.md ./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("Every generated action summary includes a Persistent Manual Unblocker Runbook section that links back to `docs/release/manual-unblockers.md`"))
-        XCTAssertTrue(checklist.contains("The Operator Priority Queue appears before the full blocker list and shows the highest-impact manual lanes, the blocker count each lane can clear, the release-environment item count for the release-machine lane, the unchecked manual phase-item count for checklist routing, and the next worksheet plus generated command/helper to use."))
+        XCTAssertTrue(checklist.contains("The Operator Priority Queue appears before the full blocker list and shows the highest-impact manual lanes, the blocker or advisory count each lane can clear, the release-environment item count for the release-machine lane, the unchecked manual phase-item count for checklist routing, and the next worksheet plus generated command/helper to use."))
         XCTAssertTrue(checklist.contains("The Operator Priority Queue names the manual worksheet before the generated command for VoiceOver, competitor hands-on, release-machine, and login-item evidence lanes."))
-        XCTAssertTrue(checklist.contains("The action summary groups remaining blockers into Automated Proof Gates, Manual VoiceOver, Competitor Hands-On, Release Machine, Phase Checklist, and Other buckets."))
+        XCTAssertTrue(checklist.contains("The action summary groups remaining blockers into Automated Proof Gates, Manual VoiceOver, Release Machine, Phase Checklist, and Other buckets, while Competitor Hands-On remains in the advisory sections."))
         XCTAssertTrue(checklist.contains("The action summary includes a Local Product Gate Status section so reviewers can distinguish current-commit local MCP/data/CRUD proof from manual and release-machine blockers."))
         XCTAssertTrue(checklist.contains("When valid clean-tree automated preflight evidence is supplied, the Automated Proof Gates section shows the accepted evidence file, source commit, release-candidate product source commit, generated timestamp, runtime AX smoke OK line, and passed gates"))
         XCTAssertTrue(checklist.contains("The action summary header lists both the report `Source commit` and `Release-candidate product source commit`"))
@@ -10085,14 +10177,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] `release_readiness_report.sh` は `SUISUI_RELEASE_ACTIONS_FILE` 指定時に残blockerのoperator action summaryを書き出す。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Source commit` と tracked source tree の clean / dirty / unavailable 状態を併記する。"))
         XCTAssertTrue(phase.contains("[x] action summary は今回の実行で発生した具体blockerを `Current Blocker Groups` のチェックリストとして列挙する。"))
-        XCTAssertTrue(phase.contains("[x] action summary は `Operator Priority Queue` を `Current Blocker Groups` より前に出し、手動VoiceOver、競合hands-on、release-machineのどれを先に実施すれば何件のblockerを減らせるか、release-machine内の環境blocker件数、Phase routing対象の手動項目数、worksheet -> generated command の順序を示す。"))
-        XCTAssertTrue(phase.contains("[x] action summary は `Blocker Buckets` で Automated Proof Gates / Manual VoiceOver / Competitor Hands-On / Release Machine / Phase Checklist / Other の残件数を分類する。"))
+        XCTAssertTrue(phase.contains("[x] action summaryは`Operator Priority Queue`を`Current Blocker Groups`より前に出し、手動VoiceOverとrelease-machineが減らせるblocker数、競合hands-onのadvisory数"))
+        XCTAssertTrue(phase.contains("[x] action summaryは`Blocker Buckets`でAutomated Proof Gates / Manual VoiceOver / Release Machine / Phase Checklist / Otherを分類し、競合hands-onは`Current Advisories`と専用sectionへ分離する。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Release Environment Blockers` に `verify_release_environment.sh` の `BLOCKER:` 明細を相対パス化して列挙し、機密っぽい値を転記しない。"))
         XCTAssertTrue(phase.contains("[x] action summary は release environment blocker を Signing Configuration / Notarization / Sparkle / Appcast / Gatekeeper / Release Evidence / Source Hygiene / Local Inspection に分類し"))
         XCTAssertTrue(phase.contains("[x] action summary は release-machine blocker が残る場合、秘密値を出さずに Developer ID identity、local env、signing/notary/Sparkle verifier、final preflight を確認する `Release Machine Local Doctor` を表示する。"))
         XCTAssertTrue(phase.contains("[x] action summary は clean-tree automated preflight evidence が有効な場合、accepted evidence、source commit、generated at、runtime AX smoke OK行、passed gatesを表示し、再実行指示だけを出さない。"))
         XCTAssertTrue(phase.contains("[x] action summary は Local Product Gate Status でcurrent commitのMCP/data/CRUD/local proofがgreenか、残りがmanual/release-machineかを明示する。"))
-        XCTAssertTrue(phase.contains("[x] action summary は `Manual VoiceOver Blockers` と `Competitor Hands-On Blockers` に手動証跡の不足項目を分離表示し、手動作業を完了扱いにしない。"))
+        XCTAssertTrue(phase.contains("[x] action summaryは`Manual VoiceOver Blockers`と`Competitor Hands-On Advisories`に手動証跡の不足項目を分離表示し、競合調査を完了扱いにせず、配布blockerにも数えない。"))
         XCTAssertTrue(phase.contains("[x] action summary は VoiceOver の `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` preview、`.tmp/voiceover-review/voiceover-worksheet.md`、`.tmp/voiceover-review/create-evidence-command.sh` を案内し、operatorがtracked evidenceを汚さずrelease候補contextを確認できるようにする。"))
         XCTAssertTrue(phase.contains("[x] Generated VoiceOver evidence command verifies `.tmp/voiceover-review/voiceover-worksheet.md` is current, marked completed, filled, and free of pending/unchecked markers before validate-only or passed evidence."))
         XCTAssertTrue(phase.contains("[x] action summary は VoiceOver / competitor hands-on の current `Source commit` に対応する pending evidence path も併記する。"))
@@ -10226,6 +10318,7 @@ final class ReleasePipelineTests: XCTestCase {
         let accessibilityURL = scriptDirectory.appendingPathComponent("check_accessibility_preflight.sh")
         let mcpComplianceURL = scriptDirectory.appendingPathComponent("verify_mcp_compliance.sh")
         let actionSummaryURL = fixtureRoot.appendingPathComponent("release-actions.md")
+        let statusJSONURL = fixtureRoot.appendingPathComponent("release-status.json")
 
         try? FileManager.default.removeItem(at: fixtureRoot)
         try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
@@ -10360,9 +10453,14 @@ final class ReleasePipelineTests: XCTestCase {
             ["bash", reportURL.path],
             environment: [
                 "SUISUI_ACCESSIBILITY_RUNTIME_PREFLIGHT": "1",
-                "SUISUI_RELEASE_ACTIONS_FILE": actionSummaryURL.path
+                "SUISUI_RELEASE_ACTIONS_FILE": actionSummaryURL.path,
+                "SUISUI_RELEASE_STATUS_JSON_FILE": statusJSONURL.path
             ]
         )
+        guard FileManager.default.fileExists(atPath: actionSummaryURL.path) else {
+            XCTFail("release readiness report must write its action summary: \(result.output)")
+            return
+        }
         let actionSummary = try String(contentsOf: actionSummaryURL, encoding: .utf8)
         let sourceCommit = try runTool(["git", "rev-parse", "--short", "HEAD"])
             .output
@@ -10371,9 +10469,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(actionSummary.contains("Source commit: \(sourceCommit)"))
         XCTAssertTrue(actionSummary.contains("Release-candidate product source commit: \(sourceCommit)"))
+        XCTAssertTrue(actionSummary.contains("Status: blocked"))
+        XCTAssertTrue(actionSummary.contains("Advisory groups:"))
         XCTAssertTrue(actionSummary.contains("## Operator Priority Queue"))
         XCTAssertTrue(actionSummary.contains("- [ ] VoiceOver manual pass clears up to"))
-        XCTAssertTrue(actionSummary.contains("- [ ] Competitor hands-on pass clears up to"))
+        XCTAssertTrue(actionSummary.contains("- [ ] Competitor hands-on pass has"))
+        XCTAssertTrue(actionSummary.contains("advisory group(s)"))
         XCTAssertTrue(actionSummary.contains("Next: run `./script/prepare_release_manual_helpers.sh`, fill `.tmp/voiceover-review/voiceover-worksheet.md`, run generated `.tmp/voiceover-review/create-evidence-command.sh` validate-only first, then rerun readiness."))
         XCTAssertTrue(actionSummary.contains("Next: run `./script/prepare_release_manual_helpers.sh`, fill `.tmp/competitor-hands-on/hands-on-worksheet.md`, complete `.tmp/competitor-hands-on/create-evidence-command.sh`, then rerun readiness."))
         XCTAssertTrue(actionSummary.contains("## Release Closeout Issue Routes"))
@@ -10426,7 +10527,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("- [ ] VoiceOver accessibility evidence is not marked passed"))
         XCTAssertTrue(actionSummary.contains("- [ ] VoiceOver accessibility evidence missing release context: Source commit"))
         XCTAssertTrue(actionSummary.contains("- [ ] VoiceOver accessibility evidence missing concrete focus note: Task inspector"))
-        XCTAssertTrue(actionSummary.contains("## Competitor Hands-On Blockers"))
+        XCTAssertTrue(actionSummary.contains("## Competitor Hands-On Advisories"))
+        XCTAssertTrue(actionSummary.contains("## Current Advisories"))
         XCTAssertTrue(actionSummary.contains("- Tracking issue: https://github.com/albert-einshutoin/suisui/issues/245"))
         XCTAssertTrue(actionSummary.contains("```bash\n./script/create_competitor_hands_on_evidence.sh --pending"))
         XCTAssertTrue(actionSummary.contains(".tmp/competitor-hands-on/hands-on-worksheet.md"))
@@ -10455,6 +10557,25 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("Competitor hands-on deltas should link to `docs/product/competitor-benchmark.md`, a Phase task, or a focused UI regression test."))
         XCTAssertTrue(actionSummary.contains("Release-machine failures should link to `script/verify_release_environment.sh` or `Tests/SuisuiCoreTests/ReleasePipelineTests.swift`."))
         XCTAssertFalse(actionSummary.contains("Status: ready"))
+
+        guard FileManager.default.fileExists(atPath: statusJSONURL.path) else {
+            XCTFail("release readiness report must write JSON status when requested")
+            return
+        }
+        let statusJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: statusJSONURL)) as? [String: Any]
+        )
+        XCTAssertEqual((statusJSON["schemaVersion"] as? NSNumber)?.intValue, 1)
+        XCTAssertEqual(statusJSON["status"] as? String, "blocked")
+        XCTAssertFalse((statusJSON["blockingFailures"] as? [String] ?? []).isEmpty)
+        XCTAssertTrue(
+            (statusJSON["advisories"] as? [String] ?? [])
+                .contains(where: { $0.contains("Competitor hands-on evidence") })
+        )
+        XCTAssertFalse((statusJSON["manualExternalRequirements"] as? [String] ?? []).isEmpty)
+        XCTAssertEqual(statusJSON["sourceCommit"] as? String, sourceCommit)
+        XCTAssertEqual(statusJSON["releaseCandidateSourceCommit"] as? String, sourceCommit)
+        XCTAssertFalse((statusJSON["artifactIdentity"] as? String ?? "").isEmpty)
     }
 
     func testQualityStatusReportSummarizesPhase14RiskAndArtifactsWithoutSecrets() throws {
