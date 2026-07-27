@@ -9014,7 +9014,12 @@ final class ReleasePipelineTests: XCTestCase {
         )
         XCTAssertTrue(captureScript.contains("inbox-action-panel=>Schedule launch review and capture visual evidence."))
         XCTAssertTrue(captureScript.contains("inbox-action-panel=>Create a task for launch review evidence."))
-        XCTAssertTrue(captureScript.contains("inbox-action-panel=>Inbox classification actions"))
+        XCTAssertTrue(captureScript.contains("INBOX_CLASSIFICATION_ACTIONS_LABEL=\"Inbox classification actions\""))
+        XCTAssertTrue(captureScript.contains("INBOX_CLASSIFICATION_ACTIONS_LABEL=\"インボックス分類操作\""))
+        XCTAssertTrue(captureScript.contains("inbox-action-panel=>$INBOX_CLASSIFICATION_ACTIONS_LABEL"))
+        XCTAssertTrue(captureScript.contains("inbox_classification_actions_label=\"Inbox classification actions\""))
+        XCTAssertTrue(captureScript.contains("inbox_classification_actions_label=\"インボックス分類操作\""))
+        XCTAssertTrue(captureScript.contains("inbox-action-panel=>$inbox_classification_actions_label"))
         let assistantQueueRouteMarkers = try XCTUnwrap(
             captureScript.split(separator: "\n").first {
                 $0.hasPrefix("ASSISTANT_QUEUE_ROUTE_MARKERS=")
