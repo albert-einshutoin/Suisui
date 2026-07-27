@@ -2,6 +2,20 @@ import Foundation
 import SuisuiCore
 import SwiftUI
 
+/// Locale used by imperative formatters that do not inherit SwiftUI's
+/// environment. Without this bridge, selecting Japanese in Suisui translated
+/// labels while dates continued to follow the macOS language.
+func localizedDisplayLocale() -> Locale {
+    guard let preference = AppLanguagePreference.environmentOverride
+        ?? AppLanguagePreference(
+            rawValue: UserDefaults.standard.string(forKey: AppLanguagePreference.storageKey) ?? ""
+        ),
+        preference != .system else {
+        return .autoupdatingCurrent
+    }
+    return preference.locale
+}
+
 func localizedDisplay(_ key: String) -> String {
     if let preference = AppLanguagePreference.environmentOverride
         ?? AppLanguagePreference(rawValue: UserDefaults.standard.string(forKey: AppLanguagePreference.storageKey) ?? ""),
@@ -86,12 +100,22 @@ func localizedReviewFieldValue(_ field: ReviewActionField) -> String {
     case .timestamp:
         return SuisuiTimestampDisplay.absolute(
             field.rawValue,
-            calendar: VisualEvidenceRuntimeContext.runtimeCalendar()
+            calendar: VisualEvidenceRuntimeContext.runtimeCalendar(),
+            locale: localizedDisplayLocale()
         )
     case .flag:
         return localizedDisplay(field.rawValue == "true" ? "Yes" : "No")
     case .text, .identifier, .other:
         return localizedReviewEnumValue(field)
+    }
+}
+
+func localizedTaskDueLabel(_ task: ProjectBoardTask) -> String? {
+    task.dueAt.map {
+        SuisuiTimestampDisplay.dayLabel(
+            $0,
+            locale: localizedDisplayLocale()
+        )
     }
 }
 

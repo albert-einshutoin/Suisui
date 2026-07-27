@@ -220,7 +220,9 @@ private struct WorkflowTaskRow: View {
                             } icon: {
                                 Image(systemName: task.status.systemImage)
                             }
-                            if let dueLabel = task.todayDueDisplayLabel() {
+                            if let dueLabel = task.todayDueDisplayLabel(
+                                locale: localizedDisplayLocale()
+                            ) {
                                 Label(
                                     dueLabel,
                                     systemImage: isOverdue ? "calendar.badge.exclamationmark" : "calendar"
@@ -279,7 +281,9 @@ private struct WorkflowTaskRow: View {
         if let triageSummary {
             values.append(triageSummary.accessibilityValue)
         }
-        if let dueLabel = task.todayDueDisplayLabel() {
+        if let dueLabel = task.todayDueDisplayLabel(
+            locale: localizedDisplayLocale()
+        ) {
             values.append("\(String(localized: "Due")): \(dueLabel)")
         }
         return values.joined(separator: ", ")

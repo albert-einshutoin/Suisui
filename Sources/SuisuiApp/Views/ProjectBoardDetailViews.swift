@@ -584,7 +584,7 @@ private struct ProjectTaskSnapshotSection: View {
                                     .font(.caption.weight(.medium))
                                     .lineLimit(1)
                                     .truncationMode(.tail)
-                                Text(task.dueLabel ?? localizedDisplay(task.status.title))
+                                Text(localizedTaskDueLabel(task) ?? localizedDisplay(task.status.title))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
@@ -1709,7 +1709,7 @@ private struct BoardTaskCard: View {
     }
 
     private var localizedDueValue: String {
-        task.dueLabel.map(localizedDisplay) ?? localizedDisplay("No due date")
+        localizedTaskDueLabel(task) ?? localizedDisplay("No due date")
     }
 
     private var recurrenceValue: String? {
@@ -1957,8 +1957,8 @@ private struct TaskCardMetadataStrip: View {
 
     private var scheduleLineValue: String? {
         var components: [String] = []
-        if let dueLabel = task.dueLabel {
-            components.append(localizedDisplay(dueLabel))
+        if let dueLabel = localizedTaskDueLabel(task) {
+            components.append(dueLabel)
         }
         if let recurrenceValue {
             components.append(recurrenceValue)
@@ -1980,7 +1980,7 @@ private struct TaskCardMetadataStrip: View {
     }
 
     private var localizedDueValue: String {
-        task.dueLabel.map(localizedDisplay) ?? localizedDisplay("No due date")
+        localizedTaskDueLabel(task) ?? localizedDisplay("No due date")
     }
 
     private var recurrenceValue: String? {
@@ -2064,7 +2064,7 @@ private struct ProjectTaskList: View {
             }
 
             TableColumn("Due") { task in
-                Text(task.dueLabel ?? "")
+                Text(localizedTaskDueLabel(task) ?? "")
                     .foregroundStyle(.secondary)
             }
 

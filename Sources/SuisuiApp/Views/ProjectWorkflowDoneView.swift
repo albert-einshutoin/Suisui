@@ -289,7 +289,8 @@ private struct DoneTaskHistoryRow: View {
                 projectTitle,
                 SuisuiTimestampDisplay.absolute(
                     completedAt,
-                    calendar: VisualEvidenceRuntimeContext.runtimeCalendar()
+                    calendar: VisualEvidenceRuntimeContext.runtimeCalendar(),
+                    locale: localizedDisplayLocale()
                 )
             )
         }

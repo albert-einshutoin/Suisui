@@ -438,7 +438,9 @@
 "Make Project" = "プロジェクト化";
 "Make Task" = "タスク化";
 "Make selected Inbox item a project" = "選択中のインボックス項目をプロジェクト化";
+"Make selected Inbox item a project (Control-Command-2)" = "選択中のインボックス項目をプロジェクト化（Control-Command-2）";
 "Make selected Inbox item a task" = "選択中のインボックス項目をタスク化";
+"Make selected Inbox item a task (Control-Command-1)" = "選択中のインボックス項目をタスク化（Control-Command-1）";
 "Memo" = "メモ";
 "Microphone input level" = "マイク入力レベル";
 "Microphone permission denied." = "マイク権限が拒否されています。";
@@ -564,6 +566,7 @@
 "Review project tasks, open a task card, then use the inspector for edits." = "プロジェクトタスクを確認し、タスクカードを開いてインスペクタで編集します。";
 "Review ready" = "レビュー可能";
 "Review selected Inbox item later" = "選択中のインボックス項目を後で確認";
+"Review selected Inbox item later (Control-Command-4)" = "選択中のインボックス項目を後で確認（Control-Command-4）";
 "Runtime app settings could not be loaded. Defaults are shown until settings are saved again." = "ランタイムアプリ設定を読み込めませんでした。設定を再保存するまでデフォルトを表示します。";
 "Save Changes" = "変更を保存";
 "Set Due Date" = "期限を設定";
@@ -590,6 +593,7 @@
 "Edit and save the selected task." = "選択中のタスクを編集して保存します。";
 "Schedule Today" = "今日に予定";
 "Schedule selected Inbox item for today" = "選択中のインボックス項目を今日に予定";
+"Schedule selected Inbox item for today (Control-Command-3)" = "選択中のインボックス項目を今日に予定（Control-Command-3）";
 "Secret Key" = "シークレットキー";
 "Secret Value" = "シークレット値";
 "Select Inbox, Today, or a project before moving to the board detail." = "ボード詳細へ移動する前に、インボックス、今日、またはプロジェクトを選択してください。";

@@ -1367,7 +1367,8 @@ struct TaskInspectorView: View {
                             "Since",
                             value: SuisuiTimestampDisplay.absolute(
                                 since,
-                                calendar: VisualEvidenceRuntimeContext.runtimeCalendar()
+                                calendar: VisualEvidenceRuntimeContext.runtimeCalendar(),
+                                locale: localizedDisplayLocale()
                             )
                         )
                         .accessibilityIdentifier("task-inspector-waiting-since")
@@ -1558,7 +1559,7 @@ private struct TaskInspectorMetadataSummary: View {
             label: "Due",
             value: dueValue,
             systemImage: "calendar",
-            tint: task.dueLabel == nil ? .secondary : .blue
+            tint: localizedTaskDueLabel(task) == nil ? .secondary : .blue
         )
 
         InspectorMetadataPill(
@@ -1570,7 +1571,7 @@ private struct TaskInspectorMetadataSummary: View {
     }
 
     private var dueValue: String {
-        task.dueLabel ?? "No due date"
+        localizedTaskDueLabel(task) ?? localizedDisplay("No due date")
     }
 }
 

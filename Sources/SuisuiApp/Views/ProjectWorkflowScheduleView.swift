@@ -339,7 +339,7 @@ private struct ScheduleMiniCalendarPanel: View {
             SuisuiTimestampDisplay.absolute(
                 day.date,
                 calendar: calendar,
-                locale: calendar.locale ?? .autoupdatingCurrent
+                locale: localizedDisplayLocale()
             ),
             localizedCount(openCount, one: "%d open task", other: "%d open tasks"),
             localizedCount(
@@ -416,7 +416,7 @@ private struct ScheduleMiniCalendarDayChip: View {
         return SuisuiTimestampDisplay.weekdayAndDay(
             day.date,
             calendar: calendar,
-            locale: calendar.locale ?? .autoupdatingCurrent
+            locale: localizedDisplayLocale()
         )
     }
 
@@ -778,7 +778,7 @@ private struct WeeklyScheduleDayColumn: View {
         return SuisuiTimestampDisplay.weekdayAndDay(
             day.date,
             calendar: calendar,
-            locale: calendar.locale ?? .autoupdatingCurrent
+            locale: localizedDisplayLocale()
         )
     }
 
@@ -1221,7 +1221,7 @@ private struct DailyWorkloadDayCell: View {
         return SuisuiTimestampDisplay.weekdayAndDay(
             day.date,
             calendar: calendar,
-            locale: calendar.locale ?? .autoupdatingCurrent
+            locale: localizedDisplayLocale()
         )
     }
 

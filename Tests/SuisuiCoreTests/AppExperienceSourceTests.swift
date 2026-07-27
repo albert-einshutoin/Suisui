@@ -718,6 +718,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(localizedDisplaySource.contains("AppLanguagePreference.storageKey"))
         XCTAssertTrue(localizedDisplaySource.contains("Bundle.main.path(forResource: preference.localeIdentifier, ofType: \"lproj\")"))
         XCTAssertTrue(localizedDisplaySource.contains("localizedString(forKey: key, value: key, table: nil)"))
+        XCTAssertTrue(localizedDisplaySource.contains("func localizedDisplayLocale() -> Locale"))
+        XCTAssertTrue(localizedDisplaySource.contains("return preference.locale"))
+        XCTAssertTrue(localizedDisplaySource.contains("locale: localizedDisplayLocale()"))
 
         XCTAssertTrue(appSource.contains("@AppStorage(AppLanguagePreference.storageKey) private var languagePreference: AppLanguagePreference = .system"))
         XCTAssertTrue(appSource.contains("private var effectiveLanguagePreference: AppLanguagePreference"))
@@ -3777,9 +3780,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("ActionReviewHeader"))
         XCTAssertTrue(appSource.contains("ReviewActionTitleRow"))
         XCTAssertTrue(appSource.contains("ViewThatFits(in: .horizontal)"))
-        XCTAssertTrue(appSource.contains("argumentDisplaySummary(maxFields: 4, maxValueLength: 96)"))
+        XCTAssertFalse(appSource.contains("argumentDisplaySummary(maxFields: 4, maxValueLength: 96)"))
         XCTAssertTrue(appSource.contains(".help(summary)"))
-        XCTAssertTrue(appSource.contains(".help(argumentSummary.fullText)"))
+        XCTAssertTrue(appSource.contains(".help(localizedFullText)"))
 
         // Arguments render as labelled fields, never as a raw `key: value`
         // dump, and the full text is reachable without a mouse hover.
@@ -3787,7 +3790,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("item.argumentDisplayFields()"))
         XCTAssertTrue(appSource.contains("localizedReviewFieldLabel(field)"))
         XCTAssertTrue(appSource.contains("localizedReviewFieldValue(field)"))
-        XCTAssertTrue(appSource.contains(".accessibilityValue(argumentSummary.fullText)"))
+        XCTAssertTrue(appSource.contains("private var localizedFullText: String"))
+        XCTAssertTrue(appSource.contains(".accessibilityValue(localizedFullText)"))
+        XCTAssertFalse(appSource.contains(".accessibilityValue(argumentSummary.fullText)"))
         // Anything writing outside Suisui is shown in full; consent cannot be
         // asked for behind a "+2 more".
         XCTAssertTrue(appSource.contains("viewModel.session.originalPlan.riskLevel >= .write"))

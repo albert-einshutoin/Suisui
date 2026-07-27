@@ -300,8 +300,7 @@ private struct ReviewActionRow: View {
 
             ReviewActionFieldList(
                 fields: item.argumentDisplayFields(),
-                showsEveryFieldInFull: showsEveryFieldInFull,
-                argumentSummary: item.argumentDisplaySummary(maxFields: 4, maxValueLength: 96)
+                showsEveryFieldInFull: showsEveryFieldInFull
             )
 
             ForEach(viewModel.validationIssues(for: item.id), id: \.message) { issue in
@@ -394,7 +393,6 @@ private struct ReviewActionRow: View {
 private struct ReviewActionFieldList: View {
     let fields: [ReviewActionField]
     let showsEveryFieldInFull: Bool
-    let argumentSummary: ReviewActionArgumentSummary
 
     private static let compactFieldLimit = 4
 
@@ -404,6 +402,12 @@ private struct ReviewActionFieldList: View {
 
     private var hiddenFieldCount: Int {
         fields.count - visibleFields.count
+    }
+
+    private var localizedFullText: String {
+        fields
+            .map { "\(localizedReviewFieldLabel($0)): \(localizedReviewFieldValue($0))" }
+            .joined(separator: ", ")
     }
 
     var body: some View {
@@ -429,10 +433,10 @@ private struct ReviewActionFieldList: View {
             // hear the whole proposal as one uninterrupted statement.
             .accessibilityElement(children: .combine)
             .accessibilityLabel(localizedSettingsDisplay("Proposed values"))
-            .accessibilityValue(argumentSummary.fullText)
+            .accessibilityValue(localizedFullText)
             // The tooltip stays as a pointer convenience, but it is no longer
             // the only way to read a clipped value.
-            .help(argumentSummary.fullText)
+            .help(localizedFullText)
             .accessibilityIdentifier("voice-action-review-arguments")
         }
     }

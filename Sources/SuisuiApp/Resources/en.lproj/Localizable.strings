@@ -438,7 +438,9 @@
 "Make Project" = "Make Project";
 "Make Task" = "Make Task";
 "Make selected Inbox item a project" = "Make selected Inbox item a project";
+"Make selected Inbox item a project (Control-Command-2)" = "Make selected Inbox item a project (Control-Command-2)";
 "Make selected Inbox item a task" = "Make selected Inbox item a task";
+"Make selected Inbox item a task (Control-Command-1)" = "Make selected Inbox item a task (Control-Command-1)";
 "Memo" = "Memo";
 "Microphone input level" = "Microphone input level";
 "Microphone permission denied." = "Microphone permission denied.";
@@ -564,6 +566,7 @@
 "Review project tasks, open a task card, then use the inspector for edits." = "Review project tasks, open a task card, then use the inspector for edits.";
 "Review ready" = "Review ready";
 "Review selected Inbox item later" = "Review selected Inbox item later";
+"Review selected Inbox item later (Control-Command-4)" = "Review selected Inbox item later (Control-Command-4)";
 "Runtime app settings could not be loaded. Defaults are shown until settings are saved again." = "Runtime app settings could not be loaded. Defaults are shown until settings are saved again.";
 "Save Changes" = "Save Changes";
 "Set Due Date" = "Set Due Date";
@@ -590,6 +593,7 @@
 "Edit and save the selected task." = "Edit and save the selected task.";
 "Schedule Today" = "Schedule Today";
 "Schedule selected Inbox item for today" = "Schedule selected Inbox item for today";
+"Schedule selected Inbox item for today (Control-Command-3)" = "Schedule selected Inbox item for today (Control-Command-3)";
 "Secret Key" = "Secret Key";
 "Secret Value" = "Secret Value";
 "Select Inbox, Today, or a project before moving to the board detail." = "Select Inbox, Today, or a project before moving to the board detail.";

@@ -638,7 +638,12 @@ private struct TodayAssistantRail: View {
             detailRow(title: "Project", value: context.projectTitle, systemImage: "folder")
             detailRow(title: "Status", value: String(localized: String.LocalizationValue(task.status.title)), systemImage: task.status.systemImage)
             detailRow(title: "Priority", value: String(localized: String.LocalizationValue(task.priority.label)), systemImage: "flag")
-            detailRow(title: "Due", value: task.todayDueDisplayLabel() ?? String(localized: "No due date"), systemImage: "calendar")
+            detailRow(
+                title: "Due",
+                value: task.todayDueDisplayLabel(locale: localizedDisplayLocale())
+                    ?? localizedDisplay("No due date"),
+                systemImage: "calendar"
+            )
             detailRow(title: "Time Block", value: context.nextBlockLabel ?? String(localized: "No block drafted"), systemImage: "clock")
             detailRow(title: "Notes", value: context.notes, systemImage: "note.text")
             detailRow(title: "Today Progress", value: context.subtaskSummary, systemImage: "checklist")
