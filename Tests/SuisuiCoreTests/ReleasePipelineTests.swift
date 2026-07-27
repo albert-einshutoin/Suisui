@@ -6452,6 +6452,62 @@ final class ReleasePipelineTests: XCTestCase {
             folderPickerSource.contains("set axItems to entire contents of currentWindow"),
             "Scanning the complete app AX tree can block behind the native folder picker."
         )
+        XCTAssertTrue(
+            script.contains("set -Eeuo pipefail"),
+            "Failures raised inside runtime smoke helpers must reach the evidence-writing ERR trap."
+        )
+        XCTAssertFalse(
+            script.contains("set +e"),
+            "Expected AX probe misses must be checked explicitly so errtrace only reports real helper failures."
+        )
+        XCTAssertTrue(script.contains("if wait \"$checker_pid\"; then"))
+        XCTAssertTrue(
+            folderPickerSource.contains("local initial_window_count"),
+            "The native picker flow must snapshot the existing app windows before opening NSOpenPanel."
+        )
+        XCTAssertTrue(folderPickerSource.contains("local initial_sheet_count"))
+        let waitForNativePicker = try XCTUnwrap(
+            folderPickerSource.range(
+                of: "repeat until (count of windows) > initialWindowCount or my totalSheetCount(appName) > initialSheetCount"
+            )
+        )
+        let openGoToFolder = try XCTUnwrap(
+            folderPickerSource.range(of: "keystroke \"g\" using {command down, shift down}")
+        )
+        XCTAssertLessThan(
+            waitForNativePicker.lowerBound,
+            openGoToFolder.lowerBound,
+            "Keyboard input must wait for NSOpenPanel instead of racing the existing main window."
+        )
+        XCTAssertTrue(
+            folderPickerSource.contains("repeat until my totalSheetCount(appName) > pickerSheetCount"),
+            "The picker must wait for the Go to Folder sheet before pasting a path."
+        )
+        XCTAssertTrue(
+            folderPickerSource.contains("repeat until my totalSheetCount(appName) is pickerSheetCount"),
+            "The picker must wait for path resolution before accepting the selected folder."
+        )
+        let resolvedGoToFolder = try XCTUnwrap(
+            folderPickerSource.range(
+                of: "repeat until my totalSheetCount(appName) is pickerSheetCount"
+            )
+        )
+        let acceptResolvedFolder = try XCTUnwrap(
+            folderPickerSource.range(
+                of: "-- This activates the default Select/Choose action without localized button text.\n      key code 36"
+            )
+        )
+        XCTAssertLessThan(
+            resolvedGoToFolder.lowerBound,
+            acceptResolvedFolder.lowerBound,
+            "Return may accept the folder only after Go to Folder has resolved."
+        )
+        XCTAssertTrue(
+            folderPickerSource.contains("repeat until (count of windows) is initialWindowCount and my totalSheetCount(appName) is initialSheetCount"),
+            "SQLite verification must not start until NSOpenPanel has actually closed."
+        )
+        XCTAssertFalse(folderPickerSource.contains("delay 0.4"))
+        XCTAssertFalse(folderPickerSource.contains("delay 0.8"))
         XCTAssertTrue(script.contains("workspace_path IS NULL AND workspace_bookmark IS NULL"))
         XCTAssertTrue(script.contains("workspace_path='$escaped_workspace' AND workspace_bookmark IS NOT NULL"))
         XCTAssertTrue(script.contains("visible Project inspector selected project workspace through NSOpenPanel"))
