@@ -68,16 +68,21 @@ struct OnboardingWelcomeView: View {
                 .font(.headline)
                 .multilineTextAlignment(.center)
 
-            Text("Talk to Suisui. Review the draft, then move your work forward.")
+            Text("Tell Suisui what you promised someone. It drafts the work, you review and approve it, and Suisui keeps the receipts until the job is delivered.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 
+            // These three words are the product's value hypothesis, so they
+            // have to name what Suisui does that a general assistant does not.
+            // "Capture -> Today -> Complete" described a generic task app; the
+            // claim is that Suisui closes the loop from a promise you made to
+            // work that was actually delivered.
             HStack(spacing: SuisuiSpacing.sm) {
-                onboardingFlowPill(systemImage: "tray.fill", title: "Capture")
+                onboardingFlowPill(systemImage: "hand.raised.fill", title: "Promise")
                 flowArrow
-                onboardingFlowPill(systemImage: "sun.max.fill", title: "Today")
+                onboardingFlowPill(systemImage: "checkmark.seal", title: "Review and Run")
                 flowArrow
-                onboardingFlowPill(systemImage: "checkmark.seal", title: "Complete")
+                onboardingFlowPill(systemImage: "shippingbox.fill", title: "Deliver")
             }
             .padding(.top, SuisuiSpacing.sm)
             .accessibilityElement(children: .combine)

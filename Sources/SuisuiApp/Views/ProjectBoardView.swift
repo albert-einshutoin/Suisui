@@ -635,7 +635,7 @@ struct ProjectBoardView: View {
             ContentUnavailableView(
                 "Review",
                 systemImage: "checklist",
-                description: Text("Choose Schedule, Completed, Automation Activity, or Assistant Queue.")
+                description: Text("Choose Assistant Queue, Schedule, Completed, or Execution Record.")
             )
             .accessibilityIdentifier("review-hub-overview")
         case .review(.schedule):

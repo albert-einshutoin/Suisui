@@ -20,7 +20,7 @@ struct ProjectWorkflowAutomationActivityView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Label("Automation Activity", systemImage: "bolt.horizontal.circle")
+                Label("Execution Record", systemImage: "doc.text.magnifyingglass")
                     .font(.title2.weight(.semibold))
 
                 Text("Review receipt-derived AI usage and redacted execution history. This audit activity does not change completed task or project state.")

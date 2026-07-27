@@ -33,6 +33,21 @@ struct ProjectBoardReviewHubView<Content: View>: View {
 
     private var reviewNavigation: some View {
         List(selection: reviewSelection) {
+            // Assistant Queue is where an approved plan actually runs — the
+            // last step of the product's headline flow. It used to sit last,
+            // under "Automation", so the happiest voice path ended with a
+            // window switch plus a hunt through two sections. It leads now.
+            Section("Approve and Run") {
+                reviewRow(
+                    route: .assistantQueue,
+                    title: "Assistant Queue",
+                    subtitle: "Approve, defer, reject, or run reviewed work",
+                    systemImage: "tray.full",
+                    count: assistantQueueCount,
+                    accessibilityIdentifier: "review-destination-assistant-queue"
+                )
+            }
+
             Section("Plan") {
                 reviewRow(
                     route: .schedule,
@@ -51,23 +66,15 @@ struct ProjectBoardReviewHubView<Content: View>: View {
                     systemImage: "checkmark.circle",
                     accessibilityIdentifier: "review-destination-completed"
                 )
-            }
-
-            Section("Automation") {
+                // Renamed from "Automation Activity" / "Inspect AI usage".
+                // These are the receipts proving what actually ran — the
+                // product's evidence trail, not an admin usage report.
                 reviewRow(
                     route: .automationActivity,
-                    title: "Automation Activity",
-                    subtitle: "Inspect AI usage, receipts, and execution history",
-                    systemImage: "bolt.horizontal.circle",
+                    title: "Execution Record",
+                    subtitle: "See what actually ran, with receipts and evidence",
+                    systemImage: "doc.text.magnifyingglass",
                     accessibilityIdentifier: "review-destination-automation-activity"
-                )
-                reviewRow(
-                    route: .assistantQueue,
-                    title: "Assistant Queue",
-                    subtitle: "Approve, defer, reject, or run reviewed work",
-                    systemImage: "tray.full",
-                    count: assistantQueueCount,
-                    accessibilityIdentifier: "review-destination-assistant-queue"
                 )
             }
         }
@@ -80,6 +87,11 @@ struct ProjectBoardReviewHubView<Content: View>: View {
         HStack {
             Menu {
                 compactDestination(
+                    .assistantQueue,
+                    "Assistant Queue",
+                    accessibilityIdentifier: "review-hub-compact-destination-assistant-queue"
+                )
+                compactDestination(
                     .schedule,
                     "Schedule",
                     accessibilityIdentifier: "review-hub-compact-destination-schedule"
@@ -91,13 +103,8 @@ struct ProjectBoardReviewHubView<Content: View>: View {
                 )
                 compactDestination(
                     .automationActivity,
-                    "Automation Activity",
+                    "Execution Record",
                     accessibilityIdentifier: "review-hub-compact-destination-automation-activity"
-                )
-                compactDestination(
-                    .assistantQueue,
-                    "Assistant Queue",
-                    accessibilityIdentifier: "review-hub-compact-destination-assistant-queue"
                 )
             } label: {
                 Label("Choose Review View", systemImage: "sidebar.left")

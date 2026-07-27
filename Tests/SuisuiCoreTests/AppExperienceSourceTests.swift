@@ -1048,8 +1048,6 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(smartListSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
         XCTAssertTrue(boardDetailSource.contains("@Environment(\\.accessibilityReduceMotion) private var reduceMotion"))
         XCTAssertTrue(boardDetailSource.contains("reduceMotion ? nil : .snappy(duration: 0.16)"))
-        XCTAssertTrue(doneSource.contains("heatmapMarkerDiameter"))
-        XCTAssertTrue(doneSource.contains("done-heatmap-legend"))
 
         for nonAssistantSource in [settingsSource, todaySource, scheduleSource, doneSource] {
             XCTAssertFalse(
@@ -1843,18 +1841,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-workflow\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-reopen-task-\\(task.id)\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-completion-heatmap\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-heatmap-day-\\(bucket.dayKey)\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-productivity-insight\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-best-weekday-summary\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-best-hour-summary\")"))
+        // Completed shows counts of finished work, not habit scoring.
+        // Streak, heatmap, best weekday, and peak hour measure activity, which
+        // is the metric this product explicitly does not want to teach.
+        XCTAssertFalse(workflowSource.contains("done-completion-heatmap"))
+        XCTAssertFalse(workflowSource.contains("done-productivity-insight"))
+        XCTAssertFalse(workflowSource.contains("done-best-weekday-summary"))
+        XCTAssertFalse(workflowSource.contains("done-best-hour-summary"))
+        XCTAssertFalse(workflowSource.contains("DoneStatTile(title: \"Streak\""))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-follow-up-task-\\(task.id)\")"))
         XCTAssertTrue(workflowSource.contains("viewModel.enqueueDoneFollowUpDraft(for: task.id)"))
         XCTAssertTrue(workflowSource.contains("private struct DoneTaskHistoryActions"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-history-row-actions-\\(task.id)\")"))
-        XCTAssertTrue(workflowSource.contains("analytics.completionHeatmapBuckets"))
-        XCTAssertTrue(workflowSource.contains("analytics.bestWeekdaySummary"))
-        XCTAssertTrue(workflowSource.contains("analytics.bestHourSummary"))
         XCTAssertTrue(coreSource.contains("public func doneAnalytics("))
         XCTAssertTrue(modelSource.contains("public struct DoneAnalyticsDayBucket"))
         XCTAssertTrue(modelSource.contains("DoneAnalyticsBestWeekdaySummary"))

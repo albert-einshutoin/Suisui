@@ -928,9 +928,7 @@
 "Complete tasks to build weekday trends." = "Complete tasks to build weekday trends.";
 "Completed tasks with timestamps will show hourly trends." = "Completed tasks with timestamps will show hourly trends.";
 "%d tasks completed on this weekday." = "%d tasks completed on this weekday.";
-"%d task completed on this weekday." = "%d task completed on this weekday.";
 "%d tasks around %@, usually %@." = "%d tasks around %@, usually %@.";
-"%@ around %@, usually %@." = "%@ around %@, usually %@.";
 "Recent Completed" = "Recent Completed";
 "No completed tasks yet" = "No completed tasks yet";
 "Tasks appear here after they are completed." = "Tasks appear here after they are completed.";
@@ -1684,7 +1682,6 @@
 /* Smart lists and board keyboard shortcuts */
 "Smart Lists" = "Smart Lists";
 "Automation Activity" = "Automation Activity";
-"Choose Schedule, Completed, Automation Activity, or Assistant Queue." = "Choose Schedule, Completed, Automation Activity, or Assistant Queue.";
 "Portfolio" = "Portfolio";
 "Projects navigation" = "Projects navigation";
 "Review navigation" = "Review navigation";
@@ -1697,7 +1694,6 @@
 "Expands overdue and missed work actions without leaving Today." = "Expands overdue and missed work actions without leaving Today.";
 "Review workload and approval-ready drafts" = "Review workload and approval-ready drafts";
 "See completed work and local recap" = "See completed work and local recap";
-"Inspect AI usage, receipts, and execution history" = "Inspect AI usage, receipts, and execution history";
 "Approve, defer, reject, or run reviewed work" = "Approve, defer, reject, or run reviewed work";
 "No pending items" = "No pending items";
 "%d items" = "%d items";
@@ -1882,7 +1878,6 @@
 
 /* Suisui public brand. Internal Suisui compatibility keys remain for stored data and configuration. */
 "Speak it. Review it. Move it." = "Speak it. Review it. Move it.";
-"Talk to Suisui. Review the draft, then move your work forward." = "Talk to Suisui. Review the draft, then move your work forward.";
 "The global shortcut event handler is unavailable." = "The global shortcut event handler is unavailable.";
 "Option + Space is already used by another app." = "Option + Space is already used by another app.";
 "Option + Space could not be registered on this Mac." = "Option + Space could not be registered on this Mac.";
@@ -1975,3 +1970,13 @@
 "Likely right" = "Likely right";
 "Clear reading" = "Clear reading";
 ", " = ", ";
+
+/* Review hub, execution record, and onboarding value copy. */
+"Approve and Run" = "Approve and Run";
+"Execution Record" = "Execution Record";
+"See what actually ran, with receipts and evidence" = "See what actually ran, with receipts and evidence";
+"Choose Assistant Queue, Schedule, Completed, or Execution Record." = "Choose Assistant Queue, Schedule, Completed, or Execution Record.";
+"Promise" = "Promise";
+"Review and Run" = "Review and Run";
+"Deliver" = "Deliver";
+"Tell Suisui what you promised someone. It drafts the work, you review and approve it, and Suisui keeps the receipts until the job is delivered." = "Tell Suisui what you promised someone. It drafts the work, you review and approve it, and Suisui keeps the receipts until the job is delivered.";
