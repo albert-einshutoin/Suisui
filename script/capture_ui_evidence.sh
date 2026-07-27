@@ -21,7 +21,7 @@ EVIDENCE_FILE="${SUISUI_UI_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/ui-scr
 SCHEDULE_COCKPIT_EVIDENCE_FILE="${SUISUI_SCHEDULE_COCKPIT_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/schedule-cockpit-screenshots.md}"
 DONE_ANALYTICS_EVIDENCE_FILE="${SUISUI_DONE_ANALYTICS_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/done-analytics-screenshots.md}"
 EVIDENCE_TMPDIR="${SUISUI_UI_EVIDENCE_TMPDIR:-$ROOT_DIR/.tmp}"
-VISUAL_BASELINE_MANIFEST="$ROOT_DIR/docs/quality/visual-baseline-manifest.json"
+VISUAL_BASELINE_MANIFEST="${SUISUI_VISUAL_BASELINE_MANIFEST:-$ROOT_DIR/docs/quality/visual-baseline-manifest.json}"
 SUISUI_VISUAL_AX_AUDIT_RESULT="${SUISUI_VISUAL_AX_AUDIT_RESULT:-$EVIDENCE_TMPDIR/visual-ax-audit-receipt.json}"
 VISUAL_BASELINE_VIEWPORT="${SUISUI_VISUAL_BASELINE_VIEWPORT:-1024x676}"
 SETTINGS_VISUAL_BASELINE_VIEWPORT="${SUISUI_SETTINGS_VISUAL_BASELINE_VIEWPORT:-720x676}"
@@ -33,7 +33,7 @@ AX_MARKER_MAX_NODES="${SUISUI_UI_EVIDENCE_AX_MAX_NODES:-6000}"
 EVIDENCE_LOCALE="${SUISUI_UI_EVIDENCE_LOCALE:-english}"
 EVIDENCE_LOCALES=("english" "japanese")
 # A fixed instant keeps relative seed dates and UI read models on one day even
-# when a long 33-screen capture crosses midnight. These capture-only variables
+# when a long 39-screen capture crosses midnight. These capture-only variables
 # are ignored by normal launches, which continue to use the system clock.
 EVIDENCE_REFERENCE_INSTANT="${SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT:-2026-07-10T12:00:00Z}"
 EVIDENCE_TIME_ZONE="${SUISUI_VISUAL_EVIDENCE_TIME_ZONE:-UTC}"
@@ -152,6 +152,54 @@ case "$EVIDENCE_LOCALE" in
     EVIDENCE_RECEIPT_LOCALE="ja-JP"
     ;;
 esac
+
+if [[ "$EVIDENCE_LOCALE" == "japanese" && -z "${SUISUI_UI_EVIDENCE_FILE+x}" ]]; then
+  # Keep Japanese run metadata with its screenshots so the second locale cannot
+  # overwrite the tracked English evidence document during a complete capture.
+  EVIDENCE_FILE="$SCREENSHOT_DIR/ui-screenshots.md"
+fi
+
+# A manifest override exists only to keep one locale's screenshots and
+# baselines in its own roots. Requiring an in-repository regular file whose
+# locale and artifact root match this capture prevents an arbitrary manifest
+# from authenticating mixed or externally redirected evidence.
+if [[ ! -f "$VISUAL_BASELINE_MANIFEST" ]]; then
+  echo "BLOCKER: visual baseline manifest is not a regular file: $VISUAL_BASELINE_MANIFEST" >&2
+  exit 2
+fi
+if [[ -L "$VISUAL_BASELINE_MANIFEST" ]]; then
+  echo "BLOCKER: visual baseline manifest must not be a symbolic link: $VISUAL_BASELINE_MANIFEST" >&2
+  exit 2
+fi
+MANIFEST_PARENT_REAL="$(cd "$(dirname "$VISUAL_BASELINE_MANIFEST")" && pwd -P)"
+ROOT_DIR_REAL="$(cd "$ROOT_DIR" && pwd -P)"
+case "$MANIFEST_PARENT_REAL" in
+  "$ROOT_DIR_REAL"|"$ROOT_DIR_REAL"/*) ;;
+  *)
+    echo "BLOCKER: visual baseline manifest parent must resolve inside the repository" >&2
+    exit 2
+    ;;
+esac
+if ! MANIFEST_LOCALE="$(/usr/bin/plutil -extract baselineContext.locale raw -o - "$VISUAL_BASELINE_MANIFEST" 2>/dev/null)"; then
+  echo "BLOCKER: visual baseline manifest is missing baselineContext.locale" >&2
+  exit 2
+fi
+if [[ "$MANIFEST_LOCALE" != "$EVIDENCE_RECEIPT_LOCALE" ]]; then
+  echo "BLOCKER: visual baseline manifest locale $MANIFEST_LOCALE does not match capture locale $EVIDENCE_RECEIPT_LOCALE" >&2
+  exit 2
+fi
+if ! MANIFEST_ARTIFACT_ROOT="$(/usr/bin/plutil -extract artifactRoot raw -o - "$VISUAL_BASELINE_MANIFEST" 2>/dev/null)"; then
+  echo "BLOCKER: visual baseline manifest is missing artifactRoot" >&2
+  exit 2
+fi
+case "$SCREENSHOT_DIR" in
+  "$ROOT_DIR"/*) EXPECTED_ARTIFACT_ROOT="${SCREENSHOT_DIR#"$ROOT_DIR/"}" ;;
+  *) EXPECTED_ARTIFACT_ROOT="$SCREENSHOT_DIR" ;;
+esac
+if [[ "$MANIFEST_ARTIFACT_ROOT" != "$EXPECTED_ARTIFACT_ROOT" ]]; then
+  echo "BLOCKER: visual baseline manifest artifactRoot does not match screenshot directory" >&2
+  exit 2
+fi
 
 # Any mode that can overwrite screenshot artifacts invalidates the previous
 # complete-run receipt up front. Otherwise a failed or partial recapture could
@@ -1251,6 +1299,7 @@ persist_project_board_selection() {
   local medium_label
   local high_label
   local no_due_date_label
+  local inbox_label
   project_id="$(sqlite3 "$database_path" "SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1;")"
 
   if [[ -z "$project_id" ]]; then
@@ -1285,6 +1334,7 @@ persist_project_board_selection() {
   # task metadata accessibility value in each capture locale.
   case "$EVIDENCE_LOCALE" in
     english)
+      inbox_label="Inbox"
       planned_label="Planned"
       in_progress_label="In Progress"
       medium_label="Medium"
@@ -1292,6 +1342,7 @@ persist_project_board_selection() {
       no_due_date_label="No due date"
       ;;
     japanese)
+      inbox_label="インボックス"
       planned_label="予定"
       in_progress_label="進行中"
       medium_label="中"
@@ -1307,7 +1358,7 @@ persist_project_board_selection() {
   PROJECT_BOARD_SELECTED_TASK_OVERRIDE="$review_task_id"
   PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details-$capture_task_id=>Capture launch screenshots|task-card-open-details-$capture_task_id=>$planned_label, $high_label, $capture_due_label|task-card-open-details-$review_task_id=>Review VoiceOver focus path|task-card-open-details-$review_task_id=>$in_progress_label, $high_label, $review_due_label|task-card-open-details-$unscheduled_task_id=>$planned_label, $medium_label, $no_due_date_label"
   INBOX_VOICE_TASK_OVERRIDE="$inbox_voice_task_id"
-  INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>Inbox classification actions"
+  INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>$inbox_label|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>Inbox classification actions"
   write_app_preference suisui.projectBoard.selectedDestination "$PROJECT_BOARD_SELECTION_OVERRIDE"
 }
 
@@ -1725,8 +1776,8 @@ write_evidence_file() {
     printf -- '- Runtime context: locale `%s`, timezone `%s`, reference instant `%s`\n' "$EVIDENCE_RECEIPT_LOCALE" "$EVIDENCE_TIME_ZONE" "$EVIDENCE_REFERENCE_INSTANT"
     printf '%s\n' '- Launch mode: normal `ProjectBoardView` route with explicit selected destination; recovery flags are excluded from release evidence.'
     printf '%s\n' '- Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`'
-    printf '%s\n' '- Seed data: local `Launch Readiness` project with planned, in-progress, blocked, Inbox voice, Schedule, Done analytics, milestone, completed project, and deterministic MCP registration rows'
-    printf '%s\n' '- Scope: Project board sidebar, task cards, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Schedule workload dashboard, Done analytics, Settings integrations, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System'
+    printf '%s\n' '- Seed data: local `Launch Readiness` project with planned, in-progress, blocked, Inbox voice, Schedule, Done analytics, milestone, completed project, deterministic MCP registration rows, and production-model Assistant Queue review fixtures'
+    printf '%s\n' '- Scope: Project board sidebar, task cards, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Schedule workload dashboard, Done analytics, Assistant Queue approval states, Settings integrations, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System'
     printf '%s\n' '- Capture contract: Light/Dark/System visual baseline manifest fixes product screen targets, viewport, semantic tolerances, and AX frame audit requirements.'
     printf '%s\n' '- Manual review: passed for Project Board sidebar/cards/inspector, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Schedule workload dashboard, Done analytics, Settings integrations, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast'
     printf '\n'
@@ -1753,6 +1804,12 @@ write_evidence_file() {
     printf -- '- Done Dark: `%s`\n' "$(relative_path "$done_dark_path")"
     printf -- '- Settings Integrations Light: `%s`\n' "$(relative_path "$settings_integrations_light_path")"
     printf -- '- Settings Integrations Dark: `%s`\n' "$(relative_path "$settings_integrations_dark_path")"
+    printf -- '- Assistant Queue Waiting Review Light: `%s`\n' "$(relative_path "$ASSISTANT_QUEUE_WAITING_LIGHT_SCREENSHOT")"
+    printf -- '- Assistant Queue Waiting Review Dark: `%s`\n' "$(relative_path "$ASSISTANT_QUEUE_WAITING_DARK_SCREENSHOT")"
+    printf -- '- Assistant Queue Approved Light: `%s`\n' "$(relative_path "$ASSISTANT_QUEUE_APPROVED_LIGHT_SCREENSHOT")"
+    printf -- '- Assistant Queue Approved Dark: `%s`\n' "$(relative_path "$ASSISTANT_QUEUE_APPROVED_DARK_SCREENSHOT")"
+    printf -- '- Assistant Queue Failed Light: `%s`\n' "$(relative_path "$ASSISTANT_QUEUE_FAILED_LIGHT_SCREENSHOT")"
+    printf -- '- Assistant Queue Failed Dark: `%s`\n' "$(relative_path "$ASSISTANT_QUEUE_FAILED_DARK_SCREENSHOT")"
     printf '\n'
     printf '%s\n' '## Visual Baseline Manifest Screenshots'
     printf '\n'
@@ -1779,6 +1836,12 @@ write_evidence_file() {
     printf -- '- Voice Command System: `%s`\n' "$(relative_path "$VOICE_COMMAND_SYSTEM_SCREENSHOT")"
     printf -- '- Schedule Workload Light: `%s`\n' "$(relative_path "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT")"
     printf -- '- Schedule Workload Dark: `%s`\n' "$(relative_path "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT")"
+    printf -- '- Assistant Queue Waiting Review Light: `%s`\n' "$(relative_path "$ASSISTANT_QUEUE_WAITING_LIGHT_SCREENSHOT")"
+    printf -- '- Assistant Queue Waiting Review Dark: `%s`\n' "$(relative_path "$ASSISTANT_QUEUE_WAITING_DARK_SCREENSHOT")"
+    printf -- '- Assistant Queue Approved Light: `%s`\n' "$(relative_path "$ASSISTANT_QUEUE_APPROVED_LIGHT_SCREENSHOT")"
+    printf -- '- Assistant Queue Approved Dark: `%s`\n' "$(relative_path "$ASSISTANT_QUEUE_APPROVED_DARK_SCREENSHOT")"
+    printf -- '- Assistant Queue Failed Light: `%s`\n' "$(relative_path "$ASSISTANT_QUEUE_FAILED_LIGHT_SCREENSHOT")"
+    printf -- '- Assistant Queue Failed Dark: `%s`\n' "$(relative_path "$ASSISTANT_QUEUE_FAILED_DARK_SCREENSHOT")"
     printf '\n'
     printf '%s\n' '## Notes'
     printf '\n'
@@ -2071,6 +2134,10 @@ fi
 
 assert_visual_product_source_is_committed
 
+swift build --package-path "$ROOT_DIR" --product SuisuiVisualFixtureSeeder
+VISUAL_FIXTURE_SEEDER_BIN="$(
+  swift build --package-path "$ROOT_DIR" --show-bin-path
+)/SuisuiVisualFixtureSeeder"
 "$ROOT_DIR/script/build_and_run.sh" --build-only
 /usr/bin/swiftc "$ROOT_DIR/script/visual_raster_stability_check.swift" -o "$VISUAL_RASTER_STABILITY_CHECKER"
 /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_appearance_check.swift" -o "$VISUAL_APPEARANCE_CHECKER"
@@ -2084,6 +2151,9 @@ seed_mcp_registrations "$DATABASE_PATH"
 assert_phase12_seed_data "$DATABASE_PATH"
 assert_valid_seed_task_statuses "$DATABASE_PATH"
 persist_project_board_selection "$DATABASE_PATH"
+"$VISUAL_FIXTURE_SEEDER_BIN" \
+  --database "$DATABASE_PATH" \
+  --evidence-home "$EVIDENCE_HOME"
 
 LIGHT_SCREENSHOT="$SCREENSHOT_DIR/project-board-light.png"
 DARK_SCREENSHOT="$SCREENSHOT_DIR/project-board-dark.png"
@@ -2118,6 +2188,12 @@ DONE_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/done-light.png"
 DONE_DARK_SCREENSHOT="$SCREENSHOT_DIR/done-dark.png"
 SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-integrations-light.png"
 SETTINGS_INTEGRATIONS_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-integrations-dark.png"
+ASSISTANT_QUEUE_WAITING_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/assistant-queue-waiting-review-light.png"
+ASSISTANT_QUEUE_WAITING_DARK_SCREENSHOT="$SCREENSHOT_DIR/assistant-queue-waiting-review-dark.png"
+ASSISTANT_QUEUE_APPROVED_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/assistant-queue-approved-light.png"
+ASSISTANT_QUEUE_APPROVED_DARK_SCREENSHOT="$SCREENSHOT_DIR/assistant-queue-approved-dark.png"
+ASSISTANT_QUEUE_FAILED_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/assistant-queue-failed-light.png"
+ASSISTANT_QUEUE_FAILED_DARK_SCREENSHOT="$SCREENSHOT_DIR/assistant-queue-failed-dark.png"
 
 case "$EVIDENCE_LOCALE" in
   english)
@@ -2157,6 +2233,10 @@ SCHEDULE_WORKLOAD_DETAIL_MARKERS="schedule-workload-attention-banner=>|schedule-
 DONE_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL"
 DONE_ANALYTICS_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL|done-completion-heatmap=>|done-productivity-insight=>|done-local-rule-insight=>"
 VOICE_COMMAND_TARGET_MARKERS="voice-command-root=>$VOICE_COMMAND_LABEL"
+ASSISTANT_QUEUE_ROUTE_MARKERS="review-hub-compact-destination-assistant-queue=>|assistant-queue-workflow=>"
+ASSISTANT_QUEUE_WAITING_TARGET_MARKERS="assistant-queue-row-visual-waiting=>|assistant-queue-approve-visual-waiting=>|assistant-queue-more-visual-waiting=>"
+ASSISTANT_QUEUE_APPROVED_TARGET_MARKERS="assistant-queue-row-visual-approved=>|assistant-queue-run-visual-approved=>|assistant-queue-more-visual-approved=>"
+ASSISTANT_QUEUE_FAILED_TARGET_MARKERS="assistant-queue-row-visual-failed=>|assistant-queue-retry-visual-failed=>"
 
 if [[ "$P0_WORKFLOWS" == "1" ]]; then
   capture_project_board_destination light inbox "$INBOX_LIGHT_SCREENSHOT" "Inbox" "$P0_INBOX_TARGET_MARKERS" "" "" "inbox-workflow"
@@ -2235,6 +2315,12 @@ capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREE
 capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS" "" "schedule-workload-day-detail" "schedule-workload-attention-banner" "$SCHEDULE_WORKLOAD_DETAIL_MARKERS" workload schedule-workflow
 capture_project_board_destination light done "$DONE_LIGHT_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS" "" "" "done-workflow"
 capture_project_board_destination dark done "$DONE_DARK_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS" "" "" "done-workflow"
+capture_project_board_destination light assistant-queue "$ASSISTANT_QUEUE_WAITING_LIGHT_SCREENSHOT" "Assistant Queue waiting review" "$ASSISTANT_QUEUE_ROUTE_MARKERS" "" "assistant-queue-row-visual-waiting" "assistant-queue-row-visual-waiting" "$ASSISTANT_QUEUE_WAITING_TARGET_MARKERS"
+capture_project_board_destination dark assistant-queue "$ASSISTANT_QUEUE_WAITING_DARK_SCREENSHOT" "Assistant Queue waiting review" "$ASSISTANT_QUEUE_ROUTE_MARKERS" "" "assistant-queue-row-visual-waiting" "assistant-queue-row-visual-waiting" "$ASSISTANT_QUEUE_WAITING_TARGET_MARKERS"
+capture_project_board_destination light assistant-queue "$ASSISTANT_QUEUE_APPROVED_LIGHT_SCREENSHOT" "Assistant Queue approved" "$ASSISTANT_QUEUE_ROUTE_MARKERS" "" "assistant-queue-row-visual-approved" "assistant-queue-row-visual-approved" "$ASSISTANT_QUEUE_APPROVED_TARGET_MARKERS"
+capture_project_board_destination dark assistant-queue "$ASSISTANT_QUEUE_APPROVED_DARK_SCREENSHOT" "Assistant Queue approved" "$ASSISTANT_QUEUE_ROUTE_MARKERS" "" "assistant-queue-row-visual-approved" "assistant-queue-row-visual-approved" "$ASSISTANT_QUEUE_APPROVED_TARGET_MARKERS"
+capture_project_board_destination light assistant-queue "$ASSISTANT_QUEUE_FAILED_LIGHT_SCREENSHOT" "Assistant Queue failed" "$ASSISTANT_QUEUE_ROUTE_MARKERS" "" "assistant-queue-row-visual-failed" "assistant-queue-row-visual-failed" "$ASSISTANT_QUEUE_FAILED_TARGET_MARKERS"
+capture_project_board_destination dark assistant-queue "$ASSISTANT_QUEUE_FAILED_DARK_SCREENSHOT" "Assistant Queue failed" "$ASSISTANT_QUEUE_ROUTE_MARKERS" "" "assistant-queue-row-visual-failed" "assistant-queue-row-visual-failed" "$ASSISTANT_QUEUE_FAILED_TARGET_MARKERS"
 capture_settings_overview light "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT"
 capture_settings_overview dark "$SETTINGS_OVERVIEW_DARK_SCREENSHOT"
 capture_settings_sync light "$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT"
@@ -2283,6 +2369,12 @@ echo "- $(relative_path "$DONE_LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$DONE_DARK_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_INTEGRATIONS_DARK_SCREENSHOT")"
+echo "- $(relative_path "$ASSISTANT_QUEUE_WAITING_LIGHT_SCREENSHOT")"
+echo "- $(relative_path "$ASSISTANT_QUEUE_WAITING_DARK_SCREENSHOT")"
+echo "- $(relative_path "$ASSISTANT_QUEUE_APPROVED_LIGHT_SCREENSHOT")"
+echo "- $(relative_path "$ASSISTANT_QUEUE_APPROVED_DARK_SCREENSHOT")"
+echo "- $(relative_path "$ASSISTANT_QUEUE_FAILED_LIGHT_SCREENSHOT")"
+echo "- $(relative_path "$ASSISTANT_QUEUE_FAILED_DARK_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_APPEARANCE_DARK_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_APPEARANCE_SYSTEM_SCREENSHOT")"

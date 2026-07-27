@@ -1,11 +1,11 @@
 {
   "schemaVersion": 2,
-  "artifactRoot": "docs/release/evidence/ui-screenshots",
-  "baselineRoot": "docs/quality/visual-baselines",
+  "artifactRoot": "docs/release/evidence/ui-screenshots-ja",
+  "baselineRoot": "docs/quality/visual-baselines-ja",
   "baselineContext": {
     "sourceCommit": "93845385c82d28d0239922c6bab6498861190eb1",
     "normalRoute": "normal",
-    "locale": "en-US",
+    "locale": "ja-JP",
     "timeZoneIdentifier": "UTC",
     "referenceInstant": "2026-07-10T12:00:00Z"
   },
@@ -38,8 +38,8 @@
       "axTargetIdentifier": "project-board-detail",
       "requiredVisibleTextLines": [
         "project board to task card to",
-        "In Progress High",
-        "Jul 10"
+        "進行中 高",
+        "7月10日"
       ],
       "artifacts": {
         "light": "project-board-light.png",

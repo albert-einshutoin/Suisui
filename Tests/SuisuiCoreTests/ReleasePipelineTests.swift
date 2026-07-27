@@ -8659,7 +8659,10 @@ final class ReleasePipelineTests: XCTestCase {
             "schedule",
             "schedule-workload",
             "done",
-            "settings-integrations"
+            "settings-integrations",
+            "assistant-queue-waiting-review",
+            "assistant-queue-approved",
+            "assistant-queue-failed"
         ]
         XCTAssertEqual(screenIDs, coreSystemScreens.union(sampleDerivedScreens))
         let expectedViewports: [String: (width: Int, height: Int)] = [
@@ -8671,6 +8674,9 @@ final class ReleasePipelineTests: XCTestCase {
             "schedule": (1_024, 676),
             "schedule-workload": (1_024, 676),
             "done": (1_024, 676),
+            "assistant-queue-waiting-review": (1_024, 676),
+            "assistant-queue-approved": (1_024, 676),
+            "assistant-queue-failed": (1_024, 676),
             "settings-overview": (720, 676),
             "settings-integrations": (720, 676),
             "settings-appearance": (720, 676),
@@ -8686,6 +8692,9 @@ final class ReleasePipelineTests: XCTestCase {
             "schedule": "schedule-mini-calendar",
             "schedule-workload": "schedule-workload-attention-banner",
             "done": "done-workflow",
+            "assistant-queue-waiting-review": "assistant-queue-row-visual-waiting",
+            "assistant-queue-approved": "assistant-queue-row-visual-approved",
+            "assistant-queue-failed": "assistant-queue-row-visual-failed",
             "settings-overview": "settings-status-overview",
             "settings-integrations": "settings-google-calendar-id-save-flow",
             "settings-appearance": "settings-theme-picker",
@@ -8779,6 +8788,9 @@ final class ReleasePipelineTests: XCTestCase {
             "Schedule",
             "Schedule Workload",
             "Done",
+            "Assistant Queue Waiting Review",
+            "Assistant Queue Approved",
+            "Assistant Queue Failed",
             "Settings Integrations"
         ] {
             XCTAssertTrue(documentation.contains(screen), "visual baseline docs must explain \(screen)")
@@ -8798,7 +8810,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(documentation.contains("squash merge"))
         XCTAssertTrue(documentation.contains("evidence-only follow-up PR"))
 
-        XCTAssertTrue(captureScript.contains("VISUAL_BASELINE_MANIFEST=\"$ROOT_DIR/docs/quality/visual-baseline-manifest.json\""))
+        XCTAssertTrue(captureScript.contains("VISUAL_BASELINE_MANIFEST=\"${SUISUI_VISUAL_BASELINE_MANIFEST:-$ROOT_DIR/docs/quality/visual-baseline-manifest.json}\""))
         XCTAssertTrue(captureScript.contains("SUISUI_VISUAL_BASELINE_VIEWPORT"))
         XCTAssertTrue(captureScript.contains("SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT"))
         XCTAssertTrue(captureScript.contains("ui_evidence_product_source_commit"))
@@ -8946,7 +8958,11 @@ final class ReleasePipelineTests: XCTestCase {
         let invalidateReceipt = try XCTUnwrap(script.range(of: "rm -f \"$SUISUI_VISUAL_AX_AUDIT_RESULT\""))
         let firstCapture = try XCTUnwrap(script.range(of: "capture_project_board_destination light inbox"))
         XCTAssertLessThan(invalidateReceipt.lowerBound, firstCapture.lowerBound)
-        let dirtySourceGate = try XCTUnwrap(script.range(of: "assert_visual_product_source_is_committed\n\n\"$ROOT_DIR/script/build_and_run.sh\""))
+        let dirtySourceGate = try XCTUnwrap(
+            script.range(
+                of: "assert_visual_product_source_is_committed\n\nswift build --package-path \"$ROOT_DIR\" --product SuisuiVisualFixtureSeeder"
+            )
+        )
         XCTAssertLessThan(dirtySourceGate.lowerBound, firstCapture.lowerBound)
         XCTAssertTrue(script.contains("rm -f \"$AX_CAPTURE_RECEIPT_TSV\""))
         XCTAssertTrue(script.contains("The receipt is intentionally end-of-run"))

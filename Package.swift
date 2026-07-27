@@ -29,6 +29,10 @@ let package = Package(
         .executable(
             name: "suisui-cli",
             targets: ["SuisuiCLI"]
+        ),
+        .executable(
+            name: "SuisuiVisualFixtureSeeder",
+            targets: ["SuisuiVisualFixtureSeeder"]
         )
     ],
     dependencies: [
@@ -78,6 +82,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "SuisuiCLI",
+            dependencies: ["SuisuiCore"]
+        ),
+        .executableTarget(
+            name: "SuisuiVisualFixtureSeeder",
             dependencies: ["SuisuiCore"]
         ),
         .testTarget(
