@@ -3,75 +3,17 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
+source "$ROOT_DIR/script/mcp_source_provenance.sh"
 
 FIXTURE_SERVER="fixtures/mcp/stdio-fixture-server.mjs"
 SMOKE_CLIENT="fixtures/mcp/stdio-smoke-client.mjs"
 EVIDENCE_FILE="${SUISUI_MCP_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/mcp-inspector.md}"
 MCP_SOURCE_REF="${SUISUI_MCP_SOURCE_REF:-HEAD}"
-MCP_SOURCE_PATHS=(
-  Sources/SuisuiCore/ExternalMCP
-  Sources/SuisuiApp/SuisuiApp.swift
-  Sources/SuisuiApp/Composition
-  fixtures/mcp
-  Package.swift
-)
-
-mcp_content_source_ref() {
-  local parent_suffix
-  local candidate_parent
-  local content_source_ref="$MCP_SOURCE_REF"
-  local followed_parent
-
-  # A GitHub merge commit can make `git log -- <paths>` select an unrelated
-  # first-parent commit by timestamp even when the merged MCP content is exactly
-  # the contributor parent's content. Prefer that content-preserving parent so
-  # the pre-merge evidence remains valid. Continue through later commits that
-  # do not touch MCP paths. If no parent matches, retain the current ref and
-  # require fresh evidence for newly introduced or conflict-resolved content.
-  while true; do
-    followed_parent=false
-    for parent_suffix in ^2 ^1; do
-      if ! candidate_parent="$(
-        git -C "$ROOT_DIR" rev-parse \
-          --verify "${content_source_ref}${parent_suffix}^{commit}" 2>/dev/null
-      )"; then
-        continue
-      fi
-      if git -C "$ROOT_DIR" diff --quiet "$candidate_parent" "$content_source_ref" -- \
-        "${MCP_SOURCE_PATHS[@]}"; then
-        content_source_ref="$candidate_parent"
-        followed_parent=true
-        break
-      fi
-    done
-    if [[ "$followed_parent" == false ]]; then
-      break
-    fi
-  done
-
-  printf "%s" "$content_source_ref"
-}
 
 mcp_evidence_source_commit() {
-  local commit
-  local content_source_ref
   # PR CI checks out GitHub's synthetic merge commit. Evidence must stay bound
   # to the contributor head so a base-branch commit cannot satisfy provenance.
-  if ! git -C "$ROOT_DIR" rev-parse --verify "${MCP_SOURCE_REF}^{commit}" >/dev/null 2>&1; then
-    printf "Invalid SUISUI_MCP_SOURCE_REF: %s\n" "$MCP_SOURCE_REF" >&2
-    return 1
-  fi
-
-  content_source_ref="$(mcp_content_source_ref)"
-  commit="$(
-    git -C "$ROOT_DIR" log -1 --format=%h "$content_source_ref" -- \
-      "${MCP_SOURCE_PATHS[@]}"
-  )"
-  if [[ -n "$commit" ]]; then
-    printf "%s" "$commit"
-  else
-    git -C "$ROOT_DIR" rev-parse --short "$content_source_ref"
-  fi
+  mcp_evidence_source_commit_for_ref "$ROOT_DIR" "$MCP_SOURCE_REF"
 }
 
 if ! MCP_SOURCE_COMMIT="$(mcp_evidence_source_commit)"; then

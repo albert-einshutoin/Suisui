@@ -4,6 +4,7 @@ import XCTest
 final class MCPInspectorEvidenceTests: XCTestCase {
     func testInspectorVerificationScriptUsesOfficialCLIAndFixturePaths() throws {
         let script = try readPackageFile("script/verify_mcp_compliance.sh")
+        let provenance = try readPackageFile("script/mcp_source_provenance.sh")
 
         XCTAssertTrue(script.contains("@modelcontextprotocol/inspector"))
         XCTAssertTrue(script.contains("--loglevel error"))
@@ -13,17 +14,18 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertTrue(script.contains("fixtures/mcp/stdio-fixture-server.mjs"))
         XCTAssertTrue(script.contains("docs/release/evidence/mcp-inspector.md"))
         XCTAssertTrue(script.contains("mcp_evidence_source_commit()"))
-        XCTAssertTrue(script.contains("Sources/SuisuiApp/Composition"))
-        XCTAssertFalse(script.contains("Sources/SuisuiCore/ExternalMCP/ExternalMCPTestKit"))
+        XCTAssertTrue(provenance.contains("Sources/SuisuiApp/Composition"))
+        XCTAssertFalse(provenance.contains("Sources/SuisuiCore/ExternalMCP/ExternalMCPTestKit"))
     }
 
     func testMCPSourceProvenanceUsesExplicitPullRequestHeadWhenAvailable() throws {
         let script = try readPackageFile("script/verify_mcp_compliance.sh")
+        let provenance = try readPackageFile("script/mcp_source_provenance.sh")
         let workflow = try readPackageFile(".github/workflows/ci.yml")
 
         XCTAssertTrue(script.contains(#"MCP_SOURCE_REF="${SUISUI_MCP_SOURCE_REF:-HEAD}""#))
-        XCTAssertTrue(script.contains(#""${MCP_SOURCE_REF}^{commit}""#))
-        XCTAssertTrue(script.contains(#""$content_source_ref" --"#))
+        XCTAssertTrue(provenance.contains(#""${source_ref}^{commit}""#))
+        XCTAssertTrue(provenance.contains(#""$content_source_ref" --"#))
         XCTAssertTrue(
             workflow.contains(
                 "SUISUI_MCP_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}"
@@ -32,16 +34,32 @@ final class MCPInspectorEvidenceTests: XCTestCase {
     }
 
     func testMCPSourceProvenanceFollowsAContentPreservingMergeParent() throws {
-        let script = try readPackageFile("script/verify_mcp_compliance.sh")
+        let script = try readPackageFile("script/mcp_source_provenance.sh")
 
         XCTAssertTrue(script.contains("mcp_content_source_ref()"))
         XCTAssertTrue(script.contains("while true; do"))
         XCTAssertTrue(script.contains(#"for parent_suffix in ^2 ^1"#))
         XCTAssertTrue(
             script.contains(
-                #"git -C "$ROOT_DIR" diff --quiet "$candidate_parent" "$content_source_ref" --"#
+                #"git -C "$root_dir" diff --quiet "$candidate_parent" "$content_source_ref" --"#
             )
         )
+    }
+
+    func testMCPSourceProvenanceIsSharedWithReleaseReadiness() throws {
+        let provenance = try readPackageFile("script/mcp_source_provenance.sh")
+        let verifier = try readPackageFile("script/verify_mcp_compliance.sh")
+        let releaseReadiness = try readPackageFile("script/release_readiness_report.sh")
+
+        XCTAssertTrue(provenance.contains("mcp_content_source_ref()"))
+        XCTAssertTrue(provenance.contains("mcp_evidence_source_commit_for_ref()"))
+        XCTAssertTrue(provenance.contains("Sources/SuisuiApp/Views/SettingsView.swift"))
+        for consumer in [verifier, releaseReadiness] {
+            XCTAssertTrue(
+                consumer.contains(#"source "$ROOT_DIR/script/mcp_source_provenance.sh""#)
+            )
+            XCTAssertTrue(consumer.contains("mcp_evidence_source_commit_for_ref"))
+        }
     }
 
     func testMCPSourceProvenanceRejectsAnUnknownExplicitRef() throws {
@@ -125,6 +143,26 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertTrue(
             trackedEvidence.contains(sourceLine),
             "Run ./script/verify_mcp_compliance.sh after MCP runtime, settings, fixture, or package changes."
+        )
+    }
+
+    func testReleaseReadinessAgreesWithGeneratedInspectorEvidenceSourceCommit() throws {
+        let result = try runScript(
+            "script/release_readiness_report.sh",
+            environment: ["SUISUI_MCP_INSPECTOR_BIN": "/usr/bin/true"]
+        )
+
+        XCTAssertFalse(
+            result.output.contains(
+                "MCP compliance verifier output source commit does not match current MCP source commit"
+            ),
+            result.output
+        )
+        XCTAssertFalse(
+            result.output.contains(
+                "MCP Inspector evidence source commit does not match current MCP source commit"
+            ),
+            result.output
         )
     }
 
