@@ -22,10 +22,24 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         let workflow = try readPackageFile(".github/workflows/ci.yml")
 
         XCTAssertTrue(script.contains(#"MCP_SOURCE_REF="${SUISUI_MCP_SOURCE_REF:-HEAD}""#))
-        XCTAssertTrue(script.contains(#""$MCP_SOURCE_REF" --"#))
+        XCTAssertTrue(script.contains(#""${MCP_SOURCE_REF}^{commit}""#))
+        XCTAssertTrue(script.contains(#""$content_source_ref" --"#))
         XCTAssertTrue(
             workflow.contains(
                 "SUISUI_MCP_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}"
+            )
+        )
+    }
+
+    func testMCPSourceProvenanceFollowsAContentPreservingMergeParent() throws {
+        let script = try readPackageFile("script/verify_mcp_compliance.sh")
+
+        XCTAssertTrue(script.contains("mcp_content_source_ref()"))
+        XCTAssertTrue(script.contains("while true; do"))
+        XCTAssertTrue(script.contains(#"for parent_suffix in ^2 ^1"#))
+        XCTAssertTrue(
+            script.contains(
+                #"git -C "$ROOT_DIR" diff --quiet "$candidate_parent" "$content_source_ref" --"#
             )
         )
     }
@@ -87,24 +101,29 @@ final class MCPInspectorEvidenceTests: XCTestCase {
     }
 
     func testTrackedInspectorEvidenceSourceCommitMatchesCurrentMCPSourceCommit() throws {
-        let evidence = try readPackageFile("docs/release/evidence/mcp-inspector.md")
-        let sourceRef = ProcessInfo.processInfo.environment["SUISUI_MCP_SOURCE_REF"]
-            .flatMap { $0.isEmpty ? nil : $0 } ?? "HEAD"
-        let currentMCPSourceCommit = try gitOutput(
-            "log",
-            "-1",
-            "--format=%h",
-            sourceRef,
-            "--",
-            "Sources/SuisuiCore/ExternalMCP",
-            "Sources/SuisuiApp/SuisuiApp.swift",
-            "Sources/SuisuiApp/Composition",
-            "fixtures/mcp",
-            "Package.swift"
-        )
+        let trackedEvidence = try readPackageFile("docs/release/evidence/mcp-inspector.md")
+        let temporaryDirectory = packageRoot()
+            .appendingPathComponent(".build/test-mcp-tracked-evidence-\(UUID().uuidString)", isDirectory: true)
+        let generatedEvidenceURL = temporaryDirectory.appendingPathComponent("mcp-inspector.md")
+        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
 
+        let result = try runScript(
+            "script/verify_mcp_compliance.sh",
+            environment: [
+                "SUISUI_MCP_INSPECTOR_BIN": "/usr/bin/true",
+                "SUISUI_MCP_EVIDENCE_FILE": generatedEvidenceURL.path
+            ]
+        )
+        XCTAssertEqual(result.exitCode, 0, result.output)
+
+        let generatedEvidence = try String(contentsOf: generatedEvidenceURL, encoding: .utf8)
+        let generatedSourceLine = generatedEvidence.split(separator: "\n")
+            .first { $0.hasPrefix("- Source commit: `") }
+            .map(String.init)
+        let sourceLine = try XCTUnwrap(generatedSourceLine)
         XCTAssertTrue(
-            evidence.contains("- Source commit: `\(currentMCPSourceCommit)`"),
+            trackedEvidence.contains(sourceLine),
             "Run ./script/verify_mcp_compliance.sh after MCP runtime, settings, fixture, or package changes."
         )
     }
@@ -280,27 +299,6 @@ final class MCPInspectorEvidenceTests: XCTestCase {
 
         let data = output.fileHandleForReading.readDataToEndOfFile()
         return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
-    }
-
-    private func gitOutput(_ arguments: String...) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["git"] + arguments
-        process.currentDirectoryURL = packageRoot()
-
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = output
-
-        try process.run()
-        process.waitUntilExit()
-
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        let text = String(data: data, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-        XCTAssertEqual(process.terminationStatus, 0, text)
-        return text
     }
 
     private func packageRoot() -> URL {
