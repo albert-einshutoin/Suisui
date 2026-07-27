@@ -78,6 +78,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
           HEAD_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+          SUISUI_MCP_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}
           SUISUI_CI_TEST_PLAN: ${{ github.workspace }}/.tmp/ci-impact/test-plan.json
           SUISUI_CI_EXECUTION_REPORT: ${{ github.workspace }}/.tmp/ci-impact/execution.json
           SUISUI_CI_IMPACT_ARTIFACT_DIR: ${{ github.workspace }}/.tmp/ci-impact

@@ -17,6 +17,39 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertFalse(script.contains("Sources/SuisuiCore/ExternalMCP/ExternalMCPTestKit"))
     }
 
+    func testMCPSourceProvenanceUsesExplicitPullRequestHeadWhenAvailable() throws {
+        let script = try readPackageFile("script/verify_mcp_compliance.sh")
+        let workflow = try readPackageFile(".github/workflows/ci.yml")
+
+        XCTAssertTrue(script.contains(#"MCP_SOURCE_REF="${SUISUI_MCP_SOURCE_REF:-HEAD}""#))
+        XCTAssertTrue(script.contains(#""$MCP_SOURCE_REF" --"#))
+        XCTAssertTrue(
+            workflow.contains(
+                "SUISUI_MCP_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}"
+            )
+        )
+    }
+
+    func testMCPSourceProvenanceRejectsAnUnknownExplicitRef() throws {
+        let temporaryDirectory = packageRoot()
+            .appendingPathComponent(".build/test-mcp-provenance-\(UUID().uuidString)", isDirectory: true)
+        let evidence = temporaryDirectory.appendingPathComponent("mcp-inspector.md")
+        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+        let result = try runScript(
+            "script/verify_mcp_compliance.sh",
+            environment: [
+                "SUISUI_MCP_INSPECTOR_BIN": "/usr/bin/true",
+                "SUISUI_MCP_EVIDENCE_FILE": evidence.path,
+                "SUISUI_MCP_SOURCE_REF": "refs/heads/suisui-missing-mcp-source-ref"
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("Invalid SUISUI_MCP_SOURCE_REF"), result.output)
+    }
+
     func testMCPFixtureServerCoversSuccessAndFailureModesOutsideRuntimeSources() throws {
         let fixture = try readPackageFile("fixtures/mcp/stdio-fixture-server.mjs")
         let smokeClient = try readPackageFile("fixtures/mcp/stdio-smoke-client.mjs")
@@ -55,10 +88,13 @@ final class MCPInspectorEvidenceTests: XCTestCase {
 
     func testTrackedInspectorEvidenceSourceCommitMatchesCurrentMCPSourceCommit() throws {
         let evidence = try readPackageFile("docs/release/evidence/mcp-inspector.md")
+        let sourceRef = ProcessInfo.processInfo.environment["SUISUI_MCP_SOURCE_REF"]
+            .flatMap { $0.isEmpty ? nil : $0 } ?? "HEAD"
         let currentMCPSourceCommit = try gitOutput(
             "log",
             "-1",
             "--format=%h",
+            sourceRef,
             "--",
             "Sources/SuisuiCore/ExternalMCP",
             "Sources/SuisuiApp/SuisuiApp.swift",
