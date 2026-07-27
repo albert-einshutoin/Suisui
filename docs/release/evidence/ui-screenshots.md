@@ -2,16 +2,16 @@
 
 Generated with `script/capture_ui_evidence.sh`.
 
-- Generated at: `2026-07-27T10:40:03Z`
-- Source commit: `e96bc951`
+- Generated at: `2026-07-27T19:00:36Z`
+- Source commit: `fe45f879`
 - App bundle: `dist/Suisui.app`
 - Visual baseline manifest: `docs/quality/visual-baseline-manifest.json`
 - Viewport contract: `SUISUI_VISUAL_BASELINE_VIEWPORT=1024x676`, `SUISUI_SETTINGS_VISUAL_BASELINE_VIEWPORT=720x676`, `SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT=760x640`
 - Runtime context: locale `en-US`, timezone `UTC`, reference instant `2026-07-10T12:00:00Z`
 - Launch mode: normal `ProjectBoardView` route with explicit selected destination; recovery flags are excluded from release evidence.
 - Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`
-- Seed data: local `Launch Readiness` project with planned, in-progress, blocked, Inbox voice, Schedule, Done analytics, milestone, completed project, and deterministic MCP registration rows
-- Scope: Project board sidebar, task cards, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Schedule workload dashboard, Done analytics, Settings integrations, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System
+- Seed data: local `Launch Readiness` project with planned, in-progress, blocked, Inbox voice, Schedule, Done analytics, milestone, completed project, deterministic MCP registration rows, and production-model Assistant Queue review fixtures
+- Scope: Project board sidebar, task cards, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Schedule workload dashboard, Done analytics, Assistant Queue approval states, Settings integrations, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System
 - Capture contract: Light/Dark/System visual baseline manifest fixes product screen targets, viewport, semantic tolerances, and AX frame audit requirements.
 - Manual review: passed for Project Board sidebar/cards/inspector, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Schedule workload dashboard, Done analytics, Settings integrations, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast
 
@@ -38,6 +38,12 @@ Generated with `script/capture_ui_evidence.sh`.
 - Done Dark: `docs/release/evidence/ui-screenshots/done-dark.png`
 - Settings Integrations Light: `docs/release/evidence/ui-screenshots/settings-integrations-light.png`
 - Settings Integrations Dark: `docs/release/evidence/ui-screenshots/settings-integrations-dark.png`
+- Assistant Queue Waiting Review Light: `docs/release/evidence/ui-screenshots/assistant-queue-waiting-review-light.png`
+- Assistant Queue Waiting Review Dark: `docs/release/evidence/ui-screenshots/assistant-queue-waiting-review-dark.png`
+- Assistant Queue Approved Light: `docs/release/evidence/ui-screenshots/assistant-queue-approved-light.png`
+- Assistant Queue Approved Dark: `docs/release/evidence/ui-screenshots/assistant-queue-approved-dark.png`
+- Assistant Queue Failed Light: `docs/release/evidence/ui-screenshots/assistant-queue-failed-light.png`
+- Assistant Queue Failed Dark: `docs/release/evidence/ui-screenshots/assistant-queue-failed-dark.png`
 
 ## Visual Baseline Manifest Screenshots
 
@@ -64,6 +70,12 @@ Generated with `script/capture_ui_evidence.sh`.
 - Voice Command System: `docs/release/evidence/ui-screenshots/voice-command-system.png`
 - Schedule Workload Light: `docs/release/evidence/ui-screenshots/schedule-workload-light.png`
 - Schedule Workload Dark: `docs/release/evidence/ui-screenshots/schedule-workload-dark.png`
+- Assistant Queue Waiting Review Light: `docs/release/evidence/ui-screenshots/assistant-queue-waiting-review-light.png`
+- Assistant Queue Waiting Review Dark: `docs/release/evidence/ui-screenshots/assistant-queue-waiting-review-dark.png`
+- Assistant Queue Approved Light: `docs/release/evidence/ui-screenshots/assistant-queue-approved-light.png`
+- Assistant Queue Approved Dark: `docs/release/evidence/ui-screenshots/assistant-queue-approved-dark.png`
+- Assistant Queue Failed Light: `docs/release/evidence/ui-screenshots/assistant-queue-failed-light.png`
+- Assistant Queue Failed Dark: `docs/release/evidence/ui-screenshots/assistant-queue-failed-dark.png`
 
 ## Notes
 
