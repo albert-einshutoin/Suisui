@@ -10,9 +10,11 @@ struct AssistantQueueWorkflowView: View {
         viewModel.assistantQueueSnapshot
     }
 
+    // "waiting" and "blocked" are adjectives, so this needs no plural form —
+    // only the app-language-aware lookup the rest of the surface uses.
     private var subtitle: String {
-        String(
-            format: String(localized: "%d waiting, %d blocked"),
+        localizedDisplay(
+            "%d waiting, %d blocked",
             snapshot.waitingReviewCount,
             snapshot.blockedCount
         )
@@ -36,8 +38,16 @@ struct AssistantQueueWorkflowView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("assistant-queue-boundary-note")
 
-            AssistantQueueTriageControls(viewModel: viewModel)
-            AssistantQueueBatchToolbar(viewModel: viewModel)
+            // Triage and batch controls only mean something once there is
+            // something to triage. Showing "0 selected" plus two disabled
+            // buttons above an "Assistant Queue is clear" card made an empty,
+            // healthy queue look like a broken one.
+            if !snapshot.rows.isEmpty {
+                AssistantQueueTriageControls(viewModel: viewModel)
+                if !viewModel.assistantQueueSelectedItemIDs.isEmpty {
+                    AssistantQueueBatchToolbar(viewModel: viewModel)
+                }
+            }
 
             if viewModel.openRescheduleSuggestionIDs.count >= 2 {
                 Button {
@@ -145,7 +155,7 @@ private struct AssistantQueueBatchToolbar: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(String(format: String(localized: "%d selected"), selectedCount))
+            Text(localizedDisplay("%d selected", selectedCount))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 

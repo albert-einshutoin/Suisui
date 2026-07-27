@@ -269,6 +269,13 @@ private struct ReviewActionRow: View {
     let item: ReviewActionItem
     @ObservedObject var viewModel: ReviewSessionViewModel
 
+    /// Anything that writes outside Suisui is shown in full. Collapsing a
+    /// destination path, a calendar, or a recipient behind "+2 more" asks the
+    /// user to approve text they cannot see.
+    private var showsEveryFieldInFull: Bool {
+        viewModel.session.originalPlan.riskLevel >= .write
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ReviewActionTitleRow(
@@ -291,13 +298,11 @@ private struct ReviewActionRow: View {
                 .help(currentStringArgument("title"))
             }
 
-            let argumentSummary = item.argumentDisplaySummary(maxFields: 4, maxValueLength: 96)
-            Text(argumentSummary.preview)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
-                .help(argumentSummary.fullText)
+            ReviewActionFieldList(
+                fields: item.argumentDisplayFields(),
+                showsEveryFieldInFull: showsEveryFieldInFull,
+                argumentSummary: item.argumentDisplaySummary(maxFields: 4, maxValueLength: 96)
+            )
 
             ForEach(viewModel.validationIssues(for: item.id), id: \.message) { issue in
                 Label(issue.message, systemImage: "exclamationmark.triangle")
@@ -376,6 +381,77 @@ private struct ReviewActionRow: View {
             .secondary
         case .notRetryable:
             SuisuiTone.attention.color
+        }
+    }
+}
+
+/// Renders plan arguments as labelled rows.
+///
+/// This replaced a single `"key: value, key: value"` blob that was clipped to
+/// three lines with the remainder reachable only through a mouse-hover
+/// tooltip — unusable with a keyboard or VoiceOver, on the one surface whose
+/// whole job is informed consent.
+private struct ReviewActionFieldList: View {
+    let fields: [ReviewActionField]
+    let showsEveryFieldInFull: Bool
+    let argumentSummary: ReviewActionArgumentSummary
+
+    private static let compactFieldLimit = 4
+
+    private var visibleFields: [ReviewActionField] {
+        showsEveryFieldInFull ? fields : Array(fields.prefix(Self.compactFieldLimit))
+    }
+
+    private var hiddenFieldCount: Int {
+        fields.count - visibleFields.count
+    }
+
+    var body: some View {
+        if fields.isEmpty {
+            Text("No arguments")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("voice-action-review-no-arguments")
+        } else {
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(visibleFields) { field in
+                    fieldRow(field)
+                }
+
+                if hiddenFieldCount > 0 {
+                    Text(localizedDisplay("+%d more", hiddenFieldCount))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // The visual rows are per-field, but assistive technology should
+            // hear the whole proposal as one uninterrupted statement.
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(localizedSettingsDisplay("Proposed values"))
+            .accessibilityValue(argumentSummary.fullText)
+            // The tooltip stays as a pointer convenience, but it is no longer
+            // the only way to read a clipped value.
+            .help(argumentSummary.fullText)
+            .accessibilityIdentifier("voice-action-review-arguments")
+        }
+    }
+
+    private func fieldRow(_ field: ReviewActionField) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(localizedReviewFieldLabel(field))
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 68, alignment: .leading)
+
+            Text(localizedReviewFieldValue(field))
+                .font(.caption)
+                // Write-risk values are never clipped; low-risk reads stay
+                // compact so a long plan is still scannable.
+                .lineLimit(showsEveryFieldInFull ? nil : 2)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

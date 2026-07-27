@@ -3361,8 +3361,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-flow-strip\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-flow-chip-\\(block.id)\")"))
         XCTAssertFalse(workflowSource.contains(".accessibilityIdentifier(\"today-flow-optimize\")"))
-        XCTAssertTrue(workflowSource.contains("TodayAISuggestionCard()"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-ai-suggestion-card\")"))
+        // Today must keep exactly one focal "next action" surface. The old
+        // AI suggestion card was a fourth pointer at the same task whose body
+        // only said that more options live in the More menu, so it is gone and
+        // must not come back.
+        XCTAssertFalse(workflowSource.contains("TodayAISuggestionCard"))
+        XCTAssertFalse(workflowSource.contains(".accessibilityIdentifier(\"today-ai-suggestion-card\")"))
+        XCTAssertTrue(workflowSource.contains("TodayAssistantRail"))
         XCTAssertTrue(todayWorkflowSource.contains("let snapshot = viewModel.snapshot"))
         XCTAssertTrue(todayWorkflowSource.contains("mainSurface(snapshot: snapshot, fillsAvailableHeight:"))
         XCTAssertTrue(todayWorkflowSource.contains("TodayAssistantRail("))
@@ -3762,6 +3767,22 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("argumentDisplaySummary(maxFields: 4, maxValueLength: 96)"))
         XCTAssertTrue(appSource.contains(".help(summary)"))
         XCTAssertTrue(appSource.contains(".help(argumentSummary.fullText)"))
+
+        // Arguments render as labelled fields, never as a raw `key: value`
+        // dump, and the full text is reachable without a mouse hover.
+        XCTAssertTrue(appSource.contains("ReviewActionFieldList("))
+        XCTAssertTrue(appSource.contains("item.argumentDisplayFields()"))
+        XCTAssertTrue(appSource.contains("localizedReviewFieldLabel(field)"))
+        XCTAssertTrue(appSource.contains("localizedReviewFieldValue(field)"))
+        XCTAssertTrue(appSource.contains(".accessibilityValue(argumentSummary.fullText)"))
+        // Anything writing outside Suisui is shown in full; consent cannot be
+        // asked for behind a "+2 more".
+        XCTAssertTrue(appSource.contains("viewModel.session.originalPlan.riskLevel >= .write"))
+        XCTAssertTrue(appSource.contains("showsEveryFieldInFull ? nil : 2"))
+        // The streaming voice preview shares the same vocabulary instead of
+        // dumping sorted JSON keys.
+        XCTAssertFalse(voiceSource.contains("\\($0.key): \\($0.value.displayValue)"))
+        XCTAssertTrue(voiceSource.contains("action.argumentDisplayFields()"))
         XCTAssertTrue(appSource.contains(".help(currentStringArgument(\"title\"))"))
         XCTAssertTrue(appSource.contains(".fixedSize(horizontal: false, vertical: true)"))
     }

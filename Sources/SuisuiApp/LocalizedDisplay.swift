@@ -20,8 +20,21 @@ func localizedDisplay(_ formatKey: String, _ arguments: CVarArg...) -> String {
     String(format: localizedDisplay(formatKey), arguments: arguments)
 }
 
+/// Picks the singular or plural catalog key for a counted noun.
+///
+/// English needs a different noun form for exactly one item; Japanese does not.
+/// Both catalogs therefore carry both keys and the count selects between them
+/// here, instead of every surface calling `String(format: "%d tasks", 1)` and
+/// shipping "1 tasks". When Suisui adds a locale with more than two plural
+/// categories this should move to a `Localizable.stringsdict`; until then the
+/// explicit two-key form is what the app's language-override bundle lookup can
+/// resolve without a format-expansion step.
+func localizedCount(_ count: Int, one singularKey: String, other pluralKey: String) -> String {
+    localizedDisplay(count == 1 ? singularKey : pluralKey, count)
+}
+
 func localizedTaskCount(_ count: Int) -> String {
-    localizedDisplay(count == 1 ? "%d task" : "%d tasks", count)
+    localizedCount(count, one: "%d task", other: "%d tasks")
 }
 
 func localizedInboxCaptureSource(_ source: InboxCaptureSourceKind) -> String {
@@ -55,6 +68,46 @@ func localizedInboxCaptureTranscription(_ status: InboxCaptureTranscriptionStatu
 
 func localizedInboxCaptureDuration(_ durationSeconds: Double) -> String {
     localizedDisplay("%d sec", Int(durationSeconds.rounded()))
+}
+
+/// The human field name shown on the approval surface. `SuisuiCore` hands over
+/// a localization key for known planning arguments and the raw argument key for
+/// anything outside that vocabulary; both resolve through the same catalog, so
+/// an unmapped key stays visible rather than being silently relabelled.
+func localizedReviewFieldLabel(_ field: ReviewActionField) -> String {
+    localizedDisplay(field.labelKey)
+}
+
+/// The value a person is actually approving. Stored timestamps become readable
+/// local dates and machine booleans become words; everything else is passed
+/// through untouched so the reviewed text is exactly the text that will run.
+func localizedReviewFieldValue(_ field: ReviewActionField) -> String {
+    switch field.kind {
+    case .timestamp:
+        return SuisuiTimestampDisplay.absolute(
+            field.rawValue,
+            calendar: VisualEvidenceRuntimeContext.runtimeCalendar()
+        )
+    case .flag:
+        return localizedDisplay(field.rawValue == "true" ? "Yes" : "No")
+    case .text, .identifier, .other:
+        return localizedReviewEnumValue(field)
+    }
+}
+
+/// Planning arguments carry enum values in their wire casing (`high`,
+/// `in_progress`). The catalog already holds the display forms used everywhere
+/// else in the app, so reuse them instead of showing the wire value.
+private func localizedReviewEnumValue(_ field: ReviewActionField) -> String {
+    guard ["priority", "status"].contains(field.key.lowercased()) else {
+        return field.rawValue
+    }
+    let normalized = field.rawValue
+        .replacingOccurrences(of: "_", with: " ")
+        .split(separator: " ")
+        .map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }
+        .joined(separator: " ")
+    return localizedDisplay(normalized)
 }
 
 func localizedRiskLevel(_ riskLevel: RiskLevel) -> String {

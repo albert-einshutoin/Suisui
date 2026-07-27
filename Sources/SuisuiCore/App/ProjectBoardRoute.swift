@@ -6,6 +6,13 @@ public enum BoardPrimaryDestination: String, CaseIterable, Hashable, Sendable {
     case inbox
     case projects
     case review
+
+    /// ⌘1–⌘4 must land on the same rows the sidebar renders, in the same
+    /// order, or the shortcut and the list disagree about what "2" means.
+    /// `ProjectBoardSidebarView` renders this order.
+    public static let orderedForKeyboardSelection: [BoardPrimaryDestination] = [
+        .today, .inbox, .projects, .review
+    ]
 }
 
 /// A workflow presented within the consolidated Review area.

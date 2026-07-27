@@ -1497,7 +1497,10 @@ extension SettingsAIFeatureView {
         guard let cents, cents > 0 else {
             return localizedSettingsDisplay("Not set")
         }
-        return String(format: localizedSettingsDisplay("USD %.2f"), Double(cents) / 100)
+        // A hardcoded "USD %.2f" ignores the user's grouping separator and
+        // decimal mark. The cap is genuinely denominated in USD, so the
+        // currency stays fixed while the presentation follows the locale.
+        return (Decimal(cents) / 100).formatted(.currency(code: "USD"))
     }
 
     func handleVoiceModelAction(_ row: VoiceModelReadinessRow) {

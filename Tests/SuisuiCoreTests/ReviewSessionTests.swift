@@ -129,6 +129,48 @@ final class ReviewSessionTests: XCTestCase {
         XCTAssertTrue(summary.preview.contains("+2 more"))
         XCTAssertTrue(summary.fullText.contains("source: voice"))
     }
+
+    /// The approval surface must describe a proposal in words, not dump the
+    /// JSON it happens to be built from.
+    func testArgumentDisplayFieldsUseHumanLabelsAndDemoteInternalIdentifiers() throws {
+        let plan = ActionPlan.reviewFixture(actions: [
+            PlanAction(
+                id: "event",
+                tool: .calendarCreateEvent,
+                arguments: [
+                    "projectId": .number(3),
+                    "startAt": .string("2026-07-10T14:00:00Z"),
+                    "title": .string("Release review"),
+                    "source": .string("voice")
+                ]
+            )
+        ])
+        let session = ReviewSession(plan: plan)
+        let item = try XCTUnwrap(session.items.first)
+
+        let fields = item.argumentDisplayFields()
+
+        XCTAssertEqual(fields.map(\.key), ["title", "startAt", "source", "projectId"])
+        XCTAssertEqual(fields.first?.labelKey, "Title")
+        XCTAssertEqual(fields[1].labelKey, "Starts")
+        XCTAssertEqual(fields[1].kind, .timestamp)
+        // Casing variants of the same concept resolve to one label.
+        XCTAssertEqual(fields.last?.labelKey, "Project")
+        XCTAssertEqual(fields.last?.kind, .identifier)
+        // An argument outside the planning vocabulary keeps its raw key rather
+        // than being relabelled into something it is not.
+        XCTAssertEqual(fields[2].labelKey, "source")
+    }
+
+    func testArgumentDisplayFieldsAreEmptyWhenThereIsNothingToApprove() throws {
+        let plan = ActionPlan.reviewFixture(actions: [
+            PlanAction(id: "list", tool: .taskList, arguments: [:])
+        ])
+        let session = ReviewSession(plan: plan)
+        let item = try XCTUnwrap(session.items.first)
+
+        XCTAssertTrue(item.argumentDisplayFields().isEmpty)
+    }
 }
 
 final class ActionExecutorTests: XCTestCase {

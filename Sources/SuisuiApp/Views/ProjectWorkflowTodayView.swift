@@ -39,10 +39,19 @@ struct TodayWorkflowView: View {
     }
 
     private func subtitle(for snapshot: TodayWorkflowSnapshot) -> String {
+        let count = snapshot.plan.tasks.count
         if viewModel.showsCompletedWorkflowTasks {
-            return String(format: String(localized: "%d due or completed tasks"), snapshot.plan.tasks.count)
+            return localizedCount(
+                count,
+                one: "%d due or completed task",
+                other: "%d due or completed tasks"
+            )
         }
-        return String(format: String(localized: "%d open due or overdue tasks"), snapshot.plan.tasks.count)
+        return localizedCount(
+            count,
+            one: "%d open due or overdue task",
+            other: "%d open due or overdue tasks"
+        )
     }
 
     var body: some View {
@@ -542,10 +551,16 @@ private struct TodaySuggestionPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TodayAISuggestionCard()
+            // A fourth "AI suggestion" card used to sit here. Today already
+            // points at the same single next task from the header
+            // recommendation, the Daily Planning Review card, and the assistant
+            // rail; this card added no suggestion of its own and only said that
+            // more options live in the More menu. A secretary's value is
+            // narrowing to one thing, so the pointer-to-a-menu card is gone and
+            // the rail stays the one focal surface.
             TodayTimeBlockList(plan: plan)
             if let draft = viewModel.scheduleDraft {
-                Text(String(format: String(localized: "%d blocks ready"), draft.timeBlocks.count))
+                Text(localizedCount(draft.timeBlocks.count, one: "%d block ready", other: "%d blocks ready"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("today-schedule-draft-status")
@@ -682,7 +697,7 @@ private struct TodayAssistantRail: View {
             .accessibilityHint("Opens edit, subtask, schedule, and reminder draft actions for this task.")
 
             if let draft = viewModel.scheduleDraft {
-                Text(String(format: String(localized: "%d blocks ready"), draft.timeBlocks.count))
+                Text(localizedCount(draft.timeBlocks.count, one: "%d block ready", other: "%d blocks ready"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityElement(children: .ignore)
@@ -709,22 +724,6 @@ private struct TodayAssistantRail: View {
                 .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
-    }
-}
-
-private struct TodayAISuggestionCard: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("AI suggestion", systemImage: "sparkles")
-                .font(.subheadline.weight(.semibold))
-            Text("Alternative focus suggestions and schedule drafts remain available from More.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .soloAssistantSignal()
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("today-ai-suggestion-card")
     }
 }
 

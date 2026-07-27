@@ -58,8 +58,9 @@ struct ProjectsPortfolioOverview: View {
                 HStack(alignment: .center, spacing: 12) {
                     ProjectPortfolioHeader(
                         title: "Projects",
-                        subtitle: String(format: String(localized: "%d projects compared"), summaries.count),
-                        systemImage: "folder.circle"
+                        subtitle: localizedCount(summaries.count, one: "%d project compared", other: "%d projects compared"),
+                        systemImage: "folder.circle",
+                        rankingRuleDescription: portfolioRankingRuleDescription
                     )
                     Spacer(minLength: 12)
                     controls
@@ -68,8 +69,9 @@ struct ProjectsPortfolioOverview: View {
                 VStack(alignment: .leading, spacing: 10) {
                     ProjectPortfolioHeader(
                         title: "Projects",
-                        subtitle: String(format: String(localized: "%d projects compared"), summaries.count),
-                        systemImage: "folder.circle"
+                        subtitle: localizedCount(summaries.count, one: "%d project compared", other: "%d projects compared"),
+                        systemImage: "folder.circle",
+                        rankingRuleDescription: portfolioRankingRuleDescription
                     )
                     controls
                 }
@@ -105,6 +107,12 @@ struct ProjectsPortfolioOverview: View {
         .accessibilityIdentifier("projects-portfolio-overview")
         .accessibilityLabel("Projects portfolio overview")
         .accessibilityHint("Compares local project progress, risk, due dates, and next actions.")
+    }
+
+    private var portfolioRankingRuleDescription: String? {
+        summaries.first.map {
+            String(localized: String.LocalizationValue($0.localHealthRuleDescription))
+        }
     }
 
     private var controls: some View {
@@ -170,12 +178,25 @@ private struct ProjectPortfolioHeader: View {
     let title: String
     let subtitle: String
     let systemImage: String
+    /// Shown once for the whole portfolio. Each card used to carry this same
+    /// sentence, which said nothing about that particular project.
+    var rankingRuleDescription: String?
 
     var body: some View {
         Label {
             VStack(alignment: .leading, spacing: 3) {
-                Text(LocalizedStringKey(title))
-                    .font(.title2.weight(.semibold))
+                HStack(spacing: SuisuiSpacing.sm) {
+                    Text(LocalizedStringKey(title))
+                        .font(.title2.weight(.semibold))
+                    if let rankingRuleDescription {
+                        Image(systemName: "info.circle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .help(rankingRuleDescription)
+                            .accessibilityLabel(rankingRuleDescription)
+                            .accessibilityIdentifier("projects-portfolio-ranking-rule")
+                    }
+                }
                 Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -227,7 +248,9 @@ private struct ProjectPortfolioCard: View {
                 Label(summary.nextDueAt ?? String(localized: "No due date"), systemImage: "calendar")
                 Label(localizedRiskReason, systemImage: "heart.text.square")
                 Label(summary.nextActionTitle, systemImage: "arrow.right.circle")
-                Label(localizedHealthRuleDescription, systemImage: "checklist")
+                // The ranking rule is identical on every card, so repeating it
+                // per card was pure noise in the densest cell on the screen. It
+                // now appears once, in the portfolio header's help.
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -263,10 +286,6 @@ private struct ProjectPortfolioCard: View {
 
     private var localizedHealthTitle: String {
         String(localized: String.LocalizationValue(summary.health.title))
-    }
-
-    private var localizedHealthRuleDescription: String {
-        String(localized: String.LocalizationValue(summary.localHealthRuleDescription))
     }
 
     private var localizedRiskReason: String {
@@ -1714,10 +1733,16 @@ private struct TaskCardSelectableSummary: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 8) {
+                    // The title is the card. It previously shared a hard
+                    // two-line budget with a fixed drag affordance and lost,
+                    // truncating mid-word on one line while the description
+                    // below it wrapped to three — the hierarchy read inverted.
                     Text(task.title)
                         .font(.subheadline.weight(.semibold))
-                        .lineLimit(2)
+                        .lineLimit(3)
                         .truncationMode(.tail)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .layoutPriority(1)
                         .help(task.title)
 
                     Spacer(minLength: 6)
@@ -1729,7 +1754,7 @@ private struct TaskCardSelectableSummary: View {
                     if !task.detail.isEmpty {
                         Text(task.detail)
                             .font(.caption)
-                            .lineLimit(3)
+                            .lineLimit(2)
                             .truncationMode(.tail)
                             .help(task.detail)
                     }

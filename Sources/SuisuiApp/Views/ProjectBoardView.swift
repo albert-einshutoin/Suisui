@@ -405,12 +405,28 @@ struct ProjectBoardView: View {
             )
         }
         .background(
-            // Hidden button so ⌘K opens the palette without disturbing the
+            // Hidden buttons so these shortcuts work without disturbing the
             // pinned toolbar structure. Hidden views stay out of the AX tree.
-            Button("") {
-                isCommandPaletteVisible = true
+            ZStack {
+                Button("") {
+                    isCommandPaletteVisible = true
+                }
+                .keyboardShortcut("k", modifiers: [.command])
+
+                // ⌘1–⌘4 select the four top-level destinations, which is what
+                // every other macOS app does with those keys. They previously
+                // belonged to Inbox classification, leaving the sidebar with no
+                // keyboard route at all; classification moved to ⌃⌘1–⌃⌘4.
+                ForEach(Array(BoardPrimaryDestination.orderedForKeyboardSelection.enumerated()), id: \.offset) { index, destination in
+                    Button("") {
+                        boardRouteBinding.wrappedValue = .primary(destination)
+                    }
+                    .keyboardShortcut(
+                        KeyEquivalent(Character("\(index + 1)")),
+                        modifiers: [.command]
+                    )
+                }
             }
-            .keyboardShortcut("k", modifiers: [.command])
             .hidden()
             .accessibilityHidden(true)
         )

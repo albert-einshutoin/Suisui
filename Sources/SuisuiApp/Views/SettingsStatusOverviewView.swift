@@ -8,28 +8,86 @@ struct SettingsStatusOverviewView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ForEach(groups, id: \SettingsReadinessRowGroup.group) { (group: SettingsReadinessRowGroup) in
-                DisclosureGroup {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(group.rows, id: \SettingsReadinessRow.id) { (row: SettingsReadinessRow) in
-                            SettingsReadinessRowView(row: row, performAction: performAction)
-                        }
-                    }
-                    .padding(.top, 8)
-                } label: {
-                    Label {
-                        Text(localizedSettingsDisplay(group.group.title))
-                    } icon: {
-                        Image(systemName: group.group.systemImage)
-                    }
-                    .font(SuisuiTypography.sectionTitle)
-                }
-                .accessibilityLabel(localizedSettingsDisplay(group.group.title))
-                .accessibilityIdentifier("settings-readiness-group-\(group.group.identifierSuffix)")
+                SettingsReadinessGroupView(group: group, performAction: performAction)
             }
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings-status-overview")
+    }
+}
+
+/// One readiness group.
+///
+/// Every group used to be collapsed behind a label that was only its own status
+/// name, so the first thing Settings showed was two rows reading "Ready" and
+/// "Set Up When Used" — no subject, no count, nothing to act on. The label now
+/// carries how many items it covers, and anything needing attention starts
+/// open, because that is the only group the user has to do something about.
+private struct SettingsReadinessGroupView: View {
+    let group: SettingsReadinessRowGroup
+    let performAction: (SettingsReadinessAction) -> Void
+
+    @State private var isExpanded: Bool
+
+    init(
+        group: SettingsReadinessRowGroup,
+        performAction: @escaping (SettingsReadinessAction) -> Void
+    ) {
+        self.group = group
+        self.performAction = performAction
+        _isExpanded = State(initialValue: group.group == .needsAttention)
+    }
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(group.rows, id: \SettingsReadinessRow.id) { (row: SettingsReadinessRow) in
+                    SettingsReadinessRowView(row: row, performAction: performAction)
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            Label {
+                HStack(spacing: SuisuiSpacing.sm) {
+                    Text(localizedSettingsDisplay(group.group.title))
+                    SuisuiStatusChip(
+                        text: "\(group.rows.count)",
+                        tone: group.group == .needsAttention ? .attention : .neutral
+                    )
+                    Spacer(minLength: 0)
+                    // Naming the subjects makes a collapsed group answer "ready
+                    // for what?" without a click.
+                    Text(subjectSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            } icon: {
+                Image(systemName: group.group.systemImage)
+                    .foregroundStyle(group.group == .needsAttention ? SuisuiTone.attention.color : .secondary)
+            }
+            .font(SuisuiTypography.sectionTitle)
+        }
+        .accessibilityLabel(localizedSettingsDisplay(group.group.title))
+        .accessibilityValue(accessibilityValue)
+        .accessibilityIdentifier("settings-readiness-group-\(group.group.identifierSuffix)")
+    }
+
+    private var subjectSummary: String {
+        group.rows
+            .prefix(3)
+            .map { localizedSettingsDisplay($0.title) }
+            .joined(separator: localizedSettingsDisplay(", "))
+    }
+
+    private var accessibilityValue: String {
+        let countText = localizedCount(group.rows.count, one: "%d item", other: "%d items")
+        guard !group.rows.isEmpty else {
+            return countText
+        }
+        return "\(countText): \(subjectSummary)"
     }
 }
 
@@ -115,7 +173,11 @@ private extension SettingsReadinessState {
         switch self {
         case .ready: SuisuiTone.positive.color
         case .setupWhenNeeded, .checking: .secondary
-        case .needsAction: SuisuiTone.neutral.color
+        // A warning triangle rendered in neutral gray reads as "informational"
+        // and gets skipped. `needsAction` is the one state that requires the
+        // user to do something, so it uses the attention tone the design system
+        // already defines for exactly this.
+        case .needsAction: SuisuiTone.attention.color
         case .blocked: SuisuiTone.danger.color
         case .unsupported: SuisuiTone.neutral.color
         }

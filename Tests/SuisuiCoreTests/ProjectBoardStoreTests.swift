@@ -31,7 +31,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(plannedTasks.first?.detail, "Capture expected setup steps for the alpha release.")
         XCTAssertEqual(plannedTasks.first?.status, .planned)
         XCTAssertEqual(plannedTasks.first?.priority, .high)
-        XCTAssertEqual(plannedTasks.first?.dueLabel, "2026-06-20")
+        XCTAssertEqual(plannedTasks.first?.dueAt, "2026-06-20")
     }
 
     func testTaskCompletionPersistsCompletedAtMigrationAndSnapshot() throws {
@@ -531,7 +531,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(inProgressTasks.first?.title, "Finalize release checklist")
         XCTAssertEqual(inProgressTasks.first?.detail, "Confirm notarization and Sparkle metadata.")
         XCTAssertEqual(inProgressTasks.first?.priority, .high)
-        XCTAssertEqual(inProgressTasks.first?.dueLabel, "2026-06-21")
+        XCTAssertEqual(inProgressTasks.first?.dueAt, "2026-06-21")
     }
 
     func testMoveTaskPersistsNewStatusWithoutLosingMetadata() throws {

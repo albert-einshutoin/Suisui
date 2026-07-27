@@ -182,3 +182,36 @@ Project boardのkanban surfaceにフォーカスがあるとき(タスクカー�
 ### Smart Lists
 
 Sidebarの`Smart Lists` sectionにpreset(`Due this week`、`High priority`、`Overdue`)と保存済みリストが並ぶ。`New Smart List…`でstatus/priority/due-within/overdue/検索テキストを組み合わせたフィルタを保存でき、選択するとboard detailに一致タスクのflat listが出る(Todayと同じrow componentを再利用)。選択は`selectedDestination`とは独立した`selectedSmartListID`で管理し、どちらか一方だけがアクティブになる。
+
+## UX review fixes (2026-07-27)
+
+Follow-up to a product-level UI/UX review. Findings are grouped by whether the
+fix shipped in this pass.
+
+### 修正済み
+
+| 指摘 | 修正内容 | 実装 |
+| --- | --- | --- |
+| 承認面が `key: value` のJSONダンプだった | Plan引数を「ラベル: 値」の行として描画する。日付はロケール表示、内部IDは末尾へ降格。`riskLevel >= .write` は全項目を省略なしで表示する。全文は `accessibilityValue` にも載り、tooltipだけの経路ではなくなった。 | `Sources/SuisuiCore/Review/ReviewSession.swift`, `Sources/SuisuiApp/Views/ActionReviewPanel.swift`, `Sources/SuisuiApp/Views/VoiceCaptureView.swift` |
+| 日付表示が面ごとに違い、生のISO文字列が露出していた | `SuisuiTimestampDisplay` に集約。`ProjectBoardTask.dueLabel` は表示用ラベルを返し、`dueAt` が保存値。Done の `2026-07-09T12:00:00Z` とScheduleの `"E d"` 固定パターンを廃止。 | `Sources/SuisuiCore/App/SuisuiTimestampDisplay.swift` ほか |
+| 英語の複数形が壊れていた（`1 open tasks`） | `localizedCount(_:one:other:)` を追加し、主要サーフェスの可算名詞を単複2キーに分離。 | `Sources/SuisuiApp/LocalizedDisplay.swift` ほか |
+| Todayに「次の一手」を指す面が4つあった | 内容が「他の候補はMoreにあります」だけの `TodayAISuggestionCard` を削除。焦点面はassistant railに一本化。 | `Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift` |
+| Settings Overviewが状態名だけの折りたたみ2行だった | グループラベルに件数と対象名を表示し、`Needs Attention` は既定で展開。`needsAction` をグレーからattentionトーンへ。 | `Sources/SuisuiApp/Views/SettingsStatusOverviewView.swift` |
+| `⌘1`–`⌘4` がInbox分類に割り当てられ、サイドバーにキーボード導線がなかった | `⌘1`–`⌘4` を Today / Inbox / Projects / Review に割り当て、分類は `⌃⌘1`–`⌃⌘4` へ移動（tooltipにキー表示）。 | `Sources/SuisuiApp/Views/ProjectBoardView.swift`, `Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift` |
+| カードのタイトルが1行で切れ、説明文が3行取っていた | タイトルを3行 + `layoutPriority(1)`、説明を2行に。 | `Sources/SuisuiApp/Views/ProjectBoardDetailViews.swift` |
+| Projects overviewが全カードに同じ判定ルール文を繰り返していた | ヘッダーの `info.circle` に1回だけ表示。 | `Sources/SuisuiApp/Views/ProjectBoardDetailViews.swift` |
+| Assistant Queueが空でも `0 selected` と無効ボタンを表示していた | 行がない間はtriage/batchツールバーを出さない。 | `Sources/SuisuiApp/Views/ProjectWorkflowAssistantQueueView.swift` |
+| 音声の信頼度を生の `%` で表示していた | 次の操作が変わる3段階（要確認 / ほぼ確実 / 明確に認識）へ。 | `Sources/SuisuiApp/Views/VoiceCaptureView.swift` |
+| 通貨が `USD %.2f` 固定だった | `.formatted(.currency(code: "USD"))` へ。 | `Sources/SuisuiApp/Views/SettingsFeatureViews.swift` |
+| Voice placeholderが存在しない場所「Assistant Queue」を案内していた | 「Review › Assistant Queue」と実際の導線名で表記。 | `Sources/SuisuiApp/Views/VoiceCaptureView.swift` |
+| Localizable.strings に重複キーが78件あった | 値が同一の重複を削除（en 76件 / ja 59件）。 | `Sources/SuisuiApp/Resources/*.lproj/Localizable.strings` |
+
+### 未修正（判断が必要）
+
+| 指摘 | 未修正の理由 |
+| --- | --- |
+| Approve と Run が別ウィンドウ、かつAssistant QueueがReviewの2階層下 | 安全境界の設計判断。実行ゲートを音声ウィンドウへ広げるか、キューを横断パネルにするかはプロダクト側の合意が要る。 |
+| ja catalog に値が食い違う重複キーが17件 | どちらの訳を採るかは翻訳判断。特に `"Suisui"` が `"すいすい"` に上書きされており（後勝ち）、製品名の表記方針を決める必要がある。対象キーは `Suisui` / `Welcome to Suisui` / `Add to Inbox` / `%d tasks` / `%d tokens` / `Reopen` / `Create task` / `Push branch` / `Create pull request` / `Review pull request` / `Merge pull request` ほか。 |
+| Task card metadata chip が `maxWidth: .infinity` の塗りつぶしで入力欄に見える | `ProjectBoardMetadataLayoutSourceTests` が hosted visual runner での描画実績としてこの形を固定している。visual runnerを回せない環境では安全に変更できない。 |
+| グローバルホットキーが ⌥Space 固定でリマップUIがない | ランチャーとの競合時に回避手段がないが、設定UI・永続化・競合検知を含む機能追加になるため別PR。 |
+| 多カウント文字列（`%d tasks, %d open, %d done, …`）の複数形 | 主に分析系・AX文字列。2キー方式では組み合わせ爆発するため `.stringsdict` 導入時にまとめて対応する。 |

@@ -398,9 +398,10 @@ private struct DoneProductivityInsightView: View {
         guard !bestWeekdaySummary.isEmpty else {
             return String(localized: "Complete tasks to build weekday trends.")
         }
-        return String(
-            format: String(localized: "%d tasks completed on this weekday."),
-            bestWeekdaySummary.completedCount
+        return localizedCount(
+            bestWeekdaySummary.completedCount,
+            one: "%d task completed on this weekday.",
+            other: "%d tasks completed on this weekday."
         )
     }
 
@@ -415,9 +416,13 @@ private struct DoneProductivityInsightView: View {
         guard !bestHourSummary.isEmpty else {
             return String(localized: "Completed tasks with timestamps will show hourly trends.")
         }
-        return String(
-            format: String(localized: "%d tasks around %@, usually %@."),
-            bestHourSummary.completedCount,
+        return localizedDisplay(
+            "%@ around %@, usually %@.",
+            localizedCount(
+                bestHourSummary.completedCount,
+                one: "%d task",
+                other: "%d tasks"
+            ),
             bestHourValue,
             localizedTimeOfDayLabel
         )
@@ -511,7 +516,17 @@ private struct DoneTaskHistoryRow: View {
     private var doneMetadata: String {
         let projectTitle = viewModel.projectTitle(for: task)
         if let completedAt = task.completedAt {
-            return String(format: String(localized: "%@ completed at %@"), projectTitle, completedAt)
+            // `completedAt` is a stored ISO8601 instant. Printing it verbatim
+            // showed the user "2026-07-09T12:00:00Z" — a UTC machine string on
+            // the one screen that exists to celebrate finished work.
+            return String(
+                format: String(localized: "%@ completed at %@"),
+                projectTitle,
+                SuisuiTimestampDisplay.absolute(
+                    completedAt,
+                    calendar: VisualEvidenceRuntimeContext.runtimeCalendar()
+                )
+            )
         }
         return String(format: String(localized: "%@ completed"), projectTitle)
     }

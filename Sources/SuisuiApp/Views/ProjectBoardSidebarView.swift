@@ -84,10 +84,7 @@ struct ProjectBoardSidebarView: View {
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                         .accessibilityLabel(
-                            String(
-                                format: String(localized: "%d items"),
-                                count
-                            )
+                            localizedCount(count, one: "%d item", other: "%d items")
                         )
                 }
             }
@@ -100,8 +97,8 @@ struct ProjectBoardSidebarView: View {
         .accessibilityLabel(title)
         .accessibilityValue(
             count > 0
-                ? String(format: String(localized: "%d items"), count)
-                : String(localized: "No pending items")
+                ? localizedCount(count, one: "%d item", other: "%d items")
+                : localizedDisplay("No pending items")
         )
         .accessibilityIdentifier(accessibilityIdentifier)
     }

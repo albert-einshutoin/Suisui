@@ -52,6 +52,45 @@ public struct ReviewActionItem: Identifiable, Equatable, Sendable {
     public func argumentDisplaySummary(maxFields: Int = 4, maxValueLength: Int = 96) -> ReviewActionArgumentSummary {
         editedAction.argumentDisplaySummary(maxFields: maxFields, maxValueLength: maxValueLength)
     }
+
+    public func argumentDisplayFields() -> [ReviewActionField] {
+        editedAction.argumentDisplayFields()
+    }
+}
+
+/// One reviewable argument, split so the approval surface can render
+/// "Due — Fri, Jul 10" instead of the raw `dueAt: 2026-07-10T09:00:00Z` that a
+/// person is being asked to approve.
+///
+/// The label is a *localization key*, not final text: `SuisuiCore` has no
+/// translation catalog, so the app layer resolves `labelKey` against the same
+/// bundle it uses for every other status string.
+public struct ReviewActionField: Equatable, Sendable, Identifiable {
+    public enum Kind: Equatable, Sendable {
+        /// Free text the user is likely editing (title, summary, body).
+        case text
+        /// A stored ISO8601 or `yyyy-MM-dd` value the app layer must format.
+        case timestamp
+        /// An internal row id. Never the point of the review, so it sorts last
+        /// and stays out of the compact preview.
+        case identifier
+        case flag
+        case other
+    }
+
+    public var id: String { key }
+    /// Raw argument key, kept so audit output and debugging stay traceable.
+    public let key: String
+    public let labelKey: String
+    public let rawValue: String
+    public let kind: Kind
+
+    public init(key: String, labelKey: String, rawValue: String, kind: Kind) {
+        self.key = key
+        self.labelKey = labelKey
+        self.rawValue = rawValue
+        self.kind = kind
+    }
 }
 
 public struct ReviewActionArgumentSummary: Equatable, Sendable {
@@ -105,6 +144,29 @@ public extension PlanAction {
             fullText: fields.map(\.full).joined(separator: ", "),
             isTruncated: hiddenCount > 0 || fields.contains(where: \.truncated)
         )
+    }
+
+    /// Arguments as labelled fields, ordered the way a person reads a proposal:
+    /// what it is, when it happens, then everything else, with internal ids
+    /// last.
+    func argumentDisplayFields() -> [ReviewActionField] {
+        arguments
+            .map { key, value in
+                ReviewActionField(
+                    key: key,
+                    labelKey: key.reviewFieldLabelKey,
+                    rawValue: value.reviewDisplayValue.normalizedSingleLine,
+                    kind: key.reviewFieldKind
+                )
+            }
+            .sorted { lhs, rhs in
+                let lhsRank = lhs.key.reviewDisplayPriority
+                let rhsRank = rhs.key.reviewDisplayPriority
+                if lhsRank == rhsRank {
+                    return lhs.key < rhs.key
+                }
+                return lhsRank < rhsRank
+            }
     }
 }
 
@@ -461,12 +523,69 @@ private extension JSONValue {
 }
 
 private extension String {
+    /// Normalizes the casing variants the planning schema uses (`projectID`,
+    /// `projectId`, `project_id`) so one vocabulary entry covers all of them.
+    var reviewFieldLookupKey: String {
+        lowercased().replacingOccurrences(of: "_", with: "")
+    }
+
+    /// Maps a machine argument key to the words a person uses for it. Anything
+    /// outside this vocabulary falls back to the raw key rather than inventing
+    /// a label, so an unmapped argument is visibly unmapped instead of
+    /// silently mislabelled.
+    var reviewFieldLabelKey: String {
+        switch reviewFieldLookupKey {
+        case "title", "name": "Title"
+        case "summary": "Summary"
+        case "detail", "details", "notes", "body", "content", "message": "Details"
+        case "dueat", "duedate", "due": "Due"
+        case "startat", "starttime": "Starts"
+        case "endat", "endtime": "Ends"
+        case "scheduledat": "Scheduled"
+        case "priority": "Priority"
+        case "status": "Status"
+        case "recurrence": "Repeats"
+        case "projectid": "Project"
+        case "taskid": "Task"
+        case "calendarid": "Calendar"
+        case "remindername", "listname": "List"
+        case "path", "filepath": "File"
+        case "directory", "directorypath": "Folder"
+        case "recipient", "to": "To"
+        case "subject": "Subject"
+        case "url", "link": "Link"
+        case "branch": "Branch"
+        case "repository", "repositorypath": "Repository"
+        default: self
+        }
+    }
+
+    var reviewFieldKind: ReviewActionField.Kind {
+        switch reviewFieldLookupKey {
+        case "dueat", "duedate", "due", "startat", "starttime", "endat",
+             "endtime", "scheduledat", "completedat", "remindat":
+            .timestamp
+        case "projectid", "taskid", "calendarid", "eventid", "id":
+            .identifier
+        case "title", "name", "summary", "detail", "details", "notes", "body",
+             "content", "message", "subject":
+            .text
+        default:
+            .other
+        }
+    }
+
     var reviewDisplayPriority: Int {
-        switch self {
+        switch reviewFieldLookupKey {
         case "title", "name", "summary":
             0
-        case "projectID", "taskID", "dueAt", "scheduledAt", "priority", "status":
+        case "dueat", "duedate", "due", "startat", "endat", "scheduledat",
+             "priority", "status", "recurrence":
             1
+        // Internal row ids answer "which record" but never "what will happen",
+        // so they sort behind every human-meaningful field.
+        case "projectid", "taskid", "calendarid", "eventid", "id":
+            3
         default:
             2
         }

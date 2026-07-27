@@ -225,8 +225,12 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
         self.recurrence = recurrence
     }
 
+    /// The label every board surface shows for a due date. `dueAt` stays the
+    /// raw stored string for persistence and API compatibility; this is the
+    /// only thing a person should ever see, so the kanban card cannot print
+    /// `2026-07-10` while Today prints `Overdue Jul 10` for the same task.
     public var dueLabel: String? {
-        dueAt
+        dueAt.map { SuisuiTimestampDisplay.dayLabel($0) }
     }
 
     // Today surfaces optimize for quick scanning; keep the stored dueAt raw for
@@ -239,14 +243,14 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
         guard let dueAt else {
             return nil
         }
-        guard let parsedDue = Self.parsedDueDate(from: dueAt, calendar: calendar) else {
+        guard let parsedDue = SuisuiTimestampDisplay.parse(dueAt, calendar: calendar) else {
             return dueAt
         }
 
         let dayInterval = calendar.dateInterval(of: .day, for: referenceDate)
-        let dateText = Self.formattedTodayDueDate(
+        let dateText = SuisuiTimestampDisplay.formatted(
             parsedDue.date,
-            includesTime: parsedDue.includesTime,
+            template: parsedDue.includesTime ? "MMM d HH:mm" : "MMM d",
             calendar: calendar,
             locale: locale
         )
@@ -262,7 +266,7 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
             }
             return String(
                 format: String(localized: "Today %@"),
-                Self.formattedTodayDueTime(parsedDue.date, calendar: calendar, locale: locale)
+                SuisuiTimestampDisplay.time(parsedDue.date, calendar: calendar, locale: locale)
             )
         }
         return String(format: String(localized: "Due %@"), dateText)
@@ -273,54 +277,11 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
         calendar: Calendar = .current
     ) -> Bool {
         guard let dueAt,
-              let parsedDue = Self.parsedDueDate(from: dueAt, calendar: calendar),
+              let parsedDue = SuisuiTimestampDisplay.parse(dueAt, calendar: calendar),
               let dayStart = calendar.dateInterval(of: .day, for: referenceDate)?.start else {
             return false
         }
         return parsedDue.date < dayStart && status != .done
-    }
-
-    private struct ParsedDueDate {
-        var date: Date
-        var includesTime: Bool
-    }
-
-    private static func parsedDueDate(from rawDueAt: String, calendar: Calendar) -> ParsedDueDate? {
-        if let date = ISO8601DateFormatter().date(from: rawDueAt) {
-            return ParsedDueDate(date: date, includesTime: rawDueAt.contains("T"))
-        }
-
-        let formatter = DateFormatter()
-        var parsingCalendar = Calendar(identifier: .gregorian)
-        parsingCalendar.timeZone = calendar.timeZone
-        formatter.calendar = parsingCalendar
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.date(from: rawDueAt).map { ParsedDueDate(date: $0, includesTime: false) }
-    }
-
-    private static func formattedTodayDueDate(
-        _ date: Date,
-        includesTime: Bool,
-        calendar: Calendar,
-        locale: Locale
-    ) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.locale = locale
-        formatter.timeZone = calendar.timeZone
-        formatter.setLocalizedDateFormatFromTemplate(includesTime ? "MMM d HH:mm" : "MMM d")
-        return formatter.string(from: date)
-    }
-
-    private static func formattedTodayDueTime(_ date: Date, calendar: Calendar, locale: Locale) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.locale = locale
-        formatter.timeZone = calendar.timeZone
-        formatter.setLocalizedDateFormatFromTemplate("HH:mm")
-        return formatter.string(from: date)
     }
 }
 
