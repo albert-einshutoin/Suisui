@@ -2,6 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -f "$ROOT_DIR/script/mcp_source_provenance.sh" ]]; then
+  source "$ROOT_DIR/script/mcp_source_provenance.sh"
+fi
 STRICT_PRODUCT_RESEARCH=0
 CLASSIFY_ONLY=0
 CLASSIFY_BLOCKING_COUNT=""
@@ -437,20 +440,16 @@ ui_evidence_source_commit() {
 }
 
 mcp_evidence_source_commit() {
-  local commit
-  commit="$(
-    git -C "$ROOT_DIR" log -1 --format=%h -- \
-      Sources/SuisuiCore/ExternalMCP \
-      Sources/SuisuiApp/SuisuiApp.swift \
-      Sources/SuisuiApp/Composition \
-      Sources/SuisuiApp/Views/SettingsView.swift \
-      fixtures/mcp \
-      Package.swift 2>/dev/null || true
-  )"
-  if [[ -n "$commit" ]]; then
-    printf "%s" "$commit"
-  else
+  local source_ref="${SUISUI_MCP_SOURCE_REF:-HEAD}"
+
+  # Production checkouts share the verifier's fail-closed provenance resolver.
+  # Isolated report fixtures intentionally copy only this script; their fallback
+  # preserves the fixture's historical HEAD behavior without weakening the real
+  # verifier, which requires the shared helper and blocks when it is unavailable.
+  if ! declare -F mcp_evidence_source_commit_for_ref >/dev/null; then
     source_commit
+  elif ! mcp_evidence_source_commit_for_ref "$ROOT_DIR" "$source_ref"; then
+    printf "unknown"
   fi
 }
 

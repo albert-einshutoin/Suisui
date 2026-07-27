@@ -62,10 +62,11 @@ fi
 BUILD_CONFIGURATION="${PERFORMANCE_BUILD_CONFIGURATION_OVERRIDE:-$DEFAULT_BUILD_CONFIGURATION}"
 MAX_COLD_LAUNCH_MS="${SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS:-$DEFAULT_COLD_LAUNCH_BUDGET_MS}"
 MAX_DESTINATION_SWITCH_MS="${SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS:-$DEFAULT_DESTINATION_SWITCH_BUDGET_MS}"
-# A fixed odd sample count lets the gate reject a consistently slow product
-# while ignoring a single noisy hosted-runner launch. Keeping this out of the
+# Fixed odd sample counts let the gate reject consistently slow product work
+# while ignoring one noisy hosted-runner observation. Keeping these out of the
 # environment prevents callers from weakening release evidence.
 COLD_LAUNCH_SAMPLE_COUNT=3
+DESTINATION_SAMPLE_COUNT=3
 
 require_positive_integer_budget() {
   local name="$1"
@@ -369,15 +370,6 @@ assert_sample_within_budget() {
   fi
 }
 
-record_sample() {
-  local label="$1"
-  local start_ms="$2"
-  local end_ms="$3"
-  local budget_ms="${4:-}"
-  local elapsed_ms=$((end_ms - start_ms))
-  record_elapsed_sample "$label" "$elapsed_ms" "$budget_ms"
-}
-
 record_elapsed_sample() {
   local label="$1"
   local elapsed_ms="$2"
@@ -439,18 +431,21 @@ measure_cold_launch_sample() {
 
 measure_destination() {
   local label="$1"
-  local destination_identifier="$2"
-  local destination_label="$3"
-  local marker="$4"
+  local sample_index="$2"
+  local destination_identifier="$3"
+  local destination_label="$4"
+  local marker="$5"
   local start_ms end_ms
   start_ms="$(now_ms)"
   click_sidebar_destination "$destination_identifier" "$destination_label"
   wait_for_marker "$marker"
   end_ms="$(now_ms)"
-  record_sample "$label" "$start_ms" "$end_ms" "$MAX_DESTINATION_SWITCH_MS"
+  LAST_DESTINATION_ELAPSED_MS=$((end_ms - start_ms))
+  record_elapsed_sample "$label-sample-$sample_index" "$LAST_DESTINATION_ELAPSED_MS"
 }
 
 measure_review_assistant_queue() {
+  local sample_index="$1"
   local start_ms end_ms
   start_ms="$(now_ms)"
   if try_click_destination "review-destination-assistant-queue"; then
@@ -464,7 +459,8 @@ measure_review_assistant_queue() {
   fi
   wait_for_marker "assistant-queue-workflow"
   end_ms="$(now_ms)"
-  record_sample "destination-assistant-queue" "$start_ms" "$end_ms" "$MAX_DESTINATION_SWITCH_MS"
+  LAST_DESTINATION_ELAPSED_MS=$((end_ms - start_ms))
+  record_elapsed_sample "destination-assistant-queue-sample-$sample_index" "$LAST_DESTINATION_ELAPSED_MS"
 }
 
 trap cleanup EXIT
@@ -510,13 +506,37 @@ record_elapsed_sample "cold-launch-today-ready" "$median_today_ready_ms"
 # already command-ready; this only gives the AX destination benchmark a stable
 # foreground window without charging automation setup to launch latency.
 activate_app
-measure_destination "destination-inbox" "sidebar-destination-inbox" "Inbox" "inbox-workflow"
-# Assistant Queue is intentionally nested under Review in the four-area IA.
-# Measure both real user transitions so this gate cannot silently restore the
-# removed top-level destination just to satisfy an old performance fixture.
-measure_destination "destination-review" "sidebar-destination-review" "Review" "review-hub"
-measure_review_assistant_queue
-measure_destination "destination-today" "sidebar-destination-today" "Today" "today-workflow"
+DESTINATION_INBOX_SAMPLES=()
+DESTINATION_REVIEW_SAMPLES=()
+DESTINATION_ASSISTANT_QUEUE_SAMPLES=()
+DESTINATION_TODAY_SAMPLES=()
+LAST_DESTINATION_ELAPSED_MS=""
+
+# Repeat the real navigation cycle instead of pressing an already-selected
+# destination. This preserves the product route under test while median
+# enforcement filters one contended hosted-runner transition.
+for sample_index in $(seq 1 "$DESTINATION_SAMPLE_COUNT"); do
+  measure_destination "destination-inbox" "$sample_index" "sidebar-destination-inbox" "Inbox" "inbox-workflow"
+  DESTINATION_INBOX_SAMPLES+=("$LAST_DESTINATION_ELAPSED_MS")
+  # Assistant Queue is intentionally nested under Review in the four-area IA.
+  # Measure both real user transitions so this gate cannot silently restore the
+  # removed top-level destination just to satisfy an old performance fixture.
+  measure_destination "destination-review" "$sample_index" "sidebar-destination-review" "Review" "review-hub"
+  DESTINATION_REVIEW_SAMPLES+=("$LAST_DESTINATION_ELAPSED_MS")
+  measure_review_assistant_queue "$sample_index"
+  DESTINATION_ASSISTANT_QUEUE_SAMPLES+=("$LAST_DESTINATION_ELAPSED_MS")
+  measure_destination "destination-today" "$sample_index" "sidebar-destination-today" "Today" "today-workflow"
+  DESTINATION_TODAY_SAMPLES+=("$LAST_DESTINATION_ELAPSED_MS")
+done
+
+median_destination_inbox_ms="$(median_elapsed_ms "${DESTINATION_INBOX_SAMPLES[@]}")"
+median_destination_review_ms="$(median_elapsed_ms "${DESTINATION_REVIEW_SAMPLES[@]}")"
+median_destination_assistant_queue_ms="$(median_elapsed_ms "${DESTINATION_ASSISTANT_QUEUE_SAMPLES[@]}")"
+median_destination_today_ms="$(median_elapsed_ms "${DESTINATION_TODAY_SAMPLES[@]}")"
+record_elapsed_sample "destination-inbox" "$median_destination_inbox_ms" "$MAX_DESTINATION_SWITCH_MS"
+record_elapsed_sample "destination-review" "$median_destination_review_ms" "$MAX_DESTINATION_SWITCH_MS"
+record_elapsed_sample "destination-assistant-queue" "$median_destination_assistant_queue_ms" "$MAX_DESTINATION_SWITCH_MS"
+record_elapsed_sample "destination-today" "$median_destination_today_ms" "$MAX_DESTINATION_SWITCH_MS"
 
 printf '\nStatus: passed\n' >>"$SUMMARY_FILE"
 printf "OK: release launch performance smoke passed; artifacts written to %s\n" "$OUTPUT_DIR"

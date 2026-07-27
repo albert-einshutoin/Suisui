@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
+source "$ROOT_DIR/script/mcp_source_provenance.sh"
 
 FIXTURE_SERVER="fixtures/mcp/stdio-fixture-server.mjs"
 SMOKE_CLIENT="fixtures/mcp/stdio-smoke-client.mjs"
@@ -10,27 +11,9 @@ EVIDENCE_FILE="${SUISUI_MCP_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/mcp-i
 MCP_SOURCE_REF="${SUISUI_MCP_SOURCE_REF:-HEAD}"
 
 mcp_evidence_source_commit() {
-  local commit
   # PR CI checks out GitHub's synthetic merge commit. Evidence must stay bound
   # to the contributor head so a base-branch commit cannot satisfy provenance.
-  if ! git -C "$ROOT_DIR" rev-parse --verify "${MCP_SOURCE_REF}^{commit}" >/dev/null 2>&1; then
-    printf "Invalid SUISUI_MCP_SOURCE_REF: %s\n" "$MCP_SOURCE_REF" >&2
-    return 1
-  fi
-
-  commit="$(
-    git -C "$ROOT_DIR" log -1 --format=%h "$MCP_SOURCE_REF" -- \
-      Sources/SuisuiCore/ExternalMCP \
-      Sources/SuisuiApp/SuisuiApp.swift \
-      Sources/SuisuiApp/Composition \
-      fixtures/mcp \
-      Package.swift
-  )"
-  if [[ -n "$commit" ]]; then
-    printf "%s" "$commit"
-  else
-    git -C "$ROOT_DIR" rev-parse --short "$MCP_SOURCE_REF"
-  fi
+  mcp_evidence_source_commit_for_ref "$ROOT_DIR" "$MCP_SOURCE_REF"
 }
 
 if ! MCP_SOURCE_COMMIT="$(mcp_evidence_source_commit)"; then
