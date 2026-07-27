@@ -195,6 +195,88 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
         )
     }
 
+    func testVisualFixtureSeederAcceptsUncreatedDatabaseBelowAncestorSymlinkHome() throws {
+        let fixtureDirectory = URL(
+            fileURLWithPath: "/tmp/suisui-visual-seeder-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let evidenceHome = fixtureDirectory.appendingPathComponent("home", isDirectory: true)
+        let databaseURL = evidenceHome.appendingPathComponent("Library/Application Support/Suisui/suisui.sqlite")
+        try FileManager.default.createDirectory(at: evidenceHome, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let result = try runTool([
+            visualFixtureSeederURL().path,
+            "--database",
+            databaseURL.path,
+            "--evidence-home",
+            evidenceHome.path
+        ])
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: databaseURL.path))
+    }
+
+    func testVisualFixtureSeederRejectsUncreatedDatabaseBelowEscapingParentSymlink() throws {
+        let fixtureDirectory = URL(
+            fileURLWithPath: "/tmp/suisui-visual-seeder-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let evidenceHome = fixtureDirectory.appendingPathComponent("home", isDirectory: true)
+        let externalDirectory = fixtureDirectory.appendingPathComponent("external", isDirectory: true)
+        let escapedParent = evidenceHome.appendingPathComponent("escaped", isDirectory: true)
+        let databaseURL = escapedParent.appendingPathComponent("nested/suisui.sqlite")
+        try FileManager.default.createDirectory(at: evidenceHome, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: externalDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: escapedParent, withDestinationURL: externalDirectory)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let result = try runTool([
+            visualFixtureSeederURL().path,
+            "--database",
+            databaseURL.path,
+            "--evidence-home",
+            evidenceHome.path
+        ])
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.contains("--database must be a file below the resolved --evidence-home"), result.output)
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: externalDirectory.appendingPathComponent("nested/suisui.sqlite").path
+            )
+        )
+    }
+
+    func testVisualFixtureSeederRejectsDatabaseFinalSymlink() throws {
+        let fixtureDirectory = URL(
+            fileURLWithPath: "/tmp/suisui-visual-seeder-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let evidenceHome = fixtureDirectory.appendingPathComponent("home", isDirectory: true)
+        let databaseTarget = evidenceHome.appendingPathComponent("database-target.sqlite")
+        let databaseSymlink = evidenceHome.appendingPathComponent("suisui.sqlite")
+        try FileManager.default.createDirectory(at: evidenceHome, withIntermediateDirectories: true)
+        XCTAssertTrue(FileManager.default.createFile(atPath: databaseTarget.path, contents: Data()))
+        try FileManager.default.createSymbolicLink(at: databaseSymlink, withDestinationURL: databaseTarget)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let result = try runTool([
+            visualFixtureSeederURL().path,
+            "--database",
+            databaseSymlink.path,
+            "--evidence-home",
+            evidenceHome.path
+        ])
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.localizedCaseInsensitiveContains("symbolic link"), result.output)
+        XCTAssertEqual(
+            try FileManager.default.attributesOfItem(atPath: databaseTarget.path)[.size] as? NSNumber,
+            0
+        )
+    }
+
     private func visualManifest(named fileName: String) throws -> [String: Any] {
         let packageRoot = packageRoot()
         let data = try Data(
@@ -208,6 +290,10 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
+    }
+
+    private func visualFixtureSeederURL() -> URL {
+        packageRoot().appendingPathComponent(".build/debug/SuisuiVisualFixtureSeeder")
     }
 
     private func runTool(_ arguments: [String]) throws -> (exitCode: Int32, output: String) {

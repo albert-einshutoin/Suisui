@@ -47,19 +47,85 @@ private struct SeederOptions {
             )
         }
 
-        databaseURL = Self.resolvedURL(for: databasePath)
-        evidenceHomeURL = Self.resolvedURL(for: evidenceHomePath)
+        let requestedDatabaseURL = Self.standardizedURL(for: databasePath)
+        let requestedEvidenceHomeURL = Self.standardizedURL(for: evidenceHomePath)
+        if try Self.existingPathKind(at: requestedDatabaseURL) == .symbolicLink {
+            throw SeederError.invalidPath("--database must not be a symbolic link")
+        }
+
+        // Resolve the deepest component that already exists, then append the
+        // uncreated suffix. Resolving the complete nonexistent database path
+        // can retain an ancestor alias such as /tmp while the existing home is
+        // canonicalized to /private/tmp, producing a false containment failure.
+        databaseURL = try Self.canonicalURLPreservingUncreatedSuffix(for: requestedDatabaseURL)
+        evidenceHomeURL = try Self.canonicalURLPreservingUncreatedSuffix(for: requestedEvidenceHomeURL)
         try Self.validate(databaseURL: databaseURL, evidenceHomeURL: evidenceHomeURL)
     }
 
-    private static func resolvedURL(for path: String) -> URL {
+    private enum ExistingPathKind {
+        case directory
+        case symbolicLink
+        case other
+    }
+
+    private static func standardizedURL(for path: String) -> URL {
         URL(
             fileURLWithPath: path,
             relativeTo: URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
         )
         .standardizedFileURL
-        .resolvingSymlinksInPath()
-        .standardizedFileURL
+    }
+
+    private static func existingPathKind(at url: URL) throws -> ExistingPathKind? {
+        var fileInformation = stat()
+        let status = url.path.withCString { path in
+            lstat(path, &fileInformation)
+        }
+        guard status == 0 else {
+            if errno == ENOENT || errno == ENOTDIR {
+                return nil
+            }
+            throw SeederError.invalidPath("unable to inspect path: \(url.path)")
+        }
+
+        switch fileInformation.st_mode & S_IFMT {
+        case S_IFDIR:
+            return .directory
+        case S_IFLNK:
+            return .symbolicLink
+        default:
+            return .other
+        }
+    }
+
+    private static func canonicalURLPreservingUncreatedSuffix(for url: URL) throws -> URL {
+        var existingAncestor = url
+        var uncreatedComponents: [String] = []
+
+        while try existingPathKind(at: existingAncestor) == nil {
+            guard existingAncestor.path != "/" else {
+                throw SeederError.invalidPath("path has no existing ancestor: \(url.path)")
+            }
+            uncreatedComponents.append(existingAncestor.lastPathComponent)
+            existingAncestor.deleteLastPathComponent()
+        }
+
+        let canonicalAncestor = existingAncestor
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+        if !uncreatedComponents.isEmpty {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(
+                atPath: canonicalAncestor.path,
+                isDirectory: &isDirectory
+            ), isDirectory.boolValue else {
+                throw SeederError.invalidPath("uncreated path suffix must follow an existing directory")
+            }
+        }
+
+        return uncreatedComponents.reversed().reduce(canonicalAncestor) { partialURL, component in
+            partialURL.appendingPathComponent(component)
+        }
     }
 
     private static func validate(databaseURL: URL, evidenceHomeURL: URL) throws {
