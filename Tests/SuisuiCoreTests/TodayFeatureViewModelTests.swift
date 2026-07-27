@@ -102,6 +102,27 @@ final class TodayFeatureViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testWaitingOnlyTaskKeepsItsProjectTitleInToday() throws {
+        let board = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        board.load()
+        let project = try XCTUnwrap(board.createProject(title: "External Review"))
+        let waitingTask = try XCTUnwrap(board.createTask(
+            title: "Wait for approval",
+            projectID: project.id,
+            status: .planned,
+            priority: .medium,
+            dueAt: nil
+        ))
+        board.setTaskWaiting(taskID: waitingTask.id, waitingOn: "Client")
+
+        let feature = TodayFeatureViewModel(board: board)
+
+        XCTAssertFalse(feature.snapshot.plan.tasks.contains { $0.id == waitingTask.id })
+        XCTAssertTrue(feature.waitingTasks.contains { $0.id == waitingTask.id })
+        XCTAssertEqual(feature.projectTitle(for: waitingTask), "External Review")
+    }
+
+    @MainActor
     func testDirectBoardSelectionPublishesOneConsistentTodayState() async throws {
         let board = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         board.load()

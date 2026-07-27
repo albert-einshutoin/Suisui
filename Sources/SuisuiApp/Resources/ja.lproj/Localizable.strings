@@ -1716,6 +1716,7 @@
 "Smart list %@" = "スマートリスト %@";
 "%d matching tasks" = "一致するタスク %d件";
 "No matching tasks" = "一致するタスクはありません";
+"Choose another filter to see queued work." = "別のフィルターを選択してキュー内の作業を表示してください。";
 "Tasks matching this smart list appear here as projects change." = "プロジェクトの変化に応じて、このスマートリストに一致するタスクがここに表示されます。";
 "Due this week" = "今週締切";
 "Name" = "名前";

@@ -564,6 +564,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-sort\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-batch-toolbar\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-select-\\(row.id)\")"))
+        XCTAssertTrue(workflowSource.contains("if snapshot.totalCount > 0 {"))
+        XCTAssertFalse(workflowSource.contains("if !snapshot.rows.isEmpty {\n                AssistantQueueTriageControls"))
         XCTAssertFalse(workflowSource.contains("approveSelectedAssistantQueueItems"))
         XCTAssertFalse(workflowSource.contains("runSelectedAssistantQueueItems"))
         XCTAssertTrue(workflowSource.contains("if let receipt = row.latestReceipt"))

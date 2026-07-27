@@ -38,11 +38,9 @@ struct AssistantQueueWorkflowView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("assistant-queue-boundary-note")
 
-            // Triage and batch controls only mean something once there is
-            // something to triage. Showing "0 selected" plus two disabled
-            // buttons above an "Assistant Queue is clear" card made an empty,
-            // healthy queue look like a broken one.
-            if !snapshot.rows.isEmpty {
+            // Keep triage reachable when the selected filter has no matches;
+            // otherwise the user cannot switch back to a populated view.
+            if snapshot.totalCount > 0 {
                 AssistantQueueTriageControls(viewModel: viewModel)
                 if !viewModel.assistantQueueSelectedItemIDs.isEmpty {
                     AssistantQueueBatchToolbar(viewModel: viewModel)
@@ -63,11 +61,21 @@ struct AssistantQueueWorkflowView: View {
             }
 
             if snapshot.rows.isEmpty {
-                ContentUnavailableView(
-                    "Assistant Queue is clear",
-                    systemImage: "tray.full",
-                    description: Text("Voice plans, automation drafts, and connector writes appear here before execution.")
-                )
+                Group {
+                    if snapshot.totalCount > 0 {
+                        ContentUnavailableView(
+                            "No matching tasks",
+                            systemImage: "line.3.horizontal.decrease.circle",
+                            description: Text("Choose another filter to see queued work.")
+                        )
+                    } else {
+                        ContentUnavailableView(
+                            "Assistant Queue is clear",
+                            systemImage: "tray.full",
+                            description: Text("Voice plans, automation drafts, and connector writes appear here before execution.")
+                        )
+                    }
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {

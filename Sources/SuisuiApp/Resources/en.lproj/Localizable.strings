@@ -1711,6 +1711,7 @@
 "Smart list %@" = "Smart list %@";
 "%d matching tasks" = "%d matching tasks";
 "No matching tasks" = "No matching tasks";
+"Choose another filter to see queued work." = "Choose another filter to see queued work.";
 "Tasks matching this smart list appear here as projects change." = "Tasks matching this smart list appear here as projects change.";
 "Due this week" = "Due this week";
 "Name" = "Name";

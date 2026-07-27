@@ -58,7 +58,7 @@ public final class TodayFeatureViewModel: ObservableObject {
                     catchUpCount: readModels.sidebarMetrics.catchUpCount,
                     missedTaskReview: readModels.missedTaskReview,
                     projectTitlesByTaskID: Self.projectTitlesByTaskID(
-                        todayTasks: readModels.todayWorkflowSnapshot.plan.tasks,
+                        tasks: readModels.todayWorkflowSnapshot.plan.tasks + (board?.waitingTasks ?? []),
                         // ProjectBoard publishes the snapshot before rebuilding
                         // derived models. Reading it at this transaction boundary
                         // avoids publishing the intermediate old-model/new-snapshot pair.
@@ -197,7 +197,7 @@ public final class TodayFeatureViewModel: ObservableObject {
             catchUpCount: board.derivedReadModels.sidebarMetrics.catchUpCount,
             missedTaskReview: board.derivedReadModels.missedTaskReview,
             projectTitlesByTaskID: projectTitlesByTaskID(
-                todayTasks: snapshot.plan.tasks,
+                tasks: snapshot.plan.tasks + board.waitingTasks,
                 projects: board.snapshot.projects
             ),
             showsCompletedWorkflowTasks: board.showsCompletedWorkflowTasks,
@@ -210,15 +210,17 @@ public final class TodayFeatureViewModel: ObservableObject {
     }
 
     private static func projectTitlesByTaskID(
-        todayTasks: [ProjectBoardTask],
+        tasks: [ProjectBoardTask],
         projects: [ProjectBoardProject]
     ) -> [Int64: String] {
         let titlesByProjectID = Dictionary(
             uniqueKeysWithValues: projects.map { ($0.id, $0.title) }
         )
-        // Cache only titles rendered by Today. This keeps project renames
-        // reactive without making the feature observe the full board facade.
-        return Dictionary(uniqueKeysWithValues: todayTasks.map { task in
+        // Cache only titles rendered by Today, including the waiting panel.
+        // Waiting work intentionally has no Today due date, so building this
+        // map from the plan alone would replace its real project with
+        // "Unknown Project".
+        return Dictionary(uniqueKeysWithValues: tasks.map { task in
             (task.id, titlesByProjectID[task.projectID] ?? "Unknown Project")
         })
     }
