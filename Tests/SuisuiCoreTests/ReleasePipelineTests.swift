@@ -6347,6 +6347,24 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
         XCTAssertTrue(script.contains("SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=\"assistant-queue\""))
         XCTAssertTrue(script.contains("SUISUI_PROJECT_BOARD_SELECTED_TASK_ID=\"$seed_task_id\""))
+        let detailLaunchStart = try XCTUnwrap(
+            script.range(of: "launch_app_for_development_detail() {")
+        )
+        let detailLaunchTail = script[detailLaunchStart.lowerBound...]
+        let detailLaunchEnd = try XCTUnwrap(
+            detailLaunchTail.range(
+                of: "\n}\n\nlaunch_app_for_project_directory_picker()"
+            )
+        )
+        let detailLaunchSource = String(
+            detailLaunchTail[..<detailLaunchEnd.lowerBound]
+        )
+        XCTAssertTrue(
+            detailLaunchSource.contains(
+                "pressButtonContainingBounded \"project-header-open-inspector\""
+            ),
+            "Project automation runtime flows must explicitly open the project inspector."
+        )
         XCTAssertTrue(script.contains("verify_visible_project_directory_picker_assignment()"))
         XCTAssertTrue(script.contains("chooseRuntimeProjectWorkspaceViaOpenPanel()"))
         let directoryPickerFlow = try XCTUnwrap(

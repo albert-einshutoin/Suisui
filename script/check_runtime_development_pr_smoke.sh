@@ -365,6 +365,10 @@ launch_app_for_development_detail() {
   activate_app
   wait_for_visible_windows
   set_development_window_size "$WINDOW_WIDTH" "$WINDOW_HEIGHT"
+  # The product keeps project editing behind an explicit user action. Clear
+  # the seeded task selection and reveal the project automation controls via
+  # the same header button before each project-detail runtime step.
+  pressButtonContainingBounded "project-header-open-inspector"
 }
 
 launch_app_for_project_directory_picker() {
