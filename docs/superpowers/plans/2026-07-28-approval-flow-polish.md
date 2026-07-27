@@ -78,6 +78,19 @@ The root agent adds the exact Inbox, Queue, and compact navigation source tests
 defined in Tasks 3, 4, and 5 before dispatching those workers. Add localization
 parity assertions for every new key listed across Tasks 3–5.
 
+The source contracts must scope each assertion to the component or helper that
+owns the behavior. In particular:
+
+- Inbox checks the `manualSummary` task/capture condition as one expression and
+  extracts `panelAccessibilityValue` to reject Transcript / Interpretation
+  duplication;
+- Queue separately extracts the row body, primary-action switch, and
+  secondary-action switch, protects all six existing action identifiers, and
+  requires destructive Reject to be the last secondary case;
+- compact navigation extracts `compactNavigation` together with its
+  `compactLabel` helper so an unused typed-presentation helper cannot satisfy
+  the contract.
+
 - [ ] **Step 2: Prove the source contracts are RED**
 
 ```bash
@@ -117,6 +130,10 @@ More Assistant Queue actions
 
 Use the exact Japanese values from Tasks 3–5. Localization is root-owned because
 three leaf views consume the same files.
+
+Count definitions with a line-oriented `.strings` parser that ignores comments
+and permits whitespace before `=`. A raw `"key" =` substring count is not an
+exact-once proof because it misses whitespace variants and can count comments.
 
 - [ ] **Step 4: Keep shared edits unstaged during leaf implementation**
 
