@@ -41,7 +41,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(bundleMetadataVerifier.contains("missing bundled app icon"))
         XCTAssertTrue(bundleMetadataVerifier.contains("com.apple.security.device.audio-input"))
         XCTAssertTrue(bundleMetadataVerifier.contains("assert_eq \"$ENTITLEMENT_KEY_COUNT\" \"1\""))
-        XCTAssertTrue(artifactSizeGate.contains("SUISUI_MAX_ZIP_ARTIFACT_BYTES:-7864320"))
+        XCTAssertTrue(artifactSizeGate.contains("SUISUI_MAX_ZIP_ARTIFACT_BYTES:-8388608"))
         XCTAssertTrue(packageSizePolicy.contains("視覚上十分な512px相当に最適化"))
     }
 
@@ -14575,6 +14575,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(packageScript.contains("COPYFILE_DISABLE=1"))
         XCTAssertTrue(packageScript.contains("--norsrc"))
         XCTAssertTrue(packageScript.contains("--noextattr"))
+        XCTAssertTrue(packageScript.contains("--zlibCompressionLevel 9"))
         XCTAssertTrue(packageScript.contains("\"appBundleBytes\""))
         XCTAssertTrue(packageScript.contains("\"appBinaryBytes\""))
         XCTAssertTrue(packageScript.contains("\"artifactBytes\""))

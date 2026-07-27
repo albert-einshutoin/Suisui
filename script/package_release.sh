@@ -218,7 +218,8 @@ if [[ "$PACKAGE_FORMAT" == "dmg" || "$PACKAGE_FORMAT" == "all" ]]; then
 fi
 
 if [[ "$PACKAGE_FORMAT" == "zip" || "$PACKAGE_FORMAT" == "all" ]]; then
-  COPYFILE_DISABLE=1 ditto -c -k --keepParent --norsrc --noextattr "$PACKAGE_APP_BUNDLE" "$ZIP_PATH"
+  COPYFILE_DISABLE=1 ditto -c -k --keepParent --norsrc --noextattr \
+    --zlibCompressionLevel 9 "$PACKAGE_APP_BUNDLE" "$ZIP_PATH"
   "$ROOT_DIR/script/check_release_artifact_size.sh" "$ZIP_PATH" "zip"
   create_checksum "$ZIP_PATH"
   create_package_evidence "$ZIP_PATH" "zip"
