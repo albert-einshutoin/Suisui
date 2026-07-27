@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT_DIR="${SUISUI_CI_VISUAL_GATE_OUTPUT_DIR:-$ROOT_DIR/.tmp/ci-visual-gate}"
 SUMMARY_FILE="$OUTPUT_DIR/ui-visual-gate-summary.env"
-EXPECTED_SCREENSHOT_COUNT=33
+EXPECTED_SCREENSHOT_COUNT=39
 STATUS="blocked"
 FAILURE_CATEGORY="internal"
 FAILURE_REASON="gate-not-completed"
@@ -150,7 +150,7 @@ if ! run_logged capability \
 fi
 
 # Removing the receipt before capture makes a stale successful receipt
-# impossible to reuse if the 33-screen capture exits partway through.
+# impossible to reuse if the 39-artifact capture exits partway through.
 rm -f "$AX_RECEIPT"
 if ! run_logged capture \
   /usr/bin/env \

@@ -8836,6 +8836,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(visualSmokeScript.contains("SUISUI_VISUAL_SCREENSHOT_DIR"))
         XCTAssertTrue(visualSmokeScript.contains("SUISUI_VISUAL_AX_AUDIT_RESULT"))
         XCTAssertTrue(visualSmokeScript.contains(".tmp/visual-ax-audit-receipt.json"))
+        XCTAssertTrue(
+            visualSmokeScript.contains(
+                "git -C \"$ROOT_DIR\" log -1 --format=%H \"$SOURCE_REF\" -- Sources Package.swift script/capture_ui_evidence.sh"
+            )
+        )
+        XCTAssertFalse(
+            visualSmokeScript.contains(
+                "git -C \"$ROOT_DIR\" log -1 --format=%H \"$SOURCE_REF\" -- Sources Package.swift 2>/dev/null"
+            )
+        )
         XCTAssertTrue(visualSmokeScript.contains("--update-baselines"))
         XCTAssertTrue(visualSmokeScript.contains("--allow-update"))
         XCTAssertTrue(visualChecker.contains("CGColorSpace.sRGB"))
