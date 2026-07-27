@@ -6365,6 +6365,19 @@ final class ReleasePipelineTests: XCTestCase {
             ),
             "Project automation runtime flows must explicitly open the project inspector."
         )
+        let openAutomationInspector = try XCTUnwrap(
+            detailLaunchSource.range(
+                of: "pressButtonContainingBounded \"project-header-open-inspector\""
+            )
+        )
+        let revealAutomationControls = try XCTUnwrap(
+            detailLaunchSource.range(of: "scrollProjectDetailDown")
+        )
+        XCTAssertLessThan(
+            openAutomationInspector.lowerBound,
+            revealAutomationControls.lowerBound,
+            "The runtime flow must reveal the lower automation controls after opening the inspector."
+        )
         XCTAssertTrue(script.contains("verify_visible_project_directory_picker_assignment()"))
         XCTAssertTrue(script.contains("chooseRuntimeProjectWorkspaceViaOpenPanel()"))
         let directoryPickerFlow = try XCTUnwrap(

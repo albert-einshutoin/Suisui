@@ -369,6 +369,7 @@ launch_app_for_development_detail() {
   # the seeded task selection and reveal the project automation controls via
   # the same header button before each project-detail runtime step.
   pressButtonContainingBounded "project-header-open-inspector"
+  scrollProjectDetailDown
 }
 
 launch_app_for_project_directory_picker() {
