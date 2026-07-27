@@ -28,11 +28,11 @@ final class ProjectBoardCompactNavigationPresentationTests: XCTestCase {
         XCTAssertEqual(
             ProjectBoardCompactNavigationPresentation.review(
                 route: .review(.assistantQueue),
-                assistantQueueCount: 7
+                assistantQueueCount: 3
             ),
             ProjectBoardCompactNavigationPresentation(
                 label: .localized("Assistant Queue"),
-                badgeCount: 7
+                badgeCount: 3
             )
         )
     }
