@@ -38,6 +38,7 @@
 - `Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift`
 - `Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift`
 - `Sources/SuisuiCore/App/AccessibilityFocusPathAudit.swift`
+- `Sources/SuisuiCore/App/SuisuiHarness.swift`
 - `Tests/SuisuiCoreTests/AccessibilityFocusPathAuditTests.swift`
 - `Tests/SuisuiCoreTests/SuisuiHarnessTests.swift`
 - `script/check_pseudo_voiceover_paths.sh`
@@ -1263,6 +1264,7 @@ git commit -m "feat: preserve compact navigation context"
 **Files:**
 
 - Modify: `Sources/SuisuiCore/App/AccessibilityFocusPathAudit.swift`
+- Modify: `Sources/SuisuiCore/App/SuisuiHarness.swift`
 - Modify: `Tests/SuisuiCoreTests/AccessibilityFocusPathAuditTests.swift`
 - Modify: `Tests/SuisuiCoreTests/SuisuiHarnessTests.swift`
 - Modify: `script/check_pseudo_voiceover_paths.sh`
@@ -1379,9 +1381,30 @@ public static let approvalFlowRecovery = AccessibilityFocusPathRequirement(
 The test suite must separately exercise Approve, Run, and Reopen variants
 because a single runtime row never contains all three Primary actions.
 
+Each approval-flow requirement also fixes:
+
+- the expected role for every required node;
+- non-empty help for both compact navigation controls and every required queue
+  button except the text field;
+- one dynamic row suffix, anchored by that stage's Primary action.
+
+Dynamic prefix resolution chooses the longest matching prefix
+deterministically and is shared by the audit and harness. A runtime node may
+cover only one required ID, and nodes from different queue-row suffixes must
+not be combined into one passing journey. Add negative tests for mixed rows,
+the exact nested `assistant-queue-edit-reason` ID, wrong roles, missing help,
+and deterministic Harness attribution.
+
 - [ ] **Step 4: Extend pseudo VoiceOver marker enforcement**
 
 Add approval-flow identifiers, `ProjectWorkflowInboxView.swift`, `ProjectWorkflowAssistantQueueView.swift`, `ProjectBoardReviewHubView.swift`, and `ProjectBoardProjectsHubView.swift` to `check_pseudo_voiceover_paths.sh`.
+
+Do not satisfy these markers through the Core requirement declarations. Check
+each of the four View files individually: use complete static
+`.accessibilityIdentifier("...")` expressions for Inbox/Review/Projects and
+complete `\(row.id)` templates for Queue. Run the same helper against a
+temporary fixture with one identifier removed and prove that the negative
+fixture fails before checking the production sources.
 
 The success line becomes:
 
@@ -1411,6 +1434,7 @@ Expected: all pass and the script prints the new approval-flow success line.
 
 ```bash
 git add Sources/SuisuiCore/App/AccessibilityFocusPathAudit.swift \
+  Sources/SuisuiCore/App/SuisuiHarness.swift \
   Tests/SuisuiCoreTests/AccessibilityFocusPathAuditTests.swift \
   Tests/SuisuiCoreTests/SuisuiHarnessTests.swift \
   script/check_pseudo_voiceover_paths.sh
