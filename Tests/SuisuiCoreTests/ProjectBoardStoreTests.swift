@@ -9196,10 +9196,6 @@ private struct AlwaysFailingProjectBoardStore: ProjectBoardStore {
         throw error
     }
 
-    func setTaskWaiting(id: Int64, waitingOn: String?) throws -> ProjectBoardTask {
-        throw error
-    }
-
     func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask {
         throw error
     }
@@ -9379,10 +9375,6 @@ private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore
         let columnIndex = currentSnapshot.projects[projectIndex].columns.firstIndex { $0.status == draft.status }!
         currentSnapshot.projects[projectIndex].columns[columnIndex].tasks.insert(updated, at: 0)
         return updated
-    }
-
-    func setTaskWaiting(id: Int64, waitingOn: String?) throws -> ProjectBoardTask {
-        throw ProjectBoardStoreTestError.unavailable
     }
 
     func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask {

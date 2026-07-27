@@ -93,13 +93,6 @@ public struct TaskRecord: Equatable, Sendable {
     public var detail: String?
     public var updatedAt: String?
     public var recurrence: String?
-    /// Who or what this task is waiting on. Free text for now: there is no
-    /// Person entity yet, and a solo user's counterparty is usually a name or a
-    /// company, not a row in this database.
-    public var waitingOn: String?
-    /// When the wait started, so the UI can say how long it has been stuck
-    /// rather than only that it is stuck.
-    public var waitingSince: String?
 
     public init(
         id: Int64,
@@ -112,9 +105,7 @@ public struct TaskRecord: Equatable, Sendable {
         sourceCommand: String?,
         detail: String? = nil,
         updatedAt: String? = nil,
-        recurrence: String? = nil,
-        waitingOn: String? = nil,
-        waitingSince: String? = nil
+        recurrence: String? = nil
     ) {
         self.id = id
         self.projectID = projectID
@@ -127,8 +118,6 @@ public struct TaskRecord: Equatable, Sendable {
         self.detail = detail
         self.updatedAt = updatedAt
         self.recurrence = recurrence
-        self.waitingOn = waitingOn
-        self.waitingSince = waitingSince
     }
 }
 
@@ -887,8 +876,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         dueAt: NullableFieldUpdate<String> = .unchanged,
         priority: NullableFieldUpdate<String> = .unchanged,
         projectID: NullableFieldUpdate<Int64> = .unchanged,
-        recurrence: NullableFieldUpdate<String> = .unchanged,
-        waitingOn: NullableFieldUpdate<String> = .unchanged
+        recurrence: NullableFieldUpdate<String> = .unchanged
     ) throws -> TaskRecord {
         lock.lock()
         defer { lock.unlock() }
@@ -901,8 +889,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             dueAt: dueAt,
             priority: priority,
             projectID: projectID,
-            recurrence: recurrence,
-            waitingOn: waitingOn
+            recurrence: recurrence
         )
     }
 
@@ -917,8 +904,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         dueAt: NullableFieldUpdate<String> = .unchanged,
         priority: NullableFieldUpdate<String> = .unchanged,
         projectID: NullableFieldUpdate<Int64> = .unchanged,
-        recurrence: NullableFieldUpdate<String> = .unchanged,
-        waitingOn: NullableFieldUpdate<String> = .unchanged
+        recurrence: NullableFieldUpdate<String> = .unchanged
     ) throws -> TaskRecord {
         var assignments: [String] = []
         var parameters: [SQLiteValue] = []
@@ -981,27 +967,6 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             parameters.append(.text(normalizedRecurrence))
         case .clear:
             assignments.append("recurrence = NULL")
-        }
-        switch waitingOn {
-        case .unchanged:
-            break
-        case .set(let waitingOn):
-            let normalizedWaitingOn = try StoreFieldValidation.requiredTrimmed(
-                waitingOn,
-                argument: "waitingOn",
-                tool: .taskUpdate
-            )
-            assignments.append("waiting_on = ?")
-            parameters.append(.text(normalizedWaitingOn))
-            // Stamp the start of the wait only when one begins. Re-saving an
-            // unrelated field must not reset the clock the whole feature exists
-            // to show.
-            assignments.append(
-                "waiting_since = COALESCE(waiting_since, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))"
-            )
-        case .clear:
-            assignments.append("waiting_on = NULL")
-            assignments.append("waiting_since = NULL")
         }
         assignments.append("updated_at = CURRENT_TIMESTAMP")
 
@@ -1691,9 +1656,7 @@ private extension TaskRecord {
             sourceCommand: SQL.nilIfEmpty(row["source_command"]),
             detail: SQL.nilIfEmpty(row["detail"]),
             updatedAt: SQL.nilIfEmpty(row["updated_at"]),
-            recurrence: SQL.nilIfEmpty(row["recurrence"]),
-            waitingOn: SQL.nilIfEmpty(row["waiting_on"]),
-            waitingSince: SQL.nilIfEmpty(row["waiting_since"])
+            recurrence: SQL.nilIfEmpty(row["recurrence"])
         )
     }
 }

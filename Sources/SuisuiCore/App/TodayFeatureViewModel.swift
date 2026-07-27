@@ -18,10 +18,6 @@ public struct TodayFeatureState: Equatable {
     public var commandFeedback: String?
     public var scheduleDraft: TodayScheduleDraft?
     public var dailyPlanningReview: DailyPlanningReview?
-    /// Work that is stopped because someone else owes something. Today is the
-    /// only surface a solo user opens daily, so this is where a wait has to
-    /// become visible.
-    public var waitingTasks: [ProjectBoardTask]
 }
 
 @MainActor
@@ -37,7 +33,6 @@ public final class TodayFeatureViewModel: ObservableObject {
     public var commandFeedback: String? { state.commandFeedback }
     public var scheduleDraft: TodayScheduleDraft? { state.scheduleDraft }
     public var dailyPlanningReview: DailyPlanningReview? { state.dailyPlanningReview }
-    public var waitingTasks: [ProjectBoardTask] { state.waitingTasks }
 
     private let board: ProjectBoardViewModel
     private var observations: Set<AnyCancellable> = []
@@ -58,7 +53,7 @@ public final class TodayFeatureViewModel: ObservableObject {
                     catchUpCount: readModels.sidebarMetrics.catchUpCount,
                     missedTaskReview: readModels.missedTaskReview,
                     projectTitlesByTaskID: Self.projectTitlesByTaskID(
-                        tasks: readModels.todayWorkflowSnapshot.plan.tasks + (board?.waitingTasks ?? []),
+                        tasks: readModels.todayWorkflowSnapshot.plan.tasks,
                         // ProjectBoard publishes the snapshot before rebuilding
                         // derived models. Reading it at this transaction boundary
                         // avoids publishing the intermediate old-model/new-snapshot pair.
@@ -197,15 +192,14 @@ public final class TodayFeatureViewModel: ObservableObject {
             catchUpCount: board.derivedReadModels.sidebarMetrics.catchUpCount,
             missedTaskReview: board.derivedReadModels.missedTaskReview,
             projectTitlesByTaskID: projectTitlesByTaskID(
-                tasks: snapshot.plan.tasks + board.waitingTasks,
+                tasks: snapshot.plan.tasks,
                 projects: board.snapshot.projects
             ),
             showsCompletedWorkflowTasks: board.showsCompletedWorkflowTasks,
             selectedTaskID: board.selectedTaskID,
             commandFeedback: board.todayCommandFeedback,
             scheduleDraft: board.todayScheduleDraft,
-            dailyPlanningReview: board.dailyPlanningReview,
-            waitingTasks: board.waitingTasks
+            dailyPlanningReview: board.dailyPlanningReview
         )
     }
 
@@ -216,10 +210,8 @@ public final class TodayFeatureViewModel: ObservableObject {
         let titlesByProjectID = Dictionary(
             uniqueKeysWithValues: projects.map { ($0.id, $0.title) }
         )
-        // Cache only titles rendered by Today, including the waiting panel.
-        // Waiting work intentionally has no Today due date, so building this
-        // map from the plan alone would replace its real project with
-        // "Unknown Project".
+        // Cache only titles rendered by Today so unrelated board mutations do
+        // not invalidate this feature's read state.
         return Dictionary(uniqueKeysWithValues: tasks.map { task in
             (task.id, titlesByProjectID[task.projectID] ?? "Unknown Project")
         })

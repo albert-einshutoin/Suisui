@@ -118,11 +118,6 @@ struct TodayWorkflowView: View {
             footer: {
                 VStack(alignment: .leading, spacing: 12) {
                     TodaySuggestionPanel(plan: snapshot.plan, viewModel: viewModel)
-                    TodayWaitingPanel(
-                        tasks: viewModel.waitingTasks,
-                        projectTitlesByTaskID: viewModel.projectTitlesByTaskID,
-                        openInspector: openInspectorForTodayRailTask
-                    )
                     if viewModel.catchUpCount > 0 {
                         DisclosureGroup(isExpanded: $isCatchUpExpanded) {
                     CatchUpWorkflowView(viewModel: viewModel)
@@ -734,95 +729,6 @@ private struct TodayAssistantRail: View {
                 .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
-    }
-}
-
-/// Work that is stopped because someone else owes something.
-///
-/// This is the one state a solo operator loses money on and the one state the
-/// app could not show: a task waiting on a client reply is not the user's next
-/// action, is not overdue, and is not done, so Today, Overdue, and Completed
-/// all skipped it. Sorted longest-wait-first, because the oldest silence is
-/// the one that needs a nudge.
-private struct TodayWaitingPanel: View {
-    let tasks: [ProjectBoardTask]
-    let projectTitlesByTaskID: [Int64: String]
-    let openInspector: (Int64) -> Void
-
-    var body: some View {
-        if !tasks.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Label {
-                    Text(localizedCount(tasks.count, one: "Waiting on (%d)", other: "Waiting on (%d)"))
-                        .font(SuisuiTypography.sectionTitle)
-                } icon: {
-                    Image(systemName: "hourglass")
-                }
-
-                ForEach(tasks) { task in
-                    Button {
-                        openInspector(task.id)
-                    } label: {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(task.title)
-                                    .font(.caption.weight(.medium))
-                                    .lineLimit(1)
-                                Text(subtitle(for: task))
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            Spacer(minLength: 8)
-                            if let elapsed = elapsedLabel(for: task) {
-                                SuisuiStatusChip(text: elapsed, tone: tone(for: task))
-                            }
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("today-waiting-task-\(task.id)")
-                    .accessibilityLabel(accessibilityLabel(for: task))
-                    .accessibilityHint("Opens the task so you can follow up or clear the wait.")
-                }
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .soloCard()
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("today-waiting-panel")
-        }
-    }
-
-    private func subtitle(for task: ProjectBoardTask) -> String {
-        let counterparty = task.waitingOn ?? ""
-        guard let projectTitle = projectTitlesByTaskID[task.id] else {
-            return counterparty
-        }
-        return "\(counterparty) · \(projectTitle)"
-    }
-
-    private func elapsedLabel(for task: ProjectBoardTask) -> String? {
-        guard let days = task.waitingDayCount() else {
-            return nil
-        }
-        if days == 0 {
-            return localizedDisplay("Today")
-        }
-        return localizedCount(days, one: "%d day", other: "%d days")
-    }
-
-    /// A wait only earns attention once it has actually gone quiet. Flagging a
-    /// same-day wait would make the panel cry wolf every time it is used.
-    private func tone(for task: ProjectBoardTask) -> SuisuiTone {
-        (task.waitingDayCount() ?? 0) >= 3 ? .attention : .neutral
-    }
-
-    private func accessibilityLabel(for task: ProjectBoardTask) -> String {
-        guard let elapsed = elapsedLabel(for: task) else {
-            return "\(task.title), \(subtitle(for: task))"
-        }
-        return "\(task.title), \(subtitle(for: task)), \(elapsed)"
     }
 }
 

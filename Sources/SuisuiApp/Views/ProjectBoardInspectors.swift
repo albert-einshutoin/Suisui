@@ -1195,7 +1195,6 @@ struct TaskInspectorView: View {
     @State private var dueDate: TaskDueDateFieldState
     @State private var hasInvalidPersistedDueDate: Bool
     @State private var recurrence: String
-    @State private var waitingOn: String
     @State private var isConfirmingDelete = false
 
     init(task: ProjectBoardTask, viewModel: ProjectBoardViewModel, onClose: @escaping () -> Void) {
@@ -1210,12 +1209,6 @@ struct TaskInspectorView: View {
         _dueDate = State(initialValue: parsedDueDate.state)
         _hasInvalidPersistedDueDate = State(initialValue: parsedDueDate.isInvalid)
         _recurrence = State(initialValue: task.recurrence ?? "")
-        _waitingOn = State(initialValue: task.waitingOn ?? "")
-    }
-
-    private func commitWaitingOn() {
-        let trimmed = waitingOn.trimmingCharacters(in: .whitespacesAndNewlines)
-        viewModel.setTaskWaiting(taskID: task.id, waitingOn: trimmed.isEmpty ? nil : trimmed)
     }
 
     var body: some View {
@@ -1349,47 +1342,6 @@ struct TaskInspectorView: View {
                     .accessibilityHint(
                         "Saves edits to the selected task in the local Suisui database.")
 
-                }
-
-                // Waiting is saved on its own, not through Save Changes.
-                // A wait usually starts or ends during a two-second thought
-                // ("still no reply from the client"), and routing it through
-                // the full task save would let an unrelated in-progress edit
-                // ride along, or be lost.
-                Section("Waiting") {
-                    TextField("Waiting on", text: $waitingOn, prompt: Text("Who or what are you waiting for?"))
-                        .accessibilityIdentifier("task-inspector-waiting-on")
-                        .accessibilityHint("Records that this task is blocked on someone else. It then appears in Today's Waiting on list.")
-                        .onSubmit { commitWaitingOn() }
-
-                    if let since = task.waitingSince, task.isWaiting {
-                        LabeledContent(
-                            "Since",
-                            value: SuisuiTimestampDisplay.absolute(
-                                since,
-                                calendar: VisualEvidenceRuntimeContext.runtimeCalendar(),
-                                locale: localizedDisplayLocale()
-                            )
-                        )
-                        .accessibilityIdentifier("task-inspector-waiting-since")
-                    }
-
-                    HStack {
-                        Button("Save Waiting") {
-                            commitWaitingOn()
-                        }
-                        .disabled(waitingOn.trimmingCharacters(in: .whitespacesAndNewlines) == (task.waitingOn ?? ""))
-                        .accessibilityIdentifier("task-inspector-waiting-save")
-
-                        if task.isWaiting {
-                            Button("No Longer Waiting") {
-                                waitingOn = ""
-                                viewModel.setTaskWaiting(taskID: task.id, waitingOn: nil)
-                            }
-                            .accessibilityIdentifier("task-inspector-waiting-clear")
-                            .accessibilityHint("Ends the wait and removes this task from Today's Waiting on list.")
-                        }
-                    }
                 }
 
                 Section("Suggestion") {

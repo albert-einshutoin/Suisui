@@ -24,10 +24,6 @@ public protocol ProjectBoardStore {
     func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask
     func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask
     func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask
-    /// Records or clears who this task is waiting on. Separate from
-    /// `updateTask` so marking a wait cannot accidentally rewrite title,
-    /// status, or due date, and so the wait clock is owned in one place.
-    func setTaskWaiting(id: Int64, waitingOn: String?) throws -> ProjectBoardTask
     func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask]
     func moveTasks(ids: [Int64], toProjectID projectID: Int64) throws -> [ProjectBoardTask]
     func deleteTask(id: Int64) throws

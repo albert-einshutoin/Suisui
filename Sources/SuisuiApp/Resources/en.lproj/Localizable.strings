@@ -1980,18 +1980,6 @@
 "Likely right" = "Likely right";
 "Clear reading" = "Clear reading";
 ", " = ", ";
-/* Waiting-on surface. */
-"Waiting on" = "Waiting on";
-"Waiting on (%d)" = "Waiting on (%d)";
-"Who or what are you waiting for?" = "Who or what are you waiting for?";
-"Records that this task is blocked on someone else. It then appears in Today's Waiting on list." = "Records that this task is blocked on someone else. It then appears in Today's Waiting on list.";
-"Since" = "Since";
-"Save Waiting" = "Save Waiting";
-"No Longer Waiting" = "No Longer Waiting";
-"Ends the wait and removes this task from Today's Waiting on list." = "Ends the wait and removes this task from Today's Waiting on list.";
-"Opens the task so you can follow up or clear the wait." = "Opens the task so you can follow up or clear the wait.";
-"%d day" = "%d day";
-"%d days" = "%d days";
 "Retry Global Shortcut" = "Retry Global Shortcut";
 "Quit or rebind the other app, then retry. The in-app shortcut keeps working meanwhile." = "Quit or rebind the other app, then retry. The in-app shortcut keeps working meanwhile.";
 "Retry after checking macOS keyboard settings. The in-app shortcut keeps working meanwhile." = "Retry after checking macOS keyboard settings. The in-app shortcut keeps working meanwhile.";

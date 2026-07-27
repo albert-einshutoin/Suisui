@@ -177,17 +177,6 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         return task
     }
 
-    func setTaskWaiting(id: Int64, waitingOn: String?) throws -> ProjectBoardTask {
-        let task = try findTask(id: id)
-        let trimmed = waitingOn?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolved = (trimmed?.isEmpty == false) ? trimmed : nil
-        var updated = task
-        updated.waitingOn = resolved
-        updated.waitingSince = resolved == nil ? nil : (task.waitingSince ?? Self.nowCompletedAt())
-        upsert(updated)
-        return updated
-    }
-
     func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask {
         let task = try findTask(id: id)
         try prepareProjectForTaskMutation(projectID: task.projectID, taskStatus: status)

@@ -200,10 +200,6 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
     public var completedAt: String?
     public var updatedAt: String?
     public var recurrence: String?
-    /// Who or what this task is waiting on, if anything.
-    public var waitingOn: String?
-    /// When the current wait started.
-    public var waitingSince: String?
 
     public init(
         id: Int64,
@@ -215,9 +211,7 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
         dueAt: String?,
         completedAt: String? = nil,
         updatedAt: String? = nil,
-        recurrence: String? = nil,
-        waitingOn: String? = nil,
-        waitingSince: String? = nil
+        recurrence: String? = nil
     ) {
         self.id = id
         self.projectID = projectID
@@ -229,36 +223,6 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
         self.completedAt = completedAt
         self.updatedAt = updatedAt
         self.recurrence = recurrence
-        self.waitingOn = waitingOn
-        self.waitingSince = waitingSince
-    }
-
-    /// A task is waiting when someone else owes something. This is deliberately
-    /// independent of `status`: work can be in progress and still be waiting on
-    /// a review, and `blocked` can mean a technical blocker with no counterparty.
-    public var isWaiting: Bool {
-        waitingOn?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-            && status != .done
-    }
-
-    /// Whole days elapsed since the wait started. `nil` when not waiting or
-    /// when the stored start cannot be parsed, so the UI can stay silent rather
-    /// than assert a duration it does not know.
-    public func waitingDayCount(
-        on referenceDate: Date = VisualEvidenceRuntimeContext.referenceDate(),
-        calendar: Calendar = VisualEvidenceRuntimeContext.runtimeCalendar()
-    ) -> Int? {
-        guard isWaiting,
-              let waitingSince,
-              let parsed = SuisuiTimestampDisplay.parse(waitingSince, calendar: calendar) else {
-            return nil
-        }
-        let days = calendar.dateComponents(
-            [.day],
-            from: calendar.startOfDay(for: parsed.date),
-            to: calendar.startOfDay(for: referenceDate)
-        ).day
-        return days.map { max(0, $0) }
     }
 
     /// The label every board surface shows for a due date. `dueAt` stays the

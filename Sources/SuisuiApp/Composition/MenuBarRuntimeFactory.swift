@@ -92,10 +92,6 @@ private struct UnavailableMenuBarQuickCaptureStore: ProjectBoardStore {
         throw error
     }
 
-    func setTaskWaiting(id: Int64, waitingOn: String?) throws -> ProjectBoardTask {
-        throw error
-    }
-
     func deleteTask(id: Int64) throws {
         throw error
     }

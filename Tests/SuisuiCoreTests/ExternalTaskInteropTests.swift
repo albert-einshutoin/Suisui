@@ -1199,10 +1199,6 @@ private final class CountingProjectBoardStore: ProjectBoardStore, @unchecked Sen
         try wrapped.updateTask(id: id, draft)
     }
 
-    func setTaskWaiting(id: Int64, waitingOn: String?) throws -> ProjectBoardTask {
-        try wrapped.setTaskWaiting(id: id, waitingOn: waitingOn)
-    }
-
     func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask {
         try wrapped.moveTask(id: id, to: status)
     }
