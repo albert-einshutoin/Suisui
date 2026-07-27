@@ -370,7 +370,7 @@ struct SettingsAIFeatureView: View {
                     if let recoveryHint = context.shortcutSettingsViewModel.recoveryHint {
                         Label(localizedSettingsDisplay(recoveryHint), systemImage: "arrow.clockwise")
                             .font(.caption)
-                            .foregroundStyle(SuisuiTone.attention.color)
+                            .foregroundStyle(SuisuiTone.caution.color)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("settings-global-voice-shortcut-recovery")
                     }

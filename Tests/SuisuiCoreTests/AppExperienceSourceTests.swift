@@ -871,6 +871,7 @@ final class AppExperienceSourceTests: XCTestCase {
                 // keyboard-command bridges; neither paints a ShapeStyle.
                 allowedNonvisualBackgroundMarkers: [
                     "ProjectBoardToolbarLayoutBridge(",
+                    "ProjectBoardKeyboardShortcutBridge(",
                     ".background(Button("
                 ]
             ),
@@ -2222,13 +2223,13 @@ final class AppExperienceSourceTests: XCTestCase {
             to: "private struct InboxVoiceIntakeDetail"
         )
         XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-make-task\")"))
-        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
+        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"1\", modifiers: [.command, .control])"))
         XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-make-project\")"))
-        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
+        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"2\", modifiers: [.command, .control])"))
         XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-schedule-today\")"))
-        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
+        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"3\", modifiers: [.command, .control])"))
         XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-review-later\")"))
-        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
+        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"4\", modifiers: [.command, .control])"))
         XCTAssertTrue(phase.contains("- [x] Keyboard shortcutがmenu commandまたはfocused actionに接続されていることをsource testで固定する。"))
     }
 
@@ -2419,19 +2420,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(projectsSource.contains("\"Show Archived\""))
     }
 
-    func testPhase12SidebarDoesNotStealInboxCommandNumberShortcuts() throws {
+    func testPrimaryDestinationsOwnCommandNumberShortcutsAndInboxUsesControlCommand() throws {
         let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
         let workflowSource = try readProjectWorkflowSources()
 
-        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
-        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
-        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
-        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
+        XCTAssertTrue(boardSource.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
+        XCTAssertTrue(boardSource.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
+        XCTAssertTrue(boardSource.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
+        XCTAssertTrue(boardSource.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
         XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"5\", modifiers: [.command])"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"1\", modifiers: [.command, .control])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"2\", modifiers: [.command, .control])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"3\", modifiers: [.command, .control])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"4\", modifiers: [.command, .control])"))
         XCTAssertFalse(workflowSource.contains(".keyboardShortcut(\"5\", modifiers: [.command])"))
     }
 
@@ -2600,10 +2601,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-make-project\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-schedule-today\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-review-later\")"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"1\", modifiers: [.command, .control])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"2\", modifiers: [.command, .control])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"3\", modifiers: [.command, .control])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"4\", modifiers: [.command, .control])"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-classification-undo\")"))
 
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-suggestion-panel\")"))

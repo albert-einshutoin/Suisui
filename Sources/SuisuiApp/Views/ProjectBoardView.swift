@@ -405,30 +405,12 @@ struct ProjectBoardView: View {
             )
         }
         .background(
-            // Hidden buttons so these shortcuts work without disturbing the
-            // pinned toolbar structure. Hidden views stay out of the AX tree.
-            ZStack {
-                Button("") {
-                    isCommandPaletteVisible = true
+            ProjectBoardKeyboardShortcutBridge(
+                openCommandPalette: { isCommandPaletteVisible = true },
+                selectDestination: {
+                    boardRouteBinding.wrappedValue = .primary($0)
                 }
-                .keyboardShortcut("k", modifiers: [.command])
-
-                // ⌘1–⌘4 select the four top-level destinations, which is what
-                // every other macOS app does with those keys. They previously
-                // belonged to Inbox classification, leaving the sidebar with no
-                // keyboard route at all; classification moved to ⌃⌘1–⌃⌘4.
-                ForEach(Array(BoardPrimaryDestination.orderedForKeyboardSelection.enumerated()), id: \.offset) { index, destination in
-                    Button("") {
-                        boardRouteBinding.wrappedValue = .primary(destination)
-                    }
-                    .keyboardShortcut(
-                        KeyEquivalent(Character("\(index + 1)")),
-                        modifiers: [.command]
-                    )
-                }
-            }
-            .hidden()
-            .accessibilityHidden(true)
+            )
         )
         .overlay {
             ZStack {
@@ -2241,6 +2223,31 @@ extension ProjectTaskStatus {
             return nil
         }
         return Self.allCases[nextIndex]
+    }
+}
+
+/// Non-rendering commands for shortcuts that must stay available regardless of
+/// sidebar focus. Explicit buttons keep every route statically auditable while
+/// isolating their generic types from the already-large board view body.
+private struct ProjectBoardKeyboardShortcutBridge: View {
+    let openCommandPalette: () -> Void
+    let selectDestination: (BoardPrimaryDestination) -> Void
+
+    var body: some View {
+        ZStack {
+            Button("", action: openCommandPalette)
+                .keyboardShortcut("k", modifiers: [.command])
+            Button("") { selectDestination(.today) }
+                .keyboardShortcut("1", modifiers: [.command])
+            Button("") { selectDestination(.inbox) }
+                .keyboardShortcut("2", modifiers: [.command])
+            Button("") { selectDestination(.projects) }
+                .keyboardShortcut("3", modifiers: [.command])
+            Button("") { selectDestination(.review) }
+                .keyboardShortcut("4", modifiers: [.command])
+        }
+        .hidden()
+        .accessibilityHidden(true)
     }
 }
 

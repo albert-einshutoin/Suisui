@@ -53,7 +53,7 @@ private struct SettingsReadinessGroupView: View {
                     Text(localizedSettingsDisplay(group.group.title))
                     SuisuiStatusChip(
                         text: "\(group.rows.count)",
-                        tone: group.group == .needsAttention ? .attention : .neutral
+                        tone: group.group == .needsAttention ? .caution : .neutral
                     )
                     Spacer(minLength: 0)
                     // Naming the subjects makes a collapsed group answer "ready
@@ -66,7 +66,7 @@ private struct SettingsReadinessGroupView: View {
                 }
             } icon: {
                 Image(systemName: group.group.systemImage)
-                    .foregroundStyle(group.group == .needsAttention ? SuisuiTone.attention.color : .secondary)
+                    .foregroundStyle(group.group == .needsAttention ? SuisuiTone.caution.color : .secondary)
             }
             .font(SuisuiTypography.sectionTitle)
         }
@@ -174,10 +174,9 @@ private extension SettingsReadinessState {
         case .ready: SuisuiTone.positive.color
         case .setupWhenNeeded, .checking: .secondary
         // A warning triangle rendered in neutral gray reads as "informational"
-        // and gets skipped. `needsAction` is the one state that requires the
-        // user to do something, so it uses the attention tone the design system
-        // already defines for exactly this.
-        case .needsAction: SuisuiTone.attention.color
+        // and gets skipped. This is ordinary settings recovery, so it uses the
+        // general caution tone instead of assistant-only Signal Amber.
+        case .needsAction: SuisuiTone.caution.color
         case .blocked: SuisuiTone.danger.color
         case .unsupported: SuisuiTone.neutral.color
         }
