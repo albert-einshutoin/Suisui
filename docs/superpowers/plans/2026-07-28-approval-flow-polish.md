@@ -1566,6 +1566,27 @@ parent directory is insufficient because an in-repository symlink could target
 an external regular file. Add a script test that proves such a symlink fails
 before the old AX receipt is deleted.
 
+The AX audit receipt is also a write target, so validate it independently before
+the invalidation `rm`. In capture/write modes, require its final component not
+to be a symlink, require an existing target to be a regular file, and require
+the canonical parent to remain under repository-local `.tmp` or `.build`.
+Exercise both an external sentinel and an in-repository symlink to that sentinel;
+both attempts must report `BLOCKER` and leave the sentinel byte-for-byte intact.
+Dry-run and doctor modes must remain side-effect free.
+
+- [ ] **Step 3a: Stage a private manifest for the CI visual gate**
+
+`check_ci_visual_gate.sh` captures into its private CI output root, so the
+checked-in manifest cannot truthfully describe that staging artifact root.
+Copy the selected manifest into the repository-local CI output, update only its
+`artifactRoot` to the private screenshot directory, and pass that private
+manifest through `SUISUI_VISUAL_BASELINE_MANIFEST` to capture and comparison.
+The gate must fail closed if the staged manifest is not a regular, non-symlink
+file below `.tmp` or `.build`. Add an execution-level test that runs the normal
+gate path far enough to prove capture receives a manifest whose `artifactRoot`
+exactly matches the staging screenshot root; source-string assertions alone do
+not satisfy this contract.
+
 - [ ] **Step 4: Seed the three Queue visual states**
 
 Extend the isolated evidence SQLite fixture with valid action-plan rows:
@@ -1646,6 +1667,12 @@ generated ID with the stable fixture ID, and save it to
    `visual-evidence-simulated-failure` as the non-secret reason;
 6. assert after seeding that the read models expose respectively `.approve`,
    `.run`, and `.reopen` as their primary actions.
+
+Run the seeder twice against the same isolated database. Assert that exactly
+three stable rows remain, with no duplicate IDs, and verify each persisted
+plan's inert `userInput`, `summary`, tool, title, detail, risk,
+`requiresApproval`, state, approval/fingerprint relationship, and primary
+action. State transitions may differ; action payloads must not.
 
 The capture script calls:
 
