@@ -663,7 +663,9 @@ APPLESCRIPT
 }
 
 revealProjectAutomationControls() {
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
   set appName to item 1 of argv
   tell application "System Events"
@@ -693,7 +695,18 @@ on run argv
   error "project inspector title field is unavailable"
 end run
 APPLESCRIPT
-  sleep 1
+    then
+      sleep 1
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: project automation controls did not become focusable" >&2
+      return 1
+    fi
+    activate_app
+    wait_for_visible_windows >/dev/null 2>&1 || true
+    sleep 1
+  done
 }
 
 scrollProjectDetailDown() {

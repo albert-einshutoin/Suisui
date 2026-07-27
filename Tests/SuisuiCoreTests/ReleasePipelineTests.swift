@@ -6381,6 +6381,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("revealProjectAutomationControls() {"))
         XCTAssertTrue(script.contains("itemIdentifier is \"project-inspector-title\""))
         XCTAssertTrue(script.contains("repeat 6 times\n                key code 48"))
+        XCTAssertTrue(script.contains("BLOCKER: project automation controls did not become focusable"))
         let scrollHelperStart = try XCTUnwrap(
             script.range(of: "scrollProjectDetailDown() {")
         )
