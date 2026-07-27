@@ -11,8 +11,17 @@ fi
 
 RELEASE_DIR="${SUISUI_SPARKLE_RELEASE_DIR:-$ROOT_DIR/dist/releases}"
 DOWNLOAD_URL_PREFIX="${SUISUI_SPARKLE_DOWNLOAD_URL_PREFIX:-}"
+SPARKLE_ACCOUNT="${SUISUI_SPARKLE_ACCOUNT:-}"
 REQUIRE_SPARKLE_TOOLS="${SUISUI_REQUIRE_SPARKLE_TOOLS:-1}"
 REQUIRE_RELEASE_APPCAST="${SUISUI_REQUIRE_RELEASE_APPCAST:-0}"
+APPCAST_INPUT_DIR=""
+
+cleanup() {
+  if [[ -n "$APPCAST_INPUT_DIR" ]]; then
+    rm -rf "$APPCAST_INPUT_DIR"
+  fi
+}
+trap cleanup EXIT
 
 case "$REQUIRE_SPARKLE_TOOLS" in
   0|1)
@@ -103,14 +112,43 @@ if [[ ! -d "$RELEASE_DIR" ]]; then
   exit 2
 fi
 
-if ! find "$RELEASE_DIR" -maxdepth 1 \( -name "*.dmg" -o -name "*.zip" \) | grep -q .; then
+if ! find "$RELEASE_DIR" -maxdepth 1 -type f -name "*.zip" | grep -q .; then
+  echo "no ZIP artifacts found in $RELEASE_DIR" >&2
+  exit 2
+fi
+
+mkdir -p "$ROOT_DIR/.tmp"
+APPCAST_INPUT_DIR="$(mktemp -d "$ROOT_DIR/.tmp/sparkle-appcast.XXXXXX")"
+# Sparkle treats a DMG and ZIP with the same bundle version as duplicate
+# updates. The DMG remains the user-facing download, while the appcast input is
+# intentionally limited to ZIP updates and their sidecar evidence.
+while IFS= read -r -d '' release_file; do
+  cp -p "$release_file" "$APPCAST_INPUT_DIR/"
+done < <(find "$RELEASE_DIR" -maxdepth 1 -type f \
+  ! -name "*.dmg" \
+  ! -name "*.dmg.*" \
+  -print0)
+
+if ! find "$APPCAST_INPUT_DIR" -maxdepth 1 -type f -name "*.zip" | grep -q .; then
   echo "no DMG or ZIP artifacts found in $RELEASE_DIR" >&2
   exit 2
 fi
 
-if [[ -n "$DOWNLOAD_URL_PREFIX" ]]; then
-  "$GENERATE_APPCAST" --download-url-prefix "$DOWNLOAD_URL_PREFIX" "$RELEASE_DIR"
-else
-  "$GENERATE_APPCAST" "$RELEASE_DIR"
+GENERATE_APPCAST_ARGS=()
+if [[ -n "$SPARKLE_ACCOUNT" ]]; then
+  GENERATE_APPCAST_ARGS+=(--account "$SPARKLE_ACCOUNT")
 fi
+if [[ -n "$DOWNLOAD_URL_PREFIX" ]]; then
+  # Sparkle resolves archive names relative to this URL. A missing trailing
+  # slash makes Foundation replace the final path component instead of
+  # appending the ZIP filename.
+  NORMALIZED_DOWNLOAD_URL_PREFIX="${DOWNLOAD_URL_PREFIX%/}/"
+  GENERATE_APPCAST_ARGS+=(--download-url-prefix "$NORMALIZED_DOWNLOAD_URL_PREFIX")
+fi
+"$GENERATE_APPCAST" "${GENERATE_APPCAST_ARGS[@]}" "$APPCAST_INPUT_DIR"
+if [[ ! -f "$APPCAST_INPUT_DIR/appcast.xml" ]]; then
+  echo "Sparkle generate_appcast did not produce appcast.xml" >&2
+  exit 2
+fi
+cp "$APPCAST_INPUT_DIR/appcast.xml" "$RELEASE_DIR/appcast.xml"
 echo "Generated Sparkle appcast in $RELEASE_DIR."

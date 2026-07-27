@@ -41,7 +41,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(bundleMetadataVerifier.contains("missing bundled app icon"))
         XCTAssertTrue(bundleMetadataVerifier.contains("com.apple.security.device.audio-input"))
         XCTAssertTrue(bundleMetadataVerifier.contains("assert_eq \"$ENTITLEMENT_KEY_COUNT\" \"1\""))
-        XCTAssertTrue(artifactSizeGate.contains("SUISUI_MAX_ZIP_ARTIFACT_BYTES:-7864320"))
+        XCTAssertTrue(artifactSizeGate.contains("SUISUI_MAX_ZIP_ARTIFACT_BYTES:-8388608"))
         XCTAssertTrue(packageSizePolicy.contains("視覚上十分な512px相当に最適化"))
     }
 
@@ -254,6 +254,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("xcrun notarytool submit"))
         XCTAssertTrue(script.contains("--keychain-profile"))
         XCTAssertTrue(script.contains("--wait"))
+        XCTAssertTrue(script.contains("--output-format json"))
+        XCTAssertTrue(script.contains("submission_status_value"))
+        XCTAssertTrue(script.contains("\"Accepted\""))
         XCTAssertTrue(script.contains("xcrun stapler staple"))
         XCTAssertTrue(script.contains("xcrun stapler validate"))
         XCTAssertTrue(script.contains("notarytool log"))
@@ -331,7 +334,13 @@ final class ReleasePipelineTests: XCTestCase {
         let packageScript = try readPackageFile("script/package_release.sh")
         let verifier = try readPackageFile("script/verify_release_environment.sh")
 
+        XCTAssertTrue(packageScript.contains("DMG_CODESIGN_ARGS=("))
+        XCTAssertTrue(packageScript.contains("codesign \"${DMG_CODESIGN_ARGS[@]}\" \"$DMG_PATH\""))
         XCTAssertTrue(packageScript.contains("notarize_release_dmg.sh\" \"$DMG_PATH\""))
+        XCTAssertLessThan(
+            try XCTUnwrap(packageScript.range(of: "codesign \"${DMG_CODESIGN_ARGS[@]}\" \"$DMG_PATH\"")).lowerBound,
+            try XCTUnwrap(packageScript.range(of: "notarize_release_dmg.sh\" \"$DMG_PATH\"")).lowerBound
+        )
         XCTAssertLessThan(
             try XCTUnwrap(packageScript.range(of: "notarize_release_dmg.sh\" \"$DMG_PATH\"")).lowerBound,
             try XCTUnwrap(packageScript.range(of: "create_checksum \"$DMG_PATH\"")).lowerBound
@@ -14566,6 +14575,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(packageScript.contains("COPYFILE_DISABLE=1"))
         XCTAssertTrue(packageScript.contains("--norsrc"))
         XCTAssertTrue(packageScript.contains("--noextattr"))
+        XCTAssertTrue(packageScript.contains("--zlibCompressionLevel 9"))
         XCTAssertTrue(packageScript.contains("\"appBundleBytes\""))
         XCTAssertTrue(packageScript.contains("\"appBinaryBytes\""))
         XCTAssertTrue(packageScript.contains("\"artifactBytes\""))

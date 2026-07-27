@@ -24,6 +24,7 @@ if [[ -f "$SPARKLE_ENV_FILE" ]]; then
 fi
 
 SPARKLE_SIGN_UPDATE="${SUISUI_SPARKLE_SIGN_UPDATE:-}"
+SPARKLE_ACCOUNT="${SUISUI_SPARKLE_ACCOUNT:-}"
 DOWNLOAD_URL_PREFIX="${SUISUI_SPARKLE_DOWNLOAD_URL_PREFIX:-${SPARKLE_DOWNLOAD_URL_PREFIX:-}}"
 SPARKLE_FEED_URL="${SUISUI_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
 
@@ -263,9 +264,13 @@ if [[ "$REQUIRE_RELEASE_APPCAST" == "1" ]]; then
       exit 2
     fi
     sign_update="$(find_sign_update)"
+    SPARKLE_VERIFY_ARGS=(--verify)
+    if [[ -n "$SPARKLE_ACCOUNT" ]]; then
+      SPARKLE_VERIFY_ARGS=(--account "$SPARKLE_ACCOUNT" --verify)
+    fi
     # Sparkle's own verifier reads the release key from Keychain. This avoids
     # treating a merely non-empty XML attribute as cryptographic evidence.
-    if ! "$sign_update" --verify "$expected_zip_path" "$enclosure_signature" >/dev/null; then
+    if ! "$sign_update" "${SPARKLE_VERIFY_ARGS[@]}" "$expected_zip_path" "$enclosure_signature" >/dev/null; then
       echo "release appcast Sparkle edSignature verification failed" >&2
       exit 2
     fi
@@ -313,7 +318,7 @@ if [[ "$REQUIRE_RELEASE_APPCAST" == "1" ]]; then
       exit 2
     fi
     if [[ "$VERIFY_SPARKLE_SIGNATURE" == "1" ]] \
-      && ! "$sign_update" --verify "$remote_artifact" "$remote_enclosure_signature" >/dev/null; then
+      && ! "$sign_update" "${SPARKLE_VERIFY_ARGS[@]}" "$remote_artifact" "$remote_enclosure_signature" >/dev/null; then
       echo "published Sparkle artifact edSignature verification failed" >&2
       exit 2
     fi

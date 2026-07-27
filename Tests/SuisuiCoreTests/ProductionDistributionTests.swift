@@ -28,7 +28,8 @@ final class ProductionDistributionTests: XCTestCase {
         XCTAssertTrue(verifier.contains("$remote_enclosure_url\" --output \"$remote_artifact"))
         XCTAssertTrue(verifier.contains("published Sparkle feed enclosure URL does not match"))
         XCTAssertTrue(verifier.contains("published Sparkle feed edSignature does not match"))
-        XCTAssertTrue(verifier.contains("--verify \"$remote_artifact\" \"$remote_enclosure_signature\""))
+        XCTAssertTrue(verifier.contains("\"${SPARKLE_VERIFY_ARGS[@]}\" \"$expected_zip_path\" \"$enclosure_signature\""))
+        XCTAssertTrue(verifier.contains("\"${SPARKLE_VERIFY_ARGS[@]}\" \"$remote_artifact\" \"$remote_enclosure_signature\""))
         XCTAssertTrue(environment.contains("SUISUI_VERIFY_REMOTE_SPARKLE=\"$ONLINE_PREFLIGHT\""))
         XCTAssertTrue(sparkleExample.contains("SUISUI_SPARKLE_SIGN_UPDATE="))
 

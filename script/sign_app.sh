@@ -121,10 +121,16 @@ APP_CODESIGN_ARGS=(
 
 if [[ -d "$APP_CONTENTS/Frameworks" ]]; then
   while IFS= read -r -d '' nested_code; do
+    # Sparkle ships extensionless Mach-O helpers such as Autoupdate. Signing only
+    # bundle directories and dylibs leaves those helpers ad hoc signed, which the
+    # Apple notary service rejects even though local deep verification succeeds.
+    if [[ -f "$nested_code" ]] && ! file -b "$nested_code" | grep -F "Mach-O" >/dev/null; then
+      continue
+    fi
     codesign "${NESTED_CODESIGN_ARGS[@]}" "$nested_code"
   done < <(find "$APP_CONTENTS/Frameworks" -depth \( \
     \( -type d \( -name "*.framework" -o -name "*.xpc" -o -name "*.appex" -o -name "*.app" \) \) \
-    -o \( -type f -name "*.dylib" \) \
+    -o \( -type f \( -name "*.dylib" -o -perm -111 \) \) \
   \) -print0)
 fi
 

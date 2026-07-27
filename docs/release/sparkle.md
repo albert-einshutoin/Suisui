@@ -16,10 +16,10 @@ final preflight は signed app の `SUFeedURL` / `SUPublicEDKey` が現在の re
 SUISUI_BUILD_CONFIGURATION=release ./script/build_and_run.sh --build-only
 ```
 
-private update key は Sparkle の `generate_keys` tool で Keychain に保存し、repo に入れない。
+private update key は Sparkle の `generate_keys` tool で Keychain に保存し、repo に入れない。複数organizationを扱うrelease machineではorganization固有のaccount名を指定し、同じ値をlocal-onlyの`SUISUI_SPARKLE_ACCOUNT`へ設定する。
 
 ```bash
-generate_keys
+generate_keys --account albert-einshutoin
 ```
 
 ## Appcast Generation

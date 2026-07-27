@@ -18,6 +18,14 @@ final class SigningConfigurationTests: XCTestCase {
         XCTAssertFalse(script.contains("notarytool store-credentials"))
     }
 
+    func testDeveloperIDSigningIncludesExtensionlessNestedMachOHelpers() throws {
+        let script = try readPackageFile("script/sign_app.sh")
+
+        XCTAssertTrue(script.contains("-perm -111"))
+        XCTAssertTrue(script.contains("file -b \"$nested_code\""))
+        XCTAssertTrue(script.contains("Mach-O"))
+    }
+
     func testSigningExampleKeepsSecretMaterialOutOfRepository() throws {
         let example = try readPackageFile("packaging/signing.env.example")
 

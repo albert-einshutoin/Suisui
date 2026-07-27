@@ -27,13 +27,22 @@ final class SparkleUpdateFoundationTests: XCTestCase {
 
     func testAppcastScriptUsesSparkleGenerateAppcastAndKeepsKeysOutOfRepo() throws {
         let script = try readPackageFile("script/generate_appcast.sh")
+        let verifier = try readPackageFile("script/verify_appcast.sh")
         let example = try readPackageFile("packaging/sparkle.env.example")
         let docs = try readPackageFile("docs/release/sparkle.md")
 
         XCTAssertTrue(script.contains("generate_appcast"))
         XCTAssertTrue(script.contains("SUISUI_SPARKLE_BIN_DIR"))
+        XCTAssertTrue(script.contains("SUISUI_SPARKLE_ACCOUNT"))
+        XCTAssertTrue(script.contains("--account"))
+        XCTAssertTrue(script.contains("APPCAST_INPUT_DIR"))
+        XCTAssertTrue(script.contains("! -name \"*.dmg\""))
+        XCTAssertTrue(script.contains("NORMALIZED_DOWNLOAD_URL_PREFIX"))
+        XCTAssertTrue(verifier.contains("SUISUI_SPARKLE_ACCOUNT"))
+        XCTAssertTrue(verifier.contains("SPARKLE_VERIFY_ARGS"))
         XCTAssertTrue(script.contains("SUISUI_REQUIRE_SPARKLE_TOOLS"))
         XCTAssertTrue(example.contains("SUISUI_SPARKLE_PUBLIC_ED_KEY"))
+        XCTAssertTrue(example.contains("SUISUI_SPARKLE_ACCOUNT"))
         XCTAssertFalse(example.contains("PRIVATE_KEY"))
         XCTAssertFalse(example.contains("PASSWORD="))
         XCTAssertTrue(docs.contains("generate_keys"))

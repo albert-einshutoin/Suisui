@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
+SIGNING_ENV_FILE="$ROOT_DIR/packaging/signing.env"
 
 if [[ ! -f "$METADATA_FILE" ]]; then
   echo "missing metadata file: $METADATA_FILE" >&2
@@ -12,12 +13,19 @@ fi
 # shellcheck source=/dev/null
 source "$METADATA_FILE"
 
+if [[ -f "$SIGNING_ENV_FILE" ]]; then
+  # shellcheck source=/dev/null
+  source "$SIGNING_ENV_FILE"
+fi
+
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 MARKETING_VERSION="${MARKETING_VERSION:?MARKETING_VERSION is required}"
 CURRENT_PROJECT_VERSION="${CURRENT_PROJECT_VERSION:?CURRENT_PROJECT_VERSION is required}"
 PACKAGE_FORMAT="${SUISUI_PACKAGE_FORMAT:-dmg}"
 REQUIRE_SIGNED_PACKAGE="${SUISUI_REQUIRE_SIGNED_PACKAGE:-1}"
 REQUIRE_NOTARIZED_PACKAGE="${SUISUI_REQUIRE_NOTARIZED_PACKAGE:-1}"
+SIGNING_IDENTITY="${SUISUI_SIGNING_IDENTITY:-}"
+SIGNING_KEYCHAIN="${SUISUI_CODESIGN_KEYCHAIN:-}"
 
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
@@ -73,6 +81,10 @@ fi
 # smoke preparation happens later on a disposable copy so this script can never
 # invalidate a Developer ID signature on dist/Suisui.app.
 if [[ "$REQUIRE_SIGNED_PACKAGE" == "1" ]]; then
+  if [[ -z "$SIGNING_IDENTITY" ]]; then
+    echo "SUISUI_SIGNING_IDENTITY is required to sign the release DMG." >&2
+    exit 2
+  fi
   codesign --verify --strict --deep --verbose=2 "$APP_BUNDLE"
 fi
 
@@ -181,6 +193,21 @@ if [[ "$PACKAGE_FORMAT" == "dmg" || "$PACKAGE_FORMAT" == "all" ]]; then
     -ov \
     -format UDZO \
     "$DMG_PATH"
+  if [[ "$REQUIRE_SIGNED_PACKAGE" == "1" ]]; then
+    DMG_CODESIGN_ARGS=(
+      --force
+      --timestamp
+      --sign "$SIGNING_IDENTITY"
+    )
+    if [[ -n "$SIGNING_KEYCHAIN" ]]; then
+      DMG_CODESIGN_ARGS+=(--keychain "$SIGNING_KEYCHAIN")
+    fi
+    # The stapled ticket authenticates notarization, while Gatekeeper's
+    # primary-signature assessment also requires the outer DMG itself to carry
+    # a Developer ID signature rather than only containing a signed app.
+    codesign "${DMG_CODESIGN_ARGS[@]}" "$DMG_PATH"
+    codesign --verify --verbose=2 "$DMG_PATH"
+  fi
   if [[ "$REQUIRE_NOTARIZED_PACKAGE" == "1" ]]; then
     "$ROOT_DIR/script/notarize_release_dmg.sh" "$DMG_PATH"
     "$ROOT_DIR/script/verify_dmg_notarization_evidence.sh" "$DMG_PATH"
@@ -191,7 +218,8 @@ if [[ "$PACKAGE_FORMAT" == "dmg" || "$PACKAGE_FORMAT" == "all" ]]; then
 fi
 
 if [[ "$PACKAGE_FORMAT" == "zip" || "$PACKAGE_FORMAT" == "all" ]]; then
-  COPYFILE_DISABLE=1 ditto -c -k --keepParent --norsrc --noextattr "$PACKAGE_APP_BUNDLE" "$ZIP_PATH"
+  COPYFILE_DISABLE=1 ditto -c -k --keepParent --norsrc --noextattr \
+    --zlibCompressionLevel 9 "$PACKAGE_APP_BUNDLE" "$ZIP_PATH"
   "$ROOT_DIR/script/check_release_artifact_size.sh" "$ZIP_PATH" "zip"
   create_checksum "$ZIP_PATH"
   create_package_evidence "$ZIP_PATH" "zip"
