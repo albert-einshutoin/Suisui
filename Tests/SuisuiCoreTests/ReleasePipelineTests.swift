@@ -8751,7 +8751,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertEqual(
             projectBoard["requiredVisibleTextLines"] as? [String],
-            ["project board to task card to", "In Progress High", "2026-07-10"]
+            ["project board to task card to", "In Progress High", "Jul 10"]
         )
     }
 
