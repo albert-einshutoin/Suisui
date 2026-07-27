@@ -6378,6 +6378,27 @@ final class ReleasePipelineTests: XCTestCase {
             revealAutomationControls.lowerBound,
             "The runtime flow must reveal the lower automation controls after opening the inspector."
         )
+        let scrollHelperStart = try XCTUnwrap(
+            script.range(of: "scrollProjectDetailDown() {")
+        )
+        let scrollHelperTail = script[scrollHelperStart.lowerBound...]
+        let scrollHelperEnd = try XCTUnwrap(
+            scrollHelperTail.range(of: "\n}\n\nwaitForAXSubtreeMarkerContaining()")
+        )
+        let scrollHelperSource = String(
+            scrollHelperTail[..<scrollHelperEnd.lowerBound]
+        )
+        let sheetScrollSearch = try XCTUnwrap(
+            scrollHelperSource.range(of: "repeat with currentSheet in sheets of window 1")
+        )
+        let windowScrollFallback = try XCTUnwrap(
+            scrollHelperSource.range(of: "set axItems to entire contents of window 1")
+        )
+        XCTAssertLessThan(
+            sheetScrollSearch.lowerBound,
+            windowScrollFallback.lowerBound,
+            "Inspector sheet scrolling must be attempted before the board fallback."
+        )
         XCTAssertTrue(script.contains("verify_visible_project_directory_picker_assignment()"))
         XCTAssertTrue(script.contains("chooseRuntimeProjectWorkspaceViaOpenPanel()"))
         let directoryPickerFlow = try XCTUnwrap(

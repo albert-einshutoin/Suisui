@@ -673,6 +673,25 @@ on run argv
       try
         set frontmost to true
       end try
+      repeat with currentSheet in sheets of window 1
+        try
+          set sheetItems to entire contents of currentSheet
+          repeat with sheetItem in sheetItems
+            set sheetItemRole to ""
+            try
+              set sheetItemRole to role of sheetItem as text
+            end try
+            if sheetItemRole is "AXScrollArea" then
+              repeat 6 times
+                try
+                  perform action "AXScrollDown" of sheetItem
+                end try
+              end repeat
+              return
+            end if
+          end repeat
+        end try
+      end repeat
       set axItems to entire contents of window 1
       repeat with axItem in axItems
         set itemRole to ""
