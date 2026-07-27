@@ -107,6 +107,7 @@ struct ProjectBoardReviewHubView<Content: View>: View {
             } label: {
                 compactLabel(presentation)
             }
+            .help("Choose Review destination.")
             .accessibilityIdentifier("review-hub-compact-navigation")
             Spacer()
         }
@@ -132,6 +133,13 @@ struct ProjectBoardReviewHubView<Content: View>: View {
                 Text(verbatim: "\(count)")
                     .font(.caption.weight(.semibold))
                     .monospacedDigit()
+                    .accessibilityLabel(
+                        localizedCount(
+                            count,
+                            one: "%d item needs attention",
+                            other: "%d items need attention"
+                        )
+                    )
             }
         }
         .accessibilityElement(children: .combine)

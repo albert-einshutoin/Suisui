@@ -188,6 +188,7 @@ struct ProjectBoardProjectsHubView<Content: View>: View {
             } label: {
                 compactLabel(presentation)
             }
+            .help("Choose Project destination.")
             .accessibilityIdentifier("projects-hub-compact-navigation")
 
             Spacer()
