@@ -196,8 +196,8 @@ Viewは`row.state`と`row.can*`を独自に再判定せず、このpresentation�
 
 | State and capability | Primary | Secondary ordering |
 | --- | --- | --- |
-| `.captured` / `.interpreted` / `.drafted` / `.waitingReview` / `.deferred`かつ`canApprove` | Approve | Edit, Defer, Reject |
-| `.approved`かつ`canRun` | Run | Edit, Defer, Reject |
+| `.captured` / `.interpreted` / `.drafted` / `.waitingReview` / `.deferred`かつ`canApprove` | Approve | Edit, Defer, Rejectのうち既存read modelで許可済み |
+| `.approved`かつ`canRun` | Run | Edit, Defer, Rejectのうち既存read modelで許可済み |
 | `.failed`かつ`canRetry` | Reopen | Edit, Defer, Rejectのうち許可済み |
 | `.running` | none | none |
 | `.blocked` | none | 許可済みの非実行操作のみ |
@@ -329,7 +329,7 @@ flowchart LR
 - keyboardからcompact menu、Primary action、More actionsへ到達可能。
 - MoreからEditへ移動し、Save / Cancel後に元のrowへfocusを戻せる。
 - statusやpermissionを色だけで表さない。
-- `testApprovalFlowRequiresInboxContextCompactNavigationAndQueueActions`: Inbox context、compact navigation、Queue Primary / Moreを`AccessibilityFocusPathRequirement`へ追加する。
+- `testApprovalFlowRequiresInboxContextCompactNavigationAndQueueActions`: Inbox context、compact navigation、Queue Primary / Moreをstage別の`AccessibilityFocusPathRequirement`へ追加する。Approve、Run、Reopenを1つのrowへ同時要求しない。
 - pseudo VoiceOver検査でも同じrequired nodeを要求する。
 
 ### 11.6 Visual evidence
@@ -427,6 +427,8 @@ Tracked visual evidence:
 
 `capture_ui_evidence.sh`へ`SUISUI_VISUAL_BASELINE_MANIFEST` overrideを追加し、`SUISUI_UI_EVIDENCE_LOCALE`、`SUISUI_UI_EVIDENCE_DIR`、`SUISUI_VISUAL_AX_AUDIT_RESULT`と一緒にlocaleごとのcaptureを実行する。両manifestを独立したvisual gateで検証し、screen + theme keyをlocale間で共有しない。
 
+ja-JP manifestの`requiredVisibleTextLines`は、ユーザー入力の原文を維持しつつ、localized status/dateを日本語期待値へ置き換える。英語の`In Progress High`や`Jul 10`を日本語captureへ要求しない。
+
 環境上取得できない状態は成功扱いにせず、欠けた組み合わせと理由をevidenceへ記録する。
 
 ## 13. Files
@@ -435,6 +437,7 @@ Tracked visual evidence:
 
 - `Sources/SuisuiCore/App/AssistantQueueRowActionPresentation.swift`
 - `Sources/SuisuiCore/App/ProjectBoardCompactNavigationPresentation.swift`
+- `Sources/SuisuiVisualFixtureSeeder/main.swift`
 - `Tests/SuisuiCoreTests/AssistantQueueRowActionPresentationTests.swift`
 - `Tests/SuisuiCoreTests/ProjectBoardCompactNavigationPresentationTests.swift`
 
@@ -453,6 +456,7 @@ Tracked visual evidence:
 - `Tests/SuisuiCoreTests/VisualEvidenceRuntimeContextTests.swift`
 - `Tests/SuisuiCoreTests/ReleasePipelineTests.swift`
 - `Sources/SuisuiCore/App/AccessibilityFocusPathAudit.swift`
+- `Package.swift`
 - `script/check_pseudo_voiceover_paths.sh`
 - `script/capture_ui_evidence.sh`
 - `docs/quality/visual-baseline-manifest.json`
