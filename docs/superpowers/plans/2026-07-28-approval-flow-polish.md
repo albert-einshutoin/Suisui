@@ -126,6 +126,8 @@ Transcript failed
 Transcript pending
 AI interpreted
 More Assistant Queue actions
+Choose Review destination.
+Choose Project destination.
 ```
 
 Use the exact Japanese values from Tasks 3–5. Localization is root-owned because
@@ -1178,6 +1180,11 @@ private func compactLabel(
             Text("\(count)")
                 .font(.caption.weight(.semibold))
                 .monospacedDigit()
+                .accessibilityLabel(localizedCount(
+                    count,
+                    one: "%d item needs attention",
+                    other: "%d items need attention"
+                ))
         }
     }
 }
@@ -1203,6 +1210,11 @@ let presentation = ProjectBoardCompactNavigationPresentation.projects(
 ```
 
 Keep every existing menu destination, action, binding, and accessibility identifier.
+Add `.help("Choose Review destination.")` to the Review Menu and
+`.help("Choose Project destination.")` to the Projects Menu. The current label
+explains location; the help still explains the control's action. The Queue
+badge must expose the existing localized “items need attention” phrase instead
+of an unexplained bare number.
 
 - [ ] **Step 4: Use the root-owned missing-state localization**
 
@@ -1210,12 +1222,16 @@ Task 0 adds:
 
 ```text
 "Smart List Not Found" = "Smart List Not Found";
+"Choose Review destination." = "Choose Review destination.";
+"Choose Project destination." = "Choose Project destination.";
 ```
 
 and:
 
 ```text
 "Smart List Not Found" = "スマートリストが見つかりません";
+"Choose Review destination." = "レビューの移動先を選択します。";
+"Choose Project destination." = "プロジェクトの移動先を選択します。";
 ```
 
 Reuse existing Project Not Found and destination strings.
