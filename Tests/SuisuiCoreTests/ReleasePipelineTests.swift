@@ -6349,6 +6349,29 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SUISUI_PROJECT_BOARD_SELECTED_TASK_ID=\"$seed_task_id\""))
         XCTAssertTrue(script.contains("verify_visible_project_directory_picker_assignment()"))
         XCTAssertTrue(script.contains("chooseRuntimeProjectWorkspaceViaOpenPanel()"))
+        let directoryPickerFlow = try XCTUnwrap(
+            script.range(
+                of: "verify_visible_project_directory_picker_assignment() {"
+            )
+        )
+        let directoryPickerFlowSource = String(
+            script[directoryPickerFlow.lowerBound...]
+        )
+        let openProjectInspector = try XCTUnwrap(
+            directoryPickerFlowSource.range(
+                of: "pressButtonContainingBounded \"project-header-open-inspector\""
+            )
+        )
+        let waitForProjectInspector = try XCTUnwrap(
+            directoryPickerFlowSource.range(
+                of: "waitForAXMarkerContaining \"project-inspector\""
+            )
+        )
+        XCTAssertLessThan(
+            openProjectInspector.lowerBound,
+            waitForProjectInspector.lowerBound,
+            "The runtime flow must explicitly open the project inspector before waiting for it."
+        )
         XCTAssertTrue(script.contains("project-workspace-choose"))
         XCTAssertTrue(script.contains("project-workspace-current"))
         XCTAssertTrue(script.contains("workspace_path IS NULL AND workspace_bookmark IS NULL"))

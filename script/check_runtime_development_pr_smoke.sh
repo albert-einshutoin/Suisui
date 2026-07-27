@@ -1109,6 +1109,10 @@ FROM projects
 WHERE id=$seed_project_id;
 "
 
+  # Project selection intentionally keeps editing closed until the user asks
+  # for it. Open the inspector through the same visible control a user uses
+  # before exercising the directory picker.
+  pressButtonContainingBounded "project-header-open-inspector"
   waitForAXMarkerContaining "project-inspector"
   waitForAXSubtreeMarkerContaining "project-workspace-current" "Not set"
   chooseRuntimeProjectWorkspaceViaOpenPanel "$UI_WORKSPACE"
