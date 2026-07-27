@@ -68,7 +68,7 @@ OUTPUT_CANONICAL="$(cd "$OUTPUT_DIR" && pwd -P)"
 case "$OUTPUT_CANONICAL/" in
   "$ROOT_CANONICAL/.tmp/"*|"$ROOT_CANONICAL/.build/"*)
     ;;
-  "$ROOT_CANONICAL/"*)
+  *)
     block "configuration" "unsafe-output-directory" 2
     ;;
 esac
@@ -87,6 +87,7 @@ PRIVATE_TMP="$PRIVATE_DIR/tmp"
 CAPTURE_EVIDENCE_FILE="$CURRENT_DIR/ui-screenshots.md"
 AX_RECEIPT="$CURRENT_DIR/visual-ax-audit-receipt.json"
 MANIFEST="$ROOT_DIR/docs/quality/visual-baseline-manifest.json"
+CI_MANIFEST="$CURRENT_DIR/visual-baseline-manifest.json"
 BASELINE_DIR="$ROOT_DIR/docs/quality/visual-baselines"
 TRACKED_EVIDENCE_BEFORE="$PRIVATE_DIR/tracked-evidence-before"
 TRACKED_EVIDENCE_AFTER="$PRIVATE_DIR/tracked-evidence-after"
@@ -140,6 +141,29 @@ if [[ "$MANIFEST_SCREENSHOT_COUNT" != "$EXPECTED_SCREENSHOT_COUNT" ]]; then
   block "configuration" "unexpected-baseline-count" 2
 fi
 
+# The checked-in manifest authenticates the baseline set, but its artifactRoot
+# points at release evidence. Stage a private copy whose root matches this
+# gate's isolated screenshot directory so capture and comparison share one
+# truthful runtime contract without mutating tracked provenance.
+if ! /bin/cp "$MANIFEST" "$CI_MANIFEST"; then
+  block "configuration" "private-manifest-copy-failed" 2
+fi
+SCREENSHOT_ARTIFACT_ROOT="${SCREENSHOT_DIR#"$ROOT_DIR/"}"
+if ! /usr/bin/plutil -replace artifactRoot -string "$SCREENSHOT_ARTIFACT_ROOT" "$CI_MANIFEST"; then
+  block "configuration" "private-manifest-update-failed" 2
+fi
+if [[ ! -f "$CI_MANIFEST" || -L "$CI_MANIFEST" ]]; then
+  block "configuration" "unsafe-private-manifest" 2
+fi
+CI_MANIFEST_PARENT="$(cd "$(dirname "$CI_MANIFEST")" && pwd -P)"
+case "$CI_MANIFEST_PARENT/" in
+  "$ROOT_CANONICAL/.tmp/"*|"$ROOT_CANONICAL/.build/"*)
+    ;;
+  *)
+    block "configuration" "unsafe-private-manifest" 2
+    ;;
+esac
+
 snapshot_tracked_evidence "$TRACKED_EVIDENCE_BEFORE"
 
 if ! run_logged capability \
@@ -162,6 +186,7 @@ if ! run_logged capture \
   SUISUI_UI_EVIDENCE_HOME="$PRIVATE_HOME" \
   SUISUI_UI_EVIDENCE_KEEP_HOME=0 \
   SUISUI_VISUAL_AX_AUDIT_RESULT="$AX_RECEIPT" \
+  SUISUI_VISUAL_BASELINE_MANIFEST="$CI_MANIFEST" \
   "$ROOT_DIR/script/capture_ui_evidence.sh"; then
   block "capture" "full-capture-failed"
 fi
@@ -183,7 +208,7 @@ fi
 # forwards either baseline-update switch supported by the lower-level checker.
 if ! run_logged compare \
   /usr/bin/env \
-  SUISUI_VISUAL_BASELINE_MANIFEST="$MANIFEST" \
+  SUISUI_VISUAL_BASELINE_MANIFEST="$CI_MANIFEST" \
   SUISUI_VISUAL_SCREENSHOT_DIR="$SCREENSHOT_DIR" \
   SUISUI_VISUAL_BASELINE_DIR="$BASELINE_DIR" \
   SUISUI_VISUAL_ARTIFACT_DIR="$DIFF_DIR" \

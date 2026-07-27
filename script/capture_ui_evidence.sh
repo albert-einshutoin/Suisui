@@ -201,10 +201,44 @@ if [[ "$MANIFEST_ARTIFACT_ROOT" != "$EXPECTED_ARTIFACT_ROOT" ]]; then
   exit 2
 fi
 
+validate_visual_ax_audit_result_path() {
+  local receipt_path="$SUISUI_VISUAL_AX_AUDIT_RESULT"
+  local receipt_parent
+  local receipt_parent_real
+
+  if [[ -L "$receipt_path" ]]; then
+    echo "BLOCKER: visual AX audit receipt must not be a symbolic link: $receipt_path" >&2
+    return 2
+  fi
+  if [[ -e "$receipt_path" && ! -f "$receipt_path" ]]; then
+    echo "BLOCKER: visual AX audit receipt must be a regular file when it exists: $receipt_path" >&2
+    return 2
+  fi
+
+  receipt_parent="$(dirname "$receipt_path")"
+  if [[ ! -d "$receipt_parent" ]]; then
+    echo "BLOCKER: visual AX audit receipt parent must be an existing directory: $receipt_parent" >&2
+    return 2
+  fi
+  if ! receipt_parent_real="$(cd "$receipt_parent" && pwd -P)"; then
+    echo "BLOCKER: visual AX audit receipt parent could not be resolved: $receipt_parent" >&2
+    return 2
+  fi
+  case "$receipt_parent_real/" in
+    "$ROOT_DIR_REAL/.tmp/"*|"$ROOT_DIR_REAL/.build/"*)
+      ;;
+    *)
+      echo "BLOCKER: visual AX audit receipt parent must resolve under the repository .tmp or .build directory" >&2
+      return 2
+      ;;
+  esac
+}
+
 # Any mode that can overwrite screenshot artifacts invalidates the previous
 # complete-run receipt up front. Otherwise a failed or partial recapture could
 # leave a still-fresh receipt that incorrectly authenticates a mixed image set.
 if [[ "$DRY_RUN" != "1" && "$DOCTOR" != "1" ]]; then
+  validate_visual_ax_audit_result_path || exit $?
   rm -f "$SUISUI_VISUAL_AX_AUDIT_RESULT"
 fi
 
@@ -2088,6 +2122,9 @@ fi
 
 write_visual_ax_audit_receipt() {
   local source_commit="$1"
+  # Revalidate immediately before the second removal so a path swapped during
+  # the long capture cannot redirect the end-of-run receipt write.
+  validate_visual_ax_audit_result_path || return $?
   rm -f "$SUISUI_VISUAL_AX_AUDIT_RESULT"
   /usr/bin/swiftc "$ROOT_DIR/script/write_visual_ax_audit_receipt.swift" -o "$AX_RECEIPT_WRITER"
   "$AX_RECEIPT_WRITER" \
