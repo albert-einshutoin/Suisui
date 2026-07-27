@@ -73,10 +73,11 @@ struct InboxWorkflowView: View {
             viewModel.ensureSelectedInboxTaskIsVisible()
         }
         .onChange(of: viewModel.selectedTaskID) { _, _ in
-            // A memo belongs to one selected capture; carrying it across Inbox
-            // selections risks saving a note onto the wrong item.
-            voiceMemoDraft = ""
-            voiceMemoCaptureID = nil
+            // Hydrate from the newly selected capture so this parent observer
+            // and the child capture observer converge regardless of call order.
+            let capture = viewModel.selectedInboxCaptureRecords.first
+            voiceMemoCaptureID = capture?.id
+            voiceMemoDraft = capture?.memo ?? ""
         }
     }
 
@@ -274,40 +275,8 @@ private struct InboxActionPanel: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-action-panel")
-        .accessibilityLabel(panelAccessibilityLabel)
-        .accessibilityValue(panelAccessibilityValue)
-        .accessibilityHint(panelAccessibilityHint)
-    }
-
-    private var panelAccessibilityLabel: String {
-        var values = ["Inbox classification actions"]
-        if let task {
-            values.append("Selected Inbox item \(task.title)")
-            if viewModel.selectedInboxCaptureRecords.first != nil {
-                values.append("Voice capture metadata available for \(task.title)")
-            }
-        }
-        return values.joined(separator: ", ")
-    }
-
-    private var panelAccessibilityValue: String {
-        guard let task else {
-            return "No Inbox item selected"
-        }
-        var values = ["Selected Inbox item: \(task.title)"]
-        let detail = normalizedInboxDetail(task.detail)
-        if !detail.isEmpty {
-            values.append(detail)
-        }
-        return values.joined(separator: ", ")
-    }
-
-    private var panelAccessibilityHint: String {
-        let base = "Choose how to classify the selected Inbox item."
-        guard let task, viewModel.selectedInboxCaptureRecords.first != nil else {
-            return base
-        }
-        return "\(base) Voice capture metadata available for \(task.title)."
+        .accessibilityLabel("Inbox classification actions")
+        .accessibilityHint("Choose how to classify the selected Inbox item.")
     }
 
     private var actionGridColumns: [GridItem] {
@@ -398,7 +367,7 @@ private struct InboxSelectedItemContext: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .accessibilityElement(children: .contain)
+        .accessibilityElement(children: .combine)
         .accessibilityIdentifier("inbox-selected-context")
     }
 }
