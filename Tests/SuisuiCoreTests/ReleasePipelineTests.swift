@@ -334,7 +334,13 @@ final class ReleasePipelineTests: XCTestCase {
         let packageScript = try readPackageFile("script/package_release.sh")
         let verifier = try readPackageFile("script/verify_release_environment.sh")
 
+        XCTAssertTrue(packageScript.contains("DMG_CODESIGN_ARGS=("))
+        XCTAssertTrue(packageScript.contains("codesign \"${DMG_CODESIGN_ARGS[@]}\" \"$DMG_PATH\""))
         XCTAssertTrue(packageScript.contains("notarize_release_dmg.sh\" \"$DMG_PATH\""))
+        XCTAssertLessThan(
+            try XCTUnwrap(packageScript.range(of: "codesign \"${DMG_CODESIGN_ARGS[@]}\" \"$DMG_PATH\"")).lowerBound,
+            try XCTUnwrap(packageScript.range(of: "notarize_release_dmg.sh\" \"$DMG_PATH\"")).lowerBound
+        )
         XCTAssertLessThan(
             try XCTUnwrap(packageScript.range(of: "notarize_release_dmg.sh\" \"$DMG_PATH\"")).lowerBound,
             try XCTUnwrap(packageScript.range(of: "create_checksum \"$DMG_PATH\"")).lowerBound
