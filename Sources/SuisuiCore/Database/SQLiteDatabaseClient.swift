@@ -1976,6 +1976,28 @@ public enum CoreMigrations {
                     """
                 )
             },
+            // "Waiting on someone else" is the most common way solo work stops,
+            // and it was invisible: it is not the user's next action so it never
+            // reached Today, it is not past due so it never reached Overdue, and
+            // it is not finished so it never reached Completed. `blocked` was a
+            // status with no counterparty and no start date, which cannot answer
+            // "who owes me this, and for how long".
+            DatabaseMigration(id: "0030_add_task_waiting_on") { connection in
+                let columns = try connection.queryRows("PRAGMA table_info(tasks);").compactMap { $0["name"] }
+                if !columns.contains("waiting_on") {
+                    try connection.execute("ALTER TABLE tasks ADD COLUMN waiting_on TEXT;")
+                }
+                if !columns.contains("waiting_since") {
+                    try connection.execute("ALTER TABLE tasks ADD COLUMN waiting_since TEXT;")
+                }
+                try connection.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_tasks_waiting_on
+                    ON tasks(waiting_on)
+                    WHERE waiting_on IS NOT NULL;
+                    """
+                )
+            },
         ]
     }
 }

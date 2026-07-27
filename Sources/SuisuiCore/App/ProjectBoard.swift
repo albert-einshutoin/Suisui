@@ -7592,6 +7592,45 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    /// Tasks this user is waiting on someone else for, longest wait first.
+    ///
+    /// Derived rather than stored: waiting is a property of individual tasks,
+    /// and the whole point is that these rows appear nowhere else. They are not
+    /// the user's next action so Today skips them, they are not past due so
+    /// Overdue skips them, and they are not finished so Completed skips them.
+    public var waitingTasks: [ProjectBoardTask] {
+        snapshot.projects
+            .filter { !$0.isArchived }
+            .flatMap(\.tasks)
+            .filter(\.isWaiting)
+            .sorted { lhs, rhs in
+                let lhsDays = lhs.waitingDayCount() ?? -1
+                let rhsDays = rhs.waitingDayCount() ?? -1
+                if lhsDays == rhsDays {
+                    return lhs.id < rhs.id
+                }
+                return lhsDays > rhsDays
+            }
+    }
+
+    /// Records or clears who the given task is waiting on. Passing nil or blank
+    /// text ends the wait and clears the elapsed clock.
+    public func setTaskWaiting(taskID: Int64, waitingOn: String?) {
+        beginRecoverableOperation(taskID: taskID)
+        do {
+            _ = try store.setTaskWaiting(id: taskID, waitingOn: waitingOn)
+            load()
+            selectedTaskID = taskID
+            onChange()
+        } catch {
+            recordFailure(
+                .saveFailed(Self.userFacingMessage(for: error)),
+                taskID: taskID,
+                retryAction: nil
+            )
+        }
+    }
+
     public func updateSelectedTask(
         title: String,
         detail: String,

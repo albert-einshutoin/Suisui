@@ -1980,3 +1980,16 @@
 "Review and Run" = "Review and Run";
 "Deliver" = "Deliver";
 "Tell Suisui what you promised someone. It drafts the work, you review and approve it, and Suisui keeps the receipts until the job is delivered." = "Tell Suisui what you promised someone. It drafts the work, you review and approve it, and Suisui keeps the receipts until the job is delivered.";
+
+/* Waiting-on surface. */
+"Waiting on" = "Waiting on";
+"Waiting on (%d)" = "Waiting on (%d)";
+"Who or what are you waiting for?" = "Who or what are you waiting for?";
+"Records that this task is blocked on someone else. It then appears in Today's Waiting on list." = "Records that this task is blocked on someone else. It then appears in Today's Waiting on list.";
+"Since" = "Since";
+"Save Waiting" = "Save Waiting";
+"No Longer Waiting" = "No Longer Waiting";
+"Ends the wait and removes this task from Today's Waiting on list." = "Ends the wait and removes this task from Today's Waiting on list.";
+"Opens the task so you can follow up or clear the wait." = "Opens the task so you can follow up or clear the wait.";
+"%d day" = "%d day";
+"%d days" = "%d days";

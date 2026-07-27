@@ -245,3 +245,47 @@ Partner 20人）を基準に前回の指摘を組み替えた結果の修正。�
 Outcomeまで追跡されない」は**仮説の正否にかかわらず必ず成立する**。4週間の計測を
 始める前に、「待ち」または「納品/検収」のいずれかを押せるボタンとして実装する必要が
 ある。
+
+## Waiting-on 導線 (2026-07-27, 第3弾)
+
+戦略レビューで「最優先の欠落」と判定した**「待ち」の可視化**を実装した。
+
+### 問題
+
+受託開発者にとって最頻の停止状態は「顧客の返事待ち」だが、これは製品上どこにも
+出なかった。
+
+- 自分の次のアクションではない → **Today に出ない**
+- 期限超過ではない → **Overdue に出ない**
+- 完了でもない → **Completed に出ない**
+
+`blocked` はステータス値でしかなく、相手も待ち開始日も持てないため、「誰が・
+どれだけの期間、何を滞留させているか」に答えられなかった。
+
+### 実装
+
+| 層 | 内容 |
+| --- | --- |
+| Schema | migration `0026_add_task_waiting_on`（`tasks.waiting_on` / `tasks.waiting_since` + 部分index） |
+| Model | `ProjectBoardTask.waitingOn` / `.waitingSince` / `.isWaiting` / `.waitingDayCount(on:calendar:)` |
+| Store | `ProjectBoardStore.setTaskWaiting(id:waitingOn:)`。`waiting_since` は待ち開始時のみ `COALESCE` で刻印し、無関係な保存で時計をリセットしない |
+| ViewModel | `ProjectBoardViewModel.waitingTasks`（待ちが長い順）、`setTaskWaiting(taskID:waitingOn:)` |
+| UI | Today の `TodayWaitingPanel`（相手・プロジェクト・経過日数、3日以上でattentionトーン）、Task inspector の `Waiting` セクション |
+
+### 設計判断
+
+- **`status` とは独立**にした。進行中でもレビュー待ちはあり得るし、`blocked` は
+  相手のいない技術的ブロッカーを指すこともある。両者を同一視しない。
+- **待ちの保存は Save Changes と分離**した。待ちの開始・解除は数秒の思いつきで
+  起きるので、編集途中の他フィールドを巻き込んだり失ったりしてはいけない。
+- **`waitingOn` は自由テキスト**。Person / Client エンティティはまだ存在せず、
+  個人利用者の相手は多くの場合DBの行ではなく名前や社名である。
+- **経過日数が不明なら何も言わない**。`waiting_since` が無い/壊れている場合は
+  `nil` を返し、知らない期間をUIに主張させない。
+
+### 計測上の注意（更新）
+
+前回「Outcomeを追跡する導線がないため撤退条件が必ず成立する」と記録したが、
+`Waiting on` の設定・解除は**押せるボタンとして存在するようになった**。4週間の
+計測では、Task生成数だけでなく `setTaskWaiting` の利用と待ちの解除率を見ること。
+納品/検収の状態は引き続き未実装。

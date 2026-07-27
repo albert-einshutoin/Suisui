@@ -18,8 +18,8 @@ workflow cannot grow the top level again:
 
 - **Projects hub** (`ProjectBoardProjectsHubView.swift`): Portfolio, Smart
   Lists, Active / Completed / Archived projects.
-- **Review hub** (`ProjectBoardReviewHubView.swift`): Plan → Schedule; Work →
-  Completed; Automation → Automation Activity, Assistant Queue.
+- **Review hub** (`ProjectBoardReviewHubView.swift`): Approve and Run →
+  Assistant Queue; Plan → Schedule; Work → Completed, Execution Record.
 
 Both hubs render a second list beside the detail above
 `ProjectBoardHubPresentationPolicy.wideMinimumWidth` (1100 pt) and collapse to
@@ -63,8 +63,8 @@ Owns:
 Does not do: execution. `VoiceCaptureViewModel.approveAssistantQueueItem`
 only advances queue state and persists it; running an approved item happens
 in the Project Board's Assistant Queue view. The capture placeholder states
-the boundary: "Inbox captures stay local. Plans wait in Assistant Queue
-before execution."
+the boundary: "Inbox captures stay local. Plans wait in Review › Assistant
+Queue before execution."
 
 ### Settings window
 
@@ -213,5 +213,13 @@ notification is currently the entire feature.
   ("Review › Assistant Queue") so the destination is at least findable, but
   the split itself is still an open product decision.
 - **Assistant Queue is two levels deep.** It is the terminal step of the
-  headline voice flow yet sits under Review → Automation. Nothing in the
-  top-level sidebar names it.
+  headline voice flow. It now leads the Review hub under "Approve and Run",
+  but nothing in the top-level sidebar names it.
+- **Waiting has no destination of its own.** Tasks waiting on someone else
+  surface as a panel inside Today (`TodayWaitingPanel`), set from the task
+  inspector's Waiting section. This is deliberate for now: a wait should be
+  seen on the surface a user already opens daily, not behind another click.
+  If the list outgrows the panel it needs a real destination.
+- **Waiting has no counterparty entity.** `ProjectBoardTask.waitingOn` is free
+  text. There is no Person or Client record to link to, so nothing aggregates
+  waits by who owes them.

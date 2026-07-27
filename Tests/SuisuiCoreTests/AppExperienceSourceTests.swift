@@ -1849,6 +1849,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(workflowSource.contains("done-best-weekday-summary"))
         XCTAssertFalse(workflowSource.contains("done-best-hour-summary"))
         XCTAssertFalse(workflowSource.contains("DoneStatTile(title: \"Streak\""))
+
+        // Waiting work has to reach Today. It is the only surface a solo user
+        // opens daily, and a wait appears on no other one.
+        XCTAssertTrue(workflowSource.contains("TodayWaitingPanel("))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-waiting-panel\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-waiting-task-\\(task.id)\")"))
+        XCTAssertTrue(workflowSource.contains("viewModel.waitingTasks"))
+
+        let inspectorSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardInspectors.swift")
+        XCTAssertTrue(inspectorSource.contains(".accessibilityIdentifier(\"task-inspector-waiting-on\")"))
+        XCTAssertTrue(inspectorSource.contains(".accessibilityIdentifier(\"task-inspector-waiting-save\")"))
+        XCTAssertTrue(inspectorSource.contains(".accessibilityIdentifier(\"task-inspector-waiting-clear\")"))
+        XCTAssertTrue(inspectorSource.contains("viewModel.setTaskWaiting(taskID:"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-follow-up-task-\\(task.id)\")"))
         XCTAssertTrue(workflowSource.contains("viewModel.enqueueDoneFollowUpDraft(for: task.id)"))
         XCTAssertTrue(workflowSource.contains("private struct DoneTaskHistoryActions"))

@@ -1997,3 +1997,16 @@
 "Review and Run" = "確認して実行";
 "Deliver" = "納品";
 "Tell Suisui what you promised someone. It drafts the work, you review and approve it, and Suisui keeps the receipts until the job is delivered." = "誰に何を約束したかを話してください。Suisuiが作業を下書きし、あなたが確認して承認します。納品が終わるまでの記録はSuisuiが残します。";
+
+/* Waiting-on surface. */
+"Waiting on" = "待っている相手";
+"Waiting on (%d)" = "待ち（%d）";
+"Who or what are you waiting for?" = "誰の・何の返答を待っていますか？";
+"Records that this task is blocked on someone else. It then appears in Today's Waiting on list." = "このタスクが他者待ちであることを記録します。Todayの「待ち」に表示されます。";
+"Since" = "開始";
+"Save Waiting" = "待ちを保存";
+"No Longer Waiting" = "待ちを解除";
+"Ends the wait and removes this task from Today's Waiting on list." = "待ちを終了し、Todayの「待ち」から外します。";
+"Opens the task so you can follow up or clear the wait." = "タスクを開いて、催促するか待ちを解除できます。";
+"%d day" = "%d 日";
+"%d days" = "%d 日";

@@ -18,6 +18,10 @@ public struct TodayFeatureState: Equatable {
     public var commandFeedback: String?
     public var scheduleDraft: TodayScheduleDraft?
     public var dailyPlanningReview: DailyPlanningReview?
+    /// Work that is stopped because someone else owes something. Today is the
+    /// only surface a solo user opens daily, so this is where a wait has to
+    /// become visible.
+    public var waitingTasks: [ProjectBoardTask]
 }
 
 @MainActor
@@ -33,6 +37,7 @@ public final class TodayFeatureViewModel: ObservableObject {
     public var commandFeedback: String? { state.commandFeedback }
     public var scheduleDraft: TodayScheduleDraft? { state.scheduleDraft }
     public var dailyPlanningReview: DailyPlanningReview? { state.dailyPlanningReview }
+    public var waitingTasks: [ProjectBoardTask] { state.waitingTasks }
 
     private let board: ProjectBoardViewModel
     private var observations: Set<AnyCancellable> = []
@@ -199,7 +204,8 @@ public final class TodayFeatureViewModel: ObservableObject {
             selectedTaskID: board.selectedTaskID,
             commandFeedback: board.todayCommandFeedback,
             scheduleDraft: board.todayScheduleDraft,
-            dailyPlanningReview: board.dailyPlanningReview
+            dailyPlanningReview: board.dailyPlanningReview,
+            waitingTasks: board.waitingTasks
         )
     }
 

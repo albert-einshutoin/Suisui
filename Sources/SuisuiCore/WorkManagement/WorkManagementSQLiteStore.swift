@@ -200,6 +200,19 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     }
 
     @discardableResult
+    public func setTaskWaiting(id: Int64, waitingOn: String?) throws -> ProjectBoardTask {
+        let trimmed = waitingOn?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let update: NullableFieldUpdate<String>
+        if let trimmed, !trimmed.isEmpty {
+            update = .set(trimmed)
+        } else {
+            update = .clear
+        }
+        let record = try taskStore.updateFields(id: id, waitingOn: update)
+        return try makeBoardTask(record).requiredTask()
+    }
+
+    @discardableResult
     public func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask {
         let current = try taskStore.get(id: id)
         let projectID = try current.projectID ?? ensureActiveInboxProject().id
@@ -575,7 +588,9 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             dueAt: record.dueAt,
             completedAt: record.completedAt,
             updatedAt: record.updatedAt,
-            recurrence: record.recurrence
+            recurrence: record.recurrence,
+            waitingOn: record.waitingOn,
+            waitingSince: record.waitingSince
         )
     }
 
