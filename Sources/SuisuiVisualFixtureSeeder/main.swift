@@ -79,17 +79,17 @@ private enum SecureEvidenceHomeOperation {
             throw SeederError.invalidPath("unable to create isolated HOME ownership marker")
         }
         defer { close(markerDescriptor) }
-        guard fchmod(markerDescriptor, S_IRUSR | S_IWUSR) == 0 else {
-            throw SeederError.invalidPath(
-                "unable to enforce private isolated HOME marker permissions"
-            )
-        }
         defer {
             if shouldRemoveCreatedHome {
                 _ = markerName.withCString { marker in
                     unlinkat(homeDescriptor, marker, 0)
                 }
             }
+        }
+        guard fchmod(markerDescriptor, S_IRUSR | S_IWUSR) == 0 else {
+            throw SeederError.invalidPath(
+                "unable to enforce private isolated HOME marker permissions"
+            )
         }
         try writeAll(
             Data("suisui-ui-evidence-home-v1:\(markerToken)\n".utf8),
