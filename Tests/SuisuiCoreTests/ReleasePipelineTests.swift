@@ -9227,6 +9227,37 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(scrollHelper.contains("SUISUI_UI_EVIDENCE_AX_MAX_NODES"))
     }
 
+    func testScheduleWorkloadVisualCaptureKeepsDeterministicInitialScrollPosition() throws {
+        let captureScript = try readPackageFile("script/capture_ui_evidence.sh")
+        let workloadCaptureCalls = captureScript
+            .split(separator: "\n")
+            .map(String.init)
+            .filter {
+                $0.contains("capture_project_board_destination")
+                    && $0.contains("Schedule workload dashboard")
+            }
+
+        XCTAssertEqual(workloadCaptureCalls.count, 4)
+        for captureCall in workloadCaptureCalls {
+            XCTAssertTrue(
+                captureCall.contains(
+                    "\"$SCHEDULE_WORKLOAD_TARGET_MARKERS\" \"\" \"\" "
+                        + "\"schedule-workload-attention-banner\" "
+                        + "\"$SCHEDULE_WORKLOAD_DETAIL_MARKERS\" workload"
+                ),
+                "Schedule Workload must capture the initial top position while auditing its visible attention banner."
+            )
+            XCTAssertFalse(
+                captureCall.contains("\"schedule-workload-day-detail\""),
+                "A partially visible descendant must not choose a host-dependent scroll offset."
+            )
+            XCTAssertFalse(
+                captureCall.hasSuffix(" schedule-workflow"),
+                "Coarse wheel scrolling is event-coalescing dependent across macOS runners."
+            )
+        }
+    }
+
     func testVisualRegressionSmokeBlocksSmallBlackAndLowInformationImages() throws {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-visual-regression-smoke-blockers", isDirectory: true)
