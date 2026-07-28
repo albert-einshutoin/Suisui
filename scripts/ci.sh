@@ -286,8 +286,32 @@ run_runtime_gates() {
 }
 
 run_visual_gates() {
-  SUISUI_CI_VISUAL_GATE_OUTPUT_DIR="$CI_ARTIFACT_ROOT/ui-visual" \
-    ./script/check_ci_visual_gate.sh
+  local requested_locale="${SUISUI_CI_VISUAL_GATE_LOCALE:-}"
+  local locales=()
+  local locale
+
+  if [[ -n "$requested_locale" ]]; then
+    case "$requested_locale" in
+      en-US|ja-JP)
+        locales=("$requested_locale")
+        ;;
+      *)
+        printf 'failure_category=configuration\n' >&2
+        printf 'failure_reason=unsupported-visual-gate-locale\n' >&2
+        return 2
+        ;;
+    esac
+  else
+    # Local/release callers exercise the same bilingual contract as hosted CI.
+    # Hosted CI supplies one matrix locale so both captures can run in parallel.
+    locales=("en-US" "ja-JP")
+  fi
+
+  for locale in "${locales[@]}"; do
+    SUISUI_CI_VISUAL_GATE_LOCALE="$locale" \
+    SUISUI_CI_VISUAL_GATE_OUTPUT_DIR="$CI_ARTIFACT_ROOT/ui-visual/$locale" \
+      ./script/check_ci_visual_gate.sh
+  done
 }
 
 sanitize_gate_log() {

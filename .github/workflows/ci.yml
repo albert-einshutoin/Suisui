@@ -41,7 +41,7 @@ jobs:
     outputs:
       strategy: ${{ steps.plan_outputs.outputs.strategy }}
       ui_runtime: ${{ steps.plan_outputs.outputs.ui_runtime }}
-      ui_visual: ${{ steps.plan_outputs.outputs.ui_visual }}
+      ui_visual_state: ${{ steps.normalize_visual_selection.outputs.state }}
       ui_performance: ${{ steps.plan_outputs.outputs.ui_performance }}
       fallback_reason: ${{ steps.plan_outputs.outputs.fallback_reason }}
     steps:
@@ -105,6 +105,29 @@ jobs:
               echo "fallback_reason=plan exporter failed"
             } >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Normalize visual selection
+        id: normalize_visual_selection
+        if: always()
+        env:
+          RAW_VISUAL_SELECTION: ${{ steps.plan_outputs.outputs.ui_visual }}
+        run: |
+          # GitHub expression string comparisons ignore case. Convert the
+          # trusted lowercase selector to a numeric state once so the matrix
+          # condition and Bash aggregator cannot disagree on FALSE/False.
+          case "$RAW_VISUAL_SELECTION" in
+            false)
+              visual_selection_state=0
+              ;;
+            true)
+              visual_selection_state=1
+              ;;
+            *)
+              visual_selection_state=2
+              ;;
+          esac
+          printf 'state=%s\n' "$visual_selection_state" >> "$GITHUB_OUTPUT"
+          printf 'visual_selection_state=%s\n' "$visual_selection_state"
 
       - name: Upload strategy and execution history
         if: always()
@@ -206,14 +229,20 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
-  ui-visual:
-    name: UI Visual (live baseline)
+  ui-visual-locales:
+    name: UI Visual (live baseline) (${{ matrix.locale }})
     needs:
       - test_strategy
       - full_validation
-    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_visual == 'true') }}
+    # An unavailable or malformed selector result is not permission to skip.
+    # Only an explicit false decision may omit the expensive visual matrix.
+    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_visual_state != '0') }}
     runs-on: macos-26
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        locale: [en-US, ja-JP]
     steps:
       - name: Checkout tested revision
         uses: actions/checkout@v4
@@ -234,6 +263,7 @@ jobs:
       - name: Capture and compare live UI
         env:
           SUISUI_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
+          SUISUI_CI_VISUAL_GATE_LOCALE: ${{ matrix.locale }}
           SUISUI_VISUAL_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}
         run: ./scripts/ci.sh ui-visual
 
@@ -241,11 +271,53 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ui-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ui-visual-${{ matrix.locale }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: .tmp/ci-artifacts/ui-visual
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 7
+
+  ui-visual:
+    # Preserve the established required-check context while the locale matrix
+    # provides independent evidence. This aggregator fails unless every
+    # required locale completed successfully.
+    name: UI Visual (live baseline)
+    needs:
+      - test_strategy
+      - full_validation
+      - ui-visual-locales
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Aggregate locale visual gates
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          VISUAL_SELECTION_STATE: ${{ needs.test_strategy.outputs.ui_visual_state }}
+          LOCALE_VISUAL_RESULT: ${{ needs.ui-visual-locales.result }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            case "$VISUAL_SELECTION_STATE" in
+              1)
+                ;;
+              0)
+                echo "status=not-required"
+                exit 0
+                ;;
+              *)
+                echo "failure_category=configuration" >&2
+                echo "failure_reason=visual-selection-result-invalid" >&2
+                exit 1
+                ;;
+            esac
+          fi
+          if [[ "$LOCALE_VISUAL_RESULT" != "success" ]]; then
+            echo "failure_category=visual" >&2
+            echo "failure_reason=locale-visual-gate-did-not-succeed" >&2
+            exit 1
+          fi
+          echo "status=passed"
+          echo "locales=en-US,ja-JP"
 
   ui-performance:
     name: UI Performance (production route)

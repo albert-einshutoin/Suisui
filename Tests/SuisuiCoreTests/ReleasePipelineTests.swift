@@ -8647,15 +8647,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("runtime mock/fake/fixture scan failed"))
         XCTAssertTrue(script.contains("section \"UI screenshot evidence\""))
         XCTAssertTrue(script.contains("docs/release/evidence/ui-screenshots.md"))
-        XCTAssertTrue(script.contains("project-board-light.png"))
+        XCTAssertTrue(script.contains("visual_manifest_artifact_rows"))
+        XCTAssertTrue(script.contains("EXPECTED_UI_SCREENSHOT_COUNT=39"))
         XCTAssertTrue(script.contains("inbox-voice-light.png"))
         XCTAssertTrue(script.contains("projects-overview-light.png"))
         XCTAssertTrue(script.contains("schedule-light.png"))
         XCTAssertTrue(script.contains("done-light.png"))
         XCTAssertTrue(script.contains("settings-integrations-light.png"))
-        XCTAssertTrue(script.contains("settings-overview-light.png"))
-        XCTAssertTrue(script.contains("settings-appearance-light.png"))
-        XCTAssertTrue(script.contains("settings-mcp-light.png"))
+        XCTAssertTrue(script.contains("visual manifest expected"))
+        XCTAssertTrue(script.contains("visual manifest artifact must be a safe PNG basename"))
+        XCTAssertTrue(script.contains("visual manifest artifact names must be unique"))
         XCTAssertTrue(script.contains("sips -g pixelWidth -g pixelHeight"))
         XCTAssertTrue(script.contains("assert_screenshot_has_visible_content"))
         XCTAssertTrue(script.contains("ui_evidence_content_check.swift"))
@@ -8664,7 +8665,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("UI screenshot evidence is missing source commit"))
         XCTAssertTrue(script.contains("UI screenshot evidence source commit does not match current UI source commit"))
         XCTAssertTrue(script.contains("UI screenshot appears blank or too low contrast"))
-        XCTAssertTrue(script.contains("missing UI screenshot file"))
+        XCTAssertTrue(script.contains("missing or invalid $locale_name UI screenshot file"))
         XCTAssertTrue(script.contains("UI screenshot is unexpectedly small"))
         XCTAssertTrue(script.contains("NEXT: run script/capture_ui_evidence.sh --doctor"))
         XCTAssertTrue(script.contains("then run script/capture_ui_evidence.sh on a visible macOS session with Screen Recording permission"))
@@ -9084,6 +9085,7 @@ final class ReleasePipelineTests: XCTestCase {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
         let helper = try readPackageFile("script/write_visual_ax_audit_receipt.swift")
         let frameAuditor = try readPackageFile("script/ui_evidence_ax_target_frame_audit.swift")
+        let seeder = try readPackageFile("Sources/SuisuiVisualFixtureSeeder/main.swift")
         let health = try XCTUnwrap(script.range(of: "assert_screenshot_has_visible_content"))
         let bytes = try XCTUnwrap(script.range(of: "bytes=\"$(wc -c"))
         let digest = try XCTUnwrap(script.range(of: "shasum -a 256"))
@@ -9117,9 +9119,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Sources Package.swift script/capture_ui_evidence.sh"))
         XCTAssertTrue(script.contains("assert_visual_product_source_is_committed"))
         XCTAssertFalse(script.contains("SUISUI_ALLOW_DIRTY_VISUAL_PRODUCT_SOURCE"))
-        XCTAssertTrue(script.contains("today=\"$(/bin/date -j -u -f"))
-        XCTAssertTrue(script.contains("tomorrow=\"$(/bin/date -j -u -v+1d -f"))
-        XCTAssertTrue(script.contains("yesterday=\"$(/bin/date -j -u -v-1d -f"))
+        XCTAssertTrue(seeder.contains("calendar.date(byAdding: .day, value: 1, to: referenceInstant)"))
+        XCTAssertTrue(seeder.contains("calendar.date(byAdding: .day, value: -1, to: referenceInstant)"))
+        XCTAssertTrue(seeder.contains("let today = dayFormatter.string(from: referenceInstant)"))
         XCTAssertTrue(script.contains("\"$EVIDENCE_RECEIPT_LOCALE\""))
         XCTAssertTrue(script.contains("\"$EVIDENCE_TIME_ZONE\""))
         XCTAssertTrue(script.contains("\"$EVIDENCE_REFERENCE_INSTANT\""))
@@ -9128,9 +9130,7 @@ final class ReleasePipelineTests: XCTestCase {
         let firstCapture = try XCTUnwrap(script.range(of: "capture_project_board_destination light inbox"))
         XCTAssertLessThan(invalidateReceipt.lowerBound, firstCapture.lowerBound)
         let dirtySourceGate = try XCTUnwrap(
-            script.range(
-                of: "assert_visual_product_source_is_committed\n\nswift build --package-path \"$ROOT_DIR\" --product SuisuiVisualFixtureSeeder"
-            )
+            script.range(of: "assert_visual_product_source_is_committed\n")
         )
         XCTAssertLessThan(dirtySourceGate.lowerBound, firstCapture.lowerBound)
         XCTAssertTrue(script.contains("rm -f \"$AX_CAPTURE_RECEIPT_TSV\""))
@@ -9155,6 +9155,7 @@ final class ReleasePipelineTests: XCTestCase {
         let manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: manifestData) as? [String: Any])
         let screens = try XCTUnwrap(manifest["screens"] as? [[String: Any]])
         let captureScript = try readPackageFile("script/capture_ui_evidence.sh")
+        let seeder = try readPackageFile("Sources/SuisuiVisualFixtureSeeder/main.swift")
         let scrollHelper = try readPackageFile("script/ui_evidence_ax_scroll_to.swift")
 
         for screen in screens {
@@ -9208,9 +9209,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("\"schedule-workload-attention-banner\""))
         XCTAssertTrue(captureScript.contains("capture_settings_sync light \"$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT\""))
         XCTAssertTrue(captureScript.contains("capture_settings_sync dark \"$SETTINGS_INTEGRATIONS_DARK_SCREENSHOT\""))
-        XCTAssertTrue(captureScript.contains("'Review captured note', 'backlog'"))
-        XCTAssertTrue(captureScript.contains("'./fixtures/mcp-workspace'"))
-        XCTAssertFalse(captureScript.contains("'$ROOT_DIR'"))
+        XCTAssertTrue(seeder.contains("\"Review captured note\","))
+        XCTAssertTrue(seeder.contains("'./fixtures/mcp-workspace'"))
+        XCTAssertFalse(seeder.contains("'$ROOT_DIR'"))
         XCTAssertTrue(captureScript.contains("capture_settings_overview system"))
         XCTAssertTrue(captureScript.contains("capture_settings_appearance system"))
         XCTAssertTrue(captureScript.contains("capture_mcp_settings_appearance system"))
@@ -9540,6 +9541,68 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertEqual(result.exitCode, 0, result.output)
         XCTAssertTrue(result.output.contains("visual regression smoke passed"), result.output)
+    }
+
+    func testVisualRegressionRasterOnlyModeBlocksChangedEvidenceWithoutAXReceipt() throws {
+        let fixture = try makeVisualRegressionFixture(includeAudit: false)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let baselineURL = fixture.baseline.appendingPathComponent("project-board-light.png")
+        let originalBaseline = try Data(contentsOf: baselineURL)
+
+        let matchingResult = try runScript(
+            "script/check_visual_regression_smoke.sh",
+            arguments: [
+                "--manifest", fixture.manifest.path,
+                "--screenshot-dir", fixture.current.path,
+                "--baseline-dir", fixture.baseline.path,
+                "--artifact-dir", fixture.artifacts.path,
+                "--current-source-commit", "fixture-commit",
+                "--raster-only"
+            ]
+        )
+        XCTAssertEqual(matchingResult.exitCode, 0, matchingResult.output)
+        XCTAssertTrue(matchingResult.output.contains("mode: raster-only"), matchingResult.output)
+
+        try writeChangedVisiblePNG(
+            to: fixture.current.appendingPathComponent("project-board-light.png"),
+            width: 800,
+            height: 600,
+            trailingBytes: 60_000
+        )
+        let changedResult = try runScript(
+            "script/check_visual_regression_smoke.sh",
+            arguments: [
+                "--manifest", fixture.manifest.path,
+                "--screenshot-dir", fixture.current.path,
+                "--baseline-dir", fixture.baseline.path,
+                "--artifact-dir", fixture.artifacts.path,
+                "--current-source-commit", "fixture-commit",
+                "--raster-only"
+            ]
+        )
+        XCTAssertNotEqual(changedResult.exitCode, 0, changedResult.output)
+        XCTAssertTrue(
+            changedResult.output.contains("visual raster comparison failed"),
+            changedResult.output
+        )
+        XCTAssertEqual(try Data(contentsOf: baselineURL), originalBaseline)
+
+        let mutationAttempt = try runScript(
+            "script/check_visual_regression_smoke.sh",
+            arguments: [
+                "--manifest", fixture.manifest.path,
+                "--screenshot-dir", fixture.current.path,
+                "--baseline-dir", fixture.baseline.path,
+                "--artifact-dir", fixture.artifacts.path,
+                "--current-source-commit", "fixture-commit",
+                "--raster-only",
+                "--update-baselines",
+                "--allow-update"
+            ]
+        )
+        XCTAssertNotEqual(mutationAttempt.exitCode, 0, mutationAttempt.output)
+        XCTAssertTrue(mutationAttempt.output.contains("read-only"), mutationAttempt.output)
+        XCTAssertEqual(try Data(contentsOf: baselineURL), originalBaseline)
     }
 
     func testVisualRegressionSmokeRejectsScreenshotDigestMismatchInNormalAndUpdateModes() throws {
@@ -12215,7 +12278,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("== UI screenshot evidence =="))
-        XCTAssertTrue(result.output.contains("missing UI screenshot file: docs/release/evidence/ui-screenshots/project-board-light.png"))
+        XCTAssertTrue(result.output.contains("missing or invalid English visual capture manifest"))
         XCTAssertTrue(result.output.contains("NEXT: run script/capture_ui_evidence.sh --doctor"))
         XCTAssertTrue(result.output.contains("then run script/capture_ui_evidence.sh on a visible macOS session with Screen Recording permission"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
@@ -12346,8 +12409,13 @@ final class ReleasePipelineTests: XCTestCase {
             .appendingPathComponent("docs", isDirectory: true)
             .appendingPathComponent("release", isDirectory: true)
             .appendingPathComponent("evidence", isDirectory: true)
+        let qualityDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("quality", isDirectory: true)
         let englishScreenshotDirectory = evidenceDirectory.appendingPathComponent("ui-screenshots", isDirectory: true)
         let japaneseScreenshotDirectory = evidenceDirectory.appendingPathComponent("ui-screenshots-ja", isDirectory: true)
+        let englishBaselineDirectory = qualityDirectory.appendingPathComponent("visual-baselines", isDirectory: true)
+        let japaneseBaselineDirectory = qualityDirectory.appendingPathComponent("visual-baselines-ja", isDirectory: true)
         let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
         let captureURL = scriptDirectory.appendingPathComponent("capture_ui_evidence.sh")
         let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
@@ -12357,6 +12425,8 @@ final class ReleasePipelineTests: XCTestCase {
         try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: englishScreenshotDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: japaneseScreenshotDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: englishBaselineDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: japaneseBaselineDirectory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixtureRoot) }
 
         for targetName in ["SuisuiCore", "SuisuiApp", "SuisuiCLI"] {
@@ -12401,6 +12471,46 @@ final class ReleasePipelineTests: XCTestCase {
         let currentFullCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "HEAD"])
             .output.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        for (
+            locale,
+            artifactRoot,
+            baselineRoot,
+            manifestName
+        ) in [
+            (
+                "en-US",
+                "docs/release/evidence/ui-screenshots",
+                "docs/quality/visual-baselines",
+                "visual-baseline-manifest.json"
+            ),
+            (
+                "ja-JP",
+                "docs/release/evidence/ui-screenshots-ja",
+                "docs/quality/visual-baselines-ja",
+                "visual-baseline-manifest-ja.json"
+            )
+        ] {
+            try """
+            {
+              "schemaVersion": 2,
+              "artifactRoot": "\(artifactRoot)",
+              "baselineRoot": "\(baselineRoot)",
+              "baselineContext": {
+                "sourceCommit": "\(currentFullCommit)",
+                "normalRoute": "normal",
+                "locale": "\(locale)",
+                "timeZoneIdentifier": "UTC",
+                "referenceInstant": "2026-07-10T12:00:00Z"
+              },
+              "screens": []
+            }
+            """.write(
+                to: qualityDirectory.appendingPathComponent(manifestName),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
+
         try """
         # UI Screenshot Evidence
 
@@ -12408,12 +12518,21 @@ final class ReleasePipelineTests: XCTestCase {
 
         - Generated at: `2026-07-28T00:00:00Z`
         - Source commit: `\(staleShortCommit)`
-        - Runtime context: locale `ja-JP`, timezone `UTC`, reference instant `2026-07-10T12:00:00Z`
+        - Runtime context: locale `ja-JP`, timezone `Asia/Tokyo`, reference instant `2026-07-11T12:00:00Z`
+        - Launch mode: normal `ProjectBoardView` route
         """.write(to: evidenceDirectory.appendingPathComponent("ui-screenshots.md"), atomically: true, encoding: .utf8)
         try """
         {
           "sourceCommit": "\(staleFullCommit)",
-          "locale": "ja-JP"
+          "locale": "ja-JP",
+          "timeZoneIdentifier": "Asia/Tokyo",
+          "referenceInstant": "2026-07-11T12:00:00Z",
+          "sourceManifest": "docs/quality/visual-baseline-manifest.json",
+          "screenshotDirectory": "docs/release/evidence/ui-screenshots",
+          "mainViewport": "999x999",
+          "settingsViewport": "720x676",
+          "voiceCommandViewport": "760x640",
+          "comparison": "bytewise"
         }
         """.write(
             to: englishScreenshotDirectory.appendingPathComponent("visual-baseline-capture-manifest.json"),
@@ -12427,7 +12546,8 @@ final class ReleasePipelineTests: XCTestCase {
 
         - Generated at: `2026-07-28T00:00:00Z`
         - Source commit: `\(staleShortCommit)`
-        - Runtime context: locale `en-US`, timezone `UTC`, reference instant `2026-07-10T12:00:00Z`
+        - Runtime context: locale `en-US`, timezone `Asia/Tokyo`, reference instant `2026-07-11T12:00:00Z`
+        - Launch mode: normal `ProjectBoardView` route
         """.write(
             to: japaneseScreenshotDirectory.appendingPathComponent("ui-screenshots.md"),
             atomically: true,
@@ -12436,7 +12556,15 @@ final class ReleasePipelineTests: XCTestCase {
         try """
         {
           "sourceCommit": "\(staleFullCommit)",
-          "locale": "en-US"
+          "locale": "en-US",
+          "timeZoneIdentifier": "Asia/Tokyo",
+          "referenceInstant": "2026-07-11T12:00:00Z",
+          "sourceManifest": "docs/quality/visual-baseline-manifest-ja.json",
+          "screenshotDirectory": "docs/release/evidence/ui-screenshots-ja",
+          "mainViewport": "999x999",
+          "settingsViewport": "720x676",
+          "voiceCommandViewport": "760x640",
+          "comparison": "bytewise"
         }
         """.write(
             to: japaneseScreenshotDirectory.appendingPathComponent("visual-baseline-capture-manifest.json"),
@@ -12473,6 +12601,26 @@ final class ReleasePipelineTests: XCTestCase {
                 result.output.contains("\(localeName) visual capture manifest locale does not match expected locale"),
                 result.output
             )
+            XCTAssertTrue(
+                result.output.contains("\(localeName) UI screenshot evidence runtime context does not match visual baseline context"),
+                result.output
+            )
+            XCTAssertTrue(
+                result.output.contains("\(localeName) visual capture manifest time zone does not match visual baseline context"),
+                result.output
+            )
+            XCTAssertTrue(
+                result.output.contains("\(localeName) visual capture manifest reference instant does not match visual baseline context"),
+                result.output
+            )
+            XCTAssertTrue(
+                result.output.contains("\(localeName) visual capture manifest viewport contract does not match visual baseline contract"),
+                result.output
+            )
+            XCTAssertTrue(
+                result.output.contains("\(localeName) visual capture manifest comparison mode must be semantic"),
+                result.output
+            )
         }
 
         try """
@@ -12483,11 +12631,20 @@ final class ReleasePipelineTests: XCTestCase {
         - Generated at: `2026-07-28T00:00:00Z`
         - Source commit: `\(currentShortCommit)`
         - Runtime context: locale `en-US`, timezone `UTC`, reference instant `2026-07-10T12:00:00Z`
+        - Launch mode: normal `ProjectBoardView` route
         """.write(to: evidenceDirectory.appendingPathComponent("ui-screenshots.md"), atomically: true, encoding: .utf8)
         try """
         {
           "sourceCommit": "\(currentFullCommit)",
-          "locale": "en-US"
+          "locale": "en-US",
+          "timeZoneIdentifier": "UTC",
+          "referenceInstant": "2026-07-10T12:00:00Z",
+          "sourceManifest": "docs/quality/visual-baseline-manifest.json",
+          "screenshotDirectory": "docs/release/evidence/ui-screenshots",
+          "mainViewport": "1024x676",
+          "settingsViewport": "720x676",
+          "voiceCommandViewport": "760x640",
+          "comparison": "semantic"
         }
         """.write(
             to: englishScreenshotDirectory.appendingPathComponent("visual-baseline-capture-manifest.json"),
@@ -12502,6 +12659,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Generated at: `2026-07-28T00:00:00Z`
         - Source commit: `\(currentShortCommit)`
         - Runtime context: locale `ja-JP`, timezone `UTC`, reference instant `2026-07-10T12:00:00Z`
+        - Launch mode: normal `ProjectBoardView` route
         """.write(
             to: japaneseScreenshotDirectory.appendingPathComponent("ui-screenshots.md"),
             atomically: true,
@@ -12510,7 +12668,15 @@ final class ReleasePipelineTests: XCTestCase {
         try """
         {
           "sourceCommit": "\(currentFullCommit)",
-          "locale": "ja-JP"
+          "locale": "ja-JP",
+          "timeZoneIdentifier": "UTC",
+          "referenceInstant": "2026-07-10T12:00:00Z",
+          "sourceManifest": "docs/quality/visual-baseline-manifest-ja.json",
+          "screenshotDirectory": "docs/release/evidence/ui-screenshots-ja",
+          "mainViewport": "1024x676",
+          "settingsViewport": "720x676",
+          "voiceCommandViewport": "760x640",
+          "comparison": "semantic"
         }
         """.write(
             to: japaneseScreenshotDirectory.appendingPathComponent("visual-baseline-capture-manifest.json"),
@@ -12536,7 +12702,47 @@ final class ReleasePipelineTests: XCTestCase {
                 validVisualEvidenceResult.output.contains("\(localeName) visual capture manifest locale"),
                 validVisualEvidenceResult.output
             )
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) UI screenshot evidence runtime context"),
+                validVisualEvidenceResult.output
+            )
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) visual capture manifest time zone"),
+                validVisualEvidenceResult.output
+            )
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) visual capture manifest reference instant"),
+                validVisualEvidenceResult.output
+            )
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) visual capture manifest viewport contract"),
+                validVisualEvidenceResult.output
+            )
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) visual capture manifest comparison mode"),
+                validVisualEvidenceResult.output
+            )
         }
+    }
+
+    func testReleaseReadinessValidatesBothLocaleScreenshotSetsFromTheirManifests() throws {
+        let script = try readPackageFile("script/release_readiness_report.sh")
+
+        XCTAssertTrue(script.contains("docs/quality/visual-baseline-manifest.json"))
+        XCTAssertTrue(script.contains("docs/quality/visual-baseline-manifest-ja.json"))
+        XCTAssertTrue(script.contains("EXPECTED_UI_SCREENSHOT_COUNT=39"))
+        XCTAssertTrue(script.contains("visual_manifest_artifact_rows"))
+        XCTAssertTrue(script.contains("unexpected screenshot coverage"))
+        XCTAssertTrue(script.contains("screenshot dimensions do not match manifest viewport"))
+        XCTAssertTrue(script.contains("screenshot SHA-256 could not be computed"))
+        XCTAssertTrue(script.contains("differs byte-for-byte from its semantic baseline"))
+        XCTAssertTrue(script.contains("capture manifest time zone does not match visual baseline context"))
+        XCTAssertTrue(script.contains("capture manifest reference instant does not match visual baseline context"))
+        XCTAssertTrue(script.contains("capture manifest viewport contract does not match visual baseline contract"))
+        XCTAssertTrue(script.contains("capture manifest comparison mode must be semantic"))
+        XCTAssertTrue(script.contains("--raster-only"))
+        XCTAssertTrue(script.contains("checked-in visual evidence semantic comparison failed"))
+        XCTAssertFalse(script.contains("for screenshot_entry in \"${UI_SCREENSHOTS[@]}\""))
     }
 
     func testReleaseReadinessReportFailsWhenUIScreenshotEvidenceIsBlank() throws {
@@ -12550,6 +12756,11 @@ final class ReleasePipelineTests: XCTestCase {
             .appendingPathComponent("release", isDirectory: true)
             .appendingPathComponent("evidence", isDirectory: true)
         let screenshotDirectory = evidenceDirectory.appendingPathComponent("ui-screenshots", isDirectory: true)
+        let qualityDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("quality", isDirectory: true)
+        let baselineDirectory = qualityDirectory.appendingPathComponent("visual-baselines", isDirectory: true)
+        let baselineManifest = qualityDirectory.appendingPathComponent("visual-baseline-manifest.json")
         let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
         let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
 
@@ -12557,6 +12768,7 @@ final class ReleasePipelineTests: XCTestCase {
         try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: screenshotDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: qualityDirectory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixtureRoot) }
 
         for targetName in ["SuisuiCore", "SuisuiApp", "SuisuiCLI"] {
@@ -12574,6 +12786,26 @@ final class ReleasePipelineTests: XCTestCase {
                 atomically: true,
                 encoding: .utf8
             )
+        try FileManager.default.copyItem(
+            at: packageRoot().appendingPathComponent("docs/quality/visual-baseline-manifest.json"),
+            to: baselineManifest
+        )
+        try FileManager.default.copyItem(
+            at: packageRoot().appendingPathComponent("docs/quality/visual-baselines", isDirectory: true),
+            to: baselineDirectory
+        )
+        try """
+        {
+          "sourceCommit": "fixture-commit",
+          "locale": "en-US",
+          "sourceManifest": "docs/quality/visual-baseline-manifest.json",
+          "screenshotDirectory": "docs/release/evidence/ui-screenshots"
+        }
+        """.write(
+            to: screenshotDirectory.appendingPathComponent("visual-baseline-capture-manifest.json"),
+            atomically: true,
+            encoding: .utf8
+        )
         try """
         #!/usr/bin/env bash
         set -euo pipefail

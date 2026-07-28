@@ -86,6 +86,41 @@ class ImpactAnalysisTests(unittest.TestCase):
             ["DevelopmentAutomationRuntimeSmokeTests"],
         )
 
+    def test_visual_baseline_change_routes_to_ui_visual(self) -> None:
+        plan = self._analyze(
+            [{"status": "M", "path": "docs/quality/visual-baseline-manifest-ja.json"}]
+        )
+
+        self.assertEqual(plan["strategy"], "selective")
+        self.assertEqual(plan["e2eTestTargets"], ["ui-visual"])
+
+    def test_visual_evidence_change_routes_to_ui_visual(self) -> None:
+        plan = self._analyze(
+            [
+                {
+                    "status": "M",
+                    "path": "docs/release/evidence/ui-screenshots-ja/inbox-light.png",
+                }
+            ]
+        )
+
+        self.assertEqual(plan["strategy"], "selective")
+        self.assertEqual(plan["e2eTestTargets"], ["ui-visual"])
+
+    def test_visual_contract_rename_preserves_source_path_routing(self) -> None:
+        plan = self._analyze(
+            [
+                {
+                    "status": "R100",
+                    "oldPath": "docs/quality/visual-baselines/inbox-light.png",
+                    "path": "docs/archive/inbox-light.png",
+                }
+            ]
+        )
+
+        self.assertEqual(plan["strategy"], "selective")
+        self.assertEqual(plan["e2eTestTargets"], ["ui-visual"])
+
     def test_non_desktop_swift_change_selects_referencing_test_without_desktop_e2e(self) -> None:
         self._write(
             "Sources/SuisuiWeb/WebPresenter.swift",

@@ -127,10 +127,25 @@ RELEASE_LAUNCH_PREFLIGHT="${SUISUI_RELEASE_LAUNCH_PREFLIGHT:-$AUTOMATED_PROOF_GA
 RELEASE_LAUNCH_PREFLIGHT_RELATIVE="script/build_and_run.sh"
 MOCK_PATTERN="(?i:fake|mock|fixture|canned|stub|skeleton|fixme|not[[:space:]_-]*implemented|notimplemented|inmemory)|(?i:(^|[^[:alnum:]_])demo([^[:alnum:]_]|$))|(?i:(^|[[:space:]#/*_-])todo([[:space:]:;.,)_-]|$))|(^|[^[:alnum:]_])Static[A-Za-z0-9_]*|:memory:|fatalError|preconditionFailure"
 UI_EVIDENCE_RELATIVE="docs/release/evidence/ui-screenshots.md"
-UI_SCREENSHOT_RELATIVE_DIR="docs/release/evidence/ui-screenshots"
 UI_VISUAL_EVIDENCE_CONTRACTS=(
-  "English|docs/release/evidence/ui-screenshots.md|docs/release/evidence/ui-screenshots/visual-baseline-capture-manifest.json|en-US"
-  "Japanese|docs/release/evidence/ui-screenshots-ja/ui-screenshots.md|docs/release/evidence/ui-screenshots-ja/visual-baseline-capture-manifest.json|ja-JP"
+  "English|docs/release/evidence/ui-screenshots.md|docs/release/evidence/ui-screenshots/visual-baseline-capture-manifest.json|docs/quality/visual-baseline-manifest.json|docs/release/evidence/ui-screenshots|docs/quality/visual-baselines|en-US"
+  "Japanese|docs/release/evidence/ui-screenshots-ja/ui-screenshots.md|docs/release/evidence/ui-screenshots-ja/visual-baseline-capture-manifest.json|docs/quality/visual-baseline-manifest-ja.json|docs/release/evidence/ui-screenshots-ja|docs/quality/visual-baselines-ja|ja-JP"
+)
+EXPECTED_UI_SCREENSHOT_COUNT=39
+EXPECTED_UI_MAIN_VIEWPORT="1024x676"
+EXPECTED_UI_SETTINGS_VIEWPORT="720x676"
+EXPECTED_UI_VOICE_COMMAND_VIEWPORT="760x640"
+UI_CRITICAL_SCREENSHOTS=(
+  "inbox-voice-light.png"
+  "inbox-voice-dark.png"
+  "projects-overview-light.png"
+  "projects-overview-dark.png"
+  "schedule-light.png"
+  "schedule-dark.png"
+  "done-light.png"
+  "done-dark.png"
+  "settings-integrations-light.png"
+  "settings-integrations-dark.png"
 )
 UI_SCREENSHOT_MIN_BYTES=30000
 UI_SCREENSHOT_MIN_WIDTH=640
@@ -155,27 +170,6 @@ RUNTIME_SOURCE_DIRS=(
 )
 OPTIONAL_PRODUCT_SOURCE_DIRS=(
   "$ROOT_DIR/Sources/SuisuiExternalConnectors"
-)
-UI_SCREENSHOTS=(
-  "Light:project-board-light.png"
-  "Dark:project-board-dark.png"
-  "System:project-board-system.png"
-  "Inbox Voice Light:inbox-voice-light.png"
-  "Inbox Voice Dark:inbox-voice-dark.png"
-  "Projects Overview Light:projects-overview-light.png"
-  "Projects Overview Dark:projects-overview-dark.png"
-  "Schedule Light:schedule-light.png"
-  "Schedule Dark:schedule-dark.png"
-  "Done Light:done-light.png"
-  "Done Dark:done-dark.png"
-  "Settings Integrations Light:settings-integrations-light.png"
-  "Settings Integrations Dark:settings-integrations-dark.png"
-  "Settings Overview Light:settings-overview-light.png"
-  "Settings Overview Dark:settings-overview-dark.png"
-  "Settings Appearance Light:settings-appearance-light.png"
-  "Settings Appearance Dark:settings-appearance-dark.png"
-  "MCP Settings Light:settings-mcp-light.png"
-  "MCP Settings Dark:settings-mcp-dark.png"
 )
 VOICEOVER_REQUIRED_MARKERS=(
   "Status: passed"
@@ -2220,6 +2214,72 @@ assert_screenshot_has_visible_content() {
   /usr/bin/swift "$ROOT_DIR/script/ui_evidence_content_check.swift" "$image_path"
 }
 
+visual_manifest_artifact_rows() {
+  local manifest_path="$1"
+  local expected_count="$2"
+
+  python3 - "$manifest_path" "$expected_count" <<'PY'
+import json
+import re
+import sys
+
+manifest_path, expected_count_text = sys.argv[1:3]
+expected_count = int(expected_count_text)
+try:
+    with open(manifest_path, encoding="utf-8") as manifest_file:
+        manifest = json.load(manifest_file)
+except (OSError, UnicodeError, json.JSONDecodeError):
+    raise SystemExit("visual manifest could not be parsed")
+if not isinstance(manifest, dict):
+    raise SystemExit("visual manifest root must be an object")
+
+screens = manifest.get("screens")
+if not isinstance(screens, list):
+    raise SystemExit("visual manifest screens must be an array")
+
+artifact_rows = []
+seen_artifacts = set()
+safe_artifact = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.png$")
+for screen in screens:
+    if not isinstance(screen, dict):
+        raise SystemExit("visual manifest screen entry must be an object")
+    viewport = screen.get("viewport")
+    artifacts = screen.get("artifacts")
+    themes = screen.get("themes")
+    if not isinstance(viewport, dict) or not isinstance(artifacts, dict):
+        raise SystemExit("visual manifest screen is missing viewport or artifacts")
+    width = viewport.get("width")
+    height = viewport.get("height")
+    if not isinstance(width, int) or isinstance(width, bool) or width <= 0:
+        raise SystemExit("visual manifest viewport width must be a positive integer")
+    if not isinstance(height, int) or isinstance(height, bool) or height <= 0:
+        raise SystemExit("visual manifest viewport height must be a positive integer")
+    if (
+        not isinstance(themes, list)
+        or not all(isinstance(theme, str) and theme for theme in themes)
+        or len(themes) != len(set(themes))
+        or set(themes) != set(artifacts)
+    ):
+        raise SystemExit("visual manifest themes and artifacts must describe the same appearances")
+    for appearance in themes:
+        filename = artifacts.get(appearance)
+        if not isinstance(filename, str) or not safe_artifact.fullmatch(filename):
+            raise SystemExit("visual manifest artifact must be a safe PNG basename")
+        if filename in seen_artifacts:
+            raise SystemExit("visual manifest artifact names must be unique")
+        seen_artifacts.add(filename)
+        artifact_rows.append((filename, width, height))
+
+if len(artifact_rows) != expected_count:
+    raise SystemExit(
+        f"visual manifest expected {expected_count} unique artifacts, found {len(artifact_rows)}"
+    )
+
+for filename, width, height in artifact_rows:
+    print(f"{filename}\t{width}\t{height}")
+PY
+}
+
 is_report_root_git_checkout_root() {
   local git_root
   git_root="$(git -C "$ROOT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
@@ -2786,11 +2846,47 @@ ui_blocker() {
 expected_ui_evidence_source_commit="$(ui_evidence_source_commit)"
 expected_ui_evidence_source_commit_full="$(ui_evidence_source_commit_full)"
 for visual_evidence_contract in "${UI_VISUAL_EVIDENCE_CONTRACTS[@]}"; do
-  IFS='|' read -r locale_name evidence_relative capture_manifest_relative expected_locale <<<"$visual_evidence_contract"
+  IFS='|' read -r \
+    locale_name \
+    evidence_relative \
+    capture_manifest_relative \
+    baseline_manifest_relative \
+    expected_artifact_root \
+    expected_baseline_root \
+    expected_locale <<<"$visual_evidence_contract"
   locale_evidence_file="$ROOT_DIR/$evidence_relative"
   capture_manifest_file="$ROOT_DIR/$capture_manifest_relative"
+  baseline_manifest_file="$ROOT_DIR/$baseline_manifest_relative"
+  locale_blocker_start="$ui_evidence_blocker_count"
+  baseline_context_ready=1
 
-  if [[ ! -f "$locale_evidence_file" ]]; then
+  if [[ ! -f "$baseline_manifest_file" || -L "$baseline_manifest_file" ]]; then
+    ui_blocker "missing or invalid $locale_name visual baseline manifest: $baseline_manifest_relative"
+    baseline_context_ready=0
+    baseline_manifest_locale=""
+    baseline_manifest_source_commit=""
+    baseline_manifest_normal_route=""
+    baseline_manifest_time_zone=""
+    baseline_manifest_reference_instant=""
+  else
+    baseline_manifest_locale="$(
+      /usr/bin/plutil -extract baselineContext.locale raw -o - "$baseline_manifest_file" 2>/dev/null || true
+    )"
+    baseline_manifest_source_commit="$(
+      /usr/bin/plutil -extract baselineContext.sourceCommit raw -o - "$baseline_manifest_file" 2>/dev/null || true
+    )"
+    baseline_manifest_normal_route="$(
+      /usr/bin/plutil -extract baselineContext.normalRoute raw -o - "$baseline_manifest_file" 2>/dev/null || true
+    )"
+    baseline_manifest_time_zone="$(
+      /usr/bin/plutil -extract baselineContext.timeZoneIdentifier raw -o - "$baseline_manifest_file" 2>/dev/null || true
+    )"
+    baseline_manifest_reference_instant="$(
+      /usr/bin/plutil -extract baselineContext.referenceInstant raw -o - "$baseline_manifest_file" 2>/dev/null || true
+    )"
+  fi
+
+  if [[ ! -f "$locale_evidence_file" || -L "$locale_evidence_file" ]]; then
     ui_blocker "missing $locale_name UI screenshot evidence file: $evidence_relative"
   else
     if ! grep -F 'Generated with `script/capture_ui_evidence.sh`.' "$locale_evidence_file" >/dev/null; then
@@ -2813,6 +2909,17 @@ for visual_evidence_contract in "${UI_VISUAL_EVIDENCE_CONTRACTS[@]}"; do
     if [[ "$runtime_context" != "locale $expected_locale, "* ]]; then
       ui_blocker "$locale_name UI screenshot evidence locale does not match expected locale $expected_locale"
     fi
+    if [[ "$baseline_context_ready" == "1" ]]; then
+      expected_runtime_context="locale $baseline_manifest_locale, timezone $baseline_manifest_time_zone, reference instant $baseline_manifest_reference_instant"
+      if [[ "$runtime_context" != "$expected_runtime_context" ]]; then
+        ui_blocker "$locale_name UI screenshot evidence runtime context does not match visual baseline context"
+      fi
+    fi
+    if [[ "$baseline_context_ready" == "1" \
+      && "$baseline_manifest_normal_route" == "normal" \
+      ]] && ! grep -F -- "- Launch mode: normal " "$locale_evidence_file" >/dev/null; then
+      ui_blocker "$locale_name UI screenshot evidence launch mode does not match visual baseline context"
+    fi
   fi
 
   if [[ ! -f "$capture_manifest_file" || -L "$capture_manifest_file" ]]; then
@@ -2825,6 +2932,30 @@ for visual_evidence_contract in "${UI_VISUAL_EVIDENCE_CONTRACTS[@]}"; do
   capture_manifest_locale="$(
     /usr/bin/plutil -extract locale raw -o - "$capture_manifest_file" 2>/dev/null || true
   )"
+  capture_manifest_source_manifest="$(
+    /usr/bin/plutil -extract sourceManifest raw -o - "$capture_manifest_file" 2>/dev/null || true
+  )"
+  capture_manifest_screenshot_directory="$(
+    /usr/bin/plutil -extract screenshotDirectory raw -o - "$capture_manifest_file" 2>/dev/null || true
+  )"
+  capture_manifest_time_zone="$(
+    /usr/bin/plutil -extract timeZoneIdentifier raw -o - "$capture_manifest_file" 2>/dev/null || true
+  )"
+  capture_manifest_reference_instant="$(
+    /usr/bin/plutil -extract referenceInstant raw -o - "$capture_manifest_file" 2>/dev/null || true
+  )"
+  capture_manifest_main_viewport="$(
+    /usr/bin/plutil -extract mainViewport raw -o - "$capture_manifest_file" 2>/dev/null || true
+  )"
+  capture_manifest_settings_viewport="$(
+    /usr/bin/plutil -extract settingsViewport raw -o - "$capture_manifest_file" 2>/dev/null || true
+  )"
+  capture_manifest_voice_command_viewport="$(
+    /usr/bin/plutil -extract voiceCommandViewport raw -o - "$capture_manifest_file" 2>/dev/null || true
+  )"
+  capture_manifest_comparison="$(
+    /usr/bin/plutil -extract comparison raw -o - "$capture_manifest_file" 2>/dev/null || true
+  )"
   if [[ -z "$capture_manifest_source_commit" ]]; then
     ui_blocker "$locale_name visual capture manifest is missing source commit"
   elif [[ "$expected_ui_evidence_source_commit_full" != "unknown" && "$capture_manifest_source_commit" != "$expected_ui_evidence_source_commit_full" ]]; then
@@ -2833,81 +2964,214 @@ for visual_evidence_contract in "${UI_VISUAL_EVIDENCE_CONTRACTS[@]}"; do
   if [[ "$capture_manifest_locale" != "$expected_locale" ]]; then
     ui_blocker "$locale_name visual capture manifest locale does not match expected locale $expected_locale"
   fi
-done
+  if [[ "$capture_manifest_source_manifest" != "$baseline_manifest_relative" ]]; then
+    ui_blocker "$locale_name visual capture manifest source manifest does not match $baseline_manifest_relative"
+  fi
+  if [[ "$capture_manifest_screenshot_directory" != "$expected_artifact_root" ]]; then
+    ui_blocker "$locale_name visual capture manifest screenshot directory does not match $expected_artifact_root"
+  fi
+  if [[ "$baseline_context_ready" == "1" \
+    && "$capture_manifest_time_zone" != "$baseline_manifest_time_zone" ]]; then
+    ui_blocker "$locale_name visual capture manifest time zone does not match visual baseline context"
+  fi
+  if [[ "$baseline_context_ready" == "1" \
+    && "$capture_manifest_reference_instant" != "$baseline_manifest_reference_instant" ]]; then
+    ui_blocker "$locale_name visual capture manifest reference instant does not match visual baseline context"
+  fi
+  if [[ "$capture_manifest_main_viewport" != "$EXPECTED_UI_MAIN_VIEWPORT" \
+    || "$capture_manifest_settings_viewport" != "$EXPECTED_UI_SETTINGS_VIEWPORT" \
+    || "$capture_manifest_voice_command_viewport" != "$EXPECTED_UI_VOICE_COMMAND_VIEWPORT" ]]; then
+    ui_blocker "$locale_name visual capture manifest viewport contract does not match visual baseline contract"
+  fi
+  if [[ "$capture_manifest_comparison" != "semantic" ]]; then
+    ui_blocker "$locale_name visual capture manifest comparison mode must be semantic"
+  fi
 
-for screenshot_entry in "${UI_SCREENSHOTS[@]}"; do
-  screenshot_label="${screenshot_entry%%:*}"
-  screenshot_filename="${screenshot_entry#*:}"
-  screenshot_relative="$UI_SCREENSHOT_RELATIVE_DIR/$screenshot_filename"
-  screenshot_path="$ROOT_DIR/$screenshot_relative"
-
-  if [[ ! -f "$screenshot_path" ]]; then
-    ui_blocker "missing UI screenshot file: $screenshot_relative"
+  if [[ "$baseline_context_ready" != "1" ]]; then
     continue
   fi
 
-  if [[ ! -s "$screenshot_path" ]]; then
-    ui_blocker "empty UI screenshot file: $screenshot_relative"
+  manifest_artifact_root="$(
+    /usr/bin/plutil -extract artifactRoot raw -o - "$baseline_manifest_file" 2>/dev/null || true
+  )"
+  manifest_baseline_root="$(
+    /usr/bin/plutil -extract baselineRoot raw -o - "$baseline_manifest_file" 2>/dev/null || true
+  )"
+  if [[ "$baseline_manifest_locale" != "$expected_locale" ]]; then
+    ui_blocker "$locale_name visual baseline manifest locale does not match expected locale $expected_locale"
+  fi
+  if [[ "$baseline_manifest_normal_route" != "normal" ]]; then
+    ui_blocker "$locale_name visual baseline manifest normal route must be normal"
+  fi
+  if [[ -z "$baseline_manifest_time_zone" || -z "$baseline_manifest_reference_instant" ]]; then
+    ui_blocker "$locale_name visual baseline manifest capture context is incomplete"
+  fi
+  if [[ "$expected_ui_evidence_source_commit_full" != "unknown" \
+    && "$baseline_manifest_source_commit" != "$expected_ui_evidence_source_commit_full" ]]; then
+    ui_blocker "$locale_name visual baseline manifest source commit does not match current visual evidence source commit: expected $expected_ui_evidence_source_commit_full"
+  fi
+  if [[ "$manifest_artifact_root" != "$expected_artifact_root" ]]; then
+    ui_blocker "$locale_name visual baseline manifest artifact root does not match $expected_artifact_root"
+  fi
+  if [[ "$manifest_baseline_root" != "$expected_baseline_root" ]]; then
+    ui_blocker "$locale_name visual baseline manifest baseline root does not match $expected_baseline_root"
+  fi
+
+  artifact_directory="$ROOT_DIR/$expected_artifact_root"
+  baseline_directory="$ROOT_DIR/$expected_baseline_root"
+  if [[ ! -d "$artifact_directory" || -L "$artifact_directory" ]]; then
+    ui_blocker "missing or invalid $locale_name visual artifact directory: $expected_artifact_root"
+    continue
+  fi
+  if [[ ! -d "$baseline_directory" || -L "$baseline_directory" ]]; then
+    ui_blocker "missing or invalid $locale_name visual baseline directory: $expected_baseline_root"
     continue
   fi
 
-  screenshot_bytes="$(wc -c <"$screenshot_path" | tr -d '[:space:]')"
-  if [[ "$screenshot_bytes" -lt "$UI_SCREENSHOT_MIN_BYTES" ]]; then
-    ui_blocker "UI screenshot is unexpectedly small ($screenshot_bytes bytes): $screenshot_relative"
+  artifact_png_count="$(
+    find "$artifact_directory" -maxdepth 1 -type f -name '*.png' | wc -l | tr -d '[:space:]'
+  )"
+  if [[ "$artifact_png_count" != "$EXPECTED_UI_SCREENSHOT_COUNT" ]]; then
+    ui_blocker "$locale_name visual evidence has unexpected screenshot coverage: expected $EXPECTED_UI_SCREENSHOT_COUNT, found $artifact_png_count"
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    ui_blocker "python3 is required for manifest-driven UI screenshot validation"
     continue
   fi
-
-  if [[ -f "$ui_evidence_file" ]] && ! grep -F "$screenshot_relative" "$ui_evidence_file" >/dev/null; then
-    ui_blocker "UI screenshot evidence does not reference $screenshot_relative"
-  fi
-
   set +e
-  dimensions_output="$(/usr/bin/sips -g pixelWidth -g pixelHeight "$screenshot_path" 2>&1)"
-  dimensions_status=$?
+  artifact_rows="$(visual_manifest_artifact_rows "$baseline_manifest_file" "$EXPECTED_UI_SCREENSHOT_COUNT" 2>&1)"
+  artifact_rows_status=$?
   set -e
-
-  if [[ "$dimensions_status" -ne 0 ]]; then
-    printf "%s\n" "$dimensions_output"
-    ui_blocker "UI screenshot dimensions are unreadable: $screenshot_relative"
+  if [[ "$artifact_rows_status" -ne 0 ]]; then
+    [[ -z "$artifact_rows" ]] || printf "%s\n" "$artifact_rows"
+    ui_blocker "$locale_name visual baseline manifest has unexpected screenshot coverage"
     continue
   fi
-
-  pixel_width="$(awk '/pixelWidth:/ {print $2}' <<<"$dimensions_output" | tail -1)"
-  pixel_height="$(awk '/pixelHeight:/ {print $2}' <<<"$dimensions_output" | tail -1)"
-  if [[ ! "$pixel_width" =~ ^[0-9]+$ || ! "$pixel_height" =~ ^[0-9]+$ ]]; then
-    ui_blocker "UI screenshot dimensions are missing: $screenshot_relative"
-    continue
-  fi
-
-  if [[ "$pixel_width" -lt "$UI_SCREENSHOT_MIN_WIDTH" || "$pixel_height" -lt "$UI_SCREENSHOT_MIN_HEIGHT" ]]; then
-    ui_blocker "UI screenshot dimensions are too small (${pixel_width}x${pixel_height}): $screenshot_relative"
-    continue
-  fi
+  for critical_screenshot in "${UI_CRITICAL_SCREENSHOTS[@]}"; do
+    if ! awk -F $'\t' -v filename="$critical_screenshot" \
+      '$1 == filename { found = 1 } END { exit found ? 0 : 1 }' <<<"$artifact_rows"; then
+      ui_blocker "$locale_name visual baseline manifest is missing critical screen: $critical_screenshot"
+    fi
+  done
 
   if ! command -v swift >/dev/null 2>&1; then
     ui_blocker "swift is required for UI screenshot content validation"
     continue
   fi
 
-  set +e
-  content_output="$(assert_screenshot_has_visible_content "$screenshot_path" 2>&1)"
-  content_status=$?
-  set -e
+  while IFS=$'\t' read -r screenshot_filename expected_width expected_height; do
+    [[ -n "$screenshot_filename" ]] || continue
+    screenshot_relative="$expected_artifact_root/$screenshot_filename"
+    screenshot_path="$ROOT_DIR/$screenshot_relative"
+    baseline_relative="$expected_baseline_root/$screenshot_filename"
+    baseline_path="$ROOT_DIR/$baseline_relative"
+    baseline_is_valid=1
 
-  if [[ "$content_status" -ne 0 ]]; then
-    if [[ -n "$content_output" ]]; then
-      printf "%s\n" "$content_output"
+    if [[ ! -f "$screenshot_path" || -L "$screenshot_path" ]]; then
+      ui_blocker "missing or invalid $locale_name UI screenshot file: $screenshot_relative"
+      continue
     fi
-    ui_blocker "UI screenshot appears blank or too low contrast: $screenshot_relative"
-    continue
-  fi
+    if [[ ! -f "$baseline_path" || -L "$baseline_path" ]]; then
+      ui_blocker "missing or invalid $locale_name visual baseline file: $baseline_relative"
+      baseline_is_valid=0
+    fi
+    if [[ ! -s "$screenshot_path" ]]; then
+      ui_blocker "empty $locale_name UI screenshot file: $screenshot_relative"
+      continue
+    fi
 
-  printf "OK: %s screenshot %s (%sx%s, %s bytes)\n" \
-    "$screenshot_label" \
-    "$screenshot_relative" \
-    "$pixel_width" \
-    "$pixel_height" \
-    "$screenshot_bytes"
+    screenshot_bytes="$(wc -c <"$screenshot_path" | tr -d '[:space:]')"
+    if [[ "$screenshot_bytes" -lt "$UI_SCREENSHOT_MIN_BYTES" ]]; then
+      ui_blocker "$locale_name UI screenshot is unexpectedly small ($screenshot_bytes bytes): $screenshot_relative"
+      continue
+    fi
+    if [[ -f "$locale_evidence_file" ]] \
+      && ! grep -F "$screenshot_relative" "$locale_evidence_file" >/dev/null; then
+      ui_blocker "$locale_name UI screenshot evidence does not reference $screenshot_relative"
+    fi
+
+    set +e
+    dimensions_output="$(/usr/bin/sips -g pixelWidth -g pixelHeight "$screenshot_path" 2>&1)"
+    dimensions_status=$?
+    set -e
+    if [[ "$dimensions_status" -ne 0 ]]; then
+      printf "%s\n" "$dimensions_output"
+      ui_blocker "$locale_name UI screenshot dimensions are unreadable: $screenshot_relative"
+      continue
+    fi
+    pixel_width="$(awk '/pixelWidth:/ {print $2}' <<<"$dimensions_output" | tail -1)"
+    pixel_height="$(awk '/pixelHeight:/ {print $2}' <<<"$dimensions_output" | tail -1)"
+    if [[ ! "$pixel_width" =~ ^[0-9]+$ || ! "$pixel_height" =~ ^[0-9]+$ ]]; then
+      ui_blocker "$locale_name UI screenshot dimensions are missing: $screenshot_relative"
+      continue
+    fi
+    if [[ "$pixel_width" -lt "$UI_SCREENSHOT_MIN_WIDTH" \
+      || "$pixel_height" -lt "$UI_SCREENSHOT_MIN_HEIGHT" ]]; then
+      ui_blocker "$locale_name UI screenshot dimensions are too small (${pixel_width}x${pixel_height}): $screenshot_relative"
+      continue
+    fi
+    if [[ "$pixel_width" != "$expected_width" || "$pixel_height" != "$expected_height" ]]; then
+      ui_blocker "$locale_name UI screenshot dimensions do not match manifest viewport (${expected_width}x${expected_height}): $screenshot_relative"
+    fi
+
+    set +e
+    content_output="$(assert_screenshot_has_visible_content "$screenshot_path" 2>&1)"
+    content_status=$?
+    set -e
+    if [[ "$content_status" -ne 0 ]]; then
+      [[ -z "$content_output" ]] || printf "%s\n" "$content_output"
+      ui_blocker "$locale_name UI screenshot appears blank or too low contrast: $screenshot_relative"
+      continue
+    fi
+
+    if [[ "$baseline_is_valid" == "1" ]]; then
+      screenshot_hash="$(/usr/bin/shasum -a 256 "$screenshot_path" | awk '{print $1}')"
+      baseline_hash="$(/usr/bin/shasum -a 256 "$baseline_path" | awk '{print $1}')"
+      if [[ ! "$screenshot_hash" =~ ^[0-9a-f]{64}$ \
+        || ! "$baseline_hash" =~ ^[0-9a-f]{64}$ ]]; then
+        ui_blocker "$locale_name UI screenshot SHA-256 could not be computed: $screenshot_relative"
+        continue
+      fi
+      if [[ "$screenshot_hash" != "$baseline_hash" ]]; then
+        # The accepted contract uses semantic pixel tolerances, so a bytewise
+        # difference is evidence for the live visual gate rather than a release
+        # blocker by itself. Hashes still make the distinction explicit.
+        printf "INFO: %s screenshot differs byte-for-byte from its semantic baseline: %s\n" \
+          "$locale_name" \
+          "$screenshot_relative"
+      fi
+    fi
+
+    printf "OK: %s screenshot %s (%sx%s, %s bytes)\n" \
+      "$locale_name" \
+      "$screenshot_relative" \
+      "$pixel_width" \
+      "$pixel_height" \
+      "$screenshot_bytes"
+  done <<<"$artifact_rows"
+
+  if [[ "$ui_evidence_blocker_count" -eq "$locale_blocker_start" ]]; then
+    semantic_artifact_directory="$ROOT_DIR/.tmp/release-readiness-visual/$expected_locale"
+    set +e
+    semantic_comparison_output="$(
+      "$ROOT_DIR/script/check_visual_regression_smoke.sh" \
+        --manifest "$baseline_manifest_file" \
+        --screenshot-dir "$artifact_directory" \
+        --baseline-dir "$baseline_directory" \
+        --artifact-dir "$semantic_artifact_directory" \
+        --current-source-commit "$expected_ui_evidence_source_commit_full" \
+        --raster-only 2>&1
+    )"
+    semantic_comparison_status=$?
+    set -e
+    [[ -z "$semantic_comparison_output" ]] || printf "%s\n" "$semantic_comparison_output"
+    if [[ "$semantic_comparison_status" -ne 0 ]]; then
+      ui_blocker "$locale_name checked-in visual evidence semantic comparison failed"
+    else
+      printf "OK: %s checked-in visual evidence matches semantic baseline thresholds\n" "$locale_name"
+    fi
+  fi
 done
 if [[ "$ui_evidence_blocker_count" -gt 0 ]]; then
   printf "NEXT: run script/capture_ui_evidence.sh --doctor, then run script/capture_ui_evidence.sh on a visible macOS session with Screen Recording permission; verify generated Project Board, Inbox voice detail, Projects overview, Schedule, Done, Settings integrations, Appearance, and MCP Settings PNGs before release.\n"

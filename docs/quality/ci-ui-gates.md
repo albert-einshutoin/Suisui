@@ -11,7 +11,7 @@ Suisuiは、source/unit/buildだけでは検出できない通常製品routeの�
 | SwiftPM macOS | `./scripts/ci.sh swiftpm` | 全SwiftPM behavioral test、test count floor、build |
 | Source contracts (supplemental) | `./scripts/ci.sh source-contracts` | source/document/script markerの補助契約。behavioral coverageの代替にはしない |
 | UI Runtime (production route) | `./scripts/ci.sh ui-runtime` | PID-owned window、header/sidebar/detail、CRUD、layout、Today通常route |
-| UI Visual (live baseline) | `./scripts/ci.sh ui-visual` | 隔離された33画面live capture、fresh AX receipt、baseline raster差分 |
+| UI Visual (live baseline) | `./scripts/ci.sh ui-visual` | 英日それぞれ隔離された39枚のlive capture、locale別fresh AX receipt、baseline raster差分 |
 | UI Performance (production route) | `./scripts/ci.sh ui-performance` | 通常route cold launchとInbox/Assistant Queue/Today切替budget |
 
 UI laneは同じWindowServer session上で同時実行しない。`scripts/ci.sh`がhost-wide lockを取得し、各harnessは自分が起動したexact PIDだけを終了する。`build-only`や`verify`が、別bundleや開発者が起動中のSuisuiを名前だけで終了してはならない。
@@ -32,7 +32,9 @@ UI laneは最初にrunner capabilityをfail closedで確認する。
 
 SwiftPM jobは証跡のsource commitをPR merge commitから正しく辿るためfull git historyをcheckoutし、security/release scriptsのallowlisted search toolとして`rg`を明示的に用意する。成功・失敗に関係なく、XCTestとSwift Testingの両方を合算したdiscovered/executed/skipped件数、sanitized test log、test name inventory、実件数をpropertyへ持つxUnit gate summaryを`.tmp/ci-artifacts/swiftpm`へ7日間保存する。0件、committed baseline未満、探索件数より少ない実行件数、`config/quality/swiftpm-max-skipped-tests.txt`の上限を超えたskip、件数を抽出できない結果はfail closedとし、retryでgreenへ変えない。
 
-各UI jobも成功・失敗に関係なく`.tmp/ci-artifacts/<lane>`を7日間保存する。対象はcapability summary、sanitized stdout/stderr、allowlist済みAX probe、seed fixtureだけを含むvisual current/diff/metrics/receipt、performance summary/samplesである。実ユーザーのHOME、SQLite、raw unified log、secret、token、API key、絶対pathをartifactへ含めない。
+各UI jobも成功・失敗に関係なく`.tmp/ci-artifacts/<lane>`を7日間保存する。Visual laneは`en-US`と`ja-JP`を独立したmatrix artifactとして保存し、既存required check名`UI Visual (live baseline)`のaggregate jobが両方の成功を要求する。PR selectorで明示的な`false`が返った場合だけmatrixをskipし、空・未知・不正な値は省略理由として扱わずfail closedにする。対象はcapability summary、sanitized stdout/stderr、allowlist済みAX probe、seed fixtureだけを含むvisual current/diff/metrics/receipt、performance summary/samplesである。実ユーザーのHOME、SQLite、raw unified log、secret、token、API key、絶対pathをartifactへ含めない。
+
+release readinessは、追跡済みの英日各39枚もlocale別manifestとbaseline metadataへ結び付け、既存semantic raster thresholdで再比較する。この比較は保存済み証跡を読むだけの`--raster-only` modeでありbaseline更新を禁止する。fresh AX receiptを省略できるのはこのread-only再検証だけで、hosted live captureとbaseline更新では引き続きsource/contextに一致するfresh AX receiptを必須とする。
 
 ## Trust boundary
 

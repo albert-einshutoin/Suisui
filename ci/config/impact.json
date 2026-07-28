@@ -48,6 +48,18 @@
         "ui-visual",
         "ui-performance"
       ]
+    },
+    {
+      "pattern": "docs/quality/visual-baseline*",
+      "targets": [
+        "ui-visual"
+      ]
+    },
+    {
+      "pattern": "docs/release/evidence/ui-screenshots*",
+      "targets": [
+        "ui-visual"
+      ]
     }
   ],
   "forceFullRules": [

@@ -30,6 +30,22 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(workflow.contains("./scripts/ci.sh ui-runtime"))
         XCTAssertTrue(workflow.contains("./scripts/ci.sh ui-visual"))
         XCTAssertTrue(workflow.contains("SUISUI_VISUAL_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}"))
+        XCTAssertTrue(workflow.contains("locale: [en-US, ja-JP]"))
+        XCTAssertTrue(workflow.contains("SUISUI_CI_VISUAL_GATE_LOCALE: ${{ matrix.locale }}"))
+        XCTAssertTrue(workflow.contains("UI Visual (live baseline) (${{ matrix.locale }})"))
+        XCTAssertTrue(workflow.contains("ui-visual-locales:"))
+        XCTAssertTrue(workflow.contains("needs.ui-visual-locales.result"))
+        XCTAssertTrue(workflow.contains("name: UI Visual (live baseline)\n"))
+        XCTAssertTrue(workflow.contains("failure_reason=locale-visual-gate-did-not-succeed"))
+        XCTAssertTrue(
+            workflow.contains(
+                "github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_visual_state != '0'"
+            ),
+            "Only the normalized numeric skip state may omit the bilingual visual matrix"
+        )
+        XCTAssertTrue(workflow.contains("ui_visual_state: ${{ steps.normalize_visual_selection.outputs.state }}"))
+        XCTAssertTrue(workflow.contains("id: normalize_visual_selection"))
+        XCTAssertTrue(workflow.contains("failure_reason=visual-selection-result-invalid"))
         XCTAssertTrue(workflow.contains("fetch-depth: 0"))
         XCTAssertTrue(workflow.contains("./scripts/ci.sh ui-performance"))
         XCTAssertTrue(workflow.contains("SUISUI_PERFORMANCE_PROFILE: release"))
@@ -48,7 +64,76 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(workflow.components(separatedBy: "include-hidden-files: true").count - 1, 3)
         XCTAssertTrue(workflow.contains(".tmp/ci-artifacts/ui-runtime"))
         XCTAssertTrue(workflow.contains(".tmp/ci-artifacts/ui-visual"))
+        XCTAssertTrue(workflow.contains("ui-visual-${{ matrix.locale }}-${{ github.run_id }}-${{ github.run_attempt }}"))
         XCTAssertTrue(workflow.contains(".tmp/ci-artifacts/ui-performance"))
+    }
+
+    func testVisualRequiredCheckAggregatorFailsClosedForUnknownSelectorResults() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let script = try visualAggregatorScript(from: workflow)
+
+        let cases: [(
+            eventName: String,
+            selectionState: String,
+            matrixResult: String,
+            expectedExitCode: Int32,
+            expectedOutput: String
+        )] = [
+            ("pull_request", "0", "skipped", 0, "status=not-required"),
+            ("pull_request", "1", "success", 0, "status=passed"),
+            ("pull_request", "1", "failure", 1, "locale-visual-gate-did-not-succeed"),
+            ("pull_request", "", "success", 1, "visual-selection-result-invalid"),
+            ("pull_request", "2", "success", 1, "visual-selection-result-invalid"),
+            ("push", "", "success", 0, "status=passed")
+        ]
+
+        for testCase in cases {
+            let result = try runBash(
+                script,
+                environment: [
+                    "EVENT_NAME": testCase.eventName,
+                    "VISUAL_SELECTION_STATE": testCase.selectionState,
+                    "LOCALE_VISUAL_RESULT": testCase.matrixResult
+                ]
+            )
+            XCTAssertEqual(
+                result.exitCode,
+                testCase.expectedExitCode,
+                "unexpected result for \(testCase): \(result.output)"
+            )
+            XCTAssertTrue(
+                result.output.contains(testCase.expectedOutput),
+                "missing \(testCase.expectedOutput) for \(testCase): \(result.output)"
+            )
+        }
+    }
+
+    func testVisualSelectionNormalizerTreatsOnlyExactLowercaseFalseAsSkip() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let script = try visualSelectionNormalizerScript(from: workflow)
+        let cases: [(raw: String, expectedState: String)] = [
+            ("false", "0"),
+            ("true", "1"),
+            ("FALSE", "2"),
+            ("False", "2"),
+            ("unknown", "2"),
+            ("", "2")
+        ]
+
+        for testCase in cases {
+            let result = try runBash(
+                script,
+                environment: [
+                    "RAW_VISUAL_SELECTION": testCase.raw,
+                    "GITHUB_OUTPUT": "/dev/null"
+                ]
+            )
+            XCTAssertEqual(result.exitCode, 0, "unexpected normalizer failure for \(testCase): \(result.output)")
+            XCTAssertTrue(
+                result.output.contains("visual_selection_state=\(testCase.expectedState)"),
+                "unexpected normalized state for \(testCase): \(result.output)"
+            )
+        }
     }
 
     func testCIScriptRoutesIndependentLanesWithoutOptionalFlags() throws {
@@ -174,6 +259,88 @@ final class CIGateWorkflowTests: XCTestCase {
     private func readRepositoryFile(_ relativePath: String) throws -> String {
         let fileURL = repositoryRoot.appendingPathComponent(relativePath)
         return try String(contentsOf: fileURL, encoding: .utf8)
+    }
+
+    private func visualAggregatorScript(from workflow: String) throws -> String {
+        let step = try XCTUnwrap(workflow.range(of: "      - name: Aggregate locale visual gates\n"))
+        let runMarker = try XCTUnwrap(
+            workflow.range(
+                of: "        run: |\n",
+                range: step.upperBound..<workflow.endIndex
+            )
+        )
+        let jobEnd = try XCTUnwrap(
+            workflow.range(
+                of: "\n\n  ui-performance:",
+                range: runMarker.upperBound..<workflow.endIndex
+            )
+        )
+        let body = workflow[runMarker.upperBound..<jobEnd.lowerBound]
+        let normalizedLines = body.split(
+            separator: "\n",
+            omittingEmptySubsequences: false
+        ).map { line -> String in
+            let value = String(line)
+            return value.hasPrefix("          ") ? String(value.dropFirst(10)) : value
+        }
+        return "#!/usr/bin/env bash\nset -euo pipefail\n" + normalizedLines.joined(separator: "\n") + "\n"
+    }
+
+    private func visualSelectionNormalizerScript(from workflow: String) throws -> String {
+        let step = try XCTUnwrap(workflow.range(of: "      - name: Normalize visual selection\n"))
+        let runMarker = try XCTUnwrap(
+            workflow.range(
+                of: "        run: |\n",
+                range: step.upperBound..<workflow.endIndex
+            )
+        )
+        let stepEnd = try XCTUnwrap(
+            workflow.range(
+                of: "\n\n      - name: Upload strategy and execution history",
+                range: runMarker.upperBound..<workflow.endIndex
+            )
+        )
+        let body = workflow[runMarker.upperBound..<stepEnd.lowerBound]
+        let normalizedLines = body.split(
+            separator: "\n",
+            omittingEmptySubsequences: false
+        ).map { line -> String in
+            let value = String(line)
+            return value.hasPrefix("          ") ? String(value.dropFirst(10)) : value
+        }
+        return "#!/usr/bin/env bash\nset -euo pipefail\n" + normalizedLines.joined(separator: "\n") + "\n"
+    }
+
+    private func runBash(
+        _ script: String,
+        environment: [String: String]
+    ) throws -> (exitCode: Int32, output: String) {
+        let fixtureDirectory = repositoryRoot.appendingPathComponent(
+            ".build/test-visual-aggregator-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let scriptURL = fixtureDirectory.appendingPathComponent("aggregate.sh")
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+
+        let process = Process()
+        let pipe = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [scriptURL.path]
+        process.environment = ProcessInfo.processInfo.environment.merging(
+            environment,
+            uniquingKeysWith: { _, replacement in replacement }
+        )
+        process.standardOutput = pipe
+        process.standardError = pipe
+        try process.run()
+        process.waitUntilExit()
+        let output = String(
+            data: pipe.fileHandleForReading.readDataToEndOfFile(),
+            encoding: .utf8
+        ) ?? ""
+        return (process.terminationStatus, output)
     }
 
     private var repositoryRoot: URL {

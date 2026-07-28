@@ -30,7 +30,8 @@ final class SelectiveCIWorkflowTests: XCTestCase {
         XCTAssertTrue(workflow.contains("${{ runner.os }}-${{ runner.arch }}-swift-6-"))
         XCTAssertTrue(workflow.contains("hashFiles('Package.resolved', 'Package.swift')"))
         XCTAssertTrue(workflow.contains("needs.test_strategy.outputs.ui_runtime == 'true'"))
-        XCTAssertTrue(workflow.contains("needs.test_strategy.outputs.ui_visual == 'true'"))
+        XCTAssertTrue(workflow.contains("needs.test_strategy.outputs.ui_visual_state != '0'"))
+        XCTAssertTrue(workflow.contains("failure_reason=visual-selection-result-invalid"))
         XCTAssertTrue(workflow.contains("needs.test_strategy.outputs.ui_performance == 'true'"))
         XCTAssertFalse(workflow.contains("./ci/compare-runs.py"))
     }

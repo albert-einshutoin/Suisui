@@ -2,7 +2,31 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUTPUT_DIR="${SUISUI_CI_VISUAL_GATE_OUTPUT_DIR:-$ROOT_DIR/.tmp/ci-visual-gate}"
+GATE_LOCALE="${SUISUI_CI_VISUAL_GATE_LOCALE:-en-US}"
+case "$GATE_LOCALE" in
+  en-US|ja-JP)
+    ;;
+  *)
+    printf 'failure_category=configuration\n' >&2
+    printf 'failure_reason=unsupported-visual-gate-locale\n' >&2
+    exit 2
+    ;;
+esac
+case "$GATE_LOCALE" in
+  en-US)
+    LOCALE_SLUG="en-US"
+    CAPTURE_LOCALE="english"
+    MANIFEST_RELATIVE="docs/quality/visual-baseline-manifest.json"
+    BASELINE_RELATIVE="docs/quality/visual-baselines"
+    ;;
+  ja-JP)
+    LOCALE_SLUG="ja-JP"
+    CAPTURE_LOCALE="japanese"
+    MANIFEST_RELATIVE="docs/quality/visual-baseline-manifest-ja.json"
+    BASELINE_RELATIVE="docs/quality/visual-baselines-ja"
+    ;;
+esac
+OUTPUT_DIR="${SUISUI_CI_VISUAL_GATE_OUTPUT_DIR:-$ROOT_DIR/.tmp/ci-visual-gate/$LOCALE_SLUG}"
 ROOT_CANONICAL="$(cd "$ROOT_DIR" && pwd -P)"
 OUTPUT_CANONICAL=""
 SUMMARY_FILE=""
@@ -136,6 +160,8 @@ write_summary() {
       printf 'status=%s\n' "$STATUS"
       printf 'failure_category=%s\n' "$FAILURE_CATEGORY"
       printf 'failure_reason=%s\n' "$FAILURE_REASON"
+      printf 'locale=%s\n' "$GATE_LOCALE"
+      printf 'locale_slug=%s\n' "$LOCALE_SLUG"
       printf 'expected_screenshot_count=%s\n' "$EXPECTED_SCREENSHOT_COUNT"
       printf 'screenshot_count=%s\n' "$SCREENSHOT_COUNT"
       printf 'capture_route=normal\n'
@@ -219,9 +245,9 @@ PRIVATE_HOME="$PRIVATE_DIR/home"
 PRIVATE_TMP="$PRIVATE_DIR/tmp"
 CAPTURE_EVIDENCE_FILE="$CURRENT_DIR/ui-screenshots.md"
 AX_RECEIPT="$CURRENT_DIR/visual-ax-audit-receipt.json"
-MANIFEST="$ROOT_DIR/docs/quality/visual-baseline-manifest.json"
+MANIFEST="$ROOT_DIR/$MANIFEST_RELATIVE"
 CI_MANIFEST="$CURRENT_DIR/visual-baseline-manifest.json"
-BASELINE_DIR="$ROOT_DIR/docs/quality/visual-baselines"
+BASELINE_DIR="$ROOT_DIR/$BASELINE_RELATIVE"
 TRACKED_EVIDENCE_BEFORE="$PRIVATE_DIR/tracked-evidence-before"
 TRACKED_EVIDENCE_AFTER="$PRIVATE_DIR/tracked-evidence-after"
 
@@ -256,17 +282,36 @@ run_logged() {
 snapshot_tracked_evidence() {
   local output_file="$1"
   {
-    git -C "$ROOT_DIR" status --porcelain=v1 --untracked-files=all -- docs/release/evidence docs/quality/visual-baseline-manifest.json docs/quality/visual-baselines
-    git -C "$ROOT_DIR" diff --binary -- docs/release/evidence docs/quality/visual-baseline-manifest.json docs/quality/visual-baselines
-    git -C "$ROOT_DIR" diff --cached --binary -- docs/release/evidence docs/quality/visual-baseline-manifest.json docs/quality/visual-baselines
+    git -C "$ROOT_DIR" status --porcelain=v1 --untracked-files=all -- \
+      docs/release/evidence \
+      docs/quality/visual-baseline-manifest.json \
+      docs/quality/visual-baseline-manifest-ja.json \
+      docs/quality/visual-baselines \
+      docs/quality/visual-baselines-ja
+    git -C "$ROOT_DIR" diff --binary -- \
+      docs/release/evidence \
+      docs/quality/visual-baseline-manifest.json \
+      docs/quality/visual-baseline-manifest-ja.json \
+      docs/quality/visual-baselines \
+      docs/quality/visual-baselines-ja
+    git -C "$ROOT_DIR" diff --cached --binary -- \
+      docs/release/evidence \
+      docs/quality/visual-baseline-manifest.json \
+      docs/quality/visual-baseline-manifest-ja.json \
+      docs/quality/visual-baselines \
+      docs/quality/visual-baselines-ja
   } >"$output_file"
 }
 
 if ! command -v git >/dev/null 2>&1; then
   block "configuration" "git-unavailable" 2
 fi
-if [[ ! -r "$MANIFEST" || ! -d "$BASELINE_DIR" ]]; then
+if [[ ! -f "$MANIFEST" || -L "$MANIFEST" || ! -d "$BASELINE_DIR" || -L "$BASELINE_DIR" ]]; then
   block "configuration" "visual-baseline-unavailable" 2
+fi
+MANIFEST_LOCALE="$(/usr/bin/plutil -extract baselineContext.locale raw -o - "$MANIFEST" 2>/dev/null || true)"
+if [[ "$MANIFEST_LOCALE" != "$GATE_LOCALE" ]]; then
+  block "configuration" "visual-baseline-locale-mismatch" 2
 fi
 
 MANIFEST_SCREENSHOT_COUNT="$(grep -Eo '"[^"]+\.png"' "$MANIFEST" | sort -u | wc -l | tr -d '[:space:]')"
@@ -318,6 +363,7 @@ if ! run_logged capture \
   SUISUI_UI_EVIDENCE_TMPDIR="$PRIVATE_TMP" \
   SUISUI_UI_EVIDENCE_HOME="$PRIVATE_HOME" \
   SUISUI_UI_EVIDENCE_KEEP_HOME=0 \
+  SUISUI_UI_EVIDENCE_LOCALE="$CAPTURE_LOCALE" \
   SUISUI_VISUAL_AX_AUDIT_RESULT="$AX_RECEIPT" \
   SUISUI_VISUAL_BASELINE_MANIFEST="$CI_MANIFEST" \
   "$ROOT_DIR/script/capture_ui_evidence.sh"; then
@@ -361,4 +407,6 @@ FAILURE_REASON="none"
 write_summary
 printf 'status=passed\n'
 printf 'gate=visual\n'
+printf 'locale=%s\n' "$GATE_LOCALE"
+printf 'locale_slug=%s\n' "$LOCALE_SLUG"
 printf 'summary_artifact=ui-visual-gate-summary.env\n'
