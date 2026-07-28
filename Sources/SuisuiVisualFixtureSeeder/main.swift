@@ -2,6 +2,353 @@ import Darwin
 import Foundation
 import SuisuiCore
 
+private enum SecureEvidenceHomeOperation {
+    private static let markerName = ".suisui-ui-evidence-home-v1"
+
+    static func create(arguments: [String]) throws {
+        let values = try parse(
+            arguments: arguments,
+            allowedFlags: ["--path", "--evidence-home-marker-token"]
+        )
+        let requestedURL = try requiredPath(flag: "--path", values: values)
+        let markerToken = try requiredMarkerToken(values: values)
+        let (parentURL, name) = try resolvedParentAndName(for: requestedURL)
+        let parentDescriptor = parentURL.path.withCString { path in
+            open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        }
+        guard parentDescriptor >= 0 else {
+            throw SeederError.invalidPath("unable to pin isolated HOME parent")
+        }
+        defer { close(parentDescriptor) }
+
+        let createStatus = name.withCString { component in
+            mkdirat(parentDescriptor, component, S_IRWXU)
+        }
+        guard createStatus == 0 else {
+            throw SeederError.invalidPath(
+                "isolated HOME must be a new directory created exclusively for this capture"
+            )
+        }
+
+        let homeDescriptor = name.withCString { component in
+            openat(
+                parentDescriptor,
+                component,
+                O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
+            )
+        }
+        guard homeDescriptor >= 0 else {
+            throw SeederError.invalidPath("unable to pin the newly created isolated HOME")
+        }
+        defer { close(homeDescriptor) }
+        var shouldRemoveCreatedHome = true
+        defer {
+            if shouldRemoveCreatedHome {
+                _ = markerName.withCString { marker in
+                    unlinkat(homeDescriptor, marker, 0)
+                }
+                _ = name.withCString { component in
+                    unlinkat(parentDescriptor, component, AT_REMOVEDIR)
+                }
+            }
+        }
+
+        let identity = try validateHomeDescriptor(homeDescriptor)
+        let markerDescriptor = markerName.withCString { marker in
+            openat(
+                homeDescriptor,
+                marker,
+                O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
+                S_IRUSR | S_IWUSR
+            )
+        }
+        guard markerDescriptor >= 0 else {
+            throw SeederError.invalidPath("unable to create isolated HOME ownership marker")
+        }
+        defer { close(markerDescriptor) }
+        try writeAll(
+            Data("suisui-ui-evidence-home-v1:\(markerToken)\n".utf8),
+            to: markerDescriptor
+        )
+        guard fsync(markerDescriptor) == 0 else {
+            throw SeederError.invalidPath("unable to persist isolated HOME ownership marker")
+        }
+
+        shouldRemoveCreatedHome = false
+        print("evidence_home_path=\(parentURL.appendingPathComponent(name).path)")
+        print("evidence_home_device=\(identity.device)")
+        print("evidence_home_inode=\(identity.inode)")
+    }
+
+    static func cleanup(arguments: [String]) throws {
+        let values = try parse(
+            arguments: arguments,
+            allowedFlags: [
+                "--path",
+                "--evidence-home-marker-token",
+                "--expected-evidence-home-device",
+                "--expected-evidence-home-inode"
+            ]
+        )
+        let requestedURL = try requiredPath(flag: "--path", values: values)
+        let markerToken = try requiredMarkerToken(values: values)
+        let expectedIdentity = try requiredIdentity(values: values)
+        let (parentURL, name) = try resolvedParentAndName(for: requestedURL)
+        let parentDescriptor = parentURL.path.withCString { path in
+            open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        }
+        guard parentDescriptor >= 0 else {
+            throw SeederError.invalidPath("unable to pin isolated HOME parent for cleanup")
+        }
+        defer { close(parentDescriptor) }
+
+        let homeDescriptor = name.withCString { component in
+            openat(
+                parentDescriptor,
+                component,
+                O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
+            )
+        }
+        guard homeDescriptor >= 0 else {
+            throw SeederError.invalidPath("isolated HOME is unavailable for secure cleanup")
+        }
+        defer { close(homeDescriptor) }
+
+        guard try validateHomeDescriptor(homeDescriptor) == expectedIdentity else {
+            throw SeederError.invalidPath(
+                "isolated HOME identity changed; refusing recursive cleanup"
+            )
+        }
+        try validateMarker(
+            in: homeDescriptor,
+            expectedContents: Data("suisui-ui-evidence-home-v1:\(markerToken)\n".utf8)
+        )
+        try removeContents(of: homeDescriptor)
+        guard name.withCString({
+            unlinkat(parentDescriptor, $0, AT_REMOVEDIR)
+        }) == 0 else {
+            throw SeederError.invalidPath("unable to remove empty isolated HOME")
+        }
+    }
+
+    struct Identity: Equatable {
+        let device: dev_t
+        let inode: ino_t
+    }
+
+    private static func parse(
+        arguments: [String],
+        allowedFlags: Set<String>
+    ) throws -> [String: String] {
+        guard arguments.count.isMultiple(of: 2) else {
+            throw SeederError.invalidArguments("secure HOME arguments must be flag-value pairs")
+        }
+        var values: [String: String] = [:]
+        var index = 0
+        while index < arguments.count {
+            let flag = arguments[index]
+            let value = arguments[index + 1]
+            guard allowedFlags.contains(flag), !value.isEmpty, values[flag] == nil else {
+                throw SeederError.invalidArguments("invalid or duplicate secure HOME argument: \(flag)")
+            }
+            values[flag] = value
+            index += 2
+        }
+        return values
+    }
+
+    private static func requiredPath(
+        flag: String,
+        values: [String: String]
+    ) throws -> URL {
+        guard let value = values[flag] else {
+            throw SeederError.invalidArguments("missing \(flag)")
+        }
+        return URL(
+            fileURLWithPath: value,
+            relativeTo: URL(
+                fileURLWithPath: FileManager.default.currentDirectoryPath,
+                isDirectory: true
+            )
+        ).standardizedFileURL
+    }
+
+    private static func requiredMarkerToken(values: [String: String]) throws -> String {
+        guard let value = values["--evidence-home-marker-token"],
+              UUID(uuidString: value) != nil else {
+            throw SeederError.invalidArguments(
+                "--evidence-home-marker-token must be a UUID generated for this capture"
+            )
+        }
+        return value
+    }
+
+    private static func requiredIdentity(values: [String: String]) throws -> Identity {
+        guard let rawDevice = values["--expected-evidence-home-device"],
+              let deviceValue = Int64(rawDevice),
+              let device = dev_t(exactly: deviceValue),
+              let rawInode = values["--expected-evidence-home-inode"],
+              let inodeValue = UInt64(rawInode),
+              let inode = ino_t(exactly: inodeValue) else {
+            throw SeederError.invalidArguments(
+                "secure HOME cleanup requires valid expected device and inode values"
+            )
+        }
+        return Identity(device: device, inode: inode)
+    }
+
+    private static func resolvedParentAndName(for url: URL) throws -> (URL, String) {
+        let name = url.lastPathComponent
+        guard !name.isEmpty, name != ".", name != "..", !name.contains("/") else {
+            throw SeederError.invalidPath("isolated HOME has an invalid leaf name")
+        }
+        let requestedParent = url.deletingLastPathComponent()
+        var parentIsDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(
+            atPath: requestedParent.path,
+            isDirectory: &parentIsDirectory
+        ), parentIsDirectory.boolValue else {
+            throw SeederError.invalidPath("isolated HOME parent must be an existing directory")
+        }
+        return (
+            requestedParent.resolvingSymlinksInPath().standardizedFileURL,
+            name
+        )
+    }
+
+    private static func validateHomeDescriptor(_ descriptor: Int32) throws -> Identity {
+        var information = stat()
+        guard fstat(descriptor, &information) == 0,
+              information.st_mode & S_IFMT == S_IFDIR,
+              information.st_uid == geteuid(),
+              information.st_mode & (S_IRWXG | S_IRWXO) == 0 else {
+            throw SeederError.invalidPath(
+                "isolated HOME must be a private directory owned by the current user"
+            )
+        }
+        return Identity(device: information.st_dev, inode: information.st_ino)
+    }
+
+    private static func validateMarker(
+        in homeDescriptor: Int32,
+        expectedContents: Data
+    ) throws {
+        let markerDescriptor = markerName.withCString { marker in
+            openat(
+                homeDescriptor,
+                marker,
+                O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC
+            )
+        }
+        guard markerDescriptor >= 0 else {
+            throw SeederError.invalidPath("isolated HOME ownership marker is unavailable")
+        }
+        defer { close(markerDescriptor) }
+
+        var information = stat()
+        guard fstat(markerDescriptor, &information) == 0,
+              information.st_mode & S_IFMT == S_IFREG,
+              information.st_nlink == 1,
+              information.st_uid == geteuid(),
+              information.st_mode & (S_IRWXG | S_IRWXO) == 0 else {
+            throw SeederError.invalidPath("isolated HOME ownership marker is unsafe")
+        }
+        let handle = FileHandle(fileDescriptor: markerDescriptor, closeOnDealloc: false)
+        let data = try handle.read(upToCount: expectedContents.count + 1) ?? Data()
+        guard data == expectedContents else {
+            throw SeederError.invalidPath(
+                "isolated HOME ownership marker does not match this capture"
+            )
+        }
+    }
+
+    private static func writeAll(_ data: Data, to descriptor: Int32) throws {
+        try data.withUnsafeBytes { rawBuffer in
+            guard let baseAddress = rawBuffer.baseAddress else { return }
+            var written = 0
+            while written < rawBuffer.count {
+                let count = Darwin.write(
+                    descriptor,
+                    baseAddress.advanced(by: written),
+                    rawBuffer.count - written
+                )
+                guard count > 0 else {
+                    throw SeederError.invalidPath(
+                        "unable to write isolated HOME ownership marker"
+                    )
+                }
+                written += count
+            }
+        }
+    }
+
+    private static func removeContents(of directoryDescriptor: Int32) throws {
+        let iterationDescriptor = dup(directoryDescriptor)
+        guard iterationDescriptor >= 0,
+              let directory = fdopendir(iterationDescriptor) else {
+            if iterationDescriptor >= 0 {
+                close(iterationDescriptor)
+            }
+            throw SeederError.invalidPath("unable to enumerate isolated HOME for cleanup")
+        }
+        defer { closedir(directory) }
+
+        errno = 0
+        while let entry = readdir(directory) {
+            let name = withUnsafePointer(to: &entry.pointee.d_name) {
+                $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXNAMLEN) + 1) {
+                    String(cString: $0)
+                }
+            }
+            guard name != ".", name != ".." else { continue }
+
+            var information = stat()
+            guard name.withCString({
+                fstatat(directoryDescriptor, $0, &information, AT_SYMLINK_NOFOLLOW)
+            }) == 0 else {
+                throw SeederError.invalidPath("unable to inspect isolated HOME entry")
+            }
+            if information.st_mode & S_IFMT == S_IFDIR {
+                let childDescriptor = name.withCString {
+                    openat(
+                        directoryDescriptor,
+                        $0,
+                        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
+                    )
+                }
+                guard childDescriptor >= 0 else {
+                    throw SeederError.invalidPath(
+                        "unable to pin isolated HOME child directory"
+                    )
+                }
+                do {
+                    try removeContents(of: childDescriptor)
+                    close(childDescriptor)
+                } catch {
+                    close(childDescriptor)
+                    throw error
+                }
+                guard name.withCString({
+                    unlinkat(directoryDescriptor, $0, AT_REMOVEDIR)
+                }) == 0 else {
+                    throw SeederError.invalidPath(
+                        "unable to remove isolated HOME child directory"
+                    )
+                }
+            } else {
+                guard name.withCString({
+                    unlinkat(directoryDescriptor, $0, 0)
+                }) == 0 else {
+                    throw SeederError.invalidPath("unable to remove isolated HOME file")
+                }
+            }
+        }
+        guard errno == 0 else {
+            throw SeederError.invalidPath("unable to finish isolated HOME enumeration")
+        }
+    }
+}
+
 private struct SeederOptions {
     private static let evidenceHomeMarkerName = ".suisui-ui-evidence-home-v1"
 
@@ -34,6 +381,8 @@ private struct SeederOptions {
         var databasePath: String?
         var evidenceHomePath: String?
         var evidenceHomeMarkerToken: String?
+        var expectedEvidenceHomeDevice: dev_t?
+        var expectedEvidenceHomeInode: ino_t?
         var captureReferenceInstant: Date?
         var index = 0
 
@@ -42,6 +391,8 @@ private struct SeederOptions {
             guard flag == "--database"
                     || flag == "--evidence-home"
                     || flag == "--evidence-home-marker-token"
+                    || flag == "--expected-evidence-home-device"
+                    || flag == "--expected-evidence-home-inode"
                     || flag == "--capture-reference-instant" else {
                 throw SeederError.invalidArguments("unknown argument: \(flag)")
             }
@@ -74,6 +425,24 @@ private struct SeederOptions {
                     )
                 }
                 evidenceHomeMarkerToken = value
+            case "--expected-evidence-home-device":
+                guard expectedEvidenceHomeDevice == nil,
+                      let rawValue = Int64(value),
+                      let parsedValue = dev_t(exactly: rawValue) else {
+                    throw SeederError.invalidArguments(
+                        "--expected-evidence-home-device must be one unique device identifier"
+                    )
+                }
+                expectedEvidenceHomeDevice = parsedValue
+            case "--expected-evidence-home-inode":
+                guard expectedEvidenceHomeInode == nil,
+                      let rawValue = UInt64(value),
+                      let parsedValue = ino_t(exactly: rawValue) else {
+                    throw SeederError.invalidArguments(
+                        "--expected-evidence-home-inode must be one unique inode identifier"
+                    )
+                }
+                expectedEvidenceHomeInode = parsedValue
             case "--capture-reference-instant":
                 guard captureReferenceInstant == nil else {
                     throw SeederError.invalidArguments("duplicate --capture-reference-instant")
@@ -97,10 +466,15 @@ private struct SeederOptions {
             index += 2
         }
 
-        guard let databasePath, let evidenceHomePath, let evidenceHomeMarkerToken else {
+        guard let databasePath,
+              let evidenceHomePath,
+              let evidenceHomeMarkerToken,
+              let expectedEvidenceHomeDevice,
+              let expectedEvidenceHomeInode else {
             throw SeederError.invalidArguments(
                 "usage: SuisuiVisualFixtureSeeder --database <path> --evidence-home <path> "
-                    + "--evidence-home-marker-token <uuid> "
+                    + "--evidence-home-marker-token <uuid> --expected-evidence-home-device <device> "
+                    + "--expected-evidence-home-inode <inode> "
                     + "[--capture-reference-instant <UTC ISO-8601 instant>]"
             )
         }
@@ -124,6 +498,14 @@ private struct SeederOptions {
             expectedKind: .directory,
             description: "--evidence-home"
         )
+        guard evidenceHomeIdentity == FileIdentity(
+            device: expectedEvidenceHomeDevice,
+            inode: expectedEvidenceHomeInode
+        ) else {
+            throw SeederError.invalidPath(
+                "--evidence-home no longer matches the directory created for this capture"
+            )
+        }
         evidenceHomeMarkerContents = Data(
             "suisui-ui-evidence-home-v1:\(evidenceHomeMarkerToken)\n".utf8
         )
@@ -307,6 +689,8 @@ private struct SeederOptions {
         var evidenceHomeInformation = stat()
         guard fstat(evidenceHomeDescriptor, &evidenceHomeInformation) == 0,
               evidenceHomeInformation.st_mode & S_IFMT == S_IFDIR,
+              evidenceHomeInformation.st_uid == geteuid(),
+              evidenceHomeInformation.st_mode & (S_IRWXG | S_IRWXO) == 0,
               FileIdentity(
                   device: evidenceHomeInformation.st_dev,
                   inode: evidenceHomeInformation.st_ino
@@ -411,7 +795,11 @@ private struct SeederOptions {
 
     private func validateEvidenceHomeMarker(in evidenceHomeDescriptor: Int32) throws {
         let markerDescriptor = Self.evidenceHomeMarkerName.withCString { name in
-            openat(evidenceHomeDescriptor, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+            openat(
+                evidenceHomeDescriptor,
+                name,
+                O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC
+            )
         }
         guard markerDescriptor >= 0 else {
             throw SeederError.invalidPath(
@@ -424,7 +812,8 @@ private struct SeederOptions {
         guard fstat(markerDescriptor, &markerInformation) == 0,
               markerInformation.st_mode & S_IFMT == S_IFREG,
               markerInformation.st_nlink == 1,
-              markerInformation.st_uid == geteuid() else {
+              markerInformation.st_uid == geteuid(),
+              markerInformation.st_mode & (S_IRWXG | S_IRWXO) == 0 else {
             throw SeederError.invalidPath(
                 "--evidence-home ownership marker must be a single-link file owned by the current user"
             )
@@ -463,6 +852,9 @@ private struct SeederOptions {
 
         var descriptorInformation = stat()
         guard fstat(preparedDatabase.descriptor, &descriptorInformation) == 0,
+              descriptorInformation.st_mode & S_IFMT == S_IFREG,
+              descriptorInformation.st_nlink == 1,
+              descriptorInformation.st_uid == geteuid(),
               FileIdentity(
                   device: descriptorInformation.st_dev,
                   inode: descriptorInformation.st_ino
@@ -650,7 +1042,8 @@ private func seedCaptureFixtures(
             WHERE project_id IN (SELECT id FROM projects WHERE source_command = 'ui-evidence');
             DELETE FROM tasks WHERE source_command = 'ui-evidence';
             DELETE FROM projects WHERE source_command = 'ui-evidence';
-            DELETE FROM mcp_server_registrations WHERE id LIKE 'ui-evidence-%';
+            DELETE FROM mcp_server_registrations
+            WHERE id IN ('ui-evidence-filesystem', 'ui-evidence-issues');
             """
         )
 
@@ -1000,8 +1393,16 @@ private func run(options: SeederOptions) throws {
 }
 
 do {
-    let options = try SeederOptions(arguments: Array(CommandLine.arguments.dropFirst()))
-    try run(options: options)
+    let arguments = Array(CommandLine.arguments.dropFirst())
+    switch arguments.first {
+    case "--create-evidence-home":
+        try SecureEvidenceHomeOperation.create(arguments: Array(arguments.dropFirst()))
+    case "--cleanup-evidence-home":
+        try SecureEvidenceHomeOperation.cleanup(arguments: Array(arguments.dropFirst()))
+    default:
+        let options = try SeederOptions(arguments: arguments)
+        try run(options: options)
+    }
 } catch {
     fputs("BLOCKER: \(error)\n", stderr)
     exit(2)

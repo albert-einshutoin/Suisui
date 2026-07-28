@@ -52,8 +52,11 @@ VISUAL_RASTER_STABILITY_CHECKER="$EVIDENCE_TMPDIR/visual-raster-stability-checke
 VISUAL_APPEARANCE_CHECKER="$EVIDENCE_TMPDIR/visual-appearance-checker.$$"
 VISUAL_FIRST_RASTER="$EVIDENCE_TMPDIR/visual-first-raster.$$.png"
 EVIDENCE_HOME="${SUISUI_UI_EVIDENCE_HOME:-}"
-EVIDENCE_HOME_MARKER_NAME=".suisui-ui-evidence-home-v1"
 EVIDENCE_HOME_MARKER_TOKEN=""
+EVIDENCE_HOME_DEVICE=""
+EVIDENCE_HOME_INODE=""
+EVIDENCE_HOME_CONTAINER=""
+EVIDENCE_HOME_READY=0
 EVIDENCE_HOME_IS_AUTOMATIC=0
 KEEP_HOME="${SUISUI_UI_EVIDENCE_KEEP_HOME:-0}"
 DRY_RUN=0
@@ -249,15 +252,15 @@ validate_visual_ax_audit_result_path() {
   esac
 }
 
-prepare_isolated_evidence_home() {
+select_isolated_evidence_home() {
   local requested_home="$EVIDENCE_HOME"
   local requested_parent
   local requested_parent_real
   local requested_name
-  local marker_path
 
   if [[ -z "$requested_home" ]]; then
-    EVIDENCE_HOME="$(mktemp -d "$EVIDENCE_TMPDIR/suisui-ui-evidence.XXXXXX")"
+    EVIDENCE_HOME_CONTAINER="$(mktemp -d "$EVIDENCE_TMPDIR/suisui-ui-evidence.XXXXXX")"
+    EVIDENCE_HOME="$EVIDENCE_HOME_CONTAINER/home"
     EVIDENCE_HOME_IS_AUTOMATIC=1
   else
     # An override identifies a new leaf, not an existing HOME. Requiring the
@@ -278,28 +281,11 @@ prepare_isolated_evidence_home() {
       echo "BLOCKER: SUISUI_UI_EVIDENCE_HOME parent must be an existing non-symlink directory: $requested_parent" >&2
       return 2
     fi
-    requested_parent_real="$(cd "$requested_parent" && pwd -P)"
+    requested_parent_real="$(cd "$requested_parent" && pwd -L)"
     EVIDENCE_HOME="$requested_parent_real/$requested_name"
-    if ! (umask 077 && /bin/mkdir "$EVIDENCE_HOME"); then
-      echo "BLOCKER: unable to create the isolated evidence home exclusively: $EVIDENCE_HOME" >&2
-      return 2
-    fi
   fi
 
-  EVIDENCE_HOME="$(cd "$EVIDENCE_HOME" && pwd -P)"
   EVIDENCE_HOME_MARKER_TOKEN="$(/usr/bin/uuidgen)"
-  marker_path="$EVIDENCE_HOME/$EVIDENCE_HOME_MARKER_NAME"
-  # The seeder reopens this marker through the pinned HOME descriptor and
-  # checks the per-run token before it opens SQLite. This binds fixture writes
-  # to the exact capture-owned directory rather than trusting a path string.
-  if ! (
-    umask 077
-    set -o noclobber
-    printf 'suisui-ui-evidence-home-v1:%s\n' "$EVIDENCE_HOME_MARKER_TOKEN" >"$marker_path"
-  ); then
-    echo "BLOCKER: unable to claim the isolated evidence home: $EVIDENCE_HOME" >&2
-    return 2
-  fi
 }
 
 # Validate the release-evidence destination before loading optional helpers or
@@ -326,13 +312,31 @@ cleanup() {
   rm -f "$AX_CAPTURE_RECEIPT_TSV" "$AX_RECEIPT_WRITER" "$VISUAL_RASTER_STABILITY_CHECKER" "$VISUAL_APPEARANCE_CHECKER"
   rm -f "$VISUAL_FIRST_RASTER"
   rm -f "$EVIDENCE_APP_LOG"
-  if [[ "$KEEP_HOME" != "1" && "$EVIDENCE_HOME_IS_AUTOMATIC" == "1" && -d "$EVIDENCE_HOME" ]]; then
-    rm -rf "$EVIDENCE_HOME"
+  if [[ "$KEEP_HOME" != "1" && "$EVIDENCE_HOME_IS_AUTOMATIC" == "1" ]]; then
+    if [[ "$EVIDENCE_HOME_READY" == "1" && -n "$VISUAL_FIXTURE_SEEDER_BIN" ]]; then
+      # Cleanup is delegated to the same dirfd-based helper that created the
+      # HOME. It verifies the capture token plus device/inode and recursively
+      # unlinks through pinned descriptors, so a replacement path is never
+      # passed to rm -rf.
+      if "$VISUAL_FIXTURE_SEEDER_BIN" \
+          --cleanup-evidence-home \
+          --path "$EVIDENCE_HOME" \
+          --evidence-home-marker-token "$EVIDENCE_HOME_MARKER_TOKEN" \
+          --expected-evidence-home-device "$EVIDENCE_HOME_DEVICE" \
+          --expected-evidence-home-inode "$EVIDENCE_HOME_INODE"; then
+        EVIDENCE_HOME_READY=0
+      else
+        echo "BLOCKER: secure isolated HOME cleanup failed; refusing path-based fallback: $EVIDENCE_HOME" >&2
+      fi
+    fi
+    if [[ "$EVIDENCE_HOME_READY" == "0" && -n "$EVIDENCE_HOME_CONTAINER" && -d "$EVIDENCE_HOME_CONTAINER" ]]; then
+      /bin/rmdir "$EVIDENCE_HOME_CONTAINER" 2>/dev/null || true
+    fi
   fi
 }
 trap cleanup EXIT
 
-prepare_isolated_evidence_home
+select_isolated_evidence_home
 
 # Any mode that can overwrite screenshot artifacts invalidates the previous
 # complete-run receipt up front. Otherwise a failed or partial recapture could
@@ -1150,6 +1154,68 @@ prepare_visual_fixture_seeder() {
   )/SuisuiVisualFixtureSeeder"
 }
 
+create_isolated_evidence_home() {
+  local create_output
+  local key
+  local value
+  local extra
+
+  if [[ "$EVIDENCE_HOME_READY" == "1" ]]; then
+    return 0
+  fi
+  create_output="$(
+    "$VISUAL_FIXTURE_SEEDER_BIN" \
+      --create-evidence-home \
+      --path "$EVIDENCE_HOME" \
+      --evidence-home-marker-token "$EVIDENCE_HOME_MARKER_TOKEN"
+  )" || return $?
+
+  EVIDENCE_HOME_DEVICE=""
+  EVIDENCE_HOME_INODE=""
+  local created_home_path=""
+  while IFS='=' read -r key value extra; do
+    if [[ -n "$extra" || -z "$key" || -z "$value" ]]; then
+      echo "BLOCKER: secure isolated HOME creator returned malformed metadata" >&2
+      return 2
+    fi
+    case "$key" in
+      evidence_home_path)
+        [[ -z "$created_home_path" ]] || {
+          echo "BLOCKER: secure isolated HOME creator returned duplicate path metadata" >&2
+          return 2
+        }
+        created_home_path="$value"
+        ;;
+      evidence_home_device)
+        [[ -z "$EVIDENCE_HOME_DEVICE" && "$value" =~ ^-?[0-9]+$ ]] || {
+          echo "BLOCKER: secure isolated HOME creator returned invalid device metadata" >&2
+          return 2
+        }
+        EVIDENCE_HOME_DEVICE="$value"
+        ;;
+      evidence_home_inode)
+        [[ -z "$EVIDENCE_HOME_INODE" && "$value" =~ ^[0-9]+$ ]] || {
+          echo "BLOCKER: secure isolated HOME creator returned invalid inode metadata" >&2
+          return 2
+        }
+        EVIDENCE_HOME_INODE="$value"
+        ;;
+      *)
+        echo "BLOCKER: secure isolated HOME creator returned unknown metadata: $key" >&2
+        return 2
+        ;;
+    esac
+  done <<<"$create_output"
+
+  if [[ "$created_home_path" != "$EVIDENCE_HOME" \
+      || -z "$EVIDENCE_HOME_DEVICE" \
+      || -z "$EVIDENCE_HOME_INODE" ]]; then
+    echo "BLOCKER: secure isolated HOME creator did not attest the requested path and identity" >&2
+    return 2
+  fi
+  EVIDENCE_HOME_READY=1
+}
+
 seed_capture_database() {
   local database_path="$1"
   local seed_output
@@ -1158,6 +1224,8 @@ seed_capture_database() {
       --database "$database_path" \
       --evidence-home "$EVIDENCE_HOME" \
       --evidence-home-marker-token "$EVIDENCE_HOME_MARKER_TOKEN" \
+      --expected-evidence-home-device "$EVIDENCE_HOME_DEVICE" \
+      --expected-evidence-home-inode "$EVIDENCE_HOME_INODE" \
       --capture-reference-instant "$EVIDENCE_REFERENCE_INSTANT"
   )" || return $?
 
@@ -2014,6 +2082,7 @@ fi
 
 if [[ "$SEED_ONLY" == "1" ]]; then
   prepare_visual_fixture_seeder
+  create_isolated_evidence_home
   DATABASE_PATH="$EVIDENCE_HOME/Library/Application Support/Suisui/Suisui.sqlite"
   seed_capture_database "$DATABASE_PATH"
   echo "capture_seed_ready=1"
@@ -2071,6 +2140,7 @@ fi
 assert_visual_product_source_is_committed
 
 prepare_visual_fixture_seeder
+create_isolated_evidence_home
 "$ROOT_DIR/script/build_and_run.sh" --build-only
 /usr/bin/swiftc "$ROOT_DIR/script/visual_raster_stability_check.swift" -o "$VISUAL_RASTER_STABILITY_CHECKER"
 /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_appearance_check.swift" -o "$VISUAL_APPEARANCE_CHECKER"
