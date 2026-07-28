@@ -1172,20 +1172,12 @@ create_isolated_evidence_home() {
 
   EVIDENCE_HOME_DEVICE=""
   EVIDENCE_HOME_INODE=""
-  local created_home_path=""
   while IFS='=' read -r key value extra; do
     if [[ -n "$extra" || -z "$key" || -z "$value" ]]; then
       echo "BLOCKER: secure isolated HOME creator returned malformed metadata" >&2
       return 2
     fi
     case "$key" in
-      evidence_home_path)
-        [[ -z "$created_home_path" ]] || {
-          echo "BLOCKER: secure isolated HOME creator returned duplicate path metadata" >&2
-          return 2
-        }
-        created_home_path="$value"
-        ;;
       evidence_home_device)
         [[ -z "$EVIDENCE_HOME_DEVICE" && "$value" =~ ^-?[0-9]+$ ]] || {
           echo "BLOCKER: secure isolated HOME creator returned invalid device metadata" >&2
@@ -1207,10 +1199,8 @@ create_isolated_evidence_home() {
     esac
   done <<<"$create_output"
 
-  if [[ "$created_home_path" != "$EVIDENCE_HOME" \
-      || -z "$EVIDENCE_HOME_DEVICE" \
-      || -z "$EVIDENCE_HOME_INODE" ]]; then
-    echo "BLOCKER: secure isolated HOME creator did not attest the requested path and identity" >&2
+  if [[ -z "$EVIDENCE_HOME_DEVICE" || -z "$EVIDENCE_HOME_INODE" ]]; then
+    echo "BLOCKER: secure isolated HOME creator did not attest the requested identity" >&2
     return 2
   fi
   EVIDENCE_HOME_READY=1

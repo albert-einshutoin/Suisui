@@ -20,14 +20,33 @@ private enum SecureEvidenceHomeOperation {
             throw SeederError.invalidPath("unable to pin isolated HOME parent")
         }
         defer { close(parentDescriptor) }
+        try validateParentDescriptor(parentDescriptor)
 
+        let previousMask = umask(0)
         let createStatus = name.withCString { component in
             mkdirat(parentDescriptor, component, S_IRWXU)
         }
+        umask(previousMask)
         guard createStatus == 0 else {
             throw SeederError.invalidPath(
                 "isolated HOME must be a new directory created exclusively for this capture"
             )
+        }
+
+        let createdIdentity = try identity(
+            of: name,
+            relativeTo: parentDescriptor,
+            expectedKind: S_IFDIR
+        )
+        var shouldRemoveCreatedHome = true
+        defer {
+            if shouldRemoveCreatedHome {
+                removeEmptyLeafIfIdentityMatches(
+                    name,
+                    relativeTo: parentDescriptor,
+                    expectedIdentity: createdIdentity
+                )
+            }
         }
 
         let homeDescriptor = name.withCString { component in
@@ -41,19 +60,13 @@ private enum SecureEvidenceHomeOperation {
             throw SeederError.invalidPath("unable to pin the newly created isolated HOME")
         }
         defer { close(homeDescriptor) }
-        var shouldRemoveCreatedHome = true
-        defer {
-            if shouldRemoveCreatedHome {
-                _ = markerName.withCString { marker in
-                    unlinkat(homeDescriptor, marker, 0)
-                }
-                _ = name.withCString { component in
-                    unlinkat(parentDescriptor, component, AT_REMOVEDIR)
-                }
-            }
-        }
 
         let identity = try validateHomeDescriptor(homeDescriptor)
+        guard identity == createdIdentity else {
+            throw SeederError.invalidPath(
+                "isolated HOME changed between exclusive creation and descriptor pinning"
+            )
+        }
         let markerDescriptor = markerName.withCString { marker in
             openat(
                 homeDescriptor,
@@ -66,6 +79,13 @@ private enum SecureEvidenceHomeOperation {
             throw SeederError.invalidPath("unable to create isolated HOME ownership marker")
         }
         defer { close(markerDescriptor) }
+        defer {
+            if shouldRemoveCreatedHome {
+                _ = markerName.withCString { marker in
+                    unlinkat(homeDescriptor, marker, 0)
+                }
+            }
+        }
         try writeAll(
             Data("suisui-ui-evidence-home-v1:\(markerToken)\n".utf8),
             to: markerDescriptor
@@ -75,7 +95,6 @@ private enum SecureEvidenceHomeOperation {
         }
 
         shouldRemoveCreatedHome = false
-        print("evidence_home_path=\(parentURL.appendingPathComponent(name).path)")
         print("evidence_home_device=\(identity.device)")
         print("evidence_home_inode=\(identity.inode)")
     }
@@ -101,6 +120,7 @@ private enum SecureEvidenceHomeOperation {
             throw SeederError.invalidPath("unable to pin isolated HOME parent for cleanup")
         }
         defer { close(parentDescriptor) }
+        try validateParentDescriptor(parentDescriptor)
 
         let homeDescriptor = name.withCString { component in
             openat(
@@ -123,10 +143,40 @@ private enum SecureEvidenceHomeOperation {
             in: homeDescriptor,
             expectedContents: Data("suisui-ui-evidence-home-v1:\(markerToken)\n".utf8)
         )
-        try removeContents(of: homeDescriptor)
-        guard name.withCString({
-            unlinkat(parentDescriptor, $0, AT_REMOVEDIR)
+        try removeContents(
+            of: homeDescriptor,
+            rootDevice: expectedIdentity.device,
+            protectedEntryName: markerName
+        )
+        // Keep the marker until every other entry has been removed. A partial
+        // cleanup can therefore be retried with the same identity capability
+        // instead of stranding an unverifiable directory.
+        try validateMarker(
+            in: homeDescriptor,
+            expectedContents: Data("suisui-ui-evidence-home-v1:\(markerToken)\n".utf8)
+        )
+        guard try identity(
+            of: name,
+            relativeTo: parentDescriptor,
+            expectedKind: S_IFDIR
+        ) == expectedIdentity else {
+            throw SeederError.invalidPath(
+                "isolated HOME changed before final directory removal"
+            )
+        }
+        guard markerName.withCString({
+            unlinkat(homeDescriptor, $0, 0)
         }) == 0 else {
+            throw SeederError.invalidPath("unable to remove isolated HOME ownership marker")
+        }
+        let removeStatus = name.withCString({
+            unlinkat(parentDescriptor, $0, AT_REMOVEDIR)
+        })
+        guard removeStatus == 0 else {
+            try restoreMarker(
+                in: homeDescriptor,
+                contents: Data("suisui-ui-evidence-home-v1:\(markerToken)\n".utf8)
+            )
             throw SeederError.invalidPath("unable to remove empty isolated HOME")
         }
     }
@@ -216,6 +266,57 @@ private enum SecureEvidenceHomeOperation {
         )
     }
 
+    private static func validateParentDescriptor(_ descriptor: Int32) throws {
+        var information = stat()
+        guard fstat(descriptor, &information) == 0,
+              information.st_mode & S_IFMT == S_IFDIR else {
+            throw SeederError.invalidPath("isolated HOME parent must remain a directory")
+        }
+        let privatelyOwned = information.st_uid == geteuid()
+            && information.st_mode & (S_IWGRP | S_IWOTH) == 0
+        let stickySharedDirectory = information.st_mode & S_ISVTX != 0
+        guard privatelyOwned || stickySharedDirectory else {
+            throw SeederError.invalidPath(
+                "isolated HOME parent must be private or a sticky shared directory"
+            )
+        }
+    }
+
+    private static func identity(
+        of name: String,
+        relativeTo parentDescriptor: Int32,
+        expectedKind: mode_t
+    ) throws -> Identity {
+        var information = stat()
+        guard name.withCString({
+            fstatat(parentDescriptor, $0, &information, AT_SYMLINK_NOFOLLOW)
+        }) == 0,
+              information.st_mode & S_IFMT == expectedKind,
+              information.st_uid == geteuid() else {
+            throw SeederError.invalidPath(
+                "isolated HOME leaf changed to an unsafe owner or file type"
+            )
+        }
+        return Identity(device: information.st_dev, inode: information.st_ino)
+    }
+
+    private static func removeEmptyLeafIfIdentityMatches(
+        _ name: String,
+        relativeTo parentDescriptor: Int32,
+        expectedIdentity: Identity
+    ) {
+        guard let currentIdentity = try? identity(
+            of: name,
+            relativeTo: parentDescriptor,
+            expectedKind: S_IFDIR
+        ), currentIdentity == expectedIdentity else {
+            return
+        }
+        _ = name.withCString { component in
+            unlinkat(parentDescriptor, component, AT_REMOVEDIR)
+        }
+    }
+
     private static func validateHomeDescriptor(_ descriptor: Int32) throws -> Identity {
         var information = stat()
         guard fstat(descriptor, &information) == 0,
@@ -282,7 +383,37 @@ private enum SecureEvidenceHomeOperation {
         }
     }
 
-    private static func removeContents(of directoryDescriptor: Int32) throws {
+    private static func restoreMarker(
+        in homeDescriptor: Int32,
+        contents: Data
+    ) throws {
+        let descriptor = markerName.withCString { marker in
+            openat(
+                homeDescriptor,
+                marker,
+                O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
+                S_IRUSR | S_IWUSR
+            )
+        }
+        guard descriptor >= 0 else {
+            throw SeederError.invalidPath(
+                "cleanup failed and ownership marker could not be restored"
+            )
+        }
+        defer { close(descriptor) }
+        try writeAll(contents, to: descriptor)
+        guard fsync(descriptor) == 0 else {
+            throw SeederError.invalidPath(
+                "cleanup failed and restored ownership marker could not be persisted"
+            )
+        }
+    }
+
+    private static func removeContents(
+        of directoryDescriptor: Int32,
+        rootDevice: dev_t,
+        protectedEntryName: String? = nil
+    ) throws {
         let iterationDescriptor = dup(directoryDescriptor)
         guard iterationDescriptor >= 0,
               let directory = fdopendir(iterationDescriptor) else {
@@ -293,14 +424,25 @@ private enum SecureEvidenceHomeOperation {
         }
         defer { closedir(directory) }
 
-        errno = 0
-        while let entry = readdir(directory) {
+        while true {
+            errno = 0
+            guard let entry = readdir(directory) else {
+                guard errno == 0 else {
+                    throw SeederError.invalidPath(
+                        "unable to finish isolated HOME enumeration"
+                    )
+                }
+                break
+            }
             let name = withUnsafePointer(to: &entry.pointee.d_name) {
                 $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXNAMLEN) + 1) {
                     String(cString: $0)
                 }
             }
             guard name != ".", name != ".." else { continue }
+            if name == protectedEntryName {
+                continue
+            }
 
             var information = stat()
             guard name.withCString({
@@ -308,7 +450,16 @@ private enum SecureEvidenceHomeOperation {
             }) == 0 else {
                 throw SeederError.invalidPath("unable to inspect isolated HOME entry")
             }
+            guard information.st_dev == rootDevice else {
+                throw SeederError.invalidPath(
+                    "isolated HOME cleanup must not cross filesystem devices"
+                )
+            }
             if information.st_mode & S_IFMT == S_IFDIR {
+                let expectedChildIdentity = Identity(
+                    device: information.st_dev,
+                    inode: information.st_ino
+                )
                 let childDescriptor = name.withCString {
                     openat(
                         directoryDescriptor,
@@ -322,11 +473,34 @@ private enum SecureEvidenceHomeOperation {
                     )
                 }
                 do {
-                    try removeContents(of: childDescriptor)
+                    var openedChildInformation = stat()
+                    guard fstat(childDescriptor, &openedChildInformation) == 0,
+                          openedChildInformation.st_mode & S_IFMT == S_IFDIR,
+                          Identity(
+                              device: openedChildInformation.st_dev,
+                              inode: openedChildInformation.st_ino
+                          ) == expectedChildIdentity else {
+                        throw SeederError.invalidPath(
+                            "isolated HOME child changed before recursive cleanup"
+                        )
+                    }
+                    try removeContents(
+                        of: childDescriptor,
+                        rootDevice: rootDevice
+                    )
                     close(childDescriptor)
                 } catch {
                     close(childDescriptor)
                     throw error
+                }
+                guard try identity(
+                    of: name,
+                    relativeTo: directoryDescriptor,
+                    expectedKind: S_IFDIR
+                ) == expectedChildIdentity else {
+                    throw SeederError.invalidPath(
+                        "isolated HOME child changed before directory removal"
+                    )
                 }
                 guard name.withCString({
                     unlinkat(directoryDescriptor, $0, AT_REMOVEDIR)
@@ -342,9 +516,6 @@ private enum SecureEvidenceHomeOperation {
                     throw SeederError.invalidPath("unable to remove isolated HOME file")
                 }
             }
-        }
-        guard errno == 0 else {
-            throw SeederError.invalidPath("unable to finish isolated HOME enumeration")
         }
     }
 }

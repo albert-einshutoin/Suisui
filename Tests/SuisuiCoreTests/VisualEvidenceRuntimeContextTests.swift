@@ -418,6 +418,10 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
 
         try FileManager.default.moveItem(at: evidenceHome, to: movedHome)
         try FileManager.default.createDirectory(at: evidenceHome, withIntermediateDirectories: false)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: evidenceHome.path
+        )
         try Data("replacement-must-survive".utf8).write(to: replacementSentinel)
 
         let rejectedCleanup = try runTool([
@@ -453,6 +457,34 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
             inode
         ])
         XCTAssertEqual(validCleanup.exitCode, 0, validCleanup.output)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceHome.path))
+    }
+
+    func testSecureEvidenceHomeCreatorRejectsNonStickyWorldWritableParent() throws {
+        let fixtureDirectory = URL(
+            fileURLWithPath: "/tmp/suisui-secure-home-shared-parent-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let evidenceHome = fixtureDirectory.appendingPathComponent("home", isDirectory: true)
+        let markerToken = UUID().uuidString
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o777],
+            ofItemAtPath: fixtureDirectory.path
+        )
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let result = try runTool([
+            visualFixtureSeederURL().path,
+            "--create-evidence-home",
+            "--path",
+            evidenceHome.path,
+            "--evidence-home-marker-token",
+            markerToken
+        ])
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.localizedCaseInsensitiveContains("private or a sticky"), result.output)
         XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceHome.path))
     }
 
@@ -600,6 +632,31 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
         XCTAssertEqual(
             try FileManager.default.contentsOfDirectory(atPath: temporaryDirectory.path),
             []
+        )
+    }
+
+    func testCaptureSeedOnlySupportsEqualsInNewIsolatedHomePath() throws {
+        let fixtureDirectory = URL(
+            fileURLWithPath: "/tmp/suisui-capture-seed-equals-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let evidenceHome = fixtureDirectory.appendingPathComponent("home=fixture", isDirectory: true)
+        let temporaryDirectory = fixtureDirectory.appendingPathComponent("tmp", isDirectory: true)
+        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let result = try runTool(
+            ["/bin/bash", captureScriptURL().path, "--seed-only"],
+            environment: captureSeedEnvironment(
+                evidenceHome: evidenceHome,
+                temporaryDirectory: temporaryDirectory
+            )
+        )
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("capture_seed_ready=1"), result.output)
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: captureDatabaseURL(in: evidenceHome).path)
         )
     }
 
