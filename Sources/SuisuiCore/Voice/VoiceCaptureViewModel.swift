@@ -702,10 +702,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
 
         do {
-            let approved = try AssistantQueueStateMachine.approve(assistantQueueItem, reviewerID: reviewerID)
-            self.assistantQueueItem = try persistAssistantQueueItemIfNeeded(approved)
+            self.assistantQueueItem = try transitionAssistantQueueItemIfNeeded(
+                expected: assistantQueueItem
+            ) { current in
+                try AssistantQueueStateMachine.approve(current, reviewerID: reviewerID)
+            }
             return true
         } catch {
+            refreshAssistantQueueItemAfterMutationFailure(id: assistantQueueItem.id)
             auditErrorMessage = userMessage(for: error)
             return false
         }
@@ -715,10 +719,13 @@ public final class VoiceCaptureViewModel: ObservableObject {
         guard let assistantQueueItem else {
             return
         }
-        let deferred = AssistantQueueStateMachine.deferItem(assistantQueueItem)
         do {
-            self.assistantQueueItem = try persistAssistantQueueItemIfNeeded(deferred)
+            self.assistantQueueItem = try transitionAssistantQueueItemIfNeeded(
+                expected: assistantQueueItem,
+                AssistantQueueStateMachine.deferForReview
+            )
         } catch {
+            refreshAssistantQueueItemAfterMutationFailure(id: assistantQueueItem.id)
             auditErrorMessage = userMessage(for: error)
         }
     }
@@ -727,10 +734,13 @@ public final class VoiceCaptureViewModel: ObservableObject {
         guard let assistantQueueItem else {
             return
         }
-        let rejected = AssistantQueueStateMachine.reject(assistantQueueItem)
         do {
-            self.assistantQueueItem = try persistAssistantQueueItemIfNeeded(rejected)
+            self.assistantQueueItem = try transitionAssistantQueueItemIfNeeded(
+                expected: assistantQueueItem,
+                AssistantQueueStateMachine.rejectForReview
+            )
         } catch {
+            refreshAssistantQueueItemAfterMutationFailure(id: assistantQueueItem.id)
             auditErrorMessage = userMessage(for: error)
         }
     }
@@ -1182,7 +1192,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             )
             let item = AssistantQueueAdapter.makeItem(automationRequest: request)
             planningResponse = nil
-            assistantQueueItem = try persistAssistantQueueItemIfNeeded(item)
+            assistantQueueItem = try persistNewAssistantQueueItemIfNeeded(item)
             dailyPlanningReviewRequest = nil
             inboxTriageRequest = nil
             clarificationSession = nil
@@ -1214,7 +1224,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         do {
             let item = makeConnectorSendGateQueueItem(for: route)
             planningResponse = nil
-            assistantQueueItem = try persistAssistantQueueItemIfNeeded(item)
+            assistantQueueItem = try persistNewAssistantQueueItemIfNeeded(item)
             dailyPlanningReviewRequest = nil
             inboxTriageRequest = nil
             clarificationSession = nil
@@ -1258,7 +1268,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         do {
             let item = makeNotificationDraftQueueItem(for: route)
             planningResponse = nil
-            assistantQueueItem = try persistAssistantQueueItemIfNeeded(item)
+            assistantQueueItem = try persistNewAssistantQueueItemIfNeeded(item)
             dailyPlanningReviewRequest = nil
             inboxTriageRequest = nil
             clarificationSession = nil
@@ -1508,7 +1518,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             }
             do {
                 if let queueItem = makeAssistantQueueItem(from: response, routedCommand: routedCommand) {
-                    assistantQueueItem = try persistAssistantQueueItemIfNeeded(queueItem)
+                    assistantQueueItem = try persistNewAssistantQueueItemIfNeeded(queueItem)
                 }
             } catch {
                 assistantQueueItem = nil
@@ -1652,20 +1662,58 @@ public final class VoiceCaptureViewModel: ObservableObject {
             return AssistantQueueStoreError.userMessage(for: error)
         }
 
+        if error is AssistantQueueReviewActionUnavailableError {
+            return "This Assistant Queue item cannot be changed by that review action in its current state."
+        }
+        if error is AssistantQueueStaleReviewError {
+            return AssistantQueueMutationFailure.staleUserMessage
+        }
+
         return UserFacingErrorMessageSanitizer.message(from: error)
     }
 
-    private func persistAssistantQueueItemIfNeeded(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
+    private func persistNewAssistantQueueItemIfNeeded(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
         guard let assistantQueueStore else {
             return item
         }
         do {
-            return try assistantQueueStore.save(item)
+            if let inserted = try assistantQueueStore.insertIfAbsent(item) {
+                return inserted
+            }
+            return try assistantQueueStore.get(id: item.id)
         } catch {
             // Queue persistence is fail-closed because review approval must not
             // happen against work that disappears after a restart.
             throw AssistantQueueStoreError.saveFailed
         }
+    }
+
+    private func transitionAssistantQueueItemIfNeeded(
+        expected item: AssistantQueueItem,
+        _ transform: (AssistantQueueItem) throws -> AssistantQueueItem
+    ) throws -> AssistantQueueItem {
+        guard let assistantQueueStore else {
+            return try transform(item)
+        }
+        guard let expectedRevision = item.mutationRevision else {
+            throw AssistantQueueStaleReviewError()
+        }
+        return try assistantQueueStore.transition(id: item.id) { current in
+            guard current.mutationRevision == expectedRevision else {
+                throw AssistantQueueStaleReviewError()
+            }
+            return try transform(current)
+        }
+    }
+
+    private func refreshAssistantQueueItemAfterMutationFailure(id: String) {
+        guard let assistantQueueStore,
+              let latest = try? assistantQueueStore.get(id: id) else {
+            return
+        }
+        // A failed optimistic mutation must show the durable item that caused
+        // the conflict; otherwise the recovery message points at stale UI.
+        assistantQueueItem = latest
     }
 
     private var shouldResetPhaseAfterDraftChange: Bool {

@@ -2,6 +2,65 @@ import XCTest
 @testable import SuisuiCore
 
 final class AssistantQueueExecutionTests: XCTestCase {
+    func testCoordinatorRejectsRunFromStaleDisplayedRevisionWithoutExecutingLatestContent() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = VolatileExecutionReceiptStore()
+        let approved = try AssistantQueueStateMachine.approve(
+            makeActionPlanItem(),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let displayedRevision = try XCTUnwrap(approved.mutationRevision)
+
+        let edited = try queueStore.transition(id: approved.id) { current in
+            try AssistantQueueStateMachine.editReviewDetails(
+                current,
+                reviewReason: "A newer review reason",
+                redactedSummary: "A newer reviewed summary"
+            )
+        }
+        let latestApproved = try queueStore.transition(id: approved.id) { current in
+            try AssistantQueueStateMachine.approve(current, reviewerID: "local-user")
+        }
+        XCTAssertNotEqual(displayedRevision, latestApproved.mutationRevision)
+        XCTAssertEqual(edited.state, .waitingReview)
+
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(
+                    required: ["title"],
+                    properties: ["title": "string"]
+                ),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                XCTFail("A stale Run action must not reach the executor.")
+                return ToolResult(
+                    tool: .taskCreate,
+                    status: .failed,
+                    summary: "must not execute"
+                )
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore
+        )
+
+        XCTAssertThrowsError(
+            try coordinator.execute(
+                id: approved.id,
+                expectedMutationRevision: displayedRevision
+            )
+        ) { error in
+            XCTAssertTrue(error is AssistantQueueStaleReviewError)
+        }
+        XCTAssertEqual(try queueStore.get(id: approved.id).state, .approved)
+        XCTAssertTrue(receiptStore.receipts.isEmpty)
+    }
+
     func testCoordinatorRunsApprovedActionPlanAndPersistsQueueReceipt() throws {
         let queueStore = try makeQueueStore()
         let receiptStore = VolatileExecutionReceiptStore()
@@ -729,6 +788,74 @@ final class AssistantQueueExecutionTests: XCTestCase {
         )
         XCTAssertTrue(receiptStore.receipts.isEmpty)
         XCTAssertEqual(ledgerStore.entries.count, 1)
+    }
+
+    func testCoordinatorDoesNotApplyStaleCapDecisionToNewlyReapprovedRevision() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = VolatileExecutionReceiptStore()
+        let approved = try AssistantQueueStateMachine.approve(
+            makeActionPlanItem(
+                costPreview: makeCostPreview(inputTokens: 1_000, outputTokens: 500)
+            ),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let originalRevision = try XCTUnwrap(approved.mutationRevision)
+        let ledgerStore = ReapprovingManagedAIUsageLedgerStore(
+            queueStore: queueStore,
+            itemID: approved.id,
+            totals: ManagedAIUsageLedgerTotals(
+                currencyCode: "USD",
+                dailyCostCents: 80,
+                monthlyCostCents: 80,
+                workspaceCostCents: 80
+            )
+        )
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(
+                    required: ["title"],
+                    properties: ["title": "string"]
+                ),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                XCTFail("A stale cap decision must stop before tool execution.")
+                return ToolResult(
+                    tool: .taskCreate,
+                    status: .failed,
+                    summary: "must not execute"
+                )
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            managedAIUsageLedgerStore: ledgerStore,
+            managedAIBillingSettings: ManagedAIBillingSettings(
+                isEnabled: true,
+                dailyCapCents: 80
+            ),
+            now: { Date(timeIntervalSince1970: 1_788_282_000) }
+        )
+
+        XCTAssertThrowsError(
+            try coordinator.execute(
+                id: approved.id,
+                expectedMutationRevision: originalRevision
+            )
+        ) { error in
+            guard case .managedUsageCapExceeded(_, false) = error as? AssistantQueueExecutionError else {
+                return XCTFail("Expected a stale cap block without queue mutation, got \(error)")
+            }
+        }
+        let latest = try queueStore.get(id: approved.id)
+        XCTAssertEqual(latest.state, .approved)
+        XCTAssertNotEqual(latest.mutationRevision, originalRevision)
+        XCTAssertEqual(latest.reviewReason, "Reapproved while ledger totals were loading")
+        XCTAssertTrue(receiptStore.receipts.isEmpty)
     }
 
     func testCoordinatorReadsManagedBillingSettingsAtExecutionTime() throws {
@@ -2225,6 +2352,16 @@ private final class MarkFailedTransitionFailingQueueStore: AssistantQueueStore, 
         return item
     }
 
+    func insertIfAbsent(_ item: AssistantQueueItem) throws -> AssistantQueueItem? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard items[item.id] == nil else {
+            return nil
+        }
+        items[item.id] = item
+        return item
+    }
+
     func get(id: String) throws -> AssistantQueueItem {
         lock.lock()
         defer { lock.unlock() }
@@ -2323,6 +2460,47 @@ private final class FailingManagedAIUsageLedgerStore: ManagedAIUsageLedgerStore,
 
     func list(limit: Int) throws -> [ManagedAIUsageLedgerEntry] {
         []
+    }
+}
+
+private final class ReapprovingManagedAIUsageLedgerStore: ManagedAIUsageLedgerStore, @unchecked Sendable {
+    private let queueStore: any AssistantQueueStore
+    private let itemID: String
+    private let totals: ManagedAIUsageLedgerTotals
+
+    init(
+        queueStore: any AssistantQueueStore,
+        itemID: String,
+        totals: ManagedAIUsageLedgerTotals
+    ) {
+        self.queueStore = queueStore
+        self.itemID = itemID
+        self.totals = totals
+    }
+
+    func record(_ entry: ManagedAIUsageLedgerEntry) throws {}
+
+    func list(limit: Int) throws -> [ManagedAIUsageLedgerEntry] {
+        []
+    }
+
+    func usageTotals(
+        currencyCode: String,
+        referenceDate: Date,
+        calendar: Calendar
+    ) throws -> ManagedAIUsageLedgerTotals {
+        _ = try queueStore.transition(id: itemID) { current in
+            let edited = try AssistantQueueStateMachine.editReviewDetails(
+                current,
+                reviewReason: "Reapproved while ledger totals were loading",
+                redactedSummary: "Newly reviewed managed request"
+            )
+            return try AssistantQueueStateMachine.approve(
+                edited,
+                reviewerID: "another-window"
+            )
+        }
+        return totals
     }
 }
 

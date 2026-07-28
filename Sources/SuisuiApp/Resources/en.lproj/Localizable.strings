@@ -1995,5 +1995,11 @@
 "Transcript pending" = "Transcript pending";
 "AI interpreted" = "AI interpreted";
 "More Assistant Queue actions" = "More Assistant Queue actions";
+"Every selected Assistant Queue item must support Defer." = "Every selected Assistant Queue item must support Defer.";
+"Every selected Assistant Queue item must support Reject." = "Every selected Assistant Queue item must support Reject.";
+"This item changed in another window. Reload the latest details before saving." = "This item changed in another window. Reload the latest details before saving.";
+"Reload latest" = "Reload latest";
 "Choose Review destination." = "Choose Review destination.";
 "Choose Project destination." = "Choose Project destination.";
+"This item can no longer be edited. Cancel to keep the latest queue state." = "This item can no longer be edited. Cancel to keep the latest queue state.";
+"This reviewed automation is already in Assistant Queue. Review the existing item before running it." = "This reviewed automation is already in Assistant Queue. Review the existing item before running it.";

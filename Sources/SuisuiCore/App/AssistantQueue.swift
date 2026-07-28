@@ -109,6 +109,20 @@ public enum AssistantQueueTransitionError: Error, Equatable, Sendable {
     case editRequiresReviewableItem
 }
 
+// A struct keeps review-only failures out of the public transition enum, so
+// adding another review failure cannot break exhaustive client switches.
+public struct AssistantQueueReviewActionUnavailableError: Error, Equatable, Sendable {
+    public init() {}
+}
+struct AssistantQueueStaleReviewError: Error, Equatable, Sendable {}
+
+enum AssistantQueueMutationFailure {
+    static let staleUserMessage =
+        "This Assistant Queue item changed elsewhere. Review the latest version before acting."
+    static let unversionedUserMessage =
+        "This Assistant Queue action needs the latest revision. Reload the queue and try again."
+}
+
 public enum AssistantQueueStateMachine {
     public static func approve(
         _ item: AssistantQueueItem,
@@ -117,6 +131,9 @@ public enum AssistantQueueStateMachine {
     ) throws -> AssistantQueueItem {
         guard item.state != .blocked else {
             throw AssistantQueueTransitionError.blockedItemCannotBeApproved
+        }
+        guard item.state != .running else {
+            throw AssistantQueueReviewActionUnavailableError()
         }
         guard !item.containsDangerousPayload else {
             throw AssistantQueueTransitionError.dangerousPayloadCannotBeApproved
@@ -133,13 +150,16 @@ public enum AssistantQueueStateMachine {
 
         var approved = item
         approved.state = .approved
+        guard let reviewedContentFingerprint = approved.contentFingerprint else {
+            throw AssistantQueueReviewActionUnavailableError()
+        }
         // Queue approval records user intent only. Execution must still go
         // through ReviewSession/ActionExecutor so tool-level approval tokens
         // are minted at the existing execution gate, never here.
         approved.approval = AssistantQueueApprovalRecord(
             reviewerID: reviewerID,
             note: note,
-            reviewedContentFingerprint: approved.contentFingerprint
+            reviewedContentFingerprint: reviewedContentFingerprint
         )
         return approved
     }
@@ -154,7 +174,8 @@ public enum AssistantQueueStateMachine {
         guard costPreview.allowsApprovalAndRun else {
             throw AssistantQueueTransitionError.managedCostCapExceeded
         }
-        guard item.approval?.reviewedContentFingerprint == item.contentFingerprint else {
+        guard let currentContentFingerprint = item.contentFingerprint,
+              item.approval?.reviewedContentFingerprint == currentContentFingerprint else {
             throw AssistantQueueTransitionError.approvedPayloadChanged
         }
 
@@ -164,7 +185,10 @@ public enum AssistantQueueStateMachine {
     }
 
     public static func hasCurrentApproval(_ item: AssistantQueueItem) -> Bool {
-        item.approval?.reviewedContentFingerprint == item.contentFingerprint
+        guard let currentContentFingerprint = item.contentFingerprint else {
+            return false
+        }
+        return item.approval?.reviewedContentFingerprint == currentContentFingerprint
     }
 
     public static func markDone(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
@@ -220,6 +244,17 @@ public enum AssistantQueueStateMachine {
     }
 
     public static func reject(_ item: AssistantQueueItem) -> AssistantQueueItem {
+        // Keep the original public API source-compatible for SuisuiCore clients.
+        // Invalid review actions return the untouched value rather than corrupting
+        // in-flight state; app paths use rejectForReview to surface the error.
+        (try? rejectForReview(item)) ?? item
+    }
+
+    public static func rejectForReview(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
+        guard canReject(item.state) else {
+            throw AssistantQueueReviewActionUnavailableError()
+        }
+
         var rejected = item
         rejected.state = .rejected
         rejected.approval = nil
@@ -227,9 +262,39 @@ public enum AssistantQueueStateMachine {
     }
 
     public static func deferItem(_ item: AssistantQueueItem) -> AssistantQueueItem {
+        // Preserve the established nonthrowing API while failing closed for
+        // running and immutable states. Interactive callers use deferForReview.
+        (try? deferForReview(item)) ?? item
+    }
+
+    public static func deferForReview(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
+        guard canDefer(item.state) else {
+            throw AssistantQueueReviewActionUnavailableError()
+        }
+
         var deferred = item
         deferred.state = .deferred
         return deferred
+    }
+
+    static func canDefer(_ state: AssistantQueueState) -> Bool {
+        switch state {
+        case .captured, .interpreted, .drafted, .waitingReview, .approved:
+            return true
+        case .running, .blocked, .done, .failed, .rejected, .deferred:
+            return false
+        }
+    }
+
+    static func canReject(_ state: AssistantQueueState) -> Bool {
+        switch state {
+        case .captured, .interpreted, .drafted, .waitingReview, .approved, .blocked, .deferred:
+            return true
+        case .running, .done, .failed, .rejected:
+            // A queue-state mutation cannot cancel in-flight execution. Rejecting
+            // here would let side effects finish without a valid done/failed path.
+            return false
+        }
     }
 
     public static func markEdited(_ item: AssistantQueueItem, reason: String) throws -> AssistantQueueItem {
@@ -436,24 +501,148 @@ public enum AssistantQueueAdapter {
     }
 }
 
-private extension AssistantQueueItem {
-    var contentFingerprint: String {
-        let payloadDigest = (try? AssistantQueueDigest.sha256(payload)) ?? AssistantQueueDigest.sha256(String(describing: payload))
-        let capabilitiesDigest = AssistantQueueDigest.sha256(requiredCapabilities.map(String.init(describing:)).joined(separator: "|"))
-        let costPreviewDigest = costPreview.map { preview in
-            (try? AssistantQueueDigest.sha256(preview)) ?? AssistantQueueDigest.sha256(String(describing: preview))
-        } ?? AssistantQueueDigest.sha256("no-cost-preview")
+extension AssistantQueueItem {
+    /// An opaque comparison token for optimistic queue mutations.
+    ///
+    /// Treat this value as opaque: compare it only for equality with the token
+    /// presented to a reviewer. Custom stores may copy it into their read-model
+    /// rows, but must recompute it from the current item instead of persisting it.
+    public var mutationRevision: String? {
+        AssistantQueueMutationRevision.make(item: self)
+    }
+
+    var contentFingerprint: String? {
+        guard let payloadJSON = AssistantQueueMutationRevision.canonicalJSONString(payload),
+              let capabilitiesJSON = AssistantQueueMutationRevision.canonicalJSONString(
+                  requiredCapabilities
+              ) else {
+            return nil
+        }
+        let costPreviewJSON: String?
+        if let costPreview {
+            guard let encodedCostPreview = AssistantQueueMutationRevision.canonicalJSONString(
+                costPreview
+            ) else {
+                return nil
+            }
+            costPreviewJSON = encodedCostPreview
+        } else {
+            costPreviewJSON = nil
+        }
         // Approval records must never persist raw prompts or action arguments. The
-        // digest keeps payload and cost-preview drift detection while preserving
-        // the queue boundary and avoiding raw prompt/argument persistence.
-        return AssistantQueueDigest.sha256([
+        // outer digest keeps canonical payload and cost-preview bytes out of the
+        // approval record while preserving drift detection across process restarts.
+        return AssistantQueueMutationRevision.canonicalDigest([
             id,
             riskLevel.rawValue,
             redactedSummary,
-            payloadDigest,
-            capabilitiesDigest,
-            costPreviewDigest
-        ].joined(separator: "::"))
+            payloadJSON,
+            capabilitiesJSON,
+            costPreviewJSON
+        ])
+    }
+}
+
+enum AssistantQueueMutationRevision {
+    static func make(item: AssistantQueueItem) -> String? {
+        guard let payloadJSON = canonicalJSONString(item.payload),
+              let capabilitiesJSON = canonicalJSONString(item.requiredCapabilities) else {
+            return nil
+        }
+        let approvalJSON: String?
+        if let approval = item.approval {
+            guard let encodedApproval = canonicalJSONString(approval) else {
+                return nil
+            }
+            approvalJSON = encodedApproval
+        } else {
+            approvalJSON = nil
+        }
+        let costPreviewJSON: String?
+        if let costPreview = item.costPreview {
+            guard let encodedCostPreview = canonicalJSONString(costPreview) else {
+                return nil
+            }
+            costPreviewJSON = encodedCostPreview
+        } else {
+            costPreviewJSON = nil
+        }
+        return makeStored(
+            id: item.id,
+            payloadKind: payloadKind(for: item.payload),
+            payloadJSON: payloadJSON,
+            state: item.state.rawValue,
+            riskLevel: item.riskLevel.rawValue,
+            sourceTranscript: item.sourceTranscript,
+            interpretationSummary: item.interpretationSummary,
+            reviewReason: item.reviewReason,
+            redactedSummary: item.redactedSummary,
+            requiredCapabilitiesJSON: capabilitiesJSON,
+            approvalJSON: approvalJSON,
+            blockingReason: item.blockingReason,
+            costPreviewJSON: costPreviewJSON
+        )
+    }
+
+    static func canonicalJSONString<T: Encodable>(_ value: T) -> String? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return (try? encoder.encode(value)).map { String(decoding: $0, as: UTF8.self) }
+    }
+
+    static func makeStored(
+        id: String,
+        payloadKind: String,
+        payloadJSON: String,
+        state: String,
+        riskLevel: String,
+        sourceTranscript: String?,
+        interpretationSummary: String?,
+        reviewReason: String,
+        redactedSummary: String,
+        requiredCapabilitiesJSON: String,
+        approvalJSON: String?,
+        blockingReason: String?,
+        costPreviewJSON: String?
+    ) -> String {
+        canonicalDigest([
+            id,
+            payloadKind,
+            payloadJSON,
+            state,
+            riskLevel,
+            sourceTranscript,
+            interpretationSummary,
+            reviewReason,
+            redactedSummary,
+            requiredCapabilitiesJSON,
+            approvalJSON,
+            blockingReason,
+            costPreviewJSON
+        ])
+    }
+
+    static func canonicalDigest(_ components: [String?]) -> String {
+        // Length-prefix every component and encode nil separately. Delimiter
+        // concatenation is ambiguous when identifiers or review text itself
+        // contains delimiters. Approval fingerprints and CAS revisions share
+        // this framing so both review boundaries reject structural collisions.
+        let canonical = components.map { component -> String in
+            guard let component else {
+                return "-1:"
+            }
+            return "\(component.utf8.count):\(component)"
+        }.joined()
+        return AssistantQueueDigest.sha256(canonical)
+    }
+
+    private static func payloadKind(for payload: AssistantQueuePayload) -> String {
+        switch payload {
+        case .actionPlan:
+            return "action_plan"
+        case .automationRequest:
+            return "automation_request"
+        }
     }
 }
 

@@ -2012,5 +2012,11 @@
 "Transcript pending" = "文字起こし待ち";
 "AI interpreted" = "AI解釈済み";
 "More Assistant Queue actions" = "Assistant Queueのその他の操作";
+"Every selected Assistant Queue item must support Defer." = "選択したすべてのAssistant Queue項目が延期可能である必要があります。";
+"Every selected Assistant Queue item must support Reject." = "選択したすべてのAssistant Queue項目が却下可能である必要があります。";
+"This item changed in another window. Reload the latest details before saving." = "この項目は別のウィンドウで変更されました。保存前に最新の内容を再読み込みしてください。";
+"Reload latest" = "最新を再読み込み";
 "Choose Review destination." = "レビューの移動先を選択します。";
 "Choose Project destination." = "プロジェクトの移動先を選択します。";
+"This item can no longer be edited. Cancel to keep the latest queue state." = "この項目は編集できなくなりました。キャンセルして最新のキュー状態を維持してください。";
+"This reviewed automation is already in Assistant Queue. Review the existing item before running it." = "このレビュー済み自動化はすでにアシスタントキューにあります。実行前に既存項目を確認してください。";

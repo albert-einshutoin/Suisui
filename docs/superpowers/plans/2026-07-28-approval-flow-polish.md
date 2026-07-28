@@ -4,9 +4,27 @@
 
 **Goal:** InboxからReview、Assistant Queueまで、対象・現在地・次の安全な操作を迷わず確認できるmacOS承認フローを実装する。
 
-**Architecture:** 既存Store、`BoardRoute`、Assistant Queue State Machine、Execution Coordinatorは変更しない。Coreへ2つの純粋Presentation Policyを追加し、SwiftUIはその出力だけを描画する。英語と日本語のvisual evidenceはlocale別manifest・artifact root・AX receiptへ分離する。
+**Architecture:** `BoardRoute`とExecution Coordinatorの責務は維持する。Coreへ2つの純粋Presentation Policyを追加し、SwiftUIはその出力だけを描画する。承認対象の取り違えと実行中stateの巻き戻しを防ぐため、Assistant Queue Store / State Machineには後述の限定的なatomic transition・mutation revisionを追加する。英語と日本語のvisual evidenceはlocale別manifest・artifact root・AX receiptへ分離する。
 
 **Tech Stack:** Swift 6、SwiftUI、Swift Package Manager、XCTest、SQLite fixture、macOS Accessibility API、Bash evidence scripts、JSON visual manifests。
+
+---
+
+## Approved Hardening Addendum
+
+実装中の並行レビューで、表示時点とmutation時点が異なる場合に「ユーザーが見ていない最新版を承認する」「実行済み項目を古いVoice画面から巻き戻す」競合が確認された。このため、当初の「Store / State Machineを変更しない」制約よりも、承認境界をfail-closedに保つことを優先する。
+
+- 各Queue rowは、payload、state、risk、capabilities、cost、approval、review contextを長さprefix付きcanonical representationへ変換したopaque mutation revisionを持つ。
+- Approve / Edit / Defer / Reject / Retry / Run / batch mutationは、表示時のrevisionとtransaction内の最新版を比較する。旧unversioned overloadはsource互換のため残すがfail-closedとする。
+- batchは選択全件が同一actionを実行可能な場合だけ、全revisionを検証して単一transactionで更新する。eligibleな一部だけを更新しない。
+- Voice側の既存項目mutationは、画面内copyの`save`ではなくStoreの最新版に対する`transition`内で行う。新規項目だけを`insertIfAbsent`で永続化する。
+- `insertIfAbsent`の非原子的なdefault実装は提供せず、各Store conformerに競合安全な実装を必須とする。SQLiteは`ON CONFLICT(id) DO NOTHING`で既存のreview / running / terminal stateを保持する。
+- CAS競合時はdraftとfocusを保持して理由を表示し、ユーザーが明示的にReload / Cancelするまで最新版で上書きしない。競合により現在のfilterからrowが外れる場合は全stateを表示して同一row identityを保持し、通常の保存でrowが消える場合は親のtriage controlsへfocusを戻す。
+- Execution Coordinatorは表示revision、課金cap判定、atomic running claimを同じexecution boundaryで再検証し、遅いledger readの判定を新しいrevisionへ適用しない。
+- visual fixture DBはevidence-homeのdirectory descriptorから`mkdirat` / `openat(O_NOFOLLOW)`で開き、capture scriptを含む全SQLを同じsecure SQLite descriptor経由へ統一する。
+- Visual CIは英語・日本語を独立matrixで実行し、selectorの明示的`false`だけをskipする。checked-in evidenceもread-only semantic comparisonでbaselineとの差異をrelease blockerとして扱う。
+
+この追加判断は、公開APIの既存caseを増やさず、deprecated互換overloadを残すことでsource compatibilityを守る。安全なmutationにはrevision付きoverloadを使用し、未対応の旧callerが新しい承認内容を暗黙に確定・実行しないよう旧overloadもfail-closedとする。
 
 ---
 

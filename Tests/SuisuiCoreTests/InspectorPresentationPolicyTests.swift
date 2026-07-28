@@ -23,6 +23,15 @@ final class InspectorPresentationPolicyTests: XCTestCase {
         XCTAssertNil(context.taskID)
     }
 
+    func testLegacyDestinationChangedEventStillClearsDevelopmentContext() {
+        var context = ProjectInspectorDevelopmentContext()
+
+        context.handle(.openProject(taskID: 41))
+        context.handle(.destinationChanged)
+
+        XCTAssertNil(context.taskID)
+    }
+
     func testCompactWindowsStartClosedAndRequireExplicitPresentation() {
         for width in [960.0, 1_024.0] {
             XCTAssertFalse(
