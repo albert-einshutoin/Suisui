@@ -7461,6 +7461,35 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("wait_for_marker \"project-board-command-palette\""))
         XCTAssertTrue(script.contains("measure_destination \"destination-inbox\" \"$sample_index\" \"sidebar-destination-inbox\" \"Inbox\" \"inbox-workflow\""))
         XCTAssertTrue(script.contains("measure_destination \"destination-review\" \"$sample_index\" \"sidebar-destination-review\" \"Review\" \"review-hub\""))
+        let measureDestinationStart = try XCTUnwrap(script.range(of: "measure_destination() {"))
+        let measureDestinationEnd = try XCTUnwrap(
+            script.range(
+                of: "\n}\n\nmeasure_review_assistant_queue()",
+                range: measureDestinationStart.upperBound..<script.endIndex
+            )
+        )
+        let measureDestinationBody = script[measureDestinationStart.lowerBound..<measureDestinationEnd.upperBound]
+        XCTAssertTrue(
+            measureDestinationBody.contains(
+                "click_destination_until_available \"$destination_identifier\" \"$destination_label\""
+            )
+        )
+        XCTAssertFalse(
+            measureDestinationBody.contains(
+                "click_sidebar_destination \"$destination_identifier\" \"$destination_label\""
+            )
+        )
+        let measurementStart = try XCTUnwrap(measureDestinationBody.range(of: "start_ms=\"$(now_ms)\""))
+        let retriedPress = try XCTUnwrap(
+            measureDestinationBody.range(
+                of: "click_destination_until_available \"$destination_identifier\" \"$destination_label\""
+            )
+        )
+        let markerWait = try XCTUnwrap(measureDestinationBody.range(of: "wait_for_marker \"$marker\""))
+        let measurementEnd = try XCTUnwrap(measureDestinationBody.range(of: "end_ms=\"$(now_ms)\""))
+        XCTAssertLessThan(measurementStart.lowerBound, retriedPress.lowerBound)
+        XCTAssertLessThan(retriedPress.lowerBound, markerWait.lowerBound)
+        XCTAssertLessThan(markerWait.lowerBound, measurementEnd.lowerBound)
         XCTAssertTrue(script.contains("measure_review_assistant_queue"))
         XCTAssertTrue(script.contains("try_click_destination \"review-destination-assistant-queue\""))
         XCTAssertTrue(script.contains("click_sidebar_destination \"review-hub-compact-navigation\" \"Review view chooser\""))
@@ -7485,6 +7514,54 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Performance profile: `%s`"))
         XCTAssertTrue(script.contains("BLOCKER: release performance profile requires release build configuration"))
         XCTAssertFalse(script.contains("set -x"))
+    }
+
+    func testReleaseLaunchPerformanceDestinationRetryIsBoundedAndIdentityPinned() throws {
+        let eventualSuccess = try runPerformanceDestinationRetryFixture(
+            helperSucceedsOnAttempt: 3,
+            identityFailsOnCheck: nil,
+            timeoutSeconds: 30
+        )
+        XCTAssertEqual(eventualSuccess.exitCode, 0, eventualSuccess.output)
+        XCTAssertEqual(eventualSuccess.helperAttempts, 3)
+        XCTAssertEqual(eventualSuccess.identityChecks, 3)
+
+        let permanentAbsence = try runPerformanceDestinationRetryFixture(
+            helperSucceedsOnAttempt: nil,
+            identityFailsOnCheck: nil,
+            timeoutSeconds: 0
+        )
+        XCTAssertNotEqual(permanentAbsence.exitCode, 0)
+        XCTAssertEqual(permanentAbsence.helperAttempts, 0)
+        XCTAssertEqual(permanentAbsence.identityChecks, 0)
+        XCTAssertTrue(permanentAbsence.output.contains("category=product-marker message=performance-destination-unavailable"))
+
+        let changedIdentity = try runPerformanceDestinationRetryFixture(
+            helperSucceedsOnAttempt: 3,
+            identityFailsOnCheck: 2,
+            timeoutSeconds: 30
+        )
+        XCTAssertNotEqual(changedIdentity.exitCode, 0)
+        XCTAssertEqual(changedIdentity.helperAttempts, 1)
+        XCTAssertEqual(changedIdentity.identityChecks, 2)
+        XCTAssertTrue(changedIdentity.output.contains("category=launch message=performance-owned-identity-changed"))
+
+        let slowSuccessAfterDeadline = try runPerformanceDestinationRetryFixture(
+            helperSucceedsOnAttempt: 1,
+            identityFailsOnCheck: nil,
+            timeoutSeconds: 1,
+            helperDelaySeconds: 5,
+            helperIgnoresTerm: true
+        )
+        XCTAssertNotEqual(slowSuccessAfterDeadline.exitCode, 0)
+        XCTAssertEqual(slowSuccessAfterDeadline.helperAttempts, 1)
+        XCTAssertEqual(slowSuccessAfterDeadline.identityChecks, 1)
+        XCTAssertTrue(
+            slowSuccessAfterDeadline.output.contains(
+                "category=product-marker message=performance-destination-unavailable"
+            )
+        )
+        XCTAssertLessThan(slowSuccessAfterDeadline.elapsedSeconds, 4)
     }
 
     func testReleaseLaunchPerformanceSmokeRejectsRelaxedReleaseBudgetsBeforeBuild() throws {
@@ -16056,6 +16133,146 @@ final class ReleasePipelineTests: XCTestCase {
         environment: [String: String] = [:]
     ) throws -> (exitCode: Int32, output: String) {
         try runProcess(arguments: arguments, environment: environment)
+    }
+
+    private func runPerformanceDestinationRetryFixture(
+        helperSucceedsOnAttempt: Int?,
+        identityFailsOnCheck: Int?,
+        timeoutSeconds: Int,
+        helperDelaySeconds: Int = 0,
+        helperIgnoresTerm: Bool = false
+    ) throws -> (
+        exitCode: Int32,
+        output: String,
+        helperAttempts: Int,
+        identityChecks: Int,
+        elapsedSeconds: TimeInterval
+    ) {
+        let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
+        let functionStart = try XCTUnwrap(script.range(of: "run_ax_press_before_deadline() {"))
+        let functionEnd = try XCTUnwrap(
+            script.range(of: "\n\nwait_for_marker() {", range: functionStart.upperBound..<script.endIndex)
+        )
+        let functionSource = String(script[functionStart.lowerBound..<functionEnd.lowerBound])
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-performance-destination-retry-\(UUID().uuidString)", isDirectory: true)
+        let helperURL = fixtureDirectory.appendingPathComponent("fake-ax-press.sh")
+        let harnessURL = fixtureDirectory.appendingPathComponent("harness.sh")
+        let helperCounterURL = fixtureDirectory.appendingPathComponent("helper-attempts.txt")
+        let identityCounterURL = fixtureDirectory.appendingPathComponent("identity-checks.txt")
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let helper = """
+        #!/usr/bin/env bash
+        set -u
+        if [[ "$#" -ne 2 || "${1:-}" != "$EXPECTED_APP_PID" || "${2:-}" != "$EXPECTED_DESTINATION_IDENTIFIER" ]]; then
+          printf 'unexpected helper target: pid=%s identifier=%s\n' "${1:-missing}" "${2:-missing}" >&2
+          exit 90
+        fi
+        if [[ "$HELPER_IGNORES_TERM" == "true" ]]; then
+          trap '' TERM
+        fi
+        attempt=0
+        if [[ -f "$HELPER_COUNTER_FILE" ]]; then
+          attempt="$(<"$HELPER_COUNTER_FILE")"
+        fi
+        attempt=$((attempt + 1))
+        printf '%s\n' "$attempt" >"$HELPER_COUNTER_FILE"
+        if [[ "$HELPER_DELAY_SECONDS" != "0" ]]; then
+          # Keep the delay inside this exact helper process. A child `sleep`
+          # would inherit the capture pipe after the helper is terminated and
+          # make the XCTest observer wait for an unrelated orphan to exit.
+          helper_delay_deadline=$((SECONDS + HELPER_DELAY_SECONDS))
+          while [[ "$SECONDS" -lt "$helper_delay_deadline" ]]; do :; done
+        fi
+        if [[ "$SUCCEED_ON_ATTEMPT" != "never" && "$attempt" -ge "$SUCCEED_ON_ATTEMPT" ]]; then
+          exit 0
+        fi
+        exit 1
+        """
+        try helper.write(to: helperURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helperURL.path)
+
+        let harness = """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        # Prove the deadline wrapper resets an inherited ignored SIGALRM before
+        # exec; ignored dispositions otherwise survive into the AX helper.
+        trap '' ALRM
+        APP_PID=4242
+        APP_BINARY="/tmp/Suisui"
+        APP_IDENTITY="fixture-identity"
+        TIMEOUT_SECONDS="$1"
+        AX_PRESS_ELEMENT_HELPER_EXECUTABLE="$2"
+        HELPER_COUNTER_FILE="$3"
+        IDENTITY_COUNTER_FILE="$4"
+        SUCCEED_ON_ATTEMPT="$5"
+        IDENTITY_FAIL_ON_CHECK="$6"
+        HELPER_DELAY_SECONDS="$7"
+        HELPER_IGNORES_TERM="$8"
+        EXPECTED_APP_PID="$APP_PID"
+        EXPECTED_DESTINATION_IDENTIFIER="sidebar-destination-review"
+        export HELPER_COUNTER_FILE SUCCEED_ON_ATTEMPT HELPER_DELAY_SECONDS HELPER_IGNORES_TERM
+        export EXPECTED_APP_PID EXPECTED_DESTINATION_IDENTIFIER
+        ax_process_matches_identity() {
+          if [[ "$#" -ne 3 || "$1" != "$APP_PID" || "$2" != "$APP_BINARY" || "$3" != "$APP_IDENTITY" ]]; then
+            printf 'unexpected identity target: pid=%s binary=%s identity=%s\n' \
+              "${1:-missing}" "${2:-missing}" "${3:-missing}" >&2
+            return 1
+          fi
+          local count=0
+          if [[ -f "$IDENTITY_COUNTER_FILE" ]]; then
+            count="$(<"$IDENTITY_COUNTER_FILE")"
+          fi
+          count=$((count + 1))
+          printf '%s\n' "$count" >"$IDENTITY_COUNTER_FILE"
+          [[ "$IDENTITY_FAIL_ON_CHECK" == "never" || "$count" -lt "$IDENTITY_FAIL_ON_CHECK" ]]
+        }
+        ax_emit_failure_category() {
+          printf 'category=%s message=%s\n' "$1" "$2"
+        }
+        now_ms() {
+          /usr/bin/perl -MTime::HiRes=time -e 'printf "%d\n", time() * 1000'
+        }
+        monotonic_ms() {
+          /usr/bin/perl -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC \
+            -e 'printf "%d\n", clock_gettime(CLOCK_MONOTONIC) * 1000'
+        }
+        activate_app() { :; }
+        sleep() { :; }
+        \(functionSource)
+        if click_destination_until_available "sidebar-destination-review" "Review"; then
+          exit 0
+        else
+          exit $?
+        fi
+        """
+        try harness.write(to: harnessURL, atomically: true, encoding: .utf8)
+
+        let startUptime = ProcessInfo.processInfo.systemUptime
+        let result = try runTool([
+            "bash",
+            harnessURL.path,
+            String(timeoutSeconds),
+            helperURL.path,
+            helperCounterURL.path,
+            identityCounterURL.path,
+            helperSucceedsOnAttempt.map(String.init) ?? "never",
+            identityFailsOnCheck.map(String.init) ?? "never",
+            String(helperDelaySeconds),
+            helperIgnoresTerm ? "true" : "false"
+        ])
+        let elapsedSeconds = ProcessInfo.processInfo.systemUptime - startUptime
+        let helperAttempts = Int(
+            (try? String(contentsOf: helperCounterURL, encoding: .utf8))
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? ""
+        ) ?? 0
+        let identityChecks = Int(
+            (try? String(contentsOf: identityCounterURL, encoding: .utf8))
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? ""
+        ) ?? 0
+        return (result.exitCode, result.output, helperAttempts, identityChecks, elapsedSeconds)
     }
 
     private func runTodayWindowSizeResultFixture(
