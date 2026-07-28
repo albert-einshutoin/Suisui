@@ -55,6 +55,7 @@ EVIDENCE_HOME="${SUISUI_UI_EVIDENCE_HOME:-$(mktemp -d "$EVIDENCE_TMPDIR/suisui-u
 KEEP_HOME="${SUISUI_UI_EVIDENCE_KEEP_HOME:-0}"
 DRY_RUN=0
 DOCTOR=0
+SEED_ONLY=0
 P0_WORKFLOWS=0
 SCHEDULE_COCKPIT=0
 SCHEDULE_WORKLOAD=0
@@ -78,6 +79,14 @@ EVIDENCE_APP_LOG="$EVIDENCE_TMPDIR/visual-evidence-app.$$.log"
 EVIDENCE_WAIT_FAILURE_CATEGORY="launch"
 EVIDENCE_WAIT_FAILURE_REASON="visual-launch-unavailable"
 DATABASE_PATH=""
+VISUAL_FIXTURE_SEEDER_BIN="${SUISUI_VISUAL_FIXTURE_SEEDER_BIN:-}"
+CAPTURE_PROJECT_ID=""
+CAPTURE_INBOX_VOICE_TASK_ID=""
+CAPTURE_TASK_ID=""
+CAPTURE_REVIEW_TASK_ID=""
+CAPTURE_UNSCHEDULED_TASK_ID=""
+CAPTURE_DUE_DATE=""
+CAPTURE_REVIEW_DUE_DATE=""
 
 for arg in "$@"; do
   case "$arg" in
@@ -86,6 +95,9 @@ for arg in "$@"; do
       ;;
     --doctor)
       DOCTOR=1
+      ;;
+    --seed-only)
+      SEED_ONLY=1
       ;;
     --p0-workflows)
       P0_WORKFLOWS=1
@@ -100,14 +112,14 @@ for arg in "$@"; do
       DONE_ANALYTICS=1
       ;;
     *)
-      echo "usage: $0 [--dry-run|--doctor|--p0-workflows|--schedule-cockpit|--schedule-workload|--done-analytics]" >&2
+      echo "usage: $0 [--dry-run|--doctor|--seed-only|--p0-workflows|--schedule-cockpit|--schedule-workload|--done-analytics]" >&2
       exit 2
       ;;
   esac
 done
 
-if [[ $((DRY_RUN + DOCTOR + P0_WORKFLOWS + SCHEDULE_COCKPIT + SCHEDULE_WORKLOAD + DONE_ANALYTICS)) -gt 1 ]]; then
-  echo "usage: $0 [--dry-run|--doctor|--p0-workflows|--schedule-cockpit|--schedule-workload|--done-analytics]" >&2
+if [[ $((DRY_RUN + DOCTOR + SEED_ONLY + P0_WORKFLOWS + SCHEDULE_COCKPIT + SCHEDULE_WORKLOAD + DONE_ANALYTICS)) -gt 1 ]]; then
+  echo "usage: $0 [--dry-run|--doctor|--seed-only|--p0-workflows|--schedule-cockpit|--schedule-workload|--done-analytics]" >&2
   exit 2
 fi
 
@@ -138,7 +150,7 @@ fi
 
 # The product language override controls Suisui's localized strings, while
 # AppleLanguages/AppleLocale control Foundation/AppKit formatters. Keep all
-# three values in one mapping so the runtime pixels and signed receipt cannot
+# three values in one mapping so the runtime pixels and hashed audit receipt cannot
 # claim different locales on capture hosts with different system settings.
 case "$EVIDENCE_LOCALE" in
   english)
@@ -237,7 +249,7 @@ validate_visual_ax_audit_result_path() {
 # Any mode that can overwrite screenshot artifacts invalidates the previous
 # complete-run receipt up front. Otherwise a failed or partial recapture could
 # leave a still-fresh receipt that incorrectly authenticates a mixed image set.
-if [[ "$DRY_RUN" != "1" && "$DOCTOR" != "1" ]]; then
+if [[ "$DRY_RUN" != "1" && "$DOCTOR" != "1" && "$SEED_ONLY" != "1" ]]; then
   validate_visual_ax_audit_result_path || exit $?
   rm -f "$SUISUI_VISUAL_AX_AUDIT_RESULT"
 fi
@@ -246,7 +258,7 @@ fi
 source "$AX_HELPERS"
 
 cleanup() {
-  if [[ "$DRY_RUN" != "1" && "$DOCTOR" != "1" ]]; then
+  if [[ "$DRY_RUN" != "1" && "$DOCTOR" != "1" && "$SEED_ONLY" != "1" ]]; then
     stop_evidence_app
   fi
   rm -f "$AX_MARKER_CHECKER"
@@ -1033,102 +1045,6 @@ write_app_preference() {
     /usr/bin/defaults write "$BUNDLE_IDENTIFIER" "$key" -string "$value"
 }
 
-initialize_database() {
-  local database_path="$1"
-
-  mkdir -p "$(dirname "$database_path")"
-  sqlite3 "$database_path" "
-CREATE TABLE IF NOT EXISTS projects (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  title TEXT NOT NULL,
-  status TEXT NOT NULL,
-  priority TEXT,
-  deadline TEXT,
-  workspace_path TEXT,
-  tags_json TEXT NOT NULL DEFAULT '[]',
-  source_command TEXT,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS tasks (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER,
-  title TEXT NOT NULL,
-  status TEXT NOT NULL,
-  detail TEXT,
-  due_at TEXT,
-  completed_at TEXT,
-  priority TEXT,
-  source_command TEXT,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS project_milestones (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER NOT NULL,
-  title TEXT NOT NULL,
-  due_at TEXT,
-  is_completed INTEGER NOT NULL DEFAULT 0 CHECK(is_completed IN (0, 1)),
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS inbox_capture_records (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  task_id INTEGER NOT NULL,
-  source_kind TEXT NOT NULL CHECK(source_kind IN ('voice_memo')),
-  audio_file_path TEXT NOT NULL,
-  duration_seconds REAL NOT NULL CHECK(duration_seconds >= 0),
-  transcript TEXT,
-  interpretation_summary TEXT,
-  memo TEXT,
-  classification_status TEXT NOT NULL CHECK(classification_status IN ('unclassified', 'classified', 'dismissed')),
-  transcription_status TEXT NOT NULL CHECK(transcription_status IN ('pending', 'succeeded', 'failed')),
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS artifacts (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER,
-  task_id INTEGER,
-  workspace_path TEXT NOT NULL,
-  expected_path TEXT NOT NULL,
-  created_state TEXT NOT NULL CHECK(created_state IN ('expected', 'created', 'missing')),
-  last_modified_at TEXT,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(workspace_path, expected_path)
-);
-
-CREATE TABLE IF NOT EXISTS mcp_server_registrations (
-  id TEXT PRIMARY KEY NOT NULL,
-  sort_order INTEGER NOT NULL,
-  display_name TEXT NOT NULL,
-  command TEXT NOT NULL,
-  arguments_json TEXT NOT NULL DEFAULT '[]',
-  environment_json TEXT NOT NULL DEFAULT '{}',
-  working_directory TEXT,
-  is_enabled INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_mcp_server_registrations_sort_order
-ON mcp_server_registrations(sort_order);
-
-CREATE INDEX IF NOT EXISTS idx_project_milestones_project
-ON project_milestones(project_id);
-
-CREATE INDEX IF NOT EXISTS idx_inbox_capture_records_task
-ON inbox_capture_records(task_id);
-"
-}
-
 localized_evidence_day_label() {
   local stored_day="$1"
   case "$EVIDENCE_LOCALE" in
@@ -1144,219 +1060,130 @@ localized_evidence_day_label() {
   esac
 }
 
-seed_database() {
-  local database_path="$1"
-  local today
-  local tomorrow
-  local yesterday
-  # Derive every relative fixture from the same capture instant injected into
-  # the app. Host wall clock and midnight crossings must not reclassify Today,
-  # Schedule, or Done pixels while a baseline set is being produced.
-  today="$(/bin/date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$EVIDENCE_REFERENCE_INSTANT" "+%Y-%m-%d")"
-  tomorrow="$(/bin/date -j -u -v+1d -f "%Y-%m-%dT%H:%M:%SZ" "$EVIDENCE_REFERENCE_INSTANT" "+%Y-%m-%d")"
-  yesterday="$(/bin/date -j -u -v-1d -f "%Y-%m-%dT%H:%M:%SZ" "$EVIDENCE_REFERENCE_INSTANT" "+%Y-%m-%dT%H:%M:%SZ")"
+prepare_visual_fixture_seeder() {
+  if [[ -n "$VISUAL_FIXTURE_SEEDER_BIN" ]]; then
+    if [[ ! -f "$VISUAL_FIXTURE_SEEDER_BIN" || ! -x "$VISUAL_FIXTURE_SEEDER_BIN" || -L "$VISUAL_FIXTURE_SEEDER_BIN" ]]; then
+      echo "BLOCKER: SUISUI_VISUAL_FIXTURE_SEEDER_BIN must be a non-symlink executable file" >&2
+      return 2
+    fi
+    local seeder_parent_real
+    seeder_parent_real="$(cd "$(dirname "$VISUAL_FIXTURE_SEEDER_BIN")" && pwd -P)"
+    case "$seeder_parent_real/" in
+      "$ROOT_DIR_REAL/.build/"*) ;;
+      *)
+        echo "BLOCKER: SUISUI_VISUAL_FIXTURE_SEEDER_BIN must resolve below the repository .build directory" >&2
+        return 2
+        ;;
+    esac
+    VISUAL_FIXTURE_SEEDER_BIN="$seeder_parent_real/$(basename "$VISUAL_FIXTURE_SEEDER_BIN")"
+    return 0
+  fi
 
-  sqlite3 "$database_path" "
-DELETE FROM inbox_capture_records WHERE task_id IN (SELECT id FROM tasks WHERE source_command = 'ui-evidence');
-DELETE FROM project_milestones WHERE project_id IN (SELECT id FROM projects WHERE source_command = 'ui-evidence');
-DELETE FROM tasks WHERE source_command = 'ui-evidence';
-DELETE FROM projects WHERE source_command = 'ui-evidence';
-
-INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command)
-VALUES ('Launch Readiness', 'active', 'high', '$tomorrow', NULL, '["ui-evidence","local"]', 'ui-evidence');
-
-INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command)
-VALUES ('Inbox', 'active', NULL, NULL, NULL, '["ui-evidence","inbox"]', 'ui-evidence');
-
-INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command)
-VALUES ('Completed Evidence Project', 'completed', 'medium', '$tomorrow', NULL, '["ui-evidence","done"]', 'ui-evidence');
-
-INSERT INTO tasks (project_id, title, status, detail, due_at, completed_at, priority, source_command)
-VALUES
-  ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
-   'Capture launch screenshots', 'planned', 'Verify board card density, sidebar, and inspector in each theme.', '$tomorrow', NULL, 'high', 'ui-evidence'),
-  ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
-   'Review VoiceOver focus path', 'in_progress', 'Confirm project board to task card to inspector path before public alpha.', '$today', NULL, 'high', 'ui-evidence'),
-  ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
-   'Document remaining release blockers', 'blocked', 'Keep signing, notarization, and manual accessibility gates visible.', NULL, NULL, 'medium', 'ui-evidence'),
-  ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Inbox' ORDER BY id DESC LIMIT 1),
-   'Scheduled manual capture', 'planned', 'Voice memo capture with transcript and local interpretation metadata.', NULL, NULL, 'high', 'ui-evidence'),
-  ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Inbox' ORDER BY id DESC LIMIT 1),
-   'Review captured note', 'backlog', 'Manual Inbox item keeps the normal route visually distinct from the seeded voice intake detail.', NULL, NULL, 'medium', 'ui-evidence'),
-  ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
-   'Unscheduled schedule draft input', 'planned', 'Appears in Schedule cockpit as an unscheduled task.', NULL, NULL, 'medium', 'ui-evidence'),
-  ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Completed Evidence Project' ORDER BY id DESC LIMIT 1),
-   'Done analytics sample', 'completed', 'Completed history appears in Done analytics evidence.', '$tomorrow', '$yesterday', 'medium', 'ui-evidence');
-
-INSERT INTO inbox_capture_records (
-  task_id,
-  source_kind,
-  audio_file_path,
-  duration_seconds,
-  transcript,
-  interpretation_summary,
-  memo,
-  classification_status,
-  transcription_status,
-  created_at
-) VALUES (
-  (SELECT id FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Scheduled manual capture' ORDER BY id DESC LIMIT 1),
-  'voice_memo',
-  '/tmp/suisui-ui-evidence-redacted.m4a',
-  18.5,
-  'Schedule launch review and capture visual evidence.',
-  'Create a task for launch review evidence.',
-  'Seeded local transcript for UI screenshot evidence.',
-  'unclassified',
-  'succeeded',
-  '$yesterday'
-);
-
-INSERT INTO project_milestones (project_id, title, due_at, is_completed)
-VALUES (
-  (SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
-  'Launch milestone',
-  '$tomorrow',
-  0
-);
-"
+  require_command swift
+  swift build --package-path "$ROOT_DIR" --product SuisuiVisualFixtureSeeder
+  VISUAL_FIXTURE_SEEDER_BIN="$(
+    swift build --package-path "$ROOT_DIR" --show-bin-path
+  )/SuisuiVisualFixtureSeeder"
 }
 
-seed_mcp_registrations() {
+seed_capture_database() {
   local database_path="$1"
+  local seed_output
+  seed_output="$(
+    "$VISUAL_FIXTURE_SEEDER_BIN" \
+      --database "$database_path" \
+      --evidence-home "$EVIDENCE_HOME" \
+      --capture-reference-instant "$EVIDENCE_REFERENCE_INSTANT"
+  )" || return $?
 
-  sqlite3 "$database_path" "
-DELETE FROM mcp_server_registrations;
+  CAPTURE_PROJECT_ID=""
+  CAPTURE_INBOX_VOICE_TASK_ID=""
+  CAPTURE_TASK_ID=""
+  CAPTURE_REVIEW_TASK_ID=""
+  CAPTURE_UNSCHEDULED_TASK_ID=""
+  CAPTURE_DUE_DATE=""
+  CAPTURE_REVIEW_DUE_DATE=""
 
-INSERT INTO mcp_server_registrations (
-  id,
-  sort_order,
-  display_name,
-  command,
-  arguments_json,
-  environment_json,
-  working_directory,
-  is_enabled
-) VALUES (
-  'ui-evidence-filesystem',
-  0,
-  'Local Filesystem MCP',
-  '/usr/bin/env',
-  '[\"node\",\"@modelcontextprotocol/server-filesystem\",\"/tmp\"]',
-  '{\"SUISUI_FILESYSTEM_TOKEN\":{\"type\":\"keychain\",\"key\":\"mcp_filesystem_token\"}}',
-  './fixtures/mcp-workspace',
-  1
-);
+  local key value extra
+  while IFS='=' read -r key value extra; do
+    if [[ -z "$key" && -z "$value" && -z "$extra" ]]; then
+      continue
+    fi
+    if [[ -n "$extra" || -z "$value" ]]; then
+      echo "BLOCKER: malformed visual fixture seeder receipt" >&2
+      return 2
+    fi
+    # Parse only a fixed data contract. Never source or eval seeder output:
+    # even a compromised build artifact must not turn receipt text into shell.
+    case "$key" in
+      project_id)
+        [[ -z "$CAPTURE_PROJECT_ID" ]] || { echo "BLOCKER: duplicate project_id receipt" >&2; return 2; }
+        CAPTURE_PROJECT_ID="$value"
+        ;;
+      inbox_voice_task_id)
+        [[ -z "$CAPTURE_INBOX_VOICE_TASK_ID" ]] || { echo "BLOCKER: duplicate inbox_voice_task_id receipt" >&2; return 2; }
+        CAPTURE_INBOX_VOICE_TASK_ID="$value"
+        ;;
+      capture_task_id)
+        [[ -z "$CAPTURE_TASK_ID" ]] || { echo "BLOCKER: duplicate capture_task_id receipt" >&2; return 2; }
+        CAPTURE_TASK_ID="$value"
+        ;;
+      review_task_id)
+        [[ -z "$CAPTURE_REVIEW_TASK_ID" ]] || { echo "BLOCKER: duplicate review_task_id receipt" >&2; return 2; }
+        CAPTURE_REVIEW_TASK_ID="$value"
+        ;;
+      unscheduled_task_id)
+        [[ -z "$CAPTURE_UNSCHEDULED_TASK_ID" ]] || { echo "BLOCKER: duplicate unscheduled_task_id receipt" >&2; return 2; }
+        CAPTURE_UNSCHEDULED_TASK_ID="$value"
+        ;;
+      capture_due_date)
+        [[ -z "$CAPTURE_DUE_DATE" ]] || { echo "BLOCKER: duplicate capture_due_date receipt" >&2; return 2; }
+        CAPTURE_DUE_DATE="$value"
+        ;;
+      review_due_date)
+        [[ -z "$CAPTURE_REVIEW_DUE_DATE" ]] || { echo "BLOCKER: duplicate review_due_date receipt" >&2; return 2; }
+        CAPTURE_REVIEW_DUE_DATE="$value"
+        ;;
+      *)
+        echo "BLOCKER: unknown visual fixture seeder receipt key: $key" >&2
+        return 2
+        ;;
+    esac
+  done <<<"$seed_output"
 
-INSERT INTO mcp_server_registrations (
-  id,
-  sort_order,
-  display_name,
-  command,
-  arguments_json,
-  environment_json,
-  working_directory,
-  is_enabled
-) VALUES (
-  'ui-evidence-issues',
-  1,
-  'Issue Tracker MCP',
-  '/usr/bin/env',
-  '[\"npx\",\"-y\",\"@modelcontextprotocol/server-github\"]',
-  '{\"GITHUB_TOKEN\":{\"type\":\"keychain\",\"key\":\"mcp_github_token\"}}',
-  './fixtures/mcp-workspace',
-  0
-);
-"
-}
-
-assert_phase12_seed_data() {
-  local database_path="$1"
-  local scheduled_manual_capture_count
-  local done_analytics_sample_count
-  local completed_project_count
-  local inbox_project_count
-
-  scheduled_manual_capture_count="$(sqlite3 "$database_path" "SELECT COUNT(*) FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Scheduled manual capture';")"
-  done_analytics_sample_count="$(sqlite3 "$database_path" "SELECT COUNT(*) FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Done analytics sample';")"
-  completed_project_count="$(sqlite3 "$database_path" "SELECT COUNT(*) FROM projects WHERE source_command = 'ui-evidence' AND title = 'Completed Evidence Project';")"
-  inbox_project_count="$(sqlite3 "$database_path" "SELECT COUNT(*) FROM projects WHERE source_command = 'ui-evidence' AND title = 'Inbox';")"
-
-  if [[ "$scheduled_manual_capture_count" -lt 1 ]]; then
-    echo "missing Phase 12 UI evidence seed: Scheduled manual capture" >&2
-    exit 1
-  fi
-  if [[ "$done_analytics_sample_count" -lt 1 ]]; then
-    echo "missing Phase 12 UI evidence seed: Done analytics sample" >&2
-    exit 1
-  fi
-  if [[ "$completed_project_count" -lt 1 ]]; then
-    echo "missing Phase 12 UI evidence seed: Completed Evidence Project" >&2
-    exit 1
-  fi
-  if [[ "$inbox_project_count" -lt 1 ]]; then
-    echo "missing Phase 12 UI evidence seed: Inbox" >&2
-    exit 1
-  fi
-}
-
-assert_valid_seed_task_statuses() {
-  local database_path="$1"
-  local invalid_statuses
-
-  # The app maps persisted "completed" tasks to the UI's Done column; writing
-  # the UI label into SQLite makes the screenshot evidence capture an error page.
-  invalid_statuses="$(sqlite3 "$database_path" "
-SELECT DISTINCT status
-FROM tasks
-WHERE source_command = 'ui-evidence'
-  AND status NOT IN ('open', 'backlog', 'planned', 'in_progress', 'blocked', 'completed')
-ORDER BY status;
-")"
-
-  if [[ -n "$invalid_statuses" ]]; then
-    echo "unsupported Phase 12 UI evidence task status: $invalid_statuses" >&2
-    exit 1
+  local identifier
+  for identifier in \
+    "$CAPTURE_PROJECT_ID" \
+    "$CAPTURE_INBOX_VOICE_TASK_ID" \
+    "$CAPTURE_TASK_ID" \
+    "$CAPTURE_REVIEW_TASK_ID" \
+    "$CAPTURE_UNSCHEDULED_TASK_ID"; do
+    if [[ ! "$identifier" =~ ^[0-9]+$ ]]; then
+      echo "BLOCKER: visual fixture seeder receipt has a non-numeric identifier" >&2
+      return 2
+    fi
+  done
+  if [[ ! "$CAPTURE_DUE_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ \
+        || ! "$CAPTURE_REVIEW_DUE_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    echo "BLOCKER: visual fixture seeder receipt has a non-canonical due date" >&2
+    return 2
   fi
 }
 
 persist_project_board_selection() {
-  local database_path="$1"
-  local project_id
-  local inbox_voice_task_id
-  local capture_task_id
-  local unscheduled_task_id
-  local capture_due_date
+  local project_id="$CAPTURE_PROJECT_ID"
+  local inbox_voice_task_id="$CAPTURE_INBOX_VOICE_TASK_ID"
+  local capture_task_id="$CAPTURE_TASK_ID"
+  local review_task_id="$CAPTURE_REVIEW_TASK_ID"
+  local unscheduled_task_id="$CAPTURE_UNSCHEDULED_TASK_ID"
+  local capture_due_date="$CAPTURE_DUE_DATE"
+  local review_due_date="$CAPTURE_REVIEW_DUE_DATE"
   local planned_label
   local medium_label
   local high_label
   local no_due_date_label
   local inbox_label
   local inbox_classification_actions_label
-  project_id="$(sqlite3 "$database_path" "SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1;")"
-
-  if [[ -z "$project_id" ]]; then
-    echo "seeded Launch Readiness project was not found." >&2
-    exit 1
-  fi
-  inbox_voice_task_id="$(sqlite3 "$database_path" "SELECT id FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Scheduled manual capture' ORDER BY id DESC LIMIT 1;")"
-  if [[ -z "$inbox_voice_task_id" ]]; then
-    echo "seeded Scheduled manual capture task was not found." >&2
-    exit 1
-  fi
-  capture_task_id="$(sqlite3 "$database_path" "SELECT id FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Capture launch screenshots' ORDER BY id DESC LIMIT 1;")"
-  review_task_id="$(sqlite3 "$database_path" "SELECT id FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Review VoiceOver focus path' ORDER BY id DESC LIMIT 1;")"
-  unscheduled_task_id="$(sqlite3 "$database_path" "SELECT id FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Unscheduled schedule draft input' ORDER BY id DESC LIMIT 1;")"
-  if [[ ! "$capture_task_id" =~ ^[0-9]+$ || ! "$review_task_id" =~ ^[0-9]+$ || ! "$unscheduled_task_id" =~ ^[0-9]+$ ]]; then
-    echo "seeded project-board metadata tasks were not found." >&2
-    exit 1
-  fi
-  capture_due_date="$(sqlite3 "$database_path" "SELECT substr(due_at, 1, 10) FROM tasks WHERE id = $capture_task_id;")"
-  review_due_date="$(sqlite3 "$database_path" "SELECT substr(due_at, 1, 10) FROM tasks WHERE id = $review_task_id;")"
-  if [[ ! "$capture_due_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ || ! "$review_due_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
-    echo "seeded project-board evidence tasks have no canonical due date." >&2
-    exit 1
-  fi
   # AX readiness must match the human date shown by the app, not the stored
   # yyyy-MM-dd value. Otherwise improving date readability makes the capture
   # harness wait forever for text the product correctly stopped exposing.
@@ -2073,7 +1900,7 @@ run_doctor() {
 
   local blocker_count=0
   local command_name
-  for command_name in sqlite3 screencapture swift swiftc sips osascript; do
+  for command_name in screencapture swift swiftc sips osascript; do
     if command -v "$command_name" >/dev/null 2>&1; then
       echo "OK: found $command_name"
     else
@@ -2120,6 +1947,14 @@ if [[ "$DOCTOR" == "1" ]]; then
   exit 0
 fi
 
+if [[ "$SEED_ONLY" == "1" ]]; then
+  prepare_visual_fixture_seeder
+  DATABASE_PATH="$EVIDENCE_HOME/Library/Application Support/Suisui/Suisui.sqlite"
+  seed_capture_database "$DATABASE_PATH"
+  echo "capture_seed_ready=1"
+  exit 0
+fi
+
 write_visual_ax_audit_receipt() {
   local source_commit="$1"
   # Revalidate immediately before the second removal so a path swapped during
@@ -2139,7 +1974,6 @@ write_visual_ax_audit_receipt() {
   echo "AX audit receipt: $SUISUI_VISUAL_AX_AUDIT_RESULT"
 }
 
-require_command sqlite3
 require_command screencapture
 require_command swift
 require_command swiftc
@@ -2147,7 +1981,6 @@ require_command sips
 require_command osascript
 
 mkdir -p "$SCREENSHOT_DIR"
-mkdir -p "$EVIDENCE_HOME/Library/Application Support"
 
 if [[ "$DRY_RUN" == "1" ]]; then
   echo "UI evidence dry run"
@@ -2172,10 +2005,7 @@ fi
 
 assert_visual_product_source_is_committed
 
-swift build --package-path "$ROOT_DIR" --product SuisuiVisualFixtureSeeder
-VISUAL_FIXTURE_SEEDER_BIN="$(
-  swift build --package-path "$ROOT_DIR" --show-bin-path
-)/SuisuiVisualFixtureSeeder"
+prepare_visual_fixture_seeder
 "$ROOT_DIR/script/build_and_run.sh" --build-only
 /usr/bin/swiftc "$ROOT_DIR/script/visual_raster_stability_check.swift" -o "$VISUAL_RASTER_STABILITY_CHECKER"
 /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_appearance_check.swift" -o "$VISUAL_APPEARANCE_CHECKER"
@@ -2183,15 +2013,8 @@ VISUAL_FIXTURE_SEEDER_BIN="$(
 SOURCE_COMMIT="$(ui_evidence_product_source_commit)"
 
 DATABASE_PATH="$EVIDENCE_HOME/Library/Application Support/Suisui/Suisui.sqlite"
-initialize_database "$DATABASE_PATH"
-seed_database "$DATABASE_PATH"
-seed_mcp_registrations "$DATABASE_PATH"
-assert_phase12_seed_data "$DATABASE_PATH"
-assert_valid_seed_task_statuses "$DATABASE_PATH"
-persist_project_board_selection "$DATABASE_PATH"
-"$VISUAL_FIXTURE_SEEDER_BIN" \
-  --database "$DATABASE_PATH" \
-  --evidence-home "$EVIDENCE_HOME"
+seed_capture_database "$DATABASE_PATH"
+persist_project_board_selection
 
 LIGHT_SCREENSHOT="$SCREENSHOT_DIR/project-board-light.png"
 DARK_SCREENSHOT="$SCREENSHOT_DIR/project-board-dark.png"

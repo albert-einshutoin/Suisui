@@ -1,3 +1,4 @@
+import Darwin
 import XCTest
 @testable import SuisuiCore
 
@@ -562,6 +563,110 @@ final class DatabaseMigrationTests: XCTestCase {
             try connection.queryStrings("PRAGMA wal_autocheckpoint;"),
             [String(SQLiteConnection.walAutoCheckpointPages)]
         )
+    }
+
+    func testSQLiteConnectionSecureFileOpenValidatesBeforeUsingMemoryJournal() throws {
+        let root = URL(
+            fileURLWithPath: "/private/tmp/suisui-secure-sqlite-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let databaseURL = root.appendingPathComponent("Suisui.sqlite")
+        XCTAssertTrue(FileManager.default.createFile(atPath: databaseURL.path, contents: Data()))
+        let descriptor = open(databaseURL.path, O_RDWR | O_NOFOLLOW | O_CLOEXEC)
+        XCTAssertGreaterThanOrEqual(descriptor, 0)
+        defer { close(descriptor) }
+        var validationCount = 0
+
+        let connection = try SQLiteConnection(
+            secureFileDescriptor: descriptor,
+            secureFileValidation: {
+                validationCount += 1
+                XCTAssertEqual(
+                    try FileManager.default.attributesOfItem(atPath: databaseURL.path)[.size] as? NSNumber,
+                    0
+                )
+            }
+        )
+        try connection.execute("CREATE TABLE secure_fixture (id INTEGER PRIMARY KEY);")
+
+        XCTAssertEqual(validationCount, 1)
+        XCTAssertEqual(try connection.queryStrings("PRAGMA journal_mode;"), ["memory"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: databaseURL.path + "-wal"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: databaseURL.path + "-shm"))
+    }
+
+    func testSQLiteConnectionSecureFileDescriptorFailsClosedAcrossPathSwap() throws {
+        let root = URL(
+            fileURLWithPath: "/private/tmp/suisui-secure-sqlite-swap-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let databaseURL = root.appendingPathComponent("Suisui.sqlite")
+        let displacedURL = root.appendingPathComponent("displaced.sqlite")
+        let replacementURL = root.appendingPathComponent("replacement.sqlite")
+        XCTAssertTrue(FileManager.default.createFile(atPath: databaseURL.path, contents: Data()))
+        XCTAssertTrue(FileManager.default.createFile(atPath: replacementURL.path, contents: Data()))
+        let descriptor = open(databaseURL.path, O_RDWR | O_NOFOLLOW | O_CLOEXEC)
+        XCTAssertGreaterThanOrEqual(descriptor, 0)
+        defer { close(descriptor) }
+
+        enum ExpectedValidationError: Error {
+            case pathIdentityChanged
+        }
+
+        XCTAssertThrowsError(
+            try SQLiteConnection(
+                secureFileDescriptor: descriptor,
+                secureFileValidation: {
+                    try FileManager.default.moveItem(at: databaseURL, to: displacedURL)
+                    try FileManager.default.moveItem(at: replacementURL, to: databaseURL)
+                    throw ExpectedValidationError.pathIdentityChanged
+                }
+            )
+        ) { error in
+            XCTAssertTrue(error is ExpectedValidationError)
+        }
+        XCTAssertEqual(
+            try FileManager.default.attributesOfItem(atPath: databaseURL.path)[.size] as? NSNumber,
+            0
+        )
+        XCTAssertEqual(
+            try FileManager.default.attributesOfItem(atPath: displacedURL.path)[.size] as? NSNumber,
+            0
+        )
+    }
+
+    func testSQLiteConnectionOwnsOpenedFileAfterCallerDescriptorIsClosedAndReused() throws {
+        let root = URL(
+            fileURLWithPath: "/private/tmp/suisui-secure-sqlite-fd-reuse-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let databaseURL = root.appendingPathComponent("Suisui.sqlite")
+        let reuseURL = root.appendingPathComponent("descriptor-reuse.txt")
+        XCTAssertTrue(FileManager.default.createFile(atPath: databaseURL.path, contents: Data()))
+        XCTAssertTrue(FileManager.default.createFile(atPath: reuseURL.path, contents: Data()))
+        let descriptor = open(databaseURL.path, O_RDWR | O_NOFOLLOW | O_CLOEXEC)
+        XCTAssertGreaterThanOrEqual(descriptor, 0)
+
+        let connection = try SQLiteConnection(
+            secureFileDescriptor: descriptor,
+            secureFileValidation: {}
+        )
+        XCTAssertEqual(close(descriptor), 0)
+        let reusedDescriptor = open(reuseURL.path, O_RDWR | O_NOFOLLOW | O_CLOEXEC)
+        XCTAssertEqual(reusedDescriptor, descriptor, "the test must exercise immediate descriptor-number reuse")
+        defer { close(reusedDescriptor) }
+
+        try connection.execute("CREATE TABLE secure_fixture (id INTEGER PRIMARY KEY);")
+        try connection.execute("INSERT INTO secure_fixture (id) VALUES (1);")
+
+        XCTAssertEqual(try connection.queryStrings("SELECT id FROM secure_fixture;"), ["1"])
+        XCTAssertEqual(try Data(contentsOf: reuseURL), Data())
     }
 
     func testSQLiteConnectionSerializesConcurrentTransactions() throws {

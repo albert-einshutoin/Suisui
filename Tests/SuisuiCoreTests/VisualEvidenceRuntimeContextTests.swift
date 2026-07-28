@@ -277,6 +277,154 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
         )
     }
 
+    func testVisualFixtureSeederRejectsDatabaseHardLink() throws {
+        let fixtureDirectory = URL(
+            fileURLWithPath: "/tmp/suisui-visual-seeder-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let evidenceHome = fixtureDirectory.appendingPathComponent("home", isDirectory: true)
+        let externalDatabase = fixtureDirectory.appendingPathComponent("external.sqlite")
+        let databaseURL = evidenceHome.appendingPathComponent("suisui.sqlite")
+        try FileManager.default.createDirectory(at: evidenceHome, withIntermediateDirectories: true)
+        XCTAssertTrue(FileManager.default.createFile(atPath: externalDatabase.path, contents: Data()))
+        try FileManager.default.linkItem(at: externalDatabase, to: databaseURL)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let result = try runTool([
+            visualFixtureSeederURL().path,
+            "--database",
+            databaseURL.path,
+            "--evidence-home",
+            evidenceHome.path
+        ])
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.localizedCaseInsensitiveContains("hard link"), result.output)
+        XCTAssertEqual(
+            try FileManager.default.attributesOfItem(atPath: externalDatabase.path)[.size] as? NSNumber,
+            0
+        )
+    }
+
+    func testCaptureSeedOnlyDelegatesDatabaseWorkToSecureSeeder() throws {
+        let fixtureDirectory = URL(
+            fileURLWithPath: "/tmp/suisui-capture-seed-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let evidenceHome = fixtureDirectory.appendingPathComponent("home", isDirectory: true)
+        let temporaryDirectory = fixtureDirectory.appendingPathComponent("tmp", isDirectory: true)
+        let databaseURL = captureDatabaseURL(in: evidenceHome)
+        try FileManager.default.createDirectory(at: evidenceHome, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let result = try runTool(
+            ["/bin/bash", captureScriptURL().path, "--seed-only"],
+            environment: captureSeedEnvironment(
+                evidenceHome: evidenceHome,
+                temporaryDirectory: temporaryDirectory
+            )
+        )
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("capture_seed_ready=1"), result.output)
+        let connection = try SQLiteConnection(path: databaseURL.path)
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT title FROM projects WHERE source_command = 'ui-evidence' ORDER BY title;"
+            ),
+            ["Completed Evidence Project", "Inbox", "Launch Readiness"]
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT id FROM assistant_queue_items WHERE id LIKE 'visual-%' ORDER BY id;"
+            ),
+            ["visual-approved", "visual-failed", "visual-waiting"]
+        )
+    }
+
+    func testCaptureSeedOnlyRejectsDatabaseSymlinkWithoutChangingExternalTarget() throws {
+        let fixtureDirectory = URL(
+            fileURLWithPath: "/tmp/suisui-capture-seed-symlink-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let evidenceHome = fixtureDirectory.appendingPathComponent("home", isDirectory: true)
+        let temporaryDirectory = fixtureDirectory.appendingPathComponent("tmp", isDirectory: true)
+        let databaseURL = captureDatabaseURL(in: evidenceHome)
+        let externalDatabase = fixtureDirectory.appendingPathComponent("external.sqlite")
+        let sentinel = Data("external-symlink-target".utf8)
+        try FileManager.default.createDirectory(
+            at: databaseURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        try sentinel.write(to: externalDatabase)
+        try FileManager.default.createSymbolicLink(at: databaseURL, withDestinationURL: externalDatabase)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let result = try runTool(
+            ["/bin/bash", captureScriptURL().path, "--seed-only"],
+            environment: captureSeedEnvironment(
+                evidenceHome: evidenceHome,
+                temporaryDirectory: temporaryDirectory
+            )
+        )
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.localizedCaseInsensitiveContains("symbolic link"), result.output)
+        XCTAssertEqual(try Data(contentsOf: externalDatabase), sentinel)
+    }
+
+    func testCaptureSeedOnlyRejectsDatabaseHardLinkWithoutChangingExternalTarget() throws {
+        let fixtureDirectory = URL(
+            fileURLWithPath: "/tmp/suisui-capture-seed-hardlink-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let evidenceHome = fixtureDirectory.appendingPathComponent("home", isDirectory: true)
+        let temporaryDirectory = fixtureDirectory.appendingPathComponent("tmp", isDirectory: true)
+        let databaseURL = captureDatabaseURL(in: evidenceHome)
+        let externalDatabase = fixtureDirectory.appendingPathComponent("external.sqlite")
+        let sentinel = Data("external-hardlink-target".utf8)
+        try FileManager.default.createDirectory(
+            at: databaseURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        try sentinel.write(to: externalDatabase)
+        try FileManager.default.linkItem(at: externalDatabase, to: databaseURL)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let result = try runTool(
+            ["/bin/bash", captureScriptURL().path, "--seed-only"],
+            environment: captureSeedEnvironment(
+                evidenceHome: evidenceHome,
+                temporaryDirectory: temporaryDirectory
+            )
+        )
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.localizedCaseInsensitiveContains("hard link"), result.output)
+        XCTAssertEqual(try Data(contentsOf: externalDatabase), sentinel)
+    }
+
+    func testCaptureDatabaseSourceContractUsesPinnedDirectoryDescriptorsOnly() throws {
+        let script = try String(contentsOf: captureScriptURL(), encoding: .utf8)
+        let seeder = try String(
+            contentsOf: packageRoot()
+                .appendingPathComponent("Sources/SuisuiVisualFixtureSeeder/main.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertFalse(script.contains("sqlite3"))
+        XCTAssertTrue(script.contains("seed_capture_database"))
+        XCTAssertTrue(script.contains("--capture-reference-instant"))
+        XCTAssertTrue(script.contains("capture_seed_ready=1"))
+        XCTAssertFalse(seeder.contains("FileManager.default.createDirectory"))
+        XCTAssertTrue(seeder.contains("mkdirat"))
+        XCTAssertTrue(seeder.contains("let evidenceHomeDescriptor"))
+        XCTAssertTrue(seeder.contains("openat("))
+    }
+
     private func visualManifest(named fileName: String) throws -> [String: Any] {
         let packageRoot = packageRoot()
         let data = try Data(
@@ -296,12 +444,37 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
         packageRoot().appendingPathComponent(".build/debug/SuisuiVisualFixtureSeeder")
     }
 
-    private func runTool(_ arguments: [String]) throws -> (exitCode: Int32, output: String) {
+    private func captureScriptURL() -> URL {
+        packageRoot().appendingPathComponent("script/capture_ui_evidence.sh")
+    }
+
+    private func captureDatabaseURL(in evidenceHome: URL) -> URL {
+        evidenceHome.appendingPathComponent("Library/Application Support/Suisui/Suisui.sqlite")
+    }
+
+    private func captureSeedEnvironment(
+        evidenceHome: URL,
+        temporaryDirectory: URL
+    ) -> [String: String] {
+        [
+            "SUISUI_UI_EVIDENCE_HOME": evidenceHome.path,
+            "SUISUI_UI_EVIDENCE_TMPDIR": temporaryDirectory.path,
+            "SUISUI_VISUAL_FIXTURE_SEEDER_BIN": visualFixtureSeederURL().path
+        ]
+    }
+
+    private func runTool(
+        _ arguments: [String],
+        environment: [String: String] = [:]
+    ) throws -> (exitCode: Int32, output: String) {
         let process = Process()
         let pipe = Pipe()
         process.executableURL = URL(fileURLWithPath: arguments[0])
         process.arguments = Array(arguments.dropFirst())
         process.currentDirectoryURL = packageRoot()
+        process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, override in
+            override
+        }
         process.standardOutput = pipe
         process.standardError = pipe
         try process.run()
