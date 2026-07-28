@@ -12336,6 +12336,209 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
+    func testReleaseReadinessReportFailsClosedForBothLocaleVisualEvidenceContracts() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-locale-visual-evidence", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let evidenceDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("release", isDirectory: true)
+            .appendingPathComponent("evidence", isDirectory: true)
+        let englishScreenshotDirectory = evidenceDirectory.appendingPathComponent("ui-screenshots", isDirectory: true)
+        let japaneseScreenshotDirectory = evidenceDirectory.appendingPathComponent("ui-screenshots-ja", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let captureURL = scriptDirectory.appendingPathComponent("capture_ui_evidence.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: englishScreenshotDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: japaneseScreenshotDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SuisuiCore", "SuisuiApp", "SuisuiCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try "#!/usr/bin/env bash\n# initial visual capture contract\n"
+            .write(to: captureURL, atomically: true, encoding: .utf8)
+        try "// fixture package\n"
+            .write(to: fixtureRoot.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "init"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.email", "quality-tests@example.invalid"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.name", "Quality Tests"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "."]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "initial visual source"]).exitCode, 0)
+        let staleShortCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+            .output.trimmingCharacters(in: .whitespacesAndNewlines)
+        let staleFullCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "HEAD"])
+            .output.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        try "#!/usr/bin/env bash\n# changed visual capture contract\n"
+            .write(to: captureURL, atomically: true, encoding: .utf8)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "script/capture_ui_evidence.sh"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "change visual capture contract"]).exitCode, 0)
+        let currentShortCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+            .output.trimmingCharacters(in: .whitespacesAndNewlines)
+        let currentFullCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "HEAD"])
+            .output.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        try """
+        # UI Screenshot Evidence
+
+        Generated with `script/capture_ui_evidence.sh`.
+
+        - Generated at: `2026-07-28T00:00:00Z`
+        - Source commit: `\(staleShortCommit)`
+        - Runtime context: locale `ja-JP`, timezone `UTC`, reference instant `2026-07-10T12:00:00Z`
+        """.write(to: evidenceDirectory.appendingPathComponent("ui-screenshots.md"), atomically: true, encoding: .utf8)
+        try """
+        {
+          "sourceCommit": "\(staleFullCommit)",
+          "locale": "ja-JP"
+        }
+        """.write(
+            to: englishScreenshotDirectory.appendingPathComponent("visual-baseline-capture-manifest.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try """
+        # UI Screenshot Evidence
+
+        Generated with `script/capture_ui_evidence.sh`.
+
+        - Generated at: `2026-07-28T00:00:00Z`
+        - Source commit: `\(staleShortCommit)`
+        - Runtime context: locale `en-US`, timezone `UTC`, reference instant `2026-07-10T12:00:00Z`
+        """.write(
+            to: japaneseScreenshotDirectory.appendingPathComponent("ui-screenshots.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try """
+        {
+          "sourceCommit": "\(staleFullCommit)",
+          "locale": "en-US"
+        }
+        """.write(
+            to: japaneseScreenshotDirectory.appendingPathComponent("visual-baseline-capture-manifest.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: preflightURL.path)
+
+        let result = try runTool(["bash", reportURL.path])
+
+        XCTAssertNotEqual(staleShortCommit, currentShortCommit)
+        XCTAssertNotEqual(staleFullCommit, currentFullCommit)
+        XCTAssertNotEqual(result.exitCode, 0)
+        for localeName in ["English", "Japanese"] {
+            XCTAssertTrue(
+                result.output.contains(
+                    "\(localeName) UI screenshot evidence source commit does not match current UI source commit: expected \(currentShortCommit)"
+                ),
+                result.output
+            )
+            XCTAssertTrue(
+                result.output.contains("\(localeName) UI screenshot evidence locale does not match expected locale"),
+                result.output
+            )
+            XCTAssertTrue(
+                result.output.contains(
+                    "\(localeName) visual capture manifest source commit does not match current visual evidence source commit: expected \(currentFullCommit)"
+                ),
+                result.output
+            )
+            XCTAssertTrue(
+                result.output.contains("\(localeName) visual capture manifest locale does not match expected locale"),
+                result.output
+            )
+        }
+
+        try """
+        # UI Screenshot Evidence
+
+        Generated with `script/capture_ui_evidence.sh`.
+
+        - Generated at: `2026-07-28T00:00:00Z`
+        - Source commit: `\(currentShortCommit)`
+        - Runtime context: locale `en-US`, timezone `UTC`, reference instant `2026-07-10T12:00:00Z`
+        """.write(to: evidenceDirectory.appendingPathComponent("ui-screenshots.md"), atomically: true, encoding: .utf8)
+        try """
+        {
+          "sourceCommit": "\(currentFullCommit)",
+          "locale": "en-US"
+        }
+        """.write(
+            to: englishScreenshotDirectory.appendingPathComponent("visual-baseline-capture-manifest.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try """
+        # UI Screenshot Evidence
+
+        Generated with `script/capture_ui_evidence.sh`.
+
+        - Generated at: `2026-07-28T00:00:00Z`
+        - Source commit: `\(currentShortCommit)`
+        - Runtime context: locale `ja-JP`, timezone `UTC`, reference instant `2026-07-10T12:00:00Z`
+        """.write(
+            to: japaneseScreenshotDirectory.appendingPathComponent("ui-screenshots.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try """
+        {
+          "sourceCommit": "\(currentFullCommit)",
+          "locale": "ja-JP"
+        }
+        """.write(
+            to: japaneseScreenshotDirectory.appendingPathComponent("visual-baseline-capture-manifest.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let validVisualEvidenceResult = try runTool(["bash", reportURL.path])
+        for localeName in ["English", "Japanese"] {
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) UI screenshot evidence source commit"),
+                validVisualEvidenceResult.output
+            )
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) UI screenshot evidence locale"),
+                validVisualEvidenceResult.output
+            )
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) visual capture manifest source commit"),
+                validVisualEvidenceResult.output
+            )
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) visual capture manifest locale"),
+                validVisualEvidenceResult.output
+            )
+        }
+    }
+
     func testReleaseReadinessReportFailsWhenUIScreenshotEvidenceIsBlank() throws {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-release-readiness-blank-ui-evidence", isDirectory: true)
