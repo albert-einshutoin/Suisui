@@ -3,10 +3,13 @@ import Foundation
 import SuisuiCore
 
 private struct SeederOptions {
+    private static let evidenceHomeMarkerName = ".suisui-ui-evidence-home-v1"
+
     let databaseURL: URL
     let evidenceHomeURL: URL
     let captureReferenceInstant: Date?
     private let evidenceHomeIdentity: FileIdentity
+    private let evidenceHomeMarkerContents: Data
 
     struct FileIdentity: Equatable {
         let device: dev_t
@@ -30,6 +33,7 @@ private struct SeederOptions {
     init(arguments: [String]) throws {
         var databasePath: String?
         var evidenceHomePath: String?
+        var evidenceHomeMarkerToken: String?
         var captureReferenceInstant: Date?
         var index = 0
 
@@ -37,6 +41,7 @@ private struct SeederOptions {
             let flag = arguments[index]
             guard flag == "--database"
                     || flag == "--evidence-home"
+                    || flag == "--evidence-home-marker-token"
                     || flag == "--capture-reference-instant" else {
                 throw SeederError.invalidArguments("unknown argument: \(flag)")
             }
@@ -59,6 +64,16 @@ private struct SeederOptions {
                     throw SeederError.invalidArguments("duplicate --evidence-home")
                 }
                 evidenceHomePath = value
+            case "--evidence-home-marker-token":
+                guard evidenceHomeMarkerToken == nil else {
+                    throw SeederError.invalidArguments("duplicate --evidence-home-marker-token")
+                }
+                guard UUID(uuidString: value) != nil else {
+                    throw SeederError.invalidArguments(
+                        "--evidence-home-marker-token must be a UUID generated for this capture"
+                    )
+                }
+                evidenceHomeMarkerToken = value
             case "--capture-reference-instant":
                 guard captureReferenceInstant == nil else {
                     throw SeederError.invalidArguments("duplicate --capture-reference-instant")
@@ -82,9 +97,10 @@ private struct SeederOptions {
             index += 2
         }
 
-        guard let databasePath, let evidenceHomePath else {
+        guard let databasePath, let evidenceHomePath, let evidenceHomeMarkerToken else {
             throw SeederError.invalidArguments(
                 "usage: SuisuiVisualFixtureSeeder --database <path> --evidence-home <path> "
+                    + "--evidence-home-marker-token <uuid> "
                     + "[--capture-reference-instant <UTC ISO-8601 instant>]"
             )
         }
@@ -107,6 +123,9 @@ private struct SeederOptions {
             at: evidenceHomeURL,
             expectedKind: .directory,
             description: "--evidence-home"
+        )
+        evidenceHomeMarkerContents = Data(
+            "suisui-ui-evidence-home-v1:\(evidenceHomeMarkerToken)\n".utf8
         )
         try Self.rejectUnsafeExistingDatabase(at: databaseURL)
     }
@@ -294,6 +313,7 @@ private struct SeederOptions {
               ) == evidenceHomeIdentity else {
             throw SeederError.invalidPath("--evidence-home changed after validation")
         }
+        try validateEvidenceHomeMarker(in: evidenceHomeDescriptor)
 
         let homeComponentCount = evidenceHomeURL.pathComponents.count
         let relativeComponents = Array(databaseURL.pathComponents.dropFirst(homeComponentCount))
@@ -387,6 +407,44 @@ private struct SeederOptions {
             descriptor: descriptor,
             identity: FileIdentity(device: fileInformation.st_dev, inode: fileInformation.st_ino)
         )
+    }
+
+    private func validateEvidenceHomeMarker(in evidenceHomeDescriptor: Int32) throws {
+        let markerDescriptor = Self.evidenceHomeMarkerName.withCString { name in
+            openat(evidenceHomeDescriptor, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        }
+        guard markerDescriptor >= 0 else {
+            throw SeederError.invalidPath(
+                "--evidence-home is not a capture-owned isolated home"
+            )
+        }
+        defer { close(markerDescriptor) }
+
+        var markerInformation = stat()
+        guard fstat(markerDescriptor, &markerInformation) == 0,
+              markerInformation.st_mode & S_IFMT == S_IFREG,
+              markerInformation.st_nlink == 1,
+              markerInformation.st_uid == geteuid() else {
+            throw SeederError.invalidPath(
+                "--evidence-home ownership marker must be a single-link file owned by the current user"
+            )
+        }
+
+        // Read at most one byte beyond the exact token-bound payload. This
+        // rejects appended data without trusting an unbounded marker supplied
+        // through a filesystem path that may be controlled by another process.
+        let markerHandle = FileHandle(
+            fileDescriptor: markerDescriptor,
+            closeOnDealloc: false
+        )
+        let markerData = try markerHandle.read(
+            upToCount: evidenceHomeMarkerContents.count + 1
+        ) ?? Data()
+        guard markerData == evidenceHomeMarkerContents else {
+            throw SeederError.invalidPath(
+                "--evidence-home ownership marker does not match this capture"
+            )
+        }
     }
 
     func validatePreparedDatabase(_ preparedDatabase: PreparedDatabaseFile) throws {
@@ -592,7 +650,7 @@ private func seedCaptureFixtures(
             WHERE project_id IN (SELECT id FROM projects WHERE source_command = 'ui-evidence');
             DELETE FROM tasks WHERE source_command = 'ui-evidence';
             DELETE FROM projects WHERE source_command = 'ui-evidence';
-            DELETE FROM mcp_server_registrations;
+            DELETE FROM mcp_server_registrations WHERE id LIKE 'ui-evidence-%';
             """
         )
 

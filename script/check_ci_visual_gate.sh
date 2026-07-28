@@ -252,7 +252,7 @@ TRACKED_EVIDENCE_BEFORE="$PRIVATE_DIR/tracked-evidence-before"
 TRACKED_EVIDENCE_AFTER="$PRIVATE_DIR/tracked-evidence-after"
 
 rm -rf "$CURRENT_DIR" "$DIFF_DIR" "$LOG_DIR" "$CAPABILITY_DIR"
-mkdir -p "$SCREENSHOT_DIR" "$DIFF_DIR" "$LOG_DIR" "$CAPABILITY_DIR" "$PRIVATE_HOME" "$PRIVATE_TMP"
+mkdir -p "$SCREENSHOT_DIR" "$DIFF_DIR" "$LOG_DIR" "$CAPABILITY_DIR" "$PRIVATE_TMP"
 
 sanitize_log() {
   local input_file="$1"

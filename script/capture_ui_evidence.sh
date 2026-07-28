@@ -51,7 +51,10 @@ AX_RECEIPT_WRITER="$EVIDENCE_TMPDIR/write-visual-ax-audit-receipt.$$"
 VISUAL_RASTER_STABILITY_CHECKER="$EVIDENCE_TMPDIR/visual-raster-stability-checker.$$"
 VISUAL_APPEARANCE_CHECKER="$EVIDENCE_TMPDIR/visual-appearance-checker.$$"
 VISUAL_FIRST_RASTER="$EVIDENCE_TMPDIR/visual-first-raster.$$.png"
-EVIDENCE_HOME="${SUISUI_UI_EVIDENCE_HOME:-$(mktemp -d "$EVIDENCE_TMPDIR/suisui-ui-evidence.XXXXXX")}"
+EVIDENCE_HOME="${SUISUI_UI_EVIDENCE_HOME:-}"
+EVIDENCE_HOME_MARKER_NAME=".suisui-ui-evidence-home-v1"
+EVIDENCE_HOME_MARKER_TOKEN=""
+EVIDENCE_HOME_IS_AUTOMATIC=0
 KEEP_HOME="${SUISUI_UI_EVIDENCE_KEEP_HOME:-0}"
 DRY_RUN=0
 DOCTOR=0
@@ -246,19 +249,72 @@ validate_visual_ax_audit_result_path() {
   esac
 }
 
-# Any mode that can overwrite screenshot artifacts invalidates the previous
-# complete-run receipt up front. Otherwise a failed or partial recapture could
-# leave a still-fresh receipt that incorrectly authenticates a mixed image set.
+prepare_isolated_evidence_home() {
+  local requested_home="$EVIDENCE_HOME"
+  local requested_parent
+  local requested_parent_real
+  local requested_name
+  local marker_path
+
+  if [[ -z "$requested_home" ]]; then
+    EVIDENCE_HOME="$(mktemp -d "$EVIDENCE_TMPDIR/suisui-ui-evidence.XXXXXX")"
+    EVIDENCE_HOME_IS_AUTOMATIC=1
+  else
+    # An override identifies a new leaf, not an existing HOME. Requiring the
+    # capture process to create it exclusively prevents a typo such as
+    # SUISUI_UI_EVIDENCE_HOME=$HOME from exposing a real Suisui database to the
+    # destructive deterministic fixture reset.
+    if [[ -e "$requested_home" || -L "$requested_home" ]]; then
+      echo "BLOCKER: SUISUI_UI_EVIDENCE_HOME must name a new isolated home, not an existing path: $requested_home" >&2
+      return 2
+    fi
+    requested_parent="$(dirname "$requested_home")"
+    requested_name="$(basename "$requested_home")"
+    if [[ "$requested_name" == "." || "$requested_name" == ".." || "$requested_name" == "/" ]]; then
+      echo "BLOCKER: SUISUI_UI_EVIDENCE_HOME has an invalid isolated home name: $requested_home" >&2
+      return 2
+    fi
+    if [[ ! -d "$requested_parent" || -L "$requested_parent" ]]; then
+      echo "BLOCKER: SUISUI_UI_EVIDENCE_HOME parent must be an existing non-symlink directory: $requested_parent" >&2
+      return 2
+    fi
+    requested_parent_real="$(cd "$requested_parent" && pwd -P)"
+    EVIDENCE_HOME="$requested_parent_real/$requested_name"
+    if ! (umask 077 && /bin/mkdir "$EVIDENCE_HOME"); then
+      echo "BLOCKER: unable to create the isolated evidence home exclusively: $EVIDENCE_HOME" >&2
+      return 2
+    fi
+  fi
+
+  EVIDENCE_HOME="$(cd "$EVIDENCE_HOME" && pwd -P)"
+  EVIDENCE_HOME_MARKER_TOKEN="$(/usr/bin/uuidgen)"
+  marker_path="$EVIDENCE_HOME/$EVIDENCE_HOME_MARKER_NAME"
+  # The seeder reopens this marker through the pinned HOME descriptor and
+  # checks the per-run token before it opens SQLite. This binds fixture writes
+  # to the exact capture-owned directory rather than trusting a path string.
+  if ! (
+    umask 077
+    set -o noclobber
+    printf 'suisui-ui-evidence-home-v1:%s\n' "$EVIDENCE_HOME_MARKER_TOKEN" >"$marker_path"
+  ); then
+    echo "BLOCKER: unable to claim the isolated evidence home: $EVIDENCE_HOME" >&2
+    return 2
+  fi
+}
+
+# Validate the release-evidence destination before loading optional helpers or
+# creating any isolated runtime state. Invalid or redirected receipt paths must
+# fail closed without modifying the previous receipt.
 if [[ "$DRY_RUN" != "1" && "$DOCTOR" != "1" && "$SEED_ONLY" != "1" ]]; then
   validate_visual_ax_audit_result_path || exit $?
-  rm -f "$SUISUI_VISUAL_AX_AUDIT_RESULT"
 fi
 
 # shellcheck source=/dev/null
 source "$AX_HELPERS"
 
 cleanup() {
-  if [[ "$DRY_RUN" != "1" && "$DOCTOR" != "1" && "$SEED_ONLY" != "1" ]]; then
+  if [[ "$DRY_RUN" != "1" && "$DOCTOR" != "1" && "$SEED_ONLY" != "1" ]] \
+      && declare -F stop_evidence_app >/dev/null; then
     stop_evidence_app
   fi
   rm -f "$AX_MARKER_CHECKER"
@@ -270,10 +326,20 @@ cleanup() {
   rm -f "$AX_CAPTURE_RECEIPT_TSV" "$AX_RECEIPT_WRITER" "$VISUAL_RASTER_STABILITY_CHECKER" "$VISUAL_APPEARANCE_CHECKER"
   rm -f "$VISUAL_FIRST_RASTER"
   rm -f "$EVIDENCE_APP_LOG"
-  if [[ "$KEEP_HOME" != "1" && -d "$EVIDENCE_HOME" && "${SUISUI_UI_EVIDENCE_HOME:-}" == "" ]]; then
+  if [[ "$KEEP_HOME" != "1" && "$EVIDENCE_HOME_IS_AUTOMATIC" == "1" && -d "$EVIDENCE_HOME" ]]; then
     rm -rf "$EVIDENCE_HOME"
   fi
 }
+trap cleanup EXIT
+
+prepare_isolated_evidence_home
+
+# Any mode that can overwrite screenshot artifacts invalidates the previous
+# complete-run receipt up front. Otherwise a failed or partial recapture could
+# leave a still-fresh receipt that incorrectly authenticates a mixed image set.
+if [[ "$DRY_RUN" != "1" && "$DOCTOR" != "1" && "$SEED_ONLY" != "1" ]]; then
+  rm -f "$SUISUI_VISUAL_AX_AUDIT_RESULT"
+fi
 
 ui_evidence_product_source_commit() {
   local commit
@@ -304,8 +370,6 @@ assert_visual_product_source_is_committed() {
   echo "NEXT: commit every evidence-source change before capture so receipt sourceCommit identifies the binary and harness that produced the screenshots." >&2
   return 1
 }
-trap cleanup EXIT
-
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "missing required command: $1" >&2
@@ -1093,6 +1157,7 @@ seed_capture_database() {
     "$VISUAL_FIXTURE_SEEDER_BIN" \
       --database "$database_path" \
       --evidence-home "$EVIDENCE_HOME" \
+      --evidence-home-marker-token "$EVIDENCE_HOME_MARKER_TOKEN" \
       --capture-reference-instant "$EVIDENCE_REFERENCE_INSTANT"
   )" || return $?
 

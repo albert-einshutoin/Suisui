@@ -119,15 +119,14 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
             FileManager.default.isExecutableFile(atPath: seederURL.path),
             "build SuisuiVisualFixtureSeeder before running its persistence integration test"
         )
+        let seederArguments = try visualFixtureSeederArguments(
+            executableURL: seederURL,
+            databaseURL: databaseURL,
+            evidenceHome: evidenceHome
+        )
 
         for _ in 0..<2 {
-            let seed = try runTool([
-                seederURL.path,
-                "--database",
-                databaseURL.path,
-                "--evidence-home",
-                evidenceHome.path
-            ])
+            let seed = try runTool(seederArguments)
             XCTAssertEqual(seed.exitCode, 0, seed.output)
         }
 
@@ -205,16 +204,88 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
         try FileManager.default.createDirectory(at: evidenceHome, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
 
+        let result = try runTool(
+            visualFixtureSeederArguments(
+                databaseURL: databaseURL,
+                evidenceHome: evidenceHome
+            )
+        )
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: databaseURL.path))
+    }
+
+    func testVisualFixtureSeederPreservesNonEvidenceMCPRegistrationsWhenRerun() throws {
+        let fixtureDirectory = URL(
+            fileURLWithPath: "/tmp/suisui-visual-seeder-preserve-mcp-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let evidenceHome = fixtureDirectory.appendingPathComponent("home", isDirectory: true)
+        let databaseURL = evidenceHome.appendingPathComponent("suisui.sqlite")
+        try FileManager.default.createDirectory(at: evidenceHome, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        var arguments = try visualFixtureSeederArguments(
+            databaseURL: databaseURL,
+            evidenceHome: evidenceHome
+        )
+        arguments += [
+            "--capture-reference-instant",
+            "2026-07-10T12:00:00Z"
+        ]
+        let firstSeed = try runTool(arguments)
+        XCTAssertEqual(firstSeed.exitCode, 0, firstSeed.output)
+
+        var connection: SQLiteConnection? = try SQLiteConnection(path: databaseURL.path)
+        try connection?.execute(
+            """
+            INSERT INTO mcp_server_registrations (
+                id, sort_order, display_name, command, arguments_json,
+                environment_json, working_directory, is_enabled
+            ) VALUES (
+                'user-owned-mcp', 99, 'User MCP', '/usr/bin/true',
+                '[]', '{}', NULL, 1
+            );
+            """
+        )
+        try connection?.execute("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;")
+        connection = nil
+
+        let secondSeed = try runTool(arguments)
+        XCTAssertEqual(secondSeed.exitCode, 0, secondSeed.output)
+        let validationConnection = try SQLiteConnection(path: databaseURL.path)
+        XCTAssertEqual(
+            try validationConnection.queryStrings(
+                "SELECT id FROM mcp_server_registrations WHERE id = 'user-owned-mcp';"
+            ),
+            ["user-owned-mcp"]
+        )
+    }
+
+    func testVisualFixtureSeederRejectsEvidenceHomeWithoutCaptureOwnershipMarker() throws {
+        let fixtureDirectory = URL(
+            fileURLWithPath: "/tmp/suisui-visual-seeder-unowned-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let evidenceHome = fixtureDirectory.appendingPathComponent("home", isDirectory: true)
+        let databaseURL = evidenceHome.appendingPathComponent("suisui.sqlite")
+        let markerToken = UUID().uuidString
+        try FileManager.default.createDirectory(at: evidenceHome, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
         let result = try runTool([
             visualFixtureSeederURL().path,
             "--database",
             databaseURL.path,
             "--evidence-home",
-            evidenceHome.path
+            evidenceHome.path,
+            "--evidence-home-marker-token",
+            markerToken
         ])
 
-        XCTAssertEqual(result.exitCode, 0, result.output)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: databaseURL.path))
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.localizedCaseInsensitiveContains("capture-owned isolated home"), result.output)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: databaseURL.path))
     }
 
     func testVisualFixtureSeederRejectsUncreatedDatabaseBelowEscapingParentSymlink() throws {
@@ -231,13 +302,12 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
         try FileManager.default.createSymbolicLink(at: escapedParent, withDestinationURL: externalDirectory)
         defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
 
-        let result = try runTool([
-            visualFixtureSeederURL().path,
-            "--database",
-            databaseURL.path,
-            "--evidence-home",
-            evidenceHome.path
-        ])
+        let result = try runTool(
+            visualFixtureSeederArguments(
+                databaseURL: databaseURL,
+                evidenceHome: evidenceHome
+            )
+        )
 
         XCTAssertEqual(result.exitCode, 2, result.output)
         XCTAssertTrue(result.output.contains("--database must be a file below the resolved --evidence-home"), result.output)
@@ -261,13 +331,12 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
         try FileManager.default.createSymbolicLink(at: databaseSymlink, withDestinationURL: databaseTarget)
         defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
 
-        let result = try runTool([
-            visualFixtureSeederURL().path,
-            "--database",
-            databaseSymlink.path,
-            "--evidence-home",
-            evidenceHome.path
-        ])
+        let result = try runTool(
+            visualFixtureSeederArguments(
+                databaseURL: databaseSymlink,
+                evidenceHome: evidenceHome
+            )
+        )
 
         XCTAssertEqual(result.exitCode, 2, result.output)
         XCTAssertTrue(result.output.localizedCaseInsensitiveContains("symbolic link"), result.output)
@@ -290,13 +359,12 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
         try FileManager.default.linkItem(at: externalDatabase, to: databaseURL)
         defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
 
-        let result = try runTool([
-            visualFixtureSeederURL().path,
-            "--database",
-            databaseURL.path,
-            "--evidence-home",
-            evidenceHome.path
-        ])
+        let result = try runTool(
+            visualFixtureSeederArguments(
+                databaseURL: databaseURL,
+                evidenceHome: evidenceHome
+            )
+        )
 
         XCTAssertEqual(result.exitCode, 2, result.output)
         XCTAssertTrue(result.output.localizedCaseInsensitiveContains("hard link"), result.output)
@@ -314,7 +382,6 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
         let evidenceHome = fixtureDirectory.appendingPathComponent("home", isDirectory: true)
         let temporaryDirectory = fixtureDirectory.appendingPathComponent("tmp", isDirectory: true)
         let databaseURL = captureDatabaseURL(in: evidenceHome)
-        try FileManager.default.createDirectory(at: evidenceHome, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
 
@@ -341,6 +408,34 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
             ),
             ["visual-approved", "visual-failed", "visual-waiting"]
         )
+    }
+
+    func testCaptureSeedOnlyRejectsExistingUnownedHomeBeforeSeeding() throws {
+        let fixtureDirectory = URL(
+            fileURLWithPath: "/tmp/suisui-capture-seed-existing-home-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let evidenceHome = fixtureDirectory.appendingPathComponent("home", isDirectory: true)
+        let temporaryDirectory = fixtureDirectory.appendingPathComponent("tmp", isDirectory: true)
+        let sentinel = evidenceHome.appendingPathComponent("keep.txt")
+        try FileManager.default.createDirectory(at: evidenceHome, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        try Data("must-not-change".utf8).write(to: sentinel)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let result = try runTool(
+            ["/bin/bash", captureScriptURL().path, "--seed-only"],
+            environment: captureSeedEnvironment(
+                evidenceHome: evidenceHome,
+                temporaryDirectory: temporaryDirectory
+            )
+        )
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.contains("BLOCKER"), result.output)
+        XCTAssertTrue(result.output.localizedCaseInsensitiveContains("isolated home"), result.output)
+        XCTAssertEqual(try Data(contentsOf: sentinel), Data("must-not-change".utf8))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: captureDatabaseURL(in: evidenceHome).path))
     }
 
     func testCaptureSeedOnlyRejectsDatabaseSymlinkWithoutChangingExternalTarget() throws {
@@ -371,7 +466,7 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
         )
 
         XCTAssertEqual(result.exitCode, 2, result.output)
-        XCTAssertTrue(result.output.localizedCaseInsensitiveContains("symbolic link"), result.output)
+        XCTAssertTrue(result.output.localizedCaseInsensitiveContains("isolated home"), result.output)
         XCTAssertEqual(try Data(contentsOf: externalDatabase), sentinel)
     }
 
@@ -403,7 +498,7 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
         )
 
         XCTAssertEqual(result.exitCode, 2, result.output)
-        XCTAssertTrue(result.output.localizedCaseInsensitiveContains("hard link"), result.output)
+        XCTAssertTrue(result.output.localizedCaseInsensitiveContains("isolated home"), result.output)
         XCTAssertEqual(try Data(contentsOf: externalDatabase), sentinel)
     }
 
@@ -418,11 +513,18 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
         XCTAssertFalse(script.contains("sqlite3"))
         XCTAssertTrue(script.contains("seed_capture_database"))
         XCTAssertTrue(script.contains("--capture-reference-instant"))
+        XCTAssertTrue(script.contains("--evidence-home-marker-token"))
+        XCTAssertTrue(script.contains("must name a new isolated home"))
         XCTAssertTrue(script.contains("capture_seed_ready=1"))
         XCTAssertFalse(seeder.contains("FileManager.default.createDirectory"))
         XCTAssertTrue(seeder.contains("mkdirat"))
         XCTAssertTrue(seeder.contains("let evidenceHomeDescriptor"))
+        XCTAssertTrue(seeder.contains("validateEvidenceHomeMarker(in: evidenceHomeDescriptor)"))
         XCTAssertTrue(seeder.contains("openat("))
+        XCTAssertTrue(
+            seeder.contains("DELETE FROM mcp_server_registrations WHERE id LIKE 'ui-evidence-%';")
+        )
+        XCTAssertFalse(seeder.contains("DELETE FROM mcp_server_registrations;"))
     }
 
     private func visualManifest(named fileName: String) throws -> [String: Any] {
@@ -442,6 +544,25 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
 
     private func visualFixtureSeederURL() -> URL {
         packageRoot().appendingPathComponent(".build/debug/SuisuiVisualFixtureSeeder")
+    }
+
+    private func visualFixtureSeederArguments(
+        executableURL: URL? = nil,
+        databaseURL: URL,
+        evidenceHome: URL
+    ) throws -> [String] {
+        let markerToken = UUID().uuidString
+        let markerURL = evidenceHome.appendingPathComponent(".suisui-ui-evidence-home-v1")
+        try Data("suisui-ui-evidence-home-v1:\(markerToken)\n".utf8).write(to: markerURL)
+        return [
+            (executableURL ?? visualFixtureSeederURL()).path,
+            "--database",
+            databaseURL.path,
+            "--evidence-home",
+            evidenceHome.path,
+            "--evidence-home-marker-token",
+            markerToken
+        ]
     }
 
     private func captureScriptURL() -> URL {
