@@ -27,6 +27,36 @@ while [[ $# -gt 0 ]]; do
     *) echo "BLOCKER: usage: $0 [--manifest path] [--screenshot-dir path] [--baseline-dir path] [--artifact-dir path] [--ax-audit-result path] [--current-source-commit commit] [--raster-only] [--update-baselines --allow-update]" >&2; exit 2;;
   esac
 done
+
+MANIFEST_BASELINE_ROOT="$(
+  /usr/bin/plutil -extract baselineRoot raw -o - "$MANIFEST" 2>/dev/null || true
+)"
+[[ -n "$MANIFEST_BASELINE_ROOT" ]] || {
+  echo "BLOCKER: visual manifest baselineRoot is unavailable" >&2
+  exit 1
+}
+if [[ "$MANIFEST_BASELINE_ROOT" == /* ]]; then
+  EXPECTED_BASELINE_DIR="$MANIFEST_BASELINE_ROOT"
+else
+  EXPECTED_BASELINE_DIR="$ROOT_DIR/$MANIFEST_BASELINE_ROOT"
+fi
+[[ -d "$EXPECTED_BASELINE_DIR" ]] || {
+  echo "BLOCKER: visual manifest baselineRoot is not an existing directory" >&2
+  exit 1
+}
+[[ -d "$BASELINE_DIR" ]] || {
+  echo "BLOCKER: visual baseline directory is not an existing directory" >&2
+  exit 1
+}
+EXPECTED_BASELINE_DIR="$(cd "$EXPECTED_BASELINE_DIR" && pwd -P)"
+RESOLVED_BASELINE_DIR="$(cd "$BASELINE_DIR" && pwd -P)"
+# A locale-specific manifest and a different baseline root can otherwise update
+# the wrong language while immediately comparing against the same wrong root.
+[[ "$RESOLVED_BASELINE_DIR" == "$EXPECTED_BASELINE_DIR" ]] || {
+  echo "BLOCKER: visual baseline directory does not match manifest baselineRoot" >&2
+  exit 1
+}
+
 if [[ "$UPDATE_BASELINES" == 1 && "$ALLOW_UPDATE" != 1 ]]; then echo "BLOCKER: baseline update requires --allow-update" >&2; exit 1; fi
 if [[ "$RASTER_ONLY" == 1 && "$UPDATE_BASELINES" == 1 ]]; then
   echo "BLOCKER: raster-only comparison is read-only and cannot update baselines" >&2

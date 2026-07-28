@@ -9263,10 +9263,12 @@ final class ReleasePipelineTests: XCTestCase {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-visual-regression-smoke-blockers", isDirectory: true)
         let screenshotDirectory = fixtureRoot.appendingPathComponent("screenshots", isDirectory: true)
+        let baselineDirectory = fixtureRoot.appendingPathComponent("baselines", isDirectory: true)
         let manifestURL = fixtureRoot.appendingPathComponent("visual-baseline-manifest.json")
 
         try? FileManager.default.removeItem(at: fixtureRoot)
         try FileManager.default.createDirectory(at: screenshotDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: baselineDirectory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixtureRoot) }
 
         try writeVisiblePNG(
@@ -9298,14 +9300,16 @@ final class ReleasePipelineTests: XCTestCase {
                 "light": "too-small-light.png",
                 "dark": "black-dark.png",
                 "system": "low-info-system.png"
-            ]
+            ],
+            baselineRoot: baselineDirectory.path
         ).write(to: manifestURL, atomically: true, encoding: .utf8)
 
         let result = try runScript(
             "script/check_visual_regression_smoke.sh",
             arguments: [
                 "--manifest", manifestURL.path,
-                "--screenshot-dir", screenshotDirectory.path
+                "--screenshot-dir", screenshotDirectory.path,
+                "--baseline-dir", baselineDirectory.path
             ]
         )
 
@@ -9350,7 +9354,10 @@ final class ReleasePipelineTests: XCTestCase {
         try """
         { "result": "passed", "sourceCommit": "fixture-commit", "normalRoute": "project-board", "locale": "en-US", "timeZoneIdentifier": "UTC", "referenceInstant": "2026-07-10T12:00:00Z", "createdAt": "\(ISO8601DateFormatter().string(from: Date()))", "screens": [{ "id": "project-board", "viewport": { "width": 800, "height": 600 }, "appearance": "light", "status": "passed", "artifact": "project-board-light.png", "sha256": "\(currentSHA256)", "actualWindowFrame": { "width": 800, "height": 600 }, "targetFrameAudit": { "identifier": "project-board-root", "width": 760, "height": 540, "visibleWidth": 760, "visibleHeight": 540 } }] }
         """.write(to: auditURL, atomically: true, encoding: .utf8)
-        try visualBaselineManifestFixture(artifacts: ["light": "project-board-light.png"])
+        try visualBaselineManifestFixture(
+            artifacts: ["light": "project-board-light.png"],
+            baselineRoot: baselineDirectory.path
+        )
             .write(to: manifestURL, atomically: true, encoding: .utf8)
 
         let guardedUpdateResult = try runScript(
@@ -9398,6 +9405,27 @@ final class ReleasePipelineTests: XCTestCase {
             ]
         )
         XCTAssertEqual(authorizedUpdateResult.exitCode, 0, authorizedUpdateResult.output)
+    }
+
+    func testVisualRegressionSmokeRejectsBaselineDirectoryThatDoesNotMatchManifest() throws {
+        let fixture = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let result = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", fixture.manifest.path,
+            "--screenshot-dir", fixture.current.path,
+            "--artifact-dir", fixture.artifacts.path,
+            "--ax-audit-result", fixture.audit.path,
+            "--current-source-commit", "fixture-commit"
+        ])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(
+            result.output.contains(
+                "visual baseline directory does not match manifest baselineRoot"
+            ),
+            result.output
+        )
     }
 
     func testVisualRegressionSmokeRequiresRasterOverrideReasons() throws {
@@ -15606,6 +15634,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         try visualBaselineManifestFixture(
             artifacts: ["light": "project-board-light.png"],
+            baselineRoot: baseline.path,
             requiredVisibleTextLines: requiredVisibleTextLines
         )
             .write(to: manifest, atomically: true, encoding: .utf8)
@@ -15911,6 +15940,7 @@ final class ReleasePipelineTests: XCTestCase {
 
     private func visualBaselineManifestFixture(
         artifacts: [String: String],
+        baselineRoot: String,
         requiredVisibleTextLines: [String]? = nil
     ) throws -> String {
         let artifactLines = artifacts
@@ -15936,7 +15966,7 @@ final class ReleasePipelineTests: XCTestCase {
         {
           "schemaVersion": 2,
           "artifactRoot": "screenshots",
-          "baselineRoot": "baselines",
+          "baselineRoot": "\(baselineRoot)",
           "baselineContext": {
             "sourceCommit": "fixture-commit",
             "normalRoute": "project-board",
