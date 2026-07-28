@@ -488,6 +488,95 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceHome.path))
     }
 
+    func testSecureEvidenceHomeCreatorEnforcesPermissionsAcrossRestrictiveUmask() throws {
+        let fixtureDirectory = URL(
+            fileURLWithPath: "/tmp/suisui-secure-home-umask-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let evidenceHome = fixtureDirectory.appendingPathComponent("home", isDirectory: true)
+        let markerURL = evidenceHome.appendingPathComponent(".suisui-ui-evidence-home-v1")
+        let markerToken = UUID().uuidString
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let creation = try runTool([
+            "/bin/bash",
+            "-c",
+            "umask 0777; exec \"$@\"",
+            "secure-home-create",
+            visualFixtureSeederURL().path,
+            "--create-evidence-home",
+            "--path",
+            evidenceHome.path,
+            "--evidence-home-marker-token",
+            markerToken
+        ])
+        XCTAssertEqual(creation.exitCode, 0, creation.output)
+        let metadata = Dictionary(
+            uniqueKeysWithValues: creation.output.split(separator: "\n").map { line in
+                let components = line.split(separator: "=", maxSplits: 1).map(String.init)
+                return (components[0], components[1])
+            }
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(
+                FileManager.default.attributesOfItem(atPath: evidenceHome.path)[.posixPermissions]
+                    as? NSNumber
+            ).intValue,
+            0o700
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(
+                FileManager.default.attributesOfItem(atPath: markerURL.path)[.posixPermissions]
+                    as? NSNumber
+            ).intValue,
+            0o600
+        )
+
+        let cleanup = try runTool([
+            visualFixtureSeederURL().path,
+            "--cleanup-evidence-home",
+            "--path",
+            evidenceHome.path,
+            "--evidence-home-marker-token",
+            markerToken,
+            "--expected-evidence-home-device",
+            try XCTUnwrap(metadata["evidence_home_device"]),
+            "--expected-evidence-home-inode",
+            try XCTUnwrap(metadata["evidence_home_inode"])
+        ])
+        XCTAssertEqual(cleanup.exitCode, 0, cleanup.output)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceHome.path))
+    }
+
+    func testSecureEvidenceHomeCreatorRejectsUserOwnedStickySharedParent() throws {
+        let fixtureDirectory = URL(
+            fileURLWithPath: "/tmp/suisui-secure-home-user-sticky-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let evidenceHome = fixtureDirectory.appendingPathComponent("home", isDirectory: true)
+        let markerToken = UUID().uuidString
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o1777],
+            ofItemAtPath: fixtureDirectory.path
+        )
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let result = try runTool([
+            visualFixtureSeederURL().path,
+            "--create-evidence-home",
+            "--path",
+            evidenceHome.path,
+            "--evidence-home-marker-token",
+            markerToken
+        ])
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.localizedCaseInsensitiveContains("private or a sticky"), result.output)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceHome.path))
+    }
+
     func testVisualFixtureSeederRejectsUncreatedDatabaseBelowEscapingParentSymlink() throws {
         let fixtureDirectory = URL(
             fileURLWithPath: "/tmp/suisui-visual-seeder-\(UUID().uuidString)",

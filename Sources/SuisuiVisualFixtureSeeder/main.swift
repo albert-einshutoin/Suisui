@@ -79,6 +79,11 @@ private enum SecureEvidenceHomeOperation {
             throw SeederError.invalidPath("unable to create isolated HOME ownership marker")
         }
         defer { close(markerDescriptor) }
+        guard fchmod(markerDescriptor, S_IRUSR | S_IWUSR) == 0 else {
+            throw SeederError.invalidPath(
+                "unable to enforce private isolated HOME marker permissions"
+            )
+        }
         defer {
             if shouldRemoveCreatedHome {
                 _ = markerName.withCString { marker in
@@ -274,7 +279,11 @@ private enum SecureEvidenceHomeOperation {
         }
         let privatelyOwned = information.st_uid == geteuid()
             && information.st_mode & (S_IWGRP | S_IWOTH) == 0
-        let stickySharedDirectory = information.st_mode & S_ISVTX != 0
+        // Only the OS-owned shared temporary-directory model is safe here.
+        // The owner of an arbitrary sticky directory can still rename or
+        // unlink another user's child entry.
+        let stickySharedDirectory = information.st_uid == 0
+            && information.st_mode & S_ISVTX != 0
         guard privatelyOwned || stickySharedDirectory else {
             throw SeederError.invalidPath(
                 "isolated HOME parent must be private or a sticky shared directory"
@@ -351,6 +360,7 @@ private enum SecureEvidenceHomeOperation {
               information.st_mode & S_IFMT == S_IFREG,
               information.st_nlink == 1,
               information.st_uid == geteuid(),
+              information.st_mode & (S_IRUSR | S_IWUSR) == (S_IRUSR | S_IWUSR),
               information.st_mode & (S_IRWXG | S_IRWXO) == 0 else {
             throw SeederError.invalidPath("isolated HOME ownership marker is unsafe")
         }
@@ -401,6 +411,11 @@ private enum SecureEvidenceHomeOperation {
             )
         }
         defer { close(descriptor) }
+        guard fchmod(descriptor, S_IRUSR | S_IWUSR) == 0 else {
+            throw SeederError.invalidPath(
+                "cleanup failed and ownership marker permissions could not be restored"
+            )
+        }
         try writeAll(contents, to: descriptor)
         guard fsync(descriptor) == 0 else {
             throw SeederError.invalidPath(
@@ -984,6 +999,7 @@ private struct SeederOptions {
               markerInformation.st_mode & S_IFMT == S_IFREG,
               markerInformation.st_nlink == 1,
               markerInformation.st_uid == geteuid(),
+              markerInformation.st_mode & (S_IRUSR | S_IWUSR) == (S_IRUSR | S_IWUSR),
               markerInformation.st_mode & (S_IRWXG | S_IRWXO) == 0 else {
             throw SeederError.invalidPath(
                 "--evidence-home ownership marker must be a single-link file owned by the current user"
