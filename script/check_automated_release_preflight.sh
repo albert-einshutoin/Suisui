@@ -182,12 +182,17 @@ run_xcodebuild_with_timeout() {
 
   # Xcode/SwiftBuild can hang before returning an actionable failure; fail closed
   # so release automation never records stale local proof as reusable evidence.
-  xcodebuild \
-    -workspace "$ROOT_DIR/$XCODE_WORKSPACE_RELATIVE" \
-    -scheme "$XCODE_SCHEME" \
-    -configuration "$XCODE_CONFIGURATION" \
-    -destination "$XCODE_DESTINATION" \
-    build &
+  (
+    cd "$ROOT_DIR"
+    # Xcode materializes `.swiftpm/xcode/package.xcworkspace` when it opens a
+    # Swift package. Invoking from the package root keeps this gate valid on a
+    # pristine checkout instead of requiring an untracked local derivative.
+    exec xcodebuild \
+      -scheme "$XCODE_SCHEME" \
+      -configuration "$XCODE_CONFIGURATION" \
+      -destination "$XCODE_DESTINATION" \
+      build
+  ) &
   local xcode_pid=$!
 
   (
@@ -195,8 +200,8 @@ run_xcodebuild_with_timeout() {
     if kill -0 "$xcode_pid" >/dev/null 2>&1; then
       : >"$timeout_marker"
       echo "BLOCKER: Xcode build preflight timed out after ${XCODE_PREFLIGHT_TIMEOUT_SECONDS}s" >&2
-      printf 'NEXT: reproduce with xcodebuild -workspace %q -scheme %q -configuration %q -destination %q build\n' \
-        "$ROOT_DIR/$XCODE_WORKSPACE_RELATIVE" "$XCODE_SCHEME" "$XCODE_CONFIGURATION" "$XCODE_DESTINATION" >&2
+      printf 'NEXT: reproduce from %q with xcodebuild -scheme %q -configuration %q -destination %q build\n' \
+        "$ROOT_DIR" "$XCODE_SCHEME" "$XCODE_CONFIGURATION" "$XCODE_DESTINATION" >&2
       printf 'NEXT: this is separate from the SwiftPM native build; do not reuse automated preflight evidence until the Xcode build gate passes.\n' >&2
       kill "$xcode_pid" >/dev/null 2>&1 || true
       sleep 2
@@ -245,10 +250,6 @@ SUISUI_CI_ARTIFACT_ROOT="$TMP_DIR/ui-gates" ./scripts/ci.sh ui-runtime
 section "Xcode build preflight"
 if ! command -v xcodebuild >/dev/null 2>&1; then
   echo "BLOCKER: xcodebuild is required for the automated release preflight" >&2
-  exit 2
-fi
-if [[ ! -d "$ROOT_DIR/$XCODE_WORKSPACE_RELATIVE" ]]; then
-  echo "BLOCKER: missing SwiftPM Xcode workspace: $XCODE_WORKSPACE_RELATIVE" >&2
   exit 2
 fi
 run_xcodebuild_with_timeout
