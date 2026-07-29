@@ -124,6 +124,18 @@ final class VoiceTaskContinuityHarnessTests: XCTestCase {
         XCTAssertFalse(source.contains("\"resume_action_link=present\""))
     }
 
+    func testGivenRuntimeReceiptWitnessWhenValidateThenAcceptsCanonicalColonID()
+        throws
+    {
+        let source = try runtimeScript()
+
+        XCTAssertTrue(
+            source.contains(
+                "\"resume_execution_receipt_id\" \"[[:alnum:]_:-]+\""
+            )
+        )
+    }
+
     func testGivenBundledDriverWhenLaunchingThenRejectsUnexpectedBundleBinaryHash() throws {
         let source = try driverScript()
 

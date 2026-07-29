@@ -270,7 +270,9 @@ validate_stage_contract() {
       require_witness_fact "$stage" "$layer" "resume_project_scope" "$FIXTURE_PROJECT_ID"
       require_witness_fact "$stage" "$layer" "resume_task_scope" "$FIXTURE_TASK_TWO_ID"
       require_witness_fact "$stage" "$layer" "resume_action_link_id" "[[:alnum:]_-]+"
-      require_witness_fact "$stage" "$layer" "resume_execution_receipt_id" "[[:alnum:]_-]+"
+      # Receipt IDs are canonical colon-delimited identifiers (for example,
+      # receipt:<run>:<queue>:<session>), unlike UUID-only ActionLink IDs.
+      require_witness_fact "$stage" "$layer" "resume_execution_receipt_id" "[[:alnum:]_:-]+"
       require_witness_fact "$stage" "$layer" "resume_summary_sha256" "[a-f0-9]{64}"
       ;;
   esac
