@@ -34,8 +34,6 @@ public enum ExecutionReceiptReferenceKind: String, Codable, Equatable, Hashable,
     case file
     case pullRequest = "pull_request"
     case externalMCP = "external_mcp"
-    case conversationSession = "conversation_session"
-    case conversationTurn = "conversation_turn"
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
