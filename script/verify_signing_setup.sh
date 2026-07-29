@@ -25,7 +25,7 @@ if [[ ! -f "$SIGNING_DOCS" ]]; then
   exit 2
 fi
 
-if [[ -f "$SIGNING_ENV_FILE" ]]; then
+if [[ "${SUISUI_LOAD_LOCAL_RELEASE_CONFIG:-1}" == "1" && -f "$SIGNING_ENV_FILE" ]]; then
   # shellcheck source=/dev/null
   source "$SIGNING_ENV_FILE"
 fi

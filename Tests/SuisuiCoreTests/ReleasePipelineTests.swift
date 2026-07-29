@@ -15438,6 +15438,30 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(ignoredPaths.contains("/packaging/notarization.env"))
     }
 
+    func testReleaseScriptsCanIsolateGitignoredMachineConfigurationForFixtures() throws {
+        let scripts = [
+            "script/build_and_run.sh",
+            "script/create_release_evidence.sh",
+            "script/generate_appcast.sh",
+            "script/notarize_app.sh",
+            "script/notarize_release_dmg.sh",
+            "script/package_release.sh",
+            "script/sign_app.sh",
+            "script/validate_sparkle_release_config.sh",
+            "script/verify_appcast.sh",
+            "script/verify_release_environment.sh",
+            "script/verify_signing_setup.sh",
+        ]
+
+        for scriptPath in scripts {
+            let script = try readPackageFile(scriptPath)
+            XCTAssertTrue(
+                script.contains("SUISUI_LOAD_LOCAL_RELEASE_CONFIG"),
+                "\(scriptPath) must allow hermetic fixtures on configured release machines"
+            )
+        }
+    }
+
     private func writePackageEvidence(
         for checksumURL: URL,
         artifactPath: String? = "dist/releases/Suisui-0.1.0+1.dmg",
@@ -16332,7 +16356,11 @@ final class ReleasePipelineTests: XCTestCase {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = arguments
         process.currentDirectoryURL = packageRoot()
-        process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+        var isolatedEnvironment = ["SUISUI_LOAD_LOCAL_RELEASE_CONFIG": "0"]
+        isolatedEnvironment.merge(environment) { _, new in new }
+        // Release-machine config is intentionally gitignored. Keep script fixtures
+        // deterministic when a contributor runs the suite on that configured machine.
+        process.environment = ProcessInfo.processInfo.environment.merging(isolatedEnvironment) { _, new in new }
 
         let output = Pipe()
         process.standardOutput = output

@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SPARKLE_ENV_FILE="$ROOT_DIR/packaging/sparkle.env"
 
-if [[ -f "$SPARKLE_ENV_FILE" ]]; then
+if [[ "${SUISUI_LOAD_LOCAL_RELEASE_CONFIG:-1}" == "1" && -f "$SPARKLE_ENV_FILE" ]]; then
   # shellcheck source=/dev/null
   source "$SPARKLE_ENV_FILE"
 fi
