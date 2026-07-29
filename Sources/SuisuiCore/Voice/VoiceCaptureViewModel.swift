@@ -136,6 +136,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private let assistantQueueStore: (any AssistantQueueStore)?
     private let commandRouter: any VoiceCommandRouting
     private let conversationOrchestrator: (any VoiceTaskConversationOrchestrating)?
+    private let conversationCommandPreparer:
+        (any VoiceTaskConversationCommandPreparing)?
     private let conversationSessionID: UUID
     private let inboxCaptureSaver: (any InboxVoiceCaptureSaving)?
     private let inboxTriageCommandParser: InboxVoiceTriageCommandParser
@@ -178,6 +180,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         assistantQueueStore: (any AssistantQueueStore)? = nil,
         commandRouter: any VoiceCommandRouting = VoiceCommandRouter(),
         conversationOrchestrator: (any VoiceTaskConversationOrchestrating)?,
+        conversationCommandPreparer:
+            (any VoiceTaskConversationCommandPreparing)? = nil,
         conversationSessionID: UUID,
         inboxCaptureSaver: (any InboxVoiceCaptureSaving)? = nil,
         developmentProjectProvider: @escaping () -> ProjectRecord? = { nil },
@@ -206,6 +210,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.assistantQueueStore = assistantQueueStore
         self.commandRouter = commandRouter
         self.conversationOrchestrator = conversationOrchestrator
+        self.conversationCommandPreparer = conversationCommandPreparer
         self.conversationSessionID = conversationSessionID
         self.inboxCaptureSaver = inboxCaptureSaver
         self.developmentProjectProvider = developmentProjectProvider
@@ -279,6 +284,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             assistantQueueStore: assistantQueueStore,
             commandRouter: commandRouter,
             conversationOrchestrator: nil,
+            conversationCommandPreparer: nil,
             conversationSessionID: UUID(),
             inboxCaptureSaver: inboxCaptureSaver,
             developmentProjectProvider: developmentProjectProvider,
@@ -823,6 +829,53 @@ public final class VoiceCaptureViewModel: ObservableObject {
         let sourceTurnID = UUID()
         activeConversationSourceTurnID = sourceTurnID
 
+        if let conversationOrchestrator,
+           let conversationCommandPreparer
+        {
+            do {
+                if let prepared = try conversationCommandPreparer.prepare(
+                    transcript: draft.normalizedText,
+                    sessionID: conversationSessionID,
+                    sourceTurnID: sourceTurnID,
+                    selectedProjectID:
+                        conversationWorkspaceSession?.activeProjectID,
+                    selectedTaskID:
+                        conversationWorkspaceSession?.activeTaskID,
+                    at: currentDate
+                ) {
+                    let outcome = await conversationOrchestrator.handle(
+                        VoiceTaskConversationInput(
+                            sessionID: conversationSessionID,
+                            sourceTurnID: sourceTurnID,
+                            event: .begin(
+                                route: routedCommand,
+                                requiredSlots: prepared.requiredSlots,
+                                intents: prepared.intents,
+                                referenceRequest:
+                                    prepared.referenceRequest,
+                                localAnswerItems:
+                                    prepared.localAnswerItems
+                            ),
+                            currentDate: currentDate,
+                            timeZoneIdentifier: timeZoneIdentifier,
+                            availableTools: planningTools(
+                                for: routedCommand,
+                                requestedAvailableTools: availableTools
+                            )
+                        )
+                    )
+                    await applyConversationOutcome(outcome)
+                    return
+                }
+            } catch {
+                phase = .failed(
+                    "Voice conversation context could not be prepared safely."
+                )
+                auditErrorMessage = userMessage(for: error)
+                return
+            }
+        }
+
         if let inboxTriageCommand = inboxTriageCommandParser.parseVoiceCommand(draft.normalizedText) {
             beginInboxTriageRequest(
                 command: inboxTriageCommand,
@@ -1202,6 +1255,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 text: answer.text,
                 contextCount: answer.items.count
             )
+            if conversationWorkspaceStore != nil {
+                try? reloadConversationWorkspaceTurns()
+            }
             phase = .idle
         case .canceled:
             orchestratedClarificationQuestion = nil

@@ -240,34 +240,14 @@ public actor VoiceTaskConversationOrchestrator:
             )
 
         case let .begin(route, requiredSlots, intents, referenceRequest, localAnswerItems):
-            if !requiredSlots.isEmpty || route.needsClarification {
-                let clarification = ClarificationSession(
-                    route: route,
-                    requiredSlots: requiredSlots.isEmpty ? nil : requiredSlots
-                )
-                guard let question = clarification.currentQuestion else {
-                    return .blocked(.invalidPlan)
-                }
-                let state = VoiceTaskConversationOrchestrationState(
-                    sessionID: input.sessionID,
-                    originalSourceTurnID: input.sourceTurnID,
-                    route: route,
-                    intents: intents,
-                    clarification: clarification
-                )
-                do {
-                    try stateStore.save(state)
-                    return .clarification(question)
-                } catch {
-                    return .blocked(.persistenceUnavailable)
-                }
-            }
-
             let resolvedIntents: [ConversationTaskIntent]
             if let referenceRequest {
                 switch referenceResolver.resolve(referenceRequest) {
                 case let .resolved(target, _):
-                    resolvedIntents = applying(target: target, to: intents)
+                    resolvedIntents = applying(
+                        target: target,
+                        to: intents
+                    )
                 case .needsClarification:
                     return .clarification(
                         ClarificationQuestion(
@@ -280,6 +260,29 @@ public actor VoiceTaskConversationOrchestrator:
                 }
             } else {
                 resolvedIntents = intents
+            }
+
+            if !requiredSlots.isEmpty || route.needsClarification {
+                let clarification = ClarificationSession(
+                    route: route,
+                    requiredSlots: requiredSlots.isEmpty ? nil : requiredSlots
+                )
+                guard let question = clarification.currentQuestion else {
+                    return .blocked(.invalidPlan)
+                }
+                let state = VoiceTaskConversationOrchestrationState(
+                    sessionID: input.sessionID,
+                    originalSourceTurnID: input.sourceTurnID,
+                    route: route,
+                    intents: resolvedIntents,
+                    clarification: clarification
+                )
+                do {
+                    try stateStore.save(state)
+                    return .clarification(question)
+                } catch {
+                    return .blocked(.persistenceUnavailable)
+                }
             }
 
             if !resolvedIntents.isEmpty,

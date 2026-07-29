@@ -13,6 +13,8 @@ extension AppRuntimeFactory {
         var auditLogger: (any AuditLogger)?
         var assistantQueueStore: (any AssistantQueueStore)?
         var conversationOrchestrator: (any VoiceTaskConversationOrchestrating)?
+        var conversationCommandPreparer:
+            (any VoiceTaskConversationCommandPreparing)?
         var conversationStore: (any VoiceTaskConversationStore)?
         var conversationSessionID = voiceConversationSessionID()
         let scopeRequest = SuisuiVoiceConversationScopeBridge.consume()
@@ -36,6 +38,13 @@ extension AppRuntimeFactory {
             }
             conversationStore = sqliteConversationStore
             let taskStore = SQLiteTaskStore(connection: connection)
+            let projectStore = SQLiteProjectStore(connection: connection)
+            conversationCommandPreparer =
+                SQLiteVoiceTaskConversationCommandPreparer(
+                    taskStore: taskStore,
+                    projectStore: projectStore,
+                    conversationStore: sqliteConversationStore
+                )
             conversationOrchestrator = VoiceTaskConversationOrchestrator(
                 stateStore: SQLiteVoiceTaskConversationOrchestrationStateStore(
                     connection: connection
@@ -48,7 +57,6 @@ extension AppRuntimeFactory {
                 },
                 provider: llmProvider
             )
-            let projectStore = SQLiteProjectStore(connection: connection)
             let projectBoardStore = SQLiteProjectBoardStore(connection: connection)
             let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)
             inboxCaptureService = InboxVoiceCaptureService(
@@ -91,6 +99,7 @@ extension AppRuntimeFactory {
             runtimeValidationMessage: runtimeValidationMessage,
             assistantQueueStore: assistantQueueStore,
             conversationOrchestrator: conversationOrchestrator,
+            conversationCommandPreparer: conversationCommandPreparer,
             conversationSessionID: conversationSessionID,
             inboxCaptureSaver: inboxCaptureService,
             developmentProjectProvider: developmentProjectProvider,
