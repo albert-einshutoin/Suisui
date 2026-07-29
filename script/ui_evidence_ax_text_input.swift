@@ -89,6 +89,14 @@ func postKey(
 }
 
 func activateTarget() -> Bool {
+    // Directly launched smoke binaries are not registered through
+    // LaunchServices, so NSRunningApplication activation alone can be ignored.
+    // AX frontmost state keeps typed input pinned to the owned PID.
+    _ = AXUIElementSetAttributeValue(
+        appElement,
+        kAXFrontmostAttribute as CFString,
+        kCFBooleanTrue
+    )
     _ = runningApp.activate(options: [.activateAllWindows])
     for _ in 0..<20 {
         if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid {

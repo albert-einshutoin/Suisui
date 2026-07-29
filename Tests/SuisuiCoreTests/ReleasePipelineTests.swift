@@ -6060,11 +6060,13 @@ final class ReleasePipelineTests: XCTestCase {
         let script = try readPackageFile("script/check_runtime_accessible_crud_smoke.sh")
         let scrollHelper = try readPackageFile("script/ui_evidence_ax_scroll_container.swift")
         let buttonHelper = try readPackageFile("script/ui_evidence_ax_press_button.swift")
+        let textInputHelper = try readPackageFile("script/ui_evidence_ax_text_input.swift")
 
         XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
         XCTAssertTrue(script.contains("AX_TEXT_INPUT_HELPER=\"${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}\""))
         XCTAssertTrue(script.contains("AX_SCROLL_HELPER=\"${AX_SCROLL_HELPER:-$ROOT_DIR/script/ui_evidence_ax_scroll_container.swift}\""))
         XCTAssertTrue(script.contains("AX_BUTTON_HELPER=\"${AX_BUTTON_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_button.swift}\""))
+        XCTAssertTrue(script.contains("AX_MARKER_HELPER=\"${AX_MARKER_HELPER:-$ROOT_DIR/script/ui_evidence_ax_marker_check.swift}\""))
         XCTAssertTrue(script.contains("source \"$AX_HELPERS\""))
         XCTAssertTrue(script.contains("SUISUI_DATABASE_PATH"))
         XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
@@ -6104,6 +6106,28 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("inspector_button=\"task-card-open-details\""))
         XCTAssertTrue(script.contains("pressButtonUntilTextFieldContaining \"$inspector_button\" \"$inspector_field\""))
         XCTAssertTrue(script.contains("launch_app_for_seed_project \"$created_project_id\" \"$created_task_id\"\nwaitForTextFieldContaining \"task-inspector-title\""))
+        let genericPressStart = try XCTUnwrap(script.range(of: "pressButtonContaining() {"))
+        let genericPressEnd = try XCTUnwrap(
+            script.range(
+                of: "pressConfirmationButtonContaining() {",
+                range: genericPressStart.upperBound..<script.endIndex
+            )
+        )
+        let genericPressBody = script[genericPressStart.lowerBound..<genericPressEnd.lowerBound]
+        XCTAssertTrue(genericPressBody.contains("/usr/bin/swift \"$AX_BUTTON_HELPER\" \"$app_pid\" \"$fragment\""))
+        XCTAssertTrue(genericPressBody.contains("/usr/bin/swift \"$AX_BUTTON_HELPER\" \"$app_pid\" \"$fallback_fragment\""))
+        let textFieldStart = try XCTUnwrap(script.range(of: "textFieldContainingExists() {"))
+        let textFieldEnd = try XCTUnwrap(
+            script.range(
+                of: "setTextFieldUntilValueContaining() {",
+                range: textFieldStart.upperBound..<script.endIndex
+            )
+        )
+        let textFieldBody = script[textFieldStart.lowerBound..<textFieldEnd.lowerBound]
+        XCTAssertTrue(textFieldBody.contains("/usr/bin/swift \"$AX_MARKER_HELPER\" \"$APP_NAME\" \"$fragment\" \"\" \"$app_pid\""))
+        XCTAssertTrue(script.contains("textFieldValueContainingExists \"$field_fragment\" \"$replacement\""))
+        XCTAssertTrue(script.contains("\"$AX_MARKER_HELPER\" \"$APP_NAME\" \"$identifier_fragment\" \"$required_text_one\" \"$app_pid\""))
+        XCTAssertTrue(script.contains("\"$AX_MARKER_HELPER\" \"$APP_NAME\" \"$identifier_fragment\" \"$required_text_two\" \"$app_pid\""))
         XCTAssertTrue(script.contains("value of attribute \"AXIdentifier\" of axItem as text"))
         XCTAssertTrue(script.contains("set frontmost to true"))
         XCTAssertTrue(script.contains("set windowCount to count of windows"))
@@ -6165,6 +6189,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SUISUI_UI_EVIDENCE_AX_SCROLL_EVENTS=4 scrollAXContainerDown \"task-inspector\""))
         XCTAssertTrue(scrollHelper.contains("AXUIElementCreateApplication(pid)"))
         XCTAssertTrue(scrollHelper.contains("NSWorkspace.shared.frontmostApplication?.processIdentifier == pid"))
+        XCTAssertTrue(scrollHelper.contains("AXUIElementSetAttributeValue("))
+        XCTAssertTrue(scrollHelper.contains("kAXFrontmostAttribute"))
+        XCTAssertTrue(textInputHelper.contains("AXUIElementSetAttributeValue("))
+        XCTAssertTrue(textInputHelper.contains("kAXFrontmostAttribute"))
         XCTAssertTrue(scrollHelper.contains("scrollWheelEvent2Source: source"))
         XCTAssertTrue(scrollHelper.contains("event.location = center"))
         XCTAssertTrue(scrollHelper.contains("event.post(tap: .cghidEventTap)"))

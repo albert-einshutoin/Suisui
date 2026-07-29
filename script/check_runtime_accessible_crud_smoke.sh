@@ -31,6 +31,7 @@ AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_TEXT_INPUT_HELPER="${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}"
 AX_SCROLL_HELPER="${AX_SCROLL_HELPER:-$ROOT_DIR/script/ui_evidence_ax_scroll_container.swift}"
 AX_BUTTON_HELPER="${AX_BUTTON_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_button.swift}"
+AX_MARKER_HELPER="${AX_MARKER_HELPER:-$ROOT_DIR/script/ui_evidence_ax_marker_check.swift}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SUISUI_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS must be a positive integer" >&2
@@ -415,6 +416,17 @@ pressButtonContaining() {
   local report_blocker="${4:-1}"
   local deadline=$((SECONDS + attempt_timeout_seconds))
   while true; do
+    # SwiftUI can expose a stable AXIdentifier through AXUIElement before
+    # System Events' `entire contents` bridge assigns the element an AXButton
+    # role. Prefer the PID-scoped native helper, then retain AppleScript as the
+    # label/help fallback for controls without a stable identifier.
+    if /usr/bin/swift "$AX_BUTTON_HELPER" "$app_pid" "$fragment"; then
+      return 0
+    fi
+    if [[ -n "$fallback_fragment" ]] &&
+      /usr/bin/swift "$AX_BUTTON_HELPER" "$app_pid" "$fallback_fragment"; then
+      return 0
+    fi
     if /usr/bin/osascript - "$app_pid" "$APP_NAME" "$fragment" "$fallback_fragment" <<'APPLESCRIPT'
 on run argv
   set appPID to item 1 of argv as integer
@@ -636,6 +648,10 @@ waitForTextFieldContaining() {
 
 textFieldContainingExists() {
   local fragment="$1"
+  if SUISUI_UI_EVIDENCE_AX_REQUIRE_EXACT_IDENTIFIER=1 \
+    /usr/bin/swift "$AX_MARKER_HELPER" "$APP_NAME" "$fragment" "" "$app_pid" >/dev/null 2>&1; then
+    return 0
+  fi
   /usr/bin/osascript - "$app_pid" "$APP_NAME" "$fragment" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
   set appPID to item 1 of argv as integer
@@ -699,12 +715,31 @@ end run
 APPLESCRIPT
 }
 
+textFieldValueContainingExists() {
+  local field_fragment="$1"
+  local value_fragment="$2"
+  # Bind the value postcondition to the same field. Independent identifier/text
+  # matches could otherwise accept stale text from another SwiftUI surface.
+  SUISUI_UI_EVIDENCE_AX_REQUIRE_EXACT_IDENTIFIER=1 \
+    SUISUI_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
+    /usr/bin/swift "$AX_MARKER_HELPER" "$APP_NAME" "$field_fragment" "$value_fragment" "$app_pid" \
+    >/dev/null 2>&1
+}
+
 waitForAXElementContaining() {
   local identifier_fragment="$1"
   local required_text_one="$2"
   local required_text_two="$3"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
+    if SUISUI_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
+      /usr/bin/swift "$AX_MARKER_HELPER" "$APP_NAME" "$identifier_fragment" "$required_text_one" "$app_pid" \
+        >/dev/null 2>&1 &&
+      SUISUI_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
+      /usr/bin/swift "$AX_MARKER_HELPER" "$APP_NAME" "$identifier_fragment" "$required_text_two" "$app_pid" \
+        >/dev/null 2>&1; then
+      return 0
+    fi
     if /usr/bin/osascript - "$app_pid" "$APP_NAME" "$identifier_fragment" "$required_text_one" "$required_text_two" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
   set appPID to item 1 of argv as integer
@@ -844,7 +879,7 @@ setTextFieldUntilValueContaining() {
         postcondition_deadline="$deadline"
       fi
       while true; do
-        if textFieldContainingExists "$replacement"; then
+        if textFieldValueContainingExists "$field_fragment" "$replacement"; then
           return 0
         fi
         if [[ "$SECONDS" -ge "$postcondition_deadline" ]]; then
