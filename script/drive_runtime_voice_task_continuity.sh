@@ -134,15 +134,17 @@ wait_for_marker() {
 
 ax_set_text() {
   local identifier="$1" value="$2"
+  ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
   /usr/bin/osascript - "$app_pid" "$identifier" "$value" <<'APPLESCRIPT' >/dev/null
 on run argv
   set appPID to (item 1 of argv) as integer
   set requestedIdentifier to item 2 of argv
   set replacement to item 3 of argv
   tell application "System Events"
-    set processes to application processes whose unix id is appPID
-    if (count of processes) is 0 then error "owned process missing"
-    tell item 1 of processes
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "owned process missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set frontmost to true
       repeat with currentWindow in windows
         try
@@ -168,14 +170,16 @@ APPLESCRIPT
 
 ax_press() {
   local identifier="$1"
+  ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
   /usr/bin/osascript - "$app_pid" "$identifier" <<'APPLESCRIPT' >/dev/null
 on run argv
   set appPID to (item 1 of argv) as integer
   set requestedIdentifier to item 2 of argv
   tell application "System Events"
-    set processes to application processes whose unix id is appPID
-    if (count of processes) is 0 then error "owned process missing"
-    tell item 1 of processes
+    set matchingProcesses to application processes whose unix id is appPID
+    if (count of matchingProcesses) is 0 then error "owned process missing"
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set frontmost to true
       repeat with currentWindow in windows
         try
