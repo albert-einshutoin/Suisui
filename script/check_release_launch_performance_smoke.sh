@@ -561,6 +561,11 @@ record_elapsed_sample "cold-launch-today-ready" "$median_today_ready_ms"
 # already command-ready; this only gives the AX destination benchmark a stable
 # foreground window without charging automation setup to launch latency.
 activate_app
+# SwiftUI may publish the workflow marker before rebuilding the selectable
+# sidebar subtree after activation. Resolve the stable sidebar marker outside
+# the measured destination samples so AX setup latency cannot be mistaken for
+# a product navigation regression.
+wait_for_marker "project-board-sidebar"
 DESTINATION_INBOX_SAMPLES=()
 DESTINATION_REVIEW_SAMPLES=()
 DESTINATION_ASSISTANT_QUEUE_SAMPLES=()

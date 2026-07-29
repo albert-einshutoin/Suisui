@@ -7379,6 +7379,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(pressElementHelper.contains("kAXParentAttribute as CFString"))
         XCTAssertTrue(pressElementHelper.contains("AXUIElementPerformAction(element, kAXPressAction as CFString)"))
         XCTAssertTrue(pressElementHelper.contains("AXUIElementSetAttributeValue(element, kAXSelectedAttribute as CFString, kCFBooleanTrue)"))
+        XCTAssertTrue(pressElementHelper.contains("performPressWithoutActivation"))
+        XCTAssertTrue(pressElementHelper.contains("selectWithoutActivation"))
         XCTAssertTrue(script.contains("if \"$AX_RESIZE_WINDOW_HELPER_BINARY\""))
         XCTAssertTrue(script.contains("\"$app_pid\" \"$window_x\" \"$window_y\" \"$window_width\" \"$window_height\""))
         XCTAssertTrue(resizeWindowHelper.contains("AXUIElementCreateApplication(appPID)"))
@@ -7514,6 +7516,20 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("__AX_ANY_WINDOW__"))
         XCTAssertTrue(script.contains("AX_WAIT_POLL_INTERVAL_SECONDS=0.05"))
         XCTAssertTrue(script.contains("wait_for_marker \"project-board-command-palette\""))
+        let destinationActivation = try XCTUnwrap(script.range(of: "# Activation is intentionally outside the cold-launch sample."))
+        let sidebarReady = try XCTUnwrap(
+            script.range(
+                of: "wait_for_marker \"project-board-sidebar\"",
+                range: destinationActivation.lowerBound..<script.endIndex
+            )
+        )
+        let destinationLoop = try XCTUnwrap(
+            script.range(
+                of: "for sample_index in $(seq 1 \"$DESTINATION_SAMPLE_COUNT\")",
+                range: destinationActivation.lowerBound..<script.endIndex
+            )
+        )
+        XCTAssertLessThan(sidebarReady.lowerBound, destinationLoop.lowerBound)
         XCTAssertTrue(script.contains("measure_destination \"destination-inbox\" \"$sample_index\" \"sidebar-destination-inbox\" \"Inbox\" \"inbox-workflow\""))
         XCTAssertTrue(script.contains("measure_destination \"destination-review\" \"$sample_index\" \"sidebar-destination-review\" \"Review\" \"review-hub\""))
         let measureDestinationStart = try XCTUnwrap(script.range(of: "measure_destination() {"))
