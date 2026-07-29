@@ -99,7 +99,7 @@ final class VisualCaptureStabilityTests: XCTestCase {
         XCTAssertTrue(source.contains("second_target_frame_fingerprint"))
         XCTAssertTrue(source.contains("receipt_ax_target_frame_fields"))
         XCTAssertTrue(source.contains("local AX_TARGET_FRAME_AUDIT_MODE=\"fingerprint\""))
-        XCTAssertTrue(source.contains("second_target_frame_fingerprint=\"$(wait_for_stable_ax_target_frame \"$target_identifier\" \"$window_name\")\""))
+        XCTAssertTrue(source.contains("second_target_frame_fingerprint=\"$(wait_for_stable_ax_target_frame \"$target_identifier\" \"$window_name\" \"$AX_TARGET_FRAME_AUDIT_MODE\" \"$2\" \"$3\" \"$4\" \"$5\")\""))
         XCTAssertTrue(source.contains("--manifest \"$VISUAL_BASELINE_MANIFEST\""))
         XCTAssertTrue(source.contains("--first \"$first_raster\""))
         XCTAssertTrue(source.contains("--second \"$second_raster\""))
