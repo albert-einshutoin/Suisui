@@ -273,6 +273,7 @@ private struct VoiceTaskConversationClarification: View {
 
 private struct VoiceTaskConversationComposer: View {
     @ObservedObject var viewModel: VoiceCaptureViewModel
+    @State private var clarificationAnswer = ""
 
     private var isRecording: Bool {
         if case .recording = viewModel.phase { return true }
@@ -282,16 +283,29 @@ private struct VoiceTaskConversationComposer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
             TextField(
-                "Type a voice task request",
+                viewModel.clarificationQuestion == nil
+                    ? "Type a voice task request"
+                    : "Answer the clarification",
                 text: Binding(
-                    get: { viewModel.draft.text },
-                    set: { viewModel.updateDraftText($0) }
+                    get: {
+                        viewModel.clarificationQuestion == nil
+                            ? viewModel.draft.text
+                            : clarificationAnswer
+                    },
+                    set: { value in
+                        if viewModel.clarificationQuestion == nil {
+                            viewModel.updateDraftText(value)
+                        } else {
+                            clarificationAnswer = value
+                        }
+                    }
                 ),
                 axis: .vertical
             )
             .lineLimit(3...6)
             .textFieldStyle(.roundedBorder)
             .accessibilityLabel("Voice task request")
+            .accessibilityIdentifier("voice-conversation-input")
 
             HStack {
                 Button {
@@ -308,18 +322,47 @@ private struct VoiceTaskConversationComposer: View {
                 .accessibilityLabel(isRecording ? "Stop recording" : "Record voice task")
 
                 Button("Cancel") {
-                    viewModel.cancelClarification()
+                    if viewModel.clarificationQuestion != nil {
+                        viewModel.cancelClarification()
+                    }
+                    clarificationAnswer = ""
                     viewModel.updateDraftText("")
                 }
                 Spacer()
                 Button {
-                    Task { await viewModel.generatePlan() }
+                    Task {
+                        if viewModel.clarificationQuestion != nil {
+                            let answer = clarificationAnswer
+                            clarificationAnswer = ""
+                            await viewModel.submitClarificationAnswer(answer)
+                        } else {
+                            await viewModel.generatePlan()
+                        }
+                    }
                 } label: {
-                    Label("Send for review", systemImage: "paperplane")
+                    Label(
+                        viewModel.clarificationQuestion == nil
+                            ? "Send for review"
+                            : "Answer clarification",
+                        systemImage: "paperplane"
+                    )
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(!viewModel.canGeneratePlan)
+                .disabled(
+                    viewModel.clarificationQuestion == nil
+                        ? !viewModel.canGeneratePlan
+                        : clarificationAnswer
+                            .trimmingCharacters(
+                                in: .whitespacesAndNewlines
+                            )
+                            .isEmpty
+                )
                 .accessibilityHint("Creates an approval-gated proposal. It does not run changes.")
+                .accessibilityIdentifier(
+                    viewModel.clarificationQuestion == nil
+                        ? "voice-conversation-send-review"
+                        : "voice-conversation-submit-clarification"
+                )
             }
         }
         .soloCard()

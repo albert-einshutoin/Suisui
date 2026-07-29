@@ -106,6 +106,9 @@ struct VoiceTaskConversationUnderstandingView: View {
                     Label("Open Assistant Queue", systemImage: "arrow.right.square")
                 }
                 .accessibilityHint("Opens the focused item for the existing approval flow. It does not execute this work.")
+                .accessibilityIdentifier(
+                    "voice-conversation-open-assistant-queue"
+                )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .contain)

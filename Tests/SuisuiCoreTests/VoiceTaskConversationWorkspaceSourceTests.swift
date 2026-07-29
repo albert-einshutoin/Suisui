@@ -33,6 +33,27 @@ final class VoiceTaskConversationWorkspaceSourceTests: XCTestCase {
         XCTAssertTrue(workspace.contains("accessibilityLabel"))
     }
 
+    func testGivenClarificationWhenComposeThenSubmitsAnswerToOrchestrator()
+        throws
+    {
+        let workspace = try source(
+            "Sources/SuisuiApp/Views/VoiceTaskConversationWorkspaceView.swift"
+        )
+        XCTAssertTrue(
+            workspace.contains(
+                "await viewModel.submitClarificationAnswer(answer)"
+            )
+        )
+        XCTAssertTrue(
+            workspace.contains(
+                "voice-conversation-submit-clarification"
+            )
+        )
+        XCTAssertTrue(
+            workspace.contains("voice-conversation-input")
+        )
+    }
+
     func testGivenClarificationWhenRenderThenFocusesSingleQuestion() throws {
         let workspace = try source("Sources/SuisuiApp/Views/VoiceTaskConversationWorkspaceView.swift")
         XCTAssertTrue(workspace.contains("voice-conversation-clarification"))
