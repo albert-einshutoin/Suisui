@@ -2135,6 +2135,14 @@ public enum CoreMigrations {
                     ADD COLUMN requires_conversation_action_link
                         INTEGER NOT NULL DEFAULT 0
                         CHECK(requires_conversation_action_link IN (0, 1));
+
+                    UPDATE assistant_queue_items
+                    SET requires_conversation_action_link = 1
+                    WHERE id IN (
+                        SELECT assistant_queue_item_id
+                        FROM conversation_action_links
+                        WHERE assistant_queue_item_id IS NOT NULL
+                    );
                     """
                 )
             },

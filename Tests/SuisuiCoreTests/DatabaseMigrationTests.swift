@@ -3,7 +3,7 @@ import XCTest
 @testable import SuisuiCore
 
 final class DatabaseMigrationTests: XCTestCase {
-    func testConversationQueueOriginMigrationDefaultsLegacyRowsToFalse()
+    func testConversationQueueOriginMigrationBackfillsLinkedRowsOnly()
         throws
     {
         let connection = try SQLiteConnection(path: ":memory:")
@@ -28,15 +28,68 @@ final class DatabaseMigrationTests: XCTestCase {
                 redacted_summary,
                 required_capabilities_json
             )
+            VALUES
+                (
+                    'legacy-unlinked-queue',
+                    'action_plan',
+                    '{}',
+                    'waitingReview',
+                    'write',
+                    'Legacy review',
+                    'Legacy unlinked item',
+                    '[]'
+                ),
+                (
+                    'legacy-linked-queue',
+                    'action_plan',
+                    '{}',
+                    'waitingReview',
+                    'write',
+                    'Legacy review',
+                    'Legacy linked item',
+                    '[]'
+                );
+
+            INSERT INTO voice_task_conversation_sessions (
+                id, state, title, entry_point, created_at, updated_at
+            )
             VALUES (
-                'legacy-before-conversation-origin',
-                'action_plan',
-                '{}',
-                'waitingReview',
-                'write',
-                'Legacy review',
-                'Legacy item',
-                '[]'
+                'legacy-origin-session',
+                'active',
+                'Legacy origin',
+                'voice_command',
+                1,
+                1
+            );
+
+            INSERT INTO voice_task_conversation_turns (
+                id, session_id, author, raw_transcript, created_at
+            )
+            VALUES (
+                'legacy-origin-turn',
+                'legacy-origin-session',
+                'user',
+                'Create Launch task',
+                1
+            );
+
+            INSERT INTO conversation_action_links (
+                id,
+                session_id,
+                source_turn_id,
+                action_plan_id,
+                assistant_queue_item_id,
+                reviewed_fingerprint,
+                created_at
+            )
+            VALUES (
+                'legacy-origin-link',
+                'legacy-origin-session',
+                'legacy-origin-turn',
+                'legacy-origin-plan',
+                'legacy-linked-queue',
+                'legacy-reviewed-fingerprint',
+                1
             );
             """
         )
@@ -55,7 +108,17 @@ final class DatabaseMigrationTests: XCTestCase {
                 """
                 SELECT requires_conversation_action_link
                 FROM assistant_queue_items
-                WHERE id = 'legacy-before-conversation-origin';
+                WHERE id = 'legacy-linked-queue';
+                """
+            ),
+            ["1"]
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT requires_conversation_action_link
+                FROM assistant_queue_items
+                WHERE id = 'legacy-unlinked-queue';
                 """
             ),
             ["0"]
