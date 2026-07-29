@@ -64,7 +64,7 @@ Doneで完了した仕事を確認し、残ったフォローアップや次の�
 - チーム、組織、ロール、共有ワークスペース
 - クラウド同期と複数端末間の同期
 - GitHub、Gmail、Slack、Google Drive、Notionなど外部SaaSへの接続
-- Google CalendarのOAuth/live syncはPublic Alphaのサポート対象ではありません。実装は将来検証用の実験的な基盤であり、正式サポートに必要な実Googleアカウント証跡は[#434](https://github.com/albert-einshutoin/Suisui/issues/434)で管理します。
+- Google CalendarのOAuth/live syncはPublic Alphaのサポート対象ではありません。Public Alphaバンドルには`public-alpha` runtime policyを埋め込み、起動環境にGoogleの認証情報が存在しても、Settings表示、OAuth、calendar list、sync合成、書き込みをすべてfail-closedにします。実装は将来検証用の実験的な基盤であり、正式サポートに必要な実Googleアカウント証跡は[#434](https://github.com/albert-einshutoin/Suisui/issues/434)で管理します。
 - 外部MCPランタイム
 - 大規模な全文RAGインデックス
 - メール送信、Slack投稿、破壊的なローカルファイル操作の自動実行
@@ -74,7 +74,7 @@ Doneで完了した仕事を確認し、残ったフォローアップや次の�
 - STT/TTSのローカルモデルは同梱されず、利用者がファイルまたはディレクトリを設定します。
 - AI機能には、対応プロバイダーのAPIキーとネットワーク接続が必要です。
 - macOS連携は、利用者が許可した権限の範囲に限られます。
-- 開発ビルドにGoogle Calendarの設定項目が表示される場合がありますが、Public Alphaではサポート対象のApple Calendar連携を利用してください。
+- Google Calendarの設定項目はPublic Alphaでは非表示です。開発者が実験的な実装を検証する場合に限り、`SUISUI_RUNTIME_POLICY=development`で再ビルドし、その開発バンドルを`SUISUI_ENABLE_EXPERIMENTAL_GOOGLE_CALENDAR_RUNTIME=1`で起動する二重のopt-inが必要です。配布済みPublic Alphaバンドルは起動環境だけでは有効化できません。Public Alphaではサポート対象のApple Calendar連携を利用してください。
 - 署名、Notarization、Sparkle配布の最終確認は、必要な証明書と秘密情報を持つリリース用Macで行います。
 - 自動検査に合格しても、最終リリース候補では日本語・英語、狭いウインドウ幅、キーボード操作、手動VoiceOverを別途確認します。
 

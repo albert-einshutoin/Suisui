@@ -6298,6 +6298,50 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("fake success"))
     }
 
+    func testVoiceTaskContinuityBuildUsesHermeticAllowlistedEnvironmentAndRecordsConfigurationFingerprint() throws {
+        let script = try readPackageFile("script/check_runtime_voice_task_continuity_smoke.sh")
+
+        XCTAssertTrue(script.contains("SUISUI_LOAD_LOCAL_RELEASE_CONFIG=0"))
+        XCTAssertTrue(script.contains("env -i"))
+        XCTAssertTrue(script.contains("SUISUI_RUNTIME_POLICY=public-alpha"))
+        XCTAssertTrue(script.contains("SUISUI_ENABLE_EXPERIMENTAL_GOOGLE_CALENDAR_RUNTIME=0"))
+        XCTAssertTrue(script.contains("build_configuration_fingerprint"))
+        XCTAssertTrue(script.contains("\"buildConfigurationFingerprint\""))
+        XCTAssertTrue(script.contains("SuisuiBuildConfigurationFingerprint"))
+        XCTAssertFalse(script.contains("env |"))
+        XCTAssertFalse(script.contains("printenv"))
+
+        let artifactStart = try XCTUnwrap(script.range(of: "write_artifact_atomically() {"))
+        let artifactEnd = try XCTUnwrap(
+            script.range(of: "\n\nfail_stage() {", range: artifactStart.upperBound..<script.endIndex)
+        )
+        let artifactWriter = String(script[artifactStart.lowerBound..<artifactEnd.lowerBound])
+        for rejectedEnvironmentName in [
+            "HOME",
+            "SUISUI_GOOGLE_CALENDAR_OAUTH_CLIENT_ID",
+            "SPARKLE_FEED_URL",
+            "SPARKLE_PUBLIC_ED_KEY",
+            "LOCAL_LICENSE_PUBLIC_KEY_BASE64",
+            "SUISUI_DATABASE_PATH",
+        ] {
+            XCTAssertFalse(
+                artifactWriter.contains(rejectedEnvironmentName),
+                "artifact must not serialize \(rejectedEnvironmentName)"
+            )
+        }
+    }
+
+    func testBuildAndRunEmbedsOnlyAConfigurationFingerprintAndRuntimePolicy() throws {
+        let script = try readPackageFile("script/build_and_run.sh")
+
+        XCTAssertTrue(script.contains("SUISUI_RUNTIME_POLICY"))
+        XCTAssertTrue(script.contains("public-alpha"))
+        XCTAssertTrue(script.contains("<key>SuisuiRuntimePolicy</key>"))
+        XCTAssertTrue(script.contains("<key>SuisuiBuildConfigurationFingerprint</key>"))
+        XCTAssertTrue(script.contains("BUILD_CONFIGURATION_FINGERPRINT"))
+        XCTAssertFalse(script.contains("<key>SUISUI_GOOGLE_CALENDAR_OAUTH_CLIENT_ID</key>"))
+    }
+
     func testRuntimeScheduleCockpitSmokeScriptVerifiesDraftGridAndApprovalBoundary() throws {
         let script = try readPackageFile("script/check_runtime_schedule_cockpit_smoke.sh")
         let markerHelper = try readPackageFile("script/ui_evidence_ax_marker_check.swift")

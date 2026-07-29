@@ -50,9 +50,32 @@ MIN_SYSTEM_VERSION="${MIN_SYSTEM_VERSION:?MIN_SYSTEM_VERSION is required}"
 COPYRIGHT="${COPYRIGHT:?COPYRIGHT is required}"
 BUILD_CONFIGURATION="${SUISUI_BUILD_CONFIGURATION:-debug}"
 RELEASE_BUILD_PURPOSE="${SUISUI_RELEASE_BUILD_PURPOSE:-distribution}"
+RUNTIME_POLICY="${SUISUI_RUNTIME_POLICY:-public-alpha}"
 SPARKLE_FEED_URL="${SUISUI_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
 SPARKLE_PUBLIC_ED_KEY="${SUISUI_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
 LOCAL_LICENSE_PUBLIC_KEY_BASE64="${SUISUI_LOCAL_LICENSE_PUBLIC_KEY_BASE64:-${SUISUI_LOCAL_LICENSE_PUBLIC_KEY:-}}"
+case "$RUNTIME_POLICY" in
+  public-alpha|development)
+    ;;
+  *)
+    echo "BLOCKER: SUISUI_RUNTIME_POLICY must be public-alpha or development" >&2
+    exit 2
+    ;;
+esac
+# This digest deliberately describes only non-secret, path-independent build
+# choices. Runtime evidence can compare it across builds of the same HEAD
+# without serializing credentials or machine-local configuration.
+BUILD_CONFIGURATION_FINGERPRINT="$(
+  printf 'schema=1\nruntime-policy=%s\nbuild-configuration=%s\nrelease-purpose=%s\nsparkle-feed=%s\nsparkle-key=%s\nlicense-key=%s\n' \
+    "$RUNTIME_POLICY" \
+    "$BUILD_CONFIGURATION" \
+    "$RELEASE_BUILD_PURPOSE" \
+    "$SPARKLE_FEED_URL" \
+    "$SPARKLE_PUBLIC_ED_KEY" \
+    "$LOCAL_LICENSE_PUBLIC_KEY_BASE64" \
+    | /usr/bin/shasum -a 256 \
+    | awk '{print $1}'
+)"
 # SwiftUI cold launch can exceed 12s on release evidence machines; keep the
 # default aligned with runtime smoke waits while
 # preserving SUISUI_VERIFY_TIMEOUT_SECONDS for faster local overrides.
@@ -414,6 +437,10 @@ done < <(find "$BUILD_DIR" -maxdepth 1 -type f -name "*.dylib" -print0)
   printf '%s\n' '  <string>Suisui uses the microphone when you explicitly start voice capture.</string>'
   printf '%s\n' '  <key>SuisuiLocalLicensePublicKey</key>'
   printf '  <string>%s</string>\n' "$(xml_escape "$LOCAL_LICENSE_PUBLIC_KEY_BASE64")"
+  printf '%s\n' '  <key>SuisuiRuntimePolicy</key>'
+  printf '  <string>%s</string>\n' "$RUNTIME_POLICY"
+  printf '%s\n' '  <key>SuisuiBuildConfigurationFingerprint</key>'
+  printf '  <string>%s</string>\n' "$BUILD_CONFIGURATION_FINGERPRINT"
   printf '%s\n' '  <key>NSHumanReadableCopyright</key>'
   printf '  <string>%s</string>\n' "$COPYRIGHT"
   printf '%s\n' '</dict>'

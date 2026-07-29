@@ -45,6 +45,7 @@ pre_approval_snapshot=""
 source_commit=""
 app_binary=""
 app_binary_sha256=""
+build_configuration_fingerprint=""
 completed_stages=()
 driver_has_run=0
 
@@ -83,6 +84,7 @@ write_artifact_atomically() {
     printf '  "status": "%s",\n' "$status"
     printf '  "sourceCommit": "%s",\n' "$source_commit"
     printf '  "appBinarySHA256": "%s",\n' "$app_binary_sha256"
+    printf '  "buildConfigurationFingerprint": "%s",\n' "$build_configuration_fingerprint"
     printf '  "fixture": {"projectID": "%s", "taskIDs": ["%s", "%s"]},\n' "$FIXTURE_PROJECT_ID" "$FIXTURE_TASK_ONE_ID" "$FIXTURE_TASK_TWO_ID"
     printf '  "completedStages": ['
     for index in "${!completed_stages[@]}"; do
@@ -127,7 +129,7 @@ require_runtime_prerequisites() {
 }
 
 build_current_head_bundle() {
-  local tracked_status source_commit_after_build
+  local tracked_status source_commit_after_build expected_configuration_fingerprint
   tracked_status="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=all)" \
     || fail_stage "normal_product_route" "provenance" "source_status_unavailable"
   [[ -z "$tracked_status" ]] \
@@ -135,7 +137,18 @@ build_current_head_bundle() {
 
   # Build the exact clean HEAD in this invocation. A timestamp on an existing
   # dist bundle is not provenance and must never make stale product code pass.
-  "$ROOT_DIR/script/build_and_run.sh" --build-only \
+  # Only the explicit variables below cross into the build. In particular,
+  # ignored release config, OAuth credentials, and arbitrary parent SUISUI_*
+  # values cannot affect or leak into this runtime artifact.
+  env -i \
+    PATH="$PATH" \
+    HOME="$HOME" \
+    SUISUI_LOAD_LOCAL_RELEASE_CONFIG=0 \
+    SUISUI_BUILD_CONFIGURATION=release \
+    SUISUI_RELEASE_BUILD_PURPOSE=performance \
+    SUISUI_RUNTIME_POLICY=public-alpha \
+    SUISUI_ENABLE_EXPERIMENTAL_GOOGLE_CALENDAR_RUNTIME=0 \
+    "$ROOT_DIR/script/build_and_run.sh" --build-only \
     || fail_stage "normal_product_route" "provenance" "current_head_bundle_build_failed"
 
   source_commit_after_build="$(git -C "$ROOT_DIR" rev-parse HEAD)" \
@@ -153,6 +166,19 @@ build_current_head_bundle() {
   app_binary_sha256="$(/usr/bin/shasum -a 256 "$app_binary" | awk '{print $1}')"
   [[ "$app_binary_sha256" =~ ^[a-f0-9]{64}$ ]] \
     || fail_stage "normal_product_route" "provenance" "built_app_binary_hash_invalid"
+  build_configuration_fingerprint="$(
+    /usr/libexec/PlistBuddy -c "Print :SuisuiBuildConfigurationFingerprint" \
+      "$ROOT_DIR/dist/${APP_NAME}.app/Contents/Info.plist"
+  )" || fail_stage "normal_product_route" "provenance" "embedded_configuration_fingerprint_missing"
+  expected_configuration_fingerprint="$(
+    printf 'schema=1\nruntime-policy=public-alpha\nbuild-configuration=release\nrelease-purpose=performance\nsparkle-feed=\nsparkle-key=\nlicense-key=\n' \
+      | /usr/bin/shasum -a 256 \
+      | awk '{print $1}'
+  )"
+  [[ "$build_configuration_fingerprint" == "$expected_configuration_fingerprint" ]] \
+    || fail_stage "normal_product_route" "provenance" "embedded_configuration_fingerprint_mismatch"
+  [[ "$(/usr/libexec/PlistBuddy -c "Print :SuisuiRuntimePolicy" "$ROOT_DIR/dist/${APP_NAME}.app/Contents/Info.plist")" == "public-alpha" ]] \
+    || fail_stage "normal_product_route" "provenance" "embedded_runtime_policy_mismatch"
 }
 
 prepare_isolated_home_and_sqlite() {
@@ -299,6 +325,7 @@ verify_final_evidence() {
   contains_rejected_evidence "$artifact_file" && fail_stage "redacted_source_bound_artifact" "evidence-security" "artifact_contains_rejected_data"
   grep -Fq "\"sourceCommit\": \"$source_commit\"" "$artifact_file" || fail_stage "redacted_source_bound_artifact" "evidence" "artifact_source_commit_mismatch"
   grep -Fq "\"appBinarySHA256\": \"$app_binary_sha256\"" "$artifact_file" || fail_stage "redacted_source_bound_artifact" "evidence" "artifact_app_binary_hash_mismatch"
+  grep -Fq "\"buildConfigurationFingerprint\": \"$build_configuration_fingerprint\"" "$artifact_file" || fail_stage "redacted_source_bound_artifact" "evidence" "artifact_configuration_fingerprint_mismatch"
   grep -Fq '"manualVoiceOver": "not-run"' "$artifact_file" || fail_stage "redacted_source_bound_artifact" "evidence" "manual_voiceover_claimed"
   completed_stages+=("redacted_source_bound_artifact")
   write_artifact_atomically "passed" "" "" ""

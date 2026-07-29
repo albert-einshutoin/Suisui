@@ -95,6 +95,7 @@ struct SettingsView: View {
     let watcherDiagnosticsSnapshotFactory: () -> WatcherDiagnosticsSnapshot
     let externalMCPSettingsViewModelFactory: () -> ExternalMCPSettingsViewModel
     let syncSettingsViewModelFactory: () -> SyncSettingsViewModel
+    let isGoogleCalendarRuntimeEnabled: Bool
     let googleCalendarStatusProvider: () -> GoogleCalendarRuntimeSyncStatus
     let googleCalendarOAuthConnector: (any GoogleCalendarOAuthConnecting)?
     let googleCalendarOAuthDisconnecter: (any GoogleCalendarOAuthDisconnecting)?
@@ -137,6 +138,7 @@ struct SettingsView: View {
         watcherDiagnosticsSnapshotFactory: @escaping () -> WatcherDiagnosticsSnapshot,
         externalMCPSettingsViewModelFactory: @escaping () -> ExternalMCPSettingsViewModel,
         syncSettingsViewModelFactory: @escaping () -> SyncSettingsViewModel,
+        isGoogleCalendarRuntimeEnabled: Bool,
         googleCalendarStatusProvider: @escaping () -> GoogleCalendarRuntimeSyncStatus,
         googleCalendarOAuthConnector: (any GoogleCalendarOAuthConnecting)?,
         googleCalendarOAuthDisconnecter: (any GoogleCalendarOAuthDisconnecting)?,
@@ -152,6 +154,7 @@ struct SettingsView: View {
         self.watcherDiagnosticsSnapshotFactory = watcherDiagnosticsSnapshotFactory
         self.externalMCPSettingsViewModelFactory = externalMCPSettingsViewModelFactory
         self.syncSettingsViewModelFactory = syncSettingsViewModelFactory
+        self.isGoogleCalendarRuntimeEnabled = isGoogleCalendarRuntimeEnabled
         self.googleCalendarStatusProvider = googleCalendarStatusProvider
         self.googleCalendarOAuthConnector = googleCalendarOAuthConnector
         self.googleCalendarOAuthDisconnecter = googleCalendarOAuthDisconnecter
@@ -277,6 +280,7 @@ struct SettingsView: View {
         }
         return SettingsSyncDependencies(
             loadState: loadState,
+            isGoogleCalendarRuntimeEnabled: isGoogleCalendarRuntimeEnabled,
             syncPaidValueLabel: builder.syncPaidValueLabel,
             syncSafetyBoundaryLabel: builder.syncSafetyBoundaryLabel,
             syncOverviewTone: builder.syncOverviewTone,

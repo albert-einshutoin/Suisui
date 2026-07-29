@@ -5793,6 +5793,30 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(helperSource.contains("taskSyncService: nil"))
     }
 
+    func testPublicAlphaGoogleCalendarCompositionFailsClosedAcrossEveryRuntimeEntryPoint() throws {
+        let appSource = try readAppShellSource()
+        let composition = try readPackageFile(
+            "Sources/SuisuiApp/Composition/GoogleCalendarRuntimeCompositionFactory.swift"
+        )
+        let boardComposition = try readPackageFile(
+            "Sources/SuisuiApp/Composition/ProjectBoardRuntimeFactory.swift"
+        )
+
+        XCTAssertTrue(composition.contains("SuisuiRuntimePolicy"))
+        XCTAssertTrue(composition.contains("GoogleCalendarRuntimeBuildPolicy"))
+        XCTAssertTrue(composition.contains("SUISUI_ENABLE_EXPERIMENTAL_GOOGLE_CALENDAR_RUNTIME"))
+        XCTAssertTrue(composition.contains("?? .publicAlpha"))
+        XCTAssertGreaterThanOrEqual(
+            composition.components(separatedBy: "guard isGoogleCalendarRuntimeEnabled() else").count - 1,
+            6
+        )
+        XCTAssertTrue(composition.contains("DisabledGoogleCalendarRuntimeSync"))
+        XCTAssertTrue(composition.contains("throw GoogleCalendarRuntimeSyncError.notReady(.runtimeNotConfigured)"))
+        XCTAssertTrue(boardComposition.contains("guard isGoogleCalendarRuntimeEnabled() else"))
+        XCTAssertTrue(appSource.contains("isGoogleCalendarRuntimeEnabled: AppRuntimeFactory.isGoogleCalendarRuntimeEnabled()"))
+        XCTAssertTrue(appSource.contains("if context.isGoogleCalendarRuntimeEnabled"))
+    }
+
     func testProjectBoardGoogleCalendarSyncMenuUsesRuntimeReadinessInsteadOfHardcodedDisabled() throws {
         let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
         let toolbarSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardToolbarContent.swift")

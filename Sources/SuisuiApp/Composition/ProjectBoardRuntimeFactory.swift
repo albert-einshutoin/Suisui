@@ -71,6 +71,9 @@ extension AppRuntimeFactory {
                 missedTaskFollowUpNotificationClient: UserNotificationsNotificationClient(),
                 externalTaskLinkStore: externalTaskLinkStore,
                 googleCalendarSyncFactory: {
+                    guard isGoogleCalendarRuntimeEnabled() else {
+                        return nil
+                    }
                     let secretStore = makeSecretStore()
                     return makeSettingsBackedGoogleCalendarSyncController(
                         connection: connection,
