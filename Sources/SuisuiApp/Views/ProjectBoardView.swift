@@ -254,7 +254,27 @@ struct ProjectBoardView: View {
                 googleCalendarSyncHelp: viewModel.googleCalendarSyncHelp,
                 onToggleSidebar: toggleSidebarVisibility,
                 onOpenSearch: { isCommandPaletteVisible = true },
-                onOpenVoiceCommand: { openWindow(id: "voice-capture") },
+                onOpenVoiceCommand: {
+                    let task = viewModel.selectedTask
+                    let projectID =
+                        task?.projectID ?? viewModel.selectedProject?.id
+                    let project = viewModel.snapshot.projects.first {
+                        $0.id == projectID
+                    }
+                    SuisuiVoiceConversationScopeBridge.store(
+                        .init(
+                            projectID: projectID,
+                            projectName: project?.title,
+                            taskID: task?.id,
+                            taskName: task?.title
+                        )
+                    )
+                    openWindow(id: "voice-capture")
+                    NotificationCenter.default.post(
+                        name: .suisuiVoiceConversationScopeRequested,
+                        object: nil
+                    )
+                },
                 onToggleInspector: toggleInspectorPresentation,
                 onExportTasks: beginTaskInteropExport,
                 onImportTasks: { isImportingTaskInterop = true },

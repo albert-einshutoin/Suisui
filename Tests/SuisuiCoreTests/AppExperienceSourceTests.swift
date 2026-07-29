@@ -3590,7 +3590,7 @@ final class AppExperienceSourceTests: XCTestCase {
                 "SuisuiAssistantQueueBridge.storePendingOpen",
                 "ProjectBoardSceneCoordinator.shared.requestOpen(",
                 "SuisuiAssistantQueueBridge.discardPendingOpen(id: bridgeRequest.id)",
-                "/// Tail of the provider"
+                "extension Notification.Name"
             )
         ] {
             let start = try XCTUnwrap(voiceSource.range(of: "private func \(functionName)"))
@@ -3700,7 +3700,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceSource.contains("assistantQueueExecutionHandoffItemID"))
         XCTAssertTrue(appSource.contains("executionHandoffItemID: viewModel.assistantQueueExecutionHandoffItemID"))
         XCTAssertTrue(appSource.contains("onOpenQueue: { postAssistantQueueOpenRequest() }"))
-        XCTAssertTrue(appSource.contains("SuisuiAssistantQueueBridge.storePendingOpen(itemID: viewModel.assistantQueueExecutionHandoffItemID)"))
+        XCTAssertTrue(appSource.contains("SuisuiAssistantQueueBridge.storePendingOpen("))
+        XCTAssertTrue(appSource.contains("itemID: itemID"))
+        XCTAssertTrue(appSource.contains("?? viewModel.assistantQueueExecutionHandoffItemID"))
         XCTAssertTrue(appSource.contains("userInfo: [SuisuiAssistantQueueBridge.requestUserInfoKey: bridgeRequest]"))
         XCTAssertTrue(appSource.contains("name: .suisuiAssistantQueueRequested"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-assistant-queue-open-board\")"))
@@ -4830,11 +4832,13 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertTrue(
             voiceFactory.contains(
-                "let conversationStore = SQLiteVoiceTaskConversationStore("
+                "let sqliteConversationStore = SQLiteVoiceTaskConversationStore("
             )
         )
         XCTAssertTrue(
-            voiceFactory.contains("conversationStore: conversationStore")
+            voiceFactory.contains(
+                "conversationStore: sqliteConversationStore"
+            )
         )
     }
 

@@ -116,6 +116,16 @@ public final class VoiceCaptureViewModel: ObservableObject {
     /// Non-nil only while `phase` is `.failed` from plan generation and the
     /// typed error has a known next step (Open Settings / Try Again).
     @Published public private(set) var failureRecovery: VoiceCaptureFailureRecovery?
+    @Published public private(set) var conversationWorkspaceScope =
+        VoiceTaskConversationWorkspacePresentation.Scope()
+    @Published public private(set) var conversationWorkspaceTurns:
+        [VoiceTaskConversationWorkspacePresentation.Turn] = []
+    @Published public private(set) var conversationWorkspaceTurnListState:
+        VoiceTaskConversationWorkspacePresentation.TurnListState = .empty
+    @Published public private(set) var conversationWorkspaceSessionState:
+        VoiceTaskConversationWorkspacePresentation.SessionState?
+    @Published public private(set) var conversationWorkspaceCloseout =
+        VoiceTaskConversationWorkspacePresentation.Closeout()
     @Published private var orchestratedClarificationQuestion: ClarificationQuestion?
 
     private var audioRecorder: any AudioRecorder
@@ -149,6 +159,11 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private var microphoneSilenceDetector: MicrophoneSilenceDetector
     private var inputLevelMonitorTask: Task<Void, Never>?
     private var activeConversationSourceTurnID: UUID?
+    private var conversationWorkspaceStore: (any VoiceTaskConversationStore)?
+    private var conversationWorkspaceTurnCursor:
+        VoiceTaskConversationTurnCursor?
+    private var conversationWorkspaceSession:
+        VoiceTaskConversationSession?
     /// ~10Hz keeps the meter lively without spamming the main actor.
     private let inputLevelSampleInterval: TimeInterval = 0.1
 
@@ -285,9 +300,255 @@ public final class VoiceCaptureViewModel: ObservableObject {
         runtimeValidationMessage == nil
             && draft.canGeneratePlan
             && clarificationSession == nil
+            && conversationWorkspaceSessionState != .paused
+            && conversationWorkspaceSessionState != .archived
             && phase != .generatingPlan
             && phase != .recording
             && phase != .transcribing
+    }
+
+    /// Connects the workspace to the same durable SQLite store used by the
+    /// orchestrator. Production composition calls this only after migrations
+    /// succeed; there is intentionally no in-memory success fallback.
+    public func configureConversationWorkspace(
+        store: any VoiceTaskConversationStore,
+        scope: VoiceTaskConversationWorkspacePresentation.Scope,
+        activeProjectID: Int64? = nil,
+        activeTaskID: Int64? = nil,
+        entryPoint: VoiceTaskConversationEntryPoint = .voiceCommand
+    ) {
+        conversationWorkspaceStore = store
+        conversationWorkspaceScope = scope
+        do {
+            let session: VoiceTaskConversationSession
+            if let existing = try store.loadSession(id: conversationSessionID) {
+                session = existing
+            } else {
+                let created = VoiceTaskConversationSession(
+                    id: conversationSessionID,
+                    title: scope.sessionTitle,
+                    entryPoint: entryPoint,
+                    activeProjectID: activeProjectID,
+                    activeTaskID: activeTaskID
+                )
+                try store.createSession(created)
+                session = created
+            }
+            conversationWorkspaceSession = session
+            conversationWorkspaceSessionState = Self.workspaceState(
+                for: session.state
+            )
+            try reloadConversationWorkspaceTurns()
+        } catch {
+            conversationWorkspaceTurnListState = .failed(
+                message: "Conversation history is unavailable."
+            )
+            phase = .failed(
+                "Voice conversation storage is unavailable."
+            )
+        }
+    }
+
+    public func loadEarlierConversationTurns() {
+        guard conversationWorkspaceTurnCursor != nil else { return }
+        conversationWorkspaceTurnListState = .loadingMore
+        do {
+            try reloadConversationWorkspaceTurns(append: true)
+        } catch {
+            conversationWorkspaceTurnListState = .failed(
+                message: "Earlier conversation turns could not be loaded."
+            )
+        }
+    }
+
+    public func updateConversationWorkspaceScope(
+        _ scope: VoiceTaskConversationWorkspacePresentation.Scope,
+        activeProjectID: Int64?,
+        activeTaskID: Int64?
+    ) {
+        conversationWorkspaceScope = scope
+        mutateConversationWorkspaceSession { session, date in
+            try session.updateTitle(scope.sessionTitle, at: date)
+            try session.setActiveContext(
+                projectID: activeProjectID,
+                taskID: activeTaskID,
+                resumeSummary: scope.accessibilityValue,
+                at: date
+            )
+        }
+    }
+
+    /// Re-reads the Queue source of truth before showing a closeout. A past
+    /// conversation message is never treated as proof that execution finished.
+    public func refreshConversationWorkspaceCloseout() {
+        guard let itemID = assistantQueueItem?.id,
+              let assistantQueueStore
+        else {
+            conversationWorkspaceCloseout = .init()
+            return
+        }
+        do {
+            let current = try assistantQueueStore.get(id: itemID)
+            assistantQueueItem = current
+            switch current.state {
+            case .done:
+                let actions: [PlanAction]
+                if case .actionPlan(let plan) = current.payload {
+                    actions = plan.actions
+                } else {
+                    actions = []
+                }
+                conversationWorkspaceCloseout = .init(
+                    createdCount: actions.filter {
+                        $0.tool == .taskCreate
+                    }.count,
+                    changedCount: actions.filter {
+                        $0.tool != .taskCreate
+                    }.count
+                )
+            case .blocked, .failed, .rejected:
+                conversationWorkspaceCloseout = .init(
+                    unresolvedCount: 1
+                )
+            case .captured, .interpreted, .drafted, .waitingReview,
+                 .approved, .running, .deferred:
+                conversationWorkspaceCloseout = .init(
+                    pendingCount: 1
+                )
+            }
+        } catch {
+            conversationWorkspaceCloseout = .init(unresolvedCount: 1)
+        }
+    }
+
+    public func pauseConversationWorkspace() {
+        mutateConversationWorkspaceSession { session, date in
+            try session.pause(at: date)
+        }
+    }
+
+    public func resumeConversationWorkspace() {
+        mutateConversationWorkspaceSession { session, date in
+            try session.resume(at: date)
+        }
+    }
+
+    public func archiveConversationWorkspace() {
+        mutateConversationWorkspaceSession { session, date in
+            if session.state == .active {
+                try session.pause(at: date)
+                let nextDate = Date(
+                    timeIntervalSinceReferenceDate:
+                        session.updatedAt.timeIntervalSinceReferenceDate.nextUp
+                )
+                try session.archive(at: nextDate)
+            } else {
+                try session.archive(at: date)
+            }
+        }
+    }
+
+    private func reloadConversationWorkspaceTurns(
+        append: Bool = false
+    ) throws {
+        guard let store = conversationWorkspaceStore else {
+            conversationWorkspaceTurnListState = .failed(
+                message: "Conversation history is unavailable."
+            )
+            return
+        }
+        let page = try store.listTurnPage(
+            sessionID: conversationSessionID,
+            before: append ? conversationWorkspaceTurnCursor : nil,
+            limit: 20
+        )
+        let rows = page.turns.compactMap(Self.workspaceTurn)
+        if append {
+            conversationWorkspaceTurns.append(contentsOf: rows)
+        } else {
+            conversationWorkspaceTurns = rows
+        }
+        conversationWorkspaceTurns.sort { $0.createdAt < $1.createdAt }
+        conversationWorkspaceTurnCursor = page.nextCursor
+        conversationWorkspaceTurnListState =
+            conversationWorkspaceTurns.isEmpty
+            ? .empty
+            : .loaded(hasMore: page.nextCursor != nil)
+    }
+
+    private func mutateConversationWorkspaceSession(
+        _ mutation: (inout VoiceTaskConversationSession, Date) throws -> Void
+    ) {
+        guard let store = conversationWorkspaceStore,
+              var session = conversationWorkspaceSession
+        else {
+            phase = .failed(
+                "Voice conversation storage is unavailable."
+            )
+            return
+        }
+        let expectedUpdatedAt = session.updatedAt
+        do {
+            let now = Date(
+                timeIntervalSinceReferenceDate: max(
+                    Date().timeIntervalSinceReferenceDate,
+                    expectedUpdatedAt.timeIntervalSinceReferenceDate.nextUp
+                )
+            )
+            try mutation(&session, now)
+            try store.updateSession(
+                session,
+                expectedUpdatedAt: expectedUpdatedAt
+            )
+            conversationWorkspaceSession = session
+            conversationWorkspaceSessionState = Self.workspaceState(
+                for: session.state
+            )
+        } catch {
+            phase = .failed(
+                "Conversation session state could not be saved."
+            )
+        }
+    }
+
+    private static func workspaceState(
+        for state: VoiceTaskConversationSessionState
+    ) -> VoiceTaskConversationWorkspacePresentation.SessionState? {
+        switch state {
+        case .active:
+            nil
+        case .paused:
+            .paused
+        case .archived:
+            .archived
+        }
+    }
+
+    private static func workspaceTurn(
+        _ turn: VoiceTaskConversationTurn
+    ) -> VoiceTaskConversationWorkspacePresentation.Turn? {
+        let author: VoiceTaskConversationWorkspacePresentation.Turn.Author
+        let text: String
+        switch turn.author {
+        case .user:
+            guard let confirmed = turn.userConfirmedText else {
+                return nil
+            }
+            author = .user
+            text = confirmed
+        case .assistant:
+            author = .assistant
+            text = String(localized: "Structured response recorded.")
+        case .system:
+            author = .system
+            text = String(localized: "Conversation state updated.")
+        }
+        return .init(
+            id: turn.id,
+            author: author,
+            text: text,
+            createdAt: turn.createdAt
+        )
     }
 
     public var canSaveDraftToInbox: Bool {
@@ -1942,6 +2203,15 @@ public final class VoiceCaptureViewModel: ObservableObject {
             queueItem: queueItem,
             at: date
         )
+        if conversationWorkspaceStore != nil {
+            do {
+                try reloadConversationWorkspaceTurns()
+            } catch {
+                conversationWorkspaceTurnListState = .failed(
+                    message: "Conversation history could not be refreshed."
+                )
+            }
+        }
     }
 
     private func blockConversationQueueItemAfterLinkFailure() {

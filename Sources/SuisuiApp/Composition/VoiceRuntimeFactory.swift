@@ -13,6 +13,9 @@ extension AppRuntimeFactory {
         var auditLogger: (any AuditLogger)?
         var assistantQueueStore: (any AssistantQueueStore)?
         var conversationOrchestrator: (any VoiceTaskConversationOrchestrating)?
+        var conversationStore: (any VoiceTaskConversationStore)?
+        var conversationSessionID = voiceConversationSessionID()
+        let scopeRequest = SuisuiVoiceConversationScopeBridge.consume()
         var inboxCaptureService: InboxVoiceCaptureService?
         var developmentProjectProvider: () -> ProjectRecord? = { nil }
         var workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])?
@@ -23,15 +26,21 @@ extension AppRuntimeFactory {
             auditLogger = try makeAuditLogger()
             let connection = try migratedConnection()
             assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
-            let conversationStore = SQLiteVoiceTaskConversationStore(
+            let sqliteConversationStore = SQLiteVoiceTaskConversationStore(
                 connection: connection
             )
+            if try sqliteConversationStore.loadSession(
+                id: conversationSessionID
+            )?.state == .archived {
+                conversationSessionID = resetVoiceConversationSessionID()
+            }
+            conversationStore = sqliteConversationStore
             let taskStore = SQLiteTaskStore(connection: connection)
             conversationOrchestrator = VoiceTaskConversationOrchestrator(
                 stateStore: SQLiteVoiceTaskConversationOrchestrationStateStore(
                     connection: connection
                 ),
-                conversationStore: conversationStore,
+                conversationStore: sqliteConversationStore,
                 taskSnapshotFingerprintProvider: { taskID in
                     ConversationTaskSnapshotFingerprint.make(
                         try taskStore.get(id: taskID)
@@ -73,7 +82,7 @@ extension AppRuntimeFactory {
             runtimeValidationMessage = "Voice planning is unavailable because audit logging or local data stores could not be opened."
             initialFailureMessage = runtimeValidationMessage
         }
-        return VoiceCaptureViewModel(
+        let viewModel = VoiceCaptureViewModel(
             phase: initialFailureMessage.map(VoiceCapturePhase.failed) ?? .idle,
             audioRecorder: audioRecorder,
             sttProvider: sttProvider,
@@ -82,7 +91,7 @@ extension AppRuntimeFactory {
             runtimeValidationMessage: runtimeValidationMessage,
             assistantQueueStore: assistantQueueStore,
             conversationOrchestrator: conversationOrchestrator,
-            conversationSessionID: voiceConversationSessionID(),
+            conversationSessionID: conversationSessionID,
             inboxCaptureSaver: inboxCaptureService,
             developmentProjectProvider: developmentProjectProvider,
             appSettingsProvider: { loadRuntimeSettings().settings },
@@ -97,6 +106,18 @@ extension AppRuntimeFactory {
             },
             taskDeleter: taskDeleter
         )
+        if let conversationStore {
+            viewModel.configureConversationWorkspace(
+                store: conversationStore,
+                scope: scopeRequest?.presentationScope ?? .init(),
+                activeProjectID: scopeRequest?.projectID,
+                activeTaskID: scopeRequest?.taskID,
+                entryPoint: scopeRequest?.taskID == nil
+                    ? .voiceCommand
+                    : .taskInspector
+            )
+        }
+        return viewModel
     }
 
     private static func voiceConversationSessionID() -> UUID {
@@ -111,6 +132,15 @@ extension AppRuntimeFactory {
         // to an unfinished clarification after an app relaunch.
         let id = UUID()
         defaults.set(id.uuidString, forKey: key)
+        return id
+    }
+
+    private static func resetVoiceConversationSessionID() -> UUID {
+        let id = UUID()
+        UserDefaults.standard.set(
+            id.uuidString,
+            forKey: "suisui.voiceConversationSessionID"
+        )
         return id
     }
 

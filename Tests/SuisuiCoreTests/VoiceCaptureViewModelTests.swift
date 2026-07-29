@@ -3,6 +3,118 @@ import XCTest
 
 @MainActor
 final class VoiceCaptureViewModelTests: XCTestCase {
+    func testConversationWorkspaceCreatesScopedSessionAndPersistsLifecycle()
+        throws
+    {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        try connection.execute(
+            """
+            INSERT INTO projects (id, title, status)
+            VALUES (7, 'Launch', 'active');
+            INSERT INTO tasks (id, project_id, title, status)
+            VALUES (11, 7, 'Ship alpha', 'todo');
+            """
+        )
+        let store = SQLiteVoiceTaskConversationStore(connection: connection)
+        let sessionID = UUID()
+        let viewModel = makeConversationWorkspaceViewModel(
+            sessionID: sessionID
+        )
+        let scope = VoiceTaskConversationWorkspacePresentation.Scope(
+            projectName: "Launch",
+            taskName: "Ship alpha",
+            sessionTitle: "Ship alpha"
+        )
+
+        viewModel.configureConversationWorkspace(
+            store: store,
+            scope: scope,
+            activeProjectID: 7,
+            activeTaskID: 11,
+            entryPoint: .taskInspector
+        )
+
+        let created = try XCTUnwrap(store.loadSession(id: sessionID))
+        XCTAssertEqual(created.activeProjectID, 7)
+        XCTAssertEqual(created.activeTaskID, 11)
+        XCTAssertEqual(created.entryPoint, .taskInspector)
+        XCTAssertEqual(viewModel.conversationWorkspaceScope, scope)
+
+        viewModel.pauseConversationWorkspace()
+        XCTAssertEqual(viewModel.conversationWorkspaceSessionState, .paused)
+        viewModel.resumeConversationWorkspace()
+        XCTAssertNil(viewModel.conversationWorkspaceSessionState)
+        viewModel.archiveConversationWorkspace()
+        XCTAssertEqual(viewModel.conversationWorkspaceSessionState, .archived)
+        XCTAssertEqual(
+            try store.loadSession(id: sessionID)?.state,
+            .archived
+        )
+    }
+
+    func testConversationWorkspaceLoadsConfirmedTurnsWithStablePagination()
+        throws
+    {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        let store = SQLiteVoiceTaskConversationStore(connection: connection)
+        let sessionID = UUID()
+        let viewModel = makeConversationWorkspaceViewModel(
+            sessionID: sessionID
+        )
+        viewModel.configureConversationWorkspace(
+            store: store,
+            scope: .init()
+        )
+        let base = Date().addingTimeInterval(1)
+        for index in 0..<21 {
+            try store.saveTurn(
+                VoiceTaskConversationTurn(
+                    sessionID: sessionID,
+                    author: .user,
+                    rawTranscript: "raw \(index)",
+                    userConfirmedText: "confirmed \(index)",
+                    createdAt: base.addingTimeInterval(Double(index))
+                )
+            )
+        }
+
+        viewModel.configureConversationWorkspace(
+            store: store,
+            scope: .init()
+        )
+
+        XCTAssertEqual(viewModel.conversationWorkspaceTurns.count, 20)
+        XCTAssertEqual(
+            viewModel.conversationWorkspaceTurnListState,
+            .loaded(hasMore: true)
+        )
+        XCTAssertFalse(
+            viewModel.conversationWorkspaceTurns.contains {
+                $0.text.hasPrefix("raw ")
+            }
+        )
+
+        viewModel.loadEarlierConversationTurns()
+
+        XCTAssertEqual(viewModel.conversationWorkspaceTurns.count, 21)
+        XCTAssertEqual(
+            viewModel.conversationWorkspaceTurnListState,
+            .loaded(hasMore: false)
+        )
+        XCTAssertEqual(
+            viewModel.conversationWorkspaceTurns.first?.text,
+            "confirmed 0"
+        )
+    }
+
     func testExistingVoiceViewModelCannotUseCodexAfterApprovalIsRevoked() async throws {
         let approval = MutableCodexApprovalForVoice(
             try CodexAppServerRuntimeConfiguration.approve(
@@ -32,6 +144,27 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         }
         let callCount = await reporter.callCount
         XCTAssertEqual(callCount, 0)
+    }
+
+    private func makeConversationWorkspaceViewModel(
+        sessionID: UUID
+    ) -> VoiceCaptureViewModel {
+        VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(
+                transcript: STTTranscript(text: "")
+            ),
+            llmProvider: FakeLLMProvider(
+                response: PlanningResponse(
+                    providerID: "fake",
+                    rawContent: "{}",
+                    actionPlan: nil,
+                    validationResult: .init(issues: [])
+                )
+            ),
+            conversationOrchestrator: nil,
+            conversationSessionID: sessionID
+        )
     }
 
     func testGeneratePlanRequiresAValidDraftInEveryIdleState() {
