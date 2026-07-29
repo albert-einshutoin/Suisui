@@ -118,6 +118,9 @@ struct VoiceCaptureView: View {
         }
         .padding(SuisuiSpacing.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .task {
+            await viewModel.restoreConversationIfNeeded()
+        }
         .onChange(of: viewModel.dailyPlanningReviewRequest) { _, request in
             guard let request else {
                 return

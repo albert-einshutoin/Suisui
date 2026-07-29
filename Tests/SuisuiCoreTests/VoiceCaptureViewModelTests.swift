@@ -1437,6 +1437,98 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertTrue(provider.requests[0].userInput.contains("project: Suisui"))
     }
 
+    func testInjectedConversationOrchestratorOwnsClarificationAndReviewTransition() async {
+        let plan = ActionPlan(
+            id: "orchestrated-plan",
+            userInput: "これ明日やって",
+            summary: "Create clarified task",
+            actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        let orchestrator = RecordingVoiceConversationOrchestrator(
+            outcomes: [
+                .clarification(
+                    ClarificationQuestion(
+                        slot: .taskTitle,
+                        prompt: "What should the task be called?"
+                    )
+                ),
+                .review(plan),
+            ]
+        )
+        let sessionID = UUID()
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(
+                response: PlanningResponse(
+                    providerID: "unused",
+                    rawContent: "{}",
+                    actionPlan: nil,
+                    validationResult: ActionPlanValidationResult(issues: [])
+                )
+            ),
+            conversationOrchestrator: orchestrator,
+            conversationSessionID: sessionID
+        )
+
+        viewModel.updateDraftText("これ明日やって")
+        await viewModel.generatePlan()
+        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .taskTitle)
+
+        await viewModel.submitClarificationAnswer("リリースメモを書く")
+
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertEqual(
+            viewModel.planningResponse?.actionPlan?.id,
+            "orchestrated-plan"
+        )
+        let events = await orchestrator.recordedEvents
+        XCTAssertEqual(events, [
+            .begin(sessionID: sessionID),
+            .answer(sessionID: sessionID, value: "リリースメモを書く"),
+        ])
+    }
+
+    func testRestoreConversationPublishesPersistedClarificationQuestion() async {
+        let sessionID = UUID()
+        let orchestrator = RecordingVoiceConversationOrchestrator(
+            outcomes: [
+                .clarification(
+                    ClarificationQuestion(
+                        slot: .dueDate,
+                        prompt: "When is the due date?"
+                    )
+                ),
+            ]
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(
+                response: PlanningResponse(
+                    providerID: "unused",
+                    rawContent: "{}",
+                    actionPlan: nil,
+                    validationResult: ActionPlanValidationResult(issues: [])
+                )
+            ),
+            conversationOrchestrator: orchestrator,
+            conversationSessionID: sessionID
+        )
+
+        await viewModel.restoreConversationIfNeeded()
+
+        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .dueDate)
+        XCTAssertEqual(viewModel.phase, .needsClarification("When is the due date?"))
+        let events = await orchestrator.recordedEvents
+        XCTAssertEqual(
+            events,
+            [.restore(sessionID: sessionID)]
+        )
+    }
+
     func testGeneratePlanQueuesDangerousActionPlanAsBlockedBeforeReview() async {
         let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
             providerID: "fake",
@@ -2954,5 +3046,44 @@ private final class MutableVoiceSettings: @unchecked Sendable {
             settings = newValue
             lock.unlock()
         }
+    }
+}
+
+private actor RecordingVoiceConversationOrchestrator:
+    VoiceTaskConversationOrchestrating
+{
+    enum RecordedEvent: Equatable {
+        case restore(sessionID: UUID)
+        case begin(sessionID: UUID)
+        case answer(sessionID: UUID, value: String)
+        case cancel(sessionID: UUID)
+    }
+
+    private var outcomes: [VoiceTaskConversationOutcome]
+    private(set) var recordedEvents: [RecordedEvent] = []
+
+    init(outcomes: [VoiceTaskConversationOutcome]) {
+        self.outcomes = outcomes
+    }
+
+    func handle(
+        _ input: VoiceTaskConversationInput
+    ) async -> VoiceTaskConversationOutcome {
+        switch input.event {
+        case .restore:
+            recordedEvents.append(.restore(sessionID: input.sessionID))
+        case .begin:
+            recordedEvents.append(.begin(sessionID: input.sessionID))
+        case .clarificationAnswer(let value, _):
+            recordedEvents.append(
+                .answer(sessionID: input.sessionID, value: value)
+            )
+        case .cancel:
+            recordedEvents.append(.cancel(sessionID: input.sessionID))
+        }
+        guard !outcomes.isEmpty else {
+            return .blocked(.missingClarificationState)
+        }
+        return outcomes.removeFirst()
     }
 }

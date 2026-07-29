@@ -12,6 +12,7 @@ extension AppRuntimeFactory {
         let managedCostRateCardResolver = ManagedAICostRateCardResolver()
         var auditLogger: (any AuditLogger)?
         var assistantQueueStore: (any AssistantQueueStore)?
+        var conversationOrchestrator: (any VoiceTaskConversationOrchestrating)?
         var inboxCaptureService: InboxVoiceCaptureService?
         var developmentProjectProvider: () -> ProjectRecord? = { nil }
         var workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])?
@@ -22,6 +23,12 @@ extension AppRuntimeFactory {
             auditLogger = try makeAuditLogger()
             let connection = try migratedConnection()
             assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+            conversationOrchestrator = VoiceTaskConversationOrchestrator(
+                stateStore: SQLiteVoiceTaskConversationOrchestrationStateStore(
+                    connection: connection
+                ),
+                provider: llmProvider
+            )
             let projectStore = SQLiteProjectStore(connection: connection)
             let projectBoardStore = SQLiteProjectBoardStore(connection: connection)
             let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)
@@ -64,6 +71,8 @@ extension AppRuntimeFactory {
             auditRecorder: auditLogger.map { PlanningAuditRecorder(logger: $0) },
             runtimeValidationMessage: runtimeValidationMessage,
             assistantQueueStore: assistantQueueStore,
+            conversationOrchestrator: conversationOrchestrator,
+            conversationSessionID: voiceConversationSessionID(),
             inboxCaptureSaver: inboxCaptureService,
             developmentProjectProvider: developmentProjectProvider,
             appSettingsProvider: { loadRuntimeSettings().settings },
@@ -78,6 +87,21 @@ extension AppRuntimeFactory {
             },
             taskDeleter: taskDeleter
         )
+    }
+
+    private static func voiceConversationSessionID() -> UUID {
+        let key = "suisui.voiceConversationSessionID"
+        let defaults = UserDefaults.standard
+        if let value = defaults.string(forKey: key),
+           let id = UUID(uuidString: value)
+        {
+            return id
+        }
+        // The stable ID lets the SQLite checkpoint reconnect the Voice window
+        // to an unfinished clarification after an app relaunch.
+        let id = UUID()
+        defaults.set(id.uuidString, forKey: key)
+        return id
     }
 
     /// Runs an opt-in auto-create plan through the exact ReviewSession pipeline

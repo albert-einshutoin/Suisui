@@ -116,6 +116,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     /// Non-nil only while `phase` is `.failed` from plan generation and the
     /// typed error has a known next step (Open Settings / Try Again).
     @Published public private(set) var failureRecovery: VoiceCaptureFailureRecovery?
+    @Published private var orchestratedClarificationQuestion: ClarificationQuestion?
 
     private var audioRecorder: any AudioRecorder
     private let sttProvider: any SpeechToTextProvider
@@ -124,6 +125,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private let runtimeValidationMessage: String?
     private let assistantQueueStore: (any AssistantQueueStore)?
     private let commandRouter: any VoiceCommandRouting
+    private let conversationOrchestrator: (any VoiceTaskConversationOrchestrating)?
+    private let conversationSessionID: UUID
     private let inboxCaptureSaver: (any InboxVoiceCaptureSaving)?
     private let inboxTriageCommandParser: InboxVoiceTriageCommandParser
     private let developmentProjectProvider: () -> ProjectRecord?
@@ -158,6 +161,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         runtimeValidationMessage: String? = nil,
         assistantQueueStore: (any AssistantQueueStore)? = nil,
         commandRouter: any VoiceCommandRouting = VoiceCommandRouter(),
+        conversationOrchestrator: (any VoiceTaskConversationOrchestrating)?,
+        conversationSessionID: UUID,
         inboxCaptureSaver: (any InboxVoiceCaptureSaving)? = nil,
         developmentProjectProvider: @escaping () -> ProjectRecord? = { nil },
         developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder = VoiceDevelopmentPullRequestAutomationRequestBuilder(),
@@ -184,6 +189,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.runtimeValidationMessage = runtimeValidationMessage
         self.assistantQueueStore = assistantQueueStore
         self.commandRouter = commandRouter
+        self.conversationOrchestrator = conversationOrchestrator
+        self.conversationSessionID = conversationSessionID
         self.inboxCaptureSaver = inboxCaptureSaver
         self.developmentProjectProvider = developmentProjectProvider
         self.developmentPullRequestAutomationRequestBuilder = developmentPullRequestAutomationRequestBuilder
@@ -207,11 +214,69 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.inboxCaptureResult = nil
         self.developmentPullRequestAutomationRequest = nil
         self.lowLatencyVoiceAgentState = .idle
+        self.orchestratedClarificationQuestion = nil
         self.liveIntentPreview = nil
         self.inboxTriageCommandParser = InboxVoiceTriageCommandParser()
         self.lastTranscribedAudioURL = nil
         self.savedInboxAudioURL = nil
         self.lowLatencyStreamID = UUID()
+    }
+
+    public convenience init(
+        draft: TranscriptDraft = TranscriptDraft(),
+        phase: VoiceCapturePhase = .idle,
+        audioRecorder: any AudioRecorder,
+        sttProvider: any SpeechToTextProvider,
+        llmProvider: any LLMProvider,
+        auditRecorder: PlanningAuditRecorder? = nil,
+        runtimeValidationMessage: String? = nil,
+        assistantQueueStore: (any AssistantQueueStore)? = nil,
+        commandRouter: any VoiceCommandRouting = VoiceCommandRouter(),
+        inboxCaptureSaver: (any InboxVoiceCaptureSaving)? = nil,
+        developmentProjectProvider: @escaping () -> ProjectRecord? = { nil },
+        developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder = VoiceDevelopmentPullRequestAutomationRequestBuilder(),
+        appSettingsProvider: @escaping @Sendable () -> AppSettings = { .default },
+        managedCostRateCardProvider: @escaping @Sendable (PlanningResponse) -> AssistantQueueCostRateCard? = { _ in nil },
+        workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])? = nil,
+        workspaceAnswerReadout: (@Sendable (String) -> Void)? = nil,
+        taskAutomationSettingsProvider: (@Sendable () -> TaskAutoExecutionSettings)? = nil,
+        lowRiskTaskAutoExecutor: (@Sendable (ActionPlan) async throws -> LowRiskAutoCreationOutcome)? = nil,
+        taskDeleter: (@Sendable (Int64) throws -> Void)? = nil,
+        microphoneSilenceDetector: MicrophoneSilenceDetector = MicrophoneSilenceDetector(),
+        lowLatencySegmentDuration: TimeInterval = 1.2,
+        lowLatencySegmentOutputURLProvider: @escaping @Sendable () -> URL = {
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "suisui-low-latency-\(UUID().uuidString).m4a"
+                )
+        }
+    ) {
+        self.init(
+            draft: draft,
+            phase: phase,
+            audioRecorder: audioRecorder,
+            sttProvider: sttProvider,
+            llmProvider: llmProvider,
+            auditRecorder: auditRecorder,
+            runtimeValidationMessage: runtimeValidationMessage,
+            assistantQueueStore: assistantQueueStore,
+            commandRouter: commandRouter,
+            conversationOrchestrator: nil,
+            conversationSessionID: UUID(),
+            inboxCaptureSaver: inboxCaptureSaver,
+            developmentProjectProvider: developmentProjectProvider,
+            developmentPullRequestAutomationRequestBuilder: developmentPullRequestAutomationRequestBuilder,
+            appSettingsProvider: appSettingsProvider,
+            managedCostRateCardProvider: managedCostRateCardProvider,
+            workspaceContextRetriever: workspaceContextRetriever,
+            workspaceAnswerReadout: workspaceAnswerReadout,
+            taskAutomationSettingsProvider: taskAutomationSettingsProvider,
+            lowRiskTaskAutoExecutor: lowRiskTaskAutoExecutor,
+            taskDeleter: taskDeleter,
+            microphoneSilenceDetector: microphoneSilenceDetector,
+            lowLatencySegmentDuration: lowLatencySegmentDuration,
+            lowLatencySegmentOutputURLProvider: lowLatencySegmentOutputURLProvider
+        )
     }
 
     public var canGeneratePlan: Bool {
@@ -279,7 +344,27 @@ public final class VoiceCaptureViewModel: ObservableObject {
     }
 
     public var clarificationQuestion: ClarificationQuestion? {
-        clarificationSession?.currentQuestion
+        orchestratedClarificationQuestion ?? clarificationSession?.currentQuestion
+    }
+
+    public func restoreConversationIfNeeded() async {
+        guard let conversationOrchestrator,
+              orchestratedClarificationQuestion == nil,
+              clarificationSession == nil
+        else {
+            return
+        }
+        let outcome = await conversationOrchestrator.handle(
+            VoiceTaskConversationInput(
+                sessionID: conversationSessionID,
+                sourceTurnID: UUID(),
+                event: .restore
+            )
+        )
+        if case .canceled = outcome {
+            return
+        }
+        applyConversationOutcome(outcome)
     }
 
     public func updateDraftText(_ text: String) {
@@ -289,6 +374,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         draft.text = text
         planningResponse = nil
         clarificationSession = nil
+        cancelOrchestratedClarificationIfNeeded()
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
@@ -312,6 +398,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         auditErrorMessage = nil
         routingResult = nil
         clarificationSession = nil
+        cancelOrchestratedClarificationIfNeeded()
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
@@ -424,7 +511,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             recordingState = audioRecorder.state
             recordedAudio = audio
             let transcript = try await sttProvider.transcribe(audio)
-            if clarificationSession != nil {
+            if clarificationQuestion != nil {
                 await submitClarificationAnswer(transcript.text, inputMode: .voice)
                 return
             }
@@ -484,7 +571,30 @@ public final class VoiceCaptureViewModel: ObservableObject {
             dailyPlanningReviewRequest = nil
             inboxTriageRequest = nil
             developmentPullRequestAutomationRequest = nil
-            beginClarification(for: routedCommand)
+            if let conversationOrchestrator {
+                let outcome = await conversationOrchestrator.handle(
+                    VoiceTaskConversationInput(
+                        sessionID: conversationSessionID,
+                        sourceTurnID: UUID(),
+                        event: .begin(
+                            route: routedCommand,
+                            requiredSlots: [],
+                            intents: [],
+                            referenceRequest: nil,
+                            localAnswerItems: []
+                        ),
+                        currentDate: currentDate,
+                        timeZoneIdentifier: timeZoneIdentifier,
+                        availableTools: planningTools(
+                            for: routedCommand,
+                            requestedAvailableTools: availableTools
+                        )
+                    )
+                )
+                applyConversationOutcome(outcome)
+            } else {
+                beginClarification(for: routedCommand)
+            }
             return
         }
 
@@ -570,6 +680,22 @@ public final class VoiceCaptureViewModel: ObservableObject {
         availableTools: [ActionTool] = ActionTool.defaultPlanningTools,
         knowledgeFrameCandidates: [KnowledgeFrameCandidate] = []
     ) async {
+        if let conversationOrchestrator,
+           orchestratedClarificationQuestion != nil
+        {
+            let outcome = await conversationOrchestrator.handle(
+                VoiceTaskConversationInput(
+                    sessionID: conversationSessionID,
+                    sourceTurnID: UUID(),
+                    event: .clarificationAnswer(answer, inputMode: inputMode),
+                    currentDate: currentDate,
+                    timeZoneIdentifier: timeZoneIdentifier,
+                    availableTools: availableTools
+                )
+            )
+            applyConversationOutcome(outcome)
+            return
+        }
         guard var session = clarificationSession else {
             phase = .failed("No clarification is active.")
             return
@@ -690,6 +816,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
     public func cancelClarification() {
         clarificationSession = nil
+        cancelOrchestratedClarificationIfNeeded()
         if case .needsClarification = phase {
             phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
         }
@@ -749,6 +876,64 @@ public final class VoiceCaptureViewModel: ObservableObject {
         let session = ClarificationSession(route: route)
         clarificationSession = session
         phase = .needsClarification(session.currentQuestion?.prompt ?? route.clarificationReason ?? "Voice command needs clarification.")
+    }
+
+    private func applyConversationOutcome(
+        _ outcome: VoiceTaskConversationOutcome
+    ) {
+        switch outcome {
+        case .clarification(let question):
+            clarificationSession = nil
+            orchestratedClarificationQuestion = question
+            phase = .needsClarification(question.prompt)
+        case .review(let plan):
+            orchestratedClarificationQuestion = nil
+            let validation = ActionPlanValidator().validate(plan)
+            planningResponse = PlanningResponse(
+                providerID: "voice-conversation-orchestrator",
+                rawContent: "",
+                actionPlan: plan,
+                validationResult: validation
+            )
+            phase = validation.isValid
+                ? .reviewReady
+                : .failed("ActionPlan validation failed.")
+        case .answer(let answer):
+            orchestratedClarificationQuestion = nil
+            workspaceAnswer = .answered(
+                text: answer.text,
+                contextCount: answer.items.count
+            )
+            phase = .idle
+        case .canceled:
+            orchestratedClarificationQuestion = nil
+            phase = .idle
+        case .blocked:
+            orchestratedClarificationQuestion = nil
+            phase = .failed(
+                "Voice conversation could not continue safely. Please try again."
+            )
+        }
+    }
+
+    private func cancelOrchestratedClarificationIfNeeded() {
+        guard orchestratedClarificationQuestion != nil,
+              let conversationOrchestrator
+        else {
+            orchestratedClarificationQuestion = nil
+            return
+        }
+        orchestratedClarificationQuestion = nil
+        let sessionID = conversationSessionID
+        Task {
+            _ = await conversationOrchestrator.handle(
+                VoiceTaskConversationInput(
+                    sessionID: sessionID,
+                    sourceTurnID: UUID(),
+                    event: .cancel
+                )
+            )
+        }
     }
 
     private func handleLowLatencyStreamingEvent(

@@ -3,6 +3,48 @@ import XCTest
 @testable import SuisuiCore
 
 final class DatabaseMigrationTests: XCTestCase {
+    func testOrchestrationStateMigrationCreatesDurableCheckpointTable() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeOrchestration = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0030_create_voice_conversation_orchestration_state"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeOrchestration
+        )
+        XCTAssertFalse(
+            try connection.tableExists(
+                "voice_task_conversation_orchestration_states"
+            )
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+
+        XCTAssertTrue(
+            try connection.tableExists(
+                "voice_task_conversation_orchestration_states"
+            )
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT id FROM schema_migrations
+                WHERE id = '0030_create_voice_conversation_orchestration_state';
+                """
+            ),
+            ["0030_create_voice_conversation_orchestration_state"]
+        )
+    }
+
     func testConversationMigrationUpgradesDatabaseAt0024AndPreservesExistingTasks() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         let migrationsBeforeConversation = Array(

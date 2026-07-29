@@ -4795,6 +4795,41 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(voiceFactory.contains("assistantQueueStore: nil"))
     }
 
+    func testVoiceRuntimePersistsConversationOrchestrationWithoutMemoryFallback() throws {
+        let appSource = try readAppShellSource()
+        let voiceFactoryStart = try XCTUnwrap(
+            appSource.range(of: "static func makeVoiceCaptureViewModel()")
+        )
+        let nextFactoryStart = try XCTUnwrap(
+            appSource.range(
+                of: "static func loadRuntimeSettings()",
+                range: voiceFactoryStart.upperBound..<appSource.endIndex
+            )
+        )
+        let voiceFactory = String(
+            appSource[
+                voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound
+            ]
+        )
+
+        XCTAssertTrue(
+            voiceFactory.contains(
+                "SQLiteVoiceTaskConversationOrchestrationStateStore("
+            )
+        )
+        XCTAssertTrue(
+            voiceFactory.contains("connection: connection")
+        )
+        XCTAssertTrue(
+            voiceFactory.contains(
+                "conversationOrchestrator: conversationOrchestrator"
+            )
+        )
+        XCTAssertFalse(
+            voiceFactory.contains("InMemoryVoiceTaskConversation")
+        )
+    }
+
     func testVoiceRuntimeInjectsFailClosedDevelopmentProjectProvider() throws {
         let appSource = try readAppShellSource()
         let voiceFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeVoiceCaptureViewModel()"))

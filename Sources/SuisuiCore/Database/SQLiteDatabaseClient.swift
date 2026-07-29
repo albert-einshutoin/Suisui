@@ -2029,6 +2029,19 @@ public enum CoreMigrations {
                     """
                 )
             },
+            DatabaseMigration(
+                id: "0030_create_voice_conversation_orchestration_state"
+            ) { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE voice_task_conversation_orchestration_states (
+                        session_id TEXT PRIMARY KEY NOT NULL,
+                        payload BLOB NOT NULL,
+                        updated_at REAL NOT NULL
+                    );
+                    """
+                )
+            },
         ]
     }
 }
