@@ -9057,6 +9057,7 @@ final class ReleasePipelineTests: XCTestCase {
     func testVisualBaselineDocumentationAndCaptureScriptDescribeReviewableUpdates() throws {
         let documentation = try readPackageFile("docs/quality/visual-baselines.md")
         let captureScript = try readPackageFile("script/capture_ui_evidence.sh")
+        let targetFrameAuditor = try readPackageFile("script/ui_evidence_ax_target_frame_audit.swift")
         let visualSmokeScript = try readPackageFile("script/check_visual_regression_smoke.sh")
         let visualChecker = try readPackageFile("script/visual_regression_smoke_check.swift")
 
@@ -9113,6 +9114,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("SUISUI_WINDOW_OWNER_PID=\"$EVIDENCE_APP_PID\""))
         XCTAssertTrue(captureScript.contains("SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1"))
         XCTAssertTrue(captureScript.contains("SUISUI_DISABLE_PROJECT_BOARD_PRESENTATION_PERSISTENCE=1"))
+        XCTAssertTrue(captureScript.contains("\"$window_x\" \"$window_y\" \"$window_width\" \"$window_height\""))
+        XCTAssertTrue(targetFrameAuditor.contains("expectedWindowFrame"))
+        XCTAssertTrue(targetFrameAuditor.contains("Expected exactly one owned AX window matching the captured CG frame"))
         XCTAssertFalse(captureScript.contains("/usr/bin/osascript - \"$APP_NAME\""))
         XCTAssertFalse(captureScript.contains("tell process \"$APP_NAME\""))
         XCTAssertTrue(captureScript.contains("write_visual_baseline_capture_manifest"))

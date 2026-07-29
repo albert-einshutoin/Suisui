@@ -2,8 +2,8 @@ import ApplicationServices
 import AppKit
 import Foundation
 
-guard CommandLine.arguments.count == 5 else {
-    fputs("AX target frame audit requires app name, exact AX identifier, owned app PID, and selected window title (empty for focused window).\n", stderr)
+guard CommandLine.arguments.count == 5 || CommandLine.arguments.count == 9 else {
+    fputs("AX target frame audit requires app name, exact AX identifier, owned app PID, selected window title, and optional captured CG window x y width height.\n", stderr)
     exit(2)
 }
 
@@ -19,6 +19,21 @@ guard let rawPID = Int32(CommandLine.arguments[3]), rawPID > 0 else {
 }
 let appPID = pid_t(rawPID)
 let selectedWindowTitle = CommandLine.arguments[4]
+let expectedWindowFrame: CGRect?
+if CommandLine.arguments.count == 9 {
+    guard let x = Double(CommandLine.arguments[5]),
+          let y = Double(CommandLine.arguments[6]),
+          let width = Double(CommandLine.arguments[7]),
+          let height = Double(CommandLine.arguments[8]),
+          width > 0,
+          height > 0 else {
+        fputs("Captured CG window frame must contain numeric x y width height values.\n", stderr)
+        exit(2)
+    }
+    expectedWindowFrame = CGRect(x: x, y: y, width: width, height: height)
+} else {
+    expectedWindowFrame = nil
+}
 let environment = ProcessInfo.processInfo.environment
 let maxNodes = Int(environment["SUISUI_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
 let identityFingerprintEnabled = environment["SUISUI_UI_EVIDENCE_AX_IDENTITY_FINGERPRINT"] == "1"
@@ -108,13 +123,36 @@ guard !ownedWindows.isEmpty else {
     exit(2)
 }
 
-let selectedWindow: AXUIElement
-if !selectedWindowTitle.isEmpty {
-    let matchingWindows = ownedWindows.filter {
+let titleMatchedWindows: [AXUIElement]
+if selectedWindowTitle.isEmpty {
+    titleMatchedWindows = ownedWindows
+} else {
+    titleMatchedWindows = ownedWindows.filter {
         stringValue(copyAttribute($0, kAXTitleAttribute as CFString)) == selectedWindowTitle
     }
+}
+
+let selectedWindow: AXUIElement
+if let expectedWindowFrame {
+    // The screenshot is bound to a concrete CGWindow immediately before this
+    // audit. Match that geometry instead of focus, because a SwiftUI inspector
+    // sheet can legitimately own focus while the underlying board is captured.
+    let frameTolerance = 1.0
+    let matchingWindows = titleMatchedWindows.filter { window in
+        guard let candidate = frame(of: window) else { return false }
+        return abs(candidate.minX - expectedWindowFrame.minX) <= frameTolerance
+            && abs(candidate.minY - expectedWindowFrame.minY) <= frameTolerance
+            && abs(candidate.width - expectedWindowFrame.width) <= frameTolerance
+            && abs(candidate.height - expectedWindowFrame.height) <= frameTolerance
+    }
     guard matchingWindows.count == 1, let window = matchingWindows.first else {
-        fputs("Expected exactly one owned AX window titled \(selectedWindowTitle); found \(matchingWindows.count).\n", stderr)
+        fputs("Expected exactly one owned AX window matching the captured CG frame; found \(matchingWindows.count).\n", stderr)
+        exit(2)
+    }
+    selectedWindow = window
+} else if !selectedWindowTitle.isEmpty {
+    guard titleMatchedWindows.count == 1, let window = titleMatchedWindows.first else {
+        fputs("Expected exactly one owned AX window titled \(selectedWindowTitle); found \(titleMatchedWindows.count).\n", stderr)
         exit(2)
     }
     selectedWindow = window

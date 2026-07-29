@@ -768,6 +768,11 @@ audit_ax_target_frame() {
   local identifier="$1"
   local window_name="$2"
   local audit_mode="${3:-${AX_TARGET_FRAME_AUDIT_MODE:-receipt}}"
+  local window_x="${4:-}"
+  local window_y="${5:-}"
+  local window_width="${6:-}"
+  local window_height="${7:-}"
+  local window_frame_args=()
   local output_file
   local error_file
   local auditor_pid
@@ -778,14 +783,21 @@ audit_ax_target_frame() {
   output_file="$(mktemp "${TMPDIR:-/tmp}/suisui-ui-target-frame-output.XXXXXX")"
   error_file="$(mktemp "${TMPDIR:-/tmp}/suisui-ui-target-frame-error.XXXXXX")"
   prepare_ax_target_frame_auditor
+  if [[ -n "$window_x" || -n "$window_y" || -n "$window_width" || -n "$window_height" ]]; then
+    [[ -n "$window_x" && -n "$window_y" && -n "$window_width" && -n "$window_height" ]] || {
+      echo "AX target frame audit requires a complete captured window frame" >&2
+      return 2
+    }
+    window_frame_args=("$window_x" "$window_y" "$window_width" "$window_height")
+  fi
   if [[ "$audit_mode" == "fingerprint" ]]; then
     SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
       SUISUI_UI_EVIDENCE_AX_IDENTITY_FINGERPRINT=1 \
-      "$AX_TARGET_FRAME_AUDITOR" "$APP_NAME" "$identifier" "$EVIDENCE_APP_PID" "$window_name" \
+      "$AX_TARGET_FRAME_AUDITOR" "$APP_NAME" "$identifier" "$EVIDENCE_APP_PID" "$window_name" "${window_frame_args[@]}" \
       >"$output_file" 2>"$error_file" &
   else
     SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
-      "$AX_TARGET_FRAME_AUDITOR" "$APP_NAME" "$identifier" "$EVIDENCE_APP_PID" "$window_name" \
+      "$AX_TARGET_FRAME_AUDITOR" "$APP_NAME" "$identifier" "$EVIDENCE_APP_PID" "$window_name" "${window_frame_args[@]}" \
       >"$output_file" 2>"$error_file" &
   fi
   auditor_pid=$!
@@ -823,6 +835,10 @@ wait_for_stable_ax_target_frame() {
   local identifier="$1"
   local window_name="$2"
   local audit_mode="${3:-${AX_TARGET_FRAME_AUDIT_MODE:-receipt}}"
+  local window_x="${4:-}"
+  local window_y="${5:-}"
+  local window_width="${6:-}"
+  local window_height="${7:-}"
   local stable_samples_required=3
   local stable_samples=0
   local previous_sample=""
@@ -830,7 +846,7 @@ wait_for_stable_ax_target_frame() {
   local deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
 
   while [[ "$SECONDS" -lt "$deadline" ]]; do
-    if ! current_sample="$(audit_ax_target_frame "$identifier" "$window_name" "$audit_mode")"; then
+    if ! current_sample="$(audit_ax_target_frame "$identifier" "$window_name" "$audit_mode" "$window_x" "$window_y" "$window_width" "$window_height")"; then
       # CGWindow can publish the owned window one scheduling turn before the
       # Accessibility server publishes kAXWindows on hosted macOS runners.
       # Retry only inside the existing deadline and require a fresh sequence
@@ -1398,7 +1414,7 @@ capture_visible_window() {
     window_width="$4"
     window_height="$5"
     window_context="id=$window_id bounds=${window_width}x${window_height}+${window_x}+${window_y}"
-    target_frame_audit="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name")"
+    target_frame_audit="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name" "$AX_TARGET_FRAME_AUDIT_MODE" "$window_x" "$window_y" "$window_width" "$window_height")"
     target_frame_fingerprint="$target_frame_audit"
     target_frame_audit="$(receipt_ax_target_frame_fields "$target_frame_fingerprint")"
 
@@ -1417,7 +1433,8 @@ capture_visible_window() {
         second_window_metadata="$(wait_for_window_capture_metadata "$window_name")"
         # A fresh three-sample acquisition rejects a target that briefly
         # returns to the same frame while its SwiftUI subtree is still moving.
-        second_target_frame_fingerprint="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name")"
+        set -- $second_window_metadata
+        second_target_frame_fingerprint="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name" "$AX_TARGET_FRAME_AUDIT_MODE" "$2" "$3" "$4" "$5")"
         if [[ "$second_window_metadata" == "$window_metadata" && "$second_target_frame_fingerprint" == "$target_frame_fingerprint" ]] \
           && screencapture -x -o -l "$window_id" "$second_raster" \
           && [[ -s "$second_raster" ]] \
