@@ -46,6 +46,114 @@ final class VoiceTaskConversationOrchestratorTests: XCTestCase {
         XCTAssertTrue(plan.requiresApproval)
     }
 
+    func testGivenCompletedClarificationWhenProcessRestartsThenRestoresExactPendingReview()
+        async
+    {
+        let store = TestConversationOrchestrationStateStore()
+        let initial = makeInput(
+            route: makeRoute(transcript: "リリースタスクを作成して"),
+            requiredSlots: [.project],
+            intents: [makeCreateIntent()]
+        )
+        let first = VoiceTaskConversationOrchestrator(stateStore: store)
+        _ = await first.handle(initial)
+        let reviewed = await first.handle(
+            VoiceTaskConversationInput(
+                sessionID: initial.sessionID,
+                sourceTurnID: UUID(),
+                event: .clarificationAnswer("Launch")
+            )
+        )
+
+        let restored = await VoiceTaskConversationOrchestrator(
+            stateStore: store
+        ).handle(
+            VoiceTaskConversationInput(
+                sessionID: initial.sessionID,
+                sourceTurnID: UUID(),
+                event: .restore
+            )
+        )
+
+        XCTAssertEqual(restored, reviewed)
+        XCTAssertNotNil(try? store.load(sessionID: initial.sessionID))
+    }
+
+    func testGivenResolvedAmbiguousReferenceWhenProcessRestartsThenRestoresReviewAndTrail()
+        async
+    {
+        let store = TestConversationOrchestrationStateStore()
+        let candidates = [
+            ConversationReferenceCandidate(
+                target: .task(id: 11, projectID: 3),
+                title: "Release notes",
+                stableSortKey: "01"
+            ),
+            ConversationReferenceCandidate(
+                target: .task(id: 22, projectID: 3),
+                title: "Release build",
+                stableSortKey: "02"
+            ),
+        ]
+        let sessionID = UUID()
+        let initial = makeInput(
+            sessionID: sessionID,
+            route: makeRoute(
+                transcript: "Releaseを完了にして"
+            ),
+            intents: [
+                ConversationTaskIntent(
+                    utterance: "Releaseを完了にして",
+                    operation: .complete,
+                    tool: .taskComplete,
+                    arguments: [:],
+                    summary: "Complete selected task"
+                ),
+            ],
+            referenceRequest: VoiceTaskReferenceRequest(
+                sessionID: sessionID,
+                utterance: "Releaseを完了にして",
+                candidateOrderingFingerprint:
+                    VoiceTaskReferenceResolver.orderingFingerprint(
+                        for: candidates
+                    ),
+                candidates: candidates
+            )
+        )
+        let first = VoiceTaskConversationOrchestrator(stateStore: store)
+        _ = await first.handle(initial)
+        let reviewed = await first.handle(
+            VoiceTaskConversationInput(
+                sessionID: initial.sessionID,
+                sourceTurnID: UUID(),
+                event: .clarificationAnswer("Release build")
+            )
+        )
+
+        let restored = await VoiceTaskConversationOrchestrator(
+            stateStore: store
+        ).handle(
+            VoiceTaskConversationInput(
+                sessionID: initial.sessionID,
+                sourceTurnID: UUID(),
+                event: .restore
+            )
+        )
+        let state = try? store.load(sessionID: initial.sessionID)
+
+        XCTAssertEqual(restored, reviewed)
+        XCTAssertEqual(
+            state?.resolvedReferenceCandidate?.target,
+            .task(id: 22, projectID: 3)
+        )
+        XCTAssertEqual(
+            state?.referenceClarificationTurns.map {
+                $0.question.prompt
+            },
+            ["Which task or project did you mean?"]
+        )
+    }
+
     func testGivenCancelDuringClarificationWhenHandleThenCreatesNoPlan() async {
         let store = TestConversationOrchestrationStateStore()
         let provider = RecordingConversationProvider()
@@ -129,6 +237,72 @@ final class VoiceTaskConversationOrchestratorTests: XCTestCase {
         XCTAssertEqual(plan.actions.first?.arguments["id"], .number(22))
     }
 
+    func testGivenAmbiguousReferenceWhenAnswerThenResumesOriginalIntentWithSelectedTarget()
+        async
+    {
+        let store = TestConversationOrchestrationStateStore()
+        let orchestrator = VoiceTaskConversationOrchestrator(
+            stateStore: store
+        )
+        let sessionID = UUID()
+        let candidates = [
+            ConversationReferenceCandidate(
+                target: .task(id: 11, projectID: 3),
+                title: "Prepare review",
+                stableSortKey: "01"
+            ),
+            ConversationReferenceCandidate(
+                target: .task(id: 22, projectID: 3),
+                title: "Submit summary",
+                stableSortKey: "02"
+            ),
+        ]
+        let initial = makeInput(
+            sessionID: sessionID,
+            route: makeRoute(transcript: "Complete that task"),
+            intents: [
+                ConversationTaskIntent(
+                    utterance: "Complete that task",
+                    operation: .complete,
+                    tool: .taskComplete,
+                    arguments: [:],
+                    summary: "Complete selected task"
+                ),
+            ],
+            referenceRequest: VoiceTaskReferenceRequest(
+                sessionID: sessionID,
+                utterance: "Complete that task",
+                candidates: candidates
+            )
+        )
+
+        guard case .clarification = await orchestrator.handle(initial) else {
+            return XCTFail("Expected reference clarification")
+        }
+        XCTAssertNotNil(try? store.load(sessionID: sessionID))
+
+        let outcome = await orchestrator.handle(
+            VoiceTaskConversationInput(
+                sessionID: sessionID,
+                sourceTurnID: UUID(),
+                event: .clarificationAnswer(
+                    "Submit summary",
+                    inputMode: .typed
+                )
+            )
+        )
+
+        guard case .review(let plan) = outcome else {
+            return XCTFail("Expected resumed review, got \(outcome)")
+        }
+        XCTAssertEqual(plan.userInput, "Complete that task")
+        XCTAssertEqual(plan.actions.first?.arguments["id"], .number(22))
+        XCTAssertEqual(
+            try? store.load(sessionID: sessionID)?.pendingReviewPlan,
+            plan
+        )
+    }
+
     func testGivenTwoTaskChangesWhenHandleThenCreatesTwoPlanActions() async {
         let intents = [
             ConversationTaskIntent(
@@ -164,32 +338,33 @@ final class VoiceTaskConversationOrchestratorTests: XCTestCase {
     }
 
     func testGivenProviderUnavailableAndTaskListWhenHandleThenReturnsLocalAnswer() async {
-        let outcome = await VoiceTaskConversationOrchestrator(
-            stateStore: TestConversationOrchestrationStateStore()
-        ).handle(
-            makeInput(
-                route: makeRoute(transcript: "タスク一覧"),
-                intents: [
-                    ConversationTaskIntent(
-                        utterance: "タスク一覧",
-                        operation: .list,
-                        tool: .taskList,
-                        arguments: [:],
-                        summary: "List tasks"
-                    )
-                ],
-                localAnswerItems: [
-                    VoiceTaskConversationAnswerItem(id: "task:1", label: "Release"),
-                    VoiceTaskConversationAnswerItem(id: "task:2", label: "Docs")
-                ]
-            )
+        let store = TestConversationOrchestrationStateStore()
+        let input = makeInput(
+            route: makeRoute(transcript: "タスク一覧"),
+            intents: [
+                ConversationTaskIntent(
+                    utterance: "タスク一覧",
+                    operation: .list,
+                    tool: .taskList,
+                    arguments: [:],
+                    summary: "List tasks"
+                )
+            ],
+            localAnswerItems: [
+                VoiceTaskConversationAnswerItem(id: "task:1", label: "Release"),
+                VoiceTaskConversationAnswerItem(id: "task:2", label: "Docs")
+            ]
         )
+        let outcome = await VoiceTaskConversationOrchestrator(
+            stateStore: store
+        ).handle(input)
 
         guard case .answer(let answer) = outcome else {
             return XCTFail("Expected deterministic local answer, got \(outcome)")
         }
         XCTAssertEqual(answer.items.map(\.label), ["Release", "Docs"])
         XCTAssertEqual(answer.source, .localDeterministic)
+        XCTAssertNil(try? store.load(sessionID: input.sessionID))
     }
 
     func testGivenDeterministicTaskListWhenGenericRouterNeedsClarificationThenReturnsLocalAnswer() async {
@@ -231,16 +406,17 @@ final class VoiceTaskConversationOrchestratorTests: XCTestCase {
     }
 
     func testGivenProviderUnavailableAndFreeformPlanningWhenHandleThenReturnsBlockedReason() async {
-        let outcome = await VoiceTaskConversationOrchestrator(
-            stateStore: TestConversationOrchestrationStateStore()
-        ).handle(
-            makeInput(
-                route: makeRoute(transcript: "来週の進め方を考えて"),
-                intents: []
-            )
+        let store = TestConversationOrchestrationStateStore()
+        let input = makeInput(
+            route: makeRoute(transcript: "来週の進め方を考えて"),
+            intents: []
         )
+        let outcome = await VoiceTaskConversationOrchestrator(
+            stateStore: store
+        ).handle(input)
 
         XCTAssertEqual(outcome, .blocked(.providerUnavailable))
+        XCTAssertNil(try store.load(sessionID: input.sessionID))
     }
 
     func testGivenPersistedPausedSessionWhenResumeThenRestoresClarificationTrail() async {
@@ -290,10 +466,12 @@ final class VoiceTaskConversationOrchestratorTests: XCTestCase {
         let conversationStore = SQLiteVoiceTaskConversationStore(
             connection: connection
         )
-        let orchestrator = VoiceTaskConversationOrchestrator(
-            stateStore: SQLiteVoiceTaskConversationOrchestrationStateStore(
+        let stateStore =
+            SQLiteVoiceTaskConversationOrchestrationStateStore(
                 connection: connection
-            ),
+            )
+        let orchestrator = VoiceTaskConversationOrchestrator(
+            stateStore: stateStore,
             conversationStore: conversationStore
         )
         let originalTurnID = UUID()
@@ -319,7 +497,7 @@ final class VoiceTaskConversationOrchestratorTests: XCTestCase {
             )
         )
         guard case .review(let plan) = outcome else {
-            return XCTFail("Expected review")
+            return XCTFail("Expected review, got \(outcome)")
         }
         let queueItem = AssistantQueueAdapter.makeItem(
             actionPlan: plan,
@@ -335,20 +513,25 @@ final class VoiceTaskConversationOrchestratorTests: XCTestCase {
             confirmedText: plan.userInput,
             plan: plan,
             queueItem: queueItem,
-            at: Date(timeIntervalSince1970: 10)
+            at: Date().addingTimeInterval(1)
         )
 
         XCTAssertNotNil(
             try conversationStore.loadSession(id: initial.sessionID)
         )
-        XCTAssertEqual(
-            try conversationStore.listTurns(
-                sessionID: initial.sessionID,
-                before: nil,
-                limit: 10
-            ).map(\.id),
-            [originalTurnID]
+        let turns = try conversationStore.listTurns(
+            sessionID: initial.sessionID,
+            before: nil,
+            limit: 10
         )
+        XCTAssertEqual(turns.map(\.author), [.user, .assistant, .user])
+        XCTAssertEqual(
+            turns.map(\.userConfirmedText),
+            ["Launch", nil, nil]
+        )
+        XCTAssertEqual(turns[1].rawTranscript, "Which project should this belong to?")
+        XCTAssertEqual(turns.last?.rawTranscript, "リリースタスクを作成して")
+        XCTAssertEqual(turns.last?.id, originalTurnID)
         let link = try XCTUnwrap(
             conversationStore.latestActionLink(
                 assistantQueueItemID: queueItem.id
@@ -357,6 +540,92 @@ final class VoiceTaskConversationOrchestratorTests: XCTestCase {
         XCTAssertEqual(link.sourceTurnID, originalTurnID)
         XCTAssertEqual(link.actionPlanID, plan.id)
         XCTAssertEqual(link.assistantQueueItemID, queueItem.id)
+        XCTAssertNotNil(
+            try stateStore.load(sessionID: initial.sessionID)
+        )
+        try await orchestrator.acknowledgeReviewPublication(
+            sessionID: initial.sessionID
+        )
+        XCTAssertNil(try stateStore.load(sessionID: initial.sessionID))
+    }
+
+    func testGivenVoiceClarificationWhenPersistLinkThenKeepsAnswerUnderRawRetention()
+        async throws
+    {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        let conversationStore = SQLiteVoiceTaskConversationStore(
+            connection: connection
+        )
+        let stateStore =
+            SQLiteVoiceTaskConversationOrchestrationStateStore(
+                connection: connection
+            )
+        let orchestrator = VoiceTaskConversationOrchestrator(
+            stateStore: stateStore,
+            conversationStore: conversationStore
+        )
+        let initial = makeInput(
+            route: makeRoute(transcript: "リリースタスクを作成して"),
+            requiredSlots: [.project],
+            intents: [makeCreateIntent()]
+        )
+        _ = await orchestrator.handle(initial)
+        let outcome = await orchestrator.handle(
+            VoiceTaskConversationInput(
+                sessionID: initial.sessionID,
+                sourceTurnID: UUID(),
+                event: .clarificationAnswer(
+                    "Launch",
+                    inputMode: .voice
+                )
+            )
+        )
+        guard case .review(let plan) = outcome else {
+            return XCTFail("Expected review, got \(outcome)")
+        }
+        let queueItem = AssistantQueueAdapter.makeItem(
+            actionPlan: plan,
+            sourceTranscript: plan.userInput,
+            interpretationSummary: plan.summary,
+            reason: "Review",
+            costPreview: .localOnly()
+        )
+        try await orchestrator.persistReviewLink(
+            sessionID: initial.sessionID,
+            fallbackSourceTurnID: UUID(),
+            confirmedText: plan.userInput,
+            plan: plan,
+            queueItem: queueItem,
+            at: Date()
+        )
+
+        var turns = try conversationStore.listTurns(
+            sessionID: initial.sessionID,
+            before: nil,
+            limit: 10
+        )
+        let voiceAnswer = try XCTUnwrap(
+            turns.first { $0.rawTranscript == "Launch" }
+        )
+        XCTAssertNil(voiceAnswer.userConfirmedText)
+
+        _ = try conversationStore.deleteSession(
+            id: initial.sessionID,
+            scope: .rawTranscripts
+        )
+        turns = try conversationStore.listTurns(
+            sessionID: initial.sessionID,
+            before: nil,
+            limit: 10
+        )
+        XCTAssertTrue(turns.allSatisfy { $0.rawTranscript == nil })
+        XCTAssertFalse(
+            turns.contains { $0.userConfirmedText == "Launch" }
+        )
     }
 
     func testGivenPersistedPausedSessionWhenRestoreThenReturnsCurrentQuestion() async {
@@ -429,7 +698,12 @@ final class VoiceTaskConversationOrchestratorTests: XCTestCase {
         )
 
         XCTAssertEqual(outcome, .review(expectedPlan))
-        XCTAssertNil(try? store.load(sessionID: initial.sessionID))
+        XCTAssertEqual(
+            try? store.load(
+                sessionID: initial.sessionID
+            )?.pendingReviewPlan,
+            expectedPlan
+        )
         let request = provider.requests.first
         XCTAssertEqual(provider.requestCount, 1)
         XCTAssertTrue(request?.userInput.contains("Original transcript:") ?? false)

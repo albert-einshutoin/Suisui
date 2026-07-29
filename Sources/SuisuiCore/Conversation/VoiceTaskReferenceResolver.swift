@@ -1,18 +1,55 @@
 import CryptoKit
 import Foundation
 
-public enum ConversationResolvedTarget: Equatable, Hashable, Sendable {
+public enum ConversationResolvedTarget: Codable, Equatable, Hashable, Sendable {
     case task(id: Int64, projectID: Int64?)
     case project(id: Int64)
 }
 
-public enum ConversationReferenceCandidateAvailability: Equatable, Hashable, Sendable {
+public enum ConversationReferenceCandidateAvailability:
+    Equatable,
+    Hashable,
+    Sendable,
+    Codable
+{
     case available
     case deleted
     case stale
+
+    public init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        switch value {
+        case "available":
+            self = .available
+        case "deleted":
+            self = .deleted
+        case "stale":
+            self = .stale
+        default:
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription:
+                        "Unknown conversation reference availability."
+                )
+            )
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .available:
+            try container.encode("available")
+        case .deleted:
+            try container.encode("deleted")
+        case .stale:
+            try container.encode("stale")
+        }
+    }
 }
 
-public struct ConversationReferenceCandidate: Equatable, Sendable {
+public struct ConversationReferenceCandidate: Codable, Equatable, Sendable {
     public let target: ConversationResolvedTarget
     public let title: String
     /// Stable, caller-defined ordering identity. The resolver preserves the
