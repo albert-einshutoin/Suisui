@@ -1,8 +1,8 @@
 # MCP Inspector Evidence
 
-Generated: 2026-07-27T20:52:29Z
+Generated: 2026-07-29T14:24:36Z
 
-- Source commit: `0009ace2`
+- Source commit: `22388067`
 
 Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and Suisui's local JSON-RPC smoke checks.
 
@@ -80,6 +80,7 @@ $ npx --loglevel error -y @modelcontextprotocol/inspector --cli node fixtures/mc
     }
   ]
 }
+
 exit: 0
 ```
 
@@ -96,6 +97,7 @@ $ npx --loglevel error -y @modelcontextprotocol/inspector --cli node fixtures/mc
   ],
   "isError": false
 }
+
 exit: 0
 ```
 
