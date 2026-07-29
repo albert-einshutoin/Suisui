@@ -14,9 +14,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         try connection.execute(
             """
             INSERT INTO projects (id, title, status)
-            VALUES (7, 'Launch', 'active');
+            VALUES (7, 'Launch', 'active'),
+                   (8, 'Follow-up', 'active');
             INSERT INTO tasks (id, project_id, title, status)
-            VALUES (11, 7, 'Ship alpha', 'todo');
+            VALUES (11, 7, 'Ship alpha', 'todo'),
+                   (12, 8, 'Collect feedback', 'todo');
             """
         )
         let store = SQLiteVoiceTaskConversationStore(connection: connection)
@@ -43,6 +45,25 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(created.activeTaskID, 11)
         XCTAssertEqual(created.entryPoint, .taskInspector)
         XCTAssertEqual(viewModel.conversationWorkspaceScope, scope)
+
+        let updatedScope =
+            VoiceTaskConversationWorkspacePresentation.Scope(
+                projectName: "Follow-up",
+                taskName: "Collect feedback",
+                sessionTitle: "Collect feedback"
+            )
+        viewModel.configureConversationWorkspace(
+            store: store,
+            scope: updatedScope,
+            activeProjectID: 8,
+            activeTaskID: 12,
+            entryPoint: .taskInspector
+        )
+        let updated = try XCTUnwrap(store.loadSession(id: sessionID))
+        XCTAssertEqual(updated.activeProjectID, 8)
+        XCTAssertEqual(updated.activeTaskID, 12)
+        XCTAssertEqual(updated.title, "Collect feedback")
+        XCTAssertEqual(viewModel.conversationWorkspaceScope, updatedScope)
 
         viewModel.pauseConversationWorkspace()
         XCTAssertEqual(viewModel.conversationWorkspaceSessionState, .paused)
@@ -741,8 +762,14 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         XCTAssertEqual(viewModel.phase, .reviewReady)
-        XCTAssertEqual(store.savedItems.map(\.id), ["action-plan:plan-persisted"])
-        XCTAssertEqual(store.savedItems.map(\.state), [.waitingReview])
+        XCTAssertEqual(
+            store.savedItems.map(\.id),
+            ["action-plan:plan-persisted"]
+        )
+        XCTAssertEqual(
+            store.savedItems.map(\.state),
+            [.waitingReview]
+        )
         XCTAssertEqual(try? store.get(id: "action-plan:plan-persisted"), viewModel.assistantQueueItem)
     }
 
@@ -932,7 +959,10 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         viewModel.deferAssistantQueueItem()
         viewModel.rejectAssistantQueueItem()
 
-        XCTAssertEqual(store.savedItems.map(\.state), [.waitingReview, .approved, .deferred, .rejected])
+        XCTAssertEqual(
+            store.savedItems.map(\.state),
+            [.waitingReview, .approved, .deferred, .rejected]
+        )
         XCTAssertEqual((try? store.get(id: "action-plan:plan-transition-persisted"))?.state, .rejected)
     }
 
@@ -1674,6 +1704,70 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         ])
     }
 
+    func testResolvedReferencePresentationUsesOrchestratorTargetNotActiveScope()
+        async
+    {
+        let plan = ActionPlan(
+            id: "resolved-reference-plan",
+            userInput: "Release buildを完了にして",
+            summary: "Complete Release build",
+            actions: [
+                PlanAction(
+                    id: "action-1",
+                    tool: .taskComplete,
+                    arguments: ["id": .number(22)]
+                ),
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        let orchestrator = ResolutionReportingConversationOrchestrator(
+            outcome: .review(plan),
+            resolvedReference: VoiceTaskConversationResolvedReference(
+                candidate: ConversationReferenceCandidate(
+                    target: .task(id: 22, projectID: 3),
+                    title: "Release build",
+                    stableSortKey: "02"
+                ),
+                reason: "Matched a unique name."
+            )
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(
+                transcript: STTTranscript(text: "")
+            ),
+            llmProvider: FakeLLMProvider(
+                response: PlanningResponse(
+                    providerID: "unused",
+                    rawContent: "{}",
+                    actionPlan: nil,
+                    validationResult: .init(issues: [])
+                )
+            ),
+            conversationOrchestrator: orchestrator,
+            conversationSessionID: UUID()
+        )
+
+        viewModel.updateDraftText("Release buildを完了にして")
+        await viewModel.generatePlan()
+
+        XCTAssertEqual(
+            viewModel.conversationWorkspaceResolvedTarget,
+            .init(
+                title: "Release build",
+                reason: "Matched a unique name."
+            )
+        )
+
+        viewModel.updateDraftText("別のタスクを作成して")
+
+        XCTAssertNil(viewModel.conversationWorkspaceResolvedTarget)
+        XCTAssertTrue(
+            viewModel.conversationWorkspaceFactCandidates.isEmpty
+        )
+    }
+
     func testDeterministicConversationAnswerPublishesStructuredTaskItems() async {
         let items = [
             VoiceTaskConversationAnswerItem(
@@ -1787,6 +1881,13 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(reviews.first?.plan, plan)
         XCTAssertEqual(reviews.first?.queueItem.id, queueItem.id)
         XCTAssertEqual(reviews.first?.confirmedText, plan.userInput)
+        XCTAssertTrue(queueItem.requiresConversationActionLink)
+        XCTAssertNil(queueItem.sourceTranscript)
+        guard case let .actionPlan(minimizedPlan) = queueItem.payload else {
+            return XCTFail("Conversation review must retain an ActionPlan")
+        }
+        XCTAssertNotEqual(minimizedPlan.userInput, plan.userInput)
+        XCTAssertEqual(minimizedPlan.actions, plan.actions)
     }
 
     func testOrchestratedReviewWithoutReviewLinkPersisterDoesNotPublishQueueItem() async {
@@ -1986,6 +2087,72 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(queueStore.savedItems.map(\.state), [.waitingReview])
         let reviews = await orchestrator.persistedReviews
         XCTAssertEqual(reviews.count, 1)
+    }
+
+    func testOrchestratedReviewRecoversPublishedQueueBeforeCheckpointAcknowledgement()
+        async throws
+    {
+        let plan = ActionPlan(
+            id: "orchestrated-publication-crash-plan",
+            userInput: "これ明日やって",
+            summary: "Create release task",
+            actions: [
+                PlanAction(
+                    id: "action-create",
+                    tool: .taskCreate,
+                    arguments: ["title": .string("Write release notes")]
+                ),
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        let queueStore = RecordingAssistantQueueStore()
+        let orchestrator = RecordingReviewPersistingConversationOrchestrator(
+            outcomes: [.review(plan), .review(plan)],
+            failedAcknowledgements: 1
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(
+                transcript: STTTranscript(text: "")
+            ),
+            llmProvider: FakeLLMProvider(
+                response: PlanningResponse(
+                    providerID: "unused",
+                    rawContent: "{}",
+                    actionPlan: nil,
+                    validationResult: .init(issues: [])
+                )
+            ),
+            assistantQueueStore: queueStore,
+            conversationOrchestrator: orchestrator,
+            conversationSessionID: UUID()
+        )
+
+        viewModel.updateDraftText(plan.userInput)
+        await viewModel.generatePlan()
+        guard case .failed = viewModel.phase else {
+            return XCTFail("Failed checkpoint acknowledgement must be visible")
+        }
+        XCTAssertEqual(
+            queueStore.savedItems.map(\.state),
+            [.blocked, .waitingReview]
+        )
+
+        await viewModel.generatePlan()
+
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertEqual(viewModel.assistantQueueItem?.state, .waitingReview)
+        XCTAssertEqual(
+            queueStore.savedItems.map(\.state),
+            [.blocked, .waitingReview]
+        )
+        let acknowledgementAttempts =
+            await orchestrator.acknowledgementAttempts
+        let persistedReviewCount =
+            await orchestrator.persistedReviews.count
+        XCTAssertEqual(acknowledgementAttempts, 2)
+        XCTAssertEqual(persistedReviewCount, 1)
     }
 
     func testRestoreConversationPublishesPersistedClarificationQuestion() async {
@@ -2542,6 +2709,64 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: outputURL.path))
     }
 
+    func testStartupSweepDeletesOnlyStaleEphemeralVoiceRecordings()
+        throws
+    {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date(timeIntervalSince1970: 100_000)
+        let staleConversation = directory.appendingPathComponent(
+            "suisui-conversation-\(UUID().uuidString).m4a"
+        )
+        let recentSegment = directory.appendingPathComponent(
+            "suisui-low-latency-\(UUID().uuidString).m4a"
+        )
+        let inboxEligibleRecording = directory.appendingPathComponent(
+            "suisui-recording-\(UUID().uuidString).m4a"
+        )
+        for url in [
+            staleConversation,
+            recentSegment,
+            inboxEligibleRecording,
+        ] {
+            try Data("audio".utf8).write(to: url)
+        }
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-7_200)],
+            ofItemAtPath: staleConversation.path
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-60)],
+            ofItemAtPath: recentSegment.path
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-7_200)],
+            ofItemAtPath: inboxEligibleRecording.path
+        )
+
+        let failures =
+            VoiceCaptureViewModel.removeStaleTemporaryVoiceRecordings(
+                in: directory,
+                now: now,
+                minimumAge: 3_600
+            )
+
+        XCTAssertEqual(failures, 0)
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: staleConversation.path
+            )
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: recentSegment.path)
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: inboxEligibleRecording.path
+            )
+        )
+    }
+
     func testSaveDraftToInboxPersistsRecordedTranscriptAfterTranscription() async {
         let task = ProjectBoardTask(
             id: 42,
@@ -2845,6 +3070,12 @@ final class VoiceCaptureViewModelTests: XCTestCase {
     }
 
     func testLowLatencyAgentModeUsesSegmentedLocalBatchTranscriptionWhenProviderDoesNotStream() async throws {
+        let segmentURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "suisui-low-latency-\(UUID().uuidString).m4a"
+            )
+        try Data("audio".utf8).write(to: segmentURL)
+        defer { try? FileManager.default.removeItem(at: segmentURL) }
         let sttProvider = FakeSTTProvider(id: .whisperCpp, transcript: STTTranscript(text: "Slackに今すぐ送信して"))
         let llmProvider = RecordingVoiceLLMProvider(response: PlanningResponse(
             providerID: "recording",
@@ -2863,7 +3094,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
                 )
             },
             lowLatencySegmentDuration: 0,
-            lowLatencySegmentOutputURLProvider: { URL(filePath: "/tmp/suisui-low-latency-segment.m4a") }
+            lowLatencySegmentOutputURLProvider: { segmentURL }
         )
 
         await viewModel.startLowLatencyVoiceAgentMode()
@@ -2874,10 +3105,13 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.phase, .reviewReady)
         XCTAssertEqual(viewModel.lowLatencyVoiceAgentState, .idle)
         XCTAssertEqual(viewModel.recordingState, .completed(RecordedAudio(
-            fileURL: URL(filePath: "/tmp/suisui-low-latency-segment.m4a"),
+            fileURL: segmentURL,
             format: .m4a,
             duration: viewModel.recordingState.completedAudioDuration
         )))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: segmentURL.path)
+        )
         XCTAssertEqual(item.state, .blocked)
         XCTAssertTrue(llmProvider.requests.isEmpty)
     }
@@ -3739,9 +3973,39 @@ private actor RecordingVoiceConversationOrchestrator:
     }
 }
 
+private actor ResolutionReportingConversationOrchestrator:
+    VoiceTaskConversationOrchestrating,
+    VoiceTaskConversationResolutionReporting
+{
+    private let outcome: VoiceTaskConversationOutcome
+    private let reference: VoiceTaskConversationResolvedReference
+
+    init(
+        outcome: VoiceTaskConversationOutcome,
+        resolvedReference: VoiceTaskConversationResolvedReference
+    ) {
+        self.outcome = outcome
+        reference = resolvedReference
+    }
+
+    func handle(
+        _: VoiceTaskConversationInput
+    ) -> VoiceTaskConversationOutcome {
+        outcome
+    }
+
+    func resolvedReference(
+        sessionID _: UUID
+    ) -> VoiceTaskConversationResolvedReference? {
+        reference
+    }
+}
+
 private actor RecordingReviewPersistingConversationOrchestrator:
     VoiceTaskConversationOrchestrating,
-    VoiceTaskConversationReviewLinkPersisting
+    VoiceTaskConversationReviewLinkPersisting,
+    VoiceTaskConversationReviewPublicationAcknowledging,
+    VoiceTaskConversationReviewPublicationReconciling
 {
     struct PersistedReview: Equatable {
         let sessionID: UUID
@@ -3753,9 +4017,15 @@ private actor RecordingReviewPersistingConversationOrchestrator:
 
     private var outcomes: [VoiceTaskConversationOutcome]
     private(set) var persistedReviews: [PersistedReview] = []
+    private var failedAcknowledgements: Int
+    private(set) var acknowledgementAttempts = 0
 
-    init(outcomes: [VoiceTaskConversationOutcome]) {
+    init(
+        outcomes: [VoiceTaskConversationOutcome],
+        failedAcknowledgements: Int = 0
+    ) {
         self.outcomes = outcomes
+        self.failedAcknowledgements = failedAcknowledgements
     }
 
     func handle(
@@ -3784,5 +4054,27 @@ private actor RecordingReviewPersistingConversationOrchestrator:
                 queueItem: queueItem
             )
         )
+    }
+
+    func acknowledgeReviewPublication(sessionID _: UUID) throws {
+        acknowledgementAttempts += 1
+        if failedAcknowledgements > 0 {
+            failedAcknowledgements -= 1
+            throw AssistantQueueStoreError.saveFailed
+        }
+    }
+
+    func hasMatchingPublishedReview(
+        sessionID: UUID,
+        plan: ActionPlan,
+        queueItem: AssistantQueueItem
+    ) -> Bool {
+        persistedReviews.contains {
+            $0.sessionID == sessionID
+                && $0.plan.id == plan.id
+                && $0.queueItem.id == queueItem.id
+                && $0.queueItem.contentFingerprint
+                    == queueItem.contentFingerprint
+        }
     }
 }

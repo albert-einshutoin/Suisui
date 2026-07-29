@@ -79,6 +79,9 @@ struct VoiceTaskConversationWorkspaceView: View {
         .onAppear {
             viewModel.refreshConversationWorkspaceCloseout()
         }
+        .onDisappear {
+            viewModel.releaseTemporaryRecordingResources()
+        }
         .onReceive(
             NotificationCenter.default.publisher(
                 for: .suisuiProjectBoardDidChange
@@ -122,6 +125,10 @@ struct VoiceTaskConversationWorkspaceView: View {
             clarificationQuestion: viewModel.clarificationQuestion,
             planningResponse: viewModel.planningResponse,
             assistantQueueItem: viewModel.assistantQueueItem,
+            resolvedTarget:
+                viewModel.conversationWorkspaceResolvedTarget,
+            factCandidates:
+                viewModel.conversationWorkspaceFactCandidates,
             closeout: viewModel.conversationWorkspaceCloseout
         )
         return VoiceTaskConversationWorkspacePresentation(

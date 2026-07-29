@@ -54,6 +54,26 @@ final class VoiceTaskConversationWorkspaceSourceTests: XCTestCase {
         )
     }
 
+    func testGivenVoiceWindowClosesWhenRenderThenReleasesTemporaryRecording()
+        throws
+    {
+        let capture = try source(
+            "Sources/SuisuiApp/Views/VoiceCaptureView.swift"
+        )
+        let workspace = try source(
+            "Sources/SuisuiApp/Views/VoiceTaskConversationWorkspaceView.swift"
+        )
+
+        for source in [capture, workspace] {
+            XCTAssertTrue(source.contains(".onDisappear"))
+            XCTAssertTrue(
+                source.contains(
+                    "viewModel.releaseTemporaryRecordingResources()"
+                )
+            )
+        }
+    }
+
     func testGivenClarificationWhenRenderThenFocusesSingleQuestion() throws {
         let workspace = try source("Sources/SuisuiApp/Views/VoiceTaskConversationWorkspaceView.swift")
         XCTAssertTrue(workspace.contains("voice-conversation-clarification"))
@@ -62,19 +82,29 @@ final class VoiceTaskConversationWorkspaceSourceTests: XCTestCase {
     }
 
     func testGivenResolvedReferenceWhenRenderThenShowsTargetAndReason() throws {
+        let workspace = try source("Sources/SuisuiApp/Views/VoiceTaskConversationWorkspaceView.swift")
         let understanding = try source("Sources/SuisuiApp/Views/VoiceTaskConversationUnderstandingView.swift")
         XCTAssertTrue(understanding.contains("voice-conversation-resolved-target"))
         XCTAssertTrue(understanding.contains("presentation.resolvedTarget"))
         XCTAssertTrue(understanding.contains("presentation.resolutionReason"))
+        XCTAssertTrue(workspace.contains("resolvedTarget:"))
+        XCTAssertTrue(
+            workspace.contains("viewModel.conversationWorkspaceResolvedTarget")
+        )
     }
 
     func testGivenFactCandidatesWhenRenderThenShowsStateAndSource() throws {
+        let workspace = try source("Sources/SuisuiApp/Views/VoiceTaskConversationWorkspaceView.swift")
         let understanding = try source("Sources/SuisuiApp/Views/VoiceTaskConversationUnderstandingView.swift")
         let presentation = try source("Sources/SuisuiCore/Voice/VoiceTaskConversationWorkspacePresentation.swift")
         XCTAssertTrue(understanding.contains("voice-conversation-fact-candidates"))
         XCTAssertTrue(understanding.contains("fact.stateLabel"))
         XCTAssertTrue(understanding.contains("fact.sourceLabel"))
         XCTAssertTrue(presentation.contains("redactedPreview"))
+        XCTAssertTrue(workspace.contains("factCandidates:"))
+        XCTAssertTrue(
+            workspace.contains("viewModel.conversationWorkspaceFactCandidates")
+        )
     }
 
     func testGivenWaitingReviewWhenRenderThenShowsQueueHandoffNotRun() throws {

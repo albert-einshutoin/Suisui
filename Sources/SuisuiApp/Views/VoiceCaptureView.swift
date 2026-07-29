@@ -120,6 +120,9 @@ struct VoiceCaptureView: View {
         .task {
             await viewModel.restoreConversationIfNeeded()
         }
+        .onDisappear {
+            viewModel.releaseTemporaryRecordingResources()
+        }
         .onChange(of: viewModel.dailyPlanningReviewRequest) { _, request in
             guard let request else { return }
             postDailyPlanningReviewRequest(request)

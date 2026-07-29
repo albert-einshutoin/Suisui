@@ -128,6 +128,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
         VoiceTaskConversationWorkspacePresentation.SessionState?
     @Published public private(set) var conversationWorkspaceCloseout =
         VoiceTaskConversationWorkspacePresentation.Closeout()
+    @Published public private(set) var conversationWorkspaceResolvedTarget:
+        VoiceTaskConversationWorkspacePresentation.ResolvedTarget?
+    @Published public private(set) var conversationWorkspaceFactCandidates:
+        [VoiceTaskConversationWorkspacePresentation.FactCandidate] = []
     @Published private var orchestratedClarificationQuestion: ClarificationQuestion?
 
     private var audioRecorder: any AudioRecorder
@@ -206,6 +210,11 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 .appendingPathComponent("suisui-low-latency-\(UUID().uuidString).m4a")
         }
     ) {
+        let staleRecordingCleanupFailures =
+            Self.removeStaleTemporaryVoiceRecordings(
+                in: FileManager.default.temporaryDirectory,
+                now: Date()
+            )
         self.draft = draft
         self.phase = phase
         self.audioRecorder = audioRecorder
@@ -232,7 +241,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.lowLatencySegmentDuration = lowLatencySegmentDuration
         self.lowLatencySegmentOutputURLProvider = lowLatencySegmentOutputURLProvider
         self.recordingState = audioRecorder.state
-        self.auditErrorMessage = nil
+        self.auditErrorMessage = staleRecordingCleanupFailures == 0
+            ? nil
+            : "Some expired temporary voice recordings could not be removed."
         self.routingResult = draft.canGeneratePlan ? commandRouter.route(transcript: draft.normalizedText) : nil
         self.clarificationSession = nil
         self.assistantQueueItem = nil
@@ -331,9 +342,41 @@ public final class VoiceCaptureViewModel: ObservableObject {
     ) {
         conversationWorkspaceStore = store
         conversationWorkspaceScope = scope
+        // Scope is shown separately in the workspace header. Calling it a
+        // resolved reference would mislead reviewers when speech resolves to
+        // a different Task or Project.
+        conversationWorkspaceResolvedTarget = nil
+        conversationWorkspaceFactCandidates = []
         do {
             let session: VoiceTaskConversationSession
-            if let existing = try store.loadSession(id: conversationSessionID) {
+            if var existing = try store.loadSession(id: conversationSessionID) {
+                if existing.activeProjectID != activeProjectID
+                    || existing.activeTaskID != activeTaskID
+                    || existing.title != scope.sessionTitle
+                {
+                    let expectedUpdatedAt = existing.updatedAt
+                    let nextUpdateValue = max(
+                        Date().timeIntervalSinceReferenceDate,
+                        expectedUpdatedAt.timeIntervalSinceReferenceDate.nextUp
+                    )
+                    let updatedAt = Date(
+                        timeIntervalSinceReferenceDate: nextUpdateValue
+                    )
+                    try existing.setActiveContext(
+                        projectID: activeProjectID,
+                        taskID: activeTaskID,
+                        resumeSummary: scope.accessibilityValue,
+                        at: updatedAt
+                    )
+                    try existing.updateTitle(
+                        scope.sessionTitle,
+                        at: updatedAt
+                    )
+                    try store.updateSession(
+                        existing,
+                        expectedUpdatedAt: expectedUpdatedAt
+                    )
+                }
                 session = existing
             } else {
                 let created = VoiceTaskConversationSession(
@@ -379,6 +422,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         activeTaskID: Int64?
     ) {
         conversationWorkspaceScope = scope
+        conversationWorkspaceResolvedTarget = nil
+        conversationWorkspaceFactCandidates = []
         mutateConversationWorkspaceSession { session, date in
             try session.updateTitle(scope.sessionTitle, at: date)
             try session.setActiveContext(
@@ -650,6 +695,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
         draft.text = text
         conversationWorkspaceLocalAnswerItems = []
+        conversationWorkspaceResolvedTarget = nil
+        conversationWorkspaceFactCandidates = []
         planningResponse = nil
         clarificationSession = nil
         cancelOrchestratedClarificationIfNeeded()
@@ -674,6 +721,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         audioRecorder.reset()
         draft = TranscriptDraft()
         conversationWorkspaceLocalAnswerItems = []
+        conversationWorkspaceResolvedTarget = nil
+        conversationWorkspaceFactCandidates = []
         planningResponse = nil
         recordedAudio = nil
         auditErrorMessage = nil
@@ -876,6 +925,16 @@ public final class VoiceCaptureViewModel: ObservableObject {
                         conversationWorkspaceSession?.activeTaskID,
                     at: currentDate
                 ) {
+                    conversationWorkspaceFactCandidates =
+                        prepared.referenceRequest?.confirmedFacts.map {
+                            VoiceTaskConversationWorkspacePresentation
+                                .FactCandidate(
+                                    id: $0.id,
+                                    preview: $0.value,
+                                    stateLabel: $0.state.rawValue,
+                                    sourceLabel: $0.author.rawValue
+                                )
+                        } ?? []
                     let outcome = await conversationOrchestrator.handle(
                         VoiceTaskConversationInput(
                             sessionID: conversationSessionID,
@@ -1234,6 +1293,19 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private func applyConversationOutcome(
         _ outcome: VoiceTaskConversationOutcome
     ) async {
+        if let reporter = conversationOrchestrator
+            as? any VoiceTaskConversationResolutionReporting,
+           let resolved = await reporter.resolvedReference(
+               sessionID: conversationSessionID
+           )
+        {
+            conversationWorkspaceResolvedTarget = .init(
+                title: resolved.candidate.title,
+                reason: resolved.reason
+            )
+        } else {
+            conversationWorkspaceResolvedTarget = nil
+        }
         switch outcome {
         case .clarification(let question):
             conversationWorkspaceLocalAnswerItems = []
@@ -1375,6 +1447,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
                     continuation.finish()
                     return
                 }
+                var ownedSegmentURL: URL?
+                defer {
+                    if let ownedSegmentURL {
+                        removeOwnedTemporaryRecording(
+                            at: ownedSegmentURL
+                        )
+                    }
+                }
                 do {
                     let startedAt = Date()
                     try await audioRecorder.start(at: startedAt)
@@ -1384,8 +1464,11 @@ public final class VoiceCaptureViewModel: ObservableObject {
                             nanoseconds: UInt64(max(lowLatencySegmentDuration, 0) * 1_000_000_000)
                         )
                     }
+                    let outputURL =
+                        lowLatencySegmentOutputURLProvider()
+                    ownedSegmentURL = outputURL
                     let audio = try audioRecorder.stop(
-                        outputURL: lowLatencySegmentOutputURLProvider(),
+                        outputURL: outputURL,
                         at: Date()
                     )
                     recordingState = audioRecorder.state
@@ -1514,6 +1597,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
         else {
             return
         }
+        removeOwnedTemporaryRecording(at: url)
+    }
+
+    private func removeOwnedTemporaryRecording(at url: URL) {
         let temporaryRoot =
             FileManager.default.temporaryDirectory.standardizedFileURL.path
         let candidate = url.standardizedFileURL.path
@@ -1523,6 +1610,68 @@ public final class VoiceCaptureViewModel: ObservableObject {
             return
         }
         try? FileManager.default.removeItem(at: url)
+    }
+
+    /// Sweeps only UUID-named files owned by Suisui and old enough that no
+    /// active recording window should still reference them. This bounds raw
+    /// audio lifetime after a crash, while avoiding caller-owned temp files.
+    @discardableResult
+    static func removeStaleTemporaryVoiceRecordings(
+        in directory: URL,
+        now: Date,
+        minimumAge: TimeInterval = 24 * 60 * 60,
+        fileManager: FileManager = .default
+    ) -> Int {
+        let prefixes = [
+            "suisui-conversation-",
+            "suisui-low-latency-",
+        ]
+        let keys: Set<URLResourceKey> = [
+            .isRegularFileKey,
+            .isSymbolicLinkKey,
+            .contentModificationDateKey,
+        ]
+        guard let candidates = try? fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: Array(keys),
+            options: [.skipsHiddenFiles]
+        ) else {
+            return 1
+        }
+        let cutoff = now.addingTimeInterval(-max(0, minimumAge))
+        var failures = 0
+        for candidate in candidates {
+            let name = candidate.lastPathComponent
+            guard name.hasSuffix(".m4a"),
+                  let prefix = prefixes.first(where: name.hasPrefix)
+            else {
+                continue
+            }
+            let identifier = String(
+                name.dropFirst(prefix.count).dropLast(".m4a".count)
+            )
+            guard UUID(uuidString: identifier) != nil,
+                  let values = try? candidate.resourceValues(
+                      forKeys: keys
+                  ),
+                  values.isRegularFile == true,
+                  values.isSymbolicLink != true,
+                  let modifiedAt = values.contentModificationDate,
+                  modifiedAt <= cutoff
+            else {
+                continue
+            }
+            do {
+                try fileManager.removeItem(at: candidate)
+            } catch let error as CocoaError
+                where error.code == .fileNoSuchFile
+            {
+                // Another window may have completed the same bounded sweep.
+            } catch {
+                failures += 1
+            }
+        }
+        return failures
     }
 
     private func clearLiveVoiceAgentState() {
@@ -2335,13 +2484,18 @@ public final class VoiceCaptureViewModel: ObservableObject {
         guard conversationOrchestrator != nil else {
             return try persistNewAssistantQueueItemIfNeeded(queueItem)
         }
+        // Conversation Turns are the retention-controlled source of raw STT.
+        // The durable Queue keeps the reviewed semantics but must not become a
+        // second, indefinitely retained copy of speech the user never confirmed.
+        let conversationQueueItem =
+            queueItem.minimizingUnapprovedConversationTranscript()
         guard let assistantQueueStore else {
             try await persistConversationReviewLink(
                 plan: plan,
-                queueItem: queueItem,
+                queueItem: conversationQueueItem,
                 at: date
             )
-            return queueItem
+            return conversationQueueItem
         }
         guard conversationOrchestrator
                 is any VoiceTaskConversationReviewLinkPersisting
@@ -2352,27 +2506,40 @@ public final class VoiceCaptureViewModel: ObservableObject {
         // These stores cannot share one transaction. Keep the provisional
         // queue row blocked until its causal Action Link is durable, so another
         // window cannot approve unaudited work in the publication gap.
-        var provisional = queueItem
+        var provisional = conversationQueueItem
         provisional.state = .blocked
         provisional.approval = nil
         provisional.blockingReason =
             Self.pendingConversationEvidenceBlockingReason
-        let persistedProvisional =
-            try persistConversationProvisionalIfSafe(provisional)
-        assistantQueueItem = persistedProvisional
+        let persistence = try persistConversationProvisionalIfSafe(
+            provisional,
+            published: conversationQueueItem
+        )
+        let persistedItem = persistence.item
+        assistantQueueItem = persistedItem
         do {
+            if persistence.isAlreadyPublished {
+                guard try await hasMatchingPublishedConversationReview(
+                    plan: plan,
+                    queueItem: persistedItem
+                ) else {
+                    throw AssistantQueueStaleReviewError()
+                }
+                try await acknowledgeConversationReviewPublication()
+                return persistedItem
+            }
             try await persistConversationReviewLink(
                 plan: plan,
-                queueItem: persistedProvisional,
+                queueItem: persistedItem,
                 at: date
             )
             guard let expectedRevision =
-                persistedProvisional.mutationRevision
+                persistedItem.mutationRevision
             else {
                 throw AssistantQueueStaleReviewError()
             }
-            return try assistantQueueStore.transition(
-                id: persistedProvisional.id
+            let published = try assistantQueueStore.transition(
+                id: persistedItem.id
             ) { current in
                 guard current.mutationRevision == expectedRevision,
                       current.state == .blocked,
@@ -2380,32 +2547,62 @@ public final class VoiceCaptureViewModel: ObservableObject {
                       current.blockingReason ==
                         Self.pendingConversationEvidenceBlockingReason,
                       current.contentFingerprint ==
-                        persistedProvisional.contentFingerprint
+                        persistedItem.contentFingerprint
                 else {
                     throw AssistantQueueStaleReviewError()
                 }
                 var published = current
-                published.state = queueItem.state
-                published.blockingReason = queueItem.blockingReason
+                published.state = conversationQueueItem.state
+                published.blockingReason =
+                    conversationQueueItem.blockingReason
                 published.approval = nil
                 return published
             }
+            try await acknowledgeConversationReviewPublication()
+            return published
         } catch {
             blockConversationQueueItemAfterLinkFailure()
             throw error
         }
     }
 
+    private struct ConversationQueuePersistence {
+        let item: AssistantQueueItem
+        let isAlreadyPublished: Bool
+    }
+
     private func persistConversationProvisionalIfSafe(
-        _ provisional: AssistantQueueItem
-    ) throws -> AssistantQueueItem {
+        _ provisional: AssistantQueueItem,
+        published: AssistantQueueItem
+    ) throws -> ConversationQueuePersistence {
         guard let assistantQueueStore else {
-            return provisional
+            return ConversationQueuePersistence(
+                item: provisional,
+                isAlreadyPublished: false
+            )
         }
         if let inserted = try assistantQueueStore.insertIfAbsent(provisional) {
-            return inserted
+            return ConversationQueuePersistence(
+                item: inserted,
+                isAlreadyPublished: false
+            )
         }
         let existing = try assistantQueueStore.get(id: provisional.id)
+        if existing.state == published.state,
+           existing.approval == nil,
+           existing.blockingReason == published.blockingReason,
+           existing.contentFingerprint == published.contentFingerprint,
+           existing.requiresConversationActionLink,
+           existing.mutationRevision == published.mutationRevision
+        {
+            // The link bundle may have committed before the process exited
+            // between Queue publication and checkpoint acknowledgement.
+            // Revalidate the same review link before acknowledging recovery.
+            return ConversationQueuePersistence(
+                item: existing,
+                isAlreadyPublished: true
+            )
+        }
         // An ID collision is only a retry when it is exactly the provisional
         // row this flow previously published. Content, state, reason, approval,
         // and revision all participate so approved/running/terminal or foreign
@@ -2415,11 +2612,41 @@ public final class VoiceCaptureViewModel: ObservableObject {
               existing.blockingReason ==
                 Self.pendingConversationEvidenceBlockingReason,
               existing.contentFingerprint == provisional.contentFingerprint,
-              existing.mutationRevision != nil
+              existing.mutationRevision == provisional.mutationRevision
         else {
             throw AssistantQueueStaleReviewError()
         }
-        return existing
+        return ConversationQueuePersistence(
+            item: existing,
+            isAlreadyPublished: false
+        )
+    }
+
+    private func acknowledgeConversationReviewPublication() async throws {
+        guard let acknowledger = conversationOrchestrator
+            as? any VoiceTaskConversationReviewPublicationAcknowledging
+        else {
+            return
+        }
+        try await acknowledger.acknowledgeReviewPublication(
+            sessionID: conversationSessionID
+        )
+    }
+
+    private func hasMatchingPublishedConversationReview(
+        plan: ActionPlan,
+        queueItem: AssistantQueueItem
+    ) async throws -> Bool {
+        guard let reconciler = conversationOrchestrator
+            as? any VoiceTaskConversationReviewPublicationReconciling
+        else {
+            return false
+        }
+        return try await reconciler.hasMatchingPublishedReview(
+            sessionID: conversationSessionID,
+            plan: plan,
+            queueItem: queueItem
+        )
     }
 
     private func blockConversationQueueItemAfterLinkFailure() {
