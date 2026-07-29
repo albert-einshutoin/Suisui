@@ -392,7 +392,8 @@ final class ArchitectureBoundaryTests: XCTestCase {
             "public struct AssistantQueueExecutionCoordinator",
             "AssistantQueueStateMachine.startRunning",
             "id: \"assistant-queue-item:\\(running.id)\"",
-            "executor.execute(session",
+            "executedSession = try executor.execute(",
+            "session: session",
             "ExecutionReceiptFactory.makeAssistantQueueReceipt",
             "ManagedAIUsageLedgerStore"
         ] {
