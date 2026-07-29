@@ -245,7 +245,7 @@ run_all() {
 
   ax_set_text "voice-conversation-input" "$COMMAND_LIST" || fail "task_list" "ax" "conversation_input_missing"
   ax_press "voice-conversation-send-review" || fail "task_list" "ax" "conversation_send_missing"
-  wait_for_marker "voice-conversation-turn-list" "$TASK_TWO_TITLE" || fail "task_list" "plan" "deterministic_task_list_missing"
+  wait_for_marker "voice-conversation-task-list-answer" "$TASK_TWO_TITLE" || fail "task_list" "plan" "deterministic_task_list_missing"
   write_witness "task_list" "listed_task_ids=$TASK_ONE_ID,$TASK_TWO_ID"
 
   ax_set_text "voice-conversation-input" "$COMMAND_UPDATE" || fail "reference_selection" "ax" "conversation_input_missing"

@@ -192,6 +192,44 @@ final class VoiceTaskConversationOrchestratorTests: XCTestCase {
         XCTAssertEqual(answer.source, .localDeterministic)
     }
 
+    func testGivenDeterministicTaskListWhenGenericRouterNeedsClarificationThenReturnsLocalAnswer() async {
+        let route = VoiceCommandRouter().route(transcript: "List tasks")
+        XCTAssertTrue(route.needsClarification)
+
+        let outcome = await VoiceTaskConversationOrchestrator(
+            stateStore: TestConversationOrchestrationStateStore()
+        ).handle(
+            makeInput(
+                route: route,
+                intents: [
+                    ConversationTaskIntent(
+                        utterance: "List tasks",
+                        operation: .list,
+                        tool: .taskList,
+                        arguments: ["projectId": .number(7)],
+                        summary: "List current tasks"
+                    )
+                ],
+                localAnswerItems: [
+                    VoiceTaskConversationAnswerItem(
+                        id: "task:11",
+                        label: "Prepare review"
+                    ),
+                    VoiceTaskConversationAnswerItem(
+                        id: "task:22",
+                        label: "Submit summary"
+                    )
+                ]
+            )
+        )
+
+        guard case .answer(let answer) = outcome else {
+            return XCTFail("Expected deterministic local answer, got \(outcome)")
+        }
+        XCTAssertEqual(answer.items.map(\.id), ["task:11", "task:22"])
+        XCTAssertEqual(answer.source, .localDeterministic)
+    }
+
     func testGivenProviderUnavailableAndFreeformPlanningWhenHandleThenReturnsBlockedReason() async {
         let outcome = await VoiceTaskConversationOrchestrator(
             stateStore: TestConversationOrchestrationStateStore()

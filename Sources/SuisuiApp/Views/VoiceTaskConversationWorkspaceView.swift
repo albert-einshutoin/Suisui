@@ -97,6 +97,11 @@ struct VoiceTaskConversationWorkspaceView: View {
                 presentation: presentation,
                 onLoadEarlier: viewModel.loadEarlierConversationTurns
             )
+            if !viewModel.conversationWorkspaceLocalAnswerItems.isEmpty {
+                VoiceTaskConversationLocalAnswer(
+                    items: viewModel.conversationWorkspaceLocalAnswerItems
+                )
+            }
             if let clarification = presentation.clarification {
                 VoiceTaskConversationClarification(
                     clarification: clarification,
@@ -137,6 +142,24 @@ struct VoiceTaskConversationWorkspaceView: View {
             queueHandoff: current.queueHandoff,
             closeout: current.closeout
         )
+    }
+}
+
+private struct VoiceTaskConversationLocalAnswer: View {
+    let items: [VoiceTaskConversationAnswerItem]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
+            Label("Task list", systemImage: "checklist")
+                .font(.headline)
+            ForEach(items, id: \.id) { item in
+                Text(verbatim: item.label)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .soloCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("voice-conversation-task-list-answer")
     }
 }
 

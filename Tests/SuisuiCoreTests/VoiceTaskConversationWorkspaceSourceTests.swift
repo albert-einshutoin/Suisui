@@ -88,6 +88,28 @@ final class VoiceTaskConversationWorkspaceSourceTests: XCTestCase {
         XCTAssertFalse(understanding.contains("executeAssistantQueue"))
     }
 
+    func testGivenDeterministicTaskListWhenRenderThenShowsStructuredItems() throws {
+        let workspace = try source(
+            "Sources/SuisuiApp/Views/VoiceTaskConversationWorkspaceView.swift"
+        )
+        let viewModel = try source(
+            "Sources/SuisuiCore/Voice/VoiceCaptureViewModel.swift"
+        )
+
+        XCTAssertTrue(
+            workspace.contains("voice-conversation-task-list-answer")
+        )
+        XCTAssertTrue(
+            workspace.contains("conversationWorkspaceLocalAnswerItems")
+        )
+        XCTAssertTrue(
+            viewModel.contains("conversationWorkspaceLocalAnswerItems")
+        )
+        XCTAssertTrue(
+            viewModel.contains("answer.source == .localDeterministic")
+        )
+    }
+
     func testGivenStoreFailureWhenComposeRuntimeThenShowsBlockedState() throws {
         let presentation = try source("Sources/SuisuiCore/Voice/VoiceTaskConversationWorkspacePresentation.swift")
         let workspace = try source("Sources/SuisuiApp/Views/VoiceTaskConversationWorkspaceView.swift")

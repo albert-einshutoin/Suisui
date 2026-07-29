@@ -1624,6 +1624,55 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         ])
     }
 
+    func testDeterministicConversationAnswerPublishesStructuredTaskItems() async {
+        let items = [
+            VoiceTaskConversationAnswerItem(
+                id: "task:11",
+                label: "Prepare review"
+            ),
+            VoiceTaskConversationAnswerItem(
+                id: "task:22",
+                label: "Submit summary"
+            ),
+        ]
+        let orchestrator = RecordingVoiceConversationOrchestrator(
+            outcomes: [
+                .answer(
+                    VoiceTaskConversationAnswer(
+                        text: "Prepare review\nSubmit summary",
+                        items: items,
+                        source: .localDeterministic
+                    )
+                ),
+            ]
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(
+                transcript: STTTranscript(text: "")
+            ),
+            llmProvider: FakeLLMProvider(
+                response: PlanningResponse(
+                    providerID: "unused",
+                    rawContent: "{}",
+                    actionPlan: nil,
+                    validationResult: ActionPlanValidationResult(issues: [])
+                )
+            ),
+            conversationOrchestrator: orchestrator,
+            conversationSessionID: UUID()
+        )
+
+        viewModel.updateDraftText("List tasks")
+        await viewModel.generatePlan()
+
+        XCTAssertEqual(
+            viewModel.conversationWorkspaceLocalAnswerItems,
+            items
+        )
+        XCTAssertEqual(viewModel.phase, .idle)
+    }
+
     func testOrchestratedReviewPersistsQueueBoundConversationLink() async throws {
         let plan = ActionPlan(
             id: "orchestrated-linked-plan",

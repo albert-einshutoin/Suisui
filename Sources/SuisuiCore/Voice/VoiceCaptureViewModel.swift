@@ -122,6 +122,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         [VoiceTaskConversationWorkspacePresentation.Turn] = []
     @Published public private(set) var conversationWorkspaceTurnListState:
         VoiceTaskConversationWorkspacePresentation.TurnListState = .empty
+    @Published public private(set) var conversationWorkspaceLocalAnswerItems:
+        [VoiceTaskConversationAnswerItem] = []
     @Published public private(set) var conversationWorkspaceSessionState:
         VoiceTaskConversationWorkspacePresentation.SessionState?
     @Published public private(set) var conversationWorkspaceCloseout =
@@ -641,6 +643,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             return
         }
         draft.text = text
+        conversationWorkspaceLocalAnswerItems = []
         planningResponse = nil
         clarificationSession = nil
         cancelOrchestratedClarificationIfNeeded()
@@ -663,6 +666,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         stopInputLevelMonitoring()
         audioRecorder.reset()
         draft = TranscriptDraft()
+        conversationWorkspaceLocalAnswerItems = []
         planningResponse = nil
         recordedAudio = nil
         auditErrorMessage = nil
@@ -1203,10 +1207,12 @@ public final class VoiceCaptureViewModel: ObservableObject {
     ) async {
         switch outcome {
         case .clarification(let question):
+            conversationWorkspaceLocalAnswerItems = []
             clarificationSession = nil
             orchestratedClarificationQuestion = question
             phase = .needsClarification(question.prompt)
         case .review(let plan):
+            conversationWorkspaceLocalAnswerItems = []
             orchestratedClarificationQuestion = nil
             let validation = ActionPlanValidator().validate(plan)
             let response = PlanningResponse(
@@ -1251,6 +1257,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
             }
         case .answer(let answer):
             orchestratedClarificationQuestion = nil
+            conversationWorkspaceLocalAnswerItems =
+                answer.source == .localDeterministic
+                ? answer.items
+                : []
             workspaceAnswer = .answered(
                 text: answer.text,
                 contextCount: answer.items.count
@@ -1260,9 +1270,11 @@ public final class VoiceCaptureViewModel: ObservableObject {
             }
             phase = .idle
         case .canceled:
+            conversationWorkspaceLocalAnswerItems = []
             orchestratedClarificationQuestion = nil
             phase = .idle
         case .blocked:
+            conversationWorkspaceLocalAnswerItems = []
             orchestratedClarificationQuestion = nil
             phase = .failed(
                 "Voice conversation could not continue safely. Please try again."

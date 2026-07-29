@@ -262,7 +262,14 @@ public actor VoiceTaskConversationOrchestrator:
                 resolvedIntents = intents
             }
 
-            if !requiredSlots.isEmpty || route.needsClarification {
+            // A deterministic preparer has already converted the utterance
+            // into typed intents. In that case the generic router's low
+            // confidence must not invent an unrelated clarification (for
+            // example, asking for a project after a scoped "List tasks").
+            // Explicit missing slots still win and are asked one at a time.
+            if !requiredSlots.isEmpty
+                || (resolvedIntents.isEmpty && route.needsClarification)
+            {
                 let clarification = ClarificationSession(
                     route: route,
                     requiredSlots: requiredSlots.isEmpty ? nil : requiredSlots
