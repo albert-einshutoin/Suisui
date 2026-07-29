@@ -9111,6 +9111,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(captureScript.contains("press_project_sidebar_row"))
         XCTAssertTrue(captureScript.contains("launch_destination=\"$selected_destination\""))
         XCTAssertTrue(captureScript.contains("SUISUI_WINDOW_OWNER_PID=\"$EVIDENCE_APP_PID\""))
+        XCTAssertTrue(captureScript.contains("SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1"))
+        XCTAssertTrue(captureScript.contains("SUISUI_DISABLE_PROJECT_BOARD_PRESENTATION_PERSISTENCE=1"))
         XCTAssertFalse(captureScript.contains("/usr/bin/osascript - \"$APP_NAME\""))
         XCTAssertFalse(captureScript.contains("tell process \"$APP_NAME\""))
         XCTAssertTrue(captureScript.contains("write_visual_baseline_capture_manifest"))

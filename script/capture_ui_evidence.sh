@@ -403,6 +403,11 @@ ui_evidence_source_commit() {
 
 app_env_args() {
   local args=("SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1")
+  # A capture must have one canonical AX window and must not inherit or mutate
+  # a developer's saved board geometry. Duplicate fallback windows make a
+  # focused-window audit nondeterministic even when both belong to this PID.
+  args+=("SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1")
+  args+=("SUISUI_DISABLE_PROJECT_BOARD_PRESENTATION_PERSISTENCE=1")
   args+=("HOME=$EVIDENCE_HOME")
   args+=("CFFIXED_USER_HOME=$EVIDENCE_HOME")
   args+=("TZ=$EVIDENCE_TIME_ZONE")
