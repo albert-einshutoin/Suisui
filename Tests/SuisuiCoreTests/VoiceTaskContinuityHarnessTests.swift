@@ -89,6 +89,8 @@ final class VoiceTaskContinuityHarnessTests: XCTestCase {
         XCTAssertTrue(source.contains("ui_evidence_ax_text_input.swift"))
         XCTAssertTrue(source.contains("ui_evidence_ax_press_element.swift"))
         XCTAssertTrue(source.contains("\"$app_pid\""))
+        XCTAssertTrue(source.contains("deadline=$((SECONDS + TIMEOUT_SECONDS))"))
+        XCTAssertTrue(source.contains("[[ \"$SECONDS\" -lt \"$deadline\" ]] || return 1"))
     }
 
     private func runtimeScript() throws -> String {

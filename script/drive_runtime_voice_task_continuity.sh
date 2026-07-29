@@ -134,23 +134,37 @@ wait_for_marker() {
 
 ax_set_text() {
   local identifier="$1" value="$2"
-  ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
-  /usr/bin/swift \
-    "$ROOT_DIR/script/ui_evidence_ax_text_input.swift" \
-    "$app_pid" \
-    "$identifier" \
-    "$value" \
-    >/dev/null
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
+    if /usr/bin/swift \
+      "$ROOT_DIR/script/ui_evidence_ax_text_input.swift" \
+      "$app_pid" \
+      "$identifier" \
+      "$value" \
+      >/dev/null 2>&1; then
+      return 0
+    fi
+    [[ "$SECONDS" -lt "$deadline" ]] || return 1
+    sleep 0.5
+  done
 }
 
 ax_press() {
   local identifier="$1"
-  ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
-  /usr/bin/swift \
-    "$ROOT_DIR/script/ui_evidence_ax_press_element.swift" \
-    "$app_pid" \
-    "$identifier" \
-    >/dev/null
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
+    if /usr/bin/swift \
+      "$ROOT_DIR/script/ui_evidence_ax_press_element.swift" \
+      "$app_pid" \
+      "$identifier" \
+      >/dev/null 2>&1; then
+      return 0
+    fi
+    [[ "$SECONDS" -lt "$deadline" ]] || return 1
+    sleep 0.5
+  done
 }
 
 task_digest() {
