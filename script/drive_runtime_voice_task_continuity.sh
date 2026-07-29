@@ -136,6 +136,25 @@ ax_set_text() {
   local identifier="$1" value="$2"
   ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
   /usr/bin/osascript - "$app_pid" "$identifier" "$value" <<'APPLESCRIPT' >/dev/null
+on setMatchingIdentifier(uiElement, targetIdentifier, replacement)
+  tell application "System Events"
+    set identifierValue to ""
+    try
+      set identifierValue to value of attribute "AXIdentifier" of uiElement as text
+    end try
+    if identifierValue is targetIdentifier then
+      set value of uiElement to replacement
+      return true
+    end if
+    try
+      repeat with childElement in UI elements of uiElement
+        if my setMatchingIdentifier(childElement, targetIdentifier, replacement) then return true
+      end repeat
+    end try
+  end tell
+  return false
+end setMatchingIdentifier
+
 on run argv
   set appPID to (item 1 of argv) as integer
   set requestedIdentifier to item 2 of argv
@@ -150,16 +169,7 @@ on run argv
         try
           perform action "AXRaise" of currentWindow
         end try
-        repeat with itemRef in entire contents of currentWindow
-          set identifierValue to ""
-          try
-            set identifierValue to value of attribute "AXIdentifier" of itemRef as text
-          end try
-          if identifierValue contains requestedIdentifier then
-            set value of itemRef to replacement
-            return
-          end if
-        end repeat
+        if my setMatchingIdentifier(currentWindow, requestedIdentifier, replacement) then return
       end repeat
     end tell
   end tell
@@ -172,6 +182,32 @@ ax_press() {
   local identifier="$1"
   ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
   /usr/bin/osascript - "$app_pid" "$identifier" <<'APPLESCRIPT' >/dev/null
+on pressMatchingIdentifier(uiElement, targetIdentifier)
+  tell application "System Events"
+    set identifierValue to ""
+    try
+      set identifierValue to value of attribute "AXIdentifier" of uiElement as text
+    end try
+    if identifierValue is targetIdentifier then
+      try
+        perform action "AXPress" of uiElement
+        return true
+      end try
+      try
+        click uiElement
+        return true
+      end try
+      return false
+    end if
+    try
+      repeat with childElement in UI elements of uiElement
+        if my pressMatchingIdentifier(childElement, targetIdentifier) then return true
+      end repeat
+    end try
+  end tell
+  return false
+end pressMatchingIdentifier
+
 on run argv
   set appPID to (item 1 of argv) as integer
   set requestedIdentifier to item 2 of argv
@@ -185,22 +221,7 @@ on run argv
         try
           perform action "AXRaise" of currentWindow
         end try
-        repeat with itemRef in entire contents of currentWindow
-          set identifierValue to ""
-          try
-            set identifierValue to value of attribute "AXIdentifier" of itemRef as text
-          end try
-          if identifierValue contains requestedIdentifier then
-            set enabledValue to true
-            try
-              set enabledValue to enabled of itemRef as boolean
-            end try
-            if enabledValue then
-              perform action "AXPress" of itemRef
-              return
-            end if
-          end if
-        end repeat
+        if my pressMatchingIdentifier(currentWindow, requestedIdentifier) then return
       end repeat
     end tell
   end tell
