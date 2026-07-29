@@ -11,8 +11,9 @@ public enum VoiceTaskConversationRawAudioRetentionDisposition: String, Equatable
 /// accidentally turn a retention audit into another sensitive-content store.
 public struct VoiceTaskConversationRetentionPolicy: Equatable, Sendable {
     /// Removes raw STT text and orchestration checkpoints that duplicate the
-    /// original transcript. User-confirmed display text remains available
-    /// until the containing Session is explicitly deleted.
+    /// original transcript. Text is only stored as confirmed after a distinct
+    /// user approval, and remains available until the containing Session is
+    /// explicitly deleted.
     public let transcriptRetention: TimeInterval
     public let referenceRetention: TimeInterval
     public let rawAudioDisposition: VoiceTaskConversationRawAudioRetentionDisposition
@@ -111,13 +112,18 @@ public struct VoiceTaskConversationRetentionOrchestrationState:
 {
     public let sessionID: UUID
     public let originalSourceTurnCreatedAt: Date
+    /// A malformed checkpoint cannot safely resume. Retention treats it as an
+    /// isolated deletion target without exposing its encoded contents.
+    public let requiresSafeDeletion: Bool
 
     public init(
         sessionID: UUID,
-        originalSourceTurnCreatedAt: Date
+        originalSourceTurnCreatedAt: Date,
+        requiresSafeDeletion: Bool = false
     ) {
         self.sessionID = sessionID
         self.originalSourceTurnCreatedAt = originalSourceTurnCreatedAt
+        self.requiresSafeDeletion = requiresSafeDeletion
     }
 }
 
@@ -358,7 +364,8 @@ public struct VoiceTaskConversationRetentionPlanner: Sendable {
                     snapshot.orchestrationStates.filter {
                         // A later clarification answer must not extend the
                         // lifetime of the original sensitive utterance.
-                        $0.originalSourceTurnCreatedAt <= transcriptExpiry
+                        $0.requiresSafeDeletion
+                            || $0.originalSourceTurnCreatedAt <= transcriptExpiry
                     }.map(\.sessionID)
                 )
             )

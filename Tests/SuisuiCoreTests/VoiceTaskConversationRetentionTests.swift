@@ -239,6 +239,96 @@ final class VoiceTaskConversationRetentionTests: XCTestCase {
         )
     }
 
+    func testGivenCompletedPlanWithOrchestrationStateWhenRetriedThenIsIdempotent()
+        throws
+    {
+        let fixture = try makeSQLiteFixture()
+        let stateStore = SQLiteVoiceTaskConversationOrchestrationStateStore(
+            connection: fixture.connection
+        )
+        try stateStore.save(makeOrchestrationState(in: fixture))
+        let snapshot = try fixture.store.retentionSnapshot(
+            for: .transcriptOnly(sessionID: fixture.session.id)
+        )
+        let plan = planner.plan(
+            at: now,
+            policy: .init(),
+            snapshot: snapshot
+        )
+
+        XCTAssertEqual(
+            try fixture.store.executeRetention(
+                reviewedPlan: plan,
+                at: now,
+                policy: .init()
+            ),
+            .completed(planID: plan.id)
+        )
+        XCTAssertEqual(
+            try fixture.store.executeRetention(
+                reviewedPlan: plan,
+                at: now,
+                policy: .init()
+            ),
+            .alreadyCompleted(planID: plan.id)
+        )
+    }
+
+    func testGivenCorruptOrchestrationPayloadWhenCleanupThenQuarantinesItAndContinues()
+        throws
+    {
+        let fixture = try makeSQLiteFixture()
+        let stateStore = SQLiteVoiceTaskConversationOrchestrationStateStore(
+            connection: fixture.connection
+        )
+        try stateStore.save(makeOrchestrationState(in: fixture))
+        let corruptSession = VoiceTaskConversationSession(
+            title: "Corrupt checkpoint",
+            entryPoint: .voiceCommand,
+            createdAt: now
+        )
+        try fixture.store.createSession(corruptSession)
+        try fixture.connection.execute(
+            """
+            INSERT INTO voice_task_conversation_orchestration_states (
+                session_id, payload, updated_at
+            )
+            VALUES (?, ?, ?);
+            """,
+            parameters: [
+                .text(corruptSession.id.uuidString),
+                // SQLite affinity does not prevent a damaged writer from
+                // storing the wrong storage class in a BLOB column.
+                .text("sensitive malformed body"),
+                .real(now.timeIntervalSince1970),
+            ]
+        )
+
+        let snapshot = try fixture.store.retentionSnapshot(
+            for: .expiredTranscripts
+        )
+        let plan = planner.plan(
+            at: now,
+            policy: .init(),
+            snapshot: snapshot
+        )
+
+        XCTAssertEqual(
+            Set(plan.targets.orchestrationStateSessionIDs),
+            [fixture.session.id, corruptSession.id]
+        )
+        XCTAssertEqual(
+            try fixture.store.executeRetention(
+                reviewedPlan: plan,
+                at: now,
+                policy: .init()
+            ),
+            .completed(planID: plan.id)
+        )
+        XCTAssertNil(try stateStore.load(sessionID: fixture.session.id))
+        XCTAssertNil(try stateStore.load(sessionID: corruptSession.id))
+    }
+
     func testGivenOrchestrationStateAddedAfterReviewWhenExecuteThenRequiresReview()
         throws
     {

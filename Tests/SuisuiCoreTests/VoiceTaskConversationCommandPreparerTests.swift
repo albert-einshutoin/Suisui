@@ -4,6 +4,59 @@ import XCTest
 final class VoiceTaskConversationCommandPreparerTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_930_000_000)
 
+    func testGivenUnapprovedTaskListSpeechWhenRetentionExpiresThenItsBodyIsScrubbed()
+        throws
+    {
+        let fixture = try makeFixture()
+        let sourceTurnID = UUID()
+
+        _ = try fixture.preparer.prepare(
+            transcript: "List tasks",
+            sessionID: fixture.sessionID,
+            sourceTurnID: sourceTurnID,
+            selectedProjectID: nil,
+            selectedTaskID: nil,
+            at: now
+        )
+
+        let turn = try XCTUnwrap(
+            fixture.store.listTurns(
+                sessionID: fixture.sessionID,
+                before: nil,
+                limit: 1
+            ).first
+        )
+        XCTAssertEqual(turn.id, sourceTurnID)
+        XCTAssertEqual(turn.rawTranscript, "List tasks")
+        XCTAssertNil(turn.userConfirmedText)
+
+        let retentionDate = now.addingTimeInterval(31 * 86_400)
+        let snapshot = try fixture.store.retentionSnapshot(
+            for: .expiredTranscripts
+        )
+        let policy = VoiceTaskConversationRetentionPolicy()
+        let plan = VoiceTaskConversationRetentionPlanner().plan(
+            at: retentionDate,
+            policy: policy,
+            snapshot: snapshot
+        )
+        _ = try fixture.store.executeRetention(
+            reviewedPlan: plan,
+            at: retentionDate,
+            policy: policy
+        )
+
+        let scrubbed = try XCTUnwrap(
+            fixture.store.listTurns(
+                sessionID: fixture.sessionID,
+                before: nil,
+                limit: 1
+            ).first
+        )
+        XCTAssertNil(scrubbed.rawTranscript)
+        XCTAssertNil(scrubbed.userConfirmedText)
+    }
+
     func testGivenTaskListThenSecondTaskUpdateWhenClarifiedThenBuildsReview()
         async throws
     {

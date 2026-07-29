@@ -194,8 +194,11 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
             id: sourceTurnID,
             sessionID: sessionID,
             author: .user,
-            rawTranscript: nil,
-            userConfirmedText: transcript,
+            // Listing is a read-only voice command, not an explicit approval.
+            // Keep its STT body in the short-lived field so routine retention
+            // cannot accidentally preserve recognition output indefinitely.
+            rawTranscript: transcript,
+            userConfirmedText: nil,
             createdAt: date
         )
         let fingerprint = VoiceTaskReferenceResolver.orderingFingerprint(

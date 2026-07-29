@@ -983,16 +983,17 @@ public final class SQLiteVoiceTaskConversationStore:
                 column: "session_id",
                 entity: "orchestration_state"
             )
-            let payload = try row.data("payload")
-            guard let state = try? decoder.decode(
+            guard let payload = try? row.data("payload"),
+                  let state = try? decoder.decode(
                 VoiceTaskConversationOrchestrationState.self,
                 from: payload
             ),
                   state.sessionID == storedSessionID
             else {
-                throw VoiceTaskConversationStoreError.corruptRow(
-                    entity: "orchestration_state",
-                    identifier: storedSessionID.uuidString
+                return VoiceTaskConversationRetentionOrchestrationState(
+                    sessionID: storedSessionID,
+                    originalSourceTurnCreatedAt: .distantPast,
+                    requiresSafeDeletion: true
                 )
             }
             let sourceRows = try connection.materializedRows(
@@ -1011,9 +1012,10 @@ public final class SQLiteVoiceTaskConversationStore:
                       entity: "turn"
                   ) == storedSessionID
             else {
-                throw VoiceTaskConversationStoreError.corruptRow(
-                    entity: "orchestration_state_source_turn",
-                    identifier: state.originalSourceTurnID.uuidString
+                return VoiceTaskConversationRetentionOrchestrationState(
+                    sessionID: storedSessionID,
+                    originalSourceTurnCreatedAt: .distantPast,
+                    requiresSafeDeletion: true
                 )
             }
             return VoiceTaskConversationRetentionOrchestrationState(
@@ -1074,24 +1076,34 @@ public final class SQLiteVoiceTaskConversationStore:
             )
             if remaining != 0 { return false }
         }
-        for (table, identifiers) in [
+        for (table, identifierColumn, identifiers) in [
             (
                 "voice_task_conversation_references",
+                "id",
                 targets.referenceIDs
             ),
-            ("conversation_action_links", targets.actionLinkIDs),
+            (
+                "conversation_action_links",
+                "id",
+                targets.actionLinkIDs
+            ),
             (
                 "voice_task_conversation_sessions",
+                "id",
                 targets.sessionIDs
             ),
             (
                 "voice_task_conversation_orchestration_states",
+                "session_id",
                 targets.orchestrationStateSessionIDs
             ),
         ] {
             for id in identifiers {
                 let remaining = try scalarCount(
-                    "SELECT COUNT(*) FROM \(table) WHERE id = ?;",
+                    """
+                    SELECT COUNT(*) FROM \(table)
+                    WHERE \(identifierColumn) = ?;
+                    """,
                     parameters: [.text(id.uuidString)]
                 )
                 if remaining != 0 { return false }
