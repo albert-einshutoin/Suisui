@@ -5287,7 +5287,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             return
         }
         do {
-            let item = AssistantQueueAdapter.makeItem(
+            var item = AssistantQueueAdapter.makeItem(
                 actionPlan: approvedAutomationActionPlan(
                     for: selectedTask,
                     reviewReason: reviewDecision.reason
@@ -5297,6 +5297,12 @@ public final class ProjectBoardViewModel: ObservableObject {
                 reason: reviewDecision.reason,
                 costPreview: .localOnly()
             )
+            // Keep the queue entry non-actionable until the durable start
+            // receipt exists. The queue and receipt stores cannot participate
+            // in one transaction, so publishing waitingReview first could
+            // expose work that has no auditable execution reservation.
+            item.state = .blocked
+            item.blockingReason = String(localized: "Execution receipt reservation must complete before this automation can be reviewed.")
             guard let inserted = try assistantQueueStore.insertIfAbsent(item) else {
                 _ = refreshAssistantQueueSnapshot()
                 errorMessage = String(localized: "This reviewed automation is already in Assistant Queue. Review the existing item before running it.")
@@ -5312,13 +5318,30 @@ public final class ProjectBoardViewModel: ObservableObject {
                     createdAt: Date()
                 )
             ) == nil else {
+                _ = refreshAssistantQueueSnapshot()
                 return
             }
             guard let insertedMutationRevision = inserted.mutationRevision else {
                 throw AssistantQueueStaleReviewError()
             }
-            let approved = try assistantQueueStore.transition(id: inserted.id) { current in
+            let reviewable = try assistantQueueStore.transition(id: inserted.id) { current in
                 guard current.mutationRevision == insertedMutationRevision else {
+                    throw AssistantQueueStaleReviewError()
+                }
+                // This is a publication barrier rather than a user transition:
+                // only the successful receipt reservation may expose review
+                // controls for this previously blocked provisional item.
+                var updated = current
+                updated.state = .waitingReview
+                updated.blockingReason = nil
+                updated.approval = nil
+                return updated
+            }
+            guard let reviewableMutationRevision = reviewable.mutationRevision else {
+                throw AssistantQueueStaleReviewError()
+            }
+            let approved = try assistantQueueStore.transition(id: reviewable.id) { current in
+                guard current.mutationRevision == reviewableMutationRevision else {
                     throw AssistantQueueStaleReviewError()
                 }
                 return try AssistantQueueStateMachine.approve(
@@ -7022,16 +7045,6 @@ public final class ProjectBoardViewModel: ObservableObject {
         id: String,
         expectedMutationRevision: String
     ) -> Bool {
-        runAssistantQueueItem(
-            id: id,
-            expectedMutationRevision: Optional(expectedMutationRevision)
-        )
-    }
-
-    private func runAssistantQueueItem(
-        id: String,
-        expectedMutationRevision: String?
-    ) -> Bool {
         guard let assistantQueueExecutionCoordinator = resolvedAssistantQueueExecutionCoordinator else {
             _ = refreshAssistantQueueSnapshot()
             errorMessage = "Assistant Queue execution is unavailable in this build."
@@ -7040,15 +7053,10 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         do {
-            let result: AssistantQueueExecutionResult
-            if let expectedMutationRevision {
-                result = try assistantQueueExecutionCoordinator.execute(
-                    id: id,
-                    expectedMutationRevision: expectedMutationRevision
-                )
-            } else {
-                result = try assistantQueueExecutionCoordinator.execute(id: id)
-            }
+            let result = try assistantQueueExecutionCoordinator.execute(
+                id: id,
+                expectedMutationRevision: expectedMutationRevision
+            )
             _ = refreshAssistantQueueSnapshot()
             refreshExecutionReceiptHistorySnapshot()
             if result.item.state == .done {

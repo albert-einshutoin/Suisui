@@ -2394,6 +2394,12 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertFalse(unchangedTask.detail.contains("Suisui approved automation execution"))
         XCTAssertNil(viewModel.lastApprovedAutomationExecutionReceipt)
         XCTAssertTrue(viewModel.approvedAutomationExecutionReceipts.isEmpty)
+        let queueItems = try subject.assistantQueueStore.list(filter: .all())
+        XCTAssertEqual(queueItems.map(\.state), [.blocked])
+        XCTAssertTrue(queueItems.allSatisfy { !AssistantQueueStateMachine.hasCurrentApproval($0) })
+        XCTAssertTrue(queueItems.allSatisfy { $0.blockingReason?.contains("receipt reservation") == true })
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.count, 1)
+        XCTAssertTrue(viewModel.assistantQueueSnapshot.rows.allSatisfy { !$0.canApprove && !$0.canRun })
         XCTAssertEqual(
             viewModel.todayCommandFeedback,
             "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work."
