@@ -2126,6 +2126,18 @@ public enum CoreMigrations {
                     """
                 )
             },
+            DatabaseMigration(
+                id: "0034_mark_conversation_origin_queue_items"
+            ) { connection in
+                try connection.execute(
+                    """
+                    ALTER TABLE assistant_queue_items
+                    ADD COLUMN requires_conversation_action_link
+                        INTEGER NOT NULL DEFAULT 0
+                        CHECK(requires_conversation_action_link IN (0, 1));
+                    """
+                )
+            },
         ]
     }
 }

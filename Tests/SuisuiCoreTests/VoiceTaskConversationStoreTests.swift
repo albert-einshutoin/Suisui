@@ -3,6 +3,249 @@ import XCTest
 @testable import SuisuiCore
 
 final class VoiceTaskConversationStoreTests: XCTestCase {
+    func testReviewBundlePersistsTurnsAndActionLinkInOneTransaction() throws {
+        let (connection, store) = try makeStore()
+        let session = makeSession()
+        try store.createSession(session)
+        let source = try makeTurn(
+            sessionID: session.id,
+            createdAt: Date(timeIntervalSince1970: 1_800_000_010)
+        )
+        let clarification = try VoiceTaskConversationTurn(
+            sessionID: session.id,
+            author: .user,
+            rawTranscript: "Launch",
+            userConfirmedText: "Launch",
+            createdAt: Date(timeIntervalSince1970: 1_800_000_011)
+        )
+        let link = try ConversationActionLink(
+            sessionID: session.id,
+            sourceTurnID: source.id,
+            actionPlanID: "plan-review-bundle",
+            assistantQueueItemID: "queue-review-bundle",
+            reviewedFingerprint: "reviewed-review-bundle",
+            createdAt: clarification.createdAt
+        )
+
+        try store.saveReviewBundle(
+            turns: [clarification, source],
+            actionLink: link
+        )
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT id FROM voice_task_conversation_turns
+                WHERE session_id = ?
+                ORDER BY created_at, id;
+                """,
+                parameters: [.text(session.id.uuidString)]
+            ),
+            [source.id.uuidString, clarification.id.uuidString]
+        )
+        XCTAssertEqual(
+            try store.latestActionLink(
+                assistantQueueItemID: "queue-review-bundle"
+            ),
+            link
+        )
+    }
+
+    func testReviewBundleRetryUsesDurableReviewIdentityAsIdempotencyBoundary()
+        throws
+    {
+        let (connection, store) = try makeStore()
+        let session = makeSession()
+        try store.createSession(session)
+        let source = try makeTurn(
+            sessionID: session.id,
+            createdAt: Date(timeIntervalSince1970: 1_800_000_010)
+        )
+        let firstClarification = try VoiceTaskConversationTurn(
+            sessionID: session.id,
+            author: .user,
+            userConfirmedText: "Launch",
+            createdAt: Date(timeIntervalSince1970: 1_800_000_011)
+        )
+        let firstLink = try ConversationActionLink(
+            sessionID: session.id,
+            sourceTurnID: source.id,
+            actionPlanID: "plan-idempotent",
+            assistantQueueItemID: "queue-idempotent",
+            reviewedFingerprint: "reviewed-idempotent"
+        )
+        try store.saveReviewBundle(
+            turns: [source, firstClarification],
+            actionLink: firstLink
+        )
+
+        let regeneratedClarification = try VoiceTaskConversationTurn(
+            sessionID: session.id,
+            author: .user,
+            userConfirmedText: "Launch",
+            createdAt: Date(timeIntervalSince1970: 1_800_000_012)
+        )
+        let retryLink = try ConversationActionLink(
+            sessionID: session.id,
+            sourceTurnID: source.id,
+            actionPlanID: "plan-idempotent",
+            assistantQueueItemID: "queue-idempotent",
+            reviewedFingerprint: "reviewed-idempotent"
+        )
+
+        try store.saveReviewBundle(
+            turns: [source, regeneratedClarification],
+            actionLink: retryLink
+        )
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT COUNT(*) FROM voice_task_conversation_turns
+                WHERE session_id = ?;
+                """,
+                parameters: [.text(session.id.uuidString)]
+            ),
+            ["2"]
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT COUNT(*) FROM conversation_action_links
+                WHERE assistant_queue_item_id = 'queue-idempotent';
+                """
+            ),
+            ["1"]
+        )
+        XCTAssertEqual(
+            try store.latestActionLink(
+                assistantQueueItemID: "queue-idempotent"
+            ),
+            firstLink
+        )
+    }
+
+    func testReviewBundleRejectsQueueIdentityAndTurnContentCollisions()
+        throws
+    {
+        let (_, store) = try makeStore()
+        let session = makeSession()
+        try store.createSession(session)
+        let source = try makeTurn(
+            sessionID: session.id,
+            createdAt: Date(timeIntervalSince1970: 1_800_000_010)
+        )
+        let link = try ConversationActionLink(
+            sessionID: session.id,
+            sourceTurnID: source.id,
+            actionPlanID: "plan-collision",
+            assistantQueueItemID: "queue-collision",
+            reviewedFingerprint: "reviewed-v1"
+        )
+        try store.saveReviewBundle(turns: [source], actionLink: link)
+        let conflictingLink = try ConversationActionLink(
+            sessionID: session.id,
+            sourceTurnID: source.id,
+            actionPlanID: "plan-collision",
+            assistantQueueItemID: "queue-collision",
+            reviewedFingerprint: "reviewed-v2"
+        )
+
+        XCTAssertThrowsError(
+            try store.saveReviewBundle(
+                turns: [source],
+                actionLink: conflictingLink
+            )
+        ) { error in
+            XCTAssertTrue(
+                error is VoiceTaskConversationReviewBundleConflictError
+            )
+        }
+
+        let secondSession = VoiceTaskConversationSession(
+            id: UUID(
+                uuidString:
+                    "10000000-0000-0000-0000-000000000002"
+            )!,
+            title: "Turn collision",
+            entryPoint: .voiceCommand,
+            createdAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        try store.createSession(secondSession)
+        let stored = try makeTurn(
+            sessionID: secondSession.id,
+            createdAt: Date(timeIntervalSince1970: 1_800_000_010)
+        )
+        try store.saveTurn(stored)
+        let changed = try VoiceTaskConversationTurn(
+            id: stored.id,
+            sessionID: secondSession.id,
+            author: .user,
+            rawTranscript: "different raw transcript",
+            userConfirmedText: "different confirmed text",
+            createdAt: stored.createdAt
+        )
+        let secondLink = try ConversationActionLink(
+            sessionID: secondSession.id,
+            sourceTurnID: stored.id,
+            actionPlanID: "plan-turn-collision",
+            assistantQueueItemID: "queue-turn-collision",
+            reviewedFingerprint: "reviewed-turn-collision"
+        )
+
+        XCTAssertThrowsError(
+            try store.saveReviewBundle(
+                turns: [changed],
+                actionLink: secondLink
+            )
+        ) { error in
+            XCTAssertTrue(
+                error is VoiceTaskConversationReviewBundleConflictError
+            )
+        }
+    }
+
+    func testReviewBundleRollsBackTurnsWhenActionLinkInsertFails() throws {
+        let (connection, store) = try makeStore()
+        let session = makeSession()
+        try store.createSession(session)
+        let source = try makeTurn(
+            sessionID: session.id,
+            createdAt: Date(timeIntervalSince1970: 1_800_000_010)
+        )
+        let link = try ConversationActionLink(
+            sessionID: session.id,
+            sourceTurnID: source.id,
+            actionPlanID: "plan-rollback",
+            assistantQueueItemID: "queue-rollback",
+            reviewedFingerprint: "reviewed-rollback"
+        )
+        try connection.execute(
+            """
+            CREATE TRIGGER reject_review_bundle_link
+            BEFORE INSERT ON conversation_action_links
+            BEGIN
+                SELECT RAISE(ABORT, 'injected review bundle failure');
+            END;
+            """
+        )
+
+        XCTAssertThrowsError(
+            try store.saveReviewBundle(turns: [source], actionLink: link)
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT COUNT(*) FROM voice_task_conversation_turns
+                WHERE session_id = ?;
+                """,
+                parameters: [.text(session.id.uuidString)]
+            ),
+            ["0"]
+        )
+        XCTAssertNil(try store.loadSession(id: session.id)?.lastTurnAt)
+    }
+
     func testFreshDatabaseMigrationCreatesConversationTablesAndIndexes() throws {
         let connection = try SQLiteConnection(path: ":memory:")
 

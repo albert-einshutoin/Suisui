@@ -26,6 +26,7 @@ public struct TaskContextFactSourceEvidence: Equatable, Sendable {
 public final class SQLiteVoiceTaskConversationStore:
     VoiceTaskConversationStore,
     ConversationActionLinkStore,
+    AtomicVoiceTaskConversationReviewBundleStore,
     VoiceTaskConversationRetentionStore,
     @unchecked Sendable
 {
@@ -514,7 +515,70 @@ public final class SQLiteVoiceTaskConversationStore:
         lock.lock()
         defer { lock.unlock() }
         try requireTurn(link.sourceTurnID, in: link.sessionID)
+        try insertActionLinkUnlocked(link)
+    }
 
+    public func saveReviewBundleAtomically(
+        turns: [VoiceTaskConversationTurn],
+        actionLink: ConversationActionLink
+    ) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard !turns.isEmpty,
+              turns.allSatisfy({ $0.sessionID == actionLink.sessionID }),
+              Set(turns.map(\.id)).count == turns.count,
+              turns.contains(where: { $0.id == actionLink.sourceTurnID }),
+              let assistantQueueItemID = actionLink.assistantQueueItemID,
+              !assistantQueueItemID
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            throw VoiceTaskConversationReviewBundleConflictError(
+                reason:
+                    "Review bundle Turns must be unique, non-empty, and belong to the ActionLink Session and source Turn."
+            )
+        }
+
+        try connection.transaction {
+            if let existing = try latestActionLinkUnlocked(
+                assistantQueueItemID: assistantQueueItemID
+            ) {
+                guard reviewIdentityMatches(
+                    existing,
+                    actionLink
+                ) else {
+                    throw VoiceTaskConversationReviewBundleConflictError(
+                        reason:
+                            "The Assistant Queue ID is already bound to different Conversation review evidence."
+                    )
+                }
+                // A crash can occur after this transaction commits but before
+                // orchestration checkpoint cleanup. The retry may regenerate
+                // transient clarification Turn IDs; the already-durable Queue
+                // review identity is the idempotency boundary.
+                return
+            }
+
+            for turn in turns.sorted(by: reviewTurnOrdering) {
+                if let existing = try loadTurnUnlocked(id: turn.id) {
+                    guard existing == turn else {
+                        throw VoiceTaskConversationReviewBundleConflictError(
+                            reason:
+                                "A Review Turn ID is already bound to different content."
+                        )
+                    }
+                } else {
+                    try saveTurnUnlocked(turn)
+                }
+            }
+
+            try insertActionLinkUnlocked(actionLink)
+        }
+    }
+
+    private func insertActionLinkUnlocked(
+        _ link: ConversationActionLink
+    ) throws {
         try connection.execute(
             """
             INSERT INTO conversation_action_links (
@@ -559,6 +623,14 @@ public final class SQLiteVoiceTaskConversationStore:
     ) throws -> ConversationActionLink? {
         lock.lock()
         defer { lock.unlock() }
+        return try latestActionLinkUnlocked(
+            assistantQueueItemID: assistantQueueItemID
+        )
+    }
+
+    private func latestActionLinkUnlocked(
+        assistantQueueItemID: String
+    ) throws -> ConversationActionLink? {
         guard !assistantQueueItemID
             .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else {
@@ -1238,6 +1310,42 @@ public final class SQLiteVoiceTaskConversationStore:
                 .text(session.id.uuidString),
             ]
         )
+    }
+
+    private func loadTurnUnlocked(
+        id: UUID
+    ) throws -> VoiceTaskConversationTurn? {
+        let row = try connection.materializedRows(
+            """
+            SELECT id, session_id, author, raw_transcript, confirmed_text, created_at
+            FROM voice_task_conversation_turns
+            WHERE id = ?
+            LIMIT 1;
+            """,
+            parameters: [.text(id.uuidString)]
+        ).first
+        return try row.map(decodeTurn)
+    }
+
+    private func reviewTurnOrdering(
+        _ lhs: VoiceTaskConversationTurn,
+        _ rhs: VoiceTaskConversationTurn
+    ) -> Bool {
+        if lhs.createdAt != rhs.createdAt {
+            return lhs.createdAt < rhs.createdAt
+        }
+        return lhs.id.uuidString < rhs.id.uuidString
+    }
+
+    private func reviewIdentityMatches(
+        _ lhs: ConversationActionLink,
+        _ rhs: ConversationActionLink
+    ) -> Bool {
+        lhs.sessionID == rhs.sessionID
+            && lhs.sourceTurnID == rhs.sourceTurnID
+            && lhs.actionPlanID == rhs.actionPlanID
+            && lhs.assistantQueueItemID == rhs.assistantQueueItemID
+            && lhs.reviewedFingerprint == rhs.reviewedFingerprint
     }
 
     private func decodeSession(_ row: SQLiteMaterializedRow) throws -> VoiceTaskConversationSession {

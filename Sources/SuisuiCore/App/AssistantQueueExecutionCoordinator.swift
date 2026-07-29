@@ -532,11 +532,24 @@ public struct AssistantQueueExecutionCoordinator {
     private func currentConversationLink(
         for item: AssistantQueueItem
     ) throws -> ConversationActionLink? {
-        guard let conversationActionLinkStore,
-              let link = try conversationActionLinkStore.latestActionLink(
-                  assistantQueueItemID: item.id
-              )
-        else {
+        guard let conversationActionLinkStore else {
+            if item.requiresConversationActionLink {
+                throw AssistantQueueConversationLinkUnavailableError(
+                    reason:
+                        "This Conversation queue item requires its durable ActionLink, but the ActionLink store is unavailable."
+                )
+            }
+            return nil
+        }
+        guard let link = try conversationActionLinkStore.latestActionLink(
+            assistantQueueItemID: item.id
+        ) else {
+            if item.requiresConversationActionLink {
+                throw AssistantQueueConversationLinkUnavailableError(
+                    reason:
+                        "This Conversation queue item's ActionLink is missing. Create a new reviewed plan from the Conversation."
+                )
+            }
             return nil
         }
         var currentTaskSnapshots: [Int64: String] = [:]

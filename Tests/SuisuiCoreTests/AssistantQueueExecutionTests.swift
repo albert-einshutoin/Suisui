@@ -242,6 +242,147 @@ final class AssistantQueueExecutionTests: XCTestCase {
         )
     }
 
+    func testConversationOriginItemCannotFallbackAfterSessionAndLinkDeletion()
+        throws
+    {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        let queueStore = SQLiteAssistantQueueStore(connection: connection)
+        let conversationStore = SQLiteVoiceTaskConversationStore(
+            connection: connection
+        )
+        let item = makeActionPlanItem()
+            .minimizingUnapprovedConversationTranscript()
+        let approved = try AssistantQueueStateMachine.approve(
+            item,
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let createdAt = Date(timeIntervalSince1970: 1_800_300_000)
+        let session = VoiceTaskConversationSession(
+            title: "Delete provenance",
+            entryPoint: .voiceCommand,
+            createdAt: createdAt
+        )
+        try conversationStore.createSession(session)
+        let turn = try VoiceTaskConversationTurn(
+            sessionID: session.id,
+            author: .user,
+            rawTranscript: "Create Launch checklist",
+            userConfirmedText: "Create Launch checklist",
+            createdAt: createdAt
+        )
+        let link = try ConversationActionLink(
+            sessionID: session.id,
+            sourceTurnID: turn.id,
+            actionPlanID: "plan-queue-execution",
+            assistantQueueItemID: approved.id,
+            reviewedFingerprint: try XCTUnwrap(
+                approved.approval?.reviewedContentFingerprint
+            ),
+            createdAt: createdAt
+        )
+        try conversationStore.saveReviewBundle(
+            turns: [turn],
+            actionLink: link
+        )
+        _ = try conversationStore.deleteSession(
+            id: session.id,
+            scope: .conversation
+        )
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "must remain blocked",
+                inputSchema: ToolInputSchema(
+                    required: ["title"],
+                    properties: ["title": "string"]
+                ),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                XCTFail("Missing Conversation evidence must fail before tools.")
+                return ToolResult(
+                    tool: .taskCreate,
+                    status: .failed,
+                    summary: "must not execute"
+                )
+            },
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: VolatileExecutionReceiptStore(),
+            conversationActionLinkStore: conversationStore,
+            taskSnapshotFingerprintProvider: { _ in nil }
+        )
+
+        XCTAssertThrowsError(
+            try executeCurrent(
+                coordinator,
+                id: approved.id,
+                queueStore: queueStore
+            )
+        ) { error in
+            XCTAssertTrue(
+                error is AssistantQueueConversationLinkUnavailableError
+            )
+        }
+        XCTAssertEqual(
+            try queueStore.get(id: approved.id).state,
+            .approved
+        )
+    }
+
+    func testConversationOriginItemFailsClosedWithoutActionLinkStore()
+        throws
+    {
+        let queueStore = try makeQueueStore()
+        let approved = try AssistantQueueStateMachine.approve(
+            makeActionPlanItem()
+                .minimizingUnapprovedConversationTranscript(),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "must remain blocked",
+                inputSchema: ToolInputSchema(
+                    required: ["title"],
+                    properties: ["title": "string"]
+                ),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                XCTFail("An absent ActionLink store must fail before tools.")
+                return ToolResult(
+                    tool: .taskCreate,
+                    status: .failed,
+                    summary: "must not execute"
+                )
+            },
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: VolatileExecutionReceiptStore()
+        )
+
+        XCTAssertThrowsError(
+            try executeCurrent(
+                coordinator,
+                id: approved.id,
+                queueStore: queueStore
+            )
+        ) { error in
+            XCTAssertTrue(
+                error is AssistantQueueConversationLinkUnavailableError
+            )
+        }
+    }
+
     func testTaskMutationCASRejectsChangeAfterConversationSnapshotValidation() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(

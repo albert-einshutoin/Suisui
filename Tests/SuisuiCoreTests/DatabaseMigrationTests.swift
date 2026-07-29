@@ -3,6 +3,74 @@ import XCTest
 @testable import SuisuiCore
 
 final class DatabaseMigrationTests: XCTestCase {
+    func testConversationQueueOriginMigrationDefaultsLegacyRowsToFalse()
+        throws
+    {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeOriginMarker = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0034_mark_conversation_origin_queue_items"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeOriginMarker
+        )
+        try connection.execute(
+            """
+            INSERT INTO assistant_queue_items (
+                id,
+                payload_kind,
+                payload_json,
+                state,
+                risk_level,
+                review_reason,
+                redacted_summary,
+                required_capabilities_json
+            )
+            VALUES (
+                'legacy-before-conversation-origin',
+                'action_plan',
+                '{}',
+                'waitingReview',
+                'write',
+                'Legacy review',
+                'Legacy item',
+                '[]'
+            );
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT requires_conversation_action_link
+                FROM assistant_queue_items
+                WHERE id = 'legacy-before-conversation-origin';
+                """
+            ),
+            ["0"]
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT id FROM schema_migrations
+                WHERE id = '0034_mark_conversation_origin_queue_items';
+                """
+            ),
+            ["0034_mark_conversation_origin_queue_items"]
+        )
+    }
+
     func testOrchestrationStateMigrationCreatesDurableCheckpointTable() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         let migrationsBeforeOrchestration = Array(

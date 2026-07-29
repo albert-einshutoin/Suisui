@@ -36,6 +36,18 @@ public struct VoiceTaskConversationTurnPage: Equatable, Sendable {
     }
 }
 
+public struct VoiceTaskConversationReviewBundleConflictError:
+    Error,
+    Equatable,
+    Sendable
+{
+    public let reason: String
+
+    public init(reason: String) {
+        self.reason = reason
+    }
+}
+
 public enum VoiceTaskConversationDeleteScope: Equatable, Sendable {
     case rawTranscripts
     case conversation
@@ -98,6 +110,39 @@ public protocol VoiceTaskConversationStore: Sendable {
         id: UUID,
         scope: VoiceTaskConversationDeleteScope
     ) throws -> VoiceTaskConversationDeleteResult
+}
+
+public protocol AtomicVoiceTaskConversationReviewBundleStore: Sendable {
+    func saveReviewBundleAtomically(
+        turns: [VoiceTaskConversationTurn],
+        actionLink: ConversationActionLink
+    ) throws
+}
+
+public extension VoiceTaskConversationStore {
+    /// Compatibility implementation for custom stores.
+    ///
+    /// Production SQLite overrides this with one transaction. Existing custom
+    /// stores retain source compatibility and preserve ordering: every Turn is
+    /// written before the ActionLink can become visible.
+    func saveReviewBundle(
+        turns: [VoiceTaskConversationTurn],
+        actionLink: ConversationActionLink
+    ) throws {
+        if let atomicStore =
+            self as? any AtomicVoiceTaskConversationReviewBundleStore
+        {
+            try atomicStore.saveReviewBundleAtomically(
+                turns: turns,
+                actionLink: actionLink
+            )
+            return
+        }
+        for turn in turns {
+            try saveTurn(turn)
+        }
+        try saveActionLink(actionLink)
+    }
 }
 
 public protocol ConversationActionLinkStore: Sendable {
