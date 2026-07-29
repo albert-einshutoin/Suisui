@@ -384,7 +384,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
                     title: scope.sessionTitle,
                     entryPoint: entryPoint,
                     activeProjectID: activeProjectID,
-                    activeTaskID: activeTaskID
+                    activeTaskID: activeTaskID,
+                    resumeSummary: scope.accessibilityValue
                 )
                 try store.createSession(created)
                 session = created

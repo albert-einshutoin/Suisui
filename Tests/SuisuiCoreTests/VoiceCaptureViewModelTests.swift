@@ -44,6 +44,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(created.activeProjectID, 7)
         XCTAssertEqual(created.activeTaskID, 11)
         XCTAssertEqual(created.entryPoint, .taskInspector)
+        XCTAssertEqual(created.resumeSummary, scope.accessibilityValue)
         XCTAssertEqual(viewModel.conversationWorkspaceScope, scope)
 
         let updatedScope =
@@ -63,6 +64,10 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(updated.activeProjectID, 8)
         XCTAssertEqual(updated.activeTaskID, 12)
         XCTAssertEqual(updated.title, "Collect feedback")
+        XCTAssertEqual(
+            updated.resumeSummary,
+            updatedScope.accessibilityValue
+        )
         XCTAssertEqual(viewModel.conversationWorkspaceScope, updatedScope)
 
         viewModel.pauseConversationWorkspace()
