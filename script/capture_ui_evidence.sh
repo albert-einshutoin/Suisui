@@ -1622,11 +1622,9 @@ capture_settings_sync() {
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="Sync"
   VOICE_COMMAND_WINDOW_OVERRIDE=""
-  prepare_named_evidence_window "Sync" "Settings integrations" "settings-google-calendar-id-save-flow=>"
-  scroll_ax_target_into_view "settings-google-calendar-id-save-flow" "Settings integrations"
-  sleep 1.0
+  prepare_named_evidence_window "Sync" "Settings integrations" "sync-paid-value-row=>"
 
-  capture_visible_window "$appearance Settings integrations" "$output_path" "Sync" "settings-google-calendar-id-save-flow"
+  capture_visible_window "$appearance Settings integrations" "$output_path" "Sync" "sync-paid-value-row"
 }
 
 capture_settings_appearance() {

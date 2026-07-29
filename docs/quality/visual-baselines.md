@@ -20,7 +20,7 @@ The English source of truth is `docs/quality/visual-baseline-manifest.json`; the
 | Assistant Queue Approved | Light / Dark | 1024x676 | compact Review destination, approved row, Run, and More controls |
 | Assistant Queue Failed | Light / Dark | 1024x676 | compact Review destination, failed row, and Retry recovery control |
 | Settings Overview | Light / Dark / System | 720x676 | overview navigation and account-free local state |
-| Settings Integrations | Light / Dark | 720x676 | provider, TTS/STT, Calendar/Reminder, Sync, Privacy, Data Location status |
+| Settings Integrations | Light / Dark | 720x676 | Public Alpha Sync value and fail-closed safety boundary |
 | Settings Appearance | Light / Dark / System | 720x676 | theme picker and contrast controls |
 | MCP Settings | Light / Dark / System | 720x676 | registered MCP rows without secrets or machine-local paths |
 | Voice Command | Light / Dark / System | 760x640 | command entry, local interpretation, approval boundary |

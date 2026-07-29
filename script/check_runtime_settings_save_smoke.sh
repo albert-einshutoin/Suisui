@@ -40,7 +40,6 @@ tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/suisui-runtime-settings-save.XXXXXX")"
 settings_home="$tmp_dir/home"
 database_path="$tmp_dir/Suisui-runtime-settings-save.sqlite"
 settings_suite_name="$BUNDLE_IDENTIFIER.runtime-settings-save.$(/usr/bin/uuidgen | tr '[:upper:]' '[:lower:]')"
-runtime_google_calendar_id="runtime-settings-smoke@group.calendar.google.com"
 app_pid=""
 app_launch_pid=""
 app_identity=""
@@ -651,20 +650,26 @@ verify_settings_saved() {
   HOME="$settings_home" \
     SUISUI_SETTINGS_SMOKE_BUNDLE_IDENTIFIER="$settings_suite_name" \
     SUISUI_SETTINGS_SMOKE_TIMEOUT_SECONDS="$TIMEOUT_SECONDS" \
-    SUISUI_SETTINGS_SMOKE_GOOGLE_CALENDAR_ID="$runtime_google_calendar_id" \
     /usr/bin/swift "$ROOT_DIR/script/settings_save_smoke_check.swift"
 }
 
-verify_google_calendar_settings_controls() {
-  waitForAXElementContaining "settings-google-calendar-id-save-flow"
-  setTextFieldContaining "settings-google-calendar-id" "$runtime_google_calendar_id"
-  waitForAXElementContaining "settings-google-calendar-id" "$runtime_google_calendar_id"
-  pressControlContaining "settings-google-calendar-id-save"
-  pressControlContaining "settings-google-calendar-readiness-check"
-  waitForAXElementContaining "settings-google-calendar-readiness-status"
-  waitForAXElementContaining "settings-google-calendar-readiness-detail"
-  pressControlContaining "settings-google-calendar-list-load"
-  waitForAXElementContaining "settings-google-calendar-oauth-setup-message" "OAuth"
+assertAXElementAbsent() {
+  local identifier_fragment="$1"
+  local marker_helper="$ROOT_DIR/script/ui_evidence_ax_marker_check.swift"
+
+  if /usr/bin/swift "$marker_helper" "$APP_NAME" "$identifier_fragment" "" "$app_pid" >/dev/null 2>&1; then
+    echo "BLOCKER: Public Alpha exposed unsupported Settings control: $identifier_fragment" >&2
+    return 1
+  fi
+}
+
+verify_public_alpha_sync_surface() {
+  waitForAXElementContaining "sync-paid-value-row"
+  # The distributed Public Alpha policy must remain fail-closed even when the
+  # experimental Google Calendar implementation is present in source.
+  assertAXElementAbsent "settings-google-calendar-id-save-flow"
+  assertAXElementAbsent "settings-google-calendar-oauth-setup"
+  assertAXElementAbsent "settings-google-calendar-list-load"
 }
 
 verify_readiness_overview() {
@@ -714,7 +719,7 @@ launch_app_for_settings "AI"
 enableCheckboxContaining "settings-task-auto-execution-toggle"
 pressControlContaining "settings-task-auto-execution-save"
 launch_app_for_settings "Sync"
-verify_google_calendar_settings_controls
+verify_public_alpha_sync_surface
 verify_settings_saved
 
-printf "OK: runtime settings save smoke enabled task automation, verified Google Calendar Settings controls, and checked isolated UserDefaults\n"
+printf "OK: runtime settings save smoke enabled task automation, verified the Public Alpha Sync boundary, and checked isolated UserDefaults\n"

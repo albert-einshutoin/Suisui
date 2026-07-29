@@ -7199,18 +7199,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("HOME=\"$settings_home\""))
         XCTAssertTrue(script.contains("SUISUI_DATABASE_PATH=\"$database_path\""))
         XCTAssertTrue(script.contains("settings-task-auto-execution-toggle"))
-        XCTAssertTrue(script.contains("settings-google-calendar-readiness-status"))
-        XCTAssertTrue(script.contains("settings-google-calendar-readiness-detail"))
-        XCTAssertTrue(script.contains("settings-google-calendar-id"))
-        XCTAssertTrue(script.contains("settings-google-calendar-id-save"))
-        XCTAssertTrue(script.contains("settings-google-calendar-list-load"))
-        XCTAssertTrue(script.contains("settings-google-calendar-oauth-setup"))
-        XCTAssertTrue(script.contains("settings-google-calendar-readiness-check"))
+        XCTAssertTrue(script.contains("sync-paid-value-row"))
+        XCTAssertTrue(script.contains("assertAXElementAbsent()"))
+        XCTAssertTrue(script.contains("assertAXElementAbsent \"settings-google-calendar-id-save-flow\""))
+        XCTAssertTrue(script.contains("assertAXElementAbsent \"settings-google-calendar-oauth-setup\""))
+        XCTAssertTrue(script.contains("assertAXElementAbsent \"settings-google-calendar-list-load\""))
         XCTAssertTrue(script.contains("settings-task-auto-execution-save"))
         XCTAssertTrue(script.contains("settings_suite_name=\"$BUNDLE_IDENTIFIER.runtime-settings-save."))
         XCTAssertTrue(script.contains("SUISUI_APP_SETTINGS_SUITE_NAME=\"$settings_suite_name\""))
         XCTAssertTrue(script.contains("SUISUI_SETTINGS_SMOKE_BUNDLE_IDENTIFIER=\"$settings_suite_name\""))
-        XCTAssertTrue(script.contains("SUISUI_SETTINGS_SMOKE_GOOGLE_CALENDAR_ID=\"$runtime_google_calendar_id\""))
+        XCTAssertFalse(script.contains("SUISUI_SETTINGS_SMOKE_GOOGLE_CALENDAR_ID="))
         XCTAssertTrue(script.contains("/usr/bin/defaults export \"$settings_suite_name\" \"$settings_home/app-settings.plist\""))
         XCTAssertTrue(script.contains("/usr/bin/defaults delete \"$settings_suite_name\""))
         XCTAssertTrue(script.contains("enableCheckboxContaining()"))
@@ -7222,16 +7220,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("output=\"$(/usr/bin/osascript - \"$app_pid\" \"$fragment\""))
         XCTAssertTrue(script.contains("enableCheckboxContaining \"settings-task-auto-execution-toggle\""))
         XCTAssertTrue(script.contains("pressControlContaining \"settings-task-auto-execution-save\""))
-        XCTAssertTrue(script.contains("waitForAXElementContaining \"settings-google-calendar-id-save-flow\""))
-        XCTAssertTrue(script.contains("setTextFieldContaining \"settings-google-calendar-id\" \"$runtime_google_calendar_id\""))
-        XCTAssertTrue(script.contains("waitForAXElementContaining \"settings-google-calendar-readiness-status\""))
-        XCTAssertTrue(script.contains("waitForAXElementContaining \"settings-google-calendar-readiness-detail\""))
-        XCTAssertTrue(script.contains("waitForAXElementContaining \"settings-google-calendar-id\" \"$runtime_google_calendar_id\""))
-        XCTAssertTrue(script.contains("pressControlContaining \"settings-google-calendar-readiness-check\""))
-        XCTAssertTrue(script.contains("pressControlContaining \"settings-google-calendar-list-load\""))
-        XCTAssertTrue(script.contains("waitForAXElementContaining \"settings-google-calendar-oauth-setup-message\" \"OAuth\""))
+        XCTAssertTrue(script.contains("waitForAXElementContaining \"sync-paid-value-row\""))
         XCTAssertTrue(script.contains("/usr/bin/swift \"$ROOT_DIR/script/settings_save_smoke_check.swift\""))
-        XCTAssertTrue(script.contains("OK: runtime settings save smoke enabled task automation, verified Google Calendar Settings controls, and checked isolated UserDefaults"))
+        XCTAssertTrue(script.contains("OK: runtime settings save smoke enabled task automation, verified the Public Alpha Sync boundary, and checked isolated UserDefaults"))
         XCTAssertFalse(script.contains(":memory:"))
         XCTAssertFalse(script.contains("not implemented yet"))
 
@@ -7240,8 +7231,6 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(helper.contains("\"taskAutoExecution\""))
         XCTAssertTrue(helper.contains("\"isEnabled\""))
         XCTAssertTrue(helper.contains("let expectedGoogleCalendarID"))
-        XCTAssertTrue(helper.contains("\"googleCalendarID\""))
-        XCTAssertTrue(helper.contains("googleCalendarID == expectedGoogleCalendarID"))
         XCTAssertTrue(helper.contains("BLOCKER: settings save smoke"))
         XCTAssertFalse(helper.contains("print(data)"))
 
@@ -9049,7 +9038,7 @@ final class ReleasePipelineTests: XCTestCase {
             "assistant-queue-approved": "assistant-queue-row-visual-approved",
             "assistant-queue-failed": "assistant-queue-row-visual-failed",
             "settings-overview": "settings-status-overview",
-            "settings-integrations": "settings-google-calendar-id-save-flow",
+            "settings-integrations": "sync-paid-value-row",
             "settings-appearance": "settings-theme-picker",
             "mcp-settings": "mcp-paid-execution-boundary-row",
             "voice-command": "voice-command-root"

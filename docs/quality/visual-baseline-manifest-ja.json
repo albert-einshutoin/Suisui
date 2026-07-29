@@ -224,7 +224,7 @@
         "height": 676
       },
       "axFrameAudit": true,
-      "axTargetIdentifier": "settings-google-calendar-id-save-flow",
+      "axTargetIdentifier": "sync-paid-value-row",
       "artifacts": {
         "light": "settings-integrations-light.png",
         "dark": "settings-integrations-dark.png"
