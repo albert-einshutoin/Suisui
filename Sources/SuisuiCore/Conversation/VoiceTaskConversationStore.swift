@@ -106,3 +106,14 @@ public protocol ConversationActionLinkStore: Sendable {
         assistantQueueItemID: String
     ) throws -> ConversationActionLink?
 }
+
+public protocol VoiceTaskConversationRetentionStore: Sendable {
+    func retentionSnapshot(
+        for request: VoiceTaskConversationRetentionRequest
+    ) throws -> VoiceTaskConversationRetentionSnapshot
+    func executeRetention(
+        reviewedPlan: VoiceTaskConversationRetentionPlan,
+        at now: Date,
+        policy: VoiceTaskConversationRetentionPolicy
+    ) throws -> VoiceTaskConversationRetentionExecutionResult
+}
