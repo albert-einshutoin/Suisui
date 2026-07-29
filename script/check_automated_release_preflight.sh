@@ -263,7 +263,7 @@ section "Release launch performance smoke"
 # caller-provided debug or relaxed-budget env cannot weaken automated evidence.
 SUISUI_PERFORMANCE_PROFILE=release \
 SUISUI_PERFORMANCE_BUILD_CONFIGURATION=release \
-SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS=15000 \
+SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS=1000 \
 SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS=3000 \
 SUISUI_CI_ARTIFACT_ROOT="$TMP_DIR/ui-gates" \
   ./scripts/ci.sh ui-performance

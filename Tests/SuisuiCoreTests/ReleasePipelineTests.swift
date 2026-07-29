@@ -3367,7 +3367,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("section \"Release launch performance smoke\""))
         XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_PROFILE=release"))
         XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_BUILD_CONFIGURATION=release"))
-        XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS=15000"))
+        XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS=1000"))
         XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS=3000"))
         XCTAssertTrue(script.contains("./scripts/ci.sh ui-performance"))
         XCTAssertTrue(script.contains("./script/prepare_voiceover_review_candidate.sh --skip-build --no-launch"))
