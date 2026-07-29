@@ -82,12 +82,13 @@ final class VoiceTaskContinuityHarnessTests: XCTestCase {
         XCTAssertTrue(source.contains("receipt_file_id"))
     }
 
-    func testGivenBundledDriverWhenDrivingAXThenKeepsProcessCollectionTyped() throws {
+    func testGivenBundledDriverWhenDrivingAXThenUsesPIDScopedNativeHelpers() throws {
         let source = try driverScript()
 
-        XCTAssertFalse(source.contains("set processes to application processes"))
-        XCTAssertTrue(source.contains("set matchingProcesses to application processes"))
-        XCTAssertTrue(source.contains("set targetProcess to item 1 of matchingProcesses"))
+        XCTAssertTrue(source.contains("ax_process_matches_identity"))
+        XCTAssertTrue(source.contains("ui_evidence_ax_text_input.swift"))
+        XCTAssertTrue(source.contains("ui_evidence_ax_press_element.swift"))
+        XCTAssertTrue(source.contains("\"$app_pid\""))
     }
 
     private func runtimeScript() throws -> String {

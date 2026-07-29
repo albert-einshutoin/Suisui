@@ -135,99 +135,22 @@ wait_for_marker() {
 ax_set_text() {
   local identifier="$1" value="$2"
   ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
-  /usr/bin/osascript - "$app_pid" "$identifier" "$value" <<'APPLESCRIPT' >/dev/null
-on setMatchingIdentifier(uiElement, targetIdentifier, replacement)
-  tell application "System Events"
-    set identifierValue to ""
-    try
-      set identifierValue to value of attribute "AXIdentifier" of uiElement as text
-    end try
-    if identifierValue is targetIdentifier then
-      set value of uiElement to replacement
-      return true
-    end if
-    try
-      repeat with childElement in UI elements of uiElement
-        if my setMatchingIdentifier(childElement, targetIdentifier, replacement) then return true
-      end repeat
-    end try
-  end tell
-  return false
-end setMatchingIdentifier
-
-on run argv
-  set appPID to (item 1 of argv) as integer
-  set requestedIdentifier to item 2 of argv
-  set replacement to item 3 of argv
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is appPID
-    if (count of matchingProcesses) is 0 then error "owned process missing"
-    set targetProcess to item 1 of matchingProcesses
-    tell targetProcess
-      set frontmost to true
-      repeat with currentWindow in windows
-        try
-          perform action "AXRaise" of currentWindow
-        end try
-        if my setMatchingIdentifier(currentWindow, requestedIdentifier, replacement) then return
-      end repeat
-    end tell
-  end tell
-  error "AX text input missing"
-end run
-APPLESCRIPT
+  /usr/bin/swift \
+    "$ROOT_DIR/script/ui_evidence_ax_text_input.swift" \
+    "$app_pid" \
+    "$identifier" \
+    "$value" \
+    >/dev/null
 }
 
 ax_press() {
   local identifier="$1"
   ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
-  /usr/bin/osascript - "$app_pid" "$identifier" <<'APPLESCRIPT' >/dev/null
-on pressMatchingIdentifier(uiElement, targetIdentifier)
-  tell application "System Events"
-    set identifierValue to ""
-    try
-      set identifierValue to value of attribute "AXIdentifier" of uiElement as text
-    end try
-    if identifierValue is targetIdentifier then
-      try
-        perform action "AXPress" of uiElement
-        return true
-      end try
-      try
-        click uiElement
-        return true
-      end try
-      return false
-    end if
-    try
-      repeat with childElement in UI elements of uiElement
-        if my pressMatchingIdentifier(childElement, targetIdentifier) then return true
-      end repeat
-    end try
-  end tell
-  return false
-end pressMatchingIdentifier
-
-on run argv
-  set appPID to (item 1 of argv) as integer
-  set requestedIdentifier to item 2 of argv
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is appPID
-    if (count of matchingProcesses) is 0 then error "owned process missing"
-    set targetProcess to item 1 of matchingProcesses
-    tell targetProcess
-      set frontmost to true
-      repeat with currentWindow in windows
-        try
-          perform action "AXRaise" of currentWindow
-        end try
-        if my pressMatchingIdentifier(currentWindow, requestedIdentifier) then return
-      end repeat
-    end tell
-  end tell
-  error "AX button missing"
-end run
-APPLESCRIPT
+  /usr/bin/swift \
+    "$ROOT_DIR/script/ui_evidence_ax_press_element.swift" \
+    "$app_pid" \
+    "$identifier" \
+    >/dev/null
 }
 
 task_digest() {
