@@ -2065,6 +2065,43 @@ public enum CoreMigrations {
                     """
                 )
             },
+            DatabaseMigration(
+                id: "0032_cascade_orchestration_state_retention"
+            ) { connection in
+                // The legacy table allowed checkpoints without a parent
+                // Session. Copy only valid rows: preserving an orphan would
+                // make its transcript recoverable if that stable Session ID
+                // were later reused.
+                try connection.execute(
+                    """
+                    CREATE TABLE voice_task_conversation_orchestration_states_v2 (
+                        session_id TEXT PRIMARY KEY NOT NULL,
+                        payload BLOB NOT NULL,
+                        updated_at REAL NOT NULL,
+                        FOREIGN KEY(session_id)
+                            REFERENCES voice_task_conversation_sessions(id)
+                            ON DELETE CASCADE
+                    );
+
+                    INSERT INTO voice_task_conversation_orchestration_states_v2 (
+                        session_id,
+                        payload,
+                        updated_at
+                    )
+                    SELECT
+                        state.session_id,
+                        state.payload,
+                        state.updated_at
+                    FROM voice_task_conversation_orchestration_states AS state
+                    JOIN voice_task_conversation_sessions AS session
+                      ON session.id = state.session_id;
+
+                    DROP TABLE voice_task_conversation_orchestration_states;
+                    ALTER TABLE voice_task_conversation_orchestration_states_v2
+                    RENAME TO voice_task_conversation_orchestration_states;
+                    """
+                )
+            },
         ]
     }
 }

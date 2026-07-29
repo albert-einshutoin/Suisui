@@ -6,6 +6,16 @@ final class VoiceTaskConversationOrchestrationStateStoreTests: XCTestCase {
         let fixture = try TemporaryOrchestrationDatabase()
         let sessionID = UUID()
         let initial = makeState(sessionID: sessionID)
+        let conversationStore = try SQLiteVoiceTaskConversationStore(
+            path: fixture.url.path
+        )
+        try conversationStore.createSession(
+            VoiceTaskConversationSession(
+                id: sessionID,
+                title: "Clarification session",
+                entryPoint: .voiceCommand
+            )
+        )
         let firstStore = try SQLiteVoiceTaskConversationOrchestrationStateStore(
             path: fixture.url.path
         )
@@ -35,6 +45,14 @@ final class VoiceTaskConversationOrchestrationStateStoreTests: XCTestCase {
             connection: connection
         )
         let state = makeState()
+        try SQLiteVoiceTaskConversationStore(connection: connection)
+            .createSession(
+                VoiceTaskConversationSession(
+                    id: state.sessionID,
+                    title: "Clarification session",
+                    entryPoint: .voiceCommand
+                )
+            )
         try store.save(state)
 
         try store.remove(sessionID: state.sessionID)
@@ -50,6 +68,14 @@ final class VoiceTaskConversationOrchestrationStateStoreTests: XCTestCase {
             migrations: CoreMigrations.current
         )
         let sessionID = UUID()
+        try SQLiteVoiceTaskConversationStore(connection: connection)
+            .createSession(
+                VoiceTaskConversationSession(
+                    id: sessionID,
+                    title: "Corrupt clarification session",
+                    entryPoint: .voiceCommand
+                )
+            )
         try connection.execute(
             """
             INSERT INTO voice_task_conversation_orchestration_states (
@@ -73,6 +99,45 @@ final class VoiceTaskConversationOrchestrationStateStoreTests: XCTestCase {
                 .corruptState(sessionID)
             )
         }
+    }
+
+    func testSessionDeletionThenStableIDReuseCannotRestoreOldClarificationState()
+        throws
+    {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        let conversationStore = SQLiteVoiceTaskConversationStore(
+            connection: connection
+        )
+        let stateStore = SQLiteVoiceTaskConversationOrchestrationStateStore(
+            connection: connection
+        )
+        let sessionID = UUID()
+        let session = VoiceTaskConversationSession(
+            id: sessionID,
+            title: "Original session",
+            entryPoint: .voiceCommand
+        )
+        try conversationStore.createSession(session)
+        let state = makeState(sessionID: sessionID)
+        try stateStore.save(state)
+
+        _ = try conversationStore.deleteSession(
+            id: sessionID,
+            scope: .conversation
+        )
+        try conversationStore.createSession(
+            VoiceTaskConversationSession(
+                id: sessionID,
+                title: "Reused identifier",
+                entryPoint: .voiceCommand
+            )
+        )
+
+        XCTAssertNil(try stateStore.load(sessionID: sessionID))
     }
 
     private func makeState(

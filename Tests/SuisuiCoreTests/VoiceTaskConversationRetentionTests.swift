@@ -183,6 +183,105 @@ final class VoiceTaskConversationRetentionTests: XCTestCase {
         )
     }
 
+    func testGivenExpiredTranscriptWhenExecuteThenSensitiveOrchestrationStateIsRemovedButConfirmedDisplayTextRemains()
+        throws
+    {
+        let fixture = try makeSQLiteFixture()
+        let stateStore = SQLiteVoiceTaskConversationOrchestrationStateStore(
+            connection: fixture.connection
+        )
+        try stateStore.save(makeOrchestrationState(in: fixture))
+        let snapshot = try fixture.store.retentionSnapshot(
+            for: .expiredTranscripts
+        )
+        let plan = planner.plan(
+            at: now,
+            policy: .init(),
+            snapshot: snapshot
+        )
+
+        XCTAssertEqual(
+            plan.targets.orchestrationStateSessionIDs,
+            [fixture.session.id]
+        )
+        XCTAssertEqual(plan.preview.orchestrationStateCount, 1)
+        XCTAssertTrue(
+            plan.operations.contains(.deleteOrchestrationState)
+        )
+        _ = try fixture.store.executeRetention(
+            reviewedPlan: plan,
+            at: now,
+            policy: .init()
+        )
+
+        XCTAssertNil(try stateStore.load(sessionID: fixture.session.id))
+        XCTAssertEqual(
+            try fixture.connection.queryStrings(
+                """
+                SELECT COUNT(*)
+                FROM voice_task_conversation_turns
+                WHERE id = ? AND raw_transcript IS NOT NULL;
+                """,
+                parameters: [.text(fixture.turn.id.uuidString)]
+            ),
+            ["0"]
+        )
+        XCTAssertEqual(
+            try fixture.connection.queryStrings(
+                """
+                SELECT confirmed_text
+                FROM voice_task_conversation_turns
+                WHERE id = ?;
+                """,
+                parameters: [.text(fixture.turn.id.uuidString)]
+            ),
+            ["Sign the release"]
+        )
+    }
+
+    func testGivenOrchestrationStateAddedAfterReviewWhenExecuteThenRequiresReview()
+        throws
+    {
+        let fixture = try makeSQLiteFixture()
+        let snapshot = try fixture.store.retentionSnapshot(
+            for: .expiredTranscripts
+        )
+        let plan = planner.plan(
+            at: now,
+            policy: .init(),
+            snapshot: snapshot
+        )
+        let stateStore = SQLiteVoiceTaskConversationOrchestrationStateStore(
+            connection: fixture.connection
+        )
+        try stateStore.save(makeOrchestrationState(in: fixture))
+
+        XCTAssertThrowsError(
+            try fixture.store.executeRetention(
+                reviewedPlan: plan,
+                at: now,
+                policy: .init()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationRetentionError,
+                .requiresReview
+            )
+        }
+        XCTAssertNotNil(try stateStore.load(sessionID: fixture.session.id))
+        XCTAssertEqual(
+            try fixture.connection.queryStrings(
+                """
+                SELECT COUNT(*)
+                FROM voice_task_conversation_turns
+                WHERE id = ? AND raw_transcript IS NOT NULL;
+                """,
+                parameters: [.text(fixture.turn.id.uuidString)]
+            ),
+            ["1"]
+        )
+    }
+
     func testGivenForgetFactWhenExecuteThenTaskAndReceiptRemain() throws {
         let fixture = try makeSQLiteFixture()
         let fact = try saveConfirmedFact(in: fixture)
@@ -258,6 +357,10 @@ final class VoiceTaskConversationRetentionTests: XCTestCase {
         throws
     {
         let fixture = try makeSQLiteFixture()
+        let stateStore = SQLiteVoiceTaskConversationOrchestrationStateStore(
+            connection: fixture.connection
+        )
+        try stateStore.save(makeOrchestrationState(in: fixture))
         let reference = try saveReference(
             in: fixture,
             id: UUID(
@@ -277,21 +380,33 @@ final class VoiceTaskConversationRetentionTests: XCTestCase {
             snapshot: snapshot
         )
 
+        XCTAssertEqual(
+            plan.targets.orchestrationStateSessionIDs,
+            [fixture.session.id]
+        )
         _ = try fixture.store.executeRetention(
             reviewedPlan: plan,
             at: now,
             policy: .init()
         )
 
-        for (table, id) in [
-            ("voice_task_conversation_sessions", fixture.session.id),
-            ("voice_task_conversation_turns", fixture.turn.id),
-            ("voice_task_conversation_references", reference.id),
-            ("conversation_action_links", link.id),
+        for (table, identifierColumn, id) in [
+            ("voice_task_conversation_sessions", "id", fixture.session.id),
+            ("voice_task_conversation_turns", "id", fixture.turn.id),
+            ("voice_task_conversation_references", "id", reference.id),
+            ("conversation_action_links", "id", link.id),
+            (
+                "voice_task_conversation_orchestration_states",
+                "session_id",
+                fixture.session.id
+            ),
         ] {
             XCTAssertEqual(
                 try fixture.connection.queryStrings(
-                    "SELECT COUNT(*) FROM \(table) WHERE id = ?;",
+                    """
+                    SELECT COUNT(*) FROM \(table)
+                    WHERE \(identifierColumn) = ?;
+                    """,
                     parameters: [.text(id.uuidString)]
                 ),
                 ["0"]
@@ -309,6 +424,10 @@ final class VoiceTaskConversationRetentionTests: XCTestCase {
         throws
     {
         let fixture = try makeSQLiteFixture()
+        let stateStore = SQLiteVoiceTaskConversationOrchestrationStateStore(
+            connection: fixture.connection
+        )
+        try stateStore.save(makeOrchestrationState(in: fixture))
         let first = try saveReference(
             in: fixture,
             id: UUID(
@@ -369,6 +488,7 @@ final class VoiceTaskConversationRetentionTests: XCTestCase {
             ),
             ["1"]
         )
+        XCTAssertNotNil(try stateStore.load(sessionID: fixture.session.id))
     }
 
     func testGivenCompletedPlanWhenRetriedThenIsIdempotent() throws {
@@ -575,6 +695,29 @@ final class VoiceTaskConversationRetentionTests: XCTestCase {
             try policy.persistenceWrite(for: confirmed)
         )
         return confirmed
+    }
+
+    private func makeOrchestrationState(
+        in fixture: SQLiteFixture
+    ) -> VoiceTaskConversationOrchestrationState {
+        let route = VoiceCommandRoutingResult(
+            originalTranscript: "raw sign the release",
+            normalizedTranscript: "raw sign the release",
+            intent: .taskCreate,
+            interpretationSummary: "Create a release task",
+            confidence: 0.9,
+            decision: .reviewOnly
+        )
+        return VoiceTaskConversationOrchestrationState(
+            sessionID: fixture.session.id,
+            originalSourceTurnID: fixture.turn.id,
+            route: route,
+            intents: [],
+            clarification: ClarificationSession(
+                route: route,
+                requiredSlots: [.project]
+            )
+        )
     }
 
     private func makeTranscript(

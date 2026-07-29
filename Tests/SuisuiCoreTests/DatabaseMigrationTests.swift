@@ -45,6 +45,70 @@ final class DatabaseMigrationTests: XCTestCase {
         )
     }
 
+    func testOrchestrationStateRetentionMigrationPreservesValidRowsDropsOrphansAndAddsCascade()
+        throws
+    {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeRetention = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0032_cascade_orchestration_state_retention"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeRetention
+        )
+        try connection.execute(
+            """
+            INSERT INTO voice_task_conversation_sessions (
+                id, state, title, entry_point, created_at, updated_at
+            )
+            VALUES (
+                'valid-session', 'active', 'Session', 'voice_command', 1, 1
+            );
+            INSERT INTO voice_task_conversation_orchestration_states (
+                session_id, payload, updated_at
+            )
+            VALUES
+                ('valid-session', X'01', 1),
+                ('orphan-session', X'02', 2);
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT session_id
+                FROM voice_task_conversation_orchestration_states
+                ORDER BY session_id;
+                """
+            ),
+            ["valid-session"]
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT "table" || ':' || "from" || ':' || "to" || ':' || on_delete
+                FROM pragma_foreign_key_list(
+                    'voice_task_conversation_orchestration_states'
+                );
+                """
+            ),
+            [
+                "voice_task_conversation_sessions:session_id:id:CASCADE"
+            ]
+        )
+    }
+
     func testActionLinkExpansionMigrationPreservesLegacyRows() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         let migrationsBeforeExpansion = Array(

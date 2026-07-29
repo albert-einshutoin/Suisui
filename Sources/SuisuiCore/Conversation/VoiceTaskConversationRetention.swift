@@ -10,6 +10,9 @@ public enum VoiceTaskConversationRawAudioRetentionDisposition: String, Equatable
 /// The planner never receives raw transcript/audio values, so previews cannot
 /// accidentally turn a retention audit into another sensitive-content store.
 public struct VoiceTaskConversationRetentionPolicy: Equatable, Sendable {
+    /// Removes raw STT text and orchestration checkpoints that duplicate the
+    /// original transcript. User-confirmed display text remains available
+    /// until the containing Session is explicitly deleted.
     public let transcriptRetention: TimeInterval
     public let referenceRetention: TimeInterval
     public let rawAudioDisposition: VoiceTaskConversationRawAudioRetentionDisposition
@@ -102,6 +105,22 @@ public struct VoiceTaskConversationRetentionActionLink: Equatable, Sendable {
     }
 }
 
+public struct VoiceTaskConversationRetentionOrchestrationState:
+    Equatable,
+    Sendable
+{
+    public let sessionID: UUID
+    public let originalSourceTurnCreatedAt: Date
+
+    public init(
+        sessionID: UUID,
+        originalSourceTurnCreatedAt: Date
+    ) {
+        self.sessionID = sessionID
+        self.originalSourceTurnCreatedAt = originalSourceTurnCreatedAt
+    }
+}
+
 public enum VoiceTaskConversationRetentionRequest: Equatable, Sendable {
     case expiredTranscripts
     case transcriptOnly(sessionID: UUID?)
@@ -117,6 +136,8 @@ public struct VoiceTaskConversationRetentionSnapshot: Equatable, Sendable {
     public let references: [VoiceTaskConversationRetentionReference]
     public let facts: [VoiceTaskConversationRetentionFact]
     public let actionLinks: [VoiceTaskConversationRetentionActionLink]
+    public let orchestrationStates:
+        [VoiceTaskConversationRetentionOrchestrationState]
 
     public init(
         request: VoiceTaskConversationRetentionRequest,
@@ -124,7 +145,9 @@ public struct VoiceTaskConversationRetentionSnapshot: Equatable, Sendable {
         transcripts: [VoiceTaskConversationRetentionTranscript] = [],
         references: [VoiceTaskConversationRetentionReference] = [],
         facts: [VoiceTaskConversationRetentionFact] = [],
-        actionLinks: [VoiceTaskConversationRetentionActionLink] = []
+        actionLinks: [VoiceTaskConversationRetentionActionLink] = [],
+        orchestrationStates:
+            [VoiceTaskConversationRetentionOrchestrationState] = []
     ) {
         self.request = request
         self.sessions = sessions
@@ -132,6 +155,7 @@ public struct VoiceTaskConversationRetentionSnapshot: Equatable, Sendable {
         self.references = references
         self.facts = facts
         self.actionLinks = actionLinks
+        self.orchestrationStates = orchestrationStates
     }
 }
 
@@ -141,19 +165,22 @@ public struct VoiceTaskConversationRetentionTargets: Equatable, Sendable {
     public let referenceIDs: [UUID]
     public let factIDs: [UUID]
     public let actionLinkIDs: [UUID]
+    public let orchestrationStateSessionIDs: [UUID]
 
     public init(
         sessionIDs: [UUID] = [],
         transcriptTurnIDs: [UUID] = [],
         referenceIDs: [UUID] = [],
         factIDs: [UUID] = [],
-        actionLinkIDs: [UUID] = []
+        actionLinkIDs: [UUID] = [],
+        orchestrationStateSessionIDs: [UUID] = []
     ) {
         self.sessionIDs = sessionIDs
         self.transcriptTurnIDs = transcriptTurnIDs
         self.referenceIDs = referenceIDs
         self.factIDs = factIDs
         self.actionLinkIDs = actionLinkIDs
+        self.orchestrationStateSessionIDs = orchestrationStateSessionIDs
     }
 }
 
@@ -163,6 +190,7 @@ public struct VoiceTaskConversationRetentionPreview: Equatable, Sendable {
     public let sessionCount: Int
     public let factCount: Int
     public let actionLinkCount: Int
+    public let orchestrationStateCount: Int
     public let estimatedBytes: Int64?
     public let hasUnknownBytes: Bool
 
@@ -172,6 +200,7 @@ public struct VoiceTaskConversationRetentionPreview: Equatable, Sendable {
         sessionCount: Int,
         factCount: Int,
         actionLinkCount: Int,
+        orchestrationStateCount: Int,
         estimatedBytes: Int64?,
         hasUnknownBytes: Bool
     ) {
@@ -180,6 +209,7 @@ public struct VoiceTaskConversationRetentionPreview: Equatable, Sendable {
         self.sessionCount = sessionCount
         self.factCount = factCount
         self.actionLinkCount = actionLinkCount
+        self.orchestrationStateCount = orchestrationStateCount
         self.estimatedBytes = estimatedBytes
         self.hasUnknownBytes = hasUnknownBytes
     }
@@ -196,6 +226,7 @@ public enum VoiceTaskConversationRetentionOperation: String, Equatable, Sendable
     case deleteReference
     case deleteSession
     case deleteActionLink
+    case deleteOrchestrationState
     case forgetFact
 }
 
@@ -285,6 +316,8 @@ public struct VoiceTaskConversationRetentionPlanner: Sendable {
             sessionCount: targets.sessionIDs.count,
             factCount: targets.factIDs.count,
             actionLinkCount: targets.actionLinkIDs.count,
+            orchestrationStateCount:
+                targets.orchestrationStateSessionIDs.count,
             estimatedBytes: estimatedBytes,
             hasUnknownBytes: hasUnknownBytes
         )
@@ -317,13 +350,29 @@ public struct VoiceTaskConversationRetentionPlanner: Sendable {
         let referenceExpiry = now.addingTimeInterval(-policy.referenceRetention)
         switch snapshot.request {
         case .expiredTranscripts:
-            return .init(transcriptTurnIDs: sortedIDs(snapshot.transcripts.filter {
-                $0.createdAt <= transcriptExpiry
-            }.map(\.turnID)))
+            return .init(
+                transcriptTurnIDs: sortedIDs(snapshot.transcripts.filter {
+                    $0.createdAt <= transcriptExpiry
+                }.map(\.turnID)),
+                orchestrationStateSessionIDs: sortedIDs(
+                    snapshot.orchestrationStates.filter {
+                        // A later clarification answer must not extend the
+                        // lifetime of the original sensitive utterance.
+                        $0.originalSourceTurnCreatedAt <= transcriptExpiry
+                    }.map(\.sessionID)
+                )
+            )
         case .transcriptOnly(let sessionID):
-            return .init(transcriptTurnIDs: sortedIDs(snapshot.transcripts.filter { transcript in
-                sessionID.map { transcript.sessionID == $0 } ?? true
-            }.map(\.turnID)))
+            return .init(
+                transcriptTurnIDs: sortedIDs(snapshot.transcripts.filter { transcript in
+                    sessionID.map { transcript.sessionID == $0 } ?? true
+                }.map(\.turnID)),
+                orchestrationStateSessionIDs: sortedIDs(
+                    snapshot.orchestrationStates.filter { state in
+                        sessionID.map { state.sessionID == $0 } ?? true
+                    }.map(\.sessionID)
+                )
+            )
         case .expiredReferences:
             return .init(referenceIDs: sortedIDs(snapshot.references.filter {
                 // Existing ordinal References can carry a shorter expiry, but
@@ -345,7 +394,12 @@ public struct VoiceTaskConversationRetentionPlanner: Sendable {
                 }.map(\.id)) : [],
                 actionLinkIDs: sortedIDs(snapshot.actionLinks.filter {
                     $0.sessionID == sessionID
-                }.map(\.id))
+                }.map(\.id)),
+                orchestrationStateSessionIDs: sortedIDs(
+                    snapshot.orchestrationStates.filter {
+                        $0.sessionID == sessionID
+                    }.map(\.sessionID)
+                )
             )
         case .forgetFact(let factID):
             return .init(factIDs: snapshot.facts.contains { $0.id == factID } ? [factID] : [])
@@ -360,6 +414,9 @@ public struct VoiceTaskConversationRetentionPlanner: Sendable {
         if !targets.transcriptTurnIDs.isEmpty { result.append(.deleteTranscript) }
         if !targets.referenceIDs.isEmpty { result.append(.deleteReference) }
         if !targets.actionLinkIDs.isEmpty { result.append(.deleteActionLink) }
+        if !targets.orchestrationStateSessionIDs.isEmpty {
+            result.append(.deleteOrchestrationState)
+        }
         if !targets.sessionIDs.isEmpty { result.append(.deleteSession) }
         if !targets.factIDs.isEmpty {
             // Forgetting records a rejected/retracted state; it is not a cascade
@@ -396,6 +453,9 @@ public struct VoiceTaskConversationRetentionPlanner: Sendable {
                 + targets.referenceIDs.map { "reference:" + $0.uuidString }
                 + targets.factIDs.map { "fact:" + $0.uuidString }
                 + targets.actionLinkIDs.map { "action-link:" + $0.uuidString }
+                + targets.orchestrationStateSessionIDs.map {
+                    "orchestration-state:" + $0.uuidString
+                }
         )
     }
 
