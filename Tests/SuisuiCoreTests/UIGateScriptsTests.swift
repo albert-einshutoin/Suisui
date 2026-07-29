@@ -788,23 +788,23 @@ final class UIGateScriptsTests: XCTestCase {
     func testLayoutResizeReacquiresNamedOwnedWindowUntilRequestedWidthIsObserved() throws {
         let script = try readPackageFile("script/check_layout_stability_smoke.sh")
         let metadataHelper = try readPackageFile("script/ui_evidence_window_metadata.swift")
+        let resizeHelper = try readPackageFile("script/ui_evidence_ax_resize_window.swift")
 
-        XCTAssertTrue(script.contains("set currentMain to value of attribute \"AXMain\" of currentWindow as boolean"))
-        XCTAssertTrue(script.contains("set expectedX to (item 5 of argv) as integer"))
-        XCTAssertTrue(script.contains("set expectedY to (item 6 of argv) as integer"))
-        XCTAssertTrue(script.contains("set expectedWidth to (item 7 of argv) as integer"))
-        XCTAssertTrue(script.contains("set expectedHeight to (item 8 of argv) as integer"))
-        XCTAssertTrue(script.contains("set currentPosition to position of currentWindow"))
-        XCTAssertTrue(script.contains("set currentSize to size of currentWindow"))
-        XCTAssertTrue(script.contains("currentName is requestedName and currentMain and currentPosition is {expectedX, expectedY} and currentSize is {expectedWidth, expectedHeight}"))
-        XCTAssertTrue(script.contains("if candidateCount is not 1 then error \"main named pid-owned window matching visible CG frame is not unique\""))
+        XCTAssertTrue(script.contains("AX_RESIZE_WINDOW_HELPER"))
+        XCTAssertTrue(script.contains("\"$AX_RESIZE_WINDOW_HELPER_BINARY\""))
         XCTAssertTrue(script.contains("\"$window_x\" \"$window_y\" \"$window_width\" \"$window_height\""))
         XCTAssertTrue(script.contains("SUISUI_REQUIRE_SINGLE_WINDOW=\"$require_single_window\""))
+        XCTAssertTrue(script.contains("SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1"))
         XCTAssertTrue(script.contains("read_window_metadata 1"), "a recreated successor is valid only when it is the sole visible PID/name match")
         XCTAssertTrue(script.contains("if [[ \"$window_width\" -eq \"$expected_width\" ]]; then"))
+        XCTAssertTrue(script.contains("\"$width\" -lt \"$expected_width\""))
+        XCTAssertTrue(script.contains("AppKit can reject the below-minimum AX assignment"))
         XCTAssertTrue(script.contains("INFO: reapplying owned window size"))
         XCTAssertTrue(metadataHelper.contains("environment[\"SUISUI_REQUIRE_SINGLE_WINDOW\"] == \"1\""))
         XCTAssertTrue(metadataHelper.contains("guard candidates.count == 1"))
+        XCTAssertTrue(resizeHelper.contains("guard candidates.count == 1"))
+        XCTAssertTrue(resizeHelper.contains("kAXPositionAttribute"))
+        XCTAssertTrue(resizeHelper.contains("kAXSizeAttribute"))
     }
 
     func testLayoutResizeTraceRecordsRequestedExpectedAndBeforeAfterWindowIdentity() throws {
@@ -820,12 +820,11 @@ final class UIGateScriptsTests: XCTestCase {
     }
 
     func testLayoutResizeMovesWindowAwayFromRightEdgeBeforeGrowing() throws {
-        let script = try readPackageFile("script/check_layout_stability_smoke.sh")
+        let resizeHelper = try readPackageFile("script/ui_evidence_ax_resize_window.swift")
 
-        XCTAssertTrue(script.contains("set normalizedPosition to {40, expectedY}"))
-        XCTAssertTrue(script.contains("set position of targetWindow to normalizedPosition"))
-        let positionChange = try XCTUnwrap(script.range(of: "set position of targetWindow to normalizedPosition"))
-        let sizeChange = try XCTUnwrap(script.range(of: "set size of targetWindow to {targetWidth, targetHeight}"))
+        XCTAssertTrue(resizeHelper.contains("var normalizedPosition = CGPoint(x: 0, y: expectedFrame.origin.y)"))
+        let positionChange = try XCTUnwrap(resizeHelper.range(of: "kAXPositionAttribute"))
+        let sizeChange = try XCTUnwrap(resizeHelper.range(of: "kAXSizeAttribute", range: positionChange.upperBound..<resizeHelper.endIndex))
         XCTAssertLessThan(positionChange.lowerBound, sizeChange.lowerBound)
     }
 

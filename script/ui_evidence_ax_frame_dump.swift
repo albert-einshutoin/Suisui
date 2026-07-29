@@ -2,14 +2,29 @@ import ApplicationServices
 import AppKit
 import Foundation
 
-guard CommandLine.arguments.count == 2,
+guard (CommandLine.arguments.count == 2 || CommandLine.arguments.count == 6),
       let rawPID = Int32(CommandLine.arguments[1]),
       rawPID > 0 else {
-    fputs("AX frame dump requires an app pid.\n", stderr)
+    fputs("AX frame dump requires an app pid and optional expected window x y width height.\n", stderr)
     exit(2)
 }
 
 let appPID = pid_t(rawPID)
+let expectedWindowFrame: CGRect?
+if CommandLine.arguments.count == 6 {
+    guard let x = Double(CommandLine.arguments[2]),
+          let y = Double(CommandLine.arguments[3]),
+          let width = Double(CommandLine.arguments[4]),
+          let height = Double(CommandLine.arguments[5]),
+          width > 0,
+          height > 0 else {
+        fputs("Expected AX window frame must contain numeric x y width height values.\n", stderr)
+        exit(2)
+    }
+    expectedWindowFrame = CGRect(x: x, y: y, width: width, height: height)
+} else {
+    expectedWindowFrame = nil
+}
 let environment = ProcessInfo.processInfo.environment
 let maxNodes = Int(environment["SUISUI_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
 
@@ -71,6 +86,19 @@ func size(from value: CFTypeRef?) -> CGSize? {
     return AXValueGetValue(axValue, .cgSize, &size) ? size : nil
 }
 
+func matchesExpectedWindowFrame(_ element: AXUIElement) -> Bool {
+    guard let expectedWindowFrame else { return true }
+    guard let position = point(from: copyAttribute(element, kAXPositionAttribute as CFString)),
+          let dimensions = size(from: copyAttribute(element, kAXSizeAttribute as CFString)) else {
+        return false
+    }
+    let tolerance = 1.0
+    return abs(position.x - expectedWindowFrame.origin.x) <= tolerance
+        && abs(position.y - expectedWindowFrame.origin.y) <= tolerance
+        && abs(dimensions.width - expectedWindowFrame.width) <= tolerance
+        && abs(dimensions.height - expectedWindowFrame.height) <= tolerance
+}
+
 func tsvSafe(_ value: String) -> String {
     value
         .replacingOccurrences(of: "\t", with: " ")
@@ -92,35 +120,63 @@ guard let windowsValue = copyAttribute(appElement, kAXWindowsAttribute as CFStri
     exit(2)
 }
 
-var queue = elements(from: windowsValue)
-guard !queue.isEmpty else {
-    fputs("Target app pid \(appPID) has no visible AX windows.\n", stderr)
+let allWindows = elements(from: windowsValue)
+let primaryWindows = allWindows.filter(matchesExpectedWindowFrame)
+guard !primaryWindows.isEmpty else {
+    fputs("Target app pid \(appPID) has no AX window matching the visible CoreGraphics frame.\n", stderr)
     exit(2)
 }
 
-var cursor = 0
 var visitedCount = 0
-while cursor < queue.count && visitedCount < maxNodes {
-    let element = queue[cursor]
-    cursor += 1
-    visitedCount += 1
+let overlayIdentifiers = Set(["project-inspector", "task-inspector"])
 
-    if let identifier = stringValue(copyAttribute(element, "AXIdentifier" as CFString)),
-       !identifier.isEmpty,
-       let position = point(from: copyAttribute(element, kAXPositionAttribute as CFString)),
-       let dimensions = size(from: copyAttribute(element, kAXSizeAttribute as CFString)) {
-        print([
-            tsvSafe(identifier),
-            String(Int(position.x.rounded())),
-            String(Int(position.y.rounded())),
-            String(Int(dimensions.width.rounded())),
-            String(Int(dimensions.height.rounded()))
-        ].joined(separator: "\t"))
-    }
+func isContainedInExpectedWindow(position: CGPoint, dimensions: CGSize) -> Bool {
+    guard let expectedWindowFrame else { return true }
+    let tolerance = 1.0
+    return position.x >= expectedWindowFrame.minX - tolerance
+        && position.y >= expectedWindowFrame.minY - tolerance
+        && position.x + dimensions.width <= expectedWindowFrame.maxX + tolerance
+        && position.y + dimensions.height <= expectedWindowFrame.maxY + tolerance
+}
 
-    for attribute in childAttributes {
-        queue.append(contentsOf: elements(from: copyAttribute(element, attribute as CFString)))
+func traverse(_ roots: [AXUIElement], overlayOnly: Bool) {
+    var queue = roots
+    var cursor = 0
+    while cursor < queue.count && visitedCount < maxNodes {
+        let element = queue[cursor]
+        cursor += 1
+        visitedCount += 1
+
+        if let identifier = stringValue(copyAttribute(element, "AXIdentifier" as CFString)),
+           !identifier.isEmpty,
+           (!overlayOnly || overlayIdentifiers.contains(identifier)),
+           let position = point(from: copyAttribute(element, kAXPositionAttribute as CFString)),
+           let dimensions = size(from: copyAttribute(element, kAXSizeAttribute as CFString)) {
+            var fields = [
+                tsvSafe(identifier),
+                String(Int(position.x.rounded())),
+                String(Int(position.y.rounded())),
+                String(Int(dimensions.width.rounded())),
+                String(Int(dimensions.height.rounded()))
+            ]
+            if overlayOnly || (
+                overlayIdentifiers.contains(identifier)
+                    && !isContainedInExpectedWindow(position: position, dimensions: dimensions)
+            ) {
+                fields.append("overlay")
+            }
+            print(fields.joined(separator: "\t"))
+        }
+
+        for attribute in childAttributes {
+            queue.append(contentsOf: elements(from: copyAttribute(element, attribute as CFString)))
+        }
     }
+}
+
+traverse(primaryWindows, overlayOnly: false)
+if expectedWindowFrame != nil {
+    traverse(allWindows.filter { !matchesExpectedWindowFrame($0) }, overlayOnly: true)
 }
 
 if visitedCount >= maxNodes {
