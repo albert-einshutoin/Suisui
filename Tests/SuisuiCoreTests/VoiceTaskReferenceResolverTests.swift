@@ -1272,6 +1272,33 @@ final class VoiceTaskReferenceResolverTests: XCTestCase {
         XCTAssertNotEqual(result, .resolved(firstTask, reason: .stableOrdinal))
     }
 
+    func testGivenJapaneseCorrectionPrefixThenNumericOrdinalUsesStableReference() throws {
+        let firstTask = ConversationResolvedTarget.task(id: 281, projectID: 24)
+        let secondTask = ConversationResolvedTarget.task(id: 282, projectID: 24)
+        let candidates = [
+            candidate(taskID: 281, projectID: 24, title: "First task"),
+            candidate(taskID: 282, projectID: 24, title: "Second task"),
+        ]
+        let fingerprint = VoiceTaskReferenceResolver.orderingFingerprint(for: candidates)
+        let reference = try ordinalReference(
+            target: .task(282),
+            ordinal: 1,
+            fingerprint: fingerprint
+        )
+
+        let result = resolver.resolve(
+            request(
+                utterance: "違う、2つ目を完了にして",
+                ordinalReference: reference,
+                candidateOrderingFingerprint: fingerprint,
+                candidates: candidates
+            )
+        )
+
+        XCTAssertEqual(result, .resolved(secondTask, reason: .stableOrdinal))
+        XCTAssertNotEqual(result, .resolved(firstTask, reason: .stableOrdinal))
+    }
+
     func testGivenTaskOrdinalBeforeProjectContainerWhenResolveThenUsesTaskOrdinal() throws {
         let firstTask = ConversationResolvedTarget.task(id: 29, projectID: 24)
         let secondTask = ConversationResolvedTarget.task(id: 30, projectID: 24)

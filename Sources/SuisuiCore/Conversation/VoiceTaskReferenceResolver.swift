@@ -708,8 +708,12 @@ public struct VoiceTaskReferenceResolver: Sendable {
         guard canUseUnqualifiedNumericOrdinal else {
             return nil
         }
+        // A correction marker changes the discourse choice, not the ordinal's
+        // stable ordering evidence. Keep the prefix deliberately narrow so an
+        // unrelated number later in a compound request cannot hijack a target.
+        let japaneseCorrectionPrefix = #"(?:違う|いや|いえ)[、,]?\s*"#
         for pattern in [
-            #"^([0-9]+)\s*(?:つ目|番目)"#,
+            #"^(?:\#(japaneseCorrectionPrefix))?([0-9]+)\s*(?:つ目|番目)"#,
             #"^([0-9]+)(?:st|nd|rd|th)$"#,
         ] {
             if let oneBased = firstPositiveIntegerCapture(
