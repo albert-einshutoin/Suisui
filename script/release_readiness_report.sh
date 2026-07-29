@@ -1689,7 +1689,8 @@ write_release_actions() {
     write_release_closeout_issue_routes
 
     printf "## Product-Out Gap Ledger\n"
-    printf -- "- Use \`docs/release/product-out-gap-ledger.md\` to keep Google Calendar live sync, local OSS TTS packaged runtime, Daily Planning VoiceOver closeout, competitor hands-on, release-machine signing/notarization/Sparkle, and UI evidence refresh classified as Blocker, Accepted Risk, or Deferred.\n"
+    printf -- "- Google Calendar live sync is deferred to post-alpha issue #434 and is not a Public Alpha blocker.\n"
+    printf -- "- Use \`docs/release/product-out-gap-ledger.md\` to keep local OSS TTS packaged runtime, Daily Planning VoiceOver closeout, competitor hands-on, release-machine signing/notarization/Sparkle, and UI evidence refresh classified as Blocker, Accepted Risk, or Deferred.\n"
     printf -- "- Update the ledger when a blocker becomes an accepted risk or a Phase16/17 deferred item.\n"
     printf -- "- The ledger is planning state only; release evidence still comes from the verifier and evidence files referenced below.\n\n"
 

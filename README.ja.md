@@ -91,6 +91,7 @@ cd Suisui
 - チーム、組織、権限管理、共有ワークスペース
 - 複数端末間のクラウド同期
 - GitHub、Gmail、Slack、Google Drive、Notionなどを、サポート対象のSaaS連携として直接利用すること
+- Google CalendarのOAuth/live syncは実験的な基盤であり、Public Alphaのサポート対象ではありません。カレンダー連携にはApple Calendarアダプターを利用してください。正式サポートに必要な検証は[#434](https://github.com/albert-einshutoin/Suisui/issues/434)で管理します。
 - 大規模な全文RAGや知識インデックス
 - メール送信、Slack投稿、破壊的なファイル操作の自動実行
 

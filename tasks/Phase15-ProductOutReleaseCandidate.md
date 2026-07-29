@@ -8,7 +8,7 @@
 
 - 実装レベル: Google Calendar runtime、integration readiness、local OSS TTS、Daily Planning、UI evidence refreshは実装済みで、対応するfeature issue #3、#11、#12、#14、#23はclosed。
 - 自動検証レベル: product source `14d1013d` のvisual/MCP evidence整合を復旧し、日本語README/Public Alpha導線とSwift 6 clean-build警告解消を追加。最終の全回帰はこの変更ブランチで再実行する。
-- 手動・外部環境レベル: #244 manual VoiceOver、#245 competitor hands-on、#246 signed/notarized/Sparkle release-machine evidenceはopen。Google OAuth live proofとcurrent-source STT/TTS実機証跡もrelease gateとして残る。
+- 手動・外部環境レベル: #244 manual VoiceOver、#246 signed/notarized/Sparkle release-machine evidenceはopen。current-source STT/TTS実機証跡もrelease gateとして残る。Google Calendar live proofはPublic Alpha blockerから外し、#434へdeferする。
 - 判定ルール: 実装済みをrelease-readyと同一視しない。最新の分類は `docs/release/product-out-gap-ledger.md`、最終判定は `script/release_readiness_report.sh` を正とする。
 
 ## Product Bar
@@ -135,7 +135,7 @@ Suisui起動後の通常操作でmacOS側が毎回Keychain認証を求めると�
 - [ ] Keychain fakeにread countを持たせ、通常のProject Board操作でprovider secret readが連続発火しないunit testを追加する。
 - [ ] provider readiness表示がKeychainエラーをsecret値なしで表示するtestを追加する。
 - [ ] Google CalendarはAPI keyではなくOAuth authorizationが必要であることをsource/doc testで固定する。
-- [ ] Google Calendar live sync evidence は `script/create_google_calendar_live_evidence.sh --validate-only` で、OAuth consent、writable calendar list、明示承認済みevent write、duplicate skip、Keychain token-boundary noteを検証し、raw access/refresh tokenやGoogle API keyを受け付けない。
+- [x] Deferred用のGoogle Calendar live sync evidence validatorは `script/create_google_calendar_live_evidence.sh --validate-only` で、OAuth consent、writable calendar list、明示承認済みevent write、duplicate skip、Keychain token-boundary noteを検証し、raw access/refresh tokenやGoogle API keyを受け付けない。
 - [ ] Keychain prompt回避のためにsecretをUserDefaultsやSQLiteへcacheしないことをsecurity testで固定する。
 
 ### Implementation Steps
@@ -145,7 +145,7 @@ Suisui起動後の通常操作でmacOS側が毎回Keychain認証を求めると�
 - [ ] readiness cacheは「設定済みかどうか」「最後の検証結果」だけを保持し、secret値を保持しない。
 - [ ] Keychain access denied、item missing、interaction not allowedを分けてUIに出す。
 - [ ] Google連携の文言を「Google API key」ではなく「Google OAuth authorization」として説明する。
-- [ ] 資格情報があるrelease machineでGoogle Calendar live syncを実行し、`script/create_google_calendar_live_evidence.sh --force` で `docs/release/evidence/google-calendar-live-sync.md` を生成する。
+- [x] 実Googleアカウントでのlive syncと証跡生成はPublic Alpha blockerにせず、post-alpha handoff #434へ移した。
 - [ ] 実機でSuisui起動 -> Project Board操作 -> task list -> task edit -> automation reviewを行い、不要なKeychain promptが出ないことをmanual noteに残す。
 
 ### Acceptance Criteria
@@ -154,7 +154,7 @@ Suisui起動後の通常操作でmacOS側が毎回Keychain認証を求めると�
 - [ ] 初回保存、明示的なkey更新、OAuth再認証など必要な操作では安全に認証できる。
 - [ ] secretはKeychain以外に複製されない。
 - [ ] Google Calendarの認証境界がAPI keyとOAuthで混同されない。
-- [ ] Google Calendar live sync evidence がOAuth consent、calendar picker/list、approved write、external link duplicate skip、Keychain境界を具体的に記録している。
+- [x] Public AlphaはGoogle Calendar live syncをサポート対象外と明記し、正式サポートへ昇格する際の証跡条件を#434へ保持している。
 
 ### Non-goals
 

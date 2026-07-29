@@ -357,9 +357,31 @@ final class QualitySourceContractTests: XCTestCase {
 
         XCTAssertTrue(ledger.contains("script/create_google_calendar_live_evidence.sh"))
         XCTAssertTrue(phase15.contains("Google Calendar live sync evidence"))
-        XCTAssertTrue(runbook.contains("## Google Calendar live sync"))
+        XCTAssertTrue(runbook.contains("## Deferred: Google Calendar live sync"))
+        XCTAssertTrue(runbook.contains("does not block Public Alpha"))
         XCTAssertTrue(runbook.contains("Run the same sync again and confirm Suisui skips the already-linked task"))
         XCTAssertNil(script.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
+    }
+
+    func testPublicAlphaExplicitlyDefersGoogleCalendarLiveSyncAcrossReleaseSources() throws {
+        let ledger = try readPackageFile("docs/release/product-out-gap-ledger.md")
+        let publicAlpha = try readPackageFile("docs/release/public-alpha.md")
+        let publicAlphaJapanese = try readPackageFile("docs/release/public-alpha-ja.md")
+        let readme = try readPackageFile("README.md")
+        let readmeJapanese = try readPackageFile("README.ja.md")
+        let phase15 = try readPackageFile("tasks/Phase15-ProductOutReleaseCandidate.md")
+        let readiness = try readPackageFile("script/release_readiness_report.sh")
+
+        XCTAssertTrue(ledger.contains("| Google Calendar live sync | Public Alpha excludes external SaaS sync"))
+        XCTAssertTrue(ledger.contains("issues/434"))
+        XCTAssertFalse(ledger.contains("| Google Calendar live sync | [#3]"))
+        XCTAssertTrue(publicAlpha.contains("Google Calendar OAuth/live sync is not a supported Public Alpha workflow"))
+        XCTAssertTrue(publicAlphaJapanese.contains("Google CalendarのOAuth/live syncはPublic Alphaのサポート対象ではありません"))
+        XCTAssertTrue(readme.contains("Google Calendar OAuth/live sync remains an experimental foundation"))
+        XCTAssertTrue(readmeJapanese.contains("Google CalendarのOAuth/live syncは実験的な基盤"))
+        XCTAssertTrue(phase15.contains("Google Calendar live proofはPublic Alpha blockerから外し、#434へdefer"))
+        XCTAssertTrue(readiness.contains("Google Calendar live sync is deferred to post-alpha issue #434"))
+        XCTAssertFalse(readiness.contains("keep Google Calendar live sync, local OSS TTS"))
     }
 
     func testCursorNotionCompetitiveResponseDefinesAccelerationLane() throws {

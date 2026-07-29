@@ -100,9 +100,11 @@ export SUISUI_LOCAL_VOICE_EVIDENCE_FILE="docs/release/evidence/local-voice-runti
 
 After it passes, listen to `.tmp/local-voice-runtime-smoke/kokoro-ja.wav` and `kokoro-en.wav`, then open Suisui Settings -> Voice and run Test Play in the release candidate. Confirm intelligible output, correct Japanese/English selection, and no unexpected network request. Do not commit the WAV, model, executable, cache, or raw recording. Rerun `./script/release_readiness_report.sh` after reviewing the generated path-redacted evidence.
 
-## Google Calendar live sync
+## Deferred: Google Calendar live sync
 
-Goal: replace the product-out Google Calendar blocker with real OAuth, writable calendar selection, approval-gated event creation, and duplicate-link proof. This lane must use a test calendar in a real Google account; do not record raw OAuth access tokens, refresh tokens, bearer headers, or Google API keys.
+This post-alpha lane does not block Public Alpha. Google Calendar OAuth/live sync is not a supported Public Alpha workflow; [#434](https://github.com/albert-einshutoin/Suisui/issues/434) owns the evidence required before it can be promoted to supported status.
+
+Goal: validate real OAuth, writable calendar selection, approval-gated event creation, and duplicate-link proof before a later support-scope change. This lane must use a test calendar in a real Google account; do not record raw OAuth access tokens, refresh tokens, bearer headers, or Google API keys.
 
 Required manual work:
 
@@ -140,7 +142,7 @@ script/create_google_calendar_live_evidence.sh --validate-only \
   --keychain-note "<Keychain/token-boundary observation>"
 ```
 
-Commit only after validation and write mode succeed:
+For the post-alpha support-scope PR, commit only after validation and write mode succeed:
 
 ```bash
 git add docs/release/evidence/google-calendar-live-sync.md
