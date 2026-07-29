@@ -4773,6 +4773,36 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(registryRuntime.contains("recoverOnce("))
     }
 
+    func testProductionLaunchRunsAutomaticConversationRetentionOffMainActorAndAuditsOutcome()
+        throws
+    {
+        let appSource = try readPackageFile(
+            "Sources/SuisuiApp/SuisuiApp.swift"
+        )
+        let runtimeSource = try readPackageFile(
+            "Sources/SuisuiApp/Composition/ConversationRetentionRuntime.swift"
+        )
+
+        XCTAssertTrue(
+            appSource.contains(
+                "ConversationRetentionRuntime.shared.start()"
+            )
+        )
+        XCTAssertTrue(
+            runtimeSource.contains(
+                "Task.detached(priority: .utility)"
+            )
+        )
+        XCTAssertTrue(
+            runtimeSource.contains(
+                "VoiceTaskConversationAutomaticRetentionRunner().run("
+            )
+        )
+        XCTAssertTrue(runtimeSource.contains("RedactingAuditLogger("))
+        XCTAssertTrue(runtimeSource.contains("AuditEvent("))
+        XCTAssertFalse(runtimeSource.contains("try?"))
+    }
+
     func testUnavailableReviewRegistryDoesNotSilentlyDropRegistrationFailures() throws {
         let appSource = try readAppShellSource()
 

@@ -19,7 +19,7 @@ public struct VoiceTaskConversationRetentionPolicy: Equatable, Sendable {
 
     public init(
         transcriptRetention: TimeInterval = 30 * 86_400,
-        referenceRetention: TimeInterval = 24 * 86_400,
+        referenceRetention: TimeInterval = 24 * 3_600,
         rawAudioDisposition: VoiceTaskConversationRawAudioRetentionDisposition =
             .delegatedToAttachmentRetention
     ) {

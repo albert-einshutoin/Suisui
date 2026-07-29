@@ -23,11 +23,11 @@ final class VoiceTaskConversationRetentionTests: XCTestCase {
 
     func testGivenReferenceAtTwentyFourHourBoundaryWhenPlanThenExpires() {
         let expired = makeReference(
-            createdAt: now.addingTimeInterval(-24 * 86_400),
+            createdAt: now.addingTimeInterval(-24 * 3_600),
             expiresAt: now.addingTimeInterval(3_600)
         )
         let active = makeReference(
-            createdAt: now.addingTimeInterval(-24 * 86_400 + 1),
+            createdAt: now.addingTimeInterval(-24 * 3_600 + 1),
             expiresAt: now.addingTimeInterval(3_600)
         )
 

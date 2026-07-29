@@ -700,6 +700,7 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
         SuisuiNotificationResponder.shared.install()
+        ConversationRetentionRuntime.shared.start()
         DockTileBadgeController.shared.start()
         DeadlineWatcherRuntime.shared.start()
         ensureProjectBoardWindowIsVisible()
