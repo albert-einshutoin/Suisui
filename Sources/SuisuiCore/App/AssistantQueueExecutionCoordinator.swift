@@ -48,8 +48,12 @@ public struct AssistantQueueExecutionCoordinator {
     }
 
     @discardableResult
+    @available(*, deprecated, message: "This overload fails closed. Use execute(id:expectedMutationRevision:).")
     public func execute(id: String) throws -> AssistantQueueExecutionResult {
-        try execute(id: id, expectedMutationRevision: nil)
+        // An unversioned caller cannot prove which approved payload the user
+        // reviewed. Never infer the current revision because another window may
+        // have edited and reapproved different work under the same durable id.
+        throw AssistantQueueStaleReviewError()
     }
 
     @discardableResult

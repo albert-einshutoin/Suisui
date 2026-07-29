@@ -2,6 +2,45 @@ import XCTest
 @testable import SuisuiCore
 
 final class AssistantQueueExecutionTests: XCTestCase {
+    func testLegacyUnversionedCoordinatorExecuteFailsClosedBeforeSideEffects() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = VolatileExecutionReceiptStore()
+        let approved = try AssistantQueueStateMachine.approve(
+            makeActionPlanItem(),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(
+                    required: ["title"],
+                    properties: ["title": "string"]
+                ),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                XCTFail("An unversioned Run action must not reach the executor.")
+                return ToolResult(
+                    tool: .taskCreate,
+                    status: .failed,
+                    summary: "must not execute"
+                )
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore
+        )
+
+        XCTAssertThrowsError(try coordinator.execute(id: approved.id)) { error in
+            XCTAssertTrue(error is AssistantQueueStaleReviewError)
+        }
+        XCTAssertEqual(try queueStore.get(id: approved.id).state, .approved)
+        XCTAssertTrue(receiptStore.receipts.isEmpty)
+    }
+
     func testCoordinatorRejectsRunFromStaleDisplayedRevisionWithoutExecutingLatestContent() throws {
         let queueStore = try makeQueueStore()
         let receiptStore = VolatileExecutionReceiptStore()
@@ -91,7 +130,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 100) }
         )
 
-        let result = try coordinator.execute(id: approved.id)
+        let result = try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)
 
         XCTAssertEqual(result.item.state, .done)
         XCTAssertEqual(try queueStore.get(id: approved.id).state, .done)
@@ -191,7 +230,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 170) }
         )
 
-        let result = try coordinator.execute(id: approved.id)
+        let result = try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)
 
         XCTAssertEqual(result.item.state, .done)
         XCTAssertEqual(try queueStore.get(id: approved.id).state, .done)
@@ -283,7 +322,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 172) }
         )
 
-        let result = try coordinator.execute(id: approved.id)
+        let result = try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)
 
         XCTAssertEqual(result.item.state, .done)
         XCTAssertEqual(try queueStore.get(id: approved.id).state, .done)
@@ -380,7 +419,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 175) }
         )
 
-        let result = try coordinator.execute(id: approved.id)
+        let result = try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)
 
         XCTAssertEqual(result.item.state, .done)
         XCTAssertEqual(try queueStore.get(id: approved.id).state, .done)
@@ -469,7 +508,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 176) }
         )
 
-        let result = try coordinator.execute(id: approved.id)
+        let result = try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)
 
         XCTAssertEqual(result.item.state, .failed)
         XCTAssertEqual(try queueStore.get(id: approved.id).state, .failed)
@@ -530,7 +569,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 160) }
         )
 
-        let result = try coordinator.execute(id: approved.id)
+        let result = try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)
 
         XCTAssertEqual(result.item.state, .done)
         let events = try calendarClient.listEvents()
@@ -590,7 +629,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 180) }
         )
 
-        let result = try coordinator.execute(id: approved.id)
+        let result = try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)
 
         XCTAssertEqual(result.item.state, .done)
         XCTAssertEqual(try queueStore.get(id: approved.id).state, .done)
@@ -630,7 +669,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             executionReceiptStore: receiptStore
         )
 
-        XCTAssertThrowsError(try coordinator.execute(id: item.id)) { error in
+        XCTAssertThrowsError(try executeCurrent(coordinator, id: item.id, queueStore: queueStore)) { error in
             XCTAssertEqual(error as? AssistantQueueExecutionError, .unsupportedPayload)
         }
         XCTAssertEqual(try queueStore.get(id: item.id).state, .blocked)
@@ -664,7 +703,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 125) }
         )
 
-        let result = try coordinator.execute(id: approved.id)
+        let result = try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)
 
         XCTAssertEqual(result.receipt.usage.state, .estimated)
         XCTAssertEqual(result.receipt.usage.inputTokens, 1_000)
@@ -709,7 +748,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 126) }
         )
 
-        let result = try coordinator.execute(id: approved.id)
+        let result = try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)
 
         let entry = try XCTUnwrap(ledgerStore.entries.first)
         XCTAssertEqual(ledgerStore.entries.count, 1)
@@ -774,7 +813,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 1_788_282_000) }
         )
 
-        XCTAssertThrowsError(try coordinator.execute(id: approved.id)) { error in
+        XCTAssertThrowsError(try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)) { error in
             guard case .managedUsageCapExceeded(let projection, true) = error as? AssistantQueueExecutionError else {
                 return XCTFail("Expected managed usage cap exceeded, got \(error)")
             }
@@ -905,7 +944,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
 
         runtimeBillingSettings = ManagedAIBillingSettings(isEnabled: true, dailyCapCents: 80)
 
-        XCTAssertThrowsError(try coordinator.execute(id: approved.id)) { error in
+        XCTAssertThrowsError(try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)) { error in
             guard case .managedUsageCapExceeded(let projection, true) = error as? AssistantQueueExecutionError else {
                 return XCTFail("Expected managed usage cap exceeded, got \(error)")
             }
@@ -943,7 +982,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 1_788_282_100) }
         )
 
-        let result = try coordinator.execute(id: approved.id)
+        let result = try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)
 
         XCTAssertEqual(result.item.state, .done)
         XCTAssertEqual(receiptStore.receipts.count, 1)
@@ -982,7 +1021,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 127) }
         )
 
-        _ = try coordinator.execute(id: approved.id)
+        _ = try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)
 
         XCTAssertTrue(ledgerStore.entries.isEmpty)
     }
@@ -1015,7 +1054,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 128) }
         )
 
-        XCTAssertThrowsError(try coordinator.execute(id: approved.id)) { error in
+        XCTAssertThrowsError(try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)) { error in
             XCTAssertEqual(
                 error as? AssistantQueueExecutionError,
                 .managedUsageLedgerPersistenceFailed(queueStateMarkedFailed: true)
@@ -1061,7 +1100,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 130) }
         )
 
-        let result = try coordinator.execute(id: approved.id)
+        let result = try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)
 
         XCTAssertEqual(result.receipt.usage.state, .measured)
         XCTAssertEqual(result.receipt.usage.inputTokens, 900)
@@ -1104,7 +1143,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 150) }
         )
 
-        let result = try coordinator.execute(id: approved.id)
+        let result = try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)
 
         XCTAssertEqual(result.item.state, .done)
         XCTAssertEqual(result.session.originalPlan.id, "automation-request:automation-task-due")
@@ -1159,7 +1198,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 175) }
         )
 
-        let result = try coordinator.execute(id: approved.id)
+        let result = try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)
 
         XCTAssertEqual(result.item.state, .done)
         XCTAssertEqual(try taskStore.get(id: task.id).dueAt, "2026-07-03T09:00:00Z")
@@ -1336,8 +1375,8 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 180) }
         )
 
-        let reviewResult = try coordinator.execute(id: reviewItem.id)
-        let mergeResult = try coordinator.execute(id: mergeItem.id)
+        let reviewResult = try executeCurrent(coordinator, id: reviewItem.id, queueStore: queueStore)
+        let mergeResult = try executeCurrent(coordinator, id: mergeItem.id, queueStore: queueStore)
 
         XCTAssertEqual(reviewResult.item.state, .done)
         XCTAssertEqual(mergeResult.item.state, .done)
@@ -1452,7 +1491,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 190) }
         )
 
-        let result = try coordinator.execute(id: item.id)
+        let result = try executeCurrent(coordinator, id: item.id, queueStore: queueStore)
 
         XCTAssertEqual(result.item.state, .failed)
         let receipt = try XCTUnwrap(receiptStore.receipts.first)
@@ -1514,7 +1553,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             )
             try queueStore.save(item)
 
-            let result = try coordinator.execute(id: item.id)
+            let result = try executeCurrent(coordinator, id: item.id, queueStore: queueStore)
 
             XCTAssertEqual(result.item.state, .failed)
             XCTAssertTrue(result.receipt.actions.first?.errorSummary?.contains("bookmark") == true)
@@ -1663,7 +1702,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             missingToolName,
             mismatchedPullRequestTool
         ] + remoteLocalDevelopmentTools {
-            XCTAssertThrowsError(try coordinator.execute(id: item.id)) { error in
+            XCTAssertThrowsError(try executeCurrent(coordinator, id: item.id, queueStore: queueStore)) { error in
                 XCTAssertEqual(error as? AssistantQueueExecutionError, .unsupportedPayload)
             }
             XCTAssertEqual(try queueStore.get(id: item.id).state, .approved)
@@ -1795,7 +1834,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             executionReceiptStore: VolatileExecutionReceiptStore()
         )
 
-        XCTAssertThrowsError(try coordinator.execute(id: item.id)) { error in
+        XCTAssertThrowsError(try executeCurrent(coordinator, id: item.id, queueStore: queueStore)) { error in
             XCTAssertEqual(error as? AssistantQueueTransitionError, .approvalRequiredBeforeRunning)
         }
         XCTAssertEqual(try queueStore.get(id: item.id).state, .waitingReview)
@@ -1824,7 +1863,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 200) }
         )
 
-        let result = try coordinator.execute(id: approved.id)
+        let result = try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)
 
         XCTAssertEqual(result.item.state, .failed)
         XCTAssertEqual(try queueStore.get(id: approved.id).state, .failed)
@@ -1862,7 +1901,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 200) }
         )
 
-        let failedResult = try failingCoordinator.execute(id: approved.id)
+        let failedResult = try executeCurrent(failingCoordinator, id: approved.id, queueStore: queueStore)
         XCTAssertEqual(try queueStore.get(id: approved.id).state, .failed)
 
         let reopened = try queueStore.transition(id: approved.id) { item in
@@ -1892,7 +1931,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 300) }
         )
 
-        let result = try successCoordinator.execute(id: reapproved.id)
+        let result = try executeCurrent(successCoordinator, id: reapproved.id, queueStore: queueStore)
 
         XCTAssertEqual(result.item.state, .done)
         XCTAssertEqual(failedResult.session.id, "assistant-queue-item:\(approved.id)")
@@ -1928,7 +1967,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 200) }
         )
 
-        _ = try failingCoordinator.execute(id: approved.id)
+        _ = try executeCurrent(failingCoordinator, id: approved.id, queueStore: queueStore)
         XCTAssertEqual(try queueStore.get(id: approved.id).state, .failed)
 
         let reopened = try queueStore.transition(id: approved.id) { item in
@@ -1960,7 +1999,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 300) }
         )
 
-        let result = try successCoordinator.execute(id: reapproved.id)
+        let result = try executeCurrent(successCoordinator, id: reapproved.id, queueStore: queueStore)
 
         XCTAssertEqual(result.item.state, .done)
         XCTAssertEqual(try queueStore.get(id: approved.id).state, .done)
@@ -1996,7 +2035,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 300) }
         )
 
-        XCTAssertThrowsError(try coordinator.execute(id: approved.id)) { error in
+        XCTAssertThrowsError(try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)) { error in
             XCTAssertEqual(
                 error as? AssistantQueueExecutionError,
                 .receiptPersistenceFailed(queueStateMarkedFailed: true)
@@ -2032,7 +2071,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 310) }
         )
 
-        XCTAssertThrowsError(try coordinator.execute(id: approved.id)) { error in
+        XCTAssertThrowsError(try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)) { error in
             XCTAssertEqual(
                 error as? AssistantQueueExecutionError,
                 .receiptPersistenceFailed(queueStateMarkedFailed: true)
@@ -2058,7 +2097,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 320) }
         )
 
-        XCTAssertThrowsError(try coordinator.execute(id: approved.id)) { error in
+        XCTAssertThrowsError(try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)) { error in
             XCTAssertEqual(
                 error as? AssistantQueueExecutionError,
                 .receiptPersistenceFailed(queueStateMarkedFailed: true)
@@ -2094,13 +2133,25 @@ final class AssistantQueueExecutionTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 330) }
         )
 
-        XCTAssertThrowsError(try coordinator.execute(id: approved.id)) { error in
+        XCTAssertThrowsError(try executeCurrent(coordinator, id: approved.id, queueStore: queueStore)) { error in
             XCTAssertEqual(
                 error as? AssistantQueueExecutionError,
                 .receiptPersistenceFailed(queueStateMarkedFailed: false)
             )
         }
         XCTAssertEqual(try queueStore.get(id: approved.id).state, .running)
+    }
+
+    private func executeCurrent(
+        _ coordinator: AssistantQueueExecutionCoordinator,
+        id: String,
+        queueStore: any AssistantQueueStore
+    ) throws -> AssistantQueueExecutionResult {
+        let current = try queueStore.get(id: id)
+        return try coordinator.execute(
+            id: id,
+            expectedMutationRevision: try XCTUnwrap(current.mutationRevision)
+        )
     }
 
     private func makeQueueStore() throws -> SQLiteAssistantQueueStore {

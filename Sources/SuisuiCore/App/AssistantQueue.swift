@@ -114,7 +114,9 @@ public enum AssistantQueueTransitionError: Error, Equatable, Sendable {
 public struct AssistantQueueReviewActionUnavailableError: Error, Equatable, Sendable {
     public init() {}
 }
-struct AssistantQueueStaleReviewError: Error, Equatable, Sendable {}
+public struct AssistantQueueStaleReviewError: Error, Equatable, Sendable {
+    public init() {}
+}
 
 enum AssistantQueueMutationFailure {
     static let staleUserMessage =

@@ -466,12 +466,16 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
 
         XCTAssertTrue(
             result.findings.contains {
-                $0.nodeID == "assistant-queue-approve" && $0.kind == .wrongRequiredRole
+                $0.nodeID == "assistant-queue-approve"
+                    && $0.kind == .missingRequiredNode
+                    && $0.message.contains("wrongRequiredRole")
             }
         )
         XCTAssertTrue(
             result.findings.contains {
-                $0.nodeID == "assistant-queue-edit-reason" && $0.kind == .wrongRequiredRole
+                $0.nodeID == "assistant-queue-edit-reason"
+                    && $0.kind == .missingRequiredNode
+                    && $0.message.contains("wrongRequiredRole")
             }
         )
     }
@@ -502,7 +506,9 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
 
             XCTAssertTrue(
                 result.findings.contains {
-                    $0.nodeID == requiredNodeID && $0.kind == .missingRequiredHelp
+                    $0.nodeID == requiredNodeID
+                        && $0.kind == .genericButtonWithoutHelp
+                        && $0.message.contains("missingRequiredHelp")
                 },
                 "\(requiredNodeID) must report missing required help"
             )

@@ -46,10 +46,23 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
 
     public init(
         requiredNodeIDs: [String],
-        dynamicRequiredNodeIDPrefixes: Set<String> = [],
-        expectedRolesByNodeID: [String: AccessibilityNodeRole] = [:],
-        requiredHelpNodeIDs: Set<String> = [],
-        dynamicNodeIDGroupAnchor: String? = nil
+        dynamicRequiredNodeIDPrefixes: Set<String> = []
+    ) {
+        self.init(
+            requiredNodeIDs: requiredNodeIDs,
+            dynamicRequiredNodeIDPrefixes: dynamicRequiredNodeIDPrefixes,
+            expectedRolesByNodeID: [:],
+            requiredHelpNodeIDs: [],
+            dynamicNodeIDGroupAnchor: nil
+        )
+    }
+
+    public init(
+        requiredNodeIDs: [String],
+        dynamicRequiredNodeIDPrefixes: Set<String>,
+        expectedRolesByNodeID: [String: AccessibilityNodeRole],
+        requiredHelpNodeIDs: Set<String>,
+        dynamicNodeIDGroupAnchor: String?
     ) {
         self.requiredNodeIDs = requiredNodeIDs
         self.dynamicRequiredNodeIDPrefixes = dynamicRequiredNodeIDPrefixes
@@ -275,8 +288,6 @@ public enum AccessibilityFocusPathFindingKind: String, Codable, Equatable, Senda
     case unlabeledInteractiveNode
     case genericButtonWithoutHelp
     case missingDestructiveConfirmation
-    case wrongRequiredRole
-    case missingRequiredHelp
 }
 
 public struct AccessibilityFocusPathFinding: Codable, Equatable, Sendable {
@@ -392,17 +403,20 @@ public struct AccessibilityFocusPathAudit: Sendable {
             if let expectedRole = requirements.expectedRolesByNodeID[requiredNodeID],
                node.role != expectedRole {
                 findings.append(AccessibilityFocusPathFinding(
-                    kind: .wrongRequiredRole,
+                    // Keep the original public finding enum exhaustive for
+                    // downstream clients; the stable diagnostic code preserves
+                    // the more specific reason in reports and harness output.
+                    kind: .missingRequiredNode,
                     nodeID: requiredNodeID,
-                    message: "Required accessibility node \(requiredNodeID) must use role \(expectedRole.rawValue), not \(node.role.rawValue)."
+                    message: "wrongRequiredRole: Required accessibility node \(requiredNodeID) must use role \(expectedRole.rawValue), not \(node.role.rawValue)."
                 ))
             }
             if requirements.requiredHelpNodeIDs.contains(requiredNodeID),
                node.help.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 findings.append(AccessibilityFocusPathFinding(
-                    kind: .missingRequiredHelp,
+                    kind: .genericButtonWithoutHelp,
                     nodeID: requiredNodeID,
-                    message: "Required accessibility node \(requiredNodeID) needs help text."
+                    message: "missingRequiredHelp: Required accessibility node \(requiredNodeID) needs help text."
                 ))
             }
             if matchedNode.index < lastRequiredNodeIndex {

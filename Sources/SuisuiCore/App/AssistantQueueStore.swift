@@ -178,6 +178,14 @@ public protocol AtomicAssistantQueueStore: AssistantQueueStore {
 }
 
 public extension AssistantQueueStore {
+    @discardableResult
+    func insertIfAbsent(_ item: AssistantQueueItem) throws -> AssistantQueueItem? {
+        // Keep legacy conformers source-compatible without restoring the old
+        // get-then-save race. Stores that cannot provide an atomic insert must
+        // fail closed until they implement this requirement themselves.
+        throw AssistantQueueStoreError.saveFailed
+    }
+
     func readModelSnapshot(
         filter: AssistantQueueFilter,
         receipts: [ExecutionReceipt] = [],
@@ -233,8 +241,51 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
         canDefer: Bool,
         canEdit: Bool,
         canRetry: Bool,
+        canReject: Bool
+    ) {
+        self.init(
+            id: id,
+            state: state,
+            stateLabel: stateLabel,
+            riskLabel: riskLabel,
+            title: title,
+            redactedSummary: redactedSummary,
+            sourcePreview: sourcePreview,
+            reviewReason: reviewReason,
+            capabilityLabels: capabilityLabels,
+            costPreviewLabel: costPreviewLabel,
+            blockingReason: blockingReason,
+            latestReceipt: latestReceipt,
+            canApprove: canApprove,
+            canRun: canRun,
+            canDefer: canDefer,
+            canEdit: canEdit,
+            canRetry: canRetry,
+            canReject: canReject,
+            mutationRevision: nil
+        )
+    }
+
+    public init(
+        id: String,
+        state: AssistantQueueState,
+        stateLabel: String,
+        riskLabel: String,
+        title: String,
+        redactedSummary: String,
+        sourcePreview: String?,
+        reviewReason: String,
+        capabilityLabels: [String],
+        costPreviewLabel: String? = nil,
+        blockingReason: String?,
+        latestReceipt: AssistantQueueReceiptSummary? = nil,
+        canApprove: Bool,
+        canRun: Bool,
+        canDefer: Bool,
+        canEdit: Bool,
+        canRetry: Bool,
         canReject: Bool,
-        mutationRevision: String? = nil
+        mutationRevision: String?
     ) {
         self.id = id
         self.state = state
