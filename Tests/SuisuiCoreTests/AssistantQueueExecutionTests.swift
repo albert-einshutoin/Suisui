@@ -213,14 +213,15 @@ final class AssistantQueueExecutionTests: XCTestCase {
         XCTAssertTrue(
             result.receipt.references.contains(
                 ExecutionReceiptReference(
-                    kind: .conversationSession,
-                    id: link.sessionID.uuidString
+                    kind: .reviewSession,
+                    id: link.sessionID.uuidString,
+                    label: "Conversation Session"
                 )
             )
         )
         XCTAssertTrue(
             result.receipt.references.contains {
-                $0.kind == .conversationTurn
+                $0.kind == .document
                     && $0.id == link.sourceTurnID.uuidString
             }
         )
@@ -239,6 +240,184 @@ final class AssistantQueueExecutionTests: XCTestCase {
                 ),
             ]
         )
+    }
+
+    func testTaskMutationCASRejectsChangeAfterConversationSnapshotValidation() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        let queueStore = SQLiteAssistantQueueStore(connection: connection)
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let receiptStore = VolatileExecutionReceiptStore()
+        let project = try projectStore.create(title: "Reviewed project")
+        _ = try projectStore.update(id: project.id, status: "completed")
+        let task = try taskStore.create(
+            title: "Reviewed title",
+            projectID: project.id
+        )
+        let reviewedTaskFingerprint =
+            ConversationTaskSnapshotFingerprint.make(task)
+        let plan = ActionPlan(
+            id: "plan-task-cas",
+            userInput: "Rename the task",
+            summary: "Rename task",
+            actions: [
+                PlanAction(
+                    id: "action-task-cas",
+                    tool: .taskUpdate,
+                    arguments: [
+                        "id": .number(Double(task.id)),
+                        "title": .string("Approved title"),
+                    ]
+                ),
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        let approved = try AssistantQueueStateMachine.approve(
+            AssistantQueueAdapter.makeItem(
+                actionPlan: plan,
+                sourceTranscript: plan.userInput,
+                interpretationSummary: plan.summary,
+                reason: "Review",
+                costPreview: .localOnly()
+            ),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let linkStore = RecordingConversationActionLinkStore()
+        try linkStore.saveActionLink(
+            ConversationActionLink(
+                sessionID: UUID(),
+                sourceTurnID: UUID(),
+                actionPlanID: plan.id,
+                assistantQueueItemID: approved.id,
+                reviewedFingerprint: try XCTUnwrap(
+                    approved.approval?.reviewedContentFingerprint
+                ),
+                taskSnapshotFingerprint: reviewedTaskFingerprint,
+                taskSnapshots: [
+                    ConversationTaskSnapshot(
+                        taskID: task.id,
+                        fingerprint: reviewedTaskFingerprint
+                    ),
+                ]
+            )
+        )
+        let registry = try ToolRegistry(tools: [
+            TaskTool(
+                name: .taskUpdate,
+                store: taskStore,
+                projectStore: projectStore
+            ),
+        ])
+        var injectedConcurrentChange = false
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            conversationActionLinkStore: linkStore,
+            taskSnapshotFingerprintProvider: { taskID in
+                let snapshot = ConversationTaskSnapshotFingerprint.make(
+                    try taskStore.get(id: taskID)
+                )
+                if !injectedConcurrentChange {
+                    injectedConcurrentChange = true
+                    _ = try taskStore.update(
+                        id: taskID,
+                        title: "Concurrent title"
+                    )
+                }
+                return snapshot
+            },
+            runIDProvider: { "run-task-cas" },
+            now: { Date(timeIntervalSince1970: 100) }
+        )
+
+        let result = try executeCurrent(
+            coordinator,
+            id: approved.id,
+            queueStore: queueStore
+        )
+
+        XCTAssertEqual(result.item.state, .failed)
+        XCTAssertEqual(
+            try taskStore.get(id: task.id).title,
+            "Concurrent title"
+        )
+        XCTAssertEqual(
+            try projectStore.get(id: project.id).status,
+            "completed"
+        )
+        XCTAssertEqual(result.receipt.actions.first?.status, .failed)
+    }
+
+    func testApprovedConsecutiveMutationsAdvanceTaskSnapshotWithinExecution() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let task = try taskStore.create(title: "Reviewed title")
+        let reviewedTaskFingerprint =
+            ConversationTaskSnapshotFingerprint.make(task)
+        let plan = ActionPlan(
+            id: "plan-consecutive-task-cas",
+            userInput: "Rename and schedule the task",
+            summary: "Apply two reviewed changes",
+            actions: [
+                PlanAction(
+                    id: "rename-task",
+                    tool: .taskUpdate,
+                    arguments: [
+                        "id": .number(Double(task.id)),
+                        "title": .string("Approved title"),
+                    ]
+                ),
+                PlanAction(
+                    id: "schedule-task",
+                    tool: .taskUpdate,
+                    arguments: [
+                        "id": .number(Double(task.id)),
+                        "dueAt": .string("2026-08-01T09:00:00Z"),
+                    ]
+                ),
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        var session = ReviewSession(
+            id: "review-consecutive-task-cas",
+            plan: plan
+        )
+        let now = Date(timeIntervalSince1970: 100)
+        _ = try session.approve(issuedAt: now)
+        let registry = try ToolRegistry(tools: [
+            TaskTool(
+                name: .taskUpdate,
+                store: taskStore,
+                projectStore: projectStore
+            ),
+        ])
+
+        let executed = try ActionExecutor(registry: registry).execute(
+            session,
+            now: now,
+            taskSnapshotFingerprints: [
+                task.id: reviewedTaskFingerprint
+            ]
+        )
+
+        XCTAssertEqual(executed.executionStatus, .completed)
+        let updated = try taskStore.get(id: task.id)
+        XCTAssertEqual(updated.title, "Approved title")
+        XCTAssertEqual(updated.dueAt, "2026-08-01T09:00:00Z")
+        XCTAssertEqual(updated.mutationRevision, 2)
     }
 
     func testConversationQueueRetryPersistsNewLinkWithoutPriorApproval() throws {

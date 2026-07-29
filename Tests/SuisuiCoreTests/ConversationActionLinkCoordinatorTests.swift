@@ -2,6 +2,102 @@ import XCTest
 @testable import SuisuiCore
 
 final class ConversationActionLinkCoordinatorTests: XCTestCase {
+    func testGivenReviewedMultiTaskPlanWhenCreateLinkThenBindsEveryTaskSnapshot() throws {
+        let plan = ActionPlan(
+            id: "plan-multi-task-update",
+            userInput: "Update tasks 41 and 42",
+            summary: "Update two tasks",
+            actions: [
+                PlanAction(
+                    id: "action-update-41",
+                    tool: .taskUpdate,
+                    arguments: [
+                        "id": .number(41),
+                        "title": .string("Updated 41"),
+                    ]
+                ),
+                PlanAction(
+                    id: "action-complete-42",
+                    tool: .taskComplete,
+                    arguments: ["id": .number(42)]
+                ),
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        let queueItem = AssistantQueueAdapter.makeItem(
+            actionPlan: plan,
+            sourceTranscript: plan.userInput,
+            interpretationSummary: plan.summary,
+            reason: "Review",
+            costPreview: .localOnly()
+        )
+
+        let link = try ConversationActionLinkCoordinator().makeReviewLink(
+            sessionID: UUID(),
+            sourceTurnID: UUID(),
+            plan: plan,
+            queueItem: queueItem,
+            taskSnapshotFingerprintProvider: {
+                "task:\($0):v1"
+            }
+        )
+
+        XCTAssertEqual(
+            link.taskSnapshots,
+            [
+                ConversationTaskSnapshot(
+                    taskID: 41,
+                    fingerprint: "task:41:v1"
+                ),
+                ConversationTaskSnapshot(
+                    taskID: 42,
+                    fingerprint: "task:42:v1"
+                ),
+            ]
+        )
+    }
+
+    func testGivenTaskMutationWithoutStableIDWhenCreateLinkThenFailsClosed() throws {
+        let plan = ActionPlan(
+            id: "plan-unbound-task-update",
+            userInput: "Update a task",
+            summary: "Update unresolved task",
+            actions: [
+                PlanAction(
+                    id: "action-unbound-task-update",
+                    tool: .taskUpdate,
+                    arguments: ["title": .string("Updated")]
+                ),
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        let queueItem = AssistantQueueAdapter.makeItem(
+            actionPlan: plan,
+            sourceTranscript: plan.userInput,
+            interpretationSummary: plan.summary,
+            reason: "Review",
+            costPreview: .localOnly()
+        )
+
+        XCTAssertThrowsError(
+            try ConversationActionLinkCoordinator().makeReviewLink(
+                sessionID: UUID(),
+                sourceTurnID: UUID(),
+                plan: plan,
+                queueItem: queueItem
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ConversationActionLinkTaskTargetUnavailableError,
+                ConversationActionLinkTaskTargetUnavailableError(
+                    actionID: "action-unbound-task-update"
+                )
+            )
+        }
+    }
+
     func testGivenReviewedTaskUpdateWhenCreateLinkThenBindsQueueAndTaskSnapshot() throws {
         let plan = ActionPlan(
             id: "plan-update",
@@ -81,6 +177,80 @@ final class ConversationActionLinkCoordinatorTests: XCTestCase {
                 link: link,
                 queueItem: item,
                 currentTaskSnapshotFingerprint: "task:v2"
+            )
+        )
+
+        XCTAssertEqual(
+            decision,
+            .requiresReview(reason: "The target Task changed after review.")
+        )
+    }
+
+    func testGivenSecondTaskChangedWhenValidateThenRequiresReview() throws {
+        let plan = ActionPlan(
+            id: "plan-multi-task-update",
+            userInput: "Update tasks 41 and 42",
+            summary: "Update two tasks",
+            actions: [
+                PlanAction(
+                    id: "action-update-41",
+                    tool: .taskUpdate,
+                    arguments: [
+                        "id": .number(41),
+                        "title": .string("Updated 41"),
+                    ]
+                ),
+                PlanAction(
+                    id: "action-update-42",
+                    tool: .taskUpdate,
+                    arguments: [
+                        "id": .number(42),
+                        "title": .string("Updated 42"),
+                    ]
+                ),
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        let item = try AssistantQueueStateMachine.approve(
+            AssistantQueueAdapter.makeItem(
+                actionPlan: plan,
+                sourceTranscript: plan.userInput,
+                interpretationSummary: plan.summary,
+                reason: "Review",
+                costPreview: .localOnly()
+            ),
+            reviewerID: "reviewer"
+        )
+        let link = try ConversationActionLink(
+            sessionID: UUID(),
+            sourceTurnID: UUID(),
+            actionPlanID: plan.id,
+            assistantQueueItemID: item.id,
+            reviewedFingerprint: try XCTUnwrap(
+                item.approval?.reviewedContentFingerprint
+            ),
+            taskSnapshotFingerprint: nil,
+            taskSnapshots: [
+                ConversationTaskSnapshot(
+                    taskID: 41,
+                    fingerprint: "task:41:v1"
+                ),
+                ConversationTaskSnapshot(
+                    taskID: 42,
+                    fingerprint: "task:42:v1"
+                ),
+            ]
+        )
+
+        let decision = ConversationActionLinkCoordinator().validate(
+            ConversationActionLinkValidationInput(
+                link: link,
+                queueItem: item,
+                currentTaskSnapshotFingerprints: [
+                    41: "task:41:v1",
+                    42: "task:42:v2",
+                ]
             )
         )
 
@@ -224,7 +394,7 @@ final class ConversationActionLinkCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(
             references.map(\.kind),
-            [.conversationSession, .conversationTurn]
+            [.reviewSession, .document]
         )
         XCTAssertFalse(references.compactMap(\.label).joined().contains("super-secret"))
         XCTAssertTrue(references.compactMap(\.label).joined().contains("REDACTED"))

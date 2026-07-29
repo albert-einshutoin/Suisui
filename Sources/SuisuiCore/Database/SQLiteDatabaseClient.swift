@@ -906,6 +906,8 @@ public enum CoreMigrations {
                         priority TEXT,
                         recurrence TEXT,
                         source_command TEXT,
+                        mutation_revision INTEGER NOT NULL DEFAULT 0
+                            CHECK(mutation_revision >= 0),
                         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                     );
@@ -2099,6 +2101,28 @@ public enum CoreMigrations {
                     DROP TABLE voice_task_conversation_orchestration_states;
                     ALTER TABLE voice_task_conversation_orchestration_states_v2
                     RENAME TO voice_task_conversation_orchestration_states;
+                    """
+                )
+            },
+            DatabaseMigration(
+                id: "0033_bind_all_reviewed_task_snapshots"
+            ) { connection in
+                let taskColumns = try connection.queryRows(
+                    "PRAGMA table_info(tasks);"
+                ).compactMap { $0["name"] }
+                if !taskColumns.contains("mutation_revision") {
+                    try connection.execute(
+                        """
+                        ALTER TABLE tasks
+                        ADD COLUMN mutation_revision INTEGER NOT NULL DEFAULT 0
+                            CHECK(mutation_revision >= 0);
+                        """
+                    )
+                }
+                try connection.execute(
+                    """
+                    ALTER TABLE conversation_action_links
+                    ADD COLUMN task_snapshots_json TEXT NOT NULL DEFAULT '[]';
                     """
                 )
             },

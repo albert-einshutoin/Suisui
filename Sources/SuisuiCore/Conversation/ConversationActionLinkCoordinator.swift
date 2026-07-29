@@ -4,15 +4,28 @@ public struct ConversationActionLinkValidationInput: Equatable, Sendable {
     public let link: ConversationActionLink
     public let queueItem: AssistantQueueItem?
     public let currentTaskSnapshotFingerprint: String?
+    public let currentTaskSnapshotFingerprints: [Int64: String]?
 
     public init(
         link: ConversationActionLink,
         queueItem: AssistantQueueItem?,
-        currentTaskSnapshotFingerprint: String? = nil
+        currentTaskSnapshotFingerprint: String? = nil,
+        currentTaskSnapshotFingerprints: [Int64: String]? = nil
     ) {
         self.link = link
         self.queueItem = queueItem
         self.currentTaskSnapshotFingerprint = currentTaskSnapshotFingerprint
+        if let currentTaskSnapshotFingerprints {
+            self.currentTaskSnapshotFingerprints =
+                currentTaskSnapshotFingerprints
+        } else if let taskID = link.taskID,
+                  let currentTaskSnapshotFingerprint {
+            self.currentTaskSnapshotFingerprints = [
+                taskID: currentTaskSnapshotFingerprint,
+            ]
+        } else {
+            self.currentTaskSnapshotFingerprints = nil
+        }
     }
 }
 
@@ -57,15 +70,41 @@ public struct ConversationActionLinkCoordinator: Sendable {
                     : "Assistant Queue content changed after review."
             )
         }
-        if let reviewedTaskSnapshot = input.link.taskSnapshotFingerprint {
-            guard let currentTaskSnapshot =
-                    input.currentTaskSnapshotFingerprint
+        let currentPlan = AssistantQueueExecutableActionPlanFactory
+            .actionPlan(for: queueItem.payload)
+        if currentPlan?.actions.contains(where: {
+            Self.isTaskMutation($0.tool)
+                && Self.stableTaskID(in: $0) == nil
+        }) == true {
+            return .requiresReview(
+                reason: "The target Task changed after review."
+            )
+        }
+        let planTaskIDs = currentPlan.map(Self.stableTaskIDs(in:)) ?? []
+        let reviewedTaskSnapshots = Dictionary(
+            uniqueKeysWithValues: input.link.taskSnapshots.map {
+                ($0.taskID, $0.fingerprint)
+            }
+        )
+        guard Set(planTaskIDs) == Set(reviewedTaskSnapshots.keys) else {
+            return .requiresReview(
+                reason: "The target Task changed after review."
+            )
+        }
+        if !reviewedTaskSnapshots.isEmpty {
+            guard let currentTaskSnapshots =
+                    input.currentTaskSnapshotFingerprints
             else {
                 return .unavailable(
                     reason: "The linked Task snapshot is unavailable."
                 )
             }
-            guard reviewedTaskSnapshot == currentTaskSnapshot else {
+            guard currentTaskSnapshots.count
+                    == reviewedTaskSnapshots.count,
+                  reviewedTaskSnapshots.allSatisfy({
+                      currentTaskSnapshots[$0.key] == $0.value
+                  })
+            else {
                 return .requiresReview(
                     reason: "The target Task changed after review."
                 )
@@ -90,18 +129,42 @@ public struct ConversationActionLinkCoordinator: Sendable {
             throw ConversationActionLinkCoordinatorError
                 .unavailableQueueFingerprint
         }
-        let taskID = Self.singleStableTaskID(in: plan)
+        if let unresolvedAction = plan.actions.first(where: {
+            Self.isTaskMutation($0.tool)
+                && Self.stableTaskID(in: $0) == nil
+        }) {
+            throw ConversationActionLinkTaskTargetUnavailableError(
+                actionID: unresolvedAction.id
+            )
+        }
+        let taskIDs = Self.stableTaskIDs(in: plan)
+        let taskSnapshots = try taskIDs.map { taskID in
+            guard let fingerprint = try taskSnapshotFingerprintProvider(
+                taskID
+            ) else {
+                throw ConversationActionLinkTaskSnapshotUnavailableError(
+                    taskID: taskID
+                )
+            }
+            return ConversationTaskSnapshot(
+                taskID: taskID,
+                fingerprint: fingerprint
+            )
+        }
         return try ConversationActionLink(
             sessionID: sessionID,
             sourceTurnID: sourceTurnID,
             actionPlanID: plan.id,
             assistantQueueItemID: queueItem.id,
-            taskID: taskID,
+            taskID: taskSnapshots.count == 1
+                ? taskSnapshots[0].taskID
+                : nil,
             operation: Self.operation(for: plan),
             reviewedFingerprint: fingerprint,
-            taskSnapshotFingerprint: try taskID.flatMap(
-                taskSnapshotFingerprintProvider
-            ),
+            taskSnapshotFingerprint: taskSnapshots.count == 1
+                ? taskSnapshots[0].fingerprint
+                : nil,
+            taskSnapshots: taskSnapshots,
             actionStatuses: plan.actions.map {
                 ConversationActionStatus(
                     actionID: $0.id,
@@ -125,6 +188,7 @@ public struct ConversationActionLinkCoordinator: Sendable {
             operation: link.operation,
             reviewedFingerprint: link.reviewedFingerprint,
             taskSnapshotFingerprint: link.taskSnapshotFingerprint,
+            taskSnapshots: link.taskSnapshots,
             actionStatuses: receipt.actions.map {
                 ConversationActionStatus(
                     actionID: $0.id,
@@ -156,6 +220,7 @@ public struct ConversationActionLinkCoordinator: Sendable {
             operation: prior.operation,
             reviewedFingerprint: currentFingerprint,
             taskSnapshotFingerprint: prior.taskSnapshotFingerprint,
+            taskSnapshots: prior.taskSnapshots,
             actionStatuses: prior.actionStatuses.map {
                 ConversationActionStatus(
                     actionID: $0.actionID,
@@ -172,11 +237,17 @@ public struct ConversationActionLinkCoordinator: Sendable {
     ) -> [ExecutionReceiptReference] {
         [
             ExecutionReceiptReference(
-                kind: .conversationSession,
-                id: link.sessionID.uuidString
+                // A conversation is the review session that authorized the
+                // action. Reusing the established receipt kind preserves the
+                // public enum's source compatibility for SwiftPM clients.
+                kind: .reviewSession,
+                id: link.sessionID.uuidString,
+                label: "Conversation Session"
             ),
             ExecutionReceiptReference(
-                kind: .conversationTurn,
+                // A persisted turn is a text record within that review
+                // session, so `document` is the closest existing durable kind.
+                kind: .document,
                 id: link.sourceTurnID.uuidString,
                 label: turnLabel.map {
                     receiptRedactor.redact($0, maxLength: 160)
@@ -185,37 +256,43 @@ public struct ConversationActionLinkCoordinator: Sendable {
         ]
     }
 
-    private static func singleStableTaskID(
+    private static func stableTaskIDs(
         in plan: ActionPlan
+    ) -> [Int64] {
+        Array(Set(
+            plan.actions.compactMap(Self.stableTaskID(in:))
+        )).sorted()
+    }
+
+    private static func stableTaskID(
+        in action: PlanAction
     ) -> Int64? {
-        let taskIDs = Set(
-            plan.actions.compactMap { action -> Int64? in
-                guard action.tool == .taskUpdate
-                    || action.tool == .taskComplete
-                    || action.tool == .taskDelete
-                else {
-                    return nil
+        guard isTaskMutation(action.tool) else {
+            return nil
+        }
+        for key in ["id", "taskId", "taskID"] {
+            switch action.arguments[key] {
+            case .number(let value)?
+                where value.isFinite
+                    && value.rounded(.towardZero) == value
+                    && value > 0
+                    && value <= Double(Int64.max):
+                return Int64(value)
+            case .string(let value)?:
+                if let id = Int64(value), id > 0 {
+                    return id
                 }
-                for key in ["id", "taskId", "taskID"] {
-                    switch action.arguments[key] {
-                    case .number(let value)?
-                        where value.isFinite
-                            && value.rounded(.towardZero) == value
-                            && value > 0
-                            && value <= Double(Int64.max):
-                        return Int64(value)
-                    case .string(let value)?:
-                        if let id = Int64(value), id > 0 {
-                            return id
-                        }
-                    default:
-                        continue
-                    }
-                }
-                return nil
+            default:
+                continue
             }
-        )
-        return taskIDs.count == 1 ? taskIDs.first : nil
+        }
+        return nil
+    }
+
+    private static func isTaskMutation(_ tool: ActionTool) -> Bool {
+        tool == .taskUpdate
+            || tool == .taskComplete
+            || tool == .taskDelete
     }
 
     private static func operation(
@@ -255,8 +332,10 @@ public enum ConversationTaskSnapshotFingerprint {
             task.priority,
             task.sourceCommand,
             task.detail,
+            task.createdAt,
             task.updatedAt,
             task.recurrence,
+            String(task.mutationRevision),
         ])
     }
 }
@@ -268,4 +347,28 @@ public enum ConversationActionLinkCoordinatorError:
 {
     case retryStillCarriesApproval
     case unavailableQueueFingerprint
+}
+
+public struct ConversationActionLinkTaskSnapshotUnavailableError:
+    Error,
+    Equatable,
+    Sendable
+{
+    public let taskID: Int64
+
+    public init(taskID: Int64) {
+        self.taskID = taskID
+    }
+}
+
+public struct ConversationActionLinkTaskTargetUnavailableError:
+    Error,
+    Equatable,
+    Sendable
+{
+    public let actionID: String
+
+    public init(actionID: String) {
+        self.actionID = actionID
+    }
 }

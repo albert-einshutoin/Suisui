@@ -91,8 +91,10 @@ public struct TaskRecord: Equatable, Sendable {
     public var priority: String?
     public var sourceCommand: String?
     public var detail: String?
+    public var createdAt: String?
     public var updatedAt: String?
     public var recurrence: String?
+    public var mutationRevision: Int64
 
     public init(
         id: Int64,
@@ -107,6 +109,38 @@ public struct TaskRecord: Equatable, Sendable {
         updatedAt: String? = nil,
         recurrence: String? = nil
     ) {
+        self.init(
+            id: id,
+            projectID: projectID,
+            title: title,
+            status: status,
+            dueAt: dueAt,
+            completedAt: completedAt,
+            priority: priority,
+            sourceCommand: sourceCommand,
+            detail: detail,
+            createdAt: nil,
+            updatedAt: updatedAt,
+            recurrence: recurrence,
+            mutationRevision: 0
+        )
+    }
+
+    public init(
+        id: Int64,
+        projectID: Int64?,
+        title: String,
+        status: String,
+        dueAt: String?,
+        completedAt: String? = nil,
+        priority: String?,
+        sourceCommand: String?,
+        detail: String? = nil,
+        createdAt: String?,
+        updatedAt: String? = nil,
+        recurrence: String? = nil,
+        mutationRevision: Int64
+    ) {
         self.id = id
         self.projectID = projectID
         self.title = title
@@ -116,8 +150,10 @@ public struct TaskRecord: Equatable, Sendable {
         self.priority = priority
         self.sourceCommand = sourceCommand
         self.detail = detail
+        self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.recurrence = recurrence
+        self.mutationRevision = mutationRevision
     }
 }
 
@@ -715,6 +751,12 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         self.connection = connection
     }
 
+    func withMutationTransaction<T>(
+        _ body: () throws -> T
+    ) throws -> T {
+        try connection.transaction(body)
+    }
+
     public func create(
         title: String,
         projectID: Int64? = nil,
@@ -868,6 +910,28 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         )
     }
 
+    public func update(
+        id: Int64,
+        title: String? = nil,
+        status: String? = nil,
+        detail: String? = nil,
+        dueAt: String? = nil,
+        priority: String? = nil,
+        projectID: Int64? = nil,
+        expectedSnapshotFingerprint: String
+    ) throws -> TaskRecord {
+        try updateFields(
+            id: id,
+            title: title,
+            status: status,
+            detail: detail.map { .set($0) } ?? .unchanged,
+            dueAt: dueAt.map { .set($0) } ?? .unchanged,
+            priority: priority.map { .set($0) } ?? .unchanged,
+            projectID: projectID.map { .set($0) } ?? .unchanged,
+            expectedSnapshotFingerprint: expectedSnapshotFingerprint
+        )
+    }
+
     public func updateFields(
         id: Int64,
         title: String? = nil,
@@ -893,6 +957,33 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         )
     }
 
+    public func updateFields(
+        id: Int64,
+        title: String? = nil,
+        status: String? = nil,
+        detail: NullableFieldUpdate<String> = .unchanged,
+        dueAt: NullableFieldUpdate<String> = .unchanged,
+        priority: NullableFieldUpdate<String> = .unchanged,
+        projectID: NullableFieldUpdate<Int64> = .unchanged,
+        recurrence: NullableFieldUpdate<String> = .unchanged,
+        expectedSnapshotFingerprint: String
+    ) throws -> TaskRecord {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try updateFieldsLocked(
+            id: id,
+            title: title,
+            status: status,
+            detail: detail,
+            dueAt: dueAt,
+            priority: priority,
+            projectID: projectID,
+            recurrence: recurrence,
+            expectedSnapshotFingerprint: expectedSnapshotFingerprint
+        )
+    }
+
     // The store lock is not reentrant, so composed operations such as
     // completeAndRegenerate share this locked implementation instead of
     // re-entering the public updateFields entry point.
@@ -904,8 +995,21 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         dueAt: NullableFieldUpdate<String> = .unchanged,
         priority: NullableFieldUpdate<String> = .unchanged,
         projectID: NullableFieldUpdate<Int64> = .unchanged,
-        recurrence: NullableFieldUpdate<String> = .unchanged
+        recurrence: NullableFieldUpdate<String> = .unchanged,
+        expectedSnapshotFingerprint: String? = nil
     ) throws -> TaskRecord {
+        let expectedMutationRevision: Int64?
+        if let expectedSnapshotFingerprint {
+            let current = try getLocked(id: id)
+            guard ConversationTaskSnapshotFingerprint.make(current)
+                    == expectedSnapshotFingerprint
+            else {
+                throw TaskSnapshotConflictError(taskID: id)
+            }
+            expectedMutationRevision = current.mutationRevision
+        } else {
+            expectedMutationRevision = nil
+        }
         var assignments: [String] = []
         var parameters: [SQLiteValue] = []
         if let title {
@@ -969,11 +1073,26 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             assignments.append("recurrence = NULL")
         }
         assignments.append("updated_at = CURRENT_TIMESTAMP")
+        assignments.append("mutation_revision = mutation_revision + 1")
 
+        var predicate = "id = ?"
+        var predicateParameters: [SQLiteValue] = [.integer(id)]
+        if let expectedMutationRevision {
+            predicate += " AND mutation_revision = ?"
+            predicateParameters.append(.integer(expectedMutationRevision))
+        }
         try connection.execute(
-            "UPDATE tasks SET \(assignments.joined(separator: ", ")) WHERE id = ?;",
-            parameters: parameters + [.integer(id)]
+            "UPDATE tasks SET \(assignments.joined(separator: ", ")) WHERE \(predicate);",
+            parameters: parameters + predicateParameters
         )
+        guard expectedMutationRevision == nil
+                || connection.numberOfChanges == 1
+        else {
+            // The revision comparison is part of the UPDATE itself. A Task
+            // changed after review can therefore never be overwritten between
+            // the preflight fingerprint read and the actual SQLite write.
+            throw TaskSnapshotConflictError(taskID: id)
+        }
         return try getLocked(id: id)
     }
 
@@ -1127,7 +1246,8 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             UPDATE tasks
             SET status = 'completed',
                 completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-                updated_at = CURRENT_TIMESTAMP
+                updated_at = CURRENT_TIMESTAMP,
+                mutation_revision = mutation_revision + 1
             WHERE project_id = ?
               AND status != 'completed';
             """,
@@ -1183,10 +1303,33 @@ public final class SQLiteTaskStore: @unchecked Sendable {
 
     @discardableResult
     public func delete(id: Int64) throws -> TaskDeletionResult {
+        try delete(id: id, expectedSnapshotFingerprint: nil)
+    }
+
+    public func delete(
+        id: Int64,
+        expectedSnapshotFingerprint: String
+    ) throws -> TaskDeletionResult {
+        try delete(
+            id: id,
+            expectedSnapshotFingerprint:
+                Optional(expectedSnapshotFingerprint)
+        )
+    }
+
+    private func delete(
+        id: Int64,
+        expectedSnapshotFingerprint: String?
+    ) throws -> TaskDeletionResult {
         lock.lock()
         defer { lock.unlock() }
 
         let task = try getLocked(id: id)
+        if let expectedSnapshotFingerprint,
+           ConversationTaskSnapshotFingerprint.make(task)
+            != expectedSnapshotFingerprint {
+            throw TaskSnapshotConflictError(taskID: id)
+        }
         let taskPredicate = "task_id = ?"
         let taskParameters: [SQLiteValue] = [.integer(id)]
         let deadlinePredicate = "target_type = 'task' AND target_id = ?"
@@ -1205,7 +1348,23 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             try deleteRowsIfTableExistsLocked(table: "reminder_links", where: taskPredicate, parameters: taskParameters)
             try deleteRowsIfTableExistsLocked(table: "deadline_rules", where: deadlinePredicate, parameters: deadlineParameters)
             try deleteRowsIfTableExistsLocked(table: "artifacts", where: taskPredicate, parameters: taskParameters)
-            try connection.execute("DELETE FROM tasks WHERE id = ?;", parameters: [.integer(id)])
+            var predicate = "id = ?"
+            var parameters: [SQLiteValue] = [.integer(id)]
+            if expectedSnapshotFingerprint != nil {
+                predicate += " AND mutation_revision = ?"
+                parameters.append(.integer(task.mutationRevision))
+            }
+            try connection.execute(
+                "DELETE FROM tasks WHERE \(predicate);",
+                parameters: parameters
+            )
+            guard expectedSnapshotFingerprint == nil
+                    || connection.numberOfChanges == 1
+            else {
+                // Rolling back the transaction also restores linked rows that
+                // were removed before a competing Task revision was detected.
+                throw TaskSnapshotConflictError(taskID: id)
+            }
         }
 
         return result
@@ -1655,9 +1814,25 @@ private extension TaskRecord {
             priority: SQL.nilIfEmpty(row["priority"]),
             sourceCommand: SQL.nilIfEmpty(row["source_command"]),
             detail: SQL.nilIfEmpty(row["detail"]),
+            createdAt: SQL.nilIfEmpty(row["created_at"]),
             updatedAt: SQL.nilIfEmpty(row["updated_at"]),
-            recurrence: SQL.nilIfEmpty(row["recurrence"])
+            recurrence: SQL.nilIfEmpty(row["recurrence"]),
+            mutationRevision: row.cells["mutation_revision"]
+                .flatMap { cell in
+                    if case .integer(let value) = cell {
+                        return value
+                    }
+                    return nil
+                } ?? 0
         )
+    }
+}
+
+public struct TaskSnapshotConflictError: Error, Equatable, Sendable {
+    public let taskID: Int64
+
+    public init(taskID: Int64) {
+        self.taskID = taskID
     }
 }
 

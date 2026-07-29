@@ -528,11 +528,12 @@ public final class SQLiteVoiceTaskConversationStore:
                 operation_kind,
                 reviewed_fingerprint,
                 task_snapshot_fingerprint,
+                task_snapshots_json,
                 action_statuses_json,
                 retry_of_action_link_id,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             parameters: [
                 .text(link.id.uuidString),
@@ -545,6 +546,7 @@ public final class SQLiteVoiceTaskConversationStore:
                 .text(link.operation.rawValue),
                 .text(link.reviewedFingerprint),
                 SQLiteValue(link.taskSnapshotFingerprint),
+                .text(try Self.encodedTaskSnapshots(link.taskSnapshots)),
                 .text(try Self.encodedActionStatuses(link.actionStatuses)),
                 SQLiteValue(link.retryOfActionLinkID?.uuidString),
                 .real(try Self.timeValue(link.createdAt)),
@@ -575,6 +577,7 @@ public final class SQLiteVoiceTaskConversationStore:
                 operation_kind,
                 reviewed_fingerprint,
                 task_snapshot_fingerprint,
+                task_snapshots_json,
                 action_statuses_json,
                 retry_of_action_link_id,
                 created_at
@@ -1373,6 +1376,9 @@ public final class SQLiteVoiceTaskConversationStore:
                 taskSnapshotFingerprint: try row.optionalString(
                     "task_snapshot_fingerprint"
                 ),
+                taskSnapshots: try Self.decodeTaskSnapshots(
+                    row.string("task_snapshots_json")
+                ),
                 actionStatuses: try Self.decodeActionStatuses(
                     row.string("action_statuses_json")
                 ),
@@ -1649,6 +1655,26 @@ public final class SQLiteVoiceTaskConversationStore:
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         return String(decoding: try encoder.encode(statuses), as: UTF8.self)
+    }
+
+    private static func encodedTaskSnapshots(
+        _ snapshots: [ConversationTaskSnapshot]
+    ) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return String(
+            decoding: try encoder.encode(snapshots),
+            as: UTF8.self
+        )
+    }
+
+    private static func decodeTaskSnapshots(
+        _ value: String
+    ) throws -> [ConversationTaskSnapshot] {
+        try JSONDecoder().decode(
+            [ConversationTaskSnapshot].self,
+            from: Data(value.utf8)
+        )
     }
 
     private static func decodeActionStatuses(

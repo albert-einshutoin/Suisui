@@ -42,6 +42,18 @@ public struct ActionExecutor: Sendable {
         _ session: ReviewSession,
         now: Date = Date()
     ) throws -> ReviewSession {
+        try execute(
+            session,
+            now: now,
+            taskSnapshotFingerprints: [:]
+        )
+    }
+
+    public func execute(
+        _ session: ReviewSession,
+        now: Date,
+        taskSnapshotFingerprints: [Int64: String]
+    ) throws -> ReviewSession {
         let approval = try preflight(session, now: now)
         if let approval {
             guard try replayStore.claim(approval, at: now) else {
@@ -50,7 +62,12 @@ public struct ActionExecutor: Sendable {
         }
 
         do {
-            let executed = try executeClaimed(session, approval: approval, now: now)
+            let executed = try executeClaimed(
+                session,
+                approval: approval,
+                now: now,
+                taskSnapshotFingerprints: taskSnapshotFingerprints
+            )
             if let approval {
                 try replayStore.finish(
                     nonce: approval.nonce,
@@ -70,7 +87,8 @@ public struct ActionExecutor: Sendable {
     private func executeClaimed(
         _ session: ReviewSession,
         approval: ApprovedExecution?,
-        now: Date
+        now: Date,
+        taskSnapshotFingerprints: [Int64: String]
     ) throws -> ReviewSession {
 
         var working = session
@@ -78,6 +96,8 @@ public struct ActionExecutor: Sendable {
         try recordReviewEvent(action: "execution.start", status: .started, session: working)
 
         var actionOutputs: [String: [String: JSONValue]] = [:]
+        var activeTaskSnapshotFingerprints =
+            taskSnapshotFingerprints
         var hasFailure = false
 
         for item in working.items {
@@ -153,7 +173,9 @@ public struct ActionExecutor: Sendable {
                             actionID: action.id,
                             tool: action.tool,
                             arguments: resolvedArguments
-                        )
+                        ),
+                        taskSnapshotFingerprints:
+                            activeTaskSnapshotFingerprints
                     )
                 )
                 let actionStatus = Self.actionExecutionStatus(for: result.status)
@@ -177,6 +199,22 @@ public struct ActionExecutor: Sendable {
 
                 if result.status == .succeeded {
                     actionOutputs[action.id] = result.output
+                    if let taskID = Self.stableTaskID(
+                        in: resolvedArguments
+                    ) {
+                        if action.tool == .taskDelete {
+                            activeTaskSnapshotFingerprints.removeValue(
+                                forKey: taskID
+                            )
+                        } else if case .string(let fingerprint)? =
+                            result.output["taskSnapshotFingerprint"] {
+                            // Consecutive approved actions for the same Task
+                            // advance only to the revision produced by the
+                            // preceding action in this executor run.
+                            activeTaskSnapshotFingerprints[taskID] =
+                                fingerprint
+                        }
+                    }
                 }
             } catch {
                 hasFailure = true
@@ -470,6 +508,28 @@ public struct ActionExecutor: Sendable {
         case .skipped:
             return .skipped
         }
+    }
+
+    private static func stableTaskID(
+        in arguments: [String: JSONValue]
+    ) -> Int64? {
+        for key in ["id", "taskId", "taskID"] {
+            switch arguments[key] {
+            case .number(let value)?
+                where value.isFinite
+                    && value.rounded(.towardZero) == value
+                    && value > 0
+                    && value <= Double(Int64.max):
+                return Int64(value)
+            case .string(let value)?:
+                if let id = Int64(value), id > 0 {
+                    return id
+                }
+            default:
+                continue
+            }
+        }
+        return nil
     }
 
     private static func auditStatus(for status: ToolExecutionStatus) -> AuditStatus {

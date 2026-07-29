@@ -163,6 +163,79 @@ final class DatabaseMigrationTests: XCTestCase {
         XCTAssertNil(try row.optionalString("retry_of_action_link_id"))
     }
 
+    func testReviewedTaskSnapshotBindingMigrationPreservesLegacyRows()
+        throws
+    {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeSnapshotBinding = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0033_bind_all_reviewed_task_snapshots"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeSnapshotBinding
+        )
+        try connection.execute(
+            """
+            INSERT INTO tasks (id, title, status)
+            VALUES (41, 'Legacy task', 'planned');
+            INSERT INTO voice_task_conversation_sessions (
+                id, state, title, entry_point, created_at, updated_at
+            )
+            VALUES ('session-1', 'active', 'Session', 'voice_command', 1, 1);
+            INSERT INTO voice_task_conversation_turns (
+                id, session_id, author, confirmed_text, created_at
+            )
+            VALUES ('turn-1', 'session-1', 'user', 'Update task', 1);
+            INSERT INTO conversation_action_links (
+                id, session_id, source_turn_id, action_plan_id,
+                task_id, reviewed_fingerprint,
+                task_snapshot_fingerprint, created_at
+            )
+            VALUES (
+                'link-1', 'session-1', 'turn-1', 'plan-1',
+                41, 'reviewed', 'legacy-task-fingerprint', 1
+            );
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT mutation_revision FROM tasks WHERE id = 41;"
+            ),
+            ["0"]
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT task_snapshots_json
+                FROM conversation_action_links
+                WHERE id = 'link-1';
+                """
+            ),
+            ["[]"]
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT id FROM schema_migrations
+                WHERE id = '0033_bind_all_reviewed_task_snapshots';
+                """
+            ),
+            ["0033_bind_all_reviewed_task_snapshots"]
+        )
+    }
+
     func testConversationMigrationUpgradesDatabaseAt0024AndPreservesExistingTasks() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         let migrationsBeforeConversation = Array(

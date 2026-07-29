@@ -769,6 +769,16 @@ public struct ConversationActionStatus: Codable, Equatable, Sendable {
     }
 }
 
+public struct ConversationTaskSnapshot: Codable, Equatable, Sendable {
+    public let taskID: Int64
+    public let fingerprint: String
+
+    public init(taskID: Int64, fingerprint: String) {
+        self.taskID = taskID
+        self.fingerprint = fingerprint
+    }
+}
+
 public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
     public let sessionID: UUID
@@ -780,6 +790,7 @@ public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable
     public let operation: ConversationActionLinkOperation
     public let reviewedFingerprint: String
     public let taskSnapshotFingerprint: String?
+    public let taskSnapshots: [ConversationTaskSnapshot]
     public let actionStatuses: [ConversationActionStatus]
     public let retryOfActionLinkID: UUID?
     public let createdAt: Date
@@ -800,6 +811,7 @@ public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable
         operation: ConversationActionLinkOperation = .unspecified,
         reviewedFingerprint: String,
         taskSnapshotFingerprint: String?,
+        taskSnapshots: [ConversationTaskSnapshot] = [],
         actionStatuses: [ConversationActionStatus] = [],
         retryOfActionLinkID: UUID? = nil,
         createdAt: Date = Date()
@@ -828,6 +840,41 @@ public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable
         }) ?? true else {
             throw VoiceTaskConversationDomainError.blankFingerprint
         }
+        let normalizedTaskSnapshots: [ConversationTaskSnapshot]
+        if taskSnapshots.isEmpty,
+           let taskID,
+           let taskSnapshotFingerprint {
+            normalizedTaskSnapshots = [
+                ConversationTaskSnapshot(
+                    taskID: taskID,
+                    fingerprint: taskSnapshotFingerprint
+                ),
+            ]
+        } else {
+            normalizedTaskSnapshots = taskSnapshots.sorted {
+                $0.taskID < $1.taskID
+            }
+        }
+        guard Set(normalizedTaskSnapshots.map(\.taskID)).count
+                == normalizedTaskSnapshots.count,
+              normalizedTaskSnapshots.allSatisfy({
+                  $0.taskID > 0
+                      && !$0.fingerprint.trimmingCharacters(
+                          in: .whitespacesAndNewlines
+                      ).isEmpty
+              })
+        else {
+            throw VoiceTaskConversationDomainError.blankFingerprint
+        }
+        if normalizedTaskSnapshots.count == 1,
+           let snapshot = normalizedTaskSnapshots.first {
+            guard taskID == nil || taskID == snapshot.taskID,
+                  taskSnapshotFingerprint == nil
+                    || taskSnapshotFingerprint == snapshot.fingerprint
+            else {
+                throw VoiceTaskConversationDomainError.blankFingerprint
+            }
+        }
         guard Set(actionStatuses.map(\.actionID)).count
             == actionStatuses.count,
             actionStatuses.allSatisfy({
@@ -845,11 +892,16 @@ public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable
         self.sourceTurnID = sourceTurnID
         self.actionPlanID = actionPlanID
         self.assistantQueueItemID = assistantQueueItemID
-        self.taskID = taskID
+        self.taskID = normalizedTaskSnapshots.count == 1
+            ? normalizedTaskSnapshots[0].taskID
+            : taskID
         self.executionReceiptID = executionReceiptID
         self.operation = operation
         self.reviewedFingerprint = reviewedFingerprint
-        self.taskSnapshotFingerprint = taskSnapshotFingerprint
+        self.taskSnapshotFingerprint = normalizedTaskSnapshots.count == 1
+            ? normalizedTaskSnapshots[0].fingerprint
+            : taskSnapshotFingerprint
+        self.taskSnapshots = normalizedTaskSnapshots
         self.actionStatuses = actionStatuses
         self.retryOfActionLinkID = retryOfActionLinkID
         self.createdAt = createdAt
@@ -895,6 +947,7 @@ public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable
         case operation
         case reviewedFingerprint
         case taskSnapshotFingerprint
+        case taskSnapshots
         case actionStatuses
         case retryOfActionLinkID
         case createdAt
@@ -919,6 +972,10 @@ public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable
                 String.self,
                 forKey: .taskSnapshotFingerprint
             ),
+            taskSnapshots: try values.decodeIfPresent(
+                [ConversationTaskSnapshot].self,
+                forKey: .taskSnapshots
+            ) ?? [],
             actionStatuses: try values.decodeIfPresent(
                 [ConversationActionStatus].self,
                 forKey: .actionStatuses

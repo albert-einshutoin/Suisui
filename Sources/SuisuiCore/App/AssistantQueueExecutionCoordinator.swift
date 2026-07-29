@@ -214,7 +214,17 @@ public struct AssistantQueueExecutionCoordinator {
 
         let executedSession: ReviewSession
         do {
-            executedSession = try executor.execute(session, now: startedAt)
+            executedSession = try executor.execute(
+                session,
+                now: startedAt,
+                taskSnapshotFingerprints: conversationLink.map {
+                    Dictionary(
+                        uniqueKeysWithValues: $0.taskSnapshots.map {
+                            ($0.taskID, $0.fingerprint)
+                        }
+                    )
+                } ?? [:]
+            )
         } catch {
             var failedSession = session
             failedSession.executionStatus = .failed
@@ -529,14 +539,22 @@ public struct AssistantQueueExecutionCoordinator {
         else {
             return nil
         }
-        let currentTaskSnapshot = try link.taskID.flatMap {
-            try taskSnapshotFingerprintProvider($0)
+        var currentTaskSnapshots: [Int64: String] = [:]
+        for snapshot in link.taskSnapshots {
+            guard let current = try taskSnapshotFingerprintProvider(
+                snapshot.taskID
+            ) else {
+                throw AssistantQueueConversationLinkUnavailableError(
+                    reason: "The linked Task snapshot is unavailable."
+                )
+            }
+            currentTaskSnapshots[snapshot.taskID] = current
         }
         switch ConversationActionLinkCoordinator().validate(
             ConversationActionLinkValidationInput(
                 link: link,
                 queueItem: item,
-                currentTaskSnapshotFingerprint: currentTaskSnapshot
+                currentTaskSnapshotFingerprints: currentTaskSnapshots
             )
         ) {
         case .current(let current):

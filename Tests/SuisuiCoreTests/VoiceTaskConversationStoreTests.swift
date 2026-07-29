@@ -503,6 +503,41 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
         )
     }
 
+    func testLatestActionLinkRoundTripsEveryReviewedTaskSnapshot() throws {
+        let (_, store) = try makeStore()
+        let session = makeSession()
+        try store.createSession(session)
+        let turn = try makeTurn(sessionID: session.id)
+        try store.saveTurn(turn)
+        let link = try ConversationActionLink(
+            sessionID: session.id,
+            sourceTurnID: turn.id,
+            actionPlanID: "plan-multi-task",
+            assistantQueueItemID: "queue-multi-task",
+            reviewedFingerprint: "reviewed-fingerprint",
+            taskSnapshotFingerprint: nil,
+            taskSnapshots: [
+                ConversationTaskSnapshot(
+                    taskID: 41,
+                    fingerprint: "task:41:v1"
+                ),
+                ConversationTaskSnapshot(
+                    taskID: 42,
+                    fingerprint: "task:42:v1"
+                ),
+            ]
+        )
+
+        try store.saveActionLink(link)
+
+        XCTAssertEqual(
+            try store.latestActionLink(
+                assistantQueueItemID: "queue-multi-task"
+            ),
+            link
+        )
+    }
+
     func testDeletingTaskPreservesFactScopeAndTaskOnlyActionLinkIdentifiers() throws {
         let (connection, store) = try makeStore()
         let session = makeSession()
