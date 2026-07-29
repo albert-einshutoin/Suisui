@@ -738,6 +738,53 @@ prepare_ax_scroll_container_helper() {
   /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_scroll_container.swift" -o "$AX_SCROLL_CONTAINER_HELPER"
 }
 
+prepare_ax_press_element_helper() {
+  if [[ -x "$AX_PRESS_ELEMENT_HELPER" ]]; then
+    return
+  fi
+  /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_press_element.swift" -o "$AX_PRESS_ELEMENT_HELPER"
+}
+
+press_named_window_control() {
+  local identifier="$1"
+  local error_file
+  local helper_pid
+  local deadline
+  local status
+  local timed_out=0
+
+  prepare_ax_press_element_helper
+  error_file="$(mktemp "${TMPDIR:-/tmp}/suisui-ui-press-element-error.XXXXXX")"
+  SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+    "$AX_PRESS_ELEMENT_HELPER" "$EVIDENCE_APP_PID" "$identifier" \
+    >/dev/null 2>"$error_file" &
+  helper_pid=$!
+  deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
+  while kill -0 "$helper_pid" >/dev/null 2>&1; do
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      timed_out=1
+      kill "$helper_pid" >/dev/null 2>&1 || true
+      sleep 1
+      kill -9 "$helper_pid" >/dev/null 2>&1 || true
+      break
+    fi
+    sleep 0.2
+  done
+  set +e
+  wait "$helper_pid"
+  status=$?
+  set -e
+  if [[ "$timed_out" == "1" ]]; then
+    status=124
+  fi
+  if [[ "$status" -ne 0 ]]; then
+    cat "$error_file" >&2
+    echo "Could not activate named window control: $identifier" >&2
+  fi
+  rm -f "$error_file"
+  return "$status"
+}
+
 scroll_ax_container_down() {
   local identifier="$1"
   prepare_ax_scroll_container_helper
@@ -1509,6 +1556,7 @@ prepare_named_evidence_window() {
   local window_name="$1"
   local label="$2"
   local marker_spec="$3"
+  local preparation_control_identifier="${4:-}"
   local window_attempt
   local readiness_diagnostic
 
@@ -1530,6 +1578,8 @@ prepare_named_evidence_window() {
       sleep 1.0
       if wait_for_window_capture_metadata "$window_name" > /dev/null 2>>"$readiness_diagnostic" \
         && position_window_for_capture "$window_name" "$readiness_diagnostic" 2>>"$readiness_diagnostic" \
+        && { [[ -z "$preparation_control_identifier" ]] \
+          || press_named_window_control "$preparation_control_identifier" 2>>"$readiness_diagnostic"; } \
         && wait_for_project_board_destination "$label" "$marker_spec" 2>>"$readiness_diagnostic" \
         && position_window_for_capture "$window_name" "$readiness_diagnostic" 2>>"$readiness_diagnostic"; then
         rm -f "$readiness_diagnostic"
@@ -1735,7 +1785,7 @@ capture_voice_command_appearance() {
   SETTINGS_WINDOW_OVERRIDE=""
   SETTINGS_TAB_OVERRIDE=""
   VOICE_COMMAND_WINDOW_OVERRIDE=1
-  prepare_named_evidence_window "Voice Command" "Voice Command" "$VOICE_COMMAND_TARGET_MARKERS"
+  prepare_named_evidence_window "Voice Command" "Voice Command" "$VOICE_COMMAND_TARGET_MARKERS" "voice-command-quick-command-tab"
 
   capture_visible_window "$appearance Voice Command" "$output_path" "Voice Command" "voice-command-root"
 }

@@ -5114,6 +5114,11 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertTrue(
             voiceSource.contains(
+                ".accessibilityIdentifier(\"voice-command-quick-command-tab\")"
+            )
+        )
+        XCTAssertTrue(
+            voiceSource.contains(
                 "Label(\"Record once\", systemImage: \"waveform.badge.mic\")\n                .font(.subheadline.weight(.semibold))\n                .accessibilityIdentifier(\"voice-command-capture-zone\")"
             )
         )

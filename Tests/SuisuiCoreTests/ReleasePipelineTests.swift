@@ -9133,6 +9133,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(captureScript.contains("tell process \"$APP_NAME\""))
         XCTAssertTrue(captureScript.contains("write_visual_baseline_capture_manifest"))
         XCTAssertTrue(captureScript.contains("Light/Dark/System visual baseline manifest"))
+        XCTAssertTrue(
+            captureScript.contains(
+                "prepare_named_evidence_window \"Voice Command\" \"Voice Command\" \"$VOICE_COMMAND_TARGET_MARKERS\" \"voice-command-quick-command-tab\""
+            )
+        )
 
         XCTAssertTrue(visualSmokeScript.contains("visual_regression_smoke_check.swift"))
         XCTAssertTrue(visualSmokeScript.contains("SUISUI_VISUAL_BASELINE_MANIFEST"))

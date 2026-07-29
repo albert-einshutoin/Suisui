@@ -114,6 +114,7 @@ struct VoiceCaptureView: View {
             quickCommandWorkspace
                 .tabItem {
                     Label("Quick Command", systemImage: "waveform")
+                        .accessibilityIdentifier("voice-command-quick-command-tab")
                 }
         }
         .task {
