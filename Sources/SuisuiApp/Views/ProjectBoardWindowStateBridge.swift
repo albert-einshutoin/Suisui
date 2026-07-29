@@ -107,6 +107,9 @@ struct ProjectBoardWindowStateBridge: NSViewRepresentable {
                 width: ProjectBoardWindowFrame.minimumWidth,
                 height: ProjectBoardWindowFrame.minimumHeight
             )
+            guard !isPresentationPersistenceDisabled else {
+                return
+            }
             let data = restoresPrimaryWindow
                 ? defaults.data(forKey: primaryStorageKey) ?? defaults.data(forKey: storageKey)
                 : defaults.data(forKey: storageKey)
@@ -158,6 +161,9 @@ struct ProjectBoardWindowStateBridge: NSViewRepresentable {
         }
 
         private func saveFrame(_ frame: NSRect) {
+            guard !isPresentationPersistenceDisabled else {
+                return
+            }
             let state = ProjectBoardWindowPresentationState(frame: ProjectBoardWindowFrame(frame))
             guard let data = try? JSONEncoder().encode(state) else { return }
             defaults.set(data, forKey: storageKey)
@@ -174,6 +180,14 @@ struct ProjectBoardWindowStateBridge: NSViewRepresentable {
 
         private var primaryStorageKey: String {
             "suisui.projectBoard.primaryWindowFrame"
+        }
+
+        private var isPresentationPersistenceDisabled: Bool {
+            // Runtime evidence owns only its temporary process. Never read or
+            // write the developer's actual window frame during those launches.
+            ProcessInfo.processInfo.environment[
+                "SUISUI_DISABLE_PROJECT_BOARD_PRESENTATION_PERSISTENCE"
+            ] == "1"
         }
     }
 }

@@ -158,6 +158,11 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("SuisuiProjectBoardWindowFallback.shared.showIfNeeded()"))
         XCTAssertTrue(source.contains("createFallbackProjectBoardWindow()"))
         XCTAssertTrue(source.contains("guard SuisuiWindowlessFallbackEnvironment.shouldForceProjectBoardFallback || visibleProjectBoardWindows.isEmpty else"))
+        XCTAssertEqual(
+            source.components(separatedBy: "window.title == String(localized: \"Suisui\")").count - 1,
+            2,
+            "both fallback and delegate window discovery must recognize the localized product title"
+        )
         XCTAssertTrue(source.contains("window.makeKeyAndOrderFront(nil)"))
         XCTAssertTrue(source.contains("window.orderFrontRegardless()"))
     }
@@ -400,6 +405,8 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("static var shouldCreateDirectFallbackWindow: Bool"))
         XCTAssertTrue(source.contains("static var shouldForceProjectBoardFallback: Bool"))
         XCTAssertTrue(source.contains("private static let forceFallbackFlagName = \"SUISUI_FORCE_PROJECT_BOARD_FALLBACK\""))
+        XCTAssertTrue(source.contains("private static let disableFallbackFlagName = \"SUISUI_DISABLE_PROJECT_BOARD_FALLBACK\""))
+        XCTAssertTrue(source.contains("guard environment[disableFallbackFlagName] != \"1\" else"))
         XCTAssertTrue(source.contains("return SuisuiLaunchRecoveryEnvironment.isEnabled\n            || environment[\"SUISUI_DATABASE_PATH\"] != nil"))
         XCTAssertTrue(source.contains("|| shouldForceProjectBoardFallback"))
         XCTAssertTrue(source.contains("guard SuisuiWindowlessFallbackEnvironment.shouldForceProjectBoardFallback || visibleProjectBoardWindows.isEmpty else"))

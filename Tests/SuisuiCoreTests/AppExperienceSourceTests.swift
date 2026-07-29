@@ -1771,6 +1771,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(bridgeSource.contains("NSWindow.didResizeNotification"))
         XCTAssertTrue(bridgeSource.contains("ProjectBoardWindowPresentationState"))
         XCTAssertTrue(bridgeSource.contains("suisui.projectBoard.primaryWindowFrame"))
+        XCTAssertTrue(bridgeSource.contains("SUISUI_DISABLE_PROJECT_BOARD_PRESENTATION_PERSISTENCE"))
+        XCTAssertTrue(boardSource.contains("SUISUI_DISABLE_PROJECT_BOARD_PRESENTATION_PERSISTENCE"))
         XCTAssertTrue(coreSource.contains("public struct ProjectBoardWindowFrame"))
         XCTAssertTrue(coreSource.contains("public static let currentVersion = 1"))
         XCTAssertFalse(coreSource.contains("public var taskTitle"))

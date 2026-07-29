@@ -503,6 +503,7 @@ private enum SuisuiLaunchRecoveryEnvironment {
 
 private enum SuisuiWindowlessFallbackEnvironment {
     private static let forceFallbackFlagName = "SUISUI_FORCE_PROJECT_BOARD_FALLBACK"
+    private static let disableFallbackFlagName = "SUISUI_DISABLE_PROJECT_BOARD_FALLBACK"
     static let maxWindowGroupRestoreAttempts = 3
 
     static var shouldForceProjectBoardFallback: Bool {
@@ -511,6 +512,12 @@ private enum SuisuiWindowlessFallbackEnvironment {
 
     static var shouldCreateDirectFallbackWindow: Bool {
         let environment = ProcessInfo.processInfo.environment
+        guard environment[disableFallbackFlagName] != "1" else {
+            // Layout evidence must exercise the canonical WindowGroup alone.
+            // The opt-out is process-local so production isolated launches
+            // retain their early visible fallback and launch resilience.
+            return false
+        }
         // Direct binary launches with an isolated SQLite path do not always
         // get a SwiftUI WindowGroup quickly enough for AX/screenshot gates.
         // They still need the full board unless launch recovery explicitly opts in.
@@ -647,7 +654,7 @@ private final class SuisuiProjectBoardWindowFallback {
             window.isVisible
                 && window.occlusionState.contains(.visible)
                 && !window.isMiniaturized
-                && window.title == "Suisui"
+                && (window.title == "Suisui" || window.title == String(localized: "Suisui"))
         }
     }
 
@@ -894,7 +901,7 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
             window.isVisible
                 && window.occlusionState.contains(.visible)
                 && !window.isMiniaturized
-                && window.title == "Suisui"
+                && (window.title == "Suisui" || window.title == String(localized: "Suisui"))
         }
     }
 }

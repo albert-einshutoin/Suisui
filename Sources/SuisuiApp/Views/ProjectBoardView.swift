@@ -901,7 +901,8 @@ struct ProjectBoardView: View {
     }
 
     private func restorePrimaryPresentationStateIfNeeded() {
-        guard restoresPrimaryPresentationState else { return }
+        guard restoresPrimaryPresentationState,
+              !isPresentationPersistenceDisabled else { return }
         // SceneStorage keeps simultaneous windows isolated. OS window
         // restoration is deliberately disabled, so a primary-only copy carries
         // safe presentation preferences across a completely fresh launch.
@@ -910,9 +911,18 @@ struct ProjectBoardView: View {
     }
 
     private func persistPrimaryPresentationStateIfNeeded() {
-        guard restoresPrimaryPresentationState else { return }
+        guard restoresPrimaryPresentationState,
+              !isPresentationPersistenceDisabled else { return }
         primaryUserRequestedInspector = userRequestedInspector
         primarySidebarHidden = storedSidebarHidden
+    }
+
+    private var isPresentationPersistenceDisabled: Bool {
+        // Evidence launches must not inherit or overwrite the developer's
+        // real sidebar/inspector preference through AppStorage.
+        ProcessInfo.processInfo.environment[
+            "SUISUI_DISABLE_PROJECT_BOARD_PRESENTATION_PERSISTENCE"
+        ] == "1"
     }
 
     private func refreshProjectBoardColumnsAfterToolbarDisplayModeChange() {
