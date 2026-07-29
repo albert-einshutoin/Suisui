@@ -170,6 +170,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
         VoiceTaskConversationSession?
     /// ~10Hz keeps the meter lively without spamming the main actor.
     private let inputLevelSampleInterval: TimeInterval = 0.1
+    private static let pendingConversationEvidenceBlockingReason =
+        "Conversation evidence is being linked before review."
+    private static let failedConversationEvidenceBlockingReason =
+        "Conversation evidence could not be persisted. Create a new reviewed plan."
 
     public init(
         draft: TranscriptDraft = TranscriptDraft(),
@@ -539,11 +543,13 @@ public final class VoiceCaptureViewModel: ObservableObject {
         let text: String
         switch turn.author {
         case .user:
-            guard let confirmed = turn.userConfirmedText else {
+            guard let displayText =
+                turn.userConfirmedText ?? turn.rawTranscript
+            else {
                 return nil
             }
             author = .user
-            text = confirmed
+            text = displayText
         case .assistant:
             author = .assistant
             text = String(localized: "Structured response recorded.")
@@ -664,6 +670,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     public func clear() {
         stopLowLatencyVoiceAgentMode()
         stopInputLevelMonitoring()
+        removeUnsavedTemporaryRecording()
         audioRecorder.reset()
         draft = TranscriptDraft()
         conversationWorkspaceLocalAnswerItems = []
@@ -686,6 +693,21 @@ public final class VoiceCaptureViewModel: ObservableObject {
         workspaceAnswer = .idle
         recordingState = audioRecorder.state
         phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
+    }
+
+    /// Releases workspace-owned recording resources when its window closes.
+    ///
+    /// Saved Inbox audio is owned by the Inbox store and is deliberately left
+    /// intact; only an unsaved file under the system temporary directory is
+    /// eligible for deletion.
+    public func releaseTemporaryRecordingResources() {
+        stopLowLatencyVoiceAgentMode()
+        stopInputLevelMonitoring()
+        removeUnsavedTemporaryRecording()
+        audioRecorder.reset()
+        recordedAudio = nil
+        lastTranscribedAudioURL = nil
+        recordingState = audioRecorder.state
     }
 
     public func startLowLatencyVoiceAgentMode(
@@ -767,6 +789,12 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
     public func startRecording(at date: Date = Date()) async {
         stopLowLatencyVoiceAgentMode()
+        // Starting another take transfers ownership away from the previous
+        // unsaved temporary file. Delete it before the recorder can replace
+        // our in-memory reference, while preserving Inbox-owned recordings.
+        removeUnsavedTemporaryRecording()
+        recordedAudio = nil
+        lastTranscribedAudioURL = nil
         do {
             try await audioRecorder.start(at: date)
             recordingState = audioRecorder.state
@@ -803,6 +831,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             refreshRoutingResult()
             phase = .idle
         } catch {
+            removeUnsavedTemporaryRecording()
             lastTranscribedAudioURL = nil
             savedInboxAudioURL = nil
             recordingState = audioRecorder.state
@@ -1238,15 +1267,13 @@ public final class VoiceCaptureViewModel: ObservableObject {
                     )
                     return
                 }
-                let persisted = try persistNewAssistantQueueItemIfNeeded(
-                    queueItem
-                )
-                assistantQueueItem = persisted
-                try await persistConversationReviewLink(
+                let persisted =
+                    try await persistConversationQueueItemWithLink(
                     plan: plan,
-                    queueItem: persisted,
+                    queueItem: queueItem,
                     at: Date()
                 )
+                assistantQueueItem = persisted
                 phase = .reviewReady
             } catch {
                 blockConversationQueueItemAfterLinkFailure()
@@ -1479,6 +1506,23 @@ public final class VoiceCaptureViewModel: ObservableObject {
             availableTools: availableTools,
             knowledgeFrameCandidates: knowledgeFrameCandidates
         )
+    }
+
+    private func removeUnsavedTemporaryRecording() {
+        guard let url = recordedAudio?.fileURL,
+              url != savedInboxAudioURL
+        else {
+            return
+        }
+        let temporaryRoot =
+            FileManager.default.temporaryDirectory.standardizedFileURL.path
+        let candidate = url.standardizedFileURL.path
+        guard candidate.hasPrefix(temporaryRoot + "/") else {
+            // Injected recorders may return caller-owned paths. Only production
+            // temporary recordings are owned by this workspace.
+            return
+        }
+        try? FileManager.default.removeItem(at: url)
     }
 
     private func clearLiveVoiceAgentState() {
@@ -2074,15 +2118,13 @@ public final class VoiceCaptureViewModel: ObservableObject {
                        routedCommand: routedCommand
                    )
                 {
-                    let persisted = try persistNewAssistantQueueItemIfNeeded(
-                        queueItem
-                    )
-                    assistantQueueItem = persisted
-                    try await persistConversationReviewLink(
+                    let persisted =
+                        try await persistConversationQueueItemWithLink(
                         plan: plan,
-                        queueItem: persisted,
+                        queueItem: queueItem,
                         at: currentDate
                     )
+                    assistantQueueItem = persisted
                 }
             } catch {
                 blockConversationQueueItemAfterLinkFailure()
@@ -2282,24 +2324,147 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
     }
 
+    private func persistConversationQueueItemWithLink(
+        plan: ActionPlan,
+        queueItem: AssistantQueueItem,
+        at date: Date
+    ) async throws -> AssistantQueueItem {
+        // A configured conversation orchestrator establishes the durable-link
+        // contract. Without one, preserve the established single-row queue
+        // publication used by legacy/non-conversation planning.
+        guard conversationOrchestrator != nil else {
+            return try persistNewAssistantQueueItemIfNeeded(queueItem)
+        }
+        guard let assistantQueueStore else {
+            try await persistConversationReviewLink(
+                plan: plan,
+                queueItem: queueItem,
+                at: date
+            )
+            return queueItem
+        }
+        guard conversationOrchestrator
+                is any VoiceTaskConversationReviewLinkPersisting
+        else {
+            throw AssistantQueueStoreError.saveFailed
+        }
+
+        // These stores cannot share one transaction. Keep the provisional
+        // queue row blocked until its causal Action Link is durable, so another
+        // window cannot approve unaudited work in the publication gap.
+        var provisional = queueItem
+        provisional.state = .blocked
+        provisional.approval = nil
+        provisional.blockingReason =
+            Self.pendingConversationEvidenceBlockingReason
+        let persistedProvisional =
+            try persistConversationProvisionalIfSafe(provisional)
+        assistantQueueItem = persistedProvisional
+        do {
+            try await persistConversationReviewLink(
+                plan: plan,
+                queueItem: persistedProvisional,
+                at: date
+            )
+            guard let expectedRevision =
+                persistedProvisional.mutationRevision
+            else {
+                throw AssistantQueueStaleReviewError()
+            }
+            return try assistantQueueStore.transition(
+                id: persistedProvisional.id
+            ) { current in
+                guard current.mutationRevision == expectedRevision,
+                      current.state == .blocked,
+                      current.approval == nil,
+                      current.blockingReason ==
+                        Self.pendingConversationEvidenceBlockingReason,
+                      current.contentFingerprint ==
+                        persistedProvisional.contentFingerprint
+                else {
+                    throw AssistantQueueStaleReviewError()
+                }
+                var published = current
+                published.state = queueItem.state
+                published.blockingReason = queueItem.blockingReason
+                published.approval = nil
+                return published
+            }
+        } catch {
+            blockConversationQueueItemAfterLinkFailure()
+            throw error
+        }
+    }
+
+    private func persistConversationProvisionalIfSafe(
+        _ provisional: AssistantQueueItem
+    ) throws -> AssistantQueueItem {
+        guard let assistantQueueStore else {
+            return provisional
+        }
+        if let inserted = try assistantQueueStore.insertIfAbsent(provisional) {
+            return inserted
+        }
+        let existing = try assistantQueueStore.get(id: provisional.id)
+        // An ID collision is only a retry when it is exactly the provisional
+        // row this flow previously published. Content, state, reason, approval,
+        // and revision all participate so approved/running/terminal or foreign
+        // work can never be repurposed by a repeated voice request.
+        guard existing.state == .blocked,
+              existing.approval == nil,
+              existing.blockingReason ==
+                Self.pendingConversationEvidenceBlockingReason,
+              existing.contentFingerprint == provisional.contentFingerprint,
+              existing.mutationRevision != nil
+        else {
+            throw AssistantQueueStaleReviewError()
+        }
+        return existing
+    }
+
     private func blockConversationQueueItemAfterLinkFailure() {
-        guard var queueItem = assistantQueueItem else {
+        guard let queueItem = assistantQueueItem else {
             return
         }
         // A Voice-created queue item without its causal ActionLink must never
         // become executable. Persist a visible blocked state so reopening the
         // app cannot turn a transient linkage failure into unaudited work.
-        queueItem.state = .blocked
-        queueItem.approval = nil
-        queueItem.blockingReason =
-            "Conversation evidence could not be persisted. Create a new reviewed plan."
-        if let assistantQueueStore,
-           let blocked = try? assistantQueueStore.save(queueItem)
-        {
+        guard let assistantQueueStore,
+              let expectedRevision = queueItem.mutationRevision
+        else {
+            var blocked = queueItem
+            blocked.state = .blocked
+            blocked.approval = nil
+            blocked.blockingReason =
+                Self.failedConversationEvidenceBlockingReason
             assistantQueueItem = blocked
-        } else {
-            assistantQueueItem = queueItem
+            return
         }
+        let blocked: AssistantQueueItem
+        do {
+            blocked = try assistantQueueStore.transition(
+                id: queueItem.id
+            ) { current in
+                guard current.mutationRevision == expectedRevision,
+                      current.state == .blocked,
+                      current.approval == nil,
+                      current.blockingReason ==
+                        Self.pendingConversationEvidenceBlockingReason,
+                      current.contentFingerprint ==
+                        queueItem.contentFingerprint
+                else {
+                    throw AssistantQueueStaleReviewError()
+                }
+                var failed = current
+                failed.blockingReason =
+                    Self.failedConversationEvidenceBlockingReason
+                return failed
+            }
+        } catch {
+            refreshAssistantQueueItemAfterMutationFailure(id: queueItem.id)
+            return
+        }
+        assistantQueueItem = blocked
     }
 
     private func transitionAssistantQueueItemIfNeeded(
