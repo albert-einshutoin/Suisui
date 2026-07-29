@@ -11276,6 +11276,10 @@ final class ReleasePipelineTests: XCTestCase {
             "unidic_lite.DICDIR",
             "SAFE_VOICE_ID",
             "English Kokoro voice id must start with a or b",
+            "inspect.signature",
+            "supports_keyword",
+            "if supports_keyword(KModel, \"repo_id\")",
+            "if supports_keyword(KPipeline, \"repo_id\")",
             "KModel(",
             "KPipeline("
         ] {

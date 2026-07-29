@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import inspect
 import os
 import re
 import sys
@@ -71,6 +72,10 @@ def check_offline_language_assets(language: str) -> None:
         fail("English Kokoro G2P model en_core_web_sm is not installed in this Python environment")
 
 
+def supports_keyword(callable_object: object, keyword: str) -> bool:
+    return keyword in inspect.signature(callable_object).parameters
+
+
 def prefer_unidic_lite_for_japanese() -> None:
     if importlib.util.find_spec("unidic_lite") is None:
         return
@@ -126,17 +131,25 @@ def main() -> int:
         fail(f"Kokoro Python runtime dependency is unavailable: {error}")
 
     try:
-        model = KModel(
-            repo_id="hexgrad/Kokoro-82M",
-            config=str(config_path),
-            model=str(model_path),
-        ).to(args.device).eval()
-        pipeline = KPipeline(
-            lang_code=language_code,
-            repo_id="hexgrad/Kokoro-82M",
-            model=model,
-            device=args.device,
-        )
+        model_arguments = {
+            "config": str(config_path),
+            "model": str(model_path),
+        }
+        if supports_keyword(KModel, "repo_id"):
+            model_arguments["repo_id"] = "hexgrad/Kokoro-82M"
+        model = KModel(**model_arguments).to(args.device).eval()
+
+        pipeline_arguments = {
+            "lang_code": language_code,
+            "model": model,
+            "device": args.device,
+        }
+        if supports_keyword(KPipeline, "repo_id"):
+            pipeline_arguments["repo_id"] = "hexgrad/Kokoro-82M"
+        # Kokoro 0.7 and 0.9 expose different constructor keywords. Inspect
+        # only the local installed API so the offline wrapper can support both
+        # without retrying a failed synthesis or reaching the network.
+        pipeline = KPipeline(**pipeline_arguments)
         chunks = []
         for result in pipeline(
             prompt,
