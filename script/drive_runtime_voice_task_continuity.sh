@@ -255,6 +255,7 @@ run_all() {
   ax_set_text "voice-conversation-input" "$DUE_DATE" || fail "clarification" "ax" "clarification_input_missing"
   ax_press "voice-conversation-submit-clarification" || fail "clarification" "ax" "clarification_submit_missing"
   write_witness "clarification" "clarification_count=1"
+  ax_press "voice-conversation-understanding-disclosure" || fail "proposal" "ax" "understanding_disclosure_missing"
   wait_for_marker "voice-conversation-proposal" || fail "proposal" "plan" "proposal_missing"
   wait_for_marker "voice-conversation-queue-handoff" || fail "proposal" "plan" "review_queue_handoff_missing"
   write_witness "proposal" "proposal_due_date=$DUE_DATE" "proposal_priority=high"

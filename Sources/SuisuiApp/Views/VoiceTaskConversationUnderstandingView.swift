@@ -16,6 +16,9 @@ struct VoiceTaskConversationUnderstandingView: View {
                     understandingContent
                         .padding(.top, SuisuiSpacing.sm)
                 }
+                .accessibilityIdentifier(
+                    "voice-conversation-understanding-disclosure"
+                )
             } else {
                 VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
                     Label("Understanding", systemImage: "text.magnifyingglass")

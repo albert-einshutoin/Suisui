@@ -123,6 +123,11 @@ final class VoiceTaskConversationWorkspaceSourceTests: XCTestCase {
         XCTAssertTrue(workspace.contains("GeometryReader"))
         XCTAssertTrue(workspace.contains("VoiceTaskConversationWorkspaceLayout"))
         XCTAssertTrue(understanding.contains("DisclosureGroup"))
+        XCTAssertTrue(
+            understanding.contains(
+                "voice-conversation-understanding-disclosure"
+            )
+        )
         XCTAssertTrue(understanding.contains("voice-conversation-proposal"))
     }
 
