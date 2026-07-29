@@ -848,8 +848,8 @@ final class UIGateScriptsTests: XCTestCase {
         )
         let positioningSource = String(script[positioningStart.lowerBound..<nextFunction.lowerBound])
 
-        XCTAssertTrue(positioningSource.contains("set actualSize to size of targetWindow"))
-        XCTAssertTrue(positioningSource.contains("read -r observed_width observed_height <<<\"$ax_window_size\""))
+        XCTAssertTrue(positioningSource.contains("\"$AX_RESIZE_WINDOW_HELPER_BINARY\""))
+        XCTAssertTrue(positioningSource.contains("read -r observed_x observed_y observed_width observed_height <<<\"$ax_window_size\""))
         XCTAssertTrue(positioningSource.contains("POSITIONED_WINDOW_WIDTH=\"$observed_width\""))
         XCTAssertTrue(positioningSource.contains("[[ \"$observed_width\" == \"$width\" && \"$observed_height\" == \"$height\" ]]"))
         XCTAssertTrue(positioningSource.contains("failure_message=visual-window-viewport-mismatch"))
@@ -869,7 +869,7 @@ final class UIGateScriptsTests: XCTestCase {
 
         XCTAssertTrue(retrySource.contains("position_window_for_capture \"$window_name\""))
         XCTAssertTrue(retrySource.contains("window_metadata=\"$(wait_for_window_capture_metadata \"$window_name\")\""))
-        XCTAssertTrue(retrySource.contains("target_frame_audit=\"$(wait_for_stable_ax_target_frame \"$target_identifier\" \"$window_name\")\""))
+        XCTAssertTrue(retrySource.contains("target_frame_audit=\"$(wait_for_stable_ax_target_frame \"$target_identifier\" \"$window_name\" \"$AX_TARGET_FRAME_AUDIT_MODE\" \"$window_x\" \"$window_y\" \"$window_width\" \"$window_height\")\""))
         XCTAssertTrue(retrySource.contains("successful_window_width=\"$POSITIONED_WINDOW_WIDTH\""))
         XCTAssertTrue(retrySource.contains("successful_target_frame_audit=\"$target_frame_audit\""))
         XCTAssertTrue(captureSource.contains("\"$successful_window_width\" \"$successful_window_height\" \"$successful_target_frame_audit\""))
