@@ -270,6 +270,8 @@ run_all() {
   wait_for_marker "assistant-queue-workflow" || fail "queue_approval_execution" "ax" "queue_board_marker_missing"
   ax_press "assistant-queue-approve-$queue_item_id" || fail "queue_approval_execution" "ax" "queue_approve_missing"
   wait_for_queue_state "approved" || fail "queue_approval_execution" "queue" "queue_approval_not_persisted"
+  ax_press "assistant-queue-filter" || fail "queue_approval_execution" "ax" "queue_filter_missing"
+  ax_press "assistant-queue-filter-option-approved" || fail "queue_approval_execution" "ax" "approved_filter_option_missing"
   ax_press "assistant-queue-run-$queue_item_id" || fail "queue_approval_execution" "ax" "queue_run_missing"
   wait_for_queue_state "done" || fail "queue_approval_execution" "execution" "queue_execution_not_done"
   write_witness "queue_approval_execution" "queue_reviewed=true" "queue_approved=true" "queue_executed=true"

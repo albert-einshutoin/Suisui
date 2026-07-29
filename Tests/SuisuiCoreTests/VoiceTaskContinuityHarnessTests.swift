@@ -70,6 +70,9 @@ final class VoiceTaskContinuityHarnessTests: XCTestCase {
         XCTAssertTrue(source.contains("project-board-voice-command"))
         XCTAssertTrue(source.contains("active_project_id=$PROJECT_ID"))
         XCTAssertTrue(source.contains("active_task_id=$TASK_TWO_ID"))
+        XCTAssertTrue(
+            source.contains("assistant-queue-filter-option-approved")
+        )
     }
 
     func testGivenBundledDriverWhenValidateThenBindsReceiptToConversationActionLink() throws {

@@ -789,6 +789,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(rowSource.contains(".disabled(!row.canRetry)"))
     }
 
+    func testAssistantQueueFilterOptionsExposeStableAXIdentifiers() throws {
+        let source = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectWorkflowAssistantQueueView.swift"
+        )
+
+        XCTAssertTrue(
+            source.contains(
+                "assistant-queue-filter-option-\\(filter.rawValue)"
+            )
+        )
+    }
+
     func testAssistantQueueTriageLocalizationsDoNotDuplicateSharedKeys() throws {
         let english = try readPackageFile("Sources/SuisuiApp/Resources/en.lproj/Localizable.strings")
         let japanese = try readPackageFile("Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings")
