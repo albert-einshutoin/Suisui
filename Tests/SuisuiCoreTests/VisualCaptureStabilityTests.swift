@@ -44,13 +44,16 @@ final class VisualCaptureStabilityTests: XCTestCase {
 
     func testCaptureRequiresSeedMetadataAndConvergedConsecutiveRasters() throws {
         let source = try readPackageFile("script/capture_ui_evidence.sh")
+        let seeder = try readPackageFile("Sources/SuisuiVisualFixtureSeeder/main.swift")
         let english = try readPackageFile("Sources/SuisuiApp/Resources/en.lproj/Localizable.strings")
         let japanese = try readPackageFile("Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings")
 
         XCTAssertTrue(source.contains("task-card-open-details-$unscheduled_task_id=>$planned_label, $medium_label, $no_due_date_label"))
-        XCTAssertTrue(source.contains("title = 'Unscheduled schedule draft input'"))
-        XCTAssertTrue(source.contains("SELECT substr(due_at, 1, 10) FROM tasks"))
-        XCTAssertTrue(source.contains("title = 'Capture launch screenshots'"))
+        XCTAssertTrue(source.contains("SuisuiVisualFixtureSeeder"))
+        XCTAssertTrue(source.contains("--capture-reference-instant"))
+        XCTAssertTrue(seeder.contains("title: \"Unscheduled schedule draft input\""))
+        XCTAssertTrue(seeder.contains("SELECT substr(due_at, 1, 10) FROM tasks WHERE id = ?;"))
+        XCTAssertTrue(seeder.contains("title: \"Capture launch screenshots\""))
         XCTAssertTrue(source.contains("task-card-open-details-$capture_task_id=>Capture launch screenshots"))
         XCTAssertTrue(source.contains("capture_due_label=\"$(localized_evidence_day_label \"$capture_due_date\")\""))
         XCTAssertTrue(source.contains("task-card-open-details-$capture_task_id=>$planned_label, $high_label, $capture_due_label"))

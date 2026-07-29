@@ -86,6 +86,7 @@ struct ProjectBoardView: View {
     @State private var projectBoardWindowWidth: CGFloat = 0
     @State private var allowsCompactInspectorPresentation = false
     @State private var isCompactInspectorSheetPresented = false
+    @State private var projectInspectorDevelopmentContext = ProjectInspectorDevelopmentContext()
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var toolbarLayoutRefreshToken = 0
     @State private var isTerminalPanelPresented = false
@@ -322,7 +323,7 @@ struct ProjectBoardView: View {
                 columnVisibility = storedSidebarHidden ? .detailOnly : .all
             }
         }
-        .onChange(of: selectedDestination) { _, destination in
+        .onChange(of: selectedDestination) { previousDestination, destination in
             allowsCompactInspectorPresentation = false
             if destination != nil {
                 selectedSmartListID = nil
@@ -342,7 +343,10 @@ struct ProjectBoardView: View {
                     persistSelectedDestination(destination)
                 }
             }
-            applySelectedDestination(destination)
+            applySelectedDestination(
+                destination,
+                previousDestination: previousDestination
+            )
             // Destination changes intentionally clear normal user selection; the
             // env-only override is reapplied so deterministic release evidence
             // can open Inbox with a seeded capture selected.
@@ -797,6 +801,7 @@ struct ProjectBoardView: View {
                 ProjectInspectorView(
                     project: project,
                     viewModel: viewModel,
+                    developmentTaskID: projectInspectorDevelopmentContext.taskID,
                     onReviewDevelopmentAutomation: presentDevelopmentAutomationReview,
                     onClose: dismissInspector
                 )
@@ -829,11 +834,18 @@ struct ProjectBoardView: View {
     }
 
     private func openProjectInspector() {
+        // Project and task details are mutually exclusive inspector surfaces,
+        // but development automation still needs the task the user was acting
+        // on. Preserve only that context before changing the rendered surface.
+        projectInspectorDevelopmentContext.handle(
+            .openProject(taskID: viewModel.selectedTaskID)
+        )
         viewModel.selectedTaskID = nil
         requestInspectorPresentation()
     }
 
     private func openTaskInspector(_ taskID: Int64) {
+        projectInspectorDevelopmentContext.handle(.openTaskInspector)
         viewModel.selectedTaskID = taskID
         requestInspectorPresentation()
     }
@@ -859,6 +871,7 @@ struct ProjectBoardView: View {
     }
 
     private func dismissInspector() {
+        projectInspectorDevelopmentContext.handle(.dismissInspector)
         isCompactInspectorSheetPresented = false
         userRequestedInspector = false
         persistPrimaryPresentationStateIfNeeded()
@@ -1123,7 +1136,8 @@ struct ProjectBoardView: View {
     private func applyLegacyDestinationWithinScene(
         _ destination: ProjectBoardSidebarDestination?
     ) {
-        if selectedDestination != destination {
+        let previousDestination = selectedDestination
+        if previousDestination != destination {
             // SwiftUI invokes onChange after this mutation. Keep suppression
             // pending until that callback consumes it; resetting here would
             // let targeted payload routing overwrite the new-window default.
@@ -1132,7 +1146,10 @@ struct ProjectBoardView: View {
             )
             selectedDestination = destination
         }
-        applySelectedDestination(destination)
+        applySelectedDestination(
+            destination,
+            previousDestination: previousDestination
+        )
     }
 
     private func consumePendingSceneOpenRequests() {
@@ -1171,7 +1188,15 @@ struct ProjectBoardView: View {
         sceneCoordinator.acknowledgeApplied(requestID: request.id)
     }
 
-    private func applySelectedDestination(_ destination: ProjectBoardSidebarDestination?) {
+    private func applySelectedDestination(
+        _ destination: ProjectBoardSidebarDestination?,
+        previousDestination: ProjectBoardSidebarDestination?
+    ) {
+        // Data reloads may reapply the same scene destination. Only real
+        // navigation invalidates the task context shown in the inspector.
+        if previousDestination != destination {
+            projectInspectorDevelopmentContext.handle(.destinationChanged)
+        }
         switch destination {
         case .project(let projectID):
             viewModel.selectedProjectID = projectID

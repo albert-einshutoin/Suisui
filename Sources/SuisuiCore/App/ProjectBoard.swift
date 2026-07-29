@@ -4317,17 +4317,13 @@ public final class ProjectBoardViewModel: ObservableObject {
         )
 
         do {
-            do {
-                _ = try assistantQueueStore.get(id: item.id)
+            guard try assistantQueueStore.insertIfAbsent(item) != nil else {
                 focusAssistantQueueItem(id: item.id)
                 errorMessage = nil
                 integrationStatusMessage = String(localized: "Done follow-up draft is already in Assistant Queue.")
                 return true
-            } catch AssistantQueueStoreError.notFound {
-                // Continue to save the new item below.
             }
 
-            _ = try assistantQueueStore.save(item)
             focusAssistantQueueItem(id: item.id)
             errorMessage = nil
             integrationStatusMessage = String(localized: "Queued Done follow-up draft for approval.")
@@ -4397,18 +4393,14 @@ public final class ProjectBoardViewModel: ObservableObject {
         )
 
         do {
-            do {
-                _ = try assistantQueueStore.get(id: item.id)
+            guard try assistantQueueStore.insertIfAbsent(item) != nil else {
                 focusAssistantQueueItem(id: item.id)
                 errorMessage = nil
                 integrationStatusMessage = String(localized: "Daily Planning Review action is already in Assistant Queue.")
                 todayCommandFeedback = integrationStatusMessage
                 return true
-            } catch AssistantQueueStoreError.notFound {
-                // Continue to save the new item below.
             }
 
-            _ = try assistantQueueStore.save(item)
             focusAssistantQueueItem(id: item.id)
             errorMessage = nil
             integrationStatusMessage = String(localized: "Queued Daily Planning Review action for approval.")
@@ -4533,18 +4525,14 @@ public final class ProjectBoardViewModel: ObservableObject {
         )
 
         do {
-            do {
-                _ = try assistantQueueStore.get(id: item.id)
+            guard try assistantQueueStore.insertIfAbsent(item) != nil else {
                 focusAssistantQueueItem(id: item.id)
                 errorMessage = nil
                 integrationStatusMessage = alreadyQueuedMessage
                 todayCommandFeedback = integrationStatusMessage
                 return true
-            } catch AssistantQueueStoreError.notFound {
-                // Continue to save the new item below.
             }
 
-            _ = try assistantQueueStore.save(item)
             focusAssistantQueueItem(id: item.id)
             errorMessage = nil
             integrationStatusMessage = queuedMessage
@@ -4613,18 +4601,14 @@ public final class ProjectBoardViewModel: ObservableObject {
         )
 
         do {
-            do {
-                _ = try assistantQueueStore.get(id: item.id)
+            guard try assistantQueueStore.insertIfAbsent(item) != nil else {
                 focusAssistantQueueItem(id: item.id)
                 errorMessage = nil
                 integrationStatusMessage = String(localized: "Schedule draft Calendar apply is already in Assistant Queue.")
                 todayCommandFeedback = integrationStatusMessage
                 return true
-            } catch AssistantQueueStoreError.notFound {
-                // Continue to save the new item below.
             }
 
-            _ = try assistantQueueStore.save(item)
             focusAssistantQueueItem(id: item.id)
             errorMessage = nil
             integrationStatusMessage = String(localized: "Queued Schedule draft Calendar apply for approval.")
@@ -5302,20 +5286,8 @@ public final class ProjectBoardViewModel: ObservableObject {
             integrationStatusMessage = nil
             return
         }
-        guard persistApprovedAIWorkStartReceipt(
-            ExecutionReceiptFactory.makeApprovedAutomationReceipt(
-                executionReceipt,
-                runID: "approved-automation-start:\(UUID().uuidString)",
-                approvalID: nil,
-                status: .running,
-                createdAt: Date()
-            )
-        ) == nil else {
-            return
-        }
-
         do {
-            let item = AssistantQueueAdapter.makeItem(
+            var item = AssistantQueueAdapter.makeItem(
                 actionPlan: approvedAutomationActionPlan(
                     for: selectedTask,
                     reviewReason: reviewDecision.reason
@@ -5325,11 +5297,65 @@ public final class ProjectBoardViewModel: ObservableObject {
                 reason: reviewDecision.reason,
                 costPreview: .localOnly()
             )
-            _ = try assistantQueueStore.save(item)
-            _ = try assistantQueueStore.transition(id: item.id) { item in
-                try AssistantQueueStateMachine.approve(item, reviewerID: "local-user")
+            // Keep the queue entry non-actionable until the durable start
+            // receipt exists. The queue and receipt stores cannot participate
+            // in one transaction, so publishing waitingReview first could
+            // expose work that has no auditable execution reservation.
+            item.state = .blocked
+            item.blockingReason = String(localized: "Execution receipt reservation must complete before this automation can be reviewed.")
+            guard let inserted = try assistantQueueStore.insertIfAbsent(item) else {
+                _ = refreshAssistantQueueSnapshot()
+                errorMessage = String(localized: "This reviewed automation is already in Assistant Queue. Review the existing item before running it.")
+                integrationStatusMessage = nil
+                return
             }
-            guard runAssistantQueueItem(id: item.id) else {
+            guard persistApprovedAIWorkStartReceipt(
+                ExecutionReceiptFactory.makeApprovedAutomationReceipt(
+                    executionReceipt,
+                    runID: "approved-automation-start:\(UUID().uuidString)",
+                    approvalID: nil,
+                    status: .running,
+                    createdAt: Date()
+                )
+            ) == nil else {
+                _ = refreshAssistantQueueSnapshot()
+                return
+            }
+            guard let insertedMutationRevision = inserted.mutationRevision else {
+                throw AssistantQueueStaleReviewError()
+            }
+            let reviewable = try assistantQueueStore.transition(id: inserted.id) { current in
+                guard current.mutationRevision == insertedMutationRevision else {
+                    throw AssistantQueueStaleReviewError()
+                }
+                // This is a publication barrier rather than a user transition:
+                // only the successful receipt reservation may expose review
+                // controls for this previously blocked provisional item.
+                var updated = current
+                updated.state = .waitingReview
+                updated.blockingReason = nil
+                updated.approval = nil
+                return updated
+            }
+            guard let reviewableMutationRevision = reviewable.mutationRevision else {
+                throw AssistantQueueStaleReviewError()
+            }
+            let approved = try assistantQueueStore.transition(id: reviewable.id) { current in
+                guard current.mutationRevision == reviewableMutationRevision else {
+                    throw AssistantQueueStaleReviewError()
+                }
+                return try AssistantQueueStateMachine.approve(
+                    current,
+                    reviewerID: "local-user"
+                )
+            }
+            guard let approvedMutationRevision = approved.mutationRevision else {
+                throw AssistantQueueStaleReviewError()
+            }
+            guard runAssistantQueueItem(
+                id: approved.id,
+                expectedMutationRevision: approvedMutationRevision
+            ) else {
                 return
             }
             load()
@@ -6728,10 +6754,17 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     @discardableResult
     public func setAssistantQueueSelection(id: String, selected: Bool) -> Bool {
-        guard assistantQueueSnapshot.rows.contains(where: { $0.id == id }) else {
+        guard let row = assistantQueueSnapshot.rows.first(where: { $0.id == id }) else {
             return false
         }
         if selected {
+            guard (row.canDefer || row.canReject), row.mutationRevision != nil else {
+                // Batch review actions cannot cancel running work or rewrite a
+                // terminal outcome. Missing revisions also fail closed because
+                // the batch must compare the exact state the reviewer saw.
+                assistantQueueSelectedItemIDs.remove(id)
+                return false
+            }
             assistantQueueSelectedItemIDs.insert(id)
         } else {
             assistantQueueSelectedItemIDs.remove(id)
@@ -6799,11 +6832,12 @@ public final class ProjectBoardViewModel: ObservableObject {
         transitionSelectedAssistantQueueItems(
             eligible: \.canDefer,
             emptyMessage: String(localized: "No selected Assistant Queue items can be deferred."),
+            invalidSelectionMessage: String(localized: "Every selected Assistant Queue item must support Defer."),
             successMessage: { count in
                 String(format: String(localized: "Deferred %d Assistant Queue items."), count)
             }
         ) { item in
-            AssistantQueueStateMachine.deferItem(item)
+            try AssistantQueueStateMachine.deferForReview(item)
         }
     }
 
@@ -6812,17 +6846,30 @@ public final class ProjectBoardViewModel: ObservableObject {
         transitionSelectedAssistantQueueItems(
             eligible: \.canReject,
             emptyMessage: String(localized: "No selected Assistant Queue items can be rejected."),
+            invalidSelectionMessage: String(localized: "Every selected Assistant Queue item must support Reject."),
             successMessage: { count in
                 String(format: String(localized: "Rejected %d Assistant Queue items."), count)
             }
         ) { item in
-            AssistantQueueStateMachine.reject(item)
+            try AssistantQueueStateMachine.rejectForReview(item)
         }
     }
 
     @discardableResult
+    @available(*, deprecated, message: "This overload fails closed. Use approveAssistantQueueItem(id:expectedMutationRevision:).")
     public func approveAssistantQueueItem(id: String) -> Bool {
-        transitionAssistantQueueItem(id: id) { item in
+        failClosedUnversionedAssistantQueueMutation()
+    }
+
+    @discardableResult
+    public func approveAssistantQueueItem(
+        id: String,
+        expectedMutationRevision: String
+    ) -> Bool {
+        transitionAssistantQueueItem(
+            id: id,
+            expectedMutationRevision: expectedMutationRevision
+        ) { item in
             try AssistantQueueStateMachine.approve(item, reviewerID: "local-user")
         }
     }
@@ -6854,7 +6901,13 @@ public final class ProjectBoardViewModel: ObservableObject {
 
         var approvedCount = 0
         for suggestionID in suggestionIDs {
-            guard approveAssistantQueueItem(id: suggestionID) else {
+            guard let expectedRevision = assistantQueueSnapshot.rows
+                .first(where: { $0.id == suggestionID })?
+                .mutationRevision,
+                approveAssistantQueueItem(
+                    id: suggestionID,
+                    expectedMutationRevision: expectedRevision
+                ) else {
                 // approveAssistantQueueItem already refreshed the snapshot and
                 // published the per-item error message.
                 return approvedCount
@@ -6870,27 +6923,81 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     @discardableResult
+    @available(*, deprecated, message: "This overload fails closed. Use deferAssistantQueueItem(id:expectedMutationRevision:).")
     public func deferAssistantQueueItem(id: String) -> Bool {
-        transitionAssistantQueueItem(id: id) { item in
-            AssistantQueueStateMachine.deferItem(item)
+        failClosedUnversionedAssistantQueueMutation()
+    }
+
+    @discardableResult
+    public func deferAssistantQueueItem(
+        id: String,
+        expectedMutationRevision: String
+    ) -> Bool {
+        transitionAssistantQueueItem(
+            id: id,
+            expectedMutationRevision: expectedMutationRevision
+        ) { item in
+            try AssistantQueueStateMachine.deferForReview(item)
         }
     }
 
     @discardableResult
+    @available(*, deprecated, message: "This overload fails closed. Use rejectAssistantQueueItem(id:expectedMutationRevision:).")
     public func rejectAssistantQueueItem(id: String) -> Bool {
-        transitionAssistantQueueItem(id: id) { item in
-            AssistantQueueStateMachine.reject(item)
+        failClosedUnversionedAssistantQueueMutation()
+    }
+
+    @discardableResult
+    public func rejectAssistantQueueItem(
+        id: String,
+        expectedMutationRevision: String
+    ) -> Bool {
+        transitionAssistantQueueItem(
+            id: id,
+            expectedMutationRevision: expectedMutationRevision
+        ) { item in
+            try AssistantQueueStateMachine.rejectForReview(item)
         }
     }
 
     @discardableResult
+    @available(*, deprecated, message: "This overload fails closed. Use editAssistantQueueItem(id:expectedMutationRevision:reviewReason:redactedSummary:).")
     public func editAssistantQueueItem(
         id: String,
         reviewReason: String,
         redactedSummary: String
     ) -> Bool {
-        transitionAssistantQueueItem(id: id, successMessage: "Updated Assistant Queue review details.") { item in
-            try AssistantQueueStateMachine.editReviewDetails(
+        failClosedUnversionedAssistantQueueMutation()
+    }
+
+    @discardableResult
+    public func editAssistantQueueItem(
+        id: String,
+        expectedMutationRevision: String,
+        reviewReason: String,
+        redactedSummary: String
+    ) -> Bool {
+        editVersionedAssistantQueueItem(
+            id: id,
+            expectedMutationRevision: expectedMutationRevision,
+            reviewReason: reviewReason,
+            redactedSummary: redactedSummary
+        )
+    }
+
+    private func editVersionedAssistantQueueItem(
+        id: String,
+        expectedMutationRevision: String,
+        reviewReason: String,
+        redactedSummary: String
+    ) -> Bool {
+        transitionAssistantQueueItem(
+            id: id,
+            expectedMutationRevision: expectedMutationRevision,
+            successMessage: "Updated Assistant Queue review details.",
+            preserveVisibleItemOnStale: true
+        ) { item in
+            return try AssistantQueueStateMachine.editReviewDetails(
                 item,
                 reviewReason: reviewReason,
                 redactedSummary: redactedSummary
@@ -6898,15 +7005,46 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    private func failClosedUnversionedAssistantQueueMutation() -> Bool {
+        // Legacy callers cannot prove which review state the user saw. Refresh
+        // for recovery guidance, but never infer a token and mutate current data.
+        _ = refreshAssistantQueueSnapshot()
+        errorMessage = AssistantQueueMutationFailure.unversionedUserMessage
+        integrationStatusMessage = nil
+        return false
+    }
+
     @discardableResult
+    @available(*, deprecated, message: "This overload fails closed. Use retryAssistantQueueItem(id:expectedMutationRevision:).")
     public func retryAssistantQueueItem(id: String) -> Bool {
-        transitionAssistantQueueItem(id: id, successMessage: "Reopened Assistant Queue item for review.") { item in
+        failClosedUnversionedAssistantQueueMutation()
+    }
+
+    @discardableResult
+    public func retryAssistantQueueItem(
+        id: String,
+        expectedMutationRevision: String
+    ) -> Bool {
+        transitionAssistantQueueItem(
+            id: id,
+            expectedMutationRevision: expectedMutationRevision,
+            successMessage: "Reopened Assistant Queue item for review."
+        ) { item in
             try AssistantQueueStateMachine.reopenFailedForReview(item)
         }
     }
 
     @discardableResult
+    @available(*, deprecated, message: "This overload fails closed. Use runAssistantQueueItem(id:expectedMutationRevision:).")
     public func runAssistantQueueItem(id: String) -> Bool {
+        failClosedUnversionedAssistantQueueMutation()
+    }
+
+    @discardableResult
+    public func runAssistantQueueItem(
+        id: String,
+        expectedMutationRevision: String
+    ) -> Bool {
         guard let assistantQueueExecutionCoordinator = resolvedAssistantQueueExecutionCoordinator else {
             _ = refreshAssistantQueueSnapshot()
             errorMessage = "Assistant Queue execution is unavailable in this build."
@@ -6915,7 +7053,10 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         do {
-            let result = try assistantQueueExecutionCoordinator.execute(id: id)
+            let result = try assistantQueueExecutionCoordinator.execute(
+                id: id,
+                expectedMutationRevision: expectedMutationRevision
+            )
             _ = refreshAssistantQueueSnapshot()
             refreshExecutionReceiptHistorySnapshot()
             if result.item.state == .done {
@@ -6939,7 +7080,9 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     private func transitionAssistantQueueItem(
         id: String,
+        expectedMutationRevision: String? = nil,
         successMessage: String? = nil,
+        preserveVisibleItemOnStale: Bool = false,
         _ transform: (AssistantQueueItem) throws -> AssistantQueueItem
     ) -> Bool {
         guard let assistantQueueStore else {
@@ -6949,7 +7092,13 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         do {
-            _ = try assistantQueueStore.transition(id: id, transform)
+            _ = try assistantQueueStore.transition(id: id) { current in
+                if let expectedMutationRevision,
+                   current.mutationRevision != expectedMutationRevision {
+                    throw AssistantQueueStaleReviewError()
+                }
+                return try transform(current)
+            }
             _ = refreshAssistantQueueSnapshot()
             errorMessage = nil
             integrationStatusMessage = successMessage
@@ -6990,6 +7139,22 @@ public final class ProjectBoardViewModel: ObservableObject {
             errorMessage = "Only reviewable Assistant Queue items can be edited."
             integrationStatusMessage = nil
             return false
+        } catch is AssistantQueueReviewActionUnavailableError {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = "This Assistant Queue item cannot be changed by that review action in its current state."
+            integrationStatusMessage = nil
+            return false
+        } catch is AssistantQueueStaleReviewError {
+            if preserveVisibleItemOnStale {
+                // A stale edit may have moved outside the active filter. Reveal
+                // all states before refresh so SwiftUI preserves the row identity,
+                // local draft, and focus until the reviewer reloads or cancels.
+                assistantQueueViewFilter = .all
+            }
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueMutationFailure.staleUserMessage
+            integrationStatusMessage = nil
+            return false
         } catch {
             _ = refreshAssistantQueueSnapshot()
             errorMessage = AssistantQueueStoreError.userMessage(for: error)
@@ -7001,6 +7166,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     private func transitionSelectedAssistantQueueItems(
         eligible: KeyPath<AssistantQueueReadModelRow, Bool>,
         emptyMessage: String,
+        invalidSelectionMessage: String,
         successMessage: (Int) -> String,
         _ transform: (AssistantQueueItem) throws -> AssistantQueueItem
     ) -> Bool {
@@ -7011,27 +7177,57 @@ public final class ProjectBoardViewModel: ObservableObject {
             return false
         }
 
-        let eligibleIDs = assistantQueueSnapshot.rows
-            .filter { row in
-                assistantQueueSelectedItemIDs.contains(row.id) && row[keyPath: eligible]
-            }
-            .map(\.id)
-        guard !eligibleIDs.isEmpty else {
+        let selectedRows = assistantQueueSnapshot.rows.filter {
+            assistantQueueSelectedItemIDs.contains($0.id)
+        }
+        guard !selectedRows.isEmpty else {
             errorMessage = emptyMessage
+            integrationStatusMessage = nil
+            return false
+        }
+        guard selectedRows.count == assistantQueueSelectedItemIDs.count,
+              selectedRows.allSatisfy({ $0[keyPath: eligible] }),
+              selectedRows.allSatisfy({ $0.mutationRevision != nil }) else {
+            errorMessage = invalidSelectionMessage
+            integrationStatusMessage = nil
+            return false
+        }
+        let eligibleIDs = selectedRows.map(\.id)
+        let expectedRevisions = Dictionary(
+            uniqueKeysWithValues: selectedRows.compactMap { row in
+                row.mutationRevision.map { (row.id, $0) }
+            }
+        )
+
+        guard let atomicStore = assistantQueueStore as? any AtomicAssistantQueueStore else {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = "Batch Assistant Queue actions require an atomic queue store."
             integrationStatusMessage = nil
             return false
         }
 
         do {
-            for id in eligibleIDs {
-                _ = try assistantQueueStore.transition(id: id, transform)
-            }
+            _ = try atomicStore.transitionAll(
+                ids: eligibleIDs,
+                expectedRevisions: expectedRevisions,
+                transform
+            )
             assistantQueueSelectedItemIDs = []
             _ = refreshAssistantQueueSnapshot()
             errorMessage = nil
             integrationStatusMessage = successMessage(eligibleIDs.count)
             onChange()
             return true
+        } catch is AssistantQueueReviewActionUnavailableError {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = "This Assistant Queue item cannot be changed by that review action in its current state."
+            integrationStatusMessage = nil
+            return false
+        } catch is AssistantQueueStaleReviewError {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueMutationFailure.staleUserMessage
+            integrationStatusMessage = nil
+            return false
         } catch {
             _ = refreshAssistantQueueSnapshot()
             errorMessage = AssistantQueueStoreError.userMessage(for: error)
@@ -7041,12 +7237,20 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     private func pruneAssistantQueueSelectionToVisibleRows() {
-        let visibleIDs = Set(assistantQueueSnapshot.rows.map(\.id))
-        assistantQueueSelectedItemIDs = assistantQueueSelectedItemIDs.intersection(visibleIDs)
+        let batchSelectableIDs = Set(
+            assistantQueueSnapshot.rows
+                .filter { row in
+                    (row.canDefer || row.canReject) && row.mutationRevision != nil
+                }
+                .map(\.id)
+        )
+        assistantQueueSelectedItemIDs.formIntersection(batchSelectableIDs)
     }
 
     private static func assistantQueueExecutionMessage(for error: Error) -> String {
         switch error {
+        case is AssistantQueueStaleReviewError:
+            return "This Assistant Queue item changed. Review the latest details before running it."
         case AssistantQueueExecutionError.unsupportedPayload:
             return "This Assistant Queue item cannot run from Project Board yet."
         case AssistantQueueExecutionError.receiptPersistenceFailed(let queueStateMarkedFailed):

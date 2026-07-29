@@ -148,7 +148,13 @@ struct ProjectBoardProjectsHubView<Content: View>: View {
     }
 
     private var compactNavigation: some View {
-        HStack(spacing: 10) {
+        let presentation = ProjectBoardCompactNavigationPresentation.projects(
+            route: route,
+            projects: projects,
+            smartLists: smartLists
+        )
+
+        return HStack(spacing: 10) {
             Menu {
                 Section {
                     Button("Portfolio") { route = .primary(.projects) }
@@ -180,8 +186,9 @@ struct ProjectBoardProjectsHubView<Content: View>: View {
                     }
                 }
             } label: {
-                Label("Choose Project View", systemImage: "sidebar.left")
+                compactLabel(presentation)
             }
+            .help("Choose Project destination.")
             .accessibilityIdentifier("projects-hub-compact-navigation")
 
             Spacer()
@@ -223,6 +230,30 @@ struct ProjectBoardProjectsHubView<Content: View>: View {
             .accessibilityIdentifier("projects-hub-compact-add-project")
         }
         .padding(10)
+    }
+
+    @ViewBuilder
+    private func compactLabel(
+        _ presentation: ProjectBoardCompactNavigationPresentation
+    ) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "sidebar.left")
+                .accessibilityHidden(true)
+            // The policy keeps fixed labels localizable while preserving
+            // user-authored text verbatim.
+            switch presentation.label {
+            case .localized(let key):
+                Text(LocalizedStringKey(key))
+            case .verbatim(let value):
+                Text(verbatim: value)
+            }
+            if let count = presentation.badgeCount {
+                Text(verbatim: "\(count)")
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private var selectedCustomSmartList: SmartList? {

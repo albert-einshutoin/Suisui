@@ -99,8 +99,14 @@ public final class MissedTaskRescheduleSuggestionPlanner: @unchecked Sendable {
                 skipsWeekend: target.skipsWeekend
             )
             do {
-                _ = try queueStore.save(item)
-                enqueued.append(item.id)
+                if try queueStore.insertIfAbsent(item) != nil {
+                    enqueued.append(item.id)
+                } else {
+                    // A concurrent scan may have queued the deterministic item
+                    // after the open-state snapshot. Never overwrite its review
+                    // or execution state with a fresh waiting-review copy.
+                    skipped.append(taskID)
+                }
             } catch {
                 errorMessage = UserFacingErrorMessageSanitizer.message(from: error)
             }

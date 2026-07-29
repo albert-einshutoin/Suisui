@@ -1,0 +1,13 @@
+{
+  "generatedAt": "2026-07-29T06:50:41Z",
+  "sourceCommit": "ec5d0a555982811db351acf33be2349ed23d48e6",
+  "locale": "ja-JP",
+  "timeZoneIdentifier": "UTC",
+  "referenceInstant": "2026-07-10T12:00:00Z",
+  "sourceManifest": "docs/quality/visual-baseline-manifest-ja.json",
+  "screenshotDirectory": "docs/release/evidence/ui-screenshots-ja",
+  "mainViewport": "1024x676",
+  "settingsViewport": "720x676",
+  "voiceCommandViewport": "760x640",
+  "comparison": "semantic"
+}

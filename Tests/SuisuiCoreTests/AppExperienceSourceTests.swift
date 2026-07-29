@@ -169,6 +169,64 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(block.contains("projects-hub-compact-add-project"))
     }
 
+    func testCompactHubLabelsUseTypedPresentationAndPreserveDestinationParity() throws {
+        let review = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift")
+        let projects = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift")
+
+        let reviewCompactStart = try XCTUnwrap(
+            review.range(of: "private var compactNavigation")
+        )
+        let reviewCompactEnd = try XCTUnwrap(
+            review.range(
+                of: "private func compactDestination",
+                range: reviewCompactStart.upperBound..<review.endIndex
+            )
+        )
+        let reviewCompact = String(
+            review[reviewCompactStart.lowerBound..<reviewCompactEnd.lowerBound]
+        )
+        let projectsCompactStart = try XCTUnwrap(
+            projects.range(of: "private var compactNavigation")
+        )
+        let projectsCompactEnd = try XCTUnwrap(
+            projects.range(
+                of: "private var selectedCustomSmartList",
+                range: projectsCompactStart.upperBound..<projects.endIndex
+            )
+        )
+        let projectsCompact = String(
+            projects[projectsCompactStart.lowerBound..<projectsCompactEnd.lowerBound]
+        )
+
+        XCTAssertTrue(
+            reviewCompact.contains("ProjectBoardCompactNavigationPresentation.review(")
+        )
+        XCTAssertTrue(
+            projectsCompact.contains("ProjectBoardCompactNavigationPresentation.projects(")
+        )
+        XCTAssertTrue(reviewCompact.contains("compactLabel(presentation)"))
+        XCTAssertTrue(projectsCompact.contains("compactLabel(presentation)"))
+        XCTAssertTrue(reviewCompact.contains("case .localized"))
+        XCTAssertTrue(reviewCompact.contains("case .verbatim"))
+        XCTAssertTrue(projectsCompact.contains("case .localized"))
+        XCTAssertTrue(projectsCompact.contains("case .verbatim"))
+        XCTAssertTrue(reviewCompact.contains(".help(\"Choose Review destination.\")"))
+        XCTAssertTrue(projectsCompact.contains(".help(\"Choose Project destination.\")"))
+        XCTAssertTrue(reviewCompact.contains("\"%d item needs attention\""))
+        XCTAssertTrue(reviewCompact.contains("\"%d items need attention\""))
+        XCTAssertFalse(reviewCompact.contains("Label(\"Choose Review View\""))
+        XCTAssertFalse(projectsCompact.contains("Label(\"Choose Project View\""))
+
+        for identifier in [
+            "review-hub-compact-destination-schedule",
+            "review-hub-compact-destination-completed",
+            "review-hub-compact-destination-automation-activity",
+            "review-hub-compact-destination-assistant-queue"
+        ] {
+            XCTAssertTrue(review.contains(identifier))
+        }
+    }
+
     func testProjectsAndReviewHubsExposeRelocatedDestinations() throws {
         let projectsSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift"
@@ -535,18 +593,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("struct AssistantQueueWorkflowView"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-workflow\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-row-\\(row.id)\")"))
-        XCTAssertTrue(workflowSource.contains("viewModel.runAssistantQueueItem(id: row.id)"))
-        XCTAssertTrue(workflowSource.contains("viewModel.approveAssistantQueueItem(id: row.id)"))
-        XCTAssertTrue(workflowSource.contains("viewModel.deferAssistantQueueItem(id: row.id)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.runAssistantQueueItem(\n                id: row.id,\n                expectedMutationRevision: mutationRevision"))
+        XCTAssertTrue(workflowSource.contains("expectedMutationRevision: mutationRevision"))
+        XCTAssertTrue(workflowSource.contains("viewModel.deferAssistantQueueItem("))
         XCTAssertTrue(workflowSource.contains("viewModel.editAssistantQueueItem("))
-        XCTAssertTrue(workflowSource.contains("viewModel.retryAssistantQueueItem(id: row.id)"))
-        XCTAssertTrue(workflowSource.contains("viewModel.rejectAssistantQueueItem(id: row.id)"))
-        XCTAssertTrue(workflowSource.contains(".disabled(!row.canRun)"))
-        XCTAssertTrue(workflowSource.contains(".disabled(!row.canApprove)"))
-        XCTAssertTrue(workflowSource.contains(".disabled(!row.canDefer)"))
-        XCTAssertTrue(workflowSource.contains(".disabled(!row.canEdit)"))
-        XCTAssertTrue(workflowSource.contains(".disabled(!row.canRetry)"))
-        XCTAssertTrue(workflowSource.contains(".disabled(!row.canReject)"))
+        XCTAssertTrue(workflowSource.contains("expectedMutationRevision: expectedMutationRevision"))
+        XCTAssertTrue(workflowSource.contains("viewModel.retryAssistantQueueItem("))
+        XCTAssertTrue(workflowSource.contains("viewModel.rejectAssistantQueueItem("))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-run-\\(row.id)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-edit-\\(row.id)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-edit-reason-\\(row.id)\")"))
@@ -554,6 +607,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-edit-save-\\(row.id)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-edit-cancel-\\(row.id)\")"))
         XCTAssertTrue(workflowSource.contains("draftRedactedSummary = row.redactedSummary"))
+        XCTAssertTrue(workflowSource.contains(".onChange(of: row.mutationRevision)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-retry-\\(row.id)\")"))
         XCTAssertTrue(workflowSource.contains("AssistantQueueTriageControls("))
         XCTAssertTrue(workflowSource.contains("AssistantQueueBatchToolbar("))
@@ -562,6 +616,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("viewModel.setAssistantQueueSelection(id: row.id, selected: selected)"))
         XCTAssertTrue(workflowSource.contains("viewModel.deferSelectedAssistantQueueItems()"))
         XCTAssertTrue(workflowSource.contains("viewModel.rejectSelectedAssistantQueueItems()"))
+        XCTAssertTrue(workflowSource.contains(".disabled(!isBatchSelectable)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-filter\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-sort\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-batch-toolbar\")"))
@@ -574,16 +629,164 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-receipt-\\(row.id)\")"))
         XCTAssertTrue(workflowSource.contains("localizedDisplay(\"Receipt: %@\", localizedDisplay(receipt.statusLabel))"))
         XCTAssertTrue(coreSource.contains("public func runAssistantQueueItem(id: String) -> Bool"))
+        XCTAssertTrue(coreSource.contains("public func runAssistantQueueItem(\n        id: String,\n        expectedMutationRevision: String"))
         XCTAssertTrue(coreSource.contains("public func approveAssistantQueueItem(id: String) -> Bool"))
         XCTAssertTrue(coreSource.contains("public func deferAssistantQueueItem(id: String) -> Bool"))
+        XCTAssertTrue(coreSource.contains("public func deferAssistantQueueItem(\n        id: String,\n        expectedMutationRevision: String"))
         XCTAssertTrue(coreSource.contains("public func editAssistantQueueItem("))
         XCTAssertTrue(coreSource.contains("public func retryAssistantQueueItem(id: String) -> Bool"))
+        XCTAssertTrue(coreSource.contains("public func retryAssistantQueueItem(\n        id: String,\n        expectedMutationRevision: String"))
         XCTAssertTrue(coreSource.contains("public func rejectAssistantQueueItem(id: String) -> Bool"))
+        XCTAssertTrue(coreSource.contains("public func rejectAssistantQueueItem(\n        id: String,\n        expectedMutationRevision: String"))
         XCTAssertTrue(coreSource.contains("public func setAssistantQueueViewFilter(_ filter: AssistantQueueViewFilter)"))
         XCTAssertTrue(coreSource.contains("public func setAssistantQueueSort(_ sort: AssistantQueueSort)"))
         XCTAssertTrue(coreSource.contains("public func setAssistantQueueSelection(id: String, selected: Bool) -> Bool"))
         XCTAssertTrue(coreSource.contains("public func deferSelectedAssistantQueueItems() -> Bool"))
         XCTAssertTrue(coreSource.contains("public func rejectSelectedAssistantQueueItems() -> Bool"))
+        XCTAssertTrue(coreSource.contains("row.canDefer || row.canReject"))
+        XCTAssertTrue(coreSource.contains("failClosedUnversionedAssistantQueueMutation()"))
+        let queueSource = try readPackageFile("Sources/SuisuiCore/App/AssistantQueue.swift")
+        XCTAssertTrue(queueSource.contains("public var mutationRevision: String?"))
+        XCTAssertTrue(queueSource.contains("Treat this value as opaque"))
+    }
+
+    func testAssistantQueueRowUsesStageSpecificPrimaryActionAndSecondaryMenu() throws {
+        let source = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectWorkflowAssistantQueueView.swift"
+        )
+
+        let rowStart = try XCTUnwrap(source.range(of: "private struct AssistantQueueRow"))
+        let rowEnd = try XCTUnwrap(
+            source.range(
+                of: "private struct AssistantQueueReceiptSummaryView",
+                range: rowStart.upperBound..<source.endIndex
+            )
+        )
+        let rowSource = String(source[rowStart.lowerBound..<rowEnd.lowerBound])
+        let bodyStart = try XCTUnwrap(rowSource.range(of: "var body: some View"))
+        let presentationStart = try XCTUnwrap(
+            rowSource.range(
+                of: "private var actionPresentation",
+                range: bodyStart.upperBound..<rowSource.endIndex
+            )
+        )
+        let bodySource = String(
+            rowSource[bodyStart.lowerBound..<presentationStart.lowerBound]
+        )
+        let primaryStart = try XCTUnwrap(
+            rowSource.range(
+                of: "private func primaryAction(",
+                range: presentationStart.upperBound..<rowSource.endIndex
+            )
+        )
+        let secondaryStart = try XCTUnwrap(
+            rowSource.range(
+                of: "private func secondaryAction(",
+                range: primaryStart.upperBound..<rowSource.endIndex
+            )
+        )
+        let primarySource = String(
+            rowSource[primaryStart.lowerBound..<secondaryStart.lowerBound]
+        )
+        let secondaryEnd = try XCTUnwrap(
+            rowSource.range(
+                of: "private var approveButton",
+                range: secondaryStart.upperBound..<rowSource.endIndex
+            )
+        )
+        let secondarySource = String(
+            rowSource[secondaryStart.lowerBound..<secondaryEnd.lowerBound]
+        )
+
+        XCTAssertTrue(
+            rowSource.contains("AssistantQueueRowActionPresentation.make(for: row)")
+        )
+        XCTAssertTrue(bodySource.contains("actionPresentation.primaryAction"))
+        XCTAssertTrue(bodySource.contains("actionPresentation.secondaryActions"))
+        XCTAssertTrue(bodySource.contains("Menu {"))
+        XCTAssertTrue(
+            bodySource.contains(
+                "ForEach(actionPresentation.secondaryActions, id: \\.self)"
+            )
+        )
+        XCTAssertTrue(bodySource.contains("secondaryAction(action)"))
+        XCTAssertTrue(bodySource.contains("assistant-queue-more-\\(row.id)"))
+        XCTAssertTrue(bodySource.contains(".onChange(of: row.state)"))
+        XCTAssertTrue(bodySource.contains(".onChange(of: actionPresentation)"))
+        XCTAssertFalse(bodySource.contains("closeStaleEditIfNeeded()"))
+        XCTAssertTrue(rowSource.contains("case primary"))
+        XCTAssertFalse(rowSource.contains("case rowHeading"))
+        XCTAssertTrue(rowSource.contains("focusAfterEditing()"))
+        XCTAssertTrue(rowSource.contains("focusWorkflowControls()"))
+        XCTAssertTrue(rowSource.contains("hasEditConflict = true"))
+        XCTAssertTrue(rowSource.contains("assistant-queue-edit-reload-\\(row.id)"))
+        let revisionChangeStart = try XCTUnwrap(
+            bodySource.range(of: ".onChange(of: row.mutationRevision)")
+        )
+        let revisionChangeSource = String(bodySource[revisionChangeStart.lowerBound...])
+        XCTAssertTrue(revisionChangeSource.contains("markEditConflictIfNeeded()"))
+        XCTAssertFalse(revisionChangeSource.contains("closeStaleEditIfNeeded()"))
+        let approveCase = try XCTUnwrap(primarySource.range(of: "case .approve:"))
+        let runCase = try XCTUnwrap(
+            primarySource.range(
+                of: "case .run:",
+                range: approveCase.upperBound..<primarySource.endIndex
+            )
+        )
+        let reopenCase = try XCTUnwrap(
+            primarySource.range(
+                of: "case .reopen:",
+                range: runCase.upperBound..<primarySource.endIndex
+            )
+        )
+        XCTAssertTrue(
+            primarySource[approveCase.upperBound..<runCase.lowerBound]
+                .contains("approveButton")
+        )
+        XCTAssertTrue(
+            primarySource[runCase.upperBound..<reopenCase.lowerBound]
+                .contains("runButton")
+        )
+        XCTAssertTrue(primarySource[reopenCase.upperBound...].contains("reopenButton"))
+        XCTAssertFalse(primarySource.contains("case .reject:"))
+        XCTAssertTrue(secondarySource.contains("case .edit:"))
+        XCTAssertTrue(secondarySource.contains("case .defer:"))
+        let rejectCase = try XCTUnwrap(secondarySource.range(of: "case .reject:"))
+        let destructiveButton = try XCTUnwrap(
+            secondarySource.range(
+                of: "Button(role: .destructive)",
+                range: rejectCase.upperBound..<secondarySource.endIndex
+            )
+        )
+        let rejectHandler = try XCTUnwrap(
+            secondarySource.range(
+                of: "viewModel.rejectAssistantQueueItem(",
+                range: destructiveButton.upperBound..<secondarySource.endIndex
+            )
+        )
+        XCTAssertLessThan(
+            secondarySource.distance(
+                from: rejectCase.lowerBound,
+                to: rejectHandler.lowerBound
+            ),
+            500
+        )
+        XCTAssertFalse(
+            secondarySource[rejectHandler.upperBound...].contains("case .")
+        )
+        for identifier in [
+            "assistant-queue-run-\\(row.id)",
+            "assistant-queue-approve-\\(row.id)",
+            "assistant-queue-defer-\\(row.id)",
+            "assistant-queue-edit-\\(row.id)",
+            "assistant-queue-retry-\\(row.id)",
+            "assistant-queue-reject-\\(row.id)"
+        ] {
+            XCTAssertTrue(rowSource.contains(identifier))
+        }
+        XCTAssertFalse(rowSource.contains(".disabled(!row.canRun)"))
+        XCTAssertFalse(rowSource.contains(".disabled(!row.canApprove)"))
+        XCTAssertFalse(rowSource.contains(".disabled(!row.canRetry)"))
     }
 
     func testAssistantQueueTriageLocalizationsDoNotDuplicateSharedKeys() throws {
@@ -596,6 +799,39 @@ final class AppExperienceSourceTests: XCTestCase {
             XCTAssertEqual(source.components(separatedBy: "\"Needs action first\" =").count - 1, 1)
             XCTAssertEqual(source.components(separatedBy: "\"Risk high first\" =").count - 1, 1)
             XCTAssertEqual(source.components(separatedBy: "\"Title A-Z\" =").count - 1, 1)
+        }
+    }
+
+    func testApprovalFlowPolishLocalizationsHaveEnglishJapaneseParity() throws {
+        let english = try readPackageFile(
+            "Sources/SuisuiApp/Resources/en.lproj/Localizable.strings"
+        )
+        let japanese = try readPackageFile(
+            "Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings"
+        )
+        let keys = [
+            "Selected Item",
+            "Select an Inbox item to classify.",
+            "Smart List Not Found",
+            "Transcript failed",
+            "Transcript pending",
+            "AI interpreted",
+            "More Assistant Queue actions",
+            "Choose Review destination.",
+            "Choose Project destination."
+        ]
+
+        for key in keys {
+            XCTAssertEqual(
+                localizableDefinitionCount(for: key, in: english),
+                1,
+                "English must define \(key) exactly once"
+            )
+            XCTAssertEqual(
+                localizableDefinitionCount(for: key, in: japanese),
+                1,
+                "Japanese must define \(key) exactly once"
+            )
         }
     }
 
@@ -1149,11 +1385,40 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("private func reportWindowWidthIfChanged()"))
         XCTAssertTrue(boardSource.contains("requestInspectorPresentation()"))
         XCTAssertTrue(boardSource.contains("private func openProjectInspector()"))
+        XCTAssertTrue(boardSource.contains("@State private var projectInspectorDevelopmentContext = ProjectInspectorDevelopmentContext()"))
+        XCTAssertTrue(boardSource.contains(".openProject(taskID: viewModel.selectedTaskID)"))
+        XCTAssertTrue(boardSource.contains("developmentTaskID: projectInspectorDevelopmentContext.taskID"))
+        XCTAssertTrue(boardSource.contains("projectInspectorDevelopmentContext.handle(.dismissInspector)"))
+        XCTAssertTrue(boardSource.contains("if previousDestination != destination"))
+        XCTAssertTrue(boardSource.contains("projectInspectorDevelopmentContext.handle(.destinationChanged)"))
+        XCTAssertTrue(boardSource.contains("projectInspectorDevelopmentContext.handle(.openTaskInspector)"))
         XCTAssertTrue(boardSource.contains("viewModel.selectedTaskID = nil"))
         XCTAssertTrue(boardSource.contains("InspectorPresentationPolicy.intentAfterResize("))
         XCTAssertTrue(boardSource.contains("dismissInspector()"))
         XCTAssertFalse(boardSource.contains("@State private var isInspectorPresented = true"))
         XCTAssertFalse(boardSource.contains("if selectedTaskID != nil && selectedDestination != .today && selectedDestination != .inbox"))
+    }
+
+    func testProjectBoardSameDestinationRestorePreservesInspectorDevelopmentContext() throws {
+        let boardSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectBoardView.swift"
+        )
+        let applyLegacyStart = try XCTUnwrap(
+            boardSource.range(of: "private func applyLegacyDestinationWithinScene")
+        )
+        let applyLegacyEnd = try XCTUnwrap(
+            boardSource.range(
+                of: "private func consumePendingSceneOpenRequests",
+                range: applyLegacyStart.upperBound..<boardSource.endIndex
+            )
+        )
+        let applyLegacySource = String(
+            boardSource[applyLegacyStart.lowerBound..<applyLegacyEnd.lowerBound]
+        )
+
+        XCTAssertTrue(applyLegacySource.contains("let previousDestination = selectedDestination"))
+        XCTAssertTrue(applyLegacySource.contains("if previousDestination != destination"))
+        XCTAssertTrue(applyLegacySource.contains("previousDestination: previousDestination"))
     }
 
     func testLayoutStabilitySmokeCoversAdaptiveInspectorWidthsAndIntentMarkers() throws {
@@ -1477,7 +1742,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("ProjectBoardScenePersistence.restoredResolution("))
         XCTAssertTrue(boardSource.contains("ProjectBoardRouteCodec.resolution("))
         XCTAssertTrue(boardSource.contains("persistSelectedDestination(destination)"))
-        XCTAssertTrue(boardSource.contains("applySelectedDestination(destination)"))
+        XCTAssertTrue(boardSource.contains("applySelectedDestination("))
         XCTAssertTrue(persistenceSource.contains("Saved app state can outlive a project row"))
         XCTAssertTrue(persistenceSource.contains("availableProjects.contains(where: { $0.id == projectID }) else"))
         XCTAssertTrue(layoutSmoke.contains("SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$layout_project_id\""))
@@ -2453,6 +2718,87 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(feedbackBlock.contains(".accessibilityElement(children: .combine)"))
     }
 
+    func testInboxActionPanelShowsSelectedContextWithoutDuplicatingVoiceMetadata() throws {
+        let source = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift"
+        )
+
+        let context = try XCTUnwrap(source.range(of: "InboxSelectedItemContext("))
+        let voice = try XCTUnwrap(source.range(of: "InboxVoiceIntakeDetail("))
+        let actions = try XCTUnwrap(
+            source.range(of: "LazyVGrid(columns: actionGridColumns")
+        )
+        XCTAssertLessThan(context.lowerBound, voice.lowerBound)
+        XCTAssertLessThan(voice.lowerBound, actions.lowerBound)
+        let contextCall = String(source[context.lowerBound..<voice.lowerBound])
+        let manualSummaryCondition =
+            "manualSummary: task != nil && viewModel.selectedInboxCaptureRecords.isEmpty"
+
+        let contextDefinitionStart = try XCTUnwrap(
+            source.range(of: "private struct InboxSelectedItemContext")
+        )
+        let contextDefinitionEnd = try XCTUnwrap(
+            source.range(
+                of: "private struct InboxVoiceIntakeDetail",
+                range: contextDefinitionStart.upperBound..<source.endIndex
+            )
+        )
+        let contextDefinition = String(
+            source[contextDefinitionStart.lowerBound..<contextDefinitionEnd.lowerBound]
+        )
+        let actionPanelStart = try XCTUnwrap(
+            source.range(of: "private struct InboxActionPanel")
+        )
+        let actionPanelEnd = try XCTUnwrap(
+            source.range(
+                of: "private var actionGridColumns",
+                range: actionPanelStart.upperBound..<source.endIndex
+            )
+        )
+        let actionPanel = String(
+            source[actionPanelStart.lowerBound..<actionPanelEnd.lowerBound]
+        )
+        let selectionChangeStart = try XCTUnwrap(
+            source.range(of: ".onChange(of: viewModel.selectedTaskID)")
+        )
+        let selectionChangeEnd = try XCTUnwrap(
+            source.range(
+                of: "private var mainSurface",
+                range: selectionChangeStart.upperBound..<source.endIndex
+            )
+        )
+        let selectionChange = String(
+            source[selectionChangeStart.lowerBound..<selectionChangeEnd.lowerBound]
+        )
+
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"inbox-selected-context\")"))
+        XCTAssertTrue(source.contains("Select an Inbox item to classify."))
+        XCTAssertTrue(contextDefinition.contains("lineLimit(2)"))
+        XCTAssertTrue(contextDefinition.contains("lineLimit(3)"))
+        XCTAssertTrue(contextDefinition.contains(".accessibilityElement(children: .combine)"))
+        XCTAssertTrue(contextCall.contains(manualSummaryCondition))
+        XCTAssertTrue(
+            actionPanel.contains(".accessibilityLabel(\"Inbox classification actions\")")
+        )
+        XCTAssertTrue(
+            actionPanel.contains(
+                ".accessibilityHint(\"Choose how to classify the selected Inbox item.\")"
+            )
+        )
+        XCTAssertFalse(actionPanel.contains(".accessibilityValue("))
+        XCTAssertFalse(actionPanel.contains("Selected Inbox item:"))
+        XCTAssertFalse(actionPanel.contains("Voice capture metadata available"))
+        XCTAssertFalse(actionPanel.contains("Transcript:"))
+        XCTAssertFalse(actionPanel.contains("Interpretation:"))
+        XCTAssertTrue(
+            selectionChange.contains(
+                "let capture = viewModel.selectedInboxCaptureRecords.first"
+            )
+        )
+        XCTAssertTrue(selectionChange.contains("voiceMemoCaptureID = capture?.id"))
+        XCTAssertTrue(selectionChange.contains("voiceMemoDraft = capture?.memo ?? \"\""))
+    }
+
     func testInboxWorkflowSurfacesVoiceCaptureMetadataWithoutReplacingVoiceCommand() throws {
         let workflowSource = try readProjectWorkflowSources()
         let inboxWorkflowSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift")
@@ -2503,10 +2849,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("onSaveMemo: { memo in"))
         XCTAssertTrue(workflowSource.contains("viewModel.updateSelectedInboxCaptureMemo(memo)"))
         XCTAssertTrue(workflowSource.contains("viewModel.selectedInboxCaptureRecords"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityLabel(panelAccessibilityLabel)"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityValue(panelAccessibilityValue)"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityHint(panelAccessibilityHint)"))
-        XCTAssertTrue(workflowSource.contains("Voice capture metadata available for \\(task.title)"))
+        XCTAssertTrue(
+            inboxWorkflowSource.contains(
+                ".accessibilityLabel(\"Inbox classification actions\")"
+            )
+        )
+        XCTAssertTrue(
+            inboxWorkflowSource.contains(
+                ".accessibilityHint(\"Choose how to classify the selected Inbox item.\")"
+            )
+        )
+        XCTAssertFalse(inboxWorkflowSource.contains(".accessibilityValue(panelAccessibilityValue)"))
+        XCTAssertFalse(inboxWorkflowSource.contains("Voice capture metadata available for \\(task.title)"))
+        XCTAssertTrue(inboxWorkflowSource.contains("InboxSelectedItemContext("))
         XCTAssertTrue(workflowSource.contains("taskTitle: task?.title ?? \"Selected Inbox item\""))
         XCTAssertTrue(workflowSource.contains("LazyVGrid(columns: actionGridColumns"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-grid\")"))
@@ -2689,18 +3044,22 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(modelSource.contains("public var workspacePath: String?"))
         XCTAssertTrue(source.contains("Section(\"Development Automation\")"))
         XCTAssertTrue(source.contains("ProjectDevelopmentAutomationPanel("))
+        XCTAssertTrue(source.contains("developmentTaskID: developmentTaskID"))
+        XCTAssertTrue(source.contains("let developmentTaskID: Int64?"))
+        XCTAssertTrue(source.contains("private var developmentTask: ProjectBoardTask?"))
+        XCTAssertTrue(source.contains("project.tasks.first { $0.id == developmentTaskID }"))
         XCTAssertTrue(source.contains("onReviewDevelopmentAutomation: onReviewDevelopmentAutomation"))
-        XCTAssertTrue(source.contains("viewModel.developmentAutomationReadiness(for: project, task: viewModel.selectedTask)"))
-        XCTAssertTrue(source.contains("viewModel.prepareDevelopmentAutomationReview(for: project, task: viewModel.selectedTask)"))
+        XCTAssertTrue(source.contains("viewModel.developmentAutomationReadiness(for: project, task: developmentTask)"))
+        XCTAssertTrue(source.contains("viewModel.prepareDevelopmentAutomationReview(for: project, task: developmentTask)"))
         XCTAssertTrue(source.contains("developmentAutomationReviewSession(plan)"))
         XCTAssertTrue(source.contains("ActionReviewPanel(viewModel: sheet.viewModel)"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-status\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-branch-preview\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-review\")"))
-        XCTAssertTrue(source.contains("viewModel.enqueueDevelopmentAutomationReview(for: project, task: viewModel.selectedTask)"))
+        XCTAssertTrue(source.contains("viewModel.enqueueDevelopmentAutomationReview(for: project, task: developmentTask)"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-queue\")"))
-        XCTAssertTrue(source.contains("viewModel.enqueueDevelopmentVerificationReview(for: project, task: viewModel.selectedTask)"))
+        XCTAssertTrue(source.contains("viewModel.enqueueDevelopmentVerificationReview(for: project, task: developmentTask)"))
         XCTAssertTrue(source.contains("Queue verification review"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-verification-queue\")"))
         XCTAssertTrue(source.contains("Repository edit review"))
@@ -2721,11 +3080,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-commit-paths\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-commit-message\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-commit-queue\")"))
-        XCTAssertTrue(source.contains("viewModel.enqueueDevelopmentPushReview(for: project, task: viewModel.selectedTask)"))
+        XCTAssertTrue(source.contains("viewModel.enqueueDevelopmentPushReview(for: project, task: developmentTask)"))
         XCTAssertTrue(source.contains("Queue branch push review"))
         XCTAssertTrue(source.contains("execution rechecks the current branch, clean workspace, and GitHub origin before running"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-push-queue\")"))
-        XCTAssertTrue(source.contains("viewModel.developmentPullRequestCreationDraft(for: project, task: viewModel.selectedTask)"))
+        XCTAssertTrue(source.contains("viewModel.developmentPullRequestCreationDraft(for: project, task: developmentTask)"))
         XCTAssertTrue(source.contains("viewModel.enqueueDevelopmentPullRequestCreationReview("))
         XCTAssertTrue(source.contains("Queue pull request creation review"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-pr-base\")"))
@@ -2734,7 +3093,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".accessibilityLabel(\"Pull request body\")"))
         XCTAssertTrue(source.contains("developmentProgress.canQueuePullRequestCreationReview"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-pr-create-queue\")"))
-        XCTAssertTrue(source.contains("viewModel.developmentAutomationProgress(for: project, task: viewModel.selectedTask)"))
+        XCTAssertTrue(source.contains("viewModel.developmentAutomationProgress(for: project, task: developmentTask)"))
         XCTAssertTrue(source.contains("Pull request progress"))
         XCTAssertTrue(source.contains("developmentProgress.nextApproval"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-next-approval\")"))
@@ -5418,6 +5777,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testUIScreenshotEvidenceUsesIsolatedSeededProjectBoard() throws {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
+        let seederSource = try readPackageFile("Sources/SuisuiVisualFixtureSeeder/main.swift")
         let windowMetadataScript = try readPackageFile("script/ui_evidence_window_metadata.swift")
         let contentCheckScript = try readPackageFile("script/ui_evidence_content_check.swift")
         let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
@@ -5485,12 +5845,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(contentCheckScript.contains("sourceImage.cropping(to: boundedRegion)"))
         XCTAssertTrue(contentCheckScript.contains("Screenshot contains large opaque-black regions"))
         XCTAssertTrue(contentCheckScript.contains("Screenshot contains large transparent regions"))
-        XCTAssertTrue(script.contains("sqlite3"))
-        XCTAssertTrue(script.contains("Launch Readiness"))
-        XCTAssertTrue(script.contains("seed_mcp_registrations"))
-        XCTAssertTrue(script.contains("Local Filesystem MCP"))
-        XCTAssertTrue(script.contains("Issue Tracker MCP"))
-        XCTAssertTrue(script.contains("mcp_server_registrations"))
+        XCTAssertFalse(script.contains("sqlite3"))
+        XCTAssertTrue(script.contains("seed_capture_database"))
+        XCTAssertTrue(script.contains("--capture-reference-instant"))
+        XCTAssertTrue(seederSource.contains("Launch Readiness"))
+        XCTAssertTrue(seederSource.contains("Local Filesystem MCP"))
+        XCTAssertTrue(seederSource.contains("Issue Tracker MCP"))
+        XCTAssertTrue(seederSource.contains("mcp_server_registrations"))
         XCTAssertTrue(script.contains("persist_project_board_selection"))
         XCTAssertTrue(script.contains("write_app_preference"))
         XCTAssertTrue(script.contains("HOME=\"$EVIDENCE_HOME\""))
@@ -5526,8 +5887,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("SUISUI_VISUAL_EVIDENCE_SCHEDULE_MODE=$SCHEDULE_MODE_OVERRIDE"))
         XCTAssertTrue(script.contains("SCHEDULE_WORKLOAD_TARGET_MARKERS=\"schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-mode-workload=>|schedule-mini-calendar=>\""))
         XCTAssertTrue(script.contains("SCHEDULE_WORKLOAD_DETAIL_MARKERS=\"schedule-workload-attention-banner=>|schedule-workload-day-detail=>\""))
-        XCTAssertTrue(script.contains("\"$SCHEDULE_WORKLOAD_DETAIL_MARKERS\" workload schedule-workflow"))
-        XCTAssertTrue(script.contains("\"schedule-workload-day-detail\" \"schedule-workload-attention-banner\" \"$SCHEDULE_WORKLOAD_DETAIL_MARKERS\" workload schedule-workflow"))
+        XCTAssertTrue(script.contains("\"\" \"schedule-workload-attention-banner\" \"$SCHEDULE_WORKLOAD_DETAIL_MARKERS\" workload"))
+        XCTAssertFalse(script.contains("\"schedule-workload-day-detail\" \"schedule-workload-attention-banner\""))
         XCTAssertTrue(script.contains("fi\n  if [[ -n \"$scroll_target_identifier\" ]]"))
         XCTAssertTrue(script.contains("ui_evidence_ax_scroll_container.swift"))
         XCTAssertTrue(script.contains("capture_project_board_destination light schedule \"$SCHEDULE_LIGHT_SCREENSHOT\" \"Schedule cockpit\" \"$SCHEDULE_COCKPIT_TARGET_MARKERS\""))
@@ -5566,7 +5927,7 @@ final class AppExperienceSourceTests: XCTestCase {
             range: destinationChangeStart.upperBound..<boardSource.endIndex
         ))
         let destinationChangeSource = String(boardSource[destinationChangeStart.lowerBound..<destinationChangeEnd.lowerBound])
-        let destinationApply = try XCTUnwrap(destinationChangeSource.range(of: "applySelectedDestination(destination)"))
+        let destinationApply = try XCTUnwrap(destinationChangeSource.range(of: "applySelectedDestination("))
         let taskOverrideApply = try XCTUnwrap(destinationChangeSource.range(of: "applySelectedTaskOverrideIfNeeded()"))
         XCTAssertLessThan(destinationApply.lowerBound, taskOverrideApply.lowerBound)
         XCTAssertTrue(boardSource.contains("ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID"))
@@ -5721,6 +6082,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testPhase12UIScreenshotEvidenceCoversNewCockpitScreens() throws {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
+        let seederSource = try readPackageFile("Sources/SuisuiVisualFixtureSeeder/main.swift")
         let releaseReport = try readPackageFile("script/release_readiness_report.sh")
         let evidence = try readPackageFile("docs/release/evidence/ui-screenshots.md")
         let appSource = try readAppShellSource()
@@ -5750,11 +6112,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("capture_project_board_destination system today \"$TODAY_SYSTEM_SCREENSHOT\" \"Today\""))
         XCTAssertTrue(script.contains("capture_project_board_destination light schedule \"$SCHEDULE_LIGHT_SCREENSHOT\" \"Schedule cockpit\""))
         XCTAssertFalse(script.contains("capture_project_board_destination light schedule \"$TODAY_LIGHT_SCREENSHOT\""))
-        XCTAssertTrue(script.contains("today=\"$(/bin/date -j -u -f"))
         XCTAssertTrue(script.contains("EVIDENCE_REFERENCE_INSTANT"))
-        XCTAssertTrue(script.contains("'Review VoiceOver focus path', 'in_progress', 'Confirm project board to task card to inspector path before public alpha.', '$today'"))
-        XCTAssertTrue(script.contains("VALUES ('Inbox', 'active'"))
-        XCTAssertTrue(script.contains("title = 'Inbox' ORDER BY id DESC LIMIT 1"))
+        XCTAssertTrue(seederSource.contains("\"Review VoiceOver focus path\""))
+        XCTAssertTrue(seederSource.contains("\"in_progress\""))
+        XCTAssertTrue(seederSource.contains("Confirm project board to task card to inspector path before public alpha."))
+        XCTAssertTrue(seederSource.contains("'Inbox', 'active'"))
+        XCTAssertTrue(seederSource.contains("title: \"Inbox\""))
         XCTAssertTrue(workflowSource.contains("ensureSelectedInboxTaskIsVisible"))
 
         XCTAssertTrue(script.contains("capture_project_board_destination"))
@@ -5767,9 +6130,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("settingsEvidenceWindow"))
         XCTAssertTrue(appSource.contains("openSettingsWindowForEvidenceIfRequested"))
         XCTAssertTrue(appSource.contains("SettingsView("))
-        XCTAssertTrue(script.contains("assert_phase12_seed_data"))
-        XCTAssertTrue(script.contains("Scheduled manual capture"))
-        XCTAssertTrue(script.contains("Done analytics sample"))
+        XCTAssertTrue(script.contains("seed_capture_database"))
+        XCTAssertTrue(seederSource.contains("Scheduled manual capture"))
+        XCTAssertTrue(seederSource.contains("Done analytics sample"))
         XCTAssertTrue(evidence.contains("Inbox voice detail"))
         XCTAssertTrue(evidence.contains("Projects overview"))
         XCTAssertTrue(evidence.contains("Schedule cockpit"))
@@ -5793,27 +6156,30 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(audit.contains("settings-integrations-light.png"))
     }
 
-    func testPhase12UICaptureScriptFailsWhenSeedDataIsMissing() throws {
+    func testPhase12UICaptureSeederFailsWhenSeedDataIsMissing() throws {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
+        let seederSource = try readPackageFile("Sources/SuisuiVisualFixtureSeeder/main.swift")
 
-        XCTAssertTrue(script.contains("assert_phase12_seed_data"))
-        XCTAssertTrue(script.contains("missing Phase 12 UI evidence seed"))
-        XCTAssertTrue(script.contains("SELECT COUNT(*) FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Scheduled manual capture'"))
-        XCTAssertTrue(script.contains("SELECT COUNT(*) FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Done analytics sample'"))
-        XCTAssertTrue(script.contains("SELECT COUNT(*) FROM projects WHERE source_command = 'ui-evidence' AND title = 'Completed Evidence Project'"))
-        XCTAssertTrue(script.contains("SELECT COUNT(*) FROM projects WHERE source_command = 'ui-evidence' AND title = 'Inbox'"))
-        XCTAssertTrue(script.contains("assert_phase12_seed_data \"$DATABASE_PATH\""))
+        XCTAssertTrue(script.contains("seed_capture_database \"$DATABASE_PATH\""))
+        XCTAssertTrue(seederSource.contains("missing Phase 12 UI evidence seed"))
+        XCTAssertTrue(seederSource.contains("\"Scheduled manual capture\""))
+        XCTAssertTrue(seederSource.contains("\"Done analytics sample\""))
+        XCTAssertTrue(seederSource.contains("\"Completed Evidence Project\""))
+        XCTAssertTrue(seederSource.contains("\"Inbox\""))
+        XCTAssertTrue(seederSource.contains("SELECT COUNT(*) FROM tasks"))
+        XCTAssertTrue(seederSource.contains("SELECT COUNT(*) FROM projects"))
     }
 
     func testPhase12UICaptureSeedUsesPersistedTaskStatusContract() throws {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
+        let seederSource = try readPackageFile("Sources/SuisuiVisualFixtureSeeder/main.swift")
 
-        XCTAssertTrue(script.contains("assert_valid_seed_task_statuses"))
-        XCTAssertTrue(script.contains("unsupported Phase 12 UI evidence task status"))
-        XCTAssertTrue(script.contains("status NOT IN ('open', 'backlog', 'planned', 'in_progress', 'blocked', 'completed')"))
-        XCTAssertTrue(script.contains("'Done analytics sample', 'completed'"))
-        XCTAssertFalse(script.contains("'Done analytics sample', 'done'"))
-        XCTAssertTrue(script.contains("assert_valid_seed_task_statuses \"$DATABASE_PATH\""))
+        XCTAssertTrue(script.contains("seed_capture_database \"$DATABASE_PATH\""))
+        XCTAssertTrue(seederSource.contains("unsupported Phase 12 UI evidence task status"))
+        XCTAssertTrue(seederSource.contains("status NOT IN ('open', 'backlog', 'planned', 'in_progress', 'blocked', 'completed')"))
+        XCTAssertTrue(seederSource.contains("\"Done analytics sample\""))
+        XCTAssertTrue(seederSource.contains("\"completed\""))
+        XCTAssertFalse(seederSource.contains("\"Done analytics sample\",\n                \"done\""))
     }
 
     func testUIScreenshotCaptureFailureExplainsScreenRecordingAndWindowDiagnostics() throws {
@@ -5837,7 +6203,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("retrying normal UI capture after owned window publication timeout"))
         XCTAssertTrue(script.contains("retrying exact production destination after required marker timeout"))
         XCTAssertTrue(script.contains("EVIDENCE_WAIT_FAILURE_REASON=\"visual-window-unavailable\""))
-        XCTAssertTrue(script.contains("[[ \"$DRY_RUN\" != \"1\" && \"$DOCTOR\" != \"1\" ]]"))
+        XCTAssertTrue(
+            script.contains(
+                "[[ \"$DRY_RUN\" != \"1\" && \"$DOCTOR\" != \"1\" && \"$SEED_ONLY\" != \"1\" ]]"
+            )
+        )
         XCTAssertTrue(evidence.contains("System Settings > Privacy & Security > Screen Recording / Screen & System Audio Recording"))
         XCTAssertTrue(evidence.contains("SUISUI_UI_EVIDENCE_KEEP_HOME=1"))
         XCTAssertTrue(evidence.contains("script/capture_ui_evidence.sh --doctor"))
@@ -6495,6 +6865,23 @@ final class AppExperienceSourceTests: XCTestCase {
         return try String(contentsOf: url, encoding: .utf8)
     }
 
+    private func localizableDefinitionCount(for key: String, in source: String) -> Int {
+        source.components(separatedBy: .newlines).reduce(into: 0) { count, rawLine in
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard line.first == "\"",
+                  let closingQuote = line.dropFirst().firstIndex(of: "\"")
+            else {
+                return
+            }
+            let parsedKey = String(line[line.index(after: line.startIndex)..<closingQuote])
+            let suffix = line[line.index(after: closingQuote)...]
+                .trimmingCharacters(in: .whitespaces)
+            if parsedKey == key, suffix.first == "=" {
+                count += 1
+            }
+        }
+    }
+
     private func readAppShellSource() throws -> String {
         let appSource = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
         let viewSources = try [
@@ -6640,6 +7027,7 @@ final class AppExperienceSourceTests: XCTestCase {
             #"\bMenu\("((?:[^"\\]|\\.)*)""#,
             #"\bSection\("((?:[^"\\]|\\.)*)""#,
             #"\bGroupBox\("((?:[^"\\]|\\.)*)""#,
+            #"\bLabeledContent\("((?:[^"\\]|\\.)*)""#,
             #"\.navigationTitle\("((?:[^"\\]|\\.)*)"\)"#,
             #"\.help\("((?:[^"\\]|\\.)*)"\)"#,
             #"\.accessibilityLabel\("((?:[^"\\]|\\.)*)"\)"#,

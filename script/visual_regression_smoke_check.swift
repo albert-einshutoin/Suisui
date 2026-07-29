@@ -83,7 +83,7 @@ struct AXAudit: Decodable {
 struct Options {
     let manifestPath: String; let screenshotDirectory: String; let baselineDirectory: String
     let artifactDirectory: String; let axAuditResult: String?; let currentSourceCommit: String
-    let updateBaselines: Bool; let allowUpdate: Bool
+    let updateBaselines: Bool; let allowUpdate: Bool; let rasterOnly: Bool
 }
 struct RGBAImage { let width: Int; let height: Int; let pixels: [UInt8] }
 struct Inspection { let width: Int; let height: Int; let luminanceRange: Int; let maximumLuminance: Int; let colorBucketCount: Int; let visiblePixelCount: Int }
@@ -94,18 +94,20 @@ func blocker(_ message: String) { print("BLOCKER: \(message)") }
 func usage(_ message: String) -> Never { fputs("BLOCKER: usage error: \(message)\n", stderr); exit(2) }
 
 func parseOptions() -> Options {
-    var values = [String: String](); var update = false; var allowUpdate = false; var index = 1
+    var values = [String: String](); var update = false; var allowUpdate = false; var rasterOnly = false; var index = 1
     while index < CommandLine.arguments.count {
         let argument = CommandLine.arguments[index]
         if argument == "--update-baselines" { update = true; index += 1; continue }
         if argument == "--allow-update" { allowUpdate = true; index += 1; continue }
+        if argument == "--raster-only" { rasterOnly = true; index += 1; continue }
         guard ["--manifest", "--screenshot-dir", "--baseline-dir", "--artifact-dir", "--ax-audit-result", "--current-source-commit"].contains(argument) else { usage("unknown argument: \(argument)") }
         index += 1; guard index < CommandLine.arguments.count else { usage("\(argument) requires a path") }
         values[argument] = CommandLine.arguments[index]; index += 1
     }
     guard let manifest = values["--manifest"], let screenshots = values["--screenshot-dir"], let baselines = values["--baseline-dir"] else { usage("manifest, screenshot directory, and baseline directory are required") }
     guard let currentSourceCommit = values["--current-source-commit"], !currentSourceCommit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { usage("--current-source-commit is required and must be nonblank") }
-    return Options(manifestPath: manifest, screenshotDirectory: screenshots, baselineDirectory: baselines, artifactDirectory: values["--artifact-dir"] ?? ".visual-regression-artifacts", axAuditResult: values["--ax-audit-result"], currentSourceCommit: currentSourceCommit, updateBaselines: update, allowUpdate: allowUpdate)
+    if rasterOnly && update { usage("--raster-only is read-only and cannot update baselines") }
+    return Options(manifestPath: manifest, screenshotDirectory: screenshots, baselineDirectory: baselines, artifactDirectory: values["--artifact-dir"] ?? ".visual-regression-artifacts", axAuditResult: values["--ax-audit-result"], currentSourceCommit: currentSourceCommit, updateBaselines: update, allowUpdate: allowUpdate, rasterOnly: rasterOnly)
 }
 
 func isSafePathComponent(_ value: String) -> Bool {
@@ -493,7 +495,17 @@ func main() throws {
     guard manifest.schemaVersion == 2 else { blocker("visual manifest schemaVersion must be 2"); exit(1) }
     var blockers = validateManifest(manifest)
     if !blockers.isEmpty { blockers.forEach { print($0) }; exit(1) }
-    blockers = validateAX(options.axAuditResult, manifest: manifest, screenshotDirectory: options.screenshotDirectory, currentSourceCommit: options.currentSourceCommit, updateBaselines: options.updateBaselines)
+    if options.rasterOnly {
+        // Stored release evidence has no fresh runtime AX receipt. It may bypass
+        // only that freshness check; source provenance, manifest context, image
+        // health, OCR, baseline metadata, and raster thresholds still apply.
+        if manifest.baselineContext.sourceCommit != options.currentSourceCommit {
+            blocker("raster-only source commit does not match manifest baselineContext sourceCommit")
+            exit(1)
+        }
+    } else {
+        blockers = validateAX(options.axAuditResult, manifest: manifest, screenshotDirectory: options.screenshotDirectory, currentSourceCommit: options.currentSourceCommit, updateBaselines: options.updateBaselines)
+    }
     var currentEntries: [(Screen, String, String, URL, RGBAImage)] = []
     for screen in manifest.screens { for theme in screen.themes {
         guard let artifact = screen.artifacts[theme] else { blockers.append("BLOCKER: visual manifest missing artifact for \(screen.id) \(theme)"); continue }
@@ -605,7 +617,8 @@ func main() throws {
         }
     }
     if !blockers.isEmpty { blockers.forEach { print($0) }; exit(1) }
-    print("OK: visual regression smoke passed (\(currentEntries.count) screenshots, manifest: \(options.manifestPath))")
+    let mode = options.rasterOnly ? "raster-only" : "runtime-audited"
+    print("OK: visual regression smoke passed (\(currentEntries.count) screenshots, mode: \(mode), manifest: \(options.manifestPath))")
 }
 
 do { try main() } catch { blocker(error.localizedDescription); exit(1) }

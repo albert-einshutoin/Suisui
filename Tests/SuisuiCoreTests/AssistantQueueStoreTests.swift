@@ -47,6 +47,24 @@ final class AssistantQueueStoreTests: XCTestCase {
         )
     }
 
+    func testSQLiteReadModelReviewRevisionUsesStoredSummaryBeforeDisplayRedaction() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteAssistantQueueStore(connection: connection)
+        let item = makeItem(
+            id: "queue-review-revision-redaction",
+            summary: "Create task with token=sk-review-revision-secret"
+        )
+        try store.save(item)
+
+        let row = try XCTUnwrap(
+            store.readModelSnapshot(filter: .all(limit: 10)).rows.first
+        )
+
+        XCTAssertEqual(row.mutationRevision, item.mutationRevision)
+        XCTAssertFalse(row.redactedSummary.contains("sk-review-revision-secret"))
+    }
+
     func testSQLiteReadModelSnapshotDoesNotDecodeActionPayloadJSONForListRows() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
@@ -295,6 +313,45 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertTrue(failedRow.canRetry)
         XCTAssertFalse(failedRow.canEdit)
         XCTAssertFalse(failedRow.canReject)
+    }
+
+    func testRowActionPresentationTracksRealStateMachineTransitionsAndHidesRunningReject() throws {
+        let waiting = makeItem(
+            id: "queue-row-action-transitions",
+            state: .waitingReview,
+            summary: "Create transition test task"
+        )
+
+        let waitingRow = try XCTUnwrap(AssistantQueueReadModel.snapshot(from: [waiting]).rows.first)
+        let waitingPresentation = AssistantQueueRowActionPresentation.make(for: waitingRow)
+        XCTAssertEqual(waitingPresentation.primaryAction, .approve)
+        XCTAssertEqual(waitingPresentation.secondaryActions, [.edit, .defer, .reject])
+
+        let approved = try AssistantQueueStateMachine.approve(waiting, reviewerID: "local-user")
+        let approvedRow = try XCTUnwrap(AssistantQueueReadModel.snapshot(from: [approved]).rows.first)
+        let approvedPresentation = AssistantQueueRowActionPresentation.make(for: approvedRow)
+        XCTAssertEqual(approvedPresentation.primaryAction, .run)
+        XCTAssertEqual(approvedPresentation.secondaryActions, [.edit, .defer, .reject])
+
+        let running = try AssistantQueueStateMachine.startRunning(approved)
+        let runningRow = try XCTUnwrap(AssistantQueueReadModel.snapshot(from: [running]).rows.first)
+        XCTAssertFalse(
+            runningRow.canReject,
+            "In-flight work cannot be cancelled by changing only its queue review state."
+        )
+        let runningPresentation = AssistantQueueRowActionPresentation.make(for: runningRow)
+        XCTAssertNil(runningPresentation.primaryAction)
+        XCTAssertEqual(
+            runningPresentation.secondaryActions,
+            [],
+            "Reject cannot cancel in-flight coordination, so the UI must not present a false cancellation action."
+        )
+
+        let failed = try AssistantQueueStateMachine.markFailed(running, reason: "Transition test failure.")
+        let failedRow = try XCTUnwrap(AssistantQueueReadModel.snapshot(from: [failed]).rows.first)
+        let failedPresentation = AssistantQueueRowActionPresentation.make(for: failedRow)
+        XCTAssertEqual(failedPresentation.primaryAction, .reopen)
+        XCTAssertEqual(failedPresentation.secondaryActions, [])
     }
 
     func testReadModelMarksApprovedTaskMutationAutomationRequestRunnable() throws {
@@ -912,24 +969,45 @@ final class AssistantQueueStoreTests: XCTestCase {
         )
 
         viewModel.load()
+        let waitingRevision = try XCTUnwrap(
+            viewModel.assistantQueueSnapshot.rows.first { $0.id == waiting.id }?.mutationRevision
+        )
+        let blockedRevision = try XCTUnwrap(
+            viewModel.assistantQueueSnapshot.rows.first { $0.id == blocked.id }?.mutationRevision
+        )
+        let deferredRevision = try XCTUnwrap(
+            viewModel.assistantQueueSnapshot.rows.first { $0.id == deferred.id }?.mutationRevision
+        )
 
-        XCTAssertTrue(viewModel.approveAssistantQueueItem(id: waiting.id))
+        XCTAssertTrue(viewModel.approveAssistantQueueItem(
+            id: waiting.id,
+            expectedMutationRevision: waitingRevision
+        ))
         XCTAssertEqual(try assistantQueueStore.get(id: waiting.id).state, .approved)
         XCTAssertNil(try assistantQueueStore.get(id: waiting.id).approval?.executionTokenID)
         XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == waiting.id }?.state, .approved)
 
-        XCTAssertTrue(viewModel.deferAssistantQueueItem(id: deferred.id))
+        XCTAssertTrue(viewModel.deferAssistantQueueItem(
+            id: deferred.id,
+            expectedMutationRevision: deferredRevision
+        ))
         XCTAssertEqual(try assistantQueueStore.get(id: deferred.id).state, .deferred)
         XCTAssertNil(viewModel.assistantQueueSnapshot.rows.first { $0.id == deferred.id })
         viewModel.setAssistantQueueViewFilter(.deferred)
         XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == deferred.id }?.state, .deferred)
         viewModel.setAssistantQueueViewFilter(.needsAttention)
 
-        XCTAssertFalse(viewModel.approveAssistantQueueItem(id: blocked.id))
+        XCTAssertFalse(viewModel.approveAssistantQueueItem(
+            id: blocked.id,
+            expectedMutationRevision: blockedRevision
+        ))
         XCTAssertEqual(try assistantQueueStore.get(id: blocked.id).state, .blocked)
         XCTAssertEqual(viewModel.errorMessage, "Blocked Assistant Queue items cannot be approved.")
 
-        XCTAssertTrue(viewModel.rejectAssistantQueueItem(id: blocked.id))
+        XCTAssertTrue(viewModel.rejectAssistantQueueItem(
+            id: blocked.id,
+            expectedMutationRevision: blockedRevision
+        ))
         XCTAssertEqual(try assistantQueueStore.get(id: blocked.id).state, .rejected)
         XCTAssertNil(viewModel.assistantQueueSnapshot.rows.first { $0.id == blocked.id })
         viewModel.setAssistantQueueViewFilter(.all)
@@ -949,10 +1027,17 @@ final class AssistantQueueStoreTests: XCTestCase {
         )
         let failed = makeItem(id: "queue-batch-failed", state: .failed, summary: "Failed cleanup")
         let done = makeItem(id: "queue-batch-done", state: .done, summary: "Done cleanup")
+        let running = try AssistantQueueStateMachine.startRunning(
+            AssistantQueueStateMachine.approve(
+                makeItem(id: "queue-batch-running", state: .waitingReview, summary: "Running cleanup"),
+                reviewerID: "local-user"
+            )
+        )
         try assistantQueueStore.save(waiting)
         try assistantQueueStore.save(approved)
         try assistantQueueStore.save(failed)
         try assistantQueueStore.save(done)
+        try assistantQueueStore.save(running)
         let viewModel = ProjectBoardViewModel(
             store: boardStore,
             assistantQueueStore: assistantQueueStore
@@ -966,7 +1051,7 @@ final class AssistantQueueStoreTests: XCTestCase {
             Set(viewModel.assistantQueueSnapshot.rows.map(\.id)),
             Set([waiting.id, approved.id, failed.id])
         )
-        XCTAssertEqual(viewModel.assistantQueueSnapshot.totalCount, 4)
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.totalCount, 5)
 
         viewModel.setAssistantQueueViewFilter(.done)
         XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.map(\.id), [done.id])
@@ -975,8 +1060,34 @@ final class AssistantQueueStoreTests: XCTestCase {
         viewModel.setAssistantQueueSort(.titleAscending)
         XCTAssertEqual(
             viewModel.assistantQueueSnapshot.rows.map(\.title),
-            ["Approved cleanup", "Done cleanup", "Failed cleanup", "Review waiting"]
+            ["Approved cleanup", "Done cleanup", "Failed cleanup", "Review waiting", "Running cleanup"]
         )
+
+        XCTAssertFalse(viewModel.setAssistantQueueSelection(id: running.id, selected: true))
+        XCTAssertFalse(viewModel.assistantQueueSelectedItemIDs.contains(running.id))
+        XCTAssertEqual(try assistantQueueStore.get(id: running.id).state, .running)
+        let runningRevision = try XCTUnwrap(
+            viewModel.assistantQueueSnapshot.rows.first { $0.id == running.id }?.mutationRevision
+        )
+        XCTAssertFalse(viewModel.approveAssistantQueueItem(
+            id: running.id,
+            expectedMutationRevision: runningRevision
+        ))
+        XCTAssertEqual(try assistantQueueStore.get(id: running.id).state, .running)
+        XCTAssertFalse(viewModel.rejectAssistantQueueItem(
+            id: running.id,
+            expectedMutationRevision: runningRevision
+        ))
+        XCTAssertEqual(try assistantQueueStore.get(id: running.id).state, .running)
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "This Assistant Queue item cannot be changed by that review action in its current state."
+        )
+        XCTAssertFalse(viewModel.deferAssistantQueueItem(
+            id: running.id,
+            expectedMutationRevision: runningRevision
+        ))
+        XCTAssertEqual(try assistantQueueStore.get(id: running.id).state, .running)
 
         XCTAssertTrue(viewModel.toggleAssistantQueueSelection(id: waiting.id))
         XCTAssertTrue(viewModel.toggleAssistantQueueSelection(id: approved.id))
@@ -994,12 +1105,74 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertEqual(viewModel.integrationStatusMessage, "Deferred 2 Assistant Queue items.")
 
         viewModel.setAssistantQueueViewFilter(.all)
-        XCTAssertTrue(viewModel.toggleAssistantQueueSelection(id: failed.id))
-        XCTAssertTrue(viewModel.toggleAssistantQueueSelection(id: done.id))
+        XCTAssertFalse(viewModel.toggleAssistantQueueSelection(id: failed.id))
+        XCTAssertFalse(viewModel.toggleAssistantQueueSelection(id: done.id))
+        XCTAssertTrue(viewModel.assistantQueueSelectedItemIDs.isEmpty)
         XCTAssertFalse(viewModel.rejectSelectedAssistantQueueItems())
         XCTAssertEqual(try assistantQueueStore.get(id: failed.id).state, .failed)
         XCTAssertEqual(try assistantQueueStore.get(id: done.id).state, .done)
         XCTAssertEqual(viewModel.errorMessage, "No selected Assistant Queue items can be rejected.")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelBatchTransitionIsAtomicWhenAnotherWindowStartsAnItem() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let first = makeItem(id: "queue-batch-atomic-first", state: .waitingReview, summary: "First review")
+        let second = makeItem(id: "queue-batch-atomic-second", state: .waitingReview, summary: "Second review")
+        try assistantQueueStore.save(first)
+        try assistantQueueStore.save(second)
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        XCTAssertTrue(viewModel.setAssistantQueueSelection(id: first.id, selected: true))
+        XCTAssertTrue(viewModel.setAssistantQueueSelection(id: second.id, selected: true))
+
+        let approved = try AssistantQueueStateMachine.approve(
+            assistantQueueStore.get(id: second.id),
+            reviewerID: "other-window"
+        )
+        try assistantQueueStore.save(AssistantQueueStateMachine.startRunning(approved))
+
+        XCTAssertFalse(viewModel.rejectSelectedAssistantQueueItems())
+        XCTAssertEqual(try assistantQueueStore.get(id: first.id).state, .waitingReview)
+        XCTAssertEqual(try assistantQueueStore.get(id: second.id).state, .running)
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "This Assistant Queue item changed elsewhere. Review the latest version before acting."
+        )
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [first.id])
+    }
+
+    @MainActor
+    func testProjectBoardViewModelBatchTransitionRejectsMixedEligibilityWithoutPartialWork() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteAssistantQueueStore(connection: connection)
+        let waiting = makeItem(id: "queue-batch-mixed-waiting", state: .waitingReview, summary: "Waiting")
+        let blocked = makeItem(id: "queue-batch-mixed-blocked", state: .blocked, summary: "Blocked")
+        try store.save(waiting)
+        try store.save(blocked)
+        let viewModel = ProjectBoardViewModel(
+            store: SQLiteProjectBoardStore(connection: connection),
+            assistantQueueStore: store
+        )
+        viewModel.load()
+        XCTAssertTrue(viewModel.setAssistantQueueSelection(id: waiting.id, selected: true))
+        XCTAssertTrue(viewModel.setAssistantQueueSelection(id: blocked.id, selected: true))
+
+        XCTAssertFalse(viewModel.deferSelectedAssistantQueueItems())
+
+        XCTAssertEqual(try store.get(id: waiting.id).state, .waitingReview)
+        XCTAssertEqual(try store.get(id: blocked.id).state, .blocked)
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Every selected Assistant Queue item must support Defer."
+        )
     }
 
     @MainActor
@@ -1021,8 +1194,14 @@ final class AssistantQueueStoreTests: XCTestCase {
         )
 
         viewModel.load()
+        let failedRevision = try XCTUnwrap(
+            viewModel.assistantQueueSnapshot.rows.first { $0.id == failed.id }?.mutationRevision
+        )
 
-        XCTAssertTrue(viewModel.retryAssistantQueueItem(id: failed.id))
+        XCTAssertTrue(viewModel.retryAssistantQueueItem(
+            id: failed.id,
+            expectedMutationRevision: failedRevision
+        ))
         let reopened = try assistantQueueStore.get(id: failed.id)
         XCTAssertEqual(reopened.state, .waitingReview)
         XCTAssertNil(reopened.approval)
@@ -1035,7 +1214,13 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertEqual(viewModel.integrationStatusMessage, "Reopened Assistant Queue item for review.")
         XCTAssertNil(viewModel.errorMessage)
 
-        XCTAssertFalse(viewModel.retryAssistantQueueItem(id: failed.id))
+        let reopenedRevision = try XCTUnwrap(
+            viewModel.assistantQueueSnapshot.rows.first { $0.id == failed.id }?.mutationRevision
+        )
+        XCTAssertFalse(viewModel.retryAssistantQueueItem(
+            id: failed.id,
+            expectedMutationRevision: reopenedRevision
+        ))
         XCTAssertEqual(viewModel.errorMessage, "Only failed runnable Assistant Queue items can be retried.")
         XCTAssertNil(viewModel.integrationStatusMessage)
     }
@@ -1074,7 +1259,10 @@ final class AssistantQueueStoreTests: XCTestCase {
 
         let failedRow = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first { $0.id == failed.id })
         XCTAssertTrue(failedRow.canRetry)
-        XCTAssertTrue(viewModel.retryAssistantQueueItem(id: failed.id))
+        XCTAssertTrue(viewModel.retryAssistantQueueItem(
+            id: failed.id,
+            expectedMutationRevision: try XCTUnwrap(failedRow.mutationRevision)
+        ))
         let reopened = try assistantQueueStore.get(id: failed.id)
         XCTAssertEqual(reopened.state, .waitingReview)
         XCTAssertNil(reopened.approval)
@@ -1103,9 +1291,13 @@ final class AssistantQueueStoreTests: XCTestCase {
         )
 
         viewModel.load()
+        let expectedMutationRevision = try XCTUnwrap(
+            viewModel.assistantQueueSnapshot.rows.first { $0.id == approved.id }?.mutationRevision
+        )
 
         XCTAssertTrue(viewModel.editAssistantQueueItem(
             id: approved.id,
+            expectedMutationRevision: expectedMutationRevision,
             reviewReason: "User narrowed the scope",
             redactedSummary: "Create [REDACTED_SECRET] edit task"
         ))
@@ -1123,6 +1315,258 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertEqual(row.title, "Create [REDACTED_SECRET] edit task")
         XCTAssertEqual(viewModel.integrationStatusMessage, "Updated Assistant Queue review details.")
         XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelRejectsStaleReviewEditFromAnotherWindow() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let item = makeItem(
+            id: "queue-stale-review-edit",
+            state: .waitingReview,
+            summary: "Original review summary"
+        )
+        try assistantQueueStore.save(item)
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let staleRevision = try XCTUnwrap(
+            viewModel.assistantQueueSnapshot.rows.first { $0.id == item.id }?.mutationRevision
+        )
+
+        var concurrentEdit = try assistantQueueStore.get(id: item.id)
+        concurrentEdit.reviewReason = "Updated in another window"
+        concurrentEdit.redactedSummary = "Latest review summary"
+        try assistantQueueStore.save(concurrentEdit)
+
+        XCTAssertFalse(viewModel.editAssistantQueueItem(
+            id: item.id,
+            expectedMutationRevision: staleRevision,
+            reviewReason: "Stale review reason",
+            redactedSummary: "Stale review summary"
+        ))
+        let stored = try assistantQueueStore.get(id: item.id)
+        XCTAssertEqual(stored.reviewReason, "Updated in another window")
+        XCTAssertEqual(stored.redactedSummary, "Latest review summary")
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "This Assistant Queue item changed elsewhere. Review the latest version before acting."
+        )
+        let latestRow = try XCTUnwrap(
+            viewModel.assistantQueueSnapshot.rows.first { $0.id == item.id }
+        )
+        XCTAssertNotEqual(latestRow.mutationRevision, staleRevision)
+        XCTAssertEqual(latestRow.reviewReason, "Updated in another window")
+        XCTAssertEqual(latestRow.redactedSummary, "Latest review summary")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelKeepsFilteredOutStaleEditRowVisibleForRecovery() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        let store = SQLiteAssistantQueueStore(connection: connection)
+        let item = makeItem(
+            id: "queue-filtered-stale-review-edit",
+            state: .waitingReview,
+            summary: "Original filtered review summary"
+        )
+        try store.save(item)
+        let viewModel = ProjectBoardViewModel(
+            store: SQLiteProjectBoardStore(connection: connection),
+            assistantQueueStore: store
+        )
+        viewModel.load()
+        viewModel.setAssistantQueueViewFilter(.waiting)
+        let staleRevision = try XCTUnwrap(
+            viewModel.assistantQueueSnapshot.rows.first { $0.id == item.id }?.mutationRevision
+        )
+        _ = try store.transition(id: item.id) { current in
+            try AssistantQueueStateMachine.approve(
+                current,
+                reviewerID: "another-window"
+            )
+        }
+
+        XCTAssertFalse(viewModel.editAssistantQueueItem(
+            id: item.id,
+            expectedMutationRevision: staleRevision,
+            reviewReason: "Local draft that must stay in the editor",
+            redactedSummary: "Local draft summary"
+        ))
+
+        XCTAssertEqual(viewModel.assistantQueueViewFilter, .all)
+        let latestRow = try XCTUnwrap(
+            viewModel.assistantQueueSnapshot.rows.first { $0.id == item.id }
+        )
+        XCTAssertEqual(latestRow.state, .approved)
+        XCTAssertNotEqual(latestRow.mutationRevision, staleRevision)
+        XCTAssertEqual(try store.get(id: item.id).state, .approved)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelRejectsApprovalForContentChangedInAnotherWindow() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteAssistantQueueStore(connection: connection)
+        let item = makeItem(
+            id: "queue-stale-approval",
+            state: .waitingReview,
+            summary: "Original approval scope"
+        )
+        try store.save(item)
+        let viewModel = ProjectBoardViewModel(
+            store: SQLiteProjectBoardStore(connection: connection),
+            assistantQueueStore: store
+        )
+        viewModel.load()
+        let staleRevision = try XCTUnwrap(
+            viewModel.assistantQueueSnapshot.rows.first { $0.id == item.id }?.mutationRevision
+        )
+        var concurrentEdit = try store.get(id: item.id)
+        concurrentEdit.reviewReason = "Changed approval scope"
+        concurrentEdit.redactedSummary = "Latest approval scope"
+        try store.save(concurrentEdit)
+
+        XCTAssertFalse(viewModel.approveAssistantQueueItem(
+            id: item.id,
+            expectedMutationRevision: staleRevision
+        ))
+
+        let stored = try store.get(id: item.id)
+        XCTAssertEqual(stored.state, .waitingReview)
+        XCTAssertNil(stored.approval)
+        XCTAssertEqual(stored.redactedSummary, "Latest approval scope")
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "This Assistant Queue item changed elsewhere. Review the latest version before acting."
+        )
+    }
+
+    @MainActor
+    func testProjectBoardViewModelLegacyUnversionedReviewActionsFailClosed() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteAssistantQueueStore(connection: connection)
+        let item = makeItem(
+            id: "queue-legacy-unversioned-mutation",
+            state: .waitingReview,
+            summary: "Original review scope"
+        )
+        try store.save(item)
+        let approved = try AssistantQueueStateMachine.approve(
+            makeItem(
+                id: "queue-legacy-unversioned-run",
+                state: .waitingReview,
+                summary: "Approved legacy run"
+            ),
+            reviewerID: "local-user"
+        )
+        try store.save(approved)
+        let failed = try AssistantQueueStateMachine.markFailed(
+            AssistantQueueStateMachine.startRunning(
+                AssistantQueueStateMachine.approve(
+                    makeItem(
+                        id: "queue-legacy-unversioned-retry",
+                        state: .waitingReview,
+                        summary: "Failed legacy retry"
+                    ),
+                    reviewerID: "local-user"
+                )
+            ),
+            reason: "Execution failed."
+        )
+        try store.save(failed)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(
+                    required: ["title"],
+                    properties: ["title": "string"]
+                ),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                XCTFail("An unversioned Run action must not reach the executor.")
+                return ToolResult(
+                    tool: .taskCreate,
+                    status: .failed,
+                    summary: "must not execute"
+                )
+            }
+        ])
+        let receiptStore = VolatileExecutionReceiptStore()
+        let viewModel = ProjectBoardViewModel(
+            store: SQLiteProjectBoardStore(connection: connection),
+            assistantQueueStore: store,
+            assistantQueueExecutionCoordinator: AssistantQueueExecutionCoordinator(
+                queueStore: store,
+                executor: ActionExecutor(registry: registry),
+                executionReceiptStore: receiptStore
+            ),
+            executionReceiptStore: receiptStore
+        )
+        viewModel.load()
+
+        XCTAssertFalse(viewModel.approveAssistantQueueItem(id: item.id))
+        XCTAssertFalse(viewModel.deferAssistantQueueItem(id: item.id))
+        XCTAssertFalse(viewModel.rejectAssistantQueueItem(id: item.id))
+        XCTAssertFalse(viewModel.editAssistantQueueItem(
+            id: item.id,
+            reviewReason: "Unversioned edit",
+            redactedSummary: "Unversioned summary"
+        ))
+        XCTAssertFalse(viewModel.retryAssistantQueueItem(id: failed.id))
+        XCTAssertFalse(viewModel.runAssistantQueueItem(id: approved.id))
+
+        let stored = try store.get(id: item.id)
+        XCTAssertEqual(stored.state, .waitingReview)
+        XCTAssertNil(stored.approval)
+        XCTAssertEqual(stored.reviewReason, item.reviewReason)
+        XCTAssertEqual(stored.redactedSummary, item.redactedSummary)
+        XCTAssertEqual(try store.get(id: failed.id).state, .failed)
+        XCTAssertEqual(try store.get(id: approved.id).state, .approved)
+        XCTAssertTrue(receiptStore.receipts.isEmpty)
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "This Assistant Queue action needs the latest revision. Reload the queue and try again."
+        )
+    }
+
+    @MainActor
+    func testProjectBoardViewModelReportsActionNeutralMessageForStaleBatchMutation() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteAssistantQueueStore(connection: connection)
+        let item = makeItem(
+            id: "queue-stale-batch",
+            state: .waitingReview,
+            summary: "Original batch scope"
+        )
+        try store.save(item)
+        let viewModel = ProjectBoardViewModel(
+            store: SQLiteProjectBoardStore(connection: connection),
+            assistantQueueStore: store
+        )
+        viewModel.load()
+        XCTAssertTrue(viewModel.setAssistantQueueSelection(id: item.id, selected: true))
+
+        var concurrentEdit = try store.get(id: item.id)
+        concurrentEdit.reviewReason = "Updated outside this window"
+        try store.save(concurrentEdit)
+
+        XCTAssertFalse(viewModel.deferSelectedAssistantQueueItems())
+        XCTAssertEqual(try store.get(id: item.id).state, .waitingReview)
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "This Assistant Queue item changed elsewhere. Review the latest version before acting."
+        )
     }
 
     @MainActor
@@ -1165,7 +1609,10 @@ final class AssistantQueueStoreTests: XCTestCase {
         viewModel.load()
 
         XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == approved.id }?.canRun, true)
-        XCTAssertTrue(viewModel.runAssistantQueueItem(id: approved.id))
+        XCTAssertTrue(viewModel.runAssistantQueueItem(
+            id: approved.id,
+            expectedMutationRevision: try XCTUnwrap(approved.mutationRevision)
+        ))
         XCTAssertEqual(try assistantQueueStore.get(id: approved.id).state, .done)
         XCTAssertNil(viewModel.assistantQueueSnapshot.rows.first { $0.id == approved.id })
         viewModel.setAssistantQueueViewFilter(.done)
@@ -1214,7 +1661,10 @@ final class AssistantQueueStoreTests: XCTestCase {
 
         viewModel.load()
 
-        XCTAssertFalse(viewModel.runAssistantQueueItem(id: approved.id))
+        XCTAssertFalse(viewModel.runAssistantQueueItem(
+            id: approved.id,
+            expectedMutationRevision: try XCTUnwrap(approved.mutationRevision)
+        ))
         let failed = try assistantQueueStore.get(id: approved.id)
         XCTAssertEqual(failed.state, .failed)
         XCTAssertEqual(
@@ -1272,7 +1722,10 @@ final class AssistantQueueStoreTests: XCTestCase {
 
         viewModel.load()
 
-        XCTAssertFalse(viewModel.runAssistantQueueItem(id: approved.id))
+        XCTAssertFalse(viewModel.runAssistantQueueItem(
+            id: approved.id,
+            expectedMutationRevision: try XCTUnwrap(approved.mutationRevision)
+        ))
         let failed = try assistantQueueStore.get(id: approved.id)
         XCTAssertEqual(failed.state, .failed)
         XCTAssertEqual(
@@ -1350,7 +1803,10 @@ final class AssistantQueueStoreTests: XCTestCase {
 
         viewModel.load()
 
-        XCTAssertFalse(viewModel.runAssistantQueueItem(id: approved.id))
+        XCTAssertFalse(viewModel.runAssistantQueueItem(
+            id: approved.id,
+            expectedMutationRevision: try XCTUnwrap(approved.mutationRevision)
+        ))
         XCTAssertEqual(
             viewModel.errorMessage,
             "Managed AI daily cap would be exceeded. Current USD 0.80 plus this run USD 0.0025 exceeds USD 0.80."
@@ -1657,6 +2113,10 @@ private struct FailingAssistantQueueStore: AssistantQueueStore {
     let error: Error
 
     func save(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
+        throw error
+    }
+
+    func insertIfAbsent(_ item: AssistantQueueItem) throws -> AssistantQueueItem? {
         throw error
     }
 

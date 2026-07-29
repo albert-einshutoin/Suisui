@@ -6347,10 +6347,167 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
         XCTAssertTrue(script.contains("SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=\"assistant-queue\""))
         XCTAssertTrue(script.contains("SUISUI_PROJECT_BOARD_SELECTED_TASK_ID=\"$seed_task_id\""))
+        let detailLaunchStart = try XCTUnwrap(
+            script.range(of: "launch_app_for_development_detail() {")
+        )
+        let detailLaunchTail = script[detailLaunchStart.lowerBound...]
+        let detailLaunchEnd = try XCTUnwrap(
+            detailLaunchTail.range(
+                of: "\n}\n\nlaunch_app_for_project_directory_picker()"
+            )
+        )
+        let detailLaunchSource = String(
+            detailLaunchTail[..<detailLaunchEnd.lowerBound]
+        )
+        XCTAssertTrue(
+            detailLaunchSource.contains(
+                "pressButtonContainingBounded \"project-header-open-inspector\""
+            ),
+            "Project automation runtime flows must explicitly open the project inspector."
+        )
+        let openAutomationInspector = try XCTUnwrap(
+            detailLaunchSource.range(
+                of: "pressButtonContainingBounded \"project-header-open-inspector\""
+            )
+        )
+        let revealAutomationControls = try XCTUnwrap(
+            detailLaunchSource.range(of: "revealProjectAutomationControls")
+        )
+        XCTAssertLessThan(
+            openAutomationInspector.lowerBound,
+            revealAutomationControls.lowerBound,
+            "The runtime flow must reveal the lower automation controls after opening the inspector."
+        )
+        XCTAssertTrue(script.contains("revealProjectAutomationControls() {"))
+        XCTAssertTrue(script.contains("itemIdentifier is \"project-inspector-title\""))
+        XCTAssertTrue(script.contains("repeat 6 times\n                key code 48"))
+        XCTAssertTrue(script.contains("BLOCKER: project automation controls did not become focusable"))
+        let scrollHelperStart = try XCTUnwrap(
+            script.range(of: "scrollProjectDetailDown() {")
+        )
+        let scrollHelperTail = script[scrollHelperStart.lowerBound...]
+        let scrollHelperEnd = try XCTUnwrap(
+            scrollHelperTail.range(of: "\n}\n\nwaitForAXSubtreeMarkerContaining()")
+        )
+        let scrollHelperSource = String(
+            scrollHelperTail[..<scrollHelperEnd.lowerBound]
+        )
+        let sheetScrollSearch = try XCTUnwrap(
+            scrollHelperSource.range(of: "repeat with currentSheet in sheets of window 1")
+        )
+        let windowScrollFallback = try XCTUnwrap(
+            scrollHelperSource.range(of: "set axItems to entire contents of window 1")
+        )
+        XCTAssertLessThan(
+            sheetScrollSearch.lowerBound,
+            windowScrollFallback.lowerBound,
+            "Inspector sheet scrolling must be attempted before the board fallback."
+        )
         XCTAssertTrue(script.contains("verify_visible_project_directory_picker_assignment()"))
         XCTAssertTrue(script.contains("chooseRuntimeProjectWorkspaceViaOpenPanel()"))
+        let directoryPickerFlow = try XCTUnwrap(
+            script.range(
+                of: "verify_visible_project_directory_picker_assignment() {"
+            )
+        )
+        let directoryPickerFlowSource = String(
+            script[directoryPickerFlow.lowerBound...]
+        )
+        let openProjectInspector = try XCTUnwrap(
+            directoryPickerFlowSource.range(
+                of: "pressButtonContainingBounded \"project-header-open-inspector\""
+            )
+        )
+        let waitForProjectInspector = try XCTUnwrap(
+            directoryPickerFlowSource.range(
+                of: "waitForAXMarkerContaining \"project-inspector\""
+            )
+        )
+        XCTAssertLessThan(
+            openProjectInspector.lowerBound,
+            waitForProjectInspector.lowerBound,
+            "The runtime flow must explicitly open the project inspector before waiting for it."
+        )
         XCTAssertTrue(script.contains("project-workspace-choose"))
         XCTAssertTrue(script.contains("project-workspace-current"))
+        XCTAssertTrue(
+            script.contains(
+                "activates the default Select/Choose action without localized button text"
+            ),
+            "The native folder picker must not depend on its localized button title."
+        )
+        let folderPickerStart = try XCTUnwrap(
+            script.range(of: "chooseRuntimeProjectWorkspaceViaOpenPanel() {")
+        )
+        let folderPickerTail = script[folderPickerStart.lowerBound...]
+        let folderPickerEnd = try XCTUnwrap(
+            folderPickerTail.range(
+                of: "\n}\n\nverify_visible_project_directory_picker_assignment()"
+            )
+        )
+        let folderPickerSource = String(
+            folderPickerTail[..<folderPickerEnd.lowerBound]
+        )
+        XCTAssertFalse(
+            folderPickerSource.contains("set axItems to entire contents of currentWindow"),
+            "Scanning the complete app AX tree can block behind the native folder picker."
+        )
+        XCTAssertTrue(
+            script.contains("set -Eeuo pipefail"),
+            "Failures raised inside runtime smoke helpers must reach the evidence-writing ERR trap."
+        )
+        XCTAssertFalse(
+            script.contains("set +e"),
+            "Expected AX probe misses must be checked explicitly so errtrace only reports real helper failures."
+        )
+        XCTAssertTrue(script.contains("if wait \"$checker_pid\"; then"))
+        XCTAssertTrue(
+            folderPickerSource.contains("local initial_window_count"),
+            "The native picker flow must snapshot the existing app windows before opening NSOpenPanel."
+        )
+        XCTAssertTrue(folderPickerSource.contains("local initial_sheet_count"))
+        let waitForNativePicker = try XCTUnwrap(
+            folderPickerSource.range(
+                of: "repeat until (count of windows) > initialWindowCount or my totalSheetCount(appName) > initialSheetCount"
+            )
+        )
+        let openGoToFolder = try XCTUnwrap(
+            folderPickerSource.range(of: "keystroke \"g\" using {command down, shift down}")
+        )
+        XCTAssertLessThan(
+            waitForNativePicker.lowerBound,
+            openGoToFolder.lowerBound,
+            "Keyboard input must wait for NSOpenPanel instead of racing the existing main window."
+        )
+        XCTAssertTrue(
+            folderPickerSource.contains("repeat until my totalSheetCount(appName) > pickerSheetCount"),
+            "The picker must wait for the Go to Folder sheet before pasting a path."
+        )
+        XCTAssertTrue(
+            folderPickerSource.contains("repeat until my totalSheetCount(appName) is pickerSheetCount"),
+            "The picker must wait for path resolution before accepting the selected folder."
+        )
+        let resolvedGoToFolder = try XCTUnwrap(
+            folderPickerSource.range(
+                of: "repeat until my totalSheetCount(appName) is pickerSheetCount"
+            )
+        )
+        let acceptResolvedFolder = try XCTUnwrap(
+            folderPickerSource.range(
+                of: "-- This activates the default Select/Choose action without localized button text.\n      key code 36"
+            )
+        )
+        XCTAssertLessThan(
+            resolvedGoToFolder.lowerBound,
+            acceptResolvedFolder.lowerBound,
+            "Return may accept the folder only after Go to Folder has resolved."
+        )
+        XCTAssertTrue(
+            folderPickerSource.contains("repeat until (count of windows) is initialWindowCount and my totalSheetCount(appName) is initialSheetCount"),
+            "SQLite verification must not start until NSOpenPanel has actually closed."
+        )
+        XCTAssertFalse(folderPickerSource.contains("delay 0.4"))
+        XCTAssertFalse(folderPickerSource.contains("delay 0.8"))
         XCTAssertTrue(script.contains("workspace_path IS NULL AND workspace_bookmark IS NULL"))
         XCTAssertTrue(script.contains("workspace_path='$escaped_workspace' AND workspace_bookmark IS NOT NULL"))
         XCTAssertTrue(script.contains("visible Project inspector selected project workspace through NSOpenPanel"))
@@ -7304,6 +7461,35 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("wait_for_marker \"project-board-command-palette\""))
         XCTAssertTrue(script.contains("measure_destination \"destination-inbox\" \"$sample_index\" \"sidebar-destination-inbox\" \"Inbox\" \"inbox-workflow\""))
         XCTAssertTrue(script.contains("measure_destination \"destination-review\" \"$sample_index\" \"sidebar-destination-review\" \"Review\" \"review-hub\""))
+        let measureDestinationStart = try XCTUnwrap(script.range(of: "measure_destination() {"))
+        let measureDestinationEnd = try XCTUnwrap(
+            script.range(
+                of: "\n}\n\nmeasure_review_assistant_queue()",
+                range: measureDestinationStart.upperBound..<script.endIndex
+            )
+        )
+        let measureDestinationBody = script[measureDestinationStart.lowerBound..<measureDestinationEnd.upperBound]
+        XCTAssertTrue(
+            measureDestinationBody.contains(
+                "click_destination_until_available \"$destination_identifier\" \"$destination_label\""
+            )
+        )
+        XCTAssertFalse(
+            measureDestinationBody.contains(
+                "click_sidebar_destination \"$destination_identifier\" \"$destination_label\""
+            )
+        )
+        let measurementStart = try XCTUnwrap(measureDestinationBody.range(of: "start_ms=\"$(now_ms)\""))
+        let retriedPress = try XCTUnwrap(
+            measureDestinationBody.range(
+                of: "click_destination_until_available \"$destination_identifier\" \"$destination_label\""
+            )
+        )
+        let markerWait = try XCTUnwrap(measureDestinationBody.range(of: "wait_for_marker \"$marker\""))
+        let measurementEnd = try XCTUnwrap(measureDestinationBody.range(of: "end_ms=\"$(now_ms)\""))
+        XCTAssertLessThan(measurementStart.lowerBound, retriedPress.lowerBound)
+        XCTAssertLessThan(retriedPress.lowerBound, markerWait.lowerBound)
+        XCTAssertLessThan(markerWait.lowerBound, measurementEnd.lowerBound)
         XCTAssertTrue(script.contains("measure_review_assistant_queue"))
         XCTAssertTrue(script.contains("try_click_destination \"review-destination-assistant-queue\""))
         XCTAssertTrue(script.contains("click_sidebar_destination \"review-hub-compact-navigation\" \"Review view chooser\""))
@@ -7328,6 +7514,54 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Performance profile: `%s`"))
         XCTAssertTrue(script.contains("BLOCKER: release performance profile requires release build configuration"))
         XCTAssertFalse(script.contains("set -x"))
+    }
+
+    func testReleaseLaunchPerformanceDestinationRetryIsBoundedAndIdentityPinned() throws {
+        let eventualSuccess = try runPerformanceDestinationRetryFixture(
+            helperSucceedsOnAttempt: 3,
+            identityFailsOnCheck: nil,
+            timeoutSeconds: 30
+        )
+        XCTAssertEqual(eventualSuccess.exitCode, 0, eventualSuccess.output)
+        XCTAssertEqual(eventualSuccess.helperAttempts, 3)
+        XCTAssertEqual(eventualSuccess.identityChecks, 3)
+
+        let permanentAbsence = try runPerformanceDestinationRetryFixture(
+            helperSucceedsOnAttempt: nil,
+            identityFailsOnCheck: nil,
+            timeoutSeconds: 0
+        )
+        XCTAssertNotEqual(permanentAbsence.exitCode, 0)
+        XCTAssertEqual(permanentAbsence.helperAttempts, 0)
+        XCTAssertEqual(permanentAbsence.identityChecks, 0)
+        XCTAssertTrue(permanentAbsence.output.contains("category=product-marker message=performance-destination-unavailable"))
+
+        let changedIdentity = try runPerformanceDestinationRetryFixture(
+            helperSucceedsOnAttempt: 3,
+            identityFailsOnCheck: 2,
+            timeoutSeconds: 30
+        )
+        XCTAssertNotEqual(changedIdentity.exitCode, 0)
+        XCTAssertEqual(changedIdentity.helperAttempts, 1)
+        XCTAssertEqual(changedIdentity.identityChecks, 2)
+        XCTAssertTrue(changedIdentity.output.contains("category=launch message=performance-owned-identity-changed"))
+
+        let slowSuccessAfterDeadline = try runPerformanceDestinationRetryFixture(
+            helperSucceedsOnAttempt: 1,
+            identityFailsOnCheck: nil,
+            timeoutSeconds: 1,
+            helperDelaySeconds: 5,
+            helperIgnoresTerm: true
+        )
+        XCTAssertNotEqual(slowSuccessAfterDeadline.exitCode, 0)
+        XCTAssertEqual(slowSuccessAfterDeadline.helperAttempts, 1)
+        XCTAssertEqual(slowSuccessAfterDeadline.identityChecks, 1)
+        XCTAssertTrue(
+            slowSuccessAfterDeadline.output.contains(
+                "category=product-marker message=performance-destination-unavailable"
+            )
+        )
+        XCTAssertLessThan(slowSuccessAfterDeadline.elapsedSeconds, 4)
     }
 
     func testReleaseLaunchPerformanceSmokeRejectsRelaxedReleaseBudgetsBeforeBuild() throws {
@@ -8490,15 +8724,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("runtime mock/fake/fixture scan failed"))
         XCTAssertTrue(script.contains("section \"UI screenshot evidence\""))
         XCTAssertTrue(script.contains("docs/release/evidence/ui-screenshots.md"))
-        XCTAssertTrue(script.contains("project-board-light.png"))
+        XCTAssertTrue(script.contains("visual_manifest_artifact_rows"))
+        XCTAssertTrue(script.contains("EXPECTED_UI_SCREENSHOT_COUNT=39"))
         XCTAssertTrue(script.contains("inbox-voice-light.png"))
         XCTAssertTrue(script.contains("projects-overview-light.png"))
         XCTAssertTrue(script.contains("schedule-light.png"))
         XCTAssertTrue(script.contains("done-light.png"))
         XCTAssertTrue(script.contains("settings-integrations-light.png"))
-        XCTAssertTrue(script.contains("settings-overview-light.png"))
-        XCTAssertTrue(script.contains("settings-appearance-light.png"))
-        XCTAssertTrue(script.contains("settings-mcp-light.png"))
+        XCTAssertTrue(script.contains("visual manifest expected"))
+        XCTAssertTrue(script.contains("visual manifest artifact must be a safe PNG basename"))
+        XCTAssertTrue(script.contains("visual manifest artifact names must be unique"))
         XCTAssertTrue(script.contains("sips -g pixelWidth -g pixelHeight"))
         XCTAssertTrue(script.contains("assert_screenshot_has_visible_content"))
         XCTAssertTrue(script.contains("ui_evidence_content_check.swift"))
@@ -8507,7 +8742,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("UI screenshot evidence is missing source commit"))
         XCTAssertTrue(script.contains("UI screenshot evidence source commit does not match current UI source commit"))
         XCTAssertTrue(script.contains("UI screenshot appears blank or too low contrast"))
-        XCTAssertTrue(script.contains("missing UI screenshot file"))
+        XCTAssertTrue(script.contains("missing or invalid $locale_name UI screenshot file"))
         XCTAssertTrue(script.contains("UI screenshot is unexpectedly small"))
         XCTAssertTrue(script.contains("NEXT: run script/capture_ui_evidence.sh --doctor"))
         XCTAssertTrue(script.contains("then run script/capture_ui_evidence.sh on a visible macOS session with Screen Recording permission"))
@@ -8659,7 +8894,10 @@ final class ReleasePipelineTests: XCTestCase {
             "schedule",
             "schedule-workload",
             "done",
-            "settings-integrations"
+            "settings-integrations",
+            "assistant-queue-waiting-review",
+            "assistant-queue-approved",
+            "assistant-queue-failed"
         ]
         XCTAssertEqual(screenIDs, coreSystemScreens.union(sampleDerivedScreens))
         let expectedViewports: [String: (width: Int, height: Int)] = [
@@ -8671,6 +8909,9 @@ final class ReleasePipelineTests: XCTestCase {
             "schedule": (1_024, 676),
             "schedule-workload": (1_024, 676),
             "done": (1_024, 676),
+            "assistant-queue-waiting-review": (1_024, 676),
+            "assistant-queue-approved": (1_024, 676),
+            "assistant-queue-failed": (1_024, 676),
             "settings-overview": (720, 676),
             "settings-integrations": (720, 676),
             "settings-appearance": (720, 676),
@@ -8686,6 +8927,9 @@ final class ReleasePipelineTests: XCTestCase {
             "schedule": "schedule-mini-calendar",
             "schedule-workload": "schedule-workload-attention-banner",
             "done": "done-workflow",
+            "assistant-queue-waiting-review": "assistant-queue-row-visual-waiting",
+            "assistant-queue-approved": "assistant-queue-row-visual-approved",
+            "assistant-queue-failed": "assistant-queue-row-visual-failed",
             "settings-overview": "settings-status-overview",
             "settings-integrations": "settings-google-calendar-id-save-flow",
             "settings-appearance": "settings-theme-picker",
@@ -8732,14 +8976,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual((rasterComparison["maximumMeanAbsoluteError"] as? NSNumber)?.doubleValue, 0.01)
 
         let baselineContext = try XCTUnwrap(manifest["baselineContext"] as? [String: Any])
-        let productCommit = try runTool([
+        let evidenceSourceCommit = try runTool([
             "git", "-C", packageRoot().path, "log", "-1", "--format=%H", "--",
-            "Sources", "Package.swift"
+            "Sources", "Package.swift", "script/capture_ui_evidence.sh"
         ])
-        XCTAssertEqual(productCommit.exitCode, 0, productCommit.output)
+        XCTAssertEqual(evidenceSourceCommit.exitCode, 0, evidenceSourceCommit.output)
         XCTAssertEqual(
             baselineContext["sourceCommit"] as? String,
-            productCommit.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            evidenceSourceCommit.output.trimmingCharacters(in: .whitespacesAndNewlines)
         )
         XCTAssertEqual(baselineContext["locale"] as? String, "en-US")
         XCTAssertEqual(baselineContext["timeZoneIdentifier"] as? String, "UTC")
@@ -8779,6 +9023,9 @@ final class ReleasePipelineTests: XCTestCase {
             "Schedule",
             "Schedule Workload",
             "Done",
+            "Assistant Queue Waiting Review",
+            "Assistant Queue Approved",
+            "Assistant Queue Failed",
             "Settings Integrations"
         ] {
             XCTAssertTrue(documentation.contains(screen), "visual baseline docs must explain \(screen)")
@@ -8798,7 +9045,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(documentation.contains("squash merge"))
         XCTAssertTrue(documentation.contains("evidence-only follow-up PR"))
 
-        XCTAssertTrue(captureScript.contains("VISUAL_BASELINE_MANIFEST=\"$ROOT_DIR/docs/quality/visual-baseline-manifest.json\""))
+        XCTAssertTrue(captureScript.contains("VISUAL_BASELINE_MANIFEST=\"${SUISUI_VISUAL_BASELINE_MANIFEST:-$ROOT_DIR/docs/quality/visual-baseline-manifest.json}\""))
         XCTAssertTrue(captureScript.contains("SUISUI_VISUAL_BASELINE_VIEWPORT"))
         XCTAssertTrue(captureScript.contains("SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT"))
         XCTAssertTrue(captureScript.contains("ui_evidence_product_source_commit"))
@@ -8824,6 +9071,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(visualSmokeScript.contains("SUISUI_VISUAL_SCREENSHOT_DIR"))
         XCTAssertTrue(visualSmokeScript.contains("SUISUI_VISUAL_AX_AUDIT_RESULT"))
         XCTAssertTrue(visualSmokeScript.contains(".tmp/visual-ax-audit-receipt.json"))
+        XCTAssertTrue(
+            visualSmokeScript.contains(
+                "git -C \"$ROOT_DIR\" log -1 --format=%H \"$SOURCE_REF\" -- Sources Package.swift script/capture_ui_evidence.sh"
+            )
+        )
+        XCTAssertFalse(
+            visualSmokeScript.contains(
+                "git -C \"$ROOT_DIR\" log -1 --format=%H \"$SOURCE_REF\" -- Sources Package.swift 2>/dev/null"
+            )
+        )
         XCTAssertTrue(visualSmokeScript.contains("--update-baselines"))
         XCTAssertTrue(visualSmokeScript.contains("--allow-update"))
         XCTAssertTrue(visualChecker.contains("CGColorSpace.sRGB"))
@@ -8905,6 +9162,7 @@ final class ReleasePipelineTests: XCTestCase {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
         let helper = try readPackageFile("script/write_visual_ax_audit_receipt.swift")
         let frameAuditor = try readPackageFile("script/ui_evidence_ax_target_frame_audit.swift")
+        let seeder = try readPackageFile("Sources/SuisuiVisualFixtureSeeder/main.swift")
         let health = try XCTUnwrap(script.range(of: "assert_screenshot_has_visible_content"))
         let bytes = try XCTUnwrap(script.range(of: "bytes=\"$(wc -c"))
         let digest = try XCTUnwrap(script.range(of: "shasum -a 256"))
@@ -8931,14 +9189,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SUISUI_VISUAL_EVIDENCE_TIME_ZONE=$EVIDENCE_TIME_ZONE"))
         XCTAssertTrue(script.contains("SUISUI_VISUAL_EVIDENCE_LOCALE_IDENTIFIER=$EVIDENCE_RECEIPT_LOCALE"))
         XCTAssertTrue(script.contains("visual_product_source_is_clean()"))
-        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" diff --quiet -- Sources Package.swift"))
-        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" diff --cached --quiet -- Sources Package.swift"))
-        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" ls-files --others --exclude-standard -- Sources Package.swift"))
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" diff --quiet -- Sources Package.swift script/capture_ui_evidence.sh"))
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" diff --cached --quiet -- Sources Package.swift script/capture_ui_evidence.sh"))
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" ls-files --others --exclude-standard -- Sources Package.swift script/capture_ui_evidence.sh"))
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" log -1 --format=%H \"$source_ref\" --"))
+        XCTAssertTrue(script.contains("Sources Package.swift script/capture_ui_evidence.sh"))
         XCTAssertTrue(script.contains("assert_visual_product_source_is_committed"))
         XCTAssertFalse(script.contains("SUISUI_ALLOW_DIRTY_VISUAL_PRODUCT_SOURCE"))
-        XCTAssertTrue(script.contains("today=\"$(/bin/date -j -u -f"))
-        XCTAssertTrue(script.contains("tomorrow=\"$(/bin/date -j -u -v+1d -f"))
-        XCTAssertTrue(script.contains("yesterday=\"$(/bin/date -j -u -v-1d -f"))
+        XCTAssertTrue(seeder.contains("calendar.date(byAdding: .day, value: 1, to: referenceInstant)"))
+        XCTAssertTrue(seeder.contains("calendar.date(byAdding: .day, value: -1, to: referenceInstant)"))
+        XCTAssertTrue(seeder.contains("let today = dayFormatter.string(from: referenceInstant)"))
         XCTAssertTrue(script.contains("\"$EVIDENCE_RECEIPT_LOCALE\""))
         XCTAssertTrue(script.contains("\"$EVIDENCE_TIME_ZONE\""))
         XCTAssertTrue(script.contains("\"$EVIDENCE_REFERENCE_INSTANT\""))
@@ -8946,7 +9206,9 @@ final class ReleasePipelineTests: XCTestCase {
         let invalidateReceipt = try XCTUnwrap(script.range(of: "rm -f \"$SUISUI_VISUAL_AX_AUDIT_RESULT\""))
         let firstCapture = try XCTUnwrap(script.range(of: "capture_project_board_destination light inbox"))
         XCTAssertLessThan(invalidateReceipt.lowerBound, firstCapture.lowerBound)
-        let dirtySourceGate = try XCTUnwrap(script.range(of: "assert_visual_product_source_is_committed\n\n\"$ROOT_DIR/script/build_and_run.sh\""))
+        let dirtySourceGate = try XCTUnwrap(
+            script.range(of: "assert_visual_product_source_is_committed\n")
+        )
         XCTAssertLessThan(dirtySourceGate.lowerBound, firstCapture.lowerBound)
         XCTAssertTrue(script.contains("rm -f \"$AX_CAPTURE_RECEIPT_TSV\""))
         XCTAssertTrue(script.contains("The receipt is intentionally end-of-run"))
@@ -8970,6 +9232,7 @@ final class ReleasePipelineTests: XCTestCase {
         let manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: manifestData) as? [String: Any])
         let screens = try XCTUnwrap(manifest["screens"] as? [[String: Any]])
         let captureScript = try readPackageFile("script/capture_ui_evidence.sh")
+        let seeder = try readPackageFile("Sources/SuisuiVisualFixtureSeeder/main.swift")
         let scrollHelper = try readPackageFile("script/ui_evidence_ax_scroll_to.swift")
 
         for screen in screens {
@@ -8985,9 +9248,33 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("capture_project_board_destination system inbox"))
         XCTAssertTrue(captureScript.contains("INBOX_VOICE_ROUTE_MARKERS=\"inbox-workflow=>$INBOX_ROUTE_LABEL\""))
         XCTAssertTrue(captureScript.contains("inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture"))
+        let inboxVoiceTargetMarkers = try XCTUnwrap(
+            captureScript.split(separator: "\n").first {
+                $0.hasPrefix("  INBOX_VOICE_TARGET_MARKERS=")
+            }
+        )
+        XCTAssertFalse(
+            inboxVoiceTargetMarkers.contains("inbox-action-panel=>Voice capture metadata available for Scheduled manual capture"),
+            "The action panel no longer exposes this text; requiring it blocks every live Inbox Voice capture."
+        )
         XCTAssertTrue(captureScript.contains("inbox-action-panel=>Schedule launch review and capture visual evidence."))
         XCTAssertTrue(captureScript.contains("inbox-action-panel=>Create a task for launch review evidence."))
-        XCTAssertTrue(captureScript.contains("inbox-action-panel=>Inbox classification actions"))
+        XCTAssertTrue(captureScript.contains("INBOX_CLASSIFICATION_ACTIONS_LABEL=\"Inbox classification actions\""))
+        XCTAssertTrue(captureScript.contains("INBOX_CLASSIFICATION_ACTIONS_LABEL=\"インボックス分類操作\""))
+        XCTAssertTrue(captureScript.contains("inbox-action-panel=>$INBOX_CLASSIFICATION_ACTIONS_LABEL"))
+        XCTAssertTrue(captureScript.contains("inbox_classification_actions_label=\"Inbox classification actions\""))
+        XCTAssertTrue(captureScript.contains("inbox_classification_actions_label=\"インボックス分類操作\""))
+        XCTAssertTrue(captureScript.contains("inbox-action-panel=>$inbox_classification_actions_label"))
+        let assistantQueueRouteMarkers = try XCTUnwrap(
+            captureScript.split(separator: "\n").first {
+                $0.hasPrefix("ASSISTANT_QUEUE_ROUTE_MARKERS=")
+            }
+        )
+        XCTAssertTrue(assistantQueueRouteMarkers.contains("assistant-queue-workflow=>"))
+        XCTAssertFalse(
+            assistantQueueRouteMarkers.contains("review-hub-compact-destination-assistant-queue"),
+            "Closed Menu items are absent from the live AX tree; the selected workflow is the stable route marker."
+        )
         XCTAssertTrue(captureScript.contains("capture_project_board_destination system today"))
         XCTAssertTrue(captureScript.contains("capture_project_board_destination light schedule"))
         XCTAssertTrue(captureScript.contains("capture_project_board_destination dark schedule"))
@@ -8999,9 +9286,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("\"schedule-workload-attention-banner\""))
         XCTAssertTrue(captureScript.contains("capture_settings_sync light \"$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT\""))
         XCTAssertTrue(captureScript.contains("capture_settings_sync dark \"$SETTINGS_INTEGRATIONS_DARK_SCREENSHOT\""))
-        XCTAssertTrue(captureScript.contains("'Review captured note', 'backlog'"))
-        XCTAssertTrue(captureScript.contains("'./fixtures/mcp-workspace'"))
-        XCTAssertFalse(captureScript.contains("'$ROOT_DIR'"))
+        XCTAssertTrue(seeder.contains("\"Review captured note\","))
+        XCTAssertTrue(seeder.contains("'./fixtures/mcp-workspace'"))
+        XCTAssertFalse(seeder.contains("'$ROOT_DIR'"))
         XCTAssertTrue(captureScript.contains("capture_settings_overview system"))
         XCTAssertTrue(captureScript.contains("capture_settings_appearance system"))
         XCTAssertTrue(captureScript.contains("capture_mcp_settings_appearance system"))
@@ -9018,14 +9305,47 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(scrollHelper.contains("SUISUI_UI_EVIDENCE_AX_MAX_NODES"))
     }
 
+    func testScheduleWorkloadVisualCaptureKeepsDeterministicInitialScrollPosition() throws {
+        let captureScript = try readPackageFile("script/capture_ui_evidence.sh")
+        let workloadCaptureCalls = captureScript
+            .split(separator: "\n")
+            .map(String.init)
+            .filter {
+                $0.contains("capture_project_board_destination")
+                    && $0.contains("Schedule workload dashboard")
+            }
+
+        XCTAssertEqual(workloadCaptureCalls.count, 4)
+        for captureCall in workloadCaptureCalls {
+            XCTAssertTrue(
+                captureCall.contains(
+                    "\"$SCHEDULE_WORKLOAD_TARGET_MARKERS\" \"\" \"\" "
+                        + "\"schedule-workload-attention-banner\" "
+                        + "\"$SCHEDULE_WORKLOAD_DETAIL_MARKERS\" workload"
+                ),
+                "Schedule Workload must capture the initial top position while auditing its visible attention banner."
+            )
+            XCTAssertFalse(
+                captureCall.contains("\"schedule-workload-day-detail\""),
+                "A partially visible descendant must not choose a host-dependent scroll offset."
+            )
+            XCTAssertFalse(
+                captureCall.hasSuffix(" schedule-workflow"),
+                "Coarse wheel scrolling is event-coalescing dependent across macOS runners."
+            )
+        }
+    }
+
     func testVisualRegressionSmokeBlocksSmallBlackAndLowInformationImages() throws {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-visual-regression-smoke-blockers", isDirectory: true)
         let screenshotDirectory = fixtureRoot.appendingPathComponent("screenshots", isDirectory: true)
+        let baselineDirectory = fixtureRoot.appendingPathComponent("baselines", isDirectory: true)
         let manifestURL = fixtureRoot.appendingPathComponent("visual-baseline-manifest.json")
 
         try? FileManager.default.removeItem(at: fixtureRoot)
         try FileManager.default.createDirectory(at: screenshotDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: baselineDirectory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixtureRoot) }
 
         try writeVisiblePNG(
@@ -9057,14 +9377,16 @@ final class ReleasePipelineTests: XCTestCase {
                 "light": "too-small-light.png",
                 "dark": "black-dark.png",
                 "system": "low-info-system.png"
-            ]
+            ],
+            baselineRoot: baselineDirectory.path
         ).write(to: manifestURL, atomically: true, encoding: .utf8)
 
         let result = try runScript(
             "script/check_visual_regression_smoke.sh",
             arguments: [
                 "--manifest", manifestURL.path,
-                "--screenshot-dir", screenshotDirectory.path
+                "--screenshot-dir", screenshotDirectory.path,
+                "--baseline-dir", baselineDirectory.path
             ]
         )
 
@@ -9109,7 +9431,10 @@ final class ReleasePipelineTests: XCTestCase {
         try """
         { "result": "passed", "sourceCommit": "fixture-commit", "normalRoute": "project-board", "locale": "en-US", "timeZoneIdentifier": "UTC", "referenceInstant": "2026-07-10T12:00:00Z", "createdAt": "\(ISO8601DateFormatter().string(from: Date()))", "screens": [{ "id": "project-board", "viewport": { "width": 800, "height": 600 }, "appearance": "light", "status": "passed", "artifact": "project-board-light.png", "sha256": "\(currentSHA256)", "actualWindowFrame": { "width": 800, "height": 600 }, "targetFrameAudit": { "identifier": "project-board-root", "width": 760, "height": 540, "visibleWidth": 760, "visibleHeight": 540 } }] }
         """.write(to: auditURL, atomically: true, encoding: .utf8)
-        try visualBaselineManifestFixture(artifacts: ["light": "project-board-light.png"])
+        try visualBaselineManifestFixture(
+            artifacts: ["light": "project-board-light.png"],
+            baselineRoot: baselineDirectory.path
+        )
             .write(to: manifestURL, atomically: true, encoding: .utf8)
 
         let guardedUpdateResult = try runScript(
@@ -9157,6 +9482,27 @@ final class ReleasePipelineTests: XCTestCase {
             ]
         )
         XCTAssertEqual(authorizedUpdateResult.exitCode, 0, authorizedUpdateResult.output)
+    }
+
+    func testVisualRegressionSmokeRejectsBaselineDirectoryThatDoesNotMatchManifest() throws {
+        let fixture = try makeVisualRegressionFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let result = try runScript("script/check_visual_regression_smoke.sh", arguments: [
+            "--manifest", fixture.manifest.path,
+            "--screenshot-dir", fixture.current.path,
+            "--artifact-dir", fixture.artifacts.path,
+            "--ax-audit-result", fixture.audit.path,
+            "--current-source-commit", "fixture-commit"
+        ])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(
+            result.output.contains(
+                "visual baseline directory does not match manifest baselineRoot"
+            ),
+            result.output
+        )
     }
 
     func testVisualRegressionSmokeRequiresRasterOverrideReasons() throws {
@@ -9300,6 +9646,68 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertEqual(result.exitCode, 0, result.output)
         XCTAssertTrue(result.output.contains("visual regression smoke passed"), result.output)
+    }
+
+    func testVisualRegressionRasterOnlyModeBlocksChangedEvidenceWithoutAXReceipt() throws {
+        let fixture = try makeVisualRegressionFixture(includeAudit: false)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let baselineURL = fixture.baseline.appendingPathComponent("project-board-light.png")
+        let originalBaseline = try Data(contentsOf: baselineURL)
+
+        let matchingResult = try runScript(
+            "script/check_visual_regression_smoke.sh",
+            arguments: [
+                "--manifest", fixture.manifest.path,
+                "--screenshot-dir", fixture.current.path,
+                "--baseline-dir", fixture.baseline.path,
+                "--artifact-dir", fixture.artifacts.path,
+                "--current-source-commit", "fixture-commit",
+                "--raster-only"
+            ]
+        )
+        XCTAssertEqual(matchingResult.exitCode, 0, matchingResult.output)
+        XCTAssertTrue(matchingResult.output.contains("mode: raster-only"), matchingResult.output)
+
+        try writeChangedVisiblePNG(
+            to: fixture.current.appendingPathComponent("project-board-light.png"),
+            width: 800,
+            height: 600,
+            trailingBytes: 60_000
+        )
+        let changedResult = try runScript(
+            "script/check_visual_regression_smoke.sh",
+            arguments: [
+                "--manifest", fixture.manifest.path,
+                "--screenshot-dir", fixture.current.path,
+                "--baseline-dir", fixture.baseline.path,
+                "--artifact-dir", fixture.artifacts.path,
+                "--current-source-commit", "fixture-commit",
+                "--raster-only"
+            ]
+        )
+        XCTAssertNotEqual(changedResult.exitCode, 0, changedResult.output)
+        XCTAssertTrue(
+            changedResult.output.contains("visual raster comparison failed"),
+            changedResult.output
+        )
+        XCTAssertEqual(try Data(contentsOf: baselineURL), originalBaseline)
+
+        let mutationAttempt = try runScript(
+            "script/check_visual_regression_smoke.sh",
+            arguments: [
+                "--manifest", fixture.manifest.path,
+                "--screenshot-dir", fixture.current.path,
+                "--baseline-dir", fixture.baseline.path,
+                "--artifact-dir", fixture.artifacts.path,
+                "--current-source-commit", "fixture-commit",
+                "--raster-only",
+                "--update-baselines",
+                "--allow-update"
+            ]
+        )
+        XCTAssertNotEqual(mutationAttempt.exitCode, 0, mutationAttempt.output)
+        XCTAssertTrue(mutationAttempt.output.contains("read-only"), mutationAttempt.output)
+        XCTAssertEqual(try Data(contentsOf: baselineURL), originalBaseline)
     }
 
     func testVisualRegressionSmokeRejectsScreenshotDigestMismatchInNormalAndUpdateModes() throws {
@@ -11975,7 +12383,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("== UI screenshot evidence =="))
-        XCTAssertTrue(result.output.contains("missing UI screenshot file: docs/release/evidence/ui-screenshots/project-board-light.png"))
+        XCTAssertTrue(result.output.contains("missing or invalid English visual capture manifest"))
         XCTAssertTrue(result.output.contains("NEXT: run script/capture_ui_evidence.sh --doctor"))
         XCTAssertTrue(result.output.contains("then run script/capture_ui_evidence.sh on a visible macOS session with Screen Recording permission"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
@@ -12096,6 +12504,352 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
+    func testReleaseReadinessReportFailsClosedForBothLocaleVisualEvidenceContracts() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-locale-visual-evidence", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let evidenceDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("release", isDirectory: true)
+            .appendingPathComponent("evidence", isDirectory: true)
+        let qualityDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("quality", isDirectory: true)
+        let englishScreenshotDirectory = evidenceDirectory.appendingPathComponent("ui-screenshots", isDirectory: true)
+        let japaneseScreenshotDirectory = evidenceDirectory.appendingPathComponent("ui-screenshots-ja", isDirectory: true)
+        let englishBaselineDirectory = qualityDirectory.appendingPathComponent("visual-baselines", isDirectory: true)
+        let japaneseBaselineDirectory = qualityDirectory.appendingPathComponent("visual-baselines-ja", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let captureURL = scriptDirectory.appendingPathComponent("capture_ui_evidence.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: englishScreenshotDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: japaneseScreenshotDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: englishBaselineDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: japaneseBaselineDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SuisuiCore", "SuisuiApp", "SuisuiCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try "#!/usr/bin/env bash\n# initial visual capture contract\n"
+            .write(to: captureURL, atomically: true, encoding: .utf8)
+        try "// fixture package\n"
+            .write(to: fixtureRoot.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "init"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.email", "quality-tests@example.invalid"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.name", "Quality Tests"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "."]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "initial visual source"]).exitCode, 0)
+        let staleShortCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+            .output.trimmingCharacters(in: .whitespacesAndNewlines)
+        let staleFullCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "HEAD"])
+            .output.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        try "#!/usr/bin/env bash\n# changed visual capture contract\n"
+            .write(to: captureURL, atomically: true, encoding: .utf8)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "script/capture_ui_evidence.sh"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "change visual capture contract"]).exitCode, 0)
+        let currentShortCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+            .output.trimmingCharacters(in: .whitespacesAndNewlines)
+        let currentFullCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "HEAD"])
+            .output.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        for (
+            locale,
+            artifactRoot,
+            baselineRoot,
+            manifestName
+        ) in [
+            (
+                "en-US",
+                "docs/release/evidence/ui-screenshots",
+                "docs/quality/visual-baselines",
+                "visual-baseline-manifest.json"
+            ),
+            (
+                "ja-JP",
+                "docs/release/evidence/ui-screenshots-ja",
+                "docs/quality/visual-baselines-ja",
+                "visual-baseline-manifest-ja.json"
+            )
+        ] {
+            try """
+            {
+              "schemaVersion": 2,
+              "artifactRoot": "\(artifactRoot)",
+              "baselineRoot": "\(baselineRoot)",
+              "baselineContext": {
+                "sourceCommit": "\(currentFullCommit)",
+                "normalRoute": "normal",
+                "locale": "\(locale)",
+                "timeZoneIdentifier": "UTC",
+                "referenceInstant": "2026-07-10T12:00:00Z"
+              },
+              "screens": []
+            }
+            """.write(
+                to: qualityDirectory.appendingPathComponent(manifestName),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
+
+        try """
+        # UI Screenshot Evidence
+
+        Generated with `script/capture_ui_evidence.sh`.
+
+        - Generated at: `2026-07-28T00:00:00Z`
+        - Source commit: `\(staleShortCommit)`
+        - Runtime context: locale `ja-JP`, timezone `Asia/Tokyo`, reference instant `2026-07-11T12:00:00Z`
+        - Launch mode: normal `ProjectBoardView` route
+        """.write(to: evidenceDirectory.appendingPathComponent("ui-screenshots.md"), atomically: true, encoding: .utf8)
+        try """
+        {
+          "sourceCommit": "\(staleFullCommit)",
+          "locale": "ja-JP",
+          "timeZoneIdentifier": "Asia/Tokyo",
+          "referenceInstant": "2026-07-11T12:00:00Z",
+          "sourceManifest": "docs/quality/visual-baseline-manifest.json",
+          "screenshotDirectory": "docs/release/evidence/ui-screenshots",
+          "mainViewport": "999x999",
+          "settingsViewport": "720x676",
+          "voiceCommandViewport": "760x640",
+          "comparison": "bytewise"
+        }
+        """.write(
+            to: englishScreenshotDirectory.appendingPathComponent("visual-baseline-capture-manifest.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try """
+        # UI Screenshot Evidence
+
+        Generated with `script/capture_ui_evidence.sh`.
+
+        - Generated at: `2026-07-28T00:00:00Z`
+        - Source commit: `\(staleShortCommit)`
+        - Runtime context: locale `en-US`, timezone `Asia/Tokyo`, reference instant `2026-07-11T12:00:00Z`
+        - Launch mode: normal `ProjectBoardView` route
+        """.write(
+            to: japaneseScreenshotDirectory.appendingPathComponent("ui-screenshots.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try """
+        {
+          "sourceCommit": "\(staleFullCommit)",
+          "locale": "en-US",
+          "timeZoneIdentifier": "Asia/Tokyo",
+          "referenceInstant": "2026-07-11T12:00:00Z",
+          "sourceManifest": "docs/quality/visual-baseline-manifest-ja.json",
+          "screenshotDirectory": "docs/release/evidence/ui-screenshots-ja",
+          "mainViewport": "999x999",
+          "settingsViewport": "720x676",
+          "voiceCommandViewport": "760x640",
+          "comparison": "bytewise"
+        }
+        """.write(
+            to: japaneseScreenshotDirectory.appendingPathComponent("visual-baseline-capture-manifest.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: preflightURL.path)
+
+        let result = try runTool(["bash", reportURL.path])
+
+        XCTAssertNotEqual(staleShortCommit, currentShortCommit)
+        XCTAssertNotEqual(staleFullCommit, currentFullCommit)
+        XCTAssertNotEqual(result.exitCode, 0)
+        for localeName in ["English", "Japanese"] {
+            XCTAssertTrue(
+                result.output.contains(
+                    "\(localeName) UI screenshot evidence source commit does not match current UI source commit: expected \(currentShortCommit)"
+                ),
+                result.output
+            )
+            XCTAssertTrue(
+                result.output.contains("\(localeName) UI screenshot evidence locale does not match expected locale"),
+                result.output
+            )
+            XCTAssertTrue(
+                result.output.contains(
+                    "\(localeName) visual capture manifest source commit does not match current visual evidence source commit: expected \(currentFullCommit)"
+                ),
+                result.output
+            )
+            XCTAssertTrue(
+                result.output.contains("\(localeName) visual capture manifest locale does not match expected locale"),
+                result.output
+            )
+            XCTAssertTrue(
+                result.output.contains("\(localeName) UI screenshot evidence runtime context does not match visual baseline context"),
+                result.output
+            )
+            XCTAssertTrue(
+                result.output.contains("\(localeName) visual capture manifest time zone does not match visual baseline context"),
+                result.output
+            )
+            XCTAssertTrue(
+                result.output.contains("\(localeName) visual capture manifest reference instant does not match visual baseline context"),
+                result.output
+            )
+            XCTAssertTrue(
+                result.output.contains("\(localeName) visual capture manifest viewport contract does not match visual baseline contract"),
+                result.output
+            )
+            XCTAssertTrue(
+                result.output.contains("\(localeName) visual capture manifest comparison mode must be semantic"),
+                result.output
+            )
+        }
+
+        try """
+        # UI Screenshot Evidence
+
+        Generated with `script/capture_ui_evidence.sh`.
+
+        - Generated at: `2026-07-28T00:00:00Z`
+        - Source commit: `\(currentShortCommit)`
+        - Runtime context: locale `en-US`, timezone `UTC`, reference instant `2026-07-10T12:00:00Z`
+        - Launch mode: normal `ProjectBoardView` route
+        """.write(to: evidenceDirectory.appendingPathComponent("ui-screenshots.md"), atomically: true, encoding: .utf8)
+        try """
+        {
+          "sourceCommit": "\(currentFullCommit)",
+          "locale": "en-US",
+          "timeZoneIdentifier": "UTC",
+          "referenceInstant": "2026-07-10T12:00:00Z",
+          "sourceManifest": "docs/quality/visual-baseline-manifest.json",
+          "screenshotDirectory": "docs/release/evidence/ui-screenshots",
+          "mainViewport": "1024x676",
+          "settingsViewport": "720x676",
+          "voiceCommandViewport": "760x640",
+          "comparison": "semantic"
+        }
+        """.write(
+            to: englishScreenshotDirectory.appendingPathComponent("visual-baseline-capture-manifest.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try """
+        # UI Screenshot Evidence
+
+        Generated with `script/capture_ui_evidence.sh`.
+
+        - Generated at: `2026-07-28T00:00:00Z`
+        - Source commit: `\(currentShortCommit)`
+        - Runtime context: locale `ja-JP`, timezone `UTC`, reference instant `2026-07-10T12:00:00Z`
+        - Launch mode: normal `ProjectBoardView` route
+        """.write(
+            to: japaneseScreenshotDirectory.appendingPathComponent("ui-screenshots.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try """
+        {
+          "sourceCommit": "\(currentFullCommit)",
+          "locale": "ja-JP",
+          "timeZoneIdentifier": "UTC",
+          "referenceInstant": "2026-07-10T12:00:00Z",
+          "sourceManifest": "docs/quality/visual-baseline-manifest-ja.json",
+          "screenshotDirectory": "docs/release/evidence/ui-screenshots-ja",
+          "mainViewport": "1024x676",
+          "settingsViewport": "720x676",
+          "voiceCommandViewport": "760x640",
+          "comparison": "semantic"
+        }
+        """.write(
+            to: japaneseScreenshotDirectory.appendingPathComponent("visual-baseline-capture-manifest.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let validVisualEvidenceResult = try runTool(["bash", reportURL.path])
+        for localeName in ["English", "Japanese"] {
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) UI screenshot evidence source commit"),
+                validVisualEvidenceResult.output
+            )
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) UI screenshot evidence locale"),
+                validVisualEvidenceResult.output
+            )
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) visual capture manifest source commit"),
+                validVisualEvidenceResult.output
+            )
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) visual capture manifest locale"),
+                validVisualEvidenceResult.output
+            )
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) UI screenshot evidence runtime context"),
+                validVisualEvidenceResult.output
+            )
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) visual capture manifest time zone"),
+                validVisualEvidenceResult.output
+            )
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) visual capture manifest reference instant"),
+                validVisualEvidenceResult.output
+            )
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) visual capture manifest viewport contract"),
+                validVisualEvidenceResult.output
+            )
+            XCTAssertFalse(
+                validVisualEvidenceResult.output.contains("\(localeName) visual capture manifest comparison mode"),
+                validVisualEvidenceResult.output
+            )
+        }
+    }
+
+    func testReleaseReadinessValidatesBothLocaleScreenshotSetsFromTheirManifests() throws {
+        let script = try readPackageFile("script/release_readiness_report.sh")
+
+        XCTAssertTrue(script.contains("docs/quality/visual-baseline-manifest.json"))
+        XCTAssertTrue(script.contains("docs/quality/visual-baseline-manifest-ja.json"))
+        XCTAssertTrue(script.contains("EXPECTED_UI_SCREENSHOT_COUNT=39"))
+        XCTAssertTrue(script.contains("visual_manifest_artifact_rows"))
+        XCTAssertTrue(script.contains("unexpected screenshot coverage"))
+        XCTAssertTrue(script.contains("screenshot dimensions do not match manifest viewport"))
+        XCTAssertTrue(script.contains("screenshot SHA-256 could not be computed"))
+        XCTAssertTrue(script.contains("differs byte-for-byte from its semantic baseline"))
+        XCTAssertTrue(script.contains("capture manifest time zone does not match visual baseline context"))
+        XCTAssertTrue(script.contains("capture manifest reference instant does not match visual baseline context"))
+        XCTAssertTrue(script.contains("capture manifest viewport contract does not match visual baseline contract"))
+        XCTAssertTrue(script.contains("capture manifest comparison mode must be semantic"))
+        XCTAssertTrue(script.contains("--raster-only"))
+        XCTAssertTrue(script.contains("checked-in visual evidence semantic comparison failed"))
+        XCTAssertFalse(script.contains("for screenshot_entry in \"${UI_SCREENSHOTS[@]}\""))
+    }
+
     func testReleaseReadinessReportFailsWhenUIScreenshotEvidenceIsBlank() throws {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-release-readiness-blank-ui-evidence", isDirectory: true)
@@ -12107,6 +12861,11 @@ final class ReleasePipelineTests: XCTestCase {
             .appendingPathComponent("release", isDirectory: true)
             .appendingPathComponent("evidence", isDirectory: true)
         let screenshotDirectory = evidenceDirectory.appendingPathComponent("ui-screenshots", isDirectory: true)
+        let qualityDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("quality", isDirectory: true)
+        let baselineDirectory = qualityDirectory.appendingPathComponent("visual-baselines", isDirectory: true)
+        let baselineManifest = qualityDirectory.appendingPathComponent("visual-baseline-manifest.json")
         let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
         let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
 
@@ -12114,6 +12873,7 @@ final class ReleasePipelineTests: XCTestCase {
         try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: screenshotDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: qualityDirectory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixtureRoot) }
 
         for targetName in ["SuisuiCore", "SuisuiApp", "SuisuiCLI"] {
@@ -12131,6 +12891,26 @@ final class ReleasePipelineTests: XCTestCase {
                 atomically: true,
                 encoding: .utf8
             )
+        try FileManager.default.copyItem(
+            at: packageRoot().appendingPathComponent("docs/quality/visual-baseline-manifest.json"),
+            to: baselineManifest
+        )
+        try FileManager.default.copyItem(
+            at: packageRoot().appendingPathComponent("docs/quality/visual-baselines", isDirectory: true),
+            to: baselineDirectory
+        )
+        try """
+        {
+          "sourceCommit": "fixture-commit",
+          "locale": "en-US",
+          "sourceManifest": "docs/quality/visual-baseline-manifest.json",
+          "screenshotDirectory": "docs/release/evidence/ui-screenshots"
+        }
+        """.write(
+            to: screenshotDirectory.appendingPathComponent("visual-baseline-capture-manifest.json"),
+            atomically: true,
+            encoding: .utf8
+        )
         try """
         #!/usr/bin/env bash
         set -euo pipefail
@@ -14931,6 +15711,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         try visualBaselineManifestFixture(
             artifacts: ["light": "project-board-light.png"],
+            baselineRoot: baseline.path,
             requiredVisibleTextLines: requiredVisibleTextLines
         )
             .write(to: manifest, atomically: true, encoding: .utf8)
@@ -15236,6 +16017,7 @@ final class ReleasePipelineTests: XCTestCase {
 
     private func visualBaselineManifestFixture(
         artifacts: [String: String],
+        baselineRoot: String,
         requiredVisibleTextLines: [String]? = nil
     ) throws -> String {
         let artifactLines = artifacts
@@ -15261,7 +16043,7 @@ final class ReleasePipelineTests: XCTestCase {
         {
           "schemaVersion": 2,
           "artifactRoot": "screenshots",
-          "baselineRoot": "baselines",
+          "baselineRoot": "\(baselineRoot)",
           "baselineContext": {
             "sourceCommit": "fixture-commit",
             "normalRoute": "project-board",
@@ -15351,6 +16133,146 @@ final class ReleasePipelineTests: XCTestCase {
         environment: [String: String] = [:]
     ) throws -> (exitCode: Int32, output: String) {
         try runProcess(arguments: arguments, environment: environment)
+    }
+
+    private func runPerformanceDestinationRetryFixture(
+        helperSucceedsOnAttempt: Int?,
+        identityFailsOnCheck: Int?,
+        timeoutSeconds: Int,
+        helperDelaySeconds: Int = 0,
+        helperIgnoresTerm: Bool = false
+    ) throws -> (
+        exitCode: Int32,
+        output: String,
+        helperAttempts: Int,
+        identityChecks: Int,
+        elapsedSeconds: TimeInterval
+    ) {
+        let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
+        let functionStart = try XCTUnwrap(script.range(of: "run_ax_press_before_deadline() {"))
+        let functionEnd = try XCTUnwrap(
+            script.range(of: "\n\nwait_for_marker() {", range: functionStart.upperBound..<script.endIndex)
+        )
+        let functionSource = String(script[functionStart.lowerBound..<functionEnd.lowerBound])
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-performance-destination-retry-\(UUID().uuidString)", isDirectory: true)
+        let helperURL = fixtureDirectory.appendingPathComponent("fake-ax-press.sh")
+        let harnessURL = fixtureDirectory.appendingPathComponent("harness.sh")
+        let helperCounterURL = fixtureDirectory.appendingPathComponent("helper-attempts.txt")
+        let identityCounterURL = fixtureDirectory.appendingPathComponent("identity-checks.txt")
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let helper = """
+        #!/usr/bin/env bash
+        set -u
+        if [[ "$#" -ne 2 || "${1:-}" != "$EXPECTED_APP_PID" || "${2:-}" != "$EXPECTED_DESTINATION_IDENTIFIER" ]]; then
+          printf 'unexpected helper target: pid=%s identifier=%s\n' "${1:-missing}" "${2:-missing}" >&2
+          exit 90
+        fi
+        if [[ "$HELPER_IGNORES_TERM" == "true" ]]; then
+          trap '' TERM
+        fi
+        attempt=0
+        if [[ -f "$HELPER_COUNTER_FILE" ]]; then
+          attempt="$(<"$HELPER_COUNTER_FILE")"
+        fi
+        attempt=$((attempt + 1))
+        printf '%s\n' "$attempt" >"$HELPER_COUNTER_FILE"
+        if [[ "$HELPER_DELAY_SECONDS" != "0" ]]; then
+          # Keep the delay inside this exact helper process. A child `sleep`
+          # would inherit the capture pipe after the helper is terminated and
+          # make the XCTest observer wait for an unrelated orphan to exit.
+          helper_delay_deadline=$((SECONDS + HELPER_DELAY_SECONDS))
+          while [[ "$SECONDS" -lt "$helper_delay_deadline" ]]; do :; done
+        fi
+        if [[ "$SUCCEED_ON_ATTEMPT" != "never" && "$attempt" -ge "$SUCCEED_ON_ATTEMPT" ]]; then
+          exit 0
+        fi
+        exit 1
+        """
+        try helper.write(to: helperURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helperURL.path)
+
+        let harness = """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        # Prove the deadline wrapper resets an inherited ignored SIGALRM before
+        # exec; ignored dispositions otherwise survive into the AX helper.
+        trap '' ALRM
+        APP_PID=4242
+        APP_BINARY="/tmp/Suisui"
+        APP_IDENTITY="fixture-identity"
+        TIMEOUT_SECONDS="$1"
+        AX_PRESS_ELEMENT_HELPER_EXECUTABLE="$2"
+        HELPER_COUNTER_FILE="$3"
+        IDENTITY_COUNTER_FILE="$4"
+        SUCCEED_ON_ATTEMPT="$5"
+        IDENTITY_FAIL_ON_CHECK="$6"
+        HELPER_DELAY_SECONDS="$7"
+        HELPER_IGNORES_TERM="$8"
+        EXPECTED_APP_PID="$APP_PID"
+        EXPECTED_DESTINATION_IDENTIFIER="sidebar-destination-review"
+        export HELPER_COUNTER_FILE SUCCEED_ON_ATTEMPT HELPER_DELAY_SECONDS HELPER_IGNORES_TERM
+        export EXPECTED_APP_PID EXPECTED_DESTINATION_IDENTIFIER
+        ax_process_matches_identity() {
+          if [[ "$#" -ne 3 || "$1" != "$APP_PID" || "$2" != "$APP_BINARY" || "$3" != "$APP_IDENTITY" ]]; then
+            printf 'unexpected identity target: pid=%s binary=%s identity=%s\n' \
+              "${1:-missing}" "${2:-missing}" "${3:-missing}" >&2
+            return 1
+          fi
+          local count=0
+          if [[ -f "$IDENTITY_COUNTER_FILE" ]]; then
+            count="$(<"$IDENTITY_COUNTER_FILE")"
+          fi
+          count=$((count + 1))
+          printf '%s\n' "$count" >"$IDENTITY_COUNTER_FILE"
+          [[ "$IDENTITY_FAIL_ON_CHECK" == "never" || "$count" -lt "$IDENTITY_FAIL_ON_CHECK" ]]
+        }
+        ax_emit_failure_category() {
+          printf 'category=%s message=%s\n' "$1" "$2"
+        }
+        now_ms() {
+          /usr/bin/perl -MTime::HiRes=time -e 'printf "%d\n", time() * 1000'
+        }
+        monotonic_ms() {
+          /usr/bin/perl -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC \
+            -e 'printf "%d\n", clock_gettime(CLOCK_MONOTONIC) * 1000'
+        }
+        activate_app() { :; }
+        sleep() { :; }
+        \(functionSource)
+        if click_destination_until_available "sidebar-destination-review" "Review"; then
+          exit 0
+        else
+          exit $?
+        fi
+        """
+        try harness.write(to: harnessURL, atomically: true, encoding: .utf8)
+
+        let startUptime = ProcessInfo.processInfo.systemUptime
+        let result = try runTool([
+            "bash",
+            harnessURL.path,
+            String(timeoutSeconds),
+            helperURL.path,
+            helperCounterURL.path,
+            identityCounterURL.path,
+            helperSucceedsOnAttempt.map(String.init) ?? "never",
+            identityFailsOnCheck.map(String.init) ?? "never",
+            String(helperDelaySeconds),
+            helperIgnoresTerm ? "true" : "false"
+        ])
+        let elapsedSeconds = ProcessInfo.processInfo.systemUptime - startUptime
+        let helperAttempts = Int(
+            (try? String(contentsOf: helperCounterURL, encoding: .utf8))
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? ""
+        ) ?? 0
+        let identityChecks = Int(
+            (try? String(contentsOf: identityCounterURL, encoding: .utf8))
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? ""
+        ) ?? 0
+        return (result.exitCode, result.output, helperAttempts, identityChecks, elapsedSeconds)
     }
 
     private func runTodayWindowSizeResultFixture(

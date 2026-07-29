@@ -4,7 +4,13 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct AssistantQueueWorkflowView: View {
+    private enum WorkflowFocus: Hashable {
+        case triageControls
+    }
+
     @ObservedObject var viewModel: ProjectBoardViewModel
+    @FocusState private var keyboardWorkflowFocus: WorkflowFocus?
+    @AccessibilityFocusState private var accessibilityWorkflowFocus: WorkflowFocus?
 
     private var snapshot: AssistantQueueSnapshot {
         viewModel.assistantQueueSnapshot
@@ -42,6 +48,9 @@ struct AssistantQueueWorkflowView: View {
             // otherwise the user cannot switch back to a populated view.
             if snapshot.totalCount > 0 {
                 AssistantQueueTriageControls(viewModel: viewModel)
+                    .focusable()
+                    .focused($keyboardWorkflowFocus, equals: .triageControls)
+                    .accessibilityFocused($accessibilityWorkflowFocus, equals: .triageControls)
                 if !viewModel.assistantQueueSelectedItemIDs.isEmpty {
                     AssistantQueueBatchToolbar(viewModel: viewModel)
                 }
@@ -81,7 +90,11 @@ struct AssistantQueueWorkflowView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
                         ForEach(snapshot.rows) { row in
-                            AssistantQueueRow(row: row, viewModel: viewModel)
+                            AssistantQueueRow(
+                                row: row,
+                                viewModel: viewModel,
+                                focusWorkflowControls: focusTriageControls
+                            )
                         }
                     }
                     .padding(.vertical, 2)
@@ -95,6 +108,14 @@ struct AssistantQueueWorkflowView: View {
         .accessibilityLabel("Assistant Queue")
         .accessibilityValue(subtitle)
         .accessibilityHint("Reviews AI-generated drafts before execution.")
+    }
+
+    private func focusTriageControls() {
+        Task { @MainActor in
+            await Task.yield()
+            keyboardWorkflowFocus = .triageControls
+            accessibilityWorkflowFocus = .triageControls
+        }
     }
 }
 
@@ -239,11 +260,22 @@ private struct AssistantQueueCountStrip: View {
 }
 
 private struct AssistantQueueRow: View {
+    private enum ActionFocus: Hashable {
+        case editReason
+        case primary
+        case more
+    }
+
     let row: AssistantQueueReadModelRow
     @ObservedObject var viewModel: ProjectBoardViewModel
+    let focusWorkflowControls: () -> Void
     @State private var isEditing = false
     @State private var draftReviewReason = ""
     @State private var draftRedactedSummary = ""
+    @State private var expectedMutationRevision: String?
+    @State private var hasEditConflict = false
+    @FocusState private var keyboardActionFocus: ActionFocus?
+    @AccessibilityFocusState private var accessibilityActionFocus: ActionFocus?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -254,6 +286,7 @@ private struct AssistantQueueRow: View {
                     .accessibilityIdentifier("assistant-queue-select-\(row.id)")
                     .accessibilityLabel("Select Assistant Queue item")
                     .accessibilityValue(viewModel.assistantQueueSelectedItemIDs.contains(row.id) ? "Selected" : "Not selected")
+                    .disabled(!isBatchSelectable)
 
                 Image(systemName: stateSystemImage)
                     .foregroundStyle(stateTint)
@@ -265,6 +298,7 @@ private struct AssistantQueueRow: View {
                         .font(.headline)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("assistant-queue-row-heading-\(row.id)")
 
                     HStack(spacing: 8) {
                         Text(LocalizedStringKey(row.stateLabel))
@@ -322,23 +356,48 @@ private struct AssistantQueueRow: View {
                             TextField("Review reason", text: $draftReviewReason, axis: .vertical)
                                 .lineLimit(2...4)
                                 .textFieldStyle(.roundedBorder)
+                                .focused($keyboardActionFocus, equals: .editReason)
+                                .accessibilityFocused($accessibilityActionFocus, equals: .editReason)
                                 .accessibilityIdentifier("assistant-queue-edit-reason-\(row.id)")
                                 .accessibilityHint("Updates the review reason and requires approval again.")
+                                .disabled(!row.canEdit)
 
                             TextField("Redacted summary", text: $draftRedactedSummary, axis: .vertical)
                                 .lineLimit(2...4)
                                 .textFieldStyle(.roundedBorder)
                                 .accessibilityIdentifier("assistant-queue-edit-summary-\(row.id)")
                                 .accessibilityHint("Updates only the redacted queue summary shown for review.")
+                                .disabled(!row.canEdit)
 
                             HStack(spacing: 8) {
                                 Button {
+                                    guard let expectedMutationRevision else {
+                                        hasEditConflict = true
+                                        focusAction(afterYieldOn: .editReason)
+                                        return
+                                    }
                                     if viewModel.editAssistantQueueItem(
                                         id: row.id,
+                                        expectedMutationRevision: expectedMutationRevision,
                                         reviewReason: draftReviewReason,
                                         redactedSummary: draftRedactedSummary
                                     ) {
+                                        hasEditConflict = false
                                         isEditing = false
+                                        if viewModel.assistantQueueViewFilter.states.contains(.waitingReview) {
+                                            focusAfterEditing()
+                                        } else {
+                                            focusWorkflowControls()
+                                        }
+                                    } else {
+                                        // Keeping the failed edit visible and focused prevents
+                                        // users from losing review context before retrying.
+                                        let latestRevision = viewModel.assistantQueueSnapshot.rows
+                                            .first { $0.id == row.id }?
+                                            .mutationRevision
+                                        hasEditConflict = latestRevision != expectedMutationRevision
+                                        keyboardActionFocus = .editReason
+                                        accessibilityActionFocus = .editReason
                                     }
                                 } label: {
                                     Label("Save", systemImage: "checkmark")
@@ -346,17 +405,53 @@ private struct AssistantQueueRow: View {
                                 .controlSize(.small)
                                 .accessibilityIdentifier("assistant-queue-edit-save-\(row.id)")
                                 .accessibilityHint("Saves edited review details and clears any prior queue approval.")
+                                .disabled(
+                                    hasEditConflict
+                                        || !row.canEdit
+                                        || expectedMutationRevision == nil
+                                )
 
                                 Button {
-                                    isEditing = false
                                     draftReviewReason = row.reviewReason
                                     draftRedactedSummary = row.redactedSummary
+                                    expectedMutationRevision = row.mutationRevision
+                                    hasEditConflict = false
+                                    isEditing = false
+                                    focusAfterEditing()
                                 } label: {
                                     Label("Cancel", systemImage: "xmark")
                                 }
                                 .controlSize(.small)
                                 .accessibilityIdentifier("assistant-queue-edit-cancel-\(row.id)")
                                 .accessibilityHint("Discards local edits to this review form.")
+                            }
+
+                            if !row.canEdit {
+                                Label(
+                                    "This item can no longer be edited. Cancel to keep the latest queue state.",
+                                    systemImage: "lock"
+                                )
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                            } else if hasEditConflict {
+                                HStack(spacing: 8) {
+                                    Label(
+                                        "This item changed in another window. Reload the latest details before saving.",
+                                        systemImage: "arrow.triangle.2.circlepath"
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+
+                                    Button("Reload latest") {
+                                        draftReviewReason = row.reviewReason
+                                        draftRedactedSummary = row.redactedSummary
+                                        expectedMutationRevision = row.mutationRevision
+                                        hasEditConflict = false
+                                        focusAction(afterYieldOn: .editReason)
+                                    }
+                                    .controlSize(.small)
+                                    .accessibilityIdentifier("assistant-queue-edit-reload-\(row.id)")
+                                }
                             }
                         }
                         .padding(.top, 4)
@@ -367,73 +462,28 @@ private struct AssistantQueueRow: View {
             }
 
             HStack(spacing: 8) {
-                Button {
-                    _ = viewModel.runAssistantQueueItem(id: row.id)
-                } label: {
-                    Label("Run", systemImage: "play.fill")
+                if let primary = actionPresentation.primaryAction {
+                    primaryAction(primary)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .focused($keyboardActionFocus, equals: .primary)
+                        .accessibilityFocused($accessibilityActionFocus, equals: .primary)
                 }
-                .disabled(!row.canRun)
-                .controlSize(.small)
-                .help("Run this approved item through the execution gate")
-                .accessibilityIdentifier("assistant-queue-run-\(row.id)")
-                .accessibilityHint("Executes approved generated work through the review gate and records a receipt.")
 
-                Button {
-                    _ = viewModel.approveAssistantQueueItem(id: row.id)
-                } label: {
-                    Label("Approve", systemImage: "checkmark.seal")
+                if !actionPresentation.secondaryActions.isEmpty {
+                    Menu {
+                        ForEach(actionPresentation.secondaryActions, id: \.self) { action in
+                            secondaryAction(action)
+                        }
+                    } label: {
+                        Label("More", systemImage: "ellipsis.circle")
+                    }
+                    .controlSize(.small)
+                    .focused($keyboardActionFocus, equals: .more)
+                    .accessibilityFocused($accessibilityActionFocus, equals: .more)
+                    .help("More Assistant Queue actions")
+                    .accessibilityIdentifier("assistant-queue-more-\(row.id)")
                 }
-                .disabled(!row.canApprove)
-                .controlSize(.small)
-                .help("Approve this queue item without running it")
-                .accessibilityIdentifier("assistant-queue-approve-\(row.id)")
-                .accessibilityHint("Records approval intent. Execution still requires the review gate.")
-
-                Button {
-                    _ = viewModel.deferAssistantQueueItem(id: row.id)
-                } label: {
-                    Label("Defer", systemImage: "clock")
-                }
-                .disabled(!row.canDefer)
-                .controlSize(.small)
-                .help("Review this queue item later")
-                .accessibilityIdentifier("assistant-queue-defer-\(row.id)")
-                .accessibilityHint("Keeps this generated work in the local queue for later review.")
-
-                Button {
-                    draftReviewReason = row.reviewReason
-                    draftRedactedSummary = row.redactedSummary
-                    isEditing.toggle()
-                } label: {
-                    Label("Edit", systemImage: "pencil")
-                }
-                .disabled(!row.canEdit)
-                .controlSize(.small)
-                .help("Edit review details before approving this queue item")
-                .accessibilityIdentifier("assistant-queue-edit-\(row.id)")
-                .accessibilityHint("Edits the review reason and redacted summary without changing raw action arguments.")
-
-                Button {
-                    _ = viewModel.retryAssistantQueueItem(id: row.id)
-                } label: {
-                    Label("Reopen", systemImage: "arrow.clockwise")
-                }
-                .disabled(!row.canRetry)
-                .controlSize(.small)
-                .help("Reopen this failed item for review before running it again")
-                .accessibilityIdentifier("assistant-queue-retry-\(row.id)")
-                .accessibilityHint("Returns failed generated work to review. It does not run until approved again.")
-
-                Button {
-                    _ = viewModel.rejectAssistantQueueItem(id: row.id)
-                } label: {
-                    Label("Reject", systemImage: "xmark.circle")
-                }
-                .disabled(!row.canReject)
-                .controlSize(.small)
-                .help("Reject this queue item")
-                .accessibilityIdentifier("assistant-queue-reject-\(row.id)")
-                .accessibilityHint("Marks this generated work rejected without running it.")
             }
         }
         .padding(10)
@@ -448,6 +498,195 @@ private struct AssistantQueueRow: View {
         .accessibilityLabel(row.title)
         .accessibilityValue(accessibilityValue)
         .accessibilityHint("Review this Assistant Queue item before execution.")
+        .onChange(of: row.state) { _, _ in
+            markEditConflictIfNeeded()
+        }
+        .onChange(of: actionPresentation) { _, _ in
+            markEditConflictIfNeeded()
+        }
+        .onChange(of: row.mutationRevision) { _, _ in
+            markEditConflictIfNeeded()
+        }
+    }
+
+    // A single stage-specific presentation prevents approval and execution
+    // controls from appearing together and reduces accidental queue transitions.
+    private var actionPresentation: AssistantQueueRowActionPresentation {
+        AssistantQueueRowActionPresentation.make(for: row)
+    }
+
+    @ViewBuilder
+    private func primaryAction(
+        _ action: AssistantQueueRowActionPresentation.Action
+    ) -> some View {
+        switch action {
+        case .approve:
+            approveButton
+        case .run:
+            runButton
+        case .reopen:
+            reopenButton
+        case .edit, .defer, .reject:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private func secondaryAction(
+        _ action: AssistantQueueRowActionPresentation.Action
+    ) -> some View {
+        switch action {
+        case .approve, .run, .reopen:
+            EmptyView()
+        case .edit:
+            editButton
+        case .defer:
+            deferButton
+        case .reject:
+            Button(role: .destructive) {
+                guard let mutationRevision = row.mutationRevision else {
+                    return
+                }
+                _ = viewModel.rejectAssistantQueueItem(
+                    id: row.id,
+                    expectedMutationRevision: mutationRevision
+                )
+            } label: {
+                Label("Reject", systemImage: "xmark.circle")
+            }
+            .disabled(row.mutationRevision == nil)
+            .help("Reject this queue item")
+            .accessibilityIdentifier("assistant-queue-reject-\(row.id)")
+            .accessibilityHint("Marks this generated work rejected without running it.")
+        }
+    }
+
+    private var approveButton: some View {
+        Button {
+            guard let mutationRevision = row.mutationRevision else {
+                return
+            }
+            _ = viewModel.approveAssistantQueueItem(
+                id: row.id,
+                expectedMutationRevision: mutationRevision
+            )
+        } label: {
+            Label("Approve", systemImage: "checkmark.seal")
+        }
+        .help("Approve this queue item without running it")
+        .disabled(row.mutationRevision == nil)
+        .accessibilityIdentifier("assistant-queue-approve-\(row.id)")
+        .accessibilityHint("Records approval intent. Execution still requires the review gate.")
+    }
+
+    private var runButton: some View {
+        Button {
+            guard let mutationRevision = row.mutationRevision else {
+                return
+            }
+            _ = viewModel.runAssistantQueueItem(
+                id: row.id,
+                expectedMutationRevision: mutationRevision
+            )
+        } label: {
+            Label("Run", systemImage: "play.fill")
+        }
+        .disabled(row.mutationRevision == nil)
+        .help("Run this approved item through the execution gate")
+        .accessibilityIdentifier("assistant-queue-run-\(row.id)")
+        .accessibilityHint("Executes approved generated work through the review gate and records a receipt.")
+    }
+
+    private var reopenButton: some View {
+        Button {
+            guard let mutationRevision = row.mutationRevision else {
+                return
+            }
+            _ = viewModel.retryAssistantQueueItem(
+                id: row.id,
+                expectedMutationRevision: mutationRevision
+            )
+        } label: {
+            Label("Reopen", systemImage: "arrow.clockwise")
+        }
+        .disabled(row.mutationRevision == nil)
+        .help("Reopen this failed item for review before running it again")
+        .accessibilityIdentifier("assistant-queue-retry-\(row.id)")
+        .accessibilityHint("Returns failed generated work to review. It does not run until approved again.")
+    }
+
+    private var editButton: some View {
+        Button {
+            openEditForm()
+        } label: {
+            Label("Edit", systemImage: "pencil")
+        }
+        .help("Edit review details before approving this queue item")
+        .accessibilityIdentifier("assistant-queue-edit-\(row.id)")
+        .accessibilityHint("Edits the review reason and redacted summary without changing raw action arguments.")
+    }
+
+    private var deferButton: some View {
+        Button {
+            guard let mutationRevision = row.mutationRevision else {
+                return
+            }
+            _ = viewModel.deferAssistantQueueItem(
+                id: row.id,
+                expectedMutationRevision: mutationRevision
+            )
+        } label: {
+            Label("Defer", systemImage: "clock")
+        }
+        .disabled(row.mutationRevision == nil)
+        .help("Review this queue item later")
+        .accessibilityIdentifier("assistant-queue-defer-\(row.id)")
+        .accessibilityHint("Keeps this generated work in the local queue for later review.")
+    }
+
+    private func openEditForm() {
+        if !isEditing {
+            draftReviewReason = row.reviewReason
+            draftRedactedSummary = row.redactedSummary
+            expectedMutationRevision = row.mutationRevision
+            hasEditConflict = false
+            isEditing = true
+        }
+        focusAction(afterYieldOn: .editReason)
+    }
+
+    private func focusAction(afterYieldOn action: ActionFocus) {
+        Task { @MainActor in
+            await Task.yield()
+            keyboardActionFocus = action
+            accessibilityActionFocus = action
+        }
+    }
+
+    private func focusAfterEditing() {
+        if !actionPresentation.secondaryActions.isEmpty {
+            focusAction(afterYieldOn: .more)
+        } else if actionPresentation.primaryAction != nil {
+            focusAction(afterYieldOn: .primary)
+        } else {
+            // State-changing saves can remove this row from the active filter.
+            // Move focus to a stable workflow control instead of a stale row.
+            focusWorkflowControls()
+        }
+    }
+
+    private func markEditConflictIfNeeded() {
+        guard isEditing else {
+            return
+        }
+        // Preserve local draft text when another window updates the same item;
+        // only an explicit reload may replace reviewer input with durable data.
+        hasEditConflict = true
+        focusAction(afterYieldOn: .editReason)
+    }
+
+    private var isBatchSelectable: Bool {
+        (row.canDefer || row.canReject) && row.mutationRevision != nil
     }
 
     private var stateSystemImage: String {

@@ -2394,6 +2394,12 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertFalse(unchangedTask.detail.contains("Suisui approved automation execution"))
         XCTAssertNil(viewModel.lastApprovedAutomationExecutionReceipt)
         XCTAssertTrue(viewModel.approvedAutomationExecutionReceipts.isEmpty)
+        let queueItems = try subject.assistantQueueStore.list(filter: .all())
+        XCTAssertEqual(queueItems.map(\.state), [.blocked])
+        XCTAssertTrue(queueItems.allSatisfy { !AssistantQueueStateMachine.hasCurrentApproval($0) })
+        XCTAssertTrue(queueItems.allSatisfy { $0.blockingReason?.contains("receipt reservation") == true })
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.count, 1)
+        XCTAssertTrue(viewModel.assistantQueueSnapshot.rows.allSatisfy { !$0.canApprove && !$0.canRun })
         XCTAssertEqual(
             viewModel.todayCommandFeedback,
             "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work."
@@ -2704,7 +2710,10 @@ final class ProjectBoardStoreTests: XCTestCase {
         viewModel.load()
 
         XCTAssertEqual(coordinatorFactoryCallCount, 0)
-        XCTAssertFalse(viewModel.runAssistantQueueItem(id: "missing-queue-item"))
+        XCTAssertFalse(viewModel.runAssistantQueueItem(
+            id: "missing-queue-item",
+            expectedMutationRevision: "missing-item-revision"
+        ))
         XCTAssertEqual(coordinatorFactoryCallCount, 1)
         XCTAssertEqual(viewModel.errorMessage, "Assistant Queue execution is unavailable in this build.")
     }
@@ -6614,7 +6623,11 @@ final class ProjectBoardStoreTests: XCTestCase {
             id.hasPrefix("action-plan:today-reminder:2026-06-19:")
                 && id.hasSuffix(":task:\(selected.id)")
         })
-        try assistantQueueStore.save(AssistantQueueStateMachine.deferItem(try assistantQueueStore.get(id: currentItemID)))
+        try assistantQueueStore.save(
+            AssistantQueueStateMachine.deferItem(
+                try assistantQueueStore.get(id: currentItemID)
+            )
+        )
 
         context = viewModel.todayAssistantRailContext(
             on: try isoDate("2026-06-19T08:37:00Z"),
@@ -9110,6 +9123,10 @@ private final class SaveFailingProjectBoardAssistantQueueStore: AssistantQueueSt
     func save(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
         saveAttempts += 1
         throw error
+    }
+
+    func insertIfAbsent(_ item: AssistantQueueItem) throws -> AssistantQueueItem? {
+        try save(item)
     }
 
     func get(id: String) throws -> AssistantQueueItem {

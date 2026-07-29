@@ -10,6 +10,7 @@ AX_AUDIT_RESULT="${SUISUI_AX_AUDIT_RESULT:-${SUISUI_VISUAL_AX_AUDIT_RESULT:-$ROO
 CURRENT_SOURCE_COMMIT="${SUISUI_VISUAL_CURRENT_SOURCE_COMMIT:-}"
 UPDATE_BASELINES=0
 ALLOW_UPDATE=0
+RASTER_ONLY=0
 FORWARD_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -22,13 +23,48 @@ while [[ $# -gt 0 ]]; do
       shift 2;;
     --update-baselines) UPDATE_BASELINES=1; shift;;
     --allow-update) ALLOW_UPDATE=1; shift;;
-    *) echo "BLOCKER: usage: $0 [--manifest path] [--screenshot-dir path] [--baseline-dir path] [--artifact-dir path] [--ax-audit-result path] [--current-source-commit commit] [--update-baselines --allow-update]" >&2; exit 2;;
+    --raster-only) RASTER_ONLY=1; shift;;
+    *) echo "BLOCKER: usage: $0 [--manifest path] [--screenshot-dir path] [--baseline-dir path] [--artifact-dir path] [--ax-audit-result path] [--current-source-commit commit] [--raster-only] [--update-baselines --allow-update]" >&2; exit 2;;
   esac
 done
+
+MANIFEST_BASELINE_ROOT="$(
+  /usr/bin/plutil -extract baselineRoot raw -o - "$MANIFEST" 2>/dev/null || true
+)"
+[[ -n "$MANIFEST_BASELINE_ROOT" ]] || {
+  echo "BLOCKER: visual manifest baselineRoot is unavailable" >&2
+  exit 1
+}
+if [[ "$MANIFEST_BASELINE_ROOT" == /* ]]; then
+  EXPECTED_BASELINE_DIR="$MANIFEST_BASELINE_ROOT"
+else
+  EXPECTED_BASELINE_DIR="$ROOT_DIR/$MANIFEST_BASELINE_ROOT"
+fi
+[[ -d "$EXPECTED_BASELINE_DIR" ]] || {
+  echo "BLOCKER: visual manifest baselineRoot is not an existing directory" >&2
+  exit 1
+}
+[[ -d "$BASELINE_DIR" ]] || {
+  echo "BLOCKER: visual baseline directory is not an existing directory" >&2
+  exit 1
+}
+EXPECTED_BASELINE_DIR="$(cd "$EXPECTED_BASELINE_DIR" && pwd -P)"
+RESOLVED_BASELINE_DIR="$(cd "$BASELINE_DIR" && pwd -P)"
+# A locale-specific manifest and a different baseline root can otherwise update
+# the wrong language while immediately comparing against the same wrong root.
+[[ "$RESOLVED_BASELINE_DIR" == "$EXPECTED_BASELINE_DIR" ]] || {
+  echo "BLOCKER: visual baseline directory does not match manifest baselineRoot" >&2
+  exit 1
+}
+
 if [[ "$UPDATE_BASELINES" == 1 && "$ALLOW_UPDATE" != 1 ]]; then echo "BLOCKER: baseline update requires --allow-update" >&2; exit 1; fi
+if [[ "$RASTER_ONLY" == 1 && "$UPDATE_BASELINES" == 1 ]]; then
+  echo "BLOCKER: raster-only comparison is read-only and cannot update baselines" >&2
+  exit 1
+fi
 if [[ -z "$CURRENT_SOURCE_COMMIT" ]]; then
   SOURCE_REF="${SUISUI_VISUAL_SOURCE_REF:-HEAD}"
-  CURRENT_SOURCE_COMMIT="$(git -C "$ROOT_DIR" log -1 --format=%H "$SOURCE_REF" -- Sources Package.swift 2>/dev/null || true)"
+  CURRENT_SOURCE_COMMIT="$(git -C "$ROOT_DIR" log -1 --format=%H "$SOURCE_REF" -- Sources Package.swift script/capture_ui_evidence.sh 2>/dev/null || true)"
 fi
 [[ -n "$CURRENT_SOURCE_COMMIT" ]] || { echo "BLOCKER: current product source commit is unavailable; pass --current-source-commit" >&2; exit 1; }
 command -v swiftc >/dev/null 2>&1 || { echo "BLOCKER: swiftc is required for visual regression smoke" >&2; exit 2; }
@@ -41,7 +77,8 @@ if [[ ! -x "$CHECKER_BINARY" || "$CHECKER_SOURCE" -nt "$CHECKER_BINARY" ]]; then
   CLANG_MODULE_CACHE_PATH="$MODULE_CACHE_DIR" swiftc "$CHECKER_SOURCE" -o "$CHECKER_BINARY" || { echo "BLOCKER: could not compile visual regression checker" >&2; exit 1; }
 fi
 FORWARD_ARGS=(--manifest "$MANIFEST" --screenshot-dir "$SCREENSHOT_DIR" --baseline-dir "$BASELINE_DIR" --artifact-dir "$ARTIFACT_DIR" --current-source-commit "$CURRENT_SOURCE_COMMIT")
-[[ -n "$AX_AUDIT_RESULT" ]] && FORWARD_ARGS+=(--ax-audit-result "$AX_AUDIT_RESULT")
+[[ "$RASTER_ONLY" == 0 && -n "$AX_AUDIT_RESULT" ]] && FORWARD_ARGS+=(--ax-audit-result "$AX_AUDIT_RESULT")
+[[ "$RASTER_ONLY" == 1 ]] && FORWARD_ARGS+=(--raster-only)
 [[ "$UPDATE_BASELINES" == 1 ]] && FORWARD_ARGS+=(--update-baselines)
 [[ "$ALLOW_UPDATE" == 1 ]] && FORWARD_ARGS+=(--allow-update)
 "$CHECKER_BINARY" "${FORWARD_ARGS[@]}"

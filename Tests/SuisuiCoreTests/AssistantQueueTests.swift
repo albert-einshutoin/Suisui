@@ -1,7 +1,66 @@
 import XCTest
-@testable import SuisuiCore
+import SuisuiCore
 
 final class AssistantQueueTests: XCTestCase {
+    func testApprovalFingerprintFramesIdentityRiskAndSummaryWithoutDelimiterCollision() throws {
+        let base = AssistantQueueAdapter.makeItem(
+            actionPlan: makePlan(),
+            sourceTranscript: "Create a task",
+            interpretationSummary: "Routed as task intent.",
+            reason: "Review before approval."
+        )
+        let first = AssistantQueueItem(
+            id: "approval",
+            state: base.state,
+            payload: base.payload,
+            riskLevel: .write,
+            sourceTranscript: base.sourceTranscript,
+            interpretationSummary: base.interpretationSummary,
+            reviewReason: base.reviewReason,
+            redactedSummary: "read::scope",
+            requiredCapabilities: base.requiredCapabilities,
+            costPreview: base.costPreview
+        )
+        let second = AssistantQueueItem(
+            id: "approval::write",
+            state: base.state,
+            payload: base.payload,
+            riskLevel: .read,
+            sourceTranscript: base.sourceTranscript,
+            interpretationSummary: base.interpretationSummary,
+            reviewReason: base.reviewReason,
+            redactedSummary: "scope",
+            requiredCapabilities: base.requiredCapabilities,
+            costPreview: base.costPreview
+        )
+
+        let firstApproval = try AssistantQueueStateMachine.approve(first, reviewerID: "reviewer")
+        let secondApproval = try AssistantQueueStateMachine.approve(second, reviewerID: "reviewer")
+
+        XCTAssertNotEqual(
+            try XCTUnwrap(firstApproval.approval?.reviewedContentFingerprint),
+            try XCTUnwrap(secondApproval.approval?.reviewedContentFingerprint)
+        )
+    }
+
+    func testMutationRevisionFramesUserControlledReviewFieldsWithoutDelimiterCollision() throws {
+        var first = AssistantQueueAdapter.makeItem(
+            actionPlan: makePlan(),
+            sourceTranscript: "Create a task",
+            interpretationSummary: "Routed as task intent.",
+            reason: "scope"
+        )
+        first.redactedSummary = "left::right"
+        var second = first
+        second.reviewReason = "scope::left"
+        second.redactedSummary = "right"
+
+        XCTAssertNotEqual(
+            try XCTUnwrap(first.mutationRevision),
+            try XCTUnwrap(second.mutationRevision)
+        )
+    }
+
     func testQueueItemFromActionPlanStartsWaitingReviewWithSourceReasonRisk() {
         let plan = makePlan(
             riskLevel: .write,
@@ -629,6 +688,57 @@ final class AssistantQueueTests: XCTestCase {
                 XCTAssertEqual(error as? AssistantQueueTransitionError, .editRequiresReviewableItem)
             }
         }
+    }
+
+    func testReviewDispositionTransitionsRejectRunningAndTerminalItems() throws {
+        let approved = try AssistantQueueStateMachine.approve(
+            AssistantQueueAdapter.makeItem(
+                actionPlan: makePlan(summary: "Create a launch task"),
+                sourceTranscript: "Create a task",
+                interpretationSummary: "Routed as task intent.",
+                reason: "Needs review."
+            ),
+            reviewerID: "user-1"
+        )
+        let running = try AssistantQueueStateMachine.startRunning(approved)
+
+        for item in [
+            running,
+            try AssistantQueueStateMachine.markDone(running),
+            try AssistantQueueStateMachine.markFailed(running, reason: "Tool failed.")
+        ] {
+            XCTAssertThrowsError(
+                try AssistantQueueStateMachine.approve(item, reviewerID: "user-2")
+            ) { error in
+                if item.state == .running {
+                    XCTAssertTrue(error is AssistantQueueReviewActionUnavailableError)
+                } else {
+                    XCTAssertEqual(
+                        error as? AssistantQueueTransitionError,
+                        .terminalItemCannotTransition
+                    )
+                }
+            }
+            XCTAssertThrowsError(try AssistantQueueStateMachine.rejectForReview(item)) { error in
+                XCTAssertTrue(error is AssistantQueueReviewActionUnavailableError)
+            }
+            XCTAssertThrowsError(try AssistantQueueStateMachine.deferForReview(item)) { error in
+                XCTAssertTrue(error is AssistantQueueReviewActionUnavailableError)
+            }
+            XCTAssertEqual(
+                AssistantQueueStateMachine.reject(item),
+                item,
+                "The source-compatible wrapper must not rewrite an in-flight or terminal item."
+            )
+            XCTAssertEqual(
+                AssistantQueueStateMachine.deferItem(item),
+                item,
+                "The source-compatible wrapper must not rewrite an in-flight or terminal item."
+            )
+        }
+
+        XCTAssertEqual(AssistantQueueStateMachine.reject(approved).state, .rejected)
+        XCTAssertEqual(AssistantQueueStateMachine.deferItem(approved).state, .deferred)
     }
 
     private func makePlan(

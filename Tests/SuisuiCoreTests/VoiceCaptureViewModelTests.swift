@@ -753,6 +753,50 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual((try? store.get(id: "action-plan:plan-transition-persisted"))?.state, .rejected)
     }
 
+    func testAssistantQueueStaleVoiceActionCannotRewindDurableCompletedState() async throws {
+        let store = RecordingAssistantQueueStore()
+        let response = PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-stale-voice-transition",
+                userInput: "Create a task",
+                summary: "Create task",
+                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: response),
+            assistantQueueStore: store
+        )
+        viewModel.updateDraftText("Create a task")
+        await viewModel.generatePlan(
+            currentDate: Date(timeIntervalSince1970: 0),
+            timeZoneIdentifier: "UTC"
+        )
+
+        let itemID = "action-plan:plan-stale-voice-transition"
+        let waiting = try store.get(id: itemID)
+        let approved = try AssistantQueueStateMachine.approve(waiting, reviewerID: "other-window")
+        let running = try AssistantQueueStateMachine.startRunning(approved)
+        let done = try AssistantQueueStateMachine.markDone(running)
+        try store.save(done)
+
+        viewModel.rejectAssistantQueueItem()
+
+        XCTAssertEqual(try store.get(id: itemID).state, .done)
+        XCTAssertEqual(viewModel.assistantQueueItem?.state, .done)
+        XCTAssertEqual(
+            viewModel.auditErrorMessage,
+            "This Assistant Queue item changed elsewhere. Review the latest version before acting."
+        )
+    }
+
     func testAssistantQueueStoreSaveFailureKeepsGeneratedWorkOutOfReview() async {
         let store = RecordingAssistantQueueStore(saveError: SecretVoiceTestError(message: "disk full sk-store-secret"))
         let response = PlanningResponse(
@@ -2819,6 +2863,13 @@ private final class RecordingAssistantQueueStore: AssistantQueueStore {
         items[item.id] = item
         savedItems.append(item)
         return item
+    }
+
+    func insertIfAbsent(_ item: AssistantQueueItem) throws -> AssistantQueueItem? {
+        guard items[item.id] == nil else {
+            return nil
+        }
+        return try save(item)
     }
 
     func get(id: String) throws -> AssistantQueueItem {

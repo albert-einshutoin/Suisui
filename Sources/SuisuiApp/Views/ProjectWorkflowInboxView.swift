@@ -72,6 +72,13 @@ struct InboxWorkflowView: View {
         .onChange(of: tasks.map(\.id)) { _, _ in
             viewModel.ensureSelectedInboxTaskIsVisible()
         }
+        .onChange(of: viewModel.selectedTaskID) { _, _ in
+            // Hydrate from the newly selected capture so this parent observer
+            // and the child capture observer converge regardless of call order.
+            let capture = viewModel.selectedInboxCaptureRecords.first
+            voiceMemoCaptureID = capture?.id
+            voiceMemoDraft = capture?.memo ?? ""
+        }
     }
 
     private var mainSurface: some View {
@@ -213,6 +220,14 @@ private struct InboxActionPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Classify Selected Item")
                 .font(.headline)
+            InboxSelectedItemContext(
+                task: task,
+                // Voice intake owns capture metadata below, so only manual
+                // items repeat their lightweight source and interpretation.
+                manualSummary: task != nil && viewModel.selectedInboxCaptureRecords.isEmpty
+                    ? task.map { viewModel.inboxTriageSummary(for: $0) }
+                    : nil
+            )
             InboxVoiceIntakeDetail(
                 captures: viewModel.selectedInboxCaptureRecords,
                 taskTitle: task?.title ?? "Selected Inbox item",
@@ -260,46 +275,8 @@ private struct InboxActionPanel: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-action-panel")
-        .accessibilityLabel(panelAccessibilityLabel)
-        .accessibilityValue(panelAccessibilityValue)
-        .accessibilityHint(panelAccessibilityHint)
-    }
-
-    private var panelAccessibilityLabel: String {
-        var values = ["Inbox classification actions"]
-        if let task {
-            values.append("Selected Inbox item \(task.title)")
-            if viewModel.selectedInboxCaptureRecords.first != nil {
-                values.append("Voice capture metadata available for \(task.title)")
-            }
-        }
-        return values.joined(separator: ", ")
-    }
-
-    private var panelAccessibilityValue: String {
-        guard let task else {
-            return "No Inbox item selected"
-        }
-        var values = ["Selected Inbox item: \(task.title)"]
-        if let capture = viewModel.selectedInboxCaptureRecords.first {
-            // The release screenshot marker needs one stable AX node that proves
-            // both selection and capture metadata; child metadata panels can be
-            // omitted from macOS AX traversal when the workflow footer is dense.
-            values.append("Voice capture metadata available for \(task.title)")
-            values.append("Transcript: \(capture.transcript ?? "No transcript yet")")
-            if let interpretationSummary = capture.interpretationSummary {
-                values.append("Interpretation: \(interpretationSummary)")
-            }
-        }
-        return values.joined(separator: ", ")
-    }
-
-    private var panelAccessibilityHint: String {
-        let base = "Choose how to classify the selected Inbox item."
-        guard let task, viewModel.selectedInboxCaptureRecords.first != nil else {
-            return base
-        }
-        return "\(base) Voice capture metadata available for \(task.title)."
+        .accessibilityLabel("Inbox classification actions")
+        .accessibilityHint("Choose how to classify the selected Inbox item.")
     }
 
     private var actionGridColumns: [GridItem] {
@@ -347,6 +324,56 @@ private struct InboxActionPanel: View {
         .accessibilityIdentifier("inbox-action-review-later")
         .accessibilityHint("Leaves the selected Inbox item for later review.")
     }
+}
+
+private struct InboxSelectedItemContext: View {
+    let task: ProjectBoardTask?
+    let manualSummary: InboxTriageSummary?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Selected Item")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            if let task {
+                Text(task.title)
+                    .font(.headline)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                let detail = normalizedInboxDetail(task.detail)
+                if !detail.isEmpty {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .help(detail)
+                }
+
+                if let manualSummary {
+                    LabeledContent("Source") {
+                        Text(LocalizedStringKey(manualSummary.sourceLabel))
+                    }
+                    LabeledContent("Interpretation") {
+                        Text(LocalizedStringKey(manualSummary.interpretationLabel))
+                    }
+                }
+            } else {
+                Text("Select an Inbox item to classify.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("inbox-selected-context")
+    }
+}
+
+private func normalizedInboxDetail(_ detail: String) -> String {
+    detail.split(whereSeparator: \.isWhitespace).joined(separator: " ")
 }
 
 private struct InboxVoiceIntakeDetail: View {

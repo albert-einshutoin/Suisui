@@ -3,7 +3,7 @@
   "artifactRoot": "docs/release/evidence/ui-screenshots",
   "baselineRoot": "docs/quality/visual-baselines",
   "baselineContext": {
-    "sourceCommit": "e96bc951315fafa12da07ecc998b095c649ab67d",
+    "sourceCommit": "ec5d0a555982811db351acf33be2349ed23d48e6",
     "normalRoute": "normal",
     "locale": "en-US",
     "timeZoneIdentifier": "UTC",
@@ -152,6 +152,51 @@
       "artifacts": {
         "light": "done-light.png",
         "dark": "done-dark.png"
+      }
+    },
+    {
+      "id": "assistant-queue-waiting-review",
+      "title": "Assistant Queue Waiting Review",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "assistant-queue-row-visual-waiting",
+      "artifacts": {
+        "light": "assistant-queue-waiting-review-light.png",
+        "dark": "assistant-queue-waiting-review-dark.png"
+      }
+    },
+    {
+      "id": "assistant-queue-approved",
+      "title": "Assistant Queue Approved",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "assistant-queue-row-visual-approved",
+      "artifacts": {
+        "light": "assistant-queue-approved-light.png",
+        "dark": "assistant-queue-approved-dark.png"
+      }
+    },
+    {
+      "id": "assistant-queue-failed",
+      "title": "Assistant Queue Failed",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "assistant-queue-row-visual-failed",
+      "artifacts": {
+        "light": "assistant-queue-failed-light.png",
+        "dark": "assistant-queue-failed-dark.png"
       }
     },
     {

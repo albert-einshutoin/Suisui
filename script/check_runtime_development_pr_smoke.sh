@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 set +m
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -180,6 +180,7 @@ trap cleanup EXIT
 
 on_error() {
   local status=$?
+  trap - ERR
   write_artifact "failed" "$failure_reason"
   echo "BLOCKER: runtime development PR smoke failed. Evidence: $(relative_path "$ARTIFACT_FILE")" >&2
   exit "$status"
@@ -257,8 +258,7 @@ wait_for_visible_windows() {
   local osascript_status=1
 
   while true; do
-    set +e
-    window_count="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>/dev/null
+    if window_count="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>/dev/null
 on run argv
   set appName to item 1 of argv
   tell application "System Events"
@@ -269,9 +269,11 @@ on run argv
   end tell
 end run
 APPLESCRIPT
-)"
-    osascript_status=$?
-    set -e
+)"; then
+      osascript_status=0
+    else
+      osascript_status=$?
+    fi
 
     if [[ "$osascript_status" -eq 0 && "${window_count:-0}" =~ ^[0-9]+$ && "$window_count" -ge 1 ]]; then
       return 0
@@ -365,6 +367,11 @@ launch_app_for_development_detail() {
   activate_app
   wait_for_visible_windows
   set_development_window_size "$WINDOW_WIDTH" "$WINDOW_HEIGHT"
+  # The product keeps project editing behind an explicit user action. Clear
+  # the seeded task selection and reveal the project automation controls via
+  # the same header button before each project-detail runtime step.
+  pressButtonContainingBounded "project-header-open-inspector"
+  revealProjectAutomationControls
 }
 
 launch_app_for_project_directory_picker() {
@@ -466,10 +473,11 @@ waitForAXMarkerContaining() {
       kill "$checker_pid" >/dev/null 2>&1 || true
     ) &
     watchdog_pid=$!
-    set +e
-    wait "$checker_pid"
-    status=$?
-    set -e
+    if wait "$checker_pid"; then
+      status=0
+    else
+      status=$?
+    fi
     kill "$watchdog_pid" >/dev/null 2>&1 || true
     wait "$watchdog_pid" >/dev/null 2>&1 || true
     if [[ "$status" -eq 0 ]]; then
@@ -531,10 +539,11 @@ pressButtonContainingBounded() {
       kill "$checker_pid" >/dev/null 2>&1 || true
     ) &
     watchdog_pid=$!
-    set +e
-    wait "$checker_pid"
-    status=$?
-    set -e
+    if wait "$checker_pid"; then
+      status=0
+    else
+      status=$?
+    fi
     kill "$watchdog_pid" >/dev/null 2>&1 || true
     wait "$watchdog_pid" >/dev/null 2>&1 || true
     if [[ "$status" -eq 0 ]]; then
@@ -657,6 +666,53 @@ APPLESCRIPT
   done
 }
 
+revealProjectAutomationControls() {
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    if not (exists process appName) then error appName & " process is unavailable"
+    tell process appName
+      if not (exists window 1) then error appName & " window is unavailable"
+      set frontmost to true
+      repeat with currentSheet in sheets of window 1
+        set sheetItems to entire contents of currentSheet
+        repeat with sheetItem in sheetItems
+          set itemIdentifier to ""
+          try
+            set itemIdentifier to value of attribute "AXIdentifier" of sheetItem as text
+          end try
+          if itemIdentifier is "project-inspector-title" then
+            set focused of sheetItem to true
+            repeat 6 times
+                key code 48
+                delay 0.1
+            end repeat
+            return
+          end if
+        end repeat
+      end repeat
+    end tell
+  end tell
+  error "project inspector title field is unavailable"
+end run
+APPLESCRIPT
+    then
+      sleep 1
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: project automation controls did not become focusable" >&2
+      return 1
+    fi
+    activate_app
+    wait_for_visible_windows >/dev/null 2>&1 || true
+    sleep 1
+  done
+}
+
 scrollProjectDetailDown() {
   /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 || true
 on run argv
@@ -668,6 +724,25 @@ on run argv
       try
         set frontmost to true
       end try
+      repeat with currentSheet in sheets of window 1
+        try
+          set sheetItems to entire contents of currentSheet
+          repeat with sheetItem in sheetItems
+            set sheetItemRole to ""
+            try
+              set sheetItemRole to role of sheetItem as text
+            end try
+            if sheetItemRole is "AXScrollArea" then
+              repeat 6 times
+                try
+                  perform action "AXScrollDown" of sheetItem
+                end try
+              end repeat
+              return
+            end if
+          end repeat
+        end try
+      end repeat
       set axItems to entire contents of window 1
       repeat with axItem in axItems
         set itemRole to ""
@@ -715,10 +790,11 @@ waitForAXSubtreeMarkerContaining() {
       kill "$checker_pid" >/dev/null 2>&1 || true
     ) &
     watchdog_pid=$!
-    set +e
-    wait "$checker_pid"
-    status=$?
-    set -e
+    if wait "$checker_pid"; then
+      status=0
+    else
+      status=$?
+    fi
     kill "$watchdog_pid" >/dev/null 2>&1 || true
     wait "$watchdog_pid" >/dev/null 2>&1 || true
     if [[ "$status" -eq 0 ]]; then
@@ -1020,13 +1096,59 @@ SQL
 
 chooseRuntimeProjectWorkspaceViaOpenPanel() {
   local workspace="$1"
+  local initial_surface_counts
+  local initial_window_count
+  local initial_sheet_count
 
-  pressButtonContainingBounded "project-workspace-choose"
+  if ! initial_surface_counts="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT'
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    if not (exists process appName) then error appName & " process is not visible to System Events"
+    tell process appName
+      set sheetCount to 0
+      repeat with currentWindow in windows
+        set sheetCount to sheetCount + (count of sheets of currentWindow)
+      end repeat
+      return ((count of windows) as text) & "|" & (sheetCount as text)
+    end tell
+  end tell
+end run
+APPLESCRIPT
+)"; then
+    echo "BLOCKER: failed to query the app window and sheet counts before opening the folder picker" >&2
+    return 1
+  fi
+  IFS='|' read -r initial_window_count initial_sheet_count <<<"$initial_surface_counts"
+  if [[ ! "$initial_window_count" =~ ^[0-9]+$ || "$initial_window_count" -lt 1
+    || ! "$initial_sheet_count" =~ ^[0-9]+$ ]]; then
+    echo "BLOCKER: invalid app surface counts before opening the folder picker: $initial_surface_counts" >&2
+    return 1
+  fi
 
-  /usr/bin/osascript - "$APP_NAME" "$workspace" <<'APPLESCRIPT'
+  if ! pressButtonContainingBounded "project-workspace-choose"; then
+    echo "BLOCKER: failed to open the native project folder picker" >&2
+    return 1
+  fi
+
+  if ! /usr/bin/osascript - "$APP_NAME" "$workspace" "$initial_window_count" "$initial_sheet_count" <<'APPLESCRIPT'
+on totalSheetCount(appName)
+  set sheetCount to 0
+  tell application "System Events"
+    tell process appName
+      repeat with currentWindow in windows
+        set sheetCount to sheetCount + (count of sheets of currentWindow)
+      end repeat
+    end tell
+  end tell
+  return sheetCount
+end totalSheetCount
+
 on run argv
   set appName to item 1 of argv
   set folderPath to item 2 of argv
+  set initialWindowCount to (item 3 of argv) as integer
+  set initialSheetCount to (item 4 of argv) as integer
   set deadlineDate to (current date) + 20
   tell application "System Events"
     repeat
@@ -1036,59 +1158,48 @@ on run argv
     end repeat
     tell process appName
       set frontmost to true
-      repeat
-        if (count of windows) > 0 then exit repeat
-        if (current date) > deadlineDate then error appName & " has no window for the folder picker"
-        delay 0.2
+
+      -- NSOpenPanel.begin is asynchronous. The main window already satisfies
+      -- "count > 0", so wait for an additional native picker window or sheet
+      -- before sending any keyboard input.
+      repeat until (count of windows) > initialWindowCount or my totalSheetCount(appName) > initialSheetCount
+        if (current date) > deadlineDate then error appName & " did not present a native folder picker"
+        delay 0.1
       end repeat
+      set pickerSheetCount to my totalSheetCount(appName)
 
       set previousClipboard to ""
       try
         set previousClipboard to the clipboard as text
       end try
       keystroke "g" using {command down, shift down}
-      delay 0.4
+
+      -- Wait for Go to Folder itself, rather than assuming it appears within a
+      -- fixed compositor delay. This avoids pasting into the project window.
+      repeat until my totalSheetCount(appName) > pickerSheetCount
+        if (current date) > deadlineDate then error "Go to Folder sheet did not appear"
+        delay 0.1
+      end repeat
+
       set the clipboard to folderPath
       keystroke "v" using command down
-      delay 0.2
       key code 36
-      delay 0.8
 
-      repeat
-        set didChoose to false
-        repeat with currentWindow in windows
-          try
-            set axItems to entire contents of currentWindow
-            repeat with axItem in axItems
-              set itemRole to ""
-              set itemName to ""
-              set itemTitle to ""
-              set itemDescription to ""
-              try
-                set itemRole to role of axItem as text
-              end try
-              try
-                set itemName to name of axItem as text
-              end try
-              try
-                set itemTitle to value of attribute "AXTitle" of axItem as text
-              end try
-              try
-                set itemDescription to description of axItem as text
-              end try
-              set signalText to itemName & " " & itemTitle & " " & itemDescription
-              if itemRole is "AXButton" and signalText contains "Choose" then
-                perform action "AXPress" of axItem
-                set didChoose to true
-                exit repeat
-              end if
-            end repeat
-          end try
-          if didChoose then exit repeat
-        end repeat
-        if didChoose then exit repeat
-        if (current date) > deadlineDate then error "Choose button not found in folder picker"
-        delay 0.2
+      -- Resolving the path dismisses Go to Folder. Only then activate the
+      -- native picker's semantic default action without matching localized text.
+      repeat until my totalSheetCount(appName) is pickerSheetCount
+        if (current date) > deadlineDate then error "Go to Folder sheet did not resolve the selected path"
+        delay 0.1
+      end repeat
+      -- This activates the default Select/Choose action without localized button text.
+      key code 36
+
+      -- The NSOpenPanel completion persists the security-scoped bookmark.
+      -- Do not start SQLite verification while that asynchronous completion
+      -- is still pending behind a visible picker window or sheet.
+      repeat until (count of windows) is initialWindowCount and my totalSheetCount(appName) is initialSheetCount
+        if (current date) > deadlineDate then error "native folder picker did not close after selection"
+        delay 0.1
       end repeat
       try
         set the clipboard to previousClipboard
@@ -1097,6 +1208,10 @@ on run argv
   end tell
 end run
 APPLESCRIPT
+  then
+    echo "BLOCKER: failed to select the project workspace in the native folder picker" >&2
+    return 1
+  fi
 }
 
 verify_visible_project_directory_picker_assignment() {
@@ -1109,6 +1224,10 @@ FROM projects
 WHERE id=$seed_project_id;
 "
 
+  # Project selection intentionally keeps editing closed until the user asks
+  # for it. Open the inspector through the same visible control a user uses
+  # before exercising the directory picker.
+  pressButtonContainingBounded "project-header-open-inspector"
   waitForAXMarkerContaining "project-inspector"
   waitForAXSubtreeMarkerContaining "project-workspace-current" "Not set"
   chooseRuntimeProjectWorkspaceViaOpenPanel "$UI_WORKSPACE"

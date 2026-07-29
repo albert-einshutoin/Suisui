@@ -4,9 +4,10 @@ private final class ManagedAIUsageExecutionGate: @unchecked Sendable {
     private let lock = NSLock()
 
     func withLock<T>(_ body: () throws -> T) rethrows -> T {
-        // Managed billing caps depend on reading ledger totals and later
-        // recording the same run. Keep that section serialized so concurrent
-        // local runs cannot each pass against the same pre-run balance.
+        // The execution claim, managed billing totals, and eventual ledger write
+        // form one local integrity boundary. Serializing all claims prevents an
+        // item from changing billing mode between an unlocked classification read
+        // and the atomic transition to running.
         lock.lock()
         defer { lock.unlock() }
         return try body()
@@ -47,25 +48,48 @@ public struct AssistantQueueExecutionCoordinator {
     }
 
     @discardableResult
+    @available(*, deprecated, message: "This overload fails closed. Use execute(id:expectedMutationRevision:).")
     public func execute(id: String) throws -> AssistantQueueExecutionResult {
-        let current = try queueStore.get(id: id)
-        guard AssistantQueueExecutableActionPlanFactory.actionPlan(for: current.payload) != nil else {
-            throw AssistantQueueExecutionError.unsupportedPayload
-        }
-
-        if shouldSerializeManagedUsage(item: current, settings: currentManagedAIBillingSettings()) {
-            return try Self.sharedManagedAIUsageGate.withLock {
-                try executeUnlocked(id: id)
-            }
-        }
-
-        return try executeUnlocked(id: id)
+        // An unversioned caller cannot prove which approved payload the user
+        // reviewed. Never infer the current revision because another window may
+        // have edited and reapproved different work under the same durable id.
+        throw AssistantQueueStaleReviewError()
     }
 
-    private func executeUnlocked(id: String) throws -> AssistantQueueExecutionResult {
+    @discardableResult
+    public func execute(
+        id: String,
+        expectedMutationRevision: String
+    ) throws -> AssistantQueueExecutionResult {
+        try execute(id: id, expectedMutationRevision: Optional(expectedMutationRevision))
+    }
+
+    private func execute(
+        id: String,
+        expectedMutationRevision: String?
+    ) throws -> AssistantQueueExecutionResult {
+        try Self.sharedManagedAIUsageGate.withLock {
+            try executeUnlocked(
+                id: id,
+                expectedMutationRevision: expectedMutationRevision
+            )
+        }
+    }
+
+    private func executeUnlocked(
+        id: String,
+        expectedMutationRevision: String?
+    ) throws -> AssistantQueueExecutionResult {
         let current = try queueStore.get(id: id)
         guard AssistantQueueExecutableActionPlanFactory.actionPlan(for: current.payload) != nil else {
             throw AssistantQueueExecutionError.unsupportedPayload
+        }
+        guard let currentMutationRevision = current.mutationRevision else {
+            throw AssistantQueueStaleReviewError()
+        }
+        if let expectedMutationRevision,
+           expectedMutationRevision != currentMutationRevision {
+            throw AssistantQueueStaleReviewError()
         }
 
         let startedAt = now()
@@ -73,12 +97,20 @@ public struct AssistantQueueExecutionCoordinator {
         try enforceManagedUsageCapsBeforeRunning(
             item: current,
             itemID: id,
+            expectedMutationRevision: currentMutationRevision,
             referenceDate: startedAt,
             managedAIBillingSettings: managedAIBillingSettings
         )
 
         let running = try queueStore.transition(id: id) { item in
-            try AssistantQueueStateMachine.startRunning(item)
+            // Revalidate after cost/cap inspection inside the store's atomic
+            // transition. Another window must not replace the reviewed payload
+            // or cost preview between the preflight read and the running claim.
+            guard item.mutationRevision == currentMutationRevision,
+                  AssistantQueueExecutableActionPlanFactory.actionPlan(for: item.payload) != nil else {
+                throw AssistantQueueStaleReviewError()
+            }
+            return try AssistantQueueStateMachine.startRunning(item)
         }
         guard let plan = AssistantQueueExecutableActionPlanFactory.actionPlan(for: running.payload) else {
             throw AssistantQueueExecutionError.unsupportedPayload
@@ -186,6 +218,7 @@ public struct AssistantQueueExecutionCoordinator {
     private func enforceManagedUsageCapsBeforeRunning(
         item: AssistantQueueItem,
         itemID: String,
+        expectedMutationRevision: String,
         referenceDate: Date,
         managedAIBillingSettings: ManagedAIBillingSettings
     ) throws {
@@ -208,6 +241,7 @@ public struct AssistantQueueExecutionCoordinator {
         guard let managedAIUsageLedgerStore else {
             let queueStateMarkedFailed = markQueueExecutionBlocked(
                 itemID: itemID,
+                expectedMutationRevision: expectedMutationRevision,
                 reason: managedUsageCapCheckFailureReason
             )
             throw AssistantQueueExecutionError.managedUsageCapCheckFailed(queueStateMarkedFailed: queueStateMarkedFailed)
@@ -223,6 +257,7 @@ public struct AssistantQueueExecutionCoordinator {
         } catch {
             let queueStateMarkedFailed = markQueueExecutionBlocked(
                 itemID: itemID,
+                expectedMutationRevision: expectedMutationRevision,
                 reason: managedUsageCapCheckFailureReason
             )
             throw AssistantQueueExecutionError.managedUsageCapCheckFailed(queueStateMarkedFailed: queueStateMarkedFailed)
@@ -237,6 +272,7 @@ public struct AssistantQueueExecutionCoordinator {
 
         let queueStateMarkedFailed = markQueueExecutionBlocked(
             itemID: itemID,
+            expectedMutationRevision: expectedMutationRevision,
             reason: projection.blockingReason
         )
         throw AssistantQueueExecutionError.managedUsageCapExceeded(
@@ -247,15 +283,6 @@ public struct AssistantQueueExecutionCoordinator {
 
     private func currentManagedAIBillingSettings() -> ManagedAIBillingSettings {
         managedAIBillingSettingsProvider().normalized
-    }
-
-    private func shouldSerializeManagedUsage(
-        item: AssistantQueueItem,
-        settings: ManagedAIBillingSettings
-    ) -> Bool {
-        settings.hasLedgerBackedUsageCap
-            && item.costPreview?.billingMode == .suisuiManaged
-            && item.state == .approved
     }
 
     private func recordManagedUsageLedgerOrMarkQueueFailed(
@@ -305,10 +332,22 @@ public struct AssistantQueueExecutionCoordinator {
         throw AssistantQueueExecutionError.managedUsageLedgerPersistenceFailed(queueStateMarkedFailed: queueStateMarkedFailed)
     }
 
-    private func markQueueExecutionBlocked(itemID: String, reason: String) -> Bool {
+    private func markQueueExecutionBlocked(
+        itemID: String,
+        expectedMutationRevision: String,
+        reason: String
+    ) -> Bool {
         do {
             _ = try queueStore.transition(id: itemID) { item in
-                try AssistantQueueStateMachine.markExecutionBlocked(item, reason: reason)
+                // A slow ledger read must not apply its old cap decision to a
+                // newer payload, approval, or cost preview.
+                guard item.mutationRevision == expectedMutationRevision else {
+                    throw AssistantQueueStaleReviewError()
+                }
+                return try AssistantQueueStateMachine.markExecutionBlocked(
+                    item,
+                    reason: reason
+                )
             }
             return true
         } catch {

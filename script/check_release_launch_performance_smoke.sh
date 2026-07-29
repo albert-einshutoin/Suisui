@@ -116,6 +116,11 @@ now_ms() {
   /usr/bin/perl -MTime::HiRes=time -e 'printf "%d\n", time() * 1000'
 }
 
+monotonic_ms() {
+  /usr/bin/perl -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC \
+    -e 'printf "%d\n", clock_gettime(CLOCK_MONOTONIC) * 1000'
+}
+
 terminate_app() {
   local owned_pid="${APP_PID:-}"
   local launch_pid="${APP_LAUNCH_PID:-}"
@@ -320,15 +325,61 @@ click_sidebar_destination() {
   fi
 }
 
+run_ax_press_before_deadline() {
+  local destination_identifier="$1"
+  local deadline_ms="$2"
+  local press_status
+
+  if [[ "$(monotonic_ms)" -ge "$deadline_ms" ]]; then
+    return 124
+  fi
+  # Arm the kernel timer before exec replaces this wrapper with the AX helper.
+  # The same process is terminated by SIGALRM at the absolute deadline, which
+  # avoids both an unbounded TERM wait and a shell PID lookup/reuse race.
+  if /usr/bin/perl -MTime::HiRes=clock_gettime,alarm,CLOCK_MONOTONIC -e '
+    my $deadline_ms = shift @ARGV;
+    my $remaining_seconds =
+      ($deadline_ms - (clock_gettime(CLOCK_MONOTONIC) * 1000)) / 1000;
+    exit 124 if $remaining_seconds <= 0;
+    $SIG{ALRM} = "DEFAULT";
+    alarm($remaining_seconds);
+    exec @ARGV or exit 126;
+  ' "$deadline_ms" "$AX_PRESS_ELEMENT_HELPER_EXECUTABLE" "$APP_PID" "$destination_identifier"; then
+    press_status=0
+  else
+    press_status=$?
+  fi
+  if [[ "$press_status" -eq 142 || "$(monotonic_ms)" -ge "$deadline_ms" ]]; then
+    return 124
+  fi
+  return "$press_status"
+}
+
 click_destination_until_available() {
   local destination_identifier="$1"
   local destination_label="$2"
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local deadline_ms
+  deadline_ms=$(($(monotonic_ms) + (TIMEOUT_SECONDS * 1000)))
+  local press_status
   while true; do
-    if "$AX_PRESS_ELEMENT_HELPER_EXECUTABLE" "$APP_PID" "$destination_identifier"; then
-      return 0
+    if [[ "$(monotonic_ms)" -ge "$deadline_ms" ]]; then
+      ax_emit_failure_category "product-marker" "performance-destination-unavailable"
+      echo "BLOCKER: performance smoke could not select $destination_label in owned app pid $APP_PID" >&2
+      return 1
     fi
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
+    # The retry window increases the time in which macOS could recycle APP_PID.
+    # Re-pin every press to the launched binary identity so AX never targets an
+    # unrelated process that inherited the same numeric PID.
+    if ! ax_process_matches_identity "$APP_PID" "$APP_BINARY" "$APP_IDENTITY"; then
+      ax_emit_failure_category "launch" "performance-owned-identity-changed"
+      return 1
+    fi
+    if run_ax_press_before_deadline "$destination_identifier" "$deadline_ms"; then
+      return 0
+    else
+      press_status=$?
+    fi
+    if [[ "$press_status" -eq 124 || "$(monotonic_ms)" -ge "$deadline_ms" ]]; then
       ax_emit_failure_category "product-marker" "performance-destination-unavailable"
       echo "BLOCKER: performance smoke could not select $destination_label in owned app pid $APP_PID" >&2
       return 1
@@ -437,7 +488,11 @@ measure_destination() {
   local marker="$5"
   local start_ms end_ms
   start_ms="$(now_ms)"
-  click_sidebar_destination "$destination_identifier" "$destination_label"
+  # SwiftUI can briefly rebuild the sidebar AX subtree after the preceding
+  # destination settles. Retry the same owned-PID press within the existing
+  # deadline so transient AX absence is not misclassified as a product marker
+  # regression; the helper still fails closed when the control stays missing.
+  click_destination_until_available "$destination_identifier" "$destination_label"
   wait_for_marker "$marker"
   end_ms="$(now_ms)"
   LAST_DESTINATION_ELAPSED_MS=$((end_ms - start_ms))

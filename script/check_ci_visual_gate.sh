@@ -2,31 +2,197 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUTPUT_DIR="${SUISUI_CI_VISUAL_GATE_OUTPUT_DIR:-$ROOT_DIR/.tmp/ci-visual-gate}"
-SUMMARY_FILE="$OUTPUT_DIR/ui-visual-gate-summary.env"
-EXPECTED_SCREENSHOT_COUNT=33
+GATE_LOCALE="${SUISUI_CI_VISUAL_GATE_LOCALE:-en-US}"
+case "$GATE_LOCALE" in
+  en-US|ja-JP)
+    ;;
+  *)
+    printf 'failure_category=configuration\n' >&2
+    printf 'failure_reason=unsupported-visual-gate-locale\n' >&2
+    exit 2
+    ;;
+esac
+case "$GATE_LOCALE" in
+  en-US)
+    LOCALE_SLUG="en-US"
+    CAPTURE_LOCALE="english"
+    MANIFEST_RELATIVE="docs/quality/visual-baseline-manifest.json"
+    BASELINE_RELATIVE="docs/quality/visual-baselines"
+    ;;
+  ja-JP)
+    LOCALE_SLUG="ja-JP"
+    CAPTURE_LOCALE="japanese"
+    MANIFEST_RELATIVE="docs/quality/visual-baseline-manifest-ja.json"
+    BASELINE_RELATIVE="docs/quality/visual-baselines-ja"
+    ;;
+esac
+OUTPUT_DIR="${SUISUI_CI_VISUAL_GATE_OUTPUT_DIR:-$ROOT_DIR/.tmp/ci-visual-gate/$LOCALE_SLUG}"
+ROOT_CANONICAL="$(cd "$ROOT_DIR" && pwd -P)"
+OUTPUT_CANONICAL=""
+SUMMARY_FILE=""
+EXPECTED_SCREENSHOT_COUNT=39
 STATUS="blocked"
 FAILURE_CATEGORY="internal"
 FAILURE_REASON="gate-not-completed"
 SCREENSHOT_COUNT=0
 PRIVATE_DIR=""
+SUMMARY_CONTRACT_READY=0
 
-mkdir -p "$OUTPUT_DIR"
+fail_without_summary() {
+  local reason="$1"
+  printf 'failure_category=configuration\n' >&2
+  printf 'failure_reason=%s\n' "$reason" >&2
+  exit 2
+}
+
+initialize_safe_output() {
+  local existing_ancestor="$OUTPUT_DIR"
+  local ancestor_parent
+  local ancestor_canonical
+
+  if [[ "$OUTPUT_DIR" != /* ]]; then
+    OUTPUT_DIR="$PWD/$OUTPUT_DIR"
+    existing_ancestor="$OUTPUT_DIR"
+  fi
+
+  # Resolve the deepest path component that already exists before mkdir. This
+  # prevents mkdir -p from following an output ancestor symlink into an
+  # arbitrary filesystem location.
+  while [[ ! -e "$existing_ancestor" && ! -L "$existing_ancestor" ]]; do
+    ancestor_parent="$(dirname "$existing_ancestor")"
+    if [[ "$ancestor_parent" == "$existing_ancestor" ]]; then
+      fail_without_summary "unsafe-output-directory"
+    fi
+    existing_ancestor="$ancestor_parent"
+  done
+  if [[ ! -d "$existing_ancestor" ]]; then
+    fail_without_summary "unsafe-output-directory"
+  fi
+  if ! ancestor_canonical="$(cd "$existing_ancestor" && pwd -P)"; then
+    fail_without_summary "unsafe-output-directory"
+  fi
+  case "$ancestor_canonical/" in
+    "$ROOT_CANONICAL/.tmp/"*|"$ROOT_CANONICAL/.build/"*)
+      ;;
+    *)
+      fail_without_summary "unsafe-output-directory"
+      ;;
+  esac
+
+  if ! mkdir -p "$OUTPUT_DIR"; then
+    fail_without_summary "unsafe-output-directory"
+  fi
+  if [[ ! -d "$OUTPUT_DIR" || -L "$OUTPUT_DIR" ]]; then
+    fail_without_summary "unsafe-output-directory"
+  fi
+  if ! OUTPUT_CANONICAL="$(cd "$OUTPUT_DIR" && pwd -P)"; then
+    fail_without_summary "unsafe-output-directory"
+  fi
+  case "$OUTPUT_CANONICAL/" in
+    "$ROOT_CANONICAL/.tmp/"*|"$ROOT_CANONICAL/.build/"*)
+      ;;
+    *)
+      fail_without_summary "unsafe-output-directory"
+      ;;
+  esac
+
+  # Use the canonical directory for every later mutation so an accepted
+  # lexical alias cannot redirect child artifacts.
+  OUTPUT_DIR="$OUTPUT_CANONICAL"
+  SUMMARY_FILE="$OUTPUT_DIR/ui-visual-gate-summary.env"
+  if [[ -L "$SUMMARY_FILE" || ( -e "$SUMMARY_FILE" && ! -f "$SUMMARY_FILE" ) ]]; then
+    fail_without_summary "unsafe-summary-file"
+  fi
+  SUMMARY_CONTRACT_READY=1
+}
+
+validate_summary_destination() {
+  local summary_parent_canonical
+
+  if [[ "$SUMMARY_CONTRACT_READY" != "1" || ! -d "$OUTPUT_DIR" || -L "$OUTPUT_DIR" ]]; then
+    return 1
+  fi
+  if ! summary_parent_canonical="$(cd "$(dirname "$SUMMARY_FILE")" && pwd -P)"; then
+    return 1
+  fi
+  if [[ "$summary_parent_canonical" != "$OUTPUT_CANONICAL" ]]; then
+    return 1
+  fi
+  if [[ -L "$SUMMARY_FILE" || ( -e "$SUMMARY_FILE" && ! -f "$SUMMARY_FILE" ) ]]; then
+    return 1
+  fi
+}
 
 write_summary() {
+  local summary_private_dir=""
+  local summary_temp_file=""
+  local summary_private_parent=""
+
+  if ! validate_summary_destination; then
+    printf 'BLOCKER: visual gate summary destination is unsafe\n' >&2
+    return 1
+  fi
+  umask 077
+  if ! summary_private_dir="$(mktemp -d "$OUTPUT_DIR/.ui-visual-gate-summary.XXXXXX")"; then
+    printf 'BLOCKER: visual gate summary private directory could not be created\n' >&2
+    return 1
+  fi
+  if [[ ! -d "$summary_private_dir" || -L "$summary_private_dir" ]]; then
+    rmdir "$summary_private_dir" >/dev/null 2>&1 || true
+    printf 'BLOCKER: visual gate summary private directory is unsafe\n' >&2
+    return 1
+  fi
+  if ! summary_private_parent="$(cd "$(dirname "$summary_private_dir")" && pwd -P)" \
+    || [[ "$summary_private_parent" != "$OUTPUT_CANONICAL" ]]; then
+    rmdir "$summary_private_dir" >/dev/null 2>&1 || true
+    printf 'BLOCKER: visual gate summary private directory escaped the output directory\n' >&2
+    return 1
+  fi
+  summary_temp_file="$summary_private_dir/summary.env"
+
   # This is intentionally a closed, path-free vocabulary so the artifact can
   # be uploaded from a public CI run without exposing runner-local state.
-  {
-    printf 'schema_version=1\n'
-    printf 'gate=visual\n'
-    printf 'status=%s\n' "$STATUS"
-    printf 'failure_category=%s\n' "$FAILURE_CATEGORY"
-    printf 'failure_reason=%s\n' "$FAILURE_REASON"
-    printf 'expected_screenshot_count=%s\n' "$EXPECTED_SCREENSHOT_COUNT"
-    printf 'screenshot_count=%s\n' "$SCREENSHOT_COUNT"
-    printf 'capture_route=normal\n'
-    printf 'baseline_update=disabled\n'
-  } >"$SUMMARY_FILE"
+  if ! (
+    set -o noclobber
+    {
+      printf 'schema_version=1\n'
+      printf 'gate=visual\n'
+      printf 'status=%s\n' "$STATUS"
+      printf 'failure_category=%s\n' "$FAILURE_CATEGORY"
+      printf 'failure_reason=%s\n' "$FAILURE_REASON"
+      printf 'locale=%s\n' "$GATE_LOCALE"
+      printf 'locale_slug=%s\n' "$LOCALE_SLUG"
+      printf 'expected_screenshot_count=%s\n' "$EXPECTED_SCREENSHOT_COUNT"
+      printf 'screenshot_count=%s\n' "$SCREENSHOT_COUNT"
+      printf 'capture_route=normal\n'
+      printf 'baseline_update=disabled\n'
+    } >"$summary_temp_file"
+  ); then
+    rm -f "$summary_temp_file"
+    rmdir "$summary_private_dir" >/dev/null 2>&1 || true
+    printf 'BLOCKER: visual gate summary private file could not be written\n' >&2
+    return 1
+  fi
+  if [[ ! -f "$summary_temp_file" || -L "$summary_temp_file" ]] \
+    || ! validate_summary_destination; then
+    rm -f "$summary_temp_file"
+    rmdir "$summary_private_dir" >/dev/null 2>&1 || true
+    printf 'BLOCKER: visual gate summary contract changed before publication\n' >&2
+    return 1
+  fi
+  # BSD mv -h never follows a destination symlink to a directory. The rename
+  # remains on the output filesystem and atomically replaces a regular summary.
+  if ! /bin/mv -fh "$summary_temp_file" "$SUMMARY_FILE"; then
+    rm -f "$summary_temp_file"
+    rmdir "$summary_private_dir" >/dev/null 2>&1 || true
+    printf 'BLOCKER: visual gate summary could not be published atomically\n' >&2
+    return 1
+  fi
+  rmdir "$summary_private_dir" >/dev/null 2>&1 || true
+  if [[ ! -f "$SUMMARY_FILE" || -L "$SUMMARY_FILE" ]]; then
+    printf 'BLOCKER: published visual gate summary is unsafe\n' >&2
+    return 1
+  fi
 }
 
 cleanup() {
@@ -37,13 +203,12 @@ cleanup() {
 
 finalize() {
   local exit_code=$?
-  write_summary
+  if ! write_summary; then
+    printf 'summary_artifact=unavailable\n' >&2
+  fi
   cleanup
   return "$exit_code"
 }
-trap finalize EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
 
 block() {
   local category="$1"
@@ -52,28 +217,22 @@ block() {
   STATUS="blocked"
   FAILURE_CATEGORY="$category"
   FAILURE_REASON="$reason"
-  write_summary
+  if ! write_summary; then
+    printf 'summary_artifact=unavailable\n' >&2
+  fi
   printf 'failure_category=%s\n' "$FAILURE_CATEGORY" >&2
   printf 'failure_reason=%s\n' "$FAILURE_REASON" >&2
   printf 'summary_artifact=ui-visual-gate-summary.env\n' >&2
   exit "$exit_code"
 }
 
+initialize_safe_output
+trap finalize EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 if [[ $# -ne 0 ]]; then
   block "configuration" "arguments-not-supported" 2
-fi
-
-ROOT_CANONICAL="$(cd "$ROOT_DIR" && pwd -P)"
-OUTPUT_CANONICAL="$(cd "$OUTPUT_DIR" && pwd -P)"
-case "$OUTPUT_CANONICAL/" in
-  "$ROOT_CANONICAL/.tmp/"*|"$ROOT_CANONICAL/.build/"*)
-    ;;
-  "$ROOT_CANONICAL/"*)
-    block "configuration" "unsafe-output-directory" 2
-    ;;
-esac
-if [[ "$OUTPUT_CANONICAL" == "/" || "$OUTPUT_CANONICAL" == "/tmp" || "$OUTPUT_CANONICAL" == "/var/tmp" || "$OUTPUT_CANONICAL" == "${HOME:-}" ]]; then
-  block "configuration" "unsafe-output-directory" 2
 fi
 
 CURRENT_DIR="$OUTPUT_DIR/current"
@@ -86,13 +245,14 @@ PRIVATE_HOME="$PRIVATE_DIR/home"
 PRIVATE_TMP="$PRIVATE_DIR/tmp"
 CAPTURE_EVIDENCE_FILE="$CURRENT_DIR/ui-screenshots.md"
 AX_RECEIPT="$CURRENT_DIR/visual-ax-audit-receipt.json"
-MANIFEST="$ROOT_DIR/docs/quality/visual-baseline-manifest.json"
-BASELINE_DIR="$ROOT_DIR/docs/quality/visual-baselines"
+MANIFEST="$ROOT_DIR/$MANIFEST_RELATIVE"
+CI_MANIFEST="$CURRENT_DIR/visual-baseline-manifest.json"
+BASELINE_DIR="$ROOT_DIR/$BASELINE_RELATIVE"
 TRACKED_EVIDENCE_BEFORE="$PRIVATE_DIR/tracked-evidence-before"
 TRACKED_EVIDENCE_AFTER="$PRIVATE_DIR/tracked-evidence-after"
 
 rm -rf "$CURRENT_DIR" "$DIFF_DIR" "$LOG_DIR" "$CAPABILITY_DIR"
-mkdir -p "$SCREENSHOT_DIR" "$DIFF_DIR" "$LOG_DIR" "$CAPABILITY_DIR" "$PRIVATE_HOME" "$PRIVATE_TMP"
+mkdir -p "$SCREENSHOT_DIR" "$DIFF_DIR" "$LOG_DIR" "$CAPABILITY_DIR" "$PRIVATE_TMP"
 
 sanitize_log() {
   local input_file="$1"
@@ -122,23 +282,65 @@ run_logged() {
 snapshot_tracked_evidence() {
   local output_file="$1"
   {
-    git -C "$ROOT_DIR" status --porcelain=v1 --untracked-files=all -- docs/release/evidence docs/quality/visual-baseline-manifest.json docs/quality/visual-baselines
-    git -C "$ROOT_DIR" diff --binary -- docs/release/evidence docs/quality/visual-baseline-manifest.json docs/quality/visual-baselines
-    git -C "$ROOT_DIR" diff --cached --binary -- docs/release/evidence docs/quality/visual-baseline-manifest.json docs/quality/visual-baselines
+    git -C "$ROOT_DIR" status --porcelain=v1 --untracked-files=all -- \
+      docs/release/evidence \
+      docs/quality/visual-baseline-manifest.json \
+      docs/quality/visual-baseline-manifest-ja.json \
+      docs/quality/visual-baselines \
+      docs/quality/visual-baselines-ja
+    git -C "$ROOT_DIR" diff --binary -- \
+      docs/release/evidence \
+      docs/quality/visual-baseline-manifest.json \
+      docs/quality/visual-baseline-manifest-ja.json \
+      docs/quality/visual-baselines \
+      docs/quality/visual-baselines-ja
+    git -C "$ROOT_DIR" diff --cached --binary -- \
+      docs/release/evidence \
+      docs/quality/visual-baseline-manifest.json \
+      docs/quality/visual-baseline-manifest-ja.json \
+      docs/quality/visual-baselines \
+      docs/quality/visual-baselines-ja
   } >"$output_file"
 }
 
 if ! command -v git >/dev/null 2>&1; then
   block "configuration" "git-unavailable" 2
 fi
-if [[ ! -r "$MANIFEST" || ! -d "$BASELINE_DIR" ]]; then
+if [[ ! -f "$MANIFEST" || -L "$MANIFEST" || ! -d "$BASELINE_DIR" || -L "$BASELINE_DIR" ]]; then
   block "configuration" "visual-baseline-unavailable" 2
+fi
+MANIFEST_LOCALE="$(/usr/bin/plutil -extract baselineContext.locale raw -o - "$MANIFEST" 2>/dev/null || true)"
+if [[ "$MANIFEST_LOCALE" != "$GATE_LOCALE" ]]; then
+  block "configuration" "visual-baseline-locale-mismatch" 2
 fi
 
 MANIFEST_SCREENSHOT_COUNT="$(grep -Eo '"[^"]+\.png"' "$MANIFEST" | sort -u | wc -l | tr -d '[:space:]')"
 if [[ "$MANIFEST_SCREENSHOT_COUNT" != "$EXPECTED_SCREENSHOT_COUNT" ]]; then
   block "configuration" "unexpected-baseline-count" 2
 fi
+
+# The checked-in manifest authenticates the baseline set, but its artifactRoot
+# points at release evidence. Stage a private copy whose root matches this
+# gate's isolated screenshot directory so capture and comparison share one
+# truthful runtime contract without mutating tracked provenance.
+if ! /bin/cp "$MANIFEST" "$CI_MANIFEST"; then
+  block "configuration" "private-manifest-copy-failed" 2
+fi
+SCREENSHOT_ARTIFACT_ROOT="${SCREENSHOT_DIR#"$ROOT_DIR/"}"
+if ! /usr/bin/plutil -replace artifactRoot -string "$SCREENSHOT_ARTIFACT_ROOT" "$CI_MANIFEST"; then
+  block "configuration" "private-manifest-update-failed" 2
+fi
+if [[ ! -f "$CI_MANIFEST" || -L "$CI_MANIFEST" ]]; then
+  block "configuration" "unsafe-private-manifest" 2
+fi
+CI_MANIFEST_PARENT="$(cd "$(dirname "$CI_MANIFEST")" && pwd -P)"
+case "$CI_MANIFEST_PARENT/" in
+  "$ROOT_CANONICAL/.tmp/"*|"$ROOT_CANONICAL/.build/"*)
+    ;;
+  *)
+    block "configuration" "unsafe-private-manifest" 2
+    ;;
+esac
 
 snapshot_tracked_evidence "$TRACKED_EVIDENCE_BEFORE"
 
@@ -150,7 +352,7 @@ if ! run_logged capability \
 fi
 
 # Removing the receipt before capture makes a stale successful receipt
-# impossible to reuse if the 33-screen capture exits partway through.
+# impossible to reuse if the 39-artifact capture exits partway through.
 rm -f "$AX_RECEIPT"
 if ! run_logged capture \
   /usr/bin/env \
@@ -161,7 +363,9 @@ if ! run_logged capture \
   SUISUI_UI_EVIDENCE_TMPDIR="$PRIVATE_TMP" \
   SUISUI_UI_EVIDENCE_HOME="$PRIVATE_HOME" \
   SUISUI_UI_EVIDENCE_KEEP_HOME=0 \
+  SUISUI_UI_EVIDENCE_LOCALE="$CAPTURE_LOCALE" \
   SUISUI_VISUAL_AX_AUDIT_RESULT="$AX_RECEIPT" \
+  SUISUI_VISUAL_BASELINE_MANIFEST="$CI_MANIFEST" \
   "$ROOT_DIR/script/capture_ui_evidence.sh"; then
   block "capture" "full-capture-failed"
 fi
@@ -183,7 +387,7 @@ fi
 # forwards either baseline-update switch supported by the lower-level checker.
 if ! run_logged compare \
   /usr/bin/env \
-  SUISUI_VISUAL_BASELINE_MANIFEST="$MANIFEST" \
+  SUISUI_VISUAL_BASELINE_MANIFEST="$CI_MANIFEST" \
   SUISUI_VISUAL_SCREENSHOT_DIR="$SCREENSHOT_DIR" \
   SUISUI_VISUAL_BASELINE_DIR="$BASELINE_DIR" \
   SUISUI_VISUAL_ARTIFACT_DIR="$DIFF_DIR" \
@@ -203,4 +407,6 @@ FAILURE_REASON="none"
 write_summary
 printf 'status=passed\n'
 printf 'gate=visual\n'
+printf 'locale=%s\n' "$GATE_LOCALE"
+printf 'locale_slug=%s\n' "$LOCALE_SLUG"
 printf 'summary_artifact=ui-visual-gate-summary.env\n'

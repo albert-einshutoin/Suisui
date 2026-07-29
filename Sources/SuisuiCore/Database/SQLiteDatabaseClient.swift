@@ -255,10 +255,46 @@ public final class SQLiteConnection: @unchecked Sendable {
     // strings and Data can be released as soon as the bind call returns.
     private static let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-    public init(
+    public convenience init(
         path: String,
         readOnly: Bool = false,
         metricSink: (@Sendable (SQLiteDatabaseMetric) -> Void)? = nil
+    ) throws {
+        try self.init(
+            path: path,
+            readOnly: readOnly,
+            usesMemoryJournal: false,
+            validateOpenedFile: nil,
+            metricSink: metricSink
+        )
+    }
+
+    /// Opens the exact file already pinned by `secureFileDescriptor`. The caller
+    /// retains ownership of the descriptor and may close it after initialization.
+    /// A memory journal avoids reopening WAL/SHM sidecars through a mutable path.
+    package convenience init(
+        secureFileDescriptor: Int32,
+        secureFileValidation: @escaping () throws -> Void,
+        metricSink: (@Sendable (SQLiteDatabaseMetric) -> Void)? = nil
+    ) throws {
+        guard secureFileDescriptor >= 0 else {
+            throw DatabaseError.openFailed("Secure SQLite file descriptor is invalid.")
+        }
+        try self.init(
+            path: "/dev/fd/\(secureFileDescriptor)",
+            readOnly: false,
+            usesMemoryJournal: true,
+            validateOpenedFile: secureFileValidation,
+            metricSink: metricSink
+        )
+    }
+
+    private init(
+        path: String,
+        readOnly: Bool,
+        usesMemoryJournal: Bool,
+        validateOpenedFile: (() throws -> Void)?,
+        metricSink: (@Sendable (SQLiteDatabaseMetric) -> Void)?
     ) throws {
         self.metricSink = metricSink
         let flags = (readOnly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE)
@@ -266,9 +302,18 @@ public final class SQLiteConnection: @unchecked Sendable {
         let status = sqlite3_open_v2(path, &database, flags, nil)
         guard status == SQLITE_OK else {
             let message = database.map { String(cString: sqlite3_errmsg($0)) } ?? "Unknown SQLite open error."
+            sqlite3_close(database)
+            database = nil
             throw DatabaseError.openFailed(message)
         }
-        try configure(readOnly: readOnly)
+        do {
+            try validateOpenedFile?()
+            try configure(readOnly: readOnly, usesMemoryJournal: usesMemoryJournal)
+        } catch {
+            sqlite3_close(database)
+            database = nil
+            throw error
+        }
     }
 
     deinit {
@@ -544,7 +589,7 @@ public final class SQLiteConnection: @unchecked Sendable {
         }
     }
 
-    private func configure(readOnly: Bool) throws {
+    private func configure(readOnly: Bool, usesMemoryJournal: Bool) throws {
         let timeoutStatus = sqlite3_busy_timeout(database, Self.busyTimeoutMilliseconds)
         guard timeoutStatus == SQLITE_OK else {
             throw DatabaseError.openFailed(errorMessage)
@@ -558,11 +603,15 @@ public final class SQLiteConnection: @unchecked Sendable {
         try configurePragma("temp_store", value: "MEMORY")
         if !readOnly {
             if isFileBacked {
-                try configurePragma("journal_mode", value: "WAL")
-                try configurePragma(
-                    "wal_autocheckpoint",
-                    value: String(Self.walAutoCheckpointPages)
-                )
+                if usesMemoryJournal {
+                    try configurePragma("journal_mode", value: "MEMORY")
+                } else {
+                    try configurePragma("journal_mode", value: "WAL")
+                    try configurePragma(
+                        "wal_autocheckpoint",
+                        value: String(Self.walAutoCheckpointPages)
+                    )
+                }
             }
             try configurePragma("synchronous", value: "NORMAL")
         }
@@ -573,11 +622,15 @@ public final class SQLiteConnection: @unchecked Sendable {
         if !readOnly {
             try verifyPragma("synchronous", expected: "1")
             if isFileBacked {
-                try verifyPragma("journal_mode", expected: "wal")
-                try verifyPragma(
-                    "wal_autocheckpoint",
-                    expected: String(Self.walAutoCheckpointPages)
-                )
+                if usesMemoryJournal {
+                    try verifyPragma("journal_mode", expected: "memory")
+                } else {
+                    try verifyPragma("journal_mode", expected: "wal")
+                    try verifyPragma(
+                        "wal_autocheckpoint",
+                        expected: String(Self.walAutoCheckpointPages)
+                    )
+                }
             }
         }
     }

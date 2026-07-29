@@ -422,11 +422,319 @@ final class UIGateScriptsTests: XCTestCase {
         XCTAssertEqual(result.exitCode, 0, result.output)
     }
 
+    func testCaptureUsesLocaleSpecificManifestOverrideWithoutMixingArtifacts() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+        let japaneseManifest = packageRoot()
+            .appendingPathComponent("docs/quality/visual-baseline-manifest-ja.json")
+        let japaneseScreenshots = packageRoot()
+            .appendingPathComponent("docs/release/evidence/ui-screenshots-ja", isDirectory: true)
+
+        XCTAssertTrue(
+            script.contains(
+                #"VISUAL_BASELINE_MANIFEST="${SUISUI_VISUAL_BASELINE_MANIFEST:-$ROOT_DIR/docs/quality/visual-baseline-manifest.json}""#
+            )
+        )
+
+        let result = try runTool(
+            ["/bin/bash", packageRoot().appendingPathComponent("script/capture_ui_evidence.sh").path, "--dry-run"],
+            environment: [
+                "SUISUI_UI_EVIDENCE_LOCALE": "japanese",
+                "SUISUI_VISUAL_BASELINE_MANIFEST": japaneseManifest.path,
+                "SUISUI_UI_EVIDENCE_DIR": japaneseScreenshots.path
+            ]
+        )
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("visual baseline manifest: \(japaneseManifest.path)\n"), result.output)
+        XCTAssertTrue(result.output.contains("screenshots: \(japaneseScreenshots.path)\n"), result.output)
+        XCTAssertFalse(
+            result.output.contains(
+                "visual baseline manifest: \(packageRoot().appendingPathComponent("docs/quality/visual-baseline-manifest.json").path)\n"
+            ),
+            result.output
+        )
+        XCTAssertFalse(
+            result.output.contains(
+                "screenshots: \(packageRoot().appendingPathComponent("docs/release/evidence/ui-screenshots").path)\n"
+            ),
+            result.output
+        )
+    }
+
+    func testCaptureRejectsSymlinkManifestBeforeInvalidatingReceipt() throws {
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-visual-manifest-symlink-\(UUID().uuidString)", isDirectory: true)
+        let manifest = fixtureDirectory.appendingPathComponent("manifest.json")
+        let manifestSymlink = fixtureDirectory.appendingPathComponent("manifest-link.json")
+        let screenshotDirectory = fixtureDirectory.appendingPathComponent("screenshots", isDirectory: true)
+        let receipt = fixtureDirectory.appendingPathComponent("receipt.json")
+        let missingAXHelpers = fixtureDirectory.appendingPathComponent("missing-ax-helpers.sh")
+        try FileManager.default.createDirectory(at: screenshotDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let artifactRoot = screenshotDirectory.path
+            .replacingOccurrences(of: packageRoot().path + "/", with: "")
+        try """
+        {
+          "schemaVersion": 2,
+          "artifactRoot": "\(artifactRoot)",
+          "baselineRoot": "docs/quality/visual-baselines",
+          "baselineContext": {
+            "sourceCommit": "fixture",
+            "normalRoute": "normal",
+            "locale": "en-US",
+            "timeZoneIdentifier": "UTC",
+            "referenceInstant": "2026-07-10T12:00:00Z"
+          },
+          "screens": []
+        }
+        """.write(to: manifest, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(
+            at: manifestSymlink,
+            withDestinationURL: manifest
+        )
+        try "sentinel\n".write(to: receipt, atomically: true, encoding: .utf8)
+
+        let result = try runTool(
+            ["/bin/bash", packageRoot().appendingPathComponent("script/capture_ui_evidence.sh").path],
+            environment: [
+                "AX_HELPERS": missingAXHelpers.path,
+                "SUISUI_UI_EVIDENCE_DIR": screenshotDirectory.path,
+                "SUISUI_UI_EVIDENCE_HOME": fixtureDirectory.appendingPathComponent("home").path,
+                "SUISUI_UI_EVIDENCE_TMPDIR": fixtureDirectory.appendingPathComponent("tmp").path,
+                "SUISUI_VISUAL_AX_AUDIT_RESULT": receipt.path,
+                "SUISUI_VISUAL_BASELINE_MANIFEST": manifestSymlink.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("BLOCKER"), result.output)
+        XCTAssertTrue(result.output.localizedCaseInsensitiveContains("symbolic link"), result.output)
+        XCTAssertEqual(try String(contentsOf: receipt, encoding: .utf8), "sentinel\n")
+    }
+
+    func testCaptureRejectsExternalAXReceiptBeforeInvalidatingIt() throws {
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-visual-external-receipt-\(UUID().uuidString)", isDirectory: true)
+        let screenshotDirectory = fixtureDirectory.appendingPathComponent("screenshots", isDirectory: true)
+        let manifest = fixtureDirectory.appendingPathComponent("manifest.json")
+        let externalReceipt = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-external-receipt-\(UUID().uuidString).json")
+        try FileManager.default.createDirectory(at: screenshotDirectory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: fixtureDirectory)
+            try? FileManager.default.removeItem(at: externalReceipt)
+        }
+        try writeVisualManifest(manifest, screenshotDirectory: screenshotDirectory)
+        try "external-sentinel\n".write(to: externalReceipt, atomically: true, encoding: .utf8)
+
+        let result = try runCaptureReceiptValidation(
+            fixtureDirectory: fixtureDirectory,
+            screenshotDirectory: screenshotDirectory,
+            manifest: manifest,
+            receipt: externalReceipt
+        )
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.contains("BLOCKER"), result.output)
+        XCTAssertTrue(result.output.contains("receipt parent must resolve under the repository .tmp or .build directory"), result.output)
+        XCTAssertEqual(try String(contentsOf: externalReceipt, encoding: .utf8), "external-sentinel\n")
+    }
+
+    func testCaptureRejectsSymlinkAXReceiptBeforeInvalidatingTarget() throws {
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-visual-symlink-receipt-\(UUID().uuidString)", isDirectory: true)
+        let screenshotDirectory = fixtureDirectory.appendingPathComponent("screenshots", isDirectory: true)
+        let manifest = fixtureDirectory.appendingPathComponent("manifest.json")
+        let receiptTarget = fixtureDirectory.appendingPathComponent("receipt-target.json")
+        let receiptSymlink = fixtureDirectory.appendingPathComponent("receipt.json")
+        try FileManager.default.createDirectory(at: screenshotDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+        try writeVisualManifest(manifest, screenshotDirectory: screenshotDirectory)
+        try "symlink-sentinel\n".write(to: receiptTarget, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(at: receiptSymlink, withDestinationURL: receiptTarget)
+
+        let result = try runCaptureReceiptValidation(
+            fixtureDirectory: fixtureDirectory,
+            screenshotDirectory: screenshotDirectory,
+            manifest: manifest,
+            receipt: receiptSymlink
+        )
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.contains("BLOCKER"), result.output)
+        XCTAssertTrue(result.output.localizedCaseInsensitiveContains("symbolic link"), result.output)
+        XCTAssertEqual(try String(contentsOf: receiptTarget, encoding: .utf8), "symlink-sentinel\n")
+        XCTAssertEqual(
+            try FileManager.default.destinationOfSymbolicLink(atPath: receiptSymlink.path),
+            receiptTarget.path
+        )
+    }
+
+    func testVisualGateStagesArtifactMatchedPrivateManifestForCaptureAndCompare() throws {
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-ci-visual-private-manifest-\(UUID().uuidString)", isDirectory: true)
+        let scriptDirectory = fixtureDirectory.appendingPathComponent("script", isDirectory: true)
+        let qualityDirectory = fixtureDirectory.appendingPathComponent("docs/quality", isDirectory: true)
+        let baselineDirectory = qualityDirectory.appendingPathComponent("visual-baselines", isDirectory: true)
+        let manifest = qualityDirectory.appendingPathComponent("visual-baseline-manifest.json")
+        let outputDirectory = fixtureDirectory.appendingPathComponent(".build/output", isDirectory: true)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: baselineDirectory, withIntermediateDirectories: true)
+        // The production contract creates children only after the trusted
+        // repository-private .build or .tmp anchor already exists.
+        try FileManager.default.createDirectory(
+            at: outputDirectory.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        let checkedInGate = packageRoot().appendingPathComponent("script/check_ci_visual_gate.sh")
+        let fixtureGate = scriptDirectory.appendingPathComponent("check_ci_visual_gate.sh")
+        try FileManager.default.copyItem(at: checkedInGate, to: fixtureGate)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fixtureGate.path)
+        try writeVisualGateManifest(manifest)
+        try writeExecutable(
+            """
+            #!/usr/bin/env bash
+            set -euo pipefail
+            exit 0
+            """,
+            to: scriptDirectory.appendingPathComponent("check_macos_ui_runner_capabilities.sh")
+        )
+        try writeExecutable(
+            visualGateManifestVerifyingStub(mode: "capture"),
+            to: scriptDirectory.appendingPathComponent("capture_ui_evidence.sh")
+        )
+        try writeExecutable(
+            visualGateManifestVerifyingStub(mode: "compare"),
+            to: scriptDirectory.appendingPathComponent("check_visual_regression_smoke.sh")
+        )
+        let gitInit = try runTool(["/usr/bin/git", "init", "-q", fixtureDirectory.path])
+        XCTAssertEqual(gitInit.exitCode, 0, gitInit.output)
+
+        let result = try runTool(
+            ["/bin/bash", fixtureGate.path],
+            environment: ["SUISUI_CI_VISUAL_GATE_OUTPUT_DIR": outputDirectory.path]
+        )
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("status=passed"), result.output)
+        let privateManifest = outputDirectory
+            .appendingPathComponent("current/visual-baseline-manifest.json")
+        let values = try JSONSerialization.jsonObject(with: Data(contentsOf: privateManifest)) as? [String: Any]
+        XCTAssertEqual(values?["artifactRoot"] as? String, ".build/output/current/screenshots")
+        let resourceValues = try privateManifest.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+        XCTAssertEqual(resourceValues.isRegularFile, true)
+        XCTAssertEqual(resourceValues.isSymbolicLink, false)
+    }
+
+    func testVisualGateRejectsExternalOutputBeforeWritingSummarySentinel() throws {
+        let externalOutput = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-external-visual-output-\(UUID().uuidString)", isDirectory: true)
+        let summary = externalOutput.appendingPathComponent("ui-visual-gate-summary.env")
+        try FileManager.default.createDirectory(at: externalOutput, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: externalOutput) }
+        try "external-output-sentinel\n".write(to: summary, atomically: true, encoding: .utf8)
+
+        let result = try runVisualGateEarlyBlock(outputDirectory: externalOutput)
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.contains("failure_reason=unsafe-output-directory"), result.output)
+        XCTAssertEqual(try String(contentsOf: summary, encoding: .utf8), "external-output-sentinel\n")
+    }
+
+    func testVisualGateRejectsOutputAncestorSymlinkEscapeBeforeCreatingTail() throws {
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-ci-visual-output-link-\(UUID().uuidString)", isDirectory: true)
+        let externalDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-external-visual-link-\(UUID().uuidString)", isDirectory: true)
+        let externalSentinel = externalDirectory.appendingPathComponent("sentinel.txt")
+        let outputLink = fixtureDirectory.appendingPathComponent("output-link")
+        let escapedOutput = outputLink.appendingPathComponent("nested", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: externalDirectory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: fixtureDirectory)
+            try? FileManager.default.removeItem(at: externalDirectory)
+        }
+        try "ancestor-symlink-sentinel\n".write(to: externalSentinel, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(at: outputLink, withDestinationURL: externalDirectory)
+
+        let result = try runVisualGateEarlyBlock(outputDirectory: escapedOutput)
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.contains("failure_reason=unsafe-output-directory"), result.output)
+        XCTAssertEqual(try String(contentsOf: externalSentinel, encoding: .utf8), "ancestor-symlink-sentinel\n")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: externalDirectory.appendingPathComponent("nested").path))
+    }
+
+    func testVisualGateRejectsSummarySymlinkWithoutTouchingTarget() throws {
+        let outputDirectory = packageRoot()
+            .appendingPathComponent(".build/test-ci-visual-summary-link-\(UUID().uuidString)", isDirectory: true)
+        let externalTarget = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-visual-summary-target-\(UUID().uuidString).env")
+        let summary = outputDirectory.appendingPathComponent("ui-visual-gate-summary.env")
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: outputDirectory)
+            try? FileManager.default.removeItem(at: externalTarget)
+        }
+        try "summary-symlink-sentinel\n".write(to: externalTarget, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(at: summary, withDestinationURL: externalTarget)
+
+        let result = try runVisualGateEarlyBlock(outputDirectory: outputDirectory)
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.contains("failure_reason=unsafe-summary-file"), result.output)
+        XCTAssertEqual(try String(contentsOf: externalTarget, encoding: .utf8), "summary-symlink-sentinel\n")
+        XCTAssertEqual(
+            try FileManager.default.destinationOfSymbolicLink(atPath: summary.path),
+            externalTarget.path
+        )
+    }
+
+    func testVisualGateRejectsNonRegularSummaryWithoutReplacingIt() throws {
+        let outputDirectory = packageRoot()
+            .appendingPathComponent(".build/test-ci-visual-summary-directory-\(UUID().uuidString)", isDirectory: true)
+        let summaryDirectory = outputDirectory
+            .appendingPathComponent("ui-visual-gate-summary.env", isDirectory: true)
+        let sentinel = summaryDirectory.appendingPathComponent("sentinel.txt")
+        try FileManager.default.createDirectory(at: summaryDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: outputDirectory) }
+        try "summary-directory-sentinel\n".write(to: sentinel, atomically: true, encoding: .utf8)
+
+        let result = try runVisualGateEarlyBlock(outputDirectory: outputDirectory)
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.contains("failure_reason=unsafe-summary-file"), result.output)
+        var isDirectory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: summaryDirectory.path, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue)
+        XCTAssertEqual(try String(contentsOf: sentinel, encoding: .utf8), "summary-directory-sentinel\n")
+    }
+
     func testVisualGateCapturesAllBaselinesBeforeFreshReceiptComparison() throws {
         let script = try readPackageFile("script/check_ci_visual_gate.sh")
 
         XCTAssertTrue(script.contains("SUISUI_CI_VISUAL_GATE_OUTPUT_DIR"))
-        XCTAssertTrue(script.contains("EXPECTED_SCREENSHOT_COUNT=33"))
+        XCTAssertTrue(script.contains("SUISUI_CI_VISUAL_GATE_LOCALE"))
+        XCTAssertTrue(script.contains("en-US|ja-JP"))
+        XCTAssertTrue(script.contains("visual-baseline-manifest-ja.json"))
+        XCTAssertTrue(script.contains("visual-baselines-ja"))
+        XCTAssertTrue(script.contains("SUISUI_UI_EVIDENCE_LOCALE=\"$CAPTURE_LOCALE\""))
+        XCTAssertTrue(script.contains("printf 'locale=%s\\n' \"$GATE_LOCALE\""))
+        XCTAssertTrue(script.contains("printf 'locale_slug=%s\\n' \"$LOCALE_SLUG\""))
+        let captureScript = try readPackageFile("script/capture_ui_evidence.sh")
+        XCTAssertTrue(captureScript.contains("hashed audit receipt"))
+        XCTAssertFalse(captureScript.contains("signed receipt"))
+        XCTAssertTrue(script.contains("EXPECTED_SCREENSHOT_COUNT=39"))
+        XCTAssertFalse(script.contains("EXPECTED_SCREENSHOT_COUNT=33"))
+        XCTAssertTrue(script.contains("39-artifact capture"))
+        XCTAssertFalse(script.contains("33-screen capture"))
+        XCTAssertTrue(script.contains("printf 'expected_screenshot_count=%s\\n' \"$EXPECTED_SCREENSHOT_COUNT\""))
+        XCTAssertTrue(script.contains("if [[ \"$MANIFEST_SCREENSHOT_COUNT\" != \"$EXPECTED_SCREENSHOT_COUNT\" ]]"))
+        XCTAssertTrue(script.contains("if [[ \"$SCREENSHOT_COUNT\" != \"$EXPECTED_SCREENSHOT_COUNT\" ]]"))
         XCTAssertTrue(script.contains("SUISUI_UI_EVIDENCE_DIR=\"$SCREENSHOT_DIR\""))
         XCTAssertTrue(script.contains("SUISUI_UI_EVIDENCE_FILE=\"$CAPTURE_EVIDENCE_FILE\""))
         XCTAssertTrue(script.contains("SUISUI_UI_EVIDENCE_HOME=\"$PRIVATE_HOME\""))
@@ -576,6 +884,126 @@ final class UIGateScriptsTests: XCTestCase {
 
     private func readPackageFile(_ relativePath: String) throws -> String {
         try String(contentsOf: packageRoot().appendingPathComponent(relativePath), encoding: .utf8)
+    }
+
+    private func writeVisualManifest(_ manifest: URL, screenshotDirectory: URL) throws {
+        let artifactRoot = screenshotDirectory.path
+            .replacingOccurrences(of: packageRoot().path + "/", with: "")
+        try """
+        {
+          "schemaVersion": 2,
+          "artifactRoot": "\(artifactRoot)",
+          "baselineRoot": "docs/quality/visual-baselines",
+          "baselineContext": {
+            "sourceCommit": "fixture",
+            "normalRoute": "normal",
+            "locale": "en-US",
+            "timeZoneIdentifier": "UTC",
+            "referenceInstant": "2026-07-10T12:00:00Z"
+          },
+          "screens": []
+        }
+        """.write(to: manifest, atomically: true, encoding: .utf8)
+    }
+
+    private func runCaptureReceiptValidation(
+        fixtureDirectory: URL,
+        screenshotDirectory: URL,
+        manifest: URL,
+        receipt: URL
+    ) throws -> (exitCode: Int32, output: String) {
+        try runTool(
+            ["/bin/bash", packageRoot().appendingPathComponent("script/capture_ui_evidence.sh").path],
+            environment: [
+                "AX_HELPERS": fixtureDirectory.appendingPathComponent("missing-ax-helpers.sh").path,
+                "SUISUI_UI_EVIDENCE_DIR": screenshotDirectory.path,
+                "SUISUI_UI_EVIDENCE_HOME": fixtureDirectory.appendingPathComponent("home").path,
+                "SUISUI_UI_EVIDENCE_TMPDIR": fixtureDirectory.appendingPathComponent("tmp").path,
+                "SUISUI_VISUAL_AX_AUDIT_RESULT": receipt.path,
+                "SUISUI_VISUAL_BASELINE_MANIFEST": manifest.path
+            ]
+        )
+    }
+
+    private func writeVisualGateManifest(_ manifest: URL) throws {
+        let screens = (0..<39).map { index in
+            [
+                "id": "screen-\(index)",
+                "artifacts": ["light": "screen-\(index).png"]
+            ] as [String: Any]
+        }
+        let value: [String: Any] = [
+            "schemaVersion": 2,
+            "artifactRoot": "docs/release/evidence/ui-screenshots",
+            "baselineRoot": "docs/quality/visual-baselines",
+            "baselineContext": [
+                "sourceCommit": "fixture",
+                "normalRoute": "normal",
+                "locale": "en-US",
+                "timeZoneIdentifier": "UTC",
+                "referenceInstant": "2026-07-10T12:00:00Z"
+            ],
+            "screens": screens
+        ]
+        try JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys])
+            .write(to: manifest)
+    }
+
+    private func visualGateManifestVerifyingStub(mode: String) -> String {
+        """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+        : "${SUISUI_VISUAL_BASELINE_MANIFEST:?private visual manifest is required}"
+        if [[ ! -f "$SUISUI_VISUAL_BASELINE_MANIFEST" || -L "$SUISUI_VISUAL_BASELINE_MANIFEST" ]]; then
+          printf 'private manifest must be a regular non-symlink file\\n' >&2
+          exit 91
+        fi
+        MANIFEST_PARENT="$(cd "$(dirname "$SUISUI_VISUAL_BASELINE_MANIFEST")" && pwd -P)"
+        case "$MANIFEST_PARENT/" in
+          "$ROOT_DIR/.tmp/"*|"$ROOT_DIR/.build/"*) ;;
+          *)
+            printf 'private manifest escaped the repository output roots\\n' >&2
+            exit 92
+            ;;
+        esac
+        ARTIFACT_ROOT="$(/usr/bin/plutil -extract artifactRoot raw -o - "$SUISUI_VISUAL_BASELINE_MANIFEST")"
+        if [[ "\(mode)" == "capture" ]]; then
+          EXPECTED_ROOT="${SUISUI_UI_EVIDENCE_DIR#"$ROOT_DIR/"}"
+          [[ "$ARTIFACT_ROOT" == "$EXPECTED_ROOT" ]] || {
+            printf 'capture artifactRoot mismatch: %s != %s\\n' "$ARTIFACT_ROOT" "$EXPECTED_ROOT" >&2
+            exit 93
+          }
+          for index in $(seq 0 38); do
+            : >"$SUISUI_UI_EVIDENCE_DIR/screen-$index.png"
+          done
+          printf '{"status":"passed"}\\n' >"$SUISUI_VISUAL_AX_AUDIT_RESULT"
+        else
+          EXPECTED_ROOT="${SUISUI_VISUAL_SCREENSHOT_DIR#"$ROOT_DIR/"}"
+          [[ "$ARTIFACT_ROOT" == "$EXPECTED_ROOT" ]] || {
+            printf 'compare artifactRoot mismatch: %s != %s\\n' "$ARTIFACT_ROOT" "$EXPECTED_ROOT" >&2
+            exit 94
+          }
+        fi
+        """
+    }
+
+    private func writeExecutable(_ contents: String, to url: URL) throws {
+        try contents.write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+    }
+
+    private func runVisualGateEarlyBlock(
+        outputDirectory: URL
+    ) throws -> (exitCode: Int32, output: String) {
+        try runTool(
+            [
+                "/bin/bash",
+                packageRoot().appendingPathComponent("script/check_ci_visual_gate.sh").path,
+                "unsupported"
+            ],
+            environment: ["SUISUI_CI_VISUAL_GATE_OUTPUT_DIR": outputDirectory.path]
+        )
     }
 
     private func runCapabilityDimensionParser(summary: String) throws -> (exitCode: Int32, output: String) {

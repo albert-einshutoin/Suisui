@@ -88,6 +88,7 @@
 "Connect with OAuth authorization" = "Connect with OAuth authorization";
 "Connect Google Calendar with OAuth before loading calendars." = "Connect Google Calendar with OAuth before loading calendars.";
 "Current manual ID: %@" = "Current manual ID: %@";
+"Current" = "Current";
 "Deletes local Google Calendar OAuth metadata and Keychain tokens without changing tasks." = "Deletes local Google Calendar OAuth metadata and Keychain tokens without changing tasks.";
 "Disconnect" = "Disconnect";
 "Disconnect Google Calendar" = "Disconnect Google Calendar";
@@ -1381,6 +1382,7 @@
 "Light day" = "Light day";
 "Open day" = "Open day";
 "Development Automation" = "Development Automation";
+"Development Task" = "Development Task";
 "Branch Preview" = "Branch Preview";
 "Prepare Tool" = "Prepare Tool";
 "Allowed file operations" = "Allowed file operations";
@@ -1584,6 +1586,7 @@
 "Run verification" = "Run verification";
 "Verifies the executable content and OpenAI signing identity before every launch." = "Verifies the executable content and OpenAI signing identity before every launch.";
 "Approve Tool-Free Codex Local Execution" = "Approve Tool-Free Codex Local Execution";
+"Codex Account" = "Codex Account";
 "Check Account" = "Check Account";
 "Disconnect from Suisui" = "Disconnect from Suisui";
 "Enter an absolute path to the Codex CLI executable, not its authentication files." = "Enter an absolute path to the Codex CLI executable, not its authentication files.";
@@ -1983,3 +1986,20 @@
 "Retry Global Shortcut" = "Retry Global Shortcut";
 "Quit or rebind the other app, then retry. The in-app shortcut keeps working meanwhile." = "Quit or rebind the other app, then retry. The in-app shortcut keeps working meanwhile.";
 "Retry after checking macOS keyboard settings. The in-app shortcut keeps working meanwhile." = "Retry after checking macOS keyboard settings. The in-app shortcut keeps working meanwhile.";
+
+/* Approval flow context and stage-aware controls. */
+"Selected Item" = "Selected Item";
+"Select an Inbox item to classify." = "Select an Inbox item to classify.";
+"Smart List Not Found" = "Smart List Not Found";
+"Transcript failed" = "Transcript failed";
+"Transcript pending" = "Transcript pending";
+"AI interpreted" = "AI interpreted";
+"More Assistant Queue actions" = "More Assistant Queue actions";
+"Every selected Assistant Queue item must support Defer." = "Every selected Assistant Queue item must support Defer.";
+"Every selected Assistant Queue item must support Reject." = "Every selected Assistant Queue item must support Reject.";
+"This item changed in another window. Reload the latest details before saving." = "This item changed in another window. Reload the latest details before saving.";
+"Reload latest" = "Reload latest";
+"Choose Review destination." = "Choose Review destination.";
+"Choose Project destination." = "Choose Project destination.";
+"This item can no longer be edited. Cancel to keep the latest queue state." = "This item can no longer be edited. Cancel to keep the latest queue state.";
+"This reviewed automation is already in Assistant Queue. Review the existing item before running it." = "This reviewed automation is already in Assistant Queue. Review the existing item before running it.";

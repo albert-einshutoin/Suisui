@@ -168,17 +168,22 @@ public protocol AssistantQueueStore {
     ) throws -> AssistantQueueItem
 }
 
+public protocol AtomicAssistantQueueStore: AssistantQueueStore {
+    @discardableResult
+    func transitionAll(
+        ids: [String],
+        expectedRevisions: [String: String],
+        _ transform: (AssistantQueueItem) throws -> AssistantQueueItem
+    ) throws -> [AssistantQueueItem]
+}
+
 public extension AssistantQueueStore {
     @discardableResult
     func insertIfAbsent(_ item: AssistantQueueItem) throws -> AssistantQueueItem? {
-        // Default stores are used by in-memory tests and lightweight adapters. Durable
-        // sync-facing stores should override this with a conflict-safe insert.
-        do {
-            _ = try get(id: item.id)
-            return nil
-        } catch AssistantQueueStoreError.notFound {
-            return try save(item)
-        }
+        // Keep legacy conformers source-compatible without restoring the old
+        // get-then-save race. Stores that cannot provide an atomic insert must
+        // fail closed until they implement this requirement themselves.
+        throw AssistantQueueStoreError.saveFailed
     }
 
     func readModelSnapshot(
@@ -216,6 +221,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
     public var canEdit: Bool
     public var canRetry: Bool
     public var canReject: Bool
+    public var mutationRevision: String?
 
     public init(
         id: String,
@@ -237,6 +243,50 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
         canRetry: Bool,
         canReject: Bool
     ) {
+        self.init(
+            id: id,
+            state: state,
+            stateLabel: stateLabel,
+            riskLabel: riskLabel,
+            title: title,
+            redactedSummary: redactedSummary,
+            sourcePreview: sourcePreview,
+            reviewReason: reviewReason,
+            capabilityLabels: capabilityLabels,
+            costPreviewLabel: costPreviewLabel,
+            blockingReason: blockingReason,
+            latestReceipt: latestReceipt,
+            canApprove: canApprove,
+            canRun: canRun,
+            canDefer: canDefer,
+            canEdit: canEdit,
+            canRetry: canRetry,
+            canReject: canReject,
+            mutationRevision: nil
+        )
+    }
+
+    public init(
+        id: String,
+        state: AssistantQueueState,
+        stateLabel: String,
+        riskLabel: String,
+        title: String,
+        redactedSummary: String,
+        sourcePreview: String?,
+        reviewReason: String,
+        capabilityLabels: [String],
+        costPreviewLabel: String? = nil,
+        blockingReason: String?,
+        latestReceipt: AssistantQueueReceiptSummary? = nil,
+        canApprove: Bool,
+        canRun: Bool,
+        canDefer: Bool,
+        canEdit: Bool,
+        canRetry: Bool,
+        canReject: Bool,
+        mutationRevision: String?
+    ) {
         self.id = id
         self.state = state
         self.stateLabel = stateLabel
@@ -255,6 +305,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
         self.canEdit = canEdit
         self.canRetry = canRetry
         self.canReject = canReject
+        self.mutationRevision = mutationRevision
     }
 }
 
@@ -404,7 +455,8 @@ public enum AssistantQueueReadModel {
             canDefer: canDefer(item),
             canEdit: canEdit(item),
             canRetry: canRetry(item),
-            canReject: canReject(item)
+            canReject: canReject(item),
+            mutationRevision: item.mutationRevision
         )
     }
 
@@ -550,12 +602,7 @@ public enum AssistantQueueReadModel {
     }
 
     private static func canDefer(_ item: AssistantQueueItem) -> Bool {
-        switch item.state {
-        case .waitingReview, .captured, .interpreted, .drafted, .approved:
-            return true
-        case .running, .blocked, .done, .failed, .rejected, .deferred:
-            return false
-        }
+        AssistantQueueStateMachine.canDefer(item.state)
     }
 
     private static func canRetry(_ item: AssistantQueueItem) -> Bool {
@@ -573,12 +620,7 @@ public enum AssistantQueueReadModel {
     }
 
     private static func canReject(_ item: AssistantQueueItem) -> Bool {
-        switch item.state {
-        case .done, .failed, .rejected:
-            return false
-        case .captured, .interpreted, .drafted, .waitingReview, .approved, .running, .blocked, .deferred:
-            return true
-        }
+        AssistantQueueStateMachine.canReject(item.state)
     }
 
     static func redactedPreview(_ value: String) -> String {
@@ -697,7 +739,7 @@ public enum AssistantQueueReadModel {
     }
 }
 
-public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Sendable {
+public final class SQLiteAssistantQueueStore: AtomicAssistantQueueStore, @unchecked Sendable {
     private let connection: SQLiteConnection
     private let lock = NSLock()
     private let encoder: JSONEncoder
@@ -847,9 +889,11 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
                 state,
                 risk_level,
                 source_transcript,
+                interpretation_summary,
                 review_reason,
                 redacted_summary,
                 required_capabilities_json,
+                approval_json,
                 blocking_reason,
                 cost_preview_json
             FROM assistant_queue_items
@@ -882,15 +926,23 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
             rawValue: try row.string("risk_level"),
             column: "assistant_queue_items.risk_level"
         )
-        let redactedSummary = DeveloperSecretRedactor().redact(try row.string("redacted_summary")).text
+        let storedRedactedSummary = try row.string("redacted_summary")
+        let redactedSummary = DeveloperSecretRedactor().redact(storedRedactedSummary).text
+        let reviewReason = try row.string("review_reason")
+        let sourceTranscript = try row.optionalString("source_transcript")
+        let interpretationSummary = try row.optionalString("interpretation_summary")
+        let costPreviewJSON = try row.optionalString("cost_preview_json")
+        let requiredCapabilitiesJSON = try row.string("required_capabilities_json")
+        let approvalJSON = try row.optionalString("approval_json")
+        let blockingReason = try row.optionalString("blocking_reason")
         let costPreview = try decodeOptional(
             AssistantQueueCostPreview.self,
-            from: try row.optionalString("cost_preview_json"),
+            from: costPreviewJSON,
             column: "assistant_queue_items.cost_preview_json"
         )
         let capabilities = try decode(
             [AssistantQueueRequiredCapability].self,
-            from: try row.string("required_capabilities_json"),
+            from: requiredCapabilitiesJSON,
             column: "assistant_queue_items.required_capabilities_json"
         )
         let payloadKind = try row.string("payload_kind")
@@ -921,20 +973,37 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
             riskLabel: riskLevel.rawValue.capitalized,
             title: redactedSummary.assistantQueuePreview(maxLength: 160),
             redactedSummary: redactedSummary,
-            sourcePreview: try row.optionalString("source_transcript").map(AssistantQueueReadModel.redactedPreview),
-            reviewReason: try row.string("review_reason"),
+            sourcePreview: sourceTranscript.map(AssistantQueueReadModel.redactedPreview),
+            reviewReason: reviewReason,
             capabilityLabels: capabilities.map {
                 AssistantQueueReadModel.redactedPreview(AssistantQueueReadModel.label(for: $0))
             },
             costPreviewLabel: costPreview.map { AssistantQueueReadModel.redactedPreview($0.reviewLabel) },
-            blockingReason: try row.optionalString("blocking_reason"),
+            blockingReason: blockingReason,
             latestReceipt: receipt,
             canApprove: canApprove,
             canRun: canRun,
             canDefer: canDeferReadModelRow(state: state),
             canEdit: canEditReadModelRow(state: state, riskLevel: riskLevel),
             canRetry: canRetry,
-            canReject: canRejectReadModelRow(state: state)
+            canReject: canRejectReadModelRow(state: state),
+            mutationRevision: payloadJSON.map { storedPayloadJSON in
+                AssistantQueueMutationRevision.makeStored(
+                    id: id,
+                    payloadKind: payloadKind,
+                    payloadJSON: storedPayloadJSON,
+                    state: state.rawValue,
+                    riskLevel: riskLevel.rawValue,
+                    sourceTranscript: sourceTranscript,
+                    interpretationSummary: interpretationSummary,
+                    reviewReason: reviewReason,
+                    redactedSummary: storedRedactedSummary,
+                    requiredCapabilitiesJSON: requiredCapabilitiesJSON,
+                    approvalJSON: approvalJSON,
+                    blockingReason: blockingReason,
+                    costPreviewJSON: costPreviewJSON
+                )
+            }
         )
     }
 
@@ -1059,12 +1128,7 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
     }
 
     private func canDeferReadModelRow(state: AssistantQueueState) -> Bool {
-        switch state {
-        case .waitingReview, .captured, .interpreted, .drafted, .approved:
-            return true
-        case .running, .blocked, .done, .failed, .rejected, .deferred:
-            return false
-        }
+        AssistantQueueStateMachine.canDefer(state)
     }
 
     private func canEditReadModelRow(state: AssistantQueueState, riskLevel: RiskLevel) -> Bool {
@@ -1077,12 +1141,7 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
     }
 
     private func canRejectReadModelRow(state: AssistantQueueState) -> Bool {
-        switch state {
-        case .done, .failed, .rejected:
-            return false
-        case .captured, .interpreted, .drafted, .waitingReview, .approved, .running, .blocked, .deferred:
-            return true
-        }
+        AssistantQueueStateMachine.canReject(state)
     }
 
     @discardableResult
@@ -1098,6 +1157,33 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
             let updated = try transform(current)
             try saveLocked(updated)
             return updated
+        }
+    }
+
+    @discardableResult
+    public func transitionAll(
+        ids: [String],
+        expectedRevisions: [String: String],
+        _ transform: (AssistantQueueItem) throws -> AssistantQueueItem
+    ) throws -> [AssistantQueueItem] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try connection.transaction {
+            // Transform every current row before the first write so stale or
+            // ineligible selections fail the entire batch without partial work.
+            let currentItems = try ids.map(getLocked)
+            for currentItem in currentItems {
+                guard let expectedRevision = expectedRevisions[currentItem.id],
+                      currentItem.mutationRevision == expectedRevision else {
+                    throw AssistantQueueStaleReviewError()
+                }
+            }
+            let updatedItems = try currentItems.map(transform)
+            for updatedItem in updatedItems {
+                try saveLocked(updatedItem)
+            }
+            return updatedItems
         }
     }
 

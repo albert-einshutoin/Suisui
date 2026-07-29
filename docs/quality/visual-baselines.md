@@ -4,7 +4,7 @@ Suisui uses visual baselines as semantic release evidence plus bounded raster co
 
 ## Scope
 
-The source of truth is `docs/quality/visual-baseline-manifest.json`.
+The English source of truth is `docs/quality/visual-baseline-manifest.json`; the Japanese source of truth is `docs/quality/visual-baseline-manifest-ja.json`. Each locale has an independent screenshot, baseline, metadata, and AX receipt root so an otherwise valid capture cannot authenticate another locale's pixels.
 
 | Screen | Required Themes | Viewport | Evidence |
 | --- | --- | --- | --- |
@@ -16,6 +16,9 @@ The source of truth is `docs/quality/visual-baseline-manifest.json`.
 | Schedule | Light / Dark | 1024x676 | schedule cockpit, unscheduled tasks, review-only calendar draft |
 | Schedule Workload | Light / Dark | 1024x676 | daily workload counts, attention banner, selected day detail |
 | Done | Light / Dark | 1024x676 | completion analytics, history, reopen affordance |
+| Assistant Queue Waiting Review | Light / Dark | 1024x676 | compact Review destination, queue row, Approve, and More controls |
+| Assistant Queue Approved | Light / Dark | 1024x676 | compact Review destination, approved row, Run, and More controls |
+| Assistant Queue Failed | Light / Dark | 1024x676 | compact Review destination, failed row, and Retry recovery control |
 | Settings Overview | Light / Dark / System | 720x676 | overview navigation and account-free local state |
 | Settings Integrations | Light / Dark | 720x676 | provider, TTS/STT, Calendar/Reminder, Sync, Privacy, Data Location status |
 | Settings Appearance | Light / Dark / System | 720x676 | theme picker and contrast controls |
@@ -34,9 +37,9 @@ The gate uses semantic tolerances:
 - A screen or theme may override raster thresholds only with a nonblank `reason` in the manifest, so a looser exception remains reviewable.
 - AX frame checks remain required because image comparison alone cannot reliably prove controls are not overlapping.
 
-The manifest's `baselineContext` fixes the registered baseline source commit, `normalRoute`, locale, timezone, and reference instant. Its `sourceCommit` identifies the product source used to approve the stored baselines. A new normal capture may come from a later product commit, so its receipt records the current full product-source commit independently instead of copying the manifest's older baseline commit. Product source means the latest committed change anywhere under `Sources` or in `Package.swift`, including runtime modules that can affect visible UI; capture-script-only commits do not invalidate it or create a self-reference. Baseline sidecar metadata must match the full manifest context, appearance, and logical viewport. Logical viewport is the capture contract; it may differ from PNG raster dimensions, but current and baseline raster dimensions must exactly match each other.
+The manifest's `baselineContext` fixes the registered baseline source commit, `normalRoute`, locale, timezone, and reference instant. Its `sourceCommit` identifies the evidence source used to approve the stored baselines. A new normal capture may come from a later evidence-source commit, so its receipt records the current full evidence-source commit independently instead of copying the manifest's older baseline commit. Evidence source means the latest committed change anywhere under `Sources`, in `Package.swift`, or in the canonical `script/capture_ui_evidence.sh` harness. The harness is included because its target markers and state transitions determine what each screenshot proves. Baseline sidecar metadata must match the full manifest context, appearance, and logical viewport. Logical viewport is the capture contract; it may differ from PNG raster dimensions, but current and baseline raster dimensions must exactly match each other.
 
-When a repository uses squash merge, do not merge product-source changes and their final tracked evidence as one squash commit. Squashing rewrites the product source commit after the evidence was generated, which makes an otherwise valid baseline stale on `main`. Merge the product change first, then refresh the manifest, sidecar metadata, screenshot evidence, and other source-pinned release evidence in an evidence-only follow-up PR. That follow-up must not change `Sources` or `Package.swift`, so its own merge cannot move the product source commit again.
+When a repository uses squash merge, do not merge evidence-source changes and their final tracked evidence as one squash commit. Squashing rewrites the evidence source commit after the evidence was generated, which makes an otherwise valid baseline stale on `main`. Merge the source change first, then refresh the manifest, sidecar metadata, screenshot evidence, and other source-pinned release evidence in an evidence-only follow-up PR. That follow-up must not change `Sources`, `Package.swift`, or `script/capture_ui_evidence.sh`, so its own merge cannot move the evidence source commit again.
 
 The main-window viewport is bounded to `1024x676`, the full visible frame available on the GitHub-hosted macOS GUI session used by the required visual lane. The 676-point frame preserves the product's 572-point minimum content area after the native titlebar and toolbar are included. This also makes compact-window layout behavior part of the canonical regression contract instead of approving a desktop-only viewport that CI cannot reproduce.
 
@@ -48,15 +51,33 @@ This receipt proves the intended capture landmark is materially visible; it is n
 
 ## Capture Contract
 
-Run `script/capture_ui_evidence.sh --doctor` before writing release evidence. The exact full capture command is `script/capture_ui_evidence.sh`; it writes screenshots under `docs/release/evidence/ui-screenshots` and the live AX receipt under `.tmp/visual-ax-audit-receipt.json`. Set `SUISUI_VISUAL_AX_AUDIT_RESULT=/absolute/path/receipt.json` to override the receipt output. `SUISUI_VISUAL_BASELINE_VIEWPORT`, `SUISUI_SETTINGS_VISUAL_BASELINE_VIEWPORT`, `SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT`, `SUISUI_UI_EVIDENCE_LOCALE=english|japanese`, and `SUISUI_UI_EVIDENCE_TMPDIR` are the capture environment controls. Any mode that can write screenshots invalidates the previous receipt before its first capture. A new receipt is generated only after all 33 PNGs pass image health checks; doctor, dry-run, and partial modes do not claim one.
+Run `script/capture_ui_evidence.sh --doctor` before writing release evidence. The exact full capture command is `script/capture_ui_evidence.sh`. A complete locale run contains 39 PNGs. English writes screenshots under `docs/release/evidence/ui-screenshots`, baselines under `docs/quality/visual-baselines`, and its live AX receipt under `.tmp/visual-ax-audit-receipt.json`. Japanese uses `docs/release/evidence/ui-screenshots-ja`, `docs/quality/visual-baselines-ja`, and a separate receipt such as `.tmp/visual-ax-audit-receipt-ja.json`. Set `SUISUI_VISUAL_AX_AUDIT_RESULT=/absolute/path/receipt.json` to override the receipt output. `SUISUI_VISUAL_BASELINE_VIEWPORT`, `SUISUI_SETTINGS_VISUAL_BASELINE_VIEWPORT`, `SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT`, `SUISUI_UI_EVIDENCE_LOCALE=english|japanese`, `SUISUI_VISUAL_BASELINE_MANIFEST`, and `SUISUI_UI_EVIDENCE_TMPDIR` are the capture environment controls. The manifest override is accepted only when its repository-local regular file, locale, and artifact root match the requested capture. Any mode that can write screenshots invalidates the previous receipt before its first capture. A new receipt is generated only after all 39 PNGs pass image health checks; doctor, dry-run, and partial modes do not claim one.
+
+Use the complete, separated environments:
+
+```bash
+SUISUI_UI_EVIDENCE_LOCALE=english \
+SUISUI_VISUAL_BASELINE_MANIFEST="$PWD/docs/quality/visual-baseline-manifest.json" \
+SUISUI_UI_EVIDENCE_DIR="$PWD/docs/release/evidence/ui-screenshots" \
+SUISUI_VISUAL_AX_AUDIT_RESULT="$PWD/.tmp/visual-ax-audit-receipt.json" \
+./script/capture_ui_evidence.sh
+
+SUISUI_UI_EVIDENCE_LOCALE=japanese \
+SUISUI_VISUAL_BASELINE_MANIFEST="$PWD/docs/quality/visual-baseline-manifest-ja.json" \
+SUISUI_UI_EVIDENCE_DIR="$PWD/docs/release/evidence/ui-screenshots-ja" \
+SUISUI_VISUAL_AX_AUDIT_RESULT="$PWD/.tmp/visual-ax-audit-receipt-ja.json" \
+./script/capture_ui_evidence.sh
+```
+
+The capture harness builds `SuisuiVisualFixtureSeeder` and seeds the waiting-review, approved, and failed rows through the production Action Plan, state-machine, migration, and SQLite store APIs. The fixture tool has no credential input and accepts only a database inside the isolated evidence home. This keeps the visual setup deterministic without hand-authored approval JSON or direct Assistant Queue SQL.
 
 Canonical baselines use reference instant `2026-07-10T12:00:00Z` in timezone `UTC`. The capture script derives shell `today`, `tomorrow`, and `yesterday` fixtures from that instant and injects the same capture-only clock into Suisui's Today, Schedule, Done, portfolio, and Smart List date-dependent UI. It also pins the product language, `AppleLanguages`, `AppleLocale`, and process `TZ`. These overrides are intentionally scoped to visual evidence environment keys; ordinary app launches leave them unset and continue to use the system clock, locale, and timezone.
 
-Commit product-source changes before any full or partial capture. Mutating capture modes fail closed when `Sources` or `Package.swift` has staged, unstaged, or untracked changes, and there is no override. This keeps the receipt's full product `sourceCommit` tied to the binary that rendered the PNGs. Doctor reports dirty source as a blocker; dry-run remains non-mutating and reports what a real capture would block.
+Commit evidence-source changes before any full or partial capture. Mutating capture modes fail closed when `Sources`, `Package.swift`, or `script/capture_ui_evidence.sh` has staged, unstaged, or untracked changes, and there is no override. This keeps the receipt's full `sourceCommit` tied to the binary and harness that produced the PNGs. Doctor reports dirty source as a blocker; dry-run remains non-mutating and reports what a real capture would block.
 
 Capture target validation runs before every product screenshot. The script waits for the destination-specific AX identifier and seeded screen text, such as `project-board-detail` plus `Launch Readiness` for Project Board or `voice-command-root` plus `Voice Command` for Voice Command, before it calls `screencapture`. This keeps a visually valid but semantically wrong screen, such as Today saved as Project Board, from becoming release evidence.
 
-Screen variants on the same route must also produce distinct visible states. Inbox Voice scrolls to its voice intake detail, Schedule and Schedule Workload scroll to their own AX landmarks, and Settings Integrations opens the real Sync tab. Adding a new same-route baseline requires an equally explicit state transition.
+Screen variants on the same route must also produce distinct visible states. Inbox Voice scrolls to its voice intake detail, and Schedule scrolls to its own AX landmark. Schedule Workload preserves the deterministic initial top position without scrolling, audits `schedule-workload-attention-banner` as the exact AX target, and validates both attention-banner and day-detail markers. Settings Integrations opens the real Sync tab, and the three Assistant Queue captures scroll to stable rows whose production presentation exposes Approve, Run, or Retry. Adding a new same-route baseline requires an equally explicit state transition.
 
 The capture script also records the Light/Dark/System visual baseline manifest path and viewport contract in generated evidence so reviewers know which product screens were targeted. The logical viewport describes the manifest contract and must equal `actualWindowFrame`; PNG raster dimensions may still differ because of display scale.
 
