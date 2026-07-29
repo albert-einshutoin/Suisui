@@ -57,7 +57,7 @@ REQUIRED_RUNTIME_BUTTON_A11Y_MARKERS=(
 REQUIRED_RUNTIME_SCREEN_MARKERS=(
   "Inbox sidebar=>sidebar-destination-inbox"
   "Today sidebar=>sidebar-destination-today"
-  "Settings toolbar=>project-board-settings-link"
+  "Settings via Utilities toolbar=>project-board-integrations-menu"
   "Voice Command toolbar=>project-board-voice-command"
 )
 REQUIRED_RUNTIME_DESTRUCTIVE_CANCEL_MARKERS=(

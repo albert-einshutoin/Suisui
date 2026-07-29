@@ -4949,7 +4949,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("project-inspector-delete=>Deletes the selected project"))
         XCTAssertTrue(script.contains("Inbox sidebar=>sidebar-destination-inbox"))
         XCTAssertTrue(script.contains("Today sidebar=>sidebar-destination-today"))
-        XCTAssertTrue(script.contains("Settings toolbar=>project-board-settings-link"))
+        XCTAssertTrue(script.contains("Settings via Utilities toolbar=>project-board-integrations-menu"))
         XCTAssertTrue(script.contains("Voice Command toolbar=>project-board-voice-command"))
         XCTAssertTrue(script.contains("Project navigation"))
         XCTAssertTrue(script.contains("Project board detail"))
