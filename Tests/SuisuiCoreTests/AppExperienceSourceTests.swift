@@ -4828,6 +4828,55 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(
             voiceFactory.contains("InMemoryVoiceTaskConversation")
         )
+        XCTAssertTrue(
+            voiceFactory.contains(
+                "let conversationStore = SQLiteVoiceTaskConversationStore("
+            )
+        )
+        XCTAssertTrue(
+            voiceFactory.contains("conversationStore: conversationStore")
+        )
+    }
+
+    func testAssistantQueueRuntimeValidatesConversationLinksAgainstCurrentTaskSnapshot() throws {
+        let appSource = try readAppShellSource()
+        let coordinatorStart = try XCTUnwrap(
+            appSource.range(
+                of: "private static func makeAssistantQueueExecutionCoordinator("
+            )
+        )
+        let coordinatorEnd = try XCTUnwrap(
+            appSource.range(
+                of: "\n    }\n}",
+                range: coordinatorStart.upperBound..<appSource.endIndex
+            )
+        )
+        let coordinator = String(
+            appSource[
+                coordinatorStart.lowerBound..<coordinatorEnd.upperBound
+            ]
+        )
+
+        XCTAssertTrue(
+            coordinator.contains(
+                "let conversationStore = SQLiteVoiceTaskConversationStore("
+            )
+        )
+        XCTAssertTrue(
+            coordinator.contains(
+                "conversationActionLinkStore: conversationStore"
+            )
+        )
+        XCTAssertTrue(
+            coordinator.contains(
+                "taskSnapshotFingerprintProvider:"
+            )
+        )
+        XCTAssertTrue(
+            coordinator.contains(
+                "ConversationTaskSnapshotFingerprint.make("
+            )
+        )
     }
 
     func testVoiceRuntimeInjectsFailClosedDevelopmentProjectProvider() throws {

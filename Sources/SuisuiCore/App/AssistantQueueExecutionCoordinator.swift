@@ -21,6 +21,9 @@ public struct AssistantQueueExecutionCoordinator {
     private let managedAIUsageLedgerStore: (any ManagedAIUsageLedgerStore)?
     private let managedAIBillingSettingsProvider: () -> ManagedAIBillingSettings
     private let managedAIUsageCalendar: Calendar
+    private var conversationActionLinkStore:
+        (any ConversationActionLinkStore)?
+    private var taskSnapshotFingerprintProvider: (Int64) throws -> String?
     private static let sharedManagedAIUsageGate = ManagedAIUsageExecutionGate()
     private let runIDProvider: () -> String
     private let now: () -> Date
@@ -43,8 +46,39 @@ public struct AssistantQueueExecutionCoordinator {
         self.managedAIBillingSettingsProvider = managedAIBillingSettingsProvider
             ?? { managedAIBillingSettings }
         self.managedAIUsageCalendar = managedAIUsageCalendar
+        self.conversationActionLinkStore = nil
+        self.taskSnapshotFingerprintProvider = { _ in nil }
         self.runIDProvider = runIDProvider
         self.now = now
+    }
+
+    public init(
+        queueStore: any AssistantQueueStore,
+        executor: ActionExecutor,
+        executionReceiptStore: any ExecutionReceiptStore,
+        conversationActionLinkStore: any ConversationActionLinkStore,
+        taskSnapshotFingerprintProvider: @escaping (Int64) throws -> String?,
+        managedAIUsageLedgerStore: (any ManagedAIUsageLedgerStore)? = nil,
+        managedAIBillingSettings: ManagedAIBillingSettings = .default,
+        managedAIBillingSettingsProvider: (() -> ManagedAIBillingSettings)? = nil,
+        managedAIUsageCalendar: Calendar = ManagedAIBillingSettings.usageLedgerCalendar(),
+        runIDProvider: @escaping () -> String = { "assistant-queue-run:\(UUID().uuidString)" },
+        now: @escaping () -> Date = { Date() }
+    ) {
+        self.init(
+            queueStore: queueStore,
+            executor: executor,
+            executionReceiptStore: executionReceiptStore,
+            managedAIUsageLedgerStore: managedAIUsageLedgerStore,
+            managedAIBillingSettings: managedAIBillingSettings,
+            managedAIBillingSettingsProvider: managedAIBillingSettingsProvider,
+            managedAIUsageCalendar: managedAIUsageCalendar,
+            runIDProvider: runIDProvider,
+            now: now
+        )
+        self.conversationActionLinkStore = conversationActionLinkStore
+        self.taskSnapshotFingerprintProvider =
+            taskSnapshotFingerprintProvider
     }
 
     @discardableResult
@@ -62,6 +96,52 @@ public struct AssistantQueueExecutionCoordinator {
         expectedMutationRevision: String
     ) throws -> AssistantQueueExecutionResult {
         try execute(id: id, expectedMutationRevision: Optional(expectedMutationRevision))
+    }
+
+    public func recordConversationRetryIfNeeded(
+        id: String
+    ) throws {
+        guard let conversationActionLinkStore,
+              let prior = try conversationActionLinkStore.latestActionLink(
+                  assistantQueueItemID: id
+              )
+        else {
+            return
+        }
+        let reopened = try queueStore.get(id: id)
+        do {
+            try conversationActionLinkStore.saveActionLink(
+                ConversationActionLinkCoordinator().makeRetryLink(
+                    prior: prior,
+                    queueItem: reopened
+                )
+            )
+        } catch {
+            let expectedRevision = reopened.mutationRevision
+            var queueStateMarkedFailed = false
+            do {
+                _ = try queueStore.transition(id: id) { current in
+                    guard current.mutationRevision == expectedRevision else {
+                        throw AssistantQueueStaleReviewError()
+                    }
+                    // A retry without a successor ActionLink could later
+                    // revalidate the prior approval lineage. Keep it visibly
+                    // blocked until the user creates a fresh reviewed plan.
+                    var blocked = current
+                    blocked.state = .blocked
+                    blocked.approval = nil
+                    blocked.blockingReason =
+                        "Conversation retry evidence could not be persisted. Create a new reviewed plan."
+                    return blocked
+                }
+                queueStateMarkedFailed = true
+            } catch {
+                queueStateMarkedFailed = false
+            }
+            throw AssistantQueueConversationLinkPersistenceError(
+                queueStateMarkedFailed: queueStateMarkedFailed
+            )
+        }
     }
 
     private func execute(
@@ -91,6 +171,9 @@ public struct AssistantQueueExecutionCoordinator {
            expectedMutationRevision != currentMutationRevision {
             throw AssistantQueueStaleReviewError()
         }
+        let conversationLink = try currentConversationLink(
+            for: current
+        )
 
         let startedAt = now()
         let managedAIBillingSettings = currentManagedAIBillingSettings()
@@ -140,7 +223,8 @@ public struct AssistantQueueExecutionCoordinator {
                 session: failedSession,
                 runID: runID,
                 startedAt: startedAt,
-                finishedAt: now()
+                finishedAt: now(),
+                conversationLink: conversationLink
             )
             try saveReceiptOrMarkQueueFailed(
                 receipt,
@@ -149,6 +233,12 @@ public struct AssistantQueueExecutionCoordinator {
             )
             try recordManagedUsageLedgerOrMarkQueueFailed(
                 item: running,
+                receipt: receipt,
+                itemID: id,
+                executionStatus: failedSession.executionStatus
+            )
+            try recordConversationLinkOrMarkQueueFailed(
+                link: conversationLink,
                 receipt: receipt,
                 itemID: id,
                 executionStatus: failedSession.executionStatus
@@ -167,7 +257,8 @@ public struct AssistantQueueExecutionCoordinator {
             session: executedSession,
             runID: runID,
             startedAt: startedAt,
-            finishedAt: now()
+            finishedAt: now(),
+            conversationLink: conversationLink
         )
         try saveReceiptOrMarkQueueFailed(
             receipt,
@@ -176,6 +267,12 @@ public struct AssistantQueueExecutionCoordinator {
         )
         try recordManagedUsageLedgerOrMarkQueueFailed(
             item: running,
+            receipt: receipt,
+            itemID: id,
+            executionStatus: executedSession.executionStatus
+        )
+        try recordConversationLinkOrMarkQueueFailed(
+            link: conversationLink,
             receipt: receipt,
             itemID: id,
             executionStatus: executedSession.executionStatus
@@ -399,9 +496,10 @@ public struct AssistantQueueExecutionCoordinator {
         session: ReviewSession,
         runID: String,
         startedAt: Date,
-        finishedAt: Date
+        finishedAt: Date,
+        conversationLink: ConversationActionLink?
     ) -> ExecutionReceipt {
-        ExecutionReceiptFactory.makeAssistantQueueReceipt(
+        let receipt = ExecutionReceiptFactory.makeAssistantQueueReceipt(
             item: item,
             session: session,
             runID: runID,
@@ -410,6 +508,85 @@ public struct AssistantQueueExecutionCoordinator {
             startedAt: startedAt,
             finishedAt: finishedAt
         )
+        guard let conversationLink else {
+            return receipt
+        }
+        let references = ConversationActionLinkCoordinator()
+            .receiptReferences(
+                for: conversationLink,
+                turnLabel: item.sourceTranscript
+            )
+        return receipt.addingReferences(references)
+    }
+
+    private func currentConversationLink(
+        for item: AssistantQueueItem
+    ) throws -> ConversationActionLink? {
+        guard let conversationActionLinkStore,
+              let link = try conversationActionLinkStore.latestActionLink(
+                  assistantQueueItemID: item.id
+              )
+        else {
+            return nil
+        }
+        let currentTaskSnapshot = try link.taskID.flatMap {
+            try taskSnapshotFingerprintProvider($0)
+        }
+        switch ConversationActionLinkCoordinator().validate(
+            ConversationActionLinkValidationInput(
+                link: link,
+                queueItem: item,
+                currentTaskSnapshotFingerprint: currentTaskSnapshot
+            )
+        ) {
+        case .current(let current):
+            return current
+        case .requiresReview(let reason):
+            throw AssistantQueueConversationLinkRequiresReviewError(
+                reason: reason
+            )
+        case .unavailable(let reason):
+            throw AssistantQueueConversationLinkUnavailableError(
+                reason: reason
+            )
+        }
+    }
+
+    private func recordConversationLinkOrMarkQueueFailed(
+        link: ConversationActionLink?,
+        receipt: ExecutionReceipt,
+        itemID: String,
+        executionStatus: ReviewExecutionStatus
+    ) throws {
+        guard let link, let conversationActionLinkStore else {
+            return
+        }
+        do {
+            try conversationActionLinkStore.saveActionLink(
+                ConversationActionLinkCoordinator().recordExecution(
+                    link: link,
+                    receipt: receipt
+                )
+            )
+        } catch {
+            var queueStateMarkedFailed = false
+            do {
+                _ = try queueStore.transition(id: itemID) { item in
+                    try AssistantQueueStateMachine.markFailed(
+                        item,
+                        reason: receiptPersistenceFailureReason(
+                            for: executionStatus
+                        )
+                    )
+                }
+                queueStateMarkedFailed = true
+            } catch {
+                queueStateMarkedFailed = false
+            }
+            throw AssistantQueueConversationLinkPersistenceError(
+                queueStateMarkedFailed: queueStateMarkedFailed
+            )
+        }
     }
 
     private func receiptPersistenceFailureReason(for status: ReviewExecutionStatus) -> String {

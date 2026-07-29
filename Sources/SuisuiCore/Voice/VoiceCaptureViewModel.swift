@@ -148,6 +148,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private var lowLatencyStreamID: UUID
     private var microphoneSilenceDetector: MicrophoneSilenceDetector
     private var inputLevelMonitorTask: Task<Void, Never>?
+    private var activeConversationSourceTurnID: UUID?
     /// ~10Hz keeps the meter lively without spamming the main actor.
     private let inputLevelSampleInterval: TimeInterval = 0.1
 
@@ -220,6 +221,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.lastTranscribedAudioURL = nil
         self.savedInboxAudioURL = nil
         self.lowLatencyStreamID = UUID()
+        self.activeConversationSourceTurnID = nil
     }
 
     public convenience init(
@@ -364,7 +366,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         if case .canceled = outcome {
             return
         }
-        applyConversationOutcome(outcome)
+        await applyConversationOutcome(outcome)
     }
 
     public func updateDraftText(_ text: String) {
@@ -375,6 +377,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         planningResponse = nil
         clarificationSession = nil
         cancelOrchestratedClarificationIfNeeded()
+        activeConversationSourceTurnID = nil
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
@@ -399,6 +402,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         routingResult = nil
         clarificationSession = nil
         cancelOrchestratedClarificationIfNeeded()
+        activeConversationSourceTurnID = nil
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
@@ -555,6 +559,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         let routedCommand = commandRouter.route(transcript: draft.normalizedText)
         let plannedTranscript = routedCommand.normalizedTranscript
         routingResult = routedCommand
+        let sourceTurnID = UUID()
+        activeConversationSourceTurnID = sourceTurnID
 
         if let inboxTriageCommand = inboxTriageCommandParser.parseVoiceCommand(draft.normalizedText) {
             beginInboxTriageRequest(
@@ -575,7 +581,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 let outcome = await conversationOrchestrator.handle(
                     VoiceTaskConversationInput(
                         sessionID: conversationSessionID,
-                        sourceTurnID: UUID(),
+                        sourceTurnID: sourceTurnID,
                         event: .begin(
                             route: routedCommand,
                             requiredSlots: [],
@@ -591,7 +597,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                         )
                     )
                 )
-                applyConversationOutcome(outcome)
+                await applyConversationOutcome(outcome)
             } else {
                 beginClarification(for: routedCommand)
             }
@@ -693,7 +699,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                     availableTools: availableTools
                 )
             )
-            applyConversationOutcome(outcome)
+            await applyConversationOutcome(outcome)
             return
         }
         guard var session = clarificationSession else {
@@ -880,7 +886,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
     private func applyConversationOutcome(
         _ outcome: VoiceTaskConversationOutcome
-    ) {
+    ) async {
         switch outcome {
         case .clarification(let question):
             clarificationSession = nil
@@ -889,15 +895,46 @@ public final class VoiceCaptureViewModel: ObservableObject {
         case .review(let plan):
             orchestratedClarificationQuestion = nil
             let validation = ActionPlanValidator().validate(plan)
-            planningResponse = PlanningResponse(
+            let response = PlanningResponse(
                 providerID: "voice-conversation-orchestrator",
                 rawContent: "",
                 actionPlan: plan,
                 validationResult: validation
             )
-            phase = validation.isValid
-                ? .reviewReady
-                : .failed("ActionPlan validation failed.")
+            planningResponse = response
+            guard validation.isValid else {
+                phase = .failed("ActionPlan validation failed.")
+                return
+            }
+            do {
+                let routedCommand = routingResult
+                    ?? commandRouter.route(transcript: plan.userInput)
+                guard let queueItem = makeAssistantQueueItem(
+                    from: response,
+                    routedCommand: routedCommand
+                ) else {
+                    phase = .failed(
+                        "Voice conversation did not produce a reviewable queue item."
+                    )
+                    return
+                }
+                let persisted = try persistNewAssistantQueueItemIfNeeded(
+                    queueItem
+                )
+                assistantQueueItem = persisted
+                try await persistConversationReviewLink(
+                    plan: plan,
+                    queueItem: persisted,
+                    at: Date()
+                )
+                phase = .reviewReady
+            } catch {
+                blockConversationQueueItemAfterLinkFailure()
+                phase = .failed(
+                    "Voice review could not be linked to durable execution evidence."
+                )
+                auditErrorMessage = userMessage(for: error)
+            }
         case .answer(let answer):
             orchestratedClarificationQuestion = nil
             workspaceAnswer = .answered(
@@ -1702,11 +1739,24 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 return
             }
             do {
-                if let queueItem = makeAssistantQueueItem(from: response, routedCommand: routedCommand) {
-                    assistantQueueItem = try persistNewAssistantQueueItemIfNeeded(queueItem)
+                if let plan = response.actionPlan,
+                   let queueItem = makeAssistantQueueItem(
+                       from: response,
+                       routedCommand: routedCommand
+                   )
+                {
+                    let persisted = try persistNewAssistantQueueItemIfNeeded(
+                        queueItem
+                    )
+                    assistantQueueItem = persisted
+                    try await persistConversationReviewLink(
+                        plan: plan,
+                        queueItem: persisted,
+                        at: currentDate
+                    )
                 }
             } catch {
-                assistantQueueItem = nil
+                blockConversationQueueItemAfterLinkFailure()
                 phase = .failed(userMessage(for: error))
                 return
             }
@@ -1870,6 +1920,47 @@ public final class VoiceCaptureViewModel: ObservableObject {
             // Queue persistence is fail-closed because review approval must not
             // happen against work that disappears after a restart.
             throw AssistantQueueStoreError.saveFailed
+        }
+    }
+
+    private func persistConversationReviewLink(
+        plan: ActionPlan,
+        queueItem: AssistantQueueItem,
+        at date: Date
+    ) async throws {
+        guard let persister = conversationOrchestrator
+            as? any VoiceTaskConversationReviewLinkPersisting
+        else {
+            return
+        }
+        let sourceTurnID = activeConversationSourceTurnID ?? UUID()
+        try await persister.persistReviewLink(
+            sessionID: conversationSessionID,
+            fallbackSourceTurnID: sourceTurnID,
+            confirmedText: plan.userInput,
+            plan: plan,
+            queueItem: queueItem,
+            at: date
+        )
+    }
+
+    private func blockConversationQueueItemAfterLinkFailure() {
+        guard var queueItem = assistantQueueItem else {
+            return
+        }
+        // A Voice-created queue item without its causal ActionLink must never
+        // become executable. Persist a visible blocked state so reopening the
+        // app cannot turn a transient linkage failure into unaudited work.
+        queueItem.state = .blocked
+        queueItem.approval = nil
+        queueItem.blockingReason =
+            "Conversation evidence could not be persisted. Create a new reviewed plan."
+        if let assistantQueueStore,
+           let blocked = try? assistantQueueStore.save(queueItem)
+        {
+            assistantQueueItem = blocked
+        } else {
+            assistantQueueItem = queueItem
         }
     }
 

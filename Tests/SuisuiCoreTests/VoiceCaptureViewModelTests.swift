@@ -1491,6 +1491,66 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         ])
     }
 
+    func testOrchestratedReviewPersistsQueueBoundConversationLink() async throws {
+        let plan = ActionPlan(
+            id: "orchestrated-linked-plan",
+            userInput: "これ明日やって",
+            summary: "Create clarified task",
+            actions: [
+                PlanAction(
+                    id: "action-create",
+                    tool: .taskCreate,
+                    arguments: ["title": .string("リリースメモを書く")]
+                ),
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        let orchestrator = RecordingReviewPersistingConversationOrchestrator(
+            outcomes: [
+                .clarification(
+                    ClarificationQuestion(
+                        slot: .taskTitle,
+                        prompt: "What should the task be called?"
+                    )
+                ),
+                .review(plan),
+            ]
+        )
+        let queueStore = RecordingAssistantQueueStore()
+        let sessionID = UUID()
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(
+                transcript: STTTranscript(text: "")
+            ),
+            llmProvider: FakeLLMProvider(
+                response: PlanningResponse(
+                    providerID: "unused",
+                    rawContent: "{}",
+                    actionPlan: nil,
+                    validationResult: ActionPlanValidationResult(issues: [])
+                )
+            ),
+            assistantQueueStore: queueStore,
+            conversationOrchestrator: orchestrator,
+            conversationSessionID: sessionID
+        )
+
+        viewModel.updateDraftText("これ明日やって")
+        await viewModel.generatePlan()
+        await viewModel.submitClarificationAnswer("リリースメモを書く")
+
+        let queueItem = try XCTUnwrap(viewModel.assistantQueueItem)
+        XCTAssertEqual(queueStore.savedItems.last?.id, queueItem.id)
+        let reviews = await orchestrator.persistedReviews
+        XCTAssertEqual(reviews.count, 1)
+        XCTAssertEqual(reviews.first?.sessionID, sessionID)
+        XCTAssertEqual(reviews.first?.plan, plan)
+        XCTAssertEqual(reviews.first?.queueItem.id, queueItem.id)
+        XCTAssertEqual(reviews.first?.confirmedText, plan.userInput)
+    }
+
     func testRestoreConversationPublishesPersistedClarificationQuestion() async {
         let sessionID = UUID()
         let orchestrator = RecordingVoiceConversationOrchestrator(
@@ -3085,5 +3145,53 @@ private actor RecordingVoiceConversationOrchestrator:
             return .blocked(.missingClarificationState)
         }
         return outcomes.removeFirst()
+    }
+}
+
+private actor RecordingReviewPersistingConversationOrchestrator:
+    VoiceTaskConversationOrchestrating,
+    VoiceTaskConversationReviewLinkPersisting
+{
+    struct PersistedReview: Equatable {
+        let sessionID: UUID
+        let fallbackSourceTurnID: UUID
+        let confirmedText: String
+        let plan: ActionPlan
+        let queueItem: AssistantQueueItem
+    }
+
+    private var outcomes: [VoiceTaskConversationOutcome]
+    private(set) var persistedReviews: [PersistedReview] = []
+
+    init(outcomes: [VoiceTaskConversationOutcome]) {
+        self.outcomes = outcomes
+    }
+
+    func handle(
+        _ input: VoiceTaskConversationInput
+    ) async -> VoiceTaskConversationOutcome {
+        guard !outcomes.isEmpty else {
+            return .blocked(.missingClarificationState)
+        }
+        return outcomes.removeFirst()
+    }
+
+    func persistReviewLink(
+        sessionID: UUID,
+        fallbackSourceTurnID: UUID,
+        confirmedText: String,
+        plan: ActionPlan,
+        queueItem: AssistantQueueItem,
+        at _: Date
+    ) throws {
+        persistedReviews.append(
+            PersistedReview(
+                sessionID: sessionID,
+                fallbackSourceTurnID: fallbackSourceTurnID,
+                confirmedText: confirmedText,
+                plan: plan,
+                queueItem: queueItem
+            )
+        )
     }
 }

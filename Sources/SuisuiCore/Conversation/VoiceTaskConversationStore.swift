@@ -99,3 +99,10 @@ public protocol VoiceTaskConversationStore: Sendable {
         scope: VoiceTaskConversationDeleteScope
     ) throws -> VoiceTaskConversationDeleteResult
 }
+
+public protocol ConversationActionLinkStore: Sendable {
+    func saveActionLink(_ link: ConversationActionLink) throws
+    func latestActionLink(
+        assistantQueueItemID: String
+    ) throws -> ConversationActionLink?
+}

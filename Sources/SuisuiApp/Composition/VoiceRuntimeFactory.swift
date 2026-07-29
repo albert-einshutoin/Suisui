@@ -23,10 +23,20 @@ extension AppRuntimeFactory {
             auditLogger = try makeAuditLogger()
             let connection = try migratedConnection()
             assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+            let conversationStore = SQLiteVoiceTaskConversationStore(
+                connection: connection
+            )
+            let taskStore = SQLiteTaskStore(connection: connection)
             conversationOrchestrator = VoiceTaskConversationOrchestrator(
                 stateStore: SQLiteVoiceTaskConversationOrchestrationStateStore(
                     connection: connection
                 ),
+                conversationStore: conversationStore,
+                taskSnapshotFingerprintProvider: { taskID in
+                    ConversationTaskSnapshotFingerprint.make(
+                        try taskStore.get(id: taskID)
+                    )
+                },
                 provider: llmProvider
             )
             let projectStore = SQLiteProjectStore(connection: connection)
@@ -43,7 +53,7 @@ extension AppRuntimeFactory {
             }
             let questionRetriever = WorkspaceQuestionRetriever(
                 projectStore: projectStore,
-                taskStore: SQLiteTaskStore(connection: connection),
+                taskStore: taskStore,
                 knowledgeFrameStore: SQLiteKnowledgeFrameStore(connection: connection),
                 settings: settingsResult.settings
             )

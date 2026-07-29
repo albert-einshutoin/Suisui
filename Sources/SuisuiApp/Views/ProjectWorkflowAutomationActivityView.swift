@@ -206,6 +206,8 @@ struct ProjectWorkflowAutomationActivityView: View {
         case .file: return "File"
         case .pullRequest: return "Pull Request"
         case .externalMCP: return "External MCP"
+        case .conversationSession: return "Conversation Session"
+        case .conversationTurn: return "Conversation Turn"
         }
     }
 

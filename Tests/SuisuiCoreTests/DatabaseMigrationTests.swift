@@ -45,6 +45,60 @@ final class DatabaseMigrationTests: XCTestCase {
         )
     }
 
+    func testActionLinkExpansionMigrationPreservesLegacyRows() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeExpansion = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0031_expand_conversation_action_links"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeExpansion
+        )
+        try connection.execute(
+            """
+            INSERT INTO voice_task_conversation_sessions (
+                id, state, title, entry_point, created_at, updated_at
+            )
+            VALUES ('session-1', 'active', 'Session', 'voice_command', 1, 1);
+            INSERT INTO voice_task_conversation_turns (
+                id, session_id, author, confirmed_text, created_at
+            )
+            VALUES ('turn-1', 'session-1', 'user', 'Create task', 1);
+            INSERT INTO conversation_action_links (
+                id, session_id, source_turn_id, action_plan_id,
+                reviewed_fingerprint, created_at
+            )
+            VALUES (
+                'link-1', 'session-1', 'turn-1', 'plan-1',
+                'reviewed', 1
+            );
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+
+        let row = try XCTUnwrap(
+            connection.queryRows(
+                """
+                SELECT
+                    action_statuses_json,
+                    task_snapshot_fingerprint,
+                    retry_of_action_link_id
+                FROM conversation_action_links
+                WHERE id = 'link-1';
+                """
+            ).first
+        )
+        XCTAssertEqual(try row.string("action_statuses_json"), "[]")
+        XCTAssertNil(try row.optionalString("task_snapshot_fingerprint"))
+        XCTAssertNil(try row.optionalString("retry_of_action_link_id"))
+    }
+
     func testConversationMigrationUpgradesDatabaseAt0024AndPreservesExistingTasks() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         let migrationsBeforeConversation = Array(

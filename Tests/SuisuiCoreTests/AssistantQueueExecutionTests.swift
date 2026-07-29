@@ -156,6 +156,153 @@ final class AssistantQueueExecutionTests: XCTestCase {
         )
     }
 
+    func testReviewedConversationTurnExecutionLinksReceiptAndActionStatuses() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = VolatileExecutionReceiptStore()
+        let approved = try AssistantQueueStateMachine.approve(
+            makeActionPlanItem(),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let linkStore = RecordingConversationActionLinkStore()
+        let link = try ConversationActionLink(
+            sessionID: UUID(),
+            sourceTurnID: UUID(),
+            actionPlanID: "plan-queue-execution",
+            assistantQueueItemID: approved.id,
+            reviewedFingerprint: try XCTUnwrap(
+                approved.approval?.reviewedContentFingerprint
+            )
+        )
+        try linkStore.saveActionLink(link)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(
+                    required: ["title"],
+                    properties: ["title": "string"]
+                ),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(
+                    tool: .taskCreate,
+                    status: .succeeded,
+                    summary: "Created",
+                    output: ["taskId": .number(42)]
+                )
+            },
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            conversationActionLinkStore: linkStore,
+            taskSnapshotFingerprintProvider: { _ in nil },
+            runIDProvider: { "run-conversation-link" },
+            now: { Date(timeIntervalSince1970: 100) }
+        )
+
+        let result = try executeCurrent(
+            coordinator,
+            id: approved.id,
+            queueStore: queueStore
+        )
+
+        XCTAssertEqual(result.item.state, .done)
+        XCTAssertTrue(
+            result.receipt.references.contains(
+                ExecutionReceiptReference(
+                    kind: .conversationSession,
+                    id: link.sessionID.uuidString
+                )
+            )
+        )
+        XCTAssertTrue(
+            result.receipt.references.contains {
+                $0.kind == .conversationTurn
+                    && $0.id == link.sourceTurnID.uuidString
+            }
+        )
+        let recorded = try XCTUnwrap(
+            linkStore.latestActionLink(
+                assistantQueueItemID: approved.id
+            )
+        )
+        XCTAssertEqual(recorded.executionReceiptID, result.receipt.id)
+        XCTAssertEqual(
+            recorded.actionStatuses,
+            [
+                ConversationActionStatus(
+                    actionID: "action-create",
+                    status: .succeeded
+                ),
+            ]
+        )
+    }
+
+    func testConversationQueueRetryPersistsNewLinkWithoutPriorApproval() throws {
+        let queueStore = try makeQueueStore()
+        let approved = try AssistantQueueStateMachine.approve(
+            makeActionPlanItem(),
+            reviewerID: "local-user"
+        )
+        let failed = try AssistantQueueStateMachine.markFailed(
+            AssistantQueueStateMachine.startRunning(approved),
+            reason: "failed"
+        )
+        let reopened = try AssistantQueueStateMachine
+            .reopenFailedForReview(failed)
+        try queueStore.save(reopened)
+        let linkStore = RecordingConversationActionLinkStore()
+        let prior = try ConversationActionLink(
+            sessionID: UUID(),
+            sourceTurnID: UUID(),
+            actionPlanID: "plan-queue-execution",
+            assistantQueueItemID: reopened.id,
+            executionReceiptID: "receipt-prior",
+            reviewedFingerprint: try XCTUnwrap(
+                approved.approval?.reviewedContentFingerprint
+            ),
+            taskSnapshotFingerprint: nil,
+            actionStatuses: [
+                ConversationActionStatus(
+                    actionID: "action-create",
+                    status: .failed
+                ),
+            ]
+        )
+        try linkStore.saveActionLink(prior)
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: ToolRegistry()),
+            executionReceiptStore: VolatileExecutionReceiptStore(),
+            conversationActionLinkStore: linkStore,
+            taskSnapshotFingerprintProvider: { _ in nil }
+        )
+
+        try coordinator.recordConversationRetryIfNeeded(id: reopened.id)
+
+        let retry = try XCTUnwrap(
+            linkStore.latestActionLink(
+                assistantQueueItemID: reopened.id
+            )
+        )
+        XCTAssertNotEqual(retry.id, prior.id)
+        XCTAssertEqual(retry.retryOfActionLinkID, prior.id)
+        XCTAssertEqual(retry.executionReceiptID, nil)
+        XCTAssertEqual(
+            retry.actionStatuses,
+            [
+                ConversationActionStatus(
+                    actionID: "action-create",
+                    status: .pending
+                ),
+            ]
+        )
+        XCTAssertNil(try queueStore.get(id: reopened.id).approval)
+    }
+
     func testCoordinatorRunsQueuedDevelopmentPrepareWorkflowWithApprovedProjectBookmark() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
@@ -2497,6 +2644,30 @@ private final class RecordingManagedAIUsageLedgerStore: ManagedAIUsageLedgerStor
 
     func list(limit: Int) throws -> [ManagedAIUsageLedgerEntry] {
         Array(entries.prefix(limit))
+    }
+}
+
+private final class RecordingConversationActionLinkStore:
+    ConversationActionLinkStore,
+    @unchecked Sendable
+{
+    private let lock = NSLock()
+    private var links: [ConversationActionLink] = []
+
+    func saveActionLink(_ link: ConversationActionLink) throws {
+        lock.withLock {
+            links.append(link)
+        }
+    }
+
+    func latestActionLink(
+        assistantQueueItemID: String
+    ) throws -> ConversationActionLink? {
+        lock.withLock {
+            links.last {
+                $0.assistantQueueItemID == assistantQueueItemID
+            }
+        }
     }
 }
 

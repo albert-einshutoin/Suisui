@@ -23,7 +23,11 @@ public struct TaskContextFactSourceEvidence: Equatable, Sendable {
     }
 }
 
-public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore, @unchecked Sendable {
+public final class SQLiteVoiceTaskConversationStore:
+    VoiceTaskConversationStore,
+    ConversationActionLinkStore,
+    @unchecked Sendable
+{
     public static let maximumPageSize = 500
 
     private let connection: SQLiteConnection
@@ -508,9 +512,12 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                 execution_receipt_id,
                 operation_kind,
                 reviewed_fingerprint,
+                task_snapshot_fingerprint,
+                action_statuses_json,
+                retry_of_action_link_id,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             parameters: [
                 .text(link.id.uuidString),
@@ -522,9 +529,51 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                 SQLiteValue(link.executionReceiptID),
                 .text(link.operation.rawValue),
                 .text(link.reviewedFingerprint),
+                SQLiteValue(link.taskSnapshotFingerprint),
+                .text(try Self.encodedActionStatuses(link.actionStatuses)),
+                SQLiteValue(link.retryOfActionLinkID?.uuidString),
                 .real(try Self.timeValue(link.createdAt)),
             ]
         )
+    }
+
+    public func latestActionLink(
+        assistantQueueItemID: String
+    ) throws -> ConversationActionLink? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !assistantQueueItemID
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return nil
+        }
+        let rows = try connection.queryRows(
+            """
+            SELECT
+                id,
+                session_id,
+                source_turn_id,
+                action_plan_id,
+                assistant_queue_item_id,
+                task_id,
+                execution_receipt_id,
+                operation_kind,
+                reviewed_fingerprint,
+                task_snapshot_fingerprint,
+                action_statuses_json,
+                retry_of_action_link_id,
+                created_at
+            FROM conversation_action_links
+            WHERE assistant_queue_item_id = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1;
+            """,
+            parameters: [.text(assistantQueueItemID)]
+        )
+        guard let row = rows.first else {
+            return nil
+        }
+        return try decodeActionLink(row)
     }
 
     public func deleteSession(
@@ -664,6 +713,60 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
         } catch {
             throw VoiceTaskConversationStoreError.corruptRow(
                 entity: "turn",
+                identifier: identifier
+            )
+        }
+    }
+
+    private func decodeActionLink(
+        _ row: SQLiteMaterializedRow
+    ) throws -> ConversationActionLink {
+        let identifier = (try? row.string("id")) ?? "unknown"
+        do {
+            guard let id = UUID(uuidString: try row.string("id")),
+                  let sessionID = UUID(
+                      uuidString: try row.string("session_id")
+                  ),
+                  let sourceTurnID = UUID(
+                      uuidString: try row.string("source_turn_id")
+                  ),
+                  let operation = ConversationActionLinkOperation(
+                      rawValue: try row.string("operation_kind")
+                  )
+            else {
+                throw InvalidConversationRow()
+            }
+            let retryOfActionLinkID = try row.optionalString(
+                "retry_of_action_link_id"
+            ).flatMap(UUID.init(uuidString:))
+            return try ConversationActionLink(
+                id: id,
+                sessionID: sessionID,
+                sourceTurnID: sourceTurnID,
+                actionPlanID: try row.optionalString("action_plan_id"),
+                assistantQueueItemID: try row.optionalString(
+                    "assistant_queue_item_id"
+                ),
+                taskID: try row.optionalInt64("task_id"),
+                executionReceiptID: try row.optionalString(
+                    "execution_receipt_id"
+                ),
+                operation: operation,
+                reviewedFingerprint: try row.string(
+                    "reviewed_fingerprint"
+                ),
+                taskSnapshotFingerprint: try row.optionalString(
+                    "task_snapshot_fingerprint"
+                ),
+                actionStatuses: try Self.decodeActionStatuses(
+                    row.string("action_statuses_json")
+                ),
+                retryOfActionLinkID: retryOfActionLinkID,
+                createdAt: try Self.date(from: row.double("created_at"))
+            )
+        } catch {
+            throw VoiceTaskConversationStoreError.corruptRow(
+                entity: "action_link",
                 identifier: identifier
             )
         }
@@ -923,6 +1026,23 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
             throw VoiceTaskConversationStoreError.invalidDate
         }
         return value
+    }
+
+    private static func encodedActionStatuses(
+        _ statuses: [ConversationActionStatus]
+    ) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return String(decoding: try encoder.encode(statuses), as: UTF8.self)
+    }
+
+    private static func decodeActionStatuses(
+        _ value: String
+    ) throws -> [ConversationActionStatus] {
+        try JSONDecoder().decode(
+            [ConversationActionStatus].self,
+            from: Data(value.utf8)
+        )
     }
 
     private static func optionalTimeValue(_ date: Date?) throws -> SQLiteValue {

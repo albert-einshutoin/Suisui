@@ -34,6 +34,8 @@ public enum ExecutionReceiptReferenceKind: String, Codable, Equatable, Hashable,
     case file
     case pullRequest = "pull_request"
     case externalMCP = "external_mcp"
+    case conversationSession = "conversation_session"
+    case conversationTurn = "conversation_turn"
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
@@ -370,6 +372,42 @@ public struct ExecutionReceipt: Codable, Equatable, Sendable {
             )
         }
         self.visibleSurfaces = visibleSurfaces
+    }
+
+    public func addingReferences(
+        _ additionalReferences: [ExecutionReceiptReference],
+        redactionPolicy: ExecutionReceiptRedactionPolicy =
+            ExecutionReceiptRedactionPolicy()
+    ) -> ExecutionReceipt {
+        let existingKeys = Set(
+            references.map { "\($0.kind.rawValue):\($0.id)" }
+        )
+        let uniqueAdditional = additionalReferences.filter {
+            !existingKeys.contains("\($0.kind.rawValue):\($0.id)")
+        }
+        return ExecutionReceipt(
+            id: id,
+            runID: runID,
+            approvalID: approvalID,
+            assistantQueueItemID: assistantQueueItemID,
+            queueApproval: queueApproval,
+            approvalEvidence: approvalEvidence,
+            resolvedActionEvidence: resolvedActionEvidence,
+            createdAt: createdAt,
+            startedAt: startedAt,
+            finishedAt: finishedAt,
+            status: status,
+            inputPreview: inputPreview,
+            outputSummary: outputSummary,
+            model: model,
+            primaryToolName: primaryToolName,
+            usage: usage,
+            references: references + uniqueAdditional,
+            sourceLinks: sourceLinks,
+            actions: actions,
+            visibleSurfaces: visibleSurfaces,
+            redactionPolicy: redactionPolicy
+        )
     }
 }
 

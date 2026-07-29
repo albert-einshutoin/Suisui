@@ -248,6 +248,10 @@ public enum ExecutionReceiptHistoryReadModel {
             return String(localized: "Pull Request")
         case .externalMCP:
             return String(localized: "External MCP")
+        case .conversationSession:
+            return String(localized: "Conversation Session")
+        case .conversationTurn:
+            return String(localized: "Conversation Turn")
         }
     }
 

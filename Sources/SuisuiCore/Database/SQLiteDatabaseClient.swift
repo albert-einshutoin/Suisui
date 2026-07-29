@@ -2042,6 +2042,29 @@ public enum CoreMigrations {
                     """
                 )
             },
+            DatabaseMigration(
+                id: "0031_expand_conversation_action_links"
+            ) { connection in
+                try connection.execute(
+                    """
+                    ALTER TABLE conversation_action_links
+                    ADD COLUMN task_snapshot_fingerprint TEXT;
+
+                    ALTER TABLE conversation_action_links
+                    ADD COLUMN action_statuses_json TEXT NOT NULL DEFAULT '[]';
+
+                    ALTER TABLE conversation_action_links
+                    ADD COLUMN retry_of_action_link_id TEXT;
+
+                    CREATE INDEX idx_conversation_action_links_queue_created
+                    ON conversation_action_links(
+                        assistant_queue_item_id,
+                        created_at DESC,
+                        id DESC
+                    );
+                    """
+                )
+            },
         ]
     }
 }

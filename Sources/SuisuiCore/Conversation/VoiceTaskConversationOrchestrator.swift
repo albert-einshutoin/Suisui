@@ -127,6 +127,17 @@ public protocol VoiceTaskConversationOrchestrating: Sendable {
     func handle(_ input: VoiceTaskConversationInput) async -> VoiceTaskConversationOutcome
 }
 
+public protocol VoiceTaskConversationReviewLinkPersisting: Sendable {
+    func persistReviewLink(
+        sessionID: UUID,
+        fallbackSourceTurnID: UUID,
+        confirmedText: String,
+        plan: ActionPlan,
+        queueItem: AssistantQueueItem,
+        at date: Date
+    ) async throws
+}
+
 public protocol VoiceTaskReferenceResolving: Sendable {
     func resolve(_ request: VoiceTaskReferenceRequest) -> VoiceTaskReferenceResolution
 }
@@ -142,12 +153,20 @@ public protocol VoiceTaskContextAssembling: Sendable {
 
 extension VoiceTaskContextAssembler: VoiceTaskContextAssembling {}
 
-public actor VoiceTaskConversationOrchestrator: VoiceTaskConversationOrchestrating {
+public actor VoiceTaskConversationOrchestrator:
+    VoiceTaskConversationOrchestrating,
+    VoiceTaskConversationReviewLinkPersisting
+{
     private let stateStore: any VoiceTaskConversationOrchestrationStateStore
     private let referenceResolver: any VoiceTaskReferenceResolving
     private let contextAssembler: any VoiceTaskContextAssembling
     private let provider: (any LLMProvider)?
     private let validator: ActionPlanValidator
+    private let conversationStore:
+        (any VoiceTaskConversationStore & ConversationActionLinkStore)?
+    private let taskSnapshotFingerprintProvider:
+        @Sendable (Int64) throws -> String?
+    private var pendingReviewSourceTurnIDs: [UUID: UUID] = [:]
 
     public init(
         stateStore: any VoiceTaskConversationOrchestrationStateStore,
@@ -161,6 +180,31 @@ public actor VoiceTaskConversationOrchestrator: VoiceTaskConversationOrchestrati
         self.contextAssembler = contextAssembler
         self.provider = provider
         self.validator = validator
+        conversationStore = nil
+        taskSnapshotFingerprintProvider = { _ in nil }
+    }
+
+    public init(
+        stateStore: any VoiceTaskConversationOrchestrationStateStore,
+        conversationStore:
+            any VoiceTaskConversationStore & ConversationActionLinkStore,
+        taskSnapshotFingerprintProvider:
+            @escaping @Sendable (Int64) throws -> String? = { _ in nil },
+        referenceResolver: any VoiceTaskReferenceResolving =
+            VoiceTaskReferenceResolver(),
+        contextAssembler: any VoiceTaskContextAssembling =
+            VoiceTaskContextAssembler(),
+        provider: (any LLMProvider)? = nil,
+        validator: ActionPlanValidator = ActionPlanValidator()
+    ) {
+        self.stateStore = stateStore
+        self.referenceResolver = referenceResolver
+        self.contextAssembler = contextAssembler
+        self.provider = provider
+        self.validator = validator
+        self.conversationStore = conversationStore
+        self.taskSnapshotFingerprintProvider =
+            taskSnapshotFingerprintProvider
     }
 
     public func handle(_ input: VoiceTaskConversationInput) async -> VoiceTaskConversationOutcome {
@@ -254,14 +298,76 @@ public actor VoiceTaskConversationOrchestrator: VoiceTaskConversationOrchestrati
             }
 
             if !resolvedIntents.isEmpty {
-                return reviewOutcome(
+                let outcome = reviewOutcome(
                     intents: resolvedIntents,
                     originalTranscript: route.originalTranscript
                 )
+                rememberReviewSource(
+                    outcome,
+                    sessionID: input.sessionID,
+                    sourceTurnID: input.sourceTurnID
+                )
+                return outcome
             }
 
-            return await providerOutcome(input: input, route: route)
+            let outcome = await providerOutcome(input: input, route: route)
+            rememberReviewSource(
+                outcome,
+                sessionID: input.sessionID,
+                sourceTurnID: input.sourceTurnID
+            )
+            return outcome
         }
+    }
+
+    public func persistReviewLink(
+        sessionID: UUID,
+        fallbackSourceTurnID: UUID,
+        confirmedText: String,
+        plan: ActionPlan,
+        queueItem: AssistantQueueItem,
+        at date: Date
+    ) async throws {
+        guard let conversationStore else {
+            // The original initializer remains source-compatible for Core-only
+            // clients. Production uses the persistence-enabled initializer;
+            // callers that deliberately construct the legacy variant keep the
+            // pre-link behavior instead of failing an otherwise valid review.
+            return
+        }
+        let sourceTurnID = pendingReviewSourceTurnIDs
+            .removeValue(forKey: sessionID)
+            ?? fallbackSourceTurnID
+        if try conversationStore.loadSession(id: sessionID) == nil {
+            try conversationStore.createSession(
+                VoiceTaskConversationSession(
+                    id: sessionID,
+                    title: "Voice task conversation",
+                    entryPoint: .voiceCommand,
+                    createdAt: date
+                )
+            )
+        }
+        try conversationStore.saveTurn(
+            VoiceTaskConversationTurn(
+                id: sourceTurnID,
+                sessionID: sessionID,
+                author: .user,
+                rawTranscript: nil,
+                userConfirmedText: confirmedText,
+                createdAt: date
+            )
+        )
+        try conversationStore.saveActionLink(
+            ConversationActionLinkCoordinator().makeReviewLink(
+                sessionID: sessionID,
+                sourceTurnID: sourceTurnID,
+                plan: plan,
+                queueItem: queueItem,
+                taskSnapshotFingerprintProvider:
+                    taskSnapshotFingerprintProvider
+            )
+        )
     }
 
     private func resumeClarification(
@@ -306,16 +412,39 @@ public actor VoiceTaskConversationOrchestrator: VoiceTaskConversationOrchestrati
                 to: state.intents
             )
             guard !intents.isEmpty else {
-                return await providerOutcome(
+                let outcome = await providerOutcome(
                     input: input,
                     route: result.resolvedRoute
                 )
+                rememberReviewSource(
+                    outcome,
+                    sessionID: input.sessionID,
+                    sourceTurnID: state.originalSourceTurnID
+                )
+                return outcome
             }
-            return reviewOutcome(
+            let outcome = reviewOutcome(
                 intents: intents,
                 originalTranscript: result.originalTranscript
             )
+            rememberReviewSource(
+                outcome,
+                sessionID: input.sessionID,
+                sourceTurnID: state.originalSourceTurnID
+            )
+            return outcome
         }
+    }
+
+    private func rememberReviewSource(
+        _ outcome: VoiceTaskConversationOutcome,
+        sessionID: UUID,
+        sourceTurnID: UUID
+    ) {
+        guard case .review = outcome else {
+            return
+        }
+        pendingReviewSourceTurnIDs[sessionID] = sourceTurnID
     }
 
     private func providerOutcome(

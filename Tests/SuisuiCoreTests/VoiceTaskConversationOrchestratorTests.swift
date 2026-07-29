@@ -243,6 +243,84 @@ final class VoiceTaskConversationOrchestratorTests: XCTestCase {
         XCTAssertEqual(plan.actions.first?.arguments["dueAt"], .string("月曜"))
     }
 
+    func testGivenClarifiedReviewWhenPersistLinkThenUsesOriginalTurnAndDurableQueue() async throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        let conversationStore = SQLiteVoiceTaskConversationStore(
+            connection: connection
+        )
+        let orchestrator = VoiceTaskConversationOrchestrator(
+            stateStore: SQLiteVoiceTaskConversationOrchestrationStateStore(
+                connection: connection
+            ),
+            conversationStore: conversationStore
+        )
+        let originalTurnID = UUID()
+        let initial = VoiceTaskConversationInput(
+            sessionID: UUID(),
+            sourceTurnID: originalTurnID,
+            event: .begin(
+                route: makeRoute(
+                    transcript: "リリースタスクを作成して"
+                ),
+                requiredSlots: [.project],
+                intents: [makeCreateIntent()],
+                referenceRequest: nil,
+                localAnswerItems: []
+            )
+        )
+        _ = await orchestrator.handle(initial)
+        let outcome = await orchestrator.handle(
+            VoiceTaskConversationInput(
+                sessionID: initial.sessionID,
+                sourceTurnID: UUID(),
+                event: .clarificationAnswer("Launch")
+            )
+        )
+        guard case .review(let plan) = outcome else {
+            return XCTFail("Expected review")
+        }
+        let queueItem = AssistantQueueAdapter.makeItem(
+            actionPlan: plan,
+            sourceTranscript: plan.userInput,
+            interpretationSummary: plan.summary,
+            reason: "Review",
+            costPreview: .localOnly()
+        )
+
+        try await orchestrator.persistReviewLink(
+            sessionID: initial.sessionID,
+            fallbackSourceTurnID: UUID(),
+            confirmedText: plan.userInput,
+            plan: plan,
+            queueItem: queueItem,
+            at: Date(timeIntervalSince1970: 10)
+        )
+
+        XCTAssertNotNil(
+            try conversationStore.loadSession(id: initial.sessionID)
+        )
+        XCTAssertEqual(
+            try conversationStore.listTurns(
+                sessionID: initial.sessionID,
+                before: nil,
+                limit: 10
+            ).map(\.id),
+            [originalTurnID]
+        )
+        let link = try XCTUnwrap(
+            conversationStore.latestActionLink(
+                assistantQueueItemID: queueItem.id
+            )
+        )
+        XCTAssertEqual(link.sourceTurnID, originalTurnID)
+        XCTAssertEqual(link.actionPlanID, plan.id)
+        XCTAssertEqual(link.assistantQueueItemID, queueItem.id)
+    }
+
     func testGivenPersistedPausedSessionWhenRestoreThenReturnsCurrentQuestion() async {
         let store = TestConversationOrchestrationStateStore()
         let initial = makeInput(

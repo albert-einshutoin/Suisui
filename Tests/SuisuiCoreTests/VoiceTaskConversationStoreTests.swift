@@ -462,6 +462,47 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
         )
     }
 
+    func testLatestActionLinkRoundTripsTaskSnapshotStatusesAndRetryIdentity() throws {
+        let (_, store) = try makeStore()
+        let session = makeSession()
+        try store.createSession(session)
+        let turn = try makeTurn(sessionID: session.id)
+        try store.saveTurn(turn)
+        let priorID = UUID()
+        let link = try ConversationActionLink(
+            sessionID: session.id,
+            sourceTurnID: turn.id,
+            actionPlanID: "plan-1",
+            assistantQueueItemID: "queue-1",
+            taskID: 52,
+            executionReceiptID: "receipt-1",
+            operation: .taskUpdated,
+            reviewedFingerprint: "reviewed-fingerprint",
+            taskSnapshotFingerprint: "task:v1",
+            actionStatuses: [
+                ConversationActionStatus(
+                    actionID: "action-1",
+                    status: .succeeded
+                ),
+                ConversationActionStatus(
+                    actionID: "action-2",
+                    status: .failed
+                ),
+            ],
+            retryOfActionLinkID: priorID,
+            createdAt: Date(timeIntervalSince1970: 1_800_000_100)
+        )
+
+        try store.saveActionLink(link)
+
+        XCTAssertEqual(
+            try store.latestActionLink(
+                assistantQueueItemID: "queue-1"
+            ),
+            link
+        )
+    }
+
     func testDeletingTaskPreservesFactScopeAndTaskOnlyActionLinkIdentifiers() throws {
         let (connection, store) = try makeStore()
         let session = makeSession()
