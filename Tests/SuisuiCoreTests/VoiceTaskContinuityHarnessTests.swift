@@ -42,6 +42,28 @@ final class VoiceTaskContinuityHarnessTests: XCTestCase {
         }
     }
 
+    func testGivenHarnessWithoutCurrentHeadBundleBuildWhenValidateThenFails() throws {
+        let source = try runtimeScript().replacingFirst(
+            "\"$ROOT_DIR/script/build_and_run.sh\" --build-only",
+            with: "true # stale dist bundle accepted"
+        )
+
+        XCTAssertThrowsError(try VoiceTaskContinuityHarnessContract.validate(source: source)) { error in
+            XCTAssertEqual(error as? VoiceTaskContinuityHarnessContract.Error, .missingCurrentHeadBundleBinding)
+        }
+    }
+
+    func testGivenHarnessWithoutBundleHashWitnessBindingWhenValidateThenFails() throws {
+        let source = try runtimeScript().replacingFirst(
+            "grep -Fxq \"app_binary_sha256=$app_binary_sha256\" \"$witness\"",
+            with: "true # bundle hash omitted"
+        )
+
+        XCTAssertThrowsError(try VoiceTaskContinuityHarnessContract.validate(source: source)) { error in
+            XCTAssertEqual(error as? VoiceTaskContinuityHarnessContract.Error, .missingBundleHashBinding)
+        }
+    }
+
     func testGivenArtifactWithRawPathOrSecretWhenValidateThenFails() throws {
         let source = try runtimeScript().replacingFirst(
             "contains_rejected_evidence \"$artifact_file\" && fail_stage",
@@ -88,6 +110,30 @@ final class VoiceTaskContinuityHarnessTests: XCTestCase {
         XCTAssertTrue(source.contains("receipt_file_id"))
     }
 
+    func testGivenBundledDriverWhenRestartingThenRequeriesActionLinkReceiptAndResumeSummary() throws {
+        let source = try driverScript()
+
+        XCTAssertTrue(source.contains("assert_restored_action_link"))
+        XCTAssertTrue(source.contains("restored_action_link_id"))
+        XCTAssertTrue(source.contains("restored_execution_receipt_id"))
+        XCTAssertTrue(source.contains("[[ \"$restored_action_link_id\" == \"$action_link_id\" ]]"))
+        XCTAssertTrue(source.contains("[[ \"$restored_execution_receipt_id\" == \"$execution_receipt_id\" ]]"))
+        XCTAssertTrue(source.contains("assert_receipt_file_id \"$restored_execution_receipt_id\""))
+        XCTAssertTrue(source.contains("SELECT resume_summary FROM voice_task_conversation_sessions"))
+        XCTAssertTrue(source.contains("wait_for_marker \"voice-conversation-scope\" \"$resume_summary\""))
+        XCTAssertFalse(source.contains("\"resume_action_link=present\""))
+    }
+
+    func testGivenBundledDriverWhenLaunchingThenRejectsUnexpectedBundleBinaryHash() throws {
+        let source = try driverScript()
+
+        XCTAssertTrue(source.contains("EXPECTED_APP_BINARY_SHA256"))
+        XCTAssertTrue(source.contains("actual_app_binary_sha256"))
+        XCTAssertTrue(source.contains("[[ \"$actual_app_binary_sha256\" == \"$EXPECTED_APP_BINARY_SHA256\" ]]"))
+        XCTAssertTrue(source.contains("assert_app_binary_provenance"))
+        XCTAssertTrue(source.contains("printf 'app_binary_sha256=%s\\n' \"$EXPECTED_APP_BINARY_SHA256\""))
+    }
+
     func testGivenBundledDriverWhenDrivingAXThenUsesPIDScopedNativeHelpers() throws {
         let source = try driverScript()
 
@@ -126,6 +172,8 @@ private enum VoiceTaskContinuityHarnessContract {
         case missingPreApprovalAssertion
         case missingRestartResume
         case missingSourceCommitBinding
+        case missingCurrentHeadBundleBinding
+        case missingBundleHashBinding
         case missingEvidenceRejection
         case unsafeFakeProvider
         case nonAtomicArtifact
@@ -168,6 +216,20 @@ private enum VoiceTaskContinuityHarnessContract {
         }
         guard source.contains("grep -Fxq \"source_commit=$source_commit\" \"$witness\"") && source.contains("artifact_source_commit_mismatch") else {
             throw Error.missingSourceCommitBinding
+        }
+        guard source.contains("\"$ROOT_DIR/script/build_and_run.sh\" --build-only")
+            && source.contains("git -C \"$ROOT_DIR\" status --porcelain --untracked-files=all")
+            && source.contains("source_commit_after_build")
+            && source.contains("source_commit_after_build\" == \"$source_commit")
+        else {
+            throw Error.missingCurrentHeadBundleBinding
+        }
+        guard source.contains("app_binary_sha256=\"$(/usr/bin/shasum -a 256 \"$app_binary\"")
+            && source.contains("grep -Fxq \"app_binary_sha256=$app_binary_sha256\" \"$witness\"")
+            && source.contains("SUISUI_VOICE_TASK_CONTINUITY_APP_BINARY_SHA256=\"$app_binary_sha256\"")
+            && source.contains("\"appBinarySHA256\": \"%s\"")
+        else {
+            throw Error.missingBundleHashBinding
         }
         guard source.contains("contains_rejected_evidence \"$artifact_file\" && fail_stage") && source.contains("/Users/") && source.contains("sk-") else {
             throw Error.missingEvidenceRejection

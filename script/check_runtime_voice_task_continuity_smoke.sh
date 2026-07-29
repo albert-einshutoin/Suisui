@@ -43,6 +43,8 @@ fixture_manifest=""
 witness_dir=""
 pre_approval_snapshot=""
 source_commit=""
+app_binary=""
+app_binary_sha256=""
 completed_stages=()
 driver_has_run=0
 
@@ -80,6 +82,7 @@ write_artifact_atomically() {
     printf '  "scenario": "voice_task_continuity",\n'
     printf '  "status": "%s",\n' "$status"
     printf '  "sourceCommit": "%s",\n' "$source_commit"
+    printf '  "appBinarySHA256": "%s",\n' "$app_binary_sha256"
     printf '  "fixture": {"projectID": "%s", "taskIDs": ["%s", "%s"]},\n' "$FIXTURE_PROJECT_ID" "$FIXTURE_TASK_ONE_ID" "$FIXTURE_TASK_TWO_ID"
     printf '  "completedStages": ['
     for index in "${!completed_stages[@]}"; do
@@ -118,7 +121,38 @@ require_runtime_prerequisites() {
   [[ -f "$METADATA_FILE" ]] || fail_stage "isolated_home_sqlite" "launch" "metadata_missing"
   [[ -x "$DRIVER" ]] || fail_stage "normal_product_route" "runtime-integration" "normal_product_driver_unavailable"
   command -v "$SQLITE3" >/dev/null 2>&1 || fail_stage "isolated_home_sqlite" "sqlite" "sqlite3_unavailable"
+  command -v git >/dev/null 2>&1 || fail_stage "redacted_source_bound_artifact" "evidence" "git_unavailable"
+  command -v /usr/bin/shasum >/dev/null 2>&1 || fail_stage "redacted_source_bound_artifact" "evidence" "sha256_unavailable"
   source_commit="$(git -C "$ROOT_DIR" rev-parse HEAD)" || fail_stage "redacted_source_bound_artifact" "evidence" "source_commit_unavailable"
+}
+
+build_current_head_bundle() {
+  local tracked_status source_commit_after_build
+  tracked_status="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=all)" \
+    || fail_stage "normal_product_route" "provenance" "source_status_unavailable"
+  [[ -z "$tracked_status" ]] \
+    || fail_stage "normal_product_route" "provenance" "source_tree_not_clean"
+
+  # Build the exact clean HEAD in this invocation. A timestamp on an existing
+  # dist bundle is not provenance and must never make stale product code pass.
+  "$ROOT_DIR/script/build_and_run.sh" --build-only \
+    || fail_stage "normal_product_route" "provenance" "current_head_bundle_build_failed"
+
+  source_commit_after_build="$(git -C "$ROOT_DIR" rev-parse HEAD)" \
+    || fail_stage "normal_product_route" "provenance" "post_build_source_commit_unavailable"
+  [[ "$source_commit_after_build" == "$source_commit" ]] \
+    || fail_stage "normal_product_route" "provenance" "source_commit_changed_during_build"
+  [[ -z "$(git -C "$ROOT_DIR" status --porcelain --untracked-files=all)" ]] \
+    || fail_stage "normal_product_route" "provenance" "source_tree_changed_during_build"
+
+  # shellcheck source=/dev/null
+  source "$METADATA_FILE"
+  app_binary="$ROOT_DIR/dist/${APP_NAME:?APP_NAME is required}.app/Contents/MacOS/$APP_NAME"
+  [[ -x "$app_binary" ]] \
+    || fail_stage "normal_product_route" "provenance" "built_app_binary_missing"
+  app_binary_sha256="$(/usr/bin/shasum -a 256 "$app_binary" | awk '{print $1}')"
+  [[ "$app_binary_sha256" =~ ^[a-f0-9]{64}$ ]] \
+    || fail_stage "normal_product_route" "provenance" "built_app_binary_hash_invalid"
 }
 
 prepare_isolated_home_and_sqlite() {
@@ -147,6 +181,7 @@ validate_witness() {
   grep -Fxq "stage=$stage" "$witness" || fail_stage "$stage" "$layer" "witness_stage_mismatch"
   grep -Fxq "result=passed" "$witness" || fail_stage "$stage" "$layer" "witness_not_passed"
   grep -Fxq "source_commit=$source_commit" "$witness" || fail_stage "$stage" "evidence" "source_commit_mismatch"
+  grep -Fxq "app_binary_sha256=$app_binary_sha256" "$witness" || fail_stage "$stage" "evidence" "app_binary_hash_mismatch"
 }
 
 require_witness_fact() {
@@ -208,7 +243,9 @@ validate_stage_contract() {
       require_witness_fact "$stage" "$layer" "session_resumed" "true"
       require_witness_fact "$stage" "$layer" "resume_project_scope" "$FIXTURE_PROJECT_ID"
       require_witness_fact "$stage" "$layer" "resume_task_scope" "$FIXTURE_TASK_TWO_ID"
-      require_witness_fact "$stage" "$layer" "resume_action_link" "present"
+      require_witness_fact "$stage" "$layer" "resume_action_link_id" "[[:alnum:]_-]+"
+      require_witness_fact "$stage" "$layer" "resume_execution_receipt_id" "[[:alnum:]_-]+"
+      require_witness_fact "$stage" "$layer" "resume_summary_sha256" "[a-f0-9]{64}"
       ;;
   esac
 }
@@ -228,6 +265,7 @@ run_product_stage() {
       SUISUI_VOICE_TASK_CONTINUITY_WITNESS_DIR="$witness_dir" \
       SUISUI_VOICE_TASK_CONTINUITY_PRE_APPROVAL_SNAPSHOT="$pre_approval_snapshot" \
       SUISUI_VOICE_TASK_CONTINUITY_SOURCE_COMMIT="$source_commit" \
+      SUISUI_VOICE_TASK_CONTINUITY_APP_BINARY_SHA256="$app_binary_sha256" \
       "$DRIVER" --run-all; then
       local failure_file="$witness_dir/driver-failure.env"
       if [[ -f "$failure_file" ]]; then
@@ -260,6 +298,7 @@ verify_final_evidence() {
   [[ -f "$artifact_file" ]] || fail_stage "redacted_source_bound_artifact" "evidence" "artifact_missing"
   contains_rejected_evidence "$artifact_file" && fail_stage "redacted_source_bound_artifact" "evidence-security" "artifact_contains_rejected_data"
   grep -Fq "\"sourceCommit\": \"$source_commit\"" "$artifact_file" || fail_stage "redacted_source_bound_artifact" "evidence" "artifact_source_commit_mismatch"
+  grep -Fq "\"appBinarySHA256\": \"$app_binary_sha256\"" "$artifact_file" || fail_stage "redacted_source_bound_artifact" "evidence" "artifact_app_binary_hash_mismatch"
   grep -Fq '"manualVoiceOver": "not-run"' "$artifact_file" || fail_stage "redacted_source_bound_artifact" "evidence" "manual_voiceover_claimed"
   completed_stages+=("redacted_source_bound_artifact")
   write_artifact_atomically "passed" "" "" ""
@@ -268,6 +307,7 @@ verify_final_evidence() {
 main() {
   [[ $# -eq 0 ]] || { usage; exit 2; }
   require_runtime_prerequisites
+  build_current_head_bundle
   prepare_isolated_home_and_sqlite
   run_product_stage "isolated_home_sqlite" "sqlite"
   run_product_stage "fixed_fixture_seed" "fixture"

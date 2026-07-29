@@ -16,6 +16,7 @@ RUNTIME_HOME="${HOME:?isolated HOME is required}"
 WITNESS_DIR="${SUISUI_VOICE_TASK_CONTINUITY_WITNESS_DIR:?witness directory is required}"
 SNAPSHOT_FILE="${SUISUI_VOICE_TASK_CONTINUITY_PRE_APPROVAL_SNAPSHOT:?snapshot path is required}"
 SOURCE_COMMIT="${SUISUI_VOICE_TASK_CONTINUITY_SOURCE_COMMIT:?source commit is required}"
+EXPECTED_APP_BINARY_SHA256="${SUISUI_VOICE_TASK_CONTINUITY_APP_BINARY_SHA256:?app binary SHA-256 is required}"
 FIXTURE_MANIFEST="${SUISUI_VOICE_TASK_CONTINUITY_FIXTURE_MANIFEST:?fixture manifest is required}"
 TIMEOUT_SECONDS="${SUISUI_VOICE_TASK_CONTINUITY_TIMEOUT_SECONDS:-35}"
 
@@ -35,6 +36,8 @@ app_identity=""
 baseline_task_digest=""
 session_id=""
 queue_item_id=""
+action_link_id=""
+execution_receipt_id=""
 
 usage() {
   printf '%s\n' "usage: $0 --run-all" >&2
@@ -61,6 +64,7 @@ write_witness() {
     printf 'stage=%s\n' "$stage"
     printf 'result=passed\n'
     printf 'source_commit=%s\n' "$SOURCE_COMMIT"
+    printf 'app_binary_sha256=%s\n' "$EXPECTED_APP_BINARY_SHA256"
     printf '%s\n' "$@"
   } >"$WITNESS_DIR/$stage.witness"
 }
@@ -82,6 +86,14 @@ require_prerequisites() {
   [[ "$DATABASE_PATH" != ":memory:" ]] || fail "isolated_home_sqlite" "sqlite" "non_isolated_database"
   [[ "$RUNTIME_HOME" != "/Users/"* && "$RUNTIME_HOME" != "/home/"* ]] || fail "isolated_home_sqlite" "isolation" "non_isolated_home"
   [[ "$TIMEOUT_SECONDS" =~ ^[0-9]+$ && "$TIMEOUT_SECONDS" -gt 0 ]] || fail "isolated_home_sqlite" "harness" "invalid_timeout"
+  [[ "$EXPECTED_APP_BINARY_SHA256" =~ ^[a-f0-9]{64}$ ]] || fail "normal_product_route" "provenance" "expected_app_binary_hash_invalid"
+  assert_app_binary_provenance || fail "normal_product_route" "provenance" "app_binary_hash_mismatch"
+}
+
+assert_app_binary_provenance() {
+  local actual_app_binary_sha256
+  actual_app_binary_sha256="$(/usr/bin/shasum -a 256 "$APP_BINARY" | awk '{print $1}')" || return 1
+  [[ "$actual_app_binary_sha256" == "$EXPECTED_APP_BINARY_SHA256" ]]
 }
 
 terminate_owned_app() {
@@ -94,6 +106,7 @@ terminate_owned_app() {
 launch_owned_app() {
   local destination="$1" selected_task_id="${2:-}" open_voice="$3"
   terminate_owned_app
+  assert_app_binary_provenance || return 1
   /usr/bin/env -i \
     PATH="$PATH" \
     HOME="$RUNTIME_HOME" \
@@ -108,6 +121,7 @@ launch_owned_app() {
   app_launch_pid=$!
   app_pid="$(ax_wait_for_owned_app_pid "$app_launch_pid" "$APP_BINARY" "$TIMEOUT_SECONDS")" || return 1
   app_identity="$(ax_wait_for_owned_process_identity "$app_pid" "$APP_BINARY" 3)" || return 1
+  assert_app_binary_provenance || return 1
   ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$TIMEOUT_SECONDS" "$APP_BINARY"
 }
 
@@ -201,20 +215,32 @@ assert_session_scope() {
   [[ "$scoped_session_count" == "1" ]] || fail "$stage" "scope" "conversation_scope_not_persisted"
 }
 
-assert_linked_execution_receipt() {
-  local execution_receipt_id receipt_directory receipt_filename receipt_file receipt_file_id
-  execution_receipt_id="$("$SQLITE3" -readonly -noheader "$DATABASE_PATH" "SELECT execution_receipt_id FROM conversation_action_links WHERE session_id='$session_id' AND assistant_queue_item_id='$queue_item_id' AND execution_receipt_id IS NOT NULL AND length(trim(execution_receipt_id)) > 0 ORDER BY created_at DESC LIMIT 1;" | tr -d '\r')"
-  [[ -n "$execution_receipt_id" ]] || return 1
+assert_receipt_file_id() {
+  local expected_receipt_id="$1"
+  local receipt_directory receipt_filename receipt_file receipt_file_id
 
-  # Match the store's safe filename contract, then verify the receipt JSON's
-  # own id. This binds the Action Link to the executed receipt rather than an
-  # unrelated JSON file in the isolated Application Support directory.
   receipt_directory="$RUNTIME_HOME/Library/Application Support/$APP_NAME/ExecutionReceipts"
-  receipt_filename="$(printf '%s' "$execution_receipt_id" | /usr/bin/sed -E 's/[^[:alnum:]_-]/-/g').json"
+  receipt_filename="$(printf '%s' "$expected_receipt_id" | /usr/bin/sed -E 's/[^[:alnum:]_-]/-/g').json"
   receipt_file="$receipt_directory/$receipt_filename"
   [[ -f "$receipt_file" ]] || return 1
   receipt_file_id="$(/usr/bin/plutil -extract id raw -o - "$receipt_file" 2>/dev/null || true)"
-  [[ "$receipt_file_id" == "$execution_receipt_id" ]]
+  [[ "$receipt_file_id" == "$expected_receipt_id" ]]
+}
+
+assert_linked_execution_receipt() {
+  action_link_id="$("$SQLITE3" -readonly -noheader "$DATABASE_PATH" "SELECT id FROM conversation_action_links WHERE session_id='$session_id' AND assistant_queue_item_id='$queue_item_id' AND execution_receipt_id IS NOT NULL AND length(trim(execution_receipt_id)) > 0 ORDER BY created_at DESC LIMIT 1;" | tr -d '\r')"
+  execution_receipt_id="$("$SQLITE3" -readonly -noheader "$DATABASE_PATH" "SELECT execution_receipt_id FROM conversation_action_links WHERE session_id='$session_id' AND assistant_queue_item_id='$queue_item_id' AND execution_receipt_id IS NOT NULL AND length(trim(execution_receipt_id)) > 0 ORDER BY created_at DESC LIMIT 1;" | tr -d '\r')"
+  [[ -n "$action_link_id" && -n "$execution_receipt_id" ]] || return 1
+  assert_receipt_file_id "$execution_receipt_id"
+}
+
+assert_restored_action_link() {
+  local restored_action_link_id restored_execution_receipt_id
+  restored_action_link_id="$("$SQLITE3" -readonly -noheader "$DATABASE_PATH" "SELECT id FROM conversation_action_links WHERE session_id='$session_id' AND assistant_queue_item_id='$queue_item_id' ORDER BY created_at DESC LIMIT 1;" | tr -d '\r')"
+  restored_execution_receipt_id="$("$SQLITE3" -readonly -noheader "$DATABASE_PATH" "SELECT execution_receipt_id FROM conversation_action_links WHERE id='$restored_action_link_id' AND session_id='$session_id' AND assistant_queue_item_id='$queue_item_id';" | tr -d '\r')"
+  [[ "$restored_action_link_id" == "$action_link_id" ]] || return 1
+  [[ "$restored_execution_receipt_id" == "$execution_receipt_id" ]] || return 1
+  assert_receipt_file_id "$restored_execution_receipt_id"
 }
 
 run_all() {
@@ -289,16 +315,25 @@ run_all() {
   ax_press "project-board-voice-command" || fail "restart" "ax" "voice_command_control_missing"
   wait_for_marker "voice-conversation-workspace" || fail "restart" "window" "voice_workspace_not_restored"
   write_witness "restart" "app_restarted=true"
+  local resumed resume_summary resume_summary_sha256
   resumed="$("$SQLITE3" -readonly -noheader "$DATABASE_PATH" "SELECT count(*) FROM voice_task_conversation_sessions WHERE id='$session_id';" | tr -d '\r')"
   [[ "$resumed" == "1" ]] || fail "resume" "conversation" "session_changed_after_restart"
   assert_session_scope "resume"
+  assert_restored_action_link || fail "resume" "receipt" "restored_action_link_receipt_mismatch"
+  resume_summary="$("$SQLITE3" -readonly -noheader "$DATABASE_PATH" "SELECT resume_summary FROM voice_task_conversation_sessions WHERE id='$session_id';" | tr -d '\r')"
+  [[ -n "$resume_summary" && "$resume_summary" == *"$PROJECT_TITLE"* && "$resume_summary" == *"$TASK_TWO_TITLE"* ]] \
+    || fail "resume" "conversation" "resume_summary_missing_scope"
   wait_for_marker "voice-conversation-workspace" || fail "resume" "ax" "conversation_workspace_missing"
+  wait_for_marker "voice-conversation-scope" "$resume_summary" || fail "resume" "ax" "resume_summary_not_rendered"
+  resume_summary_sha256="$(printf '%s' "$resume_summary" | /usr/bin/shasum -a 256 | awk '{print $1}')"
   write_witness \
     "resume" \
     "session_resumed=true" \
     "resume_project_scope=$PROJECT_ID" \
     "resume_task_scope=$TASK_TWO_ID" \
-    "resume_action_link=present"
+    "resume_action_link_id=$action_link_id" \
+    "resume_execution_receipt_id=$execution_receipt_id" \
+    "resume_summary_sha256=$resume_summary_sha256"
 }
 
 [[ $# -eq 1 && "$1" == "--run-all" ]] || { usage; exit 2; }
