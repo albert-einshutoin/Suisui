@@ -44,6 +44,8 @@ AX_MARKER_CHECKER="$EVIDENCE_TMPDIR/ui-evidence-ax-marker-checker.$$"
 AX_SCROLL_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-scroll-to.$$"
 AX_SCROLL_CONTAINER_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-scroll-container.$$"
 AX_TARGET_FRAME_AUDITOR="$EVIDENCE_TMPDIR/ui-evidence-ax-target-frame-auditor.$$"
+AX_RESIZE_WINDOW_HELPER_SOURCE="$ROOT_DIR/script/ui_evidence_ax_resize_window.swift"
+AX_RESIZE_WINDOW_HELPER_BINARY="$EVIDENCE_TMPDIR/ui-evidence-ax-resize-window.$$"
 AX_PRESS_ELEMENT_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-press-element.$$"
 POINTER_PARKER="$EVIDENCE_TMPDIR/ui-evidence-pointer-park.$$"
 AX_CAPTURE_RECEIPT_TSV="$EVIDENCE_TMPDIR/visual-ax-captures.$$.tsv"
@@ -307,6 +309,7 @@ cleanup() {
   rm -f "$AX_SCROLL_HELPER"
   rm -f "$AX_SCROLL_CONTAINER_HELPER"
   rm -f "$AX_TARGET_FRAME_AUDITOR"
+  rm -f "$AX_RESIZE_WINDOW_HELPER_BINARY"
   rm -f "$AX_PRESS_ELEMENT_HELPER"
   rm -f "$POINTER_PARKER"
   rm -f "$AX_CAPTURE_RECEIPT_TSV" "$AX_RECEIPT_WRITER" "$VISUAL_RASTER_STABILITY_CHECKER" "$VISUAL_APPEARANCE_CHECKER"
@@ -750,6 +753,13 @@ prepare_ax_target_frame_auditor() {
   /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_target_frame_audit.swift" -o "$AX_TARGET_FRAME_AUDITOR"
 }
 
+prepare_ax_window_resizer() {
+  if [[ -x "$AX_RESIZE_WINDOW_HELPER_BINARY" ]]; then
+    return
+  fi
+  /usr/bin/swiftc "$AX_RESIZE_WINDOW_HELPER_SOURCE" -o "$AX_RESIZE_WINDOW_HELPER_BINARY"
+}
+
 prepare_pointer_parker() {
   if [[ -x "$POINTER_PARKER" ]]; then
     return
@@ -1012,7 +1022,10 @@ position_window_for_capture() {
   local height="${viewport#*x}"
   local deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
   local window_metadata
+  local window_id window_x window_y window_width window_height
   local ax_window_size
+  local observed_x=""
+  local observed_y=""
   local observed_width=""
   local observed_height=""
   if [[ ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
@@ -1021,53 +1034,30 @@ position_window_for_capture() {
   fi
 
   while true; do
-    if ! wait_for_owned_evidence_window "$window_name" "$diagnostic_file"; then
-      echo "failure_category=window" >&2
-      echo "failure_message=visual-owned-window-unavailable" >&2
-      return 1
-    fi
-
-    if ax_window_size="$(/usr/bin/osascript - "$EVIDENCE_APP_PID" "$window_name" "$origin_x" "$origin_y" "$width" "$height" <<'APPLESCRIPT'
-on run argv
-  set appPID to item 1 of argv as integer
-  set windowName to item 2 of argv
-  set originX to item 3 of argv as integer
-  set originY to item 4 of argv as integer
-  set targetWidth to item 5 of argv as integer
-  set targetHeight to item 6 of argv as integer
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is appPID
-    if (count of matchingProcesses) is 0 then return "missing"
-    set targetProcess to item 1 of matchingProcesses
-    tell targetProcess
-      set frontmost to true
-      if windowName is not "" then
-        if not (exists window windowName) then error "missing named evidence window: " & windowName
-        set targetWindow to window windowName
-      else
-        -- The capture process is PID-scoped and owns one product window here.
-        -- `front window` can transiently disappear after an AX sidebar press
-        -- even though the owned window remains published, so select it from
-        -- the process window collection just as activation does.
-        if (count of windows) is 0 then error "missing owned evidence window"
-        set targetWindow to window 1
-      end if
-      set position of targetWindow to {originX, originY}
-      set size of targetWindow to {targetWidth, targetHeight}
-      set actualSize to size of targetWindow
-      return (item 1 of actualSize as text) & " " & (item 2 of actualSize as text)
-    end tell
-  end tell
-end run
-APPLESCRIPT
-    )"; then
-      read -r observed_width observed_height <<<"$ax_window_size"
+    if window_metadata="$(wait_for_window_capture_metadata "$window_name" 2>/dev/null)"; then
+      set -- $window_metadata
+      window_id="$1"
+      window_x="$2"
+      window_y="$3"
+      window_width="$4"
+      window_height="$5"
+      prepare_ax_window_resizer
+      if ax_window_size="$(
+        "$AX_RESIZE_WINDOW_HELPER_BINARY" \
+          "$EVIDENCE_APP_PID" \
+          "$window_x" "$window_y" "$window_width" "$window_height" \
+          "$width" "$height" "$origin_x" "$origin_y" \
+          2>>"${diagnostic_file:-/dev/null}"
+      )"; then
+        read -r observed_x observed_y observed_width observed_height <<<"$ax_window_size"
+      fi
       if window_metadata="$(wait_for_window_capture_metadata "$window_name" 2>/dev/null)"; then
         # CG window bounds include compositor decoration on newer macOS
         # versions even when `screencapture -o` excludes the shadow. The AX
         # size is the product's logical viewport and is therefore the value
         # bound to the manifest and receipt.
-        if [[ "$observed_width" == "$width" && "$observed_height" == "$height" ]]; then
+        if [[ "$observed_x" == "$origin_x" && "$observed_y" == "$origin_y" \
+          && "$observed_width" == "$width" && "$observed_height" == "$height" ]]; then
           POSITIONED_WINDOW_WIDTH="$observed_width"
           POSITIONED_WINDOW_HEIGHT="$observed_height"
           park_pointer_outside_evidence_window

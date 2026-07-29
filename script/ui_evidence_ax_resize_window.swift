@@ -2,7 +2,7 @@ import ApplicationServices
 import AppKit
 import Foundation
 
-guard CommandLine.arguments.count == 8,
+guard (CommandLine.arguments.count == 8 || CommandLine.arguments.count == 10),
       let rawPID = Int32(CommandLine.arguments[1]),
       rawPID > 0,
       let expectedX = Double(CommandLine.arguments[2]),
@@ -15,8 +15,20 @@ guard CommandLine.arguments.count == 8,
       expectedHeight > 0,
       targetWidth > 0,
       targetHeight > 0 else {
-    fputs("AX window resize requires pid expected-x expected-y expected-width expected-height target-width target-height.\n", stderr)
+    fputs("AX window resize requires pid expected-x expected-y expected-width expected-height target-width target-height and optional target-x target-y.\n", stderr)
     exit(2)
+}
+
+let targetOrigin: CGPoint
+if CommandLine.arguments.count == 10 {
+    guard let targetX = Double(CommandLine.arguments[8]),
+          let targetY = Double(CommandLine.arguments[9]) else {
+        fputs("AX window resize target origin must contain numeric x y values.\n", stderr)
+        exit(2)
+    }
+    targetOrigin = CGPoint(x: targetX, y: targetY)
+} else {
+    targetOrigin = CGPoint(x: 0, y: expectedY)
 }
 
 guard AXIsProcessTrusted() else {
@@ -89,7 +101,7 @@ _ = AXUIElementPerformAction(targetWindow, kAXRaiseAction as CFString)
 
 // Growing from the left edge makes the full runner width available and avoids
 // mistaking desktop placement clamping for a product minimum.
-var normalizedPosition = CGPoint(x: 0, y: expectedFrame.origin.y)
+var normalizedPosition = targetOrigin
 guard let positionValue = AXValueCreate(.cgPoint, &normalizedPosition) else {
     fputs("Could not construct the target AX window position.\n", stderr)
     exit(2)
@@ -115,3 +127,18 @@ guard positionStatus == .success, sizeStatus == .success else {
     fputs("AX resize failed (position=\(positionStatus.rawValue), size=\(sizeStatus.rawValue)).\n", stderr)
     exit(1)
 }
+
+guard let finalPosition = point(from: copyAttribute(targetWindow, kAXPositionAttribute as CFString)),
+      let finalSize = size(from: copyAttribute(targetWindow, kAXSizeAttribute as CFString)) else {
+    fputs("Could not read the resized AX window frame.\n", stderr)
+    exit(1)
+}
+print(
+    String(
+        format: "%.0f %.0f %.0f %.0f",
+        finalPosition.x,
+        finalPosition.y,
+        finalSize.width,
+        finalSize.height
+    )
+)

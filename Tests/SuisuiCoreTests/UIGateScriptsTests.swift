@@ -822,7 +822,8 @@ final class UIGateScriptsTests: XCTestCase {
     func testLayoutResizeMovesWindowAwayFromRightEdgeBeforeGrowing() throws {
         let resizeHelper = try readPackageFile("script/ui_evidence_ax_resize_window.swift")
 
-        XCTAssertTrue(resizeHelper.contains("var normalizedPosition = CGPoint(x: 0, y: expectedFrame.origin.y)"))
+        XCTAssertTrue(resizeHelper.contains("var normalizedPosition = targetOrigin"))
+        XCTAssertTrue(resizeHelper.contains("CGPoint(x: 0, y: expectedY)"))
         let positionChange = try XCTUnwrap(resizeHelper.range(of: "kAXPositionAttribute"))
         let sizeChange = try XCTUnwrap(resizeHelper.range(of: "kAXSizeAttribute", range: positionChange.upperBound..<resizeHelper.endIndex))
         XCTAssertLessThan(positionChange.lowerBound, sizeChange.lowerBound)
@@ -831,11 +832,12 @@ final class UIGateScriptsTests: XCTestCase {
     func testVisualPositioningRewaitsForOwnedWindowAfterRouteRecreation() throws {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
 
-        XCTAssertTrue(script.contains("wait_for_owned_evidence_window()"))
-        XCTAssertTrue(script.contains("ax_wait_for_pid_owned_window \"$APP_NAME\" \"$EVIDENCE_APP_PID\" \"$window_name\""))
-        XCTAssertTrue(script.contains("if ! wait_for_owned_evidence_window \"$window_name\" \"$diagnostic_file\"; then"))
-        XCTAssertTrue(script.contains("INFO: waiting for recreated owned evidence window before positioning"))
+        XCTAssertTrue(script.contains("prepare_ax_window_resizer"))
         XCTAssertTrue(script.contains("wait_for_window_capture_metadata \"$window_name\""))
+        XCTAssertTrue(script.contains("\"$AX_RESIZE_WINDOW_HELPER_BINARY\""))
+        XCTAssertTrue(script.contains("\"$window_x\" \"$window_y\" \"$window_width\" \"$window_height\""))
+        XCTAssertTrue(script.contains("INFO: waiting for recreated owned evidence window before positioning"))
+        XCTAssertFalse(script.contains("if ! wait_for_owned_evidence_window \"$window_name\" \"$diagnostic_file\"; then"))
     }
 
     func testVisualPositioningRejectsAppKitViewportClampingBeforeCapture() throws {
