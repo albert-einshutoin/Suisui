@@ -12,13 +12,20 @@ struct VoiceTaskConversationUnderstandingView: View {
     var body: some View {
         Group {
             if isCompact {
-                DisclosureGroup("Understanding") {
+                DisclosureGroup {
                     understandingContent
                         .padding(.top, SuisuiSpacing.sm)
+                } label: {
+                    Label(
+                        "Understanding",
+                        systemImage: "text.magnifyingglass"
+                    )
+                    // Keep the marker on the label so native AX traversal can
+                    // climb to the disclosure control's real AXPress action.
+                    .accessibilityIdentifier(
+                        "voice-conversation-understanding-disclosure"
+                    )
                 }
-                .accessibilityIdentifier(
-                    "voice-conversation-understanding-disclosure"
-                )
             } else {
                 VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
                     Label("Understanding", systemImage: "text.magnifyingglass")
