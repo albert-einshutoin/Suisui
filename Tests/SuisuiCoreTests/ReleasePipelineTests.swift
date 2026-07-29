@@ -6252,13 +6252,14 @@ final class ReleasePipelineTests: XCTestCase {
     func testRuntimeWorkflowSmokeScriptDefinesScenarioRegistryAndFailureArtifacts() throws {
         let script = try readPackageFile("script/check_runtime_workflow_smoke.sh")
 
-        XCTAssertTrue(script.contains("SCENARIOS=(\"project_task_crud\" \"inbox_triage\" \"today_complete\" \"settings_save\" \"voice_review\" \"development_pr\" \"schedule_cockpit\")"))
+        XCTAssertTrue(script.contains("SCENARIOS=(\"project_task_crud\" \"inbox_triage\" \"today_complete\" \"settings_save\" \"voice_review\" \"voice_task_continuity\" \"development_pr\" \"schedule_cockpit\")"))
         for scenario in [
             "project_task_crud",
             "inbox_triage",
             "today_complete",
             "settings_save",
             "voice_review",
+            "voice_task_continuity",
             "development_pr",
             "schedule_cockpit"
         ] {
@@ -6275,6 +6276,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("./script/check_runtime_today_complete_smoke.sh"))
         XCTAssertTrue(script.contains("./script/check_runtime_settings_save_smoke.sh"))
         XCTAssertTrue(script.contains("./script/check_runtime_voice_review_smoke.sh"))
+        XCTAssertTrue(script.contains("./script/check_runtime_voice_task_continuity_smoke.sh"))
         XCTAssertTrue(script.contains("./script/check_runtime_development_pr_smoke.sh"))
         XCTAssertTrue(script.contains("./script/check_runtime_schedule_cockpit_smoke.sh"))
         XCTAssertTrue(script.contains("SUISUI_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE=1"))
