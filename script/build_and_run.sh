@@ -57,14 +57,27 @@ LOCAL_LICENSE_PUBLIC_KEY_BASE64="${SUISUI_LOCAL_LICENSE_PUBLIC_KEY_BASE64:-${SUI
 # default aligned with runtime smoke waits while
 # preserving SUISUI_VERIFY_TIMEOUT_SECONDS for faster local overrides.
 VERIFY_TIMEOUT_SECONDS="${SUISUI_VERIFY_TIMEOUT_SECONDS:-30}"
-PROJECT_BOARD_WINDOW_NAME="${SUISUI_PROJECT_BOARD_WINDOW_NAME:-$APP_NAME}"
+# Product markers identify the Project Board independently of its localized window title.
+# Keep the optional name override for targeted diagnostics, while the release gate
+# defaults to any visible window owned by the exact verification PID.
+PROJECT_BOARD_WINDOW_NAME="${SUISUI_PROJECT_BOARD_WINDOW_NAME:-}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
-VERIFY_ROOT="$BUILD_AND_RUN_TMPDIR/verify"
+VERIFY_SYSTEM_TMP_ROOT="${SUISUI_VERIFY_SYSTEM_TMP_ROOT:-$(getconf DARWIN_USER_TEMP_DIR)}"
+VERIFY_ROOT_CREATED=0
+if [[ "$MODE" == "--verify" || "$MODE" == "verify" ]]; then
+  mkdir -p "$VERIFY_SYSTEM_TMP_ROOT"
+  VERIFY_ROOT="$(mktemp -d "${VERIFY_SYSTEM_TMP_ROOT%/}/suisui-verify.XXXXXX")"
+  VERIFY_ROOT_CREATED=1
+else
+  VERIFY_ROOT="$BUILD_AND_RUN_TMPDIR/verify"
+fi
 VERIFY_HOME="$VERIFY_ROOT/home"
 VERIFY_CFFIXED_USER_HOME="$VERIFY_ROOT/cfixed-user-home"
 VERIFY_TMPDIR="$VERIFY_ROOT/tmp"
 VERIFY_DATABASE_PATH="$VERIFY_ROOT/suisui.sqlite3"
 VERIFY_SQLITE3="${SQLITE3:-sqlite3}"
+VERIFY_APP_LAUNCHER_SOURCE="$ROOT_DIR/script/launch_macos_app.swift"
+VERIFY_APP_LAUNCHER_EXECUTABLE="$VERIFY_ROOT/launch-macos-app"
 BOOTSTRAP_LAUNCH_PID=""
 BOOTSTRAP_APP_PID=""
 APP_LAUNCH_PID=""
@@ -119,6 +132,18 @@ cleanup_build_and_run_tmpdir() {
   fi
 }
 
+cleanup_verify_root() {
+  if [[ "${VERIFY_ROOT_CREATED:-0}" != "1" ]]; then
+    return 0
+  fi
+  case "$VERIFY_ROOT" in
+    "${VERIFY_SYSTEM_TMP_ROOT%/}"/suisui-verify.*)
+      rm -rf "$VERIFY_ROOT"
+      VERIFY_ROOT_CREATED=0
+      ;;
+  esac
+}
+
 terminate_verify_app() {
   terminate_owned_verify_process "final" "${APP_LAUNCH_PID:-}" "${APP_PID:-}"
   terminate_owned_verify_process "bootstrap" "${BOOTSTRAP_LAUNCH_PID:-}" "${BOOTSTRAP_APP_PID:-}"
@@ -164,6 +189,7 @@ terminate_owned_verify_process() {
 cleanup_build_and_run() {
   terminate_verify_app
   release_build_and_run_lock
+  cleanup_verify_root
   cleanup_build_and_run_tmpdir
 }
 
@@ -430,18 +456,23 @@ open_app() {
 launch_verify_process() {
   local selected_destination="$1"
   mkdir -p "$VERIFY_HOME" "$VERIFY_CFFIXED_USER_HOME" "$VERIFY_TMPDIR"
-  /usr/bin/env -i \
+  if [[ ! -x "$VERIFY_APP_LAUNCHER_EXECUTABLE" ]]; then
+    /usr/bin/swiftc -parse-as-library "$VERIFY_APP_LAUNCHER_SOURCE" -o "$VERIFY_APP_LAUNCHER_EXECUTABLE"
+  fi
+  VERIFY_LAUNCH_PID="$(/usr/bin/env -i \
     PATH="$PATH" \
-    HOME="$VERIFY_HOME" \
-    CFFIXED_USER_HOME="$VERIFY_CFFIXED_USER_HOME" \
-    TMPDIR="$VERIFY_TMPDIR" \
-    SUISUI_DATABASE_PATH="$VERIFY_DATABASE_PATH" \
-    SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
-    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="$selected_destination" \
-    "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
-  # `/usr/bin/env` may remain as the background job while the app is its child;
-  # the caller must resolve and own the actual executable PID before checking UI.
-  VERIFY_LAUNCH_PID="$!"
+    "$VERIFY_APP_LAUNCHER_EXECUTABLE" \
+    "$APP_BUNDLE" \
+    "$PATH" \
+    "$VERIFY_HOME" \
+    "$VERIFY_CFFIXED_USER_HOME" \
+    "$VERIFY_TMPDIR" \
+    "$VERIFY_DATABASE_PATH" \
+    "$selected_destination")"
+  if [[ ! "$VERIFY_LAUNCH_PID" =~ ^[1-9][0-9]*$ ]]; then
+    ax_report_failure "launch" "bundle launcher did not return a valid app PID"
+    return 1
+  fi
 }
 
 resolve_verify_app_pid() {

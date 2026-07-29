@@ -10,34 +10,59 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(script.contains("local osascript_pid=$!"))
         XCTAssertTrue(script.contains("kill \"$osascript_pid\""))
         XCTAssertTrue(script.contains("tell application \\\"$APP_NAME\\\" to activate"))
-        XCTAssertTrue(script.contains("\"$APP_BINARY\" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &"))
+        XCTAssertFalse(script.contains("\"$APP_BINARY\" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &"))
         XCTAssertFalse(script.contains("/usr/bin/osascript -e \"tell application \\\"$APP_NAME\\\" to activate\" >/dev/null 2>&1 || true"))
+    }
+
+    func testVerifyModeLaunchesBundleThroughNSWorkspaceAndCapturesExactPID() throws {
+        let script = try readPackageFile("script/build_and_run.sh")
+        let launcher = try readPackageFile("script/launch_macos_app.swift")
+
+        XCTAssertTrue(script.contains("VERIFY_APP_LAUNCHER_SOURCE=\"$ROOT_DIR/script/launch_macos_app.swift\""))
+        XCTAssertTrue(script.contains("/usr/bin/swiftc -parse-as-library \"$VERIFY_APP_LAUNCHER_SOURCE\" -o \"$VERIFY_APP_LAUNCHER_EXECUTABLE\""))
+        XCTAssertTrue(script.contains("getconf DARWIN_USER_TEMP_DIR"))
+        XCTAssertTrue(script.contains("mktemp -d \"${VERIFY_SYSTEM_TMP_ROOT%/}/suisui-verify.XXXXXX\""))
+        XCTAssertTrue(script.contains("cleanup_verify_root()"))
+        XCTAssertTrue(script.contains("VERIFY_LAUNCH_PID=\"$(/usr/bin/env -i"))
+        XCTAssertTrue(script.contains("PATH=\"$PATH\""))
+        XCTAssertTrue(script.contains("\"$APP_BUNDLE\""))
+        XCTAssertTrue(script.contains("\"$selected_destination\""))
+        XCTAssertFalse(try functionSource(named: "launch_verify_process", in: script).contains("\"$APP_BINARY\" -ApplePersistenceIgnoreState YES"))
+
+        XCTAssertTrue(launcher.contains("NSWorkspace.OpenConfiguration()"))
+        XCTAssertTrue(launcher.contains("configuration.createsNewApplicationInstance = true"))
+        XCTAssertTrue(launcher.contains("configuration.activates = true"))
+        XCTAssertTrue(launcher.contains("configuration.environment"))
+        XCTAssertTrue(launcher.contains("SUISUI_DATABASE_PATH"))
+        XCTAssertTrue(launcher.contains("SUISUI_PROJECT_BOARD_SELECTED_DESTINATION"))
+        XCTAssertTrue(launcher.contains("runningApplication.processIdentifier"))
     }
 
     func testVerifyModeUsesNormalProjectBoardWithoutRecoveryFlags() throws {
         let script = try readPackageFile("script/build_and_run.sh")
+        let launcher = try readPackageFile("script/launch_macos_app.swift")
 
         XCTAssertTrue(script.contains("SUISUI_VERIFY_TIMEOUT_SECONDS"))
-        XCTAssertTrue(script.contains("PROJECT_BOARD_WINDOW_NAME=\"${SUISUI_PROJECT_BOARD_WINDOW_NAME:-$APP_NAME}\""))
+        XCTAssertTrue(script.contains("PROJECT_BOARD_WINDOW_NAME=\"${SUISUI_PROJECT_BOARD_WINDOW_NAME:-}\""))
+        XCTAssertTrue(script.contains("Product markers identify the Project Board independently of its localized window title"))
         XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
-        XCTAssertTrue(script.contains("/usr/bin/env -i"))
-        XCTAssertTrue(script.contains("HOME=\"$VERIFY_HOME\""))
-        XCTAssertTrue(script.contains("CFFIXED_USER_HOME=\"$VERIFY_CFFIXED_USER_HOME\""))
-        XCTAssertTrue(script.contains("SUISUI_DATABASE_PATH=\"$VERIFY_DATABASE_PATH\""))
-        XCTAssertTrue(script.contains("SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1"))
+        XCTAssertTrue(launcher.contains("\"HOME\": CommandLine.arguments[3]"))
+        XCTAssertTrue(launcher.contains("\"CFFIXED_USER_HOME\": CommandLine.arguments[4]"))
+        XCTAssertTrue(launcher.contains("\"SUISUI_DATABASE_PATH\": CommandLine.arguments[6]"))
+        XCTAssertTrue(launcher.contains("\"SUISUI_DISABLE_KEYCHAIN_SECRET_STORE\": \"1\""))
         XCTAssertTrue(script.contains("launch_verify_process \"today\"\n    BOOTSTRAP_LAUNCH_PID=\"$VERIFY_LAUNCH_PID\""))
         XCTAssertTrue(script.contains("terminate_owned_verify_process \"bootstrap\" \"$BOOTSTRAP_LAUNCH_PID\" \"$BOOTSTRAP_APP_PID\""))
         XCTAssertTrue(script.contains("VERIFY_PROJECT_ID=\"$(fetch_verify_project_id)\""))
         XCTAssertTrue(script.contains("launch_verify_process \"project:$VERIFY_PROJECT_ID\"\n    APP_LAUNCH_PID=\"$VERIFY_LAUNCH_PID\""))
-        XCTAssertTrue(script.contains("SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=\"$selected_destination\""))
-        XCTAssertTrue(script.contains("VERIFY_LAUNCH_PID=\"$!\""))
+        XCTAssertTrue(launcher.contains("\"SUISUI_PROJECT_BOARD_SELECTED_DESTINATION\": CommandLine.arguments[7]"))
+        XCTAssertTrue(script.contains("VERIFY_LAUNCH_PID=\"$(/usr/bin/env -i"))
         XCTAssertTrue(script.contains("ax_wait_for_owned_app_pid \"$launch_pid\" \"$APP_BINARY\""))
         XCTAssertTrue(script.contains("source_command = 'build-and-run-verify'"))
         XCTAssertTrue(script.contains("JOIN tasks AS t ON t.project_id = p.id"))
         XCTAssertTrue(script.contains("INSERT INTO projects"))
         XCTAssertTrue(script.contains("INSERT INTO tasks"))
         XCTAssertTrue(script.contains("due_at=\"2026-01-01T12:00:00+00:00\""))
-        XCTAssertTrue(script.contains("-ApplePersistenceIgnoreState YES"))
+        XCTAssertTrue(launcher.contains("\"-ApplePersistenceIgnoreState\", \"YES\""))
         XCTAssertTrue(script.contains("wait_for_project_board_window"))
         XCTAssertTrue(script.contains("wait_for_project_board_marker"))
         XCTAssertTrue(script.contains("project-board-command-palette"))
@@ -139,11 +164,12 @@ final class LaunchExperienceTests: XCTestCase {
 
     func testBundleDisablesWindowRestorationForPrimaryBoardLaunch() throws {
         let script = try readPackageFile("script/build_and_run.sh")
+        let launcher = try readPackageFile("script/launch_macos_app.swift")
         let source = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
 
         XCTAssertTrue(script.contains("<key>NSQuitAlwaysKeepsWindows</key>"))
         XCTAssertTrue(script.contains("<false/>"))
-        XCTAssertTrue(script.contains("-ApplePersistenceIgnoreState YES"))
+        XCTAssertTrue(launcher.contains("\"-ApplePersistenceIgnoreState\", \"YES\""))
         XCTAssertTrue(source.contains("shouldSaveApplicationState"))
         XCTAssertTrue(source.contains("shouldRestoreApplicationState"))
         XCTAssertTrue(source.contains("return false"))
@@ -539,6 +565,13 @@ final class LaunchExperienceTests: XCTestCase {
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func functionSource(named name: String, in script: String) throws -> String {
+        let start = try XCTUnwrap(script.range(of: "\(name)() {"))
+        let tail = script[start.upperBound...]
+        let end = try XCTUnwrap(tail.range(of: "\n}"))
+        return String(script[start.lowerBound..<end.upperBound])
     }
 
     private func readLaunchRecoveryAppShellSource() throws -> String {
