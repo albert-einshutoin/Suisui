@@ -1056,8 +1056,10 @@ position_window_for_capture() {
         # versions even when `screencapture -o` excludes the shadow. The AX
         # size is the product's logical viewport and is therefore the value
         # bound to the manifest and receipt.
-        if [[ "$observed_x" == "$origin_x" && "$observed_y" == "$origin_y" \
-          && "$observed_width" == "$width" && "$observed_height" == "$height" ]]; then
+        # AppKit clamps y=0 below the menu bar on a normal desktop. The logical
+        # viewport is the release contract; the following CG lookup and AX
+        # target audit bind capture to the actual clamped frame.
+        if [[ "$observed_width" == "$width" && "$observed_height" == "$height" ]]; then
           POSITIONED_WINDOW_WIDTH="$observed_width"
           POSITIONED_WINDOW_HEIGHT="$observed_height"
           park_pointer_outside_evidence_window

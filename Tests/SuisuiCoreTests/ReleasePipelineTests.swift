@@ -9105,6 +9105,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("local origin_y=0"))
         XCTAssertTrue(captureScript.contains("AX_RESIZE_WINDOW_HELPER"))
         XCTAssertTrue(captureScript.contains("\"$origin_x\" \"$origin_y\""))
+        XCTAssertTrue(captureScript.contains("if [[ \"$observed_width\" == \"$width\" && \"$observed_height\" == \"$height\" ]]"))
+        XCTAssertFalse(captureScript.contains("\"$observed_y\" == \"$origin_y\""))
         XCTAssertTrue(resizeHelper.contains("targetOrigin"))
         XCTAssertTrue(resizeHelper.contains("print("))
         XCTAssertFalse(captureScript.contains("set position of targetWindow to {originX, originY}"))
