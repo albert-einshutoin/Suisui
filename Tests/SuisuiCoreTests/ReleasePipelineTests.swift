@@ -6917,6 +6917,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("project-board-command-palette"))
         XCTAssertTrue(script.contains("today-workflow"))
         XCTAssertTrue(script.contains("ui_evidence_ax_identifier_count.swift"))
+        XCTAssertTrue(script.contains("SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1"))
         XCTAssertTrue(script.contains("verify_today_action_contract"))
         XCTAssertTrue(script.contains("\"today-primary-action\""))
         XCTAssertTrue(script.contains("\"today-catch-up-section\""))
