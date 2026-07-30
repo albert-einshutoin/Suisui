@@ -16,6 +16,7 @@ final class VisualCaptureStabilityTests: XCTestCase {
         XCTAssertTrue(app.contains("configureVisualEvidenceBackdrop"))
         XCTAssertTrue(app.contains("window.colorSpace = .sRGB"))
         XCTAssertTrue(app.contains("stabilizeVisualEffectBlending"))
+        XCTAssertTrue(app.contains("contentView.superview ?? contentView"))
         XCTAssertTrue(app.contains("effectView.blendingMode = .withinWindow"))
         XCTAssertTrue(app.contains("window.isOpaque = true"))
         XCTAssertTrue(app.contains("NSWindow.didBecomeKeyNotification"))

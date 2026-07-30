@@ -780,13 +780,13 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
         )
         window.isOpaque = true
         if let contentView = window.contentView {
-            stabilizeVisualEffectBlending(in: contentView)
+            stabilizeVisualEffectBlending(in: contentView.superview ?? contentView)
         }
         DispatchQueue.main.async { [weak window] in
             guard let contentView = window?.contentView else {
                 return
             }
-            self.stabilizeVisualEffectBlending(in: contentView)
+            self.stabilizeVisualEffectBlending(in: contentView.superview ?? contentView)
         }
     }
 
