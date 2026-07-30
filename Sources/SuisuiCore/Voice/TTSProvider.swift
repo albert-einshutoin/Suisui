@@ -1,13 +1,10 @@
 import Foundation
 
 public enum TTSProviderID: String, CaseIterable, Equatable, Sendable {
-    case systemSpeech
     case kokoro
 
     public var displayName: String {
         switch self {
-        case .systemSpeech:
-            "System Speech"
         case .kokoro:
             "Kokoro"
         }
@@ -143,10 +140,6 @@ public struct TTSProviderCatalog: Sendable {
 public extension TTSProviderCatalog {
     static let phase1Default = TTSProviderCatalog(
         availabilities: [
-            TTSProviderAvailability(
-                providerID: .systemSpeech,
-                isAvailable: true
-            ),
             TTSProviderAvailability(
                 providerID: .kokoro,
                 isAvailable: false,

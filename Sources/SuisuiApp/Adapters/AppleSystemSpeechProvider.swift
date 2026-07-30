@@ -4,30 +4,24 @@ import SuisuiCore
 
 /// Synthesizes speech with voices installed in macOS and writes a temporary CAF
 /// that follows the same preview/playback pipeline as the local Kokoro provider.
-final class AppleSystemSpeechProvider: TextToSpeechProvider, @unchecked Sendable {
-    static let defaultAvailability = TTSProviderAvailability(
-        providerID: .systemSpeech,
-        isAvailable: true
-    )
-
-    let id: TTSProviderID = .systemSpeech
-    let availability: TTSProviderAvailability
+final class AppleSystemSpeechProvider: TextToSpeechPreviewing, @unchecked Sendable {
     private let outputURL: URL?
+    private let audioPlayer: any SpeechAudioPlaying
 
     init(
-        availability: TTSProviderAvailability = AppleSystemSpeechProvider.defaultAvailability,
-        outputURL: URL? = nil
+        outputURL: URL? = nil,
+        audioPlayer: any SpeechAudioPlaying = AVFoundationSpeechAudioPlayer()
     ) {
-        self.availability = availability
         self.outputURL = outputURL
+        self.audioPlayer = audioPlayer
     }
 
-    func synthesize(_ request: TextToSpeechRequest) async throws -> SynthesizedSpeech {
-        guard availability.isAvailable else {
-            throw TTSProviderError.unavailable(
-                availability.reason ?? "System Speech is unavailable."
-            )
-        }
+    func playPreview(_ request: TextToSpeechRequest) async throws {
+        let speech = try await synthesize(request)
+        try await audioPlayer.play(speech)
+    }
+
+    private func synthesize(_ request: TextToSpeechRequest) async throws -> SynthesizedSpeech {
         let text = request.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
             throw TTSProviderError.promptRejected("Speech text is empty.")

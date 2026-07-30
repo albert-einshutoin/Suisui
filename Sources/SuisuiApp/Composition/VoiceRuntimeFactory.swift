@@ -323,18 +323,13 @@ extension AppRuntimeFactory {
 enum AppTextToSpeechRuntimeFactory {
     static func makeProvider(settings: AppSettings, outputURL: URL? = nil) -> any TextToSpeechProvider {
         let normalizedSettings = settings.normalizedForRuntime
-        switch normalizedSettings.ttsProvider {
-        case .systemSpeech:
-            return AppleSystemSpeechProvider(outputURL: outputURL)
-        case .localKokoro:
-            let configuration = KokoroLocalTTSConfiguration(
-                executablePath: normalizedSettings.kokoroExecutablePath ?? "",
-                languageCode: normalizedSettings.ttsLanguageCode,
-                voiceID: normalizedSettings.ttsVoiceID,
-                outputURL: outputURL
-            )
-            return KokoroLocalTTSProvider(configuration: configuration)
-        }
+        let configuration = KokoroLocalTTSConfiguration(
+            executablePath: normalizedSettings.kokoroExecutablePath ?? "",
+            languageCode: normalizedSettings.ttsLanguageCode,
+            voiceID: normalizedSettings.ttsVoiceID,
+            outputURL: outputURL
+        )
+        return KokoroLocalTTSProvider(configuration: configuration)
     }
 
     static func makePreviewer(
@@ -347,11 +342,21 @@ enum AppTextToSpeechRuntimeFactory {
         let resolvedOutputFilename = outputFilename
             ?? (settings.normalizedForRuntime.ttsProvider == .systemSpeech ? "preview.caf" : "preview.wav")
         let outputURL = temporaryDirectory.appendingPathComponent(resolvedOutputFilename, isDirectory: false)
-        return TemporaryDirectoryTextToSpeechPreviewer(
-            previewer: TextToSpeechPreviewService(
+        let previewer: any TextToSpeechPreviewing
+        switch settings.normalizedForRuntime.ttsProvider {
+        case .systemSpeech:
+            previewer = AppleSystemSpeechProvider(
+                outputURL: outputURL,
+                audioPlayer: AVFoundationSpeechAudioPlayer()
+            )
+        case .localKokoro:
+            previewer = TextToSpeechPreviewService(
                 provider: makeProvider(settings: settings, outputURL: outputURL),
                 audioPlayer: AVFoundationSpeechAudioPlayer()
-            ),
+            )
+        }
+        return TemporaryDirectoryTextToSpeechPreviewer(
+            previewer: previewer,
             temporaryDirectory: temporaryDirectory
         )
     }
