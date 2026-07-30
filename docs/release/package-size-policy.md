@@ -26,7 +26,7 @@ SwiftTermはDeveloper Modeの内蔵ターミナルという中核機能を成立
 
 ### Sparkle
 
-Sparkleの`Resources`、`Updater.app`、`XPCServices`は更新ランタイムなので保持する。`Headers`、`PrivateHeaders`、`Modules`は実行時不要の開発資産なので、Release署名前にのみ削除する。削除後にnested codeを内側から署名し直し、署名・公証・更新smokeを実施する。
+Sparkleの`Resources`、`Updater.app`、`XPCServices`は更新ランタイムなので保持する。`Headers`、`PrivateHeaders`、`Modules`は実行時不要の開発資産なので、Release署名前にのみ削除する。Sparkleの翻訳リソースは`Base.lproj`とSuisui本体が実際に同梱するlocaleだけを保持し、アプリから選択不能な翻訳は署名前に削除する。削除後にnested codeを内側から署名し直し、署名・公証・更新smokeを実施する。
 
 ## Release workflow
 

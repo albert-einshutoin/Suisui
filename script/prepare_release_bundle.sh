@@ -77,6 +77,34 @@ if [[ -d "$sparkle_framework" ]]; then
       "$sparkle_framework"/Versions/*/Modules
     )
     rm -rf "${prune_paths[@]}"
+
+    app_resources="$APP_BUNDLE/Contents/Resources"
+    for sparkle_version in "$sparkle_framework"/Versions/*; do
+      # Current is a symlink to the canonical version. Pruning only canonical
+      # directories avoids traversing and mutating the same resources twice.
+      [[ -L "$sparkle_version" ]] && continue
+      for sparkle_locale in "$sparkle_version"/Resources/*.lproj; do
+        locale_name="$(basename "$sparkle_locale")"
+        if [[ "$locale_name" == "Base.lproj" ]]; then
+          continue
+        fi
+
+        keep_locale=0
+        for app_locale in "$app_resources"/*.lproj; do
+          if [[ "$(basename "$app_locale")" == "$locale_name" ]]; then
+            keep_locale=1
+            break
+          fi
+        done
+        if [[ "$keep_locale" == "0" ]]; then
+          # Sparkle ships every supported translation, while Suisui currently
+          # exposes only its bundled app locales. Removing unreachable updater
+          # translations before signing keeps the update ZIP within its fixed
+          # production budget without weakening the runtime or size gate.
+          rm -rf "$sparkle_locale"
+        fi
+      done
+    done
     shopt -u nullglob
     sparkle_prune_mode="development-assets-removed"
   fi

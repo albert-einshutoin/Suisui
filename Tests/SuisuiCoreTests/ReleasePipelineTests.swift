@@ -15292,7 +15292,9 @@ final class ReleasePipelineTests: XCTestCase {
             "Headers",
             "PrivateHeaders",
             "Modules",
-            "Resources",
+            "Resources/Base.lproj",
+            "Resources/de.lproj",
+            "Resources/ja.lproj",
             "Updater.app",
             "XPCServices"
         ] {
@@ -15308,6 +15310,10 @@ final class ReleasePipelineTests: XCTestCase {
         )
         try FileManager.default.createDirectory(
             at: binaryURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: appURL.appendingPathComponent("Contents/Resources/ja.lproj", isDirectory: true),
             withIntermediateDirectories: true
         )
         try "unstripped".write(to: binaryURL, atomically: true, encoding: .utf8)
@@ -15333,6 +15339,14 @@ final class ReleasePipelineTests: XCTestCase {
                 atPath: sparkleVersionURL.appendingPathComponent(retainedPath).path
             ))
         }
+        for retainedLocale in ["Base.lproj", "ja.lproj"] {
+            XCTAssertTrue(FileManager.default.fileExists(
+                atPath: sparkleVersionURL.appendingPathComponent("Resources/\(retainedLocale)").path
+            ))
+        }
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: sparkleVersionURL.appendingPathComponent("Resources/de.lproj").path
+        ))
         XCTAssertTrue(result.output.contains("release bundle prepared before signing"))
     }
 
