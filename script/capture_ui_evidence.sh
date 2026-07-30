@@ -472,9 +472,21 @@ emit_evidence_app_diagnostic() {
 
 open_evidence_app() {
   local env_args=()
+  local launch_args=(
+    "-ApplePersistenceIgnoreState" "YES"
+    "-AppleShowScrollBars" "Always"
+    "-AppleLanguages" "$APPLE_LANGUAGES"
+    "-AppleLocale" "$APPLE_LOCALE"
+  )
   while IFS= read -r -d '' env_arg; do
     env_args+=("$env_arg")
   done < <(app_env_args)
+  if [[ "$APPEARANCE_OVERRIDE" != "light" ]]; then
+    # Registration-domain launch arguments are process-local. Disable desktop
+    # tinting for Dark/System evidence without mutating the user's global
+    # accessibility or appearance preferences.
+    launch_args+=("-AppleReduceDesktopTinting" "YES")
+  fi
   stop_evidence_app
   : >"$EVIDENCE_APP_LOG"
   # Direct launch preserves the isolated database, appearance, selected route,
@@ -484,11 +496,7 @@ open_evidence_app() {
   # Use the most constrained persistent-scrollbar setting so layout does not
   # inherit a local or hosted runner preference.
   /usr/bin/env -i PATH="$PATH" TMPDIR="$EVIDENCE_TMPDIR" "${env_args[@]}" \
-    "$APP_BINARY" \
-    -ApplePersistenceIgnoreState YES \
-    -AppleShowScrollBars Always \
-    -AppleLanguages "$APPLE_LANGUAGES" \
-    -AppleLocale "$APPLE_LOCALE" \
+    "$APP_BINARY" "${launch_args[@]}" \
     >>"$EVIDENCE_APP_LOG" 2>&1 &
   EVIDENCE_APP_LAUNCH_PID=$!
   EVIDENCE_APP_PID="$EVIDENCE_APP_LAUNCH_PID"

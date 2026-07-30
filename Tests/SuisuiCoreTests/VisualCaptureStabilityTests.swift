@@ -11,6 +11,7 @@ final class VisualCaptureStabilityTests: XCTestCase {
 
         XCTAssertTrue(capture.contains("SUISUI_VISUAL_EVIDENCE_STABLE_BACKDROP=1"))
         XCTAssertTrue(capture.contains("[[ \"$APPEARANCE_OVERRIDE\" != \"light\" ]]"))
+        XCTAssertTrue(capture.contains("launch_args+=(\"-AppleReduceDesktopTinting\" \"YES\")"))
         XCTAssertTrue(app.contains("SUISUI_VISUAL_EVIDENCE_STABLE_BACKDROP"))
         XCTAssertTrue(app.contains("configureVisualEvidenceBackdrop"))
         XCTAssertTrue(app.contains("window.colorSpace = .sRGB"))
