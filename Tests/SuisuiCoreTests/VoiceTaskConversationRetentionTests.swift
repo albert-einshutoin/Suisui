@@ -239,6 +239,106 @@ final class VoiceTaskConversationRetentionTests: XCTestCase {
         )
     }
 
+    func testGivenFreshPausedClarificationWithoutPersistedSourceTurnWhenExpiredTranscriptPlanThenKeepsCheckpoint()
+        throws
+    {
+        let fixture = try makeSQLiteFixture()
+        let checkpointUpdatedAt = now
+        let stateStore = SQLiteVoiceTaskConversationOrchestrationStateStore(
+            connection: fixture.connection,
+            now: { checkpointUpdatedAt }
+        )
+        try stateStore.save(
+            makeOrchestrationState(
+                in: fixture,
+                originalSourceTurnID: UUID()
+            )
+        )
+
+        let snapshot = try fixture.store.retentionSnapshot(
+            for: .expiredTranscripts
+        )
+        let plan = planner.plan(
+            at: now,
+            policy: .init(),
+            snapshot: snapshot
+        )
+
+        XCTAssertTrue(
+            plan.targets.orchestrationStateSessionIDs.isEmpty,
+            "A fresh resumable clarification must survive transcript retention even before its source turn is durable."
+        )
+        XCTAssertNotNil(
+            try stateStore.load(sessionID: fixture.session.id)
+        )
+    }
+
+    func testGivenPausedClarificationWithoutPersistedSourceTurnAtRetentionBoundaryWhenPlanThenExpiresCheckpoint()
+        throws
+    {
+        let fixture = try makeSQLiteFixture()
+        let checkpointUpdatedAt = now.addingTimeInterval(-30 * 86_400)
+        let stateStore = SQLiteVoiceTaskConversationOrchestrationStateStore(
+            connection: fixture.connection,
+            now: { checkpointUpdatedAt }
+        )
+        try stateStore.save(
+            makeOrchestrationState(
+                in: fixture,
+                originalSourceTurnID: UUID()
+            )
+        )
+
+        let snapshot = try fixture.store.retentionSnapshot(
+            for: .expiredTranscripts
+        )
+        let plan = planner.plan(
+            at: now,
+            policy: .init(),
+            snapshot: snapshot
+        )
+
+        XCTAssertEqual(
+            plan.targets.orchestrationStateSessionIDs,
+            [fixture.session.id]
+        )
+    }
+
+    func testGivenPausedClarificationWithoutSourceAndInvalidCheckpointTimestampWhenPlanThenQuarantinesCheckpoint()
+        throws
+    {
+        let fixture = try makeSQLiteFixture()
+        let stateStore = SQLiteVoiceTaskConversationOrchestrationStateStore(
+            connection: fixture.connection
+        )
+        try stateStore.save(
+            makeOrchestrationState(
+                in: fixture,
+                originalSourceTurnID: UUID()
+            )
+        )
+        try fixture.connection.execute(
+            """
+            UPDATE voice_task_conversation_orchestration_states
+            SET updated_at = 'invalid';
+            """
+        )
+
+        let snapshot = try fixture.store.retentionSnapshot(
+            for: .expiredTranscripts
+        )
+        let plan = planner.plan(
+            at: now,
+            policy: .init(),
+            snapshot: snapshot
+        )
+
+        XCTAssertEqual(
+            plan.targets.orchestrationStateSessionIDs,
+            [fixture.session.id]
+        )
+    }
+
     func testGivenCompletedPlanWithOrchestrationStateWhenRetriedThenIsIdempotent()
         throws
     {
@@ -788,7 +888,8 @@ final class VoiceTaskConversationRetentionTests: XCTestCase {
     }
 
     private func makeOrchestrationState(
-        in fixture: SQLiteFixture
+        in fixture: SQLiteFixture,
+        originalSourceTurnID: UUID? = nil
     ) -> VoiceTaskConversationOrchestrationState {
         let route = VoiceCommandRoutingResult(
             originalTranscript: "raw sign the release",
@@ -800,7 +901,7 @@ final class VoiceTaskConversationRetentionTests: XCTestCase {
         )
         return VoiceTaskConversationOrchestrationState(
             sessionID: fixture.session.id,
-            originalSourceTurnID: fixture.turn.id,
+            originalSourceTurnID: originalSourceTurnID ?? fixture.turn.id,
             route: route,
             intents: [],
             clarification: ClarificationSession(

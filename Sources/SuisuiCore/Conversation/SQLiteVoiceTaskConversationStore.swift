@@ -1039,7 +1039,7 @@ public final class SQLiteVoiceTaskConversationStore:
     ) throws -> [VoiceTaskConversationRetentionOrchestrationState] {
         let rows = try connection.materializedRows(
             """
-            SELECT session_id, payload
+            SELECT session_id, payload, updated_at
             FROM voice_task_conversation_orchestration_states
             \(sessionID == nil ? "" : "WHERE session_id = ?")
             ORDER BY session_id;
@@ -1077,12 +1077,28 @@ public final class SQLiteVoiceTaskConversationStore:
                 """,
                 parameters: [.text(state.originalSourceTurnID.uuidString)]
             )
-            guard let sourceRow = sourceRows.first,
-                  try requiredUUID(
+            if let sourceRow = sourceRows.first {
+                guard try requiredUUID(
                       sourceRow,
                       column: "session_id",
                       entity: "turn"
                   ) == storedSessionID
+                else {
+                    return VoiceTaskConversationRetentionOrchestrationState(
+                        sessionID: storedSessionID,
+                        originalSourceTurnCreatedAt: .distantPast,
+                        requiresSafeDeletion: true
+                    )
+                }
+                return VoiceTaskConversationRetentionOrchestrationState(
+                    sessionID: storedSessionID,
+                    originalSourceTurnCreatedAt: try Self.date(
+                        from: try sourceRow.double("created_at")
+                    )
+                )
+            }
+            guard let updatedAtValue = try? row.double("updated_at"),
+                  updatedAtValue.isFinite
             else {
                 return VoiceTaskConversationRetentionOrchestrationState(
                     sessionID: storedSessionID,
@@ -1090,10 +1106,15 @@ public final class SQLiteVoiceTaskConversationStore:
                     requiresSafeDeletion: true
                 )
             }
+            // A paused clarification can be checkpointed before its source
+            // Turn is durable. In that narrow state, checkpoint age is the
+            // only trustworthy retention boundary; once the Turn exists, its
+            // earlier creation time above remains authoritative so later
+            // clarification answers cannot extend sensitive-data lifetime.
             return VoiceTaskConversationRetentionOrchestrationState(
                 sessionID: storedSessionID,
-                originalSourceTurnCreatedAt: try Self.date(
-                    from: try sourceRow.double("created_at")
+                originalSourceTurnCreatedAt: Date(
+                    timeIntervalSince1970: updatedAtValue
                 )
             )
         }
