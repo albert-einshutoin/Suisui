@@ -196,8 +196,8 @@ require_release_bundle_preparation() {
   if [[ "$strip_mode" != "local-symbols-removed" ]]; then
     add_blocker "release app was not stripped before signing; rebuild with ./script/sign_app.sh"
   fi
-  if [[ "$sparkle_prune_mode" != "development-assets-removed" ]]; then
-    add_blocker "Sparkle development assets were not pruned before signing; rebuild with ./script/sign_app.sh"
+  if [[ "$sparkle_prune_mode" != "development-assets-and-unused-locales-removed-v2" ]]; then
+    add_blocker "Sparkle development assets or unused locales were not pruned before signing; rebuild with ./script/sign_app.sh"
   fi
 
   if ! "$ROOT_DIR/script/check_release_bundle_inventory.sh" "$app_bundle" >/dev/null 2>&1; then

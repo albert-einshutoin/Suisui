@@ -586,7 +586,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("release app bundle is missing Sparkle updater app"))
         XCTAssertTrue(script.contains("release app is missing pre-sign preparation marker"))
         XCTAssertTrue(script.contains("release app was not stripped before signing"))
-        XCTAssertTrue(script.contains("Sparkle development assets were not pruned before signing"))
+        XCTAssertTrue(script.contains("Sparkle development assets or unused locales were not pruned before signing"))
         XCTAssertTrue(script.contains("check_release_bundle_inventory.sh"))
     }
 
@@ -15292,7 +15292,9 @@ final class ReleasePipelineTests: XCTestCase {
             "Headers",
             "PrivateHeaders",
             "Modules",
-            "Resources",
+            "Resources/Base.lproj",
+            "Resources/de.lproj",
+            "Resources/ja.lproj",
             "Updater.app",
             "XPCServices"
         ] {
@@ -15308,6 +15310,10 @@ final class ReleasePipelineTests: XCTestCase {
         )
         try FileManager.default.createDirectory(
             at: binaryURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: appURL.appendingPathComponent("Contents/Resources/ja.lproj", isDirectory: true),
             withIntermediateDirectories: true
         )
         try "unstripped".write(to: binaryURL, atomically: true, encoding: .utf8)
@@ -15333,6 +15339,20 @@ final class ReleasePipelineTests: XCTestCase {
                 atPath: sparkleVersionURL.appendingPathComponent(retainedPath).path
             ))
         }
+        for retainedLocale in ["Base.lproj", "ja.lproj"] {
+            XCTAssertTrue(FileManager.default.fileExists(
+                atPath: sparkleVersionURL.appendingPathComponent("Resources/\(retainedLocale)").path
+            ))
+        }
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: sparkleVersionURL.appendingPathComponent("Resources/de.lproj").path
+        ))
+        let preparationMarker = try String(
+            contentsOf: appURL.appendingPathComponent("Contents/Resources/release-preparation.env")
+        )
+        XCTAssertTrue(preparationMarker.contains(
+            "SPARKLE_PRUNE_MODE=development-assets-and-unused-locales-removed-v2"
+        ))
         XCTAssertTrue(result.output.contains("release bundle prepared before signing"))
     }
 
@@ -15430,7 +15450,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(verifier.contains("package.stripMode"))
         XCTAssertTrue(verifier.contains("package.sparklePruneMode"))
         XCTAssertTrue(verifier.contains("local-symbols-removed"))
-        XCTAssertTrue(verifier.contains("development-assets-removed"))
+        XCTAssertTrue(verifier.contains("development-assets-and-unused-locales-removed-v2"))
 
         for path in [
             "script/create_release_evidence.sh",
@@ -15471,7 +15491,7 @@ final class ReleasePipelineTests: XCTestCase {
             "appBinaryBytes": 4,
             "artifactBytes": 16,
             "stripMode": "local-symbols-removed",
-            "sparklePruneMode": "development-assets-removed"
+            "sparklePruneMode": "development-assets-and-unused-locales-removed-v2"
           }
         }
         """
@@ -15516,7 +15536,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(packageScript.contains("\"stripMode\""))
         XCTAssertTrue(packageScript.contains("check_release_bundle_inventory.sh"))
         XCTAssertTrue(packageScript.contains("release app was not stripped before signing"))
-        XCTAssertTrue(packageScript.contains("Sparkle development assets were not pruned before signing"))
+        XCTAssertTrue(packageScript.contains("Sparkle development assets or unused locales were not pruned before signing"))
         XCTAssertTrue(signingScript.contains("prepare_release_bundle.sh"))
         XCTAssertTrue(packageScript.contains("check_release_artifact_size.sh"))
         XCTAssertLessThan(
@@ -15643,7 +15663,7 @@ final class ReleasePipelineTests: XCTestCase {
             "    \"appBinaryBytes\": 1,",
             "    \"artifactBytes\": \(artifactBytes),",
             "    \"stripMode\": \"local-symbols-removed\",",
-            "    \"sparklePruneMode\": \"development-assets-removed\"",
+            "    \"sparklePruneMode\": \"development-assets-and-unused-locales-removed-v2\"",
             "  },",
             "  \"source\": {",
             "    \"gitCommit\": \"\(sourceCommit)\"",
@@ -15765,7 +15785,7 @@ final class ReleasePipelineTests: XCTestCase {
             "appBinaryBytes": 1,
             "artifactBytes": \(artifactBytes),
             "stripMode": "local-symbols-removed",
-            "sparklePruneMode": "development-assets-removed"
+            "sparklePruneMode": "development-assets-and-unused-locales-removed-v2"
           },
           "source": {
             "gitCommit": "test-fixture"

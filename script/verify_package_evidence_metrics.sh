@@ -53,8 +53,8 @@ if [[ "$strip_mode" != "local-symbols-removed" ]]; then
   echo "package evidence package.stripMode must be local-symbols-removed" >&2
   exit 2
 fi
-if [[ "$sparkle_prune_mode" != "development-assets-removed" ]]; then
-  echo "package evidence package.sparklePruneMode must be development-assets-removed" >&2
+if [[ "$sparkle_prune_mode" != "development-assets-and-unused-locales-removed-v2" ]]; then
+  echo "package evidence package.sparklePruneMode must be development-assets-and-unused-locales-removed-v2" >&2
   exit 2
 fi
 

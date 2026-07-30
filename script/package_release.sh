@@ -132,8 +132,8 @@ if [[ "$STRIP_MODE" != "local-symbols-removed" ]]; then
   echo "release app was not stripped before signing; rebuild with ./script/sign_app.sh" >&2
   exit 2
 fi
-if [[ "$SPARKLE_PRUNE_MODE" != "development-assets-removed" ]]; then
-  echo "Sparkle development assets were not pruned before signing; rebuild with ./script/sign_app.sh" >&2
+if [[ "$SPARKLE_PRUNE_MODE" != "development-assets-and-unused-locales-removed-v2" ]]; then
+  echo "Sparkle development assets or unused locales were not pruned before signing; rebuild with ./script/sign_app.sh" >&2
   exit 2
 fi
 
