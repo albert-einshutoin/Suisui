@@ -142,7 +142,10 @@ private struct MenuBarExtraLabel: View {
                     openWindow(id: "voice-capture")
                 }
             }
-            .task {
+            .onReceive(NotificationCenter.default.publisher(for: .suisuiProjectBoardCommandReady)) { _ in
+                // The board owns the launch-critical SQLite read. Refresh the
+                // ancillary menu summary only after that read has made the
+                // primary task surface usable, avoiding startup DB contention.
                 controller.refresh()
             }
             .onReceive(NotificationCenter.default.publisher(for: .suisuiProjectBoardDidChange)) { _ in
@@ -682,6 +685,8 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
     private var settingsEvidenceWindow: NSWindow?
     private var voiceCommandEvidenceWindow: NSWindow?
     private var digestNotificationOpenedObserver: (any NSObjectProtocol)?
+    private var commandReadyRuntimeObserver: (any NSObjectProtocol)?
+    private var backgroundRuntimesStarted = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         let environment = ProcessInfo.processInfo.environment
@@ -702,9 +707,7 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.activate(ignoringOtherApps: true)
         installVisualEvidenceBackdropIfRequested()
         SuisuiNotificationResponder.shared.install()
-        ConversationRetentionRuntime.shared.start()
-        DockTileBadgeController.shared.start()
-        DeadlineWatcherRuntime.shared.start()
+        installCommandReadyRuntimeObserver()
         ensureProjectBoardWindowIsVisible()
         // Tapping a digest notification must surface the Project Board even
         // when every window was closed; reuse the reopen recovery path.
@@ -765,6 +768,10 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
     private func configureVisualEvidenceBackdrop(_ window: NSWindow) {
         let isDark = window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let component: CGFloat = isDark ? 0.105 : 0.94
+        // Capture windows must render in a device-independent color space.
+        // Otherwise ColorSync bakes the physical monitor profile into pixels,
+        // so identical semantic colors differ from hosted virtual displays.
+        window.colorSpace = .sRGB
         window.backgroundColor = NSColor(
             srgbRed: component,
             green: component,
@@ -772,6 +779,34 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
             alpha: 1
         )
         window.isOpaque = true
+    }
+
+    private func installCommandReadyRuntimeObserver() {
+        guard commandReadyRuntimeObserver == nil else {
+            return
+        }
+        commandReadyRuntimeObserver = NotificationCenter.default.addObserver(
+            forName: .suisuiProjectBoardCommandReady,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.startBackgroundRuntimesOnce()
+            }
+        }
+    }
+
+    private func startBackgroundRuntimesOnce() {
+        guard backgroundRuntimesStarted == false else {
+            return
+        }
+        backgroundRuntimesStarted = true
+        // Retention, badge, and deadline reads remain automatic, but the first
+        // board load gets exclusive access to startup SQLite work so the app's
+        // command surface is responsive before ancillary maintenance begins.
+        ConversationRetentionRuntime.shared.start()
+        DockTileBadgeController.shared.start()
+        DeadlineWatcherRuntime.shared.start()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

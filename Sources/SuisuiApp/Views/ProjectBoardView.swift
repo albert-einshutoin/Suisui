@@ -308,6 +308,7 @@ struct ProjectBoardView: View {
                 viewModel.load()
             }
             LaunchPerformanceMilestones.record("command-ready")
+            NotificationCenter.default.post(name: .suisuiProjectBoardCommandReady, object: nil)
             viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
             reloadSavedSmartLists()
             restoreSelectedDestinationIfNeeded()
@@ -2007,6 +2008,7 @@ struct SuisuiProjectBoardUndoCommands: Commands {
 extension Notification.Name {
     // .suisuiProjectBoardDidChange moved to SuisuiCore (FirstRunOnboarding.swift)
     // so core store writers can post it without duplicating the raw name.
+    static let suisuiProjectBoardCommandReady = Notification.Name("dev.suisui.projectBoardCommandReady")
     static let suisuiVoiceDailyPlanningReviewRequested = Notification.Name("dev.suisui.voiceDailyPlanningReviewRequested")
     static let suisuiVoiceInboxTriageRequested = Notification.Name("dev.suisui.voiceInboxTriageRequested")
     static let suisuiAssistantQueueRequested = Notification.Name("dev.suisui.assistantQueueRequested")

@@ -256,6 +256,28 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertFalse(delegateBlock.contains("createFallbackProjectBoardWindow()"))
     }
 
+    func testBackgroundRuntimesStartOnlyAfterTheFirstBoardIsCommandReady() throws {
+        let app = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
+        let board = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+
+        let delegateStart = try XCTUnwrap(app.range(of: "func applicationDidFinishLaunching"))
+        let delegateEnd = try XCTUnwrap(
+            app.range(of: "#if canImport(Sparkle)", range: delegateStart.lowerBound..<app.endIndex)
+        )
+        let delegateBlock = app[delegateStart.lowerBound..<delegateEnd.lowerBound]
+        XCTAssertTrue(delegateBlock.contains("installCommandReadyRuntimeObserver()"))
+        XCTAssertTrue(delegateBlock.contains("ensureProjectBoardWindowIsVisible()"))
+        XCTAssertFalse(delegateBlock.contains("ConversationRetentionRuntime.shared.start()"))
+        XCTAssertFalse(delegateBlock.contains("DockTileBadgeController.shared.start()"))
+        XCTAssertFalse(delegateBlock.contains("DeadlineWatcherRuntime.shared.start()"))
+
+        XCTAssertTrue(app.contains("startBackgroundRuntimesOnce()"))
+        XCTAssertTrue(app.contains("ConversationRetentionRuntime.shared.start()"))
+        XCTAssertTrue(app.contains("DockTileBadgeController.shared.start()"))
+        XCTAssertTrue(app.contains("DeadlineWatcherRuntime.shared.start()"))
+        XCTAssertTrue(board.contains("NotificationCenter.default.post(name: .suisuiProjectBoardCommandReady"))
+    }
+
     func testVerifyModeCanLaunchWithoutPromptingForKeychainSecrets() throws {
         let source = try readRuntimeCompositionSources()
 
