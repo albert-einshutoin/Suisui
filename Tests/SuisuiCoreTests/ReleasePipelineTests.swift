@@ -233,6 +233,29 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("- [x] `scripts/ci.sh` はunit/sourceを必須、runtime/visualは明示フラグで実行する。"))
     }
 
+    func testCIVisualGatePinsVirtualDisplayBaselineWithoutRelaxingRasterBudgets() throws {
+        let gate = try readPackageFile("script/check_ci_visual_gate.sh")
+        let workflow = try readPackageFile(".github/workflows/ci.yml")
+        let englishManifest = try readPackageFile(
+            "docs/quality/visual-baseline-manifest-apple-virtual.json"
+        )
+        let japaneseManifest = try readPackageFile(
+            "docs/quality/visual-baseline-manifest-ja-apple-virtual.json"
+        )
+
+        XCTAssertTrue(gate.contains("VISUAL_BASELINE_PROFILE=\"${SUISUI_CI_VISUAL_BASELINE_PROFILE:-local-display}\""))
+        XCTAssertTrue(gate.contains("local-display|apple-virtual-display"))
+        XCTAssertTrue(gate.contains("visual-baselines-apple-virtual"))
+        XCTAssertTrue(gate.contains("visual-baselines-ja-apple-virtual"))
+        XCTAssertFalse(gate.contains("BASELINE_RELATIVE=\"${SUISUI_"))
+        XCTAssertTrue(workflow.contains("SUISUI_CI_VISUAL_BASELINE_PROFILE: apple-virtual-display"))
+        for manifest in [englishManifest, japaneseManifest] {
+            XCTAssertTrue(manifest.contains(#""maximumChangedPixelRatio": 0.005"#))
+            XCTAssertTrue(manifest.contains(#""maximumMeanAbsoluteError": 0.01"#))
+            XCTAssertTrue(manifest.contains(#""requiresAXFrameAudit": true"#))
+        }
+    }
+
     func testPerformanceStressSuiteAggregatesScaleRegressionFilters() throws {
         let script = try readPackageFile("script/check_performance_stress_suite.sh")
 
@@ -3359,13 +3382,15 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("./scripts/ci.sh ui-runtime"))
         XCTAssertTrue(script.contains("xcodebuild"))
         XCTAssertTrue(script.contains(".swiftpm/xcode/package.xcworkspace"))
+        XCTAssertTrue(script.contains("cd \"$ROOT_DIR\""))
+        XCTAssertFalse(script.contains("missing SwiftPM Xcode workspace"))
         XCTAssertTrue(script.contains("-scheme \"$XCODE_SCHEME\""))
         XCTAssertTrue(script.contains("section \"Real visual regression\""))
         XCTAssertTrue(script.contains("./scripts/ci.sh ui-visual"))
         XCTAssertTrue(script.contains("section \"Release launch performance smoke\""))
         XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_PROFILE=release"))
         XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_BUILD_CONFIGURATION=release"))
-        XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS=15000"))
+        XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS=1000"))
         XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS=3000"))
         XCTAssertTrue(script.contains("./scripts/ci.sh ui-performance"))
         XCTAssertTrue(script.contains("./script/prepare_voiceover_review_candidate.sh --skip-build --no-launch"))
@@ -3452,8 +3477,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("XCODE_PREFLIGHT_TIMEOUT_SECONDS=\"${SUISUI_XCODE_PREFLIGHT_TIMEOUT_SECONDS:-600}\""))
         XCTAssertTrue(script.contains("run_xcodebuild_with_timeout()"))
         XCTAssertTrue(script.contains("BLOCKER: Xcode build preflight timed out after ${XCODE_PREFLIGHT_TIMEOUT_SECONDS}s"))
-        XCTAssertTrue(script.contains("printf 'NEXT: reproduce with xcodebuild -workspace %q -scheme %q -configuration %q -destination %q build\\n'"))
-        XCTAssertTrue(script.contains("\"$ROOT_DIR/$XCODE_WORKSPACE_RELATIVE\" \"$XCODE_SCHEME\" \"$XCODE_CONFIGURATION\" \"$XCODE_DESTINATION\""))
+        XCTAssertTrue(script.contains("printf 'NEXT: reproduce from %q with xcodebuild -scheme %q -configuration %q -destination %q build\\n'"))
+        XCTAssertTrue(script.contains("\"$ROOT_DIR\" \"$XCODE_SCHEME\" \"$XCODE_CONFIGURATION\" \"$XCODE_DESTINATION\""))
         XCTAssertTrue(script.contains("NEXT: this is separate from the SwiftPM native build; do not reuse automated preflight evidence until the Xcode build gate passes."))
         XCTAssertTrue(script.contains("kill \"$xcode_pid\""))
         XCTAssertTrue(script.contains("run_xcodebuild_with_timeout"))
@@ -3463,7 +3488,7 @@ final class ReleasePipelineTests: XCTestCase {
         )
 
         let checklist = try readPackageFile("docs/release/checklist.md")
-        XCTAssertTrue(checklist.contains("If the Xcode watchdog times out, reproduce the exact `xcodebuild -workspace ... -scheme ... -destination ... build` command from the blocker output and keep automated preflight evidence rejected until that Xcode build gate passes."))
+        XCTAssertTrue(checklist.contains("If the Xcode watchdog times out, reproduce the exact package-root `xcodebuild -scheme ... -destination ... build` command from the blocker output and keep automated preflight evidence rejected until that Xcode build gate passes."))
     }
 
     func testReleaseActionSummaryReportsManualHelperFreshnessForCurrentCommit() throws {
@@ -4947,7 +4972,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("project-inspector-delete=>Deletes the selected project"))
         XCTAssertTrue(script.contains("Inbox sidebar=>sidebar-destination-inbox"))
         XCTAssertTrue(script.contains("Today sidebar=>sidebar-destination-today"))
-        XCTAssertTrue(script.contains("Settings toolbar=>project-board-settings-link"))
+        XCTAssertTrue(script.contains("Settings via Utilities toolbar=>project-board-integrations-menu"))
         XCTAssertTrue(script.contains("Voice Command toolbar=>project-board-voice-command"))
         XCTAssertTrue(script.contains("Project navigation"))
         XCTAssertTrue(script.contains("Project board detail"))
@@ -6060,11 +6085,13 @@ final class ReleasePipelineTests: XCTestCase {
         let script = try readPackageFile("script/check_runtime_accessible_crud_smoke.sh")
         let scrollHelper = try readPackageFile("script/ui_evidence_ax_scroll_container.swift")
         let buttonHelper = try readPackageFile("script/ui_evidence_ax_press_button.swift")
+        let textInputHelper = try readPackageFile("script/ui_evidence_ax_text_input.swift")
 
         XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
         XCTAssertTrue(script.contains("AX_TEXT_INPUT_HELPER=\"${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}\""))
         XCTAssertTrue(script.contains("AX_SCROLL_HELPER=\"${AX_SCROLL_HELPER:-$ROOT_DIR/script/ui_evidence_ax_scroll_container.swift}\""))
         XCTAssertTrue(script.contains("AX_BUTTON_HELPER=\"${AX_BUTTON_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_button.swift}\""))
+        XCTAssertTrue(script.contains("AX_MARKER_HELPER=\"${AX_MARKER_HELPER:-$ROOT_DIR/script/ui_evidence_ax_marker_check.swift}\""))
         XCTAssertTrue(script.contains("source \"$AX_HELPERS\""))
         XCTAssertTrue(script.contains("SUISUI_DATABASE_PATH"))
         XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
@@ -6104,6 +6131,28 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("inspector_button=\"task-card-open-details\""))
         XCTAssertTrue(script.contains("pressButtonUntilTextFieldContaining \"$inspector_button\" \"$inspector_field\""))
         XCTAssertTrue(script.contains("launch_app_for_seed_project \"$created_project_id\" \"$created_task_id\"\nwaitForTextFieldContaining \"task-inspector-title\""))
+        let genericPressStart = try XCTUnwrap(script.range(of: "pressButtonContaining() {"))
+        let genericPressEnd = try XCTUnwrap(
+            script.range(
+                of: "pressConfirmationButtonContaining() {",
+                range: genericPressStart.upperBound..<script.endIndex
+            )
+        )
+        let genericPressBody = script[genericPressStart.lowerBound..<genericPressEnd.lowerBound]
+        XCTAssertTrue(genericPressBody.contains("/usr/bin/swift \"$AX_BUTTON_HELPER\" \"$app_pid\" \"$fragment\""))
+        XCTAssertTrue(genericPressBody.contains("/usr/bin/swift \"$AX_BUTTON_HELPER\" \"$app_pid\" \"$fallback_fragment\""))
+        let textFieldStart = try XCTUnwrap(script.range(of: "textFieldContainingExists() {"))
+        let textFieldEnd = try XCTUnwrap(
+            script.range(
+                of: "setTextFieldUntilValueContaining() {",
+                range: textFieldStart.upperBound..<script.endIndex
+            )
+        )
+        let textFieldBody = script[textFieldStart.lowerBound..<textFieldEnd.lowerBound]
+        XCTAssertTrue(textFieldBody.contains("/usr/bin/swift \"$AX_MARKER_HELPER\" \"$APP_NAME\" \"$fragment\" \"\" \"$app_pid\""))
+        XCTAssertTrue(script.contains("textFieldValueContainingExists \"$field_fragment\" \"$replacement\""))
+        XCTAssertTrue(script.contains("\"$AX_MARKER_HELPER\" \"$APP_NAME\" \"$identifier_fragment\" \"$required_text_one\" \"$app_pid\""))
+        XCTAssertTrue(script.contains("\"$AX_MARKER_HELPER\" \"$APP_NAME\" \"$identifier_fragment\" \"$required_text_two\" \"$app_pid\""))
         XCTAssertTrue(script.contains("value of attribute \"AXIdentifier\" of axItem as text"))
         XCTAssertTrue(script.contains("set frontmost to true"))
         XCTAssertTrue(script.contains("set windowCount to count of windows"))
@@ -6165,6 +6214,13 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SUISUI_UI_EVIDENCE_AX_SCROLL_EVENTS=4 scrollAXContainerDown \"task-inspector\""))
         XCTAssertTrue(scrollHelper.contains("AXUIElementCreateApplication(pid)"))
         XCTAssertTrue(scrollHelper.contains("NSWorkspace.shared.frontmostApplication?.processIdentifier == pid"))
+        XCTAssertTrue(scrollHelper.contains("AXUIElementSetAttributeValue("))
+        XCTAssertTrue(scrollHelper.contains("kAXFrontmostAttribute"))
+        XCTAssertTrue(textInputHelper.contains("AXUIElementSetAttributeValue("))
+        XCTAssertTrue(textInputHelper.contains("kAXFrontmostAttribute"))
+        XCTAssertTrue(textInputHelper.contains("struct TraversalNode"))
+        XCTAssertTrue(textInputHelper.contains("AXUIElementPerformAction(node.owningWindow"))
+        XCTAssertTrue(textInputHelper.contains("kAXRaiseAction"))
         XCTAssertTrue(scrollHelper.contains("scrollWheelEvent2Source: source"))
         XCTAssertTrue(scrollHelper.contains("event.location = center"))
         XCTAssertTrue(scrollHelper.contains("event.post(tap: .cghidEventTap)"))
@@ -6219,13 +6275,14 @@ final class ReleasePipelineTests: XCTestCase {
     func testRuntimeWorkflowSmokeScriptDefinesScenarioRegistryAndFailureArtifacts() throws {
         let script = try readPackageFile("script/check_runtime_workflow_smoke.sh")
 
-        XCTAssertTrue(script.contains("SCENARIOS=(\"project_task_crud\" \"inbox_triage\" \"today_complete\" \"settings_save\" \"voice_review\" \"development_pr\" \"schedule_cockpit\")"))
+        XCTAssertTrue(script.contains("SCENARIOS=(\"project_task_crud\" \"inbox_triage\" \"today_complete\" \"settings_save\" \"voice_review\" \"voice_task_continuity\" \"development_pr\" \"schedule_cockpit\")"))
         for scenario in [
             "project_task_crud",
             "inbox_triage",
             "today_complete",
             "settings_save",
             "voice_review",
+            "voice_task_continuity",
             "development_pr",
             "schedule_cockpit"
         ] {
@@ -6242,6 +6299,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("./script/check_runtime_today_complete_smoke.sh"))
         XCTAssertTrue(script.contains("./script/check_runtime_settings_save_smoke.sh"))
         XCTAssertTrue(script.contains("./script/check_runtime_voice_review_smoke.sh"))
+        XCTAssertTrue(script.contains("./script/check_runtime_voice_task_continuity_smoke.sh"))
         XCTAssertTrue(script.contains("./script/check_runtime_development_pr_smoke.sh"))
         XCTAssertTrue(script.contains("./script/check_runtime_schedule_cockpit_smoke.sh"))
         XCTAssertTrue(script.contains("SUISUI_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE=1"))
@@ -6261,6 +6319,50 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("SKIP"))
         XCTAssertFalse(script.contains("TODO"))
         XCTAssertFalse(script.contains("fake success"))
+    }
+
+    func testVoiceTaskContinuityBuildUsesHermeticAllowlistedEnvironmentAndRecordsConfigurationFingerprint() throws {
+        let script = try readPackageFile("script/check_runtime_voice_task_continuity_smoke.sh")
+
+        XCTAssertTrue(script.contains("SUISUI_LOAD_LOCAL_RELEASE_CONFIG=0"))
+        XCTAssertTrue(script.contains("env -i"))
+        XCTAssertTrue(script.contains("SUISUI_RUNTIME_POLICY=public-alpha"))
+        XCTAssertTrue(script.contains("SUISUI_ENABLE_EXPERIMENTAL_GOOGLE_CALENDAR_RUNTIME=0"))
+        XCTAssertTrue(script.contains("build_configuration_fingerprint"))
+        XCTAssertTrue(script.contains("\"buildConfigurationFingerprint\""))
+        XCTAssertTrue(script.contains("SuisuiBuildConfigurationFingerprint"))
+        XCTAssertFalse(script.contains("env |"))
+        XCTAssertFalse(script.contains("printenv"))
+
+        let artifactStart = try XCTUnwrap(script.range(of: "write_artifact_atomically() {"))
+        let artifactEnd = try XCTUnwrap(
+            script.range(of: "\n\nfail_stage() {", range: artifactStart.upperBound..<script.endIndex)
+        )
+        let artifactWriter = String(script[artifactStart.lowerBound..<artifactEnd.lowerBound])
+        for rejectedEnvironmentName in [
+            "HOME",
+            "SUISUI_GOOGLE_CALENDAR_OAUTH_CLIENT_ID",
+            "SPARKLE_FEED_URL",
+            "SPARKLE_PUBLIC_ED_KEY",
+            "LOCAL_LICENSE_PUBLIC_KEY_BASE64",
+            "SUISUI_DATABASE_PATH",
+        ] {
+            XCTAssertFalse(
+                artifactWriter.contains(rejectedEnvironmentName),
+                "artifact must not serialize \(rejectedEnvironmentName)"
+            )
+        }
+    }
+
+    func testBuildAndRunEmbedsOnlyAConfigurationFingerprintAndRuntimePolicy() throws {
+        let script = try readPackageFile("script/build_and_run.sh")
+
+        XCTAssertTrue(script.contains("SUISUI_RUNTIME_POLICY"))
+        XCTAssertTrue(script.contains("public-alpha"))
+        XCTAssertTrue(script.contains("<key>SuisuiRuntimePolicy</key>"))
+        XCTAssertTrue(script.contains("<key>SuisuiBuildConfigurationFingerprint</key>"))
+        XCTAssertTrue(script.contains("BUILD_CONFIGURATION_FINGERPRINT"))
+        XCTAssertFalse(script.contains("<key>SUISUI_GOOGLE_CALENDAR_OAUTH_CLIENT_ID</key>"))
     }
 
     func testRuntimeScheduleCockpitSmokeScriptVerifiesDraftGridAndApprovalBoundary() throws {
@@ -6886,6 +6988,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("project-board-command-palette"))
         XCTAssertTrue(script.contains("today-workflow"))
         XCTAssertTrue(script.contains("ui_evidence_ax_identifier_count.swift"))
+        XCTAssertTrue(script.contains("SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1"))
         XCTAssertTrue(script.contains("verify_today_action_contract"))
         XCTAssertTrue(script.contains("\"today-primary-action\""))
         XCTAssertTrue(script.contains("\"today-catch-up-section\""))
@@ -7119,18 +7222,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("HOME=\"$settings_home\""))
         XCTAssertTrue(script.contains("SUISUI_DATABASE_PATH=\"$database_path\""))
         XCTAssertTrue(script.contains("settings-task-auto-execution-toggle"))
-        XCTAssertTrue(script.contains("settings-google-calendar-readiness-status"))
-        XCTAssertTrue(script.contains("settings-google-calendar-readiness-detail"))
-        XCTAssertTrue(script.contains("settings-google-calendar-id"))
-        XCTAssertTrue(script.contains("settings-google-calendar-id-save"))
-        XCTAssertTrue(script.contains("settings-google-calendar-list-load"))
-        XCTAssertTrue(script.contains("settings-google-calendar-oauth-setup"))
-        XCTAssertTrue(script.contains("settings-google-calendar-readiness-check"))
+        XCTAssertTrue(script.contains("sync-paid-value-row"))
+        XCTAssertTrue(script.contains("assertAXElementAbsent()"))
+        XCTAssertTrue(script.contains("assertAXElementAbsent \"settings-google-calendar-id-save-flow\""))
+        XCTAssertTrue(script.contains("assertAXElementAbsent \"settings-google-calendar-oauth-setup\""))
+        XCTAssertTrue(script.contains("assertAXElementAbsent \"settings-google-calendar-list-load\""))
         XCTAssertTrue(script.contains("settings-task-auto-execution-save"))
         XCTAssertTrue(script.contains("settings_suite_name=\"$BUNDLE_IDENTIFIER.runtime-settings-save."))
         XCTAssertTrue(script.contains("SUISUI_APP_SETTINGS_SUITE_NAME=\"$settings_suite_name\""))
         XCTAssertTrue(script.contains("SUISUI_SETTINGS_SMOKE_BUNDLE_IDENTIFIER=\"$settings_suite_name\""))
-        XCTAssertTrue(script.contains("SUISUI_SETTINGS_SMOKE_GOOGLE_CALENDAR_ID=\"$runtime_google_calendar_id\""))
+        XCTAssertFalse(script.contains("SUISUI_SETTINGS_SMOKE_GOOGLE_CALENDAR_ID="))
         XCTAssertTrue(script.contains("/usr/bin/defaults export \"$settings_suite_name\" \"$settings_home/app-settings.plist\""))
         XCTAssertTrue(script.contains("/usr/bin/defaults delete \"$settings_suite_name\""))
         XCTAssertTrue(script.contains("enableCheckboxContaining()"))
@@ -7142,16 +7243,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("output=\"$(/usr/bin/osascript - \"$app_pid\" \"$fragment\""))
         XCTAssertTrue(script.contains("enableCheckboxContaining \"settings-task-auto-execution-toggle\""))
         XCTAssertTrue(script.contains("pressControlContaining \"settings-task-auto-execution-save\""))
-        XCTAssertTrue(script.contains("waitForAXElementContaining \"settings-google-calendar-id-save-flow\""))
-        XCTAssertTrue(script.contains("setTextFieldContaining \"settings-google-calendar-id\" \"$runtime_google_calendar_id\""))
-        XCTAssertTrue(script.contains("waitForAXElementContaining \"settings-google-calendar-readiness-status\""))
-        XCTAssertTrue(script.contains("waitForAXElementContaining \"settings-google-calendar-readiness-detail\""))
-        XCTAssertTrue(script.contains("waitForAXElementContaining \"settings-google-calendar-id\" \"$runtime_google_calendar_id\""))
-        XCTAssertTrue(script.contains("pressControlContaining \"settings-google-calendar-readiness-check\""))
-        XCTAssertTrue(script.contains("pressControlContaining \"settings-google-calendar-list-load\""))
-        XCTAssertTrue(script.contains("waitForAXElementContaining \"settings-google-calendar-oauth-setup-message\" \"OAuth\""))
+        XCTAssertTrue(script.contains("waitForAXElementContaining \"sync-paid-value-row\""))
         XCTAssertTrue(script.contains("/usr/bin/swift \"$ROOT_DIR/script/settings_save_smoke_check.swift\""))
-        XCTAssertTrue(script.contains("OK: runtime settings save smoke enabled task automation, verified Google Calendar Settings controls, and checked isolated UserDefaults"))
+        XCTAssertTrue(script.contains("OK: runtime settings save smoke enabled task automation, verified the Public Alpha Sync boundary, and checked isolated UserDefaults"))
         XCTAssertFalse(script.contains(":memory:"))
         XCTAssertFalse(script.contains("not implemented yet"))
 
@@ -7160,8 +7254,6 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(helper.contains("\"taskAutoExecution\""))
         XCTAssertTrue(helper.contains("\"isEnabled\""))
         XCTAssertTrue(helper.contains("let expectedGoogleCalendarID"))
-        XCTAssertTrue(helper.contains("\"googleCalendarID\""))
-        XCTAssertTrue(helper.contains("googleCalendarID == expectedGoogleCalendarID"))
         XCTAssertTrue(helper.contains("BLOCKER: settings save smoke"))
         XCTAssertFalse(helper.contains("print(data)"))
 
@@ -7277,15 +7369,18 @@ final class ReleasePipelineTests: XCTestCase {
         let script = try readPackageFile("script/check_layout_stability_smoke.sh")
         let frameHelper = try readPackageFile("script/ui_evidence_ax_frame_dump.swift")
         let pressElementHelper = try readPackageFile("script/ui_evidence_ax_press_element.swift")
+        let resizeWindowHelper = try readPackageFile("script/ui_evidence_ax_resize_window.swift")
         let windowMetadataHelper = try readPackageFile("script/ui_evidence_window_metadata.swift")
         let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
 
         XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
         XCTAssertTrue(script.contains("AX_FRAME_HELPER=\"${AX_FRAME_HELPER:-$ROOT_DIR/script/ui_evidence_ax_frame_dump.swift}\""))
         XCTAssertTrue(script.contains("AX_PRESS_ELEMENT_HELPER=\"${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}\""))
+        XCTAssertTrue(script.contains("AX_RESIZE_WINDOW_HELPER=\"${AX_RESIZE_WINDOW_HELPER:-$ROOT_DIR/script/ui_evidence_ax_resize_window.swift}\""))
         XCTAssertTrue(script.contains("source \"$AX_HELPERS\""))
         XCTAssertTrue(script.contains("LAYOUT_STABILITY_OUTPUT_DIR=\"${SUISUI_LAYOUT_STABILITY_OUTPUT_DIR:-$ROOT_DIR/.tmp/layout-stability}\""))
         XCTAssertTrue(script.contains("TIMEOUT_SECONDS=\"${SUISUI_LAYOUT_STABILITY_TIMEOUT_SECONDS:-60}\""))
+        XCTAssertTrue(script.contains("WINDOW_NAME=\"${SUISUI_PROJECT_BOARD_WINDOW_NAME:-}\""))
         XCTAssertTrue(script.contains("LAYOUT_STABILITY_RUNTIME_DIR=\"${SUISUI_LAYOUT_STABILITY_RUNTIME_DIR:-${TMPDIR:-/tmp}/suisui-layout-stability}\""))
         XCTAssertTrue(script.contains("LAYOUT_STABILITY_DATABASE_PATH=\"${SUISUI_LAYOUT_STABILITY_DATABASE_PATH:-$LAYOUT_STABILITY_RUNTIME_DIR/Suisui-layout-stability.sqlite}\""))
         XCTAssertTrue(script.contains("mkdir -p \"$(dirname \"$LAYOUT_STABILITY_DATABASE_PATH\")\""))
@@ -7308,13 +7403,24 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("\"$APP_BINARY\" -ApplePersistenceIgnoreState YES &"))
         XCTAssertTrue(script.contains("SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$layout_project_id\""))
         XCTAssertTrue(script.contains("SUISUI_DATABASE_PATH=\"$LAYOUT_STABILITY_DATABASE_PATH\""))
+        XCTAssertTrue(script.contains("SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1"))
+        XCTAssertTrue(script.contains("SUISUI_DISABLE_PROJECT_BOARD_PRESENTATION_PERSISTENCE=1"))
         XCTAssertTrue(script.contains("collect_ax_frames()"))
         XCTAssertTrue(script.contains("/usr/bin/swiftc \"$AX_FRAME_HELPER\" -o \"$AX_FRAME_HELPER_BINARY\""))
         XCTAssertTrue(script.contains("/usr/bin/swiftc \"$AX_PRESS_ELEMENT_HELPER\" -o \"$AX_PRESS_ELEMENT_HELPER_BINARY\""))
+        XCTAssertTrue(script.contains("/usr/bin/swiftc \"$AX_RESIZE_WINDOW_HELPER\" -o \"$AX_RESIZE_WINDOW_HELPER_BINARY\""))
         XCTAssertTrue(script.contains("\"$AX_FRAME_HELPER_BINARY\" \"$app_pid\""))
+        XCTAssertTrue(script.contains("\"$AX_FRAME_HELPER_BINARY\" \"$app_pid\" \"$window_x\" \"$window_y\" \"$window_width\" \"$window_height\""))
         XCTAssertFalse(script.contains("/usr/bin/swift \"$AX_FRAME_HELPER\""))
         XCTAssertFalse(script.contains("set axItems to entire contents of currentWindow"))
         XCTAssertTrue(frameHelper.contains("NSRunningApplication(processIdentifier: appPID)"))
+        XCTAssertTrue(frameHelper.contains("CommandLine.arguments.count == 2 || CommandLine.arguments.count == 6"))
+        XCTAssertTrue(frameHelper.contains("matchesExpectedWindowFrame"))
+        XCTAssertTrue(frameHelper.contains("overlayIdentifiers"))
+        XCTAssertTrue(frameHelper.contains("isContainedInExpectedWindow"))
+        XCTAssertTrue(frameHelper.contains("\"overlay\""))
+        XCTAssertTrue(script.contains("$6 == \"overlay\""))
+        XCTAssertTrue(script.contains("scope[id] != \"overlay\""))
         XCTAssertTrue(windowMetadataHelper.contains("SUISUI_WINDOW_OWNER_PID"))
         XCTAssertTrue(windowMetadataHelper.contains("kCGWindowOwnerPID"))
         XCTAssertTrue(frameHelper.contains("kAXChildrenAttribute as String"))
@@ -7329,6 +7435,13 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(pressElementHelper.contains("kAXParentAttribute as CFString"))
         XCTAssertTrue(pressElementHelper.contains("AXUIElementPerformAction(element, kAXPressAction as CFString)"))
         XCTAssertTrue(pressElementHelper.contains("AXUIElementSetAttributeValue(element, kAXSelectedAttribute as CFString, kCFBooleanTrue)"))
+        XCTAssertTrue(pressElementHelper.contains("performPressWithoutActivation"))
+        XCTAssertTrue(pressElementHelper.contains("selectWithoutActivation"))
+        XCTAssertTrue(script.contains("if \"$AX_RESIZE_WINDOW_HELPER_BINARY\""))
+        XCTAssertTrue(script.contains("\"$app_pid\" \"$window_x\" \"$window_y\" \"$window_width\" \"$window_height\""))
+        XCTAssertTrue(resizeWindowHelper.contains("AXUIElementCreateApplication(appPID)"))
+        XCTAssertTrue(resizeWindowHelper.contains("kAXPositionAttribute as CFString"))
+        XCTAssertTrue(resizeWindowHelper.contains("kAXSizeAttribute as CFString"))
         XCTAssertTrue(script.contains("if collect_ax_frames >\"$probe_file\" 2>\"$LAYOUT_STABILITY_OUTPUT_DIR/required-identifiers-probe.err\" &&\n      has_required_ax_identifiers \"$probe_file\"; then\n      return 0\n    fi"))
         XCTAssertFalse(script.contains("ensure_project_detail_visible"))
         XCTAssertTrue(script.contains("sample_layout_frames()"))
@@ -7337,7 +7450,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("click_sidebar_destination()"))
         XCTAssertTrue(script.contains("window_size_key()"))
         XCTAssertTrue(script.contains("set_project_board_window_size()"))
-        XCTAssertTrue(script.contains("set appMatches to application processes whose unix id is appPID"))
+        XCTAssertFalse(script.contains("set appMatches to application processes whose unix id is appPID"))
         XCTAssertTrue(script.contains("BLOCKER: failed to resize named PID-owned app window"))
         XCTAssertTrue(script.contains("assert_no_negative_or_overlapping_frames()"))
         XCTAssertTrue(script.contains("capture_layout_screenshot()"))
@@ -7459,6 +7572,20 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("__AX_ANY_WINDOW__"))
         XCTAssertTrue(script.contains("AX_WAIT_POLL_INTERVAL_SECONDS=0.05"))
         XCTAssertTrue(script.contains("wait_for_marker \"project-board-command-palette\""))
+        let destinationActivation = try XCTUnwrap(script.range(of: "# Activation is intentionally outside the cold-launch sample."))
+        let sidebarReady = try XCTUnwrap(
+            script.range(
+                of: "wait_for_marker \"project-board-sidebar\"",
+                range: destinationActivation.lowerBound..<script.endIndex
+            )
+        )
+        let destinationLoop = try XCTUnwrap(
+            script.range(
+                of: "for sample_index in $(seq 1 \"$DESTINATION_SAMPLE_COUNT\")",
+                range: destinationActivation.lowerBound..<script.endIndex
+            )
+        )
+        XCTAssertLessThan(sidebarReady.lowerBound, destinationLoop.lowerBound)
         XCTAssertTrue(script.contains("measure_destination \"destination-inbox\" \"$sample_index\" \"sidebar-destination-inbox\" \"Inbox\" \"inbox-workflow\""))
         XCTAssertTrue(script.contains("measure_destination \"destination-review\" \"$sample_index\" \"sidebar-destination-review\" \"Review\" \"review-hub\""))
         let measureDestinationStart = try XCTUnwrap(script.range(of: "measure_destination() {"))
@@ -7589,6 +7716,9 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(script.contains("collect_layout_sample_frames()"))
         XCTAssertTrue(script.contains("collect_ax_frames_with_timeout()"))
+        XCTAssertTrue(script.contains("filter_ax_frames_to_window()"))
+        XCTAssertTrue(script.contains("if ! filter_ax_frames_to_window \"$frame_file\"; then"))
+        XCTAssertTrue(script.contains("BLOCKER: no in-window AX frames remained"))
         XCTAssertTrue(script.contains("wait_for_visible_windows"))
         XCTAssertTrue(script.contains("LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_COUNT"))
         XCTAssertTrue(script.contains("LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_DELAY_MS"))
@@ -8931,7 +9061,7 @@ final class ReleasePipelineTests: XCTestCase {
             "assistant-queue-approved": "assistant-queue-row-visual-approved",
             "assistant-queue-failed": "assistant-queue-row-visual-failed",
             "settings-overview": "settings-status-overview",
-            "settings-integrations": "settings-google-calendar-id-save-flow",
+            "settings-integrations": "sync-paid-value-row",
             "settings-appearance": "settings-theme-picker",
             "mcp-settings": "mcp-paid-execution-boundary-row",
             "voice-command": "voice-command-root"
@@ -9007,6 +9137,8 @@ final class ReleasePipelineTests: XCTestCase {
     func testVisualBaselineDocumentationAndCaptureScriptDescribeReviewableUpdates() throws {
         let documentation = try readPackageFile("docs/quality/visual-baselines.md")
         let captureScript = try readPackageFile("script/capture_ui_evidence.sh")
+        let targetFrameAuditor = try readPackageFile("script/ui_evidence_ax_target_frame_audit.swift")
+        let resizeHelper = try readPackageFile("script/ui_evidence_ax_resize_window.swift")
         let visualSmokeScript = try readPackageFile("script/check_visual_regression_smoke.sh")
         let visualChecker = try readPackageFile("script/visual_regression_smoke_check.swift")
 
@@ -9051,20 +9183,33 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("ui_evidence_product_source_commit"))
         XCTAssertTrue(captureScript.contains("local origin_x=0"))
         XCTAssertTrue(captureScript.contains("local origin_y=0"))
-        XCTAssertTrue(captureScript.contains("set position of targetWindow to {originX, originY}"))
-        XCTAssertTrue(captureScript.contains("set size of targetWindow to {targetWidth, targetHeight}"))
+        XCTAssertTrue(captureScript.contains("AX_RESIZE_WINDOW_HELPER"))
+        XCTAssertTrue(captureScript.contains("\"$origin_x\" \"$origin_y\""))
+        XCTAssertTrue(captureScript.contains("if [[ \"$observed_width\" == \"$width\" && \"$observed_height\" == \"$height\" ]]"))
+        XCTAssertFalse(captureScript.contains("\"$observed_y\" == \"$origin_y\""))
+        XCTAssertTrue(resizeHelper.contains("targetOrigin"))
+        XCTAssertTrue(resizeHelper.contains("print("))
+        XCTAssertFalse(captureScript.contains("set position of targetWindow to {originX, originY}"))
+        XCTAssertFalse(captureScript.contains("set size of targetWindow to {targetWidth, targetHeight}"))
         XCTAssertFalse(captureScript.contains("set bounds of front window"))
-        XCTAssertTrue(captureScript.contains("if (count of windows) is 0 then error \"missing owned evidence window\""))
-        XCTAssertTrue(captureScript.contains("set targetWindow to window 1"))
         XCTAssertFalse(captureScript.contains("set targetWindow to front window"))
-        XCTAssertTrue(captureScript.contains("application processes whose unix id is appPID"))
         XCTAssertFalse(captureScript.contains("press_project_sidebar_row"))
         XCTAssertTrue(captureScript.contains("launch_destination=\"$selected_destination\""))
         XCTAssertTrue(captureScript.contains("SUISUI_WINDOW_OWNER_PID=\"$EVIDENCE_APP_PID\""))
+        XCTAssertTrue(captureScript.contains("SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1"))
+        XCTAssertTrue(captureScript.contains("SUISUI_DISABLE_PROJECT_BOARD_PRESENTATION_PERSISTENCE=1"))
+        XCTAssertTrue(captureScript.contains("\"$window_x\" \"$window_y\" \"$window_width\" \"$window_height\""))
+        XCTAssertTrue(targetFrameAuditor.contains("expectedWindowFrame"))
+        XCTAssertTrue(targetFrameAuditor.contains("Expected exactly one owned AX window matching the captured CG frame"))
         XCTAssertFalse(captureScript.contains("/usr/bin/osascript - \"$APP_NAME\""))
         XCTAssertFalse(captureScript.contains("tell process \"$APP_NAME\""))
         XCTAssertTrue(captureScript.contains("write_visual_baseline_capture_manifest"))
         XCTAssertTrue(captureScript.contains("Light/Dark/System visual baseline manifest"))
+        XCTAssertTrue(
+            captureScript.contains(
+                "prepare_named_evidence_window \"Voice Command\" \"Voice Command\" \"$VOICE_COMMAND_TARGET_MARKERS\" \"voice-command-quick-command-tab\""
+            )
+        )
 
         XCTAssertTrue(visualSmokeScript.contains("visual_regression_smoke_check.swift"))
         XCTAssertTrue(visualSmokeScript.contains("SUISUI_VISUAL_BASELINE_MANIFEST"))
@@ -9180,8 +9325,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("APPLE_LANGUAGES=\"(ja)\""))
         XCTAssertTrue(script.contains("APPLE_LOCALE=\"ja_JP\""))
         XCTAssertTrue(script.contains("EVIDENCE_RECEIPT_LOCALE=\"ja-JP\""))
-        XCTAssertTrue(script.contains("-AppleLanguages \"$APPLE_LANGUAGES\""))
-        XCTAssertTrue(script.contains("-AppleLocale \"$APPLE_LOCALE\""))
+        XCTAssertTrue(script.contains(#""-AppleLanguages" "$APPLE_LANGUAGES""#))
+        XCTAssertTrue(script.contains(#""-AppleLocale" "$APPLE_LOCALE""#))
         XCTAssertTrue(script.contains("EVIDENCE_REFERENCE_INSTANT=\"${SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT:-2026-07-10T12:00:00Z}\""))
         XCTAssertTrue(script.contains("EVIDENCE_TIME_ZONE=\"${SUISUI_VISUAL_EVIDENCE_TIME_ZONE:-UTC}\""))
         XCTAssertTrue(script.contains("args+=(\"TZ=$EVIDENCE_TIME_ZONE\")"))
@@ -9293,12 +9438,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("capture_settings_appearance system"))
         XCTAssertTrue(captureScript.contains("capture_mcp_settings_appearance system"))
         XCTAssertTrue(captureScript.contains("VOICE_COMMAND_SYSTEM_SCREENSHOT"))
-        XCTAssertTrue(captureScript.contains("set position of targetWindow to {originX, originY}"))
-        XCTAssertTrue(captureScript.contains("set size of targetWindow to {targetWidth, targetHeight}"))
+        XCTAssertTrue(captureScript.contains("\"$AX_RESIZE_WINDOW_HELPER_BINARY\""))
+        XCTAssertTrue(captureScript.contains("\"$width\" \"$height\" \"$origin_x\" \"$origin_y\""))
         XCTAssertFalse(captureScript.contains("set bounds of front window"))
         XCTAssertTrue(captureScript.contains("wait_for_stable_ax_target_frame()"))
         XCTAssertTrue(captureScript.contains("local stable_samples_required=3"))
-        XCTAssertTrue(captureScript.contains("target_frame_audit=\"$(wait_for_stable_ax_target_frame \"$target_identifier\" \"$window_name\")\""))
+        XCTAssertTrue(captureScript.contains("target_frame_audit=\"$(wait_for_stable_ax_target_frame \"$target_identifier\" \"$window_name\" \"$AX_TARGET_FRAME_AUDIT_MODE\" \"$window_x\" \"$window_y\" \"$window_width\" \"$window_height\")\""))
         XCTAssertTrue(scrollHelper.contains("app.processIdentifier == appPID"))
         XCTAssertTrue(scrollHelper.contains("identifier == targetIdentifier"))
         XCTAssertTrue(scrollHelper.contains("AXScrollToVisible"))
@@ -11276,6 +11421,10 @@ final class ReleasePipelineTests: XCTestCase {
             "unidic_lite.DICDIR",
             "SAFE_VOICE_ID",
             "English Kokoro voice id must start with a or b",
+            "inspect.signature",
+            "supports_keyword",
+            "if supports_keyword(KModel, \"repo_id\")",
+            "if supports_keyword(KPipeline, \"repo_id\")",
             "KModel(",
             "KPipeline("
         ] {
@@ -15434,6 +15583,30 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(ignoredPaths.contains("/packaging/notarization.env"))
     }
 
+    func testReleaseScriptsCanIsolateGitignoredMachineConfigurationForFixtures() throws {
+        let scripts = [
+            "script/build_and_run.sh",
+            "script/create_release_evidence.sh",
+            "script/generate_appcast.sh",
+            "script/notarize_app.sh",
+            "script/notarize_release_dmg.sh",
+            "script/package_release.sh",
+            "script/sign_app.sh",
+            "script/validate_sparkle_release_config.sh",
+            "script/verify_appcast.sh",
+            "script/verify_release_environment.sh",
+            "script/verify_signing_setup.sh",
+        ]
+
+        for scriptPath in scripts {
+            let script = try readPackageFile(scriptPath)
+            XCTAssertTrue(
+                script.contains("SUISUI_LOAD_LOCAL_RELEASE_CONFIG"),
+                "\(scriptPath) must allow hermetic fixtures on configured release machines"
+            )
+        }
+    }
+
     private func writePackageEvidence(
         for checksumURL: URL,
         artifactPath: String? = "dist/releases/Suisui-0.1.0+1.dmg",
@@ -16328,7 +16501,11 @@ final class ReleasePipelineTests: XCTestCase {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = arguments
         process.currentDirectoryURL = packageRoot()
-        process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+        var isolatedEnvironment = ["SUISUI_LOAD_LOCAL_RELEASE_CONFIG": "0"]
+        isolatedEnvironment.merge(environment) { _, new in new }
+        // Release-machine config is intentionally gitignored. Keep script fixtures
+        // deterministic when a contributor runs the suite on that configured machine.
+        process.environment = ProcessInfo.processInfo.environment.merging(isolatedEnvironment) { _, new in new }
 
         let output = Pipe()
         process.standardOutput = output

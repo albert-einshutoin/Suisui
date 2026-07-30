@@ -6,6 +6,17 @@ Suisui uses visual baselines as semantic release evidence plus bounded raster co
 
 The English source of truth is `docs/quality/visual-baseline-manifest.json`; the Japanese source of truth is `docs/quality/visual-baseline-manifest-ja.json`. Each locale has an independent screenshot, baseline, metadata, and AX receipt root so an otherwise valid capture cannot authenticate another locale's pixels.
 
+macOS 26 Liquid Glass also samples the active display environment for native
+toolbar and segmented controls. The release machine therefore uses the default
+`local-display` profile, while GitHub Actions explicitly selects the audited
+`apple-virtual-display` profile. The hosted manifests and roots are
+`visual-baseline-manifest[-ja]-apple-virtual.json` and
+`visual-baselines[-ja]-apple-virtual`. Profiles change only the authenticated
+reference pixels: both keep the same `0.005` changed-pixel budget, `0.01` mean
+absolute error budget, semantic image-health checks, and required live AX frame
+audit. `script/check_ci_visual_gate.sh` accepts only these two named profiles;
+it does not accept an arbitrary baseline path.
+
 | Screen | Required Themes | Viewport | Evidence |
 | --- | --- | --- | --- |
 | Project Board | Light / Dark / System | 1024x676 | sidebar, task cards, project header, inspector |
@@ -20,7 +31,7 @@ The English source of truth is `docs/quality/visual-baseline-manifest.json`; the
 | Assistant Queue Approved | Light / Dark | 1024x676 | compact Review destination, approved row, Run, and More controls |
 | Assistant Queue Failed | Light / Dark | 1024x676 | compact Review destination, failed row, and Retry recovery control |
 | Settings Overview | Light / Dark / System | 720x676 | overview navigation and account-free local state |
-| Settings Integrations | Light / Dark | 720x676 | provider, TTS/STT, Calendar/Reminder, Sync, Privacy, Data Location status |
+| Settings Integrations | Light / Dark | 720x676 | Public Alpha Sync value and fail-closed safety boundary |
 | Settings Appearance | Light / Dark / System | 720x676 | theme picker and contrast controls |
 | MCP Settings | Light / Dark / System | 720x676 | registered MCP rows without secrets or machine-local paths |
 | Voice Command | Light / Dark / System | 760x640 | command entry, local interpretation, approval boundary |

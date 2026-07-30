@@ -76,6 +76,21 @@ The manual release worksheet must also capture the P0 workflow cockpits that are
 - The first approved local execution step may move a task into active work and records a redacted receipt with task identity, priority, due date, review reason, and before/after status. External writes, completion, and destructive actions remain separate reviewed actions.
 - Runtime AX checks can verify labels, help text, and confirmation anchors, but the real VoiceOver pass still records concrete observations in `docs/release/evidence/accessibility-voiceover.md`.
 
+## Voice Task Conversation Workspace
+
+Voice CommandのConversationタブは、`voice-conversation-scope` → `voice-conversation-turn-list` → `voice-conversation-clarification`またはUnderstanding panel → `voice-conversation-queue-handoff` → `voice-conversation-composer`の順で移動する。Queue handoffは対象項目を既存の承認フローで開くだけで、会話画面から実行しない。
+
+| Step | AX identifier | Required behavior |
+| --- | --- | --- |
+| Current scope | `voice-conversation-scope` | Project、Task、session stateを読み上げ、recordingやpausedを色だけに依存せず伝える。 |
+| Confirmed turns | `voice-conversation-turn-list` | Providerの生出力ではなく、確認済み入力と短い構造化済み応答だけを時系列で読む。 |
+| Clarification | `voice-conversation-clarification` | 不足情報が1件ある場合に先にフォーカスし、Task/Projectを変更せずキャンセルできる。 |
+| Resolved target | `voice-conversation-resolved-target` | 解決した対象と理由をredacted textで読む。 |
+| Proposal | `voice-conversation-proposal` | 変更案と承認要否を読み、直接実行の操作を持たない。 |
+| Fact candidates | `voice-conversation-fact-candidates` | 候補の状態とsourceを読み、secret-like textを表示しない。 |
+| Queue handoff | `voice-conversation-queue-handoff` | focused Assistant Queue itemへ移動し、既存approval flowへ委譲する。 |
+| Composer | `voice-conversation-composer` | typed fallback、Record/Stop、clarification cancel、review送信へkeyboardで到達できる。 |
+
 ## Runtime Smoke To Manual Worksheet Mapping
 
 | Runtime AX smoke marker | Manual worksheet field | What the manual pass must still prove |

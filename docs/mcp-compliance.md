@@ -135,3 +135,5 @@ Primary references:
 Suisui should not market itself as a full MCP host yet. Accurate wording for the current release is:
 
 > External MCP stdio tools are supported with approval and audit controls. MCP Resources, Prompts, Streamable HTTP, and remote OAuth flows are planned but not included in this release.
+
+Codex Local is offered for Personal Preview only. `clientInfo.name = "suisui"` is not registered as an OpenAI known client, so Suisui-specific identification in Compliance Logs is not supported and no Enterprise compliance or administrator-audit compatibility is claimed. Enterprise support remains a separate release gate: it requires either known-client registration plus organization-policy verification, or a newly reviewed public contract that explains and accepts the remaining Compliance Logs limitation.

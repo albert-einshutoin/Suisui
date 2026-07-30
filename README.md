@@ -96,13 +96,14 @@ Choose a provider in **Settings > AI** and save your API key. Secrets are stored
 
 Calendar, Reminders, and Notifications require the corresponding macOS permissions. Suisui does not run an operation when permission is missing and instead explains what needs to be enabled.
 
-Advanced connector and MCP foundations are present, but support depends on the configured runtime, credentials, and the explicit review boundary. Credential-backed Google Calendar production evidence is tracked separately from local implementation.
+Advanced connector and MCP foundations are present, but support depends on the configured runtime, credentials, and the explicit review boundary. Google Calendar OAuth/live sync remains an experimental foundation, is not a supported Public Alpha workflow, and is tracked for post-alpha validation in [#434](https://github.com/albert-einshutoin/Suisui/issues/434).
 
 ## Known Limitations
 
 - Team accounts, organizations, roles, and shared workspaces are not implemented.
 - Multi-device cloud sync is not part of the public alpha.
 - General SaaS connections such as GitHub, Gmail, Slack, Google Drive, and Notion are not enabled as supported public-alpha integrations.
+- Google Calendar OAuth/live sync is not supported in Public Alpha; use the Apple Calendar adapter for the supported calendar workflow.
 - Full-text RAG and large knowledge indexes are out of scope for the alpha.
 - Automatic email sending, Slack posting, and destructive file operations are not supported.
 - Local STT/TTS models must be installed separately.

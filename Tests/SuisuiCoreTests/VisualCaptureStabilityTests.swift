@@ -5,6 +5,24 @@ import UniformTypeIdentifiers
 import XCTest
 
 final class VisualCaptureStabilityTests: XCTestCase {
+    func testCapturePinsOpaqueBackdropOnlyForOwnedEvidenceProcess() throws {
+        let capture = try readPackageFile("script/capture_ui_evidence.sh")
+        let app = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
+
+        XCTAssertTrue(capture.contains("SUISUI_VISUAL_EVIDENCE_STABLE_BACKDROP=1"))
+        XCTAssertTrue(capture.contains("[[ \"$APPEARANCE_OVERRIDE\" != \"light\" ]]"))
+        XCTAssertTrue(capture.contains("launch_args+=(\"-AppleReduceDesktopTinting\" \"YES\")"))
+        XCTAssertTrue(app.contains("SUISUI_VISUAL_EVIDENCE_STABLE_BACKDROP"))
+        XCTAssertTrue(app.contains("configureVisualEvidenceBackdrop"))
+        XCTAssertTrue(app.contains("window.colorSpace = .sRGB"))
+        XCTAssertTrue(app.contains("window.isOpaque = true"))
+        XCTAssertTrue(app.contains("NSWindow.didBecomeKeyNotification"))
+        XCTAssertFalse(capture.contains("defaults write -g AppleReduceDesktopTinting"))
+        XCTAssertFalse(capture.contains("defaults write NSGlobalDomain AppleReduceDesktopTinting"))
+        XCTAssertFalse(capture.contains("defaults write -g AppleReduceTransparency"))
+        XCTAssertFalse(capture.contains("defaults write NSGlobalDomain AppleReduceTransparency"))
+    }
+
     func testSystemEvidencePinsDarkAppAppearanceAndRejectsWrongRasterAppearance() throws {
         let capture = try readPackageFile("script/capture_ui_evidence.sh")
         let app = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
@@ -99,7 +117,7 @@ final class VisualCaptureStabilityTests: XCTestCase {
         XCTAssertTrue(source.contains("second_target_frame_fingerprint"))
         XCTAssertTrue(source.contains("receipt_ax_target_frame_fields"))
         XCTAssertTrue(source.contains("local AX_TARGET_FRAME_AUDIT_MODE=\"fingerprint\""))
-        XCTAssertTrue(source.contains("second_target_frame_fingerprint=\"$(wait_for_stable_ax_target_frame \"$target_identifier\" \"$window_name\")\""))
+        XCTAssertTrue(source.contains("second_target_frame_fingerprint=\"$(wait_for_stable_ax_target_frame \"$target_identifier\" \"$window_name\" \"$AX_TARGET_FRAME_AUDIT_MODE\" \"$2\" \"$3\" \"$4\" \"$5\")\""))
         XCTAssertTrue(source.contains("--manifest \"$VISUAL_BASELINE_MANIFEST\""))
         XCTAssertTrue(source.contains("--first \"$first_raster\""))
         XCTAssertTrue(source.contains("--second \"$second_raster\""))

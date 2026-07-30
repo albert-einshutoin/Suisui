@@ -142,7 +142,10 @@ private struct MenuBarExtraLabel: View {
                     openWindow(id: "voice-capture")
                 }
             }
-            .task {
+            .onReceive(NotificationCenter.default.publisher(for: .suisuiProjectBoardCommandReady)) { _ in
+                // The board owns the launch-critical SQLite read. Refresh the
+                // ancillary menu summary only after that read has made the
+                // primary task surface usable, avoiding startup DB contention.
                 controller.refresh()
             }
             .onReceive(NotificationCenter.default.publisher(for: .suisuiProjectBoardDidChange)) { _ in
@@ -423,6 +426,7 @@ private struct SettingsWindowRootView: View {
             watcherDiagnosticsSnapshotFactory: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot,
             externalMCPSettingsViewModelFactory: AppRuntimeFactory.makeExternalMCPSettingsViewModel,
             syncSettingsViewModelFactory: AppRuntimeFactory.makeSyncSettingsViewModel,
+            isGoogleCalendarRuntimeEnabled: AppRuntimeFactory.isGoogleCalendarRuntimeEnabled(),
             googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
             googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
             googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
@@ -503,6 +507,7 @@ private enum SuisuiLaunchRecoveryEnvironment {
 
 private enum SuisuiWindowlessFallbackEnvironment {
     private static let forceFallbackFlagName = "SUISUI_FORCE_PROJECT_BOARD_FALLBACK"
+    private static let disableFallbackFlagName = "SUISUI_DISABLE_PROJECT_BOARD_FALLBACK"
     static let maxWindowGroupRestoreAttempts = 3
 
     static var shouldForceProjectBoardFallback: Bool {
@@ -511,6 +516,12 @@ private enum SuisuiWindowlessFallbackEnvironment {
 
     static var shouldCreateDirectFallbackWindow: Bool {
         let environment = ProcessInfo.processInfo.environment
+        guard environment[disableFallbackFlagName] != "1" else {
+            // Layout evidence must exercise the canonical WindowGroup alone.
+            // The opt-out is process-local so production isolated launches
+            // retain their early visible fallback and launch resilience.
+            return false
+        }
         // Direct binary launches with an isolated SQLite path do not always
         // get a SwiftUI WindowGroup quickly enough for AX/screenshot gates.
         // They still need the full board unless launch recovery explicitly opts in.
@@ -647,7 +658,7 @@ private final class SuisuiProjectBoardWindowFallback {
             window.isVisible
                 && window.occlusionState.contains(.visible)
                 && !window.isMiniaturized
-                && window.title == "Suisui"
+                && (window.title == "Suisui" || window.title == String(localized: "Suisui"))
         }
     }
 
@@ -674,6 +685,8 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
     private var settingsEvidenceWindow: NSWindow?
     private var voiceCommandEvidenceWindow: NSWindow?
     private var digestNotificationOpenedObserver: (any NSObjectProtocol)?
+    private var commandReadyRuntimeObserver: (any NSObjectProtocol)?
+    private var backgroundRuntimesStarted = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         let environment = ProcessInfo.processInfo.environment
@@ -692,9 +705,9 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
+        installVisualEvidenceBackdropIfRequested()
         SuisuiNotificationResponder.shared.install()
-        DockTileBadgeController.shared.start()
-        DeadlineWatcherRuntime.shared.start()
+        installCommandReadyRuntimeObserver()
         ensureProjectBoardWindowIsVisible()
         // Tapping a digest notification must surface the Project Board even
         // when every window was closed; reuse the reopen recovery path.
@@ -725,6 +738,76 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
             userDriverDelegate: nil
         )
 #endif
+    }
+
+    private func installVisualEvidenceBackdropIfRequested() {
+        guard ProcessInfo.processInfo.environment["SUISUI_VISUAL_EVIDENCE_STABLE_BACKDROP"] == "1" else {
+            return
+        }
+
+        // Native materials otherwise sample the login user's wallpaper and
+        // physical display. Keep this capture-only: normal windows retain the
+        // platform material behavior and no global accessibility setting moves.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(visualEvidenceWindowDidBecomeVisible(_:)),
+            name: NSWindow.didBecomeKeyNotification,
+            object: nil
+        )
+        NSApplication.shared.windows.forEach(configureVisualEvidenceBackdrop)
+    }
+
+    @objc
+    private func visualEvidenceWindowDidBecomeVisible(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else {
+            return
+        }
+        configureVisualEvidenceBackdrop(window)
+    }
+
+    private func configureVisualEvidenceBackdrop(_ window: NSWindow) {
+        let isDark = window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let component: CGFloat = isDark ? 0.105 : 0.94
+        // Capture windows must render in a device-independent color space.
+        // Otherwise ColorSync bakes the physical monitor profile into pixels,
+        // so identical semantic colors differ from hosted virtual displays.
+        window.colorSpace = .sRGB
+        let neutralBackdropColor = NSColor(
+            srgbRed: component,
+            green: component,
+            blue: component,
+            alpha: 1
+        )
+        window.backgroundColor = neutralBackdropColor
+        window.isOpaque = true
+    }
+
+    private func installCommandReadyRuntimeObserver() {
+        guard commandReadyRuntimeObserver == nil else {
+            return
+        }
+        commandReadyRuntimeObserver = NotificationCenter.default.addObserver(
+            forName: .suisuiProjectBoardCommandReady,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.startBackgroundRuntimesOnce()
+            }
+        }
+    }
+
+    private func startBackgroundRuntimesOnce() {
+        guard backgroundRuntimesStarted == false else {
+            return
+        }
+        backgroundRuntimesStarted = true
+        // Retention, badge, and deadline reads remain automatic, but the first
+        // board load gets exclusive access to startup SQLite work so the app's
+        // command surface is responsive before ancillary maintenance begins.
+        ConversationRetentionRuntime.shared.start()
+        DockTileBadgeController.shared.start()
+        DeadlineWatcherRuntime.shared.start()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -823,6 +906,7 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
                     watcherDiagnosticsSnapshotFactory: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot,
                     externalMCPSettingsViewModelFactory: AppRuntimeFactory.makeExternalMCPSettingsViewModel,
                     syncSettingsViewModelFactory: AppRuntimeFactory.makeSyncSettingsViewModel,
+                    isGoogleCalendarRuntimeEnabled: AppRuntimeFactory.isGoogleCalendarRuntimeEnabled(),
                     googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
                     googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
                     googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
@@ -894,7 +978,7 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
             window.isVisible
                 && window.occlusionState.contains(.visible)
                 && !window.isMiniaturized
-                && window.title == "Suisui"
+                && (window.title == "Suisui" || window.title == String(localized: "Suisui"))
         }
     }
 }

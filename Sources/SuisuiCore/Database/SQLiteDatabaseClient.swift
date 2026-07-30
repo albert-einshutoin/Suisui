@@ -906,6 +906,8 @@ public enum CoreMigrations {
                         priority TEXT,
                         recurrence TEXT,
                         source_command TEXT,
+                        mutation_revision INTEGER NOT NULL DEFAULT 0
+                            CHECK(mutation_revision >= 0),
                         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                     );
@@ -2026,6 +2028,121 @@ public enum CoreMigrations {
                     """
                     CREATE INDEX idx_task_context_facts_supersedes
                     ON task_context_facts(supersedes_fact_id);
+                    """
+                )
+            },
+            DatabaseMigration(
+                id: "0030_create_voice_conversation_orchestration_state"
+            ) { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE voice_task_conversation_orchestration_states (
+                        session_id TEXT PRIMARY KEY NOT NULL,
+                        payload BLOB NOT NULL,
+                        updated_at REAL NOT NULL
+                    );
+                    """
+                )
+            },
+            DatabaseMigration(
+                id: "0031_expand_conversation_action_links"
+            ) { connection in
+                try connection.execute(
+                    """
+                    ALTER TABLE conversation_action_links
+                    ADD COLUMN task_snapshot_fingerprint TEXT;
+
+                    ALTER TABLE conversation_action_links
+                    ADD COLUMN action_statuses_json TEXT NOT NULL DEFAULT '[]';
+
+                    ALTER TABLE conversation_action_links
+                    ADD COLUMN retry_of_action_link_id TEXT;
+
+                    CREATE INDEX idx_conversation_action_links_queue_created
+                    ON conversation_action_links(
+                        assistant_queue_item_id,
+                        created_at DESC,
+                        id DESC
+                    );
+                    """
+                )
+            },
+            DatabaseMigration(
+                id: "0032_cascade_orchestration_state_retention"
+            ) { connection in
+                // The legacy table allowed checkpoints without a parent
+                // Session. Copy only valid rows: preserving an orphan would
+                // make its transcript recoverable if that stable Session ID
+                // were later reused.
+                try connection.execute(
+                    """
+                    CREATE TABLE voice_task_conversation_orchestration_states_v2 (
+                        session_id TEXT PRIMARY KEY NOT NULL,
+                        payload BLOB NOT NULL,
+                        updated_at REAL NOT NULL,
+                        FOREIGN KEY(session_id)
+                            REFERENCES voice_task_conversation_sessions(id)
+                            ON DELETE CASCADE
+                    );
+
+                    INSERT INTO voice_task_conversation_orchestration_states_v2 (
+                        session_id,
+                        payload,
+                        updated_at
+                    )
+                    SELECT
+                        state.session_id,
+                        state.payload,
+                        state.updated_at
+                    FROM voice_task_conversation_orchestration_states AS state
+                    JOIN voice_task_conversation_sessions AS session
+                      ON session.id = state.session_id;
+
+                    DROP TABLE voice_task_conversation_orchestration_states;
+                    ALTER TABLE voice_task_conversation_orchestration_states_v2
+                    RENAME TO voice_task_conversation_orchestration_states;
+                    """
+                )
+            },
+            DatabaseMigration(
+                id: "0033_bind_all_reviewed_task_snapshots"
+            ) { connection in
+                let taskColumns = try connection.queryRows(
+                    "PRAGMA table_info(tasks);"
+                ).compactMap { $0["name"] }
+                if !taskColumns.contains("mutation_revision") {
+                    try connection.execute(
+                        """
+                        ALTER TABLE tasks
+                        ADD COLUMN mutation_revision INTEGER NOT NULL DEFAULT 0
+                            CHECK(mutation_revision >= 0);
+                        """
+                    )
+                }
+                try connection.execute(
+                    """
+                    ALTER TABLE conversation_action_links
+                    ADD COLUMN task_snapshots_json TEXT NOT NULL DEFAULT '[]';
+                    """
+                )
+            },
+            DatabaseMigration(
+                id: "0034_mark_conversation_origin_queue_items"
+            ) { connection in
+                try connection.execute(
+                    """
+                    ALTER TABLE assistant_queue_items
+                    ADD COLUMN requires_conversation_action_link
+                        INTEGER NOT NULL DEFAULT 0
+                        CHECK(requires_conversation_action_link IN (0, 1));
+
+                    UPDATE assistant_queue_items
+                    SET requires_conversation_action_link = 1
+                    WHERE id IN (
+                        SELECT assistant_queue_item_id
+                        FROM conversation_action_links
+                        WHERE assistant_queue_item_id IS NOT NULL
+                    );
                     """
                 )
             },

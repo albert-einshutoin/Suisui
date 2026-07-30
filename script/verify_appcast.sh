@@ -18,7 +18,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ -f "$SPARKLE_ENV_FILE" ]]; then
+if [[ "${SUISUI_LOAD_LOCAL_RELEASE_CONFIG:-1}" == "1" && -f "$SPARKLE_ENV_FILE" ]]; then
   # shellcheck source=/dev/null
   source "$SPARKLE_ENV_FILE"
 fi

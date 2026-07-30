@@ -621,6 +621,7 @@
 "Sync paid value and safety boundary" = "同期の有料価値と安全境界";
 "Syncing" = "同期中";
 "Task" = "タスク";
+"Task list" = "タスク一覧";
 "Task metadata" = "タスクメタデータ";
 "Task summary" = "タスクサマリー";
 "Task title" = "タスク名";
@@ -2020,3 +2021,39 @@
 "Choose Project destination." = "プロジェクトの移動先を選択します。";
 "This item can no longer be edited. Cancel to keep the latest queue state." = "この項目は編集できなくなりました。キャンセルして最新のキュー状態を維持してください。";
 "This reviewed automation is already in Assistant Queue. Review the existing item before running it." = "このレビュー済み自動化はすでにアシスタントキューにあります。実行前に既存項目を確認してください。";
+
+/* Voice task conversation workspace. */
+"Archive session" = "セッションをアーカイブ";
+"Cancel clarification" = "確認をキャンセル";
+"Cancels this question without changing Tasks or Projects." = "タスクやプロジェクトを変更せず、この確認をキャンセルします。";
+"Conversation" = "会話";
+"Creates an approval-gated proposal. It does not run changes." = "承認が必要な提案を作成します。変更は実行しません。";
+"Fact candidate" = "Fact候補";
+"Fact candidates" = "Fact候補";
+"Load earlier turns" = "以前の会話を読み込む";
+"Loads older confirmed conversation turns." = "確認済みの以前の会話を読み込みます。";
+"One clarification needed" = "確認が1件必要です";
+"Opens the focused item for the existing approval flow. It does not execute this work." = "既存の承認フローで対象項目を開きます。この画面では実行しません。";
+"Pause session" = "セッションを一時停止";
+"Record or type a request. Your confirmed text appears here." = "録音または入力してください。確認済みの内容がここに表示されます。";
+"Resolved target" = "解決した対象";
+"Resume session" = "セッションを再開";
+"Send for review" = "レビューへ送る";
+"Session actions" = "セッション操作";
+"Session state" = "セッション状態";
+"Understanding" = "理解内容";
+"Voice conversation session" = "音声会話セッション";
+"Voice task request" = "音声タスク依頼";
+"Quick Command" = "クイックコマンド";
+"Preparing structured proposal" = "構造化された提案を準備中";
+"Structured response recorded." = "構造化された応答を記録しました。";
+"Conversation state updated." = "会話状態を更新しました。";
+"Preparing review" = "レビューを準備中";
+"Waiting for approval" = "承認待ち";
+"Paused" = "一時停止中";
+"Voice conversation" = "音声会話";
+"You" = "あなた";
+"Proposed change %lld" = "変更案 %lld";
+"Waiting for review" = "レビュー待ち";
+"Changed" = "変更済み";
+"Unresolved" = "未解決";

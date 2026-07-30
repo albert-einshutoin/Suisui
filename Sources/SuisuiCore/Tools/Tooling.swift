@@ -192,6 +192,7 @@ public struct ToolExecutionContext: Sendable {
     public var reviewSessionID: String?
     public var actionID: String?
     public var idempotencyKey: String?
+    public var taskSnapshotFingerprints: [Int64: String]
 #if DEBUG
     // Existing unit checks exercise individual tools without constructing a
     // review session. This internal-only bridge is absent from release builds.
@@ -207,6 +208,28 @@ public struct ToolExecutionContext: Sendable {
         actionID: String? = nil,
         idempotencyKey: String? = nil
     ) {
+        self.init(
+            authorization: authorization,
+            now: now,
+            source: source,
+            executionID: executionID,
+            reviewSessionID: reviewSessionID,
+            actionID: actionID,
+            idempotencyKey: idempotencyKey,
+            taskSnapshotFingerprints: [:]
+        )
+    }
+
+    public init(
+        authorization: ToolActionAuthorization? = nil,
+        now: Date = Date(),
+        source: ToolExecutionSource,
+        executionID: String? = nil,
+        reviewSessionID: String? = nil,
+        actionID: String? = nil,
+        idempotencyKey: String? = nil,
+        taskSnapshotFingerprints: [Int64: String]
+    ) {
         self.authorization = authorization
         self.now = now
         self.source = source
@@ -214,6 +237,7 @@ public struct ToolExecutionContext: Sendable {
         self.reviewSessionID = reviewSessionID
         self.actionID = actionID
         self.idempotencyKey = idempotencyKey
+        self.taskSnapshotFingerprints = taskSnapshotFingerprints
 #if DEBUG
         self.debugApprovalToken = nil
 #endif
@@ -235,7 +259,8 @@ public struct ToolExecutionContext: Sendable {
         executionID: String? = nil,
         reviewSessionID: String? = nil,
         actionID: String? = nil,
-        idempotencyKey: String? = nil
+        idempotencyKey: String? = nil,
+        taskSnapshotFingerprints: [Int64: String] = [:]
     ) {
         self.authorization = nil
         self.now = now
@@ -244,6 +269,7 @@ public struct ToolExecutionContext: Sendable {
         self.reviewSessionID = reviewSessionID
         self.actionID = actionID
         self.idempotencyKey = idempotencyKey
+        self.taskSnapshotFingerprints = taskSnapshotFingerprints
         self.debugApprovalToken = approvalToken
     }
 #endif

@@ -788,23 +788,23 @@ final class UIGateScriptsTests: XCTestCase {
     func testLayoutResizeReacquiresNamedOwnedWindowUntilRequestedWidthIsObserved() throws {
         let script = try readPackageFile("script/check_layout_stability_smoke.sh")
         let metadataHelper = try readPackageFile("script/ui_evidence_window_metadata.swift")
+        let resizeHelper = try readPackageFile("script/ui_evidence_ax_resize_window.swift")
 
-        XCTAssertTrue(script.contains("set currentMain to value of attribute \"AXMain\" of currentWindow as boolean"))
-        XCTAssertTrue(script.contains("set expectedX to (item 5 of argv) as integer"))
-        XCTAssertTrue(script.contains("set expectedY to (item 6 of argv) as integer"))
-        XCTAssertTrue(script.contains("set expectedWidth to (item 7 of argv) as integer"))
-        XCTAssertTrue(script.contains("set expectedHeight to (item 8 of argv) as integer"))
-        XCTAssertTrue(script.contains("set currentPosition to position of currentWindow"))
-        XCTAssertTrue(script.contains("set currentSize to size of currentWindow"))
-        XCTAssertTrue(script.contains("currentName is requestedName and currentMain and currentPosition is {expectedX, expectedY} and currentSize is {expectedWidth, expectedHeight}"))
-        XCTAssertTrue(script.contains("if candidateCount is not 1 then error \"main named pid-owned window matching visible CG frame is not unique\""))
+        XCTAssertTrue(script.contains("AX_RESIZE_WINDOW_HELPER"))
+        XCTAssertTrue(script.contains("\"$AX_RESIZE_WINDOW_HELPER_BINARY\""))
         XCTAssertTrue(script.contains("\"$window_x\" \"$window_y\" \"$window_width\" \"$window_height\""))
         XCTAssertTrue(script.contains("SUISUI_REQUIRE_SINGLE_WINDOW=\"$require_single_window\""))
+        XCTAssertTrue(script.contains("SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1"))
         XCTAssertTrue(script.contains("read_window_metadata 1"), "a recreated successor is valid only when it is the sole visible PID/name match")
         XCTAssertTrue(script.contains("if [[ \"$window_width\" -eq \"$expected_width\" ]]; then"))
+        XCTAssertTrue(script.contains("\"$width\" -lt \"$expected_width\""))
+        XCTAssertTrue(script.contains("AppKit can reject the below-minimum AX assignment"))
         XCTAssertTrue(script.contains("INFO: reapplying owned window size"))
         XCTAssertTrue(metadataHelper.contains("environment[\"SUISUI_REQUIRE_SINGLE_WINDOW\"] == \"1\""))
         XCTAssertTrue(metadataHelper.contains("guard candidates.count == 1"))
+        XCTAssertTrue(resizeHelper.contains("guard candidates.count == 1"))
+        XCTAssertTrue(resizeHelper.contains("kAXPositionAttribute"))
+        XCTAssertTrue(resizeHelper.contains("kAXSizeAttribute"))
     }
 
     func testLayoutResizeTraceRecordsRequestedExpectedAndBeforeAfterWindowIdentity() throws {
@@ -820,23 +820,24 @@ final class UIGateScriptsTests: XCTestCase {
     }
 
     func testLayoutResizeMovesWindowAwayFromRightEdgeBeforeGrowing() throws {
-        let script = try readPackageFile("script/check_layout_stability_smoke.sh")
+        let resizeHelper = try readPackageFile("script/ui_evidence_ax_resize_window.swift")
 
-        XCTAssertTrue(script.contains("set normalizedPosition to {40, expectedY}"))
-        XCTAssertTrue(script.contains("set position of targetWindow to normalizedPosition"))
-        let positionChange = try XCTUnwrap(script.range(of: "set position of targetWindow to normalizedPosition"))
-        let sizeChange = try XCTUnwrap(script.range(of: "set size of targetWindow to {targetWidth, targetHeight}"))
+        XCTAssertTrue(resizeHelper.contains("var normalizedPosition = targetOrigin"))
+        XCTAssertTrue(resizeHelper.contains("CGPoint(x: 0, y: expectedY)"))
+        let positionChange = try XCTUnwrap(resizeHelper.range(of: "kAXPositionAttribute"))
+        let sizeChange = try XCTUnwrap(resizeHelper.range(of: "kAXSizeAttribute", range: positionChange.upperBound..<resizeHelper.endIndex))
         XCTAssertLessThan(positionChange.lowerBound, sizeChange.lowerBound)
     }
 
     func testVisualPositioningRewaitsForOwnedWindowAfterRouteRecreation() throws {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
 
-        XCTAssertTrue(script.contains("wait_for_owned_evidence_window()"))
-        XCTAssertTrue(script.contains("ax_wait_for_pid_owned_window \"$APP_NAME\" \"$EVIDENCE_APP_PID\" \"$window_name\""))
-        XCTAssertTrue(script.contains("if ! wait_for_owned_evidence_window \"$window_name\" \"$diagnostic_file\"; then"))
-        XCTAssertTrue(script.contains("INFO: waiting for recreated owned evidence window before positioning"))
+        XCTAssertTrue(script.contains("prepare_ax_window_resizer"))
         XCTAssertTrue(script.contains("wait_for_window_capture_metadata \"$window_name\""))
+        XCTAssertTrue(script.contains("\"$AX_RESIZE_WINDOW_HELPER_BINARY\""))
+        XCTAssertTrue(script.contains("\"$window_x\" \"$window_y\" \"$window_width\" \"$window_height\""))
+        XCTAssertTrue(script.contains("INFO: waiting for recreated owned evidence window before positioning"))
+        XCTAssertFalse(script.contains("if ! wait_for_owned_evidence_window \"$window_name\" \"$diagnostic_file\"; then"))
     }
 
     func testVisualPositioningRejectsAppKitViewportClampingBeforeCapture() throws {
@@ -847,8 +848,8 @@ final class UIGateScriptsTests: XCTestCase {
         )
         let positioningSource = String(script[positioningStart.lowerBound..<nextFunction.lowerBound])
 
-        XCTAssertTrue(positioningSource.contains("set actualSize to size of targetWindow"))
-        XCTAssertTrue(positioningSource.contains("read -r observed_width observed_height <<<\"$ax_window_size\""))
+        XCTAssertTrue(positioningSource.contains("\"$AX_RESIZE_WINDOW_HELPER_BINARY\""))
+        XCTAssertTrue(positioningSource.contains("read -r observed_x observed_y observed_width observed_height <<<\"$ax_window_size\""))
         XCTAssertTrue(positioningSource.contains("POSITIONED_WINDOW_WIDTH=\"$observed_width\""))
         XCTAssertTrue(positioningSource.contains("[[ \"$observed_width\" == \"$width\" && \"$observed_height\" == \"$height\" ]]"))
         XCTAssertTrue(positioningSource.contains("failure_message=visual-window-viewport-mismatch"))
@@ -868,7 +869,7 @@ final class UIGateScriptsTests: XCTestCase {
 
         XCTAssertTrue(retrySource.contains("position_window_for_capture \"$window_name\""))
         XCTAssertTrue(retrySource.contains("window_metadata=\"$(wait_for_window_capture_metadata \"$window_name\")\""))
-        XCTAssertTrue(retrySource.contains("target_frame_audit=\"$(wait_for_stable_ax_target_frame \"$target_identifier\" \"$window_name\")\""))
+        XCTAssertTrue(retrySource.contains("target_frame_audit=\"$(wait_for_stable_ax_target_frame \"$target_identifier\" \"$window_name\" \"$AX_TARGET_FRAME_AUDIT_MODE\" \"$window_x\" \"$window_y\" \"$window_width\" \"$window_height\")\""))
         XCTAssertTrue(retrySource.contains("successful_window_width=\"$POSITIONED_WINDOW_WIDTH\""))
         XCTAssertTrue(retrySource.contains("successful_target_frame_audit=\"$target_frame_audit\""))
         XCTAssertTrue(captureSource.contains("\"$successful_window_width\" \"$successful_window_height\" \"$successful_target_frame_audit\""))

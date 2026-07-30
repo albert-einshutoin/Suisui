@@ -1,0 +1,282 @@
+{
+  "schemaVersion": 2,
+  "artifactRoot": "docs/release/evidence/ui-screenshots",
+  "baselineRoot": "docs/quality/visual-baselines-apple-virtual",
+  "baselineContext": {
+    "sourceCommit": "b9d2224654a24534a3f6d6f8c5edf1c5d29b85ea",
+    "normalRoute": "normal",
+    "locale": "en-US",
+    "timeZoneIdentifier": "UTC",
+    "referenceInstant": "2026-07-10T12:00:00Z"
+  },
+  "rasterComparison": {
+    "perChannelDeltaThreshold": 0.10,
+    "maximumChangedPixelRatio": 0.005,
+    "maximumMeanAbsoluteError": 0.01
+  },
+  "semanticTolerances": {
+    "comparisonMode": "semantic",
+    "allowPixelPerfectOnly": false,
+    "minimumBytes": 30000,
+    "minimumWidth": 640,
+    "minimumHeight": 420,
+    "minimumLuminanceRange": 12,
+    "minimumColorBuckets": 8,
+    "blackScreenMaximumLuminance": 8,
+    "requiresAXFrameAudit": true
+  },
+  "screens": [
+    {
+      "id": "project-board",
+      "title": "Project Board",
+      "themes": ["light", "dark", "system"],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "project-board-detail",
+      "requiredVisibleTextLines": [
+        "project board to task card to",
+        "In Progress High",
+        "Jul 10"
+      ],
+      "artifacts": {
+        "light": "project-board-light.png",
+        "dark": "project-board-dark.png",
+        "system": "project-board-system.png"
+      }
+    },
+    {
+      "id": "inbox",
+      "title": "Inbox",
+      "themes": ["light", "dark", "system"],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "inbox-workflow",
+      "artifacts": {
+        "light": "inbox-light.png",
+        "dark": "inbox-dark.png",
+        "system": "inbox-system.png"
+      }
+    },
+    {
+      "id": "today",
+      "title": "Today",
+      "themes": ["light", "dark", "system"],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "today-workflow",
+      "artifacts": {
+        "light": "today-light.png",
+        "dark": "today-dark.png",
+        "system": "today-system.png"
+      }
+    },
+    {
+      "id": "inbox-voice",
+      "title": "Inbox Voice",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "inbox-voice-intake-detail",
+      "artifacts": {
+        "light": "inbox-voice-light.png",
+        "dark": "inbox-voice-dark.png"
+      }
+    },
+    {
+      "id": "projects-overview",
+      "title": "Projects Overview",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "projects-portfolio-overview",
+      "artifacts": {
+        "light": "projects-overview-light.png",
+        "dark": "projects-overview-dark.png"
+      }
+    },
+    {
+      "id": "schedule",
+      "title": "Schedule",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "schedule-mini-calendar",
+      "artifacts": {
+        "light": "schedule-light.png",
+        "dark": "schedule-dark.png"
+      }
+    },
+    {
+      "id": "schedule-workload",
+      "title": "Schedule Workload",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "schedule-workload-attention-banner",
+      "artifacts": {
+        "light": "schedule-workload-light.png",
+        "dark": "schedule-workload-dark.png"
+      }
+    },
+    {
+      "id": "done",
+      "title": "Done",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "done-workflow",
+      "artifacts": {
+        "light": "done-light.png",
+        "dark": "done-dark.png"
+      }
+    },
+    {
+      "id": "assistant-queue-waiting-review",
+      "title": "Assistant Queue Waiting Review",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "assistant-queue-row-visual-waiting",
+      "artifacts": {
+        "light": "assistant-queue-waiting-review-light.png",
+        "dark": "assistant-queue-waiting-review-dark.png"
+      }
+    },
+    {
+      "id": "assistant-queue-approved",
+      "title": "Assistant Queue Approved",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "assistant-queue-row-visual-approved",
+      "artifacts": {
+        "light": "assistant-queue-approved-light.png",
+        "dark": "assistant-queue-approved-dark.png"
+      }
+    },
+    {
+      "id": "assistant-queue-failed",
+      "title": "Assistant Queue Failed",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "assistant-queue-row-visual-failed",
+      "artifacts": {
+        "light": "assistant-queue-failed-light.png",
+        "dark": "assistant-queue-failed-dark.png"
+      }
+    },
+    {
+      "id": "settings-overview",
+      "title": "Settings Overview",
+      "themes": ["light", "dark", "system"],
+      "viewport": {
+        "width": 720,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "settings-status-overview",
+      "artifacts": {
+        "light": "settings-overview-light.png",
+        "dark": "settings-overview-dark.png",
+        "system": "settings-overview-system.png"
+      }
+    },
+    {
+      "id": "settings-integrations",
+      "title": "Settings Integrations",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 720,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "sync-paid-value-row",
+      "artifacts": {
+        "light": "settings-integrations-light.png",
+        "dark": "settings-integrations-dark.png"
+      }
+    },
+    {
+      "id": "settings-appearance",
+      "title": "Settings Appearance",
+      "themes": ["light", "dark", "system"],
+      "viewport": {
+        "width": 720,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "settings-theme-picker",
+      "artifacts": {
+        "light": "settings-appearance-light.png",
+        "dark": "settings-appearance-dark.png",
+        "system": "settings-appearance-system.png"
+      }
+    },
+    {
+      "id": "mcp-settings",
+      "title": "MCP Settings",
+      "themes": ["light", "dark", "system"],
+      "viewport": {
+        "width": 720,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "mcp-paid-execution-boundary-row",
+      "artifacts": {
+        "light": "settings-mcp-light.png",
+        "dark": "settings-mcp-dark.png",
+        "system": "settings-mcp-system.png"
+      }
+    },
+    {
+      "id": "voice-command",
+      "title": "Voice Command",
+      "themes": ["light", "dark", "system"],
+      "viewport": {
+        "width": 760,
+        "height": 640
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "voice-command-root",
+      "artifacts": {
+        "light": "voice-command-light.png",
+        "dark": "voice-command-dark.png",
+        "system": "voice-command-system.png"
+      }
+    }
+  ]
+}

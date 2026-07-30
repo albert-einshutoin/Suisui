@@ -254,7 +254,27 @@ struct ProjectBoardView: View {
                 googleCalendarSyncHelp: viewModel.googleCalendarSyncHelp,
                 onToggleSidebar: toggleSidebarVisibility,
                 onOpenSearch: { isCommandPaletteVisible = true },
-                onOpenVoiceCommand: { openWindow(id: "voice-capture") },
+                onOpenVoiceCommand: {
+                    let task = viewModel.selectedTask
+                    let projectID =
+                        task?.projectID ?? viewModel.selectedProject?.id
+                    let project = viewModel.snapshot.projects.first {
+                        $0.id == projectID
+                    }
+                    SuisuiVoiceConversationScopeBridge.store(
+                        .init(
+                            projectID: projectID,
+                            projectName: project?.title,
+                            taskID: task?.id,
+                            taskName: task?.title
+                        )
+                    )
+                    openWindow(id: "voice-capture")
+                    NotificationCenter.default.post(
+                        name: .suisuiVoiceConversationScopeRequested,
+                        object: nil
+                    )
+                },
                 onToggleInspector: toggleInspectorPresentation,
                 onExportTasks: beginTaskInteropExport,
                 onImportTasks: { isImportingTaskInterop = true },
@@ -288,6 +308,7 @@ struct ProjectBoardView: View {
                 viewModel.load()
             }
             LaunchPerformanceMilestones.record("command-ready")
+            NotificationCenter.default.post(name: .suisuiProjectBoardCommandReady, object: nil)
             viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
             reloadSavedSmartLists()
             restoreSelectedDestinationIfNeeded()
@@ -901,7 +922,8 @@ struct ProjectBoardView: View {
     }
 
     private func restorePrimaryPresentationStateIfNeeded() {
-        guard restoresPrimaryPresentationState else { return }
+        guard restoresPrimaryPresentationState,
+              !isPresentationPersistenceDisabled else { return }
         // SceneStorage keeps simultaneous windows isolated. OS window
         // restoration is deliberately disabled, so a primary-only copy carries
         // safe presentation preferences across a completely fresh launch.
@@ -910,9 +932,18 @@ struct ProjectBoardView: View {
     }
 
     private func persistPrimaryPresentationStateIfNeeded() {
-        guard restoresPrimaryPresentationState else { return }
+        guard restoresPrimaryPresentationState,
+              !isPresentationPersistenceDisabled else { return }
         primaryUserRequestedInspector = userRequestedInspector
         primarySidebarHidden = storedSidebarHidden
+    }
+
+    private var isPresentationPersistenceDisabled: Bool {
+        // Evidence launches must not inherit or overwrite the developer's
+        // real sidebar/inspector preference through AppStorage.
+        ProcessInfo.processInfo.environment[
+            "SUISUI_DISABLE_PROJECT_BOARD_PRESENTATION_PERSISTENCE"
+        ] == "1"
     }
 
     private func refreshProjectBoardColumnsAfterToolbarDisplayModeChange() {
@@ -1977,6 +2008,7 @@ struct SuisuiProjectBoardUndoCommands: Commands {
 extension Notification.Name {
     // .suisuiProjectBoardDidChange moved to SuisuiCore (FirstRunOnboarding.swift)
     // so core store writers can post it without duplicating the raw name.
+    static let suisuiProjectBoardCommandReady = Notification.Name("dev.suisui.projectBoardCommandReady")
     static let suisuiVoiceDailyPlanningReviewRequested = Notification.Name("dev.suisui.voiceDailyPlanningReviewRequested")
     static let suisuiVoiceInboxTriageRequested = Notification.Name("dev.suisui.voiceInboxTriageRequested")
     static let suisuiAssistantQueueRequested = Notification.Name("dev.suisui.assistantQueueRequested")

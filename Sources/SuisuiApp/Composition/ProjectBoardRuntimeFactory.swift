@@ -71,6 +71,9 @@ extension AppRuntimeFactory {
                 missedTaskFollowUpNotificationClient: UserNotificationsNotificationClient(),
                 externalTaskLinkStore: externalTaskLinkStore,
                 googleCalendarSyncFactory: {
+                    guard isGoogleCalendarRuntimeEnabled() else {
+                        return nil
+                    }
                     let secretStore = makeSecretStore()
                     return makeSettingsBackedGoogleCalendarSyncController(
                         connection: connection,
@@ -106,6 +109,10 @@ extension AppRuntimeFactory {
             // migrations while the visible board still owns active statements.
             let auditLogger = RedactingAuditLogger(base: SQLiteAuditLogger(connection: connection))
             let registry = try makeRuntimeToolRegistry(connection: connection, auditLogger: auditLogger)
+            let conversationStore = SQLiteVoiceTaskConversationStore(
+                connection: connection
+            )
+            let taskStore = SQLiteTaskStore(connection: connection)
             return AssistantQueueExecutionCoordinator(
                 queueStore: assistantQueueStore,
                 executor: ActionExecutor(
@@ -114,6 +121,12 @@ extension AppRuntimeFactory {
                     replayStore: SQLiteApprovalReplayStore(connection: connection)
                 ),
                 executionReceiptStore: executionReceiptStore,
+                conversationActionLinkStore: conversationStore,
+                taskSnapshotFingerprintProvider: { taskID in
+                    ConversationTaskSnapshotFingerprint.make(
+                        try taskStore.get(id: taskID)
+                    )
+                },
                 managedAIUsageLedgerStore: SQLiteManagedAIUsageLedgerStore(connection: connection),
                 managedAIBillingSettingsProvider: { loadRuntimeAppSettings().managedAIBilling }
             )

@@ -141,7 +141,11 @@ private struct AssistantQueueTriageControls: View {
     private var filterPicker: some View {
         Picker("Filter", selection: filterBinding) {
             ForEach(AssistantQueueViewFilter.allCases) { filter in
-                Text(LocalizedStringKey(filter.title)).tag(filter)
+                Text(LocalizedStringKey(filter.title))
+                    .tag(filter)
+                    .accessibilityIdentifier(
+                        "assistant-queue-filter-option-\(filter.rawValue)"
+                    )
             }
         }
         .pickerStyle(.menu)

@@ -86,6 +86,15 @@ func size(from value: CFTypeRef?) -> CGSize? {
 }
 
 func activateTarget() -> Bool {
+    // Directly launched smoke binaries are not registered through
+    // LaunchServices, so NSRunningApplication activation alone can be ignored.
+    // Set the process AX state first, then retain AppKit activation as a second
+    // signal before sending any input event.
+    _ = AXUIElementSetAttributeValue(
+        appElement,
+        kAXFrontmostAttribute as CFString,
+        kCFBooleanTrue
+    )
     _ = runningApp.activate(options: [.activateAllWindows])
     for _ in 0..<20 {
         if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid {

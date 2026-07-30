@@ -7025,12 +7025,25 @@ public final class ProjectBoardViewModel: ObservableObject {
         id: String,
         expectedMutationRevision: String
     ) -> Bool {
-        transitionAssistantQueueItem(
+        let reopened = transitionAssistantQueueItem(
             id: id,
             expectedMutationRevision: expectedMutationRevision,
             successMessage: "Reopened Assistant Queue item for review."
         ) { item in
             try AssistantQueueStateMachine.reopenFailedForReview(item)
+        }
+        guard reopened else {
+            return false
+        }
+        do {
+            try resolvedAssistantQueueExecutionCoordinator?
+                .recordConversationRetryIfNeeded(id: id)
+            return true
+        } catch {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = Self.assistantQueueExecutionMessage(for: error)
+            integrationStatusMessage = nil
+            return false
         }
     }
 
@@ -7251,6 +7264,20 @@ public final class ProjectBoardViewModel: ObservableObject {
         switch error {
         case is AssistantQueueStaleReviewError:
             return "This Assistant Queue item changed. Review the latest details before running it."
+        case let error as AssistantQueueConversationLinkRequiresReviewError:
+            return UserFacingErrorMessageSanitizer.message(
+                from: error.reason,
+                fallback: "Review this conversation action again."
+            )
+        case let error as AssistantQueueConversationLinkUnavailableError:
+            return UserFacingErrorMessageSanitizer.message(
+                from: error.reason,
+                fallback: "Conversation execution evidence is unavailable."
+            )
+        case let error as AssistantQueueConversationLinkPersistenceError:
+            return error.queueStateMarkedFailed
+                ? "Conversation execution evidence could not be saved. Create a new reviewed plan before retrying."
+                : "Conversation execution evidence and queue recovery could not be saved. Check local storage before retrying."
         case AssistantQueueExecutionError.unsupportedPayload:
             return "This Assistant Queue item cannot run from Project Board yet."
         case AssistantQueueExecutionError.receiptPersistenceFailed(let queueStateMarkedFailed):

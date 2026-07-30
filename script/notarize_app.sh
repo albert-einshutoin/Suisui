@@ -13,7 +13,7 @@ fi
 # shellcheck source=/dev/null
 source "$METADATA_FILE"
 
-if [[ -f "$NOTARIZATION_ENV_FILE" ]]; then
+if [[ "${SUISUI_LOAD_LOCAL_RELEASE_CONFIG:-1}" == "1" && -f "$NOTARIZATION_ENV_FILE" ]]; then
   # shellcheck source=/dev/null
   source "$NOTARIZATION_ENV_FILE"
 fi

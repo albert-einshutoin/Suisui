@@ -156,6 +156,473 @@ final class AssistantQueueExecutionTests: XCTestCase {
         )
     }
 
+    func testReviewedConversationTurnExecutionLinksReceiptAndActionStatuses() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = VolatileExecutionReceiptStore()
+        let approved = try AssistantQueueStateMachine.approve(
+            makeActionPlanItem(),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let linkStore = RecordingConversationActionLinkStore()
+        let link = try ConversationActionLink(
+            sessionID: UUID(),
+            sourceTurnID: UUID(),
+            actionPlanID: "plan-queue-execution",
+            assistantQueueItemID: approved.id,
+            reviewedFingerprint: try XCTUnwrap(
+                approved.approval?.reviewedContentFingerprint
+            )
+        )
+        try linkStore.saveActionLink(link)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(
+                    required: ["title"],
+                    properties: ["title": "string"]
+                ),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(
+                    tool: .taskCreate,
+                    status: .succeeded,
+                    summary: "Created",
+                    output: ["taskId": .number(42)]
+                )
+            },
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            conversationActionLinkStore: linkStore,
+            taskSnapshotFingerprintProvider: { _ in nil },
+            runIDProvider: { "run-conversation-link" },
+            now: { Date(timeIntervalSince1970: 100) }
+        )
+
+        let result = try executeCurrent(
+            coordinator,
+            id: approved.id,
+            queueStore: queueStore
+        )
+
+        XCTAssertEqual(result.item.state, .done)
+        XCTAssertTrue(
+            result.receipt.references.contains(
+                ExecutionReceiptReference(
+                    kind: .reviewSession,
+                    id: link.sessionID.uuidString,
+                    label: "Conversation Session"
+                )
+            )
+        )
+        XCTAssertTrue(
+            result.receipt.references.contains {
+                $0.kind == .document
+                    && $0.id == link.sourceTurnID.uuidString
+            }
+        )
+        let recorded = try XCTUnwrap(
+            linkStore.latestActionLink(
+                assistantQueueItemID: approved.id
+            )
+        )
+        XCTAssertEqual(recorded.executionReceiptID, result.receipt.id)
+        XCTAssertEqual(
+            recorded.actionStatuses,
+            [
+                ConversationActionStatus(
+                    actionID: "action-create",
+                    status: .succeeded
+                ),
+            ]
+        )
+    }
+
+    func testConversationOriginItemCannotFallbackAfterSessionAndLinkDeletion()
+        throws
+    {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        let queueStore = SQLiteAssistantQueueStore(connection: connection)
+        let conversationStore = SQLiteVoiceTaskConversationStore(
+            connection: connection
+        )
+        let item = makeActionPlanItem()
+            .minimizingUnapprovedConversationTranscript()
+        let approved = try AssistantQueueStateMachine.approve(
+            item,
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let createdAt = Date(timeIntervalSince1970: 1_800_300_000)
+        let session = VoiceTaskConversationSession(
+            title: "Delete provenance",
+            entryPoint: .voiceCommand,
+            createdAt: createdAt
+        )
+        try conversationStore.createSession(session)
+        let turn = try VoiceTaskConversationTurn(
+            sessionID: session.id,
+            author: .user,
+            rawTranscript: "Create Launch checklist",
+            userConfirmedText: "Create Launch checklist",
+            createdAt: createdAt
+        )
+        let link = try ConversationActionLink(
+            sessionID: session.id,
+            sourceTurnID: turn.id,
+            actionPlanID: "plan-queue-execution",
+            assistantQueueItemID: approved.id,
+            reviewedFingerprint: try XCTUnwrap(
+                approved.approval?.reviewedContentFingerprint
+            ),
+            createdAt: createdAt
+        )
+        try conversationStore.saveReviewBundle(
+            turns: [turn],
+            actionLink: link
+        )
+        _ = try conversationStore.deleteSession(
+            id: session.id,
+            scope: .conversation
+        )
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "must remain blocked",
+                inputSchema: ToolInputSchema(
+                    required: ["title"],
+                    properties: ["title": "string"]
+                ),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                XCTFail("Missing Conversation evidence must fail before tools.")
+                return ToolResult(
+                    tool: .taskCreate,
+                    status: .failed,
+                    summary: "must not execute"
+                )
+            },
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: VolatileExecutionReceiptStore(),
+            conversationActionLinkStore: conversationStore,
+            taskSnapshotFingerprintProvider: { _ in nil }
+        )
+
+        XCTAssertThrowsError(
+            try executeCurrent(
+                coordinator,
+                id: approved.id,
+                queueStore: queueStore
+            )
+        ) { error in
+            XCTAssertTrue(
+                error is AssistantQueueConversationLinkUnavailableError
+            )
+        }
+        XCTAssertEqual(
+            try queueStore.get(id: approved.id).state,
+            .approved
+        )
+    }
+
+    func testConversationOriginItemFailsClosedWithoutActionLinkStore()
+        throws
+    {
+        let queueStore = try makeQueueStore()
+        let approved = try AssistantQueueStateMachine.approve(
+            makeActionPlanItem()
+                .minimizingUnapprovedConversationTranscript(),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "must remain blocked",
+                inputSchema: ToolInputSchema(
+                    required: ["title"],
+                    properties: ["title": "string"]
+                ),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                XCTFail("An absent ActionLink store must fail before tools.")
+                return ToolResult(
+                    tool: .taskCreate,
+                    status: .failed,
+                    summary: "must not execute"
+                )
+            },
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: VolatileExecutionReceiptStore()
+        )
+
+        XCTAssertThrowsError(
+            try executeCurrent(
+                coordinator,
+                id: approved.id,
+                queueStore: queueStore
+            )
+        ) { error in
+            XCTAssertTrue(
+                error is AssistantQueueConversationLinkUnavailableError
+            )
+        }
+    }
+
+    func testTaskMutationCASRejectsChangeAfterConversationSnapshotValidation() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        let queueStore = SQLiteAssistantQueueStore(connection: connection)
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let receiptStore = VolatileExecutionReceiptStore()
+        let project = try projectStore.create(title: "Reviewed project")
+        _ = try projectStore.update(id: project.id, status: "completed")
+        let task = try taskStore.create(
+            title: "Reviewed title",
+            projectID: project.id
+        )
+        let reviewedTaskFingerprint =
+            ConversationTaskSnapshotFingerprint.make(task)
+        let plan = ActionPlan(
+            id: "plan-task-cas",
+            userInput: "Rename the task",
+            summary: "Rename task",
+            actions: [
+                PlanAction(
+                    id: "action-task-cas",
+                    tool: .taskUpdate,
+                    arguments: [
+                        "id": .number(Double(task.id)),
+                        "title": .string("Approved title"),
+                    ]
+                ),
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        let approved = try AssistantQueueStateMachine.approve(
+            AssistantQueueAdapter.makeItem(
+                actionPlan: plan,
+                sourceTranscript: plan.userInput,
+                interpretationSummary: plan.summary,
+                reason: "Review",
+                costPreview: .localOnly()
+            ),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let linkStore = RecordingConversationActionLinkStore()
+        try linkStore.saveActionLink(
+            ConversationActionLink(
+                sessionID: UUID(),
+                sourceTurnID: UUID(),
+                actionPlanID: plan.id,
+                assistantQueueItemID: approved.id,
+                reviewedFingerprint: try XCTUnwrap(
+                    approved.approval?.reviewedContentFingerprint
+                ),
+                taskSnapshotFingerprint: reviewedTaskFingerprint,
+                taskSnapshots: [
+                    ConversationTaskSnapshot(
+                        taskID: task.id,
+                        fingerprint: reviewedTaskFingerprint
+                    ),
+                ]
+            )
+        )
+        let registry = try ToolRegistry(tools: [
+            TaskTool(
+                name: .taskUpdate,
+                store: taskStore,
+                projectStore: projectStore
+            ),
+        ])
+        var injectedConcurrentChange = false
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            conversationActionLinkStore: linkStore,
+            taskSnapshotFingerprintProvider: { taskID in
+                let snapshot = ConversationTaskSnapshotFingerprint.make(
+                    try taskStore.get(id: taskID)
+                )
+                if !injectedConcurrentChange {
+                    injectedConcurrentChange = true
+                    _ = try taskStore.update(
+                        id: taskID,
+                        title: "Concurrent title"
+                    )
+                }
+                return snapshot
+            },
+            runIDProvider: { "run-task-cas" },
+            now: { Date(timeIntervalSince1970: 100) }
+        )
+
+        let result = try executeCurrent(
+            coordinator,
+            id: approved.id,
+            queueStore: queueStore
+        )
+
+        XCTAssertEqual(result.item.state, .failed)
+        XCTAssertEqual(
+            try taskStore.get(id: task.id).title,
+            "Concurrent title"
+        )
+        XCTAssertEqual(
+            try projectStore.get(id: project.id).status,
+            "completed"
+        )
+        XCTAssertEqual(result.receipt.actions.first?.status, .failed)
+    }
+
+    func testApprovedConsecutiveMutationsAdvanceTaskSnapshotWithinExecution() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let task = try taskStore.create(title: "Reviewed title")
+        let reviewedTaskFingerprint =
+            ConversationTaskSnapshotFingerprint.make(task)
+        let plan = ActionPlan(
+            id: "plan-consecutive-task-cas",
+            userInput: "Rename and schedule the task",
+            summary: "Apply two reviewed changes",
+            actions: [
+                PlanAction(
+                    id: "rename-task",
+                    tool: .taskUpdate,
+                    arguments: [
+                        "id": .number(Double(task.id)),
+                        "title": .string("Approved title"),
+                    ]
+                ),
+                PlanAction(
+                    id: "schedule-task",
+                    tool: .taskUpdate,
+                    arguments: [
+                        "id": .number(Double(task.id)),
+                        "dueAt": .string("2026-08-01T09:00:00Z"),
+                    ]
+                ),
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        var session = ReviewSession(
+            id: "review-consecutive-task-cas",
+            plan: plan
+        )
+        let now = Date(timeIntervalSince1970: 100)
+        _ = try session.approve(issuedAt: now)
+        let registry = try ToolRegistry(tools: [
+            TaskTool(
+                name: .taskUpdate,
+                store: taskStore,
+                projectStore: projectStore
+            ),
+        ])
+
+        let executed = try ActionExecutor(registry: registry).execute(
+            session,
+            now: now,
+            taskSnapshotFingerprints: [
+                task.id: reviewedTaskFingerprint
+            ]
+        )
+
+        XCTAssertEqual(executed.executionStatus, .completed)
+        let updated = try taskStore.get(id: task.id)
+        XCTAssertEqual(updated.title, "Approved title")
+        XCTAssertEqual(updated.dueAt, "2026-08-01T09:00:00Z")
+        XCTAssertEqual(updated.mutationRevision, 2)
+    }
+
+    func testConversationQueueRetryPersistsNewLinkWithoutPriorApproval() throws {
+        let queueStore = try makeQueueStore()
+        let approved = try AssistantQueueStateMachine.approve(
+            makeActionPlanItem(),
+            reviewerID: "local-user"
+        )
+        let failed = try AssistantQueueStateMachine.markFailed(
+            AssistantQueueStateMachine.startRunning(approved),
+            reason: "failed"
+        )
+        let reopened = try AssistantQueueStateMachine
+            .reopenFailedForReview(failed)
+        try queueStore.save(reopened)
+        let linkStore = RecordingConversationActionLinkStore()
+        let prior = try ConversationActionLink(
+            sessionID: UUID(),
+            sourceTurnID: UUID(),
+            actionPlanID: "plan-queue-execution",
+            assistantQueueItemID: reopened.id,
+            executionReceiptID: "receipt-prior",
+            reviewedFingerprint: try XCTUnwrap(
+                approved.approval?.reviewedContentFingerprint
+            ),
+            taskSnapshotFingerprint: nil,
+            actionStatuses: [
+                ConversationActionStatus(
+                    actionID: "action-create",
+                    status: .failed
+                ),
+            ]
+        )
+        try linkStore.saveActionLink(prior)
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: ToolRegistry()),
+            executionReceiptStore: VolatileExecutionReceiptStore(),
+            conversationActionLinkStore: linkStore,
+            taskSnapshotFingerprintProvider: { _ in nil }
+        )
+
+        try coordinator.recordConversationRetryIfNeeded(id: reopened.id)
+
+        let retry = try XCTUnwrap(
+            linkStore.latestActionLink(
+                assistantQueueItemID: reopened.id
+            )
+        )
+        XCTAssertNotEqual(retry.id, prior.id)
+        XCTAssertEqual(retry.retryOfActionLinkID, prior.id)
+        XCTAssertEqual(retry.executionReceiptID, nil)
+        XCTAssertEqual(
+            retry.actionStatuses,
+            [
+                ConversationActionStatus(
+                    actionID: "action-create",
+                    status: .pending
+                ),
+            ]
+        )
+        XCTAssertNil(try queueStore.get(id: reopened.id).approval)
+    }
+
     func testCoordinatorRunsQueuedDevelopmentPrepareWorkflowWithApprovedProjectBookmark() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
@@ -2497,6 +2964,30 @@ private final class RecordingManagedAIUsageLedgerStore: ManagedAIUsageLedgerStor
 
     func list(limit: Int) throws -> [ManagedAIUsageLedgerEntry] {
         Array(entries.prefix(limit))
+    }
+}
+
+private final class RecordingConversationActionLinkStore:
+    ConversationActionLinkStore,
+    @unchecked Sendable
+{
+    private let lock = NSLock()
+    private var links: [ConversationActionLink] = []
+
+    func saveActionLink(_ link: ConversationActionLink) throws {
+        lock.withLock {
+            links.append(link)
+        }
+    }
+
+    func latestActionLink(
+        assistantQueueItemID: String
+    ) throws -> ConversationActionLink? {
+        lock.withLock {
+            links.last {
+                $0.assistantQueueItemID == assistantQueueItemID
+            }
+        }
     }
 }
 

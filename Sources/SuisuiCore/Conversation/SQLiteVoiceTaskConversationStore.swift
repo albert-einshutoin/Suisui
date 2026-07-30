@@ -23,7 +23,13 @@ public struct TaskContextFactSourceEvidence: Equatable, Sendable {
     }
 }
 
-public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore, @unchecked Sendable {
+public final class SQLiteVoiceTaskConversationStore:
+    VoiceTaskConversationStore,
+    ConversationActionLinkStore,
+    AtomicVoiceTaskConversationReviewBundleStore,
+    VoiceTaskConversationRetentionStore,
+    @unchecked Sendable
+{
     public static let maximumPageSize = 500
 
     private let connection: SQLiteConnection
@@ -139,43 +145,7 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
         // them in one transaction prevents restart from exposing a Turn that
         // the Session metadata claims never happened.
         try connection.transaction {
-            guard var session = try loadSessionUnlocked(id: turn.sessionID) else {
-                throw VoiceTaskConversationStoreError.missingSession(turn.sessionID)
-            }
-            try session.recordTurn(at: turn.createdAt)
-            try connection.execute(
-                """
-                INSERT INTO voice_task_conversation_turns (
-                    id,
-                    session_id,
-                    author,
-                    raw_transcript,
-                    confirmed_text,
-                    created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?);
-                """,
-                parameters: [
-                    .text(turn.id.uuidString),
-                    .text(turn.sessionID.uuidString),
-                    .text(turn.author.rawValue),
-                    SQLiteValue(turn.rawTranscript),
-                    SQLiteValue(turn.userConfirmedText),
-                    .real(try Self.timeValue(turn.createdAt)),
-                ]
-            )
-            try connection.execute(
-                """
-                UPDATE voice_task_conversation_sessions
-                SET updated_at = ?, last_turn_at = ?
-                WHERE id = ?;
-                """,
-                parameters: [
-                    .real(try Self.timeValue(session.updatedAt)),
-                    .real(try Self.timeValue(requiredLastTurnDate(session))),
-                    .text(session.id.uuidString),
-                ]
-            )
+            try saveTurnUnlocked(turn)
         }
     }
 
@@ -292,6 +262,32 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
     public func saveReference(_ reference: ConversationReference) throws {
         lock.lock()
         defer { lock.unlock() }
+        try saveReferenceUnlocked(reference)
+    }
+
+    public func saveTurnAndReferences(
+        turn: VoiceTaskConversationTurn,
+        references: [ConversationReference]
+    ) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard references.allSatisfy({
+            $0.sessionID == turn.sessionID
+                && $0.sourceTurnID == turn.id
+        }) else {
+            throw VoiceTaskConversationStoreError.missingTurn(turn.id)
+        }
+        try connection.transaction {
+            try saveTurnUnlocked(turn)
+            for reference in references {
+                try saveReferenceUnlocked(reference)
+            }
+        }
+    }
+
+    private func saveReferenceUnlocked(
+        _ reference: ConversationReference
+    ) throws {
         try requireTurn(reference.sourceTurnID, in: reference.sessionID)
 
         let target = targetColumns(reference.target)
@@ -324,6 +320,49 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                 .real(try Self.timeValue(reference.createdAt)),
             ]
         )
+    }
+
+    public func listReferences(
+        sessionID: UUID,
+        limit: Int
+    ) throws -> [ConversationReference] {
+        guard limit > 0, limit <= Self.maximumPageSize else {
+            throw VoiceTaskConversationStoreError.invalidLimit
+        }
+        lock.lock()
+        defer { lock.unlock() }
+        let rows = try connection.materializedRows(
+            """
+            SELECT
+                id,
+                session_id,
+                source_turn_id,
+                target_kind,
+                target_integer_id,
+                target_text_id,
+                ordinal,
+                ordering_fingerprint,
+                expires_at,
+                created_at
+            FROM voice_task_conversation_references
+            WHERE session_id = ?
+              AND source_turn_id = (
+                  SELECT latest.source_turn_id
+                  FROM voice_task_conversation_references AS latest
+                  WHERE latest.session_id = ?
+                  ORDER BY latest.created_at DESC, latest.rowid DESC
+                  LIMIT 1
+              )
+            ORDER BY ordinal ASC
+            LIMIT ?;
+            """,
+            parameters: [
+                .text(sessionID.uuidString),
+                .text(sessionID.uuidString),
+                .integer(Int64(limit)),
+            ]
+        )
+        return try rows.map(decodeReference)
     }
 
     public func verifyFactSourceEvidence(
@@ -377,26 +416,7 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
         lock.lock()
         defer { lock.unlock() }
         return try connection.transaction {
-            guard let persisted = try loadFactUnlocked(id: factID) else {
-                throw VoiceTaskConversationStoreError.missingFact(factID)
-            }
-            guard let proposalID = persisted.supersedesFactID,
-                  try factExists(proposalID)
-            else {
-                throw VoiceTaskConversationStoreError.missingFact(
-                    persisted.supersedesFactID ?? factID
-                )
-            }
-            try requireNoPersistedSuccessor(of: factID)
-            let policy = TaskContextFactPolicy()
-            let authorized = try policy.reauthorizePersistedConfirmedFact(
-                persisted,
-                sourceStoreIdentifier: storeIdentifier
-            )
-            let retracted = try policy.retract(authorized, at: date)
-            let write = try policy.persistenceWrite(for: retracted)
-            try insertFact(write.fact)
-            return retracted
+            try retractFactUnlocked(factID: factID, at: date)
         }
     }
 
@@ -495,7 +515,70 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
         lock.lock()
         defer { lock.unlock() }
         try requireTurn(link.sourceTurnID, in: link.sessionID)
+        try insertActionLinkUnlocked(link)
+    }
 
+    public func saveReviewBundleAtomically(
+        turns: [VoiceTaskConversationTurn],
+        actionLink: ConversationActionLink
+    ) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard !turns.isEmpty,
+              turns.allSatisfy({ $0.sessionID == actionLink.sessionID }),
+              Set(turns.map(\.id)).count == turns.count,
+              turns.contains(where: { $0.id == actionLink.sourceTurnID }),
+              let assistantQueueItemID = actionLink.assistantQueueItemID,
+              !assistantQueueItemID
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            throw VoiceTaskConversationReviewBundleConflictError(
+                reason:
+                    "Review bundle Turns must be unique, non-empty, and belong to the ActionLink Session and source Turn."
+            )
+        }
+
+        try connection.transaction {
+            if let existing = try latestActionLinkUnlocked(
+                assistantQueueItemID: assistantQueueItemID
+            ) {
+                guard reviewIdentityMatches(
+                    existing,
+                    actionLink
+                ) else {
+                    throw VoiceTaskConversationReviewBundleConflictError(
+                        reason:
+                            "The Assistant Queue ID is already bound to different Conversation review evidence."
+                    )
+                }
+                // A crash can occur after this transaction commits but before
+                // orchestration checkpoint cleanup. The retry may regenerate
+                // transient clarification Turn IDs; the already-durable Queue
+                // review identity is the idempotency boundary.
+                return
+            }
+
+            for turn in turns.sorted(by: reviewTurnOrdering) {
+                if let existing = try loadTurnUnlocked(id: turn.id) {
+                    guard existing == turn else {
+                        throw VoiceTaskConversationReviewBundleConflictError(
+                            reason:
+                                "A Review Turn ID is already bound to different content."
+                        )
+                    }
+                } else {
+                    try saveTurnUnlocked(turn)
+                }
+            }
+
+            try insertActionLinkUnlocked(actionLink)
+        }
+    }
+
+    private func insertActionLinkUnlocked(
+        _ link: ConversationActionLink
+    ) throws {
         try connection.execute(
             """
             INSERT INTO conversation_action_links (
@@ -508,9 +591,13 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                 execution_receipt_id,
                 operation_kind,
                 reviewed_fingerprint,
+                task_snapshot_fingerprint,
+                task_snapshots_json,
+                action_statuses_json,
+                retry_of_action_link_id,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             parameters: [
                 .text(link.id.uuidString),
@@ -522,9 +609,61 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                 SQLiteValue(link.executionReceiptID),
                 .text(link.operation.rawValue),
                 .text(link.reviewedFingerprint),
+                SQLiteValue(link.taskSnapshotFingerprint),
+                .text(try Self.encodedTaskSnapshots(link.taskSnapshots)),
+                .text(try Self.encodedActionStatuses(link.actionStatuses)),
+                SQLiteValue(link.retryOfActionLinkID?.uuidString),
                 .real(try Self.timeValue(link.createdAt)),
             ]
         )
+    }
+
+    public func latestActionLink(
+        assistantQueueItemID: String
+    ) throws -> ConversationActionLink? {
+        lock.lock()
+        defer { lock.unlock() }
+        return try latestActionLinkUnlocked(
+            assistantQueueItemID: assistantQueueItemID
+        )
+    }
+
+    private func latestActionLinkUnlocked(
+        assistantQueueItemID: String
+    ) throws -> ConversationActionLink? {
+        guard !assistantQueueItemID
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return nil
+        }
+        let rows = try connection.queryRows(
+            """
+            SELECT
+                id,
+                session_id,
+                source_turn_id,
+                action_plan_id,
+                assistant_queue_item_id,
+                task_id,
+                execution_receipt_id,
+                operation_kind,
+                reviewed_fingerprint,
+                task_snapshot_fingerprint,
+                task_snapshots_json,
+                action_statuses_json,
+                retry_of_action_link_id,
+                created_at
+            FROM conversation_action_links
+            WHERE assistant_queue_item_id = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1;
+            """,
+            parameters: [.text(assistantQueueItemID)]
+        )
+        guard let row = rows.first else {
+            return nil
+        }
+        return try decodeActionLink(row)
     }
 
     public func deleteSession(
@@ -545,6 +684,16 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
                     SELECT COUNT(*)
                     FROM voice_task_conversation_turns
                     WHERE session_id = ? AND raw_transcript IS NOT NULL;
+                    """,
+                    parameters: [.text(id.uuidString)]
+                )
+                // The checkpoint duplicates the original transcript and
+                // clarification trail. Transcript-only deletion must remove
+                // that sensitive copy while retaining confirmed display text.
+                try connection.execute(
+                    """
+                    DELETE FROM voice_task_conversation_orchestration_states
+                    WHERE session_id = ?;
                     """,
                     parameters: [.text(id.uuidString)]
                 )
@@ -589,6 +738,531 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
         }
     }
 
+    public func retentionSnapshot(
+        for request: VoiceTaskConversationRetentionRequest
+    ) throws -> VoiceTaskConversationRetentionSnapshot {
+        lock.lock()
+        defer { lock.unlock() }
+        return try retentionSnapshotUnlocked(for: request)
+    }
+
+    public func executeRetention(
+        reviewedPlan: VoiceTaskConversationRetentionPlan,
+        at now: Date,
+        policy: VoiceTaskConversationRetentionPolicy
+    ) throws -> VoiceTaskConversationRetentionExecutionResult {
+        lock.lock()
+        defer { lock.unlock() }
+        return try connection.transaction {
+            guard reviewedPlan.safetyAssertion.preservesTasksAndReceipts else {
+                throw VoiceTaskConversationRetentionError
+                    .invalidExecutionResult
+            }
+            if try retentionTargetsAreAlreadyCompleted(
+                reviewedPlan.targets
+            ) {
+                return .alreadyCompleted(planID: reviewedPlan.id)
+            }
+            let snapshot = try retentionSnapshotUnlocked(
+                for: reviewedPlan.request
+            )
+            let currentPlan = VoiceTaskConversationRetentionPlanner().plan(
+                at: now,
+                policy: policy,
+                snapshot: snapshot
+            )
+            guard currentPlan.reviewedFingerprint
+                    == reviewedPlan.reviewedFingerprint,
+                  currentPlan.targets == reviewedPlan.targets
+            else {
+                throw VoiceTaskConversationRetentionError.requiresReview
+            }
+
+            for factID in reviewedPlan.targets.factIDs {
+                _ = try retractFactUnlocked(factID: factID, at: now)
+            }
+            for sessionID in
+                reviewedPlan.targets.orchestrationStateSessionIDs
+            {
+                try connection.execute(
+                    """
+                    DELETE FROM voice_task_conversation_orchestration_states
+                    WHERE session_id = ?;
+                    """,
+                    parameters: [.text(sessionID.uuidString)]
+                )
+            }
+            for turnID in reviewedPlan.targets.transcriptTurnIDs {
+                try connection.execute(
+                    """
+                    UPDATE voice_task_conversation_turns
+                    SET raw_transcript = NULL
+                    WHERE id = ?;
+                    """,
+                    parameters: [.text(turnID.uuidString)]
+                )
+            }
+            for referenceID in reviewedPlan.targets.referenceIDs {
+                try connection.execute(
+                    """
+                    DELETE FROM voice_task_conversation_references
+                    WHERE id = ?;
+                    """,
+                    parameters: [.text(referenceID.uuidString)]
+                )
+            }
+            for actionLinkID in reviewedPlan.targets.actionLinkIDs {
+                try connection.execute(
+                    """
+                    DELETE FROM conversation_action_links
+                    WHERE id = ?;
+                    """,
+                    parameters: [.text(actionLinkID.uuidString)]
+                )
+            }
+            for sessionID in reviewedPlan.targets.sessionIDs {
+                try connection.execute(
+                    """
+                    DELETE FROM voice_task_conversation_sessions
+                    WHERE id = ?;
+                    """,
+                    parameters: [.text(sessionID.uuidString)]
+                )
+            }
+            return .completed(planID: reviewedPlan.id)
+        }
+    }
+
+    private func retentionSnapshotUnlocked(
+        for request: VoiceTaskConversationRetentionRequest
+    ) throws -> VoiceTaskConversationRetentionSnapshot {
+        let sessionID: UUID?
+        switch request {
+        case .session(let id, _):
+            sessionID = id
+        case .transcriptOnly(let id):
+            sessionID = id
+        case .expiredTranscripts, .expiredReferences, .forgetFact:
+            sessionID = nil
+        }
+
+        let sessions: [VoiceTaskConversationRetentionSession]
+        if case .session(let id, _) = request,
+           try sessionExists(id) {
+            sessions = [.init(id: id)]
+        } else {
+            sessions = []
+        }
+
+        let transcriptRows: [SQLiteMaterializedRow]
+        switch request {
+        case .expiredTranscripts, .transcriptOnly:
+            if let sessionID {
+                transcriptRows = try connection.materializedRows(
+                    """
+                    SELECT
+                        id,
+                        session_id,
+                        created_at,
+                        length(CAST(raw_transcript AS BLOB)) AS byte_count
+                    FROM voice_task_conversation_turns
+                    WHERE session_id = ?
+                      AND raw_transcript IS NOT NULL;
+                    """,
+                    parameters: [.text(sessionID.uuidString)]
+                )
+            } else {
+                transcriptRows = try connection.materializedRows(
+                    """
+                    SELECT
+                        id,
+                        session_id,
+                        created_at,
+                        length(CAST(raw_transcript AS BLOB)) AS byte_count
+                    FROM voice_task_conversation_turns
+                    WHERE raw_transcript IS NOT NULL;
+                    """
+                )
+            }
+        case .session(let id, _):
+            transcriptRows = try connection.materializedRows(
+                """
+                SELECT
+                    id,
+                    session_id,
+                    created_at,
+                    length(CAST(raw_transcript AS BLOB)) AS byte_count
+                FROM voice_task_conversation_turns
+                WHERE session_id = ?
+                  AND raw_transcript IS NOT NULL;
+                """,
+                parameters: [.text(id.uuidString)]
+            )
+        case .expiredReferences, .forgetFact:
+            transcriptRows = []
+        }
+        let transcripts = try transcriptRows.map {
+            try VoiceTaskConversationRetentionTranscript(
+                turnID: requiredUUID($0, column: "id", entity: "turn"),
+                sessionID: requiredUUID(
+                    $0,
+                    column: "session_id",
+                    entity: "turn"
+                ),
+                createdAt: Self.date(from: $0.double("created_at")),
+                byteCount: $0.optionalInt64("byte_count")
+            )
+        }
+
+        let referenceRows: [SQLiteMaterializedRow]
+        switch request {
+        case .expiredReferences:
+            referenceRows = try connection.materializedRows(
+                """
+                SELECT id, session_id, created_at, expires_at
+                FROM voice_task_conversation_references;
+                """
+            )
+        case .session(let id, _):
+            referenceRows = try connection.materializedRows(
+                """
+                SELECT id, session_id, created_at, expires_at
+                FROM voice_task_conversation_references
+                WHERE session_id = ?;
+                """,
+                parameters: [.text(id.uuidString)]
+            )
+        case .expiredTranscripts, .transcriptOnly, .forgetFact:
+            referenceRows = []
+        }
+        let references = try referenceRows.map {
+            try VoiceTaskConversationRetentionReference(
+                id: requiredUUID(
+                    $0,
+                    column: "id",
+                    entity: "reference"
+                ),
+                sessionID: requiredUUID(
+                    $0,
+                    column: "session_id",
+                    entity: "reference"
+                ),
+                createdAt: Self.date(from: $0.double("created_at")),
+                expiresAt: Self.date(from: $0.double("expires_at"))
+            )
+        }
+
+        let factRows: [SQLiteMaterializedRow]
+        switch request {
+        case .session(let id, _):
+            factRows = try retentionFactRows(
+                whereSQL: "f.session_id = ?",
+                parameters: [.text(id.uuidString)]
+            )
+        case .forgetFact(let id):
+            factRows = try retentionFactRows(
+                whereSQL: "f.id = ?",
+                parameters: [.text(id.uuidString)]
+            )
+        case .expiredTranscripts, .transcriptOnly, .expiredReferences:
+            factRows = []
+        }
+        let facts = try factRows.map {
+            try VoiceTaskConversationRetentionFact(
+                id: requiredUUID($0, column: "id", entity: "fact"),
+                sessionID: requiredUUID(
+                    $0,
+                    column: "session_id",
+                    entity: "fact"
+                ),
+                isEligibleForSessionDeletion:
+                    $0.int64("is_eligible") == 1
+            )
+        }
+
+        let actionLinkRows: [SQLiteMaterializedRow]
+        if case .session(let id, _) = request {
+            actionLinkRows = try connection.materializedRows(
+                """
+                SELECT id, session_id
+                FROM conversation_action_links
+                WHERE session_id = ?;
+                """,
+                parameters: [.text(id.uuidString)]
+            )
+        } else {
+            actionLinkRows = []
+        }
+        let actionLinks = try actionLinkRows.map {
+            try VoiceTaskConversationRetentionActionLink(
+                id: requiredUUID(
+                    $0,
+                    column: "id",
+                    entity: "action_link"
+                ),
+                sessionID: requiredUUID(
+                    $0,
+                    column: "session_id",
+                    entity: "action_link"
+                )
+            )
+        }
+        let orchestrationStates:
+            [VoiceTaskConversationRetentionOrchestrationState]
+        switch request {
+        case .expiredTranscripts:
+            orchestrationStates = try retentionOrchestrationStates()
+        case .transcriptOnly(let id):
+            orchestrationStates = try retentionOrchestrationStates(
+                sessionID: id
+            )
+        case .session(let id, _):
+            orchestrationStates = try retentionOrchestrationStates(
+                sessionID: id
+            )
+        case .expiredReferences, .forgetFact:
+            orchestrationStates = []
+        }
+        return .init(
+            request: request,
+            sessions: sessions,
+            transcripts: transcripts,
+            references: references,
+            facts: facts,
+            actionLinks: actionLinks,
+            orchestrationStates: orchestrationStates
+        )
+    }
+
+    private func retentionOrchestrationStates(
+        sessionID: UUID? = nil
+    ) throws -> [VoiceTaskConversationRetentionOrchestrationState] {
+        let rows = try connection.materializedRows(
+            """
+            SELECT session_id, payload, updated_at
+            FROM voice_task_conversation_orchestration_states
+            \(sessionID == nil ? "" : "WHERE session_id = ?")
+            ORDER BY session_id;
+            """,
+            parameters: sessionID.map {
+                [.text($0.uuidString)]
+            } ?? []
+        )
+        let decoder = JSONDecoder()
+        return try rows.map { row in
+            let storedSessionID = try requiredUUID(
+                row,
+                column: "session_id",
+                entity: "orchestration_state"
+            )
+            guard let payload = try? row.data("payload"),
+                  let state = try? decoder.decode(
+                VoiceTaskConversationOrchestrationState.self,
+                from: payload
+            ),
+                  state.sessionID == storedSessionID
+            else {
+                return VoiceTaskConversationRetentionOrchestrationState(
+                    sessionID: storedSessionID,
+                    originalSourceTurnCreatedAt: .distantPast,
+                    requiresSafeDeletion: true
+                )
+            }
+            let sourceRows = try connection.materializedRows(
+                """
+                SELECT session_id, created_at
+                FROM voice_task_conversation_turns
+                WHERE id = ?
+                LIMIT 1;
+                """,
+                parameters: [.text(state.originalSourceTurnID.uuidString)]
+            )
+            if let sourceRow = sourceRows.first {
+                guard try requiredUUID(
+                      sourceRow,
+                      column: "session_id",
+                      entity: "turn"
+                  ) == storedSessionID
+                else {
+                    return VoiceTaskConversationRetentionOrchestrationState(
+                        sessionID: storedSessionID,
+                        originalSourceTurnCreatedAt: .distantPast,
+                        requiresSafeDeletion: true
+                    )
+                }
+                return VoiceTaskConversationRetentionOrchestrationState(
+                    sessionID: storedSessionID,
+                    originalSourceTurnCreatedAt: try Self.date(
+                        from: try sourceRow.double("created_at")
+                    )
+                )
+            }
+            guard let updatedAtValue = try? row.double("updated_at"),
+                  updatedAtValue.isFinite
+            else {
+                return VoiceTaskConversationRetentionOrchestrationState(
+                    sessionID: storedSessionID,
+                    originalSourceTurnCreatedAt: .distantPast,
+                    requiresSafeDeletion: true
+                )
+            }
+            // A paused clarification can be checkpointed before its source
+            // Turn is durable. In that narrow state, checkpoint age is the
+            // only trustworthy retention boundary; once the Turn exists, its
+            // earlier creation time above remains authoritative so later
+            // clarification answers cannot extend sensitive-data lifetime.
+            return VoiceTaskConversationRetentionOrchestrationState(
+                sessionID: storedSessionID,
+                originalSourceTurnCreatedAt: Date(
+                    timeIntervalSince1970: updatedAtValue
+                )
+            )
+        }
+    }
+
+    private func retentionFactRows(
+        whereSQL: String,
+        parameters: [SQLiteValue]
+    ) throws -> [SQLiteMaterializedRow] {
+        try connection.materializedRows(
+            """
+            SELECT
+                f.id,
+                f.session_id,
+                CASE
+                    WHEN f.state = 'confirmed'
+                         AND f.scope_kind = 'session' THEN 1
+                    WHEN f.state = 'confirmed'
+                         AND f.scope_kind = 'project'
+                         AND project_scope.status = 'archived' THEN 1
+                    WHEN f.state = 'confirmed'
+                         AND f.scope_kind = 'task'
+                         AND task_project.status = 'archived' THEN 1
+                    ELSE 0
+                END AS is_eligible
+            FROM task_context_facts AS f
+            LEFT JOIN projects AS project_scope
+              ON f.scope_kind = 'project'
+             AND project_scope.id = f.scope_target_id
+            LEFT JOIN tasks AS task_scope
+              ON f.scope_kind = 'task'
+             AND task_scope.id = f.scope_target_id
+            LEFT JOIN projects AS task_project
+              ON task_project.id = task_scope.project_id
+            WHERE \(whereSQL);
+            """,
+            parameters: parameters
+        )
+    }
+
+    private func retentionTargetsAreAlreadyCompleted(
+        _ targets: VoiceTaskConversationRetentionTargets
+    ) throws -> Bool {
+        for id in targets.transcriptTurnIDs {
+            let remaining = try scalarCount(
+                """
+                SELECT COUNT(*)
+                FROM voice_task_conversation_turns
+                WHERE id = ? AND raw_transcript IS NOT NULL;
+                """,
+                parameters: [.text(id.uuidString)]
+            )
+            if remaining != 0 { return false }
+        }
+        for (table, identifierColumn, identifiers) in [
+            (
+                "voice_task_conversation_references",
+                "id",
+                targets.referenceIDs
+            ),
+            (
+                "conversation_action_links",
+                "id",
+                targets.actionLinkIDs
+            ),
+            (
+                "voice_task_conversation_sessions",
+                "id",
+                targets.sessionIDs
+            ),
+            (
+                "voice_task_conversation_orchestration_states",
+                "session_id",
+                targets.orchestrationStateSessionIDs
+            ),
+        ] {
+            for id in identifiers {
+                let remaining = try scalarCount(
+                    """
+                    SELECT COUNT(*) FROM \(table)
+                    WHERE \(identifierColumn) = ?;
+                    """,
+                    parameters: [.text(id.uuidString)]
+                )
+                if remaining != 0 { return false }
+            }
+        }
+        for id in targets.factIDs {
+            let successorCount = try scalarCount(
+                """
+                SELECT COUNT(*)
+                FROM task_context_facts
+                WHERE supersedes_fact_id = ?
+                  AND state IN ('retracted', 'rejected');
+                """,
+                parameters: [.text(id.uuidString)]
+            )
+            if successorCount == 0 { return false }
+        }
+        return !targets.sessionIDs.isEmpty
+            || !targets.transcriptTurnIDs.isEmpty
+            || !targets.referenceIDs.isEmpty
+            || !targets.factIDs.isEmpty
+            || !targets.actionLinkIDs.isEmpty
+            || !targets.orchestrationStateSessionIDs.isEmpty
+    }
+
+    private func requiredUUID(
+        _ row: SQLiteMaterializedRow,
+        column: String,
+        entity: String
+    ) throws -> UUID {
+        let raw = try row.string(column)
+        guard let value = UUID(uuidString: raw) else {
+            throw VoiceTaskConversationStoreError.corruptRow(
+                entity: entity,
+                identifier: raw
+            )
+        }
+        return value
+    }
+
+    private func retractFactUnlocked(
+        factID: UUID,
+        at date: Date
+    ) throws -> TaskContextFact {
+        guard let persisted = try loadFactUnlocked(id: factID) else {
+            throw VoiceTaskConversationStoreError.missingFact(factID)
+        }
+        guard let proposalID = persisted.supersedesFactID,
+              try factExists(proposalID)
+        else {
+            throw VoiceTaskConversationStoreError.missingFact(
+                persisted.supersedesFactID ?? factID
+            )
+        }
+        try requireNoPersistedSuccessor(of: factID)
+        let policy = TaskContextFactPolicy()
+        let authorized = try policy.reauthorizePersistedConfirmedFact(
+            persisted,
+            sourceStoreIdentifier: storeIdentifier
+        )
+        let retracted = try policy.retract(authorized, at: date)
+        let write = try policy.persistenceWrite(for: retracted)
+        try insertFact(write.fact)
+        return retracted
+    }
+
     private func loadSessionUnlocked(id: UUID) throws -> VoiceTaskConversationSession? {
         let row = try connection.materializedRows(
             """
@@ -613,6 +1287,86 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
             return nil
         }
         return try decodeSession(row)
+    }
+
+    private func saveTurnUnlocked(
+        _ turn: VoiceTaskConversationTurn
+    ) throws {
+        guard var session = try loadSessionUnlocked(id: turn.sessionID) else {
+            throw VoiceTaskConversationStoreError.missingSession(
+                turn.sessionID
+            )
+        }
+        try session.recordTurn(at: turn.createdAt)
+        try connection.execute(
+            """
+            INSERT INTO voice_task_conversation_turns (
+                id,
+                session_id,
+                author,
+                raw_transcript,
+                confirmed_text,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?);
+            """,
+            parameters: [
+                .text(turn.id.uuidString),
+                .text(turn.sessionID.uuidString),
+                .text(turn.author.rawValue),
+                SQLiteValue(turn.rawTranscript),
+                SQLiteValue(turn.userConfirmedText),
+                .real(try Self.timeValue(turn.createdAt)),
+            ]
+        )
+        try connection.execute(
+            """
+            UPDATE voice_task_conversation_sessions
+            SET updated_at = ?, last_turn_at = ?
+            WHERE id = ?;
+            """,
+            parameters: [
+                .real(try Self.timeValue(session.updatedAt)),
+                .real(try Self.timeValue(requiredLastTurnDate(session))),
+                .text(session.id.uuidString),
+            ]
+        )
+    }
+
+    private func loadTurnUnlocked(
+        id: UUID
+    ) throws -> VoiceTaskConversationTurn? {
+        let row = try connection.materializedRows(
+            """
+            SELECT id, session_id, author, raw_transcript, confirmed_text, created_at
+            FROM voice_task_conversation_turns
+            WHERE id = ?
+            LIMIT 1;
+            """,
+            parameters: [.text(id.uuidString)]
+        ).first
+        return try row.map(decodeTurn)
+    }
+
+    private func reviewTurnOrdering(
+        _ lhs: VoiceTaskConversationTurn,
+        _ rhs: VoiceTaskConversationTurn
+    ) -> Bool {
+        if lhs.createdAt != rhs.createdAt {
+            return lhs.createdAt < rhs.createdAt
+        }
+        return lhs.id.uuidString < rhs.id.uuidString
+    }
+
+    private func reviewIdentityMatches(
+        _ lhs: ConversationActionLink,
+        _ rhs: ConversationActionLink
+    ) -> Bool {
+        lhs.sessionID == rhs.sessionID
+            && lhs.sourceTurnID == rhs.sourceTurnID
+            && lhs.actionPlanID == rhs.actionPlanID
+            && lhs.assistantQueueItemID == rhs.assistantQueueItemID
+            && lhs.reviewedFingerprint == rhs.reviewedFingerprint
     }
 
     private func decodeSession(_ row: SQLiteMaterializedRow) throws -> VoiceTaskConversationSession {
@@ -664,6 +1418,117 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
         } catch {
             throw VoiceTaskConversationStoreError.corruptRow(
                 entity: "turn",
+                identifier: identifier
+            )
+        }
+    }
+
+    private func decodeReference(
+        _ row: SQLiteMaterializedRow
+    ) throws -> ConversationReference {
+        let identifier = (try? row.string("id")) ?? "unknown"
+        do {
+            guard let id = UUID(uuidString: try row.string("id")),
+                  let sessionID = UUID(
+                      uuidString: try row.string("session_id")
+                  ),
+                  let sourceTurnID = UUID(
+                      uuidString: try row.string("source_turn_id")
+                  )
+            else {
+                throw InvalidConversationRow()
+            }
+            let target: ConversationStableTargetID
+            switch try row.string("target_kind") {
+            case "project":
+                target = .project(try row.int64("target_integer_id"))
+            case "task":
+                target = .task(try row.int64("target_integer_id"))
+            case "action_plan":
+                target = .actionPlan(try row.string("target_text_id"))
+            case "assistant_queue_item":
+                target = .assistantQueueItem(
+                    try row.string("target_text_id")
+                )
+            case "execution_receipt":
+                target = .executionReceipt(
+                    try row.string("target_text_id")
+                )
+            default:
+                throw InvalidConversationRow()
+            }
+            return try ConversationReference(
+                id: id,
+                sessionID: sessionID,
+                target: target,
+                sourceTurnID: sourceTurnID,
+                ordinal: Int(try row.int64("ordinal")),
+                orderingFingerprint: try row.string(
+                    "ordering_fingerprint"
+                ),
+                expiresAt: try Self.date(from: row.double("expires_at")),
+                createdAt: try Self.date(from: row.double("created_at"))
+            )
+        } catch {
+            throw VoiceTaskConversationStoreError.corruptRow(
+                entity: "reference",
+                identifier: identifier
+            )
+        }
+    }
+
+    private func decodeActionLink(
+        _ row: SQLiteMaterializedRow
+    ) throws -> ConversationActionLink {
+        let identifier = (try? row.string("id")) ?? "unknown"
+        do {
+            guard let id = UUID(uuidString: try row.string("id")),
+                  let sessionID = UUID(
+                      uuidString: try row.string("session_id")
+                  ),
+                  let sourceTurnID = UUID(
+                      uuidString: try row.string("source_turn_id")
+                  ),
+                  let operation = ConversationActionLinkOperation(
+                      rawValue: try row.string("operation_kind")
+                  )
+            else {
+                throw InvalidConversationRow()
+            }
+            let retryOfActionLinkID = try row.optionalString(
+                "retry_of_action_link_id"
+            ).flatMap(UUID.init(uuidString:))
+            return try ConversationActionLink(
+                id: id,
+                sessionID: sessionID,
+                sourceTurnID: sourceTurnID,
+                actionPlanID: try row.optionalString("action_plan_id"),
+                assistantQueueItemID: try row.optionalString(
+                    "assistant_queue_item_id"
+                ),
+                taskID: try row.optionalInt64("task_id"),
+                executionReceiptID: try row.optionalString(
+                    "execution_receipt_id"
+                ),
+                operation: operation,
+                reviewedFingerprint: try row.string(
+                    "reviewed_fingerprint"
+                ),
+                taskSnapshotFingerprint: try row.optionalString(
+                    "task_snapshot_fingerprint"
+                ),
+                taskSnapshots: try Self.decodeTaskSnapshots(
+                    row.string("task_snapshots_json")
+                ),
+                actionStatuses: try Self.decodeActionStatuses(
+                    row.string("action_statuses_json")
+                ),
+                retryOfActionLinkID: retryOfActionLinkID,
+                createdAt: try Self.date(from: row.double("created_at"))
+            )
+        } catch {
+            throw VoiceTaskConversationStoreError.corruptRow(
+                entity: "action_link",
                 identifier: identifier
             )
         }
@@ -923,6 +1788,43 @@ public final class SQLiteVoiceTaskConversationStore: VoiceTaskConversationStore,
             throw VoiceTaskConversationStoreError.invalidDate
         }
         return value
+    }
+
+    private static func encodedActionStatuses(
+        _ statuses: [ConversationActionStatus]
+    ) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return String(decoding: try encoder.encode(statuses), as: UTF8.self)
+    }
+
+    private static func encodedTaskSnapshots(
+        _ snapshots: [ConversationTaskSnapshot]
+    ) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return String(
+            decoding: try encoder.encode(snapshots),
+            as: UTF8.self
+        )
+    }
+
+    private static func decodeTaskSnapshots(
+        _ value: String
+    ) throws -> [ConversationTaskSnapshot] {
+        try JSONDecoder().decode(
+            [ConversationTaskSnapshot].self,
+            from: Data(value.utf8)
+        )
+    }
+
+    private static func decodeActionStatuses(
+        _ value: String
+    ) throws -> [ConversationActionStatus] {
+        try JSONDecoder().decode(
+            [ConversationActionStatus].self,
+            from: Data(value.utf8)
+        )
     }
 
     private static func optionalTimeValue(_ date: Date?) throws -> SQLiteValue {

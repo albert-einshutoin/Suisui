@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GATE_LOCALE="${SUISUI_CI_VISUAL_GATE_LOCALE:-en-US}"
+VISUAL_BASELINE_PROFILE="${SUISUI_CI_VISUAL_BASELINE_PROFILE:-local-display}"
 case "$GATE_LOCALE" in
   en-US|ja-JP)
     ;;
@@ -12,18 +13,39 @@ case "$GATE_LOCALE" in
     exit 2
     ;;
 esac
-case "$GATE_LOCALE" in
-  en-US)
+case "$VISUAL_BASELINE_PROFILE" in
+  local-display|apple-virtual-display)
+    ;;
+  *)
+    printf 'failure_category=configuration\n' >&2
+    printf 'failure_reason=unsupported-visual-baseline-profile\n' >&2
+    exit 2
+    ;;
+esac
+case "$GATE_LOCALE:$VISUAL_BASELINE_PROFILE" in
+  en-US:local-display)
     LOCALE_SLUG="en-US"
     CAPTURE_LOCALE="english"
     MANIFEST_RELATIVE="docs/quality/visual-baseline-manifest.json"
     BASELINE_RELATIVE="docs/quality/visual-baselines"
     ;;
-  ja-JP)
+  ja-JP:local-display)
     LOCALE_SLUG="ja-JP"
     CAPTURE_LOCALE="japanese"
     MANIFEST_RELATIVE="docs/quality/visual-baseline-manifest-ja.json"
     BASELINE_RELATIVE="docs/quality/visual-baselines-ja"
+    ;;
+  en-US:apple-virtual-display)
+    LOCALE_SLUG="en-US"
+    CAPTURE_LOCALE="english"
+    MANIFEST_RELATIVE="docs/quality/visual-baseline-manifest-apple-virtual.json"
+    BASELINE_RELATIVE="docs/quality/visual-baselines-apple-virtual"
+    ;;
+  ja-JP:apple-virtual-display)
+    LOCALE_SLUG="ja-JP"
+    CAPTURE_LOCALE="japanese"
+    MANIFEST_RELATIVE="docs/quality/visual-baseline-manifest-ja-apple-virtual.json"
+    BASELINE_RELATIVE="docs/quality/visual-baselines-ja-apple-virtual"
     ;;
 esac
 OUTPUT_DIR="${SUISUI_CI_VISUAL_GATE_OUTPUT_DIR:-$ROOT_DIR/.tmp/ci-visual-gate/$LOCALE_SLUG}"
@@ -286,20 +308,32 @@ snapshot_tracked_evidence() {
       docs/release/evidence \
       docs/quality/visual-baseline-manifest.json \
       docs/quality/visual-baseline-manifest-ja.json \
+      docs/quality/visual-baseline-manifest-apple-virtual.json \
+      docs/quality/visual-baseline-manifest-ja-apple-virtual.json \
       docs/quality/visual-baselines \
-      docs/quality/visual-baselines-ja
+      docs/quality/visual-baselines-ja \
+      docs/quality/visual-baselines-apple-virtual \
+      docs/quality/visual-baselines-ja-apple-virtual
     git -C "$ROOT_DIR" diff --binary -- \
       docs/release/evidence \
       docs/quality/visual-baseline-manifest.json \
       docs/quality/visual-baseline-manifest-ja.json \
+      docs/quality/visual-baseline-manifest-apple-virtual.json \
+      docs/quality/visual-baseline-manifest-ja-apple-virtual.json \
       docs/quality/visual-baselines \
-      docs/quality/visual-baselines-ja
+      docs/quality/visual-baselines-ja \
+      docs/quality/visual-baselines-apple-virtual \
+      docs/quality/visual-baselines-ja-apple-virtual
     git -C "$ROOT_DIR" diff --cached --binary -- \
       docs/release/evidence \
       docs/quality/visual-baseline-manifest.json \
       docs/quality/visual-baseline-manifest-ja.json \
+      docs/quality/visual-baseline-manifest-apple-virtual.json \
+      docs/quality/visual-baseline-manifest-ja-apple-virtual.json \
       docs/quality/visual-baselines \
-      docs/quality/visual-baselines-ja
+      docs/quality/visual-baselines-ja \
+      docs/quality/visual-baselines-apple-virtual \
+      docs/quality/visual-baselines-ja-apple-virtual
   } >"$output_file"
 }
 
@@ -312,6 +346,10 @@ fi
 MANIFEST_LOCALE="$(/usr/bin/plutil -extract baselineContext.locale raw -o - "$MANIFEST" 2>/dev/null || true)"
 if [[ "$MANIFEST_LOCALE" != "$GATE_LOCALE" ]]; then
   block "configuration" "visual-baseline-locale-mismatch" 2
+fi
+MANIFEST_BASELINE_ROOT="$(/usr/bin/plutil -extract baselineRoot raw -o - "$MANIFEST" 2>/dev/null || true)"
+if [[ "$MANIFEST_BASELINE_ROOT" != "$BASELINE_RELATIVE" ]]; then
+  block "configuration" "visual-baseline-profile-root-mismatch" 2
 fi
 
 MANIFEST_SCREENSHOT_COUNT="$(grep -Eo '"[^"]+\.png"' "$MANIFEST" | sort -u | wc -l | tr -d '[:space:]')"

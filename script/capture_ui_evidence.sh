@@ -44,6 +44,8 @@ AX_MARKER_CHECKER="$EVIDENCE_TMPDIR/ui-evidence-ax-marker-checker.$$"
 AX_SCROLL_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-scroll-to.$$"
 AX_SCROLL_CONTAINER_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-scroll-container.$$"
 AX_TARGET_FRAME_AUDITOR="$EVIDENCE_TMPDIR/ui-evidence-ax-target-frame-auditor.$$"
+AX_RESIZE_WINDOW_HELPER_SOURCE="$ROOT_DIR/script/ui_evidence_ax_resize_window.swift"
+AX_RESIZE_WINDOW_HELPER_BINARY="$EVIDENCE_TMPDIR/ui-evidence-ax-resize-window.$$"
 AX_PRESS_ELEMENT_HELPER="$EVIDENCE_TMPDIR/ui-evidence-ax-press-element.$$"
 POINTER_PARKER="$EVIDENCE_TMPDIR/ui-evidence-pointer-park.$$"
 AX_CAPTURE_RECEIPT_TSV="$EVIDENCE_TMPDIR/visual-ax-captures.$$.tsv"
@@ -307,6 +309,7 @@ cleanup() {
   rm -f "$AX_SCROLL_HELPER"
   rm -f "$AX_SCROLL_CONTAINER_HELPER"
   rm -f "$AX_TARGET_FRAME_AUDITOR"
+  rm -f "$AX_RESIZE_WINDOW_HELPER_BINARY"
   rm -f "$AX_PRESS_ELEMENT_HELPER"
   rm -f "$POINTER_PARKER"
   rm -f "$AX_CAPTURE_RECEIPT_TSV" "$AX_RECEIPT_WRITER" "$VISUAL_RASTER_STABILITY_CHECKER" "$VISUAL_APPEARANCE_CHECKER"
@@ -403,6 +406,11 @@ ui_evidence_source_commit() {
 
 app_env_args() {
   local args=("SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1")
+  # A capture must have one canonical AX window and must not inherit or mutate
+  # a developer's saved board geometry. Duplicate fallback windows make a
+  # focused-window audit nondeterministic even when both belong to this PID.
+  args+=("SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1")
+  args+=("SUISUI_DISABLE_PROJECT_BOARD_PRESENTATION_PERSISTENCE=1")
   args+=("HOME=$EVIDENCE_HOME")
   args+=("CFFIXED_USER_HOME=$EVIDENCE_HOME")
   args+=("TZ=$EVIDENCE_TIME_ZONE")
@@ -412,6 +420,11 @@ app_env_args() {
   # Pin Suisui's product language. Foundation/AppKit locale defaults are pinned
   # separately through launch arguments in open_evidence_app.
   args+=("SUISUI_LANGUAGE_PREFERENCE=$EVIDENCE_LOCALE")
+  if [[ "$APPEARANCE_OVERRIDE" != "light" ]]; then
+    # Dark and system semantic materials inherit the capture host's wallpaper
+    # tint. Light evidence is already host-stable and keeps native rendering.
+    args+=("SUISUI_VISUAL_EVIDENCE_STABLE_BACKDROP=1")
+  fi
   if [[ -n "$DATABASE_PATH" ]]; then
     # Screenshot evidence must open the exact SQLite file seeded below; relying
     # on HOME-derived defaults can silently fall back to another database.
@@ -459,9 +472,21 @@ emit_evidence_app_diagnostic() {
 
 open_evidence_app() {
   local env_args=()
+  local launch_args=(
+    "-ApplePersistenceIgnoreState" "YES"
+    "-AppleShowScrollBars" "Always"
+    "-AppleLanguages" "$APPLE_LANGUAGES"
+    "-AppleLocale" "$APPLE_LOCALE"
+  )
   while IFS= read -r -d '' env_arg; do
     env_args+=("$env_arg")
   done < <(app_env_args)
+  if [[ "$APPEARANCE_OVERRIDE" != "light" ]]; then
+    # Registration-domain launch arguments are process-local. Disable desktop
+    # tinting for Dark/System evidence without mutating the user's global
+    # accessibility or appearance preferences.
+    launch_args+=("-AppleReduceDesktopTinting" "YES")
+  fi
   stop_evidence_app
   : >"$EVIDENCE_APP_LOG"
   # Direct launch preserves the isolated database, appearance, selected route,
@@ -471,11 +496,7 @@ open_evidence_app() {
   # Use the most constrained persistent-scrollbar setting so layout does not
   # inherit a local or hosted runner preference.
   /usr/bin/env -i PATH="$PATH" TMPDIR="$EVIDENCE_TMPDIR" "${env_args[@]}" \
-    "$APP_BINARY" \
-    -ApplePersistenceIgnoreState YES \
-    -AppleShowScrollBars Always \
-    -AppleLanguages "$APPLE_LANGUAGES" \
-    -AppleLocale "$APPLE_LOCALE" \
+    "$APP_BINARY" "${launch_args[@]}" \
     >>"$EVIDENCE_APP_LOG" 2>&1 &
   EVIDENCE_APP_LAUNCH_PID=$!
   EVIDENCE_APP_PID="$EVIDENCE_APP_LAUNCH_PID"
@@ -730,6 +751,53 @@ prepare_ax_scroll_container_helper() {
   /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_scroll_container.swift" -o "$AX_SCROLL_CONTAINER_HELPER"
 }
 
+prepare_ax_press_element_helper() {
+  if [[ -x "$AX_PRESS_ELEMENT_HELPER" ]]; then
+    return
+  fi
+  /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_press_element.swift" -o "$AX_PRESS_ELEMENT_HELPER"
+}
+
+press_named_window_control() {
+  local identifier="$1"
+  local error_file
+  local helper_pid
+  local deadline
+  local status
+  local timed_out=0
+
+  prepare_ax_press_element_helper
+  error_file="$(mktemp "${TMPDIR:-/tmp}/suisui-ui-press-element-error.XXXXXX")"
+  SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+    "$AX_PRESS_ELEMENT_HELPER" "$EVIDENCE_APP_PID" "$identifier" \
+    >/dev/null 2>"$error_file" &
+  helper_pid=$!
+  deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
+  while kill -0 "$helper_pid" >/dev/null 2>&1; do
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      timed_out=1
+      kill "$helper_pid" >/dev/null 2>&1 || true
+      sleep 1
+      kill -9 "$helper_pid" >/dev/null 2>&1 || true
+      break
+    fi
+    sleep 0.2
+  done
+  set +e
+  wait "$helper_pid"
+  status=$?
+  set -e
+  if [[ "$timed_out" == "1" ]]; then
+    status=124
+  fi
+  if [[ "$status" -ne 0 ]]; then
+    cat "$error_file" >&2
+    echo "Could not activate named window control: $identifier" >&2
+  fi
+  rm -f "$error_file"
+  return "$status"
+}
+
 scroll_ax_container_down() {
   local identifier="$1"
   prepare_ax_scroll_container_helper
@@ -743,6 +811,13 @@ prepare_ax_target_frame_auditor() {
     return
   fi
   /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_ax_target_frame_audit.swift" -o "$AX_TARGET_FRAME_AUDITOR"
+}
+
+prepare_ax_window_resizer() {
+  if [[ -x "$AX_RESIZE_WINDOW_HELPER_BINARY" ]]; then
+    return
+  fi
+  /usr/bin/swiftc "$AX_RESIZE_WINDOW_HELPER_SOURCE" -o "$AX_RESIZE_WINDOW_HELPER_BINARY"
 }
 
 prepare_pointer_parker() {
@@ -763,6 +838,11 @@ audit_ax_target_frame() {
   local identifier="$1"
   local window_name="$2"
   local audit_mode="${3:-${AX_TARGET_FRAME_AUDIT_MODE:-receipt}}"
+  local window_x="${4:-}"
+  local window_y="${5:-}"
+  local window_width="${6:-}"
+  local window_height="${7:-}"
+  local window_frame_args=()
   local output_file
   local error_file
   local auditor_pid
@@ -773,14 +853,21 @@ audit_ax_target_frame() {
   output_file="$(mktemp "${TMPDIR:-/tmp}/suisui-ui-target-frame-output.XXXXXX")"
   error_file="$(mktemp "${TMPDIR:-/tmp}/suisui-ui-target-frame-error.XXXXXX")"
   prepare_ax_target_frame_auditor
+  if [[ -n "$window_x" || -n "$window_y" || -n "$window_width" || -n "$window_height" ]]; then
+    [[ -n "$window_x" && -n "$window_y" && -n "$window_width" && -n "$window_height" ]] || {
+      echo "AX target frame audit requires a complete captured window frame" >&2
+      return 2
+    }
+    window_frame_args=("$window_x" "$window_y" "$window_width" "$window_height")
+  fi
   if [[ "$audit_mode" == "fingerprint" ]]; then
     SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
       SUISUI_UI_EVIDENCE_AX_IDENTITY_FINGERPRINT=1 \
-      "$AX_TARGET_FRAME_AUDITOR" "$APP_NAME" "$identifier" "$EVIDENCE_APP_PID" "$window_name" \
+      "$AX_TARGET_FRAME_AUDITOR" "$APP_NAME" "$identifier" "$EVIDENCE_APP_PID" "$window_name" "${window_frame_args[@]}" \
       >"$output_file" 2>"$error_file" &
   else
     SUISUI_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
-      "$AX_TARGET_FRAME_AUDITOR" "$APP_NAME" "$identifier" "$EVIDENCE_APP_PID" "$window_name" \
+      "$AX_TARGET_FRAME_AUDITOR" "$APP_NAME" "$identifier" "$EVIDENCE_APP_PID" "$window_name" "${window_frame_args[@]}" \
       >"$output_file" 2>"$error_file" &
   fi
   auditor_pid=$!
@@ -818,6 +905,10 @@ wait_for_stable_ax_target_frame() {
   local identifier="$1"
   local window_name="$2"
   local audit_mode="${3:-${AX_TARGET_FRAME_AUDIT_MODE:-receipt}}"
+  local window_x="${4:-}"
+  local window_y="${5:-}"
+  local window_width="${6:-}"
+  local window_height="${7:-}"
   local stable_samples_required=3
   local stable_samples=0
   local previous_sample=""
@@ -825,7 +916,7 @@ wait_for_stable_ax_target_frame() {
   local deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
 
   while [[ "$SECONDS" -lt "$deadline" ]]; do
-    if ! current_sample="$(audit_ax_target_frame "$identifier" "$window_name" "$audit_mode")"; then
+    if ! current_sample="$(audit_ax_target_frame "$identifier" "$window_name" "$audit_mode" "$window_x" "$window_y" "$window_width" "$window_height")"; then
       # CGWindow can publish the owned window one scheduling turn before the
       # Accessibility server publishes kAXWindows on hosted macOS runners.
       # Retry only inside the existing deadline and require a fresh sequence
@@ -991,7 +1082,10 @@ position_window_for_capture() {
   local height="${viewport#*x}"
   local deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
   local window_metadata
+  local window_id window_x window_y window_width window_height
   local ax_window_size
+  local observed_x=""
+  local observed_y=""
   local observed_width=""
   local observed_height=""
   if [[ ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
@@ -1000,52 +1094,31 @@ position_window_for_capture() {
   fi
 
   while true; do
-    if ! wait_for_owned_evidence_window "$window_name" "$diagnostic_file"; then
-      echo "failure_category=window" >&2
-      echo "failure_message=visual-owned-window-unavailable" >&2
-      return 1
-    fi
-
-    if ax_window_size="$(/usr/bin/osascript - "$EVIDENCE_APP_PID" "$window_name" "$origin_x" "$origin_y" "$width" "$height" <<'APPLESCRIPT'
-on run argv
-  set appPID to item 1 of argv as integer
-  set windowName to item 2 of argv
-  set originX to item 3 of argv as integer
-  set originY to item 4 of argv as integer
-  set targetWidth to item 5 of argv as integer
-  set targetHeight to item 6 of argv as integer
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is appPID
-    if (count of matchingProcesses) is 0 then return "missing"
-    set targetProcess to item 1 of matchingProcesses
-    tell targetProcess
-      set frontmost to true
-      if windowName is not "" then
-        if not (exists window windowName) then error "missing named evidence window: " & windowName
-        set targetWindow to window windowName
-      else
-        -- The capture process is PID-scoped and owns one product window here.
-        -- `front window` can transiently disappear after an AX sidebar press
-        -- even though the owned window remains published, so select it from
-        -- the process window collection just as activation does.
-        if (count of windows) is 0 then error "missing owned evidence window"
-        set targetWindow to window 1
-      end if
-      set position of targetWindow to {originX, originY}
-      set size of targetWindow to {targetWidth, targetHeight}
-      set actualSize to size of targetWindow
-      return (item 1 of actualSize as text) & " " & (item 2 of actualSize as text)
-    end tell
-  end tell
-end run
-APPLESCRIPT
-    )"; then
-      read -r observed_width observed_height <<<"$ax_window_size"
+    if window_metadata="$(wait_for_window_capture_metadata "$window_name" 2>/dev/null)"; then
+      set -- $window_metadata
+      window_id="$1"
+      window_x="$2"
+      window_y="$3"
+      window_width="$4"
+      window_height="$5"
+      prepare_ax_window_resizer
+      if ax_window_size="$(
+        "$AX_RESIZE_WINDOW_HELPER_BINARY" \
+          "$EVIDENCE_APP_PID" \
+          "$window_x" "$window_y" "$window_width" "$window_height" \
+          "$width" "$height" "$origin_x" "$origin_y" \
+          2>>"${diagnostic_file:-/dev/null}"
+      )"; then
+        read -r observed_x observed_y observed_width observed_height <<<"$ax_window_size"
+      fi
       if window_metadata="$(wait_for_window_capture_metadata "$window_name" 2>/dev/null)"; then
         # CG window bounds include compositor decoration on newer macOS
         # versions even when `screencapture -o` excludes the shadow. The AX
         # size is the product's logical viewport and is therefore the value
         # bound to the manifest and receipt.
+        # AppKit clamps y=0 below the menu bar on a normal desktop. The logical
+        # viewport is the release contract; the following CG lookup and AX
+        # target audit bind capture to the actual clamped frame.
         if [[ "$observed_width" == "$width" && "$observed_height" == "$height" ]]; then
           POSITIONED_WINDOW_WIDTH="$observed_width"
           POSITIONED_WINDOW_HEIGHT="$observed_height"
@@ -1393,7 +1466,7 @@ capture_visible_window() {
     window_width="$4"
     window_height="$5"
     window_context="id=$window_id bounds=${window_width}x${window_height}+${window_x}+${window_y}"
-    target_frame_audit="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name")"
+    target_frame_audit="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name" "$AX_TARGET_FRAME_AUDIT_MODE" "$window_x" "$window_y" "$window_width" "$window_height")"
     target_frame_fingerprint="$target_frame_audit"
     target_frame_audit="$(receipt_ax_target_frame_fields "$target_frame_fingerprint")"
 
@@ -1412,7 +1485,8 @@ capture_visible_window() {
         second_window_metadata="$(wait_for_window_capture_metadata "$window_name")"
         # A fresh three-sample acquisition rejects a target that briefly
         # returns to the same frame while its SwiftUI subtree is still moving.
-        second_target_frame_fingerprint="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name")"
+        set -- $second_window_metadata
+        second_target_frame_fingerprint="$(wait_for_stable_ax_target_frame "$target_identifier" "$window_name" "$AX_TARGET_FRAME_AUDIT_MODE" "$2" "$3" "$4" "$5")"
         if [[ "$second_window_metadata" == "$window_metadata" && "$second_target_frame_fingerprint" == "$target_frame_fingerprint" ]] \
           && screencapture -x -o -l "$window_id" "$second_raster" \
           && [[ -s "$second_raster" ]] \
@@ -1495,6 +1569,7 @@ prepare_named_evidence_window() {
   local window_name="$1"
   local label="$2"
   local marker_spec="$3"
+  local preparation_control_identifier="${4:-}"
   local window_attempt
   local readiness_diagnostic
 
@@ -1516,6 +1591,8 @@ prepare_named_evidence_window() {
       sleep 1.0
       if wait_for_window_capture_metadata "$window_name" > /dev/null 2>>"$readiness_diagnostic" \
         && position_window_for_capture "$window_name" "$readiness_diagnostic" 2>>"$readiness_diagnostic" \
+        && { [[ -z "$preparation_control_identifier" ]] \
+          || press_named_window_control "$preparation_control_identifier" 2>>"$readiness_diagnostic"; } \
         && wait_for_project_board_destination "$label" "$marker_spec" 2>>"$readiness_diagnostic" \
         && position_window_for_capture "$window_name" "$readiness_diagnostic" 2>>"$readiness_diagnostic"; then
         rm -f "$readiness_diagnostic"
@@ -1558,11 +1635,9 @@ capture_settings_sync() {
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="Sync"
   VOICE_COMMAND_WINDOW_OVERRIDE=""
-  prepare_named_evidence_window "Sync" "Settings integrations" "settings-google-calendar-id-save-flow=>"
-  scroll_ax_target_into_view "settings-google-calendar-id-save-flow" "Settings integrations"
-  sleep 1.0
+  prepare_named_evidence_window "Sync" "Settings integrations" "sync-paid-value-row=>"
 
-  capture_visible_window "$appearance Settings integrations" "$output_path" "Sync" "settings-google-calendar-id-save-flow"
+  capture_visible_window "$appearance Settings integrations" "$output_path" "Sync" "sync-paid-value-row"
 }
 
 capture_settings_appearance() {
@@ -1721,7 +1796,7 @@ capture_voice_command_appearance() {
   SETTINGS_WINDOW_OVERRIDE=""
   SETTINGS_TAB_OVERRIDE=""
   VOICE_COMMAND_WINDOW_OVERRIDE=1
-  prepare_named_evidence_window "Voice Command" "Voice Command" "$VOICE_COMMAND_TARGET_MARKERS"
+  prepare_named_evidence_window "Voice Command" "Voice Command" "$VOICE_COMMAND_TARGET_MARKERS" "voice-command-quick-command-tab"
 
   capture_visible_window "$appearance Voice Command" "$output_path" "Voice Command" "voice-command-root"
 }

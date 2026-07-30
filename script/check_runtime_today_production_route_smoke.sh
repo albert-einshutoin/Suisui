@@ -253,6 +253,7 @@ launch_app() {
     HOME="$case_home" \
     CFFIXED_USER_HOME="$case_cf_user_home" \
     SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1 \
     SUISUI_DATABASE_PATH="$database_path" \
     SUISUI_LANGUAGE_PREFERENCE="$locale" \
     SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="$selected_destination" \

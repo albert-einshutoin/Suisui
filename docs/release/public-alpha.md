@@ -18,6 +18,7 @@ Suisui public alpha is scoped to the completed Phase 0-4 foundation plus Phase 5
 
 - External MCP runtime
 - SaaS connectors
+- Google Calendar OAuth/live sync is not a supported Public Alpha workflow. Public Alpha bundles embed the `public-alpha` runtime policy, so Settings controls, OAuth, calendar listing, sync composition, and writes all fail closed even if a launch environment contains Google credentials. Its implementation is an experimental foundation tracked for post-alpha validation in [#434](https://github.com/albert-einshutoin/Suisui/issues/434).
 - full RAG indexing
 - Team workspaces
 - cloud sync
@@ -43,6 +44,7 @@ Ask Suisui to create a Markdown draft for a project deliverable. The write actio
 
 - External MCP is planned for a later phase.
 - SaaS integrations are planned for a later phase.
+- Google Calendar controls are hidden in Public Alpha. A contributor can exercise the experimental implementation only by rebuilding with `SUISUI_RUNTIME_POLICY=development` and then launching that development bundle with `SUISUI_ENABLE_EXPERIMENTAL_GOOGLE_CALENDAR_RUNTIME=1`; neither switch can enable a distributed Public Alpha bundle on its own. Users should rely on the supported Apple Calendar adapter during Public Alpha.
 - RAG is limited to lightweight Knowledge Frames in the alpha.
 - Team features are not implemented.
 - Release signing and notarization require local Apple Developer credentials.

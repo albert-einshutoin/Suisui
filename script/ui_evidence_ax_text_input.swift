@@ -89,6 +89,14 @@ func postKey(
 }
 
 func activateTarget() -> Bool {
+    // Directly launched smoke binaries are not registered through
+    // LaunchServices, so NSRunningApplication activation alone can be ignored.
+    // AX frontmost state keeps typed input pinned to the owned PID.
+    _ = AXUIElementSetAttributeValue(
+        appElement,
+        kAXFrontmostAttribute as CFString,
+        kCFBooleanTrue
+    )
     _ = runningApp.activate(options: [.activateAllWindows])
     for _ in 0..<20 {
         if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid {
@@ -161,17 +169,25 @@ let childAttributes = [
     "AXDisclosedRows"
 ]
 
+struct TraversalNode {
+    let element: AXUIElement
+    let owningWindow: AXUIElement
+}
+
 guard let windowsValue = copyAttribute(appElement, kAXWindowsAttribute as CFString) else {
     fputs("Target app pid \(pid) has no visible AX windows.\n", stderr)
     exit(2)
 }
 
-var queue = elements(from: windowsValue)
+var queue = elements(from: windowsValue).map {
+    TraversalNode(element: $0, owningWindow: $0)
+}
 var cursor = 0
 var visitedCount = 0
 
 while cursor < queue.count && visitedCount < maxNodes {
-    let element = queue[cursor]
+    let node = queue[cursor]
+    let element = node.element
     cursor += 1
     visitedCount += 1
 
@@ -182,6 +198,10 @@ while cursor < queue.count && visitedCount < maxNodes {
             fputs("Refusing AX text input because app pid \(pid) is not frontmost.\n", stderr)
             exit(1)
         }
+        // A PID can expose several SwiftUI windows. Raise the exact window that
+        // owns the matched field before focusing it so keyboard events cannot
+        // land in another inspector or a stale restoration window.
+        _ = AXUIElementPerformAction(node.owningWindow, kAXRaiseAction as CFString)
         let focusResult = AXUIElementSetAttributeValue(
             element,
             kAXFocusedAttribute as CFString,
@@ -215,7 +235,11 @@ while cursor < queue.count && visitedCount < maxNodes {
     }
 
     for attribute in childAttributes {
-        queue.append(contentsOf: elements(from: copyAttribute(element, attribute as CFString)))
+        queue.append(
+            contentsOf: elements(from: copyAttribute(element, attribute as CFString)).map {
+                TraversalNode(element: $0, owningWindow: node.owningWindow)
+            }
+        )
     }
 }
 

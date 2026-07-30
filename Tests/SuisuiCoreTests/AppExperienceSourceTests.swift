@@ -789,6 +789,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(rowSource.contains(".disabled(!row.canRetry)"))
     }
 
+    func testAssistantQueueFilterOptionsExposeStableAXIdentifiers() throws {
+        let source = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectWorkflowAssistantQueueView.swift"
+        )
+
+        XCTAssertTrue(
+            source.contains(
+                "assistant-queue-filter-option-\\(filter.rawValue)"
+            )
+        )
+    }
+
     func testAssistantQueueTriageLocalizationsDoNotDuplicateSharedKeys() throws {
         let english = try readPackageFile("Sources/SuisuiApp/Resources/en.lproj/Localizable.strings")
         let japanese = try readPackageFile("Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings")
@@ -1771,6 +1783,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(bridgeSource.contains("NSWindow.didResizeNotification"))
         XCTAssertTrue(bridgeSource.contains("ProjectBoardWindowPresentationState"))
         XCTAssertTrue(bridgeSource.contains("suisui.projectBoard.primaryWindowFrame"))
+        XCTAssertTrue(bridgeSource.contains("SUISUI_DISABLE_PROJECT_BOARD_PRESENTATION_PERSISTENCE"))
+        XCTAssertTrue(boardSource.contains("SUISUI_DISABLE_PROJECT_BOARD_PRESENTATION_PERSISTENCE"))
         XCTAssertTrue(coreSource.contains("public struct ProjectBoardWindowFrame"))
         XCTAssertTrue(coreSource.contains("public static let currentVersion = 1"))
         XCTAssertFalse(coreSource.contains("public var taskTitle"))
@@ -3588,7 +3602,7 @@ final class AppExperienceSourceTests: XCTestCase {
                 "SuisuiAssistantQueueBridge.storePendingOpen",
                 "ProjectBoardSceneCoordinator.shared.requestOpen(",
                 "SuisuiAssistantQueueBridge.discardPendingOpen(id: bridgeRequest.id)",
-                "/// Tail of the provider"
+                "extension Notification.Name"
             )
         ] {
             let start = try XCTUnwrap(voiceSource.range(of: "private func \(functionName)"))
@@ -3698,7 +3712,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceSource.contains("assistantQueueExecutionHandoffItemID"))
         XCTAssertTrue(appSource.contains("executionHandoffItemID: viewModel.assistantQueueExecutionHandoffItemID"))
         XCTAssertTrue(appSource.contains("onOpenQueue: { postAssistantQueueOpenRequest() }"))
-        XCTAssertTrue(appSource.contains("SuisuiAssistantQueueBridge.storePendingOpen(itemID: viewModel.assistantQueueExecutionHandoffItemID)"))
+        XCTAssertTrue(appSource.contains("SuisuiAssistantQueueBridge.storePendingOpen("))
+        XCTAssertTrue(appSource.contains("itemID: itemID"))
+        XCTAssertTrue(appSource.contains("?? viewModel.assistantQueueExecutionHandoffItemID"))
         XCTAssertTrue(appSource.contains("userInfo: [SuisuiAssistantQueueBridge.requestUserInfoKey: bridgeRequest]"))
         XCTAssertTrue(appSource.contains("name: .suisuiAssistantQueueRequested"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-assistant-queue-open-board\")"))
@@ -4097,7 +4113,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let labelSource = String(source[labelStart.lowerBound..<labelEnd.lowerBound])
 
         XCTAssertTrue(labelSource.contains("@ObservedObject var controller: MenuBarSummaryController"))
-        XCTAssertTrue(labelSource.contains(".task {"))
+        XCTAssertTrue(labelSource.contains(".suisuiProjectBoardCommandReady"))
         XCTAssertTrue(labelSource.contains(".onReceive(NotificationCenter.default.publisher(for: .suisuiProjectBoardDidChange))"))
         XCTAssertEqual(labelSource.components(separatedBy: "controller.refresh()").count - 1, 2)
     }
@@ -4757,6 +4773,36 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(registryRuntime.contains("recoverOnce("))
     }
 
+    func testProductionLaunchRunsAutomaticConversationRetentionOffMainActorAndAuditsOutcome()
+        throws
+    {
+        let appSource = try readPackageFile(
+            "Sources/SuisuiApp/SuisuiApp.swift"
+        )
+        let runtimeSource = try readPackageFile(
+            "Sources/SuisuiApp/Composition/ConversationRetentionRuntime.swift"
+        )
+
+        XCTAssertTrue(
+            appSource.contains(
+                "ConversationRetentionRuntime.shared.start()"
+            )
+        )
+        XCTAssertTrue(
+            runtimeSource.contains(
+                "Task.detached(priority: .utility)"
+            )
+        )
+        XCTAssertTrue(
+            runtimeSource.contains(
+                "VoiceTaskConversationAutomaticRetentionRunner().run("
+            )
+        )
+        XCTAssertTrue(runtimeSource.contains("RedactingAuditLogger("))
+        XCTAssertTrue(runtimeSource.contains("AuditEvent("))
+        XCTAssertFalse(runtimeSource.contains("try?"))
+    }
+
     func testUnavailableReviewRegistryDoesNotSilentlyDropRegistrationFailures() throws {
         let appSource = try readAppShellSource()
 
@@ -4791,6 +4837,92 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceFactory.contains("let managedCostRateCardResolver = ManagedAICostRateCardResolver()"))
         XCTAssertTrue(voiceFactory.contains("managedCostRateCardProvider: { managedCostRateCardResolver.rateCard(for: $0) }"))
         XCTAssertFalse(voiceFactory.contains("assistantQueueStore: nil"))
+    }
+
+    func testVoiceRuntimePersistsConversationOrchestrationWithoutMemoryFallback() throws {
+        let appSource = try readAppShellSource()
+        let voiceFactoryStart = try XCTUnwrap(
+            appSource.range(of: "static func makeVoiceCaptureViewModel()")
+        )
+        let nextFactoryStart = try XCTUnwrap(
+            appSource.range(
+                of: "static func loadRuntimeSettings()",
+                range: voiceFactoryStart.upperBound..<appSource.endIndex
+            )
+        )
+        let voiceFactory = String(
+            appSource[
+                voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound
+            ]
+        )
+
+        XCTAssertTrue(
+            voiceFactory.contains(
+                "SQLiteVoiceTaskConversationOrchestrationStateStore("
+            )
+        )
+        XCTAssertTrue(
+            voiceFactory.contains("connection: connection")
+        )
+        XCTAssertTrue(
+            voiceFactory.contains(
+                "conversationOrchestrator: conversationOrchestrator"
+            )
+        )
+        XCTAssertFalse(
+            voiceFactory.contains("InMemoryVoiceTaskConversation")
+        )
+        XCTAssertTrue(
+            voiceFactory.contains(
+                "let sqliteConversationStore = SQLiteVoiceTaskConversationStore("
+            )
+        )
+        XCTAssertTrue(
+            voiceFactory.contains(
+                "conversationStore: sqliteConversationStore"
+            )
+        )
+    }
+
+    func testAssistantQueueRuntimeValidatesConversationLinksAgainstCurrentTaskSnapshot() throws {
+        let appSource = try readAppShellSource()
+        let coordinatorStart = try XCTUnwrap(
+            appSource.range(
+                of: "private static func makeAssistantQueueExecutionCoordinator("
+            )
+        )
+        let coordinatorEnd = try XCTUnwrap(
+            appSource.range(
+                of: "\n    }\n}",
+                range: coordinatorStart.upperBound..<appSource.endIndex
+            )
+        )
+        let coordinator = String(
+            appSource[
+                coordinatorStart.lowerBound..<coordinatorEnd.upperBound
+            ]
+        )
+
+        XCTAssertTrue(
+            coordinator.contains(
+                "let conversationStore = SQLiteVoiceTaskConversationStore("
+            )
+        )
+        XCTAssertTrue(
+            coordinator.contains(
+                "conversationActionLinkStore: conversationStore"
+            )
+        )
+        XCTAssertTrue(
+            coordinator.contains(
+                "taskSnapshotFingerprintProvider:"
+            )
+        )
+        XCTAssertTrue(
+            coordinator.contains(
+                "ConversationTaskSnapshotFingerprint.make("
+            )
+        )
     }
 
     func testVoiceRuntimeInjectsFailClosedDevelopmentProjectProvider() throws {
@@ -5009,6 +5141,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertEqual(
             voiceSource.components(separatedBy: ".accessibilityIdentifier(\"voice-command-root\")").count - 1,
             1
+        )
+        XCTAssertTrue(
+            voiceSource.contains(
+                ".accessibilityIdentifier(\"voice-command-quick-command-tab\")"
+            )
         )
         XCTAssertTrue(
             voiceSource.contains(
@@ -5656,6 +5793,30 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(helperSource.contains("taskSyncService: nil"))
     }
 
+    func testPublicAlphaGoogleCalendarCompositionFailsClosedAcrossEveryRuntimeEntryPoint() throws {
+        let appSource = try readAppShellSource()
+        let composition = try readPackageFile(
+            "Sources/SuisuiApp/Composition/GoogleCalendarRuntimeCompositionFactory.swift"
+        )
+        let boardComposition = try readPackageFile(
+            "Sources/SuisuiApp/Composition/ProjectBoardRuntimeFactory.swift"
+        )
+
+        XCTAssertTrue(composition.contains("SuisuiRuntimePolicy"))
+        XCTAssertTrue(composition.contains("GoogleCalendarRuntimeBuildPolicy"))
+        XCTAssertTrue(composition.contains("SUISUI_ENABLE_EXPERIMENTAL_GOOGLE_CALENDAR_RUNTIME"))
+        XCTAssertTrue(composition.contains("?? .publicAlpha"))
+        XCTAssertGreaterThanOrEqual(
+            composition.components(separatedBy: "guard isGoogleCalendarRuntimeEnabled() else").count - 1,
+            6
+        )
+        XCTAssertTrue(composition.contains("DisabledGoogleCalendarRuntimeSync"))
+        XCTAssertTrue(composition.contains("throw GoogleCalendarRuntimeSyncError.notReady(.runtimeNotConfigured)"))
+        XCTAssertTrue(boardComposition.contains("guard isGoogleCalendarRuntimeEnabled() else"))
+        XCTAssertTrue(appSource.contains("isGoogleCalendarRuntimeEnabled: AppRuntimeFactory.isGoogleCalendarRuntimeEnabled()"))
+        XCTAssertTrue(appSource.contains("if context.isGoogleCalendarRuntimeEnabled"))
+    }
+
     func testProjectBoardGoogleCalendarSyncMenuUsesRuntimeReadinessInsteadOfHardcodedDisabled() throws {
         let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
         let toolbarSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardToolbarContent.swift")
@@ -5800,7 +5961,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(windowMetadataScript.contains("CGWindowListCopyWindowInfo"))
         XCTAssertTrue(script.contains("wait_for_window_capture_metadata"))
         XCTAssertTrue(script.contains("position_window_for_capture"))
-        XCTAssertTrue(script.contains("set actualSize to size of targetWindow"))
+        XCTAssertTrue(script.contains("AX_RESIZE_WINDOW_HELPER_BINARY"))
+        XCTAssertTrue(script.contains("read -r observed_x observed_y observed_width observed_height <<<\"$ax_window_size\""))
         XCTAssertTrue(script.contains("POSITIONED_WINDOW_WIDTH=\"$observed_width\""))
         XCTAssertTrue(script.contains("successful_window_width=\"$POSITIONED_WINDOW_WIDTH\""))
         XCTAssertTrue(script.contains("Avoid LaunchServices activation"))
@@ -5820,7 +5982,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("for ((capture_attempt = 1; capture_attempt <= capture_attempts; capture_attempt++))"))
         XCTAssertTrue(script.contains("local deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))"))
         XCTAssertTrue(script.contains("while true; do"))
-        XCTAssertTrue(script.contains("if ! wait_for_owned_evidence_window \"$window_name\" \"$diagnostic_file\"; then"))
+        XCTAssertTrue(script.contains("\"$window_x\" \"$window_y\" \"$window_width\" \"$window_height\""))
+        XCTAssertFalse(script.contains("if ! wait_for_owned_evidence_window \"$window_name\" \"$diagnostic_file\"; then"))
         XCTAssertTrue(script.contains("wait_for_window_capture_metadata \"$window_name\""))
         XCTAssertTrue(script.contains("if [[ \"$SECONDS\" -ge \"$deadline\" ]]; then"))
         XCTAssertTrue(script.contains("INFO: waiting for recreated owned evidence window before positioning"))
@@ -5828,7 +5991,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("ui_evidence_appearance_check.swift"))
         XCTAssertTrue(script.contains("VISUAL_APPEARANCE_CHECKER"))
         XCTAssertFalse(script.contains("-AppleInterfaceStyle"))
-        XCTAssertTrue(script.contains("-AppleShowScrollBars Always"))
+        XCTAssertTrue(script.contains(#""-AppleShowScrollBars" "Always""#))
         XCTAssertTrue(script.contains("most constrained persistent-scrollbar setting"))
         XCTAssertTrue(script.contains("assert_screenshot_has_visible_content"))
         XCTAssertTrue(script.contains("ui_evidence_content_check.swift"))
@@ -5894,9 +6057,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("capture_project_board_destination light schedule \"$SCHEDULE_LIGHT_SCREENSHOT\" \"Schedule cockpit\" \"$SCHEDULE_COCKPIT_TARGET_MARKERS\""))
         XCTAssertTrue(script.contains("capture_project_board_destination dark schedule \"$SCHEDULE_DARK_SCREENSHOT\" \"Schedule cockpit\" \"$SCHEDULE_COCKPIT_TARGET_MARKERS\""))
         XCTAssertTrue(script.contains("if [[ \"$SCHEDULE_COCKPIT\" == \"1\" ]]"))
-        XCTAssertTrue(script.contains("-ApplePersistenceIgnoreState YES"))
-        XCTAssertTrue(script.contains("-AppleLanguages \"$APPLE_LANGUAGES\""))
-        XCTAssertTrue(script.contains("-AppleLocale \"$APPLE_LOCALE\""))
+        XCTAssertTrue(script.contains(#""-ApplePersistenceIgnoreState" "YES""#))
+        XCTAssertTrue(script.contains(#""-AppleLanguages" "$APPLE_LANGUAGES""#))
+        XCTAssertTrue(script.contains(#""-AppleLocale" "$APPLE_LOCALE""#))
         XCTAssertFalse(script.contains("if [[ \"$SCHEDULE_COCKPIT\" != \"1\" ]]"))
         XCTAssertTrue(script.contains("open_settings_overview_tab"))
         XCTAssertTrue(script.contains("capture_settings_overview"))

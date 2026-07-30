@@ -113,6 +113,13 @@ givenAmbiguousDeadline_whenValidateActionPlan_thenRequiresUserConfirmation
 - 危険操作の拒否、承認必須操作、audit log の観点を確認している。
 - UI 変更はキーボード操作、VoiceOver label、空状態、エラー状態を確認している。
 - 既存仕様とずれた場合は docs を更新している。
+
+Phase 18 のVoice Task Conversationは、unit testだけで完了扱いにしない。
+`./script/check_runtime_workflow_smoke.sh --scenario voice_task_continuity`
+で通常のProject Board／Voice Commandから、Task一覧、stable ordinal参照、
+一問ずつのclarification、Assistant Queue承認・実行、Receipt／Action Link、
+アプリ再起動後のSession再開までをcurrent source commitに紐づけて検証する。
+この自動証跡は手動VoiceOver、署名、notarizationの代替ではない。
 - セルフレビューで「責務が混ざっていないか」「MVP 外の実装を入れていないか」を確認している。
 
 ## PR Template

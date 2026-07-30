@@ -2,6 +2,106 @@ import XCTest
 @testable import SuisuiCore
 
 final class AssistantQueueStoreTests: XCTestCase {
+    func testConversationOriginMarkerPersistsAndChangesReviewRevision() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        let store = SQLiteAssistantQueueStore(connection: connection)
+        let ordinary = makeItem(
+            id: "queue-conversation-origin",
+            summary: "Create launch task"
+        )
+        let conversation =
+            ordinary.minimizingUnapprovedConversationTranscript()
+
+        XCTAssertNotEqual(
+            ordinary.contentFingerprint,
+            conversation.contentFingerprint
+        )
+        XCTAssertNotEqual(
+            ordinary.mutationRevision,
+            conversation.mutationRevision
+        )
+
+        try store.save(conversation)
+
+        let restored = try store.get(id: conversation.id)
+        XCTAssertTrue(restored.requiresConversationActionLink)
+        XCTAssertEqual(restored.mutationRevision, conversation.mutationRevision)
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT requires_conversation_action_link
+                FROM assistant_queue_items
+                WHERE id = ?;
+                """,
+                parameters: [.text(conversation.id)]
+            ),
+            ["1"]
+        )
+    }
+
+    func testLegacyQueueJSONDefaultsConversationOriginMarkerToFalse() throws {
+        let item = makeItem(
+            id: "queue-legacy-json",
+            summary: "Legacy queue item"
+        )
+        let encoded = try JSONEncoder().encode(item)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object.removeValue(forKey: "requiresConversationActionLink")
+        let legacy = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try JSONDecoder().decode(
+            AssistantQueueItem.self,
+            from: legacy
+        )
+
+        XCTAssertFalse(decoded.requiresConversationActionLink)
+    }
+
+    func testConversationMinimizationKeepsSemanticPlanWithoutSpeechText() throws {
+        let secretSpeech =
+            "Please create Launch task and remember my unreleased codename"
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: ActionPlan(
+                id: "plan-minimize-speech",
+                userInput: secretSpeech,
+                summary: "Create Launch task",
+                actions: [
+                    PlanAction(
+                        id: "create-launch",
+                        tool: .taskCreate,
+                        arguments: ["title": .string("Launch")]
+                    ),
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            sourceTranscript: secretSpeech,
+            interpretationSummary: "Create a Task titled Launch.",
+            reason: "Review the semantic task creation."
+        )
+
+        let minimized =
+            item.minimizingUnapprovedConversationTranscript()
+
+        XCTAssertNil(minimized.sourceTranscript)
+        XCTAssertTrue(minimized.requiresConversationActionLink)
+        guard case .actionPlan(let plan) = minimized.payload else {
+            return XCTFail("Expected ActionPlan payload")
+        }
+        XCTAssertFalse(plan.userInput.contains("unreleased codename"))
+        XCTAssertEqual(plan.summary, "Create Launch task")
+        XCTAssertEqual(
+            plan.actions.first?.arguments["title"],
+            .string("Launch")
+        )
+    }
+
     func testSQLiteStorePersistsQueueItemsAndLoadsByState() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)

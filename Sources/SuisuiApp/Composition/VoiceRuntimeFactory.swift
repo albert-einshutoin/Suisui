@@ -12,6 +12,12 @@ extension AppRuntimeFactory {
         let managedCostRateCardResolver = ManagedAICostRateCardResolver()
         var auditLogger: (any AuditLogger)?
         var assistantQueueStore: (any AssistantQueueStore)?
+        var conversationOrchestrator: (any VoiceTaskConversationOrchestrating)?
+        var conversationCommandPreparer:
+            (any VoiceTaskConversationCommandPreparing)?
+        var conversationStore: (any VoiceTaskConversationStore)?
+        var conversationSessionID = voiceConversationSessionID()
+        let scopeRequest = SuisuiVoiceConversationScopeBridge.consume()
         var inboxCaptureService: InboxVoiceCaptureService?
         var developmentProjectProvider: () -> ProjectRecord? = { nil }
         var workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])?
@@ -22,7 +28,35 @@ extension AppRuntimeFactory {
             auditLogger = try makeAuditLogger()
             let connection = try migratedConnection()
             assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+            let sqliteConversationStore = SQLiteVoiceTaskConversationStore(
+                connection: connection
+            )
+            if try sqliteConversationStore.loadSession(
+                id: conversationSessionID
+            )?.state == .archived {
+                conversationSessionID = resetVoiceConversationSessionID()
+            }
+            conversationStore = sqliteConversationStore
+            let taskStore = SQLiteTaskStore(connection: connection)
             let projectStore = SQLiteProjectStore(connection: connection)
+            conversationCommandPreparer =
+                SQLiteVoiceTaskConversationCommandPreparer(
+                    taskStore: taskStore,
+                    projectStore: projectStore,
+                    conversationStore: sqliteConversationStore
+                )
+            conversationOrchestrator = VoiceTaskConversationOrchestrator(
+                stateStore: SQLiteVoiceTaskConversationOrchestrationStateStore(
+                    connection: connection
+                ),
+                conversationStore: sqliteConversationStore,
+                taskSnapshotFingerprintProvider: { taskID in
+                    ConversationTaskSnapshotFingerprint.make(
+                        try taskStore.get(id: taskID)
+                    )
+                },
+                provider: llmProvider
+            )
             let projectBoardStore = SQLiteProjectBoardStore(connection: connection)
             let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)
             inboxCaptureService = InboxVoiceCaptureService(
@@ -36,7 +70,7 @@ extension AppRuntimeFactory {
             }
             let questionRetriever = WorkspaceQuestionRetriever(
                 projectStore: projectStore,
-                taskStore: SQLiteTaskStore(connection: connection),
+                taskStore: taskStore,
                 knowledgeFrameStore: SQLiteKnowledgeFrameStore(connection: connection),
                 settings: settingsResult.settings
             )
@@ -56,7 +90,7 @@ extension AppRuntimeFactory {
             runtimeValidationMessage = "Voice planning is unavailable because audit logging or local data stores could not be opened."
             initialFailureMessage = runtimeValidationMessage
         }
-        return VoiceCaptureViewModel(
+        let viewModel = VoiceCaptureViewModel(
             phase: initialFailureMessage.map(VoiceCapturePhase.failed) ?? .idle,
             audioRecorder: audioRecorder,
             sttProvider: sttProvider,
@@ -64,6 +98,9 @@ extension AppRuntimeFactory {
             auditRecorder: auditLogger.map { PlanningAuditRecorder(logger: $0) },
             runtimeValidationMessage: runtimeValidationMessage,
             assistantQueueStore: assistantQueueStore,
+            conversationOrchestrator: conversationOrchestrator,
+            conversationCommandPreparer: conversationCommandPreparer,
+            conversationSessionID: conversationSessionID,
             inboxCaptureSaver: inboxCaptureService,
             developmentProjectProvider: developmentProjectProvider,
             appSettingsProvider: { loadRuntimeSettings().settings },
@@ -78,6 +115,42 @@ extension AppRuntimeFactory {
             },
             taskDeleter: taskDeleter
         )
+        if let conversationStore {
+            viewModel.configureConversationWorkspace(
+                store: conversationStore,
+                scope: scopeRequest?.presentationScope ?? .init(),
+                activeProjectID: scopeRequest?.projectID,
+                activeTaskID: scopeRequest?.taskID,
+                entryPoint: scopeRequest?.taskID == nil
+                    ? .voiceCommand
+                    : .taskInspector
+            )
+        }
+        return viewModel
+    }
+
+    private static func voiceConversationSessionID() -> UUID {
+        let key = "suisui.voiceConversationSessionID"
+        let defaults = UserDefaults.standard
+        if let value = defaults.string(forKey: key),
+           let id = UUID(uuidString: value)
+        {
+            return id
+        }
+        // The stable ID lets the SQLite checkpoint reconnect the Voice window
+        // to an unfinished clarification after an app relaunch.
+        let id = UUID()
+        defaults.set(id.uuidString, forKey: key)
+        return id
+    }
+
+    private static func resetVoiceConversationSessionID() -> UUID {
+        let id = UUID()
+        UserDefaults.standard.set(
+            id.uuidString,
+            forKey: "suisui.voiceConversationSessionID"
+        )
+        return id
     }
 
     /// Runs an opt-in auto-create plan through the exact ReviewSession pipeline

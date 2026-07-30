@@ -190,27 +190,106 @@ public struct TaskTool: Tool {
             )
         case .taskUpdate:
             let taskID = try args.requiredInt64("id")
-            let current = try store.get(id: taskID)
-            let nextStatus = try args.optionalTrimmedString("status") ?? current.status
+            let expectedTaskSnapshot =
+                context.taskSnapshotFingerprints[taskID]
             let projectIDUpdate = try args.nullableInt64("projectId")
-            let nextProjectID = projectIDUpdate.applying(to: current.projectID)
-            try prepareProjectForTaskMutation(projectID: nextProjectID, status: nextStatus)
-            let record = try store.updateFields(
-                id: taskID,
-                title: try args.optionalTrimmedString("title"),
-                status: nextStatus,
-                detail: try args.nullableTrimmedString("detail"),
-                dueAt: try args.nullableTrimmedString("dueAt"),
-                priority: try args.nullableTrimmedString("priority"),
-                projectID: projectIDUpdate
+            let update: (String?) throws -> TaskRecord = {
+                expectedTaskSnapshot in
+                let current = try store.get(id: taskID)
+                let nextStatus =
+                    try args.optionalTrimmedString("status")
+                    ?? current.status
+                let nextProjectID = projectIDUpdate.applying(
+                    to: current.projectID
+                )
+                try prepareProjectForTaskMutation(
+                    projectID: nextProjectID,
+                    status: nextStatus
+                )
+                if let expectedTaskSnapshot {
+                    return try store.updateFields(
+                        id: taskID,
+                        title: try args.optionalTrimmedString("title"),
+                        status: nextStatus,
+                        detail: try args.nullableTrimmedString("detail"),
+                        dueAt: try args.nullableTrimmedString("dueAt"),
+                        priority: try args.nullableTrimmedString("priority"),
+                        projectID: projectIDUpdate,
+                        expectedSnapshotFingerprint:
+                            expectedTaskSnapshot
+                    )
+                }
+                return try store.updateFields(
+                    id: taskID,
+                    title: try args.optionalTrimmedString("title"),
+                    status: nextStatus,
+                    detail: try args.nullableTrimmedString("detail"),
+                    dueAt: try args.nullableTrimmedString("dueAt"),
+                    priority: try args.nullableTrimmedString("priority"),
+                    projectID: projectIDUpdate
+                )
+            }
+            let record: TaskRecord
+            if let expectedTaskSnapshot {
+                // Project restore and Task CAS share one SQLite transaction.
+                // A stale Task therefore rolls back every preparatory project
+                // mutation instead of leaving a partial approved side effect.
+                record = try store.withMutationTransaction {
+                    try update(expectedTaskSnapshot)
+                }
+            } else {
+                record = try update(nil)
+            }
+            return ToolResult(
+                tool: name,
+                status: .succeeded,
+                summary: "Updated task \(record.title)",
+                output: [
+                    "taskId": .number(Double(record.id)),
+                    "taskSnapshotFingerprint": .string(
+                        ConversationTaskSnapshotFingerprint.make(record)
+                    ),
+                ]
             )
-            return ToolResult(tool: name, status: .succeeded, summary: "Updated task \(record.title)", output: ["taskId": .number(Double(record.id))])
         case .taskComplete:
-            let record = try store.update(id: try args.requiredInt64("id"), status: "completed")
-            return ToolResult(tool: name, status: .succeeded, summary: "Completed task \(record.title)", output: ["taskId": .number(Double(record.id))])
+            let taskID = try args.requiredInt64("id")
+            let record: TaskRecord
+            if let expectedTaskSnapshot =
+                context.taskSnapshotFingerprints[taskID] {
+                record = try store.update(
+                    id: taskID,
+                    status: "completed",
+                    expectedSnapshotFingerprint: expectedTaskSnapshot
+                )
+            } else {
+                record = try store.update(
+                    id: taskID,
+                    status: "completed"
+                )
+            }
+            return ToolResult(
+                tool: name,
+                status: .succeeded,
+                summary: "Completed task \(record.title)",
+                output: [
+                    "taskId": .number(Double(record.id)),
+                    "taskSnapshotFingerprint": .string(
+                        ConversationTaskSnapshotFingerprint.make(record)
+                    ),
+                ]
+            )
         case .taskDelete:
             let taskID = try args.requiredInt64("id")
-            let deletion = try store.delete(id: taskID)
+            let deletion: TaskDeletionResult
+            if let expectedTaskSnapshot =
+                context.taskSnapshotFingerprints[taskID] {
+                deletion = try store.delete(
+                    id: taskID,
+                    expectedSnapshotFingerprint: expectedTaskSnapshot
+                )
+            } else {
+                deletion = try store.delete(id: taskID)
+            }
             return ToolResult(
                 tool: name,
                 status: .succeeded,

@@ -11,7 +11,24 @@ import AppKit
 extension AppRuntimeFactory {
     private static let googleCalendarOAuthRedirectURI = URL(string: "suisui://oauth/google-calendar")!
 
+    static func isGoogleCalendarRuntimeEnabled(
+        bundle: Bundle = .main,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        let rawPolicy = (bundle.object(forInfoDictionaryKey: "SuisuiRuntimePolicy") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let buildPolicy = rawPolicy.flatMap(GoogleCalendarRuntimeBuildPolicy.init(rawValue:))
+            ?? .publicAlpha
+        return GoogleCalendarRuntimeAvailabilityPolicy.isEnabled(
+            buildPolicy: buildPolicy,
+            environmentOptIn: environment["SUISUI_ENABLE_EXPERIMENTAL_GOOGLE_CALENDAR_RUNTIME"] == "1"
+        )
+    }
+
     static func makeGoogleCalendarRuntimeSyncStatus() -> GoogleCalendarRuntimeSyncStatus {
+        guard isGoogleCalendarRuntimeEnabled() else {
+            return .runtimeNotConfigured
+        }
         do {
             let connection = try migratedConnection()
             let secretStore = makeSecretStore()
@@ -37,8 +54,11 @@ extension AppRuntimeFactory {
 
     @MainActor
     static func makeGoogleCalendarOAuthConnector() -> (any GoogleCalendarOAuthConnecting)? {
+        guard isGoogleCalendarRuntimeEnabled() else {
+            return nil
+        }
 #if canImport(AuthenticationServices) && canImport(AppKit)
-        GoogleCalendarOAuthAuthenticationSessionController(
+        return GoogleCalendarOAuthAuthenticationSessionController(
             callbackURLScheme: googleCalendarOAuthRedirectURI.scheme,
             serviceFactory: {
                 try makeGoogleCalendarOAuthAuthorizationService()
@@ -51,7 +71,10 @@ extension AppRuntimeFactory {
 
     @MainActor
     static func makeGoogleCalendarOAuthDisconnecter() -> (any GoogleCalendarOAuthDisconnecting)? {
-        GoogleCalendarOAuthCredentialDisconnectController {
+        guard isGoogleCalendarRuntimeEnabled() else {
+            return nil
+        }
+        return GoogleCalendarOAuthCredentialDisconnectController {
             try GoogleCalendarAppRuntimeFactory.disconnectOAuthCredential(
                 secretStore: makeSecretStore(),
                 connection: migratedConnection()
@@ -60,6 +83,9 @@ extension AppRuntimeFactory {
     }
 
     static func makeGoogleCalendarListProvider() -> (any GoogleCalendarListProviding)? {
+        guard isGoogleCalendarRuntimeEnabled() else {
+            return nil
+        }
         do {
             let secretStore = makeSecretStore()
             let client = try GoogleCalendarAppRuntimeFactory.makeCalendarListClient(
@@ -80,7 +106,10 @@ extension AppRuntimeFactory {
         linkStore: any ExternalTaskLinkStore,
         secretStore: any SecretStore
     ) -> any GoogleCalendarRuntimeSyncing {
-        SettingsBackedGoogleCalendarRuntimeSync(
+        guard isGoogleCalendarRuntimeEnabled() else {
+            return DisabledGoogleCalendarRuntimeSync()
+        }
+        return SettingsBackedGoogleCalendarRuntimeSync(
             settingsStore: UserDefaultsAppSettingsStore(),
             statusFactory: { settings, now in
                 try GoogleCalendarAppRuntimeFactory.syncStatus(
@@ -130,6 +159,9 @@ extension AppRuntimeFactory {
     }
 
     private static func makeGoogleCalendarOAuthAuthorizationService() throws -> GoogleCalendarOAuthAuthorizationService {
+        guard isGoogleCalendarRuntimeEnabled() else {
+            throw GoogleCalendarOAuthConnectionError.runtimeDisabled
+        }
         let connection = try migratedConnection()
         let secretStore = makeSecretStore()
         let credentialStore = GoogleCalendarOAuthCredentialStore(
@@ -199,12 +231,15 @@ private struct GoogleCalendarRuntimeCalendarListProvider: GoogleCalendarListProv
 }
 
 private enum GoogleCalendarOAuthConnectionError: LocalizedError, Equatable {
+    case runtimeDisabled
     case authorizationCancelled
     case callbackURLMissing
     case sessionDidNotStart
 
     var errorDescription: String? {
         switch self {
+        case .runtimeDisabled:
+            return "Google Calendar OAuth is disabled by this build policy."
         case .authorizationCancelled:
             return "Google Calendar OAuth authorization was cancelled."
         case .callbackURLMissing:
@@ -212,6 +247,16 @@ private enum GoogleCalendarOAuthConnectionError: LocalizedError, Equatable {
         case .sessionDidNotStart:
             return "Google Calendar OAuth authorization could not start."
         }
+    }
+}
+
+private struct DisabledGoogleCalendarRuntimeSync: GoogleCalendarRuntimeSyncing {
+    func status(now: Date) throws -> GoogleCalendarRuntimeSyncStatus {
+        .runtimeNotConfigured
+    }
+
+    func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult {
+        throw GoogleCalendarRuntimeSyncError.notReady(.runtimeNotConfigured)
     }
 }
 

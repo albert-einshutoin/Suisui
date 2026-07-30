@@ -608,60 +608,62 @@ struct SettingsSyncFeatureView: View {
                         }
                     }
 
-                    Section("External Task Tools") {
-                        Text("Pro unlocks external sync; import/export JSON stays local.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        GoogleCalendarSettingsSaveControls(
-                            calendarID: Binding(
-                                get: { settingsViewModel.settings.googleCalendarID },
-                                set: { settingsViewModel.setGoogleCalendarID($0) }
-                            ),
-                            currentCalendarID: settingsViewModel.settings.googleCalendarID,
-                            calendarListOptions: context.googleCalendarListOptions,
-                            shouldShowCurrentManualOption: context.shouldShowCurrentGoogleCalendarManualOption,
-                            manualCalendarLabel: context.googleCalendarManualCalendarLabel,
-                            calendarPickerLabel: context.googleCalendarPickerLabel,
-                            isLoadingCalendarList: context.isLoadingGoogleCalendarList,
-                            isCalendarListLoadDisabled: !context.canLoadGoogleCalendarList,
-                            saveCalendarID: context.saveGoogleCalendarIDSetting,
-                            loadCalendarList: context.loadGoogleCalendarList
-                        )
-                        ExternalConnectorScopeRow(
-                            name: "Google Calendar",
-                            status: context.googleCalendarSettingsReadinessRow.statusLabel,
-                            detail: context.googleCalendarSettingsReadinessRow.detailLabel,
-                            nextAction: context.googleCalendarSettingsReadinessRow.nextActionLabel,
-                            privacyBoundary: context.googleCalendarSettingsReadinessRow.privacyBoundaryLabel,
-                            systemImage: ExternalConnectorExposurePolicy.exposure(for: .googleCalendar).systemImage,
-                            tone: context.googleCalendarSettingsTone,
-                            statusActionLabel: context.googleCalendarSettingsReadinessRow.statusCheckActionLabel,
-                            onStatusAction: context.refreshGoogleCalendarSettingsStatus
-                        )
-                        Button(localizedSettingsDisplay(context.googleCalendarOAuthActionLabel)) {
-                            context.startGoogleCalendarOAuthAuthorization()
-                        }
-                        .disabled(!context.canStartGoogleCalendarOAuthAuthorization)
-                        .accessibilityIdentifier("settings-google-calendar-oauth-setup")
-                        .accessibilityHint("Opens Google Calendar OAuth authorization with PKCE. Tokens stay in Keychain.")
-                        Button(role: .destructive) {
-                            context.isConfirmingGoogleCalendarOAuthDisconnect = true
-                        } label: {
-                            Label("Disconnect Google Calendar", systemImage: "xmark.circle")
-                        }
-                        .disabled(!context.canDisconnectGoogleCalendarOAuthAuthorization)
-                        .accessibilityIdentifier("settings-google-calendar-oauth-disconnect")
-                        .accessibilityHint("Deletes local Google Calendar OAuth metadata and Keychain tokens without changing tasks.")
-                        if let googleCalendarSetupMessage = context.googleCalendarSetupMessage {
-                            Label(localizedSettingsDisplay(googleCalendarSetupMessage), systemImage: "info.circle")
+                    if context.isGoogleCalendarRuntimeEnabled {
+                        Section("External Task Tools") {
+                            Text("Pro unlocks external sync; import/export JSON stays local.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .accessibilityIdentifier("settings-google-calendar-oauth-setup-message")
+                            GoogleCalendarSettingsSaveControls(
+                                calendarID: Binding(
+                                    get: { settingsViewModel.settings.googleCalendarID },
+                                    set: { settingsViewModel.setGoogleCalendarID($0) }
+                                ),
+                                currentCalendarID: settingsViewModel.settings.googleCalendarID,
+                                calendarListOptions: context.googleCalendarListOptions,
+                                shouldShowCurrentManualOption: context.shouldShowCurrentGoogleCalendarManualOption,
+                                manualCalendarLabel: context.googleCalendarManualCalendarLabel,
+                                calendarPickerLabel: context.googleCalendarPickerLabel,
+                                isLoadingCalendarList: context.isLoadingGoogleCalendarList,
+                                isCalendarListLoadDisabled: !context.canLoadGoogleCalendarList,
+                                saveCalendarID: context.saveGoogleCalendarIDSetting,
+                                loadCalendarList: context.loadGoogleCalendarList
+                            )
+                            ExternalConnectorScopeRow(
+                                name: "Google Calendar",
+                                status: context.googleCalendarSettingsReadinessRow.statusLabel,
+                                detail: context.googleCalendarSettingsReadinessRow.detailLabel,
+                                nextAction: context.googleCalendarSettingsReadinessRow.nextActionLabel,
+                                privacyBoundary: context.googleCalendarSettingsReadinessRow.privacyBoundaryLabel,
+                                systemImage: ExternalConnectorExposurePolicy.exposure(for: .googleCalendar).systemImage,
+                                tone: context.googleCalendarSettingsTone,
+                                statusActionLabel: context.googleCalendarSettingsReadinessRow.statusCheckActionLabel,
+                                onStatusAction: context.refreshGoogleCalendarSettingsStatus
+                            )
+                            Button(localizedSettingsDisplay(context.googleCalendarOAuthActionLabel)) {
+                                context.startGoogleCalendarOAuthAuthorization()
+                            }
+                            .disabled(!context.canStartGoogleCalendarOAuthAuthorization)
+                            .accessibilityIdentifier("settings-google-calendar-oauth-setup")
+                            .accessibilityHint("Opens Google Calendar OAuth authorization with PKCE. Tokens stay in Keychain.")
+                            Button(role: .destructive) {
+                                context.isConfirmingGoogleCalendarOAuthDisconnect = true
+                            } label: {
+                                Label("Disconnect Google Calendar", systemImage: "xmark.circle")
+                            }
+                            .disabled(!context.canDisconnectGoogleCalendarOAuthAuthorization)
+                            .accessibilityIdentifier("settings-google-calendar-oauth-disconnect")
+                            .accessibilityHint("Deletes local Google Calendar OAuth metadata and Keychain tokens without changing tasks.")
+                            if let googleCalendarSetupMessage = context.googleCalendarSetupMessage {
+                                Label(localizedSettingsDisplay(googleCalendarSetupMessage), systemImage: "info.circle")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityIdentifier("settings-google-calendar-oauth-setup-message")
+                            }
+                            Label(context.hiddenConnectorPolicySummary, systemImage: "eye.slash")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .accessibilityIdentifier("settings-external-connector-policy-boundary")
                         }
-                        Label(context.hiddenConnectorPolicySummary, systemImage: "eye.slash")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .accessibilityIdentifier("settings-external-connector-policy-boundary")
                     }
 
                 }
@@ -1574,6 +1576,7 @@ struct SettingsAIDependencies {
 @MainActor
 struct SettingsSyncDependencies {
     let loadState: SettingsFeatureLoadState<SyncSettingsViewModel>
+    let isGoogleCalendarRuntimeEnabled: Bool
     let syncPaidValueLabel: String
     let syncSafetyBoundaryLabel: String
     let syncOverviewTone: SettingsStatusTone

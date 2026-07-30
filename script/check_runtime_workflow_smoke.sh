@@ -14,11 +14,11 @@ source "$METADATA_FILE"
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 ARTIFACT_DIR="${SUISUI_RUNTIME_WORKFLOW_ARTIFACT_DIR:-$ROOT_DIR/.tmp/runtime-workflow-smoke}"
-SCENARIOS=("project_task_crud" "inbox_triage" "today_complete" "settings_save" "voice_review" "development_pr" "schedule_cockpit")
+SCENARIOS=("project_task_crud" "inbox_triage" "today_complete" "settings_save" "voice_review" "voice_task_continuity" "development_pr" "schedule_cockpit")
 REQUESTED_SCENARIOS=()
 
 usage() {
-  printf '%s\n' "usage: $0 [--scenario project_task_crud|inbox_triage|today_complete|settings_save|voice_review|development_pr|schedule_cockpit]..." >&2
+  printf '%s\n' "usage: $0 [--scenario project_task_crud|inbox_triage|today_complete|settings_save|voice_review|voice_task_continuity|development_pr|schedule_cockpit]..." >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -197,6 +197,26 @@ run_voice_review() {
   scenario_reason="voice_review command failed"
   write_scenario_artifact "voice_review" "$scenario_status" "$scenario_reason"
   echo "BLOCKER: runtime workflow scenario failed: voice_review - $scenario_reason" >&2
+  return 1
+}
+
+run_voice_task_continuity() {
+  local scenario_output
+  local scenario_status="failed"
+  local scenario_reason="voice_task_continuity scenario did not finish"
+
+  if scenario_output="$(./script/check_runtime_voice_task_continuity_smoke.sh 2>&1)"; then
+    printf '%s\n' "$scenario_output"
+    scenario_status="passed"
+    scenario_reason="Voice Task list, ordinal clarification, Queue execution, Receipt link, and restart resume passed"
+    write_scenario_artifact "voice_task_continuity" "$scenario_status" "$scenario_reason"
+    return 0
+  fi
+
+  printf '%s\n' "$scenario_output" >&2
+  scenario_reason="voice_task_continuity command failed"
+  write_scenario_artifact "voice_task_continuity" "$scenario_status" "$scenario_reason"
+  echo "BLOCKER: runtime workflow scenario failed: voice_task_continuity - $scenario_reason" >&2
   return 1
 }
 

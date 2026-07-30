@@ -79,10 +79,18 @@ func activateTarget() -> Bool {
 }
 
 func press(_ element: AXUIElement, windows: [AXUIElement]) -> Bool {
-    guard actionNames(for: element).contains(kAXPressAction as String),
-          activateTarget() else {
+    guard actionNames(for: element).contains(kAXPressAction as String) else {
         return false
     }
+    // AXPress is PID-scoped and does not require the application to be
+    // frontmost. Trying it first avoids treating a denied foreground
+    // activation as if the product control were missing.
+    let performPressWithoutActivation =
+        AXUIElementPerformAction(element, kAXPressAction as CFString) == .success
+    if performPressWithoutActivation {
+        return true
+    }
+    guard activateTarget() else { return false }
     for window in windows {
         _ = AXUIElementPerformAction(window, kAXRaiseAction as CFString)
     }
@@ -96,10 +104,22 @@ func select(_ element: AXUIElement, windows: [AXUIElement]) -> Bool {
         kAXSelectedAttribute as CFString,
         &isSettable
     ) == .success,
-    isSettable.boolValue,
-    activateTarget() else {
+    isSettable.boolValue else {
         return false
     }
+    // Selection is also bound to this exact AX element. Keep foreground
+    // activation as a retry for OS variants that require it, not a prerequisite
+    // that can mask a valid selectable SwiftUI row.
+    let selectWithoutActivation =
+        AXUIElementSetAttributeValue(
+            element,
+            kAXSelectedAttribute as CFString,
+            kCFBooleanTrue
+        ) == .success
+    if selectWithoutActivation {
+        return true
+    }
+    guard activateTarget() else { return false }
     for window in windows {
         _ = AXUIElementPerformAction(window, kAXRaiseAction as CFString)
     }

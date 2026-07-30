@@ -65,6 +65,12 @@ public struct AssistantQueueItem: Identifiable, Codable, Equatable, Sendable {
     public var approval: AssistantQueueApprovalRecord?
     public var blockingReason: String?
     public var costPreview: AssistantQueueCostPreview?
+    /// Durable origin evidence for queue rows created from a Conversation Turn.
+    ///
+    /// Execution must never treat these rows as ordinary queue work when their
+    /// ActionLink is unavailable: deleting conversation evidence intentionally
+    /// makes the reviewed operation non-executable.
+    public private(set) var requiresConversationActionLink: Bool
 
     public init(
         id: String,
@@ -92,6 +98,86 @@ public struct AssistantQueueItem: Identifiable, Codable, Equatable, Sendable {
         self.approval = approval
         self.blockingReason = blockingReason
         self.costPreview = costPreview
+        self.requiresConversationActionLink = false
+    }
+
+    /// Removes unapproved speech text from durable Queue and Receipt surfaces.
+    ///
+    /// The linked Conversation Turn remains the single retention-controlled
+    /// source of the transcript. Semantic action arguments, the reviewed
+    /// summary, and its digest remain available for review and drift detection.
+    public func minimizingUnapprovedConversationTranscript() -> AssistantQueueItem {
+        var minimized = self
+        minimized.requiresConversationActionLink = true
+        minimized.sourceTranscript = nil
+        if case .actionPlan(var actionPlan) = minimized.payload {
+            actionPlan.userInput =
+                "Conversation transcript retained only in the linked Conversation Turn."
+            minimized.payload = .actionPlan(actionPlan)
+        }
+        // Minimization changes the reviewed surface. A caller that accidentally
+        // applies it after approval must return through explicit review.
+        if minimized.approval != nil {
+            minimized.approval = nil
+            minimized.state = .waitingReview
+        }
+        return minimized
+    }
+
+    func settingConversationActionLinkRequirement(
+        required: Bool
+    ) -> AssistantQueueItem {
+        var updated = self
+        updated.requiresConversationActionLink = required
+        return updated
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case state
+        case payload
+        case riskLevel
+        case sourceTranscript
+        case interpretationSummary
+        case reviewReason
+        case redactedSummary
+        case requiredCapabilities
+        case approval
+        case blockingReason
+        case costPreview
+        case requiresConversationActionLink
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        state = try values.decode(AssistantQueueState.self, forKey: .state)
+        payload = try values.decode(AssistantQueuePayload.self, forKey: .payload)
+        riskLevel = try values.decode(RiskLevel.self, forKey: .riskLevel)
+        sourceTranscript = try values.decodeIfPresent(String.self, forKey: .sourceTranscript)
+        interpretationSummary = try values.decodeIfPresent(
+            String.self,
+            forKey: .interpretationSummary
+        )
+        reviewReason = try values.decode(String.self, forKey: .reviewReason)
+        redactedSummary = try values.decode(String.self, forKey: .redactedSummary)
+        requiredCapabilities = try values.decode(
+            [AssistantQueueRequiredCapability].self,
+            forKey: .requiredCapabilities
+        )
+        approval = try values.decodeIfPresent(
+            AssistantQueueApprovalRecord.self,
+            forKey: .approval
+        )
+        blockingReason = try values.decodeIfPresent(String.self, forKey: .blockingReason)
+        costPreview = try values.decodeIfPresent(
+            AssistantQueueCostPreview.self,
+            forKey: .costPreview
+        )
+        requiresConversationActionLink = try values.decodeIfPresent(
+            Bool.self,
+            forKey: .requiresConversationActionLink
+        ) ?? false
     }
 }
 
@@ -540,7 +626,8 @@ extension AssistantQueueItem {
             redactedSummary,
             payloadJSON,
             capabilitiesJSON,
-            costPreviewJSON
+            costPreviewJSON,
+            requiresConversationActionLink ? "1" : "0"
         ])
     }
 }
@@ -582,7 +669,8 @@ enum AssistantQueueMutationRevision {
             requiredCapabilitiesJSON: capabilitiesJSON,
             approvalJSON: approvalJSON,
             blockingReason: item.blockingReason,
-            costPreviewJSON: costPreviewJSON
+            costPreviewJSON: costPreviewJSON,
+            requiresConversationActionLink: item.requiresConversationActionLink
         )
     }
 
@@ -605,7 +693,8 @@ enum AssistantQueueMutationRevision {
         requiredCapabilitiesJSON: String,
         approvalJSON: String?,
         blockingReason: String?,
-        costPreviewJSON: String?
+        costPreviewJSON: String?,
+        requiresConversationActionLink: Bool
     ) -> String {
         canonicalDigest([
             id,
@@ -620,7 +709,8 @@ enum AssistantQueueMutationRevision {
             requiredCapabilitiesJSON,
             approvalJSON,
             blockingReason,
-            costPreviewJSON
+            costPreviewJSON,
+            requiresConversationActionLink ? "1" : "0"
         ])
     }
 

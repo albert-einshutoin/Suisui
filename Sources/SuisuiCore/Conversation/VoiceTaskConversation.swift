@@ -728,6 +728,57 @@ public enum ConversationActionLinkOperation: String, Codable, Equatable, Sendabl
     case taskDeleted = "task_deleted"
 }
 
+public enum ConversationActionExecutionStatus:
+    String,
+    Codable,
+    Equatable,
+    Sendable
+{
+    case pending
+    case succeeded
+    case failed
+    case skipped
+    case canceled
+
+    init(_ receiptStatus: ExecutionReceiptStatus) {
+        switch receiptStatus {
+        case .succeeded:
+            self = .succeeded
+        case .failed:
+            self = .failed
+        case .skipped:
+            self = .skipped
+        case .canceled:
+            self = .canceled
+        case .notStarted, .running:
+            self = .pending
+        }
+    }
+}
+
+public struct ConversationActionStatus: Codable, Equatable, Sendable {
+    public let actionID: String
+    public let status: ConversationActionExecutionStatus
+
+    public init(
+        actionID: String,
+        status: ConversationActionExecutionStatus
+    ) {
+        self.actionID = actionID
+        self.status = status
+    }
+}
+
+public struct ConversationTaskSnapshot: Codable, Equatable, Sendable {
+    public let taskID: Int64
+    public let fingerprint: String
+
+    public init(taskID: Int64, fingerprint: String) {
+        self.taskID = taskID
+        self.fingerprint = fingerprint
+    }
+}
+
 public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
     public let sessionID: UUID
@@ -738,7 +789,16 @@ public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable
     public let executionReceiptID: String?
     public let operation: ConversationActionLinkOperation
     public let reviewedFingerprint: String
+    public let taskSnapshotFingerprint: String?
+    public let taskSnapshots: [ConversationTaskSnapshot]
+    public let actionStatuses: [ConversationActionStatus]
+    public let retryOfActionLinkID: UUID?
     public let createdAt: Date
+
+    public var isCompleteSuccess: Bool {
+        !actionStatuses.isEmpty
+            && actionStatuses.allSatisfy { $0.status == .succeeded }
+    }
 
     public init(
         id: UUID = UUID(),
@@ -750,6 +810,10 @@ public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable
         executionReceiptID: String? = nil,
         operation: ConversationActionLinkOperation = .unspecified,
         reviewedFingerprint: String,
+        taskSnapshotFingerprint: String?,
+        taskSnapshots: [ConversationTaskSnapshot] = [],
+        actionStatuses: [ConversationActionStatus] = [],
+        retryOfActionLinkID: UUID? = nil,
         createdAt: Date = Date()
     ) throws {
         guard actionPlanID != nil
@@ -771,17 +835,105 @@ public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable
         guard taskID.map({ $0 > 0 }) ?? true else {
             throw VoiceTaskConversationDomainError.blankActionIdentifier
         }
+        guard taskSnapshotFingerprint.map({
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) ?? true else {
+            throw VoiceTaskConversationDomainError.blankFingerprint
+        }
+        let normalizedTaskSnapshots: [ConversationTaskSnapshot]
+        if taskSnapshots.isEmpty,
+           let taskID,
+           let taskSnapshotFingerprint {
+            normalizedTaskSnapshots = [
+                ConversationTaskSnapshot(
+                    taskID: taskID,
+                    fingerprint: taskSnapshotFingerprint
+                ),
+            ]
+        } else {
+            normalizedTaskSnapshots = taskSnapshots.sorted {
+                $0.taskID < $1.taskID
+            }
+        }
+        guard Set(normalizedTaskSnapshots.map(\.taskID)).count
+                == normalizedTaskSnapshots.count,
+              normalizedTaskSnapshots.allSatisfy({
+                  $0.taskID > 0
+                      && !$0.fingerprint.trimmingCharacters(
+                          in: .whitespacesAndNewlines
+                      ).isEmpty
+              })
+        else {
+            throw VoiceTaskConversationDomainError.blankFingerprint
+        }
+        if normalizedTaskSnapshots.count == 1,
+           let snapshot = normalizedTaskSnapshots.first {
+            guard taskID == nil || taskID == snapshot.taskID,
+                  taskSnapshotFingerprint == nil
+                    || taskSnapshotFingerprint == snapshot.fingerprint
+            else {
+                throw VoiceTaskConversationDomainError.blankFingerprint
+            }
+        }
+        guard Set(actionStatuses.map(\.actionID)).count
+            == actionStatuses.count,
+            actionStatuses.allSatisfy({
+                !$0.actionID.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                ).isEmpty
+            }),
+            retryOfActionLinkID != id
+        else {
+            throw VoiceTaskConversationDomainError.blankActionIdentifier
+        }
 
         self.id = id
         self.sessionID = sessionID
         self.sourceTurnID = sourceTurnID
         self.actionPlanID = actionPlanID
         self.assistantQueueItemID = assistantQueueItemID
-        self.taskID = taskID
+        self.taskID = normalizedTaskSnapshots.count == 1
+            ? normalizedTaskSnapshots[0].taskID
+            : taskID
         self.executionReceiptID = executionReceiptID
         self.operation = operation
         self.reviewedFingerprint = reviewedFingerprint
+        self.taskSnapshotFingerprint = normalizedTaskSnapshots.count == 1
+            ? normalizedTaskSnapshots[0].fingerprint
+            : taskSnapshotFingerprint
+        self.taskSnapshots = normalizedTaskSnapshots
+        self.actionStatuses = actionStatuses
+        self.retryOfActionLinkID = retryOfActionLinkID
         self.createdAt = createdAt
+    }
+
+    public init(
+        id: UUID = UUID(),
+        sessionID: UUID,
+        sourceTurnID: UUID,
+        actionPlanID: String? = nil,
+        assistantQueueItemID: String? = nil,
+        taskID: Int64? = nil,
+        executionReceiptID: String? = nil,
+        operation: ConversationActionLinkOperation = .unspecified,
+        reviewedFingerprint: String,
+        createdAt: Date = Date()
+    ) throws {
+        try self.init(
+            id: id,
+            sessionID: sessionID,
+            sourceTurnID: sourceTurnID,
+            actionPlanID: actionPlanID,
+            assistantQueueItemID: assistantQueueItemID,
+            taskID: taskID,
+            executionReceiptID: executionReceiptID,
+            operation: operation,
+            reviewedFingerprint: reviewedFingerprint,
+            taskSnapshotFingerprint: nil,
+            actionStatuses: [],
+            retryOfActionLinkID: nil,
+            createdAt: createdAt
+        )
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -794,6 +946,10 @@ public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable
         case executionReceiptID
         case operation
         case reviewedFingerprint
+        case taskSnapshotFingerprint
+        case taskSnapshots
+        case actionStatuses
+        case retryOfActionLinkID
         case createdAt
     }
 
@@ -812,6 +968,22 @@ public struct ConversationActionLink: Identifiable, Codable, Equatable, Sendable
                 forKey: .operation
             ) ?? .unspecified,
             reviewedFingerprint: values.decode(String.self, forKey: .reviewedFingerprint),
+            taskSnapshotFingerprint: values.decodeIfPresent(
+                String.self,
+                forKey: .taskSnapshotFingerprint
+            ),
+            taskSnapshots: try values.decodeIfPresent(
+                [ConversationTaskSnapshot].self,
+                forKey: .taskSnapshots
+            ) ?? [],
+            actionStatuses: try values.decodeIfPresent(
+                [ConversationActionStatus].self,
+                forKey: .actionStatuses
+            ) ?? [],
+            retryOfActionLinkID: values.decodeIfPresent(
+                UUID.self,
+                forKey: .retryOfActionLinkID
+            ),
             createdAt: values.decode(Date.self, forKey: .createdAt)
         )
     }

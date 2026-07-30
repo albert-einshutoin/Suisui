@@ -559,7 +559,10 @@ final class SparkleUpdateFoundationTests: XCTestCase {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["bash", packageRoot().appendingPathComponent(relativePath).path] + arguments
         process.currentDirectoryURL = packageRoot()
-        process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+        var isolatedEnvironment = ["SUISUI_LOAD_LOCAL_RELEASE_CONFIG": "0"]
+        isolatedEnvironment.merge(environment) { _, new in new }
+        // A developer's ignored production feed must not overwrite fixture values.
+        process.environment = ProcessInfo.processInfo.environment.merging(isolatedEnvironment) { _, new in new }
 
         let output = Pipe()
         process.standardOutput = output

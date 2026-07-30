@@ -3,6 +3,370 @@ import XCTest
 @testable import SuisuiCore
 
 final class DatabaseMigrationTests: XCTestCase {
+    func testConversationQueueOriginMigrationBackfillsLinkedRowsOnly()
+        throws
+    {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeOriginMarker = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0034_mark_conversation_origin_queue_items"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeOriginMarker
+        )
+        try connection.execute(
+            """
+            INSERT INTO assistant_queue_items (
+                id,
+                payload_kind,
+                payload_json,
+                state,
+                risk_level,
+                review_reason,
+                redacted_summary,
+                required_capabilities_json
+            )
+            VALUES
+                (
+                    'legacy-unlinked-queue',
+                    'action_plan',
+                    '{}',
+                    'waitingReview',
+                    'write',
+                    'Legacy review',
+                    'Legacy unlinked item',
+                    '[]'
+                ),
+                (
+                    'legacy-linked-queue',
+                    'action_plan',
+                    '{}',
+                    'waitingReview',
+                    'write',
+                    'Legacy review',
+                    'Legacy linked item',
+                    '[]'
+                );
+
+            INSERT INTO voice_task_conversation_sessions (
+                id, state, title, entry_point, created_at, updated_at
+            )
+            VALUES (
+                'legacy-origin-session',
+                'active',
+                'Legacy origin',
+                'voice_command',
+                1,
+                1
+            );
+
+            INSERT INTO voice_task_conversation_turns (
+                id, session_id, author, raw_transcript, created_at
+            )
+            VALUES (
+                'legacy-origin-turn',
+                'legacy-origin-session',
+                'user',
+                'Create Launch task',
+                1
+            );
+
+            INSERT INTO conversation_action_links (
+                id,
+                session_id,
+                source_turn_id,
+                action_plan_id,
+                assistant_queue_item_id,
+                reviewed_fingerprint,
+                created_at
+            )
+            VALUES (
+                'legacy-origin-link',
+                'legacy-origin-session',
+                'legacy-origin-turn',
+                'legacy-origin-plan',
+                'legacy-linked-queue',
+                'legacy-reviewed-fingerprint',
+                1
+            );
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT requires_conversation_action_link
+                FROM assistant_queue_items
+                WHERE id = 'legacy-linked-queue';
+                """
+            ),
+            ["1"]
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT requires_conversation_action_link
+                FROM assistant_queue_items
+                WHERE id = 'legacy-unlinked-queue';
+                """
+            ),
+            ["0"]
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT id FROM schema_migrations
+                WHERE id = '0034_mark_conversation_origin_queue_items';
+                """
+            ),
+            ["0034_mark_conversation_origin_queue_items"]
+        )
+    }
+
+    func testOrchestrationStateMigrationCreatesDurableCheckpointTable() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeOrchestration = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0030_create_voice_conversation_orchestration_state"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeOrchestration
+        )
+        XCTAssertFalse(
+            try connection.tableExists(
+                "voice_task_conversation_orchestration_states"
+            )
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+
+        XCTAssertTrue(
+            try connection.tableExists(
+                "voice_task_conversation_orchestration_states"
+            )
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT id FROM schema_migrations
+                WHERE id = '0030_create_voice_conversation_orchestration_state';
+                """
+            ),
+            ["0030_create_voice_conversation_orchestration_state"]
+        )
+    }
+
+    func testOrchestrationStateRetentionMigrationPreservesValidRowsDropsOrphansAndAddsCascade()
+        throws
+    {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeRetention = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0032_cascade_orchestration_state_retention"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeRetention
+        )
+        try connection.execute(
+            """
+            INSERT INTO voice_task_conversation_sessions (
+                id, state, title, entry_point, created_at, updated_at
+            )
+            VALUES (
+                'valid-session', 'active', 'Session', 'voice_command', 1, 1
+            );
+            INSERT INTO voice_task_conversation_orchestration_states (
+                session_id, payload, updated_at
+            )
+            VALUES
+                ('valid-session', X'01', 1),
+                ('orphan-session', X'02', 2);
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT session_id
+                FROM voice_task_conversation_orchestration_states
+                ORDER BY session_id;
+                """
+            ),
+            ["valid-session"]
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT "table" || ':' || "from" || ':' || "to" || ':' || on_delete
+                FROM pragma_foreign_key_list(
+                    'voice_task_conversation_orchestration_states'
+                );
+                """
+            ),
+            [
+                "voice_task_conversation_sessions:session_id:id:CASCADE"
+            ]
+        )
+    }
+
+    func testActionLinkExpansionMigrationPreservesLegacyRows() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeExpansion = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0031_expand_conversation_action_links"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeExpansion
+        )
+        try connection.execute(
+            """
+            INSERT INTO voice_task_conversation_sessions (
+                id, state, title, entry_point, created_at, updated_at
+            )
+            VALUES ('session-1', 'active', 'Session', 'voice_command', 1, 1);
+            INSERT INTO voice_task_conversation_turns (
+                id, session_id, author, confirmed_text, created_at
+            )
+            VALUES ('turn-1', 'session-1', 'user', 'Create task', 1);
+            INSERT INTO conversation_action_links (
+                id, session_id, source_turn_id, action_plan_id,
+                reviewed_fingerprint, created_at
+            )
+            VALUES (
+                'link-1', 'session-1', 'turn-1', 'plan-1',
+                'reviewed', 1
+            );
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+
+        let row = try XCTUnwrap(
+            connection.queryRows(
+                """
+                SELECT
+                    action_statuses_json,
+                    task_snapshot_fingerprint,
+                    retry_of_action_link_id
+                FROM conversation_action_links
+                WHERE id = 'link-1';
+                """
+            ).first
+        )
+        XCTAssertEqual(try row.string("action_statuses_json"), "[]")
+        XCTAssertNil(try row.optionalString("task_snapshot_fingerprint"))
+        XCTAssertNil(try row.optionalString("retry_of_action_link_id"))
+    }
+
+    func testReviewedTaskSnapshotBindingMigrationPreservesLegacyRows()
+        throws
+    {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeSnapshotBinding = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0033_bind_all_reviewed_task_snapshots"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: migrationsBeforeSnapshotBinding
+        )
+        try connection.execute(
+            """
+            INSERT INTO tasks (id, title, status)
+            VALUES (41, 'Legacy task', 'planned');
+            INSERT INTO voice_task_conversation_sessions (
+                id, state, title, entry_point, created_at, updated_at
+            )
+            VALUES ('session-1', 'active', 'Session', 'voice_command', 1, 1);
+            INSERT INTO voice_task_conversation_turns (
+                id, session_id, author, confirmed_text, created_at
+            )
+            VALUES ('turn-1', 'session-1', 'user', 'Update task', 1);
+            INSERT INTO conversation_action_links (
+                id, session_id, source_turn_id, action_plan_id,
+                task_id, reviewed_fingerprint,
+                task_snapshot_fingerprint, created_at
+            )
+            VALUES (
+                'link-1', 'session-1', 'turn-1', 'plan-1',
+                41, 'reviewed', 'legacy-task-fingerprint', 1
+            );
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current
+        )
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT mutation_revision FROM tasks WHERE id = 41;"
+            ),
+            ["0"]
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT task_snapshots_json
+                FROM conversation_action_links
+                WHERE id = 'link-1';
+                """
+            ),
+            ["[]"]
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT id FROM schema_migrations
+                WHERE id = '0033_bind_all_reviewed_task_snapshots';
+                """
+            ),
+            ["0033_bind_all_reviewed_task_snapshots"]
+        )
+    }
+
     func testConversationMigrationUpgradesDatabaseAt0024AndPreservesExistingTasks() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         let migrationsBeforeConversation = Array(

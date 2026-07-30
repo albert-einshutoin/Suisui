@@ -2,6 +2,21 @@ import Foundation
 import XCTest
 
 final class MCPInspectorEvidenceTests: XCTestCase {
+    func testCodexLocalEnterpriseKnownClientBoundaryIsDocumentedAndTracked() throws {
+        let complianceReview = try readPackageFile("docs/mcp-compliance.md")
+        let phaseChecklist = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+
+        XCTAssertTrue(complianceReview.contains("`clientInfo.name = \"suisui\"` is not registered as an OpenAI known client"))
+        XCTAssertTrue(complianceReview.contains("Suisui-specific identification in Compliance Logs is not supported"))
+        XCTAssertTrue(complianceReview.contains("Personal Preview only"))
+        XCTAssertTrue(complianceReview.contains("Enterprise support remains a separate release gate"))
+        XCTAssertTrue(
+            phaseChecklist.contains(
+                "- [x] Enterprise対応を表明する前に`clientInfo.name = \"suisui\"`のknown-client登録"
+            )
+        )
+    }
+
     func testInspectorVerificationScriptUsesOfficialCLIAndFixturePaths() throws {
         let script = try readPackageFile("script/verify_mcp_compliance.sh")
         let provenance = try readPackageFile("script/mcp_source_provenance.sh")

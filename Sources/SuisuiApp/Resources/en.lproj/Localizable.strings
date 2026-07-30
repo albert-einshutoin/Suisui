@@ -621,6 +621,7 @@
 "Sync paid value and safety boundary" = "Sync paid value and safety boundary";
 "Syncing" = "Syncing";
 "Task" = "Task";
+"Task list" = "Task list";
 "Task metadata" = "Task metadata";
 "Task summary" = "Task summary";
 "Task title" = "Task title";
@@ -2003,3 +2004,39 @@
 "Choose Project destination." = "Choose Project destination.";
 "This item can no longer be edited. Cancel to keep the latest queue state." = "This item can no longer be edited. Cancel to keep the latest queue state.";
 "This reviewed automation is already in Assistant Queue. Review the existing item before running it." = "This reviewed automation is already in Assistant Queue. Review the existing item before running it.";
+
+/* Voice task conversation workspace. */
+"Archive session" = "Archive session";
+"Cancel clarification" = "Cancel clarification";
+"Cancels this question without changing Tasks or Projects." = "Cancels this question without changing Tasks or Projects.";
+"Conversation" = "Conversation";
+"Creates an approval-gated proposal. It does not run changes." = "Creates an approval-gated proposal. It does not run changes.";
+"Fact candidate" = "Fact candidate";
+"Fact candidates" = "Fact candidates";
+"Load earlier turns" = "Load earlier turns";
+"Loads older confirmed conversation turns." = "Loads older confirmed conversation turns.";
+"One clarification needed" = "One clarification needed";
+"Opens the focused item for the existing approval flow. It does not execute this work." = "Opens the focused item for the existing approval flow. It does not execute this work.";
+"Pause session" = "Pause session";
+"Record or type a request. Your confirmed text appears here." = "Record or type a request. Your confirmed text appears here.";
+"Resolved target" = "Resolved target";
+"Resume session" = "Resume session";
+"Send for review" = "Send for review";
+"Session actions" = "Session actions";
+"Session state" = "Session state";
+"Understanding" = "Understanding";
+"Voice conversation session" = "Voice conversation session";
+"Voice task request" = "Voice task request";
+"Quick Command" = "Quick Command";
+"Preparing structured proposal" = "Preparing structured proposal";
+"Structured response recorded." = "Structured response recorded.";
+"Conversation state updated." = "Conversation state updated.";
+"Preparing review" = "Preparing review";
+"Waiting for approval" = "Waiting for approval";
+"Paused" = "Paused";
+"Voice conversation" = "Voice conversation";
+"You" = "You";
+"Proposed change %lld" = "Proposed change %lld";
+"Waiting for review" = "Waiting for review";
+"Changed" = "Changed";
+"Unresolved" = "Unresolved";

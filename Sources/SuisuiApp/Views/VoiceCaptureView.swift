@@ -2,6 +2,35 @@ import Foundation
 import SuisuiCore
 import SwiftUI
 
+struct SuisuiVoiceConversationScopeRequest: Equatable, Sendable {
+    let projectID: Int64?
+    let projectName: String?
+    let taskID: Int64?
+    let taskName: String?
+
+    var presentationScope: VoiceTaskConversationWorkspacePresentation.Scope {
+        .init(
+            projectName: projectName,
+            taskName: taskName,
+            sessionTitle: taskName ?? projectName ?? "Voice conversation"
+        )
+    }
+}
+
+@MainActor
+enum SuisuiVoiceConversationScopeBridge {
+    private static var pendingRequest: SuisuiVoiceConversationScopeRequest?
+
+    static func store(_ request: SuisuiVoiceConversationScopeRequest) {
+        pendingRequest = request
+    }
+
+    static func consume() -> SuisuiVoiceConversationScopeRequest? {
+        defer { pendingRequest = nil }
+        return pendingRequest
+    }
+}
+
 struct VoiceCaptureView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -45,7 +74,7 @@ struct VoiceCaptureView: View {
     /// streaming plan text, an open clarification question, a routed intent,
     /// or an in-flight/finished workspace answer.
     private var hasWorkingContent: Bool {
-        (viewModel.phase == .generatingPlan && !viewModel.planGenerationLiveText.isEmpty)
+        viewModel.phase == .generatingPlan
             || viewModel.clarificationQuestion != nil
             || viewModel.routingResult != nil
             || viewModel.workspaceAnswer != .idle
@@ -66,6 +95,58 @@ struct VoiceCaptureView: View {
     }
 
     var body: some View {
+        TabView {
+            VoiceTaskConversationWorkspaceView(
+                viewModel: viewModel,
+                onOpenAssistantQueue: {
+                    postAssistantQueueOpenRequest(
+                        itemID: viewModel.assistantQueueItem?.id
+                    )
+                },
+                onPauseSession: viewModel.pauseConversationWorkspace,
+                onResumeSession: viewModel.resumeConversationWorkspace,
+                onArchiveSession: viewModel.archiveConversationWorkspace
+            )
+            .tabItem {
+                Label("Conversation", systemImage: "text.bubble")
+            }
+
+            quickCommandWorkspace
+                .tabItem {
+                    Label("Quick Command", systemImage: "waveform")
+                        .accessibilityIdentifier("voice-command-quick-command-tab")
+                }
+        }
+        .task {
+            await viewModel.restoreConversationIfNeeded()
+        }
+        .onDisappear {
+            viewModel.releaseTemporaryRecordingResources()
+        }
+        .onChange(of: viewModel.dailyPlanningReviewRequest) { _, request in
+            guard let request else { return }
+            postDailyPlanningReviewRequest(request)
+        }
+        .onChange(of: viewModel.inboxTriageRequest) { _, request in
+            guard let request else { return }
+            postInboxTriageRequest(request)
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: .suisuiVoiceConversationScopeRequested
+            )
+        ) { _ in
+            guard let request = SuisuiVoiceConversationScopeBridge.consume()
+            else { return }
+            viewModel.updateConversationWorkspaceScope(
+                request.presentationScope,
+                activeProjectID: request.projectID,
+                activeTaskID: request.taskID
+            )
+        }
+    }
+
+    private var quickCommandWorkspace: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
             HStack {
                 // Structural identifiers stay on leaf headings. SwiftUI
@@ -118,18 +199,6 @@ struct VoiceCaptureView: View {
         }
         .padding(SuisuiSpacing.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onChange(of: viewModel.dailyPlanningReviewRequest) { _, request in
-            guard let request else {
-                return
-            }
-            postDailyPlanningReviewRequest(request)
-        }
-        .onChange(of: viewModel.inboxTriageRequest) { _, request in
-            guard let request else {
-                return
-            }
-            postInboxTriageRequest(request)
-        }
     }
 
     /// Whether the tappable example commands render: only while the command
@@ -342,8 +411,8 @@ struct VoiceCaptureView: View {
     @ViewBuilder
     private var workingZone: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
-            if viewModel.phase == .generatingPlan && !viewModel.planGenerationLiveText.isEmpty {
-                PlanGenerationLivePreview(text: viewModel.planGenerationLiveText)
+            if viewModel.phase == .generatingPlan {
+                PlanGenerationLivePreview()
             }
 
             if let routingResult = viewModel.routingResult {
@@ -533,8 +602,11 @@ struct VoiceCaptureView: View {
         )
     }
 
-    private func postAssistantQueueOpenRequest() {
-        guard let bridgeRequest = SuisuiAssistantQueueBridge.storePendingOpen(itemID: viewModel.assistantQueueExecutionHandoffItemID) else {
+    private func postAssistantQueueOpenRequest(itemID: String? = nil) {
+        guard let bridgeRequest = SuisuiAssistantQueueBridge.storePendingOpen(
+            itemID: itemID
+                ?? viewModel.assistantQueueExecutionHandoffItemID
+        ) else {
             return
         }
         guard ProjectBoardSceneCoordinator.shared.requestOpen(
@@ -553,27 +625,21 @@ struct VoiceCaptureView: View {
     }
 }
 
-/// Tail of the provider's raw streamed output while a plan is generating,
-/// so the wait feels alive and obviously in progress. The full response is
-/// replaced by the structured plan preview once parsing completes.
+extension Notification.Name {
+    static let suisuiVoiceConversationScopeRequested =
+        Notification.Name("dev.suisui.voiceConversationScopeRequested")
+}
+
+/// Typed progress only. Raw provider deltas can contain secrets or malformed
+/// tool payloads, so they never cross the presentation boundary.
 private struct PlanGenerationLivePreview: View {
-    let text: String
-
-    private var tailText: String {
-        String(text.suffix(600))
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
-            Label("Drafting plan", systemImage: "sparkles")
+            Label("Preparing structured proposal", systemImage: "sparkles")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            Text(verbatim: tailText)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(6)
-                .truncationMode(.head)
+            ProgressView()
+                .controlSize(.small)
         }
         .soloCard()
         .accessibilityElement(children: .combine)

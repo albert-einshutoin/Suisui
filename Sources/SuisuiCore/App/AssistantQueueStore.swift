@@ -895,7 +895,8 @@ public final class SQLiteAssistantQueueStore: AtomicAssistantQueueStore, @unchec
                 required_capabilities_json,
                 approval_json,
                 blocking_reason,
-                cost_preview_json
+                cost_preview_json,
+                requires_conversation_action_link
             FROM assistant_queue_items
             \(whereClause)
             ORDER BY updated_at DESC, id ASC
@@ -935,6 +936,8 @@ public final class SQLiteAssistantQueueStore: AtomicAssistantQueueStore, @unchec
         let requiredCapabilitiesJSON = try row.string("required_capabilities_json")
         let approvalJSON = try row.optionalString("approval_json")
         let blockingReason = try row.optionalString("blocking_reason")
+        let requiresConversationActionLink =
+            try row.int64("requires_conversation_action_link") == 1
         let costPreview = try decodeOptional(
             AssistantQueueCostPreview.self,
             from: costPreviewJSON,
@@ -1001,7 +1004,9 @@ public final class SQLiteAssistantQueueStore: AtomicAssistantQueueStore, @unchec
                     requiredCapabilitiesJSON: requiredCapabilitiesJSON,
                     approvalJSON: approvalJSON,
                     blockingReason: blockingReason,
-                    costPreviewJSON: costPreviewJSON
+                    costPreviewJSON: costPreviewJSON,
+                    requiresConversationActionLink:
+                        requiresConversationActionLink
                 )
             }
         )
@@ -1225,6 +1230,7 @@ public final class SQLiteAssistantQueueStore: AtomicAssistantQueueStore, @unchec
                     approval_json = ?,
                     blocking_reason = ?,
                     cost_preview_json = ?,
+                    requires_conversation_action_link = ?,
                     updated_at = ?
                 WHERE id = ?;
                 """,
@@ -1241,6 +1247,7 @@ public final class SQLiteAssistantQueueStore: AtomicAssistantQueueStore, @unchec
                     SQLiteValue(approvalJSON),
                     SQLiteValue(item.blockingReason),
                     SQLiteValue(costPreviewJSON),
+                    .integer(item.requiresConversationActionLink ? 1 : 0),
                     .text(now),
                     .text(item.id)
                 ]
@@ -1279,12 +1286,14 @@ public final class SQLiteAssistantQueueStore: AtomicAssistantQueueStore, @unchec
                 approval_json,
                 blocking_reason,
                 cost_preview_json,
+                requires_conversation_action_link,
                 created_at,
                 updated_at
             )
             VALUES (
                 ?,
                 1,
+                ?,
                 ?,
                 ?,
                 ?,
@@ -1315,6 +1324,7 @@ public final class SQLiteAssistantQueueStore: AtomicAssistantQueueStore, @unchec
                 SQLiteValue(approvalJSON),
                 SQLiteValue(item.blockingReason),
                 SQLiteValue(costPreviewJSON),
+                .integer(item.requiresConversationActionLink ? 1 : 0),
                 .text(now),
                 .text(now)
             ]
@@ -1363,6 +1373,18 @@ public final class SQLiteAssistantQueueStore: AtomicAssistantQueueStore, @unchec
             from: row["cost_preview_json"],
             column: "assistant_queue_items.cost_preview_json"
         )
+        let actionLinkRequirement = try requiredString(
+            row["requires_conversation_action_link"],
+            column:
+                "assistant_queue_items.requires_conversation_action_link"
+        )
+        guard actionLinkRequirement == "0" || actionLinkRequirement == "1" else {
+            throw AssistantQueueStoreError.invalidStoredValue(
+                column:
+                    "assistant_queue_items.requires_conversation_action_link",
+                value: actionLinkRequirement
+            )
+        }
 
         return AssistantQueueItem(
             id: try requiredString(row["id"], column: "assistant_queue_items.id"),
@@ -1377,6 +1399,8 @@ public final class SQLiteAssistantQueueStore: AtomicAssistantQueueStore, @unchec
             approval: approval,
             blockingReason: nilIfEmpty(row["blocking_reason"]),
             costPreview: costPreview
+        ).settingConversationActionLinkRequirement(
+            required: actionLinkRequirement == "1"
         )
     }
 
