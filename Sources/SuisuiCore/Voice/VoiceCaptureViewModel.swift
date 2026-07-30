@@ -171,6 +171,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private var microphoneSilenceDetector: MicrophoneSilenceDetector
     private var inputLevelMonitorTask: Task<Void, Never>?
     private var activeConversationSourceTurnID: UUID?
+    private var conversationCancellationTask: Task<Void, Never>?
     private var conversationWorkspaceStore: (any VoiceTaskConversationStore)?
     private var conversationWorkspaceTurnCursor:
         VoiceTaskConversationTurnCursor?
@@ -263,6 +264,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.savedInboxAudioURL = nil
         self.lowLatencyStreamID = UUID()
         self.activeConversationSourceTurnID = nil
+        self.conversationCancellationTask = nil
     }
 
     public convenience init(
@@ -697,6 +699,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         else {
             return
         }
+        await waitForPendingConversationCancellation()
         let outcome = await conversationOrchestrator.handle(
             VoiceTaskConversationInput(
                 sessionID: conversationSessionID,
@@ -929,6 +932,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             return
         }
 
+        await waitForPendingConversationCancellation()
         let routedCommand = commandRouter.route(transcript: draft.normalizedText)
         let plannedTranscript = routedCommand.normalizedTranscript
         routingResult = routedCommand
@@ -1414,7 +1418,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
         orchestratedClarificationQuestion = nil
         let sessionID = conversationSessionID
-        Task {
+        let precedingCancellation = conversationCancellationTask
+        conversationCancellationTask = Task {
+            await precedingCancellation?.value
             _ = await conversationOrchestrator.handle(
                 VoiceTaskConversationInput(
                     sessionID: sessionID,
@@ -1423,6 +1429,13 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 )
             )
         }
+    }
+
+    private func waitForPendingConversationCancellation() async {
+        // Editing stays synchronous for responsive typing, while a replacement
+        // command must wait here so an older unstructured cancel cannot erase
+        // the replacement checkpoint after it has been persisted.
+        await conversationCancellationTask?.value
     }
 
     private func handleLowLatencyStreamingEvent(

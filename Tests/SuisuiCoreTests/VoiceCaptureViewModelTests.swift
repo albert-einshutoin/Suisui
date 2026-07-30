@@ -1709,6 +1709,57 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         ])
     }
 
+    func testEditingClarificationWaitsForOldCancelBeforeStartingReplacementCommand()
+        async
+    {
+        let orchestrator = SuspendingCancelVoiceConversationOrchestrator()
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(
+                response: PlanningResponse(
+                    providerID: "unused",
+                    rawContent: "{}",
+                    actionPlan: nil,
+                    validationResult: .init(issues: [])
+                )
+            ),
+            conversationOrchestrator: orchestrator,
+            conversationSessionID: UUID()
+        )
+
+        viewModel.updateDraftText("いい感じにして")
+        await viewModel.generatePlan()
+        XCTAssertNotNil(viewModel.clarificationQuestion)
+
+        viewModel.updateDraftText("これもいい感じにして")
+        let replacementGeneration = Task {
+            await viewModel.generatePlan()
+        }
+        await orchestrator.waitUntilCancelStarts()
+        for _ in 0..<20 where await orchestrator.beginCount < 2 {
+            await Task.yield()
+        }
+        let beginCountBeforeCancelFinished = await orchestrator.beginCount
+
+        XCTAssertEqual(
+            beginCountBeforeCancelFinished,
+            1,
+            "A replacement checkpoint must not be created while the old cancellation can still delete it."
+        )
+
+        await orchestrator.resumeCancel()
+        await replacementGeneration.value
+        let activeCheckpointTranscript =
+            await orchestrator.activeCheckpointTranscript
+
+        XCTAssertEqual(
+            activeCheckpointTranscript,
+            "これもいい感じにして"
+        )
+        XCTAssertNotNil(viewModel.clarificationQuestion)
+    }
+
     func testResolvedReferencePresentationUsesOrchestratorTargetNotActiveScope()
         async
     {
@@ -4012,6 +4063,57 @@ private actor RecordingVoiceConversationOrchestrator:
             return .blocked(.missingClarificationState)
         }
         return outcomes.removeFirst()
+    }
+}
+
+private actor SuspendingCancelVoiceConversationOrchestrator:
+    VoiceTaskConversationOrchestrating
+{
+    private(set) var beginCount = 0
+    private(set) var activeCheckpointTranscript: String?
+    private var cancelStarted = false
+    private var cancelStartedWaiters: [CheckedContinuation<Void, Never>] = []
+    private var cancelContinuation: CheckedContinuation<Void, Never>?
+
+    func handle(
+        _ input: VoiceTaskConversationInput
+    ) async -> VoiceTaskConversationOutcome {
+        switch input.event {
+        case .begin(let route, _, _, _, _):
+            beginCount += 1
+            activeCheckpointTranscript = route.normalizedTranscript
+            return .clarification(
+                ClarificationQuestion(
+                    slot: .taskTitle,
+                    prompt: "What should the task be called?"
+                )
+            )
+        case .cancel:
+            cancelStarted = true
+            cancelStartedWaiters.forEach { $0.resume() }
+            cancelStartedWaiters = []
+            await withCheckedContinuation { continuation in
+                cancelContinuation = continuation
+            }
+            activeCheckpointTranscript = nil
+            return .canceled
+        case .restore, .clarificationAnswer:
+            return .blocked(.missingClarificationState)
+        }
+    }
+
+    func waitUntilCancelStarts() async {
+        guard !cancelStarted else {
+            return
+        }
+        await withCheckedContinuation { continuation in
+            cancelStartedWaiters.append(continuation)
+        }
+    }
+
+    func resumeCancel() {
+        cancelContinuation?.resume()
+        cancelContinuation = nil
     }
 }
 
