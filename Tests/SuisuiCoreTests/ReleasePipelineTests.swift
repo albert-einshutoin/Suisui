@@ -586,7 +586,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("release app bundle is missing Sparkle updater app"))
         XCTAssertTrue(script.contains("release app is missing pre-sign preparation marker"))
         XCTAssertTrue(script.contains("release app was not stripped before signing"))
-        XCTAssertTrue(script.contains("Sparkle development assets were not pruned before signing"))
+        XCTAssertTrue(script.contains("Sparkle development assets or unused locales were not pruned before signing"))
         XCTAssertTrue(script.contains("check_release_bundle_inventory.sh"))
     }
 
@@ -15536,7 +15536,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(packageScript.contains("\"stripMode\""))
         XCTAssertTrue(packageScript.contains("check_release_bundle_inventory.sh"))
         XCTAssertTrue(packageScript.contains("release app was not stripped before signing"))
-        XCTAssertTrue(packageScript.contains("Sparkle development assets were not pruned before signing"))
+        XCTAssertTrue(packageScript.contains("Sparkle development assets or unused locales were not pruned before signing"))
         XCTAssertTrue(signingScript.contains("prepare_release_bundle.sh"))
         XCTAssertTrue(packageScript.contains("check_release_artifact_size.sh"))
         XCTAssertLessThan(
