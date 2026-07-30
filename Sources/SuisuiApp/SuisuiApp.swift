@@ -772,25 +772,35 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
         // Otherwise ColorSync bakes the physical monitor profile into pixels,
         // so identical semantic colors differ from hosted virtual displays.
         window.colorSpace = .sRGB
-        window.backgroundColor = NSColor(
+        let neutralBackdropColor = NSColor(
             srgbRed: component,
             green: component,
             blue: component,
             alpha: 1
         )
+        window.backgroundColor = neutralBackdropColor
         window.isOpaque = true
         if let contentView = window.contentView {
-            stabilizeVisualEffectBlending(in: contentView.superview ?? contentView)
+            stabilizeVisualEffectBlending(
+                in: contentView.superview ?? contentView,
+                neutralBackdropColor: neutralBackdropColor
+            )
         }
         DispatchQueue.main.async { [weak window] in
             guard let contentView = window?.contentView else {
                 return
             }
-            self.stabilizeVisualEffectBlending(in: contentView.superview ?? contentView)
+            self.stabilizeVisualEffectBlending(
+                in: contentView.superview ?? contentView,
+                neutralBackdropColor: neutralBackdropColor
+            )
         }
     }
 
-    private func stabilizeVisualEffectBlending(in view: NSView) {
+    private func stabilizeVisualEffectBlending(
+        in view: NSView,
+        neutralBackdropColor: NSColor
+    ) {
         if let effectView = view as? NSVisualEffectView {
             // `behindWindow` samples the desktop by definition. Evidence
             // windows instead blend only with the fixed, opaque in-window
@@ -798,7 +808,19 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
             effectView.blendingMode = .withinWindow
             effectView.state = .active
         }
-        view.subviews.forEach(stabilizeVisualEffectBlending)
+        if #available(macOS 26.0, *),
+           let glassEffectView = view as? NSGlassEffectView {
+            // Liquid Glass has a separate tint path from NSVisualEffectView.
+            // Pin it to the same neutral backdrop so toolbar controls do not
+            // inherit the physical display's desktop tint.
+            glassEffectView.tintColor = neutralBackdropColor
+        }
+        view.subviews.forEach {
+            stabilizeVisualEffectBlending(
+                in: $0,
+                neutralBackdropColor: neutralBackdropColor
+            )
+        }
     }
 
     private func installCommandReadyRuntimeObserver() {

@@ -18,6 +18,7 @@ final class VisualCaptureStabilityTests: XCTestCase {
         XCTAssertTrue(app.contains("stabilizeVisualEffectBlending"))
         XCTAssertTrue(app.contains("contentView.superview ?? contentView"))
         XCTAssertTrue(app.contains("effectView.blendingMode = .withinWindow"))
+        XCTAssertTrue(app.contains("glassEffectView.tintColor = neutralBackdropColor"))
         XCTAssertTrue(app.contains("window.isOpaque = true"))
         XCTAssertTrue(app.contains("NSWindow.didBecomeKeyNotification"))
         XCTAssertFalse(capture.contains("defaults write -g AppleReduceDesktopTinting"))
