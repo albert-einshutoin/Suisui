@@ -10,6 +10,7 @@ final class VisualCaptureStabilityTests: XCTestCase {
         let app = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
 
         XCTAssertTrue(capture.contains("SUISUI_VISUAL_EVIDENCE_STABLE_BACKDROP=1"))
+        XCTAssertTrue(capture.contains("[[ \"$APPEARANCE_OVERRIDE\" != \"light\" ]]"))
         XCTAssertTrue(app.contains("SUISUI_VISUAL_EVIDENCE_STABLE_BACKDROP"))
         XCTAssertTrue(app.contains("configureVisualEvidenceBackdrop"))
         XCTAssertTrue(app.contains("window.isOpaque = true"))
