@@ -779,6 +779,26 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
             alpha: 1
         )
         window.isOpaque = true
+        if let contentView = window.contentView {
+            stabilizeVisualEffectBlending(in: contentView)
+        }
+        DispatchQueue.main.async { [weak window] in
+            guard let contentView = window?.contentView else {
+                return
+            }
+            self.stabilizeVisualEffectBlending(in: contentView)
+        }
+    }
+
+    private func stabilizeVisualEffectBlending(in view: NSView) {
+        if let effectView = view as? NSVisualEffectView {
+            // `behindWindow` samples the desktop by definition. Evidence
+            // windows instead blend only with the fixed, opaque in-window
+            // backdrop so wallpaper color cannot alter semantic materials.
+            effectView.blendingMode = .withinWindow
+            effectView.state = .active
+        }
+        view.subviews.forEach(stabilizeVisualEffectBlending)
     }
 
     private func installCommandReadyRuntimeObserver() {
