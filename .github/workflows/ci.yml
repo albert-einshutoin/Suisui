@@ -264,6 +264,9 @@ jobs:
         env:
           SUISUI_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
           SUISUI_CI_VISUAL_GATE_LOCALE: ${{ matrix.locale }}
+          # Liquid Glass samples the active display environment. Keep hosted
+          # evidence pinned to its audited Apple Virtual Display profile.
+          SUISUI_CI_VISUAL_BASELINE_PROFILE: apple-virtual-display
           SUISUI_VISUAL_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}
         run: ./scripts/ci.sh ui-visual
 

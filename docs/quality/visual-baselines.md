@@ -6,6 +6,17 @@ Suisui uses visual baselines as semantic release evidence plus bounded raster co
 
 The English source of truth is `docs/quality/visual-baseline-manifest.json`; the Japanese source of truth is `docs/quality/visual-baseline-manifest-ja.json`. Each locale has an independent screenshot, baseline, metadata, and AX receipt root so an otherwise valid capture cannot authenticate another locale's pixels.
 
+macOS 26 Liquid Glass also samples the active display environment for native
+toolbar and segmented controls. The release machine therefore uses the default
+`local-display` profile, while GitHub Actions explicitly selects the audited
+`apple-virtual-display` profile. The hosted manifests and roots are
+`visual-baseline-manifest[-ja]-apple-virtual.json` and
+`visual-baselines[-ja]-apple-virtual`. Profiles change only the authenticated
+reference pixels: both keep the same `0.005` changed-pixel budget, `0.01` mean
+absolute error budget, semantic image-health checks, and required live AX frame
+audit. `script/check_ci_visual_gate.sh` accepts only these two named profiles;
+it does not accept an arbitrary baseline path.
+
 | Screen | Required Themes | Viewport | Evidence |
 | --- | --- | --- | --- |
 | Project Board | Light / Dark / System | 1024x676 | sidebar, task cards, project header, inspector |

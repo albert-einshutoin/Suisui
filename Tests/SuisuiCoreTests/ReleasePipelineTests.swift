@@ -233,6 +233,29 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("- [x] `scripts/ci.sh` はunit/sourceを必須、runtime/visualは明示フラグで実行する。"))
     }
 
+    func testCIVisualGatePinsVirtualDisplayBaselineWithoutRelaxingRasterBudgets() throws {
+        let gate = try readPackageFile("script/check_ci_visual_gate.sh")
+        let workflow = try readPackageFile(".github/workflows/ci.yml")
+        let englishManifest = try readPackageFile(
+            "docs/quality/visual-baseline-manifest-apple-virtual.json"
+        )
+        let japaneseManifest = try readPackageFile(
+            "docs/quality/visual-baseline-manifest-ja-apple-virtual.json"
+        )
+
+        XCTAssertTrue(gate.contains("VISUAL_BASELINE_PROFILE=\"${SUISUI_CI_VISUAL_BASELINE_PROFILE:-local-display}\""))
+        XCTAssertTrue(gate.contains("local-display|apple-virtual-display"))
+        XCTAssertTrue(gate.contains("visual-baselines-apple-virtual"))
+        XCTAssertTrue(gate.contains("visual-baselines-ja-apple-virtual"))
+        XCTAssertFalse(gate.contains("BASELINE_RELATIVE=\"${SUISUI_"))
+        XCTAssertTrue(workflow.contains("SUISUI_CI_VISUAL_BASELINE_PROFILE: apple-virtual-display"))
+        for manifest in [englishManifest, japaneseManifest] {
+            XCTAssertTrue(manifest.contains(#""maximumChangedPixelRatio": 0.005"#))
+            XCTAssertTrue(manifest.contains(#""maximumMeanAbsoluteError": 0.01"#))
+            XCTAssertTrue(manifest.contains(#""requiresAXFrameAudit": true"#))
+        }
+    }
+
     func testPerformanceStressSuiteAggregatesScaleRegressionFilters() throws {
         let script = try readPackageFile("script/check_performance_stress_suite.sh")
 
