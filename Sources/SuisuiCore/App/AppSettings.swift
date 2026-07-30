@@ -708,7 +708,11 @@ public enum STTProvider: String, CaseIterable, Codable, Equatable, Sendable {
     case localWhisperCpp
     case openAITranscribe
 
-    public static let releaseReadyCases: [STTProvider] = [.openAITranscribe, .localWhisperCpp]
+    public static let releaseReadyCases: [STTProvider] = [
+        .appleSpeechAnalyzer,
+        .openAITranscribe,
+        .localWhisperCpp
+    ]
 
     public var isReleaseReady: Bool {
         Self.releaseReadyCases.contains(self)
@@ -730,7 +734,7 @@ public enum STTProvider: String, CaseIterable, Codable, Equatable, Sendable {
     public var displayName: String {
         switch self {
         case .appleSpeechAnalyzer:
-            "Apple SpeechAnalyzer"
+            "Apple Speech"
         case .localWhisperKit:
             "WhisperKit"
         case .localWhisperCpp:
@@ -745,7 +749,7 @@ public enum TTSProvider: String, CaseIterable, Codable, Equatable, Sendable {
     case systemSpeech
     case localKokoro
 
-    public static let releaseReadyCases: [TTSProvider] = [.localKokoro]
+    public static let releaseReadyCases: [TTSProvider] = [.systemSpeech, .localKokoro]
 
     public var isReleaseReady: Bool {
         Self.releaseReadyCases.contains(self)
@@ -763,7 +767,7 @@ public enum TTSProvider: String, CaseIterable, Codable, Equatable, Sendable {
     public var unavailableReason: String {
         switch self {
         case .systemSpeech:
-            "System Speech is kept only for legacy settings and is not product TTS."
+            "Uses voices installed in macOS."
         case .localKokoro:
             "Install the Kokoro model and configure the executable in Settings."
         }
@@ -1395,6 +1399,43 @@ public final class AppSettingsViewModel: ObservableObject {
         makeLocalSTTProviderReadinessRow()
     }
 
+    public var selectedSTTProviderReadinessRow: STTProviderReadinessRow {
+        switch settings.sttProvider {
+        case .appleSpeechAnalyzer:
+            return STTProviderReadinessRow(
+                provider: .appleSpeechAnalyzer,
+                statusLabel: "Ready",
+                detailLabel: "Uses on-device Apple Speech without an API key or model download.",
+                nextActionLabel: "Record a voice command",
+                isReady: true,
+                isSelected: true
+            )
+        case .openAITranscribe:
+            let isReady = openAIAPIKeyReadinessState == .configured
+            return STTProviderReadinessRow(
+                provider: .openAITranscribe,
+                statusLabel: isReady ? "Ready" : Self.statusLabel(for: openAIAPIKeyReadinessState),
+                detailLabel: isReady
+                    ? "Uses the OpenAI transcription API."
+                    : "Save a valid OpenAI API key in Keychain before recording.",
+                nextActionLabel: isReady ? "Record a voice command" : "Configure OpenAI API key",
+                isReady: isReady,
+                isSelected: true
+            )
+        case .localWhisperCpp:
+            return makeLocalSTTProviderReadinessRow()
+        case .localWhisperKit:
+            return STTProviderReadinessRow(
+                provider: .localWhisperKit,
+                statusLabel: "Unsupported",
+                detailLabel: "WhisperKit is not available in this release.",
+                nextActionLabel: "Select another provider",
+                isReady: false,
+                isSelected: true
+            )
+        }
+    }
+
     public var voiceModelReadinessRows: [VoiceModelReadinessRow] {
         voiceModelCatalog.models.map { model in
             VoiceModelReadinessRow(
@@ -1480,13 +1521,13 @@ public final class AppSettingsViewModel: ObservableObject {
     }
 
     private func makeTTSProviderReadinessRow(for provider: TTSProvider) -> TTSProviderReadinessRow {
-        guard provider == .localKokoro else {
+        if provider == .systemSpeech {
             return TTSProviderReadinessRow(
                 provider: provider,
-                statusLabel: "Unsupported",
-                detailLabel: provider.unavailableReason,
-                nextActionLabel: "Select Local Kokoro",
-                isReady: false,
+                statusLabel: "Ready",
+                detailLabel: "Uses an installed macOS voice without an API key or model download.",
+                nextActionLabel: "Test play",
+                isReady: true,
                 isSelected: settings.ttsProvider == provider
             )
         }

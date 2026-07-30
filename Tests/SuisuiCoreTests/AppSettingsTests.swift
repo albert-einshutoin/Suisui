@@ -229,7 +229,8 @@ final class AppSettingsTests: XCTestCase {
     }
 
     func testReleaseReadySTTProvidersExposeImplementedRuntimeProviders() {
-        XCTAssertEqual(STTProvider.releaseReadyCases, [.openAITranscribe, .localWhisperCpp])
+        XCTAssertEqual(STTProvider.releaseReadyCases, [.appleSpeechAnalyzer, .openAITranscribe, .localWhisperCpp])
+        XCTAssertTrue(STTProvider.appleSpeechAnalyzer.isReleaseReady)
         XCTAssertTrue(STTProvider.openAITranscribe.isReleaseReady)
         XCTAssertTrue(STTProvider.localWhisperCpp.isReleaseReady)
         XCTAssertFalse(STTProvider.localWhisperKit.isReleaseReady)
@@ -1168,7 +1169,7 @@ final class AppSettingsTests: XCTestCase {
 
         viewModel.setWhisperCppExecutablePath(executableURL.path)
 
-        XCTAssertEqual(viewModel.selectableSTTProviders, [.openAITranscribe, .localWhisperCpp])
+        XCTAssertEqual(viewModel.selectableSTTProviders, [.appleSpeechAnalyzer, .openAITranscribe, .localWhisperCpp])
 
         viewModel.setSTTProvider(.localWhisperCpp)
         viewModel.saveSettings()
@@ -1194,7 +1195,7 @@ final class AppSettingsTests: XCTestCase {
         viewModel.setWhisperCppExecutablePath(executableURL.path)
         viewModel.setSTTProvider(.localWhisperCpp)
 
-        XCTAssertEqual(viewModel.selectableSTTProviders, [.openAITranscribe])
+        XCTAssertEqual(viewModel.selectableSTTProviders, [.appleSpeechAnalyzer, .openAITranscribe])
         XCTAssertEqual(viewModel.settings.sttProvider, .openAITranscribe)
         XCTAssertEqual(viewModel.errorMessage, "Install the whisper.cpp model and configure the executable before selecting offline speech to text.")
     }
@@ -1406,14 +1407,39 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertFalse(absoluteSettings.validate().contains { $0.field == "defaultWorkspacePath" })
     }
 
-    func testTTSProvidersExposeLocalKokoroWhileKeepingSystemSpeechUnsupported() {
-        XCTAssertEqual(TTSProvider.releaseReadyCases, [.localKokoro])
-        XCTAssertFalse(TTSProvider.systemSpeech.isReleaseReady)
+    func testTTSProvidersExposeAppleSystemSpeechAndLocalKokoro() {
+        XCTAssertEqual(TTSProvider.releaseReadyCases, [.systemSpeech, .localKokoro])
+        XCTAssertTrue(TTSProvider.systemSpeech.isReleaseReady)
         XCTAssertTrue(TTSProvider.localKokoro.isReleaseReady)
         XCTAssertEqual(TTSProvider.systemSpeech.displayName, "System Speech")
         XCTAssertEqual(TTSProvider.localKokoro.displayName, "Local Kokoro")
-        XCTAssertEqual(TTSProvider.systemSpeech.unavailableReason, "System Speech is kept only for legacy settings and is not product TTS.")
+        XCTAssertEqual(TTSProvider.systemSpeech.unavailableReason, "Uses voices installed in macOS.")
         XCTAssertEqual(TTSProvider.localKokoro.unavailableReason, "Install the Kokoro model and configure the executable in Settings.")
+    }
+
+    @MainActor
+    func testAppSettingsViewModelAllowsAppleVoiceProviderSelectionWithoutExternalRuntime() throws {
+        let suiteName = "Suisui.AppSettingsViewModelAppleVoiceProviders.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        XCTAssertTrue(viewModel.selectableSTTProviders.contains(.appleSpeechAnalyzer))
+        XCTAssertTrue(viewModel.selectableTTSProviders.contains(.systemSpeech))
+
+        viewModel.setSTTProvider(.appleSpeechAnalyzer)
+        viewModel.setTTSProvider(.systemSpeech)
+        viewModel.saveSettings()
+
+        XCTAssertEqual(viewModel.settings.sttProvider, .appleSpeechAnalyzer)
+        XCTAssertEqual(viewModel.settings.ttsProvider, .systemSpeech)
+        XCTAssertEqual(viewModel.selectedSTTProviderReadinessRow.statusLabel, "Ready")
+        XCTAssertTrue(viewModel.selectedSTTProviderReadinessRow.isReady)
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.statusLabel, "Ready")
+        XCTAssertTrue(viewModel.ttsProviderReadinessRow.isReady)
+        XCTAssertEqual(try store.load().sttProvider, .appleSpeechAnalyzer)
+        XCTAssertEqual(try store.load().ttsProvider, .systemSpeech)
     }
 
     @MainActor
@@ -1432,7 +1458,7 @@ final class AppSettingsTests: XCTestCase {
         )
 
         XCTAssertEqual(viewModel.settings.ttsProvider, .localKokoro)
-        XCTAssertEqual(viewModel.selectableTTSProviders, [.localKokoro])
+        XCTAssertEqual(viewModel.selectableTTSProviders, [.systemSpeech, .localKokoro])
         XCTAssertEqual(viewModel.ttsProviderReadinessRow.statusLabel, "Model not installed")
 
         viewModel.setKokoroExecutablePath(executableURL.path)

@@ -253,10 +253,10 @@ final class VoiceModelManagerTests: XCTestCase {
         XCTAssertEqual(viewModel.voiceModelReadinessRows.map(\.modelID), [.whisperCppTinyMultilingual, .kokoro82M])
         XCTAssertEqual(viewModel.voiceModelReadinessRows[0].statusLabel, "Installed")
         XCTAssertEqual(viewModel.voiceModelReadinessRows[1].statusLabel, "Not installed")
-        XCTAssertEqual(STTProvider.releaseReadyCases, [.openAITranscribe, .localWhisperCpp])
-        XCTAssertEqual(viewModel.selectableSTTProviders, [.openAITranscribe])
-        XCTAssertEqual(TTSProvider.releaseReadyCases, [.localKokoro])
-        XCTAssertEqual(viewModel.selectableTTSProviders, [.localKokoro])
+        XCTAssertEqual(STTProvider.releaseReadyCases, [.appleSpeechAnalyzer, .openAITranscribe, .localWhisperCpp])
+        XCTAssertEqual(viewModel.selectableSTTProviders, [.appleSpeechAnalyzer, .openAITranscribe])
+        XCTAssertEqual(TTSProvider.releaseReadyCases, [.systemSpeech, .localKokoro])
+        XCTAssertEqual(viewModel.selectableTTSProviders, [.systemSpeech, .localKokoro])
         XCTAssertEqual(viewModel.ttsProviderReadinessRow.statusLabel, "Model not installed")
     }
 

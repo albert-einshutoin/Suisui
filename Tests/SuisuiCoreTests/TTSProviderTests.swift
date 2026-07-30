@@ -3,12 +3,14 @@ import XCTest
 @testable import SuisuiCore
 
 final class TTSProviderTests: XCTestCase {
-    func testPhase1DefaultCatalogRegistersReadyGatedKokoroProvider() {
+    func testPhase1DefaultCatalogRegistersSystemSpeechAndReadyGatedKokoroProvider() {
         let catalog = TTSProviderCatalog.phase1Default
 
-        XCTAssertEqual(catalog.availabilities.map(\.providerID), [.kokoro])
+        XCTAssertEqual(catalog.availabilities.map(\.providerID), [.systemSpeech, .kokoro])
+        XCTAssertTrue(catalog.availability(for: .systemSpeech).isAvailable)
+        XCTAssertFalse(catalog.availability(for: .systemSpeech).requiresModelDownload)
         XCTAssertTrue(catalog.availability(for: .kokoro).requiresModelDownload)
-        XCTAssertEqual(catalog.availableProviders, [])
+        XCTAssertEqual(catalog.availableProviders.map(\.providerID), [.systemSpeech])
         XCTAssertEqual(
             catalog.availability(for: .kokoro).reason,
             "Install the Kokoro model and configure the executable in Settings."

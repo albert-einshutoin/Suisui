@@ -71,11 +71,13 @@ final class STTProviderTests: XCTestCase {
         ])
     }
 
-    func testPhase1DefaultCatalogRegistersOpenAIAndReadyGatedWhisperCppProvider() {
+    func testPhase1DefaultCatalogRegistersAppleOpenAIAndReadyGatedWhisperCppProviders() {
         let catalog = STTProviderCatalog.phase1Default
 
-        XCTAssertEqual(catalog.availabilities.map(\.providerID), [.openAITranscribe, .whisperCpp])
-        XCTAssertEqual(catalog.availableProviders.map(\.providerID), [.openAITranscribe])
+        XCTAssertEqual(catalog.availabilities.map(\.providerID), [.appleSpeechAnalyzer, .openAITranscribe, .whisperCpp])
+        XCTAssertEqual(catalog.availableProviders.map(\.providerID), [.appleSpeechAnalyzer, .openAITranscribe])
+        XCTAssertFalse(catalog.availability(for: .appleSpeechAnalyzer).requiresAPIKey)
+        XCTAssertFalse(catalog.availability(for: .appleSpeechAnalyzer).requiresModelDownload)
         XCTAssertTrue(catalog.availability(for: .openAITranscribe).requiresAPIKey)
         XCTAssertTrue(catalog.availability(for: .whisperCpp).requiresModelDownload)
         XCTAssertEqual(

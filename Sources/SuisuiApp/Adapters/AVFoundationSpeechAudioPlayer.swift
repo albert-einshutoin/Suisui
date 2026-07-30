@@ -6,7 +6,7 @@ final class AVFoundationSpeechAudioPlayer: SpeechAudioPlaying, @unchecked Sendab
     init() {}
 
     func play(_ speech: SynthesizedSpeech) async throws {
-        guard speech.format == .wav else {
+        guard speech.format == .wav || speech.format == .caf else {
             throw SpeechAudioPlaybackError.unsupportedFormat(speech.format)
         }
 

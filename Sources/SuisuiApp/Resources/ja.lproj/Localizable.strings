@@ -2057,3 +2057,9 @@
 "Waiting for review" = "レビュー待ち";
 "Changed" = "変更済み";
 "Unresolved" = "未解決";
+"Tests the selected TTS provider when it is ready." = "選択したTTSプロバイダーが利用可能な場合にテスト再生します。";
+"Apple Speech" = "Apple音声認識";
+"Uses on-device Apple Speech without an API key or model download." = "APIキーやモデルのダウンロードなしで、デバイス上のApple音声認識を使用します。";
+"Record a voice command" = "音声コマンドを録音";
+"Uses voices installed in macOS." = "macOSにインストールされた声を使用します。";
+"Uses an installed macOS voice without an API key or model download." = "APIキーやモデルのダウンロードなしで、macOSにインストールされた声を使用します。";

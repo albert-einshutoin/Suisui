@@ -303,7 +303,9 @@ extension AppRuntimeFactory {
     ) -> any SpeechToTextProvider {
         let normalizedSettings = settings.normalizedForRuntime
         switch normalizedSettings.sttProvider {
-        case .openAITranscribe, .appleSpeechAnalyzer, .localWhisperKit:
+        case .appleSpeechAnalyzer:
+            return AppleSpeechRecognitionProvider()
+        case .openAITranscribe, .localWhisperKit:
             return OpenAITranscribeProvider(secretStore: secretStore)
         case .localWhisperCpp:
             let configuration = WhisperCppLocalSTTConfiguration(
@@ -322,7 +324,9 @@ enum AppTextToSpeechRuntimeFactory {
     static func makeProvider(settings: AppSettings, outputURL: URL? = nil) -> any TextToSpeechProvider {
         let normalizedSettings = settings.normalizedForRuntime
         switch normalizedSettings.ttsProvider {
-        case .systemSpeech, .localKokoro:
+        case .systemSpeech:
+            return AppleSystemSpeechProvider(outputURL: outputURL)
+        case .localKokoro:
             let configuration = KokoroLocalTTSConfiguration(
                 executablePath: normalizedSettings.kokoroExecutablePath ?? "",
                 languageCode: normalizedSettings.ttsLanguageCode,
@@ -336,11 +340,13 @@ enum AppTextToSpeechRuntimeFactory {
     static func makePreviewer(
         settings: AppSettings,
         temporaryDirectoryPrefix: String = "suisui-tts-preview",
-        outputFilename: String = "preview.wav"
+        outputFilename: String? = nil
     ) -> any TextToSpeechPreviewing {
         let temporaryDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(temporaryDirectoryPrefix)-\(UUID().uuidString)", isDirectory: true)
-        let outputURL = temporaryDirectory.appendingPathComponent(outputFilename, isDirectory: false)
+        let resolvedOutputFilename = outputFilename
+            ?? (settings.normalizedForRuntime.ttsProvider == .systemSpeech ? "preview.caf" : "preview.wav")
+        let outputURL = temporaryDirectory.appendingPathComponent(resolvedOutputFilename, isDirectory: false)
         return TemporaryDirectoryTextToSpeechPreviewer(
             previewer: TextToSpeechPreviewService(
                 provider: makeProvider(settings: settings, outputURL: outputURL),

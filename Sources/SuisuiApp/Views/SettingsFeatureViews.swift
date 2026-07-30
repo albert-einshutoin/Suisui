@@ -297,18 +297,20 @@ struct SettingsAIFeatureView: View {
                             .tag(provider)
                     }
                 }
-                LocalPathSelectionField(
-                    title: "whisper.cpp executable",
-                    text: Binding(
-                        get: { settingsViewModel.settings.whisperCppExecutablePath ?? "" },
-                        set: { settingsViewModel.setWhisperCppExecutablePath($0) }
-                    ),
-                    selectionKind: .file,
-                    accessibilityIdentifier: "settings-whisper-cpp-executable-path"
-                )
-                .accessibilityHint("Sets the absolute path to whisper-cli for offline speech to text.")
+                if settingsViewModel.settings.sttProvider == .localWhisperCpp {
+                    LocalPathSelectionField(
+                        title: "whisper.cpp executable",
+                        text: Binding(
+                            get: { settingsViewModel.settings.whisperCppExecutablePath ?? "" },
+                            set: { settingsViewModel.setWhisperCppExecutablePath($0) }
+                        ),
+                        selectionKind: .file,
+                        accessibilityIdentifier: "settings-whisper-cpp-executable-path"
+                    )
+                    .accessibilityHint("Sets the absolute path to whisper-cli for offline speech to text.")
+                }
 
-                LocalSTTProviderStatusRow(row: settingsViewModel.localSTTProviderReadinessRow)
+                LocalSTTProviderStatusRow(row: settingsViewModel.selectedSTTProviderReadinessRow)
 
                 Toggle(
                     isOn: Binding(
@@ -410,16 +412,18 @@ struct SettingsAIFeatureView: View {
 
                 SelectedTTSProviderStatusRow(row: settingsViewModel.ttsProviderReadinessRow)
 
-                LocalPathSelectionField(
-                    title: "Kokoro executable",
-                    text: Binding(
-                        get: { settingsViewModel.settings.kokoroExecutablePath ?? "" },
-                        set: { settingsViewModel.setKokoroExecutablePath($0) }
-                    ),
-                    selectionKind: .file,
-                    accessibilityIdentifier: "settings-kokoro-executable-path"
-                )
-                .accessibilityHint("Sets the absolute path to the local Kokoro TTS executable.")
+                if settingsViewModel.settings.ttsProvider == .localKokoro {
+                    LocalPathSelectionField(
+                        title: "Kokoro executable",
+                        text: Binding(
+                            get: { settingsViewModel.settings.kokoroExecutablePath ?? "" },
+                            set: { settingsViewModel.setKokoroExecutablePath($0) }
+                        ),
+                        selectionKind: .file,
+                        accessibilityIdentifier: "settings-kokoro-executable-path"
+                    )
+                    .accessibilityHint("Sets the absolute path to the local Kokoro TTS executable.")
+                }
 
                 Picker(
                     "TTS Language",
@@ -452,7 +456,7 @@ struct SettingsAIFeatureView: View {
                 }
                 .disabled(!settingsViewModel.ttsProviderReadinessRow.isReady)
                 .accessibilityIdentifier("settings-tts-test-play")
-                .accessibilityHint("Tests the selected local TTS provider when the model and runtime are ready.")
+                .accessibilityHint("Tests the selected TTS provider when it is ready.")
 
                 settingsSaveButton
             }
