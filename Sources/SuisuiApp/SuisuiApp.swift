@@ -780,47 +780,6 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
         )
         window.backgroundColor = neutralBackdropColor
         window.isOpaque = true
-        if let contentView = window.contentView {
-            stabilizeVisualEffectBlending(
-                in: contentView.superview ?? contentView,
-                neutralBackdropColor: neutralBackdropColor
-            )
-        }
-        DispatchQueue.main.async { [weak window] in
-            guard let contentView = window?.contentView else {
-                return
-            }
-            self.stabilizeVisualEffectBlending(
-                in: contentView.superview ?? contentView,
-                neutralBackdropColor: neutralBackdropColor
-            )
-        }
-    }
-
-    private func stabilizeVisualEffectBlending(
-        in view: NSView,
-        neutralBackdropColor: NSColor
-    ) {
-        if let effectView = view as? NSVisualEffectView {
-            // `behindWindow` samples the desktop by definition. Evidence
-            // windows instead blend only with the fixed, opaque in-window
-            // backdrop so wallpaper color cannot alter semantic materials.
-            effectView.blendingMode = .withinWindow
-            effectView.state = .active
-        }
-        if #available(macOS 26.0, *),
-           let glassEffectView = view as? NSGlassEffectView {
-            // Liquid Glass has a separate tint path from NSVisualEffectView.
-            // Pin it to the same neutral backdrop so toolbar controls do not
-            // inherit the physical display's desktop tint.
-            glassEffectView.tintColor = neutralBackdropColor
-        }
-        view.subviews.forEach {
-            stabilizeVisualEffectBlending(
-                in: $0,
-                neutralBackdropColor: neutralBackdropColor
-            )
-        }
     }
 
     private func installCommandReadyRuntimeObserver() {
