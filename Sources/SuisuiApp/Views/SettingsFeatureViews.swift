@@ -1,3 +1,4 @@
+import AppKit
 import SuisuiCore
 import SuisuiGoogleCalendarRuntime
 import SwiftUI
@@ -440,7 +441,7 @@ struct SettingsAIFeatureView: View {
                 TextField(
                     "TTS voice",
                     text: Binding(
-                        get: { settingsViewModel.settings.ttsVoiceID },
+                        get: { settingsViewModel.settings.selectedTTSVoiceID },
                         set: { settingsViewModel.setTTSVoiceID($0) }
                     )
                 )
@@ -492,6 +493,15 @@ struct SettingsAIFeatureView: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear {
+            settingsViewModel.refreshAppleSpeechReadiness()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            settingsViewModel.refreshAppleSpeechReadiness()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .suisuiAppleSpeechAuthorizationDidChange)) { _ in
+            settingsViewModel.refreshAppleSpeechReadiness()
+        }
     }
 }
 

@@ -82,10 +82,20 @@ final class AppleSystemSpeechProvider: TextToSpeechPreviewing, @unchecked Sendab
 
     private func resolvedVoice(requestedID: String, languageCode: String) -> AVSpeechSynthesisVoice? {
         let trimmedID = requestedID.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedID.isEmpty, let selected = AVSpeechSynthesisVoice(identifier: trimmedID) {
+        if !trimmedID.isEmpty,
+           let selected = AVSpeechSynthesisVoice(identifier: trimmedID),
+           baseLanguageCode(selected.language) == baseLanguageCode(languageCode) {
             return selected
         }
         return AVSpeechSynthesisVoice(language: languageCode)
+    }
+
+    private func baseLanguageCode(_ languageCode: String) -> String {
+        languageCode
+            .replacingOccurrences(of: "_", with: "-")
+            .split(separator: "-", maxSplits: 1)
+            .first?
+            .lowercased() ?? ""
     }
 }
 

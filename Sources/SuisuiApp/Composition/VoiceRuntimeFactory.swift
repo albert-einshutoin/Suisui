@@ -202,7 +202,11 @@ extension AppRuntimeFactory {
         let request = TextToSpeechRequest(
             text: limitedWorkspaceAnswerReadoutText(answer),
             languageCode: languageCode,
-            voiceID: AppSettings.normalizedTTSVoiceID(settings.ttsVoiceID, languageCode: languageCode)
+            voiceID: AppSettings.normalizedTTSVoiceID(
+                settings.selectedTTSVoiceID,
+                languageCode: languageCode,
+                provider: settings.ttsProvider
+            )
         )
         let previewer = makeTextToSpeechPreviewer(settings: settings)
         Task {

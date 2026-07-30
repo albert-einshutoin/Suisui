@@ -2,6 +2,40 @@
 import Foundation
 import SuisuiCore
 
+extension Notification.Name {
+    static let suisuiAppleSpeechAuthorizationDidChange = Notification.Name(
+        "dev.suisui.appleSpeechAuthorizationDidChange"
+    )
+}
+
+enum AppleSpeechReadinessSnapshotReader {
+    static func snapshot(locale: Locale = .current) -> AppleSpeechReadinessSnapshot {
+        let recognizer = SFSpeechRecognizer(locale: locale)
+        return AppleSpeechReadinessSnapshot(
+            authorization: authorizationStatus(),
+            isRecognizerAvailable: recognizer?.isAvailable == true,
+            supportsOnDeviceRecognition: recognizer?.supportsOnDeviceRecognition == true
+        )
+    }
+
+    private static func authorizationStatus() -> AppleSpeechAuthorizationStatus {
+        switch SFSpeechRecognizer.authorizationStatus() {
+        case .notDetermined:
+            .notDetermined
+        case .denied:
+            .denied
+        case .restricted:
+            .restricted
+        case .authorized:
+            .authorized
+        @unknown default:
+            // Unknown framework states must not accidentally advertise the
+            // provider as ready before the runtime can safely use it.
+            .restricted
+        }
+    }
+}
+
 /// Apple-native, on-device speech recognition for recorded Voice Command audio.
 ///
 /// The persisted provider case remains `appleSpeechAnalyzer` for settings
@@ -79,11 +113,15 @@ final class AppleSpeechRecognitionProvider: SpeechToTextProvider, @unchecked Sen
         guard current == .notDetermined else {
             return current
         }
-        return await withCheckedContinuation { continuation in
+        let resolved = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { status in
                 continuation.resume(returning: status)
             }
         }
+        await MainActor.run {
+            NotificationCenter.default.post(name: .suisuiAppleSpeechAuthorizationDidChange, object: nil)
+        }
+        return resolved
     }
 }
 

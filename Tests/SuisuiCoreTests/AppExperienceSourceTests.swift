@@ -5547,6 +5547,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(providerSource.contains("SFSpeechRecognizer.requestAuthorization"))
         XCTAssertTrue(providerSource.contains("SFSpeechURLRecognitionRequest"))
         XCTAssertTrue(providerSource.contains("requiresOnDeviceRecognition = true"))
+        XCTAssertTrue(providerSource.contains("suisuiAppleSpeechAuthorizationDidChange"))
         let buildScript = try readPackageFile("script/build_and_run.sh")
         XCTAssertTrue(buildScript.contains("NSSpeechRecognitionUsageDescription"))
     }
@@ -5559,6 +5560,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(appSource.contains("static func makeTextToSpeechPreviewer(settings: AppSettings) -> any TextToSpeechPreviewing"))
         XCTAssertTrue(appSource.contains("AppTextToSpeechRuntimeFactory.makePreviewer(settings: settings)"))
+        XCTAssertTrue(appSource.contains("settings.selectedTTSVoiceID"))
         XCTAssertTrue(runtimeFactorySource.contains("case .systemSpeech:"))
         XCTAssertTrue(runtimeFactorySource.contains("AppleSystemSpeechProvider("))
         XCTAssertTrue(runtimeFactorySource.contains("case .localKokoro:"))
@@ -5573,6 +5575,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(runtimeFactorySource.contains("temporaryDirectory: temporaryDirectory"))
         XCTAssertTrue(providerSource.contains("AVSpeechSynthesizer"))
         XCTAssertTrue(providerSource.contains("AVSpeechSynthesisVoice"))
+        XCTAssertTrue(providerSource.contains("baseLanguageCode(selected.language) == baseLanguageCode(languageCode)"))
         XCTAssertTrue(providerSource.contains("AVAudioFile"))
     }
 

@@ -8,6 +8,9 @@ extension AppRuntimeFactory {
             settingsStore: UserDefaultsAppSettingsStore(),
             secretStore: makeSecretStore(),
             ollamaHealthChecker: URLSessionOllamaEndpointHealthChecker(),
+            appleSpeechReadinessProvider: {
+                AppleSpeechReadinessSnapshotReader.snapshot()
+            },
             refreshProviderSecretStatusesOnInit: refreshProviderSecretStatusesOnInit
         )
     }

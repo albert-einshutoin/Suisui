@@ -2043,6 +2043,17 @@
 "Tests the selected TTS provider when it is ready." = "Tests the selected TTS provider when it is ready.";
 "Apple Speech" = "Apple Speech";
 "Uses on-device Apple Speech without an API key or model download." = "Uses on-device Apple Speech without an API key or model download.";
+"Permission required" = "Permission required";
+"Allow Speech Recognition when recording the first voice command." = "Allow Speech Recognition when recording the first voice command.";
+"Record to request permission" = "Record to request permission";
+"Permission denied" = "Permission denied";
+"Speech Recognition access is disabled for Suisui." = "Speech Recognition access is disabled for Suisui.";
+"Open System Settings" = "Open System Settings";
+"Speech Recognition is blocked by a device or account restriction." = "Speech Recognition is blocked by a device or account restriction.";
+"On-device Apple Speech is unavailable for the current language." = "On-device Apple Speech is unavailable for the current language.";
+"Select another provider" = "Select another provider";
+"Apple Speech is temporarily unavailable for the current language." = "Apple Speech is temporarily unavailable for the current language.";
+"Try again later" = "Try again later";
 "Record a voice command" = "Record a voice command";
 "Uses voices installed in macOS." = "Uses voices installed in macOS.";
 "Uses an installed macOS voice without an API key or model download." = "Uses an installed macOS voice without an API key or model download.";

@@ -1322,7 +1322,8 @@ struct ProjectBoardView: View {
                     outputFilename: "readout.wav"
                 ),
                 languageCode: settings.ttsLanguageCode,
-                voiceID: settings.ttsVoiceID
+                voiceID: settings.selectedTTSVoiceID,
+                provider: settings.ttsProvider
             )
         }
     }

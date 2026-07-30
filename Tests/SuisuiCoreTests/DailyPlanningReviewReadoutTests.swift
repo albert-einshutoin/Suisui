@@ -2,6 +2,24 @@ import XCTest
 @testable import SuisuiCore
 
 final class DailyPlanningReviewReadoutTests: XCTestCase {
+    func testSystemSpeechReadoutPreservesInstalledMacOSVoiceIdentifier() {
+        let request = DailyPlanningReviewReadoutBuilder.makeRequest(
+            review: dailyReview(
+                sourceTranscript: "Plan my day",
+                phase: .morning,
+                overdueCount: 0,
+                dueTodayCount: 1,
+                inboxUntriagedCount: 0,
+                focusItems: []
+            ),
+            languageCode: "en",
+            voiceID: "com.apple.voice.compact.en-US.Samantha",
+            provider: .systemSpeech
+        )
+
+        XCTAssertEqual(request.voiceID, "com.apple.voice.compact.en-US.Samantha")
+    }
+
     func testBuildsEnglishReadoutWithoutRawTranscript() {
         let review = dailyReview(
             sourceTranscript: "今日やることを確認して sk-proj-secret123",

@@ -378,7 +378,10 @@ final class AppSettingsTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let store = UserDefaultsAppSettingsStore(defaults: defaults)
-        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+        let viewModel = AppSettingsViewModel(
+            settingsStore: store,
+            secretStore: InMemorySecretStore()
+        )
 
         viewModel.setManagedAIBillingEnabled(true)
         viewModel.setManagedAIPerRunCapCents(125)
@@ -436,7 +439,10 @@ final class AppSettingsTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let store = UserDefaultsAppSettingsStore(defaults: defaults)
-        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+        let viewModel = AppSettingsViewModel(
+            settingsStore: store,
+            secretStore: InMemorySecretStore()
+        )
 
         viewModel.setGoogleCalendarID(" team-calendar@example.com ")
         viewModel.saveSettings()
@@ -1417,13 +1423,49 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(TTSProvider.localKokoro.unavailableReason, "Install the Kokoro model and configure the executable in Settings.")
     }
 
+    func testSystemSpeechPreservesInstalledMacOSVoiceIdentifier() {
+        var settings = AppSettings(
+            ttsProvider: .systemSpeech,
+            ttsLanguageCode: "en",
+            ttsVoiceID: "af_heart"
+        )
+        settings.systemSpeechVoiceID = "com.apple.voice.compact.en-US.Samantha"
+
+        XCTAssertEqual(
+            settings.normalizedForRuntime.selectedTTSVoiceID,
+            "com.apple.voice.compact.en-US.Samantha"
+        )
+        XCTAssertFalse(settings.validate().contains { $0.field == "ttsVoiceID" })
+    }
+
+    func testKokoroStillRejectsVoiceIdentifierForWrongLanguage() {
+        let settings = AppSettings(
+            ttsProvider: .localKokoro,
+            ttsLanguageCode: "ja",
+            ttsVoiceID: "com.apple.voice.compact.ja-JP.Kyoko"
+        )
+
+        XCTAssertEqual(settings.normalizedForRuntime.ttsVoiceID, "jf_alpha")
+        XCTAssertTrue(settings.validate().contains { $0.field == "ttsVoiceID" })
+    }
+
     @MainActor
     func testAppSettingsViewModelAllowsAppleVoiceProviderSelectionWithoutExternalRuntime() throws {
         let suiteName = "Suisui.AppSettingsViewModelAppleVoiceProviders.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let store = UserDefaultsAppSettingsStore(defaults: defaults)
-        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+        let viewModel = AppSettingsViewModel(
+            settingsStore: store,
+            secretStore: InMemorySecretStore(),
+            appleSpeechReadinessProvider: {
+                AppleSpeechReadinessSnapshot(
+                    authorization: .authorized,
+                    isRecognizerAvailable: true,
+                    supportsOnDeviceRecognition: true
+                )
+            }
+        )
 
         XCTAssertTrue(viewModel.selectableSTTProviders.contains(.appleSpeechAnalyzer))
         XCTAssertTrue(viewModel.selectableTTSProviders.contains(.systemSpeech))
@@ -1440,6 +1482,185 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(viewModel.ttsProviderReadinessRow.isReady)
         XCTAssertEqual(try store.load().sttProvider, .appleSpeechAnalyzer)
         XCTAssertEqual(try store.load().ttsProvider, .systemSpeech)
+    }
+
+    @MainActor
+    func testAppleSpeechReadinessReflectsPermissionAndOnDeviceSupport() throws {
+        let suiteName = "Suisui.AppSettingsViewModelAppleSpeechReadiness.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let denied = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            appleSpeechReadinessProvider: {
+                AppleSpeechReadinessSnapshot(
+                    authorization: .denied,
+                    isRecognizerAvailable: true,
+                    supportsOnDeviceRecognition: true
+                )
+            }
+        )
+        denied.setSTTProvider(.appleSpeechAnalyzer)
+        XCTAssertEqual(denied.selectedSTTProviderReadinessRow.statusLabel, "Permission denied")
+        XCTAssertEqual(denied.selectedSTTProviderReadinessRow.nextActionLabel, "Open System Settings")
+        XCTAssertFalse(denied.selectedSTTProviderReadinessRow.isReady)
+
+        let restricted = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            appleSpeechReadinessProvider: {
+                AppleSpeechReadinessSnapshot(
+                    authorization: .restricted,
+                    isRecognizerAvailable: true,
+                    supportsOnDeviceRecognition: true
+                )
+            }
+        )
+        restricted.setSTTProvider(.appleSpeechAnalyzer)
+        XCTAssertEqual(restricted.selectedSTTProviderReadinessRow.statusLabel, "Restricted")
+        XCTAssertEqual(restricted.selectedSTTProviderReadinessRow.nextActionLabel, "Select another provider")
+        XCTAssertFalse(restricted.selectedSTTProviderReadinessRow.isReady)
+
+        let unsupported = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            appleSpeechReadinessProvider: {
+                AppleSpeechReadinessSnapshot(
+                    authorization: .authorized,
+                    isRecognizerAvailable: true,
+                    supportsOnDeviceRecognition: false
+                )
+            }
+        )
+        unsupported.setSTTProvider(.appleSpeechAnalyzer)
+        XCTAssertEqual(unsupported.selectedSTTProviderReadinessRow.statusLabel, "Unsupported")
+        XCTAssertFalse(unsupported.selectedSTTProviderReadinessRow.isReady)
+
+        let unavailable = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            appleSpeechReadinessProvider: {
+                AppleSpeechReadinessSnapshot(
+                    authorization: .authorized,
+                    isRecognizerAvailable: false,
+                    supportsOnDeviceRecognition: true
+                )
+            }
+        )
+        unavailable.setSTTProvider(.appleSpeechAnalyzer)
+        XCTAssertEqual(unavailable.selectedSTTProviderReadinessRow.statusLabel, "Unavailable")
+        XCTAssertEqual(unavailable.selectedSTTProviderReadinessRow.nextActionLabel, "Try again later")
+        XCTAssertFalse(unavailable.selectedSTTProviderReadinessRow.isReady)
+    }
+
+    @MainActor
+    func testAppleSpeechReadinessDistinguishesPermissionRequestFromReady() throws {
+        let suiteName = "Suisui.AppSettingsViewModelAppleSpeechPermission.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let permissionRequired = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            appleSpeechReadinessProvider: {
+                AppleSpeechReadinessSnapshot(
+                    authorization: .notDetermined,
+                    isRecognizerAvailable: true,
+                    supportsOnDeviceRecognition: true
+                )
+            }
+        )
+        permissionRequired.setSTTProvider(.appleSpeechAnalyzer)
+        XCTAssertEqual(permissionRequired.selectedSTTProviderReadinessRow.statusLabel, "Permission required")
+        XCTAssertFalse(permissionRequired.selectedSTTProviderReadinessRow.isReady)
+
+        let ready = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            appleSpeechReadinessProvider: {
+                AppleSpeechReadinessSnapshot(
+                    authorization: .authorized,
+                    isRecognizerAvailable: true,
+                    supportsOnDeviceRecognition: true
+                )
+            }
+        )
+        ready.setSTTProvider(.appleSpeechAnalyzer)
+        XCTAssertEqual(ready.selectedSTTProviderReadinessRow.statusLabel, "Ready")
+        XCTAssertTrue(ready.selectedSTTProviderReadinessRow.isReady)
+    }
+
+    @MainActor
+    func testAppleSpeechReadinessRefreshPublishesAuthorizationTransition() throws {
+        let suiteName = "Suisui.AppSettingsViewModelAppleSpeechRefresh.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let readiness = LockedAppleSpeechReadinessProvider(snapshot: .permissionNotDetermined)
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            appleSpeechReadinessProvider: { readiness.read() }
+        )
+        viewModel.setSTTProvider(.appleSpeechAnalyzer)
+        XCTAssertEqual(viewModel.selectedSTTProviderReadinessRow.statusLabel, "Permission required")
+
+        readiness.write(
+            AppleSpeechReadinessSnapshot(
+                authorization: .authorized,
+                isRecognizerAvailable: true,
+                supportsOnDeviceRecognition: true
+            )
+        )
+        viewModel.refreshAppleSpeechReadiness()
+
+        XCTAssertEqual(viewModel.selectedSTTProviderReadinessRow.statusLabel, "Ready")
+        XCTAssertTrue(viewModel.selectedSTTProviderReadinessRow.isReady)
+    }
+
+    @MainActor
+    func testTTSProviderRoundTripPreservesProviderSpecificVoiceIDs() throws {
+        let suiteName = "Suisui.AppSettingsViewModelProviderVoiceRoundTrip.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore()
+        )
+
+        viewModel.setTTSProvider(.systemSpeech)
+        viewModel.setTTSVoiceID("com.apple.voice.compact.en-US.Samantha")
+        viewModel.setTTSProvider(.localKokoro)
+        viewModel.setTTSVoiceID("af_heart")
+        viewModel.setTTSProvider(.systemSpeech)
+        viewModel.saveSettings()
+
+        XCTAssertEqual(
+            viewModel.settings.selectedTTSVoiceID,
+            "com.apple.voice.compact.en-US.Samantha"
+        )
+        XCTAssertEqual(viewModel.settings.ttsVoiceID, "af_heart")
+        let loaded = try UserDefaultsAppSettingsStore(defaults: defaults).load()
+        XCTAssertEqual(loaded.systemSpeechVoiceID, "com.apple.voice.compact.en-US.Samantha")
+        XCTAssertEqual(loaded.ttsVoiceID, "af_heart")
+    }
+
+    @MainActor
+    func testChangingTTSLanguageClearsStaleSystemSpeechVoice() throws {
+        let suiteName = "Suisui.AppSettingsViewModelSystemVoiceLanguage.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore()
+        )
+        viewModel.setTTSProvider(.systemSpeech)
+        viewModel.setTTSVoiceID("com.apple.voice.compact.en-US.Samantha")
+
+        viewModel.setTTSLanguageCode("ja")
+
+        XCTAssertEqual(viewModel.settings.ttsLanguageCode, "ja")
+        XCTAssertEqual(viewModel.settings.selectedTTSVoiceID, "")
     }
 
     @MainActor
@@ -1630,6 +1851,25 @@ final class AppSettingsTests: XCTestCase {
         try Data("#!/bin/sh\n".utf8).write(to: url)
         chmod(url.path, 0o755)
         return url
+    }
+}
+
+private final class LockedAppleSpeechReadinessProvider: @unchecked Sendable {
+    private let lock = NSLock()
+    private var snapshot: AppleSpeechReadinessSnapshot
+
+    init(snapshot: AppleSpeechReadinessSnapshot) {
+        self.snapshot = snapshot
+    }
+
+    func read() -> AppleSpeechReadinessSnapshot {
+        lock.withLock { snapshot }
+    }
+
+    func write(_ snapshot: AppleSpeechReadinessSnapshot) {
+        lock.withLock {
+            self.snapshot = snapshot
+        }
     }
 }
 

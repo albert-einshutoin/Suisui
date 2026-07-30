@@ -9,8 +9,26 @@ public enum DailyPlanningReviewReadoutBuilder {
         languageCode: String,
         voiceID: String
     ) -> TextToSpeechRequest {
+        makeRequest(
+            review: review,
+            languageCode: languageCode,
+            voiceID: voiceID,
+            provider: .localKokoro
+        )
+    }
+
+    public static func makeRequest(
+        review: DailyPlanningReview,
+        languageCode: String,
+        voiceID: String,
+        provider: TTSProvider
+    ) -> TextToSpeechRequest {
         let normalizedLanguage = AppSettings.normalizedTTSLanguageCode(languageCode)
-        let normalizedVoice = AppSettings.normalizedTTSVoiceID(voiceID, languageCode: normalizedLanguage)
+        let normalizedVoice = AppSettings.normalizedTTSVoiceID(
+            voiceID,
+            languageCode: normalizedLanguage,
+            provider: provider
+        )
         let text = normalizedLanguage == "ja"
             ? japaneseReadout(for: review)
             : englishReadout(for: review)

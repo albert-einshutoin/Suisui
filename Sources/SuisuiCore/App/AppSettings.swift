@@ -25,6 +25,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var kokoroExecutablePath: String?
     public var ttsLanguageCode: String
     public var ttsVoiceID: String
+    // macOS and Kokoro use unrelated voice identifier namespaces. Persisting
+    // them separately keeps a provider round trip from destroying the user's
+    // installed System Speech voice selection.
+    public var systemSpeechVoiceID: String? = nil
     public var openCodeExecutablePath: String?
     public var openCodeWorkspacePath: String?
     public var openCodeModelID: String?
@@ -56,6 +60,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case kokoroExecutablePath
         case ttsLanguageCode
         case ttsVoiceID
+        case systemSpeechVoiceID
         case openCodeExecutablePath
         case openCodeWorkspacePath
         case openCodeModelID
@@ -158,6 +163,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.kokoroExecutablePath = try container.decodeIfPresent(String.self, forKey: .kokoroExecutablePath)
         self.ttsLanguageCode = try container.decodeIfPresent(String.self, forKey: .ttsLanguageCode) ?? "en"
         self.ttsVoiceID = try container.decodeIfPresent(String.self, forKey: .ttsVoiceID) ?? "af_heart"
+        self.systemSpeechVoiceID = try container.decodeIfPresent(String.self, forKey: .systemSpeechVoiceID)
         self.openCodeExecutablePath = try container.decodeIfPresent(String.self, forKey: .openCodeExecutablePath)
         self.openCodeWorkspacePath = try container.decodeIfPresent(String.self, forKey: .openCodeWorkspacePath)
         self.openCodeModelID = try container.decodeIfPresent(String.self, forKey: .openCodeModelID)
@@ -198,6 +204,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encodeIfPresent(kokoroExecutablePath, forKey: .kokoroExecutablePath)
         try container.encode(ttsLanguageCode, forKey: .ttsLanguageCode)
         try container.encode(ttsVoiceID, forKey: .ttsVoiceID)
+        try container.encodeIfPresent(systemSpeechVoiceID, forKey: .systemSpeechVoiceID)
         try container.encodeIfPresent(openCodeExecutablePath, forKey: .openCodeExecutablePath)
         try container.encodeIfPresent(openCodeWorkspacePath, forKey: .openCodeWorkspacePath)
         try container.encodeIfPresent(openCodeModelID, forKey: .openCodeModelID)
@@ -242,6 +249,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
         copy.ttsLanguageCode = Self.normalizedTTSLanguageCode(copy.ttsLanguageCode)
         copy.ttsVoiceID = Self.normalizedTTSVoiceID(copy.ttsVoiceID, languageCode: copy.ttsLanguageCode)
+        if let systemSpeechVoiceID = copy.systemSpeechVoiceID?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            copy.systemSpeechVoiceID = systemSpeechVoiceID.isEmpty ? nil : systemSpeechVoiceID
+        }
         if let openCodeExecutablePath = copy.openCodeExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.openCodeExecutablePath = openCodeExecutablePath.isEmpty ? nil : openCodeExecutablePath
         }
@@ -401,6 +411,31 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
         let expectedPrefix = normalizedTTSLanguageCode(languageCode) == "ja" ? "j" : "a"
         return normalized.hasPrefix(expectedPrefix) ? normalized : defaultTTSVoiceID(for: languageCode)
+    }
+
+    public static func normalizedTTSVoiceID(
+        _ voiceID: String,
+        languageCode: String,
+        provider: TTSProvider
+    ) -> String {
+        switch provider {
+        case .systemSpeech:
+            // AVSpeechSynthesisVoice identifiers are owned by macOS and do not
+            // follow Kokoro's a/j naming convention. Preserve the installed
+            // voice identifier verbatim after removing accidental edge space.
+            return voiceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .localKokoro:
+            return normalizedTTSVoiceID(voiceID, languageCode: languageCode)
+        }
+    }
+
+    public var selectedTTSVoiceID: String {
+        switch ttsProvider {
+        case .systemSpeech:
+            systemSpeechVoiceID ?? ""
+        case .localKokoro:
+            ttsVoiceID
+        }
     }
 
     private func appendOpenCodeLocalIssues(to issues: inout [ValidationIssue]) {
@@ -684,7 +719,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 )
             )
         }
-        if ttsVoiceID != Self.normalizedTTSVoiceID(ttsVoiceID, languageCode: ttsLanguageCode) {
+        if ttsVoiceID != Self.normalizedTTSVoiceID(
+            ttsVoiceID,
+            languageCode: ttsLanguageCode,
+            provider: ttsProvider
+        ) {
             issues.append(
                 ValidationIssue(
                     field: "ttsVoiceID",
@@ -1105,6 +1144,35 @@ public struct STTProviderReadinessRow: Identifiable, Equatable, Sendable {
     }
 }
 
+public enum AppleSpeechAuthorizationStatus: Equatable, Sendable {
+    case notDetermined
+    case denied
+    case restricted
+    case authorized
+}
+
+public struct AppleSpeechReadinessSnapshot: Equatable, Sendable {
+    public var authorization: AppleSpeechAuthorizationStatus
+    public var isRecognizerAvailable: Bool
+    public var supportsOnDeviceRecognition: Bool
+
+    public init(
+        authorization: AppleSpeechAuthorizationStatus,
+        isRecognizerAvailable: Bool,
+        supportsOnDeviceRecognition: Bool
+    ) {
+        self.authorization = authorization
+        self.isRecognizerAvailable = isRecognizerAvailable
+        self.supportsOnDeviceRecognition = supportsOnDeviceRecognition
+    }
+
+    public static let permissionNotDetermined = AppleSpeechReadinessSnapshot(
+        authorization: .notDetermined,
+        isRecognizerAvailable: true,
+        supportsOnDeviceRecognition: true
+    )
+}
+
 @MainActor
 public final class AppSettingsViewModel: ObservableObject {
     @Published public private(set) var settings: AppSettings
@@ -1134,6 +1202,7 @@ public final class AppSettingsViewModel: ObservableObject {
     @Published public private(set) var ollamaEndpointHealth: OllamaEndpointHealth
     @Published public private(set) var isRefreshingProviderReadiness: Bool
     @Published private var voiceModelStatusOverrides: [VoiceModelID: VoiceModelInstallStatus]
+    @Published private var appleSpeechReadinessSnapshot: AppleSpeechReadinessSnapshot
 
     private let settingsStore: any AppSettingsStore
     private let secretStore: any SecretStore
@@ -1141,10 +1210,32 @@ public final class AppSettingsViewModel: ObservableObject {
     private let voiceModelManager: any VoiceModelManaging
     private let ollamaHealthChecker: any OllamaEndpointHealthChecking
     private let secretReadinessReader: any ProviderSecretReadinessReading
+    private let appleSpeechReadinessProvider: @Sendable () -> AppleSpeechReadinessSnapshot
     private var rejectedAIProvider: AIProvider?
     private static let settingsSaveFailureMessage = "App settings could not be saved."
     private static let apiKeySaveFailureMessage = "API key could not be saved to Keychain."
     private static let apiKeyDeleteFailureMessage = "API key could not be removed from Keychain."
+
+    public convenience init(
+        settingsStore: any AppSettingsStore,
+        secretStore: any SecretStore,
+        voiceModelCatalog: VoiceModelCatalog = .phase1Default,
+        voiceModelManager: any VoiceModelManaging = VoiceModelManager(),
+        ollamaHealthChecker: any OllamaEndpointHealthChecking = UncheckedOllamaEndpointHealthChecker(),
+        secretReadinessReader: (any ProviderSecretReadinessReading)? = nil,
+        refreshProviderSecretStatusesOnInit: Bool = true
+    ) {
+        self.init(
+            settingsStore: settingsStore,
+            secretStore: secretStore,
+            voiceModelCatalog: voiceModelCatalog,
+            voiceModelManager: voiceModelManager,
+            ollamaHealthChecker: ollamaHealthChecker,
+            secretReadinessReader: secretReadinessReader,
+            appleSpeechReadinessProvider: { .permissionNotDetermined },
+            refreshProviderSecretStatusesOnInit: refreshProviderSecretStatusesOnInit
+        )
+    }
 
     public init(
         settingsStore: any AppSettingsStore,
@@ -1153,6 +1244,7 @@ public final class AppSettingsViewModel: ObservableObject {
         voiceModelManager: any VoiceModelManaging = VoiceModelManager(),
         ollamaHealthChecker: any OllamaEndpointHealthChecking = UncheckedOllamaEndpointHealthChecker(),
         secretReadinessReader: (any ProviderSecretReadinessReading)? = nil,
+        appleSpeechReadinessProvider: @escaping @Sendable () -> AppleSpeechReadinessSnapshot,
         refreshProviderSecretStatusesOnInit: Bool = true
     ) {
         let initialVoiceModelStatuses = Dictionary(
@@ -1167,6 +1259,8 @@ public final class AppSettingsViewModel: ObservableObject {
         self.ollamaHealthChecker = ollamaHealthChecker
         self.secretReadinessReader = secretReadinessReader
             ?? KeychainBackedProviderSecretReadinessReader(secretStore: secretStore)
+        self.appleSpeechReadinessProvider = appleSpeechReadinessProvider
+        self.appleSpeechReadinessSnapshot = appleSpeechReadinessProvider()
         let loadedSettings: AppSettings
         let initialErrorMessage: String?
         do {
@@ -1402,14 +1496,7 @@ public final class AppSettingsViewModel: ObservableObject {
     public var selectedSTTProviderReadinessRow: STTProviderReadinessRow {
         switch settings.sttProvider {
         case .appleSpeechAnalyzer:
-            return STTProviderReadinessRow(
-                provider: .appleSpeechAnalyzer,
-                statusLabel: "Ready",
-                detailLabel: "Uses on-device Apple Speech without an API key or model download.",
-                nextActionLabel: "Record a voice command",
-                isReady: true,
-                isSelected: true
-            )
+            return makeAppleSpeechReadinessRow()
         case .openAITranscribe:
             let isReady = openAIAPIKeyReadinessState == .configured
             return STTProviderReadinessRow(
@@ -1434,6 +1521,60 @@ public final class AppSettingsViewModel: ObservableObject {
                 isSelected: true
             )
         }
+    }
+
+    private func makeAppleSpeechReadinessRow() -> STTProviderReadinessRow {
+        let snapshot = appleSpeechReadinessSnapshot
+        let statusLabel: String
+        let detailLabel: String
+        let nextActionLabel: String
+        let isReady: Bool
+
+        switch snapshot.authorization {
+        case .notDetermined:
+            statusLabel = "Permission required"
+            detailLabel = "Allow Speech Recognition when recording the first voice command."
+            nextActionLabel = "Record to request permission"
+            isReady = false
+        case .denied:
+            statusLabel = "Permission denied"
+            detailLabel = "Speech Recognition access is disabled for Suisui."
+            nextActionLabel = "Open System Settings"
+            isReady = false
+        case .restricted:
+            statusLabel = "Restricted"
+            detailLabel = "Speech Recognition is blocked by a device or account restriction."
+            nextActionLabel = "Select another provider"
+            isReady = false
+        case .authorized where !snapshot.supportsOnDeviceRecognition:
+            statusLabel = "Unsupported"
+            detailLabel = "On-device Apple Speech is unavailable for the current language."
+            nextActionLabel = "Select another provider"
+            isReady = false
+        case .authorized where !snapshot.isRecognizerAvailable:
+            statusLabel = "Unavailable"
+            detailLabel = "Apple Speech is temporarily unavailable for the current language."
+            nextActionLabel = "Try again later"
+            isReady = false
+        case .authorized:
+            statusLabel = "Ready"
+            detailLabel = "Uses on-device Apple Speech without an API key or model download."
+            nextActionLabel = "Record a voice command"
+            isReady = true
+        }
+
+        return STTProviderReadinessRow(
+            provider: .appleSpeechAnalyzer,
+            statusLabel: statusLabel,
+            detailLabel: detailLabel,
+            nextActionLabel: nextActionLabel,
+            isReady: isReady,
+            isSelected: true
+        )
+    }
+
+    public func refreshAppleSpeechReadiness() {
+        appleSpeechReadinessSnapshot = appleSpeechReadinessProvider()
     }
 
     public var voiceModelReadinessRows: [VoiceModelReadinessRow] {
@@ -1768,6 +1909,9 @@ public final class AppSettingsViewModel: ObservableObject {
             return
         }
         settings.sttProvider = provider
+        if provider == .appleSpeechAnalyzer {
+            refreshAppleSpeechReadiness()
+        }
         clearMessages()
     }
 
@@ -1818,7 +1962,7 @@ public final class AppSettingsViewModel: ObservableObject {
         let request = TextToSpeechRequest(
             text: Self.ttsPreviewText(for: settings.ttsLanguageCode),
             languageCode: settings.ttsLanguageCode,
-            voiceID: settings.ttsVoiceID
+            voiceID: settings.selectedTTSVoiceID
         )
 
         clearMessages()
@@ -1861,11 +2005,25 @@ public final class AppSettingsViewModel: ObservableObject {
         let normalized = AppSettings.normalizedTTSLanguageCode(languageCode)
         settings.ttsLanguageCode = normalized
         settings.ttsVoiceID = AppSettings.normalizedTTSVoiceID(settings.ttsVoiceID, languageCode: normalized)
+        // macOS voice identifiers include a concrete locale. Clearing the
+        // selection prevents a language change from speaking with a stale
+        // voice; System Speech will choose the installed default for the new
+        // language until the user selects another voice.
+        settings.systemSpeechVoiceID = nil
         clearMessages()
     }
 
     public func setTTSVoiceID(_ voiceID: String) {
-        settings.ttsVoiceID = AppSettings.normalizedTTSVoiceID(voiceID, languageCode: settings.ttsLanguageCode)
+        switch settings.ttsProvider {
+        case .systemSpeech:
+            let normalized = voiceID.trimmingCharacters(in: .whitespacesAndNewlines)
+            settings.systemSpeechVoiceID = normalized.isEmpty ? nil : normalized
+        case .localKokoro:
+            settings.ttsVoiceID = AppSettings.normalizedTTSVoiceID(
+                voiceID,
+                languageCode: settings.ttsLanguageCode
+            )
+        }
         clearMessages()
     }
 

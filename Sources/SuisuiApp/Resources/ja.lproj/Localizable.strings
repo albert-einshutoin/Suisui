@@ -2060,6 +2060,17 @@
 "Tests the selected TTS provider when it is ready." = "選択したTTSプロバイダーが利用可能な場合にテスト再生します。";
 "Apple Speech" = "Apple音声認識";
 "Uses on-device Apple Speech without an API key or model download." = "APIキーやモデルのダウンロードなしで、デバイス上のApple音声認識を使用します。";
+"Permission required" = "権限が必要";
+"Allow Speech Recognition when recording the first voice command." = "最初の音声コマンドを録音するときに音声認識を許可してください。";
+"Record to request permission" = "録音して権限をリクエスト";
+"Permission denied" = "権限が拒否されています";
+"Speech Recognition access is disabled for Suisui." = "Suisuiの音声認識アクセスが無効です。";
+"Open System Settings" = "システム設定を開く";
+"Speech Recognition is blocked by a device or account restriction." = "デバイスまたはアカウントの制限により音声認識がブロックされています。";
+"On-device Apple Speech is unavailable for the current language." = "現在の言語ではデバイス上のApple音声認識を利用できません。";
+"Select another provider" = "別のプロバイダーを選択";
+"Apple Speech is temporarily unavailable for the current language." = "現在の言語ではApple音声認識を一時的に利用できません。";
+"Try again later" = "後でもう一度試す";
 "Record a voice command" = "音声コマンドを録音";
 "Uses voices installed in macOS." = "macOSにインストールされた声を使用します。";
 "Uses an installed macOS voice without an API key or model download." = "APIキーやモデルのダウンロードなしで、macOSにインストールされた声を使用します。";
