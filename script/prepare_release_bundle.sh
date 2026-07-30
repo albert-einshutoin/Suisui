@@ -106,7 +106,7 @@ if [[ -d "$sparkle_framework" ]]; then
       done
     done
     shopt -u nullglob
-    sparkle_prune_mode="development-assets-removed"
+    sparkle_prune_mode="development-assets-and-unused-locales-removed-v2"
   fi
 
   for runtime_path in Resources Autoupdate Updater.app XPCServices; do

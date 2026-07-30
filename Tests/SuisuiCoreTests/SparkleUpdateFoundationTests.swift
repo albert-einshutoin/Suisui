@@ -539,7 +539,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             "appBinaryBytes": 1,
             "artifactBytes": \(artifactBytes),
             "stripMode": "local-symbols-removed",
-            "sparklePruneMode": "development-assets-removed"
+            "sparklePruneMode": "development-assets-and-unused-locales-removed-v2"
           },
           "source": {
             "gitCommit": "test-fixture"

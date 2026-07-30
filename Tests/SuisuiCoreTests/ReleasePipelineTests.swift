@@ -15347,6 +15347,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(
             atPath: sparkleVersionURL.appendingPathComponent("Resources/de.lproj").path
         ))
+        let preparationMarker = try String(
+            contentsOf: appURL.appendingPathComponent("Contents/Resources/release-preparation.env")
+        )
+        XCTAssertTrue(preparationMarker.contains(
+            "SPARKLE_PRUNE_MODE=development-assets-and-unused-locales-removed-v2"
+        ))
         XCTAssertTrue(result.output.contains("release bundle prepared before signing"))
     }
 
@@ -15444,7 +15450,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(verifier.contains("package.stripMode"))
         XCTAssertTrue(verifier.contains("package.sparklePruneMode"))
         XCTAssertTrue(verifier.contains("local-symbols-removed"))
-        XCTAssertTrue(verifier.contains("development-assets-removed"))
+        XCTAssertTrue(verifier.contains("development-assets-and-unused-locales-removed-v2"))
 
         for path in [
             "script/create_release_evidence.sh",
@@ -15485,7 +15491,7 @@ final class ReleasePipelineTests: XCTestCase {
             "appBinaryBytes": 4,
             "artifactBytes": 16,
             "stripMode": "local-symbols-removed",
-            "sparklePruneMode": "development-assets-removed"
+            "sparklePruneMode": "development-assets-and-unused-locales-removed-v2"
           }
         }
         """
@@ -15657,7 +15663,7 @@ final class ReleasePipelineTests: XCTestCase {
             "    \"appBinaryBytes\": 1,",
             "    \"artifactBytes\": \(artifactBytes),",
             "    \"stripMode\": \"local-symbols-removed\",",
-            "    \"sparklePruneMode\": \"development-assets-removed\"",
+            "    \"sparklePruneMode\": \"development-assets-and-unused-locales-removed-v2\"",
             "  },",
             "  \"source\": {",
             "    \"gitCommit\": \"\(sourceCommit)\"",
@@ -15779,7 +15785,7 @@ final class ReleasePipelineTests: XCTestCase {
             "appBinaryBytes": 1,
             "artifactBytes": \(artifactBytes),
             "stripMode": "local-symbols-removed",
-            "sparklePruneMode": "development-assets-removed"
+            "sparklePruneMode": "development-assets-and-unused-locales-removed-v2"
           },
           "source": {
             "gitCommit": "test-fixture"

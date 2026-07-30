@@ -6,7 +6,7 @@ Suisuiの配布物は、初回導入が軽く、必要な高度機能はユー�
 
 - `Suisui.app`: file payload合計50 MiB以下。`script/check_release_bundle_inventory.sh`が超過をfail closedにする。
 - ZIP: 8 MiB以下。DMG: 9 MiB以下。`script/check_release_artifact_size.sh`が形式別に検証し、必要な変更は`SUISUI_MAX_ZIP_ARTIFACT_BYTES`または`SUISUI_MAX_DMG_ARTIFACT_BYTES`をPRで明示して更新する。
-- 正式な多解像度アプリアイコンは1024pxキャンバスと全macOS表現を維持しつつ、視覚上十分な512px相当に最適化した。Developer ID署名、stapled ticket、Sparkle runtimeを含むproduction ZIP実測値8,059,051 bytesを根拠に上限を8 MiBとし、約322 KiBを超える追加回帰は拒否する。ZIP生成は`ditto --zlibCompressionLevel 9`を固定し、圧縮設定の揺れを容量回帰として誤検知しない。
+- 正式な多解像度アプリアイコンは1024pxキャンバスと全macOS表現を維持しつつ、視覚上十分な512px相当に最適化した。8 MiB上限はDeveloper ID署名、stapled ticket、Sparkle runtimeを含む初期production ZIPの実測から設定したが、その時点の余裕を現在値として扱わない。各リリースの実測値と余裕は生成されたpackage evidenceを正とする。ZIP生成は`ditto --zlibCompressionLevel 9`を固定し、圧縮設定の揺れを容量回帰として誤検知しない。
 - Release evidence: app bundle、main binary、ZIP/DMGの実測bytesとstrip/pruning modeを記録する。
 - Review threshold: 新規依存または新規リソースがapp bundleを5 MiB以上増やす変更は、PRに代替案、ユーザー価値、更新・脆弱性対応責任を記載する。
 - `.build`や開発者cacheの容量を、ユーザーへ配るapp bundleの容量として扱わない。
