@@ -700,6 +700,7 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
+        installVisualEvidenceBackdropIfRequested()
         SuisuiNotificationResponder.shared.install()
         ConversationRetentionRuntime.shared.start()
         DockTileBadgeController.shared.start()
@@ -734,6 +735,43 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
             userDriverDelegate: nil
         )
 #endif
+    }
+
+    private func installVisualEvidenceBackdropIfRequested() {
+        guard ProcessInfo.processInfo.environment["SUISUI_VISUAL_EVIDENCE_STABLE_BACKDROP"] == "1" else {
+            return
+        }
+
+        // Native materials otherwise sample the login user's wallpaper and
+        // physical display. Keep this capture-only: normal windows retain the
+        // platform material behavior and no global accessibility setting moves.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(visualEvidenceWindowDidBecomeVisible(_:)),
+            name: NSWindow.didBecomeKeyNotification,
+            object: nil
+        )
+        NSApplication.shared.windows.forEach(configureVisualEvidenceBackdrop)
+    }
+
+    @objc
+    private func visualEvidenceWindowDidBecomeVisible(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else {
+            return
+        }
+        configureVisualEvidenceBackdrop(window)
+    }
+
+    private func configureVisualEvidenceBackdrop(_ window: NSWindow) {
+        let isDark = window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let component: CGFloat = isDark ? 0.105 : 0.94
+        window.backgroundColor = NSColor(
+            srgbRed: component,
+            green: component,
+            blue: component,
+            alpha: 1
+        )
+        window.isOpaque = true
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

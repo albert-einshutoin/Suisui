@@ -5,6 +5,21 @@ import UniformTypeIdentifiers
 import XCTest
 
 final class VisualCaptureStabilityTests: XCTestCase {
+    func testCapturePinsOpaqueBackdropOnlyForOwnedEvidenceProcess() throws {
+        let capture = try readPackageFile("script/capture_ui_evidence.sh")
+        let app = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
+
+        XCTAssertTrue(capture.contains("SUISUI_VISUAL_EVIDENCE_STABLE_BACKDROP=1"))
+        XCTAssertTrue(app.contains("SUISUI_VISUAL_EVIDENCE_STABLE_BACKDROP"))
+        XCTAssertTrue(app.contains("configureVisualEvidenceBackdrop"))
+        XCTAssertTrue(app.contains("window.isOpaque = true"))
+        XCTAssertTrue(app.contains("NSWindow.didBecomeKeyNotification"))
+        XCTAssertFalse(capture.contains("defaults write -g AppleReduceDesktopTinting"))
+        XCTAssertFalse(capture.contains("defaults write NSGlobalDomain AppleReduceDesktopTinting"))
+        XCTAssertFalse(capture.contains("defaults write -g AppleReduceTransparency"))
+        XCTAssertFalse(capture.contains("defaults write NSGlobalDomain AppleReduceTransparency"))
+    }
+
     func testSystemEvidencePinsDarkAppAppearanceAndRejectsWrongRasterAppearance() throws {
         let capture = try readPackageFile("script/capture_ui_evidence.sh")
         let app = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")

@@ -420,6 +420,9 @@ app_env_args() {
   # Pin Suisui's product language. Foundation/AppKit locale defaults are pinned
   # separately through launch arguments in open_evidence_app.
   args+=("SUISUI_LANGUAGE_PREFERENCE=$EVIDENCE_LOCALE")
+  # An opaque in-window backdrop prevents semantic materials from inheriting
+  # the capture host's wallpaper or physical-display tint.
+  args+=("SUISUI_VISUAL_EVIDENCE_STABLE_BACKDROP=1")
   if [[ -n "$DATABASE_PATH" ]]; then
     # Screenshot evidence must open the exact SQLite file seeded below; relying
     # on HOME-derived defaults can silently fall back to another database.
