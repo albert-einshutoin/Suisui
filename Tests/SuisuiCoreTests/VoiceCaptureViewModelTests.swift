@@ -2714,6 +2714,43 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: outputURL.path))
     }
 
+    func testFailedTemporaryRecordingDeletionIsRetriedOnRelease() async throws {
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "suisui-conversation-\(UUID().uuidString).m4a"
+            )
+        try Data("audio".utf8).write(to: outputURL)
+        defer { try? FileManager.default.removeItem(at: outputURL) }
+        let remover = FailOnceTemporaryRecordingRemover()
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(
+                transcript: STTTranscript(text: "Temporary recording")
+            ),
+            llmProvider: FakeLLMProvider(
+                response: PlanningResponse(
+                    providerID: "unused",
+                    rawContent: "{}",
+                    actionPlan: nil,
+                    validationResult: .init(issues: [])
+                )
+            ),
+            temporaryRecordingRemover: remover.remove
+        )
+
+        await viewModel.startRecording()
+        await viewModel.stopRecording(outputURL: outputURL)
+        viewModel.clear()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: outputURL.path))
+        XCTAssertEqual(remover.attemptCount, 1)
+
+        viewModel.releaseTemporaryRecordingResources()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outputURL.path))
+        XCTAssertEqual(remover.attemptCount, 2)
+    }
+
     func testStartupSweepDeletesOnlyStaleEphemeralVoiceRecordings()
         throws
     {
@@ -4081,5 +4118,27 @@ private actor RecordingReviewPersistingConversationOrchestrator:
                 && $0.queueItem.contentFingerprint
                     == queueItem.contentFingerprint
         }
+    }
+}
+
+private final class FailOnceTemporaryRecordingRemover: @unchecked Sendable {
+    private let lock = NSLock()
+    private var attempts = 0
+
+    var attemptCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return attempts
+    }
+
+    func remove(_ url: URL) throws {
+        lock.lock()
+        attempts += 1
+        let shouldFail = attempts == 1
+        lock.unlock()
+        if shouldFail {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        try FileManager.default.removeItem(at: url)
     }
 }

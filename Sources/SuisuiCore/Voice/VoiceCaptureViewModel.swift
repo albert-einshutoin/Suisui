@@ -158,10 +158,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private let taskDeleter: (@Sendable (Int64) throws -> Void)?
     private let lowLatencySegmentDuration: TimeInterval
     private let lowLatencySegmentOutputURLProvider: @Sendable () -> URL
+    private var temporaryRecordingRemover: @Sendable (URL) throws -> Void = {
+        try FileManager.default.removeItem(at: $0)
+    }
     // Save-to-Inbox must be tied to the audio that produced the current
     // transcript so a failed new recording cannot reuse stale typed text.
     private var lastTranscribedAudioURL: URL?
     private var savedInboxAudioURL: URL?
+    private var pendingTemporaryRecordingDeletionURLs: Set<URL> = []
     private var lowLatencyStreamTask: Task<Void, Never>?
     private var lowLatencyStreamID: UUID
     private var microphoneSilenceDetector: MicrophoneSilenceDetector
@@ -317,6 +321,22 @@ public final class VoiceCaptureViewModel: ObservableObject {
             lowLatencySegmentDuration: lowLatencySegmentDuration,
             lowLatencySegmentOutputURLProvider: lowLatencySegmentOutputURLProvider
         )
+    }
+
+    /// Keeps deletion-failure tests deterministic without changing the public
+    /// initializer surface used by OSS clients.
+    convenience init(
+        audioRecorder: any AudioRecorder,
+        sttProvider: any SpeechToTextProvider,
+        llmProvider: any LLMProvider,
+        temporaryRecordingRemover: @escaping @Sendable (URL) throws -> Void
+    ) {
+        self.init(
+            audioRecorder: audioRecorder,
+            sttProvider: sttProvider,
+            llmProvider: llmProvider
+        )
+        self.temporaryRecordingRemover = temporaryRecordingRemover
     }
 
     public var canGeneratePlan: Bool {
@@ -718,6 +738,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     public func clear() {
         stopLowLatencyVoiceAgentMode()
         stopInputLevelMonitoring()
+        retryPendingTemporaryRecordingDeletions()
         removeUnsavedTemporaryRecording()
         audioRecorder.reset()
         draft = TranscriptDraft()
@@ -753,6 +774,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     public func releaseTemporaryRecordingResources() {
         stopLowLatencyVoiceAgentMode()
         stopInputLevelMonitoring()
+        retryPendingTemporaryRecordingDeletions()
         removeUnsavedTemporaryRecording()
         audioRecorder.reset()
         recordedAudio = nil
@@ -839,6 +861,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
     public func startRecording(at date: Date = Date()) async {
         stopLowLatencyVoiceAgentMode()
+        retryPendingTemporaryRecordingDeletions()
         // Starting another take transfers ownership away from the previous
         // unsaved temporary file. Delete it before the recorder can replace
         // our in-memory reference, while preserving Inbox-owned recordings.
@@ -1604,13 +1627,31 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private func removeOwnedTemporaryRecording(at url: URL) {
         let temporaryRoot =
             FileManager.default.temporaryDirectory.standardizedFileURL.path
-        let candidate = url.standardizedFileURL.path
-        guard candidate.hasPrefix(temporaryRoot + "/") else {
+        let candidate = url.standardizedFileURL
+        guard candidate.path.hasPrefix(temporaryRoot + "/") else {
             // Injected recorders may return caller-owned paths. Only production
             // temporary recordings are owned by this workspace.
             return
         }
-        try? FileManager.default.removeItem(at: url)
+        do {
+            try temporaryRecordingRemover(candidate)
+            pendingTemporaryRecordingDeletionURLs.remove(candidate)
+        } catch let error as CocoaError where error.code == .fileNoSuchFile {
+            pendingTemporaryRecordingDeletionURLs.remove(candidate)
+        } catch {
+            // Keep ownership after a transient deletion failure. A later
+            // lifecycle boundary retries it, while the startup sweep covers a
+            // process crash before that retry can run.
+            pendingTemporaryRecordingDeletionURLs.insert(candidate)
+        }
+    }
+
+    private func retryPendingTemporaryRecordingDeletions() {
+        for candidate in pendingTemporaryRecordingDeletionURLs
+            where candidate != savedInboxAudioURL?.standardizedFileURL
+        {
+            removeOwnedTemporaryRecording(at: candidate)
+        }
     }
 
     /// Sweeps only UUID-named files owned by Suisui and old enough that no
