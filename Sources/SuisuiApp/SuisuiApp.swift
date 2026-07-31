@@ -343,7 +343,8 @@ private struct ProjectBoardWindowRootView: View {
             guard viewModel == nil else {
                 return
             }
-            guard ProjectBoardLaunchHydrationPolicy.shouldHydrateWindowGroup(
+            guard ProjectBoardLaunchHydrationPolicy.shared.shouldHydrateWindowGroup(
+                sceneID: sceneID,
                 directFallbackRequested: SuisuiWindowlessFallbackEnvironment.shouldCreateDirectFallbackWindow,
                 directFallbackWindowExists:
                     SuisuiProjectBoardWindowFallback.shared.windowForDelegateRetention != nil
@@ -516,15 +517,45 @@ private enum SuisuiLaunchRecoveryEnvironment {
     }
 }
 
-enum ProjectBoardLaunchHydrationPolicy {
-    static func shouldHydrateWindowGroup(
+@MainActor
+final class ProjectBoardLaunchHydrationPolicy {
+    static let shared = ProjectBoardLaunchHydrationPolicy()
+
+    private enum Decision {
+        case undecided
+        case noSuppression
+        case suppressingInitialScene(UUID)
+    }
+
+    private var decision = Decision.undecided
+
+    func shouldHydrateWindowGroup(
+        sceneID: UUID,
         directFallbackRequested: Bool,
         directFallbackWindowExists: Bool
     ) -> Bool {
         // Production recovery may create a fallback after a normal launch.
-        // Suppress only the duplicate isolated-launch WindowGroup, preserving
-        // independent hydration for later user-created windows.
-        !(directFallbackRequested && directFallbackWindowExists)
+        // Suppress only the first isolated-launch WindowGroup, and remember its
+        // scene identity so reconstruction cannot accidentally hydrate it.
+        // A different scene is a user-created window and keeps its independent
+        // view model even while the launch fallback remains alive.
+        switch decision {
+        case .noSuppression:
+            return true
+        case let .suppressingInitialScene(suppressedSceneID):
+            return suppressedSceneID != sceneID
+        case .undecided:
+            // The first WindowGroup decides the launch topology. If it already
+            // has to hydrate because the requested fallback was not created,
+            // a fallback arriving later must not consume the one suppression
+            // slot and hide a user-created second window.
+            guard directFallbackRequested, directFallbackWindowExists else {
+                decision = .noSuppression
+                return true
+            }
+            decision = .suppressingInitialScene(sceneID)
+            return false
+        }
     }
 }
 

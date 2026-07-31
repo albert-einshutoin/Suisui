@@ -286,7 +286,8 @@ final class LaunchExperienceTests: XCTestCase {
         )
         let root = source[rootStart.lowerBound..<rootEnd.lowerBound]
 
-        XCTAssertTrue(root.contains("ProjectBoardLaunchHydrationPolicy.shouldHydrateWindowGroup"))
+        XCTAssertTrue(root.contains("ProjectBoardLaunchHydrationPolicy.shared.shouldHydrateWindowGroup"))
+        XCTAssertTrue(root.contains("sceneID: sceneID"))
         XCTAssertTrue(root.contains("SuisuiWindowlessFallbackEnvironment.shouldCreateDirectFallbackWindow"))
         XCTAssertTrue(root.contains("SuisuiProjectBoardWindowFallback.shared.windowForDelegateRetention != nil"))
     }
