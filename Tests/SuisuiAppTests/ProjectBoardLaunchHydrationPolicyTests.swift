@@ -3,87 +3,116 @@ import XCTest
 
 @MainActor
 final class ProjectBoardLaunchHydrationPolicyTests: XCTestCase {
-    func testInitialWindowGroupRemainsSuppressedWhileRequestedDirectFallbackOwnsAWindow() {
+    func testWindowGroupWaitsForRequestedDirectFallbackThenSuppressesInitialScene() async {
         let policy = ProjectBoardLaunchHydrationPolicy()
         let initialSceneID = UUID()
-
-        XCTAssertFalse(
-            policy.shouldHydrateWindowGroup(
+        let initialDecision = Task { @MainActor in
+            await policy.shouldHydrateWindowGroup(
                 sceneID: initialSceneID,
-                directFallbackRequested: true,
-                directFallbackWindowExists: true
+                directFallbackRequested: true
             )
+        }
+
+        await Task.yield()
+        policy.resolveDirectFallbackCreation(created: true)
+
+        let shouldHydrateInitialScene = await initialDecision.value
+        let shouldHydrateReconstructedScene = await policy.shouldHydrateWindowGroup(
+            sceneID: initialSceneID,
+            directFallbackRequested: true
         )
-        XCTAssertFalse(
-            policy.shouldHydrateWindowGroup(
+        XCTAssertFalse(shouldHydrateInitialScene)
+        XCTAssertFalse(shouldHydrateReconstructedScene)
+    }
+
+    func testWindowGroupWaitsForRequestedDirectFallbackThenHydratesWhenCreationFails() async {
+        let policy = ProjectBoardLaunchHydrationPolicy()
+        let initialSceneID = UUID()
+        let decision = Task { @MainActor in
+            await policy.shouldHydrateWindowGroup(
                 sceneID: initialSceneID,
-                directFallbackRequested: true,
-                directFallbackWindowExists: true
+                directFallbackRequested: true
             )
-        )
+        }
+
+        await Task.yield()
+        policy.resolveDirectFallbackCreation(created: false)
+
+        let shouldHydrate = await decision.value
+        XCTAssertTrue(shouldHydrate)
     }
 
-    func testWindowGroupHydratesWhenRequestedFallbackWasNotCreated() {
+    func testLateFallbackResolutionDoesNotSuppressAUserWindowAfterInitialWindowHydrated() async {
         let policy = ProjectBoardLaunchHydrationPolicy()
-
-        XCTAssertTrue(
-            policy.shouldHydrateWindowGroup(
-                sceneID: UUID(),
-                directFallbackRequested: true,
-                directFallbackWindowExists: false
+        let initialSceneID = UUID()
+        let initialDecision = Task { @MainActor in
+            await policy.shouldHydrateWindowGroup(
+                sceneID: initialSceneID,
+                directFallbackRequested: true
             )
+        }
+
+        await Task.yield()
+        policy.resolveDirectFallbackCreation(created: false)
+        policy.resolveDirectFallbackCreation(created: true)
+
+        let shouldHydrateInitialScene = await initialDecision.value
+        let shouldHydrateLaterScene = await policy.shouldHydrateWindowGroup(
+            sceneID: UUID(),
+            directFallbackRequested: true
         )
+        XCTAssertTrue(shouldHydrateInitialScene)
+        XCTAssertTrue(shouldHydrateLaterScene)
     }
 
-    func testLateFallbackDoesNotSuppressAUserWindowAfterInitialWindowHydrated() {
-        let policy = ProjectBoardLaunchHydrationPolicy()
-
-        XCTAssertTrue(
-            policy.shouldHydrateWindowGroup(
-                sceneID: UUID(),
-                directFallbackRequested: true,
-                directFallbackWindowExists: false
-            )
-        )
-        XCTAssertTrue(
-            policy.shouldHydrateWindowGroup(
-                sceneID: UUID(),
-                directFallbackRequested: true,
-                directFallbackWindowExists: true
-            )
-        )
-    }
-
-    func testLaterUserCreatedWindowHydratesAfterInitialWindowWasSuppressed() {
+    func testLaterUserCreatedWindowHydratesAfterInitialWindowWasSuppressed() async {
         let policy = ProjectBoardLaunchHydrationPolicy()
         let initialSceneID = UUID()
         let laterSceneID = UUID()
-
-        XCTAssertFalse(
-            policy.shouldHydrateWindowGroup(
+        let initialDecision = Task { @MainActor in
+            await policy.shouldHydrateWindowGroup(
                 sceneID: initialSceneID,
-                directFallbackRequested: true,
-                directFallbackWindowExists: true
+                directFallbackRequested: true
             )
+        }
+
+        await Task.yield()
+        policy.resolveDirectFallbackCreation(created: true)
+
+        let shouldHydrateInitialScene = await initialDecision.value
+        let shouldHydrateLaterScene = await policy.shouldHydrateWindowGroup(
+            sceneID: laterSceneID,
+            directFallbackRequested: true
         )
-        XCTAssertTrue(
-            policy.shouldHydrateWindowGroup(
-                sceneID: laterSceneID,
-                directFallbackRequested: true,
-                directFallbackWindowExists: true
-            )
-        )
+        XCTAssertFalse(shouldHydrateInitialScene)
+        XCTAssertTrue(shouldHydrateLaterScene)
     }
 
-    func testNormalWindowGroupHydratesEvenIfProductionRecoveryOwnsAFallbackWindow() {
+    func testFallbackResolutionBeforeWindowGroupProducesTheSameOwnershipDecision() async {
         let policy = ProjectBoardLaunchHydrationPolicy()
+        let initialSceneID = UUID()
+        policy.resolveDirectFallbackCreation(created: true)
 
-        XCTAssertTrue(
-            policy.shouldHydrateWindowGroup(
-                sceneID: UUID(),
-                directFallbackRequested: false,
-                directFallbackWindowExists: true
-            )
+        let shouldHydrateInitialScene = await policy.shouldHydrateWindowGroup(
+            sceneID: initialSceneID,
+            directFallbackRequested: true
         )
+        let shouldHydrateLaterScene = await policy.shouldHydrateWindowGroup(
+            sceneID: UUID(),
+            directFallbackRequested: true
+        )
+        XCTAssertFalse(shouldHydrateInitialScene)
+        XCTAssertTrue(shouldHydrateLaterScene)
+    }
+
+    func testNormalWindowGroupHydratesEvenIfProductionRecoveryOwnsAFallbackWindow() async {
+        let policy = ProjectBoardLaunchHydrationPolicy()
+        policy.resolveDirectFallbackCreation(created: true)
+
+        let shouldHydrate = await policy.shouldHydrateWindowGroup(
+            sceneID: UUID(),
+            directFallbackRequested: false
+        )
+        XCTAssertTrue(shouldHydrate)
     }
 }

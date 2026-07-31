@@ -343,11 +343,9 @@ private struct ProjectBoardWindowRootView: View {
             guard viewModel == nil else {
                 return
             }
-            guard ProjectBoardLaunchHydrationPolicy.shared.shouldHydrateWindowGroup(
+            guard await ProjectBoardLaunchHydrationPolicy.shared.shouldHydrateWindowGroup(
                 sceneID: sceneID,
-                directFallbackRequested: SuisuiWindowlessFallbackEnvironment.shouldCreateDirectFallbackWindow,
-                directFallbackWindowExists:
-                    SuisuiProjectBoardWindowFallback.shared.windowForDelegateRetention != nil
+                directFallbackRequested: SuisuiWindowlessFallbackEnvironment.shouldCreateDirectFallbackWindow
             ) else {
                 // Isolated launch routes intentionally publish an AppKit
                 // fallback before the WindowGroup is ready. Hydrating this
@@ -523,6 +521,11 @@ final class ProjectBoardLaunchHydrationPolicy {
 
     private enum Decision {
         case undecided
+        case awaitingDirectFallback(
+            initialSceneID: UUID,
+            continuations: [CheckedContinuation<Bool, Never>]
+        )
+        case directFallbackCreatedBeforeInitialScene
         case noSuppression
         case suppressingInitialScene(UUID)
     }
@@ -531,9 +534,8 @@ final class ProjectBoardLaunchHydrationPolicy {
 
     func shouldHydrateWindowGroup(
         sceneID: UUID,
-        directFallbackRequested: Bool,
-        directFallbackWindowExists: Bool
-    ) -> Bool {
+        directFallbackRequested: Bool
+    ) async -> Bool {
         // Production recovery may create a fallback after a normal launch.
         // Suppress only the first isolated-launch WindowGroup, and remember its
         // scene identity so reconstruction cannot accidentally hydrate it.
@@ -544,17 +546,51 @@ final class ProjectBoardLaunchHydrationPolicy {
             return true
         case let .suppressingInitialScene(suppressedSceneID):
             return suppressedSceneID != sceneID
-        case .undecided:
-            // The first WindowGroup decides the launch topology. If it already
-            // has to hydrate because the requested fallback was not created,
-            // a fallback arriving later must not consume the one suppression
-            // slot and hide a user-created second window.
-            guard directFallbackRequested, directFallbackWindowExists else {
+        case .directFallbackCreatedBeforeInitialScene:
+            guard directFallbackRequested else {
                 decision = .noSuppression
                 return true
             }
             decision = .suppressingInitialScene(sceneID)
             return false
+        case let .awaitingDirectFallback(initialSceneID, continuations):
+            guard initialSceneID == sceneID else {
+                return true
+            }
+            return await withCheckedContinuation { continuation in
+                decision = .awaitingDirectFallback(
+                    initialSceneID: initialSceneID,
+                    continuations: continuations + [continuation]
+                )
+            }
+        case .undecided:
+            guard directFallbackRequested else {
+                decision = .noSuppression
+                return true
+            }
+            // AppKit may finish creating the direct fallback after SwiftUI
+            // starts this task. Wait for that one-shot ownership result so
+            // both roots cannot hydrate SQLite concurrently.
+            return await withCheckedContinuation { continuation in
+                decision = .awaitingDirectFallback(
+                    initialSceneID: sceneID,
+                    continuations: [continuation]
+                )
+            }
+        }
+    }
+
+    func resolveDirectFallbackCreation(created: Bool) {
+        switch decision {
+        case .undecided:
+            decision = created ? .directFallbackCreatedBeforeInitialScene : .noSuppression
+        case let .awaitingDirectFallback(initialSceneID, continuations):
+            decision = created ? .suppressingInitialScene(initialSceneID) : .noSuppression
+            continuations.forEach { $0.resume(returning: !created) }
+        case .directFallbackCreatedBeforeInitialScene, .noSuppression, .suppressingInitialScene:
+            // The ownership result is one-shot. A later recovery window must
+            // not rewrite the launch decision or suppress a user-created scene.
+            break
         }
     }
 }
@@ -932,11 +968,15 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
 
     private func createFallbackProjectBoardWindow() {
         guard SuisuiWindowlessFallbackEnvironment.shouldForceProjectBoardFallback || visibleProjectBoardWindows.isEmpty else {
+            ProjectBoardLaunchHydrationPolicy.shared.resolveDirectFallbackCreation(created: false)
             return
         }
 
         SuisuiProjectBoardWindowFallback.shared.showIfNeeded()
         fallbackProjectBoardWindow = SuisuiProjectBoardWindowFallback.shared.windowForDelegateRetention
+        ProjectBoardLaunchHydrationPolicy.shared.resolveDirectFallbackCreation(
+            created: fallbackProjectBoardWindow != nil
+        )
     }
 
     private func openSettingsWindowForEvidenceIfRequested() {
