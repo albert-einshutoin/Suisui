@@ -3,17 +3,17 @@ import Foundation
 public enum MCPProtocolVersion: String, Equatable, Sendable {
     case v2025_11_25 = "2025-11-25"
 
-    public static let publicAlphaBaselineDescription = "stable MCP 2025-11-25 stdio Tools only"
+    public static let publicAlphaBaselineDescription = "legacy MCP 2025-11-25 stdio Tools only"
 
     public static func unsupportedInitializeReason(for protocolVersion: String) -> String {
         if protocolVersion == "2026-07-28" {
-            return "Unsupported result.protocolVersion: \(protocolVersion). Suisui public alpha supports \(publicAlphaBaselineDescription); draft 2026-07-28 protocol metadata and server/discover are out of scope for this release."
+            return "Unsupported result.protocolVersion: \(protocolVersion). Suisui public alpha supports \(publicAlphaBaselineDescription); current stable MCP 2026-07-28 protocol metadata and server/discover are unsupported in this release."
         }
         return "Unsupported result.protocolVersion: \(protocolVersion)."
     }
 
     public static func unsupportedInitializeErrorReason() -> String {
-        "Unsupported protocol version during initialize. Suisui public alpha supports \(publicAlphaBaselineDescription); draft/modern protocol metadata and server/discover are out of scope for this release."
+        "Unsupported protocol version during initialize. Suisui public alpha supports \(publicAlphaBaselineDescription); current stable MCP 2026-07-28 protocol metadata and server/discover are unsupported in this release."
     }
 
     public static func isUnsupportedProtocolError(code: Int, message: String) -> Bool {

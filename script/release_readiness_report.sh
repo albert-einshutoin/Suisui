@@ -271,27 +271,28 @@ LOCAL_VOICE_REQUIRED_CONTEXT_LABELS=(
 MCP_EVIDENCE_REQUIRED_MARKERS=(
   "Generated:"
   "Scope: validate the release MCP stdio fixture"
-  'Stable baseline: `2025-11-25`'
-  'Official stable latest: `2025-11-25`'
+  'Implemented legacy baseline: `2025-11-25`'
+  'Official stable latest: `2026-07-28`'
   "Official latest source: https://modelcontextprotocol.io/specification"
   "Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases"
-  "Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release."
-  "Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"
-  'Official versioning assertion: current protocol version is `2025-11-25`'
-  "Official latest checked: 2026-06-24"
-  "Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"
+  "Official GitHub release assertion: GitHub marks 2026-07-28 as Latest stable release and 2026-07-28 RC as Pre-release."
+  "Official versioning source: https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning"
+  'Official versioning assertion: current stable protocol version is `2026-07-28`; `2025-11-25` is a legacy protocol revision.'
+  "Official latest checked: 2026-07-31"
+  "Implemented legacy source: https://modelcontextprotocol.io/specification/2025-11-25"
+  "Current stable source: https://modelcontextprotocol.io/specification/2026-07-28"
   "Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18"
   "Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/"
   "EMA remote authorization is not a Suisui public-alpha release target"
-  'Draft watchlist: `2026-07-28`'
-  "Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/"
-  "Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog"
-  'Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline.'
-  "2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28."
-  "Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions"
+  "Historical RC source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/"
+  "Historical RC assertion: GitHub marks 2026-07-28 RC as Pre-release; it is superseded by stable 2026-07-28."
+  "Current stable changelog source: https://modelcontextprotocol.io/specification/2026-07-28/changelog"
+  'Current stable changelog assertion: changes are listed since legacy `2025-11-25`; `2026-07-28` is the current stable release.'
+  "Current stable support status: MCP 2026-07-28 is not implemented in Suisui public alpha."
+  "Current stable 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions"
   'per-request `_meta` protocolVersion/clientInfo/clientCapabilities'
-  'Draft `server/discover` is required'
-  'Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented'
+  'Current stable `server/discover` is required'
+  'Current stable tools/list cache hints `ttlMs` / `cacheScope` are not implemented'
   "not a full MCP host"
   "initialize -> tools/list -> tools/call"
   "MCP Inspector CLI tools/list"
@@ -304,31 +305,30 @@ MCP_EVIDENCE_REQUIRED_MARKERS=(
   "exit: 0"
 )
 MCP_REVIEW_REQUIRED_MARKERS=(
-  "Last reviewed: 2026-06-24"
-  'Stable baseline: `2025-11-25`'
-  'Official stable latest: `2025-11-25`'
+  "Last reviewed: 2026-07-31"
+  'Implemented legacy baseline: `2025-11-25`'
+  'Official stable latest: `2026-07-28`'
   "Official latest source: https://modelcontextprotocol.io/specification"
   "Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases"
-  "Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release."
-  "Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"
-  'Official versioning assertion: current protocol version is `2025-11-25`'
-  "Official latest checked: 2026-06-24"
+  "Official GitHub release assertion: GitHub marks 2026-07-28 as Latest stable release and 2026-07-28 RC as Pre-release."
+  "Official versioning source: https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning"
+  'Official versioning assertion: current stable protocol version is `2026-07-28`; `2025-11-25` is a legacy protocol revision.'
+  "Official latest checked: 2026-07-31"
   "Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18"
   "Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/"
   "EMA remote authorization is not a Suisui public-alpha release target"
-  "MCP specification 2025-11-25: https://modelcontextprotocol.io/specification/2025-11-25"
-  'Draft watchlist: `2026-07-28`'
-  "Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog"
-  'Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline.'
-  "Draft versioning watchlist: https://modelcontextprotocol.io/specification/draft/basic/versioning"
-  "Draft discovery watchlist: https://modelcontextprotocol.io/specification/draft/server/discover"
-  "Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions"
+  "Implemented legacy MCP specification 2025-11-25: https://modelcontextprotocol.io/specification/2025-11-25"
+  "Current stable MCP specification 2026-07-28: https://modelcontextprotocol.io/specification/2026-07-28"
+  "Current stable changelog: https://modelcontextprotocol.io/specification/2026-07-28/changelog"
+  "Historical 2026-07-28 RC announcement: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/"
+  "Current stable discovery: https://modelcontextprotocol.io/specification/2026-07-28/server/discover"
+  "Current stable 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions"
   'per-request `_meta` protocolVersion/clientInfo/clientCapabilities'
-  'Draft `server/discover` is required'
-  'Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented'
+  'Current stable `server/discover` is required'
+  'Current stable tools/list cache hints `ttlMs` / `cacheScope` are not implemented'
   "Suisui does not send per-request protocol metadata"
   "server/discover"
-  "will not claim draft or full-host compatibility"
+  "will not claim current-stable or full-host compatibility"
   "not a full MCP host"
   "client-side stdio Tools"
 )
@@ -3758,7 +3758,7 @@ else
     fi
   done
   if [[ "$mcp_review_missing_marker_count" -eq 0 ]]; then
-    printf "OK: MCP compliance review covers stable baseline, draft boundary, release subset, and non-host positioning\n"
+    printf "OK: MCP compliance review covers legacy baseline, current stable boundary, release subset, and non-host positioning\n"
   fi
 fi
 
@@ -3823,7 +3823,7 @@ else
     mcp_missing_marker_count=$((mcp_missing_marker_count + 1))
   fi
   if [[ "$mcp_missing_marker_count" -eq 0 ]]; then
-    printf "OK: MCP Inspector evidence covers stable baseline, draft boundary, tools/list, tools/call, and failure taxonomy\n"
+    printf "OK: MCP Inspector evidence covers legacy baseline, current stable boundary, tools/list, tools/call, and failure taxonomy\n"
   fi
 fi
 

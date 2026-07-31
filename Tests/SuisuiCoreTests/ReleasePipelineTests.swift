@@ -3302,17 +3302,21 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("./script/verify_release_environment.sh"))
         XCTAssertTrue(checklist.contains("./script/verify_mcp_compliance.sh"))
         XCTAssertTrue(checklist.contains("docs/release/evidence/mcp-inspector.md"))
-        XCTAssertTrue(checklist.contains("Stable baseline: `2025-11-25`"))
+        XCTAssertTrue(checklist.contains("Implemented legacy baseline: `2025-11-25`"))
+        XCTAssertTrue(checklist.contains("Official stable latest: `2026-07-28`"))
         XCTAssertTrue(checklist.contains("Official latest source: https://modelcontextprotocol.io/specification"))
         XCTAssertTrue(checklist.contains("Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases"))
-        XCTAssertTrue(checklist.contains("Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release."))
-        XCTAssertTrue(checklist.contains("Official latest checked: 2026-06-24"))
-        XCTAssertTrue(checklist.contains("Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"))
-        XCTAssertTrue(checklist.contains("Official versioning assertion: current protocol version is `2025-11-25`"))
-        XCTAssertTrue(checklist.contains("Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"))
-        XCTAssertTrue(checklist.contains("Draft watchlist: `2026-07-28`"))
-        XCTAssertTrue(checklist.contains("Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog"))
-        XCTAssertTrue(checklist.contains("Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline."))
+        XCTAssertTrue(checklist.contains("Official GitHub release assertion: GitHub marks 2026-07-28 as Latest stable release and 2026-07-28 RC as Pre-release."))
+        XCTAssertTrue(checklist.contains("Official latest checked: 2026-07-31"))
+        XCTAssertTrue(checklist.contains("Official versioning source: https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning"))
+        XCTAssertTrue(checklist.contains("Official versioning assertion: current stable protocol version is `2026-07-28`; `2025-11-25` is a legacy protocol revision."))
+        XCTAssertTrue(checklist.contains("Implemented legacy source: https://modelcontextprotocol.io/specification/2025-11-25"))
+        XCTAssertTrue(checklist.contains("Current stable source: https://modelcontextprotocol.io/specification/2026-07-28"))
+        XCTAssertTrue(checklist.contains("Historical RC source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/"))
+        XCTAssertTrue(checklist.contains("Historical RC assertion: GitHub marks 2026-07-28 RC as Pre-release; it is superseded by stable 2026-07-28."))
+        XCTAssertTrue(checklist.contains("Current stable support status: MCP 2026-07-28 is not implemented in Suisui public alpha."))
+        XCTAssertTrue(checklist.contains("Current stable changelog source: https://modelcontextprotocol.io/specification/2026-07-28/changelog"))
+        XCTAssertTrue(checklist.contains("Current stable changelog assertion: changes are listed since legacy `2025-11-25`; `2026-07-28` is the current stable release."))
         XCTAssertTrue(checklist.contains("script/capture_ui_evidence.sh"))
         XCTAssertTrue(checklist.contains("docs/release/evidence/accessibility-voiceover.md"))
         XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --source-only"))
@@ -8074,27 +8078,29 @@ final class ReleasePipelineTests: XCTestCase {
           cat > "$evidence_file" <<'EOF'
         Generated:
         Scope: validate the release MCP stdio fixture
-        Stable baseline: `2025-11-25`
-        Official stable latest: `2025-11-25`
+        Implemented legacy baseline: `2025-11-25`
+        Official stable latest: `2026-07-28`
         Official latest source: https://modelcontextprotocol.io/specification
         Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases
-        Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release.
-        Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning
-        Official versioning assertion: current protocol version is `2025-11-25`
-        Official latest checked: 2026-06-24
+        Official GitHub release assertion: GitHub marks 2026-07-28 as Latest stable release and 2026-07-28 RC as Pre-release.
+        Official versioning source: https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning
+        Official versioning assertion: current stable protocol version is `2026-07-28`; `2025-11-25` is a legacy protocol revision.
+        Official latest checked: 2026-07-31
         Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
         Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/
         EMA remote authorization is not a Suisui public-alpha release target
-        Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
-        Draft watchlist: `2026-07-28`
-        Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
-        Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog
-        Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline.
-        2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
-        Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions
+        Implemented legacy source: https://modelcontextprotocol.io/specification/2025-11-25
+
+        Current stable source: https://modelcontextprotocol.io/specification/2026-07-28
+        Current stable support status: MCP 2026-07-28 is not implemented in Suisui public alpha.
+        Historical RC source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+        Current stable changelog source: https://modelcontextprotocol.io/specification/2026-07-28/changelog
+        Current stable changelog assertion: changes are listed since legacy `2025-11-25`; `2026-07-28` is the current stable release.
+        Historical RC assertion: GitHub marks 2026-07-28 RC as Pre-release; it is superseded by stable 2026-07-28.
+        Current stable 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions
         per-request `_meta` protocolVersion/clientInfo/clientCapabilities
-        Draft `server/discover` is required
-        Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented
+        Current stable `server/discover` is required
+        Current stable tools/list cache hints `ttlMs` / `cacheScope` are not implemented
         not a full MCP host
         initialize -> tools/list -> tools/call
         MCP Inspector CLI tools/list
@@ -8966,33 +8972,36 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("MCP compliance verifier output is missing source commit"))
         XCTAssertTrue(script.contains("MCP compliance verifier output source commit does not match current MCP source commit"))
         XCTAssertTrue(script.contains("MCP compliance review is missing marker"))
-        XCTAssertTrue(script.contains("OK: MCP compliance review covers stable baseline, draft boundary, release subset, and non-host positioning"))
+        XCTAssertTrue(script.contains("OK: MCP compliance review covers legacy baseline, current stable boundary, release subset, and non-host positioning"))
         XCTAssertTrue(script.contains("docs/release/evidence/mcp-inspector.md"))
         XCTAssertTrue(script.contains("mcp_evidence_source_commit()"))
-        XCTAssertTrue(script.contains("Last reviewed: 2026-06-24"))
-        XCTAssertTrue(script.contains("Stable baseline: `2025-11-25`"))
+        XCTAssertTrue(script.contains("Last reviewed: 2026-07-31"))
+        XCTAssertTrue(script.contains("Implemented legacy baseline: `2025-11-25`"))
+        XCTAssertTrue(script.contains("Official stable latest: `2026-07-28`"))
         XCTAssertTrue(script.contains("Official latest source: https://modelcontextprotocol.io/specification"))
         XCTAssertTrue(script.contains("Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases"))
-        XCTAssertTrue(script.contains("Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release."))
-        XCTAssertTrue(script.contains("Official latest checked: 2026-06-24"))
-        XCTAssertTrue(script.contains("Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"))
-        XCTAssertTrue(script.contains("Official versioning assertion: current protocol version is `2025-11-25`"))
-        XCTAssertTrue(script.contains("Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"))
+        XCTAssertTrue(script.contains("Official GitHub release assertion: GitHub marks 2026-07-28 as Latest stable release and 2026-07-28 RC as Pre-release."))
+        XCTAssertTrue(script.contains("Official latest checked: 2026-07-31"))
+        XCTAssertTrue(script.contains("Official versioning source: https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning"))
+        XCTAssertTrue(script.contains("Official versioning assertion: current stable protocol version is `2026-07-28`; `2025-11-25` is a legacy protocol revision."))
+        XCTAssertTrue(script.contains("Implemented legacy source: https://modelcontextprotocol.io/specification/2025-11-25"))
+        XCTAssertTrue(script.contains("Current stable source: https://modelcontextprotocol.io/specification/2026-07-28"))
         XCTAssertTrue(script.contains("Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18"))
         XCTAssertTrue(script.contains("Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/"))
         XCTAssertTrue(script.contains("EMA remote authorization is not a Suisui public-alpha release target"))
-        XCTAssertTrue(script.contains("Draft watchlist: `2026-07-28`"))
-        XCTAssertTrue(script.contains("Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog"))
-        XCTAssertTrue(script.contains("Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline."))
+        XCTAssertTrue(script.contains("Current stable support status: MCP 2026-07-28 is not implemented in Suisui public alpha."))
+        XCTAssertTrue(script.contains("Current stable changelog source: https://modelcontextprotocol.io/specification/2026-07-28/changelog"))
+        XCTAssertTrue(script.contains("Current stable changelog assertion: changes are listed since legacy `2025-11-25`; `2026-07-28` is the current stable release."))
         XCTAssertTrue(script.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
-        XCTAssertTrue(script.contains("Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/"))
+        XCTAssertTrue(script.contains("Historical RC source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/"))
+        XCTAssertTrue(script.contains("Historical RC assertion: GitHub marks 2026-07-28 RC as Pre-release; it is superseded by stable 2026-07-28."))
         XCTAssertTrue(script.contains("MCP Inspector CLI tools/list"))
         XCTAssertTrue(script.contains("MCP Inspector CLI tools/call"))
         XCTAssertTrue(script.contains("missing MCP Inspector evidence file"))
         XCTAssertTrue(script.contains("MCP Inspector evidence is missing marker"))
         XCTAssertTrue(script.contains("MCP Inspector evidence is missing source commit"))
         XCTAssertTrue(script.contains("MCP Inspector evidence source commit does not match current MCP source commit"))
-        XCTAssertTrue(script.contains("OK: MCP Inspector evidence covers stable baseline, draft boundary, tools/list, tools/call, and failure taxonomy"))
+        XCTAssertTrue(script.contains("OK: MCP Inspector evidence covers legacy baseline, current stable boundary, tools/list, tools/call, and failure taxonomy"))
         XCTAssertTrue(script.contains("BLOCKER"))
     }
 
@@ -10925,27 +10934,29 @@ final class ReleasePipelineTests: XCTestCase {
           cat > "$evidence_file" <<'EOF'
         Generated:
         Scope: validate the release MCP stdio fixture
-        Stable baseline: `2025-11-25`
-        Official stable latest: `2025-11-25`
+        Implemented legacy baseline: `2025-11-25`
+        Official stable latest: `2026-07-28`
         Official latest source: https://modelcontextprotocol.io/specification
         Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases
-        Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release.
-        Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning
-        Official versioning assertion: current protocol version is `2025-11-25`
-        Official latest checked: 2026-06-24
+        Official GitHub release assertion: GitHub marks 2026-07-28 as Latest stable release and 2026-07-28 RC as Pre-release.
+        Official versioning source: https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning
+        Official versioning assertion: current stable protocol version is `2026-07-28`; `2025-11-25` is a legacy protocol revision.
+        Official latest checked: 2026-07-31
         Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
         Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/
         EMA remote authorization is not a Suisui public-alpha release target
-        Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
-        Draft watchlist: `2026-07-28`
-        Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
-        Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog
-        Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline.
-        2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
-        Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions
+        Implemented legacy source: https://modelcontextprotocol.io/specification/2025-11-25
+
+        Current stable source: https://modelcontextprotocol.io/specification/2026-07-28
+        Current stable support status: MCP 2026-07-28 is not implemented in Suisui public alpha.
+        Historical RC source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+        Current stable changelog source: https://modelcontextprotocol.io/specification/2026-07-28/changelog
+        Current stable changelog assertion: changes are listed since legacy `2025-11-25`; `2026-07-28` is the current stable release.
+        Historical RC assertion: GitHub marks 2026-07-28 RC as Pre-release; it is superseded by stable 2026-07-28.
+        Current stable 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions
         per-request `_meta` protocolVersion/clientInfo/clientCapabilities
-        Draft `server/discover` is required
-        Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented
+        Current stable `server/discover` is required
+        Current stable tools/list cache hints `ttlMs` / `cacheScope` are not implemented
         not a full MCP host
         initialize -> tools/list -> tools/call
         MCP Inspector CLI tools/list
@@ -14786,7 +14797,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and Suisui's local JSON-RPC smoke checks.
 
-        Stable baseline: `2025-11-25`
+        Implemented legacy baseline: `2025-11-25`
 
         MCP Inspector CLI tools/list
         """.write(to: evidenceDirectory.appendingPathComponent("mcp-inspector.md"), atomically: true, encoding: .utf8)
@@ -14802,14 +14813,14 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("== MCP Inspector evidence =="))
-        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Draft watchlist: `2026-07-28`"))
-        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official stable latest: `2025-11-25`"))
+        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Current stable support status: MCP 2026-07-28 is not implemented in Suisui public alpha."))
+        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official stable latest: `2026-07-28`"))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official latest source: https://modelcontextprotocol.io/specification"))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases"))
-        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release."))
-        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"))
-        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official latest checked: 2026-06-24"))
-        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: 2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28."))
+        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official GitHub release assertion: GitHub marks 2026-07-28 as Latest stable release and 2026-07-28 RC as Pre-release."))
+        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official versioning source: https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning"))
+        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official latest checked: 2026-07-31"))
+        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Historical RC assertion: GitHub marks 2026-07-28 RC as Pre-release; it is superseded by stable 2026-07-28."))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: MCP Inspector CLI tools/call"))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: malformed-json"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
@@ -14852,21 +14863,21 @@ final class ReleasePipelineTests: XCTestCase {
 
         Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and Suisui's local JSON-RPC smoke checks.
 
-        Stable baseline: `2025-11-25`
+        Implemented legacy baseline: `2025-11-25`
 
-        Official stable latest: `2025-11-25`
+        Official stable latest: `2026-07-28`
 
         Official latest source: https://modelcontextprotocol.io/specification
 
         Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases
 
-        Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release.
+        Official GitHub release assertion: GitHub marks 2026-07-28 as Latest stable release and 2026-07-28 RC as Pre-release.
 
-        Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning
+        Official versioning source: https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning
 
-        Official versioning assertion: current protocol version is `2025-11-25`
+        Official versioning assertion: current stable protocol version is `2026-07-28`; `2025-11-25` is a legacy protocol revision.
 
-        Official latest checked: 2026-06-24
+        Official latest checked: 2026-07-31
 
         Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
 
@@ -14874,27 +14885,29 @@ final class ReleasePipelineTests: XCTestCase {
 
         EMA remote authorization is not a Suisui public-alpha release target
 
-        Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
+        Implemented legacy source: https://modelcontextprotocol.io/specification/2025-11-25
 
-        Draft watchlist: `2026-07-28`
+        Current stable source: https://modelcontextprotocol.io/specification/2026-07-28
 
-        Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+        Current stable support status: MCP 2026-07-28 is not implemented in Suisui public alpha.
 
-        Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog
+        Historical RC source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
 
-        Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline.
+        Current stable changelog source: https://modelcontextprotocol.io/specification/2026-07-28/changelog
 
-        2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
+        Current stable changelog assertion: changes are listed since legacy `2025-11-25`; `2026-07-28` is the current stable release.
 
-        Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions.
+        Historical RC assertion: GitHub marks 2026-07-28 RC as Pre-release; it is superseded by stable 2026-07-28.
 
-        Draft 2026-07-28 uses per-request `_meta` protocolVersion/clientInfo/clientCapabilities.
+        Current stable 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions.
 
-        Draft `server/discover` is required for draft 2026-07-28 version and capability discovery.
+        Current stable 2026-07-28 uses per-request `_meta` protocolVersion/clientInfo/clientCapabilities.
 
-        Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented in Suisui public alpha.
+        Current stable `server/discover` is required for 2026-07-28 version and capability discovery.
 
-        Release positioning: Suisui is not a full MCP host; this evidence covers stable client-side stdio Tools only.
+        Current stable tools/list cache hints `ttlMs` / `cacheScope` are not implemented in Suisui public alpha.
+
+        Release positioning: Suisui is not a full MCP host; this evidence covers legacy 2025-11-25 client-side stdio Tools only.
 
         Success path: `initialize -> tools/list -> tools/call`
 
@@ -14987,21 +15000,21 @@ final class ReleasePipelineTests: XCTestCase {
 
         Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and Suisui's local JSON-RPC smoke checks.
 
-        Stable baseline: `2025-11-25`
+        Implemented legacy baseline: `2025-11-25`
 
-        Official stable latest: `2025-11-25`
+        Official stable latest: `2026-07-28`
 
         Official latest source: https://modelcontextprotocol.io/specification
 
         Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases
 
-        Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release.
+        Official GitHub release assertion: GitHub marks 2026-07-28 as Latest stable release and 2026-07-28 RC as Pre-release.
 
-        Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning
+        Official versioning source: https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning
 
-        Official versioning assertion: current protocol version is `2025-11-25`
+        Official versioning assertion: current stable protocol version is `2026-07-28`; `2025-11-25` is a legacy protocol revision.
 
-        Official latest checked: 2026-06-24
+        Official latest checked: 2026-07-31
 
         Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
 
@@ -15009,27 +15022,29 @@ final class ReleasePipelineTests: XCTestCase {
 
         EMA remote authorization is not a Suisui public-alpha release target
 
-        Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
+        Implemented legacy source: https://modelcontextprotocol.io/specification/2025-11-25
 
-        Draft watchlist: `2026-07-28`
+        Current stable source: https://modelcontextprotocol.io/specification/2026-07-28
 
-        Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+        Current stable support status: MCP 2026-07-28 is not implemented in Suisui public alpha.
 
-        Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog
+        Historical RC source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
 
-        Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline.
+        Current stable changelog source: https://modelcontextprotocol.io/specification/2026-07-28/changelog
 
-        2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
+        Current stable changelog assertion: changes are listed since legacy `2025-11-25`; `2026-07-28` is the current stable release.
 
-        Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions.
+        Historical RC assertion: GitHub marks 2026-07-28 RC as Pre-release; it is superseded by stable 2026-07-28.
 
-        Draft 2026-07-28 uses per-request `_meta` protocolVersion/clientInfo/clientCapabilities.
+        Current stable 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions.
 
-        Draft `server/discover` is required for draft 2026-07-28 version and capability discovery.
+        Current stable 2026-07-28 uses per-request `_meta` protocolVersion/clientInfo/clientCapabilities.
 
-        Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented in Suisui public alpha.
+        Current stable `server/discover` is required for 2026-07-28 version and capability discovery.
 
-        Release positioning: Suisui is not a full MCP host; this evidence covers stable client-side stdio Tools only.
+        Current stable tools/list cache hints `ttlMs` / `cacheScope` are not implemented in Suisui public alpha.
+
+        Release positioning: Suisui is not a full MCP host; this evidence covers legacy 2025-11-25 client-side stdio Tools only.
 
         Success path: `initialize -> tools/list -> tools/call`
 
@@ -15050,7 +15065,7 @@ final class ReleasePipelineTests: XCTestCase {
         try """
         # Suisui MCP Compliance Review
 
-        Stable baseline: `2025-11-25`
+        Implemented legacy baseline: `2025-11-25`
 
         Release positioning: Suisui is not a full MCP host.
         """.write(to: docsDirectory.appendingPathComponent("mcp-compliance.md"), atomically: true, encoding: .utf8)
@@ -15083,19 +15098,19 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("== MCP Inspector evidence =="))
-        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Last reviewed: 2026-06-24"))
-        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official stable latest: `2025-11-25`"))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Last reviewed: 2026-07-31"))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official stable latest: `2026-07-28`"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official latest source: https://modelcontextprotocol.io/specification"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases"))
-        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release."))
-        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"))
-        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official versioning assertion: current protocol version is `2025-11-25`"))
-        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official latest checked: 2026-06-24"))
-        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Draft watchlist: `2026-07-28`"))
-        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog"))
-        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline."))
-        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: will not claim draft or full-host compatibility"))
-        XCTAssertTrue(result.output.contains("OK: MCP Inspector evidence covers stable baseline, draft boundary, tools/list, tools/call, and failure taxonomy"))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official GitHub release assertion: GitHub marks 2026-07-28 as Latest stable release and 2026-07-28 RC as Pre-release."))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official versioning source: https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning"))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official versioning assertion: current stable protocol version is `2026-07-28`; `2025-11-25` is a legacy protocol revision."))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official latest checked: 2026-07-31"))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Current stable MCP specification 2026-07-28: https://modelcontextprotocol.io/specification/2026-07-28"))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Current stable changelog: https://modelcontextprotocol.io/specification/2026-07-28/changelog"))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Historical 2026-07-28 RC announcement: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/"))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: will not claim current-stable or full-host compatibility"))
+        XCTAssertTrue(result.output.contains("OK: MCP Inspector evidence covers legacy baseline, current stable boundary, tools/list, tools/call, and failure taxonomy"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
@@ -15146,11 +15161,11 @@ final class ReleasePipelineTests: XCTestCase {
 
         Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and Suisui's local JSON-RPC smoke checks.
 
-        Stable baseline: `2025-11-25`
+        Implemented legacy baseline: `2025-11-25`
 
-        Draft watchlist: `2026-07-28`
+        Current stable support status: MCP 2026-07-28 is not implemented in Suisui public alpha.
 
-        Release positioning: Suisui is not a full MCP host; this evidence covers stable client-side stdio Tools only.
+        Release positioning: Suisui is not a full MCP host; this evidence covers legacy 2025-11-25 client-side stdio Tools only.
 
         Success path: `initialize -> tools/list -> tools/call`
 
