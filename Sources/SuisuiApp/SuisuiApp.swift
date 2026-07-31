@@ -343,6 +343,17 @@ private struct ProjectBoardWindowRootView: View {
             guard viewModel == nil else {
                 return
             }
+            guard ProjectBoardLaunchHydrationPolicy.shouldHydrateWindowGroup(
+                directFallbackRequested: SuisuiWindowlessFallbackEnvironment.shouldCreateDirectFallbackWindow,
+                directFallbackWindowExists:
+                    SuisuiProjectBoardWindowFallback.shared.windowForDelegateRetention != nil
+            ) else {
+                // Isolated launch routes intentionally publish an AppKit
+                // fallback before the WindowGroup is ready. Hydrating this
+                // hidden duplicate would race the visible board for SQLite
+                // migration and cold-cache reads without serving the user.
+                return
+            }
             // Main-window creation must not wait for SQLite migration, receipt
             // stores, or connector composition. Prepare the heavy runtime
             // bundle off-main, then publish the MainActor-only view model.
@@ -502,6 +513,18 @@ private enum SuisuiLaunchRecoveryEnvironment {
         // verification paths opt in when they need the lightweight workflow
         // surface to avoid early AppKit toolbar layout before AX is ready.
         return environment[flagName] == "1"
+    }
+}
+
+enum ProjectBoardLaunchHydrationPolicy {
+    static func shouldHydrateWindowGroup(
+        directFallbackRequested: Bool,
+        directFallbackWindowExists: Bool
+    ) -> Bool {
+        // Production recovery may create a fallback after a normal launch.
+        // Suppress only the duplicate isolated-launch WindowGroup, preserving
+        // independent hydration for later user-created windows.
+        !(directFallbackRequested && directFallbackWindowExists)
     }
 }
 

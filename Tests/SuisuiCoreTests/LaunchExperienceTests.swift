@@ -278,6 +278,19 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(board.contains("NotificationCenter.default.post(name: .suisuiProjectBoardCommandReady"))
     }
 
+    func testRequestedDirectFallbackOwnsInitialProjectBoardHydration() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
+        let rootStart = try XCTUnwrap(source.range(of: "private struct ProjectBoardWindowRootView: View"))
+        let rootEnd = try XCTUnwrap(
+            source.range(of: "private struct SettingsWindowRootView: View", range: rootStart.lowerBound..<source.endIndex)
+        )
+        let root = source[rootStart.lowerBound..<rootEnd.lowerBound]
+
+        XCTAssertTrue(root.contains("ProjectBoardLaunchHydrationPolicy.shouldHydrateWindowGroup"))
+        XCTAssertTrue(root.contains("SuisuiWindowlessFallbackEnvironment.shouldCreateDirectFallbackWindow"))
+        XCTAssertTrue(root.contains("SuisuiProjectBoardWindowFallback.shared.windowForDelegateRetention != nil"))
+    }
+
     func testVerifyModeCanLaunchWithoutPromptingForKeychainSecrets() throws {
         let source = try readRuntimeCompositionSources()
 
