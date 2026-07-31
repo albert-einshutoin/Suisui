@@ -1081,6 +1081,22 @@ private let waitingFixture = FixtureDefinition(
     actionID: "visual-action-waiting"
 )
 
+// Two extra waiting rows keep the three audited queue states at distinct
+// scroll positions. Their count is explicit so captures never depend on
+// incidental date-driven suggestions from the host environment.
+private let waitingDensityFixtures = [
+    FixtureDefinition(
+        id: "visual-waiting-density-a",
+        planID: "visual-plan-waiting-density-a",
+        actionID: "visual-action-waiting-density-a"
+    ),
+    FixtureDefinition(
+        id: "visual-waiting-density-b",
+        planID: "visual-plan-waiting-density-b",
+        actionID: "visual-action-waiting-density-b"
+    )
+]
+
 private let approvedFixture = FixtureDefinition(
     id: "visual-approved",
     planID: "visual-plan-approved",
@@ -1325,11 +1341,7 @@ private func seedCaptureFixtures(
                 "Scheduled manual capture",
                 "planned",
                 "Voice memo capture with transcript and local interpretation metadata.",
-                // Keep both Inbox rows one pinned day overdue so the app
-                // deterministically creates two reschedule suggestions. Those
-                // extra rows make each queue-state landmark scroll to a
-                // distinct viewport without depending on the host's date.
-                .text(yesterday),
+                .null,
                 .null,
                 "high"
             ),
@@ -1338,7 +1350,7 @@ private func seedCaptureFixtures(
                 "Review captured note",
                 "backlog",
                 "Manual Inbox item keeps the normal route visually distinct from the seeded voice intake detail.",
-                .text(yesterday),
+                .null,
                 .null,
                 "medium"
             ),
@@ -1546,6 +1558,7 @@ private func run(options: SeederOptions) throws {
     let store = SQLiteAssistantQueueStore(connection: connection)
 
     let waiting = waitingItem(for: waitingFixture)
+    let waitingDensityItems = waitingDensityFixtures.map(waitingItem)
     let approved = try AssistantQueueStateMachine.approve(
         waitingItem(for: approvedFixture),
         reviewerID: "visual-evidence-reviewer"
@@ -1560,7 +1573,7 @@ private func run(options: SeederOptions) throws {
         reason: "visual-evidence-simulated-failure"
     )
 
-    for item in [waiting, approved, failed] {
+    for item in [waiting] + waitingDensityItems + [approved, failed] {
         try store.save(item)
     }
     try options.validatePreparedDatabase(preparedDatabase)
