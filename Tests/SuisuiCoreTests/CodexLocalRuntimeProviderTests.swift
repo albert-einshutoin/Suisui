@@ -284,7 +284,9 @@ final class CodexLocalRuntimeProviderTests: XCTestCase {
             trustPolicy: .developerUnsignedAllowed
         )
         let changes = ControlledApprovalChanges()
-        let transport = HangingPlanningCodexTransport()
+        let transport = HangingPlanningCodexTransport(
+            shutdownCompletionDelayNanoseconds: 50_000_000
+        )
         let provider = CodexLocalRuntimeProvider(
             approvedExecutableProvider: { approved },
             modelID: nil,
@@ -485,9 +487,14 @@ private actor HangingPlanningCodexTransport: CodexAppServerTransport {
     private(set) var isShutdown = false
     private var requestID: Int64 = 0
     private let completesPlan: Bool
+    private let shutdownCompletionDelayNanoseconds: UInt64
 
-    init(completesPlan: Bool = false) {
+    init(
+        completesPlan: Bool = false,
+        shutdownCompletionDelayNanoseconds: UInt64 = 0
+    ) {
         self.completesPlan = completesPlan
+        self.shutdownCompletionDelayNanoseconds = shutdownCompletionDelayNanoseconds
         (accountNotificationsStream, accountNotificationsContinuation) = AsyncStream.makeStream(
             of: CodexJSONRPCNotification.self
         )
@@ -579,6 +586,9 @@ private actor HangingPlanningCodexTransport: CodexAppServerTransport {
         isShutdown = true
         accountNotificationsContinuation.finish()
         planningNotificationsContinuation.finish()
+        if shutdownCompletionDelayNanoseconds > 0 {
+            try? await Task.sleep(nanoseconds: shutdownCompletionDelayNanoseconds)
+        }
     }
 
     func waitUntilTurnStarted() async {
