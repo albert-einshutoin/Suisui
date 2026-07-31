@@ -1173,6 +1173,81 @@ public struct AppleSpeechReadinessSnapshot: Equatable, Sendable {
     )
 }
 
+public struct SystemSpeechVoiceOption: Identifiable, Equatable, Sendable {
+    public var identifier: String
+    public var name: String
+    public var languageCode: String
+    public var qualityLabel: String?
+
+    public var id: String { identifier }
+
+    public init(
+        identifier: String,
+        name: String,
+        languageCode: String,
+        qualityLabel: String? = nil
+    ) {
+        self.identifier = identifier
+        self.name = name
+        self.languageCode = languageCode
+        self.qualityLabel = qualityLabel
+    }
+
+    public var displayLabel: String {
+        if let qualityLabel, !qualityLabel.isEmpty {
+            return "\(name) (\(languageCode), \(qualityLabel))"
+        }
+        return "\(name) (\(languageCode))"
+    }
+
+    public func matches(languageCode requestedLanguageCode: String) -> Bool {
+        Self.baseLanguageCode(languageCode) == Self.baseLanguageCode(requestedLanguageCode)
+    }
+
+    private static func baseLanguageCode(_ languageCode: String) -> String {
+        languageCode
+            .replacingOccurrences(of: "_", with: "-")
+            .split(separator: "-", maxSplits: 1)
+            .first?
+            .lowercased() ?? ""
+    }
+}
+
+public struct SystemSpeechReadinessSnapshot: Equatable, Sendable {
+    public var isAvailable: Bool
+    public var isInventoryAuthoritative: Bool
+    public var isInventoryPending: Bool
+    public var voices: [SystemSpeechVoiceOption]
+
+    public init(
+        isAvailable: Bool,
+        isInventoryAuthoritative: Bool,
+        isInventoryPending: Bool = false,
+        voices: [SystemSpeechVoiceOption]
+    ) {
+        self.isAvailable = isAvailable
+        self.isInventoryAuthoritative = isInventoryAuthoritative
+        self.isInventoryPending = isInventoryPending
+        self.voices = voices
+    }
+
+    public static let pendingInventory = SystemSpeechReadinessSnapshot(
+        isAvailable: false,
+        isInventoryAuthoritative: false,
+        isInventoryPending: true,
+        voices: []
+    )
+
+    /// Preserves the public ViewModel initializer contract for non-AppKit
+    /// consumers. The macOS composition root replaces this with an authoritative
+    /// inventory before exposing System Speech readiness.
+    public static let assumedAvailable = SystemSpeechReadinessSnapshot(
+        isAvailable: true,
+        isInventoryAuthoritative: false,
+        voices: []
+    )
+}
+
 @MainActor
 public final class AppSettingsViewModel: ObservableObject {
     @Published public private(set) var settings: AppSettings
@@ -1203,6 +1278,7 @@ public final class AppSettingsViewModel: ObservableObject {
     @Published public private(set) var isRefreshingProviderReadiness: Bool
     @Published private var voiceModelStatusOverrides: [VoiceModelID: VoiceModelInstallStatus]
     @Published private var appleSpeechReadinessSnapshot: AppleSpeechReadinessSnapshot
+    @Published private var systemSpeechReadinessSnapshot: SystemSpeechReadinessSnapshot
 
     private let settingsStore: any AppSettingsStore
     private let secretStore: any SecretStore
@@ -1211,6 +1287,7 @@ public final class AppSettingsViewModel: ObservableObject {
     private let ollamaHealthChecker: any OllamaEndpointHealthChecking
     private let secretReadinessReader: any ProviderSecretReadinessReading
     private let appleSpeechReadinessProvider: @Sendable () -> AppleSpeechReadinessSnapshot
+    private let systemSpeechReadinessProvider: @Sendable () -> SystemSpeechReadinessSnapshot
     private var rejectedAIProvider: AIProvider?
     private static let settingsSaveFailureMessage = "App settings could not be saved."
     private static let apiKeySaveFailureMessage = "API key could not be saved to Keychain."
@@ -1237,6 +1314,30 @@ public final class AppSettingsViewModel: ObservableObject {
         )
     }
 
+    public convenience init(
+        settingsStore: any AppSettingsStore,
+        secretStore: any SecretStore,
+        voiceModelCatalog: VoiceModelCatalog = .phase1Default,
+        voiceModelManager: any VoiceModelManaging = VoiceModelManager(),
+        ollamaHealthChecker: any OllamaEndpointHealthChecking = UncheckedOllamaEndpointHealthChecker(),
+        secretReadinessReader: (any ProviderSecretReadinessReading)? = nil,
+        appleSpeechReadinessProvider: @escaping @Sendable () -> AppleSpeechReadinessSnapshot,
+        refreshProviderSecretStatusesOnInit: Bool = true
+    ) {
+        self.init(
+            settingsStore: settingsStore,
+            secretStore: secretStore,
+            voiceModelCatalog: voiceModelCatalog,
+            voiceModelManager: voiceModelManager,
+            ollamaHealthChecker: ollamaHealthChecker,
+            secretReadinessReader: secretReadinessReader,
+            appleSpeechReadinessProvider: appleSpeechReadinessProvider,
+            systemSpeechReadinessProvider: { .assumedAvailable },
+            systemSpeechInventoryInitiallyPending: false,
+            refreshProviderSecretStatusesOnInit: refreshProviderSecretStatusesOnInit
+        )
+    }
+
     public init(
         settingsStore: any AppSettingsStore,
         secretStore: any SecretStore,
@@ -1245,6 +1346,8 @@ public final class AppSettingsViewModel: ObservableObject {
         ollamaHealthChecker: any OllamaEndpointHealthChecking = UncheckedOllamaEndpointHealthChecker(),
         secretReadinessReader: (any ProviderSecretReadinessReading)? = nil,
         appleSpeechReadinessProvider: @escaping @Sendable () -> AppleSpeechReadinessSnapshot,
+        systemSpeechReadinessProvider: @escaping @Sendable () -> SystemSpeechReadinessSnapshot,
+        systemSpeechInventoryInitiallyPending: Bool = true,
         refreshProviderSecretStatusesOnInit: Bool = true
     ) {
         let initialVoiceModelStatuses = Dictionary(
@@ -1260,7 +1363,14 @@ public final class AppSettingsViewModel: ObservableObject {
         self.secretReadinessReader = secretReadinessReader
             ?? KeychainBackedProviderSecretReadinessReader(secretStore: secretStore)
         self.appleSpeechReadinessProvider = appleSpeechReadinessProvider
-        self.appleSpeechReadinessSnapshot = appleSpeechReadinessProvider()
+        // Framework voice inventories are intentionally not read during
+        // `Suisui.init()`. Settings refreshes them on demand so Speech and
+        // AVFoundation initialization stay off the launch-critical path.
+        self.appleSpeechReadinessSnapshot = .permissionNotDetermined
+        self.systemSpeechReadinessProvider = systemSpeechReadinessProvider
+        self.systemSpeechReadinessSnapshot = systemSpeechInventoryInitiallyPending
+            ? .pendingInventory
+            : .assumedAvailable
         let loadedSettings: AppSettings
         let initialErrorMessage: String?
         do {
@@ -1481,6 +1591,17 @@ public final class AppSettingsViewModel: ObservableObject {
         TTSProvider.releaseReadyCases
     }
 
+    public var selectableSystemSpeechVoices: [SystemSpeechVoiceOption] {
+        systemSpeechReadinessSnapshot.voices
+            .filter { $0.matches(languageCode: settings.ttsLanguageCode) }
+            .sorted {
+                if $0.name == $1.name {
+                    return $0.identifier < $1.identifier
+                }
+                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+    }
+
     public var providerReadinessRows: [AIProviderReadinessRow] {
         selectableAIProviders.map { providerReadinessRow(for: $0) }
     }
@@ -1577,6 +1698,10 @@ public final class AppSettingsViewModel: ObservableObject {
         appleSpeechReadinessSnapshot = appleSpeechReadinessProvider()
     }
 
+    public func refreshSystemSpeechReadiness() {
+        systemSpeechReadinessSnapshot = systemSpeechReadinessProvider()
+    }
+
     public var voiceModelReadinessRows: [VoiceModelReadinessRow] {
         voiceModelCatalog.models.map { model in
             VoiceModelReadinessRow(
@@ -1663,6 +1788,59 @@ public final class AppSettingsViewModel: ObservableObject {
 
     private func makeTTSProviderReadinessRow(for provider: TTSProvider) -> TTSProviderReadinessRow {
         if provider == .systemSpeech {
+            let snapshot = systemSpeechReadinessSnapshot
+            if snapshot.isInventoryPending {
+                return TTSProviderReadinessRow(
+                    provider: provider,
+                    statusLabel: "Checking",
+                    detailLabel: "Loading installed macOS voices.",
+                    nextActionLabel: "Wait for voice check",
+                    isReady: false,
+                    isSelected: settings.ttsProvider == provider
+                )
+            }
+            guard snapshot.isInventoryAuthoritative else {
+                return TTSProviderReadinessRow(
+                    provider: provider,
+                    statusLabel: "Ready",
+                    detailLabel: "Uses an installed macOS voice without an API key or model download.",
+                    nextActionLabel: "Test play",
+                    isReady: true,
+                    isSelected: settings.ttsProvider == provider
+                )
+            }
+            guard snapshot.isAvailable else {
+                return TTSProviderReadinessRow(
+                    provider: provider,
+                    statusLabel: "Unavailable",
+                    detailLabel: "System Speech is unavailable on this Mac.",
+                    nextActionLabel: "Select Local Kokoro",
+                    isReady: false,
+                    isSelected: settings.ttsProvider == provider
+                )
+            }
+            guard !selectableSystemSpeechVoices.isEmpty else {
+                return TTSProviderReadinessRow(
+                    provider: provider,
+                    statusLabel: "Voice unavailable",
+                    detailLabel: "No installed macOS voice matches the selected language.",
+                    nextActionLabel: "Install a matching macOS voice",
+                    isReady: false,
+                    isSelected: settings.ttsProvider == provider
+                )
+            }
+            if let selectedVoiceID = settings.systemSpeechVoiceID,
+               !selectableSystemSpeechVoices.contains(where: { $0.identifier == selectedVoiceID })
+            {
+                return TTSProviderReadinessRow(
+                    provider: provider,
+                    statusLabel: "Voice unavailable",
+                    detailLabel: "The selected macOS voice is missing or does not match the selected language.",
+                    nextActionLabel: "Select an installed voice",
+                    isReady: false,
+                    isSelected: settings.ttsProvider == provider
+                )
+            }
             return TTSProviderReadinessRow(
                 provider: provider,
                 statusLabel: "Ready",
@@ -1922,6 +2100,9 @@ public final class AppSettingsViewModel: ObservableObject {
             return
         }
         settings.ttsProvider = provider
+        if provider == .systemSpeech {
+            refreshSystemSpeechReadiness()
+        }
         clearMessages()
     }
 
@@ -2024,6 +2205,12 @@ public final class AppSettingsViewModel: ObservableObject {
                 languageCode: settings.ttsLanguageCode
             )
         }
+        clearMessages()
+    }
+
+    public func setSystemSpeechVoiceID(_ voiceID: String?) {
+        let normalized = voiceID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.systemSpeechVoiceID = normalized?.isEmpty == false ? normalized : nil
         clearMessages()
     }
 

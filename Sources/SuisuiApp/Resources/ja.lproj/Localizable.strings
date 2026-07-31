@@ -2074,3 +2074,17 @@
 "Record a voice command" = "音声コマンドを録音";
 "Uses voices installed in macOS." = "macOSにインストールされた声を使用します。";
 "Uses an installed macOS voice without an API key or model download." = "APIキーやモデルのダウンロードなしで、macOSにインストールされた声を使用します。";
+"System Default" = "システムのデフォルト";
+"Unavailable voice" = "利用できない音声";
+"Voice unavailable" = "音声を利用できません";
+"System Speech is unavailable on this Mac." = "このMacではシステム読み上げを利用できません。";
+"Loading installed macOS voices." = "インストール済みのmacOS音声を確認しています。";
+"Wait for voice check" = "音声の確認を待つ";
+"Select Local Kokoro" = "ローカルKokoroを選択";
+"No installed macOS voice matches the selected language." = "選択した言語に一致するmacOS音声がインストールされていません。";
+"Install a matching macOS voice" = "一致するmacOS音声をインストール";
+"The selected macOS voice is missing or does not match the selected language." = "選択したmacOS音声が見つからないか、選択した言語と一致しません。";
+"Select an installed voice" = "インストール済み音声を選択";
+"Default" = "標準";
+"Enhanced" = "拡張";
+"Premium" = "プレミアム";

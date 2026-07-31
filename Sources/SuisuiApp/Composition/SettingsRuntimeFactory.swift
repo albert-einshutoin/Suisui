@@ -11,6 +11,9 @@ extension AppRuntimeFactory {
             appleSpeechReadinessProvider: {
                 AppleSpeechReadinessSnapshotReader.snapshot()
             },
+            systemSpeechReadinessProvider: {
+                SystemSpeechReadinessSnapshotReader.snapshot()
+            },
             refreshProviderSecretStatusesOnInit: refreshProviderSecretStatusesOnInit
         )
     }

@@ -438,15 +438,36 @@ struct SettingsAIFeatureView: View {
                 }
                 .accessibilityIdentifier("settings-tts-language-picker")
 
-                TextField(
-                    "TTS voice",
-                    text: Binding(
-                        get: { settingsViewModel.settings.selectedTTSVoiceID },
-                        set: { settingsViewModel.setTTSVoiceID($0) }
+                if settingsViewModel.settings.ttsProvider == .systemSpeech {
+                    Picker(
+                        "TTS voice",
+                        selection: Binding<String?>(
+                            get: { settingsViewModel.settings.systemSpeechVoiceID },
+                            set: { settingsViewModel.setSystemSpeechVoiceID($0) }
+                        )
+                    ) {
+                        Text("System Default").tag(String?.none)
+                        if let unavailableVoiceID = unavailableSystemSpeechVoiceID {
+                            Text("Unavailable voice")
+                                .tag(Optional(unavailableVoiceID))
+                        }
+                        ForEach(settingsViewModel.selectableSystemSpeechVoices) { voice in
+                            Text(voice.displayLabel)
+                                .tag(Optional(voice.identifier))
+                        }
+                    }
+                    .accessibilityIdentifier("settings-tts-voice-id")
+                } else {
+                    TextField(
+                        "TTS voice",
+                        text: Binding(
+                            get: { settingsViewModel.settings.selectedTTSVoiceID },
+                            set: { settingsViewModel.setTTSVoiceID($0) }
+                        )
                     )
-                )
-                .textFieldStyle(.roundedBorder)
-                .accessibilityIdentifier("settings-tts-voice-id")
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("settings-tts-voice-id")
+                }
 
                 Button("Test Play") {
                     Task {
@@ -495,13 +516,26 @@ struct SettingsAIFeatureView: View {
         .formStyle(.grouped)
         .onAppear {
             settingsViewModel.refreshAppleSpeechReadiness()
+            settingsViewModel.refreshSystemSpeechReadiness()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             settingsViewModel.refreshAppleSpeechReadiness()
+            settingsViewModel.refreshSystemSpeechReadiness()
         }
         .onReceive(NotificationCenter.default.publisher(for: .suisuiAppleSpeechAuthorizationDidChange)) { _ in
             settingsViewModel.refreshAppleSpeechReadiness()
         }
+    }
+
+    private var unavailableSystemSpeechVoiceID: String? {
+        guard let selectedID = settingsViewModel.settings.systemSpeechVoiceID,
+              !settingsViewModel.selectableSystemSpeechVoices.contains(where: {
+                  $0.identifier == selectedID
+              })
+        else {
+            return nil
+        }
+        return selectedID
     }
 }
 

@@ -2057,3 +2057,17 @@
 "Record a voice command" = "Record a voice command";
 "Uses voices installed in macOS." = "Uses voices installed in macOS.";
 "Uses an installed macOS voice without an API key or model download." = "Uses an installed macOS voice without an API key or model download.";
+"System Default" = "System Default";
+"Unavailable voice" = "Unavailable voice";
+"Voice unavailable" = "Voice unavailable";
+"System Speech is unavailable on this Mac." = "System Speech is unavailable on this Mac.";
+"Loading installed macOS voices." = "Loading installed macOS voices.";
+"Wait for voice check" = "Wait for voice check";
+"Select Local Kokoro" = "Select Local Kokoro";
+"No installed macOS voice matches the selected language." = "No installed macOS voice matches the selected language.";
+"Install a matching macOS voice" = "Install a matching macOS voice";
+"The selected macOS voice is missing or does not match the selected language." = "The selected macOS voice is missing or does not match the selected language.";
+"Select an installed voice" = "Select an installed voice";
+"Default" = "Default";
+"Enhanced" = "Enhanced";
+"Premium" = "Premium";

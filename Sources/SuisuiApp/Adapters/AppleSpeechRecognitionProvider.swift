@@ -125,23 +125,49 @@ final class AppleSpeechRecognitionProvider: SpeechToTextProvider, @unchecked Sen
     }
 }
 
-private final class AppleSpeechRecognitionSession: @unchecked Sendable {
-    private var task: SFSpeechRecognitionTask?
+struct AppleSpeechRecognitionTaskHandle: @unchecked Sendable {
+    private let cancelAction: () -> Void
+    private let finishAction: () -> Void
+
+    init(cancel: @escaping () -> Void, finish: @escaping () -> Void) {
+        self.cancelAction = cancel
+        self.finishAction = finish
+    }
+
+    func cancel() {
+        cancelAction()
+    }
+
+    func finish() {
+        finishAction()
+    }
+}
+
+final class AppleSpeechRecognitionSession: @unchecked Sendable {
+    typealias StartRecognition = (
+        @escaping (Result<String, Error>) -> Void
+    ) -> AppleSpeechRecognitionTaskHandle
+
+    private enum NativeTaskDisposition {
+        case cancel
+        case finish
+    }
+
+    private var task: AppleSpeechRecognitionTaskHandle?
     private var continuation: CheckedContinuation<String, Error>?
+    private var timeoutTask: Task<Void, Never>?
+    private var terminalResult: Result<String, Error>?
+    private var terminalDisposition: NativeTaskDisposition?
     private let lock = NSLock()
 
     static func recognize(
         recognizer: SFSpeechRecognizer,
         request: SFSpeechRecognitionRequest
     ) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            let session = AppleSpeechRecognitionSession(continuation: continuation)
-            // The recognition task retains this callback, and the callback
-            // retains the session until `finish` clears the task. This keeps
-            // the task alive without global mutable state.
-            session.task = recognizer.recognitionTask(with: request) { result, error in
+        try await recognize(timeout: .seconds(30)) { callback in
+            let task = recognizer.recognitionTask(with: request) { result, error in
                 if let error {
-                    session.finish(
+                    callback(
                         .failure(
                             STTProviderError.transcriptionFailed(
                                 UserFacingErrorMessageSanitizer.message(
@@ -156,28 +182,149 @@ private final class AppleSpeechRecognitionSession: @unchecked Sendable {
                 if let result, result.isFinal {
                     let text = result.bestTranscription.formattedString
                         .trimmingCharacters(in: .whitespacesAndNewlines)
-                    session.finish(.success(text))
+                    callback(.success(text))
                 }
             }
+            return AppleSpeechRecognitionTaskHandle(
+                cancel: { task.cancel() },
+                finish: { task.finish() }
+            )
         }
     }
 
-    private init(continuation: CheckedContinuation<String, Error>) {
-        self.continuation = continuation
+    static func recognize(
+        timeout: Duration,
+        start: @escaping StartRecognition
+    ) async throws -> String {
+        let session = AppleSpeechRecognitionSession()
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation { continuation in
+                session.start(
+                    continuation: continuation,
+                    timeout: timeout,
+                    startRecognition: start
+                )
+            }
+        } onCancel: {
+            session.complete(
+                .failure(CancellationError()),
+                disposition: .cancel
+            )
+        }
     }
 
-    private func finish(_ result: Result<String, Error>) {
+    private init() {}
+
+    private func start(
+        continuation: CheckedContinuation<String, Error>,
+        timeout: Duration,
+        startRecognition: StartRecognition
+    ) {
         lock.lock()
-        guard let continuation else {
+        if let terminalResult {
+            lock.unlock()
+            continuation.resume(with: terminalResult)
+            return
+        }
+        self.continuation = continuation
+        lock.unlock()
+
+        // The framework task may invoke its callback before this assignment
+        // returns. `install` therefore checks terminal state and disposes a
+        // late handle instead of reviving a completed session.
+        let task = startRecognition { [weak self] result in
+            self?.complete(
+                result,
+                disposition: result.isSuccess ? .finish : .cancel
+            )
+        }
+        install(task)
+        installTimeout(after: timeout)
+    }
+
+    private func install(_ task: AppleSpeechRecognitionTaskHandle) {
+        lock.lock()
+        if let terminalDisposition {
+            lock.unlock()
+            dispose(task, disposition: terminalDisposition)
+            return
+        }
+        self.task = task
+        lock.unlock()
+    }
+
+    private func installTimeout(after duration: Duration) {
+        let timeoutTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: duration)
+            } catch {
+                return
+            }
+            self?.complete(
+                .failure(
+                    STTProviderError.transcriptionFailed(
+                        "Apple Speech transcription timed out."
+                    )
+                ),
+                disposition: .cancel
+            )
+        }
+
+        lock.lock()
+        if terminalResult != nil {
+            lock.unlock()
+            timeoutTask.cancel()
+            return
+        }
+        self.timeoutTask = timeoutTask
+        lock.unlock()
+    }
+
+    private func complete(
+        _ result: Result<String, Error>,
+        disposition: NativeTaskDisposition
+    ) {
+        lock.lock()
+        guard terminalResult == nil else {
             lock.unlock()
             return
         }
+        terminalResult = result
+        terminalDisposition = disposition
+        let continuation = self.continuation
         self.continuation = nil
         let task = self.task
         self.task = nil
+        let timeoutTask = self.timeoutTask
+        self.timeoutTask = nil
         lock.unlock()
 
-        task?.finish()
-        continuation.resume(with: result)
+        timeoutTask?.cancel()
+        if let task {
+            dispose(task, disposition: disposition)
+        }
+        continuation?.resume(with: result)
+    }
+
+    private func dispose(
+        _ task: AppleSpeechRecognitionTaskHandle,
+        disposition: NativeTaskDisposition
+    ) {
+        switch disposition {
+        case .cancel:
+            task.cancel()
+        case .finish:
+            task.finish()
+        }
+    }
+}
+
+private extension Result {
+    var isSuccess: Bool {
+        if case .success = self {
+            return true
+        }
+        return false
     }
 }

@@ -1438,6 +1438,116 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertFalse(settings.validate().contains { $0.field == "ttsVoiceID" })
     }
 
+    @MainActor
+    func testSystemSpeechReadinessRejectsMissingAndWrongLanguageVoiceIdentifiers() throws {
+        let suiteName = "Suisui.SystemSpeechReadiness.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        var settings = AppSettings(
+            ttsProvider: .systemSpeech,
+            ttsLanguageCode: "en",
+            ttsVoiceID: "af_heart"
+        )
+        settings.systemSpeechVoiceID = "com.apple.voice.compact.ja-JP.Kyoko"
+        try UserDefaultsAppSettingsStore(defaults: defaults).save(settings)
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            appleSpeechReadinessProvider: { .permissionNotDetermined },
+            systemSpeechReadinessProvider: {
+                SystemSpeechReadinessSnapshot(
+                    isAvailable: true,
+                    isInventoryAuthoritative: true,
+                    voices: [
+                        SystemSpeechVoiceOption(
+                            identifier: "com.apple.voice.compact.en-US.Samantha",
+                            name: "Samantha",
+                            languageCode: "en-US"
+                        ),
+                        SystemSpeechVoiceOption(
+                            identifier: "com.apple.voice.compact.ja-JP.Kyoko",
+                            name: "Kyoko",
+                            languageCode: "ja-JP"
+                        )
+                    ]
+                )
+            }
+        )
+
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.statusLabel, "Checking")
+        XCTAssertFalse(viewModel.ttsProviderReadinessRow.isReady)
+
+        viewModel.refreshSystemSpeechReadiness()
+
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.statusLabel, "Voice unavailable")
+        XCTAssertFalse(viewModel.ttsProviderReadinessRow.isReady)
+        XCTAssertEqual(
+            viewModel.selectableSystemSpeechVoices.map(\.identifier),
+            ["com.apple.voice.compact.en-US.Samantha"]
+        )
+
+        viewModel.setSystemSpeechVoiceID("com.apple.voice.compact.en-US.Samantha")
+
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.statusLabel, "Ready")
+        XCTAssertTrue(viewModel.ttsProviderReadinessRow.isReady)
+    }
+
+    @MainActor
+    func testSystemSpeechReadinessAllowsSystemDefaultWhenLanguageVoiceExists() throws {
+        let suiteName = "Suisui.SystemSpeechDefaultVoice.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            appleSpeechReadinessProvider: { .permissionNotDetermined },
+            systemSpeechReadinessProvider: {
+                SystemSpeechReadinessSnapshot(
+                    isAvailable: true,
+                    isInventoryAuthoritative: true,
+                    voices: [
+                        SystemSpeechVoiceOption(
+                            identifier: "com.apple.voice.compact.en-US.Samantha",
+                            name: "Samantha",
+                            languageCode: "en-US"
+                        )
+                    ]
+                )
+            }
+        )
+        viewModel.setTTSProvider(.systemSpeech)
+        viewModel.refreshSystemSpeechReadiness()
+
+        XCTAssertNil(viewModel.settings.systemSpeechVoiceID)
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.statusLabel, "Ready")
+        XCTAssertTrue(viewModel.ttsProviderReadinessRow.isReady)
+    }
+
+    @MainActor
+    func testVoiceFrameworkReadinessIsLoadedOnDemandInsteadOfDuringSettingsInitialization() throws {
+        let suiteName = "Suisui.LazyVoiceFrameworkReadiness.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let appleSpeechProvider = CountingAppleSpeechReadinessProvider()
+        let systemSpeechProvider = CountingSystemSpeechReadinessProvider()
+
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            appleSpeechReadinessProvider: appleSpeechProvider.read,
+            systemSpeechReadinessProvider: systemSpeechProvider.read
+        )
+
+        XCTAssertEqual(appleSpeechProvider.readCount, 0)
+        XCTAssertEqual(systemSpeechProvider.readCount, 0)
+
+        viewModel.refreshAppleSpeechReadiness()
+        viewModel.refreshSystemSpeechReadiness()
+
+        XCTAssertEqual(appleSpeechProvider.readCount, 1)
+        XCTAssertEqual(systemSpeechProvider.readCount, 1)
+    }
+
     func testKokoroStillRejectsVoiceIdentifierForWrongLanguage() {
         let settings = AppSettings(
             ttsProvider: .localKokoro,
@@ -1870,6 +1980,38 @@ private final class LockedAppleSpeechReadinessProvider: @unchecked Sendable {
         lock.withLock {
             self.snapshot = snapshot
         }
+    }
+}
+
+private final class CountingAppleSpeechReadinessProvider: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var readCount: Int {
+        lock.withLock { count }
+    }
+
+    func read() -> AppleSpeechReadinessSnapshot {
+        lock.withLock {
+            count += 1
+        }
+        return .permissionNotDetermined
+    }
+}
+
+private final class CountingSystemSpeechReadinessProvider: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var readCount: Int {
+        lock.withLock { count }
+    }
+
+    func read() -> SystemSpeechReadinessSnapshot {
+        lock.withLock {
+            count += 1
+        }
+        return .assumedAvailable
     }
 }
 

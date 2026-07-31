@@ -94,6 +94,10 @@ let package = Package(
             resources: [
                 .process("Fixtures")
             ]
+        ),
+        .testTarget(
+            name: "SuisuiAppTests",
+            dependencies: ["Suisui"]
         )
     ]
 )
